@@ -28,13 +28,13 @@ decrypt_token(Token) ->
                 Expire > 0 ->
                     {ok, Id, ExpireAt};
                 true ->
-                    ?LOG([ExpireAt, Now, Expire]),
+                    ?LOG([Id, ExpireAt, Now, Expire]),
                     {error, 707, "请刷新token", [Id, ExpireAt]}
             end;
         _ ->
             {error, 706, "token无效", []}
     catch _:_ ->
-        ?LOG(Token),
+        % ?LOG(Token),
         {error, 706, "token无效", []}
     end.
 

@@ -1,9 +1,9 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 即时聊天软件
 PROJECT_VERSION = 0.1.0
-DEPS = sync lager poolboy mysql jsx erlydtl cowboy
-# DEPS = cowboy
-LOCAL_DEPS = ssl
+
+LOCAL_DEPS = ssl mnesia
+DEPS = sync lager poolboy mysql jsx cowboy
 dep_cowboy_commit = 2.7.0
 dep_lager_commit = 3.6.8
 

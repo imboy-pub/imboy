@@ -5,6 +5,8 @@
 -export([stop/1]).
 
 start(_Type, _Args) ->
+    %%启动存储pid的树据 可以采用 ets 表格处理 但是为了方便集群处理 我采用的mnesia
+    websocket_store_repo:init(),
     %
     % begin handler
     Routes = route_helper:get_routes(),

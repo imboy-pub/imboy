@@ -5,25 +5,27 @@
 
 
 init(Req0, State) ->
-    [Op | _] = State,
-    case Op of
-        init ->
+    Req1 = case lists:keyfind(action, 1, State) of
+        {action, init} ->
             api_init(Req0);
-        refreshtoken ->
+        {action, refreshtoken} ->
             refreshtoken(Req0);
-        help ->
-            get_help(Req0, State)
-    end.
+        {action, help} ->
+            get_help(Req0);
+        false ->
+            Req0
+    end,
+    {ok, Req1, State}.
 
 
 api_init(Req0) ->
     Data = api_init_aas:data(),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
+
 refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"imboy-token">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
-    io:format("refreshtoken  ~p~n",[Refreshtoken]),
     case token_ds:decrypt_token(Refreshtoken) of
         {ok, Id, _ExpireAt} ->
             Data = [
@@ -35,7 +37,7 @@ refreshtoken(Req0) ->
             resp_json_dto:error(Req0, Msg, Code)
     end.
 
-get_help(Req0, State) ->
+get_help(Req0) ->
     Body = "
         <meta charset=\"utf-8\"/>
         <meta http-equiv=\"Content-Language\" content=\"zh-CN\">
@@ -48,10 +50,9 @@ get_help(Req0, State) ->
 
         </ol>
     ",
-    {ok, Req1} = cowboy_req:reply(200,
+    cowboy_req:reply(200,
         #{<<"content-type">> => <<"text/html">>},
         unicode:characters_to_binary(Body, utf8),
         Req0
-    ),
-    {cowboy_rest, Req1, State}.
+    ).
 

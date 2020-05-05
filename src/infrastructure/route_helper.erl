@@ -7,13 +7,25 @@ get_routes() ->
         %% {URIHost, list({URIPath, Handler, Opts})}
         %% {'_', [{'_', my_handler, []}]}
         {'_', [
-            {"/", init_handler, [help]}
-            , {"/passport/login.html", dtl_handler, [login]}
-            , {"/help", init_handler, [help]}
-            , {"/init", init_handler, [init]}
-            , {"/refreshtoken", init_handler, [refreshtoken]}
-            , {"/passport/login", passport_handler, [do_login]}
-            , {"/chat", cowboy_static, {priv_file, imboy, "static/index.html"}}
+            {"/", init_handler, [{action, help}]}
+            % , {"/passport/login.html", dtl_handler, [login]}
+
+            , {"/help", init_handler, [{action, help}]}
+            , {"/init", init_handler, [{action, init}]}
+            , {"/refreshtoken", init_handler, [{action, refreshtoken}]}
+            , {"/passport/login", passport_handler, [{action, do_login}]}
+
+            , {"/chat/websocket", websocket_handler, []}
+
+            , {"/chat/myfriend", chat_handler, [{action, myfriend}]}
+            , {"/chat/msgbox", chat_handler, [{action, chat_msgbox}]}
+            , {"/friend/find", friend_handler, [{action, find}]}
+
+            , {"/passport/login.html", cowboy_static, {priv_file, imboy, "templates/login.html"}}
+            , {"/chat", cowboy_static, {priv_file, imboy, "templates/chat.html"}}
+            , {"/chat.html", cowboy_static, {priv_file, imboy, "templates/chat.html"}}
+
+            , {"/favicon.png", cowboy_static, {priv_file, imboy, "static/favicon.png"}}
             , {"/static/[...]", cowboy_static, {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
         ]}
     ].
@@ -22,5 +34,6 @@ get_routes() ->
 %% <<"/refreshtoken">> 请不要加入 auth
 need_auth_paths() ->
     [
-        <<"/chat">>
+        <<"/chat/myfriend">>
+        , <<"/friend/find">>
     ].

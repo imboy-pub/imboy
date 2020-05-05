@@ -3,6 +3,8 @@
 
 -export([execute/2]).
 
+-include("imboy.hrl").
+
 %% 这个是回调函数
 execute(Req, Env) ->
     Path = cowboy_req:path(Req),
@@ -12,10 +14,14 @@ execute(Req, Env) ->
         true ->
             Token = cowboy_req:header(<<"imboy-token">>, Req),
             case token_ds:decrypt_token(Token) of
-                {ok, _Id, _ExpireAt} ->
-                    {ok, Req, Env};
+                {ok, Id, _ExpireAt} ->
+                    Uid = list_to_integer(binary_to_list(Id)),
+                    #{handler_opts := HandlerOpts} = Env,
+                    Env2 = Env#{handler_opts => [{current_uid, Uid}|HandlerOpts]},
+                    {ok, Req, Env2};
                 {error, Code, Msg, _Li} ->
-                    resp_json_dto:error(Req, Msg, Code)
+                    Req1 = resp_json_dto:error(Req, Msg, Code),
+                    {stop, Req1}
             end;
         false ->
             {ok, Req, Env}

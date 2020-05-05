@@ -1,6 +1,7 @@
 -module (imboy_db).
 
--export ([query/1, query/2]).
+-export ([query/1]).
+-export ([query/2]).
 
 query(Sql) ->
     poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).

@@ -1,83 +1,144 @@
-﻿//建立WebSocket通讯
-// var heartCheck.ws
+﻿/**
+ * `WebsocketHeartbeatJs` constructor.
+ *
+ * @param {Object} opts
+ * {
+ *  url                  websocket链接地址
+ *  pingTimeout 未收到消息多少秒之后发送ping请求，默认15000毫秒
+    pongTimeout  发送ping之后，未收到消息超时时间，默认10000毫秒
+    reconnectTimeout
+    pingMsg
+ * }
+ * @api public
+ *
+ * @link https://github.com/zimv/websocket-heartbeat-js/blob/master/README-zh.md
+ */
+function WebsocketHeartbeatJs({
+    url,
+    pingTimeout = 15000,
+    pongTimeout = 10000,
+    reconnectTimeout = 2000,
+    pingMsg = 'ping',
+    subprotocols = ['text'],
+    repeatLimit = 10
+}){
+    this.opts = {
+        url: url,
+        pingTimeout: pingTimeout,
+        pongTimeout: pongTimeout,
+        reconnectTimeout: reconnectTimeout,
+        pingMsg: pingMsg,
+        subprotocols: subprotocols,
+        repeatLimit: repeatLimit
+    };
+    this.ws = null;//websocket实例
+    this.repeat = 0;
 
+    //override hook function
+    this.onclose = () => {};
+    this.onerror = () => {};
+    this.onopen = () => {};
+    this.onmessage = () => {};
+    this.onreconnect = () => {};
+
+    this.createWebSocket();
+}
+WebsocketHeartbeatJs.prototype.createWebSocket = function(){
+    try {
+        if (this.opts.subprotocols) {
+            this.ws = new WebSocket(this.opts.url, this.opts.subprotocols);
+        } else {
+            this.ws = new WebSocket(this.opts.url);
+        }
+        this.initEventHandle();
+    } catch (e) {
+        this.reconnect();
+        throw e;
+    }
+};
+
+WebsocketHeartbeatJs.prototype.initEventHandle = function(){
+    this.ws.onclose = () => {
+        this.onclose();
+        this.reconnect();
+    };
+    this.ws.onerror = () => {
+        this.onerror();
+        this.reconnect();
+    };
+    this.ws.onopen = () => {
+        this.repeat = 0;
+        this.onopen();
+        //心跳检测重置
+        this.heartCheck();
+    };
+    this.ws.onmessage = (event) => {
+        this.onmessage(event);
+        //如果获取到消息，心跳检测重置
+        //拿到任何消息都说明当前连接是正常的
+        this.heartCheck();
+    };
+};
+
+WebsocketHeartbeatJs.prototype.reconnect = function(){
+    if(this.opts.repeatLimit>0 && this.opts.repeatLimit <= this.repeat) return;//limit repeat the number
+    if(this.lockReconnect || this.forbidReconnect) return;
+    this.lockReconnect = true;
+    this.repeat++;//必须在lockReconnect之后，避免进行无效计数
+    this.onreconnect();
+    //没连接上会一直重连，设置延迟避免请求过多
+    setTimeout(() => {
+        this.createWebSocket();
+        this.lockReconnect = false;
+    }, this.opts.reconnectTimeout);
+};
+WebsocketHeartbeatJs.prototype.send = function(msg){
+    this.ws.send(msg);
+};
 //心跳检测
-var heartCheck = {
-    // timeout: 120000 //120秒
-    timeout: 20000 //20秒
-    , timeoutObj: null
-    , serverTimeoutObj: null
-    , onmessage: null // 接受消息处理的函数
-    , ws: null //websocket实例
-    , lockReconnect: false //避免重复连接
-    , _reconnect: function(ws_host) {
-        var self = this
-        console.log('hc _reconnect')
-        if (this.lockReconnect) {
-            return
-        }
-        this.lockReconnect = true
+WebsocketHeartbeatJs.prototype.heartCheck = function(){
+    this.heartReset();
+    this.heartStart();
+};
+WebsocketHeartbeatJs.prototype.heartStart = function(){
+    if(this.forbidReconnect) return;//不再重连就不再执行心跳
+    this.pingTimeoutId = setTimeout(() => {
+        //这里发送一个心跳，后端收到后，返回一个心跳消息，
+        //onmessage拿到返回的心跳就说明连接正常
+        this.ws.send(this.opts.pingMsg);
+        //如果超过一定时间还没重置，说明后端主动断开了
+        this.pongTimeoutId = setTimeout(() => {
+            //如果onclose会执行reconnect，我们执行ws.close()就行了.如果直接执行reconnect 会触发onclose导致重连两次
+            this.ws.close();
+        }, this.opts.pongTimeout);
+    }, this.opts.pingTimeout);
+};
+WebsocketHeartbeatJs.prototype.heartReset = function(){
+    clearTimeout(this.pingTimeoutId);
+    clearTimeout(this.pongTimeoutId);
+};
+WebsocketHeartbeatJs.prototype.close = function(){
+    //如果手动关闭连接，不再重连
+    this.forbidReconnect = true;
+    this.heartReset();
+    this.ws.close();
+};
 
-        // 没连接上会一直重连，设置延迟避免请求过多
-        setTimeout(function () {
-            self.init(ws_host, self.onmessage)
-            self.lockReconnect = false
-        }, 2000)
+var friend_helper = {
+    friends : {}
+    , init : function(cachedata) {
+        layui.each(cachedata.friend, function(i, group) {
+            layui.each(group.list, function(index, friend) {
+                if (friend && friend.id) {
+                    friend_helper.friends[parseInt(friend.id)] = friend
+                }
+            })
+        })
     }
-
-    , _reset: function() {
-        // console.log('hc _reset')
-        clearTimeout(this.timeoutObj)
-        clearTimeout(this.serverTimeoutObj)
-        return this
-    }
-
-    , start: function() {
-        // console.log('hc start')
-        var self = this
-        this.timeoutObj = setTimeout(function() {
-            //这里发送一个心跳，后端收到后，返回一个心跳消息，
-            //onmessage拿到返回的心跳就说明连接正常
-            // self.ws.send("HeartBeat")
-            // 如果超过一定时间还没重置，说明后端主动断开了
-            self.serverTimeoutObj = setTimeout(function() {
-                // 如果onclose会执行 _reconnect ，我们执行ws.close()就行了.
-                // 如果直接执行 _reconnect 会触发onclose导致重连两次
-                self.ws.close()
-            }, self.timeout)
-        }, this.timeout)
-    }
-
-    , init: function(ws_host, onmessage) {
-        var self = this
-        this.onmessage = onmessage
-        try {
-            console.log('hc init')
-            this.ws = new WebSocket(ws_host)
-
-            this.ws.onclose = function () {
-                self._reconnect(ws_host)
-            }
-
-            this.ws.onerror = function () {
-                self._reconnect(ws_host)
-            }
-            this.ws.onopen = function () {
-                // 心跳检测重置
-                self._reset().start()
-            }
-            this.ws.onmessage = function (event) {
-                console.log('hc ws onmessage')
-                // 如果获取到消息，心跳检测重置
-                // 拿到任何消息都说明当前连接是正常的
-                self._reset().start()
-                console.log('hc ws onmessage2')
-                // 调用指定的消息处理函数
-                self.onmessage(event)
-            }
-        } catch (e) {
-           self._reconnect(url)
-        }
+    , userinfo : function(Uid) {
+        // {id, username, avatar, sign, status}
+        Uid = parseInt(Uid)
+        return friend_helper.friends && friend_helper.friends[Uid] ? friend_helper.friends[Uid] : false
     }
 }
 
@@ -86,21 +147,22 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
     var $ = layui.jquery
     var layer = layui.layer
     var form = layui.form
-    var cachedata =  layui.layim.cache()
-    var curr_id = $('#curr_id').val()
-
+    var layim = layui.layim
+    // 这里需要用 layui.layim 的cache
+    var cachedata = layim.cache()
     var conf = {
         uid: 0, //
         key: '', //
-        layim: null,
+        layim: layim,
         token: null,
     }
 
     var chat = {
         config: function (options) {
-            conf = $.extend(conf, options) //把layim继承出去，方便在register中使用
+            //把layim继承出去，方便在register中使用
+            conf = $.extend(conf, options)
             this.register()
-            im.init(options.user,options.pwd)
+            im.init(options.user, options.pwd)
         },
         register: function () {
             if (!conf.layim) {
@@ -120,9 +182,9 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             })
             //监听layim建立就绪
             conf.layim.on('ready', function (res) {
-                // console.log('cachedata.mine.msgBox', cachedata.mine.msgBox)
-                if (cachedata.mine.msgBox>0) {
-                    conf.layim.msgbox(cachedata.mine.msgBox) //消息盒子有新消息
+                // console.log('cachedata.mine.msgbox', cachedata.mine.msgbox)
+                if (cachedata.mine.msgbox>0) {
+                    conf.layim.msgbox(cachedata.mine.msgbox) //消息盒子有新消息
                 }
                 im.contextmenu()
             })
@@ -157,15 +219,17 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                 }
             })
             conf.layim.on('sendMessage', function (data) { //监听发送消息
+                console.log('sendMessage data ', data)
                 data.to.cmd = 0;
-                if (data.to.type == 'friend') {
+                if (data.to.type == 'friend' || data.to.type == 'dialog') {
                     im.sendMsg(data)
-                }else{
+                } else {
                     var _time = (new Date()).valueOf()//当前时间
                     var gagTime = parseInt(layui.layim.thisChat().data.gagTime)
+                    console.log('sendMessage not friend ', _time, gagTime, gagTime < _time)
                     if (gagTime < _time) {
                         im.sendMsg(data)
-                    }else{
+                    } else {
                         im.popMsg(data,'当前为禁言状态，消息未发送成功！')
                         return false;
                     }
@@ -174,17 +238,144 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
         }
     }
 
-    if (!conf.layim) {
-        conf.layim = layui.layim
-    }
-    // var ext = {
-
-    // }
-
     var im = {
-        init: function (user,pwd) {
+        init: function (user, pwd) {
+            setTimeout(function() {
+                friend_helper.init(cachedata)
+                cachedata = layui.layim.cache()
+                // console.log('cachedata.mine ', cachedata.mine)
+            }, 100)
             //初始化事件监听
-            this.initListener(user, pwd)
+            WSHB.onmessage = function(message) {
+                var data = {}
+                try {
+                    if (message.data == "pong") {
+                        return true
+                    }
+                    data = JSON.parse(message.data)
+                    console.log('onmessage data: ', data)
+                } catch(err) {
+                    console.log('onmessage message: ', message, err)
+                }
+                var message = {
+                    token: token,
+                }
+                // console.log('data type: ', data['type'])
+                switch(data['type']) {
+                    // 服务端ping客户端
+                    case 'error':
+                        layim.panel({
+                            title: '错误提示'
+                            , tpl: '<div style="padding: 10px;">{{d.data.msg}}</div>'
+                            , data: { //数据
+                                msg: data.msg
+                            }
+                        })
+                        break
+                    case 'ping':
+                        message.type = "pong"
+                        WSHB.send(JSON.stringify(message))
+                        break
+                    // 用户在线状态： online offline hide
+                    case 'online':
+                        conf.layim.setFriendStatus(data.uid, data.status)
+                        break
+                    // 检测聊天数据
+                    case 'dialog':
+                        // conf.layim.panel({
+                        //     title: '提示'
+                        //     , tpl: '<div style="padding: 10px;">{{d.data.msg}}</div>'
+                        //     , data: { //数据
+                        //         msg: data.from_id
+                        //     }
+                        // })
+                        var from = friend_helper.userinfo(data.from_id)
+                        console.log('from ', from, 'friend_helper ', friend_helper.friends)
+                        if (from) {
+                            Object.assign(data, from)
+                        }
+                        console.log('data ', data)
+                        conf.layim.getMessage(data)
+                        break
+                    // 离线消息推送
+                    case 'logMessage':
+                        setTimeout(function() {layim.getMessage(data.data)}, 3000)
+                        break
+                    // 用户退出 更新用户列表
+                    case 'logout':
+                        conf.layim.setFriendStatus(data.id, 'offline')
+                        break
+                    // 添加好友
+                    case 'addFriend':
+                        console.log('addFriend', data.data)
+                        conf.layim.addList(data.data)
+                        break
+                    //加入黑名单
+                    case 'black':
+                        console.log(data.data)
+                        conf.layim.removeList({
+                            type: 'friend'
+                            , id: data.data.id //好友或者群组ID
+                        })
+                        break
+                    //删除好友
+                    case 'delFriend':
+                        console.log(data.data)
+                        conf.layim.removeList({
+                            type: 'friend'
+                            , id: data.data.id //好友或者群组ID
+                        })
+                        break
+                    // 添加 分组信息
+                    case 'addGroup':
+                        console.log(data.data)
+                        conf.layim.addList(data.data)
+                        break
+                    // 申请加入群组
+                    case 'applyGroup':
+                        console.log(data.data)
+                        //询问框
+                        var index = layer.confirm(
+                            data.data.joinname + ' 申请加入 ' + data.data.groupname + "<br/> 附加信息： " + data.data.remark , {
+                            btn: ['同意', '拒绝'], //按钮
+                            title: '加群申请',
+                            closeBtn: 0,
+                            icon: 3
+                        }, function() {
+                            $.post(join_group_url,
+                                {
+                                    'user_id': data.data.joinid,
+                                    'user_name': data.data.joinname,
+                                    'user_avatar': data.data.joinavatar,
+                                    'user_sign': data.data.joinsign,
+                                    'group_id': data.data.groupid
+                                },
+                                function(res) {
+                                    if (0 == res.code) {
+
+                                        var join_data = '{"type":"joinGroup", "join_id":"' + data.data.joinid + '"' +
+                                            ', "group_id": "' + data.data.groupid + '", "group_avatar": "' + data.data.groupavatar + '"' +
+                                            ', "group_name": "' + data.data.groupname + '"}'
+                                        WSHB.send(join_data)
+                                    } else {
+                                        layer.msg(res.msg, {time:2000})
+                                    }
+                            }, 'json')
+                            layer.close(index)
+                        }, function() {
+
+                        })
+                        break
+                    // 删除面板的群组
+                    case 'delGroup':
+                        console.log(data.data)
+                        conf.layim.removeList({
+                            type: 'group'
+                            ,id: data.data.id //群组ID
+                        })
+                        break
+                }
+            }
         },
         contextmenu : function() {//定义右键操作
             var my_spread = $('.layim-list-friend >li')
@@ -282,20 +473,20 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     if (3 == e.which && $(this).attr('isfriend') == 0 ) { //点击右键并且不是好友
                         data.menu.push(im.menuAddFriend())
                     }
-                }else{
+                } else {
                     data.menu.push(im.menuEditGroupNickName())
                 }
                 if (groupInfo.manager == 1 && cachedata.mine.id !== _this.attr('id')) {//是群主且操作的对象不是自己
                     if (_this.attr('manager') == 2) {
                         data.menu.push(im.menuRemoveAdmin())
-                    }else if (_this.attr('manager') == 3) {
+                    } else if (_this.attr('manager') == 3) {
                         data.menu.push(im.menuSetAdmin())
                     }
                     data.menu.push(im.menuEditGroupNickName())
                     data.menu.push(im.menuLeaveGroup())
                     if (_gagTime < _time) {
                         data.menu.push(im.menuGroupMemberGag())
-                    }else{
+                    } else {
                         data.menu.push(im.menuLiftGroupMemberGag())
                     }
                 }//群主管理
@@ -306,127 +497,15 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         data.menu.push(im.menuLeaveGroup())
                         if (_gagTime < _time) {
                             data.menu.push(im.menuGroupMemberGag())
-                        }else{
+                        } else {
                             data.menu.push(im.menuLiftGroupMemberGag())
                         }
                     }//管理员管理
                 })
                 $(".groupMembers > li").contextmenu(data)
             })
-        },
-        initListener: function (user, pwd) { //初始化监听
-            console.log('注册服务连接监听事件')
-            var layim = conf.layim
-            heartCheck.init(
-                ws_host,
-                //监听收到的消息
-                function(message) {
-                    var data = JSON.parse(message.data)
-                    // console.log('onmessage data: ', data)
-                    var message = {
-                        token: token,
-                    }
-                    // console.log('data type: ', data['type'])
-                    switch(data['type']) {
-                        // 服务端ping客户端
-                        case 'ping':
-                            message.type = "pong"
-                            heartCheck.ws.send(JSON.stringify(message))
-                            break
-                        // 用户在线状态： online offline hide
-                        case 'online':
-                            conf.layim.setFriendStatus(data.uid, data.status)
-                            break
-                        // 检测聊天数据
-                        case 'dialog':
-                            // console.log('case dialog data.to: ', data.to)
-                            if (data.to.id!=curr_id) {
-                                conf.layim.getMessage(data.to)
-                            }
-                            break
-                        // 离线消息推送
-                        case 'logMessage':
-                            // setTimeout(function() {layim.getMessage(data.data)}, 3000)
-                            break
-                        // 用户退出 更新用户列表
-                        case 'logout':
-                            conf.layim.setFriendStatus(data.id, 'offline')
-                            break
-                        // 添加好友
-                        case 'addFriend':
-                            console.log('addFriend', data.data)
-                            conf.layim.addList(data.data)
-                            break
-                        //加入黑名单
-                        case 'black':
-                            console.log(data.data)
-                            conf.layim.removeList({
-                                type: 'friend'
-                                , id: data.data.id //好友或者群组ID
-                            })
-                            break
-                        //删除好友
-                        case 'delFriend':
-                            console.log(data.data)
-                            conf.layim.removeList({
-                                type: 'friend'
-                                , id: data.data.id //好友或者群组ID
-                            })
-                            break
-                        // 添加 分组信息
-                        case 'addGroup':
-                            console.log(data.data)
-                            conf.layim.addList(data.data)
-                            break
-                        // 申请加入群组
-                        case 'applyGroup':
-                            console.log(data.data)
-                            //询问框
-                            var index = layer.confirm(
-                                data.data.joinname + ' 申请加入 ' + data.data.groupname + "<br/> 附加信息： " + data.data.remark , {
-                                btn: ['同意', '拒绝'], //按钮
-                                title: '加群申请',
-                                closeBtn: 0,
-                                icon: 3
-                            }, function() {
-                                $.post(join_group_url,
-                                    {
-                                        'user_id': data.data.joinid,
-                                        'user_name': data.data.joinname,
-                                        'user_avatar': data.data.joinavatar,
-                                        'user_sign': data.data.joinsign,
-                                        'group_id': data.data.groupid
-                                    },
-                                    function(res) {
-                                        if (0 == res.code) {
-
-                                            var join_data = '{"type":"joinGroup", "join_id":"' + data.data.joinid + '"' +
-                                                ', "group_id": "' + data.data.groupid + '", "group_avatar": "' + data.data.groupavatar + '"' +
-                                                ', "group_name": "' + data.data.groupname + '"}'
-                                            heartCheck.ws.send(join_data)
-                                        }else{
-                                            layer.msg(res.msg, {time:2000})
-                                        }
-                                }, 'json')
-                                layer.close(index)
-                            }, function() {
-
-                            })
-                            break
-                        // 删除面板的群组
-                        case 'delGroup':
-                            console.log(data.data)
-                            conf.layim.removeList({
-                                type: 'group'
-                                ,id: data.data.id //群组ID
-                            })
-                            break
-                    }
-                }
-            )
-        },
-        //自定义消息，把消息格式定义为layim的消息类型
-        defineMessage: function (message,msgType) {
+        },        //自定义消息，把消息格式定义为layim的消息类型
+        defineMessage: function (message, msgType) {
             var msg;
             switch (msgType)
             {
@@ -475,13 +554,13 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             if (message.type == 'chat') {
                 var type = 'friend';
                 var id = message.from;
-            }else if (message.type == 'groupchat') {
+            } else if (message.type == 'groupchat') {
                 var type = 'group';
                 var id = message.to;
             }
             if (message.delay) {//离线消息获取不到本地cachedata用户名称需要从服务器获取
                 var timestamp = Date.parse(new Date(message.delay))
-            }else{
+            } else {
                 var timestamp = (new Date()).valueOf()
             }
             var data = {mine: false,cid: 0,username:message.ext.username,avatar:"./uploads/person/"+message.from+".jpg",content:msg,id:id,fromid: message.from,timestamp:timestamp,type:type}
@@ -493,19 +572,32 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             // 发送消息
             // var mine = JSON.stringify(res.mine)
             // var to = JSON.stringify(res.to)
-            var message = {
-                token: token,
-                'type': 'dialog',
-                'mine': res.mine,
-                'to': res.to,
+            // var message = {
+            //     token: token,
+            //     'type': 'dialog',
+            //     'mine': res.mine,
+            //     'to': res.to,
+            // }
+            var message = {};
+            if (!res.from_id) {
+                message = {
+                    token: token,
+                    'type': 'dialog',
+                    'from_id': res.mine.id,
+                    'to_id': res.to.id,
+                    'content': res.mine.content,
+                    'timestamp': res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf(),
+                }
+            } else {
+                message = res
             }
 
-            if (res.to.type === 'friend') {
+            if (res.to && res.to.type === 'friend') {
                 conf.layim.setChatStatus('<span style="color:#FF5722;">对方正在输入。。。</span>')
             }
             var json = JSON.stringify(message)
-            // console.log('sendMessage json: ', json)
-            heartCheck.ws.send(json)
+            console.log('sendMessage json: ', json)
+            WSHB.send(json)
         },
         getChatLog: function (data) {
             if (!cachedata.base.chatLog) {
@@ -541,7 +633,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                 ,id: username //好友或者群组ID
                             })
                             parent.location.reload()
-                        }else{
+                        } else {
                             layer.msg(data.msg)
                         }
                     })
@@ -591,7 +683,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         }
                     }
                     conn.leaveGroupBySelf(option)
-                }else{
+                } else {
                     layer.msg(data.msg)
                 }
             })
@@ -625,9 +717,12 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             conf.layim.msgbox(msg)
             var audio = document.createElement("audio")
             audio.src = layui.cache.dir+'css/modules/layim/voice/'+ cachedata.base.voice;
-            audio.play() //消息提示音
+            try {
+              audio.play()
+            } catch(err) {
+              console.log(err)
+            }
         },
-
         // 申请好友
         applyFriend: function(othis) {
             console.log('conf.layim', conf.layim)
@@ -787,7 +882,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                             , groupname: data.groupname //群名称
                                             , id: respData.data.groupid //群id
                                         })
-                                    }else{
+                                    } else {
                                         return layer.msg(res.msg)
                                     }
                                     layer.close(layer.index)
@@ -798,7 +893,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         error: function () {}
                     }
                     conn.createGroupNew(options)
-                }else{
+                } else {
                     return layer.msg(resData.msg)
                 }
                 layer.close(layer.index)
@@ -838,10 +933,10 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     if (data.code == 0) {
                         if (data.data == 'online') {
                             conf.layim.setChatStatus('<span style="color:#FF5722;">在线</span>')
-                        }else{
+                        } else {
                             conf.layim.setChatStatus('<span style="color:#444;">离线</span>')
                         }
-                    }else{
+                    } else {
                         //没有该用户
                     }
                 })
@@ -910,7 +1005,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     name = group.eq(j).find('span').html()
                     if (name.indexOf(val) === -1) {
                         group.eq(j).css("display","none")
-                    }else{
+                    } else {
                         group.eq(j).css("display","block")
                     }
                 }
@@ -1103,7 +1198,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         })
                     }
                     cont.find('.layim-chat-gag').css('display','block')
-                }else if (options.type == 'lift' && (options.user == cachedata.mine.id || options.user == 'ALL')) {//取消禁言单人或全体
+                } else if (options.type == 'lift' && (options.user == cachedata.mine.id || options.user == 'ALL')) {//取消禁言单人或全体
                     cont.find('.layim-chat-tool').data('json',encodeURIComponent(JSON.stringify(info)))
                     layui.each(cachedata.group, function(index, item) {
                         if (item.id === options.groupid) {
@@ -1112,8 +1207,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     })
                     cont.find('.layim-chat-gag').css('display','none')
                 }
-
-            }else{
+            } else {
                 if (options.type == 'set' && (options.user == cachedata.mine.id || options.user == 'ALL')) {//设置禁言单人或全体
                     if (options.gagTime) {
                         layui.each(cachedata.group, function(index, item) {
@@ -1122,7 +1216,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             }
                         })
                     }
-                }else if (options.type == 'lift' && (options.user == cachedata.mine.id || options.user == 'ALL')) {//取消禁言单人或全体
+                } else if (options.type == 'lift' && (options.user == cachedata.mine.id || options.user == 'ALL')) {//取消禁言单人或全体
                     layui.each(cachedata.group, function(index, item) {
                         if (item.id === options.groupid) {
                             cachedata.group[index].gagTime = '0';
@@ -1502,7 +1596,6 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                 }
                             }
         },
-
     }
     exports('chat', chat)
     exports('im', im)

@@ -8,14 +8,14 @@
 success(Req) ->
     reply_json(0, "success", [], Req).
 
-success(Req, Data) ->
-    reply_json(0, "success", Data, Req).
+success(Req, Payload) ->
+    reply_json(0, "success", Payload, Req).
 
-success(Req, Data, Msg) ->
-    reply_json(0, Msg, Data, Req).
+success(Req, Payload, Msg) ->
+    reply_json(0, Msg, Payload, Req).
 
-success(Req, Data, Msg, Options) ->
-    reply_json(0, Msg, Data, Req, Options).
+success(Req, Payload, Msg, Options) ->
+    reply_json(0, Msg, Payload, Req, Options).
 
 error(Req) ->
     reply_json(1, "error", [], Req).
@@ -31,28 +31,19 @@ error(Req, Msg, Code, Options) ->
 
 
 %%%%% 私有的 %%%%%
-reply_json(Code, Msg, Data, Req) ->
-    LData = [
-        {<<"code">>, Code}
-        ,{<<"msg">>, unicode:characters_to_binary(Msg)}
-        ,{<<"data">>, Data}
-    ],
-    Body = jsx:encode(LData),
-    cowboy_req:reply(200,
-        #{<<"content-type">> => <<"application/json">>},
-        Body,
-        Req
-    ).
+reply_json(Code, Msg, Payload, Req) ->
+    reply_json(Code, Msg, Payload, Req, []).
 
-reply_json(Code, Msg, Data, Req, Options) ->
-    LData = [
+reply_json(Code, Msg, Payload, Req, Options) ->
+    LPayload = [
         {<<"code">>, Code}
         ,{<<"msg">>, unicode:characters_to_binary(Msg)}
-        ,{<<"data">>, Data}
+        % ,{<<"payload">>, Payload}
+        ,{<<"data">>, Payload}
     ],
-    Body = jsx:encode(LData ++ Options),
+    Body = jsx:encode(LPayload ++ Options),
     cowboy_req:reply(200,
-        #{<<"content-type">> => <<"application/json">>},
+        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
         Body,
         Req
     ).

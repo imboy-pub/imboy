@@ -1,9 +1,9 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>{{hello}}</title>
-<link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
+<title>hello imboy</title>
+<link rel="shortcut icon" href="/favicon.png" type="image/png" >
 <link rel="stylesheet" href="/static/layim/css/layui.mobile.css" media="all">
 <link rel="stylesheet" href="/static/layim/css/modules/layim/mobile/layim.css?v=2.0" media="all">
 </head>
@@ -38,10 +38,17 @@
 </html>
 <script src="/static/layim/layui.js"></script>
 <script src="/static/js/jsencrypt.js" charset="utf-8"></script>
+<script src="/static/js/func.js" charset="utf-8"></script>
 <script type="text/javascript">
 var login_pwd_rsa_encrypt = ''
 var public_key = ''
 var refreshtoken = ''
+
+//layui绑定扩展
+layui.config({
+    base: '/static/js/'
+})
+
 // public_key = public.replace('\n', '')[26:-24]
 layui.use(['form'], function() {
     var $ = layui.jquery, form = layui.form
@@ -87,14 +94,13 @@ layui.use(['form'], function() {
             type: "POST",
             url: obj.form.action,
             data: post_data,
-            headers: {
-                'imboy-token': 'OCtNTcojF8F3t91qqllJRQ==',
-                'current_uid': 1234,
-            },
+            headers: {},
             success: function(res) {
                 // console.log(res.data)
                 if (res && res.code==0) {
-                    refreshtoken = res.data.refreshtoken
+                    // 设置有效时间为 10天
+                    set_cookie('imboy-refreshtoken', res.data.refreshtoken, {expires: 10, path: '/'})
+                    set_cookie('imboy-token', res.data.token, {expires: 1, path: '/'})
                     location.href = res.next ? res.next : '/chat'
                 } else if(res && res.msg) {
                     layer.msg(res.msg)
@@ -106,7 +112,7 @@ layui.use(['form'], function() {
                     }, 3000)
                 }
             },
-            error: function(xhr){
+            error: function(xhr) {
                 console.log(xhr.responseJSON)
                 if (xhr.responseJSON && xhr.responseJSON.msg) {
                     layer.msg(xhr.responseJSON.msg)
@@ -123,7 +129,7 @@ layui.use(['form'], function() {
             url: '/refreshtoken',
             data: {},
             headers: {
-                'imboy-refreshtoken': refreshtoken,
+                'imboy-refreshtoken': get_cookie('imboy-refreshtoken'),
             },
             success: function(res) {
                 console.log(res)

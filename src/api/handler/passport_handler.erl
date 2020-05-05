@@ -6,12 +6,13 @@
 -include("imboy.hrl").
 
 init(Req0, State) ->
-    ?LOG(['passport_handler',  Req0]),
-    [Op | _] = State,
-    case Op of
-        do_login ->
-            do_login(Req0)
-    end.
+    Req1 = case lists:keyfind(action, 1, State) of
+        {action, do_login} ->
+            do_login(Req0);
+        false ->
+            Req0
+    end,
+    {ok, Req1, State}.
 
 do_login(Req0) ->
     %%%

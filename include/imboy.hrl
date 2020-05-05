@@ -6,6 +6,8 @@
 % refreshtoken有效期 10天 单位毫秒 864000000 = 86400 * 1000 * 10
 -define(REFRESHTOKEN_VALID, 864000000).
 
+-define(CHAT_ONLINE_INFO, chat_online_info).
+
 -define(debug, ok).
 -ifdef(debug).
 -define(LOG(X), io:format("pid:~p , {~p,~p}: ~p~n", [self(), ?MODULE, ?LINE, X])).

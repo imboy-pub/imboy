@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>hello imboy</title>
+<link rel="shortcut icon" href="/favicon.png" type="image/png" >
+<link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
+<link rel="stylesheet" href="/static/css/menu.css" media="all">
+</head>
+<body>
+<script src="/static/layim/layui.js" charset="utf-8"></script>
+<script src="/static/js/contextmenu.js" charset="utf-8"></script>
+<script src="/static/js/func.js" charset="utf-8"></script>
+<script src="/static/js/chat.js" charset="utf-8"></script>
+<script type="text/javascript">
+    var token = get_cookie('imboy-token')
+    var im_name = "imboy"
+
+    var member_list_url = ''
+    var upload_img_url = ''
+    var upload_file_url = ''
+    var msg_box_url = '/chat/msgbox'
+    var msg_url = '/chat/notice'
+    var find_url = '/friend/find'
+    var chatlog_url = ''
+    var change_sign_url = ''
+    var chat_user_url = ''
+    var save_audio_url = ''
+    var get_noread_url = ''
+    var join_group_url = ''
+
+    var curr_id = "{{ current_uid }}"
+    var curr_uname = "{{ current_username}}"
+    var curr_avatar = "{{ current_avatar }}"
+    var curr_sign = "{{ current_sign }}"
+
+    var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
+    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/?token=' + token
+
+    var WSHB = new WebsocketHeartbeatJs({
+        url: ws_url,
+        pingTimeout: 15000,
+        pongTimeout: 10000,
+        reconnectTimeout: 2000,
+        repeatLimit: 5,
+        subprotocols: ['text'],
+        pingMsg: 'ping'
+    })
+
+    //layui绑定扩展
+    layui.config({
+        base: '/static/js/'
+    }).extend({
+        chat: 'chat',
+    })
+    layui.use(['layim', 'laytpl', 'jquery', 'chat'], function (layim, chat) {
+        var $ = layui.jquery
+        var chat = layui.chat
+        var token = get_cookie('imboy-token')
+        // var rykey = $('body').data('rykey')
+        var rykey = get_cookie('imboy-token')
+        // console.log('rykey ', rykey, ', token ', token)
+        chat.config({
+            user: token,
+            pwd: rykey ,
+            layim: layim,
+        })
+
+        layim.config({
+            init: {
+                url: '/chat/myfriend',
+                data: {},
+                headers: {
+                    'imboy-token': get_cookie('imboy-token'),
+                },
+                async: false
+            },
+            //获取群成员
+            members: {
+                url: 'class/doAction.php?action=groupMembers', data: {}
+            }
+            //上传图片接口
+            , uploadImage: {
+                url: 'class/doAction.php?action=uploadImage' //（返回的数据格式见下文）
+                , type: 'post' //默认post
+            }
+            //上传文件接口
+            , uploadFile: {
+                url: 'class/doAction.php?action=uploadFile' //
+                , type: 'post' //默认post
+            }
+            //自定义皮肤
+            ,uploadSkin: {
+                url: 'class/doAction.php?action=uploadSkin'
+                , type: 'post' //默认post
+            }
+            //选择系统皮肤
+            ,systemSkin: {
+                url: 'class/doAction.php?action=systemSkin'
+                , type: 'post' //默认post
+            }
+            //获取推荐好友
+            ,getRecommend:{
+                url: 'class/doAction.php?action=getRecommend'
+                , type: 'get' //默认
+            }
+            //查找好友总数
+            ,findFriendTotal:{
+                url: 'class/doAction.php?action=findFriendTotal'
+                , type: 'get' //默认
+            }
+            //查找好友
+            ,findFriend:{
+                url: 'class/doAction.php?action=findFriend'
+                , type: 'get' //默认
+            }
+            //获取好友资料
+            ,getInformation:{
+                url: 'class/doAction.php?action=getInformation'
+                , type: 'get' //默认
+            }
+            //保存我的资料
+            ,saveMyInformation:{
+                url: 'class/doAction.php?action=saveMyInformation'
+                , type: 'post' //默认
+            }
+            //提交建群信息
+            ,commitGroupInfo:{
+                url: 'class/doAction.php?action=commitGroupInfo'
+                , type: 'get' //默认
+            }
+            //获取系统消息
+            ,getMsgBox:{
+                url: 'class/doAction.php?action=getMsgBox'
+                , type: 'get' //默认post
+            }
+            //获取总的记录数
+            ,getChatLogTotal:{
+                url: 'class/doAction.php?action=getChatLogTotal'
+                , type: 'get' //默认post
+            }
+            //获取历史记录
+            ,getChatLog:{
+                url: 'class/doAction.php?action=getChatLog'
+                , type: 'get' //默认post
+            }
+            , isAudio: false //开启聊天工具栏音频
+            , isVideo: false //开启聊天工具栏视频
+            , groupMembers: true
+            //扩展工具栏
+            , tool: [{
+                    alias: 'code'
+                    , title: '代码'
+                    , icon: '&#xe64e;'
+                }]
+            ,title: im_name
+            ,copyright:true
+            , initSkin: '1.jpg' //1-5 设置初始背景
+            , notice: true //是否开启桌面消息提醒，默认false
+            , systemNotice: false //是否开启系统消息提醒，默认false
+            // , msgbox: layui.cache.dir + 'css/modules/layim/html/msgbox.html' //消息盒子页面地址，若不开启，剔除该项即可
+            // , find: layui.cache.dir + 'css/modules/layim/html/find.html' //发现页面地址，若不开启，剔除该项即可
+            , msgbox: msg_box_url
+            , msg_url: msg_url
+            , find: find_url
+            , chatLog: layui.cache.dir + 'css/modules/layim/html/chatlog.html' //聊天记录页面地址，若不开启，剔除该项即可
+            , createGroup: layui.cache.dir + 'css/modules/layim/html/createGroup.html' //创建群页面地址，若不开启，剔除该项即可
+            , Information: layui.cache.dir + 'css/modules/layim/html/getInformation.html' //好友群资料页面
+        })
+    })
+</script>
+</body>
+</html>

@@ -5,12 +5,15 @@ An OTP application
 
 https://ninenines.eu/docs/en/cowboy/2.7/guide/getting_started/
 
+数据库在第一个发布版放出
+
 ## Handling requests
 ```
-make new t=cowboy.rest n=handler/init_handler
-make new t=cowboy.http n=handler/passport_handler
-make new t=cowboy.ws n=handler/websocket_handler
+make new t=cowboy.rest n=api/handler/init_handler
+make new t=cowboy.http n=api/handler/passport_handler
+make new t=cowboy.ws n=api/handler/websocket_handler
 make new t=cowboy.middleware n=infrastructure/middleware/auth_middleware
+make new t=cowboy.rest n=api/handler/chat_handler
 
 make run
 ```
@@ -142,3 +145,44 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 
 ### logging
 日志模块，记录trace日志，使用log4j完成。
+
+rd(chat_online_info, {uid, pid, socket_type}).
+
+friend_as:group_friend(1).
+
+user_ds:find_by_id(1)
+
+user_repo:find_by_ids([1,2,3], <<"`id`,`username`,`avatar`,`sign`">>)
+
+friend_category_ds:find_by_uid(1)
+
+
+Users = [{1,
+  [{<<"id">>,2},
+   {<<"username">>,<<"friend1">>},
+   {<<"avatar">>,
+    <<"/static/image/default_avatar_male_180.gif">>},
+   {<<"sign">>,<<>>}]},
+ {0,
+  [{<<"id">>,3},
+   {<<"username">>,<<"friend3">>},
+   {<<"avatar">>,
+    <<"/static/image/default_avatar_male_180.gif">>},
+   {<<"sign">>,<<>>}]},
+ {2,
+  [{<<"id">>,4},
+   {<<"username">>,<<"friend4">>},
+   {<<"avatar">>,
+    <<"/static/image/default_avatar_male_180.gif">>},
+   {<<"sign">>,<<>>}]},
+ {2,
+  [{<<"id">>,5},
+   {<<"username">>,<<"leeyi5">>},
+   {<<"avatar">>,
+    <<"/static/image/default_avatar_male_180.gif">>},
+   {<<"sign">>,<<>>}]}].
+
+Cid = 2.
+
+.
+
