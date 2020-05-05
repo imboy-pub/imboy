@@ -1,0 +1,6 @@
+*.beam
+_rel
+*.log
+_build
+relx
+.erlang.mk
