@@ -1,0 +1,55 @@
+[
+    {imboy, [
+        % http服务端口
+        {http_port, 9800}
+
+        % 生产环境用 disc_copies ， 开发环境用 ram_copies
+        , {table_copies, disc_copies}
+
+        , {imboy_cipher_key, "hrvUm#>vK9/c@'a`>reT4`!B)e?P]+xA3.]X6.xC"}
+
+        , {sqlPool, [
+            {name, mysql}
+            , {poolConf, [
+                {name, {local, mysql}},
+                {worker_module, mysql},
+                {size, 10},
+                {max_overflow, 5}
+            ]}
+            , {sqlConf, [
+                {host, "127.0.0.1"},
+                {port, 33061},
+                {user, "user_py_admin"},
+                {password, "eb27acWqa16E1"},
+                {database, "db_py_admin"}
+            ]}
+        ]}
+    ]}
+
+    %% Lager Bein %%%
+    , {kernel, [{start_timer, true}]}
+
+    , {sasl, [
+        {utc_log, true},
+        {sasl_error_logger, {file, "log/sasl-error.log"}},
+        {errlog_type, error},
+        {error_logger_mf_dir, "log/sasl"},      % Log directory
+        {error_logger_mf_maxbytes, 104857600},   % 100 MB max file size
+        {error_logger_mf_maxfiles, 5}           % 5 files max
+    ]}
+
+    , {lager, [
+        {log_root, "./log"}
+        %% What handlers to install with what arguments
+        , {handlers, [
+            {lager_console_backend, info}
+            , {lager_file_backend, [
+                {file, "error.log"}, {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
+                {lager_file_backend, [
+                {file, "info.log"}, {level, info}, {size, 10485760}, {date, "$D0"}, {count, 5}]}
+            ]}
+            %% Whether to write a crash log, and where. Undefined means no crash logger.
+            , {crash_log, "crash.log"}
+    ]}
+    %% Lager End %%%
+].

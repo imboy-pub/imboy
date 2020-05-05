@@ -8,5 +8,9 @@ start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-	Procs = [],
-	{ok, {{one_for_one, 1, 5}, Procs}}.
+    {ok, SqlPool} = application:get_env(imboy, sqlPool),
+    Name = proplists:get_value(name, SqlPool),
+    PoolArgs = proplists:get_value(poolConf, SqlPool),
+    WorkerArgs = proplists:get_value(sqlConf, SqlPool),
+    Mysql = poolboy:child_spec(Name, PoolArgs, WorkerArgs),
+    {ok, {{one_for_all, 5, 10}, [Mysql]}}.

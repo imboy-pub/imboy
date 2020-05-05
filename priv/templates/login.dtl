@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{hello}}</title>
+<link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
+<link rel="stylesheet" href="/static/layim/css/layui.mobile.css" media="all">
+<link rel="stylesheet" href="/static/layim/css/modules/layim/mobile/layim.css?v=2.0" media="all">
+</head>
+<body>
+<form class="layui-form" action="/passport/login">
+    <div class="layui-form-item">
+        <div class="layui-inline">
+            <label class="layui-form-label">账户</label>
+            <div class="layui-input-inline">
+                <input type="tel" name="account" lay-verify="required|phone" autocomplete="off" class="layui-input" value="13692177080">
+            </div>
+        </div>
+    </div>
+     <div class="layui-form-item">
+        <label class="layui-form-label">密码</label>
+        <div class="layui-input-inline">
+            <input type="password" name="password" lay-verify="pass" placeholder="请输入密码" autocomplete="off" class="layui-input" value="admin888">
+        </div>
+        <div class="layui-form-mid layui-word-aux">请填写6到12位密码</div>
+    </div>
+    <div class="layui-form-item">
+        <button class="layui-btn" lay-filter="formSubmit" lay-submit>立即登录</button>
+        <span style="padding-left:20px;">
+            <a href="forget.html">忘记密码？</a>
+        </span>
+        <span style="padding-left:20px;">
+            <a id="refreshtoken">refreshtoken</a>
+        </span>
+    </div>
+</form>
+</body>
+</html>
+<script src="/static/layim/layui.js"></script>
+<script src="/static/js/jsencrypt.js" charset="utf-8"></script>
+<script type="text/javascript">
+var login_pwd_rsa_encrypt = ''
+var public_key = ''
+var refreshtoken = ''
+// public_key = public.replace('\n', '')[26:-24]
+layui.use(['form'], function() {
+    var $ = layui.jquery, form = layui.form
+    $.ajax({
+        type: "GET",
+        url: '/init',
+        data: {},
+        success: function(res) {
+            if (res.code==0) {
+                login_pwd_rsa_encrypt = res.data.login_pwd_rsa_encrypt
+                var key = res.data.login_rsa_pub_key.replace(/\n/g, '')
+                // console.log(key)
+                public_key = key.substr(26, key.length - 24 - 26)
+                // console.log(public_key)
+            } else if(res.msg) {
+                layer.msg(res.msg)
+            } else {
+            }
+        },
+        error: function(xhr){
+            console.log(xhr.responseJSON)
+        }
+    })
+    // 表单验证
+    form.verify({
+        username : [/[A-Za-z0-9\u4e00-\u9fa5]{2,40}$/, '用户名必须2到40位字母、数字、汉字组合'],
+        password : [/(.+){8,40}$/, '8到40个任意字符'],
+        number : [/^[0-9]*$/, '必须输入数字啊']
+    })
+    form.on('submit(formSubmit)', function(obj) {
+        layer.msg('数据提交中...',{time:50000})
+
+        if (login_pwd_rsa_encrypt=='1') {
+            // Encrypt with the public key...
+            var encrypt = new JSEncrypt()
+            encrypt.setPublicKey(public_key)
+            var ciphertext = encrypt.encrypt(obj.field.password)
+            obj.field.password = ciphertext
+        }
+        var post_data = obj.field
+        post_data.rsa_encrypt = login_pwd_rsa_encrypt
+        $.ajax({
+            type: "POST",
+            url: obj.form.action,
+            data: post_data,
+            headers: {
+                'imboy-token': 'OCtNTcojF8F3t91qqllJRQ==',
+                'current_uid': 1234,
+            },
+            success: function(res) {
+                // console.log(res.data)
+                if (res && res.code==0) {
+                    refreshtoken = res.data.refreshtoken
+                    location.href = res.next ? res.next : '/chat'
+                } else if(res && res.msg) {
+                    layer.msg(res.msg)
+                    $(":input[name='account']").focus()
+                } else {
+                    layer.msg('未知错误')
+                    setTimeout(function(){
+                        location.reload()
+                    }, 3000)
+                }
+            },
+            error: function(xhr){
+                console.log(xhr.responseJSON)
+                if (xhr.responseJSON && xhr.responseJSON.msg) {
+                    layer.msg(xhr.responseJSON.msg)
+                } else {
+                    layer.msg('未知错误')
+                }
+            }
+        })
+        return false;
+    })
+    $("#refreshtoken").on('click', function () {
+        $.ajax({
+            type: "POST",
+            url: '/refreshtoken',
+            data: {},
+            headers: {
+                'imboy-refreshtoken': refreshtoken,
+            },
+            success: function(res) {
+                console.log(res)
+            },
+            error: function(xhr){
+                console.log(xhr.responseJSON)
+                if (xhr.responseJSON && xhr.responseJSON.msg) {
+                    layer.msg(xhr.responseJSON.msg)
+                } else {
+                    layer.msg('未知错误')
+                }
+            }
+        })
+    })
+    // $("#code").on('click', function () {
+    //     $(this).attr('src', '/passport/captcha.png?t=' + Math.random())
+    // })
+})
+</script>

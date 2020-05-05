@@ -4,3 +4,5 @@ _rel
 _build
 relx
 .erlang.mk
+priv/static/layim
+sys.config
