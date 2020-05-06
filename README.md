@@ -146,43 +146,23 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 ### logging
 日志模块，记录trace日志，使用log4j完成。
 
+
+# api 约定
+
+* websocket Status 101 正常
+* websocket Status 400 - 请求无效 为定义 sec-websocket-protocol
+* websocket Status 406 - 无法接受 sec-websocket-protocol 不包含 text
+* websocket Status 412 - 先决条件失败 缺少token参数
+* api json code 0 成功
+* api json code 1 失败
+* api json code 706 token无效 (包含缺失token情况)
+* api json code 707 请刷新token
+
 rd(chat_online_info, {uid, pid, socket_type}).
 
 friend_as:group_friend(1).
 
 user_ds:find_by_id(1)
 
+user_ds:is_online(1).
 user_repo:find_by_ids([1,2,3], <<"`id`,`username`,`avatar`,`sign`">>)
-
-friend_category_ds:find_by_uid(1)
-
-
-Users = [{1,
-  [{<<"id">>,2},
-   {<<"username">>,<<"friend1">>},
-   {<<"avatar">>,
-    <<"/static/image/default_avatar_male_180.gif">>},
-   {<<"sign">>,<<>>}]},
- {0,
-  [{<<"id">>,3},
-   {<<"username">>,<<"friend3">>},
-   {<<"avatar">>,
-    <<"/static/image/default_avatar_male_180.gif">>},
-   {<<"sign">>,<<>>}]},
- {2,
-  [{<<"id">>,4},
-   {<<"username">>,<<"friend4">>},
-   {<<"avatar">>,
-    <<"/static/image/default_avatar_male_180.gif">>},
-   {<<"sign">>,<<>>}]},
- {2,
-  [{<<"id">>,5},
-   {<<"username">>,<<"leeyi5">>},
-   {<<"avatar">>,
-    <<"/static/image/default_avatar_male_180.gif">>},
-   {<<"sign">>,<<>>}]}].
-
-Cid = 2.
-
-.
-

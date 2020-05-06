@@ -21,9 +21,10 @@ get_routes() ->
             , {"/chat/msgbox", chat_handler, [{action, chat_msgbox}]}
             , {"/friend/find", friend_handler, [{action, find}]}
 
-            , {"/passport/login.html", cowboy_static, {priv_file, imboy, "templates/login.html"}}
-            , {"/chat", cowboy_static, {priv_file, imboy, "templates/chat.html"}}
-            , {"/chat.html", cowboy_static, {priv_file, imboy, "templates/chat.html"}}
+            , {"/friend/find.html", cowboy_static, {priv_file, imboy, "templates/web-chat/find.html"}}
+            , {"/chat", cowboy_static, {priv_file, imboy, "templates/web-chat/index.html"}}
+            , {"/chat.html", cowboy_static, {priv_file, imboy, "templates/web-chat/index.html"}}
+            , {"/passport/login.html", cowboy_static, {priv_file, imboy, "templates/web-chat/login.html"}}
 
             , {"/favicon.png", cowboy_static, {priv_file, imboy, "static/favicon.png"}}
             , {"/static/[...]", cowboy_static, {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}

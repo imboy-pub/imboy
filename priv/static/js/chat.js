@@ -73,7 +73,12 @@ WebsocketHeartbeatJs.prototype.initEventHandle = function(){
         this.heartCheck();
     };
     this.ws.onmessage = (event) => {
-        this.onmessage(event);
+        console.log('ws.onmessage event: ', event, this.onmessage)
+        var that = this;
+        setTimeout(function() {
+            that.onmessage(event);
+        }, 160),
+        // this.onmessage(event);
         //如果获取到消息，心跳检测重置
         //拿到任何消息都说明当前连接是正常的
         this.heartCheck();
@@ -247,6 +252,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             }, 100)
             //初始化事件监听
             WSHB.onmessage = function(message) {
+                console.log('WSHB.onmessage message: ', message)
                 var data = {}
                 try {
                     if (message.data == "pong") {
@@ -264,13 +270,24 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                 switch(data['type']) {
                     // 服务端ping客户端
                     case 'error':
-                        layim.panel({
-                            title: '错误提示'
-                            , tpl: '<div style="padding: 10px;">{{d.data.msg}}</div>'
-                            , data: { //数据
-                                msg: data.msg
-                            }
-                        })
+                        if (data.code == 706) {
+                            layer.open({
+                                type: 1
+                                , btn: '登录'
+                                , yes: function(index, layero) {
+                                    window.location = '/passport/login.html'
+                                }
+                                , content: '<br/><center>请重新登录</center>'
+                            })
+                        } else if(data.code == 707) {
+                            refreshtoken()
+                        } else {
+                            layer.open({
+                                type: 1,
+                                title: '',
+                                content: data.code //这里content是一个普通的String
+                            })
+                        }
                         break
                     case 'ping':
                         message.type = "pong"
@@ -593,7 +610,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             }
 
             if (res.to && res.to.type === 'friend') {
-                conf.layim.setChatStatus('<span style="color:#FF5722;">对方正在输入。。。</span>')
+                conf.layim.setChatStatus('<span style="color:#FF5722;">对方正在输入...</span>')
             }
             var json = JSON.stringify(message)
             console.log('sendMessage json: ', json)

@@ -2,12 +2,23 @@
 %%%
 % user_ds 是 user domain service 缩写
 %%%
+-export ([is_online/1]).
 -export ([find_by_id/1]).
 -export ([find_by_ids/1, find_by_ids/2]).
 
 -include("imboy.hrl").
 
 -spec find_by_id(binary()) -> list().
+
+
+is_online(Uid) ->
+    L1 = websocket_store_repo:lookup(Uid),
+    case lists:keyfind(Uid, 1, L1) of
+        {Uid, Pid, Type} ->
+            {Uid, Pid, Type};
+        false ->
+            false
+    end.
 
 %% return [Id, Username, Avator, Sign].
 find_by_id(Id) ->
@@ -34,6 +45,7 @@ find_by_ids(Ids, Column) ->
             [filter_user(ColumnList, Row) || Row <- Rows]
     end.
 
+%%%%%
 
 filter_user(ColumnList, User) ->
     User2 = case User of

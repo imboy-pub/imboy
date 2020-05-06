@@ -124,25 +124,7 @@ layui.use(['form'], function() {
         return false;
     })
     $("#refreshtoken").on('click', function () {
-        $.ajax({
-            type: "POST",
-            url: '/refreshtoken',
-            data: {},
-            headers: {
-                'imboy-refreshtoken': get_cookie('imboy-refreshtoken'),
-            },
-            success: function(res) {
-                console.log(res)
-            },
-            error: function(xhr){
-                console.log(xhr.responseJSON)
-                if (xhr.responseJSON && xhr.responseJSON.msg) {
-                    layer.msg(xhr.responseJSON.msg)
-                } else {
-                    layer.msg('未知错误')
-                }
-            }
-        })
+        refreshtoken()
     })
     // $("#code").on('click', function () {
     //     $(this).attr('src', '/passport/captcha.png?t=' + Math.random())

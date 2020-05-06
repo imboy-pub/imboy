@@ -7,25 +7,24 @@
 
 -include("imboy.hrl").
 
+%% 对聊发送消息
 dialog(CurrentUid, Data) ->
     {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Data),
-    ToPid = get_pid(ToId),
-    FromPid = get_pid(CurrentUid),
     {<<"content">>, Content} = lists:keyfind(<<"content">>, 1, Data),
-   Msg = [
+    Msg = [
         {<<"type">>,<<"dialog">>},
         {<<"from_id">>, CurrentUid},
         {<<"to_id">>, ToId},
         {<<"content">>, Content},
         {<<"timestamp">>, imboy_func:milliseconds()}
     ],
-    ?LOG(["CurrentUid", CurrentUid, "FromPid", FromPid, "ToId", ToId, "ToPid:", ToPid, jsx:encode(Msg)]),
-    % jsx:encode(Msg).
-    erlang:start_timer(1, ToPid, jsx:encode(Msg)),
+    case user_ds:is_online(ToId) of
+        {ToId, ToPid, _Type} ->
+            ?LOG(["CurrentUid", CurrentUid, "ToId", ToId, "ToPid:", ToPid, jsx:encode(Msg)]),
+            erlang:start_timer(1, ToPid, jsx:encode(Msg));
+        false ->
+            % 存储离线消息
+            ?LOG(["write offline message ", ToId]),
+            chat_message_ds:write_msg(jsx:encode(Msg), CurrentUid, ToId)
+    end,
     ok.
-
-get_pid(Uid) ->
-    L1 = websocket_store_repo:lookup(Uid),
-    {Uid, Pid, _Type} = lists:keyfind(Uid, 1, L1),
-    ?LOG(["get_pid ",Uid, Pid, L1]),
-    Pid.

@@ -6,7 +6,7 @@
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 
-%% 得到复现在制时间毫秒
+%% 得到现在在制时间毫秒
 milliseconds() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),
     1000000000 * MegaSecs + Secs * 1000 + MicroSecs div 1000.
@@ -23,4 +23,4 @@ is_mobile(Mobile) ->
 %% erlang md5 16进制字符串
 md5(Str) ->
     Sig = erlang:md5(Str),
-    binary_to_list(iolist_to_binary([io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig)])).
+    iolist_to_binary([io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig)]).

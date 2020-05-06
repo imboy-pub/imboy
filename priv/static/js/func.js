@@ -1,4 +1,36 @@
 
+function refreshtoken() {
+    layui.jquery.ajax({
+        type: "POST",
+        url: '/refreshtoken',
+        data: {},
+        headers: {
+            'imboy-refreshtoken': get_cookie('imboy-refreshtoken'),
+        },
+        success: function(res) {
+            if (res && res.code==0) {
+                // 设置有效时间为 10天
+                set_cookie('imboy-refreshtoken', res.data.refreshtoken, {expires: 10, path: '/'})
+                set_cookie('imboy-token', res.data.token, {expires: 1, path: '/'})
+            } else if(res && res.code == 706) {
+                location.href = res.next ? res.next : '/passport/login.html'
+            } else if(res && res.msg) {
+                layer.msg(res.msg)
+            } else {
+                console.log(res)
+            }
+        },
+        error: function(xhr){
+            console.log(xhr.responseJSON)
+            if (xhr.responseJSON && xhr.responseJSON.msg) {
+                layer.msg(xhr.responseJSON.msg)
+            } else {
+                layer.msg('未知错误')
+            }
+        }
+    })
+}
+
 function set_cookie(name, value, options)
 {
     var expires = options && options.expires ? options.expires : 1
@@ -62,7 +94,7 @@ function api_ajax(url, method, params, callback, error_callback, async) {
     }
 
     async = async===false ? false : true
-    $.ajax({
+    layui.jquery.ajax({
         type: method,
         url: url,
         async: async,

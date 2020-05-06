@@ -1,5 +1,7 @@
 -module (friend_category_repo).
-
+%%%
+% friend_category_repo 是 friend_category repository 缩写
+%%%
 -export ([find_by_uid/2]).
 
 find_by_uid(Uid, Column) ->

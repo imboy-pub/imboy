@@ -6,7 +6,7 @@
 -include("imboy.hrl").
 
 init(Req0, State) ->
-    ?LOG(State),
+    % ?LOG(State),
     Req1 = case lists:keyfind(action, 1, State) of
         {action, myfriend} ->
             myfriend(Req0, State);
@@ -23,7 +23,7 @@ myfriend(Req0, State) ->
     Mine = user_ds:find_by_id(CurrentUid),
     Friends = friend_as:group_friend(CurrentUid),
     Data = myfriend_aas:data(Mine, Friends),
-    ?LOG(Data),
+    % ?LOG(Data),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
 chat_msgbox(Req0, State) ->

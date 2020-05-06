@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>find friend - imboy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="shortcut icon" href="/favicon.png" type="image/png" >
+<link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
+<script src="/static/layim/layui.js" charset="utf-8"></script>
+<script src="/static/js/func.js" charset="utf-8"></script>
+<script src="/static/js/chat.js" charset="utf-8"></script>
+<style type="text/css">
+    html body {
+        margin-left: auto;
+    }
+    .layui-find-list li img {
+        position: absolute;
+        left: 15px;
+        top: 8px;
+        width: 36px;
+        height: 36px;
+        border-radius: 100%;
+    }
+    .layui-find-list li {
+        position: relative;
+        height: 90px;;
+        padding: 5px 15px 5px 60px;
+        font-size: 0;
+        cursor: pointer;
+    }
+    .layui-find-list li * {
+        display: inline-block;
+        vertical-align: top;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow:ellipsis;
+        white-space: nowrap;
+    }
+    .layui-find-list li span {
+        margin-top: 4px;
+        max-width: 155px;
+    }
+
+    .layui-find-list li p {
+        display: block;
+        line-height: 18px;
+        font-size: 12px;
+        color: #999;
+        overflow: hidden;
+        text-overflow:ellipsis;
+        white-space: nowrap;
+    }
+    .back{
+        cursor:pointer;
+    }
+    .lay_page{position: fixed;bottom: 0;margin-left: -15px;margin-bottom: 20px;background: #fff;width: 100%;}
+    .layui-laypage {
+        width: 100%;
+        margin: 0 auto;
+        display: block;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+    <div class="layui-form" style="padding: 1rem;">
+        <div class="layui-container" style="padding:0">
+            <div class="layui-row layui-col-space3">
+                <div class="layui-col-xs5 mt15">
+                  <input type="text" name="title" lay-verify="title" autocomplete="off" placeholder="请输入昵称/手机号/邮箱" class="layui-input">
+                </div>
+                <div class="layui-col-xs1 mt15" >
+                  <button class="layui-btn btncolor find">查找</button>
+                </div>
+
+                <div class="layui-col-xs3 mt15">
+                    <input type="radio" name="add" value="friend" title="找人" checked="">
+                    <input type="radio" name="add" value="group" title="找群">
+                    <button class="layui-btn layui-btn-xs btncolor createGroup" >我要建群</button>
+                </div>
+            </div>
+            <div id="LAY_view"></div>
+
+            <div class="lay_page" id="LAY_page" ></div>
+        </div>
+    </div>
+</body>
+</html>
+<script type="text/javascript">
+    //layui绑定扩展
+    layui.config({
+        base: '/static/home/js/'
+    }).extend({
+        chat: 'chat',
+    })
+    layui.use([ 'layim', 'laytpl', 'laypage', 'form', 'chat',], function(){
+        var layim = layui.layim
+        var layer = layui.layer
+        var laytpl = layui.laytpl
+        var form = layui.form
+        var $ = layui.jquery
+        var laypage = layui.laypage
+        var chat = layui.chat
+        var im = layui.im
+
+        var cache = parent.layui.layim.cache()
+        // console.log(cache)
+
+        $(function(){
+            getRecommend()
+        })
+        //获得URL参数。
+        var url = cache.base.find
+        function getRecommend(){
+            $.get(url,
+                {type:'recommend', '_xsrf':get_xsrf()},
+                function(res){
+                    // var html = laytpl(LAY_tpl.value).render({
+                    var html = laytpl(res.tpl).render({
+                        data: res.data,
+                        legend:'推荐好友',
+                        type:'friend'
+                    })
+                    $('#LAY_view').html(html)
+            })
+        }
+
+        $('body').on('click', '.add', function () {
+            //添加好友
+            var othis = $(this)
+            var type = othis.data('type')
+            // parent.im_events.applyFriend.call(othis)
+            // im.menuAddFriend(othis)
+            im.applyFriend(othis)
+            // type == 'friend' ? parent.layui.im.addFriend(othis,type) : parent.layui.im.addGroup(othis)
+        })
+        $('body').on('click', '.createGroup', function () {//创建群
+            var othis = $(this)
+            // parent.layui.im.createGroup(othis)
+        })
+        $('body').on('click', '.back', function () {//返回推荐好友
+            getRecommend()
+            $("#LAY_page").css("display","none")
+        })
+
+        $("body").keydown(function(event){
+            if(event.keyCode==13){
+                $(".find").click()
+            }
+        })
+        $('body').on('click', '.find', function () {
+            $("#LAY_page").css("display","block")
+            var othis = $(this),input = othis.parents('.layui-col-space3').find('input').val()
+            var addType = $('input:radio:checked').val()
+            if (input) {
+                var url = cache.base.find;
+                $.get(url,
+                    {type:addType, value:input, '_xsrf':get_xsrf()},
+                    function(res){
+                    if(res.code != 0){
+                        return layer.msg(res.msg)
+                    }
+                    laypage.render({ elem: 'LAY_page'
+                      ,count: res.total
+                      ,limit: res.limit
+                      ,prev: '<i class="layui-icon">&#58970;</i>'
+                      ,next: '<i class="layui-icon">&#xe65b;</i>'
+                      ,layout: ['prev', 'page', 'next']
+                      ,curr: res.page
+                      ,jump: function(obj, first){
+                        //首次不执行
+                        if(!first){
+                            var url = cache.base.find || {};
+                            $.get(url,
+                                {type:addType,value:input, page: obj.curr || 1, '_xsrf':get_xsrf()},
+                                function(res){
+                                    $("#LAY_page").css("display","block")
+                                    var html = laytpl(res.tpl).render({
+                                        data: res.data,
+                                        legend:'<a class="back"><i class="layui-icon">&#xe65c;</>返回</a> 查找结果',
+                                        type:addType
+                                    })
+                                    $('#LAY_view').html(html)
+                                })
+                            }
+                        }
+                    })
+
+                    var html = laytpl(res.tpl).render({
+                        data: res.data,
+                        legend:'找人',
+                        type:'friend'
+                    })
+                    $('#LAY_view').html(html)
+                })
+            }
+        })
+    })
+</script>
+{% end %}

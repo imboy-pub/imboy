@@ -21,7 +21,7 @@
     var upload_file_url = ''
     var msg_box_url = '/chat/msgbox'
     var msg_url = '/chat/notice'
-    var find_url = '/friend/find'
+    var find_url = '/friend/find.html'
     var chatlog_url = ''
     var change_sign_url = ''
     var chat_user_url = ''
@@ -35,7 +35,7 @@
     var curr_sign = "{{ current_sign }}"
 
     var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
-    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/?token=' + token
+    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/?token=' + token.replace("+", "%2B")
 
     var WSHB = new WebsocketHeartbeatJs({
         url: ws_url,
