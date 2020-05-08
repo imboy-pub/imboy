@@ -13,4 +13,4 @@ init([]) ->
     PoolArgs = proplists:get_value(poolConf, SqlPool),
     WorkerArgs = proplists:get_value(sqlConf, SqlPool),
     Mysql = poolboy:child_spec(Name, PoolArgs, WorkerArgs),
-    {ok, {{one_for_all, 5, 10}, [Mysql]}}.
+    {ok, {{one_for_one, 5, 60}, [Mysql]}}.

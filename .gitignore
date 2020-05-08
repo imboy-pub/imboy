@@ -6,3 +6,4 @@ relx
 .erlang.mk
 priv/static/layim
 sys.config
+ebin

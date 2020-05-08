@@ -28,7 +28,7 @@ decrypt_token(Token) ->
                 Expire > 0 ->
                     {ok, Id, ExpireAt};
                 true ->
-                    ?LOG([Id, ExpireAt, Now, Expire]),
+                    % ?LOG([Id, ExpireAt, Now, Expire]),
                     {error, 707, "请刷新token", [Id, ExpireAt]}
             end;
         _ ->

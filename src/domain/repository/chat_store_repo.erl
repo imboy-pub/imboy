@@ -1,8 +1,8 @@
--module(websocket_store_repo).
+-module(chat_store_repo).
 -include_lib("stdlib/include/qlc.hrl" ).
 
 %% API
--export([dirty_insert/3,dirty_lookall/0,dirty_lookall_record/0,dirty_delete/1]).
+-export([dirty_insert/3,dirty_delete/1]).
 
 -export([init/0,insert/3,delete/1,lookup/1,lookall/0]).
 
@@ -38,28 +38,11 @@ insert(Uid, Pid, SocketType) when is_pid(Pid) ->
 
 dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
     mnesia:dirty_write(#chat_online_info{uid = Uid, pid = Pid, socket_type = SocketType}).
-%--------------------------------------------------------------------
-%% @doc dirty_read data
-%% @spec dirty_lookall()
-%% @end
-%%--------------------------------------------------------------------
-
-dirty_lookall()->
-    mnesia:dirty_select(chat_online_info,[{#chat_online_info{uid = '$1', pid = '$2', socket_type = 'web'}, [], ['$$_']}]).
 
 dirty_delete(Pid) when is_pid(Pid)  ->
     mnesia:dirty_delete(chat_online_info, Pid);
 dirty_delete(Uid) when is_integer(Uid)  ->
     mnesia:dirty_delete(chat_online_info, Uid).
-
-%--------------------------------------------------------------------
-%% @doc look all record info
-%% @spec
-%% @end
-%%--------------------------------------------------------------------
-
-dirty_lookall_record()->
-    mnesia:dirty_select(chat_online_info,[{#chat_online_info{uid = '$1', pid = '$2', socket_type = '$3'}, [], ['$$_']}]).
 
 %%--------------------------------------------------------------------
 %% @doc Find a pid given a key.
@@ -128,15 +111,9 @@ dynamic_db_init() ->
     % 确保已经 mnesia:start().
     case lists:member(?CHAT_ONLINE_INFO, mnesia:system_info(tables)) of
         false ->
-            TableCopies = case application:get_env(imboy, table_copies) of
-                {ok, Copies} ->
-                    Copies;
-                undefined ->
-                    disc_copies
-            end,
             % 创建表
             mnesia:create_table(?CHAT_ONLINE_INFO, [{type, set},
-                {TableCopies, [node()|nodes()]}, % disc_copies 磁盘 + 内存; ram_copies 内存
+                {ram_copies, [node()|nodes()]}, % disc_copies 磁盘 + 内存; ram_copies 内存
                 {attributes, record_info(fields, ?CHAT_ONLINE_INFO)}]
             );
         true ->

@@ -4,6 +4,7 @@ PROJECT_VERSION = 0.1.0
 
 LOCAL_DEPS = ssl mnesia
 DEPS = sync lager poolboy mysql jsx cowboy
+# DEPS = lager poolboy mysql jsx cowboy
 dep_cowboy_commit = 2.7.0
 dep_lager_commit = 3.6.8
 

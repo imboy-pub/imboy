@@ -7,8 +7,12 @@
 -include("imboy.hrl").
 
 check_subprotocols(Req0, State1) ->
-    % ?LOG([Req0, State1]),
-    % Cowboy关闭连接空闲60秒 默认值为 60000
+    ImOpts = #{
+        num_acceptors => 99999999,
+        max_connections => 99999999, % 最大9千万链接
+        max_frame_size => 1048576, % 1MB
+        idle_timeout => 60000 %  % Cowboy关闭连接空闲60秒 默认值为 60000
+    },
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0) of
         undefined ->
             % HTTP 400 - 请求无效
@@ -21,7 +25,7 @@ check_subprotocols(Req0, State1) ->
                 IsText == true ->
                     Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
                         <<"text">>, Req0),
-                    {cowboy_websocket, Req, State1, #{idle_timeout => 60000}};
+                    {cowboy_websocket, Req, State1, ImOpts};
                 true ->
                     % HTTP 406 - 无法接受
                     Req1 = cowboy_req:reply(406, Req0),

@@ -2,25 +2,26 @@
     {imboy, [
         % http服务端口
         {http_port, 9800}
-
-        % 生产环境用 disc_copies ， 开发环境用 ram_copies
-        , {table_copies, disc_copies}
-
+        , {host, <<"demo.imboy.leeyi.net">>}
         , {imboy_cipher_key, "hrvUm#>vK9/c@'a`>reT4`!B)e?P]+xA3.]X6.xC"}
-
         , {sqlPool, [
             {name, mysql}
             , {poolConf, [
                 {name, {local, mysql}},
                 {worker_module, mysql},
-                {size, 10},
-                {max_overflow, 5}
+                {size, 20},
+                {max_overflow, 200}
             ]}
             , {sqlConf, [
+                % {host, "127.0.0.1"},
+                % {port, 33061},
+                % {user, "user_py_admin"},
+                % {password, "eb27acWqa16E1"},
+                % {database, "db_py_admin"}
                 {host, "127.0.0.1"},
-                {port, 33061},
-                {user, "user_py_admin"},
-                {password, "eb27acWqa16E1"},
+                {port, 3306},
+                {user, "root"},
+                {password, "123456"},
                 {database, "db_py_admin"}
             ]}
         ]}
@@ -35,7 +36,7 @@
         {errlog_type, error},
         {error_logger_mf_dir, "log/sasl"},      % Log directory
         {error_logger_mf_maxbytes, 104857600},   % 100 MB max file size
-        {error_logger_mf_maxfiles, 5}           % 5 files max
+        {error_logger_mf_maxfiles, 255}           % 255 files max
     ]}
 
     , {lager, [
@@ -44,12 +45,13 @@
         , {handlers, [
             {lager_console_backend, info}
             , {lager_file_backend, [
-                {file, "error.log"}, {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
+                {file, "error.log"}, {level, error}, {size, 10485760}, {date, "$D0"}, {count, 999}]},
                 {lager_file_backend, [
-                {file, "info.log"}, {level, info}, {size, 10485760}, {date, "$D0"}, {count, 5}]}
+                {file, "info.log"}, {level, info}, {size, 10485760}, {date, "$D0"}, {count, 999}]}
             ]}
             %% Whether to write a crash log, and where. Undefined means no crash logger.
             , {crash_log, "crash.log"}
+            , {error_logger_hwm, 999}
     ]}
     %% Lager End %%%
 ].

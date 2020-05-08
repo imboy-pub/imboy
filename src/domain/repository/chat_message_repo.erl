@@ -10,7 +10,7 @@
 -include("imboy.hrl").
 
 read_msg(ToUid, Column, Limit) ->
-    Where = <<"WHERE `to_id` = ? AND `status` = 2">>,
+    Where = <<"WHERE `to_id` = ?">>,
     Sql = <<"SELECT ", Column/binary,
         " FROM `chat_message` ",
         Where/binary,
@@ -26,17 +26,17 @@ write_msg(Payload, FromId, ToId) when is_integer(ToId) ->
     write_msg(Payload, FromId, ToId2);
 write_msg(Payload, FromId, ToId) ->
     Table = <<"`chat_message`">>,
-    Column = <<"(`payload`, `from_id`, `to_id`, `read_at`, `status`, `created_at`, `payload_md5`)">>,
+    Column = <<"(`payload`, `from_id`, `to_id`, `created_at`, `payload_md5`)">>,
     Now = list_to_binary(integer_to_list(imboy_func:milliseconds())),
     Pmd5 = imboy_func:md5(Payload),
-    Value = <<"('", Payload/binary, "', '", FromId/binary, "', '", ToId/binary, "',", "0,", "2", ",'", Now/binary, "', '", Pmd5/binary, "')">>,
+    Value = <<"('", Payload/binary, "', '", FromId/binary, "', '", ToId/binary, "', '", Now/binary, "', '", Pmd5/binary, "')">>,
     imboy_db:insert_into(Table, Column, Value).
 
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
 
 find_by_uid(Uid, Column, Limit) ->
-    Where = <<"WHERE `owner_user_id` = ? AND `status` = 1 LIMIT ?">>,
+    Where = <<"WHERE `owner_user_id` = ? LIMIT ?">>,
     Sql = <<"SELECT ", Column/binary,
         " FROM `chat_message`",
         Where/binary>>,

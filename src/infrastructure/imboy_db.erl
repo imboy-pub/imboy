@@ -1,11 +1,15 @@
 -module (imboy_db).
 
+-export ([execute/1]).
 -export ([query/1]).
 -export ([query/2]).
 -export ([insert_into/3]).
 -export ([replace_into/3]).
 
 -include("imboy.hrl").
+
+execute(Sql) ->
+    poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).
 
 query(Sql) ->
     poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).

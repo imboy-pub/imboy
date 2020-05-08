@@ -107,9 +107,9 @@ function api_ajax(url, method, params, callback, error_callback, async) {
                 if (callback) {
                     callback(res)
                 }
-            } else if(res.code=='990013') {
+            } else if(res.code=='706') {
                 current_token('clear')
-                location.href = '/passport/login'
+                location.href = '/passport/login.html'
             } else {
                 if (error_callback) {
                     error_callback(false, res)

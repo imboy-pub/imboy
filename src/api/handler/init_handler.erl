@@ -45,7 +45,7 @@ get_help(Req0) ->
         <ol>
             <li><a href=\"/passport/login.html\" target=\"_blank\">/passport/login.html  GET</a></li>
             <li><a href=\"/init\" target=\"_blank\">/init  GET</a></li>
-
+            <li><a href=\"/chat/online\" target=\"_blank\">/chat/online  GET</a></li>
             <li> /passport/login  POST</li>
 
         </ol>

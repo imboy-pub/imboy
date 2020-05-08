@@ -73,11 +73,41 @@
                 headers: {
                     'imboy-token': get_cookie('imboy-token'),
                 },
-                async: false
+                async: false,
+                errorcallback(res) {
+                    // 请刷新token
+                    if (res.code == 707) {
+                        refreshtoken()
+                        setTimeout(function () {
+                            location.replace(location.href)
+                        }, 200)
+                    } else {
+                        layer.msg(res.msg || ((tips||'Error') + ': LAYIM_NOT_GET_DATA'), {
+                          time: 5000
+                        })
+                    }
+                }
             },
             //获取群成员
             members: {
-                url: 'class/doAction.php?action=groupMembers', data: {}
+                url: '/group/member',
+                data: {},
+                headers: {
+                    'imboy-token': get_cookie('imboy-token'),
+                },
+                errorcallback(res) {
+                    // 请刷新token
+                    if (res.code == 707) {
+                        refreshtoken()
+                        setTimeout(function () {
+                            location.replace(location.href)
+                        }, 200)
+                    } else {
+                        layer.msg(res.msg || ((tips||'Error') + ': LAYIM_NOT_GET_DATA'), {
+                          time: 5000
+                        })
+                    }
+                }
             }
             //上传图片接口
             , uploadImage: {

@@ -91,11 +91,18 @@ WebsocketHeartbeatJs.prototype.reconnect = function(){
     this.lockReconnect = true;
     this.repeat++;//必须在lockReconnect之后，避免进行无效计数
     this.onreconnect();
+    var reconnectTimeout = this.opts.reconnectTimeout + 2000 * this.repeat
+    if (this.repeat > (this.repeatLimit / 2)) {
+        reconnectTimeout = reconnectTimeout - 1000 * this.repeat
+    }
+    if (reconnectTimeout < this.opts.reconnectTimeout) {
+        reconnectTimeout = this.opts.reconnectTimeout
+    }
     //没连接上会一直重连，设置延迟避免请求过多
     setTimeout(() => {
         this.createWebSocket();
         this.lockReconnect = false;
-    }, this.opts.reconnectTimeout);
+    }, reconnectTimeout)
 };
 WebsocketHeartbeatJs.prototype.send = function(msg){
     this.ws.send(msg);
@@ -129,8 +136,10 @@ WebsocketHeartbeatJs.prototype.close = function(){
     this.ws.close();
 };
 
+//
 var friend_helper = {
     friends : {}
+    , group_users: {}
     , init : function(cachedata) {
         layui.each(cachedata.friend, function(i, group) {
             layui.each(group.list, function(index, friend) {
@@ -143,7 +152,37 @@ var friend_helper = {
     , userinfo : function(Uid) {
         // {id, username, avatar, sign, status}
         Uid = parseInt(Uid)
-        return friend_helper.friends && friend_helper.friends[Uid] ? friend_helper.friends[Uid] : false
+        if (!(friend_helper.friends && friend_helper.friends[Uid])) {
+            friend_helper.init(layui.layim.cache())
+        }
+        return friend_helper.friends[Uid]
+    }
+    , group_userinfo(Gid, Uid) {
+        // {id, username, avatar, sign, status}
+        Uid = parseInt(Uid)
+        if (friend_helper.group_users && friend_helper.group_users[Uid]) {
+            return friend_helper.group_users[Uid]
+        }
+        api_ajax('/group/member', 'get', {'id': Gid}, function(res) {
+            if (res.code == 0 && res.data && res.data.list) {
+                layui.each(res.data.list, function(index, user) {
+                    if (user && user.id) {
+                        friend_helper.group_users[parseInt(user.id)] = {
+                            "username": user.username,
+                            "avatar": user.avatar
+                        }
+                    }
+                })
+            } else if (res.code == 707) {
+                // 请刷新token
+                refreshtoken()
+                setTimeout(function () {
+                    location.replace(location.href)
+                }, 200)
+            }
+        }, function(res) {
+        }, false)
+        return friend_helper.group_users[Uid]
     }
 }
 
@@ -153,7 +192,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
     var layer = layui.layer
     var form = layui.form
     var layim = layui.layim
-    // 这里需要用 layui.layim 的cache
+    // 这里需要用 layui.layim.cache() 的cache
     var cachedata = layim.cache()
     var conf = {
         uid: 0, //
@@ -226,7 +265,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             conf.layim.on('sendMessage', function (data) { //监听发送消息
                 console.log('sendMessage data ', data)
                 data.to.cmd = 0;
-                if (data.to.type == 'friend' || data.to.type == 'dialog') {
+                if (['friend', 'dialog', 'group'].includes(data.to.type)) {
                     im.sendMsg(data)
                 } else {
                     var _time = (new Date()).valueOf()//当前时间
@@ -260,137 +299,140 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     }
                     data = JSON.parse(message.data)
                     console.log('onmessage data: ', data)
+                    var message = {
+                        token: token,
+                    }
+                    console.log('data type: ', data['type'])
+                    switch(data['type']) {
+                        // 服务端ping客户端
+                        case 'error':
+                            if (data.code == 706) {
+                                layer.open({
+                                    type: 1
+                                    , btn: '登录'
+                                    , yes: function(index, layero) {
+                                        window.location = '/passport/login.html'
+                                    }
+                                    , content: '<br/><center>请重新登录</center>'
+                                })
+                            } else if(data.code == 707) {
+                                refreshtoken()
+                            } else {
+                                layer.open({
+                                    type: 0,
+                                    area: ['300px', 'auto'],
+                                    content: data.msg
+                                })
+                            }
+                            break
+                        case 'ping':
+                            message.type = "pong"
+                            WSHB.send(JSON.stringify(message))
+                            break
+                        // 用户在线状态： online offline hide
+                        case 'online':
+                            conf.layim.setFriendStatus(data.uid, data.status)
+                            break
+                        // 检测聊天数据
+                        case 'group':
+                            var from = friend_helper.group_userinfo(data.to_id, data.from_id)
+                            console.log('from ', from, 'friend_helper ', friend_helper.group_users)
+                            if (from) {
+                                Object.assign(data, from)
+                            }
+                            data['id'] = data.to_id
+                            console.log('group data ', data)
+                            conf.layim.getMessage(data)
+                            break
+                        case 'dialog':
+                            var from = friend_helper.userinfo(data.from_id)
+                            console.log('from ', from, 'friend_helper ', friend_helper.friends)
+                            if (from) {
+                                Object.assign(data, from)
+                            }
+                            console.log('data ', data)
+                            conf.layim.getMessage(data)
+                            break
+                        // 离线消息推送
+                        case 'logMessage':
+                            setTimeout(function() {layim.getMessage(data.data)}, 3000)
+                            break
+                        // 用户退出 更新用户列表
+                        case 'logout':
+                            conf.layim.setFriendStatus(data.id, 'offline')
+                            break
+                        // 添加好友
+                        case 'addFriend':
+                            console.log('addFriend', data.data)
+                            conf.layim.addList(data.data)
+                            break
+                        //加入黑名单
+                        case 'black':
+                            console.log(data.data)
+                            conf.layim.removeList({
+                                type: 'friend'
+                                , id: data.data.id //好友或者群组ID
+                            })
+                            break
+                        //删除好友
+                        case 'delFriend':
+                            console.log(data.data)
+                            conf.layim.removeList({
+                                type: 'friend'
+                                , id: data.data.id //好友或者群组ID
+                            })
+                            break
+                        // 添加 分组信息
+                        case 'addGroup':
+                            console.log(data.data)
+                            conf.layim.addList(data.data)
+                            break
+                        // 申请加入群组
+                        case 'applyGroup':
+                            console.log(data.data)
+                            //询问框
+                            var index = layer.confirm(
+                                data.data.joinname + ' 申请加入 ' + data.data.groupname + "<br/> 附加信息： " + data.data.remark , {
+                                btn: ['同意', '拒绝'], //按钮
+                                title: '加群申请',
+                                closeBtn: 0,
+                                icon: 3
+                            }, function() {
+                                $.post(join_group_url,
+                                    {
+                                        'user_id': data.data.joinid,
+                                        'user_name': data.data.joinname,
+                                        'user_avatar': data.data.joinavatar,
+                                        'user_sign': data.data.joinsign,
+                                        'group_id': data.data.groupid
+                                    },
+                                    function(res) {
+                                        if (0 == res.code) {
+
+                                            var join_data = '{"type":"joinGroup", "join_id":"' + data.data.joinid + '"' +
+                                                ', "group_id": "' + data.data.groupid + '", "group_avatar": "' + data.data.groupavatar + '"' +
+                                                ', "group_name": "' + data.data.groupname + '"}'
+                                            WSHB.send(join_data)
+                                        } else {
+                                            layer.msg(res.msg, {time:2000})
+                                        }
+                                }, 'json')
+                                layer.close(index)
+                            }, function() {
+
+                            })
+                            break
+                        // 删除面板的群组
+                        case 'delGroup':
+                            console.log(data.data)
+                            conf.layim.removeList({
+                                type: 'group'
+                                ,id: data.data.id //群组ID
+                            })
+                            break
+                    }
                 } catch(err) {
                     console.log('onmessage message: ', message, err)
-                }
-                var message = {
-                    token: token,
-                }
-                // console.log('data type: ', data['type'])
-                switch(data['type']) {
-                    // 服务端ping客户端
-                    case 'error':
-                        if (data.code == 706) {
-                            layer.open({
-                                type: 1
-                                , btn: '登录'
-                                , yes: function(index, layero) {
-                                    window.location = '/passport/login.html'
-                                }
-                                , content: '<br/><center>请重新登录</center>'
-                            })
-                        } else if(data.code == 707) {
-                            refreshtoken()
-                        } else {
-                            layer.open({
-                                type: 1,
-                                title: '',
-                                content: data.code //这里content是一个普通的String
-                            })
-                        }
-                        break
-                    case 'ping':
-                        message.type = "pong"
-                        WSHB.send(JSON.stringify(message))
-                        break
-                    // 用户在线状态： online offline hide
-                    case 'online':
-                        conf.layim.setFriendStatus(data.uid, data.status)
-                        break
-                    // 检测聊天数据
-                    case 'dialog':
-                        // conf.layim.panel({
-                        //     title: '提示'
-                        //     , tpl: '<div style="padding: 10px;">{{d.data.msg}}</div>'
-                        //     , data: { //数据
-                        //         msg: data.from_id
-                        //     }
-                        // })
-                        var from = friend_helper.userinfo(data.from_id)
-                        console.log('from ', from, 'friend_helper ', friend_helper.friends)
-                        if (from) {
-                            Object.assign(data, from)
-                        }
-                        console.log('data ', data)
-                        conf.layim.getMessage(data)
-                        break
-                    // 离线消息推送
-                    case 'logMessage':
-                        setTimeout(function() {layim.getMessage(data.data)}, 3000)
-                        break
-                    // 用户退出 更新用户列表
-                    case 'logout':
-                        conf.layim.setFriendStatus(data.id, 'offline')
-                        break
-                    // 添加好友
-                    case 'addFriend':
-                        console.log('addFriend', data.data)
-                        conf.layim.addList(data.data)
-                        break
-                    //加入黑名单
-                    case 'black':
-                        console.log(data.data)
-                        conf.layim.removeList({
-                            type: 'friend'
-                            , id: data.data.id //好友或者群组ID
-                        })
-                        break
-                    //删除好友
-                    case 'delFriend':
-                        console.log(data.data)
-                        conf.layim.removeList({
-                            type: 'friend'
-                            , id: data.data.id //好友或者群组ID
-                        })
-                        break
-                    // 添加 分组信息
-                    case 'addGroup':
-                        console.log(data.data)
-                        conf.layim.addList(data.data)
-                        break
-                    // 申请加入群组
-                    case 'applyGroup':
-                        console.log(data.data)
-                        //询问框
-                        var index = layer.confirm(
-                            data.data.joinname + ' 申请加入 ' + data.data.groupname + "<br/> 附加信息： " + data.data.remark , {
-                            btn: ['同意', '拒绝'], //按钮
-                            title: '加群申请',
-                            closeBtn: 0,
-                            icon: 3
-                        }, function() {
-                            $.post(join_group_url,
-                                {
-                                    'user_id': data.data.joinid,
-                                    'user_name': data.data.joinname,
-                                    'user_avatar': data.data.joinavatar,
-                                    'user_sign': data.data.joinsign,
-                                    'group_id': data.data.groupid
-                                },
-                                function(res) {
-                                    if (0 == res.code) {
-
-                                        var join_data = '{"type":"joinGroup", "join_id":"' + data.data.joinid + '"' +
-                                            ', "group_id": "' + data.data.groupid + '", "group_avatar": "' + data.data.groupavatar + '"' +
-                                            ', "group_name": "' + data.data.groupname + '"}'
-                                        WSHB.send(join_data)
-                                    } else {
-                                        layer.msg(res.msg, {time:2000})
-                                    }
-                            }, 'json')
-                            layer.close(index)
-                        }, function() {
-
-                        })
-                        break
-                    // 删除面板的群组
-                    case 'delGroup':
-                        console.log(data.data)
-                        conf.layim.removeList({
-                            type: 'group'
-                            ,id: data.data.id //群组ID
-                        })
-                        break
                 }
             }
         },
@@ -598,8 +640,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             var message = {};
             if (!res.from_id) {
                 message = {
-                    token: token,
-                    'type': 'dialog',
+                    'type': res.to.type,
                     'from_id': res.mine.id,
                     'to_id': res.to.id,
                     'content': res.mine.content,

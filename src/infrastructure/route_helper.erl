@@ -3,10 +3,11 @@
 -export([get_routes/0, need_auth_paths/0]).
 
 get_routes() ->
+    {ok, Host} = application:get_env(imboy, host),
     [
         %% {URIHost, list({URIPath, Handler, Opts})}
         %% {'_', [{'_', my_handler, []}]}
-        {'_', [
+        {Host, [
             {"/", init_handler, [{action, help}]}
             % , {"/passport/login.html", dtl_handler, [login]}
 
@@ -17,9 +18,12 @@ get_routes() ->
 
             , {"/chat/websocket", websocket_handler, []}
 
+            , {"/chat/online", chat_handler, [{action, online}]}
             , {"/chat/myfriend", chat_handler, [{action, myfriend}]}
             , {"/chat/msgbox", chat_handler, [{action, chat_msgbox}]}
             , {"/friend/find", friend_handler, [{action, find}]}
+
+            , {"/group/member", group_handler, [{action, member}]}
 
             , {"/friend/find.html", cowboy_static, {priv_file, imboy, "templates/web-chat/find.html"}}
             , {"/chat", cowboy_static, {priv_file, imboy, "templates/web-chat/index.html"}}
@@ -36,5 +40,7 @@ get_routes() ->
 need_auth_paths() ->
     [
         <<"/chat/myfriend">>
+        % , <<"/chat/online">>
         , <<"/friend/find">>
+        , <<"/group/member">>
     ].

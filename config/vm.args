@@ -1,3 +1,8 @@
 -name imboy@127.0.0.1
 -setcookie imboy
 -heart
+
++K true
++A 100
++P 2048000
++Q 2048000
