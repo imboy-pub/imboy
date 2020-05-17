@@ -2,68 +2,53 @@
 %%%
 % user_ds 是 user domain service 缩写
 %%%
--export ([is_online/1]).
+-export ([is_offline/1]).
 -export ([online_state/1]).
--export ([set_online/3]).
+-export ([online/3]).
+-export ([offline/1]).
 -export ([find_by_id/1, find_by_id/2]).
 -export ([find_by_ids/1, find_by_ids/2]).
 
 -include("imboy.hrl").
 
--spec find_by_id(binary()) -> list().
--spec set_online(integer(), pid(), any()) -> ok.
-
+-spec is_offline(integer()) -> true | {integer(), pid(), any()}.
 %% 检查用户是否在线
-is_online(Uid) ->
+is_offline(Uid) ->
     L1 = chat_store_repo:lookup(Uid),
     case lists:keyfind(Uid, 1, L1) of
         {Uid, Pid, Type} ->
             {Uid, Pid, Type};
         false ->
-            false
+            true
     end.
 
-set_online(Uid, Pid, Type) ->
-    % ?LOG([Uid, Pid, Type]),
-    case user_ds:is_online(Uid) of
-        {Uid, OldPid, Type} ->
-            % ?LOG({Uid, OldPid, Type}),
-            OldPid ! stop;
-        {Uid, OldPid, _Type} ->
-            % ?LOG({Uid, OldPid}),
-            Msg = [
-                {<<"type">>, <<"error">>},
-                {<<"code">>, 1},
-                {<<"msg">>, <<"用户在其他平台登录">>},
-                {<<"timestamp">>, imboy_func:milliseconds()}
-            ],
-            erlang:start_timer(10, OldPid, jsx:encode(Msg)),
-            ok;
-        false ->
-            % % 通知在线好友，当前用户已经上线
-            % Msg = [
-            %     {<<"type">>, <<"online">>},
-            %     {<<"from_id">>, Uid},
-            %     {<<"status">>, <<"online">>},
-            %     {<<"timestamp">>, imboy_func:milliseconds()}
-            % ],
-            % erlang:start_timer(10, OldPid, jsx:encode(Msg)),
-            ok
-    end,
+-spec online(integer(), pid(), any()) -> ok.
+online(Uid, Pid, Type) ->
     %%插入数据
     chat_store_repo:dirty_insert(Uid, Pid, Type),
+    ok.
+
+-spec offline(integer()) -> ok.
+offline(Uid) ->
+    chat_store_repo:dirty_delete(Uid),
     ok.
 
 % 获取用户在线状态
 online_state(User) ->
     {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
-    case user_ds:is_online(Uid) of
+    case is_offline(Uid) of
         {_Uid, _Pid, _Type} ->
-            [{<<"status">>, <<"online">>}|User];
-        false ->
-            [{<<"status">>, <<"offline">>}|User]
+            case user_setting_ds:chat_state_hide(Uid) of
+                true ->
+                    [{<<"status">>, offline}|User];
+                false ->
+                    [{<<"status">>, online}|User]
+            end;
+        true ->
+            [{<<"status">>, offline}|User]
     end.
 
+-spec find_by_id(binary()) -> list().
 find_by_id(Id) ->
     Column = <<"`id`,`username`,`avatar`,`sign`">>,
     find_by_id(Id, Column).

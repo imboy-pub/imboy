@@ -2,9 +2,9 @@
 -include_lib("stdlib/include/qlc.hrl" ).
 
 %% API
--export([dirty_insert/3,dirty_delete/1]).
+-export([dirty_insert/3, dirty_delete/1]).
 
--export([init/0,insert/3,delete/1,lookup/1,lookall/0]).
+-export([init/0, insert/3, delete/1, lookup/1, lookall/0]).
 
 -record(chat_online_info, {uid, pid, socket_type}).
 
@@ -26,7 +26,11 @@ init()->
 %%--------------------------------------------------------------------
 insert(Uid, Pid, SocketType) when is_pid(Pid) ->
     Fun = fun() -> mnesia:write(
-        #chat_online_info{uid = Uid, pid = Pid, socket_type = SocketType}
+        #chat_online_info{
+            uid = Uid,
+            pid = Pid,
+            socket_type = SocketType
+        }
     ) end,
     {atomic, _} = mnesia:transaction(Fun).
 
@@ -37,7 +41,13 @@ insert(Uid, Pid, SocketType) when is_pid(Pid) ->
 %%--------------------------------------------------------------------
 
 dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
-    mnesia:dirty_write(#chat_online_info{uid = Uid, pid = Pid, socket_type = SocketType}).
+    mnesia:dirty_write(
+        #chat_online_info{
+            uid = Uid,
+            pid = Pid,
+            socket_type = SocketType
+        }
+    ).
 
 dirty_delete(Pid) when is_pid(Pid)  ->
     mnesia:dirty_delete(chat_online_info, Pid);
@@ -50,9 +60,19 @@ dirty_delete(Uid) when is_integer(Uid)  ->
 %% @end
 %%--------------------------------------------------------------------
 lookup(Pid) when is_pid(Pid)  ->
-    do(qlc:q([{X#chat_online_info.uid, X#chat_online_info.pid, X#chat_online_info.socket_type} || X <- mnesia:table(chat_online_info),X#chat_online_info.pid==Pid]));
+    do(qlc:q([
+        {
+            X#chat_online_info.uid,
+            X#chat_online_info.pid,
+            X#chat_online_info.socket_type
+        } || X <- mnesia:table(chat_online_info),X#chat_online_info.pid==Pid]));
 lookup(Uid) when is_integer(Uid)  ->
-    do(qlc:q([{X#chat_online_info.uid, X#chat_online_info.pid, X#chat_online_info.socket_type} || X <- mnesia:table(chat_online_info),X#chat_online_info.uid==Uid])).
+    do(qlc:q([
+        {
+            X#chat_online_info.uid,
+            X#chat_online_info.pid,
+            X#chat_online_info.socket_type
+        } || X <- mnesia:table(chat_online_info),X#chat_online_info.uid==Uid])).
 
 %%--------------------------------------------------------------------
 %% @doc Find all list
@@ -60,7 +80,12 @@ lookup(Uid) when is_integer(Uid)  ->
 %% @end
 %%--------------------------------------------------------------------
 lookall() ->
-    do(qlc:q([[X#chat_online_info.uid, X#chat_online_info.pid, X#chat_online_info.socket_type] || X <- mnesia:table(chat_online_info)])).
+    do(qlc:q([
+        [
+            X#chat_online_info.uid,
+            X#chat_online_info.pid,
+            X#chat_online_info.socket_type
+        ] || X <- mnesia:table(chat_online_info)])).
 
 %%--------------------------------------------------------------------
 %% @doc Delete an element by pid from the registrar.

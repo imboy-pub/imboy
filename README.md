@@ -240,3 +240,18 @@ sudo ifconfig lo0 alias 127.0.0.11
 length(chat_store_repo:lookall()).
 
  Erlang虚拟机默认的端口上限为65536, erlang17通过erl +Q 1000000可以修改端口上限为1000000,利用erlang:system_info(port_limit)进行查询，系统可以打开的最大文件描述符可以通过erlang:system_info(check_io)中的max_fds进行查看，查看系统当前port数量可以用erlang:length(erlang:ports())得到
+
+erlang:length(erlang:ports()).
+
+37208 TCP  -- 5.20 M 带宽 -- 内存 4G
+
+0.5 G 内存 9005 TCP
+1 G 内存 19005 TCP
+4G 内存 42642 TCP
+
+42642 + 19005 * 2 + 9005 = 89657
+
+每个socket占用内存在15~20k之间
+10万socket 2G内存  15M带宽
+50万socket 10G内存
+100万socket 20G内存

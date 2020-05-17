@@ -24,12 +24,12 @@ dialog(CurrentUid, Data) ->
                 {<<"content">>, Content},
                 {<<"timestamp">>, imboy_func:milliseconds()}
             ],
-            case user_ds:is_online(ToId) of
+            case user_ds:is_offline(ToId) of
                 {ToId, ToPid, _Type} ->
                     erlang:start_timer(1, ToPid, jsx:encode(Msg));
-                false ->
+                true ->
                     % 存储离线消息
-                    chat_message_ds:write_msg(jsx:encode(Msg), CurrentUid, ToId)
+                    dialog_msg_ds:write_msg(jsx:encode(Msg), CurrentUid, ToId)
             end,
             ok;
         false ->
@@ -51,13 +51,13 @@ group_dialog(CurrentUid, Data) ->
     % Uids.
     Data2 = jsx:encode(Data),
     UidsOnline = lists:filtermap(fun(Uid) ->
-        case user_ds:is_online(Uid) of
+        case user_ds:is_offline(Uid) of
             {Uid, Pid, Type}->
                 % ?LOG([{Uid, Pid, Type}, Data2]),
                 % 给在线群成员发送消息
                 erlang:start_timer(80, Pid, Data2),
                 {true, {Uid, Pid, Type}};
-            false ->
+            true ->
                 false
         end
     end, Uids),
@@ -69,6 +69,6 @@ group_dialog(CurrentUid, Data) ->
         [] ->
             ok;
         UidsOffline2 ->
-            group_chat_message_ds:write_msg(Data2, CurrentUid, UidsOffline2, Gid),
+            group_msg_ds:write_msg(Data2, CurrentUid, UidsOffline2, Gid),
             ok
     end.

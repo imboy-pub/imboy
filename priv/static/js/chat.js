@@ -330,8 +330,8 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             WSHB.send(JSON.stringify(message))
                             break
                         // 用户在线状态： online offline hide
-                        case 'online':
-                            conf.layim.setFriendStatus(data.uid, data.status)
+                        case 'user_state':
+                            conf.layim.setFriendStatus(data.from_id, data.status)
                             break
                         // 检测聊天数据
                         case 'group':
@@ -341,12 +341,12 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                 Object.assign(data, from)
                             }
                             data['id'] = data.to_id
-                            console.log('group data ', data)
+                            // console.log('group data ', data)
                             conf.layim.getMessage(data)
                             break
                         case 'dialog':
                             var from = friend_helper.userinfo(data.from_id)
-                            console.log('from ', from, 'friend_helper ', friend_helper.friends)
+                            // console.log('from ', from, 'friend_helper ', friend_helper.friends)
                             if (from) {
                                 Object.assign(data, from)
                             }
@@ -354,12 +354,8 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             conf.layim.getMessage(data)
                             break
                         // 离线消息推送
-                        case 'logMessage':
+                        case 'offline_msg':
                             setTimeout(function() {layim.getMessage(data.data)}, 3000)
-                            break
-                        // 用户退出 更新用户列表
-                        case 'logout':
-                            conf.layim.setFriendStatus(data.id, 'offline')
                             break
                         // 添加好友
                         case 'addFriend':

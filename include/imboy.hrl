@@ -8,6 +8,15 @@
 
 -define(CHAT_ONLINE_INFO, chat_online_info).
 
+% 群成员系统限制
+-define (GROUP_MEMBER_LIMIT, 10000).
+
+% 离线消息限制
+-define (OFFLINE_MSG_LIMIT, 1000).
+
+% 用户聊天状态
+-type user_chat_state() :: online | offline | hide.
+
 -define(debug, ok).
 -ifdef(debug).
 -define(LOG(X), io:format("pid:~p , {~p,~p}: ~p~n", [self(), ?MODULE, ?LINE, X])).

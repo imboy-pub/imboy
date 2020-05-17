@@ -1,6 +1,6 @@
--module (group_chat_message_as).
+-module (group_msg_as).
 %%%
-% group_chat_message_as 是 group_chat_message application service 缩写
+% group_msg_as 是 group_msg application service 缩写
 %%%
 -export ([check_msg/2]).
 
@@ -8,7 +8,7 @@
 
 %%
 check_msg(Uid, Pid) ->
-    GMsgs = group_chat_message_ds:read_msg(Uid, 1000),
+    GMsgs = group_msg_ds:read_msg(Uid, ?OFFLINE_MSG_LIMIT),
     sent_offline_msg(Uid, Pid, GMsgs, 0),
     ok.
 
@@ -16,9 +16,9 @@ sent_offline_msg(_Uid, _Pid, [], _Index) ->
     ok;
 sent_offline_msg(Uid, Pid, [Row|Tail], Index) ->
     {<<"id">>, Id} = lists:keyfind(<<"id">>, 1, Row),
-    case group_chat_message_timeline_repo:check_msg(Id) of
+    case group_msg_timeline_repo:check_msg(Id) of
         {ok, _, [[0]]} ->
-            group_chat_message_ds:delete_msg(Id);
+            group_msg_ds:delete_msg(Id);
         {ok, _, _} ->
             ok
     end,

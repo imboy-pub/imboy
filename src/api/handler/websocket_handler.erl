@@ -45,13 +45,13 @@ websocket_init(State) ->
         false ->
             {current_uid, CurrentUid} = lists:keyfind(current_uid, 1, State),
             % 用户上线
-            user_ds:set_online(CurrentUid, CurrentPid, web),
+            user_as:online(CurrentUid, CurrentPid, web),
 
             % 检查离线消息
-            chat_message_as:check_msg(CurrentUid, CurrentPid),
+            dialog_msg_as:check_msg(CurrentUid, CurrentPid),
 
             % 检查群聊离线消息
-            group_chat_message_as:check_msg(CurrentUid, CurrentPid),
+            group_msg_as:check_msg(CurrentUid, CurrentPid),
 
             {ok, State, hibernate}
     end.
@@ -64,7 +64,7 @@ websocket_handle({text, <<"ping">>}, State) ->
     % ?LOG(State),
     {reply, {text, <<"pong">>}, State, hibernate};
 websocket_handle({text, Msg}, State) ->
-    ?LOG([State, Msg]),
+    % ?LOG([State, Msg]),
     try
         {current_uid, CurrentUid} = lists:keyfind(current_uid, 1, State),
         Data = jsx:decode(Msg),
@@ -111,7 +111,7 @@ websocket_info(_Info, State) ->
 terminate(_Reason, _Req, State) ->
     case lists:keyfind(current_uid, 1, State) of
         {current_uid, Uid} ->
-            chat_store_repo:dirty_delete(Uid);
+            user_as:offline(Uid);
         false ->
             chat_store_repo:dirty_delete(self())
     end,
