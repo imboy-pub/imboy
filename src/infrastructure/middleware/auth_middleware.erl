@@ -14,11 +14,14 @@ execute(Req, Env) ->
         true ->
             Token = cowboy_req:header(<<"imboy-token">>, Req),
             case token_ds:decrypt_token(Token) of
-                {ok, Id, _ExpireAt} ->
+                {ok, Id, _ExpireAt, <<"tk">>} ->
                     Uid = list_to_integer(binary_to_list(Id)),
                     #{handler_opts := HandlerOpts} = Env,
                     Env2 = Env#{handler_opts => [{current_uid, Uid}|HandlerOpts]},
                     {ok, Req, Env2};
+                {ok, _Id, _ExpireAt, <<"rtk">>} ->
+                    Req1 = resp_json_dto:error(Req, "Does not support refreshtoken", 1),
+                    {stop, Req1};
                 {error, Code, Msg, _Li} ->
                     Req1 = resp_json_dto:error(Req, Msg, Code),
                     {stop, Req1}

@@ -4,6 +4,8 @@
 %%%
 -export ([is_friend/2]).
 -export ([find_by_uid/2]).
+-export ([change_remark/3]).
+-export ([set_category_id/3]).
 
 -include("imboy.hrl").
 
@@ -27,3 +29,11 @@ find_by_uid(Uid, Column) ->
         _ ->
             []
     end.
+
+change_remark(FromUid, ToUid, Remark) ->
+    Sql = <<"UPDATE `user_friend` SET `remark` = ?, `updated_at` = ? WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
+    imboy_db:query(Sql, [Remark, imboy_func:milliseconds(), FromUid, ToUid]).
+
+set_category_id(Uid, CategoryId, NewCid) ->
+    Sql = <<"UPDATE `user_friend` SET `category_id` = ?, `updated_at` = ? WHERE `status` = 1 AND `from_user_id` = ? AND `category_id` = ?">>,
+    imboy_db:query(Sql, [NewCid, imboy_func:milliseconds(),Uid, CategoryId]).

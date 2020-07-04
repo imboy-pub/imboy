@@ -2,9 +2,8 @@
 %%%
 % user_repo 是 user repository 缩写
 %%%
--export ([find_by_mobile/1, find_by_username/1]).
+-export ([find_by_mobile/1, find_by_account/1]).
 -export ([find_by_id/1, find_by_id/2]).
-
 -export ([find_by_ids/2]).
 
 -include("imboy.hrl").
@@ -12,15 +11,15 @@
 % -spec find_by_mobile(Mobile::list()) ->
 
 find_by_mobile(Mobile) ->
-    Sql = <<"SELECT `id`,`username`, `password`,`avatar` FROM `user` WHERE `mobile` = ?">>,
+    Sql = <<"SELECT `id`,`account`, `password`, `nickname`,`avatar` FROM `user` WHERE `mobile` = ?">>,
     imboy_db:query(Sql, [Mobile]).
 
-find_by_username(Username) ->
-    Sql = <<"SELECT `id`,`username`, `password`,`avatar` FROM `user` WHERE `username` = ?">>,
+find_by_account(Username) ->
+    Sql = <<"SELECT `id`,`account`, `password`,`nickname`,`avatar` FROM `user` WHERE `account` = ?">>,
     imboy_db:query(Sql, [Username]).
 
 find_by_id(Uid) ->
-    Column = <<"`id`,`username`,`avatar`,`sign`">>,
+    Column = <<"`id`,`account`,`avatar`,`sign`">>,
     find_by_id(Uid, Column).
 
 find_by_id(Uid, Column) ->

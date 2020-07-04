@@ -27,7 +27,7 @@ refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"imboy-token">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
     case token_ds:decrypt_token(Refreshtoken) of
-        {ok, Id, _ExpireAt} ->
+        {ok, Id, _ExpireAt, <<"rtk">>} ->
             Data = [
                 {<<"token">>, token_ds:encrypt_token(Id)}
                 , {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)}

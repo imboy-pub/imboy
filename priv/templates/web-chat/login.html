@@ -20,7 +20,7 @@
      <div class="layui-form-item">
         <label class="layui-form-label">密码</label>
         <div class="layui-input-inline">
-            <input type="password" name="password" lay-verify="pass" placeholder="请输入密码" autocomplete="off" class="layui-input" value="admin888">
+            <input type="password" name="pwd" lay-verify="pass" placeholder="请输入密码" autocomplete="off" class="layui-input" value="admin888">
         </div>
         <div class="layui-form-mid layui-word-aux">请填写6到12位密码</div>
     </div>
@@ -42,7 +42,6 @@
 <script type="text/javascript">
 var login_pwd_rsa_encrypt = ''
 var public_key = ''
-var refreshtoken = ''
 
 //layui绑定扩展
 layui.config({
@@ -58,8 +57,8 @@ layui.use(['form'], function() {
         data: {},
         success: function(res) {
             if (res.code==0) {
-                login_pwd_rsa_encrypt = res.data.login_pwd_rsa_encrypt
-                var key = res.data.login_rsa_pub_key.replace(/\n/g, '')
+                login_pwd_rsa_encrypt = res.payload.login_pwd_rsa_encrypt
+                var key = res.payload.login_rsa_pub_key.replace(/\n/g, '')
                 // console.log(key)
                 public_key = key.substr(26, key.length - 24 - 26)
                 // console.log(public_key)
@@ -74,7 +73,7 @@ layui.use(['form'], function() {
     })
     // 表单验证
     form.verify({
-        username : [/[A-Za-z0-9\u4e00-\u9fa5]{2,40}$/, '用户名必须2到40位字母、数字、汉字组合'],
+        account : [/[A-Za-z0-9\u4e00-\u9fa5]{2,40}$/, '用户名必须2到40位字母、数字、汉字组合'],
         password : [/(.+){8,40}$/, '8到40个任意字符'],
         number : [/^[0-9]*$/, '必须输入数字啊']
     })
@@ -85,8 +84,8 @@ layui.use(['form'], function() {
             // Encrypt with the public key...
             var encrypt = new JSEncrypt()
             encrypt.setPublicKey(public_key)
-            var ciphertext = encrypt.encrypt(obj.field.password)
-            obj.field.password = ciphertext
+            var ciphertext = encrypt.encrypt(obj.field.pwd)
+            obj.field.pwd = ciphertext
         }
         var post_data = obj.field
         post_data.rsa_encrypt = login_pwd_rsa_encrypt
@@ -96,11 +95,11 @@ layui.use(['form'], function() {
             data: post_data,
             headers: {},
             success: function(res) {
-                // console.log(res.data)
+                // console.log(res.payload)
                 if (res && res.code==0) {
                     // 设置有效时间为 10天
-                    set_cookie('imboy-refreshtoken', res.data.refreshtoken, {expires: 10, path: '/'})
-                    set_cookie('imboy-token', res.data.token, {expires: 1, path: '/'})
+                    set_cookie('imboy-refreshtoken', res.payload.refreshtoken, {expires: 10, path: '/'})
+                    set_cookie('imboy-token', res.payload.token, {expires: 1, path: '/'})
                     location.href = res.next ? res.next : '/chat'
                 } else if(res && res.msg) {
                     layer.msg(res.msg)

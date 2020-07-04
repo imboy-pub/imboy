@@ -1,4 +1,5 @@
--module(websocket_handler).
+-module(stress_testing_ws_handler).
+
 -behavior(cowboy_websocket).
 
 -export([init/2]).
@@ -11,24 +12,24 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    case websocket_ds:check_subprotocols(Req0, State0) of
-        {ok, Req1, State1} ->
-            {ok, Req1, State1};
-        {cowboy_websocket, Req1, State1, Opt} ->
-            case cowboy_req:match_qs([{token, [], undefined}], Req1) of
-                #{token := undefined} ->
-                    % HTTP 412 - 先决条件失败
-                    Req2 = cowboy_req:reply(412, Req1),
-                    {ok, Req2, State1};
-                #{token := Token} ->
-                    ?LOG(Token),
-                    case catch token_ds:decrypt_token(Token) of
-                        {ok, Uid, _ExpireAt, _Type} ->
-                            Timeout = user_as:idle_timeout(Uid),
-                            {cowboy_websocket, Req1, [{current_uid, Uid}|State1], Opt#{idle_timeout := Timeout}};
-                        {error, Code, _Msg, _Li} ->
-                            {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
-                    end
+    % ?LOG(cowboy_req:match_qs([{token, [], undefined}], Req0)),
+    case cowboy_req:match_qs([{token, [], undefined}], Req0) of
+        #{token := undefined} ->
+            % HTTP 412 - 先决条件失败
+            Req1 = cowboy_req:reply(412, Req0),
+            {ok, Req1, State0};
+        #{token := Token} ->
+            Opt = #{
+                num_acceptors => infinity,
+                max_connections => infinity,
+                max_frame_size => 1048576, % 1MB
+                idle_timeout => 86400000 %  % Cowboy关闭连接空闲60秒 默认值为 60000
+            },
+            case catch token_ds:decrypt_token(Token) of
+                {ok, Uid, _ExpireAt, _Type} ->
+                    {cowboy_websocket, Req0, [{current_uid, Uid}|State0], Opt};
+                {error, Code, _Msg, _Li} ->
+                    {cowboy_websocket, Req0, [{error, Code} | State0], Opt}
             end
     end.
 
@@ -53,24 +54,16 @@ websocket_init(State) ->
 
 %%处理客户端发送投递的消息 onmessage
 websocket_handle(ping, State) ->
-    ?LOG([ping, cowboy_clock:rfc1123(), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, _Code} ->
-            {stop, State};
-        false ->
-            {reply, pong, State, hibernate}
-    end;
-websocket_handle({text, <<"ping">>}, State) ->
-    ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, _Code} ->
-            {stop, State};
-        false ->
-            {reply, {text, <<"pong">>}, State, hibernate}
-    end;
-websocket_handle({text, Msg}, State) ->
-    % ?LOG([State, Msg]),
     % ?LOG(State),
+    {reply, pong, State, hibernate};
+websocket_handle({text, <<"ping">>}, State) ->
+    % ?LOG(State),
+    {reply, {text, <<"pong">>}, State, hibernate};
+websocket_handle({text, <<"{\"action\":\"confirmMessage", _/binary>>}, State) ->
+    % 匹配前端确认消息，不做任何处理
+    {ok, State, hibernate};
+websocket_handle({text, Msg}, State) ->
+    % ?LOG(Msg),
     try
         case lists:keyfind(error, 1, State) of
             {error, Code} ->
@@ -83,19 +76,23 @@ websocket_handle({text, Msg}, State) ->
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
                 Data = jsx:decode(Msg),
-                Type = proplists:get_value(<<"type">>, Data),
+                % C2C/SYSTEM/GROUP
+                Type = proplists:get_value(<<"conversation_type">>, Data),
+                % ?LOG(Type),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
                         websocket_as:dialog(CurrentUid, Data);
+
                     <<"GROUP">> ->
                         websocket_as:group_dialog(CurrentUid, Data);
+
                     <<"SYSTEM">> ->
                         websocket_as:system(CurrentUid, Data)
                 end
         end
     of
         Res ->
-            ?LOG(Res),
+            % ?LOG(Res),
             case Res of
                 ok ->
                     {ok, State, hibernate};
@@ -118,7 +115,6 @@ websocket_info({timeout, _Ref, Msg}, State) ->
     % ?LOG(Msg),
     {reply, {text, Msg}, State, hibernate};
 websocket_info(stop, State) ->
-    ?LOG([stop, State]),
     {stop, State};
 websocket_info(_Info, State) ->
     {ok, State}.
@@ -127,7 +123,6 @@ websocket_info(_Info, State) ->
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(_Reason, _Req, State) ->
-    ?LOG([terminate, State]),
     case lists:keyfind(current_uid, 1, State) of
         {current_uid, Uid} ->
             user_as:offline(Uid, self());

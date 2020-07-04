@@ -4,13 +4,12 @@
 %% API
 -export([dirty_insert/3, dirty_delete/1]).
 
--export([init/0, insert/3, delete/1, lookup/1, lookall/0]).
+-export([init/0, lookup/1, lookall/0]).
 
--record(chat_online_info, {uid, pid, socket_type}).
+-record(chat_online_info, {pid, uid, socket_type}).
 
 -include("imboy.hrl").
 
--define(WAIT_FOR_TABLES, 10000).
 
 %%%===================================================================
 %%% API
@@ -20,59 +19,48 @@ init()->
     dynamic_db_init().
 
 %--------------------------------------------------------------------
-%% @doc Insert a key and pid.
-%% @spec insert(Uid, Key, Pid) -> void()
-%% @end
-%%--------------------------------------------------------------------
-insert(Uid, Pid, SocketType) when is_pid(Pid) ->
-    Fun = fun() -> mnesia:write(
-        #chat_online_info{
-            uid = Uid,
-            pid = Pid,
-            socket_type = SocketType
-        }
-    ) end,
-    {atomic, _} = mnesia:transaction(Fun).
-
-%--------------------------------------------------------------------
 %% @doc  dirty insert pid and socket
 %% @spec  dirty_insert(Uid, Pid, socket)
 %% @end
 %%--------------------------------------------------------------------
 
+dirty_insert(Uid, Pid, SocketType) when is_integer(Uid) ->
+    dirty_insert(list_to_binary(integer_to_list(Uid)), Pid, SocketType);
+dirty_insert(Uid, Pid, SocketType) when is_list(Uid) ->
+    dirty_insert(list_to_binary(Uid), Pid, SocketType);
 dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
     mnesia:dirty_write(
         #chat_online_info{
-            uid = Uid,
             pid = Pid,
+            uid = Uid,
             socket_type = SocketType
         }
     ).
 
-dirty_delete(Pid) when is_pid(Pid)  ->
+dirty_delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(chat_online_info, Pid);
-dirty_delete(Uid) when is_integer(Uid)  ->
-    mnesia:dirty_delete(chat_online_info, Uid).
+dirty_delete(Uid) when is_integer(Uid) ->
+    dirty_delete(list_to_binary(integer_to_list(Uid)));
+dirty_delete(Uid) when is_list(Uid) ->
+    dirty_delete(list_to_binary(Uid));
+dirty_delete(Uid) ->
+    [dirty_delete(Pid) || {chat_online_info, Pid, _, _} <- lookup(Uid)],
+    ok.
 
 %%--------------------------------------------------------------------
 %% @doc Find a pid given a key.
 %% @spec lookup(Key) -> {ok, Pid} | {error, not_found}
 %% @end
+%% @link https://blog.csdn.net/wudixiaotie/article/details/84735787  chat_store_repo:lookup(1).
 %%--------------------------------------------------------------------
 lookup(Pid) when is_pid(Pid)  ->
-    do(qlc:q([
-        {
-            X#chat_online_info.uid,
-            X#chat_online_info.pid,
-            X#chat_online_info.socket_type
-        } || X <- mnesia:table(chat_online_info),X#chat_online_info.pid==Pid]));
+    mnesia:dirty_read(chat_online_info, Pid);
 lookup(Uid) when is_integer(Uid)  ->
-    do(qlc:q([
-        {
-            X#chat_online_info.uid,
-            X#chat_online_info.pid,
-            X#chat_online_info.socket_type
-        } || X <- mnesia:table(chat_online_info),X#chat_online_info.uid==Uid])).
+    lookup(list_to_binary(integer_to_list(Uid)));
+lookup(Uid) when is_list(Uid)  ->
+    lookup(list_to_binary(Uid));
+lookup(Uid) ->
+    mnesia:dirty_index_read(chat_online_info, Uid, #chat_online_info.uid).
 
 %%--------------------------------------------------------------------
 %% @doc Find all list
@@ -82,31 +70,10 @@ lookup(Uid) when is_integer(Uid)  ->
 lookall() ->
     do(qlc:q([
         [
-            X#chat_online_info.uid,
             X#chat_online_info.pid,
+            X#chat_online_info.uid,
             X#chat_online_info.socket_type
         ] || X <- mnesia:table(chat_online_info)])).
-
-%%--------------------------------------------------------------------
-%% @doc Delete an element by pid from the registrar.
-%% @spec delete(Pid) -> void()
-%% @end
-%%--------------------------------------------------------------------
-delete(Pid) when is_pid(Pid) ->
-    try
-        [#chat_online_info{} = Record] = mnesia:dirty_read(chat_online_info, Pid, #chat_online_info.pid),
-        mnesia:dirty_delete_object(Record)
-    catch
-        _C:_E -> ok
-    end;
-delete(Uid) when is_integer(Uid)  ->
-    try
-        [#chat_online_info{} = Record] = mnesia:dirty_read(chat_online_info, Uid, #chat_online_info.uid),
-        mnesia:dirty_delete_object(Record)
-    catch
-        _C:_E -> ok
-    end.
-
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -132,15 +99,17 @@ dynamic_db_init() ->
 
     application:start(mnesia),
 
-    % 创建表 ?CHAT_ONLINE_INFO
+    % 创建表 chat_online_info
     % 确保已经 mnesia:start().
-    case lists:member(?CHAT_ONLINE_INFO, mnesia:system_info(tables)) of
+    case lists:member(chat_online_info, mnesia:system_info(tables)) of
         false ->
             % 创建表
-            mnesia:create_table(?CHAT_ONLINE_INFO, [{type, set},
+            mnesia:create_table(chat_online_info, [{type, set},
                 {ram_copies, [node()|nodes()]}, % disc_copies 磁盘 + 内存; ram_copies 内存
-                {attributes, record_info(fields, ?CHAT_ONLINE_INFO)}]
-            );
+                {attributes, record_info(fields, chat_online_info)}]
+            ),
+            mnesia:add_table_index(chat_online_info, uid);
+            % mnesia:add_table_index(chat_online_info, socket_type);
         true ->
             alread_created_table
     end,

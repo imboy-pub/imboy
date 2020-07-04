@@ -5,6 +5,7 @@
 % -export ([subprotocol/1]).
 -export ([dialog/2]).
 -export ([group_dialog/2]).
+-export ([system/2]).
 
 -include("imboy.hrl").
 
@@ -13,19 +14,20 @@
 
 %% 单聊发送消息
 dialog(CurrentUid, Data) ->
-    {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Data),
+    ToId = proplists:get_value(<<"to">>, Data),
+    ?LOG([CurrentUid, ToId, Data]),
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
-            {<<"content">>, Content} = lists:keyfind(<<"content">>, 1, Data),
+            Payload = proplists:get_value(<<"payload">>, Data),
             Msg = [
-                {<<"type">>,<<"dialog">>},
-                {<<"from_id">>, CurrentUid},
-                {<<"to_id">>, ToId},
-                {<<"content">>, Content},
-                {<<"timestamp">>, imboy_func:milliseconds()}
+                {<<"type">>,<<"C2C">>},
+                {<<"from">>, CurrentUid},
+                {<<"to">>, ToId},
+                {<<"payload">>, Payload},
+                {<<"server_ts">>, imboy_func:milliseconds()}
             ],
             case user_ds:is_offline(ToId) of
-                {ToId, ToPid, _Type} ->
+                {ToPid, _Uid, _Type} ->
                     erlang:start_timer(1, ToPid, jsx:encode(Msg));
                 true ->
                     % 存储离线消息
@@ -44,7 +46,8 @@ dialog(CurrentUid, Data) ->
 
 %% 群聊发送消息
 group_dialog(CurrentUid, Data) ->
-    {<<"to_id">>, Gid} = lists:keyfind(<<"to_id">>, 1, Data),
+    Gid = proplists:get_value(<<"to">>, Data),
+    % TODO check is group member
     Column = <<"`user_id`">>,
     {ok, _ColumnLi, Members} = group_member_repo:find_by_group_id(Gid, Column),
     Uids = [Uid || [Uid] <- Members, Uid /= CurrentUid],
@@ -52,7 +55,7 @@ group_dialog(CurrentUid, Data) ->
     Data2 = jsx:encode(Data),
     UidsOnline = lists:filtermap(fun(Uid) ->
         case user_ds:is_offline(Uid) of
-            {Uid, Pid, Type}->
+            {Pid, _Uid, Type}->
                 % ?LOG([{Uid, Pid, Type}, Data2]),
                 % 给在线群成员发送消息
                 erlang:start_timer(80, Pid, Data2),
@@ -61,7 +64,6 @@ group_dialog(CurrentUid, Data) ->
                 false
         end
     end, Uids),
-    % ?LOG(UidsOnline),
     % 存储离线消息
     UidsOffline = [Uid || Uid <- Uids, lists:keymember(Uid, 1, UidsOnline) == false],
     % ?LOG(UidsOffline),
@@ -72,3 +74,7 @@ group_dialog(CurrentUid, Data) ->
             group_msg_ds:write_msg(Data2, CurrentUid, UidsOffline2, Gid),
             ok
     end.
+
+%% 系统消息
+system(_CurrentUid, _Data) ->
+    ok.

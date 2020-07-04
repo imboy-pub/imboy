@@ -2,31 +2,49 @@
 %%%
 % user_setting_ds 是 user_setting domain service 缩写
 %%%
+-export ([find_by_uid/1]).
 -export ([chat_state_hide/1]).
+-export ([save_state/2]).
 
 -include("imboy.hrl").
 
--spec chat_state_hide(integer()) -> true | false.
-chat_state_hide(Uid) ->
+-spec find_by_uid(any()) -> list().
+find_by_uid(Uid) ->
     Column = <<"`setting`">>,
     case user_setting_repo:find_by_uid(Uid, Column) of
         {ok, _ ,[]} ->
-            false;
+            [];
         {ok, _ ,[[Setting]]} ->
             try
-                Setting2 = jsx:decode(Setting),
-                {<<"chat_state">>, State} = lists:keyfind(<<"chat_state">>, 1, Setting2),
-                State
+                jsx:decode(Setting)
             of
                 Res ->
-                    case Res of
-                        <<"hide">> ->
-                            true;
-                        _ ->
-                            false
-                    end
+                    Res
             catch
                 _ : _ ->
-                    false
+                    []
             end
     end.
+
+-spec chat_state_hide(integer()) -> true | false.
+chat_state_hide(Uid) ->
+    UserSetting = user_setting_ds:find_by_uid(Uid),
+    case lists:keyfind(<<"chat_state">>, 1, UserSetting) of
+        {<<"chat_state">>, <<"hide">>} ->
+            true;
+        _ ->
+            false
+    end.
+
+-spec save_state(Uid::any(), State::any()) -> true .
+save_state(Uid, State) ->
+    UserSetting = user_setting_ds:find_by_uid(Uid),
+    Setting = case lists:keyfind(<<"chat_state">>, 1, UserSetting) of
+        {<<"chat_state">>, _} ->
+            lists:keyreplace(<<"chat_state">>, 1, UserSetting, {<<"chat_state">>, State});
+        _ ->
+            [{<<"chat_state">>, State} | UserSetting]
+    end,
+    % ?LOG(Setting),
+    user_setting_repo:update(Uid, Setting),
+    true.

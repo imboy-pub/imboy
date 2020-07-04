@@ -38,8 +38,8 @@ reply_json(Code, Msg, Payload, Req, Options) ->
     LPayload = [
         {<<"code">>, Code}
         ,{<<"msg">>, unicode:characters_to_binary(Msg)}
-        % ,{<<"payload">>, Payload}
-        ,{<<"data">>, Payload}
+        ,{<<"payload">>, Payload}
+        % ,{<<"data">>, Payload}
     ],
     Body = jsx:encode(LPayload ++ Options),
     cowboy_req:reply(200,

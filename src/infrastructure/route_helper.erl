@@ -3,13 +3,10 @@
 -export([get_routes/0, need_auth_paths/0]).
 
 get_routes() ->
-    {ok, Host} = application:get_env(imboy, host),
+    {ok, HostImboy} = application:get_env(imboy, host),
     [
-        %% {URIHost, list({URIPath, Handler, Opts})}
-        %% {'_', [{'_', my_handler, []}]}
-        {Host, [
+        {HostImboy, [
             {"/", init_handler, [{action, help}]}
-            % , {"/passport/login.html", dtl_handler, [login]}
 
             , {"/help", init_handler, [{action, help}]}
             , {"/init", init_handler, [{action, init}]}
@@ -17,19 +14,35 @@ get_routes() ->
             , {"/passport/login", passport_handler, [{action, do_login}]}
 
             , {"/chat/websocket", websocket_handler, []}
+            , {"/stress_testing", stress_testing_ws_handler, []}
 
             , {"/chat/online", chat_handler, [{action, online}]}
-            , {"/chat/myfriend", chat_handler, [{action, myfriend}]}
             , {"/chat/msgbox", chat_handler, [{action, chat_msgbox}]}
+
+            , {"/user/change_state", user_handler, [{action, change_state}]}
+            , {"/user/change_sign", user_handler, [{action, change_sign}]}
+
+            , {"/friend/list", friend_handler, [{action, friend_list}]}
+            , {"/friend/myfriend", friend_handler, [{action, myfriend}]}
+            , {"/friend/move", friend_handler, [{action, move}]}
+            , {"/friend/information", friend_handler, [{action, information}]}
             , {"/friend/find", friend_handler, [{action, find}]}
+            , {"/friend/change_remark", friend_handler, [{action, change_remark}]}
+
+            , {"/friend/category/add", friend_category_handler, [{action, add}]}
+            , {"/friend/category/delete", friend_category_handler, [{action, delete}]}
+            , {"/friend/category/rename", friend_category_handler, [{action, rename}]}
 
             , {"/group/member", group_handler, [{action, member}]}
 
             , {"/friend/find.html", cowboy_static, {priv_file, imboy, "templates/web-chat/find.html"}}
+            % 好友群资料页面
+            , {"/friend/information.html", cowboy_static, {priv_file, imboy, "templates/web-chat/friend_information.html"}}
             , {"/chat", cowboy_static, {priv_file, imboy, "templates/web-chat/index.html"}}
             , {"/chat.html", cowboy_static, {priv_file, imboy, "templates/web-chat/index.html"}}
             , {"/passport/login.html", cowboy_static, {priv_file, imboy, "templates/web-chat/login.html"}}
 
+            , {"/assets/images/def_avatar.png", cowboy_static, {priv_file, imboy, "static/image/def_avatar.png"}}
             , {"/favicon.png", cowboy_static, {priv_file, imboy, "static/favicon.png"}}
             , {"/static/[...]", cowboy_static, {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
         ]}
@@ -39,8 +52,19 @@ get_routes() ->
 %% <<"/refreshtoken">> 请不要加入 auth
 need_auth_paths() ->
     [
-        <<"/chat/myfriend">>
-        % , <<"/chat/online">>
+        <<"/friend/myfriend">>
+        , <<"/friend/list">>
         , <<"/friend/find">>
+        , <<"/friend/move">>
+        , <<"/friend/information">>
+        , <<"/friend/change_remark">>
+
+        , <<"/friend/category/add">>
+        , <<"/friend/category/delete">>
+        , <<"/friend/category/rename">>
+
         , <<"/group/member">>
+
+        , <<"/user/change_state">>
+        , <<"/user/change_sign">>
     ].

@@ -6,6 +6,7 @@
 <link rel="shortcut icon" href="/favicon.png" type="image/png" >
 <link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
 <link rel="stylesheet" href="/static/css/menu.css" media="all">
+<link rel="stylesheet" href="/static/css/contextmenu.css" media="all">
 </head>
 <body>
 <script src="/static/layim/layui.js" charset="utf-8"></script>
@@ -16,6 +17,24 @@
     var token = get_cookie('imboy-token')
     var im_name = "imboy"
 
+    var apiurl = {
+        add_category: '/friend/category/add', // post 新增分组
+        delete_category: '/friend/category/delete', // delete 删除分组
+        rename_category: '/friend/category/rename', // put 修改分组名称
+
+        myfriend: '/friend/myfriend', // get
+        friend_move : '/friend/move', // put
+        friend_information: '/friend/information', // get ?id=13235&type=friend
+        friend_apply: '/friend/apply', // post 通知对方
+        friend_add: '/friend/add', // post
+
+        change_remark: '/friend/change_remark', // put
+
+        change_state: '/user/change_state', // 切换在线状态
+        change_sign: '/user/change_sign', // put
+
+        group_member: '/group/member', // get
+    }
     var member_list_url = ''
     var upload_img_url = ''
     var upload_file_url = ''
@@ -30,12 +49,13 @@
     var join_group_url = ''
 
     var curr_id = "{{ current_uid }}"
-    var curr_uname = "{{ current_username}}"
+    var curr_uname = "{{ current_account}}"
     var curr_avatar = "{{ current_avatar }}"
     var curr_sign = "{{ current_sign }}"
+    var default_avatar = '/static/image/user_default_avatar.jpeg'
 
     var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
-    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/?token=' + token.replace("+", "%2B")
+    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/'
 
     var WSHB = new WebsocketHeartbeatJs({
         url: ws_url,
@@ -68,7 +88,7 @@
 
         layim.config({
             init: {
-                url: '/chat/myfriend',
+                url: apiurl.myfriend,
                 data: {},
                 headers: {
                     'imboy-token': get_cookie('imboy-token'),
@@ -146,7 +166,7 @@
             }
             //获取好友资料
             ,getInformation:{
-                url: 'class/doAction.php?action=getInformation'
+                url: apiurl.friend_information
                 , type: 'get' //默认
             }
             //保存我的资料
@@ -178,11 +198,13 @@
             , isVideo: false //开启聊天工具栏视频
             , groupMembers: true
             //扩展工具栏
-            , tool: [{
+            , tool: [
+                {
                     alias: 'code'
                     , title: '代码'
                     , icon: '&#xe64e;'
-                }]
+                }
+            ]
             ,title: im_name
             ,copyright:true
             , initSkin: '1.jpg' //1-5 设置初始背景
@@ -195,7 +217,7 @@
             , find: find_url
             , chatLog: layui.cache.dir + 'css/modules/layim/html/chatlog.html' //聊天记录页面地址，若不开启，剔除该项即可
             , createGroup: layui.cache.dir + 'css/modules/layim/html/createGroup.html' //创建群页面地址，若不开启，剔除该项即可
-            , Information: layui.cache.dir + 'css/modules/layim/html/getInformation.html' //好友群资料页面
+            , Information: 'friend/information.html' //好友群资料页面
         })
     })
 </script>

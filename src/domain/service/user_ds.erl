@@ -3,43 +3,58 @@
 % user_ds 是 user domain service 缩写
 %%%
 -export ([is_offline/1]).
+-export ([mine_state/1]).
 -export ([online_state/1]).
 -export ([online/3]).
 -export ([offline/1]).
 -export ([find_by_id/1, find_by_id/2]).
 -export ([find_by_ids/1, find_by_ids/2]).
+-export ([change_sign/2]).
 
 -include("imboy.hrl").
 
--spec is_offline(integer()) -> true | {integer(), pid(), any()}.
+-spec is_offline(binary()) -> true | {pid(), binary(), any()}.
 %% 检查用户是否在线
+is_offline(Uid) when is_integer(Uid)  ->
+    is_offline(list_to_binary(integer_to_list(Uid)));
+is_offline(Uid) when is_list(Uid)  ->
+    is_offline(list_to_binary(Uid));
 is_offline(Uid) ->
     L1 = chat_store_repo:lookup(Uid),
-    case lists:keyfind(Uid, 1, L1) of
-        {Uid, Pid, Type} ->
-            {Uid, Pid, Type};
+    case lists:keyfind(Uid, 3, L1) of
+        {_, Pid, Uid, Type} ->
+            {Pid, Uid, Type};
         false ->
             true
     end.
 
--spec online(integer(), pid(), any()) -> ok.
+-spec online(binary(), pid(), any()) -> ok.
 online(Uid, Pid, Type) ->
     %%插入数据
     chat_store_repo:dirty_insert(Uid, Pid, Type),
     ok.
 
--spec offline(integer()) -> ok.
-offline(Uid) ->
-    chat_store_repo:dirty_delete(Uid),
+-spec offline(pid()) -> ok.
+offline(Pid) ->
+    chat_store_repo:dirty_delete(Pid),
     ok.
+
+mine_state(Uid) ->
+    case user_setting_ds:chat_state_hide(Uid) of
+        true ->
+            {<<"status">>, hide};
+        false ->
+            {<<"status">>, online}
+    end.
 
 % 获取用户在线状态
 online_state(User) ->
     {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
     case is_offline(Uid) of
-        {_Uid, _Pid, _Type} ->
+        {_Pid, _Uid, _Type} ->
             case user_setting_ds:chat_state_hide(Uid) of
                 true ->
+                    % 既然是 hide 就不能够返回hide 状态给API
                     [{<<"status">>, offline}|User];
                 false ->
                     [{<<"status">>, online}|User]
@@ -50,21 +65,21 @@ online_state(User) ->
 
 -spec find_by_id(binary()) -> list().
 find_by_id(Id) ->
-    Column = <<"`id`,`username`,`avatar`,`sign`">>,
+    Column = <<"`id`, `account`,`nickname`,`avatar`,`sign`">>,
     find_by_id(Id, Column).
 
 find_by_id(Id, Column) ->
-    {ok, ColumnList, Rows} = user_repo:find_by_id(Id, Column),
-    if
-        length(Rows) == 0  ->
-            {ok, "用户不存在"};
-        true ->
-            [Row|_] = Rows,
-            check_avatar(lists:zipwith(fun(X, Y) -> {X,Y} end, ColumnList, Row))
+    case user_repo:find_by_id(Id, Column) of
+        {ok, _, []} ->
+            [];
+        {ok, ColumnList, [Row]} ->
+            check_avatar(lists:zipwith(fun(X, Y) -> {X,Y} end, ColumnList, Row));
+        _ ->
+            []
     end.
 
 find_by_ids(Ids) ->
-    Column = <<"`id`,`username`,`avatar`,`sign`">>,
+    Column = <<"`id`, `account`,`nickname`,`avatar`,`sign`">>,
     find_by_ids(Ids, Column).
 
 find_by_ids(Ids, Column) ->
@@ -77,13 +92,18 @@ find_by_ids(Ids, Column) ->
             []
     end.
 
-%%%%%
+change_sign(Uid, Sign) ->
+    Sql = <<"UPDATE `user` SET `sign` = ? WHERE `id` = ?">>,
+    imboy_db:query(Sql, [Sign, Uid]).
+
+%% Internal.
 
 %% 检查 user avatar 是否为空，如果为空设置默认
 check_avatar([]) ->
     [];
 check_avatar(User) ->
-    Default = <<"/static/image/user_default_avatar.jpeg">>,
+    % Default = <<"/static/image/user_default_avatar.jpeg">>,
+    Default = <<"assets/images/def_avatar.png">>,
     case lists:keyfind(<<"avatar">>, 1, User) of
         {<<"avatar">>, <<>>} ->
             lists:keyreplace(<<"avatar">>, 1, User, {<<"avatar">>, Default});

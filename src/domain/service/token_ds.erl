@@ -7,26 +7,29 @@
 
 -include("imboy.hrl").
 
+-type token_type() :: rtk | tk.
+
 %% 生成refreshtoken
 encrypt_refreshtoken(Id) ->
-    encrypt_token(Id, ?REFRESHTOKEN_VALID).
+    encrypt_token(Id, ?REFRESHTOKEN_VALID, rtk).
 
 %% 生成token
 encrypt_token(Id) ->
-    encrypt_token(Id, ?TOKEN_VALID).
+    encrypt_token(Id, ?TOKEN_VALID, tk).
 
 %% 解析token
 decrypt_token(Token) ->
     try
         Token2 = imboy_cipher:aes_decrypt(Token),
-        binary:split(Token2, <<",">>, [])
+        binary:split(Token2, <<$,>>, [global, trim])
     of
-        [Id | [ExpireAt | _]] ->
+        [Id | [ExpireAt | [Type | _]]] ->
+            % {ok, Id, ExpireAt, Type};
             Now = imboy_func:milliseconds(),
             Expire = list_to_integer(binary_to_list(ExpireAt)) - Now,
             if
                 Expire > 0 ->
-                    {ok, Id, ExpireAt};
+                    {ok, Id, ExpireAt, Type};
                 true ->
                     % ?LOG([Id, ExpireAt, Now, Expire]),
                     {error, 707, "请刷新token", [Id, ExpireAt]}
@@ -38,13 +41,14 @@ decrypt_token(Token) ->
         {error, 706, "token无效", []}
     end.
 
-% get_uid()
-%%%%%%%%%%% 下面私有方法，上面为公有方法 %%%%%%%%%%%
+
+%% Internal.
 
 %% 生成token
-encrypt_token(Id, Millisecond) when is_integer(Id)  ->
+-spec encrypt_token(iodata(), integer(), token_type()) -> any().
+encrypt_token(Id, Millisecond, Type) when is_integer(Id)  ->
     Id2 = integer_to_binary(Id),
-    encrypt_token(Id2, Millisecond);
-encrypt_token(Id, Millisecond) ->
+    encrypt_token(Id2, Millisecond, Type);
+encrypt_token(Id, Millisecond, Type) ->
     ExpireAt = integer_to_binary(imboy_func:milliseconds() + Millisecond),
-    imboy_cipher:aes_encrypt(list_to_binary([Id, ",", ExpireAt])).
+    imboy_cipher:aes_encrypt(list_to_binary([Id, ",", ExpireAt, ",", atom_to_binary(Type, utf8) ])).

@@ -1,6 +1,7 @@
 -module (imboy_cipher).
 
 -export([aes_encrypt/1, aes_decrypt/1]).
+-export([aes_encrypt/2, aes_decrypt/2]).
 -export([rsa_encrypt/1, rsa_decrypt/1]).
 -export([rsa_encrypt/2, rsa_decrypt/2]).
 -export([password_hash/1, password_verify/2]).
@@ -10,21 +11,25 @@
 -spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) -> PlainText :: binary().
 -spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) -> CipherText :: binary().
 
-% aes128 + pkcs#7填充
+% aes_cbc + pkcs#7填充
 aes_encrypt(Bin) ->
+    aes_encrypt(Bin, aes_cbc256).
+aes_decrypt(Bin) ->
+    aes_decrypt(Bin, aes_cbc256).
+
+aes_encrypt(Bin, Mod) ->
     Len = erlang:size(Bin),
     Value = 16 - (Len rem 16),
     PadBin = binary:copy(<<Value>>, Value),
-    % io:format("~p, ~p~n", [?AES_KEY, ?AES_IV]),
-    EncodeB = crypto:block_encrypt(aes_cbc128, list_to_binary(?AES_KEY), list_to_binary(?AES_IV), <<Bin/binary, PadBin/binary>>),
+    EncodeB = crypto:block_encrypt(Mod, ?AES_KEY, ?AES_IV, <<Bin/binary, PadBin/binary>>),
     base64:encode(EncodeB).
 
-% aes128 + pkcs#7填充
-aes_decrypt(Bin) ->
+% aes_cbc + pkcs#7填充
+aes_decrypt(Bin, Mod) ->
     Bin1 = base64:decode(Bin),
     case erlang:size(Bin1) rem 16 of
         0 ->
-            Bin2 = crypto:block_decrypt(aes_cbc128, list_to_binary(?AES_KEY), list_to_binary(?AES_IV), Bin1),
+            Bin2 = crypto:block_decrypt(Mod, ?AES_KEY, ?AES_IV, Bin1),
             binary:part(Bin2, {0, byte_size(Bin2) - binary:last(Bin2)});
         _ ->
             {error, 1102}
@@ -44,7 +49,6 @@ sha512(PlainText) ->
 sha512(PlainText, Key) ->
     Bin = crypto:hmac(sha512, Key, PlainText),
     base64:encode(Bin).
-
 
 
 rsa_encrypt(PlainText) when is_binary(PlainText) ->

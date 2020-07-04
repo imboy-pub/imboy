@@ -13,4 +13,14 @@ init([]) ->
     PoolArgs = proplists:get_value(poolConf, SqlPool),
     WorkerArgs = proplists:get_value(sqlConf, SqlPool),
     Mysql = poolboy:child_spec(Name, PoolArgs, WorkerArgs),
-    {ok, {{one_for_one, 5, 60}, [Mysql]}}.
+
+    Offline = {
+        offline_server,
+        {offline_server, start_link, []},
+        permanent,
+        infinity,
+        worker,
+        [offline_server]
+    },
+
+    {ok, {{one_for_one, 5, 60}, [Mysql, Offline]}}.

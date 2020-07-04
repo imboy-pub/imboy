@@ -61,6 +61,16 @@ code:soft_purge(lbs_util) andalso code:load_file(lbs_util).
 
 ```
 
+
+# 发布
+```
+ENV=prod make rel
+ENV=test make rel
+ENV=dev make rel
+ENV=local make rel
+```
+
+
 # 框架详述
 参考 [【DDD】领域驱动设计实践 —— 框架实现](https://www.cnblogs.com/daoqidelv/p/7499662.html)，有细节调整
 ## User Interface层
@@ -157,6 +167,41 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 * api json code 1 失败（通用编码）
 * api json code 706 token无效 (包含缺失token情况)
 * api json code 707 请刷新token
+* api json code 786 - 在其他平台登录
+
+# erlang 优化
+```
++K true
+开启epoll调度，在linux中开启epoll，会大大增加调度的效率
+
++A 1024
+异步线程池，为某些port调用服务
+
++P 2048000
+最大进程数
+
++Q 2048000
+最大port数
+
++sbt db
+绑定调度器，绑定后调度器的任务队列不会在各个CPU线程之间跃迁，结合sub使用，可以让CPU负载均衡的同时也避免了大量的跃迁发生。
+
+注意：一个linux系统中，最好只有一个evm开启此选项，若同时有多个erlang虚拟机在系统中运行，还是关闭为好
+
+
++sub true
+开启CPU负载均衡，false的时候是采用的CPU密集调度策略，优先在某个CPU线程上运行任务，直到该CPU负载较高为止。
+
++swct eager
+此选项设置为eager后，CPU将更频繁的被唤醒，可以增加CPU利用率
+
++spp true
+开启并行port并行调度队列，当开启后会大大增加系统吞吐量，如果关闭，则会牺牲吞吐量换取更低的延迟。
+
++zdbbl 65536
+分布式erlang的端口buffer大小，当buffer满的时候，向分布式的远程端口发送消息会阻塞
+
+```
 
 # 压力测试
 
@@ -164,9 +209,8 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 
 打开文件数 for mac
 sudo launchctl limit maxfiles
-sudo launchctl limit maxfiles 99999999 unlimited
-sudo launchctl limit maxfiles 99999999 99999999
-ulimit -n 99999999
+sudo launchctl limit maxfiles 2097152 2097152
+sudo ulimit -n 2097152
 
 sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last
 
@@ -178,8 +222,6 @@ sysctl -w net.inet.ip.portrange.first=1025
 sysctl -w net.inet.ip.portrange.last=655350
 sysctl -w net.inet.ip.tcp_rmem=655350
 
-# 创建一百万个进程
-erl +Q 134217727 +P 1000000 -env ERL_MAX_PORTS 40960000 -env ERTS_MAX_PORTS 40960000
 
 HAProxy + Docker * N + K8S + mnesia 集群
 erlang:system_info(port_limit).
@@ -216,6 +258,8 @@ https://colobu.com/2015/05/22/implement-C1000K-servers-by-spray-netty-undertow-a
 https://blog.csdn.net/zcc_0015/article/details/26407683 Linux下基于Erlang的高并发TCP连接压力实验
 
 https://github.com/smallnest/C1000K-Servers
+
+100万并发连接服务器笔记之Erlang完成1M并发连接目标 https://blog.csdn.net/shallowgrave/article/details/19990345?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-5.nonecase&depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-5.nonecase
 ```
 
 docker run -it --rm --name imboy-1 -p 9801:9800 -v "$PWD":/usr/src/imboy -w /usr/src/imboy erlang
@@ -226,25 +270,22 @@ docker-compose -f docker-local.yml up -d
 
 
 下面的命令增加了19个IP地址，其中一个给服务器用
-
-sudo ifconfig lo0 alias 192.168.1.10
-sudo ifconfig lo0 alias 192.168.1.11
-sudo ifconfig lo0 alias 192.168.1.12
-
-sudo ifconfig lo0 alias 192.168.0.10
-sudo ifconfig lo0 alias 192.168.0.11
-sudo ifconfig lo0 alias 192.168.0.12
-
 sudo ifconfig lo0 alias 127.0.0.10
 sudo ifconfig lo0 alias 127.0.0.11
 length(chat_store_repo:lookall()).
 
+sudo ifconfig lo0 -alias 127.0.0.10
+sudo ifconfig lo0 -alias 127.0.0.11
+
  Erlang虚拟机默认的端口上限为65536, erlang17通过erl +Q 1000000可以修改端口上限为1000000,利用erlang:system_info(port_limit)进行查询，系统可以打开的最大文件描述符可以通过erlang:system_info(check_io)中的max_fds进行查看，查看系统当前port数量可以用erlang:length(erlang:ports())得到
 
+erlang:system_info(port_limit)
+erlang:system_info(check_io)
 erlang:length(erlang:ports()).
 
+Pid = spawn(fun() -> etop:start([{output, text}, {interval, 1}, {lines, 20}, {sort, memory}]) end).
 37208 TCP  -- 5.20 M 带宽 -- 内存 4G
-
+exit(Pid, kill).
 0.5 G 内存 9005 TCP
 1 G 内存 19005 TCP
 4G 内存 42642 TCP
@@ -255,3 +296,44 @@ erlang:length(erlang:ports()).
 10万socket 2G内存  15M带宽
 50万socket 10G内存
 100万socket 20G内存
+爻信单机（8核16G内存）压测 50W并发通过，  内存使用 30%  cpu平均使用率 7%   带宽 50M， 预计单机可支持150万左右
+
+
+```
+查看TCP 数量
+netstat -n | awk '/^tcp/ {++S[$NF]} END {for(a in S) print a, S[a]}'
+ESTABLISHED 28705
+
+free -h
+              total        used        free      shared  buff/cache   available
+Mem:           3.7G        2.8G        774M        452K        140M        726M
+Swap:            0B          0B          0B
+
+查看 pid
+ pmap -d 6380
+```
+
+erl -name ws2@127.0.0.1 -setcookie imboy -hidden
+net_adm:ping('imboy@127.0.0.1').
+Ctrl + G
+r 'imboy@127.0.0.1'
+j
+c 2
+
+cowboy_websocket 异步消息
+websocket close 传递参数
+
+如何动态加载配置文件
+```
+ifeq ($(ENV),prod)
+    RELX_CONFIG = $(CURDIR)/relx.prod.config
+else ifeq ($(ENV),test)
+    RELX_CONFIG = $(CURDIR)/relx.test.config
+else ifeq ($(ENV),dev)
+    RELX_CONFIG = $(CURDIR)/relx.dev.config
+else ifeq ($(ENV),local)
+    RELX_CONFIG = $(CURDIR)/relx.local.config
+else
+    RELX_CONFIG ?= $(CURDIR)/relx.config
+endif
+```

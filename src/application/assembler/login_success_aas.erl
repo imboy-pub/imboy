@@ -5,11 +5,11 @@
 
 -export ([data/1]).
 
-data(User) ->
-    [Id, Username, _, Avator] = User,
+data([Id, Username, _, Nickname, Avator]) ->
     [
         {<<"token">>, token_ds:encrypt_token(Id)}
         , {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)}
-        , {<<"username">>, Username}
+        , {<<"account">>, Username}
+        , {<<"nickname">>, Nickname}
         , {<<"avator">>, Avator}
     ].

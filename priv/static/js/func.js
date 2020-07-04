@@ -1,5 +1,5 @@
 
-function refreshtoken() {
+function refreshtoken(callback) {
     layui.jquery.ajax({
         type: "POST",
         url: '/refreshtoken',
@@ -10,8 +10,11 @@ function refreshtoken() {
         success: function(res) {
             if (res && res.code==0) {
                 // 设置有效时间为 10天
-                set_cookie('imboy-refreshtoken', res.data.refreshtoken, {expires: 10, path: '/'})
-                set_cookie('imboy-token', res.data.token, {expires: 1, path: '/'})
+                set_cookie('imboy-refreshtoken', res.payload.refreshtoken, {expires: 10, path: '/'})
+                set_cookie('imboy-token', res.payload.token, {expires: 1, path: '/'})
+                if (callback) {
+                    callback(res)
+                }
             } else if(res && res.code == 706) {
                 location.href = res.next ? res.next : '/passport/login.html'
             } else if(res && res.msg) {
@@ -31,8 +34,7 @@ function refreshtoken() {
     })
 }
 
-function set_cookie(name, value, options)
-{
+function set_cookie(name, value, options) {
     var expires = options && options.expires ? options.expires : 1
     var path = options && options.path ? options.path : null
     var exp = new Date()
@@ -67,6 +69,7 @@ function default_error_callback(xhr, res) {
         layui.layer.msg('未知错误.', {icon:2})
     }
 }
+
 /**
  * [api_ajax description]
  * @param  {[type]}   url            [description]
@@ -88,7 +91,6 @@ function api_ajax(url, method, params, callback, error_callback, async) {
         params = {}
     }
 
-    // params._xsrf = get_xsrf()
     headers = {
         'imboy-token': get_cookie('imboy-token'),
     }
@@ -110,6 +112,10 @@ function api_ajax(url, method, params, callback, error_callback, async) {
             } else if(res.code=='706') {
                 current_token('clear')
                 location.href = '/passport/login.html'
+            } else if(res.code == 707) {
+                refreshtoken(function(res) {
+                    api_ajax(url, method, params, callback, error_callback, async)
+                })
             } else {
                 if (error_callback) {
                     error_callback(false, res)

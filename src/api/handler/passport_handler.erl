@@ -19,7 +19,12 @@ do_login(Req0) ->
     %%% 在POST请求中取出内容
     %%% 用户名ＮＡＭＥ
     %%% 密码 ＰＡＳＳＷＤ
-    {ok, [{_A, Account} ,{_P, Password}, {_, RsaEncrypt}], _Req} = cowboy_req:read_urlencoded_body(Req0),
+    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    % ?LOG(PostVals),
+    RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
+    Account = proplists:get_value(<<"account">>, PostVals),
+    Password = proplists:get_value(<<"pwd">>, PostVals),
+    ?LOG(['Password', Password]),
     Pwd = if
         RsaEncrypt == <<"1">> ->
             imboy_cipher:rsa_decrypt(Password);

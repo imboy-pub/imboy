@@ -110,14 +110,13 @@
             getRecommend()
         })
         //获得URL参数。
-        var url = cache.base.find
         function getRecommend(){
-            $.get(url,
-                {type:'recommend', '_xsrf':get_xsrf()},
+            $.get(cache.base.find,
+                {type:'recommend'},
                 function(res){
                     // var html = laytpl(LAY_tpl.value).render({
                     var html = laytpl(res.tpl).render({
-                        data: res.data,
+                        data: res.payload,
                         legend:'推荐好友',
                         type:'friend'
                     })
@@ -153,9 +152,8 @@
             var othis = $(this),input = othis.parents('.layui-col-space3').find('input').val()
             var addType = $('input:radio:checked').val()
             if (input) {
-                var url = cache.base.find;
-                $.get(url,
-                    {type:addType, value:input, '_xsrf':get_xsrf()},
+                $.get(cache.base.find,
+                    {type:addType, value:input},
                     function(res){
                     if(res.code != 0){
                         return layer.msg(res.msg)
@@ -172,11 +170,11 @@
                         if(!first){
                             var url = cache.base.find || {};
                             $.get(url,
-                                {type:addType,value:input, page: obj.curr || 1, '_xsrf':get_xsrf()},
+                                {type:addType,value:input, page: obj.curr || 1},
                                 function(res){
                                     $("#LAY_page").css("display","block")
                                     var html = laytpl(res.tpl).render({
-                                        data: res.data,
+                                        data: res.payload,
                                         legend:'<a class="back"><i class="layui-icon">&#xe65c;</>返回</a> 查找结果',
                                         type:addType
                                     })
@@ -187,7 +185,7 @@
                     })
 
                     var html = laytpl(res.tpl).render({
-                        data: res.data,
+                        data: res.payload,
                         legend:'找人',
                         type:'friend'
                     })

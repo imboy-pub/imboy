@@ -65,7 +65,7 @@
             async: false,
             success: function(res) {
                 if (res.code==0) {
-                    chat_init_data = res.data
+                    chat_init_data = res.payload
                 } else if(res.msg) {
                     layer.msg(res.msg)
                 } else {

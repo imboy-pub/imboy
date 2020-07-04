@@ -5,7 +5,8 @@
 -export ([do_login/2]).
 -export ([refreshtoken/2]).
 -export ([online/3]).
--export ([offline/1]).
+-export ([offline/2]).
+-export ([idle_timeout/1]).
 
 -include("imboy.hrl").
 
@@ -14,12 +15,12 @@ do_login(Account, Pwd) ->
         true ->
             user_repo:find_by_mobile(Account);
         false ->
-            user_repo:find_by_username(Account)
+            user_repo:find_by_account(Account)
     end,
     {Check, User} = case Res of
-        {ok, _FieldList, [[Id, Username, Password, Avator]]} ->
+        {ok, _FieldList, [[Id, Username, Password, Nickname, Avator]]} ->
             Check0 = imboy_cipher:password_verify(Pwd, Password),
-            {Check0, [Id, Username, Password, Avator]};
+            {Check0, [Id, Username, Password, Nickname, Avator]};
         _ ->
             % io:format("res is ~p~n",[Res]),
             {false, []}
@@ -34,49 +35,34 @@ do_login(Account, Pwd) ->
 refreshtoken(Token, Refreshtoken) ->
     [Token, Refreshtoken].
 
--spec online(integer(), pid(), any()) -> ok.
+-spec online(any(), pid(), any()) -> ok.
 online(Uid, Pid, Type) ->
-    user_ds:online(Uid, Pid, Type),
-    send_msg_to_friend(Uid, online).
-
--spec offline(integer()) -> ok.
-offline(Uid) ->
-    user_ds:offline(Uid),
-    send_msg_to_friend(Uid, offline).
-
-%% Internal.
-
--spec send_msg_to_friend(integer(), user_chat_state()) -> ok.
-send_msg_to_friend(Uid, State) ->
-    case user_setting_ds:chat_state_hide(Uid) of
-        false ->
-            Column = <<"`to_user_id`">>,
-            case friend_ds:find_by_uid(Uid, Column) of
-                [] ->
-                    ok;
-                Friends ->
-                    send_state_msg(Uid, State, Friends),
-                    ok
-            end;
-        true ->
-            ok
-    end.
-
--spec send_state_msg(any(), user_chat_state(), list()) -> ok.
-send_state_msg(_FromId, _State, []) ->
-    ok;
-send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
-    case user_ds:is_offline(ToUid) of
-        {ToUid, Pid, _Type} ->
+    case user_ds:is_offline(Uid) of
+        {ToPid, _Uid, _Type} ->
             Msg = [
-                {<<"type">>, <<"user_state">>},
-                {<<"from_id">>, FromId},
-                {<<"to_id">>, ToUid},
-                {<<"status">>, State},
+                {<<"type">>, <<"error">>},
+                {<<"from_id">>, Uid},
+                {<<"to_id">>, Uid},
+                {<<"code">>, 786},
+                {<<"msg">>, unicode:characters_to_binary("在其他地方上线")},
                 {<<"timestamp">>, imboy_func:milliseconds()}
             ],
-            erlang:start_timer(10, Pid, jsx:encode(Msg));
-        _ ->
+            erlang:start_timer(10, ToPid, jsx:encode(Msg));
+        true ->
             ok
     end,
-    send_state_msg(FromId, State, Tail).
+    user_ds:online(Uid, Pid, Type),
+
+    % 检查离线消息 用异步队列实现
+    gen_server:cast(offline_server, {online, Uid, Pid}),
+    ok.
+
+-spec offline(any(), pid()) -> ok.
+offline(Uid, Pid) ->
+    user_ds:offline(Pid),
+    % 检查离线消息 用异步队列实现
+    gen_server:cast(offline_server, {offline, Uid, Pid}).
+
+% 设置用户websocket超时时间，默认60秒
+idle_timeout(_UId) ->
+    60000.

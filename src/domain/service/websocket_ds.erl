@@ -8,8 +8,8 @@
 
 check_subprotocols(Req0, State1) ->
     ImOpts = #{
-        num_acceptors => 99999999,
-        max_connections => 99999999, % 最大9千万链接
+        num_acceptors => infinity,
+        max_connections => infinity,
         max_frame_size => 1048576, % 1MB
         idle_timeout => 60000 %  % Cowboy关闭连接空闲60秒 默认值为 60000
     },
