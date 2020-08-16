@@ -4,7 +4,7 @@
 %% API
 -export([dirty_insert/3, dirty_delete/1]).
 
--export([init/0, lookup/1, lookall/0]).
+-export([init/0, lookup/1, lookup/2, lookall/0]).
 
 -record(chat_online_info, {pid, uid, socket_type}).
 
@@ -25,7 +25,7 @@ init()->
 %%--------------------------------------------------------------------
 
 dirty_insert(Uid, Pid, SocketType) when is_integer(Uid) ->
-    dirty_insert(list_to_binary(integer_to_list(Uid)), Pid, SocketType);
+    dirty_insert(integer_to_binary(Uid), Pid, SocketType);
 dirty_insert(Uid, Pid, SocketType) when is_list(Uid) ->
     dirty_insert(list_to_binary(Uid), Pid, SocketType);
 dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
@@ -40,7 +40,7 @@ dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
 dirty_delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(chat_online_info, Pid);
 dirty_delete(Uid) when is_integer(Uid) ->
-    dirty_delete(list_to_binary(integer_to_list(Uid)));
+    dirty_delete(integer_to_binary(Uid));
 dirty_delete(Uid) when is_list(Uid) ->
     dirty_delete(list_to_binary(Uid));
 dirty_delete(Uid) ->
@@ -53,14 +53,18 @@ dirty_delete(Uid) ->
 %% @end
 %% @link https://blog.csdn.net/wudixiaotie/article/details/84735787  chat_store_repo:lookup(1).
 %%--------------------------------------------------------------------
-lookup(Pid) when is_pid(Pid)  ->
+lookup(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(chat_online_info, Pid);
-lookup(Uid) when is_integer(Uid)  ->
-    lookup(list_to_binary(integer_to_list(Uid)));
-lookup(Uid) when is_list(Uid)  ->
+lookup(Uid) when is_integer(Uid) ->
+    lookup(integer_to_binary(Uid));
+lookup(Uid) when is_list(Uid) ->
     lookup(list_to_binary(Uid));
 lookup(Uid) ->
     mnesia:dirty_index_read(chat_online_info, Uid, #chat_online_info.uid).
+
+lookup(Uid, ClientSystem) ->
+    [M1 || M1 <- lookup(Uid),
+        M1#chat_online_info.socket_type=:=ClientSystem].
 
 %%--------------------------------------------------------------------
 %% @doc Find all list

@@ -48,7 +48,7 @@ websocket_init(State) ->
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
-            user_as:online(CurrentUid, CurrentPid, web),
+            user_as:online(CurrentUid, CurrentPid, <<"web">>),
             {ok, State, hibernate}
     end.
 

@@ -43,24 +43,22 @@ refreshtoken(Token, Refreshtoken) ->
     [Token, Refreshtoken].
 
 -spec online(any(), pid(), any()) -> ok.
-online(Uid, Pid, Type) ->
-    case user_ds:is_offline(Uid) of
-        {ToPid, _Uid, _Type} ->
+online(Uid, Pid, ClientSystem) ->
+    case user_ds:is_offline(Uid, ClientSystem) of
+        {ToPid, _Uid, ClientSystem} ->
             Msg = [
-                {<<"type">>, <<"error">>},
-                {<<"from_id">>, Uid},
-                {<<"to_id">>, Uid},
+                {<<"type">>, <<"ERROR">>},
                 {<<"code">>, 786},
                 {<<"msg">>, unicode:characters_to_binary("在其他地方上线")},
-                {<<"timestamp">>, dt_util:milliseconds()}
+                {<<"server_ts">>, dt_util:milliseconds()}
             ],
+            ?LOG([ToPid, ClientSystem]),
             erlang:start_timer(10, ToPid, jsx:encode(Msg));
         true ->
             ok
     end,
-    user_ds:online(Uid, Pid, Type),
-
-    % 检查离线消息 用异步队列实现
+    user_ds:online(Uid, Pid, ClientSystem),
+    % 检查消息 用异步队列实现
     gen_server:cast(offline_server, {online, Uid, Pid}),
     ok.
 

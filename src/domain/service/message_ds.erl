@@ -3,6 +3,7 @@
 % message_ds 是 message domain service 缩写
 %%%
 -export ([msg_md5/1]).
+-export ([send/2]).
 
 -include("common.hrl").
 
@@ -22,3 +23,8 @@ msg_md5(Msg) ->
         ]}
     ],
     hash_util:md5(jsx:encode(Msg2)).
+
+-spec send(integer(), list()) -> ok.
+send(ToUid, Msg2) ->
+    [erlang:start_timer(1, ToPid, Msg2) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
+    ok.

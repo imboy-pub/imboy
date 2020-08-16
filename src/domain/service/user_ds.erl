@@ -2,9 +2,9 @@
 %%%
 % user_ds 是 user domain service 缩写
 %%%
--export ([is_offline/1]).
--export ([mine_state/1]).
+-export ([is_offline/2]).
 -export ([online_state/1]).
+-export ([mine_state/1]).
 -export ([online/3]).
 -export ([offline/1]).
 -export ([find_by_id/1, find_by_id/2]).
@@ -13,14 +13,14 @@
 
 -include("common.hrl").
 
--spec is_offline(binary()) -> true | {pid(), binary(), any()}.
+-spec is_offline(binary(), binary()) -> true | {pid(), binary(), any()}.
 %% 检查用户是否在线
-is_offline(Uid) when is_integer(Uid)  ->
-    is_offline(list_to_binary(integer_to_list(Uid)));
-is_offline(Uid) when is_list(Uid)  ->
-    is_offline(list_to_binary(Uid));
-is_offline(Uid) ->
-    L1 = chat_store_repo:lookup(Uid),
+is_offline(Uid, ClientSystem) when is_integer(Uid)  ->
+    is_offline(integer_to_binary(Uid), ClientSystem);
+is_offline(Uid, ClientSystem) when is_list(Uid)  ->
+    is_offline(list_to_binary(Uid), ClientSystem);
+is_offline(Uid, ClientSystem) ->
+    L1 = chat_store_repo:lookup(Uid, ClientSystem),
     case lists:keyfind(Uid, 3, L1) of
         {_, Pid, Uid, Type} ->
             {Pid, Uid, Type};
@@ -50,8 +50,8 @@ mine_state(Uid) ->
 % 获取用户在线状态
 online_state(User) ->
     {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
-    case is_offline(Uid) of
-        {_Pid, _Uid, _Type} ->
+    case chat_store_repo:lookup(Uid) of
+        L1 when length(L1) > 0 ->
             case user_setting_ds:chat_state_hide(Uid) of
                 true ->
                     % 既然是 hide 就不能够返回hide 状态给API
@@ -59,7 +59,7 @@ online_state(User) ->
                 false ->
                     [{<<"status">>, online}|User]
             end;
-        true ->
+        _ ->
             [{<<"status">>, offline}|User]
     end.
 

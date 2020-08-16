@@ -96,18 +96,20 @@ send_state_msg(_FromId, _State, []) ->
     ok;
 %% 给在线好友发送上线消息
 send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
-    case user_ds:is_offline(ToUid) of
-        {Pid, _ToUid, _Type} ->
-            Msg = [
-                {<<"type">>, <<"user_state">>},
-                {<<"from_id">>, FromId},
-                {<<"to_id">>, ToUid},
-                {<<"status">>, State},
-                {<<"timestamp">>, dt_util:milliseconds()}
-            ],
-            % ?LOG(Msg),
-            erlang:start_timer(1, Pid, jsx:encode(Msg));
-        _ ->
-            ok
-    end,
+    Ts = dt_util:milliseconds(),
+    [send_msg(FromId, ToUid, ToPid, State, Ts) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
     send_state_msg(FromId, State, Tail).
+
+%% Internal.
+
+send_msg(From, To, ToPid, State, Ts) ->
+    Msg = [
+        {<<"type">>, <<"user_state">>},
+        {<<"from">>, From},
+        {<<"to">>, To},
+        {<<"status">>, State},
+        {<<"timestamp">>, Ts}
+    ],
+    ?LOG(Msg),
+    erlang:start_timer(1, ToPid, jsx:encode(Msg)),
+    ok.

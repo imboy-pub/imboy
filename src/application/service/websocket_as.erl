@@ -32,12 +32,7 @@ dialog(MsgMd5, CurrentUid, Data) ->
             Msg2 = jsx:encode(Msg),
             % 存储消息
             dialog_msg_ds:write_msg(NowTs, MsgMd5, Msg2, CurrentUid, ToId),
-            case user_ds:is_offline(ToId) of
-                {ToPid, _Uid, _Type} ->
-                    erlang:start_timer(1, ToPid, Msg2);
-                true ->
-                    ok
-            end,
+            message_ds:send(ToId, Msg2),
             ok;
         false ->
             Msg = [
@@ -70,15 +65,7 @@ group_dialog(MsgMd5, CurrentUid, Data) ->
     % ?LOG(Msg),
     Msg2 = jsx:encode(Msg),
     _UidsOnline = lists:filtermap(fun(Uid) ->
-        case user_ds:is_offline(Uid) of
-            {Pid, _Uid, Type}->
-                % ?LOG([{Uid, Pid, Type}, Msg2]),
-                % 给在线群成员发送消息
-                erlang:start_timer(80, Pid, Msg2),
-                {true, {Uid, Pid, Type}};
-            true ->
-                false
-        end
+        message_ds:send(Uid, Msg2),
     end, Uids),
     % 存储消息
     group_msg_ds:write_msg(NowTs, MsgMd5, Msg2, CurrentUid, Uids, ToGID),

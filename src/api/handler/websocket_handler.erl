@@ -11,6 +11,9 @@
 
 %%websocket 握手
 init(Req0, State0) ->
+    Type = cowboy_req:header(<<"client-system">>, Req0, <<"web">>),
+    ?LOG(Type),
+    SystemState = [{'client-system', Type}|State0],
     case websocket_ds:check_subprotocols(Req0, State0) of
         {ok, Req1, State1} ->
             ?LOG(['check_subprotocols']),
@@ -26,7 +29,7 @@ init(Req0, State0) ->
                     case catch token_ds:decrypt_token(Token) of
                         {ok, Uid, _ExpireAt, _Type} ->
                             Timeout = user_as:idle_timeout(Uid),
-                            {cowboy_websocket, Req1, [{current_uid, Uid}|State1], Opt#{idle_timeout := Timeout}};
+                            {cowboy_websocket, Req1, [{current_uid, Uid}|SystemState], Opt#{idle_timeout := Timeout}};
                         {error, 705, Msg, _Li} ->
                             Req3 = resp_json_dto:error(Req1, Msg),
                             {ok, Req3, State0};
@@ -51,7 +54,8 @@ websocket_init(State) ->
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
-            user_as:online(CurrentUid, CurrentPid, web),
+            ClientSystem = proplists:get_value('client-system', State, <<"web">>),
+            user_as:online(CurrentUid, CurrentPid, ClientSystem),
             {ok, State, hibernate}
     end.
 
