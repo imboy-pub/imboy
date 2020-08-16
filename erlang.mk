@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 764f9a2
+ERLANG_MK_VERSION = 944c696
 ERLANG_MK_WITHOUT =
 
 # Make 3.81 and 3.82 are deprecated.
@@ -5567,7 +5567,7 @@ endef
 ERL_TEST_FILES = $(call core_find,$(TEST_DIR)/,*.erl)
 $(ERLANG_MK_TMP)/$(PROJECT).last-testdir-build: $(ERL_TEST_FILES) $(MAKEFILE_LIST)
 	$(eval FILES_TO_COMPILE := $(if $(filter $(MAKEFILE_LIST),$?),$(filter $(ERL_TEST_FILES),$^),$?))
-	$(if $(strip $(FILES_TO_COMPILE)),$(call compile_test_erl,$(FILES_TO_COMPILE)) && touch $@)
+	$(if $(strip $(FILES_TO_COMPILE)),$(call compile_test_erl,$(FILES_TO_COMPILE)); touch $@)
 endif
 
 test-build:: IS_TEST=1
@@ -7118,15 +7118,15 @@ endif
 
 RELX ?= $(ERLANG_MK_TMP)/relx
 ifeq ($(ENV),prod)
-    RELX_CONFIG = $(CURDIR)/relx.prod.config
+	RELX_CONFIG = $(CURDIR)/relx.prod.config
 else ifeq ($(ENV),test)
-    RELX_CONFIG = $(CURDIR)/relx.test.config
+	RELX_CONFIG = $(CURDIR)/relx.test.config
 else ifeq ($(ENV),dev)
-    RELX_CONFIG = $(CURDIR)/relx.dev.config
+	RELX_CONFIG = $(CURDIR)/relx.dev.config
 else ifeq ($(ENV),local)
-    RELX_CONFIG = $(CURDIR)/relx.local.config
+	RELX_CONFIG = $(CURDIR)/relx.local.config
 else
-    RELX_CONFIG ?= $(CURDIR)/relx.config
+	RELX_CONFIG ?= $(CURDIR)/relx.config
 endif
 
 RELX_URL ?= https://erlang.mk/res/relx-v3.27.0

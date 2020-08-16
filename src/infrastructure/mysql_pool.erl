@@ -1,4 +1,4 @@
--module (imboy_db).
+-module (mysql_pool).
 
 -export ([execute/1]).
 -export ([execute/2]).
@@ -7,7 +7,7 @@
 -export ([insert_into/3]).
 -export ([replace_into/3]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec execute(Sql::any()) -> {ok, LastInsertId::integer()} | {error, any()}.
 execute(Sql) ->
@@ -31,10 +31,14 @@ execute(Sql, Params) ->
     end).
 
 query(Sql) ->
-    poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).
+    poolboy:transaction(mysql, fun(Pid) ->
+        mysql:query(Pid, Sql)
+    end).
 
 query(Sql, Params) ->
-    poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql, Params) end).
+    poolboy:transaction(mysql, fun(Pid) ->
+        mysql:query(Pid, Sql, Params)
+    end).
 
 replace_into(Table, Column, Value) ->
     % Sql like this "REPLACE INTO foo (k,v) VALUES (1,0), (2,0)"
@@ -52,5 +56,7 @@ insert(Prefix, Table, Column, Value) ->
         Column/binary,
         " VALUES ", Value/binary>>,
     % ?LOG(Sql),
-    poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).
+    poolboy:transaction(mysql, fun(Pid) ->
+        mysql:query(Pid, Sql)
+    end).
 

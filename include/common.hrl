@@ -3,18 +3,14 @@
  % IV 必须都为128比特，也就是16字节
 -define(AES_IV, "bsefg;'][poi?hkl").
 % refreshtoken有效期 2小时 单位毫秒 7200000 = 3600 * 1000 * 2
--define(TOKEN_VALID, 7200000).
+% -define(TOKEN_VALID, 7200000).
+-define(TOKEN_VALID, 10000).
 % refreshtoken有效期 10天 单位毫秒 864000000 = 86400 * 1000 * 10
 -define(REFRESHTOKEN_VALID, 864000000).
 
-% 群成员系统限制
--define (GROUP_MEMBER_LIMIT, 10000).
+-define (MD5_SALT, <<"Up2fQm6aBgE8Qzuar6oixJmqpffcL2yz">>).
 
-% 离线消息限制
--define (OFFLINE_MSG_LIMIT, 1000).
-
-% 用户聊天状态
--type user_chat_state() :: online | offline | hide.
+-define (JWT_KEY, <<"Ap2fQm5aBgE8Qzuar6oixYmXpffcL3yw">>).
 
 -define(debug, ok).
 -ifdef(debug).

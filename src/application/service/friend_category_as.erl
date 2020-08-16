@@ -5,7 +5,7 @@
 -export ([add/2]).
 -export ([delete/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec add(Uid::any(), Name::any()) -> {ok, LastInsertId::integer()} | {error, any()}.
 add(Uid, Name) ->

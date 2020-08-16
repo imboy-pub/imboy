@@ -3,9 +3,14 @@
 An OTP application
 
 
-https://ninenines.eu/docs/en/cowboy/2.7/guide/getting_started/
+https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
 
 数据库在第一个发布版放出
+
+## 环境依赖
+```
+
+```
 
 ## Handling requests
 ```
@@ -16,6 +21,11 @@ make new t=cowboy.middleware n=infrastructure/middleware/auth_middleware
 make new t=cowboy.rest n=api/handler/chat_handler
 
 make run
+
+ENV=prod make run
+ENV=test make run
+ENV=dev make run
+ENV=local make run
 ```
 
 

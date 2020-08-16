@@ -13,7 +13,7 @@ find_by_group_id(Gid, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary,
         " FROM `group_member` ",
         Where/binary>>,
-    imboy_db:query(Sql, [Gid, Limit]).
+    mysql_pool:query(Sql, [Gid, Limit]).
 
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 10000).
@@ -23,4 +23,4 @@ find_by_uid(Uid, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary,
         " FROM `group_member` ",
         Where/binary>>,
-    imboy_db:query(Sql, [Uid, Limit]).
+    mysql_pool:query(Sql, [Uid, Limit]).

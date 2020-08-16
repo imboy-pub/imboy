@@ -3,7 +3,7 @@
 
 -export([init/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 init(Req0, State) ->
     % ?LOG(State),

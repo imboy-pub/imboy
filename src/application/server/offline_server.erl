@@ -4,7 +4,8 @@
 %%%
 -behaviour(gen_server).
 
--include("imboy.hrl").
+-include("chat.hrl").
+-include("common.hrl").
 
 %% API.
 -export([start_link/0]).
@@ -102,7 +103,7 @@ send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
                 {<<"from_id">>, FromId},
                 {<<"to_id">>, ToUid},
                 {<<"status">>, State},
-                {<<"timestamp">>, imboy_func:milliseconds()}
+                {<<"timestamp">>, dt_util:milliseconds()}
             ],
             % ?LOG(Msg),
             erlang:start_timer(1, Pid, jsx:encode(Msg));

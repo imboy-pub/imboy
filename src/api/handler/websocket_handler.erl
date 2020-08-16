@@ -7,25 +7,29 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 %%websocket 握手
 init(Req0, State0) ->
     case websocket_ds:check_subprotocols(Req0, State0) of
         {ok, Req1, State1} ->
+            ?LOG(['check_subprotocols']),
             {ok, Req1, State1};
         {cowboy_websocket, Req1, State1, Opt} ->
-            case cowboy_req:match_qs([{token, [], undefined}], Req1) of
-                #{token := undefined} ->
+            case cowboy_req:match_qs([{'imboy-token', [], undefined}], Req1) of
+                #{'imboy-token' := undefined} ->
                     % HTTP 412 - 先决条件失败
                     Req2 = cowboy_req:reply(412, Req1),
                     {ok, Req2, State1};
-                #{token := Token} ->
+                #{'imboy-token' := Token} ->
                     ?LOG(Token),
                     case catch token_ds:decrypt_token(Token) of
                         {ok, Uid, _ExpireAt, _Type} ->
                             Timeout = user_as:idle_timeout(Uid),
                             {cowboy_websocket, Req1, [{current_uid, Uid}|State1], Opt#{idle_timeout := Timeout}};
+                        {error, 705, Msg, _Li} ->
+                            Req3 = resp_json_dto:error(Req1, Msg),
+                            {ok, Req3, State0};
                         {error, Code, _Msg, _Li} ->
                             {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
                     end
@@ -41,7 +45,7 @@ websocket_init(State) ->
             Msg = [
                 {<<"type">>, <<"error">>},
                 {<<"code">>, Code},
-                {<<"timestamp">>, imboy_func:milliseconds()}
+                {<<"timestamp">>, dt_util:milliseconds()}
             ],
             {reply, {text, jsx:encode(Msg)}, State, hibernate};
         false ->
@@ -53,7 +57,7 @@ websocket_init(State) ->
 
 %%处理客户端发送投递的消息 onmessage
 websocket_handle(ping, State) ->
-    ?LOG([ping, cowboy_clock:rfc1123(), State]),
+    % ?LOG([ping, cowboy_clock:rfc1123(), State]),
     case lists:keyfind(error, 1, State) of
         {error, _Code} ->
             {stop, State};
@@ -61,7 +65,7 @@ websocket_handle(ping, State) ->
             {reply, pong, State, hibernate}
     end;
 websocket_handle({text, <<"ping">>}, State) ->
-    ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
+    % ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
     case lists:keyfind(error, 1, State) of
         {error, _Code} ->
             {stop, State};
@@ -77,20 +81,22 @@ websocket_handle({text, Msg}, State) ->
                 ErrMsg = [
                     {<<"type">>, <<"error">>},
                     {<<"code">>, Code},
-                    {<<"timestamp">>, imboy_func:milliseconds()}
+                    {<<"timestamp">>, dt_util:milliseconds()}
                 ],
                 {reply, ErrMsg};
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
                 Data = jsx:decode(Msg),
+                MsgMd5 = message_ds:msg_md5(Data),
                 Type = proplists:get_value(<<"type">>, Data),
+                ?LOG([MsgMd5, Type]),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
-                        websocket_as:dialog(CurrentUid, Data);
+                        websocket_as:dialog(MsgMd5, CurrentUid, Data);
                     <<"GROUP">> ->
-                        websocket_as:group_dialog(CurrentUid, Data);
+                        websocket_as:group_dialog(MsgMd5, CurrentUid, Data);
                     <<"SYSTEM">> ->
-                        websocket_as:system(CurrentUid, Data)
+                        websocket_as:system(MsgMd5, CurrentUid, Data)
                 end
         end
     of
@@ -103,9 +109,8 @@ websocket_handle({text, Msg}, State) ->
                     {reply, {text, jsx:encode(Msg2)}, State, hibernate}
             end
     catch
-        ErrCode:ErrorMsg ->
-            % lager:error("websocket_handle try catch: ~p", [ErrCode,ErrorMsg, Msg]),
-            ?LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg, Msg]),
+        Class:Reason ->
+            ?LOG(["websocket_handle try catch: Class:", Class, "Reason:", Reason, "trace:", erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
 websocket_handle({binary, Msg}, State) ->
@@ -126,8 +131,8 @@ websocket_info(_Info, State) ->
 %% 断开socket onclose
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
-terminate(_Reason, _Req, State) ->
-    ?LOG([terminate, State]),
+terminate(Reason, _Req, State) ->
+    ?LOG([terminate, State, Reason]),
     case lists:keyfind(current_uid, 1, State) of
         {current_uid, Uid} ->
             user_as:offline(Uid, self());

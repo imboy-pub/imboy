@@ -5,7 +5,7 @@
 -export ([user_group/1]).
 -export ([member/1]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 user_group(Uid) ->
     Column = <<"`id`,`groupname`,`avatar`">>,

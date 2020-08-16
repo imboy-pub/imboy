@@ -2,17 +2,17 @@
 %%%
 % group_msg_ds 是 group_msg domain service 缩写
 %%%
--export ([write_msg/4]).
+-export ([write_msg/6]).
 -export ([read_msg/2]).
 -export ([delete_msg/1]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
--spec write_msg(binary(), integer(), integer(), integer()) -> any().
+-spec write_msg(integer(), binary(), binary(), integer(), integer(), integer()) -> any().
 
-%% 存储离线消息
-write_msg(Payload, FromId, ToId, Gid) ->
-    group_msg_repo:write_msg(Payload, FromId, ToId, Gid).
+%% 存储消息
+write_msg(CreatedAt, MsgMd5, Payload, FromId, ToIds, Gid) ->
+    group_msg_repo:write_msg(CreatedAt, MsgMd5, Payload, FromId, ToIds, Gid).
 
 %% 读取离线消息
 read_msg(ToUid, Limit) ->

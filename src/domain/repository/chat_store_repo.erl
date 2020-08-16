@@ -8,7 +8,7 @@
 
 -record(chat_online_info, {pid, uid, socket_type}).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 
 %%%===================================================================

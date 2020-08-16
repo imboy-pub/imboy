@@ -25,7 +25,7 @@
 % wsc2:stop(83235, 83235 + 12000)
 % wsc2:stop(113235, 113235 + 60000).
 
--include("../include/imboy.hrl").
+-include("common.hrl").
 
 start_link() ->
     start_link({1, 0, {}}).
@@ -140,7 +140,7 @@ connect_ws(Id, Index, _Ip) ->
                 % Token2 = binary:replace(Token, <<"+">>, <<"%2B">>, [global]),
                 Token2 = list_to_binary(integer_to_list(Id)),
                 Header = [
-                    % <<"GET /chat/websocket/?token=", Token2/binary, " HTTP/1.1\r\n">>,
+                    % <<"GET /websocket/?token=", Token2/binary, " HTTP/1.1\r\n">>,
                     <<"GET /test_ws/?current_uid=", Token2/binary, " HTTP/1.1\r\n">>,
                     <<"Host: ", Host/binary, ":", Port/binary, "\r\n">>,
                     <<"Connection: Upgrade\r\n">>,

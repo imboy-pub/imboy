@@ -3,7 +3,7 @@
 
 -export([init/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 init(Req0, State) ->
     Req1 = case lists:keyfind(action, 1, State) of

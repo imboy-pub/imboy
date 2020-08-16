@@ -11,7 +11,7 @@
 -export ([find_by_ids/1, find_by_ids/2]).
 -export ([change_sign/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec is_offline(binary()) -> true | {pid(), binary(), any()}.
 %% 检查用户是否在线
@@ -94,7 +94,7 @@ find_by_ids(Ids, Column) ->
 
 change_sign(Uid, Sign) ->
     Sql = <<"UPDATE `user` SET `sign` = ? WHERE `id` = ?">>,
-    imboy_db:query(Sql, [Sign, Uid]).
+    mysql_pool:query(Sql, [Sign, Uid]).
 
 %% Internal.
 

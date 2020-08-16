@@ -1,4 +1,4 @@
--module(chat_handler).
+-module(conversation_handler).
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -8,10 +8,12 @@
 init(Req0, State) ->
     % ?LOG(State),
     Req1 = case lists:keyfind(action, 1, State) of
-        {action, chat_msgbox} ->
-            chat_msgbox(Req0, State);
         {action, online} ->
             online(Req0, State);
+        {action, mine} ->
+            mine(Req0, State);
+        {action, msgbox} ->
+            chat_msgbox(Req0, State);
         false ->
             Req0
     end,
@@ -29,6 +31,14 @@ online(Req0, _State) ->
             []
     end,
     resp_json_dto:success(Req0, List2, Msg).
+
+mine(Req0, State) ->
+    #{last_server_ts := ServerTS} = cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
+    % ?LOG(ServerTS),
+    CurrentUid = proplists:get_value(current_uid, State),
+    List = dialog_msg_ds:read_msg(CurrentUid, 1000, ServerTS),
+    List2 = conversation_mine_aas:data(List),
+    resp_json_dto:success(Req0, List2).
 
 chat_msgbox(Req0, State) ->
     %%

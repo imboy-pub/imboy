@@ -7,8 +7,10 @@
 
 data(User, Friends) ->
     [
-        % {<<"mine">>, proplists:delete(<<"id">>, User)}
-        % , {<<"friend">>, [proplists:delete(<<"id">>, F) || F <-Friends]}
-        {<<"mine">>, User}
-        , {<<"friend">>, Friends}
+        {<<"mine">>, hashids_tl:encode_id(User)}
+        , {<<"friend">>, [hashids_tl:encode_id(F) || F <-Friends]}
+        % {<<"mine">>, User}
+        % , {<<"friend">>, Friends}
     ].
+
+%% Internal.

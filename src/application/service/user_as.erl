@@ -8,25 +8,32 @@
 -export ([offline/2]).
 -export ([idle_timeout/1]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
-do_login(Account, Pwd) ->
-    Res = case imboy_func:is_mobile(Account) of
+do_login(InputAccount, Pwd) ->
+    Column = <<"`id`,`account`,`password`,`nickname`,`avatar`,`gender`">>,
+    Res = case func:is_mobile(InputAccount) of
         true ->
-            user_repo:find_by_mobile(Account);
+            user_repo:find_by_mobile(InputAccount, Column);
         false ->
-            user_repo:find_by_account(Account)
+            user_repo:find_by_account(InputAccount, Column)
     end,
+    ?LOG(Res),
     {Check, User} = case Res of
-        {ok, _FieldList, [[Id, Username, Password, Nickname, Avator]]} ->
-            Check0 = imboy_cipher:password_verify(Pwd, Password),
-            {Check0, [Id, Username, Password, Nickname, Avator]};
+        {ok, _FieldList, [[Id, Account, Password, Nickname, Avator, Gender]]} ->
+            ?LOG([Pwd, Password]),
+            case password_util:verify(Pwd, Password) of
+                {ok, _} ->
+                    {true, [Id, Account, Nickname, Avator, Gender]};
+                {error, Msg} ->
+                    {false, Msg}
+            end;
         _ ->
             % io:format("res is ~p~n",[Res]),
             {false, []}
     end,
-    if
-        Check == true ->
+    ?LOG([Check, User]),
+    if Check == true ->
             {ok, login_success_aas:data(User)};
         true ->
             {error, "账号或密码错误"}
@@ -45,7 +52,7 @@ online(Uid, Pid, Type) ->
                 {<<"to_id">>, Uid},
                 {<<"code">>, 786},
                 {<<"msg">>, unicode:characters_to_binary("在其他地方上线")},
-                {<<"timestamp">>, imboy_func:milliseconds()}
+                {<<"timestamp">>, dt_util:milliseconds()}
             ],
             erlang:start_timer(10, ToPid, jsx:encode(Msg));
         true ->

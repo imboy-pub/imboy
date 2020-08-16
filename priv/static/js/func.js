@@ -112,7 +112,7 @@ function api_ajax(url, method, params, callback, error_callback, async) {
             } else if(res.code=='706') {
                 current_token('clear')
                 location.href = '/passport/login.html'
-            } else if(res.code == 707) {
+            } else if(res.code == 705) {
                 refreshtoken(function(res) {
                     api_ajax(url, method, params, callback, error_callback, async)
                 })

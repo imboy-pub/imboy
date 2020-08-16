@@ -36,7 +36,7 @@
 % erlang:memory().
 % length(chat_store_repo:lookall()).
 
--include("../include/imboy.hrl").
+-include("common.hrl").
 
 start(Begin, End) ->
     % code:add_path("../ebin"),
@@ -85,7 +85,7 @@ ws_start(Id, Index) ->
                     % Token2 = list_to_binary(integer_to_list(Id)),
                     Header = [
                         <<"GET /stress_testing?token=", Token2/binary, " HTTP/1.1\r\n">>,
-                        % <<"GET /chat/websocket/?token=", Token2/binary, " HTTP/1.1\r\n">>,
+                        % <<"GET /websocket/?token=", Token2/binary, " HTTP/1.1\r\n">>,
                         <<"Host: ", Host/binary, ":", Port/binary, "\r\n">>,
                         <<"Connection: Upgrade\r\n">>,
                         <<"Pragma: no-cache\r\n">>,

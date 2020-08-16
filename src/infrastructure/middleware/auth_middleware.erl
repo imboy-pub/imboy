@@ -3,7 +3,7 @@
 
 -export([execute/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 %% 这个是回调函数
 execute(Req, Env) ->
@@ -14,10 +14,13 @@ execute(Req, Env) ->
         true ->
             Token = cowboy_req:header(<<"imboy-token">>, Req),
             case token_ds:decrypt_token(Token) of
-                {ok, Id, _ExpireAt, <<"tk">>} ->
-                    Uid = list_to_integer(binary_to_list(Id)),
+                {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
                     #{handler_opts := HandlerOpts} = Env,
-                    Env2 = Env#{handler_opts => [{current_uid, Uid}|HandlerOpts]},
+                    Env2 = Env#{handler_opts => [{current_uid, Id}|HandlerOpts]},
+                    {ok, Req, Env2};
+                {ok, Id, _ExpireAt, <<"tk">>} when is_binary(Id) ->
+                    #{handler_opts := HandlerOpts} = Env,
+                    Env2 = Env#{handler_opts => [{current_uid, binary_to_integer(Id)} | HandlerOpts]},
                     {ok, Req, Env2};
                 {ok, _Id, _ExpireAt, <<"rtk">>} ->
                     Req1 = resp_json_dto:error(Req, "Does not support refreshtoken", 1),

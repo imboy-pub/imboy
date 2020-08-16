@@ -9,3 +9,5 @@ ebin
 *.local.*
 *.prod.*
 .imboy.plt
+deps
+priv/static/layim*

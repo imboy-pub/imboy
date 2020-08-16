@@ -4,52 +4,45 @@
 -export([aes_encrypt/2, aes_decrypt/2]).
 -export([rsa_encrypt/1, rsa_decrypt/1]).
 -export([rsa_encrypt/2, rsa_decrypt/2]).
--export([password_hash/1, password_verify/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
+
+-define(SHA_256_BLOCKSIZE, 64).
 
 -spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) -> PlainText :: binary().
 -spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) -> CipherText :: binary().
 
 % aes_cbc + pkcs#7填充
 aes_encrypt(Bin) ->
-    aes_encrypt(Bin, aes_cbc256).
+    aes_encrypt(aes_256_cbc, Bin).
 aes_decrypt(Bin) ->
-    aes_decrypt(Bin, aes_cbc256).
+    aes_decrypt(aes_256_cbc, Bin).
 
-aes_encrypt(Bin, Mod) ->
+aes_encrypt(Type, Bin) ->
     Len = erlang:size(Bin),
     Value = 16 - (Len rem 16),
+    % 将<<Value>>复制Value份赋值出来
     PadBin = binary:copy(<<Value>>, Value),
-    EncodeB = crypto:block_encrypt(Mod, ?AES_KEY, ?AES_IV, <<Bin/binary, PadBin/binary>>),
+    Bin2 = <<Bin/binary, PadBin/binary>>,
+    StateEnc = crypto:crypto_init(Type, ?AES_KEY, ?AES_IV, true),
+    EncodeB = crypto:crypto_update(StateEnc, Bin2),
     base64:encode(EncodeB).
 
-% aes_cbc + pkcs#7填充
-aes_decrypt(Bin, Mod) ->
+aes_decrypt(Type, Bin) ->
     Bin1 = base64:decode(Bin),
-    case erlang:size(Bin1) rem 16 of
-        0 ->
-            Bin2 = crypto:block_decrypt(Mod, ?AES_KEY, ?AES_IV, Bin1),
-            binary:part(Bin2, {0, byte_size(Bin2) - binary:last(Bin2)});
-        _ ->
-            {error, 1102}
-    end.
+    StateDec = crypto:crypto_init(Type, ?AES_KEY, ?AES_IV, false),
+    Bin2 = crypto_update(StateDec, Bin1, size(Bin1), <<>>),
+    binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).
 
-password_hash(Pwd) ->
-    sha512(Pwd).
-
-password_verify(Pwd, Hash) when is_binary(Hash)  ->
-    sha512(Pwd) == Hash;
-password_verify(Pwd, Hash) when is_list(Hash)  ->
-    sha512(Pwd) == list_to_binary(Hash).
-
-sha512(PlainText) ->
-    {ok, Key} = application:get_env(imboy, imboy_cipher_key),
-    sha512(PlainText, Key).
-sha512(PlainText, Key) ->
-    Bin = crypto:hmac(sha512, Key, PlainText),
-    base64:encode(Bin).
-
+crypto_update(StateDec, Bin, BinSize, OutBin) when BinSize > 16 ->
+    Bin2 = binary:part(Bin, {0, 16}),
+    OutBin2 = crypto:crypto_update(StateDec, Bin2),
+    OutBin3 = <<OutBin/binary, OutBin2/binary>>,
+    Bin3 = binary:part(Bin, {16, BinSize - 16}),
+    crypto_update(StateDec, Bin3, BinSize - 16, OutBin3);
+crypto_update(StateDec, Bin, _BinSize, OutBin) ->
+    OutBin2 = crypto:crypto_update(StateDec, Bin),
+    <<OutBin/binary, OutBin2/binary>>.
 
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密

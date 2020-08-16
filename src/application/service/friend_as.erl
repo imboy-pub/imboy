@@ -7,7 +7,7 @@
 -export ([category_friend/1]).
 -export ([friend_list/1]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 move_to_category(CurrentUid, Uid, CategoryId) ->
     friend_repo:move_to_category(CurrentUid, Uid, CategoryId),

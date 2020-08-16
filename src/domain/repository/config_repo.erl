@@ -6,6 +6,6 @@
 
 get_by_key(Key) ->
     Sql = <<"SELECT `value` FROM `config` WHERE `key` = ?">>,
-    Row = imboy_db:query(Sql, [Key]),
+    Row = mysql_pool:query(Sql, [Key]),
     % lager:info("~p", Row),
     Row.

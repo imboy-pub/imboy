@@ -4,7 +4,7 @@
 %%%
 -export ([check_subprotocols/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 check_subprotocols(Req0, State1) ->
     ImOpts = #{

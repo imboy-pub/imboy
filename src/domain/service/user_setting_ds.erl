@@ -6,7 +6,7 @@
 -export ([chat_state_hide/1]).
 -export ([save_state/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec find_by_uid(any()) -> list().
 find_by_uid(Uid) ->

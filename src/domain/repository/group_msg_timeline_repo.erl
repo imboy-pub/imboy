@@ -9,7 +9,7 @@
 -export ([delete_overflow_timeline/2]).
 
 
--include("imboy.hrl").
+-include("common.hrl").
 
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
@@ -20,27 +20,27 @@ find_by_uid(Uid, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary,
         " FROM `group_msg_timeline`",
         Where/binary>>,
-    imboy_db:query(Sql, [Uid, Limit]).
+    mysql_pool:query(Sql, [Uid, Limit]).
 
 delete_timeline(Id) ->
     Where = <<"WHERE `id` = ?">>,
     Sql = <<"DELETE FROM `group_msg_timeline` ",
         Where/binary>>,
-    imboy_db:query(Sql, [Id]).
+    mysql_pool:query(Sql, [Id]).
 
 check_msg(MsgId) ->
     Sql = <<"SELECT count(*) as count FROM `group_msg_timeline` WHERE `msg_id` = ?">>,
-    imboy_db:query(Sql, [MsgId]).
+    mysql_pool:query(Sql, [MsgId]).
 
 count_by_to_id(ToUid) ->
     % use index i_ToId
     Sql = <<"SELECT count(*) as count FROM `group_msg_timeline` WHERE `to_id` = ?">>,
-    imboy_db:query(Sql, [ToUid]).
+    mysql_pool:query(Sql, [ToUid]).
 
 delete_overflow_timeline(ToUid, Limit) ->
     % use index i_ToId
     Sql = <<"SELECT `id`,`msg_id` FROM `group_msg_timeline` WHERE `to_id` = ? ORDER BY `id` ASC LIMIT ?">>,
-    case imboy_db:query(Sql, [ToUid, Limit]) of
+    case mysql_pool:query(Sql, [ToUid, Limit]) of
         {ok, _, []} ->
             ok;
         {ok, _, Rows} ->

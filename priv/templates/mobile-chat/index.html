@@ -18,8 +18,8 @@
     var member_list_url = ''
     var upload_img_url = ''
     var upload_file_url = ''
-    var msg_box_url = '/chat/msgbox'
-    var msg_url = '/chat/notice'
+    var msg_box_url = '/conversation/msgbox'
+    var msg_url = '/conversation/notice'
     var find_url = '/friend/find'
     var chatlog_url = ''
     var change_sign_url = ''
@@ -34,7 +34,7 @@
     // console.log('rykey ', rykey, ', token ', token)
 
     var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
-    var ws_host = ws_scheme + '://' + window.location.host + '/chat/websocket/?token=' + token
+    var ws_host = ws_scheme + '://' + window.location.host + '/websocket/?token=' + token
 
     //layui绑定扩展
     layui.config({
@@ -57,7 +57,7 @@
         var chat_init_data = {}
         $.ajax({
             type: "GET",
-            url: '/chat/init',
+            url: '/conversation/init',
             data: {},
             headers: {
                 'imboy-token': get_cookie('imboy-token'),
@@ -69,7 +69,7 @@
                 } else if(res.msg) {
                     layer.msg(res.msg)
                 } else {
-                    console.log('/chat/init res ', res)
+                    console.log('/conversation/init res ', res)
                 }
             },
             error: function(xhr){

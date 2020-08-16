@@ -11,7 +11,7 @@ find_by_ids(Ids, Column) ->
     Ids2 = list_to_binary(lists:concat(L2)),
     Where = <<"WHERE `id` IN (", Ids2/binary,")">>,
     Sql = <<"SELECT ", Column/binary, " FROM `group` ", Where/binary>>,
-    imboy_db:query(Sql, no_params).
+    mysql_pool:query(Sql, no_params).
 
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 10000).
@@ -21,4 +21,4 @@ find_by_uid(Uid, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary,
         " FROM `group` ",
         Where/binary>>,
-    imboy_db:query(Sql, [Uid, Limit]).
+    mysql_pool:query(Sql, [Uid, Limit]).

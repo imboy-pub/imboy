@@ -1,6 +1,7 @@
 -module(route_helper).
 
--export([get_routes/0, need_auth_paths/0]).
+-export([get_routes/0]).
+-export([need_auth_paths/0]).
 
 get_routes() ->
     {ok, HostImboy} = application:get_env(imboy, host),
@@ -13,11 +14,12 @@ get_routes() ->
             , {"/refreshtoken", init_handler, [{action, refreshtoken}]}
             , {"/passport/login", passport_handler, [{action, do_login}]}
 
-            , {"/chat/websocket", websocket_handler, []}
             , {"/stress_testing", stress_testing_ws_handler, []}
+            , {"/websocket", websocket_handler, []}
 
-            , {"/chat/online", chat_handler, [{action, online}]}
-            , {"/chat/msgbox", chat_handler, [{action, chat_msgbox}]}
+            , {"/conversation/online", conversation_handler, [{action, online}]}
+            , {"/conversation/mine", conversation_handler, [{action, mine}]}
+            , {"/conversation/msgbox", conversation_handler, [{action, msgbox}]}
 
             , {"/user/change_state", user_handler, [{action, change_state}]}
             , {"/user/change_sign", user_handler, [{action, change_sign}]}
@@ -35,6 +37,7 @@ get_routes() ->
 
             , {"/group/member", group_handler, [{action, member}]}
 
+            %%%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
             , {"/friend/find.html", cowboy_static, {priv_file, imboy, "templates/web-chat/find.html"}}
             % 好友群资料页面
             , {"/friend/information.html", cowboy_static, {priv_file, imboy, "templates/web-chat/friend_information.html"}}
@@ -43,7 +46,8 @@ get_routes() ->
             , {"/passport/login.html", cowboy_static, {priv_file, imboy, "templates/web-chat/login.html"}}
 
             , {"/assets/images/def_avatar.png", cowboy_static, {priv_file, imboy, "static/image/def_avatar.png"}}
-            , {"/favicon.png", cowboy_static, {priv_file, imboy, "static/favicon.png"}}
+
+            , {"/favicon.ico", cowboy_static, {priv_file, imboy, "static/favicon.ico"}}
             , {"/static/[...]", cowboy_static, {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
         ]}
     ].
@@ -62,6 +66,9 @@ need_auth_paths() ->
         , <<"/friend/category/add">>
         , <<"/friend/category/delete">>
         , <<"/friend/category/rename">>
+
+        % 我的会话列表
+        , <<"/conversation/mine">>
 
         , <<"/group/member">>
 

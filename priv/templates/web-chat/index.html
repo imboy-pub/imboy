@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>hello imboy</title>
-<link rel="shortcut icon" href="/favicon.png" type="image/png" >
+<link rel="shortcut icon" href="/favicon.ico">
 <link rel="stylesheet" href="/static/layim/css/layui.css" media="all">
 <link rel="stylesheet" href="/static/css/menu.css" media="all">
 <link rel="stylesheet" href="/static/css/contextmenu.css" media="all">
@@ -38,8 +38,8 @@
     var member_list_url = ''
     var upload_img_url = ''
     var upload_file_url = ''
-    var msg_box_url = '/chat/msgbox'
-    var msg_url = '/chat/notice'
+    var msg_box_url = '/conversation/msgbox'
+    var msg_url = '/conversation/notice'
     var find_url = '/friend/find.html'
     var chatlog_url = ''
     var change_sign_url = ''
@@ -55,7 +55,7 @@
     var default_avatar = '/static/image/user_default_avatar.jpeg'
 
     var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
-    var ws_url = ws_scheme + '://' + window.location.host + '/chat/websocket/'
+    var ws_url = ws_scheme + '://' + window.location.host + '/websocket/'
 
     var WSHB = new WebsocketHeartbeatJs({
         url: ws_url,

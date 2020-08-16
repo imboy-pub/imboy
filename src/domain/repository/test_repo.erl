@@ -19,7 +19,7 @@ create_user_test(Prefix, Num, Limit) ->
     Username = MobBin,
     Sql = <<"INSERT INTO `user` (`level_id`, `password`, `account`, `mobile`, `email`, `experience`, `gender`, `avatar`, `sign`, `login_count`, `last_login_ip`, `last_login_at`, `ref_user_id`, `status`, `created_at`, `reg_ip`, `reg_client`) VALUES (0, 'gmqrFZenECbzbUramWn1X108J0XZMSwLIynjJDI2jqal9oW10Bd6kOqrIZkR1KxuKXsN0UmXHKQwtL0u6jDRRA==', '", Username/binary ,"', '", MobBin/binary ,"', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
     % ?LOG(Sql),
-    imboy_db:query(Sql, no_params),
+    mysql_pool:query(Sql, no_params),
     create_user_test(Prefix, Num + 1, Limit).
 
 % delete from user_friend where id > 7
@@ -40,7 +40,7 @@ create_friend_test(FromId, ToId) when FromId > 513237; ToId > 513237 ->
     ok;
 create_friend_test(FromId, ToId) ->
     Sql = <<"INSERT INTO `user_friend` (`from_user_id`, `to_user_id`, `status`, `created_at`) VALUES (?, ?, 1, ?)">>,
-    imboy_db:query(Sql, [FromId, ToId, imboy_func:milliseconds()]).
+    mysql_pool:query(Sql, [FromId, ToId, dt_util:milliseconds()]).
 
 
 generate_exception(1) -> a;

@@ -45,7 +45,7 @@ function WebsocketHeartbeatJs({
 }
 WebsocketHeartbeatJs.prototype.createWebSocket = function(callback, args) {
     try {
-        var url = this.opts.url + '?token=' + get_cookie('imboy-token').replace("+", "%2B")
+        var url = this.opts.url + '?imboy-token=' + get_cookie('imboy-token').replace("+", "%2B")
         console.log('createWebSocket url ', url)
         if (this.opts.subprotocols) {
             this.ws = new WebSocket(url, this.opts.subprotocols);
@@ -172,14 +172,13 @@ var friend_helper = {
         layui.each(cachedata.friend, function(i, group) {
             layui.each(group.list, function(index, friend) {
                 if (friend && friend.id) {
-                    friend_helper.friends[parseInt(friend.id)] = friend
+                    friend_helper.friends[friend.id] = friend
                 }
             })
         })
     }
     , userinfo : function(Uid) {
         // {id, account, avatar, sign, status}
-        Uid = parseInt(Uid)
         if (!(friend_helper.friends && friend_helper.friends[Uid])) {
             friend_helper.init(layui.layim.cache())
         }
@@ -187,7 +186,6 @@ var friend_helper = {
     }
     , group_userinfo(Gid, Uid) {
         // {id, account, avatar, sign, status}
-        Uid = parseInt(Uid)
         if (friend_helper.group_users && friend_helper.group_users[Uid]) {
             return friend_helper.group_users[Uid]
         }
@@ -195,7 +193,7 @@ var friend_helper = {
             if (res.code == 0 && res.payload && res.payload.list) {
                 layui.each(res.payload.list, function(index, user) {
                     if (user && user.id) {
-                        friend_helper.group_users[parseInt(user.id)] = {
+                        friend_helper.group_users[user.id] = {
                             "account": user.account,
                             "avatar": user.avatar
                         }
@@ -275,7 +273,8 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             //监听聊天窗口的切换
             conf.layim.on('chatChange', function (res) {
                 im.closeAllGroupList()
-                var type = res.payload.type.toUpperCase();
+                console.log('chatChange >> ', res)
+                var type = res.data.type.toUpperCase();
                 if (type === 'C2C') {
                     //模拟标注好友状态
                     // im.userStatus({
@@ -283,7 +282,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     // })
                 } else if (type === 'GROUP') {
                     var _time = (new Date()).valueOf()//当前时间
-                    if (parseInt(res.payload.gagTime) > _time) {
+                    if (res.payload && 'gagTime' in res.payload && parseInt(res.payload.gagTime) > _time) {
                         im.setGag({
                             groupid: res.payload.id,
                             type: 'set',
@@ -294,9 +293,13 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                 }
             })
             conf.layim.on('sendMessage', function (data) { //监听发送消息
-                console.log('sendMessage data ', data)
+                console.log('sendMessage data ', data.to.type, data)
                 data.to.cmd = 0;
-                if (['friend', 'dialog', 'group'].includes(data.to.type)) {
+                if (data.to.type == 'friend') {
+                    data.to.type = 'C2C'
+                }
+                console.log('data.to.type ', data.to.type)
+                if (['C2C', 'SYSTEM', 'GROUP', 'friend'].includes(data.to.type)) {
                     im.sendMsg(data)
                 } else {
                     var _time = (new Date()).valueOf()//当前时间
@@ -317,6 +320,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
         init: function (user, pwd) {
             setTimeout(function() {
                 friend_helper.init(cachedata)
+                console.log(' >>>> on friend_helper ', friend_helper)
                 cachedata = layui.layim.cache()
                 // console.log('cachedata.mine ', cachedata.mine)
             }, 100)
@@ -345,7 +349,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                     }
                                     , content: '<br/><center>请重新登录</center>'
                                 })
-                            } else if(data.code == 707) {
+                            } else if(data.code == 705) {
                                 refreshtoken(function(res) {
                                     WSHB.createWebSocket()
                                 })
@@ -367,25 +371,27 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             break
                         // 用户在线状态： online offline hide
                         case 'USER_STATE':
-                            conf.layim.setFriendStatus(data.from_id, data.status)
+                            conf.layim.setFriendStatus(data.from, data.status)
                             break
                         // 检测聊天数据
                         case 'GROUP':
-                            var from = friend_helper.group_userinfo(data.to_id, data.from_id)
+                            var from = friend_helper.group_userinfo(data.to, data.from)
                             console.log('from ', from, 'friend_helper ', friend_helper.group_users)
                             if (from) {
                                 Object.assign(data, from)
                             }
-                            data['id'] = data.to_id
+                            data['id'] = data.to
                             // console.log('group data ', data)
                             conf.layim.getMessage(data)
                             break
                         case 'C2C':
-                            var from = friend_helper.userinfo(data.from_id)
+                            var from = friend_helper.userinfo(data.from)
                             // console.log('from ', from, 'friend_helper ', friend_helper.friends)
                             if (from) {
                                 Object.assign(data, from)
                             }
+                            data.content = data.payload.content
+                            data.timestamp = data.payload.server_ts
                             console.log('data ', data)
                             conf.layim.getMessage(data)
                             break
@@ -409,7 +415,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         case 'DEL_FRIEND':
                             console.log(data.data)
                             conf.layim.removeList({
-                                type: 'friend'
+                                type: 'C2C'
                                 , id: data.data.id //好友或者群组ID
                             })
                             break
@@ -476,9 +482,10 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                         // console.log('status', status)
                         $(".context-friend")
                             .attr("data-id", ele.attr('class').replace(/[^0-9]/ig,""))
+                            // .attr("data-id", ele.attr('data-id'))
                             .attr("data-name", ele.find("span").html())
                             .attr("data-status", status)
-                        $(".context-friend").attr("data-img",ele.find("img").attr('src')).attr("data-type",'friend')
+                        $(".context-friend").attr("data-img",ele.find("img").attr('src')).attr("data-type",'C2C')
                     },
                     menu:[]
                 }
@@ -527,7 +534,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     var data = {
                         contextItem: "context-group", // 添加class
                         target: function(ele) { // 当前元素
-                            $(".context-group").attr("data-id",ele[0].id.replace(/[^0-9]/ig,"")).attr("data-name",ele.find("span").html())
+                            $(".context-group").attr("data-id",ele[0].id).attr("data-name",ele.find("span").html())
                             .attr("data-img",ele.find("img").attr('src')).attr("data-type",'group')
                         },
                         menu: []
@@ -545,13 +552,13 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     contextItem: "context-group-member", // 添加class
                     isfriend: $(".context-group-member").data("isfriend"), // 添加class
                     target: function(ele) { // 当前元素
-                        $(".context-group-member").attr("data-id",ele[0].id.replace(/[^0-9]/ig,""))
+                        $(".context-group-member").attr("data-id",ele[0].id)
                         $(".context-group-member").attr("data-img",ele.find("img").attr('src'))
                         $(".context-group-member").attr("data-name",ele.find("span").html())
                         $(".context-group-member").attr("data-isfriend",ele.attr('isfriend'))
                         $(".context-group-member").attr("data-manager",ele.attr('manager'))
                         $(".context-group-member").attr("data-groupid",ele.parent().data('groupid'))
-                        $(".context-group-member").attr("data-type",'friend')
+                        $(".context-group-member").attr("data-type",'C2C')
                     },
                     menu:[]
                 }
@@ -679,13 +686,18 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             //     'to': res.to,
             // }
             var message = {};
-            if (!res.from_id) {
+            if (!res.from) {
+                var payload = {
+                    'msg_type': 10,
+                    'content': res.mine.content,
+                    'send_ts': res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf(),
+                }
+                res.to.type = res.to.type == 'friend' ? 'C2C' : res.to.type
                 message = {
                     'type': res.to.type,
-                    'from_id': res.mine.id,
-                    'to_id': res.to.id,
-                    'payload': res.mine.content,
-                    'timestamp': res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf(),
+                    'from': res.mine.id,
+                    'to': res.to.id,
+                    'payload': payload,
                 }
             } else {
                 message = res
@@ -1324,7 +1336,7 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
         readMsg: function(ids) {
             // console.log('readmsg othis: ', othis)
             console.log('readmsg ids: ', ids)
-            // $.post('/chat/msg/', {action:'set_allread'}, function (res) {
+            // $.post('/conversation/msg/', {action:'set_allread'}, function (res) {
             // })
         },
         menuChat: function() {

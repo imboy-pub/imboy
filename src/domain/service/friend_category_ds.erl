@@ -7,7 +7,7 @@
 -export ([rename/3]).
 -export ([delete/2]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec find_by_uid(integer()) -> list().
 
@@ -38,7 +38,7 @@ find_by_uid(Uid) ->
 
 rename(Uid, Id, Name) ->
     Sql = <<"UPDATE `user_friend_category` SET `name` = ? WHERE `owner_user_id` = ? AND `id` = ?">>,
-    imboy_db:query(Sql, [Name, Uid, Id]).
+    mysql_pool:query(Sql, [Name, Uid, Id]).
 
 -spec delete(Uid::any(), Id::any()) -> ok | {error, ErrorMsg::any()}.
 delete(Uid, Id) ->

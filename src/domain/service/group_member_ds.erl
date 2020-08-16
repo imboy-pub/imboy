@@ -4,7 +4,7 @@
 %%%
 -export ([user_groupid/1]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 -spec user_groupid(integer()) -> list().
 

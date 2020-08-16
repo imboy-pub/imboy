@@ -8,7 +8,7 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
--include("imboy.hrl").
+-include("common.hrl").
 
 %%websocket 握手
 init(Req0, State0) ->
@@ -42,7 +42,7 @@ websocket_init(State) ->
             Msg = [
                 {<<"type">>, <<"error">>},
                 {<<"code">>, Code},
-                {<<"timestamp">>, imboy_func:milliseconds()}
+                {<<"timestamp">>, dt_util:milliseconds()}
             ],
             {reply, {text, jsx:encode(Msg)}, State, hibernate};
         false ->
@@ -70,7 +70,7 @@ websocket_handle({text, Msg}, State) ->
                 ErrMsg = [
                     {<<"type">>, <<"error">>},
                     {<<"code">>, Code},
-                    {<<"timestamp">>, imboy_func:milliseconds()}
+                    {<<"timestamp">>, dt_util:milliseconds()}
                 ],
                 {reply, ErrMsg};
             false ->

@@ -6,17 +6,16 @@
 -export ([add/2]).
 -export ([delete/2]).
 
-
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
 
 add(Uid, Name) ->
     Sql = <<"INSERT INTO `user_friend_category` (`name`, `owner_user_id`) VALUES (?, ?)">>,
-    imboy_db:execute(Sql, [Name, Uid]).
+    mysql_pool:execute(Sql, [Name, Uid]).
 
 delete(Uid, Id) ->
     Sql = <<"DELETE FROM `user_friend_category` WHERE `id` = ? AND `owner_user_id` = ?">>,
-    imboy_db:query(Sql, [Id, Uid]).
+    mysql_pool:query(Sql, [Id, Uid]).
 
 %% Internal.
 
@@ -25,4 +24,4 @@ find_by_uid(Uid, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary,
         " FROM `user_friend_category`",
         Where/binary>>,
-    imboy_db:query(Sql, [Uid, Limit]).
+    mysql_pool:query(Sql, [Uid, Limit]).
