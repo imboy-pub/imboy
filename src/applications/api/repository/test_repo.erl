@@ -1,6 +1,5 @@
 -module (test_repo).
 
-
 -export ([create_user_test/3]).
 -export ([create_friend_test/1, create_friend_test/2]).
 

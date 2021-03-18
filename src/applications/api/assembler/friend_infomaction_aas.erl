@@ -7,9 +7,9 @@
 
 data(CurrentUid, Type, User, UserSetting, Friend) ->
     lists:append([[
-        {<<"mine_uid">>, hashids_tl:uid_encode(CurrentUid)},
+        {<<"mine_uid">>, hashids_tlt:uid_encode(CurrentUid)},
         {<<"type">>, Type}
-    ], hashids_tl:encode_id(User), UserSetting, Friend]).
+    ], hashids_tlt:replace_id(User), UserSetting, Friend]).
     % [
     %     {<<"account">>, <<"xxxxx">>},
     %     {<<"nickname">>, <<"xxxxx">>},

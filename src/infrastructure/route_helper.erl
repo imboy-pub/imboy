@@ -11,11 +11,14 @@ get_routes() ->
 
             , {"/help", init_handler, [{action, help}]}
             , {"/init", init_handler, [{action, init}]}
-            , {"/refreshtoken", init_handler, [{action, refreshtoken}]}
+            , {"/refreshtoken", passport_handler, [{action, refreshtoken}]}
             , {"/passport/login", passport_handler, [{action, do_login}]}
 
             , {"/stress_testing", stress_testing_ws_handler, []}
+            % 专门为浏览器提供的websocket API
             , {"/websocket", websocket_handler, []}
+            % 专门为APP提供的websocket API
+            , {"/ws", ws_handler, []}
 
             , {"/conversation/online", conversation_handler, [{action, online}]}
             , {"/conversation/mine", conversation_handler, [{action, mine}]}

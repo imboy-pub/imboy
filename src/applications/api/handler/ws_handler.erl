@@ -1,6 +1,8 @@
--module(websocket_handler).
+-module(ws_handler).
 -behavior(cowboy_websocket).
-
+%%%
+%% 专门为APP提供的websocket API
+%%%
 -export([init/2]).
 -export([websocket_init/1]).
 -export([websocket_handle/2]).
@@ -11,22 +13,20 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    Type = cowboy_req:header(<<"client-system">>, Req0, <<"web">>),
-    ?LOG(Type),
-    SystemState = [{'client-system', Type}|State0],
+    Type = cowboy_req:header(<<"device-type">>, Req0, <<"web">>),
+    SystemState = [{'device-type', Type}|State0],
     case websocket_ds:check_subprotocols(Req0, State0) of
         {ok, Req1, State1} ->
             ?LOG(['check_subprotocols']),
             {ok, Req1, State1};
         {cowboy_websocket, Req1, State1, Opt} ->
-            case cowboy_req:match_qs([{'imboy-token', [], undefined}], Req1) of
-                #{'imboy-token' := undefined} ->
+            case cowboy_req:header(<<"authorization">>, Req0, undefined) of
+                undefined ->
                     % HTTP 412 - 先决条件失败
                     Req2 = cowboy_req:reply(412, Req1),
                     {ok, Req2, State1};
-                #{'imboy-token' := Token} ->
-                    ?LOG(Token),
-                    case catch token_ds:decrypt_token(Token) of
+                Authorization ->
+                    case catch token_ds:decrypt_token(Authorization) of
                         {ok, Uid, _ExpireAt, _Type} ->
                             Timeout = user_as:idle_timeout(Uid),
                             {cowboy_websocket, Req1, [{current_uid, Uid}|SystemState], Opt#{idle_timeout := Timeout}};
@@ -54,7 +54,7 @@ websocket_init(State) ->
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
-            ClientSystem = proplists:get_value('client-system', State, <<"web">>),
+            ClientSystem = proplists:get_value('device-type', State, <<"web">>),
             user_as:online(CurrentUid, CurrentPid, ClientSystem),
             {ok, State, hibernate}
     end.
@@ -90,7 +90,7 @@ websocket_handle({text, Msg}, State) ->
                 {reply, ErrMsg};
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
-                Data = jsx:decode(Msg),
+                Data = jsx:decode(Msg, [{return_maps, false}]),
                 MsgMd5 = message_ds:msg_md5(Data),
                 Type = proplists:get_value(<<"type">>, Data),
                 ?LOG([MsgMd5, Type]),

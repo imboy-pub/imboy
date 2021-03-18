@@ -9,14 +9,14 @@
 
 data(User, Friend, Group) ->
     [
-        {<<"mine">>, hashids_tl:encode_id(User)}
-        , {<<"group">>, [hashids_tl:encode_id(F) || F <-Group]}
+        {<<"mine">>, hashids_tlt:replace_id(User)}
+        , {<<"group">>, [hashids_tlt:replace_id(F) || F <-Group]}
         , {<<"friend">>, [
         [
-            {<<"id">>, hashids_tl:uid_encode(proplists:get_value(<<"id">>, GF))},
+            {<<"id">>, hashids_tlt:uid_encode(proplists:get_value(<<"id">>, GF))},
             {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)}
             , {
-                <<"list">>, [hashids_tl:encode_id(U) || U <-  proplists:get_value(<<"list">>, GF)]
+                <<"list">>, [hashids_tlt:replace_id(U) || U <-  proplists:get_value(<<"list">>, GF)]
             }
         ]
          || GF <- Friend]}

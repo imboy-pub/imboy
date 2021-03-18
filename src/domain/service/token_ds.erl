@@ -24,7 +24,7 @@ decrypt_token(Token) ->
     of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
-            Id = hashids_tl:uid_decode(Uid),
+            Id = hashids_tlt:uid_decode(Uid),
             ExpireAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
             {ok, Id, ExpireAt, Sub};
@@ -79,7 +79,7 @@ encrypt_token(Id, Millisecond, Sub) ->
         % , iat => Now % iat (Issued At)：签发时间
         sub => Sub % sub (subject)：主题
         , exp => ExpireAt % exp (expiration time)：过期时间
-        , uid => hashids_tl:uid_encode(Id)
+        , uid => hashids_tlt:uid_encode(Id)
     },
     % ?LOG(jwerl:sign(Data, hs256, ?JWT_KEY)),
     jwerl:sign(Data, hs256, ?JWT_KEY).

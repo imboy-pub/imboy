@@ -15,8 +15,8 @@
 %% 单聊发送消息
 dialog(MsgMd5, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
-    ToId = hashids_tl:uid_decode(To),
-    % CurrentUid = hashids_tl:uid_decode(From),
+    ToId = hashids_tlt:uid_decode(To),
+    % CurrentUid = hashids_tlt:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
@@ -24,7 +24,7 @@ dialog(MsgMd5, CurrentUid, Data) ->
             NowTs = dt_util:milliseconds(),
             Msg = [
                 {<<"type">>,<<"C2C">>},
-                {<<"from">>, hashids_tl:uid_encode(CurrentUid)},
+                {<<"from">>, hashids_tlt:uid_encode(CurrentUid)},
                 {<<"to">>, To},
                 {<<"payload">>, Payload},
                 {<<"server_ts">>, NowTs}
@@ -47,7 +47,7 @@ dialog(MsgMd5, CurrentUid, Data) ->
 %% 群聊发送消息
 group_dialog(MsgMd5, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
-    ToGID = hashids_tl:uid_decode(Gid),
+    ToGID = hashids_tlt:uid_decode(Gid),
     % TODO check is group member
     Column = <<"`user_id`">>,
     {ok, _ColumnLi, Members} = group_member_repo:find_by_group_id(ToGID, Column),
@@ -57,7 +57,7 @@ group_dialog(MsgMd5, CurrentUid, Data) ->
     NowTs = dt_util:milliseconds(),
     Msg = [
         {<<"type">>,<<"GROUP">>},
-        {<<"from">>, hashids_tl:uid_encode(CurrentUid)},
+        {<<"from">>, hashids_tlt:uid_encode(CurrentUid)},
         {<<"to">>, Gid},
         {<<"payload">>, Payload},
         {<<"server_ts">>, NowTs}
@@ -65,7 +65,7 @@ group_dialog(MsgMd5, CurrentUid, Data) ->
     % ?LOG(Msg),
     Msg2 = jsx:encode(Msg),
     _UidsOnline = lists:filtermap(fun(Uid) ->
-        message_ds:send(Uid, Msg2),
+        message_ds:send(Uid, Msg2)
     end, Uids),
     % 存储消息
     group_msg_ds:write_msg(NowTs, MsgMd5, Msg2, CurrentUid, Uids, ToGID),

@@ -10,5 +10,5 @@
 data(List) ->
     % msg_md5 传递过去，避免APP重新计算消耗CPU
     [
-        [{<<"msg_md5">>, proplists:get_value(<<"msg_md5">>, Msg)} | jsx:decode(proplists:get_value(<<"payload">>, Msg))]
+        [jsx:decode(proplists:get_value(<<"payload">>, Msg), [{return_maps, false}])]
     || Msg <- List].

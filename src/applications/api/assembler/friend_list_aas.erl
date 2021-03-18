@@ -7,8 +7,8 @@
 
 data(User, Friends) ->
     [
-        {<<"mine">>, hashids_tl:encode_id(User)}
-        , {<<"friend">>, [hashids_tl:encode_id(F) || F <-Friends]}
+        {<<"mine">>, hashids_tlt:replace_id(User)}
+        , {<<"friend">>, [hashids_tlt:replace_id(F) || F <-Friends]}
         % {<<"mine">>, User}
         % , {<<"friend">>, Friends}
     ].

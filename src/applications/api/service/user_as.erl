@@ -10,6 +10,7 @@
 
 -include("common.hrl").
 
+-spec do_login(any(), any()) -> {ok, any()} | {error, any()}.
 do_login(InputAccount, Pwd) ->
     Column = <<"`id`,`account`,`password`,`nickname`,`avatar`,`gender`">>,
     Res = case func:is_mobile(InputAccount) of
@@ -18,7 +19,7 @@ do_login(InputAccount, Pwd) ->
         false ->
             user_repo:find_by_account(InputAccount, Column)
     end,
-    ?LOG(Res),
+    % ?LOG(Res),
     {Check, User} = case Res of
         {ok, _FieldList, [[Id, Account, Password, Nickname, Avator, Gender]]} ->
             ?LOG([Pwd, Password]),
@@ -46,12 +47,7 @@ refreshtoken(Token, Refreshtoken) ->
 online(Uid, Pid, ClientSystem) ->
     case user_ds:is_offline(Uid, ClientSystem) of
         {ToPid, _Uid, ClientSystem} ->
-            Msg = [
-                {<<"type">>, <<"ERROR">>},
-                {<<"code">>, 786},
-                {<<"msg">>, unicode:characters_to_binary("在其他地方上线")},
-                {<<"server_ts">>, dt_util:milliseconds()}
-            ],
+            Msg = message_ds:system_msg(786, "在其他地方上线"),
             ?LOG([ToPid, ClientSystem]),
             erlang:start_timer(10, ToPid, jsx:encode(Msg));
         true ->

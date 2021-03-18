@@ -2,12 +2,21 @@
 %%%
 % friend_as 是 friend application service 缩写
 %%%
+-export ([search/1]).
 -export ([move_to_category/3]).
 -export ([information/2]).
 -export ([category_friend/1]).
 -export ([friend_list/1]).
 
 -include("common.hrl").
+
+%%% 查找非好友
+search(Uid) ->
+    % 只能够搜索“用户被允许搜索”的用户
+    %
+    FriendIDs = friend_ids(Uid),
+    Info = FriendIDs,
+    Info.
 
 move_to_category(CurrentUid, Uid, CategoryId) ->
     friend_repo:move_to_category(CurrentUid, Uid, CategoryId),
@@ -77,4 +86,13 @@ replace_remark({Uid, Row}, FriendRemark, Replace) ->
             {Cid, Row2};
         {Uid, {Remark, Cid}} ->
             {Cid, [{<<"remark">>, Remark} | Row]}
+    end.
+
+friend_ids(Uid) ->
+    Column = <<"`to_user_id`">>,
+    case friend_ds:find_by_uid(Uid, Column) of
+        [] ->
+            [];
+        Friends ->
+            [ID || [{<<"to_user_id">>, ID}] <- Friends]
     end.

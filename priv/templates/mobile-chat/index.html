@@ -28,9 +28,9 @@
     var get_noread_url = ''
     var join_group_url = ''
 
-    var token = get_cookie('imboy-token')
+    var token = get_cookie('authorization')
     // var rykey = $('body').data('rykey')
-    var rykey = get_cookie('imboy-token')
+    var rykey = get_cookie('authorization')
     // console.log('rykey ', rykey, ', token ', token)
 
     var ws_scheme = window.location.protocol == 'https:' ? 'wss' : 'ws'
@@ -60,7 +60,7 @@
             url: '/conversation/init',
             data: {},
             headers: {
-                'imboy-token': get_cookie('imboy-token'),
+                'authorization': get_cookie('authorization'),
             },
             async: false,
             success: function(res) {

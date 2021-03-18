@@ -12,8 +12,8 @@ execute(Req, Env) ->
     Need = lists:member(Path, NeedAuth),
     case Need of
         true ->
-            Token = cowboy_req:header(<<"imboy-token">>, Req),
-            case token_ds:decrypt_token(Token) of
+            Authorization = cowboy_req:header(<<"authorization">>, Req),
+            case token_ds:decrypt_token(Authorization) of
                 {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
                     #{handler_opts := HandlerOpts} = Env,
                     Env2 = Env#{handler_opts => [{current_uid, Id}|HandlerOpts]},

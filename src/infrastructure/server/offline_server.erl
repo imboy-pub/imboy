@@ -96,20 +96,14 @@ send_state_msg(_FromId, _State, []) ->
     ok;
 %% 给在线好友发送上线消息
 send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
-    Ts = dt_util:milliseconds(),
-    [send_msg(FromId, ToUid, ToPid, State, Ts) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
+    [send_msg(FromId, ToUid, ToPid, State) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
     send_state_msg(FromId, State, Tail).
 
 %% Internal.
 
-send_msg(From, To, ToPid, State, Ts) ->
-    Msg = [
-        {<<"type">>, <<"user_state">>},
-        {<<"from">>, From},
-        {<<"to">>, To},
-        {<<"status">>, State},
-        {<<"timestamp">>, Ts}
-    ],
-    ?LOG(Msg),
+send_msg(From, To, ToPid, State) ->
+    % 用户在线状态变更
+    Msg = message_ds:system_msg(500, State, From, To),
+    % ?LOG(Msg),
     erlang:start_timer(1, ToPid, jsx:encode(Msg)),
     ok.

@@ -6,4 +6,4 @@
 -export ([data/1]).
 
 data(Members) ->
-    [{<<"list">>, [hashids_tl:encode_id(M) || M <- Members]}].
+    [{<<"list">>, [hashids_tlt:replace_id(M) || M <- Members]}].

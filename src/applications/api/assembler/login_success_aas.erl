@@ -9,7 +9,7 @@ data([Id, Account, Nickname, Avator, Gender]) ->
     [
         {<<"token">>, token_ds:encrypt_token(Id)}
         , {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)}
-        , {<<"uid">>, hashids_tl:uid_encode(Id)}
+        , {<<"uid">>, hashids_tlt:uid_encode(Id)}
         , {<<"account">>, Account}
         , {<<"nickname">>, Nickname}
         , {<<"avator">>, Avator}

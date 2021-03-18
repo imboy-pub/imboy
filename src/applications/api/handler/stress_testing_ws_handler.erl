@@ -75,7 +75,7 @@ websocket_handle({text, Msg}, State) ->
                 {reply, ErrMsg};
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
-                Data = jsx:decode(Msg),
+                Data = jsx:decode(Msg, [{return_maps, false}]),
                 % C2C/SYSTEM/GROUP
                 Type = proplists:get_value(<<"conversation_type">>, Data),
                 % ?LOG(Type),

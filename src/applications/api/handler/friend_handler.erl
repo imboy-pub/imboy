@@ -24,6 +24,16 @@ init(Req0, State) ->
     end,
     {ok, Req1, State}.
 
+
+%%% 查找非好友
+find(Req0, State) ->
+    CurrentUid = proplists:get_value(current_uid, State),
+    Mine = user_ds:find_by_id(CurrentUid),
+    Friends = friend_as:search(CurrentUid),
+    Data = myfriend_aas:data(Mine, Friends),
+    resp_json_dto:success(Req0, Data, "操作成功.").
+
+%%% 我的好友，无好友分组的
 friend_list(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
     Mine = user_ds:find_by_id(CurrentUid),
@@ -33,6 +43,7 @@ friend_list(Req0, State) ->
     % ?LOG(Data),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
+%%% 我的好友，带分组的
 myfriend(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
     Mine = user_ds:find_by_id(CurrentUid),
@@ -43,7 +54,7 @@ myfriend(Req0, State) ->
     % ?LOG(Data),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
-%% 移动好友分组
+%%% 移动好友分组
 move(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
 
@@ -54,8 +65,7 @@ move(Req0, State) ->
     friend_as:move_to_category(CurrentUid, Uid, CategoryId),
     resp_json_dto:success(Req0, [], "操作成功.").
 
-
-%% 好友群资料
+%%% 好友群资料
 information(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
@@ -74,16 +84,8 @@ information(Req0, State) ->
             resp_json_dto:success(Req0, [], "操作成功.")
     end.
 
-find(Req0, State) ->
-    %%
-    CurrentUid = proplists:get_value(current_uid, State),
-    Mine = user_ds:find_by_id(CurrentUid),
-    Friends = friend_as:get_by_uid(CurrentUid),
-    Data = myfriend_aas:data(Mine, Friends),
-    resp_json_dto:success(Req0, Data, "操作成功.").
-
+%%% 修改好友备注
 change_remark(Req0, State) ->
-    %%
     CurrentUid = proplists:get_value(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),

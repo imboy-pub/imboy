@@ -12,24 +12,42 @@ https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
 
 ```
 
-## Handling requests
+## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
-make new t=cowboy.rest n=api/handler/init_handler
-make new t=cowboy.http n=api/handler/passport_handler
-make new t=cowboy.ws n=api/handler/websocket_handler
+make list-templates
+
+make new t=cowboy.http n=applications/api/handler/passport_handler
+make new t=cowboy.ws n=applications/api/handler/websocket_handler
+
+make new t=rest_handler n=applications/api/handler/test_handler
+make new t=as n=applications/api/service/test_as
+make new t=repo n=applications/api/repository/test_repo
+make new t=ass n=applications/api/assembler/test_ass
+
 make new t=cowboy.middleware n=infrastructure/middleware/auth_middleware
-make new t=cowboy.rest n=api/handler/chat_handler
 
 make run
 
-ENV=prod make run
-ENV=test make run
-ENV=dev make run
-ENV=local make run
+// https://github.com/bullno1/reload.mk
+ENV=prod make run RELOADABLE=1
+ENV=test make run RELOADABLE=1
+ENV=dev make run RELOADABLE=1
+ENV=local make run RELOADABLE=1
+
+make new-lib in=imboy_lib
+make new-app in=imboy_admin
+make new-app in=imboy_ws
+make new-app in=imboy_api
+make new-app in=imboy_cli
+
+make new t=gen_server n=infrastructure/server/my_server
+make new t=gen_server n=infrastructure/server/my_server in=imboy
+
+make dialyze
 ```
 
 
-##
+## make
 在一个shelll里面执行
 ```
 make rel
@@ -43,31 +61,33 @@ make help
 erl> help().
     lm()       -- load all modified modules
 
+// 更新 erlang.mk
+make erlang-mk
 ```
 
+## edoc
+link http://erlang.org/doc/apps/edoc/chapter.html#Introduction
+```
+```
 
-## 代码热更新
+## test
+```
+```
+
+## [Dialyzer](https://erlang.mk/guide/dialyzer.html)
+```
+make dialyze
+```
+
+## [代码热更新](https://github.com/bullno1/reload.mk)
+
+其他方法
 
 dep_sync = git https://github.com/rustyio/sync.git master
 
 https://blog.csdn.net/mycwq/article/details/13290757
 
 ```
-sync:go().
-
-%% 第一种热更新方式：
-{Module, Binary, Filename} = code:get_object_code(Module), 
-code:load_binary(Module, Filename, Binary).
-
-%% 第二种热更新方式：
-code:purge(Module), code:load_file(Module).
-
-%% 第三种热更新方式：
-code:soft_purge(Module) andalso code:load_file(Module).
-
-code:soft_purge(address_handler) andalso code:load_file(address_handler).
-code:soft_purge(lbs_handler) andalso code:load_file(lbs_handler).
-code:soft_purge(lbs_util) andalso code:load_file(lbs_util).
 
 ```
 
@@ -76,10 +96,89 @@ code:soft_purge(lbs_util) andalso code:load_file(lbs_util).
 ```
 ENV=prod make rel
 ENV=test make rel
-ENV=dev make rel
+ENV=dev make rel -j8
 ENV=local make rel
 ```
 
+复制代码到特定的目录
+```
+cp ./_rel/imboy/imboy-1.0.1.tar.gz
+// or
+scp ./_rel/imboy/imboy-1.0.1.tar.gz root@192.168.2.207:/usr/local/imboy/
+
+scp ./_rel/imboy/imboy-0.1.1.tar.gz root@192.168.2.207:/usr/local/imboy/
+
+```
+
+到特定主机的目录里面去启动服务
+```
+
+mkdir -p /usr/local/imboy
+
+cp ./_rel/imboy/imboy-1.0.1.tar.gz /usr/local/imboy/
+
+cd /usr/local/imboy
+
+tar -xzf imboy-1.0.1.tar.gz
+
+bin/imboy console
+
+bin/imboy start
+
+bin/imboy restart
+
+bin/imboy stop
+```
+## 更新发布
+link https://erlang.mk/guide/relx.html
+```
+ENV=prod make relup
+```
+
+For the purpose of this section, assume the initial release version was 1, and the new version is 2. The name of the release will be example.
+
+Once all this is done, you can build the tarball for the release upgrade:
+```
+$ make relup
+```
+This will create an archive at the root directory of the release, $RELX_OUTPUT_DIR/example/example-2.tar.gz.
+
+Move the archive to the correct location on the running node. From the release’s root directory:
+```
+$ mkdir releases/2/
+$ mv path/to/example-2.tar.gz releases/2/
+```
+
+Finally, upgrade the release:
+```
+$ bin/example_release upgrade "2/example_release"
+
+scp ./_rel/imboy/imboy-0.1.1.tar.gz root@120.24.63.33:/usr/local/imboy
+
+mv imboy-0.1.1.tar.gz releases/0.1.1/
+bin/imboy upgrade "0.1.1/imboy"
+
+bin/imboy downgrade "0.1.0/imboy"
+
+```
+Your release was upgraded!
+
+## [Updating Erlang.mk](https://erlang.mk/guide/updating.html#_initial_bootstrap)
+```
+make erlang-mk
+```
+
+## imboy.appup
+```
+{"0.2.0",
+    所有版本"0.1.*"升级到版本"0.2.0",重启应用
+   [{"0.1\\.[0-9]+", [{restart_application, imboy_app}
+             ]}],
+    版本"0.2.0"降级到所有版本"0.1.*",重启应用
+   [{"0.1\\.[0-9]+", [{restart_application, imboy_app}
+             ]}]
+}.
+```
 
 # 框架详述
 参考 [【DDD】领域驱动设计实践 —— 框架实现](https://www.cnblogs.com/daoqidelv/p/7499662.html)，有细节调整
@@ -175,8 +274,8 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 * websocket Status 412 - 先决条件失败 缺少token参数
 * api json code 0 成功
 * api json code 1 失败（通用编码）
+* api json code 705 请刷新token
 * api json code 706 token无效 (包含缺失token情况)
-* api json code 707 请刷新token
 * api json code 786 - 在其他平台登录
 
 # erlang 优化
@@ -347,3 +446,17 @@ else
     RELX_CONFIG ?= $(CURDIR)/relx.config
 endif
 ```
+
+面向企业用户
+搭建在企业内容或者公网
+企业内部沟通聊天
+大文件传输功能、在线云拍功能
+企业组织架构管理、权限管理
+企业领域知识问答管理
+
+## Q
+
+消息确认机制 QoS
+https://blog.csdn.net/Jessechanrui/article/details/88399012
+
+socket 数据粘包问题、拆包问题

@@ -1,26 +1,26 @@
--module (hashids_tl).
+-module (hashids_tlt).
 %%%
-% hashids_tl 是 hashids translator 缩写
-% hashids_tl:uid_encode(12345)
-% hashids_tl:uid_decode(<<"bxyxr9">>)
-% hashids_tl:encode_id(list())
+% hashids_tlt 是 hashids translator 缩写
+% hashids_tlt:uid_encode(12345)
+% hashids_tlt:uid_decode(<<"bxyxr9">>)
+% hashids_tlt:replace_id(list())
 %%%
 
 -export ([uid_encode/1]).
 -export ([uid_decode/1]).
--export ([encode_id/1]).
+-export ([replace_id/1]).
 
 -include("hashids.hrl").
 
--spec encode_id(list()) -> list().
-encode_id(Li) ->
+-spec replace_id(list()) -> list().
+replace_id(Li) ->
     Id = proplists:get_value(<<"id">>, Li),
-    [{<<"id">>, hashids_tl:uid_encode(Id)} | proplists:delete(<<"id">>, Li)].
+    [{<<"id">>, hashids_tlt:uid_encode(Id)} | proplists:delete(<<"id">>, Li)].
 
--spec uid_encode(integer()) -> binary().
-uid_encode(Id) when is_binary(Id)  ->
+-spec uid_encode(integer() | binary() | list()) -> binary().
+uid_encode(Id) when is_binary(Id) ->
     uid_encode(binary_to_integer(Id));
-uid_encode(Id) when is_list(Id)  ->
+uid_encode(Id) when is_list(Id) ->
     uid_encode(list_to_integer(Id));
 uid_encode(Id) ->
     Ctx = hashids:new([

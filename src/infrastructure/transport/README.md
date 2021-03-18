@@ -1,1 +1,0 @@
-transport完成和第三方服务的交互，可以有多种协议形式的实现，如http+json、tcp+自定义协议等，配套使用的还有Resolver解析器，用于对第三方服务的请求和响应进行适配，提供一个防腐层（AnticorruptionLayer，DDD原书P255）的作用。

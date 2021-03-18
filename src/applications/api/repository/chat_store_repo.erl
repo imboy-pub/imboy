@@ -102,7 +102,6 @@ dynamic_db_init() ->
     end,
 
     application:start(mnesia),
-
     % 创建表 chat_online_info
     % 确保已经 mnesia:start().
     case lists:member(chat_online_info, mnesia:system_info(tables)) of

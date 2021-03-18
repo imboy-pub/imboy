@@ -5,18 +5,22 @@
 -export ([find_by_uid/1]).
 -export ([chat_state_hide/1]).
 -export ([save_state/2]).
+-export ([search/1]).
 
 -include("common.hrl").
 
+search(_Account) ->
+    ok.
+
 -spec find_by_uid(any()) -> list().
 find_by_uid(Uid) ->
-    Column = <<"`setting`">>,
+    Column = <<"`more`">>,
     case user_setting_repo:find_by_uid(Uid, Column) of
         {ok, _ ,[]} ->
             [];
         {ok, _ ,[[Setting]]} ->
             try
-                jsx:decode(Setting)
+                jsx:decode(Setting, [{return_maps, false}])
             of
                 Res ->
                     Res
