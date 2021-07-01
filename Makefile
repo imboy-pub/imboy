@@ -41,8 +41,8 @@ dep_lager_commit = 3.6.8
 # SHELL_DEPS =
 
 dep_poolboy = git https://github.com/devinus/poolboy 1.5.2
-dep_mysql = git https://github.com/mysql-otp/mysql-otp 1.6.0
-dep_jsx = git https://github.com/talentdeficit/jsx v3.0.0
+dep_mysql = git https://github.com/mysql-otp/mysql-otp 1.7.0
+dep_jsx = git https://github.com/talentdeficit/jsx v3.1.0
 dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
 dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
 

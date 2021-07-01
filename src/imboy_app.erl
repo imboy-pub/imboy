@@ -14,7 +14,7 @@ start(_Type, _Args) ->
     ?LOG(Routes),
     Dispatch = cowboy_router:compile(Routes),
     {ok, Port} = application:get_env(imboy, http_port),
-    {ok, _} = cowboy:start_clear(imboy,
+    {ok, _} = cowboy:start_clear(imboy_http_listener,
         [
             {port, Port}
         ],
@@ -31,4 +31,4 @@ start(_Type, _Args) ->
     imboy_sup:start_link().
 
 stop(_State) ->
-    ok = cowboy:stop_listener(imboy).
+    ok = cowboy:stop_listener(imboy_http_listener).

@@ -18,10 +18,10 @@ init(Req0, State) ->
     {ok, Req1, State}.
 endef
 
-define tpl_as
+define tpl_logic
 -module($(notdir $(n))).
 %%%
-% $(notdir $(n)) 是 $(notdir $(n:_as=)) application service 缩写
+% $(notdir $(n)) 是 $(notdir $(n:_as=)) application logic 缩写
 %%%
 
 %-export ([search/1]).
@@ -37,7 +37,7 @@ define tpl_as
 %% Internal.
 endef
 
-define tpl_repo
+define tpl_repository
 -module ($(notdir $(n))).
 %%%
 % $(notdir $(n)) 是 $(notdir $(n:_repo=)) repository 缩写
@@ -54,10 +54,10 @@ get_by_key(Key) ->
 %% Internal.
 endef
 
-define tpl_ass
+define tpl_transfer
 -module ($(notdir $(n))).
 %%%
-% $(notdir $(n)) 是 $(notdir $(n:_repo=)) application assembler 缩写
+% $(notdir $(n)) 是 $(notdir $(n:_repo=)) application transfer 缩写
 %%%
 
 -export ([data/2]).

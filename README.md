@@ -14,21 +14,23 @@ https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
+mkdir -p src src/api scr/api/v1
+
 make list-templates
+make new t=cowboy.http n=api/v1/handler/passport_handler
+make new t=cowboy.ws n=api/v1/handler/websocket_handler
 
-make new t=cowboy.http n=applications/api/handler/passport_handler
-make new t=cowboy.ws n=applications/api/handler/websocket_handler
+make new t=rest_handler n=api/v1/handler/test_handler
+make new t=logic n=api/v1/logic/test_logic
+make new t=repository n=api/v1/repository/test_repository
+make new t=transfer n=api/v1/transfer/test_transfer
 
-make new t=rest_handler n=applications/api/handler/test_handler
-make new t=as n=applications/api/service/test_as
-make new t=repo n=applications/api/repository/test_repo
-make new t=ass n=applications/api/assembler/test_ass
-
-make new t=cowboy.middleware n=infrastructure/middleware/auth_middleware
+make new t=cowboy.middleware n=common/middleware/auth_middleware
 
 make run
 
 // https://github.com/bullno1/reload.mk
+// 更新代码之后 需要执行命令 make reload
 ENV=prod make run RELOADABLE=1
 ENV=test make run RELOADABLE=1
 ENV=dev make run RELOADABLE=1
