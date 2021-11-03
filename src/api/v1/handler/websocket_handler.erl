@@ -93,16 +93,15 @@ websocket_handle({text, Msg}, State) ->
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
                 Data = jsx:decode(Msg, [{return_maps, false}]),
-                MsgMd5 = message_ds:msg_md5(Data),
+                Id = proplists:get_value(<<"id">>, Data),
                 Type = proplists:get_value(<<"type">>, Data),
-                ?LOG([MsgMd5, Type]),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
-                        websocket_logic:dialog(MsgMd5, CurrentUid, Data);
+                        websocket_logic:dialog(Id, CurrentUid, Data);
                     <<"GROUP">> ->
-                        websocket_logic:group_dialog(MsgMd5, CurrentUid, Data);
+                        websocket_logic:group_dialog(Id, CurrentUid, Data);
                     <<"SYSTEM">> ->
-                        websocket_logic:system(MsgMd5, CurrentUid, Data)
+                        websocket_logic:system(Id, CurrentUid, Data)
                 end
         end
     of

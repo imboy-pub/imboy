@@ -11,7 +11,7 @@ check_subprotocols(Req0, State1) ->
         num_acceptors => infinity,
         max_connections => infinity,
         max_frame_size => 1048576, % 1MB
-        idle_timeout => 60000 %  % Cowboy关闭连接空闲60秒 默认值为 60000
+        idle_timeout => 120000 %  % Cowboy关闭连接空闲120秒 默认值为 60000
     },
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0) of
         undefined ->

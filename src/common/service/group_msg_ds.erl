@@ -11,8 +11,8 @@
 -spec write_msg(integer(), binary(), binary(), integer(), integer(), integer()) -> any().
 
 %% 存储消息
-write_msg(CreatedAt, MsgMd5, Payload, FromId, ToIds, Gid) ->
-    group_msg_repo:write_msg(CreatedAt, MsgMd5, Payload, FromId, ToIds, Gid).
+write_msg(CreatedAt, Id, Payload, FromId, ToIds, Gid) ->
+    group_msg_repo:write_msg(CreatedAt, Id, Payload, FromId, ToIds, Gid).
 
 %% 读取离线消息
 read_msg(ToUid, Limit) ->

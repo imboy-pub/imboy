@@ -390,7 +390,16 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             if (from) {
                                 Object.assign(data, from)
                             }
-                            data.content = data.payload.content
+                            if (!data.content && data.payload.content) {
+                                data.content = data.payload.content
+                            }
+                            if (data.payload.msg_type == 'text' && data.payload.text) {
+                                data.content = data.payload.text
+                            // } elseif (data.payload.msg_type == 'file') {
+                            //     data.content = 'file'
+                            } else {
+                            }
+
                             data.timestamp = data.payload.server_ts
                             console.log('data ', data)
                             conf.layim.getMessage(data)
@@ -689,17 +698,19 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             // }
             var message = {};
             if (!res.from) {
+                var created_at = res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf();
                 var payload = {
-                    'msg_type': 10,
-                    'content': res.mine.content,
-                    'send_ts': res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf(),
+                    'msg_type': "text",
+                    'text': res.mine.content,
                 }
                 res.to.type = res.to.type == 'friend' ? 'C2C' : res.to.type
                 message = {
+                    'id': uuidv4(),
                     'type': res.to.type,
                     'from': res.mine.id,
                     'to': res.to.id,
                     'payload': payload,
+                    'created_at': created_at,
                 }
             } else {
                 message = res

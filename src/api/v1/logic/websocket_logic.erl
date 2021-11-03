@@ -13,25 +13,26 @@
 -spec group_dialog(binary(), integer(), Data::list()) -> ok | {reply, Msg::list()}.
 
 %% 单聊发送消息
-dialog(MsgMd5, CurrentUid, Data) ->
+dialog(Id, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = hashids_translator:uid_decode(To),
     % CurrentUid = hashids_translator:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
-            Payload = proplists:get_value(<<"payload">>, Data),
             NowTs = dt_util:milliseconds(),
             Msg = [
+                {<<"id">>, Id},
                 {<<"type">>,<<"C2C">>},
                 {<<"from">>, hashids_translator:uid_encode(CurrentUid)},
                 {<<"to">>, To},
-                {<<"payload">>, Payload},
+                {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
+                {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
                 {<<"server_ts">>, NowTs}
             ],
             Msg2 = jsx:encode(Msg),
             % 存储消息
-            dialog_msg_ds:write_msg(NowTs, MsgMd5, Msg2, CurrentUid, ToId),
+            dialog_msg_ds:write_msg(NowTs, Id, Msg2, CurrentUid, ToId),
             message_ds:send(ToId, Msg2),
             ok;
         false ->
@@ -45,7 +46,7 @@ dialog(MsgMd5, CurrentUid, Data) ->
     end.
 
 %% 群聊发送消息
-group_dialog(MsgMd5, CurrentUid, Data) ->
+group_dialog(Id, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
     ToGID = hashids_translator:uid_decode(Gid),
     % TODO check is group member
@@ -53,13 +54,14 @@ group_dialog(MsgMd5, CurrentUid, Data) ->
     {ok, _ColumnLi, Members} = group_member_repo:find_by_group_id(ToGID, Column),
     Uids = [Uid || [Uid] <- Members, Uid /= CurrentUid],
     % Uids.
-    Payload = proplists:get_value(<<"payload">>, Data),
     NowTs = dt_util:milliseconds(),
     Msg = [
+        {<<"id">>, Id},
         {<<"type">>,<<"GROUP">>},
         {<<"from">>, hashids_translator:uid_encode(CurrentUid)},
         {<<"to">>, Gid},
-        {<<"payload">>, Payload},
+        {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
+        {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
@@ -68,9 +70,9 @@ group_dialog(MsgMd5, CurrentUid, Data) ->
         message_ds:send(Uid, Msg2)
     end, Uids),
     % 存储消息
-    group_msg_ds:write_msg(NowTs, MsgMd5, Msg2, CurrentUid, Uids, ToGID),
+    group_msg_ds:write_msg(NowTs, Id, Msg2, CurrentUid, Uids, ToGID),
     ok.
 
 %% 系统消息
-system(_MsgMd5, _CurrentUid, _Data) ->
+system(_Id, _CurrentUid, _Data) ->
     ok.

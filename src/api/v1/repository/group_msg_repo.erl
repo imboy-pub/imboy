@@ -9,19 +9,19 @@
 -include("chat.hrl").
 -include("common.hrl").
 
-write_msg(CreatedAt, MsgMd5, Payload, FromId, ToUids, Gid) when is_integer(FromId) ->
+write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) when is_integer(FromId) ->
     FromId2 = list_to_binary(integer_to_list(FromId)),
-    write_msg(CreatedAt, MsgMd5, Payload, FromId2, ToUids, Gid);
-write_msg(CreatedAt, MsgMd5, Payload, FromId, ToUids, Gid) when is_integer(Gid) ->
+    write_msg(CreatedAt, Id, Payload, FromId2, ToUids, Gid);
+write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) when is_integer(Gid) ->
     Gid2 = list_to_binary(integer_to_list(Gid)),
-    write_msg(CreatedAt, MsgMd5, Payload, FromId, ToUids, Gid2);
+    write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid2);
 % 批量插入群离线消息表 及 时间线表
-write_msg(CreatedAt, MsgMd5, Payload, FromId, ToUids, Gid) ->
+write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
     % ?LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
     poolboy:transaction(mysql, fun(ConnectPid) ->
         CreatedAt2 = integer_to_binary(CreatedAt),
         % ?LOG(CreatedAt2),
-        Column = <<"(`payload`,`to_groupid`,`from_id`,`created_at`,`msg_md5`)">>,
+        Column = <<"(`payload`,`to_groupid`,`from_id`,`created_at`,`msg_id`)">>,
         Sql = <<"REPLACE INTO `group_msg` ",
             Column/binary,
             " VALUES('",
@@ -29,7 +29,7 @@ write_msg(CreatedAt, MsgMd5, Payload, FromId, ToUids, Gid) ->
             Gid/binary, "', '",
             FromId/binary, "', '",
             CreatedAt2/binary, "', '",
-            MsgMd5/binary, "');">>,
+            Id/binary, "');">>,
         % ?LOG(Sql),
         mysql:query(ConnectPid, Sql),
         MsgId = mysql:insert_id(ConnectPid),
@@ -91,9 +91,9 @@ find_by_ids(Ids, Column) ->
 delete_msg(Id) when is_integer(Id) ->
     Where = <<"WHERE `id` = ?">>,
     delete_msg(Where, Id);
-delete_msg(MsgMd5) ->
-    Where = <<"WHERE `msg_md5` = ?">>,
-    delete_msg(Where, MsgMd5).
+delete_msg(Id) ->
+    Where = <<"WHERE `msg_id` = ?">>,
+    delete_msg(Where, Id).
 delete_msg(Where, Val) ->
     Sql = <<"DELETE FROM `group_msg` ",
         Where/binary>>,

@@ -102,7 +102,6 @@ change_sign(Uid, Sign) ->
 check_avatar([]) ->
     [];
 check_avatar(User) ->
-    % Default = <<"/static/image/user_default_avatar.jpeg">>,
     Default = <<"assets/images/def_avatar.png">>,
     case lists:keyfind(<<"avatar">>, 1, User) of
         {<<"avatar">>, <<>>} ->

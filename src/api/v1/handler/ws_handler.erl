@@ -74,8 +74,11 @@ websocket_handle({text, <<"ping">>}, State) ->
         {error, _Code} ->
             {stop, State};
         false ->
-            {reply, {text, <<"pong">>}, State, hibernate}
+            {reply, {text, <<"pong2">>}, State, hibernate}
     end;
+websocket_handle({text, <<"logout">>}, State) ->
+    ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
+    {stop, State};
 websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
     % ?LOG(State),
@@ -91,16 +94,16 @@ websocket_handle({text, Msg}, State) ->
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
                 Data = jsx:decode(Msg, [{return_maps, false}]),
-                MsgMd5 = message_ds:msg_md5(Data),
+                Id = proplists:get_value(<<"id">>, Data),
                 Type = proplists:get_value(<<"type">>, Data),
-                ?LOG([MsgMd5, Type]),
+                ?LOG([Id, Type]),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
-                        websocket_logic:dialog(MsgMd5, CurrentUid, Data);
+                        websocket_logic:dialog(Id, CurrentUid, Data);
                     <<"GROUP">> ->
-                        websocket_logic:group_dialog(MsgMd5, CurrentUid, Data);
+                        websocket_logic:group_dialog(Id, CurrentUid, Data);
                     <<"SYSTEM">> ->
-                        websocket_logic:system(MsgMd5, CurrentUid, Data)
+                        websocket_logic:system(Id, CurrentUid, Data)
                 end
         end
     of
@@ -124,7 +127,7 @@ websocket_handle(_Frame, State) ->
 
 %% 处理erlang 发送的消息
 websocket_info({timeout, _Ref, Msg}, State) ->
-    % ?LOG(Msg),
+    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};
 websocket_info(stop, State) ->
     ?LOG([stop, State]),
@@ -136,7 +139,7 @@ websocket_info(_Info, State) ->
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(Reason, _Req, State) ->
-    ?LOG([terminate, State, Reason]),
+    ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case lists:keyfind(current_uid, 1, State) of
         {current_uid, Uid} ->
             user_logic:offline(Uid, self());
