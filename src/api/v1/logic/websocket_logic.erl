@@ -21,10 +21,11 @@ dialog(Id, CurrentUid, Data) ->
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
             NowTs = dt_util:milliseconds(),
+            From = hashids_translator:uid_encode(CurrentUid),
             Msg = [
                 {<<"id">>, Id},
                 {<<"type">>,<<"C2C">>},
-                {<<"from">>, hashids_translator:uid_encode(CurrentUid)},
+                {<<"from">>, From},
                 {<<"to">>, To},
                 {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
                 {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
@@ -34,6 +35,11 @@ dialog(Id, CurrentUid, Data) ->
             % 存储消息
             dialog_msg_ds:write_msg(NowTs, Id, Msg2, CurrentUid, ToId),
             message_ds:send(ToId, Msg2),
+            erlang:start_timer(1, self(), jsx:encode([
+                {<<"id">>, Id},
+                {<<"type">>,<<"S_RECEIVED">>},
+                {<<"server_ts">>, NowTs}
+            ])),
             ok;
         false ->
             Msg = [
