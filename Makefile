@@ -40,12 +40,22 @@ dep_lager_commit = 3.6.8
 # 用户执行make shell命令的时候会用到的依赖
 # SHELL_DEPS =
 
-dep_poolboy = git https://github.com/devinus/poolboy 1.5.2
-dep_mysql = git https://github.com/mysql-otp/mysql-otp 1.7.0
-dep_jsx = git https://github.com/talentdeficit/jsx v3.1.0
-dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
-dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
-dep_eid = git https://github.com/jur0/eid.git master
+# dep_poolboy = git https://github.com/devinus/poolboy 1.5.2
+# dep_mysql = git https://github.com/mysql-otp/mysql-otp 1.7.0
+# dep_jsx = git https://github.com/talentdeficit/jsx v3.1.0
+# dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
+# dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
+# dep_eid = git https://github.com/jur0/eid master
+
+dep_cowboy = git https://gitee.com/imboy-pub/cowboy 2.9.0
+dep_poolboy = git https://gitee.com/imboy-pub/poolboy 1.5.2
+dep_mysql = git https://gitee.com/imboy-pub/mysql-otp 1.7.0
+dep_jsx = git https://gitee.com/imboy-pub/jsx v3.1.0
+dep_hashids = git https://gitee.com/imboy-pub/hashids-erlang 1.0.5
+dep_jwerl = git https://gitee.com/imboy-pub/jwerl 1.1.0
+dep_eid = git https://gitee.com/imboy-pub/eid master
+dep_reload.mk = git https://gitee.com/imboy-pub/reload.mk master
+
 
 SP = 4
 DEP_PLUGINS = cowboy reload_mk
