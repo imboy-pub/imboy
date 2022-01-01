@@ -5,7 +5,7 @@ PROJECT_VERSION = 0.1.0
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = lager poolboy mysql jsx cowboy jwerl hashids
+DEPS = lager poolboy mysql jsx cowboy jwerl hashids eid
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 # BUILD_DEPS
 BUILD_DEPS = reload_mk
@@ -45,6 +45,7 @@ dep_mysql = git https://github.com/mysql-otp/mysql-otp 1.7.0
 dep_jsx = git https://github.com/talentdeficit/jsx v3.1.0
 dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
 dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
+dep_eid = git https://github.com/jur0/eid.git master
 
 SP = 4
 DEP_PLUGINS = cowboy reload_mk

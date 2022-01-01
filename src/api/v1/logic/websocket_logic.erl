@@ -5,6 +5,7 @@
 % -export ([subprotocol/1]).
 -export ([dialog/3]).
 -export ([group_dialog/3]).
+-export ([revoke_msg/3]).
 -export ([system/3]).
 
 -include("common.hrl").
@@ -77,6 +78,26 @@ group_dialog(Id, CurrentUid, Data) ->
     end, Uids),
     % 存储消息
     group_msg_ds:write_msg(NowTs, Id, Msg2, CurrentUid, Uids, ToGID),
+    ok.
+
+%% 客户端撤回消息
+revoke_msg(Id, CurrentUid, Data) ->
+    To = proplists:get_value(<<"to">>, Data),
+    ToId = hashids_translator:uid_decode(To),
+    % CurrentUid = hashids_translator:uid_decode(From),
+    ?LOG([CurrentUid, ToId, Data]),
+
+    NowTs = dt_util:milliseconds(),
+    From = hashids_translator:uid_encode(CurrentUid),
+    Msg = [
+        {<<"id">>, Id},
+        {<<"type">>,<<"REVOKE_MSG">>},
+        {<<"from">>, From},
+        {<<"to">>, To},
+        {<<"server_ts">>, NowTs}
+    ],
+    Msg2 = jsx:encode(Msg),
+    message_ds:send(ToId, Msg2),
     ok.
 
 %% 系统消息

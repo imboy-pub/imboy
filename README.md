@@ -31,6 +31,7 @@ make run
 
 // https://github.com/bullno1/reload.mk
 // 更新代码之后 需要执行命令 make reload
+// 为避免必须一直输入make reload，请使用make auto-reload
 ENV=prod make run RELOADABLE=1
 ENV=test make run RELOADABLE=1
 ENV=dev make run RELOADABLE=1

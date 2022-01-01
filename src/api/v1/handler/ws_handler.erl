@@ -98,12 +98,12 @@ websocket_handle({text, Msg}, State) ->
                 Type = proplists:get_value(<<"type">>, Data),
                 ?LOG([Id, Type]),
                 case cowboy_bstr:to_upper(Type) of
-                    <<"C2C">> ->
+                    <<"C2C">> -> % 单聊消息
                         websocket_logic:dialog(Id, CurrentUid, Data);
-                    <<"GROUP">> ->
+                    <<"GROUP">> -> % 群聊消息
                         websocket_logic:group_dialog(Id, CurrentUid, Data);
-                    <<"SYSTEM">> ->
-                        websocket_logic:system(Id, CurrentUid, Data)
+                    <<"REVOKE_MSG">> -> % 客户端撤回消息
+                        websocket_logic:revoke_msg(Id, CurrentUid, Data)
                 end
         end
     of
