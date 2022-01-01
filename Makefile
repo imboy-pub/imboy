@@ -20,20 +20,20 @@ EDOC_OPTS = {doclet, edown_doclet}
 # Compile flags
 ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}'
 
-ifeq ($(ENV),prod)
+ifeq ($(IMBOYENV),prod)
 	RELX_CONFIG = $(CURDIR)/relx.prod.config
-else ifeq ($(ENV),test)
+else ifeq ($(IMBOYENV),test)
 	RELX_CONFIG = $(CURDIR)/relx.test.config
-else ifeq ($(ENV),dev)
+else ifeq ($(IMBOYENV),dev)
 	RELX_CONFIG = $(CURDIR)/relx.dev.config
-else ifeq ($(ENV),local)
+else ifeq ($(IMBOYENV),local)
 	RELX_CONFIG = $(CURDIR)/relx.local.config
 	ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform, debug_info}'
 else
 	RELX_CONFIG = $(CURDIR)/relx.config
 endif
 dep_cowboy_commit = 2.9.0
-dep_lager_commit = 3.6.8
+dep_lager_commit = 3.9.2
 
 # 生成文档的时候会被用到的依赖项
 # DOC_DEPS =
@@ -55,6 +55,9 @@ dep_hashids = git https://gitee.com/imboy-pub/hashids-erlang 1.0.5
 dep_jwerl = git https://gitee.com/imboy-pub/jwerl 1.1.0
 dep_eid = git https://gitee.com/imboy-pub/eid master
 dep_reload.mk = git https://gitee.com/imboy-pub/reload.mk master
+dep_lager = git https://gitee.com/imboy-pub/lager 3.9.2
+dep_elvis_mk = git https://gitee.com/imboy-pub/elvis_mk 1.0.0
+dep_goldrush = git https://gitee.com/imboy-pub/goldrush 0.1.9
 
 
 SP = 4

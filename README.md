@@ -32,10 +32,14 @@ make run
 // https://github.com/bullno1/reload.mk
 // 更新代码之后 需要执行命令 make reload
 // 为避免必须一直输入make reload，请使用make auto-reload
-ENV=prod make run RELOADABLE=1
-ENV=test make run RELOADABLE=1
-ENV=dev make run RELOADABLE=1
-ENV=local make run RELOADABLE=1
+// on Mac
+IMBOYENV=prod make run RELOADABLE=1
+IMBOYENV=test make run RELOADABLE=1
+IMBOYENV=dev make run RELOADABLE=1
+IMBOYENV=local make run RELOADABLE=1
+
+// on CentOS8
+export IMBOYENV='local' && make run RELOADABLE=1
 
 make new-lib in=imboy_lib
 make new-app in=imboy_admin
@@ -97,10 +101,10 @@ https://blog.csdn.net/mycwq/article/details/13290757
 
 # 发布
 ```
-ENV=prod make rel
-ENV=test make rel
-ENV=dev make rel -j8
-ENV=local make rel
+IMBOYENV=prod make rel
+IMBOYENV=test make rel
+IMBOYENV=dev make rel -j8
+IMBOYENV=local make rel
 ```
 
 复制代码到特定的目录
@@ -135,7 +139,7 @@ bin/imboy stop
 ## 更新发布
 link https://erlang.mk/guide/relx.html
 ```
-ENV=prod make relup
+IMBOYENV=prod make relup
 ```
 
 For the purpose of this section, assume the initial release version was 1, and the new version is 2. The name of the release will be example.
