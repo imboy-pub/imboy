@@ -96,14 +96,18 @@ websocket_handle({text, Msg}, State) ->
                 Data = jsx:decode(Msg, [{return_maps, false}]),
                 Id = proplists:get_value(<<"id">>, Data),
                 Type = proplists:get_value(<<"type">>, Data),
-                ?LOG([Id, Type]),
+                ?LOG([Id, Type, Data]),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> -> % 单聊消息
-                        websocket_logic:dialog(Id, CurrentUid, Data);
+                        websocket_logic:c2c(Id, CurrentUid, Data);
+                    <<"C2C_CLIENT_ACK">> -> % 客户端确认投递消息
+                        websocket_logic:c2c_client_ack(Id, CurrentUid);
+                    <<"C2C_REVOKE">> -> % 客户端撤回消息
+                        websocket_logic:c2c_revoke(Id, Data, Type);
+                    <<"C2C_REVOKE_ACK">> -> % 客户端撤回消息ACK
+                        websocket_logic:c2c_revoke(Id, Data, Type);
                     <<"GROUP">> -> % 群聊消息
-                        websocket_logic:group_dialog(Id, CurrentUid, Data);
-                    <<"REVOKE_MSG">> -> % 客户端撤回消息
-                        websocket_logic:revoke_msg(Id, CurrentUid, Data)
+                        websocket_logic:group_dialog(Id, CurrentUid, Data)
                 end
         end
     of

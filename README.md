@@ -41,6 +41,8 @@ IMBOYENV=local make run RELOADABLE=1
 // on CentOS8
 export IMBOYENV='local' && make run RELOADABLE=1
 
+observer_cli:start().
+
 make new-lib in=imboy_lib
 make new-app in=imboy_admin
 make new-app in=imboy_ws

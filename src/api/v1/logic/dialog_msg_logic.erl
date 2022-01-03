@@ -19,7 +19,21 @@ check_msg(Uid, Pid) ->
 sent_offline_msg(_Pid, [], _Index) ->
     ok;
 sent_offline_msg(Pid, [Row|Tail], Index) ->
-    {<<"payload">>, Msg} = lists:keyfind(<<"payload">>, 1, Row),
+    {<<"msg_id">>, MsgId} = lists:keyfind(<<"msg_id">>, 1, Row),
+    {<<"from_id">>, FromId} = lists:keyfind(<<"from_id">>, 1, Row),
+    {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
+    {<<"payload">>, Payload} = lists:keyfind(<<"payload">>, 1, Row),
+    % ?LOG(["Row", Row, "; Payload: ", Payload]),
     Delay = 100 + Index * 100,
-    erlang:start_timer(Delay, Pid, Msg),
+    Msg = [
+        {<<"id">>, MsgId},
+        {<<"type">>,<<"C2C">>},
+        {<<"from">>, hashids_translator:uid_encode(FromId)},
+        {<<"to">>, hashids_translator:uid_encode(ToId)},
+        {<<"payload">>, jsx:decode(Payload)},
+        lists:keyfind(<<"created_at">>, 1, Row),
+        lists:keyfind(<<"server_ts">>, 1, Row)
+    ],
+    % ?LOG([Delay, "Msg: ", Msg]),
+    erlang:start_timer(Delay, Pid, jsx:encode(Msg)),
     sent_offline_msg(Pid, Tail, Index + 1).

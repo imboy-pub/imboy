@@ -3,7 +3,7 @@
 % dialog_msg_repo 是 dialog_msg repository 缩写
 %%%
 -export ([read_msg/4]).
--export ([write_msg/5]).
+-export ([write_msg/6]).
 -export ([delete_msg/1]).
 -export ([count_by_to_id/1]).
 -export ([delete_overflow_msg/2]).
@@ -19,21 +19,24 @@ read_msg(Where, Vals, Column, Limit) ->
     % ?LOG(Sql),
     mysql_pool:query(Sql, Vals ++ [Limit]).
 
-write_msg(CreatedAt, Id, Payload, FromId, ToId) when is_integer(FromId) ->
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(FromId) ->
     FromId2 = list_to_binary(integer_to_list(FromId)),
-    write_msg(CreatedAt, Id, Payload, FromId2, ToId);
-write_msg(CreatedAt, Id, Payload, FromId, ToId) when is_integer(ToId) ->
+    write_msg(CreatedAt, Id, Payload, FromId2, ToId, ServerTS);
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(ToId) ->
     ToId2 = list_to_binary(integer_to_list(ToId)),
-    write_msg(CreatedAt, Id, Payload, FromId, ToId2);
-write_msg(CreatedAt, Id, Payload, FromId, ToId) ->
+    write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
+    ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
     Table = <<"`dialog_msg`">>,
-    Column = <<"(`payload`, `from_id`, `to_id`, `created_at`, `msg_id`)">>,
+    Column = <<"(`payload`, `from_id`, `to_id`, `created_at`, `server_ts`, `msg_id`)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
+    ServerTS2 = integer_to_binary(ServerTS),
     Value = <<"('",
         Payload/binary, "', '",
         FromId/binary, "', '",
         ToId/binary, "', '",
         CreatedAt2/binary, "', '",
+        ServerTS2/binary, "', '",
         Id/binary, "')">>,
     mysql_pool:replace_into(Table, Column, Value).
 

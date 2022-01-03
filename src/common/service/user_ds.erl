@@ -2,6 +2,7 @@
 %%%
 % user_ds 是 user domain service 缩写
 %%%
+-export ([is_offline/1]).
 -export ([is_offline/2]).
 -export ([online_state/1]).
 -export ([mine_state/1]).
@@ -12,6 +13,21 @@
 -export ([change_sign/2]).
 
 -include("common.hrl").
+
+-spec is_offline(binary()) -> true | {pid(), binary(), any()}.
+%% 检查用户是否在线
+is_offline(Uid) when is_integer(Uid)  ->
+    is_offline(integer_to_binary(Uid));
+is_offline(Uid) when is_list(Uid)  ->
+    is_offline(list_to_binary(Uid));
+is_offline(Uid) ->
+    L1 = chat_store_repo:lookup(Uid),
+    case lists:keyfind(Uid, 3, L1) of
+        {_, Pid, Uid, Type} ->
+            {Pid, Uid, Type};
+        false ->
+            true
+    end.
 
 -spec is_offline(binary(), binary()) -> true | {pid(), binary(), any()}.
 %% 检查用户是否在线
