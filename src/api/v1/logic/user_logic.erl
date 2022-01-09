@@ -44,16 +44,19 @@ refreshtoken(Token, Refreshtoken) ->
     [Token, Refreshtoken].
 
 -spec online(any(), pid(), any()) -> ok.
-online(Uid, Pid, ClientSystem) ->
-    case user_ds:is_offline(Uid, ClientSystem) of
-        {ToPid, _Uid, ClientSystem} ->
-            Msg = message_ds:system_msg(786, "在其他地方上线"),
-            ?LOG([ToPid, ClientSystem]),
+online(Uid, Pid, DeviceType) ->
+    ?LOG(["user_logic/online/3", Uid, Pid, DeviceType]),
+    case user_ds:is_offline(Uid, DeviceType) of
+        {ToPid, _Uid, DeviceType} ->
+            Msg = message_ds:system_msg(786, "Already logged in on another device"),
+            ?LOG([ToPid, DeviceType]),
             erlang:start_timer(10, ToPid, jsx:encode(Msg));
         true ->
+            ?LOG(["user_ds:is_offline/2", true, Uid, DeviceType]),
             ok
     end,
-    user_ds:online(Uid, Pid, ClientSystem),
+    % 把Uid标记为online
+    user_ds:online(Uid, Pid, DeviceType),
     % 检查消息 用异步队列实现
     gen_server:cast(offline_server, {online, Uid, Pid}),
     ok.

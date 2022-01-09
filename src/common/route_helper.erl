@@ -18,7 +18,7 @@ get_routes() ->
             % 专门为浏览器提供的websocket API
             , {"/websocket", websocket_handler, []}
             % 专门为APP提供的websocket API
-            , {"/ws", ws_handler, []}
+            , {"/ws", websocket_handler, []}
 
             , {"/conversation/online", conversation_handler, [{action, online}]}
             , {"/conversation/mine", conversation_handler, [{action, mine}]}

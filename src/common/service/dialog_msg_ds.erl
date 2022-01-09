@@ -48,7 +48,7 @@ delete_msg(Id) ->
 revoke_offline_msg(NowTs, Id, FromId, ToId) ->
     Payload = jsx:encode([
         {<<"msg_type">>, <<"custom">>},
-        {<<"c2c_revoke">>, <<"revoked">>}
+        {<<"custom_type">>, <<"revoked">>}
     ]),
     % 存储消息
     dialog_msg_ds:write_msg(NowTs, Id, Payload, FromId, ToId, NowTs),

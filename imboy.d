@@ -10,7 +10,6 @@ src/api/v1/handler/passport_handler.erl:: include/common.hrl; @touch $@
 src/api/v1/handler/stress_testing_ws_handler.erl:: include/common.hrl; @touch $@
 src/api/v1/handler/user_handler.erl:: include/common.hrl; @touch $@
 src/api/v1/handler/websocket_handler.erl:: include/common.hrl; @touch $@
-src/api/v1/handler/ws_handler.erl:: include/common.hrl; @touch $@
 src/api/v1/logic/dialog_msg_logic.erl:: include/chat.hrl include/common.hrl; @touch $@
 src/api/v1/logic/friend_category_logic.erl:: include/common.hrl; @touch $@
 src/api/v1/logic/friend_logic.erl:: include/common.hrl; @touch $@

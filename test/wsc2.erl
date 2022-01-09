@@ -90,7 +90,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_call(stop, _From, State) ->
-    {stop, normal, stopped, State, hibernate};
+    {stop, normal, stopped, State};
 handle_call(Msg, From, State) ->
     ?LOG([Msg, From, State]),
     {reply, ok, State}.

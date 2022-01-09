@@ -23,6 +23,7 @@
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
+    ?LOG(["offline_server/start_link/0", ?MODULE]),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec stop() -> stopped.
@@ -35,19 +36,23 @@ stop() ->
 init([]) ->
     {ok, []}.
 
-handle_call(_Request, _From, State) ->
-    {reply, ignored, State}.
+handle_call(stop, _From, State) ->
+    {stop, normal, stopped, State};
+handle_call(Request, From, State) ->
+    ?LOG([handle_call, Request, From, State]),
+    {noreply, State}.
 
 % 异步处理请求
 handle_cast({notice_friend, Uid, ToState}, State) ->
-    % ?LOG([Uid, ToState]),
+    ?LOG([notice_friend, Uid, ToState]),
     notice_friend(Uid, ToState),
     {noreply, State, hibernate};
 handle_cast({offline, Uid, _Pid}, State) ->
+    ?LOG([offline, Uid, State]),
     notice_friend(Uid, offline),
     {noreply, State, hibernate};
 handle_cast({online, Uid, Pid}, State) ->
-    % ?LOG([Uid, Pid, State]),
+    ?LOG([online, Uid, Pid, State]),
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(Uid) of
         false ->
@@ -57,26 +62,29 @@ handle_cast({online, Uid, Pid}, State) ->
         true ->
             ok
     end,
-
+    ?LOG(["before check_msg/2",Uid, Pid, State]),
     % 检查离线消息
     dialog_msg_logic:check_msg(Uid, Pid),
     % 检查群聊离线消息
     group_msg_logic:check_msg(Uid, Pid),
     {noreply, State, hibernate};
-handle_cast(_Msg, State) ->
-    % ?LOG([Msg, State]),
+handle_cast(Msg, State) ->
+    ?LOG(["other msg", Msg, State]),
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    ?LOG([handle_info, Info, State]),
     {noreply, State}.
 
 -spec terminate(_, _) -> ok.
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
+    ?LOG([terminate, Reason, State]),
     ok.
+% terminate(_Reason, _State) ->
+%     ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
 
 %% Internal.
 
@@ -87,23 +95,26 @@ notice_friend(Uid, State) ->
         [] ->
             ok;
         Friends ->
+            % ?LOG([State, Friends]),
             send_state_msg(Uid, State, Friends),
             ok
     end.
 
 -spec send_state_msg(any(), user_chat_state(), list()) -> ok.
-send_state_msg(_FromId, _State, []) ->
-    ok;
-%% 给在线好友发送上线消息
+send_state_msg(_FromId, _State, []) -> ok;
+% 给在线好友发送上线消息
 send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
-    [send_msg(FromId, ToUid, ToPid, State) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
+    case chat_store_repo:lookup(ToUid) of
+        [] ->
+            ok;
+        List ->
+            [send_msg(FromId, ToUid2, ToPid2, State) || {_, ToPid2, ToUid2, _Type} <- List]
+    end,
     send_state_msg(FromId, State, Tail).
 
-%% Internal.
-
-send_msg(From, To, ToPid, State) ->
+send_msg(From, To, ToPid, _State) ->
+    ?LOG([From, To, ToPid]),
     % 用户在线状态变更
-    Msg = message_ds:system_msg(500, State, From, To),
-    % ?LOG(Msg),
+    Msg = message_ds:system_msg(<<"1019">>, <<"">>, From, To),
     erlang:start_timer(1, ToPid, jsx:encode(Msg)),
     ok.

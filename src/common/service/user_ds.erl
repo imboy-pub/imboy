@@ -44,6 +44,7 @@ is_offline(Uid, ClientSystem) ->
             true
     end.
 
+%% 把Uid标记为online
 -spec online(binary(), pid(), any()) -> ok.
 online(Uid, Pid, Type) ->
     %%插入数据

@@ -20,12 +20,12 @@ send(ToUid, Msg2) ->
 %%% 系统消息 [500 -- 1000) 系统消息
 
 system_msg(786, Content) -> % 在其他地方上线
-    system_msg(786, Content, "", "");
+    system_msg(786, Content, <<"">>, <<"">>);
 system_msg(MsgType, Content) ->
-    system_msg(MsgType, Content, "", "").
+    system_msg(MsgType, Content, <<"">>, <<"">>).
 
-system_msg(500, State, From, To) -> % 用户在线状态变更
-    system_msg(500, State, From, To);
+system_msg(1019, Content, From, To) -> % 用户在线状态变更
+    system_msg(1019, Content, From, To);
 system_msg(MsgType, Content, From, To) ->
     Payload = [
         {<<"msg_type">>, MsgType},
@@ -35,6 +35,10 @@ system_msg(MsgType, Content, From, To) ->
     msg(<<"SYSTEM">>, From, To, Payload, Ts).
 %%% 系统消息 end
 
+msg(Type, From, To, Payload, Ts) when is_integer(From) ->
+    msg(Type, hashids_translator:uid_encode(From), To, Payload, Ts);
+msg(Type, From, To, Payload, Ts) when is_integer(To) ->
+    msg(Type, From, hashids_translator:uid_encode(To), Payload, Ts);
 msg(Type, From, To, Payload, Ts) ->
     [
         {<<"type">>, Type},

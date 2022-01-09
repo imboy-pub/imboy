@@ -13,7 +13,7 @@ execute(Req, Env) ->
     case Need of
         true ->
             Authorization = cowboy_req:header(<<"authorization">>, Req),
-            ?LOG(['Authorization', Authorization]),
+            % ?LOG(['Authorization', Authorization]),
             case token_ds:decrypt_token(Authorization) of
                 {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
                     #{handler_opts := HandlerOpts} = Env,

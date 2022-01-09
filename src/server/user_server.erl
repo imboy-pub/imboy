@@ -27,14 +27,16 @@ start_link() ->
 stop() ->
     gen_server:call(?MODULE, stop).
 
-
 %% gen_server.
 
 -spec init([]) -> {ok, []}.
 init([]) ->
     {ok, []}.
 
-handle_call(_Request, _From, State) ->
+handle_call(stop, _From, State) ->
+    {stop, normal, stopped, State};
+handle_call(Request, From, State) ->
+    ?LOG([handle_call, Request, From, State]),
     {reply, ignored, State}.
 
 % 异步处理请求

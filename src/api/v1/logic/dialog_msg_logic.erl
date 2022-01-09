@@ -11,6 +11,7 @@
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多以10条，再返回消除总数量
 %%
 check_msg(Uid, Pid) ->
+    ?LOG(["dialog_msg_logic/check_msg/2", Uid, Pid]),
     Msgs = dialog_msg_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
     % 发送单聊离线消息
     sent_offline_msg(Pid, Msgs, 0),
@@ -34,6 +35,6 @@ sent_offline_msg(Pid, [Row|Tail], Index) ->
         lists:keyfind(<<"created_at">>, 1, Row),
         lists:keyfind(<<"server_ts">>, 1, Row)
     ],
-    % ?LOG([Delay, "Msg: ", Msg]),
+    ?LOG([Delay, "Msg: ", Msg]),
     erlang:start_timer(Delay, Pid, jsx:encode(Msg)),
     sent_offline_msg(Pid, Tail, Index + 1).
