@@ -11,7 +11,7 @@ function refreshtoken(callback) {
             if (res && res.code==0) {
                 // 设置有效时间为 10天
                 set_cookie('imboy-refreshtoken', res.payload.refreshtoken, {expires: 10, path: '/'})
-                set_cookie('imboy-token', res.payload.token, {expires: 1, path: '/'})
+                set_cookie('authorization', res.payload.token, {expires: 1, path: '/'})
                 if (callback) {
                     callback(res)
                 }
@@ -92,7 +92,7 @@ function api_ajax(url, method, params, callback, error_callback, async) {
     }
 
     headers = {
-        'imboy-token': get_cookie('imboy-token'),
+        'authorization': get_cookie('authorization'),
     }
 
     async = async===false ? false : true
@@ -128,4 +128,10 @@ function api_ajax(url, method, params, callback, error_callback, async) {
             }
         }
     })
+}
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }

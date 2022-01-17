@@ -14,7 +14,7 @@
 <script src="/static/js/func.js" charset="utf-8"></script>
 <script src="/static/js/chat.js" charset="utf-8"></script>
 <script type="text/javascript">
-    var token = get_cookie('imboy-token')
+    var token = get_cookie('authorization')
     var im_name = "imboy"
 
     var apiurl = {
@@ -76,9 +76,9 @@
     layui.use(['layim', 'laytpl', 'jquery', 'chat'], function (layim, chat) {
         var $ = layui.jquery
         var chat = layui.chat
-        var token = get_cookie('imboy-token')
+        var token = get_cookie('authorization')
         // var rykey = $('body').data('rykey')
-        var rykey = get_cookie('imboy-token')
+        var rykey = get_cookie('authorization')
         // console.log('rykey ', rykey, ', token ', token)
         chat.config({
             user: token,
@@ -91,7 +91,7 @@
                 url: apiurl.myfriend,
                 data: {},
                 headers: {
-                    'imboy-token': get_cookie('imboy-token'),
+                    'authorization': get_cookie('authorization'),
                 },
                 async: false,
                 errorcallback(res) {
@@ -113,7 +113,7 @@
                 url: '/group/member',
                 data: {},
                 headers: {
-                    'imboy-token': get_cookie('imboy-token'),
+                    'authorization': get_cookie('authorization'),
                 },
                 errorcallback(res) {
                     // 请刷新token

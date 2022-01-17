@@ -45,7 +45,7 @@ function WebsocketHeartbeatJs({
 }
 WebsocketHeartbeatJs.prototype.createWebSocket = function(callback, args) {
     try {
-        var url = this.opts.url + '?imboy-token=' + get_cookie('imboy-token').replace("+", "%2B")
+        var url = this.opts.url + '?authorization=' + get_cookie('authorization').replace("+", "%2B")
         console.log('createWebSocket url ', url)
         if (this.opts.subprotocols) {
             this.ws = new WebSocket(url, this.opts.subprotocols);
@@ -339,8 +339,8 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                     var type = data['type'].toUpperCase();
                     switch(type) {
                         // 服务端ping客户端
-                        case 'ERROR':
-                            if (data.code == 706) {
+                        case 'SYSTEM':
+                            if (data.payload.msg_type == 706) {
                                 layer.open({
                                     type: 1
                                     , btn: '登录'
@@ -349,29 +349,29 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                                     }
                                     , content: '<br/><center>请重新登录</center>'
                                 })
-                            } else if(data.code == 705) {
+                            } else if(data.payload.msg_type == 705) {
                                 refreshtoken(function(res) {
                                     WSHB.createWebSocket()
                                 })
-                            } else {
-                                if (data.code == 786) {
-                                    // 如果手动关闭连接，不再重连
-                                    WSHB.close()
-                                }
+                            } else if(data.payload.msg_type == 786) {
+                                // 如果手动关闭连接，不再重连
+                                WSHB.close()
                                 layer.open({
                                     type: 0,
                                     area: ['300px', 'auto'],
                                     content: data.msg
                                 })
+                            } else if(data.payload.msg_type == 500) {
+                                // 用户在线状态： online offline hide
+                                conf.layim.setFriendStatus(data.from, data.payload.content)
+                            } else {
+                                var content = data.payload && data.payload.content ? data.payload.content : '未知消息'
+                                layer.open({
+                                    type: 0,
+                                    area: ['300px', 'auto'],
+                                    content: content
+                                })
                             }
-                            break
-                        case 'PING':
-                            message.type = "pong"
-                            WSHB.send(JSON.stringify(message))
-                            break
-                        // 用户在线状态： online offline hide
-                        case 'USER_STATE':
-                            conf.layim.setFriendStatus(data.from, data.status)
                             break
                         // 检测聊天数据
                         case 'GROUP':
@@ -390,11 +390,22 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
                             if (from) {
                                 Object.assign(data, from)
                             }
-                            data.content = data.payload.content
+                            if (!data.content && data.payload.content) {
+                                data.content = data.payload.content
+                            }
+                            if (data.payload.msg_type == 'text' && data.payload.text) {
+                                data.content = data.payload.text
+                            // } elseif (data.payload.msg_type == 'file') {
+                            //     data.content = 'file'
+                            } else {
+                            }
+
                             data.timestamp = data.payload.server_ts
                             console.log('data ', data)
                             conf.layim.getMessage(data)
                             break
+
+                        // 下面的功能没实现，以后会放到
                         // 离线消息推送
                         case 'OFFLINE_MSG':
                             setTimeout(function() {layim.getMessage(data.data)}, 3000)
@@ -687,17 +698,19 @@ layui.define(['jquery', 'layer', 'layim', 'contextmenu', 'form'], function (expo
             // }
             var message = {};
             if (!res.from) {
+                var created_at = res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf();
                 var payload = {
-                    'msg_type': 10,
-                    'content': res.mine.content,
-                    'send_ts': res.mine.timestamp ? res.mine.timestamp : (new Date()).valueOf(),
+                    'msg_type': "text",
+                    'text': res.mine.content,
                 }
                 res.to.type = res.to.type == 'friend' ? 'C2C' : res.to.type
                 message = {
+                    'id': uuidv4(),
                     'type': res.to.type,
                     'from': res.mine.id,
                     'to': res.to.id,
                     'payload': payload,
+                    'created_at': created_at,
                 }
             } else {
                 message = res

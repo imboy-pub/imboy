@@ -12,14 +12,12 @@ init([]) ->
     SqlName = proplists:get_value(name, SqlPoolboy),
     SqlPoolArgs = proplists:get_value(pool_sql, SqlPoolboy),
     SqlConfArgs = proplists:get_value(sql_conf, SqlPoolboy),
-
     Mysql = poolboy:child_spec(SqlName, SqlPoolArgs, SqlConfArgs),
 
     % {ok, RedisPoolboy} = application:get_env(wsyaoxin, redispoolboy),
     % RedisName = proplists:get_value(name, RedisPoolboy),
     % RedisPoolArgs = proplists:get_value(pool_redis, RedisPoolboy),
     % RedisConfArgs = proplists:get_value(redis_conf, RedisPoolboy),
-
     % Redis = poolboy:child_spec(RedisName, RedisPoolArgs, RedisConfArgs),
 
     Offline = {
