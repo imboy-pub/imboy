@@ -1,6 +1,6 @@
--module (group_msg_logic).
+-module (msg_c2g_logic).
 %%%
-% group_msg 业务逻辑模块
+% msg_c2g 业务逻辑模块
 %%%
 -export ([check_msg/2]).
 
@@ -9,7 +9,7 @@
 
 %%
 check_msg(Uid, Pid) ->
-    GMsgs = group_msg_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
+    GMsgs = msg_c2g_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
     sent_offline_msg(Uid, Pid, GMsgs, 0),
     ok.
 

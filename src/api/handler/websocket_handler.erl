@@ -115,6 +115,8 @@ websocket_handle({text, Msg}, State) ->
                 Id = proplists:get_value(<<"id">>, Data),
                 Type = proplists:get_value(<<"type">>, Data),
                 ?LOG([Id, Type, Data]),
+                % 逻辑层负责IM系统各项功能的核心逻辑实现
+                % 包括单聊（c2c）、上报(c2s)、推送(s2c)、群聊(c2g)
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> -> % 单聊消息
                         websocket_logic:c2c(Id, CurrentUid, Data);
@@ -124,8 +126,8 @@ websocket_handle({text, Msg}, State) ->
                         websocket_logic:c2c_revoke(Id, Data, Type);
                     <<"C2C_REVOKE_ACK">> -> % 客户端撤回消息ACK
                         websocket_logic:c2c_revoke(Id, Data, Type);
-                    <<"GROUP">> -> % 群聊消息
-                        websocket_logic:group_dialog(Id, CurrentUid, Data)
+                    <<"C2G">> -> % 群聊消息
+                        websocket_logic:c2g(Id, CurrentUid, Data)
                 end
         end
     of

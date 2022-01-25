@@ -1,6 +1,6 @@
--module (dialog_msg_repo).
+-module (msg_c2c_repo).
 %%%
-% dialog_msg_repo 是 dialog_msg repository 缩写
+% msg_c2c_repo 是 msg_c2c repository 缩写
 %%%
 -export ([read_msg/4]).
 -export ([write_msg/6]).
@@ -13,7 +13,7 @@
 read_msg(Where, Vals, Column, Limit) ->
     % use index i_ToId
     Sql = <<"SELECT ", Column/binary,
-        " FROM `dialog_msg` ",
+        " FROM `msg_c2c` ",
         Where/binary,
         " ORDER BY `id` ASC LIMIT ?">>,
     % ?LOG(Sql),
@@ -27,7 +27,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(ToId) 
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
     ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
-    Table = <<"`dialog_msg`">>,
+    Table = <<"`msg_c2c`">>,
     Column = <<"(`payload`, `from_id`, `to_id`, `created_at`, `server_ts`, `msg_id`)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
     ServerTS2 = integer_to_binary(ServerTS),
@@ -48,18 +48,18 @@ delete_msg(Id) ->
     delete_msg(Where, Id).
 
 delete_msg(Where, Val) ->
-    Sql = <<"DELETE FROM `dialog_msg` ",
+    Sql = <<"DELETE FROM `msg_c2c` ",
         Where/binary>>,
     mysql_pool:query(Sql, [Val]).
 
 
 count_by_to_id(ToUid) ->
     % use index i_ToId
-    Sql = <<"SELECT count(*) as count FROM `dialog_msg` WHERE `to_id` = ?">>,
+    Sql = <<"SELECT count(*) as count FROM `msg_c2c` WHERE `to_id` = ?">>,
     mysql_pool:query(Sql, [ToUid]).
 
 delete_overflow_msg(ToUid, Limit) ->
-    Sql = <<"SELECT `id` FROM `dialog_msg` WHERE `to_id` = ? ORDER BY `id` ASC LIMIT ?">>,
+    Sql = <<"SELECT `id` FROM `msg_c2c` WHERE `to_id` = ? ORDER BY `id` ASC LIMIT ?">>,
     case mysql_pool:query(Sql, [ToUid, Limit]) of
         {ok, _, []} ->
             ok;

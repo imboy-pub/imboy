@@ -62,11 +62,11 @@ handle_cast({online, Uid, Pid}, State) ->
         true ->
             ok
     end,
-    ?LOG(["before check_msg/2",Uid, Pid, State]),
+    % ?LOG(["before check_msg/2",Uid, Pid, State]),
     % 检查离线消息
-    dialog_msg_logic:check_msg(Uid, Pid),
+    msg_c2c_logic:check_msg(Uid, Pid),
     % 检查群聊离线消息
-    group_msg_logic:check_msg(Uid, Pid),
+    msg_c2g_logic:check_msg(Uid, Pid),
     {noreply, State, hibernate};
 handle_cast(Msg, State) ->
     ?LOG(["other msg", Msg, State]),
@@ -115,6 +115,6 @@ send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
 send_msg(From, To, ToPid, _State) ->
     ?LOG([From, To, ToPid]),
     % 用户在线状态变更
-    Msg = message_ds:system_msg(<<"1019">>, <<"">>, From, To),
+    Msg = message_ds:s2c(<<"1019">>, <<"">>, From, To),
     erlang:start_timer(1, ToPid, jsx:encode(Msg)),
     ok.

@@ -48,7 +48,7 @@ online(Uid, Pid, DeviceType) ->
     ?LOG(["user_logic/online/3", Uid, Pid, DeviceType]),
     case user_ds:is_offline(Uid, DeviceType) of
         {ToPid, _Uid, DeviceType} ->
-            Msg = message_ds:system_msg(786, "Already logged in on another device"),
+            Msg = message_ds:s2c(786, "Already logged in on another device"),
             ?LOG([ToPid, DeviceType]),
             erlang:start_timer(10, ToPid, jsx:encode(Msg));
         true ->

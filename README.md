@@ -1,6 +1,13 @@
 # imboy
 
-An OTP application
+A new Flutter project for imboy.
+
+imboy 的Flutter项目
+
+因为我是中国人，所以选择了[木兰宽松许可证, 第2版](https://gitee.com/imboy-pub/imboy-flutter/blob/main/LICENSE)
+
+所以来的flutter包大部分是“MIT License” 和 “Apache-2.0 License”（以后陆续补充一个）
+
 
 
 https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
@@ -9,7 +16,9 @@ https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
 
 ## 环境依赖
 ```
+Erlang/OTP 23
 
+Erlang/OTP 24 暂时不支持
 ```
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
@@ -111,11 +120,9 @@ IMBOYENV=local make rel
 
 复制代码到特定的目录
 ```
-cp ./_rel/imboy/imboy-1.0.1.tar.gz
+cp ./_rel/imboy/imboy-1.0.0.tar.gz
 // or
-scp ./_rel/imboy/imboy-1.0.1.tar.gz root@192.168.2.207:/usr/local/imboy/
-
-scp ./_rel/imboy/imboy-0.1.1.tar.gz root@192.168.2.207:/usr/local/imboy/
+scp ./_rel/imboy/imboy-1.0.0.tar.gz root@192.168.2.207:/usr/local/imboy/
 
 ```
 
@@ -124,11 +131,11 @@ scp ./_rel/imboy/imboy-0.1.1.tar.gz root@192.168.2.207:/usr/local/imboy/
 
 mkdir -p /usr/local/imboy
 
-cp ./_rel/imboy/imboy-1.0.1.tar.gz /usr/local/imboy/
+cp ./_rel/imboy/imboy-1.0.0.tar.gz /usr/local/imboy/
 
 cd /usr/local/imboy
 
-tar -xzf imboy-1.0.1.tar.gz
+tar -xzf imboy-1.0.0.tar.gz
 
 bin/imboy console
 
@@ -282,7 +289,8 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 * websocket Status 406 - 无法接受 sec-websocket-protocol 不包含 text
 * websocket Status 412 - 先决条件失败 缺少token参数
 * api json code 0 成功
-* api json code 1 失败（通用编码）
+* api json code 1 失败（通用编码，前端不弹出提示）
+* api json code 2 失败（通用编码，前端弹出提示）
 * api json code 705 请刷新token
 * api json code 706 token无效 (包含缺失token情况)
 * api json code 786 - 在其他平台登录

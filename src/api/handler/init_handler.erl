@@ -27,11 +27,8 @@ get_help(Req0) ->
         <meta http-equiv=\"Content-Language\" content=\"zh-CN\">
         <h1>API列表</h1>
         <ol>
-            <li><a href=\"/passport/login.html\" target=\"_blank\">/passport/login.html  GET</a></li>
             <li><a href=\"/init\" target=\"_blank\">/init  GET</a></li>
             <li><a href=\"/conversation/online\" target=\"_blank\">/conversation/online  GET</a></li>
-            <li> /passport/login  POST</li>
-
         </ol>
     ",
     cowboy_req:reply(200,

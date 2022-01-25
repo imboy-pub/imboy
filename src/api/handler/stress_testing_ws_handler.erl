@@ -86,7 +86,7 @@ websocket_handle({text, Msg}, State) ->
                     <<"GROUP">> ->
                         websocket_logic:group_dialog(CurrentUid, Data);
 
-                    <<"SYSTEM">> ->
+                    <<"S2C">> ->
                         websocket_logic:system(CurrentUid, Data)
                 end
         end

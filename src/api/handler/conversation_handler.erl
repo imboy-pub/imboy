@@ -37,7 +37,7 @@ mine(Req0, State) ->
     #{last_server_ts := ServerTS} = cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
     % ?LOG(ServerTS),
     CurrentUid = proplists:get_value(current_uid, State),
-    List = dialog_msg_ds:read_msg(CurrentUid, 1000, ServerTS),
+    List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
     % ?LOG(["mine_list", List]),
     List2 = conversation_mine_aas:data(List),
     resp_json_dto:success(Req0, List2).
