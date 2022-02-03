@@ -46,16 +46,16 @@ dep_lager_commit = 3.9.2
 # dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
 # dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
 
-dep_cowboy = git https://gitee.com/imboy-pub/cowboy 2.9.0
-dep_poolboy = git https://gitee.com/imboy-pub/poolboy 1.5.2
-dep_mysql = git https://gitee.com/imboy-pub/mysql-otp 1.7.0
-dep_jsx = git https://gitee.com/imboy-pub/jsx v3.1.0
-dep_hashids = git https://gitee.com/imboy-pub/hashids-erlang 1.0.5
-dep_jwerl = git https://gitee.com/imboy-pub/jwerl 1.1.0
-dep_reload.mk = git https://gitee.com/imboy-pub/reload.mk master
-dep_lager = git https://gitee.com/imboy-pub/lager 3.9.2
-dep_elvis_mk = git https://gitee.com/imboy-pub/elvis_mk 1.0.0
-dep_goldrush = git https://gitee.com/imboy-pub/goldrush 0.1.9
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.9.0
+dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
+dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
+dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx v3.1.0
+dep_hashids = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
+dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.1.0
+dep_reload.mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
+dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
+dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis_mk 1.0.0
+dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
 
 SP = 4
 DEP_PLUGINS = cowboy reload_mk

@@ -108,11 +108,11 @@ send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
         [] ->
             ok;
         List ->
-            [send_msg(FromId, ToUid2, ToPid2, State) || {_, ToPid2, ToUid2, _Type} <- List]
+            [send_msg_1019(FromId, ToUid2, ToPid2, State) || {_, ToPid2, ToUid2, _Type} <- List]
     end,
     send_state_msg(FromId, State, Tail).
 
-send_msg(From, To, ToPid, _State) ->
+send_msg_1019(From, To, ToPid, _State) ->
     ?LOG([From, To, ToPid]),
     % 用户在线状态变更
     Msg = message_ds:s2c(<<"1019">>, <<"">>, From, To),

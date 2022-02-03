@@ -12,6 +12,8 @@ init(Req0, State) ->
             change_state(Req0, State);
         {action, change_sign} ->
             change_sign(Req0, State);
+        {action, open_info} ->
+            open_info(Req0, State);
         false ->
             Req0
     end,
@@ -25,7 +27,7 @@ change_state(Req0, State) ->
     user_setting_ds:save_state(CurrentUid, ChatState),
     % 切换在线状态 异步通知好友
     gen_server:cast(offline_server, {notice_friend, CurrentUid, ChatState}),
-    resp_json_dto:success(Req0, [], "操作成功.").
+    resp_json_dto:success(Req0, [], "success.").
 
 %% 修改签名
 change_sign(Req0, State) ->
@@ -36,7 +38,15 @@ change_sign(Req0, State) ->
         {error, {_, _, ErrorMsg}} ->
             resp_json_dto:error(Req0, ErrorMsg);
         ok ->
-            resp_json_dto:success(Req0, [], "操作成功.")
+            resp_json_dto:success(Req0, [], "success.")
     end.
 
-
+% 用户网络公开信息
+open_info(Req0, _State) ->
+    % CurrentUid = proplists:get_value(current_uid, State),
+    #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    % ?LOG(["open_info", Uid, Req0]),
+    Column = <<"`id`, `nickname`, `avatar`, `account`,`sign`">>,
+    User = user_ds:find_by_id(hashids_translator:uid_decode(Uid), Column),
+    % ?LOG(User),
+    resp_json_dto:success(Req0, hashids_translator:replace_id(User), "success.").

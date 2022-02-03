@@ -26,6 +26,7 @@ get_routes() ->
 
             , {"/user/change_state", user_handler, [{action, change_state}]}
             , {"/user/change_sign", user_handler, [{action, change_sign}]}
+            , {"/user/open_info", user_handler, [{action, open_info}]}
 
             , {"/friend/list", friend_handler, [{action, friend_list}]}
             , {"/friend/myfriend", friend_handler, [{action, myfriend}]}
