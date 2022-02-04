@@ -3,8 +3,8 @@
 % message_ds 是 message domain service 缩写
 %%%
 -export ([msg/5]).
--export ([system_msg/2]).
--export ([system_msg/4]).
+-export ([s2c/2]).
+-export ([s2c/4]).
 
 -export ([send/2]).
 
@@ -19,20 +19,20 @@ send(ToUid, Msg2) ->
 
 %%% 系统消息 [500 -- 1000) 系统消息
 
-system_msg(786, Content) -> % 在其他地方上线
-    system_msg(786, Content, <<"">>, <<"">>);
-system_msg(MsgType, Content) ->
-    system_msg(MsgType, Content, <<"">>, <<"">>).
+s2c(786, Content) -> % 在其他地方上线
+    s2c(786, Content, <<"">>, <<"">>);
+s2c(MsgType, Content) ->
+    s2c(MsgType, Content, <<"">>, <<"">>).
 
-system_msg(1019, Content, From, To) -> % 用户在线状态变更
-    system_msg(1019, Content, From, To);
-system_msg(MsgType, Content, From, To) ->
+s2c(1019, Content, From, To) -> % 用户在线状态变更
+    s2c(1019, Content, From, To);
+s2c(MsgType, Content, From, To) ->
     Payload = [
         {<<"msg_type">>, MsgType},
         {<<"content">>, Content}
     ],
     Ts = dt_util:milliseconds(),
-    msg(<<"SYSTEM">>, From, To, Payload, Ts).
+    msg(<<"S2C">>, From, To, Payload, Ts).
 %%% 系统消息 end
 
 msg(Type, From, To, Payload, Ts) when is_integer(From) ->

@@ -1,6 +1,6 @@
--module (group_msg_repo).
+-module (msg_c2g_repo).
 %%%
-% group_msg_repo 是 group_msg repository 缩写
+% msg_c2g_repo 是 msg_c2g repository 缩写
 %%%
 -export ([write_msg/6]).
 -export ([find_by_ids/2]).
@@ -22,7 +22,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
         CreatedAt2 = integer_to_binary(CreatedAt),
         % ?LOG(CreatedAt2),
         Column = <<"(`payload`,`to_groupid`,`from_id`,`created_at`,`msg_id`)">>,
-        Sql = <<"REPLACE INTO `group_msg` ",
+        Sql = <<"REPLACE INTO `msg_c2g` ",
             Column/binary,
             " VALUES('",
             Payload/binary, "', '",
@@ -38,16 +38,16 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
 
         Vals = lists:map(fun(ToId) ->
             % 检查离线消息数量，如果数量大于limit 删除旧数据、插入新数据
-            case group_msg_timeline_repo:count_by_to_id(ToId) of
+            case msg_c2g_timeline_repo:count_by_to_id(ToId) of
                 {ok, _, [[Count]]} when Count >= ?SAVE_MSG_LIMIT ->
                     Limit = Count - ?SAVE_MSG_LIMIT + 1,
                     case
-                    group_msg_timeline_repo:delete_overflow_timeline(ToId, Limit) of
+                    msg_c2g_timeline_repo:delete_overflow_timeline(ToId, Limit) of
                         {msg_ids, MsgIds} ->
                             [
-                                case group_msg_timeline_repo:check_msg(CheckMsgId) of
+                                case msg_c2g_timeline_repo:check_msg(CheckMsgId) of
                                     {ok, _, [[0]]} ->
-                                        group_msg_ds:delete_msg(CheckMsgId);
+                                        msg_c2g_ds:delete_msg(CheckMsgId);
                                     {ok, _, _} ->
                                         ok
                                 end || CheckMsgId <- MsgIds
@@ -69,7 +69,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
         [_|L2] = lists:reverse(L1),
         Values = list_to_binary(lists:concat(L2)),
         Column2 = <<"(`to_groupid`,`to_id`,`msg_id`,`created_at`)">>,
-        Sql2 = <<"REPLACE INTO `group_msg_timeline` ",
+        Sql2 = <<"REPLACE INTO `msg_c2g_timeline` ",
             Column2/binary,
             " VALUES", Values/binary>>,
         % ?LOG([Sql, Sql2]),
@@ -84,7 +84,7 @@ find_by_ids(Ids, Column) ->
     [_|L2] = lists:reverse(L1),
     Ids2 = list_to_binary(lists:concat(L2)),
     Where = <<"WHERE `id` IN (", Ids2/binary, ")">>,
-    Sql = <<"SELECT ", Column/binary, " FROM `group_msg` ",
+    Sql = <<"SELECT ", Column/binary, " FROM `msg_c2g` ",
         Where/binary, " order by `id` ASC">>,
     mysql_pool:query(Sql, no_params).
 
@@ -95,6 +95,6 @@ delete_msg(Id) ->
     Where = <<"WHERE `msg_id` = ?">>,
     delete_msg(Where, Id).
 delete_msg(Where, Val) ->
-    Sql = <<"DELETE FROM `group_msg` ",
+    Sql = <<"DELETE FROM `msg_c2g` ",
         Where/binary>>,
     mysql_pool:query(Sql, [Val]).
