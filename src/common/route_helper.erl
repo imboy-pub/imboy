@@ -4,9 +4,10 @@
 -export([need_auth_paths/0]).
 
 get_routes() ->
-    {ok, HostImboy} = application:get_env(imboy, host),
+    % {ok, HostImboy} = application:get_env(imboy, host),
     [
-        {HostImboy, [
+        % {HostImboy, [
+        {'_', [
             {"/", init_handler, [{action, help}]}
 
             , {"/help", init_handler, [{action, help}]}

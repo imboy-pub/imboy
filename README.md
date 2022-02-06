@@ -1,8 +1,6 @@
 # imboy
 
-A new Flutter project for imboy.
-
-imboy 的Flutter项目
+基于 [cowboy](https://github.com/ninenines/cowboy)(Small, fast, modern HTTP server for Erlang/OTP) 的即时聊天后端服务，使用 "阿里云8核16G ecs.sn1ne.2xlarge主机（100万PPS）"压测，保持100万+TCP，90分钟以上，详细测试件[测试文档](test/doc/test1.md)
 
 因为我是中国人，所以选择了[木兰宽松许可证, 第2版](https://gitee.com/imboy-pub/imboy-flutter/blob/main/LICENSE)
 
@@ -356,6 +354,7 @@ locust -f src/imboy.py --no-web -c 20000 -r 1000 -t 600s --logfile=logs/imboy-no
 length(chat_store_repo:lookall()).
 
 参考：
+
 http://m.udpwork.com/item/11782.html
 https://cloud.tencent.com/developer/article/1422476
 https://www.yuanmomo.net/2019/07/26/mac-max-connections-config/
@@ -422,7 +421,7 @@ exit(Pid, kill).
 10万socket 2G内存  15M带宽
 50万socket 10G内存
 100万socket 20G内存
-爻信单机（8核16G内存）压测 50W并发通过，  内存使用 30%  cpu平均使用率 7%   带宽 50M， 预计单机可支持150万左右
+单机（8核16G内存）压测 50W并发通过，  内存使用 30%  cpu平均使用率 7%   带宽 50M， 预计单机可支持150万左右
 
 
 ```
@@ -464,12 +463,6 @@ else
 endif
 ```
 
-面向企业用户
-搭建在企业内容或者公网
-企业内部沟通聊天
-大文件传输功能、在线云拍功能
-企业组织架构管理、权限管理
-企业领域知识问答管理
 
 ## Q
 
