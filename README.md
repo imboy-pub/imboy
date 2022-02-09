@@ -4,15 +4,13 @@
 
 因为我是中国人，所以选择了[木兰宽松许可证, 第2版](https://gitee.com/imboy-pub/imboy-flutter/blob/main/LICENSE)
 
-所以来的flutter包大部分是“MIT License” 和 “Apache-2.0 License”（以后陆续补充一个）
-
-
-
-https://ninenines.eu/docs/en/cowboy/2.8/guide/getting_started/
-
-数据库在第一个发布版放出
+https://ninenines.eu/docs/en/cowboy/2.9/guide/getting_started/
 
 ## 环境依赖
+
+数据结构(./priv/sql/)开发中有变动，以第一个发布版为准，目前只支持MySQL
+
+Erlang 版本
 ```
 Erlang/OTP 23
 
@@ -21,16 +19,16 @@ Erlang/OTP 24 暂时不支持
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
-mkdir -p src src/api scr/api/v1
+mkdir -p src src/api scr/api
 
 make list-templates
-make new t=cowboy.http n=api/v1/handler/passport_handler
-make new t=cowboy.ws n=api/v1/handler/websocket_handler
+make new t=cowboy.http n=api/handler/passport_handler
+make new t=cowboy.ws n=api/handler/websocket_handler
 
-make new t=rest_handler n=api/v1/handler/test_handler
-make new t=logic n=api/v1/logic/test_logic
-make new t=repository n=api/v1/repository/test_repository
-make new t=transfer n=api/v1/transfer/test_transfer
+make new t=rest_handler n=api/handler/test_handler
+make new t=logic n=api/logic/test_logic
+make new t=repository n=api/repository/test_repository
+make new t=transfer n=api/transfer/test_transfer
 
 make new t=cowboy.middleware n=common/middleware/auth_middleware
 
@@ -409,20 +407,6 @@ erlang:system_info(check_io)
 erlang:length(erlang:ports()).
 
 Pid = spawn(fun() -> etop:start([{output, text}, {interval, 1}, {lines, 20}, {sort, memory}]) end).
-37208 TCP  -- 5.20 M 带宽 -- 内存 4G
-exit(Pid, kill).
-0.5 G 内存 9005 TCP
-1 G 内存 19005 TCP
-4G 内存 42642 TCP
-
-42642 + 19005 * 2 + 9005 = 89657
-
-每个socket占用内存在15~20k之间
-10万socket 2G内存  15M带宽
-50万socket 10G内存
-100万socket 20G内存
-单机（8核16G内存）压测 50W并发通过，  内存使用 30%  cpu平均使用率 7%   带宽 50M， 预计单机可支持150万左右
-
 
 ```
 查看TCP 数量
