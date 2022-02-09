@@ -8,10 +8,12 @@
 %% 这个是回调函数
 execute(Req, Env) ->
     Path = cowboy_req:path(Req),
-    NeedAuth = route_helper:need_auth_paths(),
-    Need = lists:member(Path, NeedAuth),
+    NotNeedAuth = route_helper:not_need_auth_paths(),
+    Need = lists:member(Path, NotNeedAuth),
     case Need of
         true ->
+            {ok, Req, Env};
+        false ->
             Authorization = cowboy_req:header(<<"authorization">>, Req),
             % ?LOG(['Authorization', Authorization]),
             case token_ds:decrypt_token(Authorization) of
@@ -29,7 +31,5 @@ execute(Req, Env) ->
                 {error, Code, Msg, _Li} ->
                     Req1 = resp_json_dto:error(Req, Msg, Code),
                     {stop, Req1}
-            end;
-        false ->
-            {ok, Req, Env}
+            end
     end.

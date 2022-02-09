@@ -1,13 +1,12 @@
 -module(route_helper).
 
 -export([get_routes/0]).
--export([need_auth_paths/0]).
+-export([not_need_auth_paths/0]).
 
 get_routes() ->
-    % {ok, HostImboy} = application:get_env(imboy, host),
+    {ok, HostImboy} = application:get_env(imboy, host),
     [
-        % {HostImboy, [
-        {'_', [
+        {HostImboy, [
             {"/", init_handler, [{action, help}]}
 
             , {"/help", init_handler, [{action, help}]}
@@ -16,9 +15,7 @@ get_routes() ->
             , {"/passport/login", passport_handler, [{action, do_login}]}
 
             , {"/stress_testing", stress_testing_ws_handler, []}
-            % 专门为浏览器提供的websocket API
-            , {"/websocket", websocket_handler, []}
-            % 专门为APP提供的websocket API
+
             , {"/ws", websocket_handler, []}
 
             , {"/conversation/online", conversation_handler, [{action, online}]}
@@ -57,26 +54,15 @@ get_routes() ->
         ]}
     ].
 
-%% 需要认证的API，列表元素必须为binary
-%% <<"/refreshtoken">> 请不要加入 auth
-need_auth_paths() ->
+%% 不需要认证的API，列表元素必须为binary
+not_need_auth_paths() ->
     [
-        <<"/friend/myfriend">>
-        , <<"/friend/list">>
-        , <<"/friend/find">>
-        , <<"/friend/move">>
-        , <<"/friend/information">>
-        , <<"/friend/change_remark">>
+        <<"/">>
+        , <<"/help">>
+        , <<"/conversation/online">>
+        , <<"/init">>
+        , <<"/refreshtoken">>
+        , <<"/stress_testing">>
 
-        , <<"/friend/category/add">>
-        , <<"/friend/category/delete">>
-        , <<"/friend/category/rename">>
-
-        % 我的会话列表
-        , <<"/conversation/mine">>
-
-        , <<"/group/member">>
-
-        , <<"/user/change_state">>
-        , <<"/user/change_sign">>
+        , <<"/passport/login">>
     ].
