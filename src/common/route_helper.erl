@@ -18,6 +18,8 @@ get_routes() ->
 
             , {"/ws", websocket_handler, []}
 
+            , {"/auth/assets", auth_handler, [{action, assets}]}
+
             , {"/conversation/online", conversation_handler, [{action, online}]}
             , {"/conversation/mine", conversation_handler, [{action, mine}]}
             , {"/conversation/msgbox", conversation_handler, [{action, msgbox}]}
@@ -65,4 +67,5 @@ not_need_auth_paths() ->
         , <<"/stress_testing">>
 
         , <<"/passport/login">>
+        , <<"/auth/assets">>
     ].

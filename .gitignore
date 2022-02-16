@@ -11,3 +11,4 @@ ebin
 .imboy.plt
 deps
 priv/static/layim*
+nginx_img.conf
