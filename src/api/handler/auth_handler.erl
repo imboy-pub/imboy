@@ -19,8 +19,10 @@ init(Req0, State) ->
 assets(Req0) ->
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     % ?LOG(PostVals),
-    AuthTk = proplists:get_value(<<"auth_token">>, PostVals),
-    Scene = proplists:get_value(<<"scene">>, PostVals),
+    % AuthToken
+    AuthTk = proplists:get_value(<<"a">>, PostVals),
+    % Sence
+    Scene = proplists:get_value(<<"s">>, PostVals),
     % Val = md5(filepath+filename)
     Val = proplists:get_value(<<"v">>, PostVals),
 
@@ -41,9 +43,9 @@ auth_for_assets(_Scene, _AuthTk, undefined) ->
 auth_for_assets(Scene, AuthTk, Val) ->
     {ok, AuthKeys} = application:get_env(imboy, auth_keys),
     Key = proplists:get_value(Scene, AuthKeys),
-    Str = binary_to_list(Key) ++ binary_to_list(Val),
-    ?LOG([Scene, AuthTk, AuthKeys, Key, Val, hash_util:md5(Str)]),
-    case hash_util:md5(Str) == AuthTk of
+    Str = Key ++ binary_to_list(Val),
+    % ?LOG([Scene, AuthTk, AuthKeys, Key, Val, binary:part(hash_util:md5(Str), {8, 16})]),
+    case binary:part(hash_util:md5(Str), {8, 16}) == AuthTk of
         true ->
             <<"ok">>;
         _ ->
