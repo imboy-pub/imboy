@@ -68,11 +68,11 @@ websocket_init(State) ->
                 {<<"code">>, Code},
                 {<<"timestamp">>, dt_util:milliseconds()}
             ],
-            {reply, {text, jsx:encode(Msg)}, State, hibernate};
+            {reply, {text, jsone:encode(Msg)}, State, hibernate};
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
-            DeviceType = proplists:get_value('device-type', State, <<"web">>),
+            DeviceType = proplists:get_value('cos', State, <<"web">>),
             user_logic:online(CurrentUid, CurrentPid, DeviceType),
             {ok, State, hibernate}
     end.
@@ -111,7 +111,7 @@ websocket_handle({text, Msg}, State) ->
                 {reply, ErrMsg};
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
-                Data = jsx:decode(Msg, [{return_maps, false}]),
+                Data = jsone:decode(Msg, [{object_format, proplist}]),
                 Id = proplists:get_value(<<"id">>, Data),
                 Type = proplists:get_value(<<"type">>, Data),
                 ?LOG([Id, Type, Data]),
@@ -137,7 +137,7 @@ websocket_handle({text, Msg}, State) ->
                 ok ->
                     {ok, State, hibernate};
                 {reply, Msg2} ->
-                    {reply, {text, jsx:encode(Msg2)}, State, hibernate}
+                    {reply, {text, jsone:encode(Msg2)}, State, hibernate}
             end
     catch
         Class:Reason ->

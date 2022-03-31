@@ -11,7 +11,7 @@ data(List) ->
     [
         [
           {<<"id">>, proplists:get_value(<<"id">>, Msg)}
-          | jsx:decode(proplists:get_value(<<"payload">>, Msg), [{return_maps, false}])
+          | jsone:decode(proplists:get_value(<<"payload">>, Msg), [{object_format, proplist}])
         ]
         || Msg <- List
     ].

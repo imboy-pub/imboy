@@ -41,7 +41,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
         ,{<<"payload">>, Payload}
         % ,{<<"data">>, Payload}
     ],
-    Body = jsx:encode(LPayload ++ Options),
+    Body = jsone:encode(LPayload ++ Options),
     cowboy_req:reply(200,
         #{<<"content-type">> => <<"application/json; charset=utf-8">>},
         Body,

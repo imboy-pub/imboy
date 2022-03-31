@@ -31,10 +31,10 @@ sent_offline_msg(Pid, [Row|Tail], Index) ->
         {<<"type">>,<<"C2C">>},
         {<<"from">>, hashids_translator:uid_encode(FromId)},
         {<<"to">>, hashids_translator:uid_encode(ToId)},
-        {<<"payload">>, jsx:decode(Payload)},
+        {<<"payload">>, jsone:decode(Payload, [{object_format, proplist}])},
         lists:keyfind(<<"created_at">>, 1, Row),
         lists:keyfind(<<"server_ts">>, 1, Row)
     ],
     % ?LOG([Delay, "Msg: ", Msg]),
-    erlang:start_timer(Delay, Pid, jsx:encode(Msg)),
+    erlang:start_timer(Delay, Pid, jsone:encode(Msg)),
     sent_offline_msg(Pid, Tail, Index + 1).

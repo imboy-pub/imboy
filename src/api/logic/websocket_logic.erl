@@ -29,7 +29,7 @@ c2c(Id, CurrentUid, Data) ->
                 is_binary(Payload)  ->
                     msg_c2c_ds:write_msg(CreatedAt, Id, Payload, CurrentUid, ToId, NowTs);
                 true ->
-                    msg_c2c_ds:write_msg(CreatedAt, Id, jsx:encode(Payload), CurrentUid, ToId, NowTs)
+                    msg_c2c_ds:write_msg(CreatedAt, Id, jsone:encode(Payload), CurrentUid, ToId, NowTs)
             end,
             Msg = [
                 {<<"id">>, Id},
@@ -40,7 +40,7 @@ c2c(Id, CurrentUid, Data) ->
                 {<<"created_at">>, CreatedAt},
                 {<<"server_ts">>, NowTs}
             ],
-            Msg2 = jsx:encode(Msg),
+            Msg2 = jsone:encode(Msg),
             message_ds:send(ToId, Msg2),
             {reply, [
                 {<<"id">>, Id},
@@ -78,7 +78,7 @@ c2c_revoke(Id, Data, Type) ->
     % 判断是否在线
     case user_ds:is_offline(ToId) of
         {ToPid, _UidBin, _ClientSystemBin} ->
-            erlang:start_timer(1, ToPid, jsx:encode([
+            erlang:start_timer(1, ToPid, jsone:encode([
                 {<<"id">>, Id},
                 {<<"type">>, Type},
                 {<<"from">>, From},
@@ -119,7 +119,7 @@ c2g(Id, CurrentUid, Data) ->
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
-    Msg2 = jsx:encode(Msg),
+    Msg2 = jsone:encode(Msg),
     _UidsOnline = lists:filtermap(fun(Uid) ->
         message_ds:send(Uid, Msg2)
     end, Uids),

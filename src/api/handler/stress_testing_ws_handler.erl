@@ -44,7 +44,7 @@ websocket_init(State) ->
                 {<<"code">>, Code},
                 {<<"timestamp">>, dt_util:milliseconds()}
             ],
-            {reply, {text, jsx:encode(Msg)}, State, hibernate};
+            {reply, {text, jsone:encode(Msg)}, State, hibernate};
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
@@ -75,7 +75,7 @@ websocket_handle({text, Msg}, State) ->
                 {reply, ErrMsg};
             false ->
                 CurrentUid = proplists:get_value(current_uid, State),
-                Data = jsx:decode(Msg, [{return_maps, false}]),
+                Data = jsone:decode(Msg, [{object_format, proplist}]),
                 % C2C/SYSTEM/GROUP
                 Type = proplists:get_value(<<"conversation_type">>, Data),
                 % ?LOG(Type),
@@ -97,7 +97,7 @@ websocket_handle({text, Msg}, State) ->
                 ok ->
                     {ok, State, hibernate};
                 {reply, Msg2} ->
-                    {reply, {text, jsx:encode(Msg2)}, State, hibernate}
+                    {reply, {text, jsone:encode(Msg2)}, State, hibernate}
             end
     catch
         ErrCode:ErrorMsg ->

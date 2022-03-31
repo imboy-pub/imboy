@@ -29,6 +29,7 @@ src/common/func.erl:: include/common.hrl; @touch $@
 src/common/hashids_translator.erl:: include/hashids.hrl; @touch $@
 src/common/imboy_cipher.erl:: include/common.hrl; @touch $@
 src/common/middleware/auth_middleware.erl:: include/common.hrl; @touch $@
+src/common/middleware/verify_middleware.erl:: include/common.hrl; @touch $@
 src/common/mysql_pool.erl:: include/common.hrl; @touch $@
 src/common/service/friend_category_ds.erl:: include/common.hrl; @touch $@
 src/common/service/friend_ds.erl:: include/common.hrl; @touch $@

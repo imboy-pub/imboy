@@ -46,7 +46,7 @@ delete_msg(Id) ->
 %% 撤销离线消息
 -spec revoke_offline_msg(integer(), binary(), integer(), integer()) -> ok.
 revoke_offline_msg(NowTs, Id, FromId, ToId) ->
-    Payload = jsx:encode([
+    Payload = jsone:encode([
         {<<"msg_type">>, <<"custom">>},
         {<<"custom_type">>, <<"revoked">>}
     ]),

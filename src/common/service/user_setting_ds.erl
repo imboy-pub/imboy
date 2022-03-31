@@ -20,7 +20,7 @@ find_by_uid(Uid) ->
             [];
         {ok, _ ,[[Setting]]} ->
             try
-                jsx:decode(Setting, [{return_maps, false}])
+                jsone:decode(Setting, [{object_format, proplist}])
             of
                 Res ->
                     Res
