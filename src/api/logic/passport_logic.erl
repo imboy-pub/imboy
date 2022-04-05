@@ -152,7 +152,12 @@ do_signup_by_email(Account, Pwd, PostVals) ->
                 Ip = proplists:get_value(<<"ip">>, PostVals, {}),
                 Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
                 RefUid = proplists:get_value(<<"ref_uid">>, PostVals, hashids_translator:uid_encode(0)),
-                RefUid2 = integer_to_binary(hashids_translator:uid_decode(RefUid)),
+                RefUid2 = if
+                    bit_size(RefUid) > 5 ->
+                        integer_to_binary(hashids_translator:uid_decode(RefUid));
+                    bit_size(RefUid) =< 5  ->
+                        <<"0">>
+                end,
                 ?LOG([{"RefUid2", RefUid2}, {"Ip", Ip}, {"Cosv", Cosv}, {"PostVals", PostVals}]),
                 Value = <<"('",
                     Account/binary, "', '",

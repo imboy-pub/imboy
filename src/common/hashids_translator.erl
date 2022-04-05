@@ -44,8 +44,10 @@ uid_decode(Id) ->
         hashids:decode(Ctx, Id)
     of
         [Uid] ->
-            Uid
+            Uid;
+        [] ->
+            0
     catch
-        _Class: _Reason ->
+        _ ->
         0
     end.

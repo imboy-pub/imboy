@@ -13,8 +13,8 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    Type = cowboy_req:header(<<"device-type">>, Req0, <<"web">>),
-    SystemState = [{'device-type', Type}|State0],
+    Type = cowboy_req:header(<<"cos">>, Req0, <<"web">>),
+    SystemState = [{'cos', Type}|State0],
     case websocket_ds:check_subprotocols(Req0, State0) of
         {ok, Req1, State1} ->
             ?LOG(['check_subprotocols']),
