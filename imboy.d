@@ -16,6 +16,7 @@ src/api/logic/friend_logic.erl:: include/common.hrl; @touch $@
 src/api/logic/group_logic.erl:: include/common.hrl; @touch $@
 src/api/logic/msg_c2c_logic.erl:: include/chat.hrl include/common.hrl; @touch $@
 src/api/logic/msg_c2g_logic.erl:: include/chat.hrl include/common.hrl; @touch $@
+src/api/logic/passport_logic.erl:: include/common.hrl; @touch $@
 src/api/logic/user_logic.erl:: include/common.hrl; @touch $@
 src/api/logic/websocket_logic.erl:: include/common.hrl; @touch $@
 src/api/repository/chat_store_repo.erl:: include/common.hrl; @touch $@

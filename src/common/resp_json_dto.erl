@@ -29,8 +29,7 @@ error(Req, Msg, Code) ->
 error(Req, Msg, Code, Options) ->
     reply_json(Code, Msg, [], Req, Options).
 
-
-%%%%% 私有的 %%%%%
+%% Internal.
 reply_json(Code, Msg, Payload, Req) ->
     reply_json(Code, Msg, Payload, Req, []).
 

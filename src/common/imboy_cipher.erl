@@ -60,6 +60,7 @@ rsa_encrypt(BinData, PemBin) ->
     Cipher = public_key:encrypt_public(BinData, PublicKey),
     base64:encode(Cipher).
 
+-spec rsa_decrypt(CipherText::binary()) -> any().
 rsa_decrypt(CipherText) ->
     %%私钥解密
     PemBin = config_logic:get("login_rsa_priv_key"),

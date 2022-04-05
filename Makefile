@@ -5,7 +5,7 @@ PROJECT_VERSION = 0.1.0
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = lager poolboy mysql jsone cowboy jwerl hashids
+DEPS = lager poolboy mysql jsone cowboy jwerl hashids gen_smtp
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 # BUILD_DEPS
 BUILD_DEPS = reload_mk
@@ -45,6 +45,12 @@ dep_lager_commit = 3.9.2
 # dep_jsone = git https://github.com/sile/jsone 1.7.0
 # dep_hashids = git https://github.com/snaiper80/hashids-erlang 1.0.5
 # dep_jwerl = git https://github.com/G-Corp/jwerl 1.1.0
+# dep_gen_smtp = git https://github.com/gen-smtp/gen_smtp 1.0.0
+
+# 下列依赖放到 https://gitee.com/imboy-tripartite-deps 只是为了在中国加载代码快速一些
+# The following dependencies are placed at https://gitee.com/imboy-tripartite-deps just to make loading code in China faster
+# 特此声明：下列依赖，被人未改动过原作者源码
+# Hereby declare: the following dependencies have not been modified by the original author source code
 
 dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.9.0
 dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
@@ -56,6 +62,7 @@ dep_reload.mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
 dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis_mk 1.0.0
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
+dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.0.0
 
 SP = 4
 DEP_PLUGINS = cowboy reload_mk

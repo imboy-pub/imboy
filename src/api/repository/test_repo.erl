@@ -16,7 +16,7 @@ create_user_test(Prefix, Num, Limit) ->
     Mob = lists:concat([Prefix, io_lib:format("~9.10.0B",[Num])]),
     MobBin = list_to_binary(Mob),
     Username = MobBin,
-    Sql = <<"INSERT INTO `user` (`level_id`, `password`, `account`, `mobile`, `email`, `experience`, `gender`, `avatar`, `sign`, `login_count`, `last_login_ip`, `last_login_at`, `ref_user_id`, `status`, `created_at`, `reg_ip`, `reg_client`) VALUES (0, 'gmqrFZenECbzbUramWn1X108J0XZMSwLIynjJDI2jqal9oW10Bd6kOqrIZkR1KxuKXsN0UmXHKQwtL0u6jDRRA==', '", Username/binary ,"', '", MobBin/binary ,"', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
+    Sql = <<"INSERT INTO `user` (`level_id`, `password`, `account`, `mobile`, `email`, `experience`, `gender`, `avatar`, `sign`, `login_count`, `last_login_ip`, `last_login_at`, `ref_user_id`, `status`, `created_at`, `reg_ip`, `reg_cosv`) VALUES (0, 'gmqrFZenECbzbUramWn1X108J0XZMSwLIynjJDI2jqal9oW10Bd6kOqrIZkR1KxuKXsN0UmXHKQwtL0u6jDRRA==', '", Username/binary ,"', '", MobBin/binary ,"', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
     % ?LOG(Sql),
     mysql_pool:query(Sql, no_params),
     create_user_test(Prefix, Num + 1, Limit).

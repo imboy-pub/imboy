@@ -41,11 +41,11 @@ handle_call(Request, From, State) ->
 
 % 异步处理请求
 
-handle_cast({login_success, UserId, DeviceNumber}, State) ->
+handle_cast({login_success, Uid, PostVals}, State) ->
     % 用户登录成功之后的业务逻辑处理
     % 更新 user 表
     % 更新 user_client 表
-    ?LOG([UserId, DeviceNumber]),
+    ?LOG([Uid, hashids_translator:uid_decode(Uid), PostVals]),
     {noreply, State, hibernate};
 handle_cast(Msg, State) ->
     ?LOG([Msg, State]),

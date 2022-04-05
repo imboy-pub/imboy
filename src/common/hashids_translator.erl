@@ -35,10 +35,17 @@ uid_encode(Id) ->
 uid_decode(Id) when is_binary(Id) ->
     uid_decode(binary_to_list(Id));
 uid_decode(Id) ->
-    Ctx = hashids:new([
-        {min_hash_length, 6},
-        {default_alphabet, ?uid_alphabet},
-        {salt, ?hashids_salt}
-    ]),
-    [Uid] = hashids:decode(Ctx, Id),
-    Uid.
+    try
+        Ctx = hashids:new([
+            {min_hash_length, 6},
+            {default_alphabet, ?uid_alphabet},
+            {salt, ?hashids_salt}
+        ]),
+        hashids:decode(Ctx, Id)
+    of
+        [Uid] ->
+            Uid
+    catch
+        _Class: _Reason ->
+        0
+    end.

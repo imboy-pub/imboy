@@ -8,6 +8,7 @@
 
 -include("common.hrl").
 
+-spec generate(Plaintext::list()) -> Ciphertext::binary().
 generate(Plaintext) ->
     generate(Plaintext, hmac_sha512).
 
@@ -17,6 +18,7 @@ generate(Plaintext, hmac_sha512) ->
     Ciphertext = hash_util:hmac_sha512(Plaintext, Salt2),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
+-spec verify(Plaintext::list(), Ciphertext::list()) -> {ok, any()} | {error, Msg::list()}.
 verify(Plaintext, Ciphertext) ->
     try
         Ciphertext2 = base64:decode(Ciphertext),
@@ -24,8 +26,8 @@ verify(Plaintext, Ciphertext) ->
     of
         [Salt, <<"hmac_sha512">>, Ciphertext3] ->
             verify(Plaintext, hmac_sha512, Salt, Ciphertext3);
-        Msg ->
-            ?LOG(Msg),
+        _Msg ->
+            % ?LOG(Msg),
             verify(Plaintext, default_md5, ?MD5_SALT, Ciphertext)
     catch _:_ ->
         % ?LOG([default_md5, Plaintext, Ciphertext]),

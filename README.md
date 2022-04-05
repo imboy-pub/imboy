@@ -27,7 +27,7 @@ make new t=cowboy.ws n=api/handler/websocket_handler
 
 make new t=rest_handler n=api/handler/test_handler
 make new t=logic n=api/logic/test_logic
-make new t=repository n=api/repository/test_repository
+make new t=repository n=api/repository/test_repo
 make new t=transfer n=api/transfer/test_transfer
 
 make new t=cowboy.middleware n=common/middleware/auth_middleware
@@ -454,3 +454,11 @@ endif
 https://blog.csdn.net/Jessechanrui/article/details/88399012
 
 socket 数据粘包问题、拆包问题
+
+## Email
+```
+gen_smtp_client:send({"sender@gmail.com", ["receiver@gmail.com"], "Subject: testing"},
+   [{relay, "smtp.gmail.com"}, {ssl, true}, {username, "sender@gmail.com"},
+      {password, "senderpassword"}]).
+
+```

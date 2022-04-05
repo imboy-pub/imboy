@@ -10,6 +10,7 @@ md5(Str) ->
     Sig = erlang:md5(Str),
     iolist_to_binary([io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig)]).
 
+-spec hmac_sha512(PlainText::list(), Key::list()) -> Ciphertext::binary().
 hmac_sha512(PlainText, Key) ->
     Bin = crypto:macN(hmac, sha512, Key, PlainText, ?SHA_256_BLOCKSIZE),
     base64:encode(Bin).

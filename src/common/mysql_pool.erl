@@ -6,6 +6,7 @@
 -export ([query/2]).
 -export ([insert_into/3]).
 -export ([replace_into/3]).
+-export ([assemble_sql/4]).
 
 -include("common.hrl").
 
@@ -48,13 +49,17 @@ insert_into(Table, Column, Value) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     insert(<<"INSERT INTO">>, Table, Column, Value).
 
-insert(Prefix, Table, Column, Value) ->
+assemble_sql(Prefix, Table, Column, Value)->
     Sql = <<Prefix/binary,
         " ",
         Table/binary,
         " ",
         Column/binary,
         " VALUES ", Value/binary>>,
+    % ?LOG(Sql),
+    Sql.
+insert(Prefix, Table, Column, Value) ->
+    Sql = assemble_sql(Prefix, Table, Column, Value),
     % ?LOG(Sql),
     poolboy:transaction(mysql, fun(Pid) ->
         mysql:query(Pid, Sql)

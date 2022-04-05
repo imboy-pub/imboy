@@ -21,6 +21,7 @@ start(_Type, _Args) ->
         #{
             middlewares => [
                 cowboy_router,
+                % verify_middleware,
                 auth_middleware,
                 cowboy_handler
             ],

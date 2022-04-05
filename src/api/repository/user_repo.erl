@@ -2,11 +2,16 @@
 %%%
 % user_repo 是 user repository 缩写
 %%%
--export ([find_by_mobile/2, find_by_account/2]).
+-export ([find_by_email/2, find_by_mobile/2, find_by_account/2]).
 -export ([find_by_id/1, find_by_id/2]).
 -export ([find_by_ids/2]).
 
 -include("common.hrl").
+
+
+find_by_email(Mobile, Column) ->
+    Sql = <<"SELECT ", Column/binary, " FROM `user` WHERE `email` = ?">>,
+    mysql_pool:query(Sql, [Mobile]).
 
 find_by_mobile(Mobile, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM `user` WHERE `mobile` = ?">>,

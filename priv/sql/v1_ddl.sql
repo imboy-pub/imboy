@@ -31,7 +31,7 @@ CREATE TABLE `user` (
   `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
   `created_at` bigint DEFAULT NULL COMMENT '创建记录UTC时间',
   `reg_ip` varchar(40) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '注册IP',
-  `reg_client` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '客户端：web wechat android ios mobile',
+  `reg_cosv` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '客户端操作系统版本，例如： Linux 5.11.0-1018-gcp #20~20.04.2-Ubuntu SMP Fri Sep 3 01:01:37 UTC 2021 | "Windows 10 Pro" 10.0 (Build 19043)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_email` (`email`),
   UNIQUE KEY `uk_mobile` (`mobile`),
@@ -58,6 +58,14 @@ CREATE TABLE `user_device` (
   `last_login_at` bigint DEFAULT NULL COMMENT '最后登录UTC时间',
   `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
   `created_at` bigint DEFAULT NULL COMMENT '创建记录UTC时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `verification_code` (
+  `id` varchar(80) COLLATE utf8mb4_general_ci NOT NULL COMMENT '唯一标示',
+  `code` varchar(20) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '随机验证码',
+  `validity_at` bigint(20) NOT NULL COMMENT '有效期截止时间 ',
+  `created_at` bigint(20) NOT NULL COMMENT '创建记录UTC时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

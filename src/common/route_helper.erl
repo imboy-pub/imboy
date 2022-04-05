@@ -13,6 +13,8 @@ get_routes() ->
             , {"/init", init_handler, [{action, init}]}
             , {"/refreshtoken", passport_handler, [{action, refreshtoken}]}
             , {"/passport/login", passport_handler, [{action, do_login}]}
+            , {"/passport/signup", passport_handler, [{action, do_signup}]}
+            , {"/passport/getcode", passport_handler, [{action, send_code}]}
 
             , {"/stress_testing", stress_testing_ws_handler, []}
 
@@ -67,5 +69,7 @@ not_need_auth_paths() ->
         , <<"/stress_testing">>
 
         , <<"/passport/login">>
+        , <<"/passport/signup">>
+        , <<"/passport/getcode">>
         , <<"/auth/assets">>
     ].
