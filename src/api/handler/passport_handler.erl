@@ -16,6 +16,8 @@ init(Req0, State) ->
             do_signup(Req0);
         {action, send_code} ->
             send_code(Req0);
+        {action, find_password} ->
+            find_password(Req0);
         false ->
             Req0
     end,
@@ -119,6 +121,37 @@ do_signup(Req0) ->
     Cosv = cowboy_req:header(<<"cosv">>, Req0),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip2} | PostVals]],
     case passport_logic:do_signup(Type, Account, Password, Code, Post2) of
+        {ok, Data} ->
+            resp_json_dto:success(Req0, Data, "操作成功.");
+        {error, Msg} ->
+            resp_json_dto:error(Req0, Msg);
+        {error, Msg, Code} ->
+            resp_json_dto:error(Req0, Msg, Code)
+    end.
+
+find_password(Req0) ->
+    %%
+    %% 在POST请求中取出内容
+    %% 用户名account
+    %% 密码 pwd
+    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    % ?LOG(PostVals),
+    Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
+    Account = proplists:get_value(<<"account">>, PostVals),
+    Password = proplists:get_value(<<"pwd">>, PostVals),
+    Code = proplists:get_value(<<"code">>, PostVals),
+    % 邀请人ID
+    % RefUid = proplists:get_value(<<"ref_uid">>, PostVals),
+    % RegIp = proplists:get_value(<<"reg_ip">>, PostVals),
+    % 注册客服端操作系统
+    % RegCos = proplists:get_value(<<"reg_cos">>, PostVals),
+
+    {Ip, _Port} = cowboy_req:peer(Req0),
+    Ip2 = list_to_binary(lists:flatten(io_lib:format("~w", [Ip]))),
+    % ?LOG(["Ip", Ip, "port", Port]),
+    Cosv = cowboy_req:header(<<"cosv">>, Req0),
+    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip2} | PostVals]],
+    case passport_logic:find_password(Type, Account, Password, Code, Post2) of
         {ok, Data} ->
             resp_json_dto:success(Req0, Data, "操作成功.");
         {error, Msg} ->

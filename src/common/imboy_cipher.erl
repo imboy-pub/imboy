@@ -13,6 +13,7 @@
 -spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) -> CipherText :: binary().
 
 % aes_cbc + pkcs#7填充
+% io:format("~s~n", [imboy_cipher:rsa_encrypt(<<"admin8889">>)]).
 aes_encrypt(Bin) ->
     aes_encrypt(aes_256_cbc, Bin).
 aes_decrypt(Bin) ->

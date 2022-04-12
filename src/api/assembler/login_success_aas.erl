@@ -5,7 +5,7 @@
 
 -export ([data/1]).
 
-data([Id, Account, Nickname, Avatar, Gender]) ->
+data([Id, Account, _, Nickname, Avatar, Gender]) ->
     [
         {<<"token">>, token_ds:encrypt_token(Id)}
         , {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)}

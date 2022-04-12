@@ -11,6 +11,7 @@
 -export ([find_by_id/1, find_by_id/2]).
 -export ([find_by_ids/1, find_by_ids/2]).
 -export ([change_sign/2]).
+-export ([create_account/0]).
 
 -include("common.hrl").
 
@@ -112,6 +113,18 @@ find_by_ids(Ids, Column) ->
 change_sign(Uid, Sign) ->
     Sql = <<"UPDATE `user` SET `sign` = ? WHERE `id` = ?">>,
     mysql_pool:query(Sql, [Sign, Uid]).
+
+
+-spec create_account() -> binary().
+% user_ds:create_account().
+create_account() ->
+    Account = integer_to_binary(rand:uniform(999999999)),
+    case user_repo:find_by_account(Account, <<"`id`">>) of
+        {ok, _, []} ->
+            Account;
+        {ok, _ColumnList, [_Row]} ->
+            user_ds:create_account()
+    end.
 
 %% Internal.
 

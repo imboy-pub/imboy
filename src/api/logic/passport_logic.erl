@@ -6,6 +6,7 @@
 -export ([send_email_code/1]).
 -export ([do_login/3]).
 -export ([do_signup/5]).
+-export ([find_password/5]).
 
 -include("common.hrl").
 
@@ -30,17 +31,17 @@ send_email_code(ToEmail) ->
             func:send_email(ToEmail, "Code is " ++ integer_to_list(VerifyCode) ++ " will expire in 10 minutes.")
     end.
 
--spec do_login(Type::binary(), Account::binary(), Pwd::binary()) -> {ok, any()} | {error, any()}.
-do_login(Type, Account, Pwd) when Type == <<"email">> ->
-    Column = <<"`id`,`email`,`password`,`nickname`,`avatar`,`gender`">>,
-    case func:is_email(Account) of
+-spec do_login(Type::binary(), Email::binary(), Pwd::binary()) -> {ok, any()} | {error, any()}.
+do_login(Type, Email, Pwd) when Type == <<"email">> ->
+    Column = <<"`id`,`account`,`email`,`password`,`nickname`,`avatar`,`gender`">>,
+    case func:is_email(Email) of
         true ->
-            {Check, User} = case user_repo:find_by_email(Account, Column) of
-                {ok, _FieldList, [[Id, Account, Password, Nickname, Avatar, Gender]]} ->
+            {Check, User} = case user_repo:find_by_email(Email, Column) of
+                {ok, _FieldList, [[Id, Account, Email, Password, Nickname, Avatar, Gender]]} ->
                     % ?LOG([Pwd, Password]),
                     case password_util:verify(Pwd, Password) of
                         {ok, _} ->
-                            {true, [Id, Account, Nickname, Avatar, Gender]};
+                            {true, [Id, Account, Email, Nickname, Avatar, Gender]};
                         {error, Msg} ->
                             {false, Msg}
                     end;
@@ -57,13 +58,13 @@ do_login(Type, Account, Pwd) when Type == <<"email">> ->
         false ->
             {error, "Email格式有误"}
     end;
-do_login(Type, Account, Pwd) when Type == <<"mobile">> ->
-    Column = <<"`id`,`account`,`password`,`nickname`,`avatar`,`gender`">>,
-    Res = case func:is_mobile(Account) of
+do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
+    Column = <<"`id`,`account`,`mobile`,`password`,`nickname`,`avatar`,`gender`">>,
+    Res = case func:is_mobile(Mobile) of
         true ->
-            user_repo:find_by_mobile(Account, Column);
+            user_repo:find_by_mobile(Mobile, Column);
         false ->
-            user_repo:find_by_account(Account, Column)
+            user_repo:find_by_account(Mobile, Column)
     end,
     % ?LOG(Res),
     {Check, User} = case Res of
@@ -87,27 +88,27 @@ do_login(Type, Account, Pwd) when Type == <<"mobile">> ->
     end.
 
 
--spec do_signup(Type::binary(), Account::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
+-spec do_signup(Type::binary(), EmailOrMobile::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
-do_signup(Type, Account, Pwd, Code, PostVals) when Type == <<"email">> ->
-    case func:is_email(Account) of
+do_signup(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
+    case func:is_email(Email) of
         true ->
             % 校验验证码
-            case verify_code(Account, Code) of
+            case verify_code(Email, Code) of
                 {ok, _} ->
-                    do_signup_by_email(Account, Pwd, PostVals);
+                    do_signup_by_email(Email, Pwd, PostVals);
                 {error, Msg} ->
                     {error, Msg}
             end;
         false ->
             {error, "Email格式有误"}
     end;
-do_signup(Type, Account, Pwd, Code, PostVals) when Type == <<"mobile">> ->
-    case func:is_mobile(Account) of
+do_signup(Type, Mobile, Pwd, Code, PostVals) when Type == <<"mobile">> ->
+    case func:is_mobile(Mobile) of
         true ->
-            do_signup_by_mobile(Account, Pwd, Code, PostVals);
+            do_signup_by_mobile(Mobile, Pwd, Code, PostVals);
         false ->
             {error, "Email格式有误"}
     end;
@@ -115,7 +116,34 @@ do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, "不支持的注册类型"}.
 
 
-%% Internal.
+-spec find_password(Type::binary(), EmailOrMobile::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
+    {ok, Msg::list()} |
+    {error, Msg::list()} |
+    {error, Msg::list(), Code::integer()}.
+find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
+    case func:is_email(Email) of
+        true ->
+            % 校验验证码
+            case verify_code(Email, Code) of
+                {ok, _} ->
+                    find_password_by_email(Email, Pwd, PostVals);
+                {error, Msg} ->
+                    {error, Msg}
+            end;
+        false ->
+            {error, "Email格式有误"}
+    end;
+% find_password(Type, Mobile, Pwd, Code, PostVals) when Type == <<"mobile">> ->
+%     case func:is_mobile(Mobile) of
+%         true ->
+%             find_password_by_mobile(Mobile, Pwd, Code, PostVals);
+%         false ->
+%             {error, "电话号码格式有误"}
+%     end;
+find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
+    {error, "不支持的注册类型"}.
+
+%% Internal. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% 校验验证码
 -spec verify_code(Id::binary(), VerifyCode::binary()) -> {error, Msg::list()} | {ok, any()}.
@@ -130,12 +158,12 @@ verify_code(Id, Code) ->
             {error, "验证码无效"}
     end.
 
--spec do_signup_by_email(Account::binary(), Pwd::binary(), PostVals::list()) ->
+-spec do_signup_by_email(Email::binary(), Pwd::binary(), PostVals::list()) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
-do_signup_by_email(Account, Pwd, PostVals) ->
-    case user_repo:find_by_email(Account, <<"`email`">>) of
+do_signup_by_email(Email, Pwd, PostVals) ->
+    case user_repo:find_by_email(Email, <<"`email`">>) of
         {ok,_Col,[_Email]} ->
             {error, "Email已经被占用了"};
         {ok,_Col,[]} ->
@@ -144,7 +172,7 @@ do_signup_by_email(Account, Pwd, PostVals) ->
             poolboy:transaction(mysql, fun(Pid) ->
                 Prefix = <<"INSERT INTO">>,
                 Table = <<"`user`">>,
-                Column = <<"(`email`,`password`,`ref_user_id`,`reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
+                Column = <<"(`account`,`email`,`password`,`ref_user_id`,`reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
                 Pwd2 = password_util:generate(Password),
                 Now2 = integer_to_binary(Now),
                 Status = integer_to_binary(1),
@@ -158,9 +186,11 @@ do_signup_by_email(Account, Pwd, PostVals) ->
                     bit_size(RefUid) =< 5  ->
                         <<"0">>
                 end,
-                ?LOG([{"RefUid2", RefUid2}, {"Ip", Ip}, {"Cosv", Cosv}, {"PostVals", PostVals}]),
+                Account = user_ds:create_account(),
+                ?LOG([{"Account", Account},{"RefUid2", RefUid2}, {"Ip", Ip}, {"Cosv", Cosv}, {"PostVals", PostVals}]),
                 Value = <<"('",
                     Account/binary, "', '",
+                    Email/binary, "', '",
                     Pwd2/binary, "', '",
                     RefUid2/binary, "', '",
                     Ip/binary, "', '",
@@ -188,3 +218,29 @@ do_signup_by_email(Account, Pwd, PostVals) ->
 do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
     % Column = <<"`id`,`account`,`password`,`mobile`">>,
     {error, "暂时不支持手机号码注册"}.
+
+
+-spec find_password_by_email(Email::binary(), Pwd::binary(), PostVals::list()) ->
+    {ok, Msg::list()} |
+    {error, Msg::list()} |
+    {error, Msg::list(), Code::integer()}.
+find_password_by_email(Email, Pwd, _PostVals) ->
+    case user_repo:find_by_email(Email, <<"`id`,`email`">>) of
+        {ok,_Col,[]} ->
+            {error, "Email不存在或已被删除"};
+        {ok,_Col,[[Id, _Email]]} ->
+            Password = imboy_cipher:rsa_decrypt(Pwd),
+            % Now = dt_util:milliseconds(),
+            poolboy:transaction(mysql, fun(Pid) ->
+                Pwd2 = password_util:generate(Password),
+                Sql = <<"UPDATE `user` SET `password` = ? WHERE `id` = ?">>,
+                case mysql:query(Pid, Sql, [Pwd2, Id]) of
+                    ok ->
+                        {ok, "操作成功"};
+                    Res ->
+                        Res
+                end
+            end),
+            % 注册成功
+            {ok, []}
+    end.

@@ -13,6 +13,8 @@ get_by_id(Id) ->
     % lager:info("~p", Row),
     Row.
 
+
+% verification_code_repo:save(<<"test@imboy.pub">>, func:num_random(6), dt_util:milliseconds() + 600000, dt_util:milliseconds()).
 -spec save(ToEmail::binary(), VerifyCode::integer(), ValidityAt::integer(), Now::integer()) -> ok.
 save(ToEmail, VerifyCode, ValidityAt, Now) ->
     Table = <<"`verification_code`">>,
