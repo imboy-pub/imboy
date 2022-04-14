@@ -186,7 +186,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                     bit_size(RefUid) =< 5  ->
                         <<"0">>
                 end,
-                Account = user_ds:create_account(),
+                Account = integer_to_binary(account_server:allocate()),
                 ?LOG([{"Account", Account},{"RefUid2", RefUid2}, {"Ip", Ip}, {"Cosv", Cosv}, {"PostVals", PostVals}]),
                 Value = <<"('",
                     Account/binary, "', '",

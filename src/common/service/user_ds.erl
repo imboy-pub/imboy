@@ -11,7 +11,6 @@
 -export ([find_by_id/1, find_by_id/2]).
 -export ([find_by_ids/1, find_by_ids/2]).
 -export ([change_sign/2]).
--export ([create_account/0]).
 
 -include("common.hrl").
 
@@ -115,18 +114,9 @@ change_sign(Uid, Sign) ->
     mysql_pool:query(Sql, [Sign, Uid]).
 
 
--spec create_account() -> binary().
-% user_ds:create_account().
-create_account() ->
-    Account = integer_to_binary(rand:uniform(999999999)),
-    case user_repo:find_by_account(Account, <<"`id`">>) of
-        {ok, _, []} ->
-            Account;
-        {ok, _ColumnList, [_Row]} ->
-            user_ds:create_account()
-    end.
-
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 %% 检查 user avatar 是否为空，如果为空设置默认
 check_avatar([]) ->

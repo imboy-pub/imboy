@@ -26,7 +26,7 @@ change_state(Req0, State) ->
     ChatState = proplists:get_value(<<"state">>, PostVals, <<"hide">>),
     user_setting_ds:save_state(CurrentUid, ChatState),
     % 切换在线状态 异步通知好友
-    gen_server:cast(offline_server, {notice_friend, CurrentUid, ChatState}),
+    user_server:cast_notice_friend(CurrentUid, ChatState),
     resp_json_dto:success(Req0, [], "success.").
 
 %% 修改签名

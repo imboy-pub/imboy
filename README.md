@@ -31,6 +31,7 @@ make new t=repository n=api/repository/test_repo
 make new t=transfer n=api/transfer/test_transfer
 
 make new t=cowboy.middleware n=common/middleware/auth_middleware
+make new t=gen_server n=server/account_server
 
 make run
 
@@ -450,10 +451,19 @@ endif
 
 ## Q
 
-消息确认机制 QoS
+## 消息确认机制 QoS
 https://blog.csdn.net/Jessechanrui/article/details/88399012
 
 socket 数据粘包问题、拆包问题
+
+## 消息投递机制
+
+1. 判断用户是否在线，如果用户离线，直接存储离线消息
+2. 用户在线（or 用户上线），判断 erlang is_process_alive(Pid) 马上投递一次
+3. 没有收到消息之前， 2 S -> 5 S -> 7S -> 11 S 投递4次
+4. 如果收到消息 清理定时器，清理数据库消息
+5. 4次投递都未确认消息，待用户下次登录再投递
+
 
 ## Email
 ```

@@ -23,14 +23,14 @@ online(Uid, Pid, DeviceType) ->
     % 把Uid标记为online
     user_ds:online(Uid, Pid, DeviceType),
     % 检查消息 用异步队列实现
-    gen_server:cast(offline_server, {online, Uid, Pid}),
+    user_server:cast_online(Uid, Pid),
     ok.
 
 -spec offline(any(), pid()) -> ok.
 offline(Uid, Pid) ->
     user_ds:offline(Pid),
     % 检查离线消息 用异步队列实现
-    gen_server:cast(offline_server, {offline, Uid, Pid}).
+    user_server:cast_offline(Uid, Pid).
 
 % 设置用户websocket超时时间，默认60秒
 idle_timeout(_UId) ->

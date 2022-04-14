@@ -21,12 +21,12 @@ init([]) ->
     % Redis = poolboy:child_spec(RedisName, RedisPoolArgs, RedisConfArgs),
 
     Offline = {
-        offline_server,
-        {offline_server, start_link, []},
+        account_server,
+        {account_server, start_link, []},
         permanent,
         infinity,
         worker,
-        [offline_server]
+        [account_server]
     },
 
     User = {

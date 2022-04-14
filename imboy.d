@@ -45,7 +45,7 @@ src/common/service/user_setting_ds.erl:: include/common.hrl; @touch $@
 src/common/service/websocket_ds.erl:: include/common.hrl; @touch $@
 src/common/util/password_util.erl:: include/common.hrl; @touch $@
 src/imboy_app.erl:: include/common.hrl; @touch $@
-src/server/offline_server.erl:: include/chat.hrl include/common.hrl; @touch $@
-src/server/user_server.erl:: include/common.hrl; @touch $@
+src/server/account_server.erl:: include/common.hrl; @touch $@
+src/server/user_server.erl:: include/chat.hrl include/common.hrl; @touch $@
 
 COMPILE_FIRST +=
