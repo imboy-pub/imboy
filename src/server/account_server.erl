@@ -26,7 +26,7 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     Start = start_account(),
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Start, 10000], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Start, 1000], []).
 
 %% gen_server.
 
