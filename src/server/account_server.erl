@@ -33,7 +33,7 @@ start_link() ->
 init([Start, Len]) ->
     L = create_rand_list(Start, Len),
     State = #state{start = Start , len = Len, l = L},
-    ?LOG([?MODULE, init, State]),
+    % ?LOG([?MODULE, init, State]),
     {ok, State}.
 
 %% 同步调用

@@ -53,6 +53,8 @@ dirty_delete(Uid) ->
 %% @end
 %% @link https://blog.csdn.net/wudixiaotie/article/details/84735787  chat_store_repo:lookup(1).
 %%--------------------------------------------------------------------
+%% [{chat_online_info,<0.1155.0>,<<"1">>,<<"iOS">>}]
+-spec lookup(pid() | integer()) -> list().
 lookup(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(chat_online_info, Pid);
 lookup(Uid) when is_integer(Uid) ->

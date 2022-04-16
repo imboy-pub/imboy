@@ -13,48 +13,22 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    Type = cowboy_req:header(<<"cos">>, Req0, <<"web">>),
-    SystemState = [{'cos', Type}|State0],
-    case websocket_ds:check_subprotocols(Req0, State0) of
-        {ok, Req1, State1} ->
-            ?LOG(['check_subprotocols']),
-            {ok, Req1, State1};
-        {cowboy_websocket, Req1, State1, Opt} ->
-            case cowboy_req:header(<<"authorization">>, Req0, undefined) of
-                undefined ->
-                    % HTTP 412 - 先决条件失败
-                    % Req2 = cowboy_req:reply(412, Req1),
-                    % {ok, Req2, State1};
-                    case cowboy_req:match_qs([{'authorization', [], undefined}], Req1) of
-                        #{'authorization' := undefined} ->
-                            % HTTP 412 - 先决条件失败
-                            Req2 = cowboy_req:reply(412, Req1),
-                            {ok, Req2, State1};
-                        #{'authorization' := Token} ->
-                            ?LOG(Token),
-                            case catch token_ds:decrypt_token(Token) of
-                                {ok, Uid, _ExpireAt, _Type} ->
-                                    Timeout = user_logic:idle_timeout(Uid),
-                                    {cowboy_websocket, Req1, [{current_uid, Uid}|SystemState], Opt#{idle_timeout := Timeout}};
-                                {error, 705, Msg, _Li} ->
-                                    Req3 = resp_json_dto:error(Req1, Msg),
-                                    {ok, Req3, State0};
-                                {error, Code, _Msg, _Li} ->
-                                    {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
-                            end
-                    end;
-                Authorization ->
-                    case catch token_ds:decrypt_token(Authorization) of
-                        {ok, Uid, _ExpireAt, _Type} ->
-                            Timeout = user_logic:idle_timeout(Uid),
-                            {cowboy_websocket, Req1, [{current_uid, Uid}|SystemState], Opt#{idle_timeout := Timeout}};
-                        {error, 705, Msg, _Li} ->
-                            Req3 = resp_json_dto:error(Req1, Msg),
-                            {ok, Req3, State0};
-                        {error, Code, _Msg, _Li} ->
-                            {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
-                    end
-            end
+    Env = os:get_env_var("IMBOYENV"),
+    if Env == "local" ->
+        websocket_ds:auth(Req0, State0, #{
+            num_acceptors => infinity,
+            max_connections => infinity,
+            max_frame_size => 1048576, % 1MB
+            idle_timeout => 120000 %  % Cowboy关闭连接空闲120秒 默认值为 60000
+        });
+    true ->
+        case websocket_ds:check_subprotocols(Req0, State0) of
+            {ok, Req0, State0} ->
+                ?LOG(['check_subprotocols']),
+                {ok, Req0, State0};
+            {cowboy_websocket, Req0, State0, Opt} ->
+                websocket_ds:auth(Req0, State0, Opt)
+        end
     end.
 
 %%连接初始 onopen
@@ -97,6 +71,11 @@ websocket_handle({text, <<"ping">>}, State) ->
 websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
+websocket_handle({text, <<"C2C_CLIENT_ACK:", MsgId/binary>>}, State) ->
+    CurrentUid = proplists:get_value(current_uid, State),
+    websocket_logic:c2c_client_ack(MsgId, CurrentUid),
+    ?LOG([<<"C2C_CLIENT_ACK:">>, MsgId, cowboy_clock:rfc1123(), State]),
+    {ok, State, hibernate};
 websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
     % ?LOG(State),
@@ -151,7 +130,8 @@ websocket_handle(_Frame, State) ->
 
 %% 处理erlang 发送的消息
 websocket_info({timeout, _Ref, Msg}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+    CurrentUid = proplists:get_value(current_uid, State),
+    ?LOG([timeout, CurrentUid, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};
 websocket_info(stop, State) ->
     ?LOG([stop, State]),

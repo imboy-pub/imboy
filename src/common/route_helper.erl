@@ -63,6 +63,8 @@ get_routes() ->
 not_need_auth_paths() ->
     [
         <<"/">>
+        % /ws 有自己的auth
+        , <<"/ws">>
         , <<"/help">>
         , <<"/conversation/online">>
         , <<"/init">>

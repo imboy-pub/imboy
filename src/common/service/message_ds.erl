@@ -13,8 +13,9 @@
 -spec send(integer(), list()) -> ok.
 send(ToUid, Msg2) ->
     % start_timer/3 返回的是{timeout, TimerRef, Msg}.
+    % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg} to Dest after Time milliseconds.
-    [erlang:start_timer(1, ToPid, Msg2) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid)],
+    [erlang:start_timer(1, ToPid, Msg2) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid), is_process_alive(ToPid)],
     ok.
 
 %%% 系统消息 [500 -- 1000) 系统消息

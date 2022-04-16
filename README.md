@@ -464,6 +464,47 @@ socket 数据粘包问题、拆包问题
 4. 如果收到消息 清理定时器，清理数据库消息
 5. 4次投递都未确认消息，待用户下次登录再投递
 
+## erlang 的shell 访问远程节
+```
+erl -name debug@127.0.0.1
+auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
+net_adm:names().
+{ok,[{"imboy",55042},{"debug",60595}]}
+
+按 Ctrl+G 出现user switch command
+然后输入
+
+r 'imboy@127.0.0.1'
+
+按回车
+
+在按 J 机器显示节点:
+ --> j
+   1  {shell,start,[init]}
+   2* {'imboy@127.0.0.1',shell,start,[]}
+
+在 * 的就是默认的可连接节点，其中的1 行，就是你现在的master节点
+
+按 c 就能连接
+
+你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
+
+chat_store_repo:lookup(1).
+```
+
+## websocket 在线工具调试
+```
+http://coolaf.com/tool/chattest
+io:format("~p~n", [token_ds:encrypt_token(4)]).
+
+ws://192.168.43.174:9800/ws?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NTAxMjg4NDkyODcsInN1YiI6InRrIiwidWlkIjoiOHliazViIn0.LxmboEGP31xDC-E-So6SaMnAIx_T8fxTNIsr49S7R0w
+
+(imboy@127.0.0.1)10>  hashids_translator:uid_encode(4).
+<<"8ybk5b">>
+(imboy@127.0.0.1)11> hashids_translator:uid_encode(1).
+<<"kybqdp">>
+{"id":"1","type":"C2C","from":"8ybk5b","to":"kybqdp","payload":{"msg_type":"text","text":"2"},"created_at":1650118822382,"server_ts":1650118823376}
+```
 
 ## Email
 ```
