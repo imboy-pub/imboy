@@ -8,7 +8,7 @@ LOCAL_DEPS = ssl mnesia
 DEPS = lager poolboy mysql jsone cowboy jwerl hashids gen_smtp
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 # BUILD_DEPS
-BUILD_DEPS = reload_mk
+BUILD_DEPS = reload_mk elvis_mk
 
 # 专为测试用的TEST_DEPS,只有当测试的时候才会运行
 # TEST_DEPS = sync
@@ -60,12 +60,12 @@ dep_hashids = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
 dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.1.0
 dep_reload.mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
 dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
-dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis_mk 1.0.0
+dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis.mk 1.0.0
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.0.0
 
 SP = 4
-DEP_PLUGINS = cowboy reload_mk
+DEP_PLUGINS = cowboy reload_mk elvis_mk
 RELOAD_MK_WATCH_DIRS = src templates include
 
 include erlang.mk
