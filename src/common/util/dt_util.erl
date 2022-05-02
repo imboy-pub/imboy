@@ -15,7 +15,8 @@ utc_date("Y-m-d\TH:i:s\Z") ->
     TS = {_, _, _Micro} = os:timestamp(),
     {{Year, Month, Day}, {Hour, Minute, Second}} =
     calendar:now_to_universal_time(TS),
-    % Mstr = element(Month,{"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}),
-    Dt = io_lib:format("~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0BZ",
-          [Year,Month,Day,Hour,Minute,Second]),
+    Dt = io_lib:format(
+        "~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0BZ",
+        [Year, Month, Day, Hour, Minute, Second]
+    ),
     list_to_binary(Dt) .

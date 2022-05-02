@@ -66,7 +66,7 @@ dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.0.0
 
 SP = 4
-DEP_PLUGINS = cowboy reload_mk
+DEP_PLUGINS = cowboy reload_mk elvis_mk
 RELOAD_MK_WATCH_DIRS = src templates include
 
 include erlang.mk

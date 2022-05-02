@@ -2,20 +2,24 @@
 %%%
 %  msg_c2c 业务逻辑模块
 %%%
--export ([check_msg/2]).
+-export ([check_msg/3]).
 
 -include("chat.hrl").
 -include("common.hrl").
 
 %% 检查离线消息
-% 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多以10条，再返回消除总数量
+% 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量
 %%
-check_msg(Uid, Pid) ->
+check_msg(Uid, Pid, _DID) ->
     % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
     Msgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
     % 发送单聊离线消息
     sent_offline_msg(Pid, Msgs, 0),
     ok.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 sent_offline_msg(_Pid, [], _Index) ->
     ok;

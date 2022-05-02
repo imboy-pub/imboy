@@ -16,9 +16,9 @@ search(_Account) ->
 find_by_uid(Uid) ->
     Column = <<"`more`">>,
     case user_setting_repo:find_by_uid(Uid, Column) of
-        {ok, _ ,[]} ->
+        {ok, _, []} ->
             [];
-        {ok, _ ,[[Setting]]} ->
+        {ok, _, [[Setting]]} ->
             try
                 jsone:decode(Setting, [{object_format, proplist}])
             of
@@ -45,7 +45,12 @@ save_state(Uid, State) ->
     UserSetting = user_setting_ds:find_by_uid(Uid),
     Setting = case lists:keyfind(<<"chat_state">>, 1, UserSetting) of
         {<<"chat_state">>, _} ->
-            lists:keyreplace(<<"chat_state">>, 1, UserSetting, {<<"chat_state">>, State});
+            lists:keyreplace(
+                <<"chat_state">>,
+                1,
+                UserSetting,
+                {<<"chat_state">>, State}
+            );
         _ ->
             [{<<"chat_state">>, State} | UserSetting]
     end,

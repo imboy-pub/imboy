@@ -18,7 +18,9 @@ generate(Plaintext, hmac_sha512) ->
     Ciphertext = hash_util:hmac_sha512(Plaintext, Salt2),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
--spec verify(Plaintext::list(), Ciphertext::list()) -> {ok, any()} | {error, Msg::list()}.
+-spec verify(Plaintext::list(), Ciphertext::list()) ->
+    {ok, any()} |
+    {error, Msg::list()}.
 verify(Plaintext, Ciphertext) ->
     % ?LOG([Plaintext, Ciphertext]),
     try
@@ -37,9 +39,11 @@ verify(Plaintext, Ciphertext) ->
 
 -ifdef(TEST).
     md5_test() ->
-        Resp1 = password_util:verify("admin888", "299e0c8fbc9cf877bcc46bcee2ca5987"),
+        Resp1 = password_util:verify(
+            "admin888",
+            "299e0c8fbc9cf877bcc46bcee2ca5987"
+        ),
         ?LOG(Resp1),
-
         Plaintext = "abc",
         Ciphertext = generate(Plaintext),
         Resp = verify(Plaintext, Ciphertext),
@@ -63,23 +67,19 @@ verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Ciphertext) ->
     verify(Plaintext, default_md5, Salt, list_to_binary(Ciphertext));
 verify(Plaintext, default_md5, Salt, Ciphertext) ->
     Plaintext2 = <<Plaintext/binary, Salt/binary>>,
-    ?LOG(Plaintext2),
+    % ?LOG(Plaintext2),
     Ciphertext2 = hash_util:md5(binary_to_list(Plaintext2)),
-    ?LOG([default_md5, Ciphertext2, Ciphertext]),
-    if
-        Ciphertext2 == Ciphertext ->
-            {ok, []};
-        true ->
-            {error, "密码有误"}
-    end;
-
+    % ?LOG([default_md5, Ciphertext2, Ciphertext]),
+    eq(Ciphertext, Ciphertext2);
 verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = hash_util:hmac_sha512(Plaintext, Salt),
-    ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
-    if
-        Ciphertext2 == Ciphertext ->
-            {ok, []};
+    % ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    eq(Ciphertext, Ciphertext2).
+
+eq(Ciphertext, Ciphertext2) ->
+    case Ciphertext2 == Ciphertext of
         true ->
+            {ok, []};
+        _ ->
             {error, "密码有误"}
     end.
-

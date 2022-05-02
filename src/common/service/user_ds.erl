@@ -90,7 +90,11 @@ find_by_id(Id, Column) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, [Row]} ->
-            check_avatar(lists:zipwith(fun(X, Y) -> {X,Y} end, ColumnList, Row));
+            check_avatar(lists:zipwith(
+                fun(X, Y) -> {X, Y} end,
+                ColumnList,
+                Row
+            ));
         _ ->
             []
     end.
@@ -104,7 +108,11 @@ find_by_ids(Ids, Column) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
-            [check_avatar(lists:zipwith(fun(X, Y) -> {X,Y} end, ColumnList, Row)) || Row <- Rows];
+            [check_avatar(lists:zipwith(
+                fun(X, Y) -> {X, Y} end,
+                ColumnList,
+                Row
+                )) || Row <- Rows];
         _ ->
             []
     end.

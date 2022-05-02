@@ -12,28 +12,39 @@
 -include("common.hrl").
 
 %%websocket 握手
-init(Req0, State1) ->
+init(Req0, State0) ->
     Env = os:getenv("IMBOYENV"),
     DID = cowboy_req:header(<<"did">>, Req0, <<"">>),
-    % State1 = [{<<"did">>, DID} | State0],
-    if Env == "local" ->
-        websocket_ds:auth(DID, Req0, State1, #{
-            num_acceptors => infinity,
-            max_connections => infinity,
-            max_frame_size => 1048576, % 1MB
-            idle_timeout => 120000 %  % Cowboy关闭连接空闲120秒 默认值为 60000
-        });
-        bit_size(DID) > 0 ->
-            case websocket_ds:check_subprotocols(Req0, State1) of
-                {ok, Req0, State2} ->
-                    ?LOG(['check_subprotocols']),
-                    {ok, Req0, State2};
-                {cowboy_websocket, Req0, State2, Opt} ->
-                    websocket_ds:auth(DID, Req0, State2, Opt)
+    HeaderAuth = cowboy_req:header(<<"authorization">>, Req0),
+    Subprotocols = cowboy_req:header(<<"sec-websocket-protocol">>, Req0),
+    QsAuth = cowboy_req:match_qs(
+        [{'authorization', [], undefined}],
+        Req0
+    ),
+    Opt0 = #{
+        num_acceptors => infinity,
+        max_connections => infinity,
+        max_frame_size => 1048576, % 1MB
+        idle_timeout => 120000 %  % Cowboy关闭连接空闲120秒 默认值为 60000
+    },
+    if
+        Env == "local", HeaderAuth =/= undefined ->
+            websocket_ds:auth(HeaderAuth, DID, Req0, State0, Opt0);
+        Env == "local", QsAuth =/= undefined ->
+            Token = maps:get(authorization, QsAuth),
+            websocket_ds:auth(Token, DID, Req0, State0, Opt0);
+        % 为了安全考虑，非 local 环境必须要 DID 和 HeaderAuth，必须check subprotocols
+        bit_size(DID) > 0, HeaderAuth =/= undefined ->
+            case websocket_ds:check_subprotocols(Subprotocols, Req0, State0) of
+                {ok, Req1, State1} ->
+                    {ok, Req1, State1};
+                {cowboy_websocket, Req1, State1, Opt} ->
+                    websocket_ds:auth(HeaderAuth, DID, Req1, State1, Opt)
             end;
         true ->
-            % 设备ID必须
-            {cowboy_websocket, Req0, [{error, 787} | State1]}
+            ?LOG([Req0, State0]),
+            % token无效 (包含缺失token情况) 或者设备ID不存在
+            {cowboy_websocket, Req0, [{error, 706} | State0]}
     end.
 
 %%连接初始 onopen
@@ -120,7 +131,10 @@ websocket_handle({text, Msg}, State) ->
             end
     catch
         Class:Reason ->
-            ?LOG(["websocket_handle try catch: Class:", Class, "Reason:", Reason, "trace:", erlang:trace(all, true, [call])]),
+            ?LOG(["websocket_handle try catch: Class:", Class,
+                "Reason:", Reason,
+                "trace:", erlang:trace(all, true, [call])
+            ]),
             {ok, State, hibernate}
     end;
 websocket_handle({binary, Msg}, State) ->

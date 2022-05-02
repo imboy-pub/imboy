@@ -17,7 +17,11 @@ write_msg(CreatedAt, Id, Payload, FromId, ToIds, Gid) ->
 %% 读取离线消息
 read_msg(ToUid, Limit) ->
     Column = <<"`id`, `msg_id`">>,
-    {ok, _CoLi, Rows} = msg_c2g_timeline_repo:find_by_uid(ToUid, Column, Limit),
+    {ok, _CoLi, Rows} = msg_c2g_timeline_repo:find_by_uid(
+        ToUid,
+        Column,
+        Limit
+    ),
     MsgIds = lists:map(fun([Id, MsgId]) ->
         msg_c2g_timeline_repo:delete_timeline(Id),
         MsgId
@@ -27,7 +31,10 @@ read_msg(ToUid, Limit) ->
         {ok, _, []}  ->
             [];
         {ok, ColumnList2, Rows2} ->
-            [lists:zipwith(fun(X, Y) -> {X,Y} end, ColumnList2, Row) || Row <- Rows2]
+            [lists:zipwith(
+                fun(X, Y) -> {X, Y} end,
+                ColumnList2,
+                Row) || Row <- Rows2]
     end.
 
 delete_msg(Id) ->

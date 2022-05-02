@@ -70,12 +70,13 @@ handle_cast({notice_friend, UID, ToState}, State) ->
     ?LOG([notice_friend, UID, ToState]),
     notice_friend(UID, ToState),
     {noreply, State, hibernate};
-handle_cast({offline, UID, _Pid}, State) ->
-    ?LOG([offline, UID, State]),
+handle_cast({offline, UID, _Pid, DID}, State) ->
+    ?LOG([offline, UID, State, DID]),
     notice_friend(UID, offline),
     {noreply, State, hibernate};
-handle_cast({online, UID, Pid}, State) ->
-    ?LOG([online, UID, Pid, State]),
+
+handle_cast({online, UID, Pid, DID}, State) ->
+    ?LOG([online, UID, Pid, State, DID]),
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(UID) of
         false ->
@@ -87,9 +88,9 @@ handle_cast({online, UID, Pid}, State) ->
     end,
     % ?LOG(["before check_msg/2",UID, Pid, State]),
     % 检查离线消息
-    msg_c2c_logic:check_msg(UID, Pid),
+    msg_c2c_logic:check_msg(UID, Pid, DID),
     % 检查群聊离线消息
-    msg_c2g_logic:check_msg(UID, Pid),
+    msg_c2g_logic:check_msg(UID, Pid, DID),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->

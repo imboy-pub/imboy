@@ -31,11 +31,9 @@ decrypt_token(Token) ->
             ExpireAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
             {ok, ID, ExpireAt, Sub};
-        {error, JWT_ERR} ->
-            ?LOG([expire,JWT_ERR]),
+        {error, _JWT_ERR} ->
             {error, 705, "请刷新token", []};
-        JWT_ERR ->
-            ?LOG([decrypterror, JWT_ERR]),
+        _JWT_ERR ->
             {error, 706, "token无效", []}
     catch _:_ ->
         ?LOG(['catch', Token]),
@@ -63,6 +61,4 @@ encrypt_token(ID, Millisecond, Sub) ->
         , exp => ExpireAt % exp (expiration time)：过期时间
         , uid => hashids_translator:uid_encode(ID)
     },
-    % Data.
-    ?LOG(jwerl:sign(Data, hs256, ?JWT_KEY)),
     jwerl:sign(Data, hs256, ?JWT_KEY).
