@@ -45,7 +45,7 @@ num_random(Len) ->
 % 中文支持，TODO
 % func:send_email(<<"leeyisoft@icloud.com">>, "你的验证码为： " ++ integer_to_list(func:num_random(6)) ++ " ，10分钟后过期。").
 % func:send_email(<<"1977699124@qq.com">>, "你的验证码为： " ++ integer_to_list(func:num_random(6)) ++ " ，10分钟后过期。").
--spec send_email(ToEmail :: binary(), Subject::list()) -> {ok, pid()}.
+-spec send_email(ToEmail::binary(), Subject::list()) -> {ok, pid()}.
 send_email(ToEmail, Subject) ->
     {ok, Option} = application:get_env(imboy,smtp_option),
     Username = proplists:get_value(username, Option),

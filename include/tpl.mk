@@ -16,6 +16,10 @@ init(Req0, State) ->
             Req0
     end,
     {ok, Req1, State}.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 endef
 
 define tpl_logic
@@ -32,9 +36,11 @@ define tpl_logic
 %search(Uid) ->
     % 只能够搜索“用户被允许搜索”的用户
     %
- %   ok.
+%   ok.
 
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 endef
 
 define tpl_repository
@@ -51,7 +57,9 @@ get_by_key(Key) ->
     % lager:info("~p", Row),
     Row.
 
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 endef
 
 define tpl_transfer
@@ -70,5 +78,7 @@ data(User, Friends) ->
         % , {<<"friend">>, Friends}
     ].
 
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 endef

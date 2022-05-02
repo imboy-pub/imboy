@@ -6,17 +6,20 @@
 -export ([s2c/2]).
 -export ([s2c/4]).
 
--export ([send/2]).
+-export ([send/3]).
 
 -include("common.hrl").
 
--spec send(integer(), list()) -> ok.
-send(ToUid, Msg2) ->
-    % start_timer/3 返回的是{timeout, TimerRef, Msg}.
+-spec send(ToUid::integer(), Msg::list(), Millisecond::integer()) -> list().
+send(ToUid, Msg, Millisecond) ->
+    % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
+    % #Ref<0.717641544.2272788481.230829>
+    % (imboy@127.0.0.1)2> flush().
+    % Shell got {timeout,#Ref<8772.717641544.2272788481.230829>,1234}
+    % ok
     % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg} to Dest after Time milliseconds.
-    [erlang:start_timer(1, ToPid, Msg2) || {_, ToPid, _Uid, _Type} <- chat_store_repo:lookup(ToUid), is_process_alive(ToPid)],
-    ok.
+    [{DID, erlang:start_timer(Millisecond, ToPid, Msg)} || {_, ToPid, _Uid, DID} <- chat_store_repo:lookup(ToUid), is_process_alive(ToPid)].
 
 %%% 系统消息 [500 -- 1000) 系统消息
 

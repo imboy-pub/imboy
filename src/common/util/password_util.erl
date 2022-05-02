@@ -20,6 +20,7 @@ generate(Plaintext, hmac_sha512) ->
 
 -spec verify(Plaintext::list(), Ciphertext::list()) -> {ok, any()} | {error, Msg::list()}.
 verify(Plaintext, Ciphertext) ->
+    % ?LOG([Plaintext, Ciphertext]),
     try
         Ciphertext2 = base64:decode(Ciphertext),
         binary:split(Ciphertext2, <<$:>>, [global, trim])
@@ -51,7 +52,10 @@ verify(Plaintext, Ciphertext) ->
         ?LOG(Resp).
 
 -endif.
-%% Internal.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Plaintext) ->
     verify(list_to_binary(Plaintext), default_md5, Salt, Ciphertext);
@@ -71,7 +75,7 @@ verify(Plaintext, default_md5, Salt, Ciphertext) ->
 
 verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = hash_util:hmac_sha512(Plaintext, Salt),
-    % ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
     if
         Ciphertext2 == Ciphertext ->
             {ok, []};

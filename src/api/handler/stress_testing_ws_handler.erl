@@ -123,9 +123,10 @@ websocket_info(_Info, State) ->
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(_Reason, _Req, State) ->
+    DID = proplists:get_value('did', State, <<"">>),
     case lists:keyfind(current_uid, 1, State) of
         {current_uid, Uid} ->
-            user_logic:offline(Uid, self());
+            user_logic:offline(Uid, self(), DID);
         false ->
             chat_store_repo:dirty_delete(self())
     end,

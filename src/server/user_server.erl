@@ -20,8 +20,8 @@
 
 %%
 -export([cast_notice_friend/2]).
--export([cast_online/2]).
--export([cast_offline/2]).
+-export([cast_online/3]).
+-export([cast_offline/3]).
 
 %% API.
 
@@ -48,42 +48,48 @@ handle_call(Request, From, State) ->
 % 异步处理请求
 
 % 用户注册成功后的逻辑处理
-handle_cast({signup_success, Uid, PostVals}, State) ->
-    ?LOG([Uid, hashids_translator:uid_decode(Uid), PostVals]),
+handle_cast({signup_success, UID, PostVals}, State) ->
+    ?LOG([UID, hashids_translator:uid_decode(UID), PostVals]),
     % 生成account
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
-handle_cast({login_success, Uid, PostVals}, State) ->
+handle_cast({login_success, UID, PostVals}, State) ->
     % 用户登录成功之后的业务逻辑处理
     % 更新 user 表
     % 更新 user_client 表
-    ?LOG([Uid, hashids_translator:uid_decode(Uid), PostVals]),
+    UID2 = hashids_translator:uid_decode(UID),
+    Now = dt_util:milliseconds(),
+    ?LOG([UID, UID2, PostVals]),
+    % 记录设备信息
+    DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
+    user_device_repo:save(Now, UID2, DID, PostVals),
+    % 记录设备信息 END
     {noreply, State, hibernate};
 
-handle_cast({notice_friend, Uid, ToState}, State) ->
-    ?LOG([notice_friend, Uid, ToState]),
-    notice_friend(Uid, ToState),
+handle_cast({notice_friend, UID, ToState}, State) ->
+    ?LOG([notice_friend, UID, ToState]),
+    notice_friend(UID, ToState),
     {noreply, State, hibernate};
-handle_cast({offline, Uid, _Pid}, State) ->
-    ?LOG([offline, Uid, State]),
-    notice_friend(Uid, offline),
+handle_cast({offline, UID, _Pid}, State) ->
+    ?LOG([offline, UID, State]),
+    notice_friend(UID, offline),
     {noreply, State, hibernate};
-handle_cast({online, Uid, Pid}, State) ->
-    ?LOG([online, Uid, Pid, State]),
+handle_cast({online, UID, Pid}, State) ->
+    ?LOG([online, UID, Pid, State]),
     % 检查上线通知好友
-    case user_setting_ds:chat_state_hide(Uid) of
+    case user_setting_ds:chat_state_hide(UID) of
         false ->
             % 上线通知好友
-            notice_friend(Uid, online),
+            notice_friend(UID, online),
             ok;
         true ->
             ok
     end,
-    % ?LOG(["before check_msg/2",Uid, Pid, State]),
+    % ?LOG(["before check_msg/2",UID, Pid, State]),
     % 检查离线消息
-    msg_c2c_logic:check_msg(Uid, Pid),
+    msg_c2c_logic:check_msg(UID, Pid),
     % 检查群聊离线消息
-    msg_c2g_logic:check_msg(Uid, Pid),
+    msg_c2g_logic:check_msg(UID, Pid),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
@@ -102,16 +108,18 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 %% 切换在线状态 异步通知好友
-cast_notice_friend(CurrentUid, ChatState) ->
-    gen_server:cast(?MODULE, {notice_friend, CurrentUid, ChatState}),
+cast_notice_friend(CurrentUID, ChatState) ->
+    gen_server:cast(?MODULE, {notice_friend, CurrentUID, ChatState}),
     ok.
 %% 检查消息 用异步队列实现
-cast_online(Uid, Pid) ->
-    gen_server:cast(?MODULE, {online, Uid, Pid}),
+
+-spec cast_online(UID::binary(), Pid::pid(), DID::binary()) -> ok.
+cast_online(UID, Pid, DID) ->
+    gen_server:cast(?MODULE, {online, UID, Pid, DID}),
     ok.
 %% 检查离线消息 用异步队列实现
-cast_offline(Uid, Pid) ->
-    gen_server:cast(?MODULE, {offline, Uid, Pid}),
+cast_offline(UID, Pid, DID) ->
+    gen_server:cast(?MODULE, {offline, UID, Pid, DID}),
     ok.
 
 %% ------------------------------------------------------------------
@@ -120,26 +128,26 @@ cast_offline(Uid, Pid) ->
 
 
 -spec notice_friend(any(), user_chat_state()) -> ok.
-notice_friend(Uid, State) ->
+notice_friend(UID, State) ->
     Column = <<"`to_user_id`">>,
-    case friend_ds:find_by_uid(Uid, Column) of
+    case friend_ds:find_by_uid(UID, Column) of
         [] ->
             ok;
         Friends ->
             % ?LOG([State, Friends]),
-            send_state_msg(Uid, State, Friends),
+            send_state_msg(UID, State, Friends),
             ok
     end.
 
 -spec send_state_msg(any(), user_chat_state(), list()) -> ok.
 send_state_msg(_FromId, _State, []) -> ok;
 % 给在线好友发送上线消息
-send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}]| Tail]) ->
-    case chat_store_repo:lookup(ToUid) of
+send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUID}]| Tail]) ->
+    case chat_store_repo:lookup(ToUID) of
         [] ->
             ok;
         List ->
-            [send_msg_1019(FromId, ToUid2, ToPid2, State) || {_, ToPid2, ToUid2, _Type} <- List]
+            [send_msg_1019(FromId, ToUID2, ToPid2, State) || {_, ToPid2, ToUID2, _Type} <- List]
     end,
     send_state_msg(FromId, State, Tail).
 

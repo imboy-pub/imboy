@@ -64,7 +64,7 @@ not_need_auth_paths() ->
     [
         <<"/">>
         % /ws 有自己的auth
-        , <<"/ws">>
+        , <<"/ws">>, <<"/ws/">>
         , <<"/help">>
         , <<"/conversation/online">>
         , <<"/init">>

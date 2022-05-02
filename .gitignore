@@ -12,3 +12,5 @@ ebin
 deps
 priv/static/layim*
 nginx_img.conf
+deps.23
+deps.24

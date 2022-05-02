@@ -4,7 +4,7 @@
 %%%
 % -export ([subprotocol/1]).
 -export ([c2c/3]).
--export ([c2c_client_ack/2]).
+-export ([c2c_client_ack/3]).
 -export ([c2c_revoke/3]).
 -export ([c2g/3]).
 -export ([system/3]).
@@ -40,8 +40,7 @@ c2c(Id, CurrentUid, Data) ->
                 {<<"created_at">>, CreatedAt},
                 {<<"server_ts">>, NowTs}
             ],
-            Msg2 = jsone:encode(Msg),
-            message_ds:send(ToId, Msg2),
+            _TimerRefList = message_ds:send(ToId, jsone:encode(Msg), 1),
             {reply, [
                 {<<"id">>, Id},
                 {<<"type">>,<<"C2C_SERVER_ACK">>},
@@ -58,8 +57,8 @@ c2c(Id, CurrentUid, Data) ->
     end.
 
 %% 客户端确认投递消息
--spec c2c_client_ack(binary(), integer()) -> ok.
-c2c_client_ack(MsgId, CurrentUid) ->
+-spec c2c_client_ack(MsgId::binary(), CurrentUid::integer(), Data::binary()) -> ok.
+c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"`id`">>,
     Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
     Vals = [MsgId, CurrentUid],
@@ -121,7 +120,7 @@ c2g(Id, CurrentUid, Data) ->
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg),
     _UidsOnline = lists:filtermap(fun(Uid) ->
-        message_ds:send(Uid, Msg2)
+        message_ds:send(Uid, Msg2, 1)
     end, Uids),
     % 存储消息
     msg_c2g_ds:write_msg(NowTs, Id, Msg2, CurrentUid, Uids, ToGID),

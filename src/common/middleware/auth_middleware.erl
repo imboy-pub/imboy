@@ -10,6 +10,7 @@ execute(Req, Env) ->
     Path = cowboy_req:path(Req),
     NotNeedAuth = route_helper:not_need_auth_paths(),
     Need = lists:member(Path, NotNeedAuth),
+    % ?LOG(["Path", Path, "Need", Need]),
     case Need of
         true ->
             {ok, Req, Env};

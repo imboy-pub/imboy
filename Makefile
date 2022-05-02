@@ -57,7 +57,8 @@ dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
 dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
 dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.7.0
 dep_hashids = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
-dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.1.0
+# dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl master
+dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
 dep_reload.mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
 dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis.mk 1.0.0
@@ -65,7 +66,7 @@ dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.0.0
 
 SP = 4
-DEP_PLUGINS = cowboy reload_mk elvis_mk
+DEP_PLUGINS = cowboy reload_mk
 RELOAD_MK_WATCH_DIRS = src templates include
 
 include erlang.mk

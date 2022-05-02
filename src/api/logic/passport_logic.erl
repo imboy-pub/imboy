@@ -143,7 +143,9 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
 find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, "不支持的注册类型"}.
 
-%% Internal. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 %% 校验验证码
 -spec verify_code(Id::binary(), VerifyCode::binary()) -> {error, Msg::list()} | {ok, any()}.

@@ -3,7 +3,7 @@
 % websocket_ds 是 websocket domain service 缩写
 %%%
 -export ([check_subprotocols/2]).
--export ([auth/3]).
+-export ([auth/4]).
 
 -include("common.hrl").
 
@@ -34,10 +34,9 @@ check_subprotocols(Req0, State0) ->
             end
     end.
 
-
-auth(Req1, State1, Opt) ->
-    Type = cowboy_req:header(<<"cos">>, Req1, <<"web">>),
-    SystemState = [{'cos', Type}|State1],
+-spec auth(DID::binary(), Req1::any(), State1::list(), Opt::any()) -> any().
+auth(DID, Req1, State1, Opt) ->
+    SystemState = [{'did', DID}|State1],
     case cowboy_req:header(<<"authorization">>, Req1, undefined) of
         undefined ->
             % HTTP 412 - 先决条件失败
@@ -49,7 +48,6 @@ auth(Req1, State1, Opt) ->
                     Req2 = cowboy_req:reply(412, Req1),
                     {ok, Req2, State1};
                 #{'authorization' := Token} ->
-                    ?LOG(Token),
                     case catch token_ds:decrypt_token(Token) of
                         {ok, Uid, _ExpireAt, _Type} ->
                             Timeout = user_logic:idle_timeout(Uid),

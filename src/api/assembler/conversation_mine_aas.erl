@@ -10,8 +10,11 @@
 data(List) ->
     [
         [
-          {<<"id">>, proplists:get_value(<<"id">>, Msg)}
-          | jsone:decode(proplists:get_value(<<"payload">>, Msg), [{object_format, proplist}])
-        ]
-        || Msg <- List
+            {<<"id">>, proplists:get_value(<<"id">>, Msg)} |
+            jsone:decode(
+                proplists:get_value(<<"payload">>, Msg),
+                [{object_format, proplist}]
+            )
+        ] ||
+        Msg <- List
     ].

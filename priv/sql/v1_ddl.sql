@@ -47,19 +47,20 @@ CREATE TABLE `user_setting` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `user_device` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '自增长ID',
-  `user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '用户ID',
-  `device_type` varchar(80) COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '设备类型 web ios android macos windows',
-  `device_id` varchar(80) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '设备ID web设备留空',
-  `device_vsn` varchar(80) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '设备版本， iPhone iOS13.7',
-  `device_name` varchar(80) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '设备名称（用户可修改的）',
-  `login_count` bigint unsigned NOT NULL DEFAULT '0' COMMENT '登陆次数',
-  `last_login_ip` varchar(40) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '最后登陆IP',
-  `last_login_at` bigint DEFAULT NULL COMMENT '最后登录UTC时间',
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '自增长ID',
+  `user_id` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '用户ID',
+  `device_type` varchar(40) DEFAULT '' COMMENT '设备类型 web ios android macos windows',
+  `device_id` varchar(40) DEFAULT NULL COMMENT '设备ID web设备留空',
+  `device_vsn` varchar(680) DEFAULT NULL COMMENT '设备版本 {"baseOS":"HUAWEI/CLT-AL00/HWINE:8.1.0/HUAWEICLT-AL00/173(C00):user/release-keys","sdkInt":27,"release":"8.1.0","codename":"REL","incremental":"176(C00)","previewSdkInt":0,"securityPatch":"2018-10-01"}',
+  `device_name` varchar(80) DEFAULT NULL COMMENT '设备名称（用户可修改的）',
+  `login_count` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '登陆次数',
+  `last_login_ip` varchar(40) NOT NULL DEFAULT '' COMMENT '最后登陆IP',
+  `last_login_at` bigint(20) DEFAULT NULL COMMENT '最后登录UTC时间',
   `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
-  `created_at` bigint DEFAULT NULL COMMENT '创建记录UTC时间',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `created_at` bigint(20) DEFAULT NULL COMMENT '创建记录UTC时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_Status_UserID_DeviceID` (`status`,`user_id`,`device_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `verification_code` (
   `id` varchar(80) COLLATE utf8mb4_general_ci NOT NULL COMMENT '唯一标示',
@@ -143,6 +144,8 @@ CREATE TABLE `msg_c2c` (
   UNIQUE KEY `uk_MsgId` (`msg_id`),
   KEY `i_ToId` (`to_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='单聊消息';
+-- 消息只发送给接收方的最近15内登录过的设备按最近时间排序的最多10个设备ID；如果设备ID为空的话，就只给最近一次来登录的设备发离线消息
+ALTER TABLE `msg_c2c` ADD `to_dids` varchar(648) NOT NULL DEFAULT '' COMMENT '接收人设备唯一ID列表: Id1,Id2' AFTER `msg_id`;
 
 CREATE TABLE `msg_c2g` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',

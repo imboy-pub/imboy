@@ -12,9 +12,32 @@ https://ninenines.eu/docs/en/cowboy/2.9/guide/getting_started/
 
 Erlang 版本
 ```
-Erlang/OTP 23
+Erlang/OTP 23 / Erlang/OTP 24
+```
 
-Erlang/OTP 24 暂时不支持
+MySQL 5.7 / MySQL 5.8
+
+
+### kerl
+```
+// 列表可安装的版本号
+kerl list releases
+
+kerl build 24.3.3 / kerl delete build 24.3.3
+
+
+kerl list builds
+
+kerl install 24.3.3 ~/kerl/24.3.3
+
+. /Users/leeyi/kerl/24.3.3/activate
+
+Later on, you can leave the installation typing:
+kerl_deactivate
+
+Anytime you can check which installation, if any, is currently active with:
+kerl active
+
 ```
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
@@ -291,6 +314,7 @@ transport完成和第三方服务的交互，可以有多种协议形式的实�
 * api json code 705 请刷新token
 * api json code 706 token无效 (包含缺失token情况)
 * api json code 786 - 在其他平台登录
+* api json code 787 - 设备ID必须
 
 # erlang 优化
 ```
@@ -497,13 +521,13 @@ chat_store_repo:lookup(1).
 http://coolaf.com/tool/chattest
 io:format("~p~n", [token_ds:encrypt_token(4)]).
 
-ws://192.168.43.174:9800/ws?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NTAxMjg4NDkyODcsInN1YiI6InRrIiwidWlkIjoiOHliazViIn0.LxmboEGP31xDC-E-So6SaMnAIx_T8fxTNIsr49S7R0w
+ws://192.168.31.41:9800/ws?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NTAxMjg4NDkyODcsInN1YiI6InRrIiwidWlkIjoiOHliazViIn0.LxmboEGP31xDC-E-So6SaMnAIx_T8fxTNIsr49S7R0w
 
 (imboy@127.0.0.1)10>  hashids_translator:uid_encode(4).
 <<"8ybk5b">>
 (imboy@127.0.0.1)11> hashids_translator:uid_encode(1).
 <<"kybqdp">>
-{"id":"1","type":"C2C","from":"8ybk5b","to":"kybqdp","payload":{"msg_type":"text","text":"2"},"created_at":1650118822382,"server_ts":1650118823376}
+{"id":"text5","type":"C2C","from":"8ybk5b","to":"kybqdp","payload":{"msg_type":"text","text":"text5"},"created_at":1650118822382,"server_ts":1650118823376}
 ```
 
 ## Email

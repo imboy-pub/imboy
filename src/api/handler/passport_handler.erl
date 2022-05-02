@@ -49,8 +49,7 @@ do_login(Req0) ->
     {Ip, _Port} = cowboy_req:peer(Req0),
     Ip2 = list_to_binary(lists:flatten(io_lib:format("~w", [Ip]))),
     % ?LOG(["Ip", Ip, "port", Port]),
-    Cosv = cowboy_req:header(<<"cosv">>, Req0),
-    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip2} | PostVals]],
+    Post2 = [{<<"ip">>, Ip2} | PostVals],
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
             % 检查消息 用异步队列实现

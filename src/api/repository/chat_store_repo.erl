@@ -6,7 +6,11 @@
 
 -export([init/0, lookup/1, lookup/2, lookall/0]).
 
--record(chat_online_info, {pid, uid, socket_type}).
+%%
+% pid 当前进程ID
+% uid 当前登录用户ID
+% did 当前登录用户设备ID
+-record(chat_online, {pid, uid, did}).
 
 -include("common.hrl").
 
@@ -20,31 +24,31 @@ init()->
 
 %--------------------------------------------------------------------
 %% @doc  dirty insert pid and socket
-%% @spec  dirty_insert(Uid, Pid, socket)
+%% @spec  dirty_insert(UID, Pid, socket)
 %% @end
 %%--------------------------------------------------------------------
 
-dirty_insert(Uid, Pid, SocketType) when is_integer(Uid) ->
-    dirty_insert(integer_to_binary(Uid), Pid, SocketType);
-dirty_insert(Uid, Pid, SocketType) when is_list(Uid) ->
-    dirty_insert(list_to_binary(Uid), Pid, SocketType);
-dirty_insert(Uid, Pid, SocketType) when is_pid(Pid) ->
+dirty_insert(UID, Pid, DID) when is_integer(UID) ->
+    dirty_insert(integer_to_binary(UID), Pid, DID);
+dirty_insert(UID, Pid, DID) when is_list(UID) ->
+    dirty_insert(list_to_binary(UID), Pid, DID);
+dirty_insert(UID, Pid, DID) when is_pid(Pid) ->
     mnesia:dirty_write(
-        #chat_online_info{
+        #chat_online{
             pid = Pid,
-            uid = Uid,
-            socket_type = SocketType
+            uid = UID,
+            did = DID
         }
     ).
 
 dirty_delete(Pid) when is_pid(Pid) ->
-    mnesia:dirty_delete(chat_online_info, Pid);
-dirty_delete(Uid) when is_integer(Uid) ->
-    dirty_delete(integer_to_binary(Uid));
-dirty_delete(Uid) when is_list(Uid) ->
-    dirty_delete(list_to_binary(Uid));
-dirty_delete(Uid) ->
-    [dirty_delete(Pid) || {chat_online_info, Pid, _, _} <- lookup(Uid)],
+    mnesia:dirty_delete(chat_online, Pid);
+dirty_delete(UID) when is_integer(UID) ->
+    dirty_delete(integer_to_binary(UID));
+dirty_delete(UID) when is_list(UID) ->
+    dirty_delete(list_to_binary(UID));
+dirty_delete(UID) ->
+    [dirty_delete(Pid) || {chat_online, Pid, _, _} <- lookup(UID)],
     ok.
 
 %%--------------------------------------------------------------------
@@ -53,20 +57,20 @@ dirty_delete(Uid) ->
 %% @end
 %% @link https://blog.csdn.net/wudixiaotie/article/details/84735787  chat_store_repo:lookup(1).
 %%--------------------------------------------------------------------
-%% [{chat_online_info,<0.1155.0>,<<"1">>,<<"iOS">>}]
+%% [{chat_online,<0.1155.0>,<<"1">>,<<"iOS">>}]
 -spec lookup(pid() | integer()) -> list().
 lookup(Pid) when is_pid(Pid) ->
-    mnesia:dirty_read(chat_online_info, Pid);
-lookup(Uid) when is_integer(Uid) ->
-    lookup(integer_to_binary(Uid));
-lookup(Uid) when is_list(Uid) ->
-    lookup(list_to_binary(Uid));
-lookup(Uid) ->
-    mnesia:dirty_index_read(chat_online_info, Uid, #chat_online_info.uid).
+    mnesia:dirty_read(chat_online, Pid);
+lookup(UID) when is_integer(UID) ->
+    lookup(integer_to_binary(UID));
+lookup(UID) when is_list(UID) ->
+    lookup(list_to_binary(UID));
+lookup(UID) ->
+    mnesia:dirty_index_read(chat_online, UID, #chat_online.uid).
 
-lookup(Uid, ClientSystem) ->
-    [M1 || M1 <- lookup(Uid),
-        M1#chat_online_info.socket_type=:=ClientSystem].
+lookup(UID, ClientSystem) ->
+    [M1 || M1 <- lookup(UID),
+        M1#chat_online.did=:=ClientSystem].
 
 %%--------------------------------------------------------------------
 %% @doc Find all list
@@ -76,10 +80,10 @@ lookup(Uid, ClientSystem) ->
 lookall() ->
     do(qlc:q([
         [
-            X#chat_online_info.pid,
-            X#chat_online_info.uid,
-            X#chat_online_info.socket_type
-        ] || X <- mnesia:table(chat_online_info)])).
+            X#chat_online.pid,
+            X#chat_online.uid,
+            X#chat_online.did
+        ] || X <- mnesia:table(chat_online)])).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -104,17 +108,17 @@ dynamic_db_init() ->
     end,
 
     application:start(mnesia),
-    % 创建表 chat_online_info
+    % 创建表 chat_online
     % 确保已经 mnesia:start().
-    case lists:member(chat_online_info, mnesia:system_info(tables)) of
+    case lists:member(chat_online, mnesia:system_info(tables)) of
         false ->
             % 创建表
-            mnesia:create_table(chat_online_info, [{type, set},
+            mnesia:create_table(chat_online, [{type, set},
                 {ram_copies, [node()|nodes()]}, % disc_copies 磁盘 + 内存; ram_copies 内存
-                {attributes, record_info(fields, chat_online_info)}]
+                {attributes, record_info(fields, chat_online)}]
             ),
-            mnesia:add_table_index(chat_online_info, uid);
-            % mnesia:add_table_index(chat_online_info, socket_type);
+            mnesia:add_table_index(chat_online, uid);
+            % mnesia:add_table_index(chat_online, did);
         true ->
             alread_created_table
     end,

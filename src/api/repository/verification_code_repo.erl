@@ -30,4 +30,6 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
 
     mysql_pool:replace_into(Table, Column, Value).
 
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------

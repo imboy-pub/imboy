@@ -26,7 +26,7 @@ online(Req0, _State) ->
     % ?LOG(Res),
     List2 = case Res of
         #{type := <<"list">>} ->
-            [[{<<"pid">>, list_to_binary(pid_to_list(Pid))}, {<<"uid">>, Uid}, {<<"type">>, Type}] || [Pid, Uid, Type] <- List];
+            [[{<<"pid">>, list_to_binary(pid_to_list(Pid))}, {<<"uid">>, Uid}, {<<"did">>, DID}] || [Pid, Uid, DID] <- List];
         #{type := _Type} ->
             []
     end,

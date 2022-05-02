@@ -23,8 +23,8 @@ is_offline(Uid) when is_list(Uid)  ->
 is_offline(Uid) ->
     L1 = chat_store_repo:lookup(Uid),
     case lists:keyfind(Uid, 3, L1) of
-        {_, Pid, Uid, Type} ->
-            {Pid, Uid, Type};
+        {_, Pid, Uid, DID} ->
+            {Pid, Uid, DID};
         false ->
             true
     end.
@@ -38,17 +38,17 @@ is_offline(Uid, ClientSystem) when is_list(Uid)  ->
 is_offline(Uid, ClientSystem) ->
     L1 = chat_store_repo:lookup(Uid, ClientSystem),
     case lists:keyfind(Uid, 3, L1) of
-        {_, Pid, Uid, Type} ->
-            {Pid, Uid, Type};
+        {_, Pid, Uid, DID} ->
+            {Pid, Uid, DID};
         false ->
             true
     end.
 
 %% 把Uid标记为online
 -spec online(binary(), pid(), any()) -> ok.
-online(Uid, Pid, Type) ->
+online(Uid, Pid, DID) ->
     %%插入数据
-    chat_store_repo:dirty_insert(Uid, Pid, Type),
+    chat_store_repo:dirty_insert(Uid, Pid, DID),
     ok.
 
 -spec offline(pid()) -> ok.

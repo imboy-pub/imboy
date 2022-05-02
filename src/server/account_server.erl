@@ -83,7 +83,7 @@ create_rand_list(Start, Len) ->
 start_account() ->
     Sql = <<"SELECT max(CONVERT(account, UNSIGNED INTEGER)) as max FROM `user`">>,
     case mysql_pool:query(Sql) of
-        {ok, _,[[Start]]} ->
+        {ok, _,[[Start]]} when is_integer(Start) ->
             Start;
         _ ->
             50000
