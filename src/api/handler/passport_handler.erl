@@ -46,10 +46,9 @@ do_login(Req0) ->
         true ->
             Password
     end,
-    {Ip, _Port} = cowboy_req:peer(Req0),
-    Ip2 = list_to_binary(lists:flatten(io_lib:format("~w", [Ip]))),
-    % ?LOG(["Ip", Ip, "port", Port]),
-    Post2 = [{<<"ip">>, Ip2} | PostVals],
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+    % ?LOG(["Ip", Ip]),
+    Post2 = [{<<"ip">>, Ip} | PostVals],
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
             % 检查消息 用异步队列实现
@@ -114,11 +113,10 @@ do_signup(Req0) ->
     % 注册客服端操作系统
     % RegCos = proplists:get_value(<<"reg_cos">>, PostVals),
 
-    {Ip, _Port} = cowboy_req:peer(Req0),
-    Ip2 = list_to_binary(lists:flatten(io_lib:format("~w", [Ip]))),
-    % ?LOG(["Ip", Ip, "port", Port]),
     Cosv = cowboy_req:header(<<"cosv">>, Req0),
-    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip2} | PostVals]],
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+    % ?LOG(["Ip", Ip]),
+    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
     case passport_logic:do_signup(Type, Account, Password, Code, Post2) of
         {ok, Data} ->
             resp_json_dto:success(Req0, Data, "操作成功.");
@@ -145,11 +143,10 @@ find_password(Req0) ->
     % 注册客服端操作系统
     % RegCos = proplists:get_value(<<"reg_cos">>, PostVals),
 
-    {Ip, _Port} = cowboy_req:peer(Req0),
-    Ip2 = list_to_binary(lists:flatten(io_lib:format("~w", [Ip]))),
-    % ?LOG(["Ip", Ip, "port", Port]),
     Cosv = cowboy_req:header(<<"cosv">>, Req0),
-    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip2} | PostVals]],
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+    % ?LOG(["Ip", Ip]),
+    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
     case passport_logic:find_password(Type, Account, Password, Code, Post2) of
         {ok, Data} ->
             resp_json_dto:success(Req0, Data, "操作成功.");
