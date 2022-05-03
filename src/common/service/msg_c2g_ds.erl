@@ -8,8 +8,10 @@
 
 -include("common.hrl").
 
--spec write_msg(integer(), binary(), binary(), integer(), integer(), integer()) -> any().
-
+-spec write_msg(
+    integer(), binary(), binary(), integer(), integer(), integer()
+) ->
+    any().
 %% 存储消息
 write_msg(CreatedAt, Id, Payload, FromId, ToIds, Gid) ->
     msg_c2g_repo:write_msg(CreatedAt, Id, Payload, FromId, ToIds, Gid).

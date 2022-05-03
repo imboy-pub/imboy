@@ -10,8 +10,10 @@
 -include("chat.hrl").
 -include("common.hrl").
 
--spec write_msg(integer(), binary(), binary(), integer(), integer(), integer()) -> any().
-
+-spec write_msg(
+    integer(), binary(), binary(), integer(), integer(), integer()
+) ->
+    any().
 %% 存储消息
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据

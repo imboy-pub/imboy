@@ -1,11 +1,12 @@
--module (func).
+-module(func).
 
--export ([is_mobile/1]).
--export ([is_email/1]).
--export ([num_random/1]).
--export ([send_email/2]).
+-export([is_mobile/1]).
+-export([is_email/1]).
+-export([num_random/1]).
+-export([send_email/2]).
 
 -include("common.hrl").
+
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 is_mobile(Mobile) ->
@@ -17,6 +18,7 @@ is_mobile(Mobile) ->
             false
     end.
 
+
 -spec is_email(Email :: list()) -> true | false.
 is_email(Email) ->
     {_, P} = re:compile("^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$"),
@@ -26,6 +28,7 @@ is_email(Email) ->
         nomatch ->
             false
     end.
+
 
 %% 生成Len位随机数
 num_random(Len) ->
@@ -40,20 +43,17 @@ num_random(Len) ->
             MinNum * Prefix + Num
     end.
 
+
 % func:send_email(<<"1977699124@qq.com">>, "code is: " ++ integer_to_list(func:num_random(6)) ++ " , will expire in 10 minutes.").
 % func:send_email(<<"leeyisoft@icloud.com">>, "code is: " ++ integer_to_list(func:num_random(6)) ++ " , will expire in 10 minutes.").
 % 中文支持，TODO
 % func:send_email(<<"leeyisoft@icloud.com">>, "你的验证码为： " ++ integer_to_list(func:num_random(6)) ++ " ，10分钟后过期。").
 % func:send_email(<<"1977699124@qq.com">>, "你的验证码为： " ++ integer_to_list(func:num_random(6)) ++ " ，10分钟后过期。").
--spec send_email(ToEmail::binary(), Subject::list()) -> {ok, pid()}.
+-spec send_email(ToEmail :: binary(), Subject :: list()) -> {ok, pid()}.
 send_email(ToEmail, Subject) ->
-    {ok, Option} = application:get_env(imboy,smtp_option),
+    {ok, Option} = application:get_env(imboy, smtp_option),
     Username = proplists:get_value(username, Option),
-    gen_smtp_client:send(
-        {
-            Username,
-            [binary_to_list(ToEmail)],
-            "Subject: " ++ Subject
-        },
-        Option
-    ).
+    gen_smtp_client:send({Username,
+                          [binary_to_list(ToEmail)],
+                          "Subject: " ++ Subject},
+                         Option).

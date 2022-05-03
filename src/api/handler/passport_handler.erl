@@ -6,22 +6,25 @@
 -include_lib("kernel/include/inet.hrl").
 -include("common.hrl").
 
+
 init(Req0, State) ->
-    Req1 = case lists:keyfind(action, 1, State) of
-        {action, refreshtoken} ->
-            refreshtoken(Req0);
-        {action, do_login} ->
-            do_login(Req0);
-        {action, do_signup} ->
-            do_signup(Req0);
-        {action, send_code} ->
-            send_code(Req0);
-        {action, find_password} ->
-            find_password(Req0);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case lists:keyfind(action, 1, State) of
+            {action, refreshtoken} ->
+                refreshtoken(Req0);
+            {action, do_login} ->
+                do_login(Req0);
+            {action, do_signup} ->
+                do_signup(Req0);
+            {action, send_code} ->
+                send_code(Req0);
+            {action, find_password} ->
+                find_password(Req0);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 do_login(Req0) ->
     % ?LOG(["peer", cowboy_req:peer(Req0)]),
@@ -40,12 +43,13 @@ do_login(Req0) ->
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
     % ?LOG(['Type', Type,'Password', Password]),
-    Pwd = if
-        RsaEncrypt == <<"1">> ->
-            imboy_cipher:rsa_decrypt(Password);
-        true ->
-            Password
-    end,
+    Pwd =
+        if
+            RsaEncrypt == <<"1">> ->
+                imboy_cipher:rsa_decrypt(Password);
+            true ->
+                Password
+        end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"ip">>, Ip} | PostVals],
@@ -61,19 +65,19 @@ do_login(Req0) ->
             resp_json_dto:error(Req0, Msg, Code)
     end.
 
+
 refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"authorization">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
     ?LOG(["refreshtoken ", Refreshtoken]),
     case token_ds:decrypt_token(Refreshtoken) of
         {ok, Id, _ExpireAt, <<"rtk">>} ->
-            Data = [
-                {<<"token">>, token_ds:encrypt_token(Id)}
-            ],
+            Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
             resp_json_dto:success(Req0, Data, "操作成功.");
         {error, Code, Msg, _Li} ->
             resp_json_dto:error(Req0, Msg, Code)
     end.
+
 
 send_code(Req0) ->
     %%
@@ -95,6 +99,7 @@ send_code(Req0) ->
         _ ->
             resp_json_dto:success(Req0, [], "暂未实现功能.")
     end.
+
 
 do_signup(Req0) ->
     %%
@@ -125,6 +130,7 @@ do_signup(Req0) ->
         {error, Msg, Code} ->
             resp_json_dto:error(Req0, Msg, Code)
     end.
+
 
 find_password(Req0) ->
     %%

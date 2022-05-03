@@ -112,10 +112,20 @@ link http://erlang.org/doc/apps/edoc/chapter.html#Introduction
 ```
 ```
 
-## [Dialyzer](https://erlang.mk/guide/dialyzer.html)
+## 分析工具  (Analysis tool)
+* [Dialyzer](https://erlang.mk/guide/dialyzer.html)
+* [Look Glass](https://github.com/rabbitmq/looking_glass)
+
 ```
 make dialyze
+
+代码格式工具
+get from https://github.com/sile/efmt/releases
+
+chmod +x efmt
+./efmt --print-width 80 ./src/api/handler/websocket_handler.erl
 ```
+
 
 ## [代码热更新](https://github.com/bullno1/reload.mk)
 
@@ -397,7 +407,7 @@ https://blog.csdn.net/Jessechanrui/article/details/88399012
 
 socket 数据粘包问题、拆包问题
 
-## 消息投递机制
+## 消息投递机制 (未实现功能)
 
 1. 判断用户是否在线，如果用户离线，直接存储离线消息
 2. 用户在线（or 用户上线），判断 erlang is_process_alive(Pid) 马上投递一次

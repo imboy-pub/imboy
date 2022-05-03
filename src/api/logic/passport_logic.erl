@@ -19,34 +19,41 @@ send_email_code(ToEmail) ->
     Now = dt_util:milliseconds(),
     case verification_code_repo:get_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
-        {ok, _Col, [[_ToEmail, _Code, _ValidityAt, CreatedAt]]} when (Now - CreatedAt) < 60000 ->
+        {ok, _Col, [[_, _, _, CreatedAt]]} when (Now - CreatedAt) < 60000 ->
             {ok, "一分钟内重复请求不发送Email"};
-        {ok, _Col, [[ToEmail, Code, ValidityAt, _CreatedAt]]} when Now < ValidityAt ->
-            func:send_email(ToEmail, "Code is " ++ binary_to_list(Code) ++ " will expire in 10 minutes.");
-        % {ok, _Col,[]} ->
+        {ok, _Col, [[ToEmail, Code, ValidityAt, _]]} when Now < ValidityAt ->
+            CodeLi = binary_to_list(Code),
+            Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            func:send_email(ToEmail, Msg);
+        % {ok, _Col, []} ->
         _ ->
             VerifyCode = func:num_random(6),
             % 600000 = 600 * 1000 = 10分钟
             verification_code_repo:save(ToEmail, VerifyCode, Now + 600000, Now),
-            func:send_email(ToEmail, "Code is " ++ integer_to_list(VerifyCode) ++ " will expire in 10 minutes.")
+            CodeLi = binary_to_list(VerifyCode),
+            Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            func:send_email(ToEmail, Msg)
     end.
 
--spec do_login(Type::binary(), Email::binary(), Pwd::binary()) -> {ok, any()} | {error, any()}.
+-spec do_login(Type::binary(), Email::binary(), Pwd::binary()) ->
+    {ok, any()} |
+    {error, any()}.
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
-    Column = <<"`id`,`account`,`email`,`password`,`nickname`,`avatar`,`gender`">>,
+    Column = <<"`id`,`account`,`email`,`password`,
+        `nickname`,`avatar`,`gender`">>,
     case func:is_email(Email) of
         true ->
             {Check, User} = case user_repo:find_by_email(Email, Column) of
-                {ok, _FieldList, [[Id, Account, Email, Password, Nickname, Avatar, Gender]]} ->
+                {ok, _, [[Id, Act, Email, Password, Nname, Avatar, Gender]]} ->
                     % ?LOG([Pwd, Password]),
                     case password_util:verify(Pwd, Password) of
                         {ok, _} ->
-                            {true, [Id, Account, Email, Nickname, Avatar, Gender]};
+                            {true, [Id, Act, Email, Nname, Avatar, Gender]};
                         {error, Msg} ->
                             {false, Msg}
                     end;
                 _ ->
-                    % io:format("res is ~p~n",[Res]),
+                    % io:format("res is ~p~n", [Res]),
                     {false, []}
             end,
             % ?LOG([Check, User]),
@@ -59,7 +66,8 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
             {error, "Email格式有误"}
     end;
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
-    Column = <<"`id`,`account`,`mobile`,`password`,`nickname`,`avatar`,`gender`">>,
+    Column = <<"`id`,`account`,`mobile`,`password`,
+        `nickname`,`avatar`,`gender`">>,
     Res = case func:is_mobile(Mobile) of
         true ->
             user_repo:find_by_mobile(Mobile, Column);
@@ -77,7 +85,7 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
                     {false, Msg}
             end;
         _ ->
-            % io:format("res is ~p~n",[Res]),
+            % io:format("res is ~p~n", [Res]),
             {false, []}
     end,
     ?LOG([Check, User]),
@@ -88,7 +96,12 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
     end.
 
 
--spec do_signup(Type::binary(), EmailOrMobile::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
+-spec do_signup(Type::binary(),
+    EmailOrMobile::binary(),
+    Pwd::binary(),
+    Code::binary(),
+    PostVals::list()
+) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
@@ -116,7 +129,12 @@ do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, "不支持的注册类型"}.
 
 
--spec find_password(Type::binary(), EmailOrMobile::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
+-spec find_password(Type::binary(),
+    EmailOrMobile::binary(),
+    Pwd::binary(),
+    Code::binary(),
+    PostVals::list()
+) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
@@ -148,15 +166,17 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 %% ------------------------------------------------------------------
 
 %% 校验验证码
--spec verify_code(Id::binary(), VerifyCode::binary()) -> {error, Msg::list()} | {ok, any()}.
+-spec verify_code(Id::binary(), VerifyCode::binary()) ->
+    {error, Msg::list()} |
+    {ok, any()}.
 verify_code(Id, Code) ->
     Now = dt_util:milliseconds(),
     case verification_code_repo:get_by_id(Id) of
-        {ok, _Col, [[_ToEmail, Code, ValidityAt, _CreatedAt]]} when Now < ValidityAt ->
+        {ok, _Col, [[_, Code, ValidityAt, _]]} when Now < ValidityAt ->
             {ok, "验证码有效"};
         {ok, _Col, [[_ToEmail, _Code, _ValidityAt, _CreatedAt]]} ->
             {error, "验证码无效"};
-        {ok, _Col,[]} ->
+        {ok, _Col, []} ->
             {error, "验证码无效"}
     end.
 
@@ -166,22 +186,24 @@ verify_code(Id, Code) ->
     {error, Msg::list(), Code::integer()}.
 do_signup_by_email(Email, Pwd, PostVals) ->
     case user_repo:find_by_email(Email, <<"`email`">>) of
-        {ok,_Col,[_Email]} ->
+        {ok, _Col, [_Email]} ->
             {error, "Email已经被占用了"};
-        {ok,_Col,[]} ->
+        {ok, _Col, []} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             Now = dt_util:milliseconds(),
             poolboy:transaction(mysql, fun(Pid) ->
                 Prefix = <<"INSERT INTO">>,
                 Table = <<"`user`">>,
-                Column = <<"(`account`,`email`,`password`,`ref_user_id`,`reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
+                Column = <<"(`account`,`email`,`password`,`ref_user_id`,
+                    `reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
                 Pwd2 = password_util:generate(Password),
                 Now2 = integer_to_binary(Now),
                 Status = integer_to_binary(1),
 
                 Ip = proplists:get_value(<<"ip">>, PostVals, {}),
                 Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
-                RefUid = proplists:get_value(<<"ref_uid">>, PostVals, hashids_translator:uid_encode(0)),
+                Uid0 = hashids_translator:uid_encode(0),
+                RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
                 RefUid2 = if
                     bit_size(RefUid) > 5 ->
                         integer_to_binary(hashids_translator:uid_decode(RefUid));
@@ -189,7 +211,6 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                         <<"0">>
                 end,
                 Account = integer_to_binary(account_server:allocate()),
-                ?LOG([{"Account", Account},{"RefUid2", RefUid2}, {"Ip", Ip}, {"Cosv", Cosv}, {"PostVals", PostVals}]),
                 Value = <<"('",
                     Account/binary, "', '",
                     Email/binary, "', '",
@@ -213,7 +234,9 @@ do_signup_by_email(Email, Pwd, PostVals) ->
     end.
 
 
--spec do_signup_by_mobile(Account::binary(), Pwd::binary(), Code::binary(), PostVals::list()) ->
+-spec do_signup_by_mobile(
+    Account::binary(), Pwd::binary(), Code::binary(), PostVals::list()
+) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
@@ -222,15 +245,17 @@ do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
     {error, "暂时不支持手机号码注册"}.
 
 
--spec find_password_by_email(Email::binary(), Pwd::binary(), PostVals::list()) ->
+-spec find_password_by_email(
+    Email::binary(), Pwd::binary(), PostVals::list()
+) ->
     {ok, Msg::list()} |
     {error, Msg::list()} |
     {error, Msg::list(), Code::integer()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
     case user_repo:find_by_email(Email, <<"`id`,`email`">>) of
-        {ok,_Col,[]} ->
+        {ok, _Col, []} ->
             {error, "Email不存在或已被删除"};
-        {ok,_Col,[[Id, _Email]]} ->
+        {ok, _Col, [[Id, _Email]]} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             % Now = dt_util:milliseconds(),
             poolboy:transaction(mysql, fun(Pid) ->

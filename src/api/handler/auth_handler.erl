@@ -44,7 +44,6 @@ auth_for_assets(Scene, AuthTk, Val) ->
     {ok, AuthKeys} = application:get_env(imboy, auth_keys),
     Key = proplists:get_value(Scene, AuthKeys),
     Str = Key ++ binary_to_list(Val),
-    % ?LOG([Scene, AuthTk, AuthKeys, Key, Val, binary:part(hash_util:md5(Str), {8, 16})]),
     case binary:part(hash_util:md5(Str), {8, 16}) == AuthTk of
         true ->
             <<"ok">>;

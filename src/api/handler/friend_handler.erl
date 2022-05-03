@@ -5,23 +5,25 @@
 
 -include("common.hrl").
 
+
 init(Req0, State) ->
-    Req1 = case lists:keyfind(action, 1, State) of
-        {action, friend_list} ->
-            friend_list(Req0, State);
-        {action, myfriend} ->
-            myfriend(Req0, State);
-        {action, move} ->
-            move(Req0, State);
-        {action, information} ->
-            information(Req0, State);
-        {action, find} ->
-            find(Req0, State);
-        {action, change_remark} ->
-            change_remark(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case lists:keyfind(action, 1, State) of
+            {action, friend_list} ->
+                friend_list(Req0, State);
+            {action, myfriend} ->
+                myfriend(Req0, State);
+            {action, move} ->
+                move(Req0, State);
+            {action, information} ->
+                information(Req0, State);
+            {action, find} ->
+                find(Req0, State);
+            {action, change_remark} ->
+                change_remark(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 
@@ -33,6 +35,7 @@ find(Req0, State) ->
     Data = myfriend_aas:data(Mine, Friends),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
+
 %%% 我的好友，无好友分组的
 friend_list(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
@@ -42,6 +45,7 @@ friend_list(Req0, State) ->
     Data = friend_list_aas:data([MineState | Mine], Friend),
     % ?LOG(Data),
     resp_json_dto:success(Req0, Data, "操作成功.").
+
 
 %%% 我的好友，带分组的
 myfriend(Req0, State) ->
@@ -54,6 +58,7 @@ myfriend(Req0, State) ->
     % ?LOG(Data),
     resp_json_dto:success(Req0, Data, "操作成功.").
 
+
 %%% 移动好友分组
 move(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
@@ -65,24 +70,31 @@ move(Req0, State) ->
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
     resp_json_dto:success(Req0, [], "操作成功.").
 
+
 %%% 好友群资料
 information(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     case cowboy_req:match_qs([{type, [], undefined}], Req0) of
         #{type := <<"friend">>} ->
-            Column = <<"`id`, `nickname`, `account`, `mobile`, `email`, `gender`, `experience`, `avatar`, `sign`">>,
+            Column =
+                <<"`id`, `nickname`, `account`, `mobile`, `email`, `gender`, `experience`, `avatar`, `sign`">>,
             User = user_ds:find_by_id(Uid, Column),
             ?LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
             Friend = [],
-            Data = friend_infomaction_aas:data(CurrentUid, <<"friend">>, User, UserSetting, Friend),
+            Data = friend_infomaction_aas:data(CurrentUid,
+                                               <<"friend">>,
+                                               User,
+                                               UserSetting,
+                                               Friend),
             resp_json_dto:success(Req0, Data, "操作成功.");
         #{type := <<"group">>} ->
             resp_json_dto:success(Req0, [], "操作成功.");
         _ ->
             resp_json_dto:success(Req0, [], "操作成功.")
     end.
+
 
 %%% 修改好友备注
 change_remark(Req0, State) ->
