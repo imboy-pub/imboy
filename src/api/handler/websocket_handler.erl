@@ -122,12 +122,12 @@ websocket_handle({text, Msg}, State) ->
         end
     of
         Result ->
-            ?LOG(Result),
+            % ?LOG(Result),
             case Result of
                 ok ->
                     {ok, State, hibernate};
                 {reply, Msg4} ->
-                    {reply, {text, jsone:encode(Msg4)}, State, hibernate}
+                    {reply, {text, jsone:encode(Msg4, [native_utf8])}, State, hibernate}
             end
     catch
         Class:Reason ->

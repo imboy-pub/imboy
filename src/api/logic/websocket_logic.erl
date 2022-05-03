@@ -27,9 +27,21 @@ c2c(Id, CurrentUid, Data) ->
             % 存储消息
             if
                 is_binary(Payload)  ->
-                    msg_c2c_ds:write_msg(CreatedAt, Id, Payload, CurrentUid, ToId, NowTs);
+                    msg_c2c_ds:write_msg(CreatedAt,
+                        Id,
+                        Payload,
+                        CurrentUid,
+                        ToId,
+                        NowTs
+                    );
                 true ->
-                    msg_c2c_ds:write_msg(CreatedAt, Id, jsone:encode(Payload), CurrentUid, ToId, NowTs)
+                    msg_c2c_ds:write_msg(CreatedAt,
+                        Id,
+                        jsone:encode(Payload, [native_utf8]),
+                        CurrentUid,
+                        ToId,
+                        NowTs
+                    )
             end,
             Msg = [
                 {<<"id">>, Id},
@@ -40,7 +52,7 @@ c2c(Id, CurrentUid, Data) ->
                 {<<"created_at">>, CreatedAt},
                 {<<"server_ts">>, NowTs}
             ],
-            _TimerRefList = message_ds:send(ToId, jsone:encode(Msg), 1),
+            _TimerRefList = message_ds:send(ToId, jsone:encode(Msg, [native_utf8]), 1),
             {reply, [
                 {<<"id">>, Id},
                 {<<"type">>,<<"C2C_SERVER_ACK">>},
@@ -83,7 +95,7 @@ c2c_revoke(Id, Data, Type) ->
                 {<<"from">>, From},
                 {<<"to">>, To},
                 {<<"server_ts">>, NowTs}
-            ])),
+            ], [native_utf8])),
             ok;
         true -> % 对端离线处理
             FromId = hashids_translator:uid_decode(From),
@@ -118,7 +130,7 @@ c2g(Id, CurrentUid, Data) ->
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
-    Msg2 = jsone:encode(Msg),
+    Msg2 = jsone:encode(Msg, [native_utf8]),
     _UidsOnline = lists:filtermap(fun(Uid) ->
         message_ds:send(Uid, Msg2, 1)
     end, Uids),

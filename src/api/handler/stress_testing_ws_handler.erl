@@ -97,7 +97,7 @@ websocket_handle({text, Msg}, State) ->
                 ok ->
                     {ok, State, hibernate};
                 {reply, Msg2} ->
-                    {reply, {text, jsone:encode(Msg2)}, State, hibernate}
+                    {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate}
             end
     catch
         ErrCode:ErrorMsg ->

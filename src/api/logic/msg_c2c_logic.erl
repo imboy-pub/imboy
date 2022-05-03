@@ -40,5 +40,5 @@ sent_offline_msg(Pid, [Row|Tail], Index) ->
         lists:keyfind(<<"server_ts">>, 1, Row)
     ],
     % ?LOG([Delay, "Msg: ", Msg]),
-    erlang:start_timer(Delay, Pid, jsone:encode(Msg)),
+    erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
     sent_offline_msg(Pid, Tail, Index + 1).

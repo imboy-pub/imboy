@@ -156,5 +156,5 @@ send_msg_1019(From, To, ToPid, _State) ->
     ?LOG([From, To, ToPid]),
     % 用户在线状态变更
     Msg = message_ds:s2c(<<"1019">>, <<"">>, From, To),
-    erlang:start_timer(1, ToPid, jsone:encode(Msg)),
+    erlang:start_timer(1, ToPid, jsone:encode(Msg, [native_utf8])),
     ok.
