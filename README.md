@@ -123,7 +123,8 @@ make dialyze
 get from https://github.com/sile/efmt/releases
 
 chmod +x efmt
-./efmt --print-width 80 ./src/api/handler/websocket_handler.erl
+
+make efmt
 ```
 
 

@@ -64,6 +64,7 @@ dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis.mk 1.0.0
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.1.9
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.0.0
+# dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 
 SP = 4
 DEP_PLUGINS = cowboy reload_mk elvis_mk
@@ -71,6 +72,7 @@ RELOAD_MK_WATCH_DIRS = src templates include
 
 include erlang.mk
 include include/tpl.mk
+include include/cli.mk
 
 APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
 

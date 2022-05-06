@@ -4,8 +4,10 @@
 -export([start_link/0]).
 -export([init/1]).
 
+
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
 
 init([]) ->
     {ok, SqlPoolboy} = application:get_env(imboy, sqlpoolboy),
@@ -20,21 +22,15 @@ init([]) ->
     % RedisConfArgs = proplists:get_value(redis_conf, RedisPoolboy),
     % Redis = poolboy:child_spec(RedisName, RedisPoolArgs, RedisConfArgs),
 
-    Offline = {
-        account_server,
-        {account_server, start_link, []},
-        permanent,
-        infinity,
-        worker,
-        [account_server]
-    },
+    Offline = {server_account, {server_account, start_link, []},
+                               permanent,
+                               infinity,
+                               worker,
+                               [server_account]},
 
-    User = {
-        user_server,
-        {user_server, start_link, []},
-        permanent,
-        infinity,
-        worker,
-        [user_server]
-    },
+    User = {server_user, {server_user, start_link, []},
+                         permanent,
+                         infinity,
+                         worker,
+                         [server_user]},
     {ok, {{one_for_one, 5, 60}, [Mysql, Offline, User]}}.
