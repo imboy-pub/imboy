@@ -41,8 +41,6 @@ kerl active
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
-mkdir -p src src/api scr/api
-
 make list-templates
 make new t=cowboy.http n=handler_passport
 make new t=cowboy.ws n=handler_websocket
@@ -86,6 +84,8 @@ make new t=gen_server n=server_demo in=imboy
 make dialyze
 ```
 
+reload_mk https://github.com/bullno1/reload.mk
+
 
 ## make
 
@@ -127,19 +127,6 @@ get from https://github.com/sile/efmt/releases
 chmod +x efmt
 
 make efmt
-```
-
-
-## [代码热更新](https://github.com/bullno1/reload.mk)
-
-其他方法
-
-dep_sync = git https://github.com/rustyio/sync.git master
-
-https://blog.csdn.net/mycwq/article/details/13290757
-
-```
-
 ```
 
 
@@ -444,6 +431,10 @@ r 'imboy@127.0.0.1'
 你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
 
 chat_store_repo:lookup(1).
+
+curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
+chmod +x erldash
+./erldash imboy@127.0.0.1 -c imboy
 ```
 
 ## websocket 在线工具调试
