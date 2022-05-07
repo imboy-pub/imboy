@@ -17,7 +17,6 @@ Erlang/OTP 23 / Erlang/OTP 24
 
 MySQL 5.7 / MySQL 5.8
 
-
 ### kerl
 ```
 // 列表可安装的版本号
@@ -45,16 +44,19 @@ kerl active
 mkdir -p src src/api scr/api
 
 make list-templates
-make new t=cowboy.http n=api/handler/passport_handler
-make new t=cowboy.ws n=api/handler/websocket_handler
+make new t=cowboy.http n=handler_passport
+make new t=cowboy.ws n=handler_websocket
 
-make new t=rest_handler n=api/handler/test_handler
-make new t=logic n=api/logic/test_logic
-make new t=repository n=api/repository/test_repo
-make new t=transfer n=api/transfer/test_transfer
+make new t=cowboy.middleware n=middleware_demo
+make new t=cowboy.middleware n=middleware_auth
+make new t=gen_server n=server_account
 
-make new t=cowboy.middleware n=common/middleware/auth_middleware
-make new t=gen_server n=server/account_server
+// 我添加的模板
+make new t=rest_handler n=handler_demo
+make new t=logic n=logic_demo
+make new t=repository n=repo_demo
+make new t=transfer n=transfer_demo
+
 
 make run
 
