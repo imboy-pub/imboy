@@ -31,10 +31,10 @@ find_by_uid(Uid) ->
                                                              Field),
     % ?LOG({ok, FieldList, Rows}),
     Default = [{<<"id">>, 0}, {<<"groupname">>, <<"default">>}],
-    if
-        length(Rows) == 0 ->
-            [Default];
+    case length(Rows) == 0 of
         true ->
+            [Default];
+        _ ->
             [Default |
              [lists:zipwith(fun(X, Y) -> {X, Y} end, FieldList, Row) ||
                  Row <- Rows]]
@@ -42,8 +42,8 @@ find_by_uid(Uid) ->
 
 
 rename(Uid, Id, Name) ->
-    Sql =
-        <<"UPDATE `user_friend_category` SET `name` = ? WHERE `owner_user_id` = ? AND `id` = ?">>,
+    Sql = <<"UPDATE `user_friend_category` SET `name` = ?
+        WHERE `owner_user_id` = ? AND `id` = ?">>,
     mysql_pool:query(Sql, [Name, Uid, Id]).
 
 

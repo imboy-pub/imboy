@@ -61,13 +61,7 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
                 _ ->
                     {false, []}
             end,
-            % ?LOG([Check, User]),
-            case Check == true of
-                true ->
-                    {ok, aas_login_success:data(User)};
-                _ ->
-                    {error, "账号或密码错误"}
-            end;
+            aas_login_success:data(Check, User);
         false ->
             {error, "Email格式有误"}
     end;
@@ -94,13 +88,7 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
             % io:format("res is ~p~n", [Res]),
             {false, []}
     end,
-    ?LOG([Check, User]),
-    case Check == true of
-        true ->
-            {ok, aas_login_success:data(User)};
-        _ ->
-            {error, "账号或密码错误"}
-    end.
+    aas_login_success:data(Check, User).
 
 
 -spec do_signup(Type :: binary(),
@@ -219,11 +207,12 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                 RefUid = proplists:get_value(<<"ref_uid">>,
                                        PostVals,
                                        Uid0),
-                RefUid2 = if bit_size(RefUid) > 5 ->
+                RefUid2 = case bit_size(RefUid) > 5 of
+                    true ->
                        integer_to_binary(hashids_translator:uid_decode(RefUid));
-                   bit_size(RefUid) =< 5 ->
+                    _ ->
                        <<"0">>
-               end,
+                end,
                 Account = integer_to_binary(server_account:allocate()),
                 Value = <<"('", Account/binary,
                          "', '", Email/binary,

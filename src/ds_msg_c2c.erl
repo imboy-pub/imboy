@@ -37,30 +37,19 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
 
 %% 读取消息
 read_msg(ToUid, Limit, undefined) ->
-    Column =
-        <<"`id`, `payload`, `from_id`, `to_id`, `created_at`, `server_ts`, `msg_id`">>,
+    Column = <<"`id`, `payload`, `from_id`, `to_id`,
+        `created_at`, `server_ts`, `msg_id`">>,
     Where = <<"WHERE `to_id` = ?">>,
     Vals = [ToUid],
-    {ok, ColumnList, Rows} = repo_msg_c2c:read_msg(Where,
-                                                   Vals,
-                                                   Column,
-                                                   Limit),
-    [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, Row) ||
-        Row <- Rows];
+    read_msg(Where, Vals, Column, Limit);
 read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
     read_msg(ToUid, Limit, binary_to_integer(Ts));
 read_msg(ToUid, Limit, Ts) ->
-    Column =
-        <<"`id`, `payload`, `from_id`, `to_id`, `created_at`, `server_ts`, `msg_id`">>,
+    Column = <<"`id`, `payload`, `from_id`, `to_id`,
+        `created_at`, `server_ts`, `msg_id`">>,
     Where = <<"WHERE `to_id` = ? AND `created_at` > ?">>,
     Vals = [ToUid, Ts],
-    {ok, ColumnList, Rows} = repo_msg_c2c:read_msg(Where,
-                                                   Vals,
-                                                   Column,
-                                                   Limit),
-    [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, Row) ||
-        Row <- Rows].
-
+    read_msg(Where, Vals, Column, Limit).
 
 delete_msg(Id) ->
     repo_msg_c2c:delete_msg(Id).
@@ -77,3 +66,17 @@ revoke_offline_msg(NowTs, Id, FromId, ToId) ->
     Sql = <<"UPDATE `msg_c2c` SET `payload` = ? WHERE `msg_id` = ?">>,
     mysql_pool:query(Sql, [Payload, Id]),
     ok.
+
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+read_msg(Where, Vals, Column, Limit) ->
+    {ok, ColumnLi, Rows} = repo_msg_c2c:read_msg(
+        Where,
+        Vals,
+        Column,
+        Limit
+    ),
+    [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Rows].

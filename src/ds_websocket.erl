@@ -23,14 +23,14 @@ check_subprotocols(Subprotocols, Req0, State0) ->
         },
     % ?LOG([self(), State0, Subprotocols]),
     IsText = lists:member(<<"text">>, Subprotocols),
-    if
-        IsText == true ->
+    case IsText == true of
+        true ->
             Req =
                 cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
                                            <<"text">>,
                                            Req0),
             {cowboy_websocket, Req, State0, ImOpts};
-        true ->
+        _ ->
             % HTTP 406 - 无法接受
             Req1 = cowboy_req:reply(406, Req0),
             {ok, Req1, State0}

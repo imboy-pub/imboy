@@ -80,8 +80,8 @@ make new-app in=imboy_ws
 make new-app in=imboy_api
 make new-app in=imboy_cli
 
-make new t=gen_server n=infrastructure/server/my_server
-make new t=gen_server n=infrastructure/server/my_server in=imboy
+make new t=gen_server n=server_demo
+make new t=gen_server n=server_demo in=imboy
 
 make dialyze
 ```

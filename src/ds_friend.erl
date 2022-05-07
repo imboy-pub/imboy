@@ -35,14 +35,14 @@ find_by_uid(Uid, Column) ->
 
 
 change_remark(FromUid, ToUid, Remark) ->
-    Sql =
-        <<"UPDATE `user_friend` SET `remark` = ?, `updated_at` = ? WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
+    Sql = <<"UPDATE `user_friend` SET `remark` = ?, `updated_at` = ?
+        WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
     mysql_pool:query(Sql,
                      [Remark, util_dt:milliseconds(), FromUid, ToUid]).
 
 
 set_category_id(Uid, CategoryId, NewCid) ->
-    Sql =
-        <<"UPDATE `user_friend` SET `category_id` = ?, `updated_at` = ? WHERE `status` = 1 AND `from_user_id` = ? AND `category_id` = ?">>,
+    Sql = <<"UPDATE `user_friend` SET `category_id` = ?, `updated_at` = ?
+        WHERE `status` = 1 AND `from_user_id` = ? AND `category_id` = ?">>,
     mysql_pool:query(Sql,
                      [NewCid, util_dt:milliseconds(), Uid, CategoryId]).

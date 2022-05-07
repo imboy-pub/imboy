@@ -107,7 +107,6 @@ websocket_handle({text, Msg}, State) ->
             end
     catch
         ErrCode:ErrorMsg ->
-            % lager:error("websocket_handle try catch: ~p", [ErrCode,ErrorMsg, Msg]),
             ?LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg,
                   Msg]),
             {ok, State, hibernate}

@@ -31,7 +31,8 @@ get_help(Req0) ->
         <h1>API列表</h1>
         <ol>
             <li><a href=\"/init\" target=\"_blank\">/init  GET</a></li>
-            <li><a href=\"/conversation/online\" target=\"_blank\">/conversation/online  GET</a></li>
+            <li><a href=\"/conversation/online\" target=\"_blank\">
+                /conversation/online  GET</a></li>
         </ol>
     ",
     cowboy_req:reply(200,

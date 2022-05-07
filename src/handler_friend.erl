@@ -77,8 +77,8 @@ information(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     case cowboy_req:match_qs([{type, [], undefined}], Req0) of
         #{type := <<"friend">>} ->
-            Column =
-                <<"`id`, `nickname`, `account`, `mobile`, `email`, `gender`, `experience`, `avatar`, `sign`">>,
+            Column = <<"`id`, `nickname`, `account`, `mobile`, `email`,
+                `gender`, `experience`, `avatar`, `sign`">>,
             User = ds_user:find_by_id(Uid, Column),
             ?LOG(User),
             UserSetting = ds_user_setting:find_by_uid(Uid),

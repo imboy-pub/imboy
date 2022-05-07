@@ -21,7 +21,8 @@ send(ToUid, Msg, Millisecond) ->
     % Shell got {timeout,#Ref<8772.717641544.2272788481.230829>,1234}
     % ok
     % 如果有多端设备在线，可以给多端推送
-    % Starts a timer which will send the message {timeout, TimerRef, Msg} to Dest after Time milliseconds.
+    % Starts a timer which will send the message {timeout, TimerRef, Msg}
+    % to Dest after Time milliseconds.
     [{DID, erlang:start_timer(Millisecond, ToPid, Msg)} ||
         {_, ToPid, _Uid, DID} <- repo_chat_store:lookup(ToUid),
         is_process_alive(ToPid)].

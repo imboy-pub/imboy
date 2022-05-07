@@ -45,13 +45,12 @@ do_login(Req0) ->
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
     % ?LOG(['Type', Type,'Password', Password]),
-    Pwd =
-        if
-            RsaEncrypt == <<"1">> ->
-                imboy_cipher:rsa_decrypt(Password);
-            true ->
-                Password
-        end,
+    Pwd = case RsaEncrypt == <<"1">> of
+        true ->
+            imboy_cipher:rsa_decrypt(Password);
+        _ ->
+            Password
+    end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"ip">>, Ip} | PostVals],

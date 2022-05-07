@@ -14,8 +14,6 @@ init(Req0, State) ->
                 online(Req0, State);
             {action, mine} ->
                 mine(Req0, State);
-            {action, msgbox} ->
-                chat_msgbox(Req0, State);
             false ->
                 Req0
         end,
@@ -47,23 +45,3 @@ mine(Req0, State) ->
     % ?LOG(["mine_list", List]),
     List2 = aas_conversation_mine:data(List),
     dto_resp_json:success(Req0, List2).
-
-
-chat_msgbox(Req0, State) ->
-    %%
-    CurrentUid = proplists:get_value(current_uid, State),
-    Data = [{<<"mine">>,
-             [{<<"id">>, CurrentUid},
-              {<<"account">>, <<"leeyi">>},
-              {<<"avatar">>,
-               <<"/static/image/default_avatar_male_180.gif">>},
-              {<<"sign">>, <<"">>},
-              {<<"status">>, <<"1">>}]},
-            {<<"friend">>,
-             [[{<<"id">>, 2},
-               {<<"account">>, <<"leeyi2">>},
-               {<<"avatar">>,
-                <<"/static/image/default_avatar_male_180.gif">>},
-               {<<"sign">>, <<"">>},
-               {<<"status">>, <<"1">>}]]}],
-    dto_resp_json:success(Req0, Data, "操作成功.").
