@@ -11,6 +11,10 @@
 -include("common.hrl").
 
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
+
 -spec send(ToUid :: integer(),
            Msg :: list(),
            Millisecond :: integer()) -> list().
@@ -46,15 +50,13 @@ s2c(MsgType, Content, From, To) ->
 
 %%% 系统消息 end
 
-msg(Type, From, To, Payload, Ts) when is_integer(From) ->
-    msg(Type, hashids_translator:uid_encode(From), To, Payload, Ts);
-msg(Type, From, To, Payload, Ts) when is_integer(To) ->
-    msg(Type, From, hashids_translator:uid_encode(To), Payload, Ts);
 msg(Type, From, To, Payload, Ts) ->
     [{<<"type">>, Type},
-     {<<"from">>, From},
-     {<<"to">>, To},
+     {<<"from">>, hashids_translator:uid_encode(From)},
+     {<<"to">>, hashids_translator:uid_encode(To)},
      {<<"payload">>, Payload},
      {<<"server_ts">>, Ts}].
 
-%% Internal.
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
