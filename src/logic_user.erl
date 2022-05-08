@@ -2,28 +2,22 @@
 %%%
 % user 业务逻辑模块
 %%%
--export([online/3]).
+-export([online/4]).
 -export([offline/3]).
 -export([idle_timeout/1]).
 
 -include("common.hrl").
 
 
--spec online(any(), pid(), DID :: binary()) -> ok.
-online(UID, Pid, DID) ->
-    ?LOG(["user_logic/online/3", UID, Pid, DID]),
-    case ds_user:is_offline(UID, DID) of
-        {ToPid, _UID, DID} ->
-            Msg = ds_message:s2c(786,
-                                 "Already logged in on another device"),
-            ?LOG([ToPid, DID]),
-            erlang:start_timer(10, ToPid, jsone:encode(Msg));
-        true ->
-            ?LOG(["ds_user:is_offline/2", true, UID, DID]),
-            ok
-    end,
+-spec online(UID::any(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
+online(UID, Pid, DType, DID) ->
+    ?LOG(["user_logic/online/4", UID, Pid, DType, DID]),
+    % 在其他设备登录了
+    Msg = ds_message:s2c(786, "Logged in on another device"),
+    % 在“把UID标记为online”之前，给UID同类型设备发送下线通知(s2c 786 消息)
+    ds_message:send(UID, DType, jsone:encode(Msg, [native_utf8]), 1),
     % 把UID标记为online
-    ds_user:online(UID, Pid, DID),
+    ds_user:online(UID, Pid, DType, DID),
     % 检查消息 用异步队列实现
     server_user:cast_online(UID, Pid, DID),
     ok.

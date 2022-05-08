@@ -15,6 +15,7 @@
 %%websocket 握手
 init(Req0, State0) ->
     Env = os:getenv("IMBOYENV"),
+    DType = cowboy_req:header(<<"cos">>, Req0, <<"">>),
     DID = cowboy_req:header(<<"did">>, Req0, <<"">>),
     HeaderAuth = cowboy_req:header(<<"authorization">>, Req0),
     Subprotocols = cowboy_req:header(<<"sec-websocket-protocol">>,
@@ -26,25 +27,28 @@ init(Req0, State0) ->
              max_frame_size => 1048576,  % 1MB
              idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
         },
+
+    State1 = [{'dtype', DType} | State0],
+    State2 = [{'did', DID} | State1],
+
     if
         Env == "local",HeaderAuth =/= undefined ->
-            ds_websocket:auth(HeaderAuth, DID, Req0, State0, Opt0);
+            ds_websocket:auth(HeaderAuth, Req0, State2, Opt0);
         Env == "local",QsAuth =/= undefined ->
             Token = maps:get(authorization, QsAuth),
-            ds_websocket:auth(Token, DID, Req0, State0, Opt0);
+            ds_websocket:auth(Token, Req0, State2, Opt0);
         % 为了安全考虑，非 local 环境必须要 DID 和 HeaderAuth，必须check subprotocols
         bit_size(DID) > 0,
         HeaderAuth =/= undefined ->
             case ds_websocket:check_subprotocols(Subprotocols,
                                                  Req0,
-                                                 State0) of
-                {ok, Req1, State1} ->
-                    {ok, Req1, State1};
-                {cowboy_websocket, Req1, State1, Opt} ->
+                                                 State2) of
+                {ok, Req1, State3} ->
+                    {ok, Req1, State3};
+                {cowboy_websocket, Req1, State3, Opt} ->
                     ds_websocket:auth(HeaderAuth,
-                                      DID,
                                       Req1,
-                                      State1,
+                                      State3,
                                       Opt)
             end;
         true ->
@@ -67,8 +71,9 @@ websocket_init(State) ->
         false ->
             CurrentUid = proplists:get_value(current_uid, State),
             % 用户上线
+            DType = proplists:get_value('dtype', State, <<"">>),
             DID = proplists:get_value('did', State, <<"">>),
-            logic_user:online(CurrentUid, CurrentPid, DID),
+            logic_user:online(CurrentUid, CurrentPid, DType, DID),
             {ok, State, hibernate}
     end.
 

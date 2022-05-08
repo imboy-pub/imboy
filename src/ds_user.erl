@@ -6,7 +6,7 @@
 -export([is_offline/2]).
 -export([online_state/1]).
 -export([mine_state/1]).
--export([online/3]).
+-export([online/4]).
 -export([offline/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
@@ -25,7 +25,7 @@ is_offline(Uid) when is_list(Uid) ->
 is_offline(Uid) ->
     L1 = repo_chat_store:lookup(Uid),
     case lists:keyfind(Uid, 3, L1) of
-        {_, Pid, Uid, DID} ->
+        {_, Pid, Uid, _DType, DID} ->
             {Pid, Uid, DID};
         false ->
             true
@@ -41,7 +41,7 @@ is_offline(Uid, ClientSystem) when is_list(Uid) ->
 is_offline(Uid, ClientSystem) ->
     L1 = repo_chat_store:lookup(Uid, ClientSystem),
     case lists:keyfind(Uid, 3, L1) of
-        {_, Pid, Uid, DID} ->
+        {_, Pid, Uid, _DType, DID} ->
             {Pid, Uid, DID};
         false ->
             true
@@ -49,10 +49,10 @@ is_offline(Uid, ClientSystem) ->
 
 
 %% 把Uid标记为online
--spec online(binary(), pid(), any()) -> ok.
-online(Uid, Pid, DID) ->
+-spec online(UID::any(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
+online(Uid, Pid, DType, DID) ->
     %%插入数据
-    repo_chat_store:dirty_insert(Uid, Pid, DID),
+    repo_chat_store:dirty_insert(Uid, Pid, DType, DID),
     ok.
 
 

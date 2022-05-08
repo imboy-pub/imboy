@@ -3,7 +3,7 @@
 % ds_websocket 是 websocket domain service 缩写
 %%%
 -export([check_subprotocols/3]).
--export([auth/5]).
+-export([auth/4]).
 
 -include("common.hrl").
 
@@ -38,18 +38,16 @@ check_subprotocols(Subprotocols, Req0, State0) ->
 
 
 -spec auth(Token :: binary(),
-           DID :: binary(),
            Req1 :: any(),
            State1 :: list(),
            Opt :: any()) -> any().
-auth(Token, DID, Req1, State1, Opt) when is_binary(Token) ->
+auth(Token, Req1, State1, Opt) when is_binary(Token) ->
     ?LOG(["token", Token, ds_token:decrypt_token(Token)]),
-    SystemState = [{'did', DID} | State1],
     case ds_token:decrypt_token(Token) of
         {ok, Uid, _ExpireAt, _Type} ->
             Timeout = logic_user:idle_timeout(Uid),
             {cowboy_websocket, Req1,
-                               [{current_uid, Uid} | SystemState],
+                               [{current_uid, Uid} | State1],
                                Opt#{idle_timeout := Timeout}};
         {error, 705, Msg, _Li} ->
             Req3 = dto_resp_json:error(Req1, Msg),
@@ -57,7 +55,7 @@ auth(Token, DID, Req1, State1, Opt) when is_binary(Token) ->
         {error, Code, _Msg, _Li} ->
             {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
     end;
-auth(Auth, _DID, Req0, State0, _Opt) ->
+auth(Auth, Req0, State0, _Opt) ->
     ?LOG(["Auth", Auth]),
     % HTTP 412 - 先决条件失败 缺少token参数
     Req1 = cowboy_req:reply(412, Req0),

@@ -29,7 +29,8 @@ online(Req0, _State) ->
         #{type := <<"list">>} ->
             [[{<<"pid">>, list_to_binary(pid_to_list(Pid))},
               {<<"uid">>, Uid},
-              {<<"did">>, DID}] || [Pid, Uid, DID] <- List];
+              {<<"dtype">>, DType},
+              {<<"did">>, DID}] || [Pid, Uid, DType, DID] <- List];
         #{type := _Type} ->
             []
     end,

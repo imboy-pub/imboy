@@ -7,6 +7,7 @@
 -export([s2c/4]).
 
 -export([send/3]).
+-export([send/4]).
 
 -include("common.hrl").
 
@@ -28,16 +29,33 @@ send(ToUid, Msg, Millisecond) ->
     % Starts a timer which will send the message {timeout, TimerRef, Msg}
     % to Dest after Time milliseconds.
     [{DID, erlang:start_timer(Millisecond, ToPid, Msg)} ||
-        {_, ToPid, _Uid, DID} <- repo_chat_store:lookup(ToUid),
+        {_, ToPid, _Uid, _DType, DID} <- repo_chat_store:lookup(ToUid),
+        is_process_alive(ToPid)].
+
+-spec send(ToUid :: integer(),
+           ToDType :: binary(),
+           Msg :: list(),
+           Millisecond :: integer()) -> list().
+send(ToUid, ToDtype, Msg, Millisecond) ->
+    % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
+    % #Ref<0.717641544.2272788481.230829>
+    % (imboy@127.0.0.1)2> flush().
+    % Shell got {timeout,#Ref<8772.717641544.2272788481.230829>,1234}
+    % ok
+    % 如果有多端设备在线，可以给多端推送
+    % Starts a timer which will send the message {timeout, TimerRef, Msg}
+    % to Dest after Time milliseconds.
+    [{DID, erlang:start_timer(Millisecond, ToPid, Msg)} ||
+        {_, ToPid, _Uid, _DType, DID} <- repo_chat_store:lookup_by_dtype(ToUid, ToDtype),
         is_process_alive(ToPid)].
 
 
 %%% 系统消息 [500 -- 1000) 系统消息
 
-s2c(786, Content) ->  % 在其他地方上线
-    s2c(786, Content, <<"">>, <<"">>);
+s2c(786, Content) ->  % 在其他设备登录了
+    s2c(786, Content, 0, 0);
 s2c(MsgType, Content) ->
-    s2c(MsgType, Content, <<"">>, <<"">>).
+    s2c(MsgType, Content, 0, 0).
 
 
 s2c(1019, Content, From, To) ->  % 用户在线状态变更

@@ -163,7 +163,7 @@ send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUID}] | Tail]) ->
             ok;
         List ->
             [send_msg_code1019(FromId, ToUID2, ToPid2, State) ||
-                {_, ToPid2, ToUID2, _Type} <- List]
+                {_, ToPid2, ToUID2, _DType, _DID} <- List]
     end,
     send_state_msg(FromId, State, Tail).
 

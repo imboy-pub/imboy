@@ -2,20 +2,24 @@
 -include_lib("stdlib/include/qlc.hrl").
 
 %% API
--export([dirty_insert/3,
+-export([dirty_insert/4,
          dirty_delete/1]).
 
 -export([init/0,
-         lookup/1, lookup/2,
+         lookup/1,
+         lookup/2,
+         lookup_by_dtype/2,
          lookall/0]).
 
 %%
-% pid 当前进程ID
-% uid 当前登录用户ID
-% did 当前登录用户设备ID
+% pid   进程ID
+% uid   登录用户ID
+% dtype 设备类型 web ios android macos windows等
+% did   设备ID
 -record(chat_online, {
           pid,
           uid,
+          dtype,
           did
          }).
 
@@ -31,20 +35,20 @@ init() ->
 
 
 %--------------------------------------------------------------------
-%% @doc  dirty insert pid and socket
-%% @spec  dirty_insert(UID, Pid, socket)
+%% @doc  dirty insert uid pid dtype did
+%% @spec  dirty_insert(UID, Pid, DType, DID)
 %% @end
 %%--------------------------------------------------------------------
 
-dirty_insert(UID, Pid, DID) when is_integer(UID) ->
-    dirty_insert(integer_to_binary(UID), Pid, DID);
-dirty_insert(UID, Pid, DID) when is_list(UID) ->
-    dirty_insert(list_to_binary(UID), Pid, DID);
-dirty_insert(UID, Pid, DID) when is_pid(Pid) ->
+dirty_insert(UID, Pid, DType, DID) when is_integer(UID) ->
+    dirty_insert(integer_to_binary(UID), Pid, DType, DID);
+dirty_insert(UID, Pid, DType, DID) when is_list(UID) ->
+    dirty_insert(list_to_binary(UID), Pid, DType, DID);
+dirty_insert(UID, Pid, DType, DID) when is_pid(Pid) ->
     mnesia:dirty_write(#chat_online{pid = Pid,
                                     uid = UID,
+                                    dtype = DType,
                                     did = DID}).
-
 
 dirty_delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(chat_online, Pid);
@@ -53,7 +57,7 @@ dirty_delete(UID) when is_integer(UID) ->
 dirty_delete(UID) when is_list(UID) ->
     dirty_delete(list_to_binary(UID));
 dirty_delete(UID) ->
-    [dirty_delete(Pid) || {chat_online, Pid, _, _} <- lookup(UID)],
+    [dirty_delete(Pid) || {chat_online, Pid, _UID, _DType, _DID} <- lookup(UID)],
     ok.
 
 
@@ -64,7 +68,7 @@ dirty_delete(UID) ->
 %% @link https://blog.csdn.net/wudixiaotie/article/details/84735787
 %%      repo_chat_store:lookup(1).
 %%--------------------------------------------------------------------
-%% [{chat_online,<0.1155.0>,<<"1">>,<<"iOS">>}]
+%% [{chat_online,<0.1155.0>,<<"1">>,<<"iOS">>,<<"78ece1d4d7d346a1">>}]
 -spec lookup(pid() | integer()) -> list().
 lookup(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(chat_online, Pid);
@@ -76,9 +80,11 @@ lookup(UID) ->
     mnesia:dirty_index_read(chat_online, UID, #chat_online.uid).
 
 
-lookup(UID, ClientSystem) ->
-    [M1 || M1 <- lookup(UID), M1#chat_online.did =:= ClientSystem].
+lookup(UID, DID) ->
+    [M1 || M1 <- lookup(UID), M1#chat_online.did =:= DID].
 
+lookup_by_dtype(UID, Dtype) ->
+    [M1 || M1 <- lookup(UID), M1#chat_online.dtype =:= Dtype].
 
 %%--------------------------------------------------------------------
 %% @doc Find all list
@@ -88,6 +94,7 @@ lookup(UID, ClientSystem) ->
 lookall() ->
     do(qlc:q([[X#chat_online.pid,
                X#chat_online.uid,
+               X#chat_online.dtype,
                X#chat_online.did] || X <- mnesia:table(chat_online)])).
 
 
