@@ -10,5 +10,4 @@
 * api json code 2 失败（通用编码，前端弹出提示）
 * api json code 705 请刷新token
 * api json code 706 token无效 (包含缺失token情况) 或者设备ID不存在
-* api json code 786 - 在其他平台登录
-* api json code 786 - 在其他平台登录
+* api json code 786 - 在其他设备登录了

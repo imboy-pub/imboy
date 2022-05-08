@@ -25,13 +25,13 @@ online(Req0, _State) ->
     Msg = io_lib:format("在线总人数: ~p", [length(List)]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
     % ?LOG(Res),
-    List2 = case Res of
-        #{type := <<"list">>} ->
+    List2 = case maps:get(type, Res) of
+        <<"list">> ->
             [[{<<"pid">>, list_to_binary(pid_to_list(Pid))},
               {<<"uid">>, Uid},
               {<<"dtype">>, DType},
               {<<"did">>, DID}] || [Pid, Uid, DType, DID] <- List];
-        #{type := _Type} ->
+        _ ->
             []
     end,
     dto_resp_json:success(Req0, List2, Msg).

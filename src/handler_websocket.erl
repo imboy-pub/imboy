@@ -74,7 +74,7 @@ websocket_init(State) ->
             DType = proplists:get_value('dtype', State, <<"">>),
             DID = proplists:get_value('did', State, <<"">>),
             logic_user:online(CurrentUid, CurrentPid, DType, DID),
-            {ok, State, hibernate}
+            {ok, proplists:delete('dtype', State), hibernate}
     end.
 
 
