@@ -2,18 +2,24 @@
 %%%
 % msg_c2g 业务逻辑模块
 %%%
--export([check_msg/2]).
+-export([check_msg/3]).
 
 -include("chat.hrl").
 -include("common.hrl").
 
 
-%%
-check_msg(Uid, Pid) ->
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
+check_msg(Uid, Pid, _DID) ->
     GMsgs = ds_msg_c2g:read_msg(Uid, ?SAVE_MSG_LIMIT),
     sent_offline_msg(Uid, Pid, GMsgs, 0),
     ok.
 
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 sent_offline_msg(_Uid, _Pid, [], _Index) ->
     ok;

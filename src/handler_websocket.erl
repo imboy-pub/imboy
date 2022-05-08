@@ -94,9 +94,10 @@ websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
 % 客户端确认消息
-websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID",
-                          DID/binary>>},
-                 State) ->
+websocket_handle(
+    {text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>},
+    State
+) ->
     ?LOG(["C_ACK", MsgId, DID, State]),
     CurrentUid = proplists:get_value(current_uid, State),
     logic_websocket:c2c_client_ack(MsgId, CurrentUid, DID),

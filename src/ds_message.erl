@@ -42,6 +42,10 @@ s2c(MsgType, Content) ->
 
 s2c(1019, Content, From, To) ->  % 用户在线状态变更
     s2c(1019, Content, From, To);
+s2c(MsgType, Content, From, To) when is_integer(MsgType) ->
+    s2c(integer_to_binary(MsgType), Content, From, To);
+s2c(MsgType, Content, From, To) when is_list(MsgType) ->
+    s2c(list_to_binary(MsgType), Content, From, To);
 s2c(MsgType, Content, From, To) ->
     Payload = [{<<"msg_type">>, MsgType}, {<<"content">>, Content}],
     Ts = util_dt:milliseconds(),
