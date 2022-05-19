@@ -25,7 +25,7 @@ start(_Type, _Args) ->
                 cowboy_handler
             ],
             metrics_callback => do_metrics_callback(),
-            stream_handlers => [cowboy_metrics_h, cowboy_stream_h],
+            stream_handlers => [cowboy_metrics_h, cowboy_compress_h, cowboy_stream_h],
             env => #{dispatch => Dispatch}
         }
     ),
