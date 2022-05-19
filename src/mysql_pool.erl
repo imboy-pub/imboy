@@ -1,5 +1,7 @@
 -module(mysql_pool).
 
+-include_lib("imboy/include/common.hrl").
+
 -export([execute/1]).
 -export([execute/2]).
 -export([query/1]).
@@ -7,8 +9,6 @@
 -export([insert_into/3]).
 -export([replace_into/3]).
 -export([assemble_sql/4]).
-
--include("common.hrl").
 
 
 -spec execute(Sql :: any()) ->

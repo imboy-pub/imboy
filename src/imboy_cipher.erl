@@ -1,5 +1,7 @@
 -module(imboy_cipher).
 
+-include_lib("imboy/include/common.hrl").
+
 -export([aes_encrypt/1,
          aes_decrypt/1]).
 -export([aes_encrypt/2,
@@ -8,8 +10,6 @@
          rsa_decrypt/1]).
 -export([rsa_encrypt/2,
          rsa_decrypt/2]).
-
--include("common.hrl").
 
 -define(SHA_256_BLOCKSIZE, 64).
 
@@ -62,11 +62,11 @@ crypto_update(StateDec, Bin, _BinSize, OutBin) ->
 
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
-    PemBin = logic_config:get("login_rsa_pub_key"),
+    PemBin = config_logic:get("login_rsa_pub_key"),
     rsa_encrypt(PlainText, PemBin);
 rsa_encrypt(PlainText) ->
     %%公钥加密
-    PemBin = logic_config:get("login_rsa_pub_key"),
+    PemBin = config_logic:get("login_rsa_pub_key"),
     BinData = list_to_binary(PlainText),
     rsa_encrypt(BinData, PemBin).
 
@@ -81,7 +81,7 @@ rsa_encrypt(BinData, PemBin) ->
 -spec rsa_decrypt(CipherText :: binary()) -> any().
 rsa_decrypt(CipherText) ->
     %%私钥解密
-    PemBin = logic_config:get("login_rsa_priv_key"),
+    PemBin = config_logic:get("login_rsa_priv_key"),
     rsa_decrypt(CipherText, PemBin).
 
 

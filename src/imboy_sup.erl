@@ -22,15 +22,15 @@ init([]) ->
     % RedisConfArgs = proplists:get_value(redis_conf, RedisPoolboy),
     % Redis = poolboy:child_spec(RedisName, RedisPoolArgs, RedisConfArgs),
 
-    Offline = {server_account, {server_account, start_link, []},
+    Offline = {account_server, {account_server, start_link, []},
                                permanent,
                                infinity,
                                worker,
-                               [server_account]},
+                               [account_server]},
 
-    User = {server_user, {server_user, start_link, []},
+    User = {user_server, {user_server, start_link, []},
                          permanent,
                          infinity,
                          worker,
-                         [server_user]},
+                         [user_server]},
     {ok, {{one_for_one, 5, 60}, [Mysql, Offline, User]}}.

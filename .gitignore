@@ -18,3 +18,5 @@ efmt
 logs
 .efmt
 erldash
+*.d
+erl_crash.dump
