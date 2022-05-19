@@ -7,8 +7,10 @@ LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids gen_smtp
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
-# BUILD_DEPS
 BUILD_DEPS = reload_mk elvis_mk
+
+DEP_PLUGINS = cowboy reload_mk elvis_mk
+RELOAD_MK_WATCH_DIRS = src templates include
 
 # 专为测试用的TEST_DEPS,只有当测试的时候才会运行
 # TEST_DEPS = sync
@@ -72,8 +74,6 @@ dep_reload_mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 
 SP = 4
-DEP_PLUGINS = cowboy reload_mk elvis_mk
-RELOAD_MK_WATCH_DIRS = src templates include
 
 include erlang.mk
 include include/tpl.mk
