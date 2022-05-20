@@ -23,7 +23,7 @@ get_routes() ->
         {"/conversation/msgbox", conversation_handler, [{action, msgbox}]},
 
         {"/user/change_state", user_handler, [{action, change_state}]},
-        {"/user/change_sign", user_handler, [{action, change_sign}]},
+        {"/user/update", user_handler, [{action, update}]},
         {"/user/show", user_handler, [{action, open_info}]},
 
         {"/friend/list", friend_handler, [{action, friend_list}]},

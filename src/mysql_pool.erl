@@ -9,7 +9,12 @@
 -export([insert_into/3]).
 -export([replace_into/3]).
 -export([assemble_sql/4]).
+-export([update/4]).
 
+
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
 -spec execute(Sql :: any()) ->
           {ok, LastInsertId :: integer()} | {error, any()}.
@@ -62,8 +67,23 @@ assemble_sql(Prefix, Table, Column, Value) ->
     % ?LOG(Sql),
     Sql.
 
+-spec update(Table::binary(), ID::any(), Field::binary(), list() | binary()) ->
+    ok | {error,  {integer(), binary(), Msg::binary()}}.
+update(Table, ID, Field, Value) when is_list(Value) ->
+    update(Table, ID, Field, list_to_binary(Value));
+update(Table, ID, Field, Value) ->
+    Sql = <<"UPDATE `", Table/binary,"` SET `",
+        Field/binary, "` = ? WHERE `id` = ?">>,
+    mysql_pool:query(Sql, [unicode:characters_to_binary(Value), ID]).
+
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
 
 insert(Prefix, Table, Column, Value) ->
     Sql = assemble_sql(Prefix, Table, Column, Value),
     % ?LOG(Sql),
     poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).
+
+

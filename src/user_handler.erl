@@ -12,8 +12,8 @@ init(Req0, State) ->
         case lists:keyfind(action, 1, State) of
             {action, change_state} ->
                 change_state(Req0, State);
-            {action, change_sign} ->
-                change_sign(Req0, State);
+            {action, update} ->
+                update(Req0, State);
             {action, open_info} ->
                 open_info(Req0, State);
             false ->
@@ -33,12 +33,13 @@ change_state(Req0, State) ->
     response:success(Req0, [], "success.").
 
 
-%% 修改签名
-change_sign(Req0, State) ->
+%% 修改用户信息
+update(Req0, State) ->
     CurrentUid = proplists:get_value(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
-    Sign = proplists:get_value(<<"sign">>, PostVals, <<"">>),
-    case user_logic:change_sign(CurrentUid, Sign) of
+    Field = proplists:get_value(<<"field">>, PostVals, <<"">>),
+    Value = proplists:get_value(<<"value">>, PostVals, <<"">>),
+    case user_logic:update(CurrentUid, Field, Value) of
         {error, {_, _, ErrorMsg}} ->
             response:error(Req0, ErrorMsg);
         ok ->
