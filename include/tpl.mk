@@ -8,8 +8,11 @@ define tpl_imboy.rest_handler
 
 -export([init/2]).
 
--include("common.hrl").
-
+-ifdef(EUNIT).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+-include_lib("kernel/include/logger.hrl").
+-include_lib("imboy/include/common.hrl").
 
 %% ------------------------------------------------------------------
 %% api
@@ -33,6 +36,17 @@ init(Req0, State) ->
 %    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
 %    dto_resp_json:success(Req0, PostVals, "操作成功.").
 
+%% ------------------------------------------------------------------
+%% EUnit tests.
+%% ------------------------------------------------------------------
+
+-ifdef(EUNIT).
+%addr_test_() ->
+%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
+%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
+%     ?_test(my_if_addr(inet)),
+%     ?_test(my_if_addr(inet6))].
+-endif.
 endef
 
 define tpl_imboy.logic
@@ -44,7 +58,11 @@ define tpl_imboy.logic
 
 %-export ([search/1]).
 
--include("common.hrl").
+-ifdef(EUNIT).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+-include_lib("kernel/include/logger.hrl").
+-include_lib("imboy/include/common.hrl").
 
 %% ------------------------------------------------------------------
 %% api
@@ -57,7 +75,21 @@ define tpl_imboy.logic
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
+%% -------------------------------------------------------------------
+
+%
+
 %% ------------------------------------------------------------------
+%% EUnit tests.
+%% ------------------------------------------------------------------
+
+-ifdef(EUNIT).
+%addr_test_() ->
+%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
+%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
+%     ?_test(my_if_addr(inet)),
+%     ?_test(my_if_addr(inet6))].
+-endif.
 endef
 
 define tpl_imboy.repository
@@ -68,6 +100,12 @@ define tpl_imboy.repository
 %%%
 
 -export ([get_by_key/1]).
+
+-ifdef(EUNIT).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+-include_lib("kernel/include/logger.hrl").
+-include_lib("imboy/include/common.hrl").
 
 %% ------------------------------------------------------------------
 %% api
@@ -82,4 +120,18 @@ get_by_id(ID) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+%
+
+%% ------------------------------------------------------------------
+%% EUnit tests.
+%% ------------------------------------------------------------------
+
+-ifdef(EUNIT).
+%addr_test_() ->
+%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
+%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
+%     ?_test(my_if_addr(inet)),
+%     ?_test(my_if_addr(inet6))].
+-endif.
 endef

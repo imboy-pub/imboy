@@ -22,7 +22,7 @@
 online(UID, Pid, DType, DID) ->
     ?LOG(["user_logic/online/4", UID, Pid, DType, DID]),
     % 在其他设备登录了
-    Msg = message_ds:s2c(786, UID, DID),
+    Msg = message_ds:assemble_s2c(786, UID, DID),
     % 在“把UID标记为online”之前，给UID同类型设备发送下线通知(s2c 786 消息)
     message_ds:send(UID, DType, jsone:encode(Msg, [native_utf8]), 1),
     % 把UID标记为online
@@ -139,9 +139,7 @@ find_by_ids(Ids, Column) ->
             []
     end.
 
-% user_logic:update(1, "abcabcabca1").
-% user_logic:update(<<"1">>, <<"abcabcabca2">>).
-% user_logic:update("1", "中国你好！😆").
+
 -spec update(UID::any(), Field::binary(), list() | binary()) ->
     ok | {error, {integer(), binary(), Msg::binary()}}.
 update(UID, <<"sign">>, Val) ->
