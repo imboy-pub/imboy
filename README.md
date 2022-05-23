@@ -41,7 +41,7 @@ kerl active
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
-make list-templates
+
 make new t=cowboy.http n=handler_passport
 make new t=cowboy.ws n=handler_websocket
 
@@ -49,12 +49,32 @@ make new t=cowboy.middleware n=middleware_demo
 make new t=cowboy.middleware n=middleware_auth
 make new t=gen_server n=server_account
 
-// 我添加的模板
-make new t=rest_handler n=handler_demo
-make new t=logic n=logic_demo
-make new t=repository n=repo_demo
-make new t=transfer n=transfer_demo
+make distclean
 
+// 我添加的模板 以imboy开头
+make new t=imboy.rest_handler n=demo_handler
+make new t=imboy.logic n=demo_logic
+make new t=imboy.repository n=demo_repo
+
+make list-templates
+Available templates:
+    cowboy.http
+    cowboy.loop
+    cowboy.rest
+    cowboy.ws
+    cowboy_http
+    cowboy_loop
+    cowboy_rest
+    cowboy_ws
+    gen_fsm
+    gen_server
+    gen_statem
+    imboy.logic
+    imboy.repository
+    imboy.rest_handler
+    module
+    ranch_protocol
+    supervisor
 
 make run
 
@@ -67,21 +87,12 @@ IMBOYENV=test make run RELOADABLE=1
 IMBOYENV=dev make run RELOADABLE=1
 IMBOYENV=local make run RELOADABLE=1
 
-// on CentOS8
+// on CentOS8 OR macOS
 export IMBOYENV='local' && make run RELOADABLE=1
 
 observer_cli:start().
 
-make new-app in=imboy_msg
-
-make new-lib in=imboy_lib
-make new-app in=imboy_admin
-make new-app in=imboy_ws
-make new-app in=imboy_api
-make new-app in=imboy_cli
-
 make new t=gen_server n=server_demo
-make new t=gen_server n=server_demo in=imboy
 
 make dialyze
 ```
@@ -223,8 +234,8 @@ make erlang-mk
 ```
 
 # api 约定  (api convention)
-* [API参考](./priv/doc/API定义.md)
-* [消息格式参考](./priv/doc/消息类型.md)
+* [API参考](./doc/API定义.md)
+* [消息格式参考](./doc/消息类型.md)
 
 
 # erlang 优化
