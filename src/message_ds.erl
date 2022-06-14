@@ -68,8 +68,6 @@ assemble_s2c(MsgType, Content) ->
     assemble_s2c(MsgType, Content, <<"">>, <<"">>).
 
 
-assemble_s2c(1019, Content, From, To) ->  % 用户在线状态变更
-    assemble_s2c(1019, Content, From, To);
 assemble_s2c(MsgType, Content, From, To) when is_integer(MsgType) ->
     assemble_s2c(integer_to_binary(MsgType), Content, From, To);
 assemble_s2c(MsgType, Content, From, To) when is_list(MsgType) ->
@@ -83,6 +81,10 @@ assemble_s2c(MsgType, Content, From, To) ->
 
 assemble_msg(Type, From, To, Payload, Ts) when is_integer(From), From > 0 ->
     assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, Ts);
+assemble_msg(Type, From, To, Payload, Ts) when is_list(From), From > 0 ->
+    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, Ts);
+assemble_msg(Type, From, To, Payload, Ts) when is_list(To), To > 0 ->
+    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, Ts);
 assemble_msg(Type, From, To, Payload, Ts) when is_integer(To), To > 0 ->
     assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, Ts);
 assemble_msg(Type, From, To, Payload, Ts) ->

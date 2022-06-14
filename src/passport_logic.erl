@@ -10,6 +10,11 @@
 
 -include_lib("imboy/include/common.hrl").
 
+% password 给元素顺序不能够随意修改，
+% login_success_transfer 按顺序匹配了
+% 密码校验取第4位为密码数据 lists:nth(4, Row)
+-define (LOGIN_COLUMN, <<"`id`,`account`,`mobile`,`password`,
+        `nickname`,`avatar`,`gender`,`region`,`sign`">>).
 
 -spec send_email_code(ToEmail :: binary()) ->
           {error, Msg :: list()} | {ok, any()}.
@@ -46,15 +51,13 @@ send_email_code(ToEmail) ->
 -spec do_login(Type :: binary(), Email :: binary(), Pwd :: binary()) ->
           {ok, any()} | {error, any()}.
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
-    Column = <<"`id`,`account`,`email`,`password`,
-        `nickname`,`avatar`,`gender`">>,
     case imboy_func:is_email(Email) of
         true ->
-            {Check, User} = case user_repo:find_by_email(Email, Column) of
-                {ok, _, [[Id, Act, Email, Pwd2, Nname, Avatar, Gender]]} ->
-                    case imboy_password:verify(Pwd, Pwd2) of
+            {Check, User} = case user_repo:find_by_email(Email, ?LOGIN_COLUMN) of
+                {ok, _, [Row]} ->
+                    case imboy_password:verify(Pwd, lists:nth(4, Row)) of
                         {ok, _} ->
-                            {true, [Id, Act, Email, Nname, Avatar, Gender]};
+                            {true, Row};
                         {error, Msg} ->
                             {false, Msg}
                     end;
@@ -66,21 +69,19 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
             {error, "Email格式有误"}
     end;
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
-    Column = <<"`id`,`account`,`mobile`,`password`,
-        `nickname`,`avatar`,`gender`">>,
     Res = case imboy_func:is_mobile(Mobile) of
         true ->
-            user_repo:find_by_mobile(Mobile, Column);
+            user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN);
         false ->
-            user_repo:find_by_account(Mobile, Column)
+            user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
     end,
     % ?LOG(Res),
     {Check, User} = case Res of
-        {ok, _, [[Id, Account, Password, Nickname, Avatar, Gender]]} ->
-            ?LOG([Pwd, Password]),
-            case imboy_password:verify(Pwd, Password) of
+        {ok, _, [Row]} when length(Row)>4 ->
+            % 第四个元素为password
+            case imboy_password:verify(Pwd, lists:nth(4, Row)) of
                 {ok, _} ->
-                    {true, [Id, Account, Nickname, Avatar, Gender]};
+                    {true, Row};
                 {error, Msg} ->
                     {false, Msg}
             end;
@@ -286,7 +287,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 
 -spec login_success_transfer(boolean(), list()) ->
     {ok, any()} | {error, any()}.
-login_success_transfer(Check, [Id, Account, _, Nickname, Avatar, Gender]) when Check =:= true ->
+login_success_transfer(true, [Id, Account, _, _, Nickname, Avatar, Gender, Region, Sign]) ->
     {ok, [
         {<<"token">>, token_ds:encrypt_token(Id)},
         {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)},
@@ -295,8 +296,10 @@ login_success_transfer(Check, [Id, Account, _, Nickname, Avatar, Gender]) when C
         {<<"avatar">>, Avatar},
         {<<"account">>, Account},
         {<<"gender">>, Gender},
-        {<<"area">>, <<"">>},
+        {<<"region">>, Region},
+        {<<"sign">>, Sign},
         {<<"role">>, 1}]
     };
-login_success_transfer(_, _) ->
+login_success_transfer(_, User) ->
+    ?LOG([User]),
     {error, "账号或密码错误"}.

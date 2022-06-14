@@ -171,8 +171,9 @@ send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUID}] | Tail]) ->
 
 
 send_msg_code1019(From, To, ToPid, _State) ->
-    ?LOG([From, To, ToPid]),
+    ?LOG([From, To, ToPid]), % echo [1,<<"3">>,<0.892.0>]
     % 用户在线状态变更
-    Msg = message_ds:assemble_s2c(<<"1019">>, <<"">>, From, To),
+    To2 = binary_to_integer(To),
+    Msg = message_ds:assemble_s2c(<<"1019">>, <<"">>, From, To2),
     erlang:start_timer(1, ToPid, jsone:encode(Msg, [native_utf8])),
     ok.
