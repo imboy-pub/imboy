@@ -5,38 +5,73 @@
 
 -export([execute/2]).
 
-
 %% 这个是回调函数
 execute(Req, Env) ->
-    Path = cowboy_req:path(Req),
-    NotNeedAuth = imboy_router:not_need_auth_paths(),
-    Need = lists:member(Path, NotNeedAuth),
-    % ?LOG(["Path", Path, "Need", Need]),
-    case Need of
-        true ->
-            {ok, Req, Env};
-        false ->
-            Authorization = cowboy_req:header(<<"authorization">>, Req),
-            % ?LOG(['Authorization', Authorization]),
-            case token_ds:decrypt_token(Authorization) of
-                {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
-                    #{handler_opts := HandlerOpts} = Env,
-                    Env2 = Env#{handler_opts => [{current_uid, Id} |
-                                                 HandlerOpts]},
-                    {ok, Req, Env2};
-                {ok, Id, _ExpireAt, <<"tk">>} when is_binary(Id) ->
-                    #{handler_opts := HandlerOpts} = Env,
-                    Env2 = Env#{handler_opts =>
-                                    [{current_uid, binary_to_integer(Id)} |
-                                     HandlerOpts]},
-                    {ok, Req, Env2};
-                {ok, _Id, _ExpireAt, <<"rtk">>} ->
-                    Req1 = response:error(Req,
-                                               "Does not support refreshtoken",
-                                               1),
-                    {stop, Req1};
-                {error, Code, Msg, _Li} ->
-                    Req1 = response:error(Req, Msg, Code),
-                    {stop, Req1}
-            end
+    Path = remove_last_forward_slash(cowboy_req:path(Req)),
+
+    OpenLi = imboy_router:open(),
+    OptionLi = imboy_router:option(),
+    InOpenLi = lists:member(Path, OpenLi),
+    InOptionLi = lists:member(Path, OptionLi),
+
+    Authorization = cowboy_req:header(<<"authorization">>, Req),
+    % ?LOG(["Path", Path, "InOpenLi", InOpenLi, "InOptionLi", InOptionLi,
+    %     "Authorization", Authorization, Authorization == undefined]),
+    condition(InOptionLi, InOpenLi, Authorization, Req, Env).
+
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+condition(true, _, undefined, Req, Env) ->
+    {ok, Req, Env};
+condition(true, _, Authorization, Req, Env) ->
+    do_authorization(Authorization, Req, Env);
+condition(_, true, _, Req, Env) ->
+    {ok, Req, Env};
+condition(_, _, Authorization, Req, Env) ->
+    do_authorization(Authorization, Req, Env).
+
+do_authorization(undefined, Req, _Env) ->
+    {stop, Req};
+do_authorization(Authorization, Req, Env) ->
+    % ?LOG(['Authorization', Authorization]),
+    case token_ds:decrypt_token(Authorization) of
+        {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
+            #{handler_opts := HandlerOpts} = Env,
+            Env2 = Env#{handler_opts => [{current_uid, Id} |
+                                         HandlerOpts]},
+            {ok, Req, Env2};
+        {ok, Id, _ExpireAt, <<"tk">>} when is_binary(Id) ->
+            #{handler_opts := HandlerOpts} = Env,
+            Env2 = Env#{handler_opts =>
+                            [{current_uid, binary_to_integer(Id)} |
+                             HandlerOpts]},
+            {ok, Req, Env2};
+        {ok, _Id, _ExpireAt, <<"rtk">>} ->
+            Req1 = response:error(Req,
+                                       "Does not support refreshtoken",
+                                       1),
+            {stop, Req1};
+        {error, Code, Msg, _Li} ->
+            Req1 = response:error(Req, Msg, Code),
+            {stop, Req1}
     end.
+
+%% Remove the last forward slash
+%% 删除最后一个正斜杠
+%% auth_middleware:remove_last_forward_slash(<<"/abc/">>).
+%%  will be echo <<"/abc">>
+-spec remove_last_forward_slash(binary()) -> binary().
+remove_last_forward_slash(<<"">>) ->
+    <<"/">>;
+remove_last_forward_slash(<<"/">>) ->
+    <<"/">>;
+remove_last_forward_slash(Path) ->
+    case binary:last(Path) of
+        47 ->
+            binary:part(Path, 0, byte_size(Path)-1);
+        _ ->
+            Path
+    end.
+

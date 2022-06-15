@@ -1,9 +1,10 @@
 -module(imboy_router).
 
 -export([get_routes/0]).
--export([not_need_auth_paths/0]).
+-export([open/0]).
+-export([option/0]).
 
-
+%% 服务端所有路由定义再这里(包含 option/0 open/0 里面的定义)
 get_routes() ->
     {ok, HostImboy} = application:get_env(imboy, host),
     [{HostImboy, [
@@ -25,6 +26,7 @@ get_routes() ->
         {"/user/change_state", user_handler, [{action, change_state}]},
         {"/user/update", user_handler, [{action, update}]},
         {"/user/show", user_handler, [{action, open_info}]},
+        {"/uqrcode", user_handler, [{action, uqrcode}]},
 
         {"/friend/list", friend_handler, [{action, friend_list}]},
         {"/friend/myfriend", friend_handler, [{action, myfriend}]},
@@ -45,22 +47,34 @@ get_routes() ->
         }
     ]}].
 
+%% 因为 除去 option 和 open 的路由，就是必须要 auth 的路由了
+%% 所以 这里不需要订阅 auth/0 方法
 
-%% 不需要认证的API，列表元素必须为binary
-not_need_auth_paths() ->
-    [<<"/">>
-     % /ws 有自己的auth
-     ,
-     <<"/ws">>,
-     <<"/ws/">>,
-     <<"/help">>,
-     <<"/conversation/online">>,
-     <<"/init">>,
-     <<"/user/show">>,
-     <<"/refreshtoken">>,
-     <<"/stress_testing">>,
-     <<"/passport/login">>,
-     <<"/passport/signup">>,
-     <<"/passport/getcode">>,
-     <<"/passport/findpassword">>,
-     <<"/auth/assets">>].
+%% 如果请求头里面有 authorization 字段，就需要认证的API
+%% 列表元素必须为binary
+%% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
+option() ->
+    [
+        <<"/uqrcode">>
+    ].
+
+%% 不需要认证的API
+%% 列表元素必须为binary
+%% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
+open() ->
+    [
+        % /ws 有自己的auth
+        <<"/ws">>,
+        <<"/help">>,
+        <<"/conversation/online">>,
+        <<"/init">>,
+        <<"/user/show">>,
+        <<"/refreshtoken">>,
+        <<"/stress_testing">>,
+        <<"/passport/login">>,
+        <<"/passport/signup">>,
+        <<"/passport/getcode">>,
+        <<"/passport/findpassword">>,
+        <<"/auth/assets">>,
+        <<"/">>
+    ].

@@ -24,19 +24,22 @@ start(_Type, _Args) ->
                 auth_middleware,
                 cowboy_handler
             ],
-            metrics_callback => do_metrics_callback(),
-            stream_handlers => [cowboy_metrics_h, cowboy_compress_h, cowboy_stream_h],
+            % metrics_callback => do_metrics_callback(),
+            stream_handlers => [
+                % cowboy_metrics_h,
+                cowboy_compress_h,
+                cowboy_stream_h],
             env => #{dispatch => Dispatch}
         }
     ),
     % end handler
     imboy_sup:start_link().
 
-do_metrics_callback() ->
-   fun(Metrics) ->
-      error_logger:error_msg("@@ metrics~n~p~n", [Metrics]),
-      ok
-   end.
+% do_metrics_callback() ->
+%    fun(Metrics) ->
+%       error_logger:error_msg("@@ metrics~n~p~n", [Metrics]),
+%       ok
+%    end.
 
 stop(_State) ->
     ok = cowboy:stop_listener(imboy_http_listener).

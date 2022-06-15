@@ -17,6 +17,9 @@
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
 
+% 顺序不能够随意修改，id 要放到第一个
+-define (DEF_USER_COLUMN, <<"`id`,`account`,`mobile`,
+        `nickname`,`avatar`,`sign`,`gender`,`region`">>).
 
 -spec online(UID::any(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
 online(UID, Pid, DType, DID) ->
@@ -105,8 +108,7 @@ online_state(User) ->
 
 -spec find_by_id(binary()) -> list().
 find_by_id(Id) ->
-    Column = <<"`id`, `account`,`nickname`,`avatar`,`sign`">>,
-    find_by_id(Id, Column).
+    find_by_id(Id, ?DEF_USER_COLUMN).
 
 
 find_by_id(Id, Column) ->
@@ -123,8 +125,7 @@ find_by_id(Id, Column) ->
 
 
 find_by_ids(Ids) ->
-    Column = <<"`id`, `account`,`nickname`,`avatar`,`sign`">>,
-    find_by_ids(Ids, Column).
+    find_by_ids(Ids, ?DEF_USER_COLUMN).
 
 
 find_by_ids(Ids, Column) ->

@@ -16,11 +16,31 @@ init(Req0, State) ->
                 update(Req0, State);
             {action, open_info} ->
                 open_info(Req0, State);
+            {action, uqrcode} ->
+                uqrcode(Req0, State);
             false ->
                 Req0
         end,
     {ok, Req1, State}.
 
+%% 扫描“我的二维码”
+uqrcode(Req0, State) ->
+    #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    CurrentUid = proplists:get_value(current_uid, State),
+    case CurrentUid of
+        undefined ->
+            Req = cowboy_req:reply(
+                302,
+                #{<<"Location">> => <<"http://www.imboy.pub">>},
+                Req0
+            ),
+            {ok, Req, State};
+        _ ->
+            Uid2 = imboy_hashids:uid_decode(Uid),
+            response:success(Req0, [
+                {<<"is_friend">>, friend_ds:is_friend(CurrentUid, Uid2)}
+            ], "success.")
+    end.
 
 %% 切换在线状态
 change_state(Req0, State) ->
