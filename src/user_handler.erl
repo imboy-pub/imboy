@@ -37,9 +37,11 @@ uqrcode(Req0, State) ->
             {ok, Req, State};
         _ ->
             Uid2 = imboy_hashids:uid_decode(Uid),
+            Column = <<"`id`,`nickname`,`gender`,`avatar`,`sign`,`region`">>,
+            User = user_logic:find_by_id(Uid2, Column),
             response:success(Req0, [
                 {<<"is_friend">>, friend_ds:is_friend(CurrentUid, Uid2)}
-            ], "success.")
+            ] ++ imboy_hashids:replace_id(User), "success.")
     end.
 
 %% 切换在线状态
