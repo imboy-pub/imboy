@@ -37,12 +37,31 @@ uqrcode(Req0, State) ->
             {ok, Req, State};
         _ ->
             Uid2 = imboy_hashids:uid_decode(Uid),
-            Column = <<"`id`,`nickname`,`gender`,`avatar`,`sign`,`region`">>,
+            Column = <<"`id`,`nickname`,`gender`,`avatar`,`sign`,`region`,`status`">>,
             User = user_logic:find_by_id(Uid2, Column),
-            response:success(Req0, [
-                {<<"is_friend">>, friend_ds:is_friend(CurrentUid, Uid2)}
-            ] ++ imboy_hashids:replace_id(User), "success.")
+            Status = proplists:get_value(<<"status">>, User),
+            response:success(Req0,
+                uqrcode_transfer(CurrentUid, Uid2, Status, User),
+                "success.")
     end.
+
+uqrcode_transfer(_, _, undefined, []) ->
+    [
+        {<<"result">>, <<"user_not_exist">>},
+        {<<"msg">>, <<"用户不存在">>}
+    ];
+uqrcode_transfer(CurrentUid, Uid2, 1, User) ->
+    User2 = proplists:delete(<<"status">>, User),
+    [
+        {<<"is_friend">>, friend_ds:is_friend(CurrentUid, Uid2)}
+    ] ++ imboy_hashids:replace_id(User2);
+uqrcode_transfer(_, _, _Status, _User) ->
+    % 状态: -1 删除  0 禁用  1 启用
+    [
+        {<<"result">>, <<"user_is_disabled_or_deleted">>},
+        {<<"msg">>, <<"用户被禁用或已删除">>}
+    ].
+
 
 %% 切换在线状态
 change_state(Req0, State) ->
