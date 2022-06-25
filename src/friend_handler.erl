@@ -11,6 +11,8 @@ init(Req0, State) ->
         case lists:keyfind(action, 1, State) of
             {action, friend_list} ->
                 friend_list(Req0, State);
+            {action, add_friend} ->
+                add_friend(Req0, State);
             {action, myfriend} ->
                 myfriend(Req0, State);
             {action, move} ->
@@ -25,6 +27,21 @@ init(Req0, State) ->
                 Req0
         end,
     {ok, Req1, State}.
+
+
+%%% 申请添加好友
+add_friend(Req0, State) ->
+    CurrentUid = proplists:get_value(current_uid, State),
+    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    To = proplists:get_value(<<"to">>, PostVals),
+    Payload = proplists:get_value(<<"payload">>, PostVals),
+    CreatedAt = proplists:get_value(<<"created_at">>, PostVals),
+    case friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt) of
+        ok ->
+            response:success(Req0, #{}, "操作成功.");
+        {error, Msg, Param} ->
+            response:error(Req0, Msg, 1, [{<<"field">>, Param}])
+    end.
 
 
 %%% 查找非好友

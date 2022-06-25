@@ -14,25 +14,28 @@
 
 -spec write_msg(integer(),
                 binary(),
-                binary(),
+                binary() | list(),
                 integer(),
                 integer(),
                 integer()) -> any().
 %% 存储消息
-write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
+    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]),
+        From, To, ServerTS);
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    case msg_c2c_repo:count_by_to_id(ToId) of
+    case msg_c2c_repo:count_by_to_id(To) of
         {ok, _, [[Count]]} when Count >= ?SAVE_MSG_LIMIT ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            msg_c2c_repo:delete_overflow_msg(ToId, Limit);
+            msg_c2c_repo:delete_overflow_msg(To, Limit);
         _ ->
             ok
     end,
     msg_c2c_repo:write_msg(CreatedAt,
                            Id,
                            Payload,
-                           FromId,
-                           ToId,
+                           From,
+                           To,
                            ServerTS).
 
 

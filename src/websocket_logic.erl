@@ -28,22 +28,8 @@ c2c(Id, CurrentUid, Data) ->
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
             % 存储消息
-            case is_binary(Payload) of
-                true ->
-                    msg_c2c_ds:write_msg(CreatedAt,
-                                         Id,
-                                         Payload,
-                                         CurrentUid,
-                                         ToId,
-                                         NowTs);
-                _ ->
-                    msg_c2c_ds:write_msg(CreatedAt,
-                                         Id,
-                                         jsone:encode(Payload, [native_utf8]),
-                                         CurrentUid,
-                                         ToId,
-                                         NowTs)
-            end,
+            msg_c2c_ds:write_msg(CreatedAt, Id, Payload,
+                CurrentUid, ToId, NowTs),
             Msg = [{<<"id">>, Id},
                {<<"type">>, <<"C2C">>},
                {<<"from">>, From},
