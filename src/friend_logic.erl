@@ -33,10 +33,10 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     Id = <<"af_", From/binary, "_", To/binary>>,
     % ?LOG([is_binary(Payload), Payload]),
     % 存储消息
-    msg_c2c_ds:write_msg(CreatedAt, Id, Payload,
+    msg_s2c_ds:write_msg(CreatedAt, Id, Payload,
         CurrentUid, ToId, NowTs),
     Msg = [{<<"id">>, Id},
-        {<<"type">>, <<"C2C">>},
+        {<<"type">>, <<"S2C">>},
         {<<"from">>, From},
         {<<"to">>, To},
         {<<"payload">>, Payload},

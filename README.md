@@ -55,6 +55,7 @@ make distclean
 make new t=imboy.rest_handler n=demo_handler
 make new t=imboy.logic n=demo_logic
 make new t=imboy.repository n=demo_repo
+make new t=imboy.repository n=msg_s2c_repo
 
 make list-templates
 Available templates:

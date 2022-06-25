@@ -13,9 +13,13 @@
 %%
 check_msg(Uid, Pid, _DID) ->
     % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
+    Msgs = msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
+    % 发送单聊离线消息
+    sent_offline_msg(Pid, <<"S2C">>, Msgs, 0),
+
     Msgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
     % 发送单聊离线消息
-    sent_offline_msg(Pid, Msgs, 0),
+    sent_offline_msg(Pid, <<"C2C">>, Msgs, 0),
     ok.
 
 
@@ -23,9 +27,9 @@ check_msg(Uid, Pid, _DID) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-sent_offline_msg(_Pid, [], _Index) ->
+sent_offline_msg(_Pid, _Type, [], _Index) ->
     ok;
-sent_offline_msg(Pid, [Row | Tail], Index) ->
+sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
     {<<"msg_id">>, MsgId} = lists:keyfind(<<"msg_id">>, 1, Row),
     {<<"from_id">>, FromId} = lists:keyfind(<<"from_id">>, 1, Row),
     {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
@@ -33,7 +37,7 @@ sent_offline_msg(Pid, [Row | Tail], Index) ->
     % ?LOG(["Row", Row, "; Payload: ", Payload]),
     Delay = 100 + Index * 100,
     Msg = [{<<"id">>, MsgId},
-           {<<"type">>, <<"C2C">>},
+           {<<"type">>, Type},
            {<<"from">>, imboy_hashids:uid_encode(FromId)},
            {<<"to">>, imboy_hashids:uid_encode(ToId)},
            {<<"payload">>,
@@ -42,4 +46,4 @@ sent_offline_msg(Pid, [Row | Tail], Index) ->
            lists:keyfind(<<"server_ts">>, 1, Row)],
     % ?LOG([Delay, "Msg: ", Msg]),
     erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
-    sent_offline_msg(Pid, Tail, Index + 1).
+    sent_offline_msg(Pid, Type, Tail, Index + 1).

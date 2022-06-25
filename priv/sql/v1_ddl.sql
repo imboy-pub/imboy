@@ -168,3 +168,17 @@ CREATE TABLE `msg_c2g_timeline` (
   PRIMARY KEY (`id`),
   KEY `i_ToId` (`to_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='群聊消息时间线';
+
+CREATE TABLE `msg_s2c` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `from_id` bigint NOT NULL COMMENT '消息发送人user id',
+  `to_id` bigint NOT NULL COMMENT '消息接收人user_id',
+  `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
+  `server_ts` bigint unsigned NOT NULL DEFAULT '0' COMMENT '消息服务器接受毫秒时间戳',
+  `msg_id` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '消息唯一标识',
+  `to_dids` varchar(648) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '接收人设备唯一ID列表: Id1,Id2',
+  `payload` text CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '消息体json格式，数据结构参考文档',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_MsgId` (`msg_id`),
+  KEY `i_ToId` (`to_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='服务端投递给用户的消息 添加好友消息等其他系统消息';
