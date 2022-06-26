@@ -99,9 +99,9 @@ websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
 % 客户端确认消息
-websocket_handle({text, <<"CLIENT_ACK", Tail/binary>>}, State) ->
-    [Type, MsgId, DID] = binary:split(Tail, <<",">>, [global]),
+websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     ?LOG(["CLIENT_ACK", Tail]),
+    [Type, MsgId, DID] = binary:split(Tail, <<",">>, [global]),
     CurrentUid = proplists:get_value(current_uid, State),
     case Type of
         <<"C2C">> ->
