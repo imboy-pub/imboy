@@ -100,21 +100,29 @@ websocket_handle({text, <<"logout">>}, State) ->
     {stop, State};
 % 客户端确认消息
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
-    ?LOG(["CLIENT_ACK", Tail]),
-    [Type, MsgId, DID] = binary:split(Tail, <<",">>, [global]),
+    ?LOG(["CLIENT_ACK", Tail, State]),
     CurrentUid = proplists:get_value(current_uid, State),
-    case Type of
-        <<"C2C">> ->
-            websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
-            {ok, State, hibernate};
-        <<"S2C">> ->
-            websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+    try
+         binary:split(Tail, <<",">>, [global])
+    of
+        [Type, MsgId, DID] ->
+        case Type of
+            <<"C2C">> ->
+                websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
+                {ok, State, hibernate};
+            <<"S2C">> ->
+                websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                {ok, State, hibernate}
+        end
+    catch
+        Class:Reason:Stacktrace ->
+            ?LOG(["websocket_handle try catch: Class:", Class,
+                  "Reason:", Reason,
+                  "Stacktrace:", Stacktrace,
+                  erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
-websocket_handle(
-    {text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>},
-    State
-) ->
+websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State) ->
     % 该方法兼容之前发布的客户端，2022-06-26 作废，3个月后可用删除之
     ?LOG(["C_ACK", MsgId, DID, State]),
     CurrentUid = proplists:get_value(current_uid, State),
@@ -131,17 +139,16 @@ websocket_handle({text, Msg}, State) ->
         ?LOG([Id, Type, Data]),
         % 逻辑层负责IM系统各项功能的核心逻辑实现
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
-        Result0 =
-            case cowboy_bstr:to_upper(Type) of
-                <<"C2C">> ->  % 单聊消息
-                    websocket_logic:c2c(Id, CurrentUid, Data);
-                <<"C2C_REVOKE">> ->  % 客户端撤回消息
-                    websocket_logic:c2c_revoke(Id, Data, Type);
-                <<"C2C_REVOKE_ACK">> ->  % 客户端撤回消息ACK
-                    websocket_logic:c2c_revoke(Id, Data, Type);
-                <<"C2G">> ->  % 群聊消息
-                    websocket_logic:c2g(Id, CurrentUid, Data)
-            end,
+        Result0 = case cowboy_bstr:to_upper(Type) of
+            <<"C2C">> ->  % 单聊消息
+                websocket_logic:c2c(Id, CurrentUid, Data);
+            <<"C2C_REVOKE">> ->  % 客户端撤回消息
+                websocket_logic:c2c_revoke(Id, Data, Type);
+            <<"C2C_REVOKE_ACK">> ->  % 客户端撤回消息ACK
+                websocket_logic:c2c_revoke(Id, Data, Type);
+            <<"C2G">> ->  % 群聊消息
+                websocket_logic:c2g(Id, CurrentUid, Data)
+        end,
         case Result0 of
             ok ->
                 ok;
@@ -149,25 +156,18 @@ websocket_handle({text, Msg}, State) ->
                 {reply, Msg2}
         end
     of
-        Result ->
-            % ?LOG(Result),
-            case Result of
-                ok ->
-                    {ok, State, hibernate};
-                {reply, Msg4} ->
-                    {reply, {text, jsone:encode(Msg4, [native_utf8])},
-                            State,
-                            hibernate}
-            end
+        ok ->
+            {ok, State, hibernate};
+        {reply, Msg4} ->
+            {reply, {text, jsone:encode(Msg4, [native_utf8])},
+                    State,
+                    hibernate}
     catch
         Class:Reason:Stacktrace ->
             ?LOG(["websocket_handle try catch: Class:", Class,
                   "Reason:", Reason,
                   "Stacktrace:", Stacktrace,
                   erlang:trace(all, true, [call])]),
-            % lager:error(
-            %     "~nStacktrace:~s",
-            %     [lager:pr_stacktrace(Stacktrace, {Class, Reason})]),
             {ok, State, hibernate}
     end;
 websocket_handle({binary, Msg}, State) ->
