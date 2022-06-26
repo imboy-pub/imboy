@@ -99,10 +99,23 @@ websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
 % 客户端确认消息
+websocket_handle({text, <<"CLIENT_ACK", Tail/binary>>}, State) ->
+    [Type, MsgId, DID] = binary:split(Tail, <<",">>, [global]),
+    ?LOG(["CLIENT_ACK", Tail]),
+    CurrentUid = proplists:get_value(current_uid, State),
+    case Type of
+        <<"C2C">> ->
+            websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
+            {ok, State, hibernate};
+        <<"S2C">> ->
+            websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+            {ok, State, hibernate}
+    end;
 websocket_handle(
     {text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>},
     State
 ) ->
+    % 该方法兼容之前发布的客户端，2022-06-26 作废，3个月后可用删除之
     ?LOG(["C_ACK", MsgId, DID, State]),
     CurrentUid = proplists:get_value(current_uid, State),
     websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
@@ -117,7 +130,7 @@ websocket_handle({text, Msg}, State) ->
         Type = proplists:get_value(<<"type">>, Data),
         ?LOG([Id, Type, Data]),
         % 逻辑层负责IM系统各项功能的核心逻辑实现
-        % Type 包括单聊（c2c）、上报(c2s)、推送(s2c)、群聊(c2g)
+        % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         Result0 =
             case cowboy_bstr:to_upper(Type) of
                 <<"C2C">> ->  % 单聊消息

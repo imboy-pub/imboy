@@ -10,7 +10,8 @@
 -export([c2c_client_ack/3]).
 -export([c2c_revoke/3]).
 -export([c2g/3]).
--export([system/3]).
+-export([s2c/3]).
+-export([s2c_client_ack/3]).
 
 
 %% 单聊消息
@@ -53,7 +54,7 @@ c2c(Id, CurrentUid, Data) ->
     end.
 
 
-%% 客户端确认投递消息
+%% 客户端确认C2C投递消息
 -spec c2c_client_ack(MsgId :: binary(),
                      CurrentUid :: integer(),
                      Data :: binary()) -> ok.
@@ -100,6 +101,8 @@ c2c_revoke(Id, Data, Type) ->
 
 
 %% 群聊发送消息
+-spec c2g(binary(), integer(), Data :: list()) ->
+          ok | {reply, Msg :: list()}.
 c2g(Id, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
     ToGID = imboy_hashids:uid_decode(Gid),
@@ -130,7 +133,24 @@ c2g(Id, CurrentUid, Data) ->
 
 
 %% 系统消息
--spec c2g(binary(), integer(), Data :: list()) ->
+-spec s2c(binary(), integer(), Data :: list()) ->
           ok | {reply, Msg :: list()}.
-system(_Id, _CurrentUid, _Data) ->
+s2c(_Id, _CurrentUid, _Data) ->
     ok.
+
+%% 客户端确认S2C投递消息
+-spec s2c_client_ack(MsgId :: binary(),
+                     CurrentUid :: integer(),
+                     Data :: binary()) -> ok.
+s2c_client_ack(MsgId, CurrentUid, _DID) ->
+    Column = <<"`id`">>,
+    Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
+    Vals = [MsgId, CurrentUid],
+    {ok, _ColumnList, Rows} = msg_s2c_repo:read_msg(Where,
+                                                    Vals,
+                                                    Column,
+                                                    1),
+    [msg_s2c_repo:delete_msg(Id) || [Id] <- Rows],
+    ok.
+
+

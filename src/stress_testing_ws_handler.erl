@@ -91,7 +91,7 @@ websocket_handle({text, Msg}, State) ->
                         websocket_logic:group_dialog(CurrentUid, Data);
 
                     <<"S2C">> ->
-                        websocket_logic:system(CurrentUid, Data)
+                        websocket_logic:s2c(CurrentUid, Data)
                 end
         end
     of
