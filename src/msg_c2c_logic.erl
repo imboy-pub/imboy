@@ -13,13 +13,20 @@
 %%
 check_msg(Uid, Pid, _DID) ->
     % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
-    Msgs = msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
-    % 发送单聊离线消息
-    sent_offline_msg(Pid, <<"S2C">>, Msgs, 0),
-
-    Msgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
-    % 发送单聊离线消息
-    sent_offline_msg(Pid, <<"C2C">>, Msgs, 0),
+    case msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined) of
+        [] ->
+            ok;
+        MsgsS2C ->
+            % 发送S2c离线消息
+            sent_offline_msg(Pid, <<"S2C">>, MsgsS2C, 0)
+    end,
+    case msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined) of
+        [] ->
+            ok;
+        MsgsC2C ->
+            % 发送C2C离线消息
+            sent_offline_msg(Pid, <<"C2C">>, MsgsC2C, 0)
+    end,
     ok.
 
 
