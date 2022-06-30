@@ -29,6 +29,7 @@ get_routes() ->
         {"/uqrcode", user_handler, [{action, uqrcode}]},
 
         {"/friend/add", friend_handler, [{action, add_friend}]},
+        {"/friend/confirm", friend_handler, [{action, confirm_friend}]},
         {"/friend/list", friend_handler, [{action, friend_list}]},
         {"/friend/myfriend", friend_handler, [{action, myfriend}]},
         {"/friend/move", friend_handler, [{action, move}]},

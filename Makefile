@@ -5,7 +5,7 @@ PROJECT_VERSION = 1.0.0
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids gen_smtp
+DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids recon observer_cli gen_smtp
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = reload_mk elvis_mk
 
@@ -70,6 +70,8 @@ dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
 dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 1.8.0
+dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 1.7.3
+dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.1
 dep_reload_mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 

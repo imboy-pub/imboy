@@ -29,7 +29,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS)
     ToId2 = list_to_binary(integer_to_list(ToId)),
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
-    ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
+    % ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
     Table = <<"`msg_s2c`">>,
     Column = <<"(`payload`, `from_id`, `to_id`,
         `created_at`, `server_ts`, `msg_id`)">>,

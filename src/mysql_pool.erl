@@ -34,12 +34,12 @@ execute(Sql) ->
 
 execute(Sql, Params) ->
     poolboy:transaction(mysql, fun(Pid) ->
-           case mysql:query(Pid, Sql, Params) of
-               ok ->
-                   {ok, mysql:insert_id(Pid)};
-               Res ->
-                   Res
-           end
+       case mysql:query(Pid, Sql, Params) of
+           ok ->
+               {ok, mysql:insert_id(Pid)};
+           Res ->
+               Res
+       end
     end).
 
 
@@ -66,7 +66,7 @@ insert_into(Table, Column, Value) ->
 assemble_sql(Prefix, Table, Column, Value) ->
     Sql = <<Prefix/binary, " ", Table/binary, " ", Column/binary,
             " VALUES ", Value/binary>>,
-    % ?LOG(Sql),
+    % ?LOG(io:format("~s\n", [Sql])),
     Sql.
 
 % mysql_pool:update(<<"user">>, "1", <<"sign">>, <<"中国你好！😆"/utf8>>).
@@ -90,22 +90,22 @@ update(Table, ID, KV) ->
     Set3 = lists:concat(lists:join(", ", Set2)),
     Set4 = list_to_binary(Set3),
     Sql = <<"UPDATE `", Table/binary,"` SET ", Set4/binary," WHERE `id` = ?">>,
-    ?LOG([Sql]),
+    % ?LOG(io:format("~s\n", [Sql])),
     mysql_pool:query(Sql, [ID]).
-
-update_filter_value(Val) when is_binary(Val) ->
-    Val;
-update_filter_value(Val) ->
-    unicode:characters_to_binary(Val).
 
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
+
+update_filter_value(Val) when is_binary(Val) ->
+    Val;
+update_filter_value(Val) ->
+    unicode:characters_to_binary(Val).
+
 insert(Prefix, Table, Column, Value) ->
     Sql = assemble_sql(Prefix, Table, Column, Value),
-    % ?LOG(Sql),
     poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end).
 
 

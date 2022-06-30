@@ -13,6 +13,8 @@ init(Req0, State) ->
                 friend_list(Req0, State);
             {action, add_friend} ->
                 add_friend(Req0, State);
+            {action, confirm_friend} ->
+                confirm_friend(Req0, State);
             {action, myfriend} ->
                 myfriend(Req0, State);
             {action, move} ->
@@ -43,6 +45,22 @@ add_friend(Req0, State) ->
             response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
 
+%%% 申请添加好友确认
+confirm_friend(Req0, State) ->
+    CurrentUid = proplists:get_value(current_uid, State),
+    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    From = proplists:get_value(<<"from">>, PostVals),
+    To = proplists:get_value(<<"to">>, PostVals),
+    Payload = proplists:get_value(<<"payload">>, PostVals),
+    case friend_logic:confirm_friend(CurrentUid, From, To, Payload) of
+        {ok, FromID, Remark} ->
+            % From 的个人信息
+            % Remark 为 to 对 from 定义的 remark
+            Resp = friend_logic:confirm_friend_resp(FromID, Remark),
+            response:success(Req0, Resp, "操作成功.");
+        {error, Msg, Param} ->
+            response:error(Req0, Msg, 1, [{<<"field">>, Param}])
+    end.
 
 %%% 查找非好友
 find(Req0, State) ->

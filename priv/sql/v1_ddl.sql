@@ -80,8 +80,11 @@ CREATE TABLE `user_friend` (
   `remark` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注名',
   `updated_at` bigint DEFAULT NULL COMMENT '记录更新时间',
   `created_at` bigint NOT NULL COMMENT '创建记录UTC时间',
+  `setting` json NOT NULL COMMENT '好友权限设置等信息',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天好友关系记录表（A请求B为好友，B接受之后，系统要自动加入一条B请求A的记录并且A自动确认 user_id 是 user表的主键）';
+
+ALTER TABLE `user_friend` ADD UNIQUE INDEX `uk_FromUID_ToUID` (`from_user_id`, `to_user_id`);
 
 CREATE TABLE `user_friend_category` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
