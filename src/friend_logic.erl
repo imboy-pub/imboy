@@ -72,13 +72,15 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     Remark1 = proplists:get_value(<<"remark">>, FromSetting),
     Source = proplists:get_value(<<"source">>, FromSetting),
     FromToIsFriend = friend_ds:is_friend(FromID, ToID),
+    % 好友关系写入数据库
     friend_repo:confirm_friend(FromToIsFriend,
-        FromID, ToID, Remark1, FromSetting, NowTs),
+        FromID, ToID, Remark1, [{<<"isfrom">>, 1} | FromSetting], NowTs),
 
     ToSetting = proplists:get_value(<<"to">>, Payload2),
     ToFromIsFriend = friend_ds:is_friend(ToID, FromID),
     % Remark2 为 to 对 from 定义的 remark
     Remark2 = proplists:get_value(<<"remark">>, ToSetting),
+    % 好友关系写入数据库
     friend_repo:confirm_friend(ToFromIsFriend,
         ToID, FromID, Remark2, [{<<"source">>, Source} | ToSetting], NowTs),
 
@@ -86,17 +88,19 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     Id = <<"afc_", From/binary, "_", To/binary>>,
     MsgType = proplists:get_value(<<"msg_type">>, Payload2),
     Payload3 = confirm_friend_resp(ToID, Remark1),
-    Payload4 = [{<<"source">>, Source} | [{<<"msg_type">>, MsgType} | Payload3]],
+    Payload4 = [{<<"isfrom">>, 1} | Payload3],
+    Payload5 = [{<<"source">>, Source} | Payload4],
+    Payload6 = [{<<"msg_type">>, MsgType} | Payload5],
 
     % 存储消息
-    msg_s2c_ds:write_msg(NowTs, Id, Payload4, CurrentUid, FromID, NowTs),
+    msg_s2c_ds:write_msg(NowTs, Id, Payload6, CurrentUid, FromID, NowTs),
 
     Msg = [{<<"id">>, Id},
         {<<"type">>, <<"S2C">>},
         % 这里的需要对调，离线消息需要对调
         {<<"from">>, To},
         {<<"to">>, From},
-        {<<"payload">>, Payload4},
+        {<<"payload">>, Payload6},
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
@@ -197,33 +201,45 @@ filter_friend({Uid, Row}, FriendItems, Replace) ->
         {Uid, {<<>>, Cid, null}} ->
             Row2 = [{<<"remark">>, <<"">>} | Row],
             Row3 = [{<<"source">>, <<"">>} | Row2],
-            {Cid, Row3};
+            Row4 = [{<<"isfrom">>, 0} | Row3],
+            {Cid, Row4};
         {Uid, {<<>>, Cid, Setting}} ->
+            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, <<"">>} | Row],
             Row3 = [{<<"source">>, Source} | Row2],
-            {Cid, Row3};
+            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            {Cid, Row4};
         {Uid, {Remark, Cid, null}} ->
             Row2 = [{<<"remark">>, Remark} | Row],
             Row3 = [{<<"source">>, <<"">>} | Row2],
-            {Cid, Row3};
+            Row4 = [{<<"isfrom">>, 0} | Row3],
+            {Cid, Row4};
         {Uid, {<<>>, Cid, Setting}} ->
+            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
-            {Cid, [{<<"source">>, Source} | Row]};
+            Row2 = [{<<"remark">>, <<"">>} | Row],
+            Row3 = [{<<"source">>, Source} | Row2],
+            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            {Cid, Row4};
         {Uid, {Remark, Cid, Setting}} when Replace =:= true ->
             Row1 = lists:keyreplace(<<"account">>,
                                     1,
                                     Row,
                                     {<<"account">>, Remark}),
+            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, Remark} | Row1],
             Row3 = [{<<"source">>, Source} | Row2],
-            {Cid, Row3};
+            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            {Cid, Row4};
         {Uid, {Remark, Cid, Setting}} ->
+            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, Remark} | Row],
             Row3 = [{<<"source">>, Source} | Row2],
-            {Cid, Row3}
+            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            {Cid, Row4}
     end.
 
 

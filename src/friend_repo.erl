@@ -66,6 +66,8 @@ move_to_category(FromUID, ToUID, CategoryID) ->
 % 对好友的一些权限控制配置
 filter_friend_setting(Setting) ->
     [
+        % 好友关系发起人 1 是 0 否
+        {<<"isfrom">>, proplists:get_value(<<"isfrom">>, Setting, 0)},
         {<<"source">>, proplists:get_value(<<"source">>, Setting, "")},
         % 客户端约定
         % role 可能的值 all justchat
