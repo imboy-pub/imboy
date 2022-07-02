@@ -52,8 +52,10 @@ uqrcode_transfer(_, _, undefined, []) ->
     ];
 uqrcode_transfer(CurrentUid, Uid2, 1, User) ->
     User2 = proplists:delete(<<"status">>, User),
+    {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
     [
-        {<<"is_friend">>, friend_ds:is_friend(CurrentUid, Uid2)}
+        {<<"remark">>, Remark},
+        {<<"isfriend">>, Isfriend}
     ] ++ imboy_hashids:replace_id(User2);
 uqrcode_transfer(_, _, _Status, _User) ->
     % 状态: -1 删除  0 禁用  1 启用

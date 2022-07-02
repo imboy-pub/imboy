@@ -2,9 +2,10 @@
 
 -include_lib("imboy/include/common.hrl").
 
--export([confirm_friend/6]).
 -export([is_friend/2]).
 -export([find_by_uid/2]).
+-export([friend_field/3]).
+-export([confirm_friend/6]).
 -export([move_to_category/3]).
 
 -spec confirm_friend(
@@ -41,6 +42,13 @@ is_friend(FromID, ToID) ->
             Where/binary>>,
     mysql_pool:query(Sql, [FromID, ToID]).
 
+
+friend_field(FromID, ToID, Field) ->
+    Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?
+        AND `status` = 1">>,
+    Sql = <<"SELECT ", Field/binary, " FROM `user_friend` ",
+            Where/binary>>,
+    mysql_pool:query(Sql, [FromID, ToID]).
 
 find_by_uid(UID, Column) ->
     find_by_uid(UID, Column, 10000).

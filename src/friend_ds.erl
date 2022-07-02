@@ -3,6 +3,7 @@
 % friend_ds 是 friend domain service 缩写
 %%%
 -export([is_friend/2]).
+-export([is_friend/3]).
 -export([find_by_uid/2]).
 -export([change_remark/3]).
 -export([set_category_id/3]).
@@ -19,6 +20,14 @@ is_friend(FromUid, ToUid) ->
             true;
         _ ->
             false
+    end.
+
+is_friend(FromUid, ToUid, Field) ->
+    case friend_repo:friend_field(FromUid, ToUid, Field) of
+        {ok, _ColumnLi, [[Val]]} ->
+            {true, Val};
+        _ ->
+            {false, <<"">>}
     end.
 
 
