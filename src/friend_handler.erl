@@ -53,11 +53,11 @@ confirm_friend(Req0, State) ->
     To = proplists:get_value(<<"to">>, PostVals),
     Payload = proplists:get_value(<<"payload">>, PostVals),
     case friend_logic:confirm_friend(CurrentUid, From, To, Payload) of
-        {ok, FromID, Remark} ->
+        {ok, FromID, Remark, Source} ->
             % From 的个人信息
             % Remark 为 to 对 from 定义的 remark
             Resp = friend_logic:confirm_friend_resp(FromID, Remark),
-            response:success(Req0, Resp, "操作成功.");
+            response:success(Req0, [{<<"source">>, Source} | Resp], "操作成功.");
         {error, Msg, Param} ->
             response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.

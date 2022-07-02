@@ -66,6 +66,7 @@ move_to_category(FromUID, ToUID, CategoryID) ->
 % 对好友的一些权限控制配置
 filter_friend_setting(Setting) ->
     [
+        {<<"source">>, proplists:get_value(<<"source">>, Setting, "")},
         % 客户端约定
         % role 可能的值 all justchat
         {<<"role">>, proplists:get_value(<<"role">>, Setting, "all")},

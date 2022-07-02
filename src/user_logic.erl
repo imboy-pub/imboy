@@ -128,6 +128,8 @@ find_by_ids(Ids) ->
     find_by_ids(Ids, ?DEF_USER_COLUMN).
 
 
+find_by_ids([], _) ->
+    [];
 find_by_ids(Ids, Column) ->
     case user_repo:find_by_ids(Ids, Column) of
         {ok, _, []} ->
