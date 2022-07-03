@@ -96,9 +96,5 @@ open_info(Req0, _State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     % ?LOG(["open_info", Uid, Req0]),
     Column = <<"`id`, `nickname`, `avatar`, `account`,`sign`">>,
-    User = user_logic:find_by_id(imboy_hashids:uid_decode(Uid),
-                              Column),
-    % ?LOG(User),
-    imboy_response:success(Req0,
-                          imboy_hashids:replace_id(User),
-                          "success.").
+    User = user_logic:find_by_id(imboy_hashids:uid_decode(Uid), Column),
+    imboy_response:success(Req0, imboy_hashids:replace_id(User), "success.").

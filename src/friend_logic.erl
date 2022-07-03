@@ -6,6 +6,7 @@
 -export([add_friend/4]).
 -export([confirm_friend/4]).
 -export([confirm_friend_resp/2]).
+-export([delete_friend/2]).
 -export([move_to_category/3]).
 -export([information/2]).
 -export([category_friend/1]).
@@ -109,6 +110,17 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         1),
     {ok, FromID, Remark2, Source}.
 
+
+confirm_friend_resp(Uid, Remark) ->
+    Column = <<"`id`,`account`,`nickname`,`avatar`,`gender`,`sign`,`region`,`status`">>,
+    User = user_logic:find_by_id(Uid, Column),
+    [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
+
+-spec delete_friend(CurrentUid::integer(), UID::binary()) -> ok.
+delete_friend(CurrentUid, UID) ->
+    friend_repo:delete(CurrentUid, imboy_hashids:uid_decode(UID)),
+    ok.
+
 %%% 查找非好友
 search(Uid) ->
     % 只能够搜索“用户被允许搜索”的用户
@@ -178,15 +190,9 @@ category_friend(Uid) ->
             [append_group_list(G, Users3) || G <- Groups]
     end.
 
-
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
-confirm_friend_resp(Uid, Remark) ->
-    Column = <<"`id`,`account`,`nickname`,`avatar`,`gender`,`sign`,`region`,`status`">>,
-    User = user_logic:find_by_id(Uid, Column),
-    [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
 
 %% 把用户归并到相应的分组
 append_group_list(Group, Users) ->

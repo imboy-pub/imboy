@@ -15,8 +15,8 @@ init(Req0, State) ->
                 add_friend(Req0, State);
             {action, confirm_friend} ->
                 confirm_friend(Req0, State);
-            % {action, delete_friend} ->
-            %     delete_friend(Req0, State);
+            {action, delete_friend} ->
+                delete_friend(Req0, State);
             {action, myfriend} ->
                 myfriend(Req0, State);
             {action, move} ->
@@ -65,12 +65,12 @@ confirm_friend(Req0, State) ->
     end.
 
 %%% 删除好友关系
-% delete_friend(Req0, State) ->
-%     CurrentUid = proplists:get_value(current_uid, State),
-%     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
-%     Uid = proplists:get_value(<<"uid">>, PostVals),
-%     friend_logic:delete_friend(CurrentUid, Uid),
-%     imboy_response:success(Req0, #{}, "操作成功.").
+delete_friend(Req0, State) ->
+    CurrentUid = proplists:get_value(current_uid, State),
+    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    Uid = proplists:get_value(<<"uid">>, PostVals),
+    friend_logic:delete_friend(CurrentUid, Uid),
+    imboy_response:success(Req0, #{}, "操作成功.").
 
 %%% 查找非好友
 find(Req0, State) ->

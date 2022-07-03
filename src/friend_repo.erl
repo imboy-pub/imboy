@@ -6,6 +6,7 @@
 -export([find_by_uid/2]).
 -export([friend_field/3]).
 -export([confirm_friend/6]).
+-export([delete/2]).
 -export([move_to_category/3]).
 
 -spec confirm_friend(
@@ -60,6 +61,14 @@ find_by_uid(UID, Column, Limit) ->
             Where/binary>>,
     mysql_pool:query(Sql, [UID, Limit]).
 
+
+-spec delete(FromID::integer(), ToID::integer()) -> ok.
+delete(FromID, ToID) ->
+    Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?">>,
+    Sql = <<"DELETE FROM `user_friend` ", Where/binary>>,
+    % ?LOG(io:format("~s  ~p ~p\n", [Sql, FromID, ToID])),
+    mysql_pool:query(Sql, [FromID, ToID]),
+    ok.
 
 move_to_category(FromUID, ToUID, CategoryID) ->
     Sql = <<"UPDATE `user_friend` SET `category_id` = ?
