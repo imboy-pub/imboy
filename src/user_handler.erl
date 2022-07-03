@@ -40,7 +40,7 @@ uqrcode(Req0, State) ->
             Column = <<"`id`,`nickname`,`gender`,`avatar`,`sign`,`region`,`status`">>,
             User = user_logic:find_by_id(Uid2, Column),
             Status = proplists:get_value(<<"status">>, User),
-            response:success(Req0,
+            imboy_response:success(Req0,
                 uqrcode_transfer(CurrentUid, Uid2, Status, User),
                 "success.")
     end.
@@ -73,7 +73,7 @@ change_state(Req0, State) ->
     user_setting_ds:save_state(CurrentUid, ChatState),
     % 切换在线状态 异步通知好友
     user_server:cast_notice_friend(CurrentUid, ChatState),
-    response:success(Req0, [], "success.").
+    imboy_response:success(Req0, [], "success.").
 
 
 %% 修改用户信息
@@ -84,9 +84,9 @@ update(Req0, State) ->
     Value = proplists:get_value(<<"value">>, PostVals, <<"">>),
     case user_logic:update(CurrentUid, Field, Value) of
         {error, {_, _, ErrorMsg}} ->
-            response:error(Req0, ErrorMsg);
+            imboy_response:error(Req0, ErrorMsg);
         ok ->
-            response:success(Req0, [], "success.")
+            imboy_response:success(Req0, [], "success.")
     end.
 
 
@@ -99,6 +99,6 @@ open_info(Req0, _State) ->
     User = user_logic:find_by_id(imboy_hashids:uid_decode(Uid),
                               Column),
     % ?LOG(User),
-    response:success(Req0,
+    imboy_response:success(Req0,
                           imboy_hashids:replace_id(User),
                           "success.").

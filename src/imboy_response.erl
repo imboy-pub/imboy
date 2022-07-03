@@ -1,4 +1,4 @@
--module(response).
+-module(imboy_response).
 %%%
 % API响应json数据传输器
 % The API responds to the JSON data transfer
@@ -45,14 +45,13 @@ reply_json(Code, Msg, Payload, Req) ->
 
 
 reply_json(Code, Msg, Payload, Req, Options) ->
-    LPayload = [{<<"code">>, Code},
-                {<<"msg">>, unicode:characters_to_binary(Msg)},
-                {<<"payload">>, Payload}
-        % ,{<<"data">>, Payload}
-        ],
+    LPayload = [
+        {<<"code">>, Code},
+        {<<"msg">>, unicode:characters_to_binary(Msg)},
+        {<<"payload">>, Payload}
+    ],
     Body = jsone:encode(LPayload ++ Options, [native_utf8]),
     cowboy_req:reply(200,
-                     #{<<"content-type">> =>
-                           <<"application/json; charset=utf-8">>},
-                     Body,
-                     Req).
+        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
+        Body,
+        Req).

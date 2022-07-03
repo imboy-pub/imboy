@@ -42,7 +42,7 @@ execute(Req, Env) ->
         true ->
             {ok, Req, Env};
         false ->
-            Req1 = response:error(Req,
+            Req1 = imboy_response:error(Req,
                                        "Failed to verify the signature",
                                        1),
             {stop, Req1}

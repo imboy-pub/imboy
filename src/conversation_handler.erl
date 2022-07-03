@@ -41,7 +41,7 @@ online(Req0, _State) ->
         _ ->
             []
     end,
-    response:success(Req0, List2, Msg).
+    imboy_response:success(Req0, List2, Msg).
 
 
 mine(Req0, State) ->
@@ -52,7 +52,7 @@ mine(Req0, State) ->
     List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
     % ?LOG(["mine_list", List]),
     List2 = mine_transfer(List),
-    response:success(Req0, List2).
+    imboy_response:success(Req0, List2).
 
 mine_transfer(List) ->
     [[{<<"id">>, proplists:get_value(<<"id">>, Msg)} |

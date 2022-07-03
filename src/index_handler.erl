@@ -25,7 +25,7 @@ init(Req0, State) ->
 
 api_init(Req0) ->
     Data = init_transfer(),
-    response:success(Req0, Data, "操作成功.").
+    imboy_response:success(Req0, Data, "操作成功.").
 
 
 %% ------------------------------------------------------------------

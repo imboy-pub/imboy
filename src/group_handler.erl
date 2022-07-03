@@ -22,11 +22,11 @@ member(Req0, _State) ->
     %%
     case cowboy_req:match_qs([{id, [], undefined}], Req0) of
         #{id := undefined} ->
-            response:error(Req0, "group id 必须");
+            imboy_response:error(Req0, "group id 必须");
         #{id := Gid} ->
             Members = group_logic:member(Gid),
             Data = member_transfer(Members),
-            response:success(Req0, Data, "操作成功.")
+            imboy_response:success(Req0, Data, "操作成功.")
     end.
 
 member_transfer(Members) ->

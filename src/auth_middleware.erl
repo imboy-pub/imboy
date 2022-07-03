@@ -49,12 +49,12 @@ do_authorization(Authorization, Req, Env) ->
                              HandlerOpts]},
             {ok, Req, Env2};
         {ok, _Id, _ExpireAt, <<"rtk">>} ->
-            Req1 = response:error(Req,
+            Req1 = imboy_response:error(Req,
                                        "Does not support refreshtoken",
                                        1),
             {stop, Req1};
         {error, Code, Msg, _Li} ->
-            Req1 = response:error(Req, Msg, Code),
+            Req1 = imboy_response:error(Req, Msg, Code),
             {stop, Req1}
     end.
 

@@ -28,10 +28,10 @@ add(Req0, State) ->
     Name = proplists:get_value(<<"name">>, PostVals, <<"Unnamed">>),
     case friend_category_logic:add(CurrentUid, Name) of
         {error, ErrorMsg} ->
-            response:error(Req0, ErrorMsg);
+            imboy_response:error(Req0, ErrorMsg);
         {ok, LastInsertId} ->
             Data = [{<<"id">>, LastInsertId}, {<<"name">>, Name}],
-            response:success(Req0, Data, "操作成功.")
+            imboy_response:success(Req0, Data, "操作成功.")
     end.
 
 
@@ -42,9 +42,9 @@ delete(Req0, State) ->
     Id = proplists:get_value(<<"id">>, PostVals),
     case friend_category_logic:delete(CurrentUid, Id) of
         {error, ErrorMsg} ->
-            response:error(Req0, ErrorMsg);
+            imboy_response:error(Req0, ErrorMsg);
         ok ->
-            response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, [], "操作成功.")
     end.
 
 
@@ -57,7 +57,7 @@ rename(Req0, State) ->
     % ?LOG([CurrentUid, Id, Name, PostVals]),
     case friend_category_ds:rename(CurrentUid, Id, Name) of
         {error, {_, _, ErrorMsg}} ->
-            response:error(Req0, ErrorMsg);
+            imboy_response:error(Req0, ErrorMsg);
         ok ->
-            response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, [], "操作成功.")
     end.

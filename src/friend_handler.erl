@@ -15,6 +15,8 @@ init(Req0, State) ->
                 add_friend(Req0, State);
             {action, confirm_friend} ->
                 confirm_friend(Req0, State);
+            % {action, delete_friend} ->
+            %     delete_friend(Req0, State);
             {action, myfriend} ->
                 myfriend(Req0, State);
             {action, move} ->
@@ -40,9 +42,9 @@ add_friend(Req0, State) ->
     CreatedAt = proplists:get_value(<<"created_at">>, PostVals),
     case friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt) of
         ok ->
-            response:success(Req0, #{}, "操作成功.");
+            imboy_response:success(Req0, #{}, "操作成功.");
         {error, Msg, Param} ->
-            response:error(Req0, Msg, 1, [{<<"field">>, Param}])
+            imboy_response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
 
 %%% 申请添加好友确认
@@ -57,10 +59,18 @@ confirm_friend(Req0, State) ->
             % From 的个人信息
             % Remark 为 to 对 from 定义的 remark
             Resp = friend_logic:confirm_friend_resp(FromID, Remark),
-            response:success(Req0, [{<<"source">>, Source} | Resp], "操作成功.");
+            imboy_response:success(Req0, [{<<"source">>, Source} | Resp], "操作成功.");
         {error, Msg, Param} ->
-            response:error(Req0, Msg, 1, [{<<"field">>, Param}])
+            imboy_response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
+
+%%% 删除好友关系
+% delete_friend(Req0, State) ->
+%     CurrentUid = proplists:get_value(current_uid, State),
+%     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+%     Uid = proplists:get_value(<<"uid">>, PostVals),
+%     friend_logic:delete_friend(CurrentUid, Uid),
+%     imboy_response:success(Req0, #{}, "操作成功.").
 
 %%% 查找非好友
 find(Req0, State) ->
@@ -68,7 +78,7 @@ find(Req0, State) ->
     Mine = user_logic:find_by_id(CurrentUid),
     Friends = friend_logic:search(CurrentUid),
     Data = find_transfer(Mine, Friends),
-    response:success(Req0, Data, "操作成功.").
+    imboy_response:success(Req0, Data, "操作成功.").
 
 find_transfer(User, Friend) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
@@ -91,7 +101,7 @@ friend_list(Req0, State) ->
     Friend = friend_logic:friend_list(CurrentUid),
     Data = friend_list_transfer([MineState | Mine], Friend),
     % ?LOG(Data),
-    response:success(Req0, Data, "操作成功.").
+    imboy_response:success(Req0, Data, "操作成功.").
 
 friend_list_transfer(User, Friends) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
@@ -109,7 +119,7 @@ myfriend(Req0, State) ->
     Group = group_logic:user_group(CurrentUid),
     Data = myfriend_transfer([MineState | Mine], Friend, Group),
     % ?LOG(Data),
-    response:success(Req0, Data, "操作成功.").
+    imboy_response:success(Req0, Data, "操作成功.").
 
 myfriend_transfer(User, Friend, Group) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
@@ -133,7 +143,7 @@ move(Req0, State) ->
     CategoryId = proplists:get_value(<<"category_id">>, PostVals, 0),
 
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-    response:success(Req0, [], "操作成功.").
+    imboy_response:success(Req0, [], "操作成功.").
 
 
 %%% 好友群资料
@@ -153,11 +163,11 @@ information(Req0, State) ->
                                                User,
                                                UserSetting,
                                                Friend),
-            response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "操作成功.");
         #{type := <<"group">>} ->
-            response:success(Req0, [], "操作成功.");
+            imboy_response:success(Req0, [], "操作成功.");
         _ ->
-            response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, [], "操作成功.")
     end.
 
 information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
@@ -177,7 +187,7 @@ change_remark(Req0, State) ->
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
     case friend_ds:change_remark(CurrentUid, Uid, Remark) of
         {error, {_, _, ErrorMsg}} ->
-            response:error(Req0, ErrorMsg);
+            imboy_response:error(Req0, ErrorMsg);
         ok ->
-            response:success(Req0, Remark, "操作成功.")
+            imboy_response:success(Req0, Remark, "操作成功.")
     end.

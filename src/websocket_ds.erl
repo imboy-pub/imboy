@@ -50,7 +50,7 @@ auth(Token, Req1, State1, Opt) when is_binary(Token) ->
                                [{current_uid, Uid} | State1],
                                Opt#{idle_timeout := Timeout}};
         {error, 705, Msg, _Li} ->
-            Req3 = response:error(Req1, Msg),
+            Req3 = imboy_response:error(Req1, Msg),
             {ok, Req3, State1};
         {error, Code, _Msg, _Li} ->
             {cowboy_websocket, Req1, [{error, Code} | State1], Opt}

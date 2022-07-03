@@ -59,11 +59,11 @@ do_login(Req0) ->
             % 检查消息 用异步队列实现
             Uid = proplists:get_value(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
-            response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "操作成功.");
         {error, Msg} ->
-            response:error(Req0, Msg);
+            imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->
-            response:error(Req0, Msg, Code)
+            imboy_response:error(Req0, Msg, Code)
     end.
 
 
@@ -74,9 +74,9 @@ refreshtoken(Req0) ->
     case token_ds:decrypt_token(Refreshtoken) of
         {ok, Id, _ExpireAt, <<"rtk">>} ->
             Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
-            response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "操作成功.");
         {error, Code, Msg, _Li} ->
-            response:error(Req0, Msg, Code)
+            imboy_response:error(Req0, Msg, Code)
     end.
 
 
@@ -93,12 +93,12 @@ send_code(Req0) ->
         <<"email">> ->
             case passport_logic:send_email_code(Account) of
                 {ok, _} ->
-                    response:success(Req0, [], "操作成功.");
+                    imboy_response:success(Req0, [], "操作成功.");
                 {error, Msg} ->
-                    response:error(Req0, [], Msg)
+                    imboy_response:error(Req0, [], Msg)
             end;
         _ ->
-            response:success(Req0, [], "暂未实现功能.")
+            imboy_response:success(Req0, [], "暂未实现功能.")
     end.
 
 
@@ -129,11 +129,11 @@ do_signup(Req0) ->
                                   Code,
                                   Post2) of
         {ok, Data} ->
-            response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "操作成功.");
         {error, Msg} ->
-            response:error(Req0, Msg);
+            imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->
-            response:error(Req0, Msg, Code)
+            imboy_response:error(Req0, Msg, Code)
     end.
 
 
@@ -164,9 +164,9 @@ find_password(Req0) ->
                                       Code,
                                       Post2) of
         {ok, Data} ->
-            response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "操作成功.");
         {error, Msg} ->
-            response:error(Req0, Msg);
+            imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->
-            response:error(Req0, Msg, Code)
+            imboy_response:error(Req0, Msg, Code)
     end.
