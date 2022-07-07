@@ -17,3 +17,12 @@
 -else.
 -define(LOG(X), true).
 -endif.
+
+%% Some standard periods in seconds
+-define(MINUTE,     60).
+-define(HOUR,     3600).
+-define(DAY,     86400).
+-define(WEEK,   604800).
+-define(YEAR, 31557600).
+
+-define(DEBUG(Msg), lager:debug(Msg)).

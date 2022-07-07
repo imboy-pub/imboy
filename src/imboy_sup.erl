@@ -33,4 +33,11 @@ init([]) ->
                          infinity,
                          worker,
                          [user_server]},
-    {ok, {{one_for_one, 5, 60}, [Mysql, Offline, User]}}.
+
+    % KVProps default is [{depcache_memory_max, 100}],
+    {ok, KVProps} = application:get_env(imboy, depcache),
+    IMBoyKV = {imboy_kv, {imboy_kv, start_link, [KVProps]},
+            permanent,
+            5000,
+            worker, dynamic},
+    {ok, {{one_for_one, 5, 60}, [Mysql, Offline, User, IMBoyKV]}}.
