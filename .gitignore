@@ -20,3 +20,4 @@ logs
 erldash
 *.d
 erl_crash.dump
+rebar3.crashdump
