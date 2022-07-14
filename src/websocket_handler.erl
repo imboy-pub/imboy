@@ -38,8 +38,7 @@ init(Req0, State0) ->
             Token = maps:get(authorization, QsAuth),
             websocket_ds:auth(Token, Req0, State2, Opt0);
         % 为了安全考虑，非 local 环境必须要 DID 和 HeaderAuth，必须check subprotocols
-        bit_size(DID) > 0,
-        HeaderAuth =/= undefined ->
+        bit_size(DID) > 0, HeaderAuth =/= undefined ->
             case websocket_ds:check_subprotocols(Subprotocols,
                                                  Req0,
                                                  State2) of
@@ -66,7 +65,7 @@ websocket_init(State) ->
         {error, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
-                   {<<"timestamp">>, imboy_dt:milliseconds()}],
+                   {<<"server_ts">>, imboy_dt:milliseconds()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         false ->
             CurrentUid = proplists:get_value(current_uid, State),

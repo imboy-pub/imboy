@@ -22,6 +22,7 @@ c2c(Id, CurrentUid, Data) ->
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
+
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
             NowTs = imboy_dt:milliseconds(),
@@ -46,10 +47,7 @@ c2c(Id, CurrentUid, Data) ->
                      {<<"type">>, <<"C2C_SERVER_ACK">>},
                      {<<"server_ts">>, NowTs}]};
         false ->
-            Msg = [{<<"type">>, <<"error">>},
-                   {<<"code">>, 1},
-                   {<<"msg">>, <<"Is not a friend">>},
-                   {<<"timestamp">>, imboy_dt:milliseconds()}],
+            Msg = message_ds:assemble_s2c(<<"isnotfriend">>, Id),
             {reply, Msg}
     end.
 

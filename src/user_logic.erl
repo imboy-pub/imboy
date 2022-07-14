@@ -25,8 +25,8 @@
 online(UID, Pid, DType, DID) ->
     ?LOG(["user_logic/online/4", UID, Pid, DType, DID]),
     % 在其他设备登录了
-    Msg = message_ds:assemble_s2c(786, UID, DID),
-    % 在“把UID标记为online”之前，给UID同类型设备发送下线通知(s2c 786 消息)
+    Msg = message_ds:assemble_s2c(<<"logged_another_device">>, UID, DID),
+    % 在“把UID标记为online”之前，给UID同类型设备发送下线通知(s2c <<"logged_another_device">> 消息)
     message_ds:send(UID, DType, jsone:encode(Msg, [native_utf8]), 1),
     % 把UID标记为online
     chat_online:dirty_insert(UID, Pid, DType, DID),

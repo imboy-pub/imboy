@@ -54,11 +54,11 @@ send(ToUid, ToDtype, Msg, Millisecond) ->
 
 %%% 系统消息 [500 -- 1000) 系统消息
 
-assemble_s2c(786, UID, DID) ->  % 在其他设备登录了
+assemble_s2c(<<"logged_another_device">>, UID, DID) ->  % 在其他设备登录了
     Ts = imboy_dt:milliseconds(),
     DName = user_device_repo:device_name(UID, DID),
     Payload = [
-        {<<"msg_type">>, 786},
+        {<<"msg_type">>, <<"logged_another_device">>},
         {<<"did">>, DID},
         {<<"dname">>, DName}
     ],

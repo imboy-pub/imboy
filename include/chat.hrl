@@ -5,4 +5,6 @@
 -define (SAVE_MSG_LIMIT, 5000).
 
 % 用户聊天状态
--type user_chat_state() :: online | offline | hide.
+-type user_chat_state() :: online | offline | hide |
+    % <<"online">> | <<"offline">> | <<"hide">>.
+    binary().

@@ -79,16 +79,15 @@ handle_cast({notice_friend, UID, ToState}, State) ->
     {noreply, State, hibernate};
 handle_cast({offline, UID, _Pid, DID}, State) ->
     ?LOG([offline, UID, State, DID]),
-    notice_friend(UID, offline),
+    notice_friend(UID, <<"offline">>),
     {noreply, State, hibernate};
-
 handle_cast({online, UID, Pid, DID}, State) ->
     ?LOG([online, UID, Pid, State, DID]),
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(UID) of
         false ->
             % 上线通知好友
-            notice_friend(UID, online),
+            notice_friend(UID, <<"online">>),
             ok;
         true ->
             ok
@@ -142,7 +141,7 @@ cast_offline(UID, Pid, DID) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec notice_friend(any(), user_chat_state()) -> ok.
+-spec notice_friend(any(), binary()) -> ok.
 notice_friend(UID, State) ->
     Column = <<"`to_user_id`">>,
     case friend_ds:find_by_uid(UID, Column) of
@@ -160,20 +159,22 @@ send_state_msg(_FromId, _State, []) ->
     ok;
 % 给在线好友发送上线消息
 send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUID}] | Tail]) ->
+    % ?LOG([FromId, State, ToUID, Tail]), % echo [1,<<"3">>,<0.892.0>]
     case chat_online:lookup(ToUID) of
         [] ->
             ok;
         List ->
-            [send_msg_code1019(FromId, ToUID2, ToPid2, State) ||
+            [send_msg(State, FromId, ToUID2, ToPid2, State) ||
                 {_, ToPid2, ToUID2, _DType, _DID} <- List]
     end,
     send_state_msg(FromId, State, Tail).
 
 
-send_msg_code1019(From, To, ToPid, _State) ->
-    ?LOG([From, To, ToPid]), % echo [1,<<"3">>,<0.892.0>]
+send_msg(State, From, To, ToPid, _State) ->
+    ?LOG([State, From, To, ToPid]),
     % 用户在线状态变更
+    % State: <<"online">> | <<"offline">> | <<"hide">>.
     To2 = binary_to_integer(To),
-    Msg = message_ds:assemble_s2c(<<"1019">>, <<"">>, From, To2),
+    Msg = message_ds:assemble_s2c(State, <<"">>, From, To2),
     erlang:start_timer(1, ToPid, jsone:encode(Msg, [native_utf8])),
     ok.
