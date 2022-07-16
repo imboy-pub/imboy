@@ -2,7 +2,7 @@
 
 -include_lib("imboy/include/chat.hrl").
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 %%%
 % 用户异步行为服务
 %%%

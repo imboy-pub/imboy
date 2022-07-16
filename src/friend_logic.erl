@@ -12,7 +12,7 @@
 -export([category_friend/1]).
 -export([friend_list/1]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 -spec add_friend(CurrentUid::integer(),

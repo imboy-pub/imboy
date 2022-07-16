@@ -5,7 +5,7 @@
 -export([add/2]).
 -export([delete/2]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 -spec add(Uid :: any(), Name :: any()) ->

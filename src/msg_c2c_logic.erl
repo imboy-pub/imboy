@@ -5,7 +5,7 @@
 -export([check_msg/3]).
 
 -include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 %% 检查离线消息

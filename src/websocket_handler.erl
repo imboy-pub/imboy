@@ -9,7 +9,7 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
--include("common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 %%websocket 握手

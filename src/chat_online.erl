@@ -1,7 +1,7 @@
 -module(chat_online).
 
 -include_lib("stdlib/include/qlc.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 %% API
 -export([dirty_insert/4,

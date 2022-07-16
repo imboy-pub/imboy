@@ -3,7 +3,7 @@
 % message_ds 是 message domain service 缩写
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([assemble_msg/5]).
 -export([assemble_s2c/2]).

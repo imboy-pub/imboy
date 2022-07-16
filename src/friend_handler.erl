@@ -3,8 +3,7 @@
 
 -export([init/2]).
 
--include("common.hrl").
-
+-include_lib("imboy/include/log.hrl").
 
 init(Req0, State) ->
     Req1 =

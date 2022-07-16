@@ -5,7 +5,7 @@ PROJECT_VERSION = 1.0.0
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp
+DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp ersip
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = reload_mk elvis_mk
 
@@ -18,9 +18,6 @@ RELOAD_MK_WATCH_DIRS = src templates include
 # http://erlang.org/doc/apps/edoc/chapter.html#Introduction
 DOC_DEPS = edown
 EDOC_OPTS = {doclet, edown_doclet}
-
-# Compile flags
-ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}'
 
 ifeq ($(IMBOYENV),prod)
 	RELX_CONFIG = $(CURDIR)/relx.prod.config
@@ -74,6 +71,7 @@ dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 
 dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.1
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_reload_mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
+dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 
 SP = 4
@@ -83,6 +81,9 @@ include include/tpl.mk
 include include/cli.mk
 
 APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
+
+# Compile flags
+ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}'
 
 # Append these settings
 ERLC_OPTS += $(ERLC_COMPILE_OPTS)

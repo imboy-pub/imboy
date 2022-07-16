@@ -5,7 +5,7 @@
 % -export ([find_by_id/2]).
 -export([check_avatar/1]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 -spec check_avatar(list()) -> list().

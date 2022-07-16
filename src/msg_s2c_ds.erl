@@ -4,7 +4,7 @@
 %%%
 
 -include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([write_msg/6]).
 -export([revoke_offline_msg/4]).

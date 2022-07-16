@@ -3,7 +3,7 @@
 % msg_c2g_timeline_repo 是 msg_c2g_timeline repository 缩写
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([find_by_uid/2, find_by_uid/3]).
 -export([delete_timeline/1]).

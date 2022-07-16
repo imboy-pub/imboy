@@ -8,7 +8,7 @@
 -export([change_remark/3]).
 -export([set_category_id/3]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 -spec find_by_uid(integer(), list()) -> list().

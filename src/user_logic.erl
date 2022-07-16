@@ -3,7 +3,7 @@
 % user 业务逻辑模块
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([online/4]).
 -export([offline/3]).

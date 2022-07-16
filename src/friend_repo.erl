@@ -1,6 +1,6 @@
 -module(friend_repo).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([is_friend/2]).
 -export([find_by_uid/2]).

@@ -8,7 +8,7 @@
 -export([do_signup/5]).
 -export([find_password/5]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 % password 给元素顺序不能够随意修改，
 % login_success_transfer 按顺序匹配了

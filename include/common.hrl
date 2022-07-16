@@ -11,18 +11,3 @@
 
 -define (JWT_KEY, <<"Ap2fQm5aBgE8Qzuar6oixYmXpffcL3yw">>).
 
--define(debug, ok).
--ifdef(debug).
--define(LOG(X), io:format("pid:~p , {~p,~p}: ~p~n", [self(), ?MODULE, ?LINE, X])).
--else.
--define(LOG(X), true).
--endif.
-
-%% Some standard periods in seconds
--define(MINUTE,     60).
--define(HOUR,     3600).
--define(DAY,     86400).
--define(WEEK,   604800).
--define(YEAR, 31557600).
-
--define(DEBUG(Msg), lager:debug(Msg)).

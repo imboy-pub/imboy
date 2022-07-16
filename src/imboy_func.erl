@@ -1,6 +1,6 @@
 -module(imboy_func).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([is_mobile/1]).
 -export([is_email/1]).

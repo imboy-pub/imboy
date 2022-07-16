@@ -5,7 +5,7 @@
 -export([user_group/1]).
 -export([member/1]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 user_group(Uid) ->

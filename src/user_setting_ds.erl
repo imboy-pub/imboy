@@ -7,7 +7,7 @@
 -export([save_state/2]).
 -export([search/1]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 search(_Account) ->

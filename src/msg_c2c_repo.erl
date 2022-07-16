@@ -3,7 +3,7 @@
 % msg_c2c_repo 是 msg_c2c repository 缩写
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([read_msg/4]).
 -export([write_msg/6]).

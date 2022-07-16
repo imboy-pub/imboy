@@ -5,7 +5,7 @@
 -export([check_subprotocols/3]).
 -export([auth/4]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 
 -spec check_subprotocols(list(), any(), any()) ->

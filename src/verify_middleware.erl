@@ -1,6 +1,6 @@
 -module(verify_middleware).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -behaviour(cowboy_middleware).
 

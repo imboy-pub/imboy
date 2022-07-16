@@ -1,6 +1,6 @@
 -module(account_server).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -behaviour(gen_server).
 

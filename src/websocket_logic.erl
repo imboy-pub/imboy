@@ -3,7 +3,7 @@
 % websocket 业务逻辑模块
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 % -export ([subprotocol/1]).
 -export([c2c/3]).

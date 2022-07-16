@@ -24,7 +24,7 @@
 
 -module(imboy_kv).
 -include_lib("imboy/include/kv.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 %% gen_server API
 -export([start_link/1]).

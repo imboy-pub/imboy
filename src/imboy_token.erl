@@ -4,6 +4,7 @@
 % imboy token generator
 %%%
 
+-include_lib("imboy/include/log.hrl").
 -include_lib("imboy/include/common.hrl").
 
 -export([encrypt_token/1]).

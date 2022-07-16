@@ -1,7 +1,7 @@
 -module(auth_middleware).
 -behaviour(cowboy_middleware).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([execute/2]).
 

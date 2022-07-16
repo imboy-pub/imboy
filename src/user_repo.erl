@@ -3,7 +3,7 @@
 % user_repo 是 user repository 缩写
 %%%
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 -export([find_by_email/2,
          find_by_mobile/2,
