@@ -1,7 +1,6 @@
 -module(imboy_log).
 
 -export([
-    print/1,
     debug/1, debug/2,
     info/1, info/2,
     notice/1, notice/2,
@@ -15,8 +14,6 @@
 %% api
 %% ------------------------------------------------------------------
 
-print(Message) ->
-    ?LOG(Message).
 debug(Message) ->
     log(debug, Message).
 debug(Format, Args) ->

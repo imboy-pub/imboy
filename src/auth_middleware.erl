@@ -8,16 +8,22 @@
 %% 这个是回调函数
 execute(Req, Env) ->
     Path = remove_last_forward_slash(cowboy_req:path(Req)),
+    case Path of
+        <<"/static/", _Tail/binary>> ->
+            {ok, Req, Env};
+        <<"/webrtc/", _Tail/binary>> ->
+            {ok, Req, Env};
+        _ ->
+            OpenLi = imboy_router:open(),
+            OptionLi = imboy_router:option(),
+            InOpenLi = lists:member(Path, OpenLi),
+            InOptionLi = lists:member(Path, OptionLi),
 
-    OpenLi = imboy_router:open(),
-    OptionLi = imboy_router:option(),
-    InOpenLi = lists:member(Path, OpenLi),
-    InOptionLi = lists:member(Path, OptionLi),
-
-    Authorization = cowboy_req:header(<<"authorization">>, Req),
-    % ?LOG(["Path", Path, "InOpenLi", InOpenLi, "InOptionLi", InOptionLi,
-    %     "Authorization", Authorization, Authorization == undefined]),
-    condition(InOptionLi, InOpenLi, Authorization, Req, Env).
+            Authorization = cowboy_req:header(<<"authorization">>, Req),
+            % ?LOG(["Path", Path, "InOpenLi", InOpenLi, "InOptionLi", InOptionLi,
+            %     "Authorization", Authorization, Authorization == undefined]),
+            condition(InOptionLi, InOpenLi, Authorization, Req, Env)
+    end.
 
 
 %% ------------------------------------------------------------------

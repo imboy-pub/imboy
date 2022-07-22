@@ -2,40 +2,27 @@
 %%%
 % websocket_ds 是 websocket domain service 缩写
 %%%
--export([check_subprotocols/3]).
+-export([check_subprotocols/2]).
 -export([auth/4]).
 
 -include_lib("imboy/include/log.hrl").
 
 
--spec check_subprotocols(list(), any(), any()) ->
-          {ok, any(), any()} | {cowboy_websocket, any(), any(), any()}.
+-spec check_subprotocols(list(), any()) ->
+          {ok, any()} | {cowboy_websocket, any()}.
 
-check_subprotocols(undefined, Req0, State0) ->
+check_subprotocols(undefined, Req0) ->
     % HTTP 400 - 请求无效
     Req = cowboy_req:reply(400, Req0),
-    {ok, Req, State0};
-check_subprotocols(Subprotocols, Req0, State0) ->
-    ImOpts = #{num_acceptors => infinity,
-               max_connections => infinity,
-               max_frame_size => 1048576,  % 1MB
-               idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
-        },
-    % ?LOG([self(), State0, Subprotocols]),
-    IsText = lists:member(<<"text">>, Subprotocols),
-    case IsText == true of
-        true ->
-            Req =
-                cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
-                                           <<"text">>,
-                                           Req0),
-            {cowboy_websocket, Req, State0, ImOpts};
-        _ ->
-            % HTTP 406 - 无法接受
-            Req1 = cowboy_req:reply(406, Req0),
-            {ok, Req1, State0}
-    end.
-
+    {ok, Req};
+check_subprotocols([], Req0) ->
+    % HTTP 406 - 无法接受
+    Req = cowboy_req:reply(406, Req0),
+    {ok, Req};
+check_subprotocols([H|_Tail], Req0) ->
+    % [<<"sip">>,<<"text">>] = Subprotocols
+    Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, H, Req0),
+    {cowboy_websocket, Req}.
 
 -spec auth(Token :: binary(),
            Req1 :: any(),

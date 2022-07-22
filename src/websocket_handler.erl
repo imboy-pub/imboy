@@ -15,40 +15,37 @@
 %%websocket 握手
 init(Req0, State0) ->
     Env = os:getenv("IMBOYENV"),
-    DType = cowboy_req:header(<<"cos">>, Req0, <<"">>),
     DID = cowboy_req:header(<<"did">>, Req0, <<"">>),
+    DType = cowboy_req:header(<<"cos">>, Req0, <<"">>),
     HeaderAuth = cowboy_req:header(<<"authorization">>, Req0),
-    Subprotocols = cowboy_req:header(<<"sec-websocket-protocol">>,
-                                     Req0),
-    QsAuth = cowboy_req:match_qs([{'authorization', [], undefined}],
-                                 Req0),
-    Opt0 = #{num_acceptors => infinity,
-             max_connections => infinity,
-             max_frame_size => 1048576,  % 1MB
-             idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
-        },
+    QsAuth = cowboy_req:match_qs([{'authorization', [], undefined}], Req0),
+    % [<<"sip">>,<<"text">>] = Subprotocols
+    Subprotocols = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
+    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols]),
+    Opt0 = #{
+        num_acceptors => infinity,
+        max_connections => infinity,
+        max_frame_size => 1048576,  % 1MB
+        idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
+    },
 
     State1 = [{'dtype', DType} | State0],
     State2 = [{'did', DID} | State1],
-
     if
-        Env == "local",HeaderAuth =/= undefined ->
+        Env == "local", HeaderAuth =/= undefined ->
             websocket_ds:auth(HeaderAuth, Req0, State2, Opt0);
-        Env == "local",QsAuth =/= undefined ->
+        Env == "local", QsAuth =/= undefined ->
             Token = maps:get(authorization, QsAuth),
             websocket_ds:auth(Token, Req0, State2, Opt0);
-        % 为了安全考虑，非 local 环境必须要 DID 和 HeaderAuth，必须check subprotocols
+        % 为了安全考虑，非 local 环境
+        %   必须要 DID 和 HeaderAuth，
+        %   必须 check subprotocols
         bit_size(DID) > 0, HeaderAuth =/= undefined ->
-            case websocket_ds:check_subprotocols(Subprotocols,
-                                                 Req0,
-                                                 State2) of
-                {ok, Req1, State3} ->
-                    {ok, Req1, State3};
-                {cowboy_websocket, Req1, State3, Opt} ->
-                    websocket_ds:auth(HeaderAuth,
-                                      Req1,
-                                      State3,
-                                      Opt)
+            case websocket_ds:check_subprotocols(Subprotocols, Req0) of
+                {ok, Req1, State2} ->
+                    {ok, Req1, State2};
+                {cowboy_websocket, Req1, State2} ->
+                    websocket_ds:auth(HeaderAuth, Req1, State2, Opt0)
             end;
         true ->
             ?LOG([Req0, State0]),
@@ -79,7 +76,7 @@ websocket_init(State) ->
 
 %%处理客户端发送投递的消息 onmessage
 websocket_handle(ping, State) ->
-    % ?LOG([ping, cowboy_clock:rfc1123(), State]),
+    ?LOG([ping, cowboy_clock:rfc1123(), State]),
     case lists:keyfind(error, 1, State) of
         {error, _Code} ->
             {stop, State};
@@ -87,7 +84,7 @@ websocket_handle(ping, State) ->
             {reply, pong, State, hibernate}
     end;
 websocket_handle({text, <<"ping">>}, State) ->
-    % ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
+    ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
     case lists:keyfind(error, 1, State) of
         {error, _Code} ->
             {stop, State};
@@ -127,6 +124,14 @@ websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State
     CurrentUid = proplists:get_value(current_uid, State),
     websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
     {ok, State, hibernate};
+websocket_handle({text, <<"REGISTER sip:", _Tail/binary>> = Msg}, State) ->
+    ?LOG([State, Msg]),
+    % L1 = binary:split(Msg, <<"\r\n">>, [global, trim]),
+    % L2 = [binary:split(I, <<$:>>, [global, trim]) || I <- L1],
+    {reply, "", State, hibernate};
+% websocket_handle({text, <<"INVITE", TO/binary>>}, State) ->
+%     % INVITE 邀请会话
+%     {reply, "", State, hibernate};
 websocket_handle({text, Msg}, State) ->
     ?LOG([State, Msg]),
     % ?LOG(State),
