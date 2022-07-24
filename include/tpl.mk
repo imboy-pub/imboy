@@ -18,10 +18,12 @@ define tpl_imboy.rest_handler
 %% api
 %% ------------------------------------------------------------------
 
-init(Req0, State) ->
+init(Req0, State0) ->
     % ?LOG(State),
-    Req1 = case lists:keyfind(action, 1, State) of
-        % {action, demo} ->
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        % action_atom ->
             % demo(Req0, State);
         false ->
             Req0

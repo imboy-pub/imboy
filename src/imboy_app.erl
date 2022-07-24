@@ -23,6 +23,9 @@ start(_Type, _Args) ->
     Dispatch = cowboy_router:compile(Routes),
     {ok, Port} = application:get_env(imboy, http_port),
 
+    % {ok, _} = cowboy:start_clear(imboy_listener,
+    %     [{port, Port}],
+
     PrivDir = code:priv_dir(imboy),
     {ok, _} = cowboy:start_tls(imboy_listener,
         [
@@ -31,6 +34,7 @@ start(_Type, _Args) ->
             , {certfile, PrivDir ++ "/ssl/server.crt"}
             , {keyfile, PrivDir ++ "/ssl/server.key"}
         ],
+
         #{
             middlewares => [
                 cowboy_router,

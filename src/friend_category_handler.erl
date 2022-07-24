@@ -5,25 +5,30 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
-init(Req0, State) ->
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, add} ->
-                add(Req0, State);
-            {action, delete} ->
-                delete(Req0, State);
-            {action, rename} ->
-                rename(Req0, State);
-            false ->
-                Req0
-        end,
+init(Req0, State0) ->
+    % ?LOG(State),
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        add ->
+            add(Req0, State);
+        delete ->
+            delete(Req0, State);
+        rename ->
+            rename(Req0, State);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 
 add(Req0, State) ->
     %%
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     Name = proplists:get_value(<<"name">>, PostVals, <<"Unnamed">>),
     case friend_category_logic:add(CurrentUid, Name) of
@@ -37,7 +42,7 @@ add(Req0, State) ->
 
 %% 删除好友分组
 delete(Req0, State) ->
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     Id = proplists:get_value(<<"id">>, PostVals),
     case friend_category_logic:delete(CurrentUid, Id) of
@@ -50,7 +55,7 @@ delete(Req0, State) ->
 
 %% 重命名好友分组
 rename(Req0, State) ->
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     Id = proplists:get_value(<<"id">>, PostVals),
     Name = proplists:get_value(<<"name">>, PostVals),

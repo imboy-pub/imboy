@@ -22,14 +22,14 @@ MySQL 5.7 / MySQL 5.8
 // 列表可安装的版本号
 kerl list releases
 
-kerl build 24.3.3 / kerl delete build 24.3.3
+kerl build 24.3.4.2 / kerl delete build 24.3.3
 
 
 kerl list builds
 
-kerl install 24.3.3 ~/kerl/24.3.3
+kerl install 24.3.4.2 ~/kerl/24.3.4.2
 
-. /Users/leeyi/kerl/24.3.3/activate
+. /Users/leeyi/kerl/24.3.4.2/activate
 
 Later on, you can leave the installation typing:
 kerl_deactivate

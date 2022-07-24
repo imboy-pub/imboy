@@ -5,16 +5,20 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
-init(Req0, State) ->
-    ?LOG(State),
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, member} ->
-                member(Req0, State);
-            false ->
-                Req0
-        end,
+init(Req0, State0) ->
+    % ?LOG(State),
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        member ->
+            member(Req0, State);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 

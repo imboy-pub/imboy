@@ -10,6 +10,7 @@
 -export([terminate/3]).
 
 -include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/chat.hrl").
 
 
 %%websocket 握手
@@ -21,74 +22,79 @@ init(Req0, State0) ->
     QsAuth = cowboy_req:match_qs([{'authorization', [], undefined}], Req0),
     % [<<"sip">>,<<"text">>] = Subprotocols
     Subprotocols = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
-    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols]),
+
+    #{room := Room} = cowboy_req:match_qs([{room, [], undefined}], Req0),
+
+    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols, Room]),
     Opt0 = #{
         num_acceptors => infinity,
         max_connections => infinity,
         max_frame_size => 1048576,  % 1MB
         idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
     },
-
-    State1 = [{'dtype', DType} | State0],
-    State2 = [{'did', DID} | State1],
+    State1 = State0#{
+        authenticated => false,
+        room => Room,
+        dtype => DType,
+        did => DID
+    },
     if
         Env == "local", HeaderAuth =/= undefined ->
-            websocket_ds:auth(HeaderAuth, Req0, State2, Opt0);
+            websocket_ds:auth(HeaderAuth, Req0, State1, Opt0);
         Env == "local", QsAuth =/= undefined ->
             Token = maps:get(authorization, QsAuth),
-            websocket_ds:auth(Token, Req0, State2, Opt0);
+            websocket_ds:auth(Token, Req0, State1, Opt0);
         % 为了安全考虑，非 local 环境
         %   必须要 DID 和 HeaderAuth，
         %   必须 check subprotocols
         bit_size(DID) > 0, HeaderAuth =/= undefined ->
             case websocket_ds:check_subprotocols(Subprotocols, Req0) of
-                {ok, Req1, State2} ->
-                    {ok, Req1, State2};
-                {cowboy_websocket, Req1, State2} ->
-                    websocket_ds:auth(HeaderAuth, Req1, State2, Opt0)
+                {ok, Req1, State1} ->
+                    {ok, Req1, State1};
+                {cowboy_websocket, Req1, State1} ->
+                    websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
             end;
         true ->
             ?LOG([Req0, State0]),
             % token无效 (包含缺失token情况) 或者设备ID不存在
-            {cowboy_websocket, Req0, [{error, 706} | State0]}
+            {cowboy_websocket, Req0, State0#{error => 706}}
     end.
 
 
 %%连接初始 onopen
 websocket_init(State) ->
     CurrentPid = self(),
-    ?LOG([websocket_init, lists:keyfind(error, 1, State), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, Code} ->
+    case maps:find(error, State) of
+        {ok, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
                    {<<"server_ts">>, imboy_dt:milliseconds()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
-        false ->
-            CurrentUid = proplists:get_value(current_uid, State),
+        error ->
+            CurrentUid = maps:get(current_uid, State),
             % 用户上线
-            DType = proplists:get_value('dtype', State, <<"">>),
-            DID = proplists:get_value('did', State, <<"">>),
+            DID = maps:get(did, State, <<"">>),
+            DType = maps:get(dtype, State, <<"">>),
             user_logic:online(CurrentUid, CurrentPid, DType, DID),
-            {ok, proplists:delete('dtype', State), hibernate}
+            {ok, maps:remove(dtype, State), hibernate}
     end.
 
 
 %%处理客户端发送投递的消息 onmessage
 websocket_handle(ping, State) ->
     ?LOG([ping, cowboy_clock:rfc1123(), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, _Code} ->
+    case maps:find(error, State) of
+        {ok, _Code} ->
             {stop, State};
-        false ->
+        error ->
             {reply, pong, State, hibernate}
     end;
 websocket_handle({text, <<"ping">>}, State) ->
-    ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, _Code} ->
+    % ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
+    case maps:find(error, State) of
+        {ok, _Code} ->
             {stop, State};
-        false ->
+        error ->
             {reply, {text, <<"pong2">>}, State, hibernate}
     end;
 websocket_handle({text, <<"logout">>}, State) ->
@@ -97,7 +103,7 @@ websocket_handle({text, <<"logout">>}, State) ->
 % 客户端确认消息
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     ?LOG(["CLIENT_ACK", Tail, State]),
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     try
          binary:split(Tail, <<",">>, [global])
     of
@@ -121,22 +127,15 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
 websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State) ->
     % 该方法兼容之前发布的客户端，2022-06-26 作废，3个月后可用删除之
     ?LOG(["C_ACK", MsgId, DID, State]),
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
     {ok, State, hibernate};
-websocket_handle({text, <<"REGISTER sip:", _Tail/binary>> = Msg}, State) ->
-    ?LOG([State, Msg]),
-    % L1 = binary:split(Msg, <<"\r\n">>, [global, trim]),
-    % L2 = [binary:split(I, <<$:>>, [global, trim]) || I <- L1],
-    {reply, "", State, hibernate};
-% websocket_handle({text, <<"INVITE", TO/binary>>}, State) ->
-%     % INVITE 邀请会话
-%     {reply, "", State, hibernate};
+
 websocket_handle({text, Msg}, State) ->
     ?LOG([State, Msg]),
     % ?LOG(State),
     try
-        CurrentUid = proplists:get_value(current_uid, State),
+        CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         Id = proplists:get_value(<<"id">>, Data),
         Type = proplists:get_value(<<"type">>, Data),
@@ -151,7 +150,9 @@ websocket_handle({text, Msg}, State) ->
             <<"C2C_REVOKE_ACK">> ->  % 客户端撤回消息ACK
                 websocket_logic:c2c_revoke(Id, Data, Type);
             <<"C2G">> ->  % 群聊消息
-                websocket_logic:c2g(Id, CurrentUid, Data)
+                websocket_logic:c2g(Id, CurrentUid, Data);
+            _ ->
+                ok
         end,
         case Result0 of
             ok ->
@@ -181,6 +182,14 @@ websocket_handle(_Frame, State) ->
 
 
 %% 处理erlang 发送的消息
+
+% for webrtc
+%% incoming text frame, send to the client socket
+websocket_info({text, Text}, State = #{authenticated := true}) ->
+  lager:debug("Sending to client ~p", [Text]),
+  {reply, {text, Text}, State};
+% end for webrtc
+
 websocket_info({timeout, _Ref, Msg}, State) ->
     ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};
@@ -196,10 +205,9 @@ websocket_info(_Info, State) ->
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(Reason, _Req, State) ->
     ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
-
-    DID = proplists:get_value('did', State, <<"">>),
-    case lists:keyfind(current_uid, 1, State) of
-        {current_uid, Uid} ->
+    case maps:get(current_uid, State) of
+        Uid when is_integer(Uid)  ->
+            DID = maps:get(did, State, <<"">>),
             user_logic:offline(Uid, self(), DID);
         false ->
             chat_online:dirty_delete(self())

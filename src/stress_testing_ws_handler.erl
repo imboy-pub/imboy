@@ -27,13 +27,9 @@ init(Req0, State0) ->
                 },
             case catch token_ds:decrypt_token(Token) of
                 {ok, Uid, _ExpireAt, _Type} ->
-                    {cowboy_websocket, Req0,
-                                       [{current_uid, Uid} | State0],
-                                       Opt};
+                    {cowboy_websocket, Req0, State0#{current_uid => Uid}, Opt};
                 {error, Code, _Msg, _Li} ->
-                    {cowboy_websocket, Req0,
-                                       [{error, Code} | State0],
-                                       Opt}
+                    {cowboy_websocket, Req0, State0#{error => Code}, Opt}
             end
     end.
 
@@ -41,15 +37,14 @@ init(Req0, State0) ->
 %%连接初始 onopen
 websocket_init(State) ->
     CurrentPid = self(),
-    % ?LOG([websocket_init, lists:keyfind(error, 1, State), State]),
-    case lists:keyfind(error, 1, State) of
-        {error, Code} ->
+    case maps:find(error, State) of
+        {ok, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
                    {<<"timestamp">>, imboy_dt:milliseconds()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
-        false ->
-            CurrentUid = proplists:get_value(current_uid, State),
+        error ->
+            CurrentUid = maps:get(current_uid, State),
             % 用户上线
             user_logic:online(CurrentUid, CurrentPid, <<"web">>),
             {ok, State, hibernate}
@@ -77,7 +72,7 @@ websocket_handle({text, Msg}, State) ->
                           {<<"timestamp">>, imboy_dt:milliseconds()}],
                 {reply, ErrMsg};
             false ->
-                CurrentUid = proplists:get_value(current_uid, State),
+                CurrentUid = maps:get(current_uid, State),
                 Data = jsone:decode(Msg, [{object_format, proplist}]),
                 % C2C/SYSTEM/GROUP
                 Type = proplists:get_value(<<"conversation_type">>,
@@ -130,12 +125,14 @@ websocket_info(_Info, State) ->
 %% 断开socket onclose
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
-terminate(_Reason, _Req, State) ->
-    DID = proplists:get_value('did', State, <<"">>),
-    case lists:keyfind(current_uid, 1, State) of
-        {current_uid, Uid} ->
+terminate(Reason, _Req, State) ->
+    ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
+    case maps:get(current_uid, State) of
+        Uid when is_integer(Uid)  ->
+            DID = maps:get(did, State, <<"">>),
             user_logic:offline(Uid, self(), DID);
         false ->
             chat_online:dirty_delete(self())
     end,
     ok.
+

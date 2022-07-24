@@ -10,16 +10,18 @@
 %% api
 %% ------------------------------------------------------------------
 
-init(Req0, State) ->
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, init} ->
-                api_init(Req0);
-            {action, help} ->
-                get_help(Req0);
-            false ->
-                Req0
-        end,
+init(Req0, State0) ->
+    % ?LOG(State),
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        init ->
+            api_init(Req0);
+        help ->
+            get_help(Req0);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 

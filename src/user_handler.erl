@@ -5,28 +5,32 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
-init(Req0, State) ->
+init(Req0, State0) ->
     % ?LOG(State),
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, change_state} ->
-                change_state(Req0, State);
-            {action, update} ->
-                update(Req0, State);
-            {action, open_info} ->
-                open_info(Req0, State);
-            {action, uqrcode} ->
-                uqrcode(Req0, State);
-            false ->
-                Req0
-        end,
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        change_state ->
+            change_state(Req0, State);
+        update ->
+            update(Req0, State);
+        open_info ->
+            open_info(Req0, State);
+        uqrcode ->
+            uqrcode(Req0, State);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 %% 扫描“我的二维码”
 uqrcode(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     case CurrentUid of
         undefined ->
             Req = cowboy_req:reply(
@@ -67,7 +71,7 @@ uqrcode_transfer(_, _, _Status, _User) ->
 
 %% 切换在线状态
 change_state(Req0, State) ->
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     ChatState = proplists:get_value(<<"state">>, PostVals, <<"hide">>),
     user_setting_ds:save_state(CurrentUid, ChatState),
@@ -78,7 +82,7 @@ change_state(Req0, State) ->
 
 %% 修改用户信息
 update(Req0, State) ->
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     Field = proplists:get_value(<<"field">>, PostVals, <<"">>),
     Value = proplists:get_value(<<"value">>, PostVals, <<"">>),
@@ -92,7 +96,7 @@ update(Req0, State) ->
 
 % 用户网络公开信息
 open_info(Req0, _State) ->
-    % CurrentUid = proplists:get_value(current_uid, State),
+    % CurrentUid = maps:get(current_uid, State),
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     % ?LOG(["open_info", Uid, Req0]),
     Column = <<"`id`, `nickname`, `avatar`, `account`,`sign`">>,

@@ -45,19 +45,15 @@ do_authorization(Authorization, Req, Env) ->
     case token_ds:decrypt_token(Authorization) of
         {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
             #{handler_opts := HandlerOpts} = Env,
-            Env2 = Env#{handler_opts => [{current_uid, Id} |
-                                         HandlerOpts]},
+            Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
             {ok, Req, Env2};
         {ok, Id, _ExpireAt, <<"tk">>} when is_binary(Id) ->
             #{handler_opts := HandlerOpts} = Env,
-            Env2 = Env#{handler_opts =>
-                            [{current_uid, binary_to_integer(Id)} |
-                             HandlerOpts]},
+            Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
             {ok, Req, Env2};
         {ok, _Id, _ExpireAt, <<"rtk">>} ->
-            Req1 = imboy_response:error(Req,
-                                       "Does not support refreshtoken",
-                                       1),
+            Err = "Does not support refreshtoken",
+            Req1 = imboy_response:error(Req, Err, 1),
             {stop, Req1};
         {error, Code, Msg, _Li} ->
             Req1 = imboy_response:error(Req, Msg, Code),

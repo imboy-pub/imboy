@@ -6,23 +6,28 @@
 -include_lib("kernel/include/inet.hrl").
 -include_lib("imboy/include/log.hrl").
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
-init(Req0, State) ->
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, refreshtoken} ->
-                refreshtoken(Req0);
-            {action, do_login} ->
-                do_login(Req0);
-            {action, do_signup} ->
-                do_signup(Req0);
-            {action, send_code} ->
-                send_code(Req0);
-            {action, find_password} ->
-                find_password(Req0);
-            false ->
-                Req0
-        end,
+init(Req0, State0) ->
+    % ?LOG(State),
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        refreshtoken ->
+            refreshtoken(Req0);
+        do_login ->
+            do_login(Req0);
+        do_signup ->
+            do_signup(Req0);
+        send_code ->
+            send_code(Req0);
+        find_password ->
+            find_password(Req0);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 

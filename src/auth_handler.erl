@@ -5,16 +5,20 @@
 
 -export([init/2]).
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
-init(Req0, State) ->
+init(Req0, State0) ->
     % ?LOG(State),
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, assets} ->
-                assets(Req0);
-            false ->
-                Req0
-        end,
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        {action, assets} ->
+            assets(Req0);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 %% ------------------------------------------------------------------

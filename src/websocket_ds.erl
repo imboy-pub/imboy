@@ -26,7 +26,7 @@ check_subprotocols([H|_Tail], Req0) ->
 
 -spec auth(Token :: binary(),
            Req1 :: any(),
-           State1 :: list(),
+           State1 :: map(),
            Opt :: any()) -> any().
 auth(Token, Req1, State1, Opt) when is_binary(Token) ->
     ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
@@ -34,14 +34,14 @@ auth(Token, Req1, State1, Opt) when is_binary(Token) ->
         {ok, Uid, _ExpireAt, _Type} ->
             Timeout = user_logic:idle_timeout(Uid),
             {cowboy_websocket, Req1,
-                               [{current_uid, Uid} | State1],
+                               State1#{current_uid => Uid},
                                Opt#{idle_timeout := Timeout}};
         {error, 705, Msg, _Li} ->
             % token无效、刷新token
             Req3 = imboy_response:error(Req1, Msg),
             {ok, Req3, State1};
         {error, Code, _Msg, _Li} ->
-            {cowboy_websocket, Req1, [{error, Code} | State1], Opt}
+            {cowboy_websocket, Req1, State1#{error => Code}, Opt}
     end;
 auth(Auth, Req0, State0, _Opt) ->
     ?LOG(["Auth", Auth]),

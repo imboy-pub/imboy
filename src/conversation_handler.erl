@@ -9,17 +9,18 @@
 %% api
 %% ------------------------------------------------------------------
 
-init(Req0, State) ->
+init(Req0, State0) ->
     % ?LOG(State),
-    Req1 =
-        case lists:keyfind(action, 1, State) of
-            {action, online} ->
-                online(Req0, State);
-            {action, mine} ->
-                mine(Req0, State);
-            false ->
-                Req0
-        end,
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        online ->
+            online(Req0, State);
+        mine ->
+            mine(Req0, State);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
 
@@ -48,7 +49,7 @@ mine(Req0, State) ->
     #{last_server_ts := ServerTS} =
         cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
     % ?LOG(ServerTS),
-    CurrentUid = proplists:get_value(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
     % ?LOG(["mine_list", List]),
     List2 = mine_transfer(List),
