@@ -10,10 +10,18 @@ var localVideo = document.querySelector('#localVideo');
 
 const stunUrl = 'stun:' + window.location.hostname + ':3478';
 const turnUrl = 'turn:' + window.location.hostname + ':3478';
+
+
+var protocol = window.location.protocol
+const room = getQueryParam('room')
+const username = getQueryParam('username')
+
+console.log("room is", room, '; username', username, ' ; protocol ', protocol)
+
 var pcConfig = {
   iceServers: [{
     urls: turnUrl,
-    username: getQueryParam('username'),
+    username: username,
     credential: password
   },{
     urls: stunUrl
@@ -53,9 +61,7 @@ function getStream() {
 
 /////////////////////////////////////////////
 
-var protocol = window.location.protocol;
-const room = getQueryParam('room');
-console.log("room is", room, '; username', getQueryParam('username'), ' ; protocol ', protocol);
+document.getElementById('info').innerHTML = window.location.protocol + '//' + window.location.host + '/static/webrtc.html?v1=1&room='+ room +'&username=' + username
 if (protocol == 'http:') {
   protocol = 'ws:'
 } else {
@@ -163,7 +169,7 @@ function connectSocket() {
 
   socket.onopen = function(event) {
     console.log('socket connected');
-    sendMessage('authenticate', {username: getQueryParam('username'), password});
+    sendMessage('authenticate', {username: username, password});
   };
 
   socket.onclose = function(event) {
@@ -186,7 +192,7 @@ function connectSocket() {
     if (listener) {
       listener(data.data, data.from);
     } else {
-      console.log('no listener for message', data.event);
+      console.log('no listener for message', data.event, '; data ', data);
     }
   };
 

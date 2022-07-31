@@ -5,19 +5,17 @@
 %%%
 
 -export([
-  callback/1,
-  authenticate/2,
-  create/3,
-  join/3,
-  leave/3
+    callback/1,
+    authenticate/2,
+    create/3,
+    join/3,
+    leave/3
 ]).
 
 -export([
-  peer_id/0,
-  authenticate/1,
-  join_room/3,
-  run_callback/4
+    event/3
 ]).
+
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -30,77 +28,84 @@
 %% api
 %% ------------------------------------------------------------------
 
-callback(create_callback) ->
-  {webrtc_ws_logic, create};
-callback(join_callback) ->
-  {webrtc_ws_logic, join};
-callback(leave_callback) ->
-  {webrtc_ws_logic, leave}.
-
-authenticate(_Username, Password) ->
-  %% in a real scenario this may lookup the password in the db, request an external service, etc.
-  % {ok, Password} = application:get_env(example, example_password),
-  % Password.
-  Password.
-
-create(Room, Username, _OtherUsers) ->
-  lager:info("~s created ~s", [Username, Room]).
-
-join(Room, Username, _OtherUsers) ->
-  lager:info("~s joined ~s", [Username, Room]).
-
-leave(Room, Username, _OtherUsers) ->
-  lager:info("~s left ~s", [Username, Room]).
-
 
 % for webrtc
-authenticate(Data) ->
-  try webrtc_ws_ds:json_decode(Data) of
-    #{event := <<"authenticate">>, data := #{username := User, password := Password}} ->
-      % {success, User};
-      case webrtc_ws_logic:authenticate(User, Password) of
-        Password -> {success, User};
-        _ -> wrong_credentials
-      end;
-    _ -> invalid_format
-  catch
-    Type:Error ->
-      lager:debug("invalid json ~p ~p", [Type, Error]),
-      invalid_json
-  end.
+-spec event(Event::binary(), Data::map(), State::map()) -> ok.
+event(<<"bye">>, Data, State) ->
+    To = maps:get(to, Data),
+    ToId = imboy_hashids:uid_decode(To),
+    lager:info("data ~s, State ~p ~n", [Data, State]),
+    _TimerRefList = message_ds:send(ToId,
+        jsone:encode(Data, [native_utf8]),
+        1),
+    ok;
+event(<<"leave">>, Data, State) ->
+    To = maps:get(to, Data),
+    ToId = imboy_hashids:uid_decode(To),
+    lager:info("data ~s, State ~p ~n", [Data, State]),
+    _TimerRefList = message_ds:send(ToId,
+        jsone:encode(Data, [native_utf8]),
+        1),
+    ok;
+event(<<"offer">>, Data, State) ->
+    To = maps:get(to, Data),
+    ToId = imboy_hashids:uid_decode(To),
+    Msg = jsone:encode(Data, [native_utf8]),
+    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
+    _TimerRefList = message_ds:send(ToId, Msg, 1),
+    ok;
+event(<<"candidate">>, Data, State) ->
+    To = maps:get(to, Data),
+    ToId = imboy_hashids:uid_decode(To),
+    % Data2 = Data#{from => To},
+    Msg = jsone:encode(Data, [native_utf8]),
+    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
+    _TimerRefList = message_ds:send(ToId, Msg, 1),
+    ok;
+event(Event, Data, State) ->
+    lager:info("event ~s, data ~s, State ~p ~n", [Event, Data, State]),
+    ok.
+% event_new(Data, State) ->
+%     lager:info("event_new ~s ~n", [Data]),
+%     try webrtc_ws_ds:json_decode(Data) of
+%         #{type := <<"new">>, to := To} ->
+%             CurrentUid = maps:get(current_uid, State),
+%             From = imboy_hashids:uid_encode(CurrentUid),
+%             Room = webrtc_ws_ds:room_name(From, To),
+%             % lager:debug("socket authenticated room %p ", [Room]),
+%             PeerId = webrtc_ws_ds:peer_id(),
+%             webrtc_ws_ds:join_room(Room, From, PeerId),
+%             {reply, webrtc_ws_ds:text_event(authenticated, #{peer_id => PeerId})};
+%         _ ->
+%             invalid_format
+%     catch
+%         Type:Error ->
+%             lager:debug("invalid json ~p ~p", [Type, Error]),
+%             invalid_json
+%     end.
 
-join_room(Room, Username, PeerId) ->
-  OtherMembers = syn:members(?ROOM_SCOPE, Room),
-  syn:register(?ROOM_SCOPE, PeerId, self(), {Username, PeerId, Room}),
-  syn:join(?ROOM_SCOPE, Room, self(), {Username, PeerId}),
+callback(create_callback) ->
+    {webrtc_ws_logic, create};
+callback(join_callback) ->
+    {webrtc_ws_logic, join};
+callback(leave_callback) ->
+    {webrtc_ws_logic, leave}.
 
-  %% broadcast peer joined to the rest of the peers in the room
-  Message = webrtc_ws_ds:text_event(joined, #{peer_id => PeerId,
-                                              username => Username}),
-  lists:foreach(fun({Pid, _}) -> Pid ! Message end, OtherMembers),
+authenticate(_Username, Password) ->
+    %% in a real scenario this may lookup the password in the db, request an external service, etc.
+    % {ok, Password} = application:get_env(example, example_password),
+    % Password.
+    Password.
 
-  OtherNames = [Name || {_, {Name, _Peer}} <- OtherMembers],
-  run_callback(join_callback, Room, Username, OtherNames).
+create(Room, Username, _OtherUsers) ->
+    lager:info("~s created ~s", [Username, Room]).
 
-run_callback(Type, Room, Username, CurrentUsers) ->
-  case webrtc_ws_logic:callback(Type) of
-    {Module, Function} ->
-      try
-        Module:Function(Room, Username, CurrentUsers)
-      catch
-        ErrorType:Error:Stacktrace ->
-          lager:error(
-            "~nError running ~p ~p ~p:~s",
-            [Type, Room, Username, lager:pr_stacktrace(Stacktrace,
-                                                       {ErrorType, Error})])
-      end;
-    undefined ->
-      ok
-  end.
+join(Room, Username, _OtherUsers) ->
+    lager:info("~s joined ~s", [Username, Room]).
 
+leave(Room, Username, _OtherUsers) ->
+    lager:info("~s left ~s", [Username, Room]).
 
-peer_id() ->
-  base64:encode(crypto:strong_rand_bytes(10)).
 
 
 %% ------------------------------------------------------------------

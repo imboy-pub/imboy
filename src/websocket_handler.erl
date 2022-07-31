@@ -23,9 +23,7 @@ init(Req0, State0) ->
     % [<<"sip">>,<<"text">>] = Subprotocols
     Subprotocols = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
-    #{room := Room} = cowboy_req:match_qs([{room, [], undefined}], Req0),
-
-    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols, Room]),
+    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols]),
     Opt0 = #{
         num_acceptors => infinity,
         max_connections => infinity,
@@ -33,8 +31,6 @@ init(Req0, State0) ->
         idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
     },
     State1 = State0#{
-        authenticated => false,
-        room => Room,
         dtype => DType,
         did => DID
     },
@@ -132,40 +128,44 @@ websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State
     {ok, State, hibernate};
 
 websocket_handle({text, Msg}, State) ->
-    ?LOG([State, Msg]),
+    % ?LOG([State, Msg]),
     % ?LOG(State),
     try
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         Id = proplists:get_value(<<"id">>, Data),
         Type = proplists:get_value(<<"type">>, Data),
-        ?LOG([Id, Type, Data]),
+        % ?LOG([Id, Type, Data]),
         % 逻辑层负责IM系统各项功能的核心逻辑实现
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
-        Result0 = case cowboy_bstr:to_upper(Type) of
-            <<"C2C">> ->  % 单聊消息
+        case cowboy_bstr:to_lower(Type) of
+            <<"c2c">> ->  % 单聊消息
                 websocket_logic:c2c(Id, CurrentUid, Data);
-            <<"C2C_REVOKE">> ->  % 客户端撤回消息
+            <<"c2c_revoke">> ->  % 客户端撤回消息
                 websocket_logic:c2c_revoke(Id, Data, Type);
-            <<"C2C_REVOKE_ACK">> ->  % 客户端撤回消息ACK
+            <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
                 websocket_logic:c2c_revoke(Id, Data, Type);
-            <<"C2G">> ->  % 群聊消息
+            <<"c2g">> ->  % 群聊消息
                 websocket_logic:c2g(Id, CurrentUid, Data);
+            <<"webrtc_", Event/binary>> ->
+                % Room = webrtc_ws_logic:room_name(
+                %     imboy_hashids:uid_encode(CurrentUid,
+                %     To),
+                DataM = webrtc_ws_ds:json_decode(Msg),
+                webrtc_ws_logic:event(Event, DataM, State);
             _ ->
                 ok
-        end,
-        case Result0 of
-            ok ->
-                ok;
-            {reply, Msg2} ->
-                {reply, Msg2}
         end
     of
         ok ->
             {ok, State, hibernate};
-        {reply, Msg4} ->
-            {reply, {text, jsone:encode(Msg4, [native_utf8])},
+        {reply, Msg2} ->
+            {reply, {text, jsone:encode(Msg2, [native_utf8])},
                     State,
+                    hibernate};
+        {reply, Msg2, State2} ->
+            {reply, {text, jsone:encode(Msg2, [native_utf8])},
+                    State2,
                     hibernate}
     catch
         Class:Reason:Stacktrace ->
@@ -182,13 +182,6 @@ websocket_handle(_Frame, State) ->
 
 
 %% 处理erlang 发送的消息
-
-% for webrtc
-%% incoming text frame, send to the client socket
-websocket_info({text, Text}, State = #{authenticated := true}) ->
-  lager:debug("Sending to client ~p", [Text]),
-  {reply, {text, Text}, State};
-% end for webrtc
 
 websocket_info({timeout, _Ref, Msg}, State) ->
     ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
