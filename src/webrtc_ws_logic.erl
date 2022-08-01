@@ -54,6 +54,14 @@ event(<<"offer">>, Data, State) ->
     lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
     _TimerRefList = message_ds:send(ToId, Msg, 1),
     ok;
+event(<<"answer">>, Data, State) ->
+    To = maps:get(to, Data),
+    ToId = imboy_hashids:uid_decode(To),
+    % Data2 = Data#{from => To},
+    Msg = jsone:encode(Data, [native_utf8]),
+    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
+    _TimerRefList = message_ds:send(ToId, Msg, 1),
+    ok;
 event(<<"candidate">>, Data, State) ->
     To = maps:get(to, Data),
     ToId = imboy_hashids:uid_decode(To),
