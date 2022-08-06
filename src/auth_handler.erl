@@ -14,7 +14,7 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 = case Action of
-        {action, assets} ->
+        assets ->
             assets(Req0);
         false ->
             Req0

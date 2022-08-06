@@ -3,9 +3,12 @@
 % datetime 工具箱
 %%%
 
--export([milliseconds/0]).
+-export([milliseconds/0, timestamp/0]).
 -export([utc_date/1]).
 
+
+timestamp() ->
+    milliseconds() div 1000.
 
 %% 得到现在在制时间毫秒
 milliseconds() ->

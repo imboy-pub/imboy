@@ -22,10 +22,26 @@ init(Req0, State0) ->
             open_info(Req0, State);
         uqrcode ->
             uqrcode(Req0, State);
+        credential ->
+            credential(Req0, State);
         false ->
             Req0
     end,
     {ok, Req1, State}.
+
+% credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
+credential(Req0, State) ->
+    {ok, Secret} = application:get_env(imboy, eturnal_secret),
+    CurrentUid = maps:get(current_uid, State),
+    Uid = imboy_hashids:uid_encode(CurrentUid),
+    Tm = integer_to_list(imboy_dt:timestamp() + 86400),
+    TmBin = list_to_binary(Tm ++ ":"),
+    Username = <<TmBin/binary, Uid/binary>>,
+
+    imboy_response:success(Req0, [
+         {<<"username">>, Username},
+         {<<"credential">>, base64:encode(crypto:mac(hmac, sha, Secret, Username))}
+        ], "success.").
 
 %% 扫描“我的二维码”
 uqrcode(Req0, State) ->

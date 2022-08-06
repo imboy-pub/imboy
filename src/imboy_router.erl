@@ -31,6 +31,7 @@ get_routes() ->
         {"/user/update", user_handler, #{action => update}},
         {"/user/show", user_handler, #{action => open_info}},
         {"/user/change_state", user_handler, #{action => change_state}},
+        {"/user/credential", user_handler, #{action => credential}},
 
         {"/friend/add", friend_handler, #{action => add_friend}},
         {"/friend/confirm", friend_handler, #{action => confirm_friend}},

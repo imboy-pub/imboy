@@ -5,7 +5,7 @@ PROJECT_VERSION = 1.0.0
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp ersip syn stun
+DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp syn
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = reload_mk elvis_mk
@@ -72,11 +72,7 @@ dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 
 dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.1
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_reload_mk = git https://gitee.com/imboy-tripartite-deps/reload.mk master
-# dep_stun = git https://gitee.com/imboy-tripartite-deps/stun.git 1.2.4
-dep_stun = git https://gitee.com/imboy-tripartite-deps/stun.git dev
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
-dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
-# dep_esip = git https://gitee.com/imboy-tripartite-deps/esip.git master
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 
 SP = 4

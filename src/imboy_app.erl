@@ -8,14 +8,11 @@
 -include_lib("imboy/include/chat.hrl").
 
 
+
 start(_Type, _Args) ->
     %%启动存储pid的树据 可以采用 ets 表格处理 但是为了方便集群处理 我采用的mnesia
     chat_online:init(),
-    syn:add_node_to_scopes([?CHAT_SCOPE, ?ROOM_SCOPE, ?GROUP_SCOPE]),
-
-    {ok, StunHost} = application:get_env(imboy, stun_host),
-    {ok, StunPort} = application:get_env(imboy, stun_port),
-    stun_listener:add_listener(StunHost, StunPort, udp, []),
+    syn:add_node_to_scopes([?ROOM_SCOPE, ?GROUP_SCOPE]),
 
     % begin handler
     Routes = imboy_router:get_routes(),
@@ -23,17 +20,17 @@ start(_Type, _Args) ->
     Dispatch = cowboy_router:compile(Routes),
     {ok, Port} = application:get_env(imboy, http_port),
 
-    % {ok, _} = cowboy:start_clear(imboy_listener,
-    %     [{port, Port}],
+    {ok, _} = cowboy:start_clear(imboy_listener,
+        [{port, Port}],
 
-    PrivDir = code:priv_dir(imboy),
-    {ok, _} = cowboy:start_tls(imboy_listener,
-        [
-            {port, Port}
-            , {cacertfile, PrivDir ++ "/ssl/cowboy-ca.crt"}
-            , {certfile, PrivDir ++ "/ssl/server.crt"}
-            , {keyfile, PrivDir ++ "/ssl/server.key"}
-        ],
+    % PrivDir = code:priv_dir(imboy),
+    % {ok, _} = cowboy:start_tls(imboy_listener,
+    %     [
+    %         {port, Port}
+    %         , {cacertfile, PrivDir ++ "/ssl/cowboy-ca.crt"}
+    %         , {certfile, PrivDir ++ "/ssl/server.crt"}
+    %         , {keyfile, PrivDir ++ "/ssl/server.key"}
+    %     ],
 
         #{
             middlewares => [
