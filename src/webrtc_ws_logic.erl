@@ -5,14 +5,6 @@
 %%%
 
 -export([
-    callback/1,
-    authenticate/2,
-    create/3,
-    join/3,
-    leave/3
-]).
-
--export([
     event/3
 ]).
 
@@ -30,48 +22,12 @@
 
 
 % for webrtc
--spec event(Event::binary(), Data::map(), State::map()) -> ok.
-event(<<"bye">>, Data, State) ->
-    To = maps:get(to, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    lager:info("data ~s, State ~p ~n", [Data, State]),
+-spec event(ToId::integer(), Msg::binary(), State::map()) -> ok.
+event(ToId, Msg, State) ->
+    lager:info("data ~s, State ~p ~n", [Msg, State]),
     _TimerRefList = message_ds:send(ToId,
-        jsone:encode(Data, [native_utf8]),
+        Msg,
         1),
-    ok;
-event(<<"leave">>, Data, State) ->
-    To = maps:get(to, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    lager:info("data ~s, State ~p ~n", [Data, State]),
-    _TimerRefList = message_ds:send(ToId,
-        jsone:encode(Data, [native_utf8]),
-        1),
-    ok;
-event(<<"offer">>, Data, State) ->
-    To = maps:get(to, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    Msg = jsone:encode(Data, [native_utf8]),
-    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
-    _TimerRefList = message_ds:send(ToId, Msg, 1),
-    ok;
-event(<<"answer">>, Data, State) ->
-    To = maps:get(to, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    % Data2 = Data#{from => To},
-    Msg = jsone:encode(Data, [native_utf8]),
-    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
-    _TimerRefList = message_ds:send(ToId, Msg, 1),
-    ok;
-event(<<"candidate">>, Data, State) ->
-    To = maps:get(to, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    % Data2 = Data#{from => To},
-    Msg = jsone:encode(Data, [native_utf8]),
-    lager:info("Msg: ~s; data ~s, State ~p ~n", [Msg, Data, State]),
-    _TimerRefList = message_ds:send(ToId, Msg, 1),
-    ok;
-event(Event, Data, State) ->
-    lager:info("event ~s, data ~s, State ~p ~n", [Event, Data, State]),
     ok.
 % event_new(Data, State) ->
 %     lager:info("event_new ~s ~n", [Data]),
@@ -91,30 +47,6 @@ event(Event, Data, State) ->
 %             lager:debug("invalid json ~p ~p", [Type, Error]),
 %             invalid_json
 %     end.
-
-callback(create_callback) ->
-    {webrtc_ws_logic, create};
-callback(join_callback) ->
-    {webrtc_ws_logic, join};
-callback(leave_callback) ->
-    {webrtc_ws_logic, leave}.
-
-authenticate(_Username, Password) ->
-    %% in a real scenario this may lookup the password in the db, request an external service, etc.
-    % {ok, Password} = application:get_env(example, example_password),
-    % Password.
-    Password.
-
-create(Room, Username, _OtherUsers) ->
-    lager:info("~s created ~s", [Username, Room]).
-
-join(Room, Username, _OtherUsers) ->
-    lager:info("~s joined ~s", [Username, Room]).
-
-leave(Room, Username, _OtherUsers) ->
-    lager:info("~s left ~s", [Username, Room]).
-
-
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

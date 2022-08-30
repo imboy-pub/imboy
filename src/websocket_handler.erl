@@ -147,12 +147,13 @@ websocket_handle({text, Msg}, State) ->
                 websocket_logic:c2c_revoke(Id, Data, Type);
             <<"c2g">> ->  % 群聊消息
                 websocket_logic:c2g(Id, CurrentUid, Data);
-            <<"webrtc_", Event/binary>> ->
+            <<"webrtc_", _Event/binary>> ->
                 % Room = webrtc_ws_logic:room_name(
                 %     imboy_hashids:uid_encode(CurrentUid,
                 %     To),
-                DataM = webrtc_ws_ds:json_decode(Msg),
-                webrtc_ws_logic:event(Event, DataM, State);
+                To = proplists:get_value(<<"to">>, Data),
+                ToId = imboy_hashids:uid_decode(To),
+                webrtc_ws_logic:event(ToId, Msg, State);
             _ ->
                 ok
         end

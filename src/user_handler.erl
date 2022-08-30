@@ -31,6 +31,7 @@ init(Req0, State0) ->
 
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
+    {ok, Uris} = application:get_env(imboy, eturnal_uris),
     {ok, Secret} = application:get_env(imboy, eturnal_secret),
     CurrentUid = maps:get(current_uid, State),
     Uid = imboy_hashids:uid_encode(CurrentUid),
@@ -39,6 +40,7 @@ credential(Req0, State) ->
     Username = <<TmBin/binary, Uid/binary>>,
 
     imboy_response:success(Req0, [
+         {<<"uris">>, Uris},
          {<<"username">>, Username},
          {<<"credential">>, base64:encode(crypto:mac(hmac, sha, Secret, Username))}
         ], "success.").
