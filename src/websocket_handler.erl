@@ -72,7 +72,7 @@ websocket_init(State) ->
             DID = maps:get(did, State, <<"">>),
             DType = maps:get(dtype, State, <<"">>),
             user_logic:online(CurrentUid, CurrentPid, DType, DID),
-            {ok, maps:remove(dtype, State), hibernate}
+            {ok, State, hibernate}
     end.
 
 
@@ -124,6 +124,12 @@ websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State
     % 该方法兼容之前发布的客户端，2022-06-26 作废，3个月后可用删除之
     ?LOG(["C_ACK", MsgId, DID, State]),
     CurrentUid = maps:get(current_uid, State),
+    case imboy_kv:get({CurrentUid, DID, MsgId}) of
+        undefined ->
+            ok;
+        {ok, TimerRef} ->
+            erlang:cancel_timer(TimerRef)
+    end,
     websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
     {ok, State, hibernate};
 
@@ -131,6 +137,7 @@ websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
     % ?LOG(State),
     try
+        DType = maps:get(dtype, State, <<"">>),
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         Id = proplists:get_value(<<"id">>, Data),
@@ -140,7 +147,7 @@ websocket_handle({text, Msg}, State) ->
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         case cowboy_bstr:to_lower(Type) of
             <<"c2c">> ->  % 单聊消息
-                websocket_logic:c2c(Id, CurrentUid, Data);
+                websocket_logic:c2c(Id, CurrentUid, DType, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
                 websocket_logic:c2c_revoke(Id, Data, Type);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
@@ -183,7 +190,24 @@ websocket_handle(_Frame, State) ->
 
 
 %% 处理erlang 发送的消息
-
+websocket_info({timeout, _Ref, {0, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, MsgId, Msg, State]),
+    DType = maps:get(dtype, State, <<"">>),
+    message_ds:send(ToId, DType, MsgId, Msg, 3000),
+    {reply, {text, Msg}, State, hibernate};
+websocket_info({timeout, _Ref, {3000, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+    DType = maps:get(dtype, State, <<"">>),
+    message_ds:send(ToId, DType, MsgId, Msg, 5000),
+    {reply, {text, Msg}, State, hibernate};
+websocket_info({timeout, _Ref, {5000, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+    DType = maps:get(dtype, State, <<"">>),
+    message_ds:send(ToId, DType, MsgId, Msg, 7000),
+    {reply, {text, Msg}, State, hibernate};
+websocket_info({timeout, _Ref, {_MS, _MsgId, _ToId, Msg}}, State) ->
+    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+    {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, Msg}, State) ->
     ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};

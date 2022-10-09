@@ -11,7 +11,7 @@
 -export([assemble_s2c/4]).
 
 -export([send/3]).
--export([send/4]).
+-export([send/5]).
 
 
 %% ------------------------------------------------------------------
@@ -34,11 +34,13 @@ send(ToUid, Msg, Millisecond) ->
         {_, ToPid, _Uid, _DType, DID} <- chat_online:lookup(ToUid),
         is_process_alive(ToPid)].
 
+
 -spec send(ToUid :: integer(),
            ToDType :: binary(),
+           MsgId :: binary(),
            Msg :: list(),
-           Millisecond :: integer()) -> list().
-send(ToUid, ToDtype, Msg, Millisecond) ->
+           Millisecond :: non_neg_integer()) -> ok.
+send(ToUid, ToDtype, MsgId, Msg, Millisecond) ->
     % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
     % #Ref<0.717641544.2272788481.230829>
     % (imboy@127.0.0.1)2> flush().
@@ -47,9 +49,19 @@ send(ToUid, ToDtype, Msg, Millisecond) ->
     % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg}
     % to Dest after Time milliseconds.
-    [{DID, erlang:start_timer(Millisecond, ToPid, Msg)} ||
-        {_, ToPid, _Uid, _DType, DID} <- chat_online:lookup_by_dtype(ToUid, ToDtype),
-        is_process_alive(ToPid)].
+    TimerRefList = [{Uid, DID, erlang:start_timer(Millisecond, ToPid, {Millisecond, MsgId, ToUid, Msg})} ||
+        {_, ToPid, Uid, _DType, DID} <- chat_online:lookup_by_dtype(ToUid, ToDtype),
+        is_process_alive(ToPid)],
+    case [Millisecond, TimerRefList] of
+        [0, _] ->
+            ok;
+        [_, TimerRefList] ->
+            % 第二次发送的时候，记录到缓存系统；
+            % 再 Millisecond 时间内 ack 之后，就撤销 ref 并且清理缓存
+            % timeout 的时候判断 Ref 有效才 reply
+            [imboy_kv:set({Uid, DID, MsgId}, TimerRef, Millisecond + 10) || {Uid, DID, TimerRef} <- TimerRefList]
+    end,
+    ok.
 
 
 %%% 系统消息 [500 -- 1000) 系统消息

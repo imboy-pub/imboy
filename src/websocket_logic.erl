@@ -6,7 +6,7 @@
 -include_lib("imboy/include/log.hrl").
 
 % -export ([subprotocol/1]).
--export([c2c/3]).
+-export([c2c/4]).
 -export([c2c_client_ack/3]).
 -export([c2c_revoke/3]).
 -export([c2g/3]).
@@ -18,9 +18,9 @@
 %% ------------------------------------------------------------------
 
 %% 单聊消息
--spec c2c(binary(), integer(), Data :: list()) ->
+-spec c2c(binary(), binary(), integer(), Data :: list()) ->
           ok | {reply, Msg :: list()}.
-c2c(Id, CurrentUid, Data) ->
+c2c(Id, CurrentUid, DType, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
@@ -43,9 +43,8 @@ c2c(Id, CurrentUid, Data) ->
                {<<"created_at">>, CreatedAt},
                {<<"server_ts">>, NowTs}
             ],
-            _TimerRefList = message_ds:send(ToId,
-                                            jsone:encode(Msg, [native_utf8]),
-                                            1),
+            MsgJson = jsone:encode(Msg, [native_utf8]),
+            message_ds:send(ToId, DType, Id, MsgJson, 0),
             {reply, [{<<"id">>, Id},
                      {<<"type">>, <<"C2C_SERVER_ACK">>},
                      {<<"server_ts">>, NowTs}]};
