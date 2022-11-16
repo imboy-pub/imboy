@@ -22,3 +22,5 @@ erldash
 erl_crash.dump
 rebar3.crashdump
 Mnesia.nonode@nohost
+elvis
+rebar.lock
