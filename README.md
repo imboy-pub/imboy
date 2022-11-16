@@ -482,3 +482,8 @@ imboy_kv:memo(fun() ->
     a
 end).
 ```
+
+## eturnal
+```
+_build/product/rel/eturnal/bin/eturnal console
+```

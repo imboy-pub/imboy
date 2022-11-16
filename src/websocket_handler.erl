@@ -104,14 +104,20 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
          binary:split(Tail, <<",">>, [global])
     of
         [Type, MsgId, DID] ->
-        case Type of
-            <<"C2C">> ->
-                websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
-                {ok, State, hibernate};
-            <<"S2C">> ->
-                websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
-                {ok, State, hibernate}
-        end
+            case imboy_kv:get({CurrentUid, DID, MsgId}) of
+                undefined ->
+                    ok;
+                {ok, TimerRef} ->
+                    erlang:cancel_timer(TimerRef)
+            end,
+            case Type of
+                <<"C2C">> ->
+                    websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate};
+                <<"S2C">> ->
+                    websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate}
+            end
     catch
         Class:Reason:Stacktrace ->
             ?LOG(["websocket_handle try catch: Class:", Class,
@@ -120,18 +126,6 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
                   erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
-websocket_handle({text, <<"C_ACK", MsgId:20/binary, ",DID", DID/binary>>}, State) ->
-    % 该方法兼容之前发布的客户端，2022-06-26 作废，3个月后可用删除之
-    ?LOG(["C_ACK", MsgId, DID, State]),
-    CurrentUid = maps:get(current_uid, State),
-    case imboy_kv:get({CurrentUid, DID, MsgId}) of
-        undefined ->
-            ok;
-        {ok, TimerRef} ->
-            erlang:cancel_timer(TimerRef)
-    end,
-    websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
-    {ok, State, hibernate};
 
 websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
@@ -159,8 +153,8 @@ websocket_handle({text, Msg}, State) ->
                 %     imboy_hashids:uid_encode(CurrentUid,
                 %     To),
                 To = proplists:get_value(<<"to">>, Data),
-                ToId = imboy_hashids:uid_decode(To),
-                webrtc_ws_logic:event(ToId, Msg, State);
+                ToUid = imboy_hashids:uid_decode(To),
+                webrtc_ws_logic:event(ToUid, DType, Id, Msg);
             _ ->
                 ok
         end
@@ -190,24 +184,38 @@ websocket_handle(_Frame, State) ->
 
 
 %% 处理erlang 发送的消息
-websocket_info({timeout, _Ref, {0, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, MsgId, Msg, State]),
+% 客户端如果没有确认消息，没隔 3 5 7 秒各投递1次
+% start 0 3 5 7 s
+websocket_info({timeout, _Ref, {Ms=0, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
     DType = maps:get(dtype, State, <<"">>),
     message_ds:send(ToId, DType, MsgId, Msg, 3000),
     {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {3000, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+websocket_info({timeout, _Ref, {Ms=3000, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
     DType = maps:get(dtype, State, <<"">>),
     message_ds:send(ToId, DType, MsgId, Msg, 5000),
     {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {5000, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+websocket_info({timeout, _Ref, {Ms=5000, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
     DType = maps:get(dtype, State, <<"">>),
     message_ds:send(ToId, DType, MsgId, Msg, 7000),
     {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {_MS, _MsgId, _ToId, Msg}}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+websocket_info({timeout, _Ref, {Ms, MsgId, ToId, Msg}}, State) ->
+    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
     {reply, {text, Msg}, State, hibernate};
+% end 0 3 5 7 s
+
+% 客户端如果没有确认消息，每隔Ms毫秒投递1次消息，总共投递len(Tail)+2次
+websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, MsLi, State, cowboy_clock:rfc1123()]),
+    DType = maps:get(dtype, State, <<"">>),
+    message_ds:send_next(Uid, DType, MsgId, Msg, MsLi),
+    {reply, {text, Msg}, State, hibernate};
+websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, State, cowboy_clock:rfc1123()]),
+    {reply, {text, Msg}, State, hibernate};
+
 websocket_info({timeout, _Ref, Msg}, State) ->
     ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};

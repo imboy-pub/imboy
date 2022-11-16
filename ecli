@@ -1,0 +1,20 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+main(["webrtc/event"]) ->
+    try
+        % user_logic:online(1, self(), <<"ios">>, <<"didddd">>)
+        %chat_online:dirty_insert(1, self(), <<"ios">>, <<"didddd">>),
+        %webrtc_ws_logic:event(1, <<"ios">>, <<"msgid">>, <<"Msg bin">>),
+        rpc:call('imboy@127.0.0.1', webrtc_ws_logic, event, [1, <<"ios">>, <<"msgid">>, <<"Msg bin">>]),
+        io:format("factorial ~w = ~w\n", [3, 6])
+    catch
+        C:R ->
+        io:format("c ~w ,r ~w\n", [C, R]),
+        usage()
+    end;
+main(_) ->
+    usage().
+
+usage() ->
+    io:format("usage: factorial integer\n"),
+    halt(1).
