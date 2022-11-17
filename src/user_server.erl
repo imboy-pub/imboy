@@ -65,7 +65,7 @@ handle_cast({login_success, UID, PostVals}, State) ->
     % 更新 user 表
     % 更新 user_client 表
     UID2 = imboy_hashids:uid_decode(UID),
-    Now = imboy_dt:milliseconds(),
+    Now = imboy_dt:millisecond(),
     ?LOG([UID, UID2, PostVals]),
     % 记录设备信息
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),

@@ -23,7 +23,7 @@ send_email_code(undefined) ->
 % send_email_code(ToEmail) ->
 %     {error, "Email必须"};
 send_email_code(ToEmail) ->
-    Now = imboy_dt:milliseconds(),
+    Now = imboy_dt:millisecond(),
     case verification_code_repo:get_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
         {ok, _Col, [[_, _, _, CreatedAt]]}
@@ -166,7 +166,7 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 -spec verify_code(Id :: binary(), VerifyCode :: binary()) ->
           {error, Msg :: list()} | {ok, any()}.
 verify_code(Id, Code) ->
-    Now = imboy_dt:milliseconds(),
+    Now = imboy_dt:millisecond(),
     case verification_code_repo:get_by_id(Id) of
         {ok, _Col, [[_, Code, ValidityAt, _]]} when Now < ValidityAt ->
             {ok, "验证码有效"};
@@ -190,7 +190,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             {error, "Email已经被占用了"};
         {ok, _Col, []} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
-            Now = imboy_dt:milliseconds(),
+            Now = imboy_dt:millisecond(),
             poolboy:transaction(mysql, fun(Pid) ->
                 Prefix = <<"INSERT INTO">>,
                 Table = <<"`user`">>,
@@ -267,7 +267,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             {error, "Email不存在或已被删除"};
         {ok, _Col, [[Id, _Email]]} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
-            % Now = imboy_dt:milliseconds(),
+            % Now = imboy_dt:millisecond(),
             poolboy:transaction(mysql, fun(Pid) ->
                Pwd2 = imboy_password:generate(Password),
                Sql = <<"UPDATE `user` SET `password` = ? WHERE `id` = ?">>,

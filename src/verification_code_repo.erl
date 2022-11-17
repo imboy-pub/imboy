@@ -19,8 +19,8 @@ get_by_id(Id) ->
 
 % verification_code_repo:save(<<"test@imboy.pub">>,
 %   imboy_func:num_random(6),
-%   imboy_dt:milliseconds() + 600000,
-%   imboy_dt:milliseconds()).
+%   imboy_dt:millisecond() + 600000,
+%   imboy_dt:millisecond()).
 -spec save(ToEmail :: binary(),
            VerifyCode :: integer(),
            ValidityAt :: integer(),

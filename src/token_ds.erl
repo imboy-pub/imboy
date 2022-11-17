@@ -56,7 +56,7 @@ encrypt_token(ID, Millisecond, Sub) when is_integer(ID) ->
 encrypt_token(ID, Millisecond, Sub) ->
     % Now = os:system_time(seconds),
     % ExpireAt = Now + Millisecond / 1000,
-    ExpireAt = imboy_dt:milliseconds() + Millisecond,
+    ExpireAt = imboy_dt:millisecond() + Millisecond,
     Data = #{
              % iss => imboy  % iss (issuer)：签发人
              % , nbf => Now + 1 % nbf (Not Before)：生效时间

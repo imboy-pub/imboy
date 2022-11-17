@@ -101,7 +101,7 @@ send_next(ToUid, ToDtype, MsgId, Msg, [Millisecond | MillisecondList]) ->
 %%% 系统消息 [500 -- 1000) 系统消息
 
 assemble_s2c(<<"logged_another_device">>, UID, DID) ->  % 在其他设备登录了
-    Ts = imboy_dt:milliseconds(),
+    Ts = imboy_dt:millisecond(),
     DName = user_device_repo:device_name(UID, DID),
     Payload = [
         {<<"msg_type">>, <<"logged_another_device">>},
@@ -120,7 +120,7 @@ assemble_s2c(MsgType, Content, From, To) when is_list(MsgType) ->
     assemble_s2c(list_to_binary(MsgType), Content, From, To);
 assemble_s2c(MsgType, Content, From, To) ->
     Payload = [{<<"msg_type">>, MsgType}, {<<"content">>, Content}],
-    Ts = imboy_dt:milliseconds(),
+    Ts = imboy_dt:millisecond(),
     assemble_msg(<<"S2C">>, From, To, Payload, Ts).
 
 %%% 系统消息 end

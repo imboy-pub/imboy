@@ -3,18 +3,16 @@
 % datetime 工具箱
 %%%
 
--export([milliseconds/0, timestamp/0]).
+-export([millisecond/0, timestamp/0]).
 -export([utc_date/1]).
 
 
 timestamp() ->
-    milliseconds() div 1000.
+    os:system_time(second).
 
 %% 得到现在在制时间毫秒
-milliseconds() ->
-    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
-    1000000000 * MegaSecs + Secs * 1000 + MicroSecs div 1000.
-
+millisecond() ->
+    os:system_time(millisecond).
 
 utc_date("Y-m-d\TH:i:s\Z") ->
     TS = {_, _, _Micro} = os:timestamp(),

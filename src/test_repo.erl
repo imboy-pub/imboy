@@ -51,7 +51,7 @@ create_friend_test(FromId, ToId) ->
     Sql =
         <<"INSERT INTO `user_friend` (`from_user_id`, `to_user_id`,
         `status`, `created_at`) VALUES (?, ?, 1, ?)">>,
-    mysql_pool:query(Sql, [FromId, ToId, imboy_dt:milliseconds()]).
+    mysql_pool:query(Sql, [FromId, ToId, imboy_dt:millisecond()]).
 
 
 generate_exception(1) ->

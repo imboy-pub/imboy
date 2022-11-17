@@ -28,7 +28,7 @@ c2c(Id, CurrentUid, DType, Data) ->
 
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
-            NowTs = imboy_dt:milliseconds(),
+            NowTs = imboy_dt:millisecond(),
             From = imboy_hashids:uid_encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
@@ -78,7 +78,7 @@ c2c_revoke(Id, Data, Type) ->
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:uid_decode(To),
     ?LOG([From, To, ToId, Type, Data]),
-    NowTs = imboy_dt:milliseconds(),
+    NowTs = imboy_dt:millisecond(),
 
     Msg = [
         {<<"id">>, Id},
@@ -112,7 +112,7 @@ c2g(Id, CurrentUid, Data) ->
                                                                   Column),
     Uids = [Uid || [Uid] <- Members, Uid /= CurrentUid],
     % Uids.
-    NowTs = imboy_dt:milliseconds(),
+    NowTs = imboy_dt:millisecond(),
     Msg = [{<<"id">>, Id},
            {<<"type">>, <<"C2G">>},
            {<<"from">>, imboy_hashids:uid_encode(CurrentUid)},

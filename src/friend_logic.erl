@@ -30,7 +30,7 @@ add_friend(CurrentUid, To, Payload, CreatedAt) when is_binary(CreatedAt) ->
     add_friend(CurrentUid, To, Payload, binary_to_integer(CreatedAt));
 add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = imboy_hashids:uid_decode(To),
-    NowTs = imboy_dt:milliseconds(),
+    NowTs = imboy_dt:millisecond(),
     From = imboy_hashids:uid_encode(CurrentUid),
     Id = <<"af_", From/binary, "_", To/binary>>,
     % ?LOG([is_binary(Payload), Payload]),
@@ -65,7 +65,7 @@ confirm_friend(_, _, _, undefined) ->
 confirm_friend(CurrentUid, From, To, Payload) ->
     FromID = imboy_hashids:uid_decode(From),
     ToID = imboy_hashids:uid_decode(To),
-    NowTs = imboy_dt:milliseconds(),
+    NowTs = imboy_dt:millisecond(),
     Payload2 = jsone:decode(Payload, [{object_format, proplist}]),
 
     FromSetting = proplists:get_value(<<"from">>, Payload2),

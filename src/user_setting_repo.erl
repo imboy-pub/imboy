@@ -19,8 +19,8 @@ find_by_uid(Uid, Column) ->
 update(Uid, Setting) ->
     Sql = <<"REPLACE INTO `user_setting`
         (`user_id`, `setting`, `updated_at`) VALUES (?, ?, ?)">>,
-    % ?LOG([Sql, [Uid, jsone:encode(Setting), imboy_dt:milliseconds()]]),
+    % ?LOG([Sql, [Uid, jsone:encode(Setting), imboy_dt:millisecond()]]),
     mysql_pool:query(Sql,
                      [Uid,
                       jsone:encode(Setting, [native_utf8]),
-                      imboy_dt:milliseconds()]).
+                      imboy_dt:millisecond()]).

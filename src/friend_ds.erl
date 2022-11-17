@@ -47,11 +47,11 @@ change_remark(FromUid, ToUid, Remark) ->
     Sql = <<"UPDATE `user_friend` SET `remark` = ?, `updated_at` = ?
         WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
     mysql_pool:query(Sql,
-                     [Remark, imboy_dt:milliseconds(), FromUid, ToUid]).
+                     [Remark, imboy_dt:millisecond(), FromUid, ToUid]).
 
 
 set_category_id(Uid, CategoryId, NewCid) ->
     Sql = <<"UPDATE `user_friend` SET `category_id` = ?, `updated_at` = ?
         WHERE `status` = 1 AND `from_user_id` = ? AND `category_id` = ?">>,
     mysql_pool:query(Sql,
-                     [NewCid, imboy_dt:milliseconds(), Uid, CategoryId]).
+                     [NewCid, imboy_dt:millisecond(), Uid, CategoryId]).

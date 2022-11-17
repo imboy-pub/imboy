@@ -41,7 +41,7 @@ websocket_init(State) ->
         {ok, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
-                   {<<"timestamp">>, imboy_dt:milliseconds()}],
+                   {<<"timestamp">>, imboy_dt:millisecond()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
@@ -69,7 +69,7 @@ websocket_handle({text, Msg}, State) ->
             {error, Code} ->
                 ErrMsg = [{<<"type">>, <<"error">>},
                           {<<"code">>, Code},
-                          {<<"timestamp">>, imboy_dt:milliseconds()}],
+                          {<<"timestamp">>, imboy_dt:millisecond()}],
                 {reply, ErrMsg};
             false ->
                 CurrentUid = maps:get(current_uid, State),
