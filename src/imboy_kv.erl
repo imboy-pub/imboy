@@ -84,6 +84,7 @@ set(Key, Data) ->
 %% @spec set(Key, Data, MaxAge) -> void()
 %% @doc Add the key to the depcache, hold it for MaxAge seconds and no dependencies
 set(Key, Data, MaxAge) ->
+    % ?LOG(["imboy_kv/set/3", Key, "; ", Data, "; ", MaxAge]),
     depcache:set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).
 
 %% @spec set(Key, Data, MaxAge, Depend) -> void()
@@ -102,6 +103,7 @@ get_wait(Key) ->
 %% @spec get(Key) -> {ok, Data} | undefined
 %% @doc Fetch the key from the cache, return the data or an undefined if not found (or not valid)
 get(Key) ->
+    % ?LOG(["imboy_kv/get/`", Key]),
     depcache:get(Key, ?DEPCACHE_SERVER).
 
 

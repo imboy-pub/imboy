@@ -16,8 +16,8 @@
 %%websocket 握手
 init(Req0, State0) ->
     Env = os:getenv("IMBOYENV"),
-    DID = cowboy_req:header(<<"did">>, Req0, <<"">>),
-    DType = cowboy_req:header(<<"cos">>, Req0, <<"">>),
+    DID = cowboy_req:header(<<"did">>, Req0, <<"did">>),
+    DType = cowboy_req:header(<<"cos">>, Req0, <<"ios">>),
     HeaderAuth = cowboy_req:header(<<"authorization">>, Req0),
     QsAuth = cowboy_req:match_qs([{'authorization', [], undefined}], Req0),
     % [<<"sip">>,<<"text">>] = Subprotocols
@@ -64,7 +64,7 @@ websocket_init(State) ->
         {ok, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
-                   {<<"server_ts">>, imboy_dt:millisecond()}],
+                   {<<"server_ts">>, imboy_dt:milliseconds()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
@@ -97,6 +97,7 @@ websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
 % 客户端确认消息
+% CLIENT_ACK,type,msgid,did
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     ?LOG(["CLIENT_ACK", Tail, State]),
     CurrentUid = maps:get(current_uid, State),
@@ -104,10 +105,12 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
          binary:split(Tail, <<",">>, [global])
     of
         [Type, MsgId, DID] ->
-            case imboy_kv:get({CurrentUid, DID, MsgId}) of
+            ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}]),
+            case imboy_kv:get({integer_to_binary(CurrentUid) , DID, MsgId}) of
                 undefined ->
                     ok;
                 {ok, TimerRef} ->
+                    ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}, TimerRef]),
                     erlang:cancel_timer(TimerRef)
             end,
             case Type of
@@ -116,6 +119,8 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
                     {ok, State, hibernate};
                 <<"S2C">> ->
                     websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate};
+                _ ->
                     {ok, State, hibernate}
             end
     catch
@@ -184,36 +189,13 @@ websocket_handle(_Frame, State) ->
 
 
 %% 处理erlang 发送的消息
-% 客户端如果没有确认消息，没隔 3 5 7 秒各投递1次
-% start 0 3 5 7 s
-websocket_info({timeout, _Ref, {Ms=0, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
-    DType = maps:get(dtype, State, <<"">>),
-    message_ds:send(ToId, DType, MsgId, Msg, 3000),
-    {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {Ms=3000, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
-    DType = maps:get(dtype, State, <<"">>),
-    message_ds:send(ToId, DType, MsgId, Msg, 5000),
-    {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {Ms=5000, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
-    DType = maps:get(dtype, State, <<"">>),
-    message_ds:send(ToId, DType, MsgId, Msg, 7000),
-    {reply, {text, Msg}, State, hibernate};
-websocket_info({timeout, _Ref, {Ms, MsgId, ToId, Msg}}, State) ->
-    ?LOG([timeout, _Ref, Ms, MsgId, ToId, Msg, State, cowboy_clock:rfc1123()]),
-    {reply, {text, Msg}, State, hibernate};
-% end 0 3 5 7 s
-
 % 客户端如果没有确认消息，每隔Ms毫秒投递1次消息，总共投递len(Tail)+2次
-websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, MsLi, State, cowboy_clock:rfc1123()]),
-    DType = maps:get(dtype, State, <<"">>),
-    message_ds:send_next(Uid, DType, MsgId, Msg, MsLi),
-    {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
     ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, State, cowboy_clock:rfc1123()]),
+    {reply, {text, Msg}, State, hibernate};
+websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, MsLi, State, cowboy_clock:rfc1123()]),
+    message_ds:send_next(Uid, MsgId, Msg, MsLi),
     {reply, {text, Msg}, State, hibernate};
 
 websocket_info({timeout, _Ref, Msg}, State) ->

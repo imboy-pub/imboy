@@ -6,7 +6,7 @@
 -include_lib("imboy/include/log.hrl").
 
 % -export ([subprotocol/1]).
--export([c2c/4]).
+-export([c2c/3]).
 -export([c2c_client_ack/3]).
 -export([c2c_revoke/3]).
 -export([c2g/3]).
@@ -18,9 +18,9 @@
 %% ------------------------------------------------------------------
 
 %% 单聊消息
--spec c2c(binary(), binary(), integer(), Data :: list()) ->
+-spec c2c(binary(), integer(), Data :: list()) ->
           ok | {reply, Msg :: list()}.
-c2c(Id, CurrentUid, DType, Data) ->
+c2c(Id, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
@@ -44,7 +44,8 @@ c2c(Id, CurrentUid, DType, Data) ->
                {<<"server_ts">>, NowTs}
             ],
             MsgJson = jsone:encode(Msg, [native_utf8]),
-            message_ds:send(ToId, DType, Id, MsgJson, 0),
+            MsLi = [0, 1500, 1500, 3000, 1000, 3000, 5000],
+            message_ds:send_next(ToId, Id, MsgJson, MsLi),
             {reply, [{<<"id">>, Id},
                      {<<"type">>, <<"C2C_SERVER_ACK">>},
                      {<<"server_ts">>, NowTs}]};
@@ -123,10 +124,12 @@ c2g(Id, CurrentUid, Data) ->
            {<<"server_ts">>, NowTs}],
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
-    _UidsOnline = lists:filtermap(fun(Uid) ->
-                                         message_ds:send(Uid, Msg2, 1)
-                                  end,
-                                  Uids),
+
+    % TODO use pg module
+    % _UidsOnline = lists:filtermap(fun(Uid) ->
+    %                                      % message_ds:send(Uid, Msg2, 1)
+    %                               end,
+    %                               Uids),
     % 存储消息
     msg_c2g_ds:write_msg(NowTs, Id, Msg2, CurrentUid, Uids, ToGID),
     ok.

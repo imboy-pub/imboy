@@ -5,7 +5,7 @@
 %%%
 
 -export([
-    event/4
+    event/3
 ]).
 
 
@@ -22,11 +22,11 @@
 
 
 % for webrtc
--spec event(Uid::integer(), DType::binary(), MsgId::binary(), Msg::binary()) -> ok.
-event(Uid, DType, MsgId, Msg) ->
+-spec event(Uid::integer(), MsgId::binary(), Msg::binary()) -> ok.
+event(Uid, MsgId, Msg) ->
     % MsLi = [0, 1000, 3000, 5000, 7000],
-    MsLi = [0, 1000, 500, 600, 1000, 500, 600],
-    message_ds:send_next(Uid, DType, MsgId, Msg, MsLi),
+    MsLi = [0, 1500, 1500, 3000, 1000, 3000, 5000],
+    message_ds:send_next(Uid, MsgId, Msg, MsLi),
     ok.
 % event_new(Data, State) ->
 %     lager:info("event_new ~s ~n", [Data]),

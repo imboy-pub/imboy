@@ -3,13 +3,15 @@
 % datetime 工具箱
 %%%
 
--export([millisecond/0, timestamp/0]).
+-export([millisecond/0, second/0, timestamp/0]).
 -export([utc_date/1]).
 
 
 timestamp() ->
     os:system_time(second).
 
+second() ->
+    os:system_time(second).
 %% 得到现在在制时间毫秒
 millisecond() ->
     os:system_time(millisecond).

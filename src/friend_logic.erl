@@ -46,9 +46,8 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
-    _TimerRefList = message_ds:send(ToId,
-        jsone:encode(Msg, [native_utf8]),
-        1),
+    MsLi = [0, 1500, 1500, 3000, 5000, 7000],
+    message_ds:send_next(ToId, Id, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 
 -spec confirm_friend(CurrentUid::integer(),
@@ -105,9 +104,8 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         {<<"server_ts">>, NowTs}
     ],
     % ?LOG(Msg),
-    _TimerRefList = message_ds:send(FromID,
-        jsone:encode(Msg, [native_utf8]),
-        1),
+    MsLi = [0, 1500, 1500, 3000, 5000, 7000],
+    message_ds:send_next(FromID, Id, jsone:encode(Msg, [native_utf8]), MsLi),
     {ok, FromID, Remark2, Source}.
 
 

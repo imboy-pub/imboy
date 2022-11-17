@@ -487,3 +487,44 @@ end).
 ```
 _build/product/rel/eturnal/bin/eturnal console
 ```
+
+## 消息确认机制
+服务端，发送消息代码如下：
+```
+    MillisecondList = [0, 1500, 1500, 3000, 1000, 3000, 5000],
+    message_ds:send_next(Uid, DType, MsgId, Msg, MillisecondList),
+```
+* MillisecondList 频率控制列表，列表元素以单位为毫秒；
+    * 0 标识第1条消息马上发送；
+    * 1500 表示，消息1500毫米内没有ack，的情况下会再次投递
+    * 其他逻辑元素逻辑如上
+* Uid 用户ID
+* MsgId 消息ID，消息唯一标识
+* Msg 消息json文本
+
+客户端收到消息后发送以下文本数据(对erlang来说是binary文本)，用于消息收到确认
+```
+CLIENT_ACK,type,msgid,did
+```
+4段信息以半角逗号（ , ）分隔：
+
+* 第1段： CLIENT_ACK 为固定消息确认前缀
+* 第2段： type 是IM消息类型
+* 第3段： msgid 消息唯一ID
+* 第4段： did 登录用户设备ID
+
+
+测试验证数据，收到测试观察，该消息确认机制有效
+```
+http://coolaf.com/tool/chattest
+
+ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Njg1Njk3MTY0MDksInN1YiI6InRrIiwidWlkIjoiYnltajVnIn0.zPojzN6IfxzIfU4CCJodguaAMcGPDx3XLTvou6-U9A8
+
+CLIENT_ACK,type,msgid,did
+
+CurrentUid = 13238,
+MsgId = <<"msgid">>,
+DID = <<"did">>.
+webrtc_ws_logic:event(13238, <<"ios">>, MsgId, <<"Msg bin">>).
+
+```

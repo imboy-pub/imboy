@@ -4,7 +4,8 @@ main(["webrtc/event"]) ->
     try
         % user_logic:online(1, self(), <<"ios">>, <<"didddd">>)
         %chat_online:dirty_insert(1, self(), <<"ios">>, <<"didddd">>),
-        %webrtc_ws_logic:event(1, <<"ios">>, <<"msgid">>, <<"Msg bin">>),
+        % webrtc_ws_logic:event(108, <<"android">>, <<"msgid">>, <<"Msg bin">>).
+        % webrtc_ws_logic:event(13238, <<"ios">>, <<"msgid">>, <<"Msg bin">>), message_ds:send_next(108, <<"android">>, <<"msgid">>, <<"CLIENT_ACK,test,msgid,test">>, [0]).
         rpc:call('imboy@127.0.0.1', webrtc_ws_logic, event, [1, <<"ios">>, <<"msgid">>, <<"Msg bin">>]),
         io:format("factorial ~w = ~w\n", [3, 6])
     catch
