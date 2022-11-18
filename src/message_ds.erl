@@ -87,7 +87,9 @@ assemble_msg(Type, From, To, Payload, Ts) when is_list(To), To > 0 ->
 assemble_msg(Type, From, To, Payload, Ts) when is_integer(To), To > 0 ->
     assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, Ts);
 assemble_msg(Type, From, To, Payload, Ts) ->
-    [{<<"type">>, Type},
+    MsgType = proplists:get_value(<<"msg_type">>, Payload),
+    [{<<"id">>, MsgType},
+     {<<"type">>, Type},
      {<<"from">>, From},
      {<<"to">>, To},
      {<<"payload">>, Payload},

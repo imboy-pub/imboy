@@ -20,8 +20,6 @@ execute(Req, Env) ->
             InOptionLi = lists:member(Path, OptionLi),
 
             Authorization = cowboy_req:header(<<"authorization">>, Req),
-            % ?LOG(["Path", Path, "InOpenLi", InOpenLi, "InOptionLi", InOptionLi,
-            %     "Authorization", Authorization, Authorization == undefined]),
             condition(InOptionLi, InOpenLi, Authorization, Req, Env)
     end.
 

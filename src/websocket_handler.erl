@@ -136,7 +136,6 @@ websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
     % ?LOG(State),
     try
-        DType = maps:get(dtype, State, <<"">>),
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         Id = proplists:get_value(<<"id">>, Data),
@@ -146,7 +145,7 @@ websocket_handle({text, Msg}, State) ->
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         case cowboy_bstr:to_lower(Type) of
             <<"c2c">> ->  % 单聊消息
-                websocket_logic:c2c(Id, CurrentUid, DType, Data);
+                websocket_logic:c2c(Id, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
                 websocket_logic:c2c_revoke(Id, Data, Type);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
@@ -159,7 +158,7 @@ websocket_handle({text, Msg}, State) ->
                 %     To),
                 To = proplists:get_value(<<"to">>, Data),
                 ToUid = imboy_hashids:uid_decode(To),
-                webrtc_ws_logic:event(ToUid, DType, Id, Msg);
+                webrtc_ws_logic:event(ToUid, Id, Msg);
             _ ->
                 ok
         end

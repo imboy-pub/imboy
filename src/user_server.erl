@@ -86,9 +86,10 @@ handle_cast({online, UID, Pid, DID}, State) ->
 
     % 在其他设备登录了
     Msg = message_ds:assemble_s2c(<<"logged_another_device">>, UID, DID),
+    MsgId = proplists:get_value(<<"id">>, Msg),
     % 在“把UID标记为online”之前，给UID同类型设备发送下线通知(s2c <<"logged_another_device">> 消息)
     MsLi = [0, 1500, 3000],
-    message_ds:send_next(UID, <<"logged_another_device">>, jsone:encode(Msg, [native_utf8]), MsLi),
+    message_ds:send_next(UID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(UID) of
         false ->
