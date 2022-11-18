@@ -79,17 +79,14 @@ Available templates:
 
 make run
 
-// https://github.com/bullno1/reload.mk
-// 更新代码之后 需要执行命令 make reload
-// 为避免必须一直输入make reload，请使用 make auto-reload
 // on Mac
-IMBOYENV=prod make run RELOADABLE=1
-IMBOYENV=test make run RELOADABLE=1
-IMBOYENV=dev make run RELOADABLE=1
-IMBOYENV=local make run RELOADABLE=1
+IMBOYENV=prod make run
+IMBOYENV=test make run
+IMBOYENV=dev make run
+IMBOYENV=local make run
 
 // on CentOS8 OR macOS
-export IMBOYENV='local' && make run RELOADABLE=1
+export IMBOYENV='local' && make run
 
 observer_cli:start().
 
@@ -97,8 +94,6 @@ make new t=gen_server n=server_demo
 
 make dialyze
 ```
-
-reload_mk https://github.com/bullno1/reload.mk
 
 
 ## make
