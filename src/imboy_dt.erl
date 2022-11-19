@@ -12,6 +12,7 @@ timestamp() ->
 
 second() ->
     os:system_time(second).
+
 %% 得到现在在制时间毫秒
 millisecond() ->
     os:system_time(millisecond).

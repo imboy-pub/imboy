@@ -17,14 +17,17 @@
 %% api
 %% ------------------------------------------------------------------
 
-%
+% 如果消息一直没有被客户端确认，
+% 那么它将按照 MillisecondList 定义的频率投递 length(MillisecondList) 次，
+% 除非投递期间收到客户端确认消息（ CLIENT_ACK,type,msgid,did ）才终止投递；
+% 也就是说，消息会按特地平率至少投递一次，至多投递 length(MillisecondList) 次。
 -spec send_next(ToUid :: integer(),
            MsgId :: binary(),
            Msg :: list(),
            MillisecondList :: list()) -> ok.
 send_next(_ToUid, _MsgId, _Msg, []) ->
     ok;
-send_next(ToUid, MsgId, Msg, [Millisecond | MillisecondList]) ->
+send_next(ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
     % #Ref<0.717641544.2272788481.230829>
     % (imboy@127.0.0.1)2> flush().
@@ -36,7 +39,7 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MillisecondList]) ->
     TimerRefList = [{Uid, DID, erlang:start_timer(
         Millisecond,
         ToPid,
-        {MillisecondList, {Uid, DID, MsgId}, Msg}
+        {MLTail, {Uid, DID, MsgId}, Msg}
     )} ||
         {_, ToPid, Uid, _DType, DID} <- chat_online:lookup(ToUid),
         is_process_alive(ToPid)],
@@ -52,7 +55,6 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MillisecondList]) ->
     ok.
 
 %%% 系统消息 [500 -- 1000) 系统消息
-
 assemble_s2c(<<"logged_another_device">>, UID, DID) ->  % 在其他设备登录了
     Ts = imboy_dt:millisecond(),
     DName = user_device_repo:device_name(UID, DID),

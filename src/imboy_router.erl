@@ -19,7 +19,6 @@ get_routes() ->
         {"/passport/findpassword", passport_handler, #{action => find_password}},
 
         {"/ws", websocket_handler, #{}},
-        {"/webrtc/:room", webrtc_ws_handler, #{}},
         {"/stress_testing", stress_testing_ws_handler, #{}},
         {"/auth/assets", auth_handler, #{action => assets}},
 

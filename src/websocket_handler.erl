@@ -77,6 +77,7 @@ websocket_init(State) ->
 
 
 %%处理客户端发送投递的消息 onmessage
+
 websocket_handle(ping, State) ->
     ?LOG([ping, cowboy_clock:rfc1123(), State]),
     case maps:find(error, State) of
@@ -166,12 +167,10 @@ websocket_handle({text, Msg}, State) ->
         ok ->
             {ok, State, hibernate};
         {reply, Msg2} ->
-            {reply, {text, jsone:encode(Msg2, [native_utf8])},
-                    State,
+            {reply, {text, jsone:encode(Msg2, [native_utf8])}, State,
                     hibernate};
-        {reply, Msg2, State2} ->
-            {reply, {text, jsone:encode(Msg2, [native_utf8])},
-                    State2,
+        {reply, Msg3, State3} ->
+            {reply, {text, jsone:encode(Msg3, [native_utf8])}, State3,
                     hibernate}
     catch
         Class:Reason:Stacktrace ->
@@ -186,14 +185,14 @@ websocket_handle({binary, Msg}, State) ->
 websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
 
-
 %% 处理erlang 发送的消息
-% 客户端如果没有确认消息，每隔Ms毫秒投递1次消息，总共投递len(Tail)+2次
 websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, State, cowboy_clock:rfc1123()]),
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg,
+        State, cowboy_clock:rfc1123()]),
     {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg, MsLi, State, cowboy_clock:rfc1123()]),
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi,
+        State, Msg, cowboy_clock:rfc1123()]),
     message_ds:send_next(Uid, MsgId, Msg, MsLi),
     {reply, {text, Msg}, State, hibernate};
 
