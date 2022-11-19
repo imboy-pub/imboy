@@ -27,6 +27,7 @@ else ifeq ($(IMBOYENV),dev)
 	RELX_CONFIG = $(CURDIR)/relx.dev.config
 else ifeq ($(IMBOYENV),local)
 	RELX_CONFIG = $(CURDIR)/relx.local.config
+	ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform, debug_info}'
 else
 	RELX_CONFIG = $(CURDIR)/relx.config
 endif
@@ -57,7 +58,7 @@ dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis.mk 1.0.0
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
 dep_hashids = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
-dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.3.0
+dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0
 dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.7.0
 dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git 2.9.0
 dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
