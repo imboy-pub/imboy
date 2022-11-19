@@ -8,7 +8,7 @@ LOCAL_DEPS = ssl mnesia
 DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp syn sync
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
-BUILD_DEPS = elvis_mk relx
+BUILD_DEPS = elvis_mk bbmustache relx
 
 DEP_PLUGINS = cowboy elvis_mk
 
@@ -71,8 +71,10 @@ dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 
 dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.1
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
+dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2 # deps by relx
 dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.7.0
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git master
+#dep_sumo_db = git https://gitee.com/imboy-tripartite-deps/sumo_db.git main
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
 
 SP = 4
