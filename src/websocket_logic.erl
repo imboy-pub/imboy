@@ -25,7 +25,6 @@ c2c(Id, CurrentUid, Data) ->
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
-
     case friend_ds:is_friend(CurrentUid, ToId) of
         true ->
             NowTs = imboy_dt:millisecond(),
@@ -35,6 +34,9 @@ c2c(Id, CurrentUid, Data) ->
             % 存储消息
             msg_c2c_ds:write_msg(CreatedAt, Id, Payload,
                 CurrentUid, ToId, NowTs),
+            self() ! {reply, [{<<"id">>, Id},
+                     {<<"type">>, <<"C2C_SERVER_ACK">>},
+                     {<<"server_ts">>, NowTs}]},
             Msg = [{<<"id">>, Id},
                {<<"type">>, <<"C2C">>},
                {<<"from">>, From},
@@ -46,9 +48,7 @@ c2c(Id, CurrentUid, Data) ->
             MsgJson = jsone:encode(Msg, [native_utf8]),
             MsLi = [0, 1500, 1500, 3000, 1000, 3000, 5000],
             message_ds:send_next(ToId, Id, MsgJson, MsLi),
-            {reply, [{<<"id">>, Id},
-                     {<<"type">>, <<"C2C_SERVER_ACK">>},
-                     {<<"server_ts">>, NowTs}]};
+            ok;
         false ->
             Msg = message_ds:assemble_s2c(<<"isnotfriend">>, Id),
             {reply, Msg}

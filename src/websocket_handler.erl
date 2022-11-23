@@ -135,7 +135,6 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
 
 websocket_handle({text, Msg}, State) ->
     % ?LOG([State, Msg]),
-    % ?LOG(State),
     try
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
@@ -167,6 +166,7 @@ websocket_handle({text, Msg}, State) ->
         ok ->
             {ok, State, hibernate};
         {reply, Msg2} ->
+            ?LOG([reply, 2, Msg2, State]),
             {reply, {text, jsone:encode(Msg2, [native_utf8])}, State,
                     hibernate};
         {reply, Msg3, State3} ->
@@ -180,12 +180,17 @@ websocket_handle({text, Msg}, State) ->
                   erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
+
 websocket_handle({binary, Msg}, State) ->
     {[{binary, Msg}], State};
 websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
 
 %% 处理erlang 发送的消息
+websocket_info({reply, Msg}, State) ->
+    ?LOG([reply, State]),
+    {reply, {text, jsone:encode(Msg, [native_utf8])}, State,
+            hibernate};
 websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
     ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg,
         State, cowboy_clock:rfc1123()]),

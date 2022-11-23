@@ -522,4 +522,17 @@ MsgId = <<"msgid">>,
 DID = <<"did">>.
 webrtc_ws_logic:event(13238, <<"ios">>, MsgId, <<"Msg bin">>).
 
+
+http://coolaf.com/tool/chattest
+
+// 1
+ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjExMDM5NDQ5MTgsInN1YiI6InRrIiwidWlkIjoia3licWRwIn0.FYhYR0KzHZe9kHEeTbcYWwahyqLXBE7rUWaQgyI5I14
+
+1 = imboy_hashids:uid_decode("kybqdp").
+108 = imboy_hashids:uid_decode("7b4v1b").
+{"id":"cdsgrbgppoodp0gvpb60","type":"C2C","from":"kybqdp","to":"7b4v1b","payload":{"msg_type":"text","text":"1to108"},"created_at":1668877742828}
+
+108
+ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjkwNDc2Nzc3MDgsInN1YiI6InRrIiwidWlkIjoiN2I0djFiIn0.n19M6-kR_p4EtqJMst4kO1cqgdG5F2gyNY6QL46xpR8
+{"id":"cdsgrbgppoodp0gvpb61","type":"C2C","to":"kybqdp","from":"7b4v1b","payload":{"msg_type":"text","text":"108to1"},"created_at":1668877742828}
 ```
