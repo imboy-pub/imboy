@@ -90,7 +90,7 @@ c2c_revoke(Id, Data, Type) ->
     % 判断是否在线
     case user_logic:is_offline(ToId) of
         {ToPid, _UidBin, _ClientSystemBin} ->
-            erlang:start_timer(1, ToPid,
+            erlang:start_timer(0, ToPid,
                jsone:encode([{<<"type">>, Type} | Msg], [native_utf8])
             ),
             ok;

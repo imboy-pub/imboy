@@ -3,19 +3,20 @@
 % datetime 工具箱
 %%%
 
--export([millisecond/0, second/0, timestamp/0]).
+-export([microsecond/0, millisecond/0, second/0]).
 -export([utc_date/1]).
 
 
-timestamp() ->
-    os:system_time(second).
-
+%% 返回当前Erlang系统时间秒
 second() ->
     os:system_time(second).
 
-%% 得到现在在制时间毫秒
+%% 返回当前Erlang系统时间毫秒
 millisecond() ->
     os:system_time(millisecond).
+%% 返回当前Erlang系统时间微秒
+microsecond() ->
+    os:system_time(microsecond).
 
 utc_date("Y-m-d\TH:i:s\Z") ->
     TS = {_, _, _Micro} = os:timestamp(),

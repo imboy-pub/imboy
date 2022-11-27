@@ -35,10 +35,8 @@ credential(Req0, State) ->
     {ok, Secret} = application:get_env(imboy, eturnal_secret),
     CurrentUid = maps:get(current_uid, State),
     Uid = imboy_hashids:uid_encode(CurrentUid),
-    Tm = integer_to_list(imboy_dt:timestamp() + 86400),
-    TmBin = list_to_binary(Tm ++ ":"),
-    Username = <<TmBin/binary, Uid/binary>>,
-
+    TmBin = integer_to_binary(imboy_dt:second() + 86400),
+    Username = <<TmBin/binary, ":", Uid/binary>>,
     imboy_response:success(Req0, [
          {<<"uris">>, Uris},
          {<<"username">>, Username},
