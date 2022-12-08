@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 1.0.0
+PROJECT_VERSION = 0.1.0
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = ssl mnesia

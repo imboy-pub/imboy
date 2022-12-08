@@ -6,6 +6,11 @@
 
 https://ninenines.eu/docs/en/cowboy/2.9/guide/getting_started/
 
+## Version 0.1.0
+力求基于“语义化版本控制的规范”([语义化版本 2.0.0](https://semver.org/lang/zh-CN/))实施版本管理.
+
+Strive to implement version management based on "Specification for Semantic version Control"([Semantic Versioning 2.0.0](https://semver.org/)).
+
 ## 环境依赖  (Environment depends on)
 
 数据结构(./priv/sql/)开发中有变动，以第一个发布版为准；目前只支持MySQL
