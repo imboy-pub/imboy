@@ -76,13 +76,20 @@ refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"authorization">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
     ?LOG(["refreshtoken ", Refreshtoken]),
-    case token_ds:decrypt_token(Refreshtoken) of
-        {ok, Id, _ExpireAt, <<"rtk">>} ->
-            Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
-            imboy_response:success(Req0, Data, "操作成功.");
-        {error, Code, Msg, _Li} ->
-            imboy_response:error(Req0, Msg, Code)
-    end.
+    case throttle:check(refreshtoken, Refreshtoken) of
+        {limit_exceeded, _, _} ->
+            lager:warning("Auth ~p exceeded api limit", [Refreshtoken]),
+            Req2 = cowboy_req:reply(429, Req0),
+            {stop, Req2};
+    _ ->
+        case token_ds:decrypt_token(Refreshtoken) of
+            {ok, Id, _ExpireAt, <<"rtk">>} ->
+                Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
+                imboy_response:success(Req0, Data, "操作成功.");
+            {error, Code, Msg, _Li} ->
+                imboy_response:error(Req0, Msg, Code)
+        end
+  end.
 
 
 send_code(Req0) ->

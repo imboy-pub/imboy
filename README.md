@@ -44,6 +44,9 @@ kerl active
 
 ```
 
+### Redis Stack
+
+
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
 
