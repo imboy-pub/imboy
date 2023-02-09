@@ -5,11 +5,9 @@
 
 # https://erlang.mk/guide/deps.html
 dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.9.0
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.11.0
+dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.12.0
 # Ranch is a socket acceptor pool for TCP protocols.
-dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 1.8.0
-# elvis 代码格式检查
-dep_elvis_mk = git https://gitee.com/imboy-tripartite-deps/elvis.mk 1.0.0
+dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.1.0
 # gen_smtp Email服务端、客户端
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 # goldrush 提供了快速的事件流处理
@@ -26,7 +24,8 @@ dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 # dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
 # lager 日志库
 dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
-dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
+# dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
+dep_mysql = hex 1.8.0
 # poolboy A hunky Erlang worker pool factory
 dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题

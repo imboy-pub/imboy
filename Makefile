@@ -8,9 +8,9 @@ LOCAL_DEPS = ssl mnesia
 DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp syn sync qdate throttle eredis
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
-BUILD_DEPS = elvis_mk bbmustache relx
+BUILD_DEPS = bbmustache relx
 
-DEP_PLUGINS = cowboy elvis_mk
+DEP_PLUGINS = cowboy
 
 # 专为测试用的TEST_DEPS,只有当测试的时候才会运行
 # TEST_DEPS = sync

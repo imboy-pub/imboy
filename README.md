@@ -46,6 +46,12 @@ kerl active
 
 ### Redis Stack
 
+[查看](./doc/redis.md)
+
+### Grafana
+Grafana 是一个知名且广泛使用的开源应用程序监控工具。
+
+[介绍 Grafana 的 Redis 数据源插件](https://redis.com/blog/introducing-the-redis-data-source-plug-in-for-grafana/)
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
