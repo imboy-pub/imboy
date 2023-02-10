@@ -93,48 +93,52 @@ CREATE TABLE `user_friend_category` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='好友分组表';
 
+DROP TABLE IF EXISTS `group`;
 CREATE TABLE `group` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `type` tinyint(1) DEFAULT '0' COMMENT '类型: 1 公开圈子  2 私有圈子',
+  `type` tinyint(1) DEFAULT '0' COMMENT '类型: 1 公开群组  2 私有群组',
   `join_limit` tinyint(1) DEFAULT '0' COMMENT '加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入',
   `content_limit` tinyint(1) DEFAULT '2' COMMENT '内部发布限制: 1 圈内不需审核  2 圈内需要审核  3 圈外需要审核',
-  `owner_uid` bigint NOT NULL COMMENT '圈子拥有者ID',
+  `owner_uid` bigint NOT NULL COMMENT '群组拥有者ID',
+  `creater_uid` bigint NOT NULL COMMENT '群组创建者ID',
   `member_max` bigint NOT NULL DEFAULT '50' COMMENT '允许最大成员数量',
   `member_count` bigint NOT NULL DEFAULT '1' COMMENT '成员数量',
   `notification` varchar(800) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '公告',
   `introduction` varchar(2000) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '简介',
-  `avatar` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '圈子头像',
-  `groupname` varchar(80) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '圈子名称',
+  `avatar` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '群组头像',
+  `groupname` varchar(80) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '群组名称',
   `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
   `updated_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '更新记录Unix时间戳毫秒单位',
   `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='圈子';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='群组';
 
+DROP TABLE IF EXISTS `group_member`;
 CREATE TABLE `group_member` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `group_id` bigint NOT NULL COMMENT '圈子ID',
+  `group_id` bigint NOT NULL COMMENT '群组ID',
   `user_id` bigint NOT NULL COMMENT '创建者用户ID',
   `alias` varchar(80) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '圈内别名',
   `description` varchar(800) COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '成员描述',
-  `role` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '角色: 1 成员  2 嘉宾  3  管理员 4 圈主',
+  `role` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '角色: 1 成员  2 嘉宾  3  管理员 4 群主',
   `status` tinyint(1) NOT NULL DEFAULT '0' COMMENT '状态: 1 有效  2 被踢出  3 主动退出',
   `updated_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '更新记录Unix时间戳毫秒单位',
   `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='圈子成员表（删除即表示成员被踢出圈子，updated_at为被踢出的时间，同时有踢出记录）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='群组成员表（删除即表示成员被踢出群组，updated_at为被踢出的时间，同时有踢出记录）';
 
+DROP TABLE IF EXISTS `group_member_log`;
 CREATE TABLE `group_member_log` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `type` tinyint(1) DEFAULT '0' COMMENT '内容类型: 1 转让  2 被退出  3 主动退出',
   `group_member_id` bigint NOT NULL COMMENT 'group_member表ID',
-  `group_id` bigint NOT NULL COMMENT '圈子ID',
-  `user_id` bigint NOT NULL COMMENT '圈子“转让、被踢出、主动退出”用户ID',
+  `group_id` bigint NOT NULL COMMENT '群组ID',
+  `user_id` bigint NOT NULL COMMENT '群组“转让、被踢出、主动退出”用户ID',
   `option_uid` bigint NOT NULL DEFAULT '0' COMMENT '操作者用户ID（0 表示主动退出）',
   `remark` varchar(200) COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '备注（踢出理由等）',
   `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='圈子成员关系变更记录（圈子转让、主动退出、被踢出等等的时候记录到改表）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='群组成员关系变更记录（群组转让、主动退出、被踢出等等的时候记录到改表）';
 
 CREATE TABLE `msg_c2c` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
