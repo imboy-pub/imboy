@@ -23,8 +23,8 @@
 % for webrtc
 -spec event(Uid::integer(), MsgId::binary(), Msg::binary()) -> ok.
 event(Uid, MsgId, Msg) ->
-    % MsLi = [0, 1000, 3000, 5000, 7000],
-    MsLi = [0, 1500, 1500, 3000, 1000, 3000, 5000],
+    % MsLi = [0, 10000],
+    MsLi = [0],
     message_ds:send_next(Uid, MsgId, Msg, MsLi),
     ok.
 
