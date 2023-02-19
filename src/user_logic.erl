@@ -4,13 +4,14 @@
 %%%
 
 -include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/chat.hrl").
 
 -export([online/4]).
 -export([offline/3]).
 -export([idle_timeout/1]).
 
--export([is_offline/1]).
--export([is_offline/2]).
+-export([is_online/1]).
+-export([is_online/2]).
 -export([online_state/1]).
 -export([mine_state/1]).
 -export([find_by_id/1, find_by_id/2]).
@@ -21,12 +22,16 @@
 -define (DEF_USER_COLUMN, <<"`id`,`account`,`mobile`,
         `nickname`,`avatar`,`sign`,`gender`,`region`">>).
 
+
+%dtype 设备类型 web ios android macos windows等
 -spec online(UID::any(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
 online(UID, Pid, DType, DID) ->
     ?LOG(["user_logic/online/4", UID, Pid, DType, DID]),
     % 把UID标记为online
     chat_online:dirty_insert(UID, Pid, DType, DID),
-    % 检查消息 用异步队列实现
+    % syn:register(?CHAT_SCOPE, UID, Pid,  #{did => DID, dtype => DType}),
+    % syn:register(?CHAT_SCOPE, {UID, DType}, Pid,  #{did => DID, dtype => DType}),
+    % 用异步队列实现 检查离线消息 等
     user_server:cast_online(UID, Pid, DID),
     ok.
 
@@ -34,6 +39,7 @@ online(UID, Pid, DType, DID) ->
 -spec offline(UID :: any(), Pid :: pid(), DID :: binary()) -> ok.
 offline(UID, Pid, DID) ->
     chat_online:dirty_delete(Pid),
+    % syn:unregister(?CHAT_SCOPE, UID),
     % 检查离线消息 用异步队列实现
     user_server:cast_offline(UID, Pid, DID).
 
@@ -42,38 +48,44 @@ offline(UID, Pid, DID) ->
 idle_timeout(_UID) ->
     60000.
 
-
-
--spec is_offline(binary() | integer() | list()) ->
-          true | {pid(), binary(), any()}.
+-spec is_online(binary() | integer() | list()) ->
+          false | {pid(), binary(), any()}.
 %% 检查用户是否在线
-is_offline(UID) when is_integer(UID) ->
-    is_offline(integer_to_binary(UID));
-is_offline(UID) when is_list(UID) ->
-    is_offline(list_to_binary(UID));
-is_offline(UID) ->
+is_online(UID) when is_integer(UID) ->
+    is_online(integer_to_binary(UID));
+is_online(UID) when is_list(UID) ->
+    is_online(list_to_binary(UID));
+is_online(UID) ->
     L1 = chat_online:lookup(UID),
     case lists:keyfind(UID, 3, L1) of
         {_, Pid, UID, _DType, DID} ->
             {Pid, UID, DID};
         false ->
-            true
+            false
     end.
+    % case syn:lookup(?CHAT_SCOPE, UID) of
+    %     {Pid, #{did := DID}} ->
+    %         {Pid, UID, DID};
+    %     {_Pid, undefined} ->
+    %         false;
+    %     undefined ->
+    %         false
+    % end.
 
 
--spec is_offline(binary(), binary()) -> true | {pid(), binary(), any()}.
+-spec is_online(binary(), binary()) -> false | {pid(), binary(), any()}.
 %% 检查用户是否在线
-is_offline(UID, ClientSystem) when is_integer(UID) ->
-    is_offline(integer_to_binary(UID), ClientSystem);
-is_offline(UID, ClientSystem) when is_list(UID) ->
-    is_offline(list_to_binary(UID), ClientSystem);
-is_offline(UID, ClientSystem) ->
+is_online(UID, ClientSystem) when is_integer(UID) ->
+    is_online(integer_to_binary(UID), ClientSystem);
+is_online(UID, ClientSystem) when is_list(UID) ->
+    is_online(list_to_binary(UID), ClientSystem);
+is_online(UID, ClientSystem) ->
     L1 = chat_online:lookup(UID, ClientSystem),
     case lists:keyfind(UID, 3, L1) of
         {_, Pid, UID, _DType, DID} ->
             {Pid, UID, DID};
         false ->
-            true
+            false
     end.
 
 

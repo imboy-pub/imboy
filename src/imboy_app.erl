@@ -8,11 +8,13 @@
 -include_lib("imboy/include/chat.hrl").
 
 
-
 start(_Type, _Args) ->
     %%启动存储pid的树据 可以采用 ets 表格处理 但是为了方便集群处理 我采用的mnesia
     chat_online:init(),
-    syn:add_node_to_scopes([?ROOM_SCOPE, ?GROUP_SCOPE]),
+    syn:add_node_to_scopes([
+        ?CHAT_SCOPE,
+        ?GROUP_SCOPE,
+        ?ROOM_SCOPE]),
 
     % begin handler
     Routes = imboy_router:get_routes(),

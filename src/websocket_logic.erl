@@ -88,13 +88,13 @@ c2c_revoke(Id, Data, Type) ->
         {<<"server_ts">>, NowTs}
     ],
     % 判断是否在线
-    case user_logic:is_offline(ToId) of
+    case user_logic:is_online(ToId) of
         {ToPid, _UidBin, _ClientSystemBin} ->
             erlang:start_timer(0, ToPid,
                jsone:encode([{<<"type">>, Type} | Msg], [native_utf8])
             ),
             ok;
-        true ->  % 对端离线处理
+        false ->  % 对端离线处理
             FromId = imboy_hashids:uid_decode(From),
             msg_c2c_ds:revoke_offline_msg(NowTs, Id, FromId, ToId),
             {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
