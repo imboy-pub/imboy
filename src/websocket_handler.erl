@@ -86,6 +86,15 @@ websocket_handle(ping, State) ->
         error ->
             {reply, pong, State, hibernate}
     end;
+websocket_handle({text, <<"check_offline_msg">>}, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    Pid = self(),
+    DID = maps:get(did, State, <<"">>),
+    % 检查离线消息
+    msg_c2c_logic:check_msg(CurrentUid, Pid, DID),
+    % 检查群聊离线消息
+    msg_c2g_logic:check_msg(CurrentUid, Pid, DID),
+    {ok, State, hibernate};
 websocket_handle({text, <<"ping">>}, State) ->
     % ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
     case maps:find(error, State) of
