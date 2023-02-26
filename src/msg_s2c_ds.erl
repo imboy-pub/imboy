@@ -8,6 +8,7 @@
 
 -export([write_msg/6]).
 -export([revoke_offline_msg/4]).
+-export([read_msg/2]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
 
@@ -40,6 +41,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 
 
 %% 读取消息
+read_msg(ToUid, Limit) ->
+    read_msg(ToUid, Limit, undefined).
 read_msg(ToUid, Limit, undefined) ->
     Column = <<"`id`, `payload`, `from_id`, `to_id`,
         `created_at`, `server_ts`, `msg_id`">>,

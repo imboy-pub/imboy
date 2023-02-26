@@ -13,14 +13,14 @@
 %%
 check_msg(Uid, Pid, _DID) ->
     % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
-    case msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined) of
+    case msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of
         [] ->
             ok;
         MsgsS2C ->
             % 发送S2c离线消息
             sent_offline_msg(Pid, <<"S2C">>, MsgsS2C, 0)
     end,
-    case msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined) of
+    case msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of
         [] ->
             ok;
         MsgsC2C ->
@@ -48,7 +48,7 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
            {<<"from">>, imboy_hashids:uid_encode(FromId)},
            {<<"to">>, imboy_hashids:uid_encode(ToId)},
            {<<"payload">>,
-            jsone:decode(Payload, [{object_format, proplist}])},
+            jsx:decode(Payload, [{return_maps, false}])},
            lists:keyfind(<<"created_at">>, 1, Row),
            lists:keyfind(<<"server_ts">>, 1, Row)],
     % ?LOG([Delay, "Msg: ", Msg]),
