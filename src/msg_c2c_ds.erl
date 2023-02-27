@@ -67,7 +67,7 @@ delete_msg(Id) ->
           ok.
 revoke_offline_msg(NowTs, Id, FromId, ToId) ->
     Payload = jsone:encode([{<<"msg_type">>, <<"custom">>},
-                            {<<"custom_type">>, <<"revoked">>}]),
+                            {<<"custom_type">>, <<"peer_revoked">>}]),
     % 存储消息
     msg_c2c_ds:write_msg(NowTs, Id, Payload, FromId, ToId, NowTs),
     Sql = <<"UPDATE `msg_c2c` SET `payload` = ? WHERE `msg_id` = ?">>,
