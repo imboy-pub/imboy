@@ -225,11 +225,11 @@ websocket_info(_Info, State) ->
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(Reason, _Req, State) ->
     ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
-    case maps:get(current_uid, State) of
-        Uid when is_integer(Uid)  ->
+    case maps:find(current_uid, State) of
+        {ok, Uid} when is_integer(Uid)  ->
             DID = maps:get(did, State, <<"">>),
             user_logic:offline(Uid, self(), DID);
-        false ->
+        error ->
             chat_online:dirty_delete(self())
     end,
     ok.

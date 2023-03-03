@@ -2,11 +2,20 @@
 
 -include_lib("imboy/include/log.hrl").
 
+-export([env/1]).
 -export([is_mobile/1]).
 -export([is_email/1]).
 -export([num_random/1]).
 -export([send_email/2]).
 
+
+env(Attr) ->
+    case application:get_env(imboy, Attr) of
+        {ok, Value} ->
+            Value;
+        _ ->
+            undefined
+    end.
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 is_mobile(Mobile) ->
