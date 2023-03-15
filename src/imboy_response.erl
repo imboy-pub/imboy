@@ -24,19 +24,19 @@ success(Req, Payload, Msg, Options) ->
 
 
 error(Req) ->
-    reply_json(1, "error", [], Req).
+    reply_json(1, "error", #{}, Req).
 
 
 error(Req, Msg) ->
-    reply_json(1, Msg, [], Req).
+    reply_json(1, Msg, #{}, Req).
 
 
 error(Req, Msg, Code) ->
-    reply_json(Code, Msg, [], Req).
+    reply_json(Code, Msg, #{}, Req).
 
 
 error(Req, Msg, Code, Options) ->
-    reply_json(Code, Msg, [], Req, Options).
+    reply_json(Code, Msg, #{}, Req, Options).
 
 
 %% Internal.

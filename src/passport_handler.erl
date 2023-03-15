@@ -105,7 +105,7 @@ send_code(Req0) ->
         <<"email">> ->
             case passport_logic:send_email_code(Account) of
                 {ok, _} ->
-                    imboy_response:success(Req0, [], "操作成功.");
+                    imboy_response:success(Req0, #{}, "操作成功.");
                 {error, Msg} ->
                     imboy_response:error(Req0, [], Msg)
             end;

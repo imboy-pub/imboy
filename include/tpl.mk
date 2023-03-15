@@ -36,7 +36,7 @@ init(Req0, State0) ->
 
 % demo(Req0, _State) ->
 %    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
-%    dto_resp_json:success(Req0, PostVals, "操作成功.").
+%    imboy_response:success(Req0, PostVals, "操作成功.").
 
 %% ------------------------------------------------------------------
 %% EUnit tests.

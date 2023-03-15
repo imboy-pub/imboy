@@ -34,26 +34,32 @@ init(Req0, State0) ->
         dtype => DType,
         did => DID
     },
-    if
-        Env == "local", HeaderAuth =/= undefined ->
-            websocket_ds:auth(HeaderAuth, Req0, State1, Opt0);
-        Env == "local", QsAuth =/= undefined ->
-            Token = maps:get(authorization, QsAuth),
-            websocket_ds:auth(Token, Req0, State1, Opt0);
-        % 为了安全考虑，非 local 环境
-        %   必须要 DID 和 HeaderAuth，
-        %   必须 check subprotocols
-        bit_size(DID) > 0, HeaderAuth =/= undefined ->
-            case websocket_ds:check_subprotocols(Subprotocols, Req0) of
-                {ok, Req1, State1} ->
-                    {ok, Req1, State1};
-                {cowboy_websocket, Req1, State1} ->
-                    websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
-            end;
-        true ->
-            ?LOG([Req0, State0]),
-            % token无效 (包含缺失token情况) 或者设备ID不存在
-            {cowboy_websocket, Req0, State0#{error => 706}}
+    case throttle:check(throttle_ws, DID) of
+        {limit_exceeded, _, _} ->
+            lager:warning("DeviceID ~p exceeded api limit", [DID]),
+            {error, 429, Req0};
+        _ ->
+            if
+                Env == "local", HeaderAuth =/= undefined ->
+                    websocket_ds:auth(HeaderAuth, Req0, State1, Opt0);
+                Env == "local", QsAuth =/= undefined ->
+                    Token = maps:get(authorization, QsAuth),
+                    websocket_ds:auth(Token, Req0, State1, Opt0);
+                % 为了安全考虑，非 local 环境
+                %   必须要 DID 和 HeaderAuth，
+                %   必须 check subprotocols
+                bit_size(DID) > 0, HeaderAuth =/= undefined ->
+                    case websocket_ds:check_subprotocols(Subprotocols, Req0) of
+                        {ok, Req1, State1} ->
+                            {ok, Req1, State1};
+                        {cowboy_websocket, Req1, State1} ->
+                            websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
+                    end;
+                true ->
+                    ?LOG([Req0, State0]),
+                    % token无效 (包含缺失token情况) 或者设备ID不存在
+                    {cowboy_websocket, Req0, State0#{error => 706}}
+            end
     end.
 
 

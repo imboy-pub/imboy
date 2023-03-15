@@ -150,7 +150,7 @@ move(Req0, State) ->
     CategoryId = proplists:get_value(<<"category_id">>, PostVals, 0),
 
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-    imboy_response:success(Req0, [], "操作成功.").
+    imboy_response:success(Req0, #{}, "操作成功.").
 
 
 %%% 好友群资料
@@ -172,9 +172,9 @@ information(Req0, State) ->
                                                Friend),
             imboy_response:success(Req0, Data, "操作成功.");
         #{type := <<"group">>} ->
-            imboy_response:success(Req0, [], "操作成功.");
+            imboy_response:success(Req0, #{}, "操作成功.");
         _ ->
-            imboy_response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, #{}, "操作成功.")
     end.
 
 information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->

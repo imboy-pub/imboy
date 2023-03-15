@@ -32,6 +32,10 @@ get_routes() ->
         {"/user/change_state", user_handler, #{action => change_state}},
         {"/user/credential", user_handler, #{action => credential}},
 
+        {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
+        {"/location/makeMyselfUnvisible", location_handler, #{action => make_myself_unvisible}},
+        {"/location/peopleNearby", location_handler, #{action => people_nearby}},
+
         {"/friend/add", friend_handler, #{action => add_friend}},
         {"/friend/confirm", friend_handler, #{action => confirm_friend}},
         {"/friend/delete", friend_handler, #{action => delete_friend}},

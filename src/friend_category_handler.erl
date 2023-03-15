@@ -49,7 +49,7 @@ delete(Req0, State) ->
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);
         ok ->
-            imboy_response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, #{}, "操作成功.")
     end.
 
 
@@ -64,5 +64,5 @@ rename(Req0, State) ->
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
         ok ->
-            imboy_response:success(Req0, [], "操作成功.")
+            imboy_response:success(Req0, #{}, "操作成功.")
     end.

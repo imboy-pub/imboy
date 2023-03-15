@@ -16,7 +16,8 @@ https://www.cnblogs.com/virtulreal/p/16676256.html
 
 https://hub.docker.com/r/redis/redis-stack-server
 ```
-docker rm -f imboy.pub-redisstack  && docker run -d -p 63798:6379 --name=imboy.pub-redisstack -e REDIS_ARGS="--requirepass imboy123456" redis/redis-stack-server:latest
+
+docker rm -f imboy.pub-redisstack  && docker run -d -p 63798:6379 --name=imboy.pub-redisstack -e REDIS_ARGS="--requirepass imboy123456" -v ./redis-stack-data/:/data redis/redis-stack-server:latest
 
 f(C).
 f(Options).

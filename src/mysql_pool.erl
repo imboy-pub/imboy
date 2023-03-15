@@ -60,6 +60,9 @@ query(Sql) ->
     try
         poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
     catch
+        {error,{-1, _, closed}} ->
+            timer:sleep(500),
+            query(Sql);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             query(Sql)
@@ -71,6 +74,9 @@ query(Sql, Params) ->
             mysql:query(Pid, Sql, Params)
         end)
     catch
+        {error,{-1, _, closed}} ->
+            timer:sleep(500),
+            query(Sql, Params);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             query(Sql, Params)
