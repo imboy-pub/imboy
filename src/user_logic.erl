@@ -118,7 +118,8 @@ online_state(User) ->
 find_by_id(Id) ->
     find_by_id(Id, ?DEF_USER_COLUMN).
 
-
+find_by_id(Id, Column) when is_binary(Id) ->
+    find_by_id(imboy_hashids:uid_decode(Id), Column);
 find_by_id(Id, Column) ->
     case user_repo:find_by_id(Id, Column) of
         {ok, _, []} ->

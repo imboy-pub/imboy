@@ -64,7 +64,8 @@ do_login(Req0) ->
             % 检查消息 用异步队列实现
             Uid = proplists:get_value(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
-            imboy_response:success(Req0, Data, "操作成功.");
+            Setting = user_setting_ds:find_by_uid(Uid),
+            imboy_response:success(Req0, [{<<"setting">>, Setting} | Data], "操作成功.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->

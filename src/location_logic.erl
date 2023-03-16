@@ -27,6 +27,7 @@ make_myself_visible(_Uid, <<"">>, _Lng) ->
 make_myself_visible(_Uid, _Lat, <<"">>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
+    user_setting_ds:people_nearby_visible(Uid, true),
     imboy_redis:geoadd(?GEO_PEOPLE_NEARBY, Lng, Lat, Uid),
     ok.
 
@@ -34,6 +35,7 @@ make_myself_visible(Uid, Lat, Lng) ->
 -spec make_myself_unvisible(Uid::binary()) ->
     ok | {error, Msg::binary()}.
 make_myself_unvisible(Uid) ->
+    user_setting_ds:people_nearby_visible(Uid, false),
     imboy_redis:zrem(?GEO_PEOPLE_NEARBY, Uid),
     ok.
 
@@ -48,7 +50,7 @@ people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % Li.
     Uids = [imboy_hashids:uid_decode(Uid) || [Uid, _Distince] <- Li],
     Users = user_logic:find_by_ids(Uids),
-    lists:zipwith(fun(L1, [_, Distince]) -> [{<<"distince">>, Distince} | L1] end, Users, Li).
+    lists:zipwith(fun(User, [_, Distince]) -> [{<<"distince">>, Distince} | imboy_hashids:replace_id(User)] end, Users, Li).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

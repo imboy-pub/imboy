@@ -159,11 +159,12 @@ information(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     case cowboy_req:match_qs([{type, [], undefined}], Req0) of
         #{type := <<"friend">>} ->
-            Column = <<"`id`, `nickname`, `account`, `mobile`, `email`,
+            Column = <<"`id`, `nickname`, `account`,
                 `gender`, `experience`, `avatar`, `sign`">>,
             User = user_logic:find_by_id(Uid, Column),
-            ?LOG(User),
+            % ?LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
+            % ?LOG([UserSetting, Uid]),
             Friend = [],
             Data = information_transfer(CurrentUid,
                                                <<"friend">>,
@@ -178,12 +179,14 @@ information(Req0, State) ->
     end.
 
 information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
-    lists:append([[{<<"mine_uid">>,
-                    imboy_hashids:uid_encode(CurrentUid)},
-                   {<<"type">>, Type}],
-                  imboy_hashids:replace_id(User),
-                  UserSetting,
-                  Friend]).
+    lists:append([
+        [
+            {<<"mine_uid">>, imboy_hashids:uid_encode(CurrentUid)}
+            , {<<"type">>, Type}
+            , {<<"user_setting">>, UserSetting}
+        ],
+        imboy_hashids:replace_id(User),
+        Friend]).
 
 
 %%% 修改好友备注

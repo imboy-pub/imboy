@@ -39,10 +39,10 @@ CREATE TABLE `user` (
   UNIQUE KEY `uk_account` (`account`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='会员表';
 
+DROP TABLE IF EXISTS user_setting;
 CREATE TABLE `user_setting` (
   `user_id` bigint unsigned NOT NULL COMMENT '主键 用户ID',
-  `add_friend_type` json NOT NULL COMMENT '加我方式： mobile 手机号; account 账号; qrcode 二维码; group 群聊; visit_card 名片',
-  `more` json NOT NULL COMMENT '更多设置：json 数据，不同的业务不用的key',
+  `setting` json NOT NULL COMMENT '更多设置：json 数据，不同的业务不用的key( add_friend_type 加我方式： mobile 手机号; account 账号; qrcode 二维码; group 群聊; visit_card 名片)',
   `updated_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '更新记录Unix时间戳毫秒单位',
   PRIMARY KEY (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
