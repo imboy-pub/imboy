@@ -36,8 +36,8 @@ find_by_uid(Uid) ->
 -spec people_nearby_visible(Uid::binary(), Visible::atom()) -> true | false.
 people_nearby_visible(Uid, Visible) ->
     Setting = user_setting_ds:find_by_uid(Uid),
-    Setting2 = Setting#{people_nearby_visible => Visible},
-   % ?LOG(Setting2),
+    Setting2 = Setting#{<<"people_nearby_visible">> => Visible},
+   % ?LOG([Setting, Setting2]),
     user_setting_repo:update(Uid, Setting2),
     true.
 
@@ -56,7 +56,7 @@ chat_state_hide(Uid) ->
 -spec save_state(Uid :: any(), State :: any()) -> true.
 save_state(Uid, State) ->
     Setting = user_setting_ds:find_by_uid(Uid),
-    Setting2 = Setting#{chat_state => State},
+    Setting2 = Setting#{<<"chat_state">> => State},
    % ?LOG(Setting2),
     user_setting_repo:update(Uid, Setting2),
     true.
