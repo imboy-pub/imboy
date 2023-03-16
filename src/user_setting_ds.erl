@@ -42,6 +42,7 @@ people_nearby_visible(Uid, Visible) ->
     true.
 
 %  检查用户是否隐藏在线状态
+% user_setting_ds:chat_state_hide(1).
 -spec chat_state_hide(integer()) -> true | false.
 chat_state_hide(Uid) ->
     Setting = user_setting_ds:find_by_uid(Uid),
@@ -49,7 +50,7 @@ chat_state_hide(Uid) ->
         <<"hide">> ->
             true;
         _ ->
-            fasle
+            false
     end.
 
 % State: hide online offline
