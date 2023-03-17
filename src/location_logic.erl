@@ -43,11 +43,10 @@ make_myself_unvisible(Uid) ->
     Lng::binary(), Lat::binary(),
     Radius::binary(), Unit::binary(),
     Limit::binary()
-) -> ok | {error, Msg::binary()}.
+) -> list().
 people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
     {ok, Li} = imboy_redis:georadius(?GEO_PEOPLE_NEARBY, Lng, Lat, Radius, Unit, Limit),
-    % Li.
     Uids = [imboy_hashids:uid_decode(Uid) || [Uid, _Distince] <- Li],
     Users = user_logic:find_by_ids(Uids, <<"`id`,`account`,`nickname`,`avatar`,`sign`,`gender`,`region`">>),
     lists:zipwith(fun(User, [_, Distince]) -> [{<<"distince">>, Distince} | imboy_hashids:replace_id(User)] end, Users, Li).

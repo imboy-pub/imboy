@@ -65,7 +65,7 @@ do_login(Req0) ->
             Uid = proplists:get_value(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
-            imboy_response:success(Req0, [{<<"setting">>, Setting} | Data], "操作成功.");
+            imboy_response:success(Req0, [{<<"setting">>, Setting} | Data], "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->
@@ -86,7 +86,7 @@ refreshtoken(Req0) ->
         case token_ds:decrypt_token(Refreshtoken) of
             {ok, Id, _ExpireAt, <<"rtk">>} ->
                 Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
-                imboy_response:success(Req0, Data, "操作成功.");
+                imboy_response:success(Req0, Data, "success.");
             {error, Code, Msg, _Li} ->
                 imboy_response:error(Req0, Msg, Code)
         end
@@ -106,7 +106,7 @@ send_code(Req0) ->
         <<"email">> ->
             case passport_logic:send_email_code(Account) of
                 {ok, _} ->
-                    imboy_response:success(Req0, #{}, "操作成功.");
+                    imboy_response:success(Req0, #{}, "success.");
                 {error, Msg} ->
                     imboy_response:error(Req0, [], Msg)
             end;
@@ -142,7 +142,7 @@ do_signup(Req0) ->
                                   Code,
                                   Post2) of
         {ok, Data} ->
-            imboy_response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->
@@ -177,7 +177,7 @@ find_password(Req0) ->
                                       Code,
                                       Post2) of
         {ok, Data} ->
-            imboy_response:success(Req0, Data, "操作成功.");
+            imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->

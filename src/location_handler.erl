@@ -21,7 +21,7 @@
 init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
-    ?LOG([people_nearby, handler, Action]),
+    % ?LOG([people_nearby, handler, Action]),
     State = maps:remove(action, State0),
     Req1 = case Action of
         make_myself_visible ->
@@ -49,7 +49,7 @@ make_myself_visible(Req0, State) ->
    Lng = maps:get(<<"longitude">>, LatLng, <<"">>),
    case location_logic:make_myself_visible(Uid, Lat, Lng) of
         ok ->
-           imboy_response:success(Req0, #{}, "操作成功.");
+           imboy_response:success(Req0, #{}, "success.");
         {error, Msg} ->
            imboy_response:error(Req0, Msg)
     end.
@@ -59,11 +59,10 @@ make_myself_unvisible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Uid = imboy_hashids:uid_encode(CurrentUid),
    location_logic:make_myself_unvisible(Uid),
-   imboy_response:success(Req0, #{}, "操作成功.").
+   imboy_response:success(Req0, #{}, "success.").
 
 % 附近的人
 people_nearby(Req0, _State) ->
-    ?LOG([people_nearby, handler]),
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
     #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
     #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
@@ -74,9 +73,10 @@ people_nearby(Req0, _State) ->
     List = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
     imboy_response:success(Req0, [
         {<<"radius">>, Radius},
+        {<<"size">>, length(List)},
         {<<"unit">>, Unit},
         {<<"list">>, List}
-    ], "操作成功.").
+    ], "success.").
 
 %% ------------------------------------------------------------------
 %% EUnit tests.

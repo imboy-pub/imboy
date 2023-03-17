@@ -30,7 +30,7 @@ member(Req0, _State) ->
         #{id := Gid} ->
             Members = group_logic:member(Gid),
             Data = member_transfer(Members),
-            imboy_response:success(Req0, Data, "操作成功.")
+            imboy_response:success(Req0, Data, "success.")
     end.
 
 member_transfer(Members) ->

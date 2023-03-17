@@ -22,7 +22,8 @@ zrem(Key, Member) ->
     eredis:stop(C),
     ok.
 
--spec georadius(Key::atom(), Lng::binary(), Lat::binary(), Radius::binary(), Unit::binary(), Limit::binary()) -> ok.
+-spec georadius(Key::atom(), Lng::binary(), Lat::binary(), Radius::binary(), Unit::binary(), Limit::binary()) ->
+          {ok, nonempty_list()} | {error, Reason::binary() | no_connection}.
 georadius(Key, Lng, Lat, Radius, Unit, Limit) ->
     C = connect(),
     % https://www.runoob.com/redis/redis-geo.html
@@ -35,7 +36,7 @@ georadius(Key, Lng, Lat, Radius, Unit, Limit) ->
     Res.
 
 
--spec connect() -> ok.
+-spec connect() -> pid().
 connect() ->
     % Options = [{password, ""}, {database, 0}, {host, "127.0.0.1"}, {port, 6379}],
     Options = imboy_func:env(redis_options),

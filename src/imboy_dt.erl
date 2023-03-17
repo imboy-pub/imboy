@@ -14,6 +14,7 @@ second() ->
 %% 返回当前Erlang系统时间毫秒
 millisecond() ->
     os:system_time(millisecond).
+
 %% 返回当前Erlang系统时间微秒
 microsecond() ->
     os:system_time(microsecond).
