@@ -44,9 +44,9 @@ make_myself_visible(Req0, State) ->
     Uid = imboy_hashids:uid_encode(CurrentUid),
 
    {ok, PostVals, _Req} = cowboy_req:read_body(Req0),
-   LatLng = jsone:decode(PostVals, [{object_format, map}]),
-   Lat = maps:get(<<"latitude">>, LatLng, <<"">>),
-   Lng = maps:get(<<"longitude">>, LatLng, <<"">>),
+   Params = jsone:decode(PostVals, [{object_format, map}]),
+   Lat = maps:get(<<"latitude">>, Params, <<"">>),
+   Lng = maps:get(<<"longitude">>, Params, <<"">>),
    case location_logic:make_myself_visible(Uid, Lat, Lng) of
         ok ->
            imboy_response:success(Req0, #{}, "success.");

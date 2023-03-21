@@ -4,6 +4,7 @@
 -include_lib("imboy/include/log.hrl").
 
 -export([execute/2]).
+-export([remove_last_forward_slash/1]).
 
 %% 这个是回调函数
 execute(Req, Env) ->

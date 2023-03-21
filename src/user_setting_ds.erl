@@ -3,7 +3,8 @@
 % user_setting_ds 是 user_setting domain service 缩写
 %%%
 -export([find_by_uid/1]).
--export([chat_state_hide/1, save_state/2, people_nearby_visible/2]).
+-export([chat_state_hide/1]).
+-export([save/3]).
 -export([search/1]).
 
 -include_lib("imboy/include/log.hrl").
@@ -12,6 +13,7 @@
 search(_Account) ->
     ok.
 
+%%
 -spec find_by_uid(any()) -> map().
 find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(imboy_hashids:uid_decode(Uid));
@@ -32,17 +34,8 @@ find_by_uid(Uid) ->
             end
     end.
 
-% user_setting_ds:people_nearby_visible(1, false);
--spec people_nearby_visible(Uid::binary(), Visible::atom()) -> true | false.
-people_nearby_visible(Uid, Visible) ->
-    Setting = user_setting_ds:find_by_uid(Uid),
-    Setting2 = Setting#{<<"people_nearby_visible">> => Visible},
-   % ?LOG([Setting, Setting2]),
-    user_setting_repo:update(Uid, Setting2),
-    true.
-
-%  检查用户是否隐藏在线状态
-% user_setting_ds:chat_state_hide(1).
+%% 检查用户是否隐藏在线状态
+%% user_setting_ds:chat_state_hide(1).
 -spec chat_state_hide(integer()) -> true | false.
 chat_state_hide(Uid) ->
     Setting = user_setting_ds:find_by_uid(Uid),
@@ -53,11 +46,34 @@ chat_state_hide(Uid) ->
             false
     end.
 
-% State: hide online offline
--spec save_state(Uid :: any(), State :: any()) -> true.
-save_state(Uid, State) ->
+
+%% 加我方式：
+%           mobile 手机号;
+%           account 账号;
+%           qrcode 二维码;
+%           group 群聊;
+%           visit_card 名片;
+%           people_nearby 附近的人
+% user_setting_ds:save(1, <<"add_friend_type">>, [<<"qrcode">>, <<"visit_card">>, <<"people_nearby">>]).
+save(Uid, <<"add_friend_type">>, TypeLi) ->
+    priv_save(Uid, <<"add_friend_type">>, TypeLi);
+
+%% 设置附近的人是否可见
+%% user_setting_ds:save(1, <<"people_nearby_visible">>, false).
+%% user_setting_ds:save(1, <<"people_nearby_visible">>, true).
+save(Uid, <<"people_nearby_visible">>, Visible) ->
+    priv_save(Uid, <<"people_nearby_visible">>, Visible);
+
+%% 设置聊天状态
+%% State: hide online offline
+%% user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
+save(Uid, <<"chat_state">>, State) ->
+    priv_save(Uid, <<"chat_state">>, State).
+
+-spec priv_save(Uid::any(), Key::binary(), Val::any()) -> ok.
+priv_save(Uid, Key, State) ->
     Setting = user_setting_ds:find_by_uid(Uid),
-    Setting2 = Setting#{<<"chat_state">> => State},
+    Setting2 = Setting#{Key => State},
    % ?LOG(Setting2),
     user_setting_repo:update(Uid, Setting2),
-    true.
+    ok.

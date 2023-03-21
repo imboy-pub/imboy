@@ -16,6 +16,8 @@ init(Req0, State0) ->
     Req1 = case Action of
         change_state ->
             change_state(Req0, State);
+        setting ->
+            setting(Req0, State);
         update ->
             update(Req0, State);
         open_info ->
@@ -84,17 +86,34 @@ uqrcode_transfer(_, _, _Status, _User) ->
         {<<"msg">>, <<"用户被禁用或已删除">>}
     ].
 
-
 %% 切换在线状态
 change_state(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
     ChatState = proplists:get_value(<<"state">>, PostVals, <<"hide">>),
-    user_setting_ds:save_state(CurrentUid, ChatState),
+    user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
     % 切换在线状态 异步通知好友
     user_server:cast_notice_friend(CurrentUid, ChatState),
-    imboy_response:success(Req0, [], "success.").
+    imboy_response:success(Req0, #{}, "success.").
 
+%% 用户 批量修改设置功能
+setting(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {ok, PostVals, _Req} = cowboy_req:read_body(Req0),
+    Params = jsone:decode(PostVals, [{object_format, proplist}]),
+    Li = proplists:get_value(<<"setting">>, Params, []),
+    try
+        [user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li]
+    of
+        _ ->
+            imboy_response:success(Req0, #{}, "success.")
+    catch
+        error:function_clause ->
+            imboy_response:error(Req0, <<"undefined setting key">>);
+        error:Err1 ->
+            ?LOG([err1, Err1]),
+            imboy_response:error(Req0, <<"unknown">>, 1)
+    end.
 
 %% 修改用户信息
 update(Req0, State) ->
@@ -106,7 +125,7 @@ update(Req0, State) ->
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
         ok ->
-            imboy_response:success(Req0, [], "success.")
+            imboy_response:success(Req0, #{}, "success.")
     end.
 
 

@@ -34,9 +34,11 @@ c2c(Id, CurrentUid, Data) ->
             % 存储消息
             msg_c2c_ds:write_msg(CreatedAt, Id, Payload,
                 CurrentUid, ToId, NowTs),
+            %
             self() ! {reply, [{<<"id">>, Id},
                      {<<"type">>, <<"C2C_SERVER_ACK">>},
                      {<<"server_ts">>, NowTs}]},
+
             Msg = [{<<"id">>, Id},
                {<<"type">>, <<"C2C">>},
                {<<"from">>, From},
@@ -46,7 +48,7 @@ c2c(Id, CurrentUid, Data) ->
                {<<"server_ts">>, NowTs}
             ],
             MsgJson = jsone:encode(Msg, [native_utf8]),
-            MsLi = [0, 1500, 1500, 3000, 1000, 3000, 5000],
+            MsLi = [0, 3000, 5000, 7000, 11000],
             message_ds:send_next(ToId, Id, MsgJson, MsLi),
             ok;
         false ->

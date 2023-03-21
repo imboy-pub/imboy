@@ -1,7 +1,7 @@
 -module(websocket_handler).
 -behavior(cowboy_websocket).
 %%%
-%% websocket API 优先获取 header里面的token
+%% websocket API 获取 header里面的token
 %%%
 -export([init/2]).
 -export([websocket_init/1]).
@@ -15,15 +15,14 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    Env = os:getenv("IMBOYENV"),
-    DID = cowboy_req:header(<<"did">>, Req0, <<"did">>),
-    DType = cowboy_req:header(<<"cos">>, Req0, <<"ios">>),
-    HeaderAuth = cowboy_req:header(<<"authorization">>, Req0),
-    QsAuth = cowboy_req:match_qs([{'authorization', [], undefined}], Req0),
+    % Env = os:getenv("IMBOYENV"),
+    DID = cowboy_req:header(<<"did">>, Req0, undefined),
+    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
+    HeaderAuth = cowboy_req:header(<<"authorization">>, Req0, undefined),
     % [<<"sip">>,<<"text">>] = Subprotocols
     Subprotocols = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
-    ?LOG([Env, DID, DType, HeaderAuth, QsAuth, Subprotocols]),
+    % ?LOG([Env, DID, DType, HeaderAuth, Subprotocols]),
     Opt0 = #{
         num_acceptors => infinity,
         max_connections => infinity,
@@ -37,28 +36,16 @@ init(Req0, State0) ->
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
             lager:warning("DeviceID ~p exceeded api limit", [DID]),
-            {error, 429, Req0};
+            Req = cowboy_req:reply(429, Req0),
+            {ok, Req, State0};
         _ ->
-            if
-                Env == "local", HeaderAuth =/= undefined ->
-                    websocket_ds:auth(HeaderAuth, Req0, State1, Opt0);
-                Env == "local", QsAuth =/= undefined ->
-                    Token = maps:get(authorization, QsAuth),
-                    websocket_ds:auth(Token, Req0, State1, Opt0);
-                % 为了安全考虑，非 local 环境
-                %   必须要 DID 和 HeaderAuth，
-                %   必须 check subprotocols
-                bit_size(DID) > 0, HeaderAuth =/= undefined ->
-                    case websocket_ds:check_subprotocols(Subprotocols, Req0) of
-                        {ok, Req1, State1} ->
-                            {ok, Req1, State1};
-                        {cowboy_websocket, Req1, State1} ->
-                            websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
-                    end;
-                true ->
-                    ?LOG([Req0, State0]),
-                    % token无效 (包含缺失token情况) 或者设备ID不存在
-                    {cowboy_websocket, Req0, State0#{error => 706}}
+            % ?LOG([Subprotocols]),
+            case websocket_ds:check_subprotocols(Subprotocols, Req0) of
+                {ok, Req1} ->
+                    {ok, Req1, State1};
+                {cowboy_websocket, Req1} ->
+                    % ?LOG([State1]),
+                    websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
             end
     end.
 
@@ -70,7 +57,7 @@ websocket_init(State) ->
         {ok, Code} ->
             Msg = [{<<"type">>, <<"error">>},
                    {<<"code">>, Code},
-                   {<<"server_ts">>, imboy_dt:milliseconds()}],
+                   {<<"server_ts">>, imboy_dt:millisecond()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),

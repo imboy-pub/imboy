@@ -27,7 +27,7 @@ make_myself_visible(_Uid, <<"">>, _Lng) ->
 make_myself_visible(_Uid, _Lat, <<"">>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
-    user_setting_ds:people_nearby_visible(Uid, true),
+    user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
     imboy_redis:geoadd(?GEO_PEOPLE_NEARBY, Lng, Lat, Uid),
     ok.
 
@@ -35,7 +35,7 @@ make_myself_visible(Uid, Lat, Lng) ->
 -spec make_myself_unvisible(Uid::binary()) ->
     ok | {error, Msg::binary()}.
 make_myself_unvisible(Uid) ->
-    user_setting_ds:people_nearby_visible(Uid, false),
+    user_setting_ds:save(Uid, <<"people_nearby_visible">>, false),
     imboy_redis:zrem(?GEO_PEOPLE_NEARBY, Uid),
     ok.
 

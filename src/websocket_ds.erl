@@ -29,7 +29,7 @@ check_subprotocols([H|_Tail], Req0) ->
            State1 :: map(),
            Opt :: any()) -> any().
 auth(Token, Req1, State1, Opt) when is_binary(Token) ->
-    ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
+    % ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         {ok, Uid, _ExpireAt, _Type} ->
             Timeout = user_logic:idle_timeout(Uid),

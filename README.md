@@ -456,13 +456,13 @@ chmod +x erldash
 
 
 ## websocket 在线工具调试
-```
+
+为了简化代码取消WS了在线调试（如有必要，以后可以看情况添加一个h5页面做调试工具）
+
 http://coolaf.com/tool/chattest
 io:format("~p~n", [token_ds:encrypt_token(4)]).
 
-ws://192.168.31.41:9800/ws?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NTAxMjg4NDkyODcsInN1YiI6InRrIiwidWlkIjoiOHliazViIn0.LxmboEGP31xDC-E-So6SaMnAIx_T8fxTNIsr49S7R0w
-ws://192.168.43.174:9800/ws?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NTAxMjg4NDkyODcsInN1YiI6InRrIiwidWlkIjoiOHliazViIn0.LxmboEGP31xDC-E-So6SaMnAIx_T8fxTNIsr49S7R0w
-
+```
 (imboy@127.0.0.1)10>  hashids_translator:uid_encode(4).
 <<"8ybk5b">>
 (imboy@127.0.0.1)11> hashids_translator:uid_encode(1).

@@ -30,6 +30,7 @@ get_routes() ->
         {"/user/update", user_handler, #{action => update}},
         {"/user/show", user_handler, #{action => open_info}},
         {"/user/change_state", user_handler, #{action => change_state}},
+        {"/user/setting", user_handler, #{action => setting}},
         {"/user/credential", user_handler, #{action => credential}},
 
         {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
