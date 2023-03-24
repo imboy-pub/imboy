@@ -33,6 +33,9 @@ execute(Sql) ->
                end
         end)
     catch
+        error:{-1, _, closed} ->
+            timer:sleep(500),
+            execute(Sql);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             execute(Sql)
@@ -49,6 +52,9 @@ execute(Sql, Params) ->
            end
         end)
     catch
+        error:{-1, _, closed} ->
+            timer:sleep(500),
+            execute(Sql, Params);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             execute(Sql, Params)
@@ -60,7 +66,7 @@ query(Sql) ->
     try
         poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
     catch
-        {error,{-1, _, closed}} ->
+        error:{-1, _, closed} ->
             timer:sleep(500),
             query(Sql);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
@@ -74,7 +80,7 @@ query(Sql, Params) ->
             mysql:query(Pid, Sql, Params)
         end)
     catch
-        {error,{-1, _, closed}} ->
+        error:{-1, _, closed} ->
             timer:sleep(500),
             query(Sql, Params);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
@@ -111,6 +117,9 @@ update(Table, ID, Field, Value) ->
     try
         mysql_pool:query(Sql, [Value, ID])
     catch
+        error:{-1, _, closed} ->
+            timer:sleep(500),
+            mysql_pool:query(Sql, [Value, ID]);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             mysql_pool:query(Sql, [Value, ID])
@@ -129,6 +138,9 @@ update(Table, ID, KV) ->
     try
         mysql_pool:query(Sql, [ID])
     catch
+        error:{-1, _, closed} ->
+            timer:sleep(500),
+            mysql_pool:query(Sql, [ID]);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             mysql_pool:query(Sql, [ID])
@@ -149,6 +161,9 @@ insert(Prefix, Table, Column, Value) ->
     try
         poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
     catch
+        error:{-1, _, closed} ->
+            timer:sleep(500),
+            poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end);
         exit:{{{badmatch, {error, closed}}, _}, _} ->
             timer:sleep(500),
             poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
