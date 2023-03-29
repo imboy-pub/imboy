@@ -74,7 +74,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     FromToIsFriend = friend_ds:is_friend(FromID, ToID),
     % 好友关系写入数据库
     friend_repo:confirm_friend(FromToIsFriend,
-        FromID, ToID, Remark1, [{<<"isfrom">>, 1} | FromSetting], NowTs),
+        FromID, ToID, Remark1, [{<<"is_from">>, 1} | FromSetting], NowTs),
 
     ToSetting = proplists:get_value(<<"to">>, Payload2),
     ToFromIsFriend = friend_ds:is_friend(ToID, FromID),
@@ -88,7 +88,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     Id = <<"afc_", From/binary, "_", To/binary>>,
     MsgType = proplists:get_value(<<"msg_type">>, Payload2),
     Payload3 = confirm_friend_resp(ToID, Remark1),
-    Payload4 = [{<<"isfrom">>, 1} | Payload3],
+    Payload4 = [{<<"is_from">>, 1} | Payload3],
     Payload5 = [{<<"source">>, Source} | Payload4],
     Payload6 = [{<<"msg_type">>, MsgType} | Payload5],
 
@@ -205,44 +205,44 @@ filter_friend({Uid, Row}, FriendItems, Replace) ->
         {Uid, {<<>>, Cid, null}} ->
             Row2 = [{<<"remark">>, <<"">>} | Row],
             Row3 = [{<<"source">>, <<"">>} | Row2],
-            Row4 = [{<<"isfrom">>, 0} | Row3],
+            Row4 = [{<<"is_from">>, 0} | Row3],
             {Cid, Row4};
         {Uid, {<<>>, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
+            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, <<"">>} | Row],
             Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            Row4 = [{<<"is_from">>, Isfrom} | Row3],
             {Cid, Row4};
         {Uid, {Remark, Cid, null}} ->
             Row2 = [{<<"remark">>, Remark} | Row],
             Row3 = [{<<"source">>, <<"">>} | Row2],
-            Row4 = [{<<"isfrom">>, 0} | Row3],
+            Row4 = [{<<"is_from">>, 0} | Row3],
             {Cid, Row4};
         {Uid, {<<>>, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
+            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, <<"">>} | Row],
             Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            Row4 = [{<<"is_from">>, Isfrom} | Row3],
             {Cid, Row4};
         {Uid, {Remark, Cid, Setting}} when Replace =:= true ->
             Row1 = lists:keyreplace(<<"account">>,
                                     1,
                                     Row,
                                     {<<"account">>, Remark}),
-            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
+            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, Remark} | Row1],
             Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            Row4 = [{<<"is_from">>, Isfrom} | Row3],
             {Cid, Row4};
         {Uid, {Remark, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"isfrom">>, Setting, 0),
+            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
             Source = proplists:get_value(<<"source">>, Setting, <<"">>),
             Row2 = [{<<"remark">>, Remark} | Row],
             Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"isfrom">>, Isfrom} | Row3],
+            Row4 = [{<<"is_from">>, Isfrom} | Row3],
             {Cid, Row4}
     end.
 

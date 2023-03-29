@@ -89,7 +89,7 @@ uqrcode_transfer(_, _, _Status, _User) ->
 %% 切换在线状态
 change_state(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     ChatState = proplists:get_value(<<"state">>, PostVals, <<"hide">>),
     user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
     % 切换在线状态 异步通知好友
@@ -99,9 +99,9 @@ change_state(Req0, State) ->
 %% 用户 批量修改设置功能
 setting(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_body(Req0),
-    Params = jsone:decode(PostVals, [{object_format, proplist}]),
-    Li = proplists:get_value(<<"setting">>, Params, []),
+    PostVals = imboy_req:post_params(Req0),
+    Li = proplists:get_value(<<"setting">>, PostVals, []),
+    % ?LOG({CurrentUid, Li}),
     try
         [user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li]
     of
@@ -118,7 +118,7 @@ setting(Req0, State) ->
 %% 修改用户信息
 update(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Field = proplists:get_value(<<"field">>, PostVals, <<"">>),
     Value = proplists:get_value(<<"value">>, PostVals, <<"">>),
     case user_logic:update(CurrentUid, Field, Value) of

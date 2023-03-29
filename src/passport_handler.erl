@@ -41,7 +41,7 @@ do_login(Req0) ->
     %%% 在POST请求中取出内容
     %%% 用户名account
     %%% 密码 pwd
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>,
@@ -76,7 +76,7 @@ do_login(Req0) ->
 refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"authorization">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
-    ?LOG(["refreshtoken ", Refreshtoken]),
+    % ?LOG(["refreshtoken ", Refreshtoken]),
     case throttle:check(refreshtoken, Refreshtoken) of
         {limit_exceeded, _, _} ->
             lager:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
@@ -97,7 +97,7 @@ send_code(Req0) ->
     %% 在POST请求中取出内容
     %% type 验证码类型 email sms
     %% account 账号 Email 或者 手机号码
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
@@ -119,7 +119,7 @@ do_signup(Req0) ->
     %% 在POST请求中取出内容
     %% 用户名account
     %% 密码 pwd
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
@@ -154,7 +154,7 @@ find_password(Req0) ->
     %% 在POST请求中取出内容
     %% 用户名account
     %% 密码 pwd
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),

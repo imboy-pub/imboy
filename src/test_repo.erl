@@ -45,13 +45,15 @@ create_friend_test(FromId, ToId) when FromId == ToId ->
 % test_repo:create_friend_test(513238, 1).
 % test_repo:create_friend_test(1, 513238).
 % test_repo:create_friend_test(513238, 513238).
+% test_repo:create_friend_test(62913).
+% test_repo:create_friend_test(62913, 1).
 create_friend_test(FromId, ToId) when FromId > 513237; ToId > 513237 ->
     ok;
 create_friend_test(FromId, ToId) ->
     Sql =
         <<"INSERT INTO `user_friend` (`from_user_id`, `to_user_id`,
-        `status`, `created_at`) VALUES (?, ?, 1, ?)">>,
-    mysql_pool:query(Sql, [FromId, ToId, imboy_dt:millisecond()]).
+        `status`, `created_at`, `setting`) VALUES (?, ?, 1, ?, ?)">>,
+    mysql_pool:query(Sql, [FromId, ToId, imboy_dt:millisecond(), <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
 
 
 generate_exception(1) ->

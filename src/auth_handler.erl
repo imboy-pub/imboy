@@ -27,7 +27,7 @@ init(Req0, State0) ->
 
 %%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
 assets(Req0) ->
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     % AuthToken
     AuthTk = proplists:get_value(<<"a">>, PostVals),

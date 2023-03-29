@@ -41,7 +41,7 @@ init(Req0, State0) ->
 %%% 申请添加好友
 add_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     To = proplists:get_value(<<"to">>, PostVals),
     Payload = proplists:get_value(<<"payload">>, PostVals),
     CreatedAt = proplists:get_value(<<"created_at">>, PostVals),
@@ -55,7 +55,7 @@ add_friend(Req0, State) ->
 %%% 申请添加好友确认
 confirm_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     From = proplists:get_value(<<"from">>, PostVals),
     To = proplists:get_value(<<"to">>, PostVals),
     Payload = proplists:get_value(<<"payload">>, PostVals),
@@ -72,7 +72,7 @@ confirm_friend(Req0, State) ->
 %%% 删除好友关系
 delete_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     friend_logic:delete_friend(CurrentUid, Uid),
     imboy_response:success(Req0, #{}, "success.").
@@ -119,7 +119,7 @@ friend_list_transfer(User, Friends) ->
 %%% 我的好友，带分组的
 myfriend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
+    % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
     Mine = user_logic:find_by_id(CurrentUid),
     MineState = user_logic:mine_state(CurrentUid),
     Friend = friend_logic:category_friend(CurrentUid),
@@ -144,8 +144,7 @@ myfriend_transfer(User, Friend, Group) ->
 %%% 移动好友分组
 move(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     CategoryId = proplists:get_value(<<"category_id">>, PostVals, 0),
 
@@ -192,7 +191,7 @@ information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
 %%% 修改好友备注
 change_remark(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
     case friend_ds:change_remark(CurrentUid, Uid, Remark) of

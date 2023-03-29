@@ -29,7 +29,7 @@ init(Req0, State0) ->
 add(Req0, State) ->
     %%
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Name = proplists:get_value(<<"name">>, PostVals, <<"Unnamed">>),
     case friend_category_logic:add(CurrentUid, Name) of
         {error, ErrorMsg} ->
@@ -43,7 +43,7 @@ add(Req0, State) ->
 %% 删除好友分组
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals),
     case friend_category_logic:delete(CurrentUid, Id) of
         {error, ErrorMsg} ->
@@ -56,7 +56,7 @@ delete(Req0, State) ->
 %% 重命名好友分组
 rename(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
+    PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals),
     Name = proplists:get_value(<<"name">>, PostVals),
     % ?LOG([CurrentUid, Id, Name, PostVals]),
