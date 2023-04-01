@@ -80,7 +80,7 @@ websocket_handle(ping, State) ->
             {reply, pong, State, hibernate}
     end;
 websocket_handle({text, <<"check_offline_msg">>}, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State, 0),
     Pid = self(),
     DID = maps:get(did, State, <<"">>),
     % 检查离线消息

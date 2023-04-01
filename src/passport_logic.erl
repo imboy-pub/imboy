@@ -33,6 +33,8 @@ send_email_code(ToEmail) ->
           when Now < ValidityAt ->
             CodeLi = binary_to_list(Code),
             Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            % ?LOG(Msg),
+            % {ok, Msg};
             imboy_func:send_email(ToEmail, Msg);
         % {ok, _Col, []} ->
         _ ->
@@ -44,6 +46,8 @@ send_email_code(ToEmail) ->
                                         Now),
             CodeLi = integer_to_list(VerifyCode),
             Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            % ?LOG(Msg),
+            % {ok, Msg}
             imboy_func:send_email(ToEmail, Msg)
     end.
 
@@ -191,55 +195,41 @@ do_signup_by_email(Email, Pwd, PostVals) ->
         {ok, _Col, []} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             Now = imboy_dt:millisecond(),
-            poolboy:transaction(mysql, fun(Pid) ->
-                Prefix = <<"INSERT INTO">>,
-                Table = <<"`user`">>,
-                Column = <<"(`account`,`email`,`password`,`ref_user_id`,
-                    `reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
-                Pwd2 = imboy_password:generate(Password),
-                Now2 = integer_to_binary(Now),
-                Status = integer_to_binary(1),
-                Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
-                Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
-                Uid0 = imboy_hashids:uid_encode(0),
-                RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
-                RefUid2 = case bit_size(RefUid) > 5 of
-                    true ->
-                       integer_to_binary(imboy_hashids:uid_decode(RefUid));
-                    _ ->
-                       <<"0">>
-                end,
-                % ?LOG(["RefUid2", RefUid2]),
-                Account = integer_to_binary(account_server:allocate()),
-                % ?LOG(["Email", Email]),
-                % ?LOG(["Pwd2", Pwd2]),
-                % ?LOG(["PostVals", PostVals]),
-                % ?LOG(["Ip", Ip]),
-                % ?LOG(["Cosv", Cosv]),
-                Value = <<"('", Account/binary,
-                         "', '", Email/binary,
-                         "', '", Pwd2/binary,
-                         "', '", RefUid2/binary,
-                         "', '", Ip/binary,
-                         "', '", Cosv/binary,
-                         "', '", Status/binary,
-                         "', '", Now2/binary,
-                         "')">>,
-
-                ?LOG(["Value", Value]),
-                Sql = mysql_pool:assemble_sql(Prefix,
-                                           Table,
-                                           Column,
-                                           Value),
-                case mysql:query(Pid, Sql) of
-                   ok ->
-                       {ok, mysql:insert_id(Pid)};
-                   Res ->
-                       Res
-                end
-            end),
+            Table = <<"`user`">>,
+            Column = <<"(`account`,`email`,`password`,`ref_user_id`,
+                `reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
+            Pwd2 = imboy_password:generate(Password),
+            Now2 = integer_to_binary(Now),
+            Status = integer_to_binary(1),
+            Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
+            Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
+            Uid0 = imboy_hashids:uid_encode(0),
+            RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
+            RefUid2 = case bit_size(RefUid) > 5 of
+                true ->
+                   integer_to_binary(imboy_hashids:uid_decode(RefUid));
+                _ ->
+                   <<"0">>
+            end,
+            % ?LOG(["RefUid2", RefUid2]),
+            Account = integer_to_binary(account_server:allocate()),
+            % ?LOG(["Email", Email]),
+            % ?LOG(["Pwd2", Pwd2]),
+            % ?LOG(["PostVals", PostVals]),
+            % ?LOG(["Ip", Ip]),
+            % ?LOG(["Cosv", Cosv]),
+            Value = <<"('", Account/binary,
+                     "', '", Email/binary,
+                     "', '", Pwd2/binary,
+                     "', '", RefUid2/binary,
+                     "', '", Ip/binary,
+                     "', '", Cosv/binary,
+                     "', '", Status/binary,
+                     "', '", Now2/binary,
+                     "')">>,
+            mysql_pool:insert_into(Table, Column, Value),
             % 注册成功
-        {ok, []}
+            {ok, #{}}
     end.
 
 

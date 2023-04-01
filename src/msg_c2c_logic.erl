@@ -11,6 +11,8 @@
 %% 检查离线消息
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量
 %%
+check_msg(0, _Pid, _DID) ->
+    ok;
 check_msg(Uid, Pid, _DID) ->
     % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
     case msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of

@@ -26,8 +26,11 @@ execute(Sql) ->
     try
         poolboy:transaction(mysql, fun(Pid) ->
                case mysql:query(Pid, Sql) of
-                   ok ->
-                       {ok, mysql:insert_id(Pid)};
+                    ok ->
+                        {ok, mysql:insert_id(Pid)};
+                    {error,{-1, _,closed}} ->
+                        timer:sleep(500),
+                        execute(Sql);
                    Res ->
                        Res
                end
@@ -45,10 +48,13 @@ execute(Sql, Params) ->
     try
         poolboy:transaction(mysql, fun(Pid) ->
            case mysql:query(Pid, Sql, Params) of
-               ok ->
-                   {ok, mysql:insert_id(Pid)};
-               Res ->
-                   Res
+                ok ->
+                    {ok, mysql:insert_id(Pid)};
+                {error,{-1, _,closed}} ->
+                    timer:sleep(500),
+                    execute(Sql, Params);
+                Res ->
+                    Res
            end
         end)
     catch
@@ -64,7 +70,12 @@ execute(Sql, Params) ->
 query(Sql) ->
     ?LOG(io:format("mysql_pool:query: ~s\n", [Sql])),
     try
-        poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
+        case poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end) of
+            {error,{-1, _,closed}} ->
+                query(Sql);
+            Res ->
+                Res
+        end
     catch
         error:{-1, _, closed} ->
             timer:sleep(500),
@@ -76,9 +87,12 @@ query(Sql) ->
 
 query(Sql, Params) ->
     try
-        poolboy:transaction(mysql, fun(Pid) ->
-            mysql:query(Pid, Sql, Params)
-        end)
+        case poolboy:transaction(mysql, fun(Pid) ->mysql:query(Pid, Sql, Params) end) of
+            {error,{-1, _,closed}} ->
+                query(Sql, Params);
+            Res ->
+                Res
+        end
     catch
         error:{-1, _, closed} ->
             timer:sleep(500),
@@ -91,12 +105,14 @@ query(Sql, Params) ->
 
 replace_into(Table, Column, Value) ->
     % Sql like this "REPLACE INTO foo (k,v) VALUES (1,0), (2,0)"
-    insert(<<"REPLACE INTO">>, Table, Column, Value).
+    Sql = assemble_sql(<<"REPLACE INTO">>, Table, Column, Value),
+    mysql_pool:execute(Sql).
 
 
 insert_into(Table, Column, Value) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
-    insert(<<"INSERT INTO">>, Table, Column, Value).
+    Sql = assemble_sql(<<"INSERT INTO">>, Table, Column, Value),
+    mysql_pool:execute(Sql).
 
 % 组装 SQL 语句
 assemble_sql(Prefix, Table, Column, Value) ->
@@ -114,16 +130,7 @@ update(Table, ID, Field, Value) when is_list(Value) ->
 update(Table, ID, Field, Value) ->
     Sql = <<"UPDATE `", Table/binary,"` SET `",
         Field/binary, "` = ? WHERE `id` = ?">>,
-    try
-        mysql_pool:query(Sql, [Value, ID])
-    catch
-        error:{-1, _, closed} ->
-            timer:sleep(500),
-            mysql_pool:query(Sql, [Value, ID]);
-        exit:{{{badmatch, {error, closed}}, _}, _} ->
-            timer:sleep(500),
-            mysql_pool:query(Sql, [Value, ID])
-    end.
+    mysql_pool:query(Sql, [Value, ID]).
 
 -spec update(Table::binary(), ID::any(), KV::list()) ->
     ok | {error,  {integer(), binary(), Msg::binary()}}.
@@ -135,16 +142,7 @@ update(Table, ID, KV) ->
     Set4 = list_to_binary(Set3),
     Sql = <<"UPDATE `", Table/binary,"` SET ", Set4/binary," WHERE `id` = ?">>,
     % ?LOG(io:format("~s\n", [Sql])),
-    try
-        mysql_pool:query(Sql, [ID])
-    catch
-        error:{-1, _, closed} ->
-            timer:sleep(500),
-            mysql_pool:query(Sql, [ID]);
-        exit:{{{badmatch, {error, closed}}, _}, _} ->
-            timer:sleep(500),
-            mysql_pool:query(Sql, [ID])
-    end.
+    mysql_pool:query(Sql, [ID]).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -155,19 +153,6 @@ update_filter_value(Val) when is_binary(Val) ->
     Val;
 update_filter_value(Val) ->
     unicode:characters_to_binary(Val).
-
-insert(Prefix, Table, Column, Value) ->
-    Sql = assemble_sql(Prefix, Table, Column, Value),
-    try
-        poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
-    catch
-        error:{-1, _, closed} ->
-            timer:sleep(500),
-            poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end);
-        exit:{{{badmatch, {error, closed}}, _}, _} ->
-            timer:sleep(500),
-            poolboy:transaction(mysql, fun(Pid) -> mysql:query(Pid, Sql) end)
-    end.
 
 %% ------------------------------------------------------------------
 %% EUnit tests.
