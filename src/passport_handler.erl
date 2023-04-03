@@ -86,7 +86,7 @@ refreshtoken(Req0) ->
             {ok, Id, _ExpireAt, <<"rtk">>} ->
                 Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
                 imboy_response:success(Req0, Data, "success.");
-            {error, Code, Msg, _Li} ->
+            {error, Code, Msg, _Map} ->
                 imboy_response:error(Req0, Msg, Code)
         end
   end.

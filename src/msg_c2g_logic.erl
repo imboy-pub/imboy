@@ -11,8 +11,6 @@
 %% ------------------------------------------------------------------
 %% api
 %% ------------------------------------------------------------------
-check_msg(0, _Pid, _DID) ->
-    ok;
 check_msg(Uid, Pid, _DID) ->
     GMsgs = msg_c2g_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
     sent_offline_msg(Uid, Pid, GMsgs, 0),

@@ -35,12 +35,12 @@ decrypt_token(Token) ->
             Sub = maps:get(sub, Payload, 0),
             {ok, ID, ExpireAt, Sub};
         {error, _JWT_ERR} ->
-            {error, 705, "请刷新token", []};
+            {error, 705, "Please refresh token", #{}};
         _JWT_ERR ->
-            {error, 706, "token无效", []}
+            {error, 706, "Invalid token", #{}}
     catch
         _:_ ->
-            {error, 706, "token无效", []}
+            {error, 706, "Invalid token", #{}}
     end.
 
 

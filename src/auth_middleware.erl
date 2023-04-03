@@ -54,7 +54,7 @@ do_authorization(Authorization, Req, Env) ->
             Err = "Does not support refreshtoken",
             Req1 = imboy_response:error(Req, Err, 1),
             {stop, Req1};
-        {error, Code, Msg, _Li} ->
+        {error, Code, Msg, _Map} ->
             Req1 = imboy_response:error(Req, Msg, Code),
             {stop, Req1}
     end.

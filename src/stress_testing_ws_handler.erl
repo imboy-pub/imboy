@@ -28,8 +28,8 @@ init(Req0, State0) ->
             case catch token_ds:decrypt_token(Token) of
                 {ok, Uid, _ExpireAt, _Type} ->
                     {cowboy_websocket, Req0, State0#{current_uid => Uid}, Opt};
-                {error, Code, _Msg, _Li} ->
-                    {cowboy_websocket, Req0, State0#{error => Code}, Opt}
+                {error, Code, _Msg, _Map} ->
+                    {ok, Req0, State0#{error => Code}, Opt}
             end
     end.
 

@@ -33,15 +33,15 @@ auth(Token, Req1, State1, Opt) when is_binary(Token) ->
     case token_ds:decrypt_token(Token) of
         {ok, Uid, _ExpireAt, _Type} ->
             Timeout = user_logic:idle_timeout(Uid),
-            {cowboy_websocket, Req1,
-                               State1#{current_uid => Uid},
-                               Opt#{idle_timeout := Timeout}};
-        {error, 705, Msg, _Li} ->
-            % token无效、刷新token
-            Req3 = imboy_response:error(Req1, Msg),
-            {ok, Req3, State1};
-        {error, Code, _Msg, _Li} ->
-            {cowboy_websocket, Req1, State1#{error => Code}, Opt}
+            {
+                cowboy_websocket,
+                Req1,
+                State1#{current_uid => Uid},
+                Opt#{idle_timeout := Timeout}
+            };
+        {error, Code, Msg, _Map} ->
+            Req2 = imboy_response:error(Req1, Msg),
+            {ok, Req2, State1#{error => Code}, Opt}
     end;
 auth(Auth, Req0, State0, _Opt) ->
     ?LOG(["Auth", Auth]),
