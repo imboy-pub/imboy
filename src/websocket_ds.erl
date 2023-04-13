@@ -40,8 +40,7 @@ auth(Token, Req1, State1, Opt) when is_binary(Token) ->
                 Opt#{idle_timeout := Timeout}
             };
         {error, Code, Msg, _Map} ->
-            Req2 = imboy_response:error(Req1, Msg),
-            {ok, Req2, State1#{error => Code}, Opt}
+            {ok, Req1, State1#{error => Code, msg => Msg}}
     end;
 auth(Auth, Req0, State0, _Opt) ->
     ?LOG(["Auth", Auth]),

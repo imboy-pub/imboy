@@ -13,9 +13,10 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
+    Method = cowboy_req:method(Req0),
     Req1 = case Action of
         assets ->
-            assets(Req0);
+            assets(Method, Req0);
         false ->
             Req0
     end,
@@ -26,7 +27,7 @@ init(Req0, State0) ->
 %% ------------------------------------------------------------------
 
 %%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
-assets(Req0) ->
+assets(<<"POST">>, Req0) ->
     PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     % AuthToken
@@ -39,9 +40,16 @@ assets(Req0) ->
     % Body is ok or fail
     Body = auth_for_assets(Scene, AuthTk, Val),
     cowboy_req:reply(200,
-                     #{<<"content-type">> => <<"text/html">>},
-                     unicode:characters_to_binary(Body, utf8),
-                     Req0).
+         #{<<"content-type">> => <<"text/html">>},
+         unicode:characters_to_binary(Body, utf8),
+         Req0);
+assets(<<"GET">>, Req0) ->
+    % Body is ok or fail
+    Body = auth_for_assets(undefined, undefined, undefined),
+    cowboy_req:reply(200,
+         #{<<"content-type">> => <<"text/html">>},
+         unicode:characters_to_binary(Body, utf8),
+         Req0).
 
 
 auth_for_assets(undefined, _AuthTk, _Name) ->
