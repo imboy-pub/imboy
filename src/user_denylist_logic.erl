@@ -26,11 +26,9 @@ page(Uid, Page,  Size) when Page > 0 ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items} ->
-            % Uids = [Uid || [Uid, _, _, _] <- Items],
-            % [_ | ColumnLi2] = ColumnLi,
             Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
                 ColumnLi,
-                [imboy_hashids:uid_encode(Uid)] ++ Row) || [Uid | Row] <- Items],
+                [imboy_hashids:uid_encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
