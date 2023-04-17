@@ -4,6 +4,16 @@
 
 
 -export([post_params/1]).
+-export([page_size/1]).
+
+
+% {Page, Size} = imboy_req:page_size(Req0),
+page_size(Req) ->
+    #{page := Page} = cowboy_req:match_qs([{page, [], <<"1">>}], Req),
+    #{size := Size} = cowboy_req:match_qs([{size, [], <<"10">>}], Req),
+    {Page2, _} = string:to_integer(Page),
+    {Size2, _} = string:to_integer(Size),
+    pase_page_size(Page2, Size2).
 
 % -spec post_params(Req::cowboy_req:req()) -> proplists().
 % imboy_req:post_params(Req0),
@@ -26,3 +36,23 @@ post_params(Req) ->
             % Params
             jsone:decode(PostVals, [{object_format, proplist}])
     end.
+
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% -------------------------------------------------------------------
+
+pase_page_size(error,  error) ->
+    pase_page_size(1,  10);
+pase_page_size(error,  Size) ->
+    pase_page_size(1,  Size);
+pase_page_size(Page,  error) ->
+    pase_page_size(Page,  10);
+pase_page_size(Page,  Size) when Page < 1 ->
+    pase_page_size(1,  Size);
+pase_page_size(Page,  Size) when Size < 1 ->
+    pase_page_size(Page, 10);
+pase_page_size(Page,  Size) when Size > 1000 ->
+    pase_page_size(Page, 1000);
+pase_page_size(Page, Size) ->
+    {Page, Size}.

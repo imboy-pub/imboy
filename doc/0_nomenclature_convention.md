@@ -1,4 +1,15 @@
 
+# 名词术语约定 / Nomenclature convention
+
+## 避免 master/slave 等术语
+
+Old | New | 说明
+---|---|---
+master | main | 主要的
+slave | subordinate | 从属的
+blacklist | denylist | 拒绝名单
+whitelist | allowlist | 允许名单
+
 # api 约定  (api convention)
 ```
 {
@@ -46,4 +57,3 @@
   }
 }
 ```
-

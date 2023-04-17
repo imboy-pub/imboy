@@ -80,9 +80,9 @@ CREATE TABLE `user_friend` (
   `remark` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注名',
   `updated_at` bigint DEFAULT NULL COMMENT '记录更新时间',
   `created_at` bigint NOT NULL COMMENT '创建记录UTC时间',
-  `setting` json NOT NULL COMMENT '好友权限设置等信息',
+  `setting` json NOT NULL COMMENT '朋友权限设置等信息',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天好友关系记录表（A请求B为好友，B接受之后，系统要自动加入一条B请求A的记录并且A自动确认 user_id 是 user表的主键）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天朋友关系记录表（A请求B为朋友，B接受之后，系统要自动加入一条B请求A的记录并且A自动确认 user_id 是 user表的主键）';
 
 ALTER TABLE `user_friend` ADD UNIQUE INDEX `uk_FromUID_ToUID` (`from_user_id`, `to_user_id`);
 
@@ -91,7 +91,41 @@ CREATE TABLE `user_friend_category` (
   `name` varchar(80) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '分组名称',
   `owner_user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组所属用户ID',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='好友分组表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='朋友分组表';
+
+DROP TABLE IF EXISTS user_denylist;
+CREATE TABLE `user_denylist` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '归属用户ID',
+  `denied_user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '被列入名单的用户ID',
+  `remark` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
+  `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_UserId_DeniedUserId` (`user_id`,`denied_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='用户的拒绝聊天名单';
+
+CREATE TABLE `tag` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `creator_user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建人用户ID',
+  `name` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标签名称',
+  `referer_time` int(1) NOT NULL DEFAULT '0' COMMENT '被引用次数',
+  `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
+  `updated_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '更新记录Unix时间戳毫秒单位',
+  `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
+  PRIMARY KEY (`id`),
+  KEY `i_CreatorUserId_Status` (`creator_user_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='标签记录';
+
+CREATE TABLE `tag_user_friend` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '记录所属用户ID',
+  `tag_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '标签ID',
+  `tag_user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '被打标签用户ID',
+  `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
+  PRIMARY KEY (`id`),
+  KEY `i_CreatorUserId_Status` (`creator_user_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='标签朋友关联表';
+
 
 DROP TABLE IF EXISTS `group`;
 CREATE TABLE `group` (
@@ -188,4 +222,4 @@ CREATE TABLE `msg_s2c` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_MsgId` (`msg_id`),
   KEY `i_ToId` (`to_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='服务端投递给用户的消息 添加好友消息等其他系统消息';
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='服务端投递给用户的消息 添加朋友消息等其他系统消息';

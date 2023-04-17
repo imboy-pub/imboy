@@ -5,10 +5,21 @@
 %%%
 -export([success/4, success/1, success/2, success/3]).
 -export([error/4, error/1, error/2, error/3]).
+-export([page_payload/4]).
 
+
+-spec page_payload(Total::integer(), Page::integer(), Size::integer(), List::list())
+    -> list().
+page_payload(Total, Page,  Size, List) ->
+    [
+        {<<"total">>, Total},
+        {<<"page">>, Page},
+        {<<"size">>, Size},
+        {<<"list">>, List}
+    ].
 
 success(Req) ->
-    reply_json(0, "success", [], Req).
+    reply_json(0, "success", #{}, Req).
 
 
 success(Req, Payload) ->

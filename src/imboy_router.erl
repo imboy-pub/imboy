@@ -46,6 +46,10 @@ get_routes() ->
         {"/friend/find", friend_handler, #{action => find}},
         {"/friend/change_remark", friend_handler, #{action => change_remark}},
 
+        {"/friend/denylist/add", user_denylist_handler, #{action => add}},
+        {"/friend/denylist/remove", user_denylist_handler, #{action => remove}},
+        {"/friend/denylist/page", user_denylist_handler, #{action => page}},
+
         {"/friend/move", friend_handler, #{action => move}},
         {"/friend/category/add", friend_category_handler, #{action => add}},
         {"/friend/category/delete", friend_category_handler, #{action => delete}},

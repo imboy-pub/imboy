@@ -11,6 +11,7 @@ define tpl_imboy.rest_handler
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-include_lib("imboy/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
@@ -23,8 +24,8 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 = case Action of
-        % action_atom ->
-            % demo(Req0, State);
+        demo_action ->
+            demo_action(Req0, State);
         false ->
             Req0
     end,
@@ -34,9 +35,15 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-% demo(Req0, _State) ->
-%    {ok, PostVals, _Req} = cowboy_req:read_urlencoded_body(Req0),
-%    imboy_response:success(Req0, PostVals, "success.").
+demo_action(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    % Uid = imboy_hashids:uid_encode(CurrentUid),
+
+    PostVals = imboy_req:post_params(Req0),
+    Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
+    Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
+    $(subst _handler,,$(notdir $(n)))_logic:demo(CurrentUid, Val1, Val2),
+    imboy_response:success(Req0, PostVals, "success.").
 
 %% ------------------------------------------------------------------
 %% EUnit tests.
@@ -58,22 +65,24 @@ define tpl_imboy.logic
 % $(subst _logic,,$(notdir $(n))) business logic module
 %%%
 
-%-export ([search/1]).
+-export ([demo/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-include_lib("imboy/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
 %% ------------------------------------------------------------------
 %% api
 %% ------------------------------------------------------------------
-%%% 查找非好友
-%search(Uid) ->
-    % 只能够搜索“用户被允许搜索”的用户
-    %
-%   ok.
+
+%%% demo方法描述
+-spec demo(Uid::integer(), Val1::binary(), Val2::binary()) -> ok.
+demo(Uid, Val1, Val2) ->
+    $(subst _logic,,$(notdir $(n)))_repo:demo(Uid, Val1, Val2),
+    ok.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -101,11 +110,12 @@ define tpl_imboy.repository
 % $(subst _repo,,$(notdir $(n))) related operations are put in this module, repository module
 %%%
 
--export ([get_by_key/1]).
+-export ([demo/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-include_lib("imboy/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
@@ -113,9 +123,11 @@ define tpl_imboy.repository
 %% api
 %% ------------------------------------------------------------------
 
-get_by_id(ID) ->
+%%% demo方法描述
+-spec demo(Uid::integer(), Val1::binary(), Val2::binary()) -> mysql:query_result().
+demo(Uid, Val1, Val2) ->
     Sql = <<"SELECT `id` FROM `$(subst _repo,,$(notdir $(n)))` WHERE `id` = ?">>,
-    Row = mysql_pool:query(Sql, [ID]),
+    Row = mysql_pool:query(Sql, [Uid, Val1, Val2]),
     % lager:info("~p", Row),
     Row.
 

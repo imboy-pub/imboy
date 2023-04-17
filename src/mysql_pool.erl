@@ -67,6 +67,7 @@ execute(Sql, Params) ->
     end.
 
 % mysql_pool:query("select * from user where id = 2")
+-spec query(Sql::mysql:query()) -> mysql:query_result().
 query(Sql) ->
     ?LOG(io:format("mysql_pool:query: ~s\n", [Sql])),
     try
@@ -85,6 +86,7 @@ query(Sql) ->
             query(Sql)
     end.
 
+-spec query(Sql::mysql:query(), Params :: [mysql:query_param()]) -> mysql:query_result().
 query(Sql, Params) ->
     try
         case poolboy:transaction(mysql, fun(Pid) ->mysql:query(Pid, Sql, Params) end) of
