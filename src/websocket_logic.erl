@@ -17,6 +17,7 @@
 %% api
 %% ------------------------------------------------------------------
 
+
 %% 单聊消息
 -spec c2c(binary(), integer(), Data :: list()) ->
           ok | {reply, Msg :: list()}.
@@ -25,34 +26,43 @@ c2c(Id, CurrentUid, Data) ->
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
-    case friend_ds:is_friend(CurrentUid, ToId) of
-        true ->
+    IsFriend = friend_ds:is_friend(CurrentUid, ToId),
+    % 判断当前用户是否在 ToId 的黑名单里面
+    InDenylist = user_denylist_logic:in_denylist(ToId, CurrentUid),
+    case {IsFriend, InDenylist} of
+        {true, 0} ->
             NowTs = imboy_dt:millisecond(),
             From = imboy_hashids:uid_encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
             % 存储消息
-            msg_c2c_ds:write_msg(CreatedAt, Id, Payload,
-                CurrentUid, ToId, NowTs),
+            msg_c2c_ds:write_msg(CreatedAt,
+                                 Id,
+                                 Payload,
+                                 CurrentUid,
+                                 ToId,
+                                 NowTs),
             %
             self() ! {reply, [{<<"id">>, Id},
-                     {<<"type">>, <<"C2C_SERVER_ACK">>},
-                     {<<"server_ts">>, NowTs}]},
+                              {<<"type">>, <<"C2C_SERVER_ACK">>},
+                              {<<"server_ts">>, NowTs}]},
 
             Msg = [{<<"id">>, Id},
-               {<<"type">>, <<"C2C">>},
-               {<<"from">>, From},
-               {<<"to">>, To},
-               {<<"payload">>, Payload},
-               {<<"created_at">>, CreatedAt},
-               {<<"server_ts">>, NowTs}
-            ],
+                   {<<"type">>, <<"C2C">>},
+                   {<<"from">>, From},
+                   {<<"to">>, To},
+                   {<<"payload">>, Payload},
+                   {<<"created_at">>, CreatedAt},
+                   {<<"server_ts">>, NowTs}],
             MsgJson = jsone:encode(Msg, [native_utf8]),
             MsLi = [0, 3000, 5000, 7000, 11000],
             message_ds:send_next(ToId, Id, MsgJson, MsLi),
             ok;
-        false ->
-            Msg = message_ds:assemble_s2c(<<"isnotfriend">>, Id),
+        {_, InDenylist2} when InDenylist2 > 0 ->
+            Msg = message_ds:assemble_s2c(Id, <<"in_denylist">>, To),
+            {reply, Msg};
+        {false, _InDenylist} ->
+            Msg = message_ds:assemble_s2c(Id, <<"not_a_friend">>, To),
             {reply, Msg}
     end.
 
@@ -65,11 +75,11 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"`id`">>,
     Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
     Vals = [MsgId, CurrentUid],
-    {ok, _ColumnList, Rows} = msg_c2c_repo:read_msg(Where,
+    {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where,
                                                     Vals,
                                                     Column,
                                                     1),
-    [msg_c2c_repo:delete_msg(Id) || [Id] <- Rows],
+    [ msg_c2c_repo:delete_msg(Id) || [Id] <- Rows ],
     ok.
 
 
@@ -83,18 +93,15 @@ c2c_revoke(Id, Data, Type) ->
     ?LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:millisecond(),
 
-    Msg = [
-        {<<"id">>, Id},
-        {<<"from">>, From},
-        {<<"to">>, To},
-        {<<"server_ts">>, NowTs}
-    ],
+    Msg = [{<<"id">>, Id},
+           {<<"from">>, From},
+           {<<"to">>, To},
+           {<<"server_ts">>, NowTs}],
     % 判断是否在线
     case user_logic:is_online(ToId) of
         {ToPid, _UidBin, _ClientSystemBin} ->
-            erlang:start_timer(0, ToPid,
-               jsone:encode([{<<"type">>, Type} | Msg], [native_utf8])
-            ),
+            Msg2 = jsone:encode([{<<"type">>, Type} | Msg], [native_utf8]),
+            erlang:start_timer(0, ToPid, Msg2),
             ok;
         false ->  % 对端离线处理
             FromId = imboy_hashids:uid_decode(From),
@@ -111,9 +118,8 @@ c2g(Id, CurrentUid, Data) ->
     ToGID = imboy_hashids:uid_decode(Gid),
     % TODO check is group member
     Column = <<"`user_id`">>,
-    {ok, _ColumnLi, Members} = group_member_repo:find_by_group_id(ToGID,
-                                                                  Column),
-    Uids = [Uid || [Uid] <- Members, Uid /= CurrentUid],
+    {ok, _, Members} = group_member_repo:find_by_gid(ToGID, Column),
+    Uids = [ Uid || [Uid] <- Members, Uid /= CurrentUid ],
     % Uids.
     NowTs = imboy_dt:millisecond(),
     Msg = [{<<"id">>, Id},
@@ -143,6 +149,7 @@ c2g(Id, CurrentUid, Data) ->
 s2c(_Id, _CurrentUid, _Data) ->
     ok.
 
+
 %% 客户端确认S2C投递消息
 -spec s2c_client_ack(MsgId :: binary(),
                      CurrentUid :: integer(),
@@ -151,11 +158,9 @@ s2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"`id`">>,
     Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
     Vals = [MsgId, CurrentUid],
-    {ok, _ColumnList, Rows} = msg_s2c_repo:read_msg(Where,
+    {ok, _CList, Rows} = msg_s2c_repo:read_msg(Where,
                                                     Vals,
                                                     Column,
                                                     1),
-    [msg_s2c_repo:delete_msg(Id) || [Id] <- Rows],
+    [ msg_s2c_repo:delete_msg(Id) || [Id] <- Rows ],
     ok.
-
-

@@ -4,7 +4,7 @@
 % user_denylist related operations are put in this module, repository module
 %%%
 
--export ([add/4, remove/2]).
+-export ([add/3, remove/2]).
 -export ([count_by_uid/1, in_denylist/2]).
 -export([page/3]).
 
@@ -21,7 +21,7 @@
 %% ------------------------------------------------------------------
 -spec page(Uid::integer(), Limit::integer(), Offset::integer()) -> mysql:query_result().
 page(Uid, Limit,  Offset) ->
-    Column = <<"d.denied_user_id, d.remark as reason, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark">>,
+    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark">>,
     Join1 = <<"inner join user as u on u.id = d.denied_user_id ">>,
     Join2 = <<"inner join user_friend as f on d.denied_user_id = f.to_user_id ">>,
     Where = <<"WHERE d.`user_id` = ? and f.from_user_id = ? LIMIT ? OFFSET ?">>,
@@ -33,17 +33,17 @@ page(Uid, Limit,  Offset) ->
     % ?LOG([Sql, Uid, Limit, Offset]),
     mysql_pool:query(Sql, [Uid, Uid, Limit, Offset]).
 
--spec add(Uid::integer(), DeniedUserId::integer(), Remark::binary(), Now::integer()) -> mysql:query_result().
-add(Uid, DeniedUserId, Remark, Now) ->
+-spec add(Uid::integer(), DeniedUserId::integer(), Now::integer()) -> mysql:query_result().
+add(Uid, DeniedUserId, Now) ->
     Table = <<"`user_denylist`">>,
-    Column = <<"(`user_id`,`denied_user_id`,`remark`,`created_at`)">>,
+    Column = <<"(`user_id`,`denied_user_id`,`created_at`)">>,
 
     Uid2 = integer_to_binary(Uid),
     DeniedUserId2 = integer_to_binary(DeniedUserId),
     Now2 = integer_to_binary(Now),
 
     Value = <<"('", Uid2/binary, "', '", DeniedUserId2/binary, "', '",
-              Remark/binary, "', '", Now2/binary, "')">>,
+        Now2/binary, "')">>,
     mysql_pool:replace_into(Table, Column, Value).
 
 
@@ -62,6 +62,7 @@ count_by_uid(Uid) ->
     Count.
 
 % user_denylist_repo:in_denylist(107, 62913).
+-spec in_denylist(integer(), integer()) -> integer().
 in_denylist(Uid, DeniedUid)->
     % use index uk_UserId_DeniedUserId
     Sql = <<"SELECT count(*) as count FROM `user_denylist`

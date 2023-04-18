@@ -4,8 +4,9 @@
 % user_denylist business logic module
 %%%
 
--export ([add/3, remove/2]).
+-export ([add/2, remove/2]).
 -export ([page/3]).
+-export ([in_denylist/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -34,16 +35,22 @@ page(Uid, Page,  Size) when Page > 0 ->
             imboy_response:page_payload(Total, Page, Size, [])
     end.
 
--spec add(Uid::integer(), DeniedUserId::integer(), Remark::binary()) -> integer().
-add(Uid, DeniedUserId, Remark) ->
+-spec add(Uid::integer(), DeniedUserId::integer()) -> integer().
+add(Uid, DeniedUserId) ->
     Now = imboy_dt:millisecond(),
-    user_denylist_repo:add(Uid, DeniedUserId, Remark, Now),
+    user_denylist_repo:add(Uid, DeniedUserId, Now),
     Now.
 
 -spec remove(Uid::integer(), DeniedUserId::integer()) -> ok.
 remove(Uid, DeniedUserId) ->
     user_denylist_repo:remove(Uid, DeniedUserId),
     ok.
+
+
+% user_denylist_repo:in_denylist(107, 62913).
+-spec in_denylist(integer(), integer()) -> integer().
+in_denylist(Uid, DeniedUid)->
+    user_denylist_repo:in_denylist(Uid, DeniedUid).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

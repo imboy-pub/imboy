@@ -27,7 +27,7 @@ user_group(Uid) ->
 
 member(Gid) ->
     Column = <<"`user_id`,`alias`,`description`,`role`">>,
-    case group_member_repo:find_by_group_id(Gid, Column) of
+    case group_member_repo:find_by_gid(Gid, Column) of
         {ok, _, []} ->
             [];
         {ok, ColumnLi, Members} ->

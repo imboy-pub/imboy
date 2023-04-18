@@ -5,10 +5,8 @@
 
 -include_lib("imboy/include/log.hrl").
 
--export([assemble_msg/5]).
--export([assemble_s2c/2]).
 -export([assemble_s2c/3]).
--export([assemble_s2c/4]).
+-export([assemble_msg/5]).
 
 -export([send_next/4, send_next/5]).
 
@@ -59,42 +57,29 @@ send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     ok.
 
 %%% 系统消息 [500 -- 1000) 系统消息
-assemble_s2c(<<"logged_another_device">>, UID, DID) ->  % 在其他设备登录了
-    Ts = imboy_dt:millisecond(),
-    DName = user_device_repo:device_name(UID, DID),
+
+
+-spec assemble_s2c(MsgId::binary(), MsgType::binary(), To::binary()) -> list().
+assemble_s2c(MsgId, MsgType, To) ->
     Payload = [
-        {<<"msg_type">>, <<"logged_another_device">>},
-        {<<"did">>, DID},
-        {<<"dname">>, DName}
+        {<<"msg_type">>, MsgType}
     ],
-    assemble_msg(<<"S2C">>, <<"">>, <<"">>, Payload, Ts).
+    assemble_msg(<<"S2C">>, <<"">>, To, Payload, MsgId).
 
-assemble_s2c(MsgType, Content) ->
-    assemble_s2c(MsgType, Content, <<"">>, <<"">>).
-
-
-assemble_s2c(MsgType, Content, From, To) when is_integer(MsgType) ->
-    assemble_s2c(integer_to_binary(MsgType), Content, From, To);
-assemble_s2c(MsgType, Content, From, To) when is_list(MsgType) ->
-    assemble_s2c(list_to_binary(MsgType), Content, From, To);
-assemble_s2c(MsgType, Content, From, To) ->
-    Payload = [{<<"msg_type">>, MsgType}, {<<"content">>, Content}],
-    Ts = imboy_dt:millisecond(),
-    assemble_msg(<<"S2C">>, From, To, Payload, Ts).
 
 %%% 系统消息 end
 
-assemble_msg(Type, From, To, Payload, Ts) when is_integer(From), From > 0 ->
-    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, Ts);
-assemble_msg(Type, From, To, Payload, Ts) when is_list(From), From > 0 ->
-    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, Ts);
-assemble_msg(Type, From, To, Payload, Ts) when is_list(To), To > 0 ->
-    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, Ts);
-assemble_msg(Type, From, To, Payload, Ts) when is_integer(To), To > 0 ->
-    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, Ts);
-assemble_msg(Type, From, To, Payload, Ts) ->
-    MsgType = proplists:get_value(<<"msg_type">>, Payload),
-    [{<<"id">>, MsgType},
+assemble_msg(Type, From, To, Payload, MsgId) when is_integer(From), From > 0 ->
+    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, MsgId);
+assemble_msg(Type, From, To, Payload, MsgId) when is_list(From), From > 0 ->
+    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, MsgId);
+assemble_msg(Type, From, To, Payload, MsgId) when is_list(To), To > 0 ->
+    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, MsgId);
+assemble_msg(Type, From, To, Payload, MsgId) when is_integer(To), To > 0 ->
+    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, MsgId);
+assemble_msg(Type, From, To, Payload, MsgId) ->
+    Ts = imboy_dt:millisecond(),
+    [{<<"id">>, MsgId},
      {<<"type">>, Type},
      {<<"from">>, From},
      {<<"to">>, To},

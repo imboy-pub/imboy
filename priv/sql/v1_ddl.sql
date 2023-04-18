@@ -98,7 +98,6 @@ CREATE TABLE `user_denylist` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '归属用户ID',
   `denied_user_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '被列入名单的用户ID',
-  `remark` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
   `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_UserId_DeniedUserId` (`user_id`,`denied_user_id`)

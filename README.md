@@ -148,9 +148,13 @@ make dialyze
 代码格式工具
 get from https://github.com/sile/efmt/releases
 
+VERSION=0.14.1
+curl -L https://github.com/sile/efmt/releases/download/${VERSION}/efmt-${VERSION}.x86_64-unknown-linux-musl -o efmt
 chmod +x efmt
+./efmt
 
-make efmt
+./efmt -c src/websocket_logic.erl
+./efmt -w src/websocket_logic.erl
 ```
 
 

@@ -32,22 +32,15 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = imboy_hashids:uid_decode(To),
     NowTs = imboy_dt:millisecond(),
     From = imboy_hashids:uid_encode(CurrentUid),
-    Id = <<"af_", From/binary, "_", To/binary>>,
+    MsgId = <<"af_", From/binary, "_", To/binary>>,
     % ?LOG([is_binary(Payload), Payload]),
     % 存储消息
-    msg_s2c_ds:write_msg(CreatedAt, Id, Payload,
+    msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload,
         CurrentUid, ToId, NowTs),
-    Msg = [{<<"id">>, Id},
-        {<<"type">>, <<"S2C">>},
-        {<<"from">>, From},
-        {<<"to">>, To},
-        {<<"payload">>, Payload},
-        {<<"created_at">>, CreatedAt},
-        {<<"server_ts">>, NowTs}
-    ],
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId),
     % ?LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
-    message_ds:send_next(ToId, Id, jsone:encode(Msg, [native_utf8]), MsLi),
+    message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 
 -spec confirm_friend(CurrentUid::integer(),
@@ -85,7 +78,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         ToID, FromID, Remark2, [{<<"source">>, Source} | ToSetting], NowTs),
 
     % 因为是 ToID 通过API确认的，所以只需要给FromID 发送消息
-    Id = <<"afc_", From/binary, "_", To/binary>>,
+    MsgId = <<"afc_", From/binary, "_", To/binary>>,
     MsgType = proplists:get_value(<<"msg_type">>, Payload2),
     Payload3 = confirm_friend_resp(ToID, Remark1),
     Payload4 = [{<<"is_from">>, 1} | Payload3],
@@ -93,19 +86,14 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     Payload6 = [{<<"msg_type">>, MsgType} | Payload5],
 
     % 存储消息
-    msg_s2c_ds:write_msg(NowTs, Id, Payload6, CurrentUid, FromID, NowTs),
+    msg_s2c_ds:write_msg(NowTs, MsgId, Payload6, CurrentUid, FromID, NowTs),
 
-    Msg = [{<<"id">>, Id},
-        {<<"type">>, <<"S2C">>},
-        % 这里的需要对调，离线消息需要对调
-        {<<"from">>, To},
-        {<<"to">>, From},
-        {<<"payload">>, Payload6},
-        {<<"server_ts">>, NowTs}
-    ],
+    % 这里的From To 需要对调，离线消息需要对调
+    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload, MsgId),
+
     % ?LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
-    message_ds:send_next(FromID, Id, jsone:encode(Msg, [native_utf8]), MsLi),
+    message_ds:send_next(FromID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     {ok, FromID, Remark2, Source}.
 
 

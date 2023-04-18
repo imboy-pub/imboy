@@ -24,48 +24,48 @@
 
 
 %dtype 设备类型 web ios android macos windows等
--spec online(UID::any(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
-online(UID, Pid, DType, DID) ->
-    ?LOG(["user_logic/online/4", UID, Pid, DType, DID]),
-    % 把UID标记为online
-    chat_online:dirty_insert(UID, Pid, DType, DID),
-    % syn:register(?CHAT_SCOPE, UID, Pid,  #{did => DID, dtype => DType}),
-    % syn:register(?CHAT_SCOPE, {UID, DType}, Pid,  #{did => DID, dtype => DType}),
+-spec online(Uid::integer(), Pid::pid(), DType::binary(), DID :: binary()) -> ok.
+online(Uid, Pid, DType, DID) ->
+    ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
+    % 把Uid标记为online
+    chat_online:dirty_insert(Uid, Pid, DType, DID),
+    % syn:register(?CHAT_SCOPE, Uid, Pid,  #{did => DID, dtype => DType}),
+    % syn:register(?CHAT_SCOPE, {Uid, DType}, Pid,  #{did => DID, dtype => DType}),
     % 用异步队列实现 检查离线消息 等
-    user_server:cast_online(UID, Pid, DID),
+    user_server:cast_online(Uid, Pid, DID),
     ok.
 
 
--spec offline(UID :: any(), Pid :: pid(), DID :: binary()) -> ok.
-offline(UID, Pid, DID) ->
+-spec offline(Uid::integer(), Pid :: pid(), DID :: binary()) -> ok.
+offline(Uid, Pid, DID) ->
     chat_online:dirty_delete(Pid),
-    % syn:unregister(?CHAT_SCOPE, UID),
+    % syn:unregister(?CHAT_SCOPE, Uid),
     % 检查离线消息 用异步队列实现
-    user_server:cast_offline(UID, Pid, DID).
+    user_server:cast_offline(Uid, Pid, DID).
 
 
 % 设置用户websocket超时时间，默认60秒
-idle_timeout(_UID) ->
+idle_timeout(_Uid) ->
     60000.
 
 -spec is_online(binary() | integer() | list()) ->
           false | {pid(), binary(), any()}.
 %% 检查用户是否在线
-is_online(UID) when is_integer(UID) ->
-    is_online(integer_to_binary(UID));
-is_online(UID) when is_list(UID) ->
-    is_online(list_to_binary(UID));
-is_online(UID) ->
-    L1 = chat_online:lookup(UID),
-    case lists:keyfind(UID, 3, L1) of
-        {_, Pid, UID, _DType, DID} ->
-            {Pid, UID, DID};
+is_online(Uid) when is_integer(Uid) ->
+    is_online(integer_to_binary(Uid));
+is_online(Uid) when is_list(Uid) ->
+    is_online(list_to_binary(Uid));
+is_online(Uid) ->
+    L1 = chat_online:lookup(Uid),
+    case lists:keyfind(Uid, 3, L1) of
+        {_, Pid, Uid, _DType, DID} ->
+            {Pid, Uid, DID};
         false ->
             false
     end.
-    % case syn:lookup(?CHAT_SCOPE, UID) of
+    % case syn:lookup(?CHAT_SCOPE, Uid) of
     %     {Pid, #{did := DID}} ->
-    %         {Pid, UID, DID};
+    %         {Pid, Uid, DID};
     %     {_Pid, undefined} ->
     %         false;
     %     undefined ->
@@ -75,22 +75,22 @@ is_online(UID) ->
 
 -spec is_online(binary(), binary()) -> false | {pid(), binary(), any()}.
 %% 检查用户是否在线
-is_online(UID, ClientSystem) when is_integer(UID) ->
-    is_online(integer_to_binary(UID), ClientSystem);
-is_online(UID, ClientSystem) when is_list(UID) ->
-    is_online(list_to_binary(UID), ClientSystem);
-is_online(UID, ClientSystem) ->
-    L1 = chat_online:lookup(UID, ClientSystem),
-    case lists:keyfind(UID, 3, L1) of
-        {_, Pid, UID, _DType, DID} ->
-            {Pid, UID, DID};
+is_online(Uid, ClientSystem) when is_integer(Uid) ->
+    is_online(integer_to_binary(Uid), ClientSystem);
+is_online(Uid, ClientSystem) when is_list(Uid) ->
+    is_online(list_to_binary(Uid), ClientSystem);
+is_online(Uid, ClientSystem) ->
+    L1 = chat_online:lookup(Uid, ClientSystem),
+    case lists:keyfind(Uid, 3, L1) of
+        {_, Pid, Uid, _DType, DID} ->
+            {Pid, Uid, DID};
         false ->
             false
     end.
 
 
-mine_state(UID) ->
-    case user_setting_ds:chat_state_hide(UID) of
+mine_state(Uid) ->
+    case user_setting_ds:chat_state_hide(Uid) of
         true ->
             {<<"status">>, hide};
         false ->
@@ -100,10 +100,10 @@ mine_state(UID) ->
 
 % 获取用户在线状态
 online_state(User) ->
-    {<<"id">>, UID} = lists:keyfind(<<"id">>, 1, User),
-    case chat_online:lookup(UID) of
+    {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
+    case chat_online:lookup(Uid) of
         L1 when length(L1) > 0 ->
-            case user_setting_ds:chat_state_hide(UID) of
+            case user_setting_ds:chat_state_hide(Uid) of
                 true ->
                     % 既然是 hide 就不能够返回hide 状态给API
                     [{<<"status">>, offline} | User];
@@ -152,27 +152,27 @@ find_by_ids(Ids, Column) ->
     end.
 
 
--spec update(UID::any(), Field::binary(), list() | binary()) ->
+-spec update(Uid::any(), Field::binary(), list() | binary()) ->
     ok | {error, {integer(), binary(), Msg::binary()}}.
-update(UID, <<"sign">>, Val) ->
-    mysql_pool:update(<<"user">>, UID, <<"sign">>, Val);
-update(UID, <<"nickname">>, Val) ->
-    mysql_pool:update(<<"user">>, UID, <<"nickname">>, Val);
-update(UID, <<"avatar">>, Val) ->
-    mysql_pool:update(<<"user">>, UID, <<"avatar">>, Val);
+update(Uid, <<"sign">>, Val) ->
+    mysql_pool:update(<<"user">>, Uid, <<"sign">>, Val);
+update(Uid, <<"nickname">>, Val) ->
+    mysql_pool:update(<<"user">>, Uid, <<"nickname">>, Val);
+update(Uid, <<"avatar">>, Val) ->
+    mysql_pool:update(<<"user">>, Uid, <<"avatar">>, Val);
 
-update(UID, <<"region">>, Val) ->
-    mysql_pool:update(<<"user">>, UID, <<"region">>, Val);
+update(Uid, <<"region">>, Val) ->
+    mysql_pool:update(<<"user">>, Uid, <<"region">>, Val);
 
 % 性别 1 男  2 女  3 保密
-update(UID, <<"gender">>, <<"1">>) ->
-    mysql_pool:update(<<"user">>, UID, <<"gender">>, <<"1">>);
-update(UID, <<"gender">>, <<"2">>) ->
-    mysql_pool:update(<<"user">>, UID, <<"gender">>, <<"2">>);
-update(UID, <<"gender">>, <<"3">>) ->
-    mysql_pool:update(<<"user">>, UID, <<"gender">>, <<"3">>);
+update(Uid, <<"gender">>, <<"1">>) ->
+    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"1">>);
+update(Uid, <<"gender">>, <<"2">>) ->
+    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"2">>);
+update(Uid, <<"gender">>, <<"3">>) ->
+    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"3">>);
 
-update(_UID, _Field, _Val) ->
+update(_Uid, _Field, _Val) ->
     {error, {1, <<"">>, <<"Unsupported field">>}}.
 
 
