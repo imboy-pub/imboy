@@ -157,10 +157,12 @@ cast_offline(Uid, Pid, DID) ->
 -spec notice_friend(Uid::integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
     Column = <<"`to_user_id`">>,
-    case friend_ds:find_by_uid(Uid, Column) of
-        [] ->
+    case friend_repo:find_by_uid(Uid, Column) of
+        {ok, _, []} ->
             ok;
-        Friends ->
+        {ok, ColumnList, Rows} ->
+            Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, Row) ||
+                Row <- Rows],
             % ?LOG([State, Friends]),
             send_state_msg(Uid, State, Friends),
             ok

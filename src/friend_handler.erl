@@ -22,8 +22,6 @@ init(Req0, State0) ->
             confirm_friend(Req0, State);
         delete_friend ->
             delete_friend(Req0, State);
-        myfriend ->
-            myfriend(Req0, State);
         move ->
             move(Req0, State);
         information ->
@@ -101,10 +99,10 @@ find_transfer(User, Friend) ->
 %%% 我的好友，无好友分组的
 friend_list(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
+    % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
     Mine = user_logic:find_by_id(CurrentUid),
     MineState = user_logic:mine_state(CurrentUid),
-    Friend = friend_logic:friend_list(CurrentUid),
+    Friend = friend_ds:page_by_uid(CurrentUid),
     Data = friend_list_transfer([MineState | Mine], Friend),
     % ?LOG(Data),
     imboy_response:success(Req0, Data, "success.").
@@ -115,31 +113,6 @@ friend_list_transfer(User, Friends) ->
     % {<<"mine">>, User}
     % , {<<"friend">>, Friends}
     ].
-
-%%% 我的好友，带分组的
-myfriend(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
-    Mine = user_logic:find_by_id(CurrentUid),
-    MineState = user_logic:mine_state(CurrentUid),
-    Friend = friend_logic:category_friend(CurrentUid),
-    Group = group_logic:user_group(CurrentUid),
-    Data = myfriend_transfer([MineState | Mine], Friend, Group),
-    % ?LOG(Data),
-    imboy_response:success(Req0, Data, "success.").
-
-myfriend_transfer(User, Friend, Group) ->
-    [{<<"mine">>, imboy_hashids:replace_id(User)},
-     {<<"group">>, [imboy_hashids:replace_id(F) || F <- Group]},
-     {<<"friend">>,
-      [[{<<"id">>,
-         imboy_hashids:uid_encode(proplists:get_value(<<"id">>,
-                                                           GF))},
-        {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
-        {<<"list">>,
-         [imboy_hashids:replace_id(U) ||
-             U <- proplists:get_value(<<"list">>, GF)]}] ||
-          GF <- Friend]}].
 
 %%% 移动好友分组
 move(Req0, State) ->

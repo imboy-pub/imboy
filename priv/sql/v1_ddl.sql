@@ -85,6 +85,8 @@ CREATE TABLE `user_friend` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天朋友关系记录表（A请求B为朋友，B接受之后，系统要自动加入一条B请求A的记录并且A自动确认 user_id 是 user表的主键）';
 
 ALTER TABLE `user_friend` ADD UNIQUE INDEX `uk_FromUID_ToUID` (`from_user_id`, `to_user_id`);
+ALTER TABLE `user_friend` ADD INDEX `i_Status_FromUid_Cid` (`status`, `from_user_id`, `category_id`);
+
 
 CREATE TABLE `user_friend_category` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',

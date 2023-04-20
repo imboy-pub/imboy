@@ -21,7 +21,8 @@
 %% ------------------------------------------------------------------
 -spec page(Uid::integer(), Limit::integer(), Offset::integer()) -> mysql:query_result().
 page(Uid, Limit,  Offset) ->
-    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark">>,
+    Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
+    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark, u.gender, u.region,", Source/binary>>,
     Join1 = <<"inner join user as u on u.id = d.denied_user_id ">>,
     Join2 = <<"inner join user_friend as f on d.denied_user_id = f.to_user_id ">>,
     Where = <<"WHERE d.`user_id` = ? and f.from_user_id = ? LIMIT ? OFFSET ?">>,

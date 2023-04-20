@@ -41,7 +41,6 @@ get_routes() ->
         {"/friend/confirm", friend_handler, #{action => confirm_friend}},
         {"/friend/delete", friend_handler, #{action => delete_friend}},
         {"/friend/list", friend_handler, #{action => friend_list}},
-        {"/friend/myfriend", friend_handler, #{action => myfriend}},
         {"/friend/information", friend_handler, #{action => information}},
         {"/friend/find", friend_handler, #{action => find}},
         {"/friend/change_remark", friend_handler, #{action => change_remark}},

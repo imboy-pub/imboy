@@ -9,8 +9,7 @@
 -export([delete_friend/2]).
 -export([move_to_category/3]).
 -export([information/2]).
--export([category_friend/1]).
--export([friend_list/1]).
+
 
 -include_lib("imboy/include/log.hrl").
 
@@ -115,129 +114,23 @@ search(Uid) ->
     Info = FriendIDs,
     Info.
 
-
 move_to_category(CurrentUid, Uid, CategoryId) ->
     friend_repo:move_to_category(CurrentUid, Uid, CategoryId),
     ok.
-
 
 information(CurrentUid, Uid) ->
     ?LOG([CurrentUid, Uid]),
     Info = [],
     Info.
 
-
-friend_list(Uid) ->
-    Column = <<"`to_user_id`,`remark`,`setting`,`category_id`">>,
-    case friend_ds:find_by_uid(Uid, Column) of
-        [] ->
-            [];
-        Friends ->
-            FriendItems = [
-                {Id, {Remark, Cid, jsone:decode(S1, [{object_format, proplist}])}} || [
-                    {<<"to_user_id">>, Id},
-                    {<<"remark">>, Remark},
-                    {<<"setting">>, S1},
-                    {<<"category_id">>, Cid}] <- Friends],
-            % ?LOG(Friends),
-            Uids = [Id || {Id, _} <- FriendItems],
-            Users = user_logic:find_by_ids(Uids),
-            % 替换朋友备注信息
-            Users2 = [filter_friend({Id, Row}, FriendItems, false) ||
-                         [{<<"id">>, Id} | _] = Row <- Users],
-            % 获取用户在线状态
-            [user_logic:online_state(User) || {_Id, User} <- Users2]
-    end.
-
-
-category_friend(Uid) ->
-    Column = <<"`to_user_id`,`remark`,`setting`,`category_id`">>,
-    case friend_ds:find_by_uid(Uid, Column) of
-        [] ->
-            [];
-        Friends ->
-            FriendItems = [
-                {Id, {Remark, Cid, jsone:decode(S1, [{object_format, proplist}])}} || [
-                    {<<"to_user_id">>, Id},
-                    {<<"remark">>, Remark},
-                    {<<"setting">>, S1},
-                    {<<"category_id">>, Cid}] <- Friends],
-            % ?LOG(Friends),
-            Uids = [Id || {Id, _} <- FriendItems],
-            Users = user_logic:find_by_ids(Uids),
-            % 替换朋友备注信息
-            Users2 = [filter_friend({Id, Row}, FriendItems, true) ||
-                         [{<<"id">>, Id} | _] = Row <- Users],
-            % 获取用户在线状态
-            Users3 = [{Id, user_logic:online_state(User)} ||
-                         {Id, User} <- Users2],
-            % 把用户归并到相应的分组
-            Groups = friend_category_ds:find_by_uid(Uid),
-            [append_group_list(G, Users3) || G <- Groups]
-    end.
-
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-%% 把用户归并到相应的分组
-append_group_list(Group, Users) ->
-    {<<"id">>, Cid} = lists:keyfind(<<"id">>, 1, Group),
-    List = [User || {Id, User} <- Users, Cid == Id],
-    [{<<"list">>, List} | Group].
-
-
-%% 替换朋友备注信息
-filter_friend({Uid, Row}, FriendItems, Replace) ->
-    case lists:keyfind(Uid, 1, FriendItems) of
-        {Uid, {<<>>, Cid, null}} ->
-            Row2 = [{<<"remark">>, <<"">>} | Row],
-            Row3 = [{<<"source">>, <<"">>} | Row2],
-            Row4 = [{<<"is_from">>, 0} | Row3],
-            {Cid, Row4};
-        {Uid, {<<>>, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
-            Source = proplists:get_value(<<"source">>, Setting, <<"">>),
-            Row2 = [{<<"remark">>, <<"">>} | Row],
-            Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"is_from">>, Isfrom} | Row3],
-            {Cid, Row4};
-        {Uid, {Remark, Cid, null}} ->
-            Row2 = [{<<"remark">>, Remark} | Row],
-            Row3 = [{<<"source">>, <<"">>} | Row2],
-            Row4 = [{<<"is_from">>, 0} | Row3],
-            {Cid, Row4};
-        {Uid, {<<>>, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
-            Source = proplists:get_value(<<"source">>, Setting, <<"">>),
-            Row2 = [{<<"remark">>, <<"">>} | Row],
-            Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"is_from">>, Isfrom} | Row3],
-            {Cid, Row4};
-        {Uid, {Remark, Cid, Setting}} when Replace =:= true ->
-            Row1 = lists:keyreplace(<<"account">>,
-                                    1,
-                                    Row,
-                                    {<<"account">>, Remark}),
-            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
-            Source = proplists:get_value(<<"source">>, Setting, <<"">>),
-            Row2 = [{<<"remark">>, Remark} | Row1],
-            Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"is_from">>, Isfrom} | Row3],
-            {Cid, Row4};
-        {Uid, {Remark, Cid, Setting}} ->
-            Isfrom = proplists:get_value(<<"is_from">>, Setting, 0),
-            Source = proplists:get_value(<<"source">>, Setting, <<"">>),
-            Row2 = [{<<"remark">>, Remark} | Row],
-            Row3 = [{<<"source">>, Source} | Row2],
-            Row4 = [{<<"is_from">>, Isfrom} | Row3],
-            {Cid, Row4}
-    end.
-
 
 friend_ids(Uid) ->
     Column = <<"`to_user_id`">>,
-    case friend_ds:find_by_uid(Uid, Column) of
+    case friend_repo:find_by_uid(Uid, Column) of
         [] ->
             [];
         Friends ->
