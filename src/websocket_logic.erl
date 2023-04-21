@@ -26,7 +26,8 @@ c2c(Id, CurrentUid, Data) ->
     ToId = imboy_hashids:uid_decode(To),
     % CurrentUid = imboy_hashids:uid_decode(From),
     ?LOG([CurrentUid, ToId, Data]),
-    IsFriend = friend_ds:is_friend(CurrentUid, ToId),
+    % 判断当前用户是否是 ToId 用户的朋友
+    IsFriend = friend_ds:is_friend(ToId, CurrentUid),
     % 判断当前用户是否在 ToId 的黑名单里面
     InDenylist = user_denylist_logic:in_denylist(ToId, CurrentUid),
     case {IsFriend, InDenylist} of
