@@ -12,7 +12,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 -include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/kv.hrl").
+-include_lib("imboy/include/cache.hrl").
 
 %% ------------------------------------------------------------------
 %% api

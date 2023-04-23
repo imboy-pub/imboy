@@ -4,6 +4,8 @@
 %%%
 
 -include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/chat.hrl").
+
 
 -export([assemble_s2c/3]).
 -export([assemble_msg/5]).
@@ -17,19 +19,21 @@
 
 send_next(ToUid, MsgId, Msg, MsLi) ->
     send_next(<<"">>, ToUid, MsgId, Msg, MsLi).
+
 % 如果消息一直没有被客户端确认，
 % 那么它将按照 MillisecondList 定义的频率投递 length(MillisecondList) 次，
 % 除非投递期间收到客户端确认消息（ CLIENT_ACK,type,msgid,did ）才终止投递；
 % 也就是说，消息会按特地平率至少投递一次，至多投递 length(MillisecondList) 次。
 -spec send_next(
-    CurrentDID::binary(),
-    ToUid :: integer(),
-   MsgId :: binary(),
-   Msg :: list(),
-   MillisecondList :: list()) -> ok.
-send_next(_CurrentDID, _ToUid, _MsgId, _Msg, []) ->
+    binary(),
+    integer(),
+    binary(),
+    list(),
+    MillisecondList :: list()
+) -> ok.
+send_next(_ToDID, _ToUid, _MsgId, _Msg, []) ->
     ok;
-send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
+send_next(ToDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
     % #Ref<0.717641544.2272788481.230829>
     % (imboy@127.0.0.1)2> flush().
@@ -38,22 +42,26 @@ send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg}
     % to Dest after Time milliseconds.
-    TimerRefList = [{Uid, DID, erlang:start_timer(
+    TimerRefList = [{DID, erlang:start_timer(
         Millisecond,
         ToPid,
-        {MLTail, {Uid, DID, MsgId}, Msg}
+        {MLTail, {ToUid, DID, MsgId}, Msg}
     )} ||
-        {_, ToPid, Uid, _DType, DID} <- chat_online:lookup(ToUid),
-        is_process_alive(ToPid), CurrentDID /= DID],
-    case [Millisecond, TimerRefList] of
-        [0, _] ->
+        {ToPid, {_Dtype, DID}} <- imboy_session:list_by_uid(ToUid)
+            % , is_process_alive(ToPid)
+            , ToDID /= DID
+    ],
+    case TimerRefList of
+        [] ->
             ok;
-        [_, TimerRefList] ->
+        _TimerRefList ->
             % 第二次发送的时候，记录到缓存系统；
             % 再 Millisecond 时间内 ack 之后，就撤销 ref 并且清理缓存
             % timeout 的时候判断 Ref 有效才 reply
-            [imboy_kv:set({Uid, DID, MsgId}, TimerRef, Millisecond + 1) || {Uid, DID, TimerRef} <- TimerRefList]
+            [imboy_cache:set({ToUid, DID, MsgId}, TimerRef, Millisecond + 1) ||
+                {DID, TimerRef} <- TimerRefList]
     end,
+    ?LOG(['Millisecond', Millisecond, TimerRefList]),
     ok.
 
 %%% 系统消息 [500 -- 1000) 系统消息

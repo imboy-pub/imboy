@@ -16,18 +16,20 @@
 %%websocket 握手
 init(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
+    % DID device id
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
-    HeaderAuth = cowboy_req:header(<<"authorization">>, Req0, undefined),
+    Auth = cowboy_req:header(<<"authorization">>, Req0, undefined),
     % [<<"sip">>,<<"text">>] = Subprotocols
-    Subprotocols = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
+    SubPt = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
-    % ?LOG([Env, DID, DType, HeaderAuth, Subprotocols]),
+    % ?LOG([Env, DID, DType, Auth, SubPt]),
     Opt0 = #{
         num_acceptors => infinity,
         max_connections => infinity,
         max_frame_size => 1048576,  % 1MB
-        idle_timeout => 120000  %  % Cowboy关闭连接空闲120秒 默认值为 60000
+        % Cowboy关闭连接空闲120秒 默认值为 60000
+        idle_timeout => 120000
     },
     State1 = State0#{
         dtype => DType,
@@ -39,32 +41,32 @@ init(Req0, State0) ->
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};
         _ ->
-            % ?LOG([Subprotocols]),
-            case websocket_ds:check_subprotocols(Subprotocols, Req0) of
+            % ?LOG([SubPt]),
+            case websocket_ds:check_subprotocols(SubPt, Req0) of
                 {ok, Req1} ->
                     {ok, Req1, State1};
                 {cowboy_websocket, Req1} ->
                     % ?LOG([State1]),
-                    websocket_ds:auth(HeaderAuth, Req1, State1, Opt0)
+                    websocket_ds:auth(Auth, Req1, State1, Opt0)
             end
     end.
 
-
 %%连接初始 onopen
 websocket_init(State) ->
-    CurrentPid = self(),
     case maps:find(error, State) of
         {ok, Code} ->
-            Msg = [{<<"type">>, <<"error">>},
-                   {<<"code">>, Code},
-                   {<<"server_ts">>, imboy_dt:millisecond()}],
+            Msg = [
+                {<<"type">>, <<"error">>},
+                {<<"code">>, Code},
+                {<<"server_ts">>, imboy_dt:millisecond()}
+            ],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
             % 用户上线
             DID = maps:get(did, State, <<"">>),
             DType = maps:get(dtype, State, <<"">>),
-            user_logic:online(CurrentUid, CurrentPid, DType, DID),
+            user_logic:online(CurrentUid, DType, self(), DID),
             {ok, State, hibernate}
     end.
 
@@ -109,7 +111,8 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     of
         [Type, MsgId, DID] ->
             ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}]),
-            case imboy_kv:get({integer_to_binary(CurrentUid) , DID, MsgId}) of
+            % 缓存在 message_ds:send_next/5 中设置
+            case imboy_cache:get({CurrentUid , DID, MsgId}) of
                 undefined ->
                     ok;
                 {ok, TimerRef} ->
@@ -221,8 +224,8 @@ terminate(Reason, _Req, State) ->
     case maps:find(current_uid, State) of
         {ok, Uid} when is_integer(Uid)  ->
             DID = maps:get(did, State, <<"">>),
-            user_logic:offline(Uid, self(), DID);
+            user_logic:offline(Uid, self(), DID),
+            ok;
         error ->
-            chat_online:dirty_delete(self())
-    end,
-    ok.
+            ok
+    end.

@@ -7,7 +7,7 @@
 -include_lib("imboy/include/log.hrl").
 
 
+% group_logic:group_id_list_by_uid(1).
 -spec user_groupid(integer()) -> list().
-
 user_groupid(Uid) ->
     group_member_repo:find_by_uid(Uid, <<"distinct `group_id`">>).

@@ -5,16 +5,10 @@
 -export([stop/1]).
 
 -include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/chat.hrl").
 
 
 start(_Type, _Args) ->
-    %%启动存储pid的树据 可以采用 ets 表格处理 但是为了方便集群处理 我采用的mnesia
-    chat_online:init(),
-    syn:add_node_to_scopes([
-        ?CHAT_SCOPE,
-        ?GROUP_SCOPE,
-        ?ROOM_SCOPE]),
+    imboy_session:init(),
 
     % begin handler
     Routes = imboy_router:get_routes(),
@@ -23,29 +17,32 @@ start(_Type, _Args) ->
     {ok, Port} = application:get_env(imboy, http_port),
 
     {ok, _} = cowboy:start_clear(imboy_listener,
-        [{port, Port}],
+        [
+            {port, Port}
+        ]
 
-    % PrivDir = code:priv_dir(imboy),
-    % {ok, _} = cowboy:start_tls(imboy_listener,
-    %     [
-    %         {port, Port}
-    %         , {cacertfile, PrivDir ++ "/ssl/cowboy-ca.crt"}
-    %         , {certfile, PrivDir ++ "/ssl/server.crt"}
-    %         , {keyfile, PrivDir ++ "/ssl/server.key"}
-    %     ],
+        % PrivDir = code:priv_dir(imboy),
+        % {ok, _} = cowboy:start_tls(imboy_listener,
+        %     [
+        %         {port, Port}
+        %         , {cacertfile, PrivDir ++ "/ssl/cowboy-ca.crt"}
+        %         , {certfile, PrivDir ++ "/ssl/server.crt"}
+        %         , {keyfile, PrivDir ++ "/ssl/server.key"}
+        %     ],
 
-        #{
+        , #{
             middlewares => [
-                cowboy_router,
-                % verify_middleware,
-                auth_middleware,
-                cowboy_handler
+                cowboy_router
+                % , verify_middleware
+                , auth_middleware
+                , cowboy_handler
             ],
             % metrics_callback => do_metrics_callback(),
             stream_handlers => [
-                % cowboy_metrics_h,
-                cowboy_compress_h,
-                cowboy_stream_h],
+                cowboy_compress_h
+                , cowboy_stream_h
+                % , cowboy_metrics_h
+            ],
             env => #{dispatch => Dispatch}
         }
     ),

@@ -2,10 +2,19 @@ PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
 PROJECT_VERSION = 0.1.0
 
+
+include include/deps.mk
+
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
-LOCAL_DEPS = ssl mnesia
+LOCAL_DEPS = kernel stdlib mnesia sasl ssl
+
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids depcache recon observer_cli gen_smtp syn sync qdate throttle eredis
+DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle eredis
+
+DEPS += depcache
+DEPS += syn
+DEPS += khepri
+
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = bbmustache relx
@@ -16,7 +25,6 @@ DEP_PLUGINS = cowboy
 # TEST_DEPS = sync
 
 SP = 4
-include include/deps.mk
 
 # http://erlang.org/doc/apps/edoc/chapter.html#Introduction
 DOC_DEPS = edown

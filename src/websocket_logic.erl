@@ -100,9 +100,9 @@ c2c_revoke(Id, Data, Type) ->
            {<<"server_ts">>, NowTs}],
     % 判断是否在线
     case user_logic:is_online(ToId) of
-        {ToPid, _UidBin, _ClientSystemBin} ->
+        true ->
             Msg2 = jsone:encode([{<<"type">>, Type} | Msg], [native_utf8]),
-            erlang:start_timer(0, ToPid, Msg2),
+            imboy_session:publish(ToId, Msg2),
             ok;
         false ->  % 对端离线处理
             FromId = imboy_hashids:uid_decode(From),

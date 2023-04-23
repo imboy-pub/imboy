@@ -95,7 +95,8 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     Msg = message_ds:assemble_msg(<<"S2C">>, <<"">>, ToUid, Payload, MsgType),
 
     MsLi = [0, 5000, 10000],
-    message_ds:send_next(DID, Uid, MsgType, jsone:encode(Msg, [native_utf8]), MsLi),
+    Msg2 = jsone:encode(Msg, [native_utf8]),
+    message_ds:send_next(DID, Uid, MsgType, Msg2, MsLi),
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(Uid) of
         false ->
@@ -160,41 +161,27 @@ notice_friend(Uid, State) ->
     case friend_repo:find_by_uid(Uid, Column) of
         {ok, _, []} ->
             ok;
-        {ok, ColumnList, Rows} ->
-            Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, Row) ||
-                Row <- Rows],
-            % ?LOG([State, Friends]),
-            send_state_msg(Uid, State, Friends),
+        {ok, _ColumnList, Rows} ->
+            % ?LOG([State, Rows]),
+            ToUidLi = [ToUid || [ToUid] <- Rows],
+            send_state_msg(Uid, State, ToUidLi),
             ok
     end.
 
 
 -spec send_state_msg(any(), user_chat_state(), list()) -> ok.
-send_state_msg(_FromId, _State, []) ->
-    ok;
+send_state_msg(_FromId, _State, []) -> ok;
 % 给在线好友发送上线消息
-send_state_msg(FromId, State, [[{<<"to_user_id">>, ToUid}] | Tail]) ->
+send_state_msg(FromId, State, [ToUid | Tail]) ->
     % ?LOG([FromId, State, ToUid, Tail]), % echo [1,<<"3">>,<0.892.0>]
-    case chat_online:lookup(ToUid) of
-        [] ->
-            ok;
-        List ->
-            [send_msg(State, FromId, ToUid2, ToPid2) ||
-                {_, ToPid2, ToUid2, _DType, _DID} <- List]
-    end,
-    send_state_msg(FromId, State, Tail).
-
--spec send_msg(State::binary(), From::integer(), To::binary(), ToPid::pid())
-    ->ok.
-send_msg(State, From, To, ToPid) ->
-    ?LOG([State, From, To, ToPid]),
     % 用户在线状态变更
     % State: <<"online">> | <<"offline">> | <<"hide">>.
-    Payload = [
-        {<<"msg_type">>, State}
-    ],
-    From2 = imboy_hashids:uid_encode(From),
-    To2 = imboy_hashids:uid_encode(To),
-    Msg = message_ds:assemble_msg(<<"S2C">>, From2, To2, Payload, <<"">>),
-    erlang:start_timer(1, ToPid, jsone:encode(Msg, [native_utf8])),
-    ok.
+    Msg = jsone:encode(message_ds:assemble_msg(
+        <<"S2C">>,
+        imboy_hashids:uid_encode(FromId),
+        imboy_hashids:uid_encode(ToUid),
+        [{<<"msg_type">>, State}],
+        <<"">>
+    ), [native_utf8]),
+    imboy_session:publish(ToUid, Msg),
+    send_state_msg(FromId, State, Tail).

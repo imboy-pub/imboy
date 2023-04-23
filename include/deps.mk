@@ -33,10 +33,13 @@ dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 
 # Recon 希望成为一套可用于生产环境的工具，用于诊断 Erlang 问题或安全地检查生产环境。
 dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.1
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
+
+dep_khepri = hex 0.7.0
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
+
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
 dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.7.0
 # bbmustache 一个无逻辑的模板。 deps by relx

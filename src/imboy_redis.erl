@@ -1,6 +1,6 @@
 -module(imboy_redis).
 
--include_lib("imboy/include/kv.hrl").
+-include_lib("imboy/include/cache.hrl").
 -include_lib("imboy/include/log.hrl").
 
 -export([geoadd/4, zrem/2, georadius/6]).

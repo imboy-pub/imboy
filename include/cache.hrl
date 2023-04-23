@@ -1,6 +1,6 @@
 
 % type depcache_server() :: pid() | atom().
--define (DEPCACHE_SERVER, depcache_imboy).
+-define (DEPCACHE_SERVER, imboy_cache).
 
 %% Some standard periods in seconds
 -define(MINUTE,     60).

@@ -36,7 +36,7 @@ init([]) ->
 
     % KVProps default is [{depcache_memory_max, 100}],
     {ok, KVProps} = application:get_env(imboy, depcache),
-    IMBoyKV = {imboy_kv, {imboy_kv, start_link, [KVProps]},
+    IMBoyKV = {imboy_cache, {imboy_cache, start_link, [KVProps]},
             permanent,
             5000,
             worker, dynamic},

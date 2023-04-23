@@ -1,0 +1,160 @@
+-module(imboy_session).
+%%%
+% imboy 用户websocket会话 模块
+% imboy user websocket session module
+% 计划对 https://github.com/ostinelli/syn 封装
+%%%
+
+-include_lib("stdlib/include/qlc.hrl").
+-include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/chat.hrl").
+
+%% API
+% for user
+-export([init/0, join/4, leave/2]).
+-export([publish/2, publish/3]).
+-export([count_user/0, count_user/1, count/0]).
+-export([list_by_uid/1, list_by_limit/1]).
+
+-export([is_online/2]).
+
+% for group
+-export([group_online/4, group_leave/2]).
+-export([group_publish/2, group_publish/3]).
+
+
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
+init() ->
+    % ok.
+    syn:add_node_to_scopes([
+        ?CHAT_SCOPE
+        , ?GROUP_SCOPE
+        , ?ROOM_SCOPE
+    ]),
+    ok.
+
+-spec join(integer(), binary(), pid(), binary()) ->
+    ok | {error, Reason :: term()}.
+join(Uid, DType, Pid, DID) ->
+    syn:join(?CHAT_SCOPE, Uid, Pid, {DType, DID}),
+    ok.
+
+-spec leave(integer(), pid()) ->
+    ok | {error, Reason :: term()}.
+leave(Uid, Pid) ->
+    syn:leave(?CHAT_SCOPE, Uid, Pid).
+
+
+% 在线用户数量统计，一个用户在多个不同的设备类型登录，算一个
+-spec count_user() -> non_neg_integer().
+count_user() ->
+    syn:group_count(?CHAT_SCOPE).
+
+% 用户在线设备统计
+-spec count_user(integer()) -> non_neg_integer().
+count_user(Uid) ->
+    syn:member_count(?CHAT_SCOPE, Uid).
+
+% 所有用户在线设备统计
+-spec count() -> non_neg_integer().
+count() ->
+    Scope = ?CHAT_SCOPE,
+    case syn_backbone:get_table_name(syn_pg_by_name, Scope) of
+        undefined ->
+            error({invalid_scope, Scope});
+        TableByName ->
+            DuplicatedGroups = ets:select(TableByName, [{
+                {{'$1', '_'}, '_', '_', '_', '_'},
+                [],
+                ['$1']
+            }]),
+            length(DuplicatedGroups)
+            % DuplicatedGroups
+            % ordsets:from_list(DuplicatedGroups)
+    end.
+
+-spec list_by_limit(integer() | error) -> list().
+list_by_limit(error) ->
+    [
+        % {<<"tips">>, "Limit参数有误"}
+    ];
+list_by_limit(Limit) ->
+    Scope = ?CHAT_SCOPE,
+    case syn_backbone:get_table_name(syn_pg_by_name, Scope) of
+        undefined ->
+            error({invalid_scope, Scope});
+        TableByName ->
+            % {{Uid, Pid}, {DType, DID}, Nanosecond, Ref, Node}
+            case ets:select(TableByName, [{ '$1', [], ['$1']}], Limit) of
+                '$end_of_table' ->
+                    [];
+                {Li, '$end_of_table'} ->
+                    Li;
+                {Li, {TableByName, _, _, _, _, _, _, _}} ->
+                    Li
+            end
+    end.
+
+-spec list_by_uid(integer()) -> list().
+list_by_uid(Uid) ->
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    syn:members(?CHAT_SCOPE, Uid).
+
+-spec is_online(integer(), binary()) -> boolean().
+is_online(Uid, DType) ->
+    Li1 = list_by_uid(Uid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    Li2 = [DType1 || {_P, {DType1, _DID}} <- Li1, DType1 == DType],
+    lists:member(DType, Li2).
+
+publish(Uid, Msg) ->
+    publish(Uid, Msg, 0).
+% Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
+-spec publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
+publish(Uid, Msg, Delay) ->
+    Members = syn:members(?CHAT_SCOPE, Uid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    do_publish(Members, Msg, Delay).
+
+
+-spec group_online(integer(), pid(), binary(), list()) ->
+    ok | {error, Reason :: term()}.
+group_online(_Uid, _DType, _Pid, []) ->
+    ok;
+group_online(Uid, DType, Pid, [Gid | Tail]) ->
+    syn:join(?GROUP_SCOPE, Gid, Pid, #{uid=>Uid, dtype=>DType}),
+    group_online(Uid, DType, Pid, Tail).
+
+-spec group_leave(list(), pid()) ->
+    ok | {error, Reason :: term()}.
+group_leave([], _Pid) ->
+    ok;
+group_leave([Gid | Tail], Pid) ->
+    syn:leave(?GROUP_SCOPE, Gid, Pid),
+    group_leave(Tail, Pid).
+
+
+group_publish(Gid, Msg) ->
+    group_publish(Gid, Msg, 0).
+% Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
+-spec group_publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
+group_publish(Gid, Msg, Delay) ->
+    Members = syn:members(?GROUP_SCOPE, Gid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    do_publish(Members, Msg, Delay).
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+-spec do_publish(list(), term(), non_neg_integer()) ->
+    {ok, non_neg_integer()}.
+do_publish(Members, Message, Delay) ->
+    lists:foreach(fun({Pid, _Meta}) ->
+        % Pid ! Message
+        % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
+        erlang:start_timer(Delay, Pid, Message)
+    end, Members),
+    {ok, length(Members)}.
