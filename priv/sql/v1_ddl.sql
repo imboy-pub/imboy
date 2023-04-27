@@ -57,6 +57,7 @@ CREATE TABLE `user_device` (
   `login_count` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '登陆次数',
   `last_login_ip` varchar(40) NOT NULL DEFAULT '' COMMENT '最后登陆IP',
   `last_login_at` bigint(20) DEFAULT NULL COMMENT '最后登录UTC时间',
+  `last_active_at` bigint DEFAULT '0' COMMENT '最近活跃时间',
   `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态: -1 删除  0 禁用  1 启用',
   `created_at` bigint(20) DEFAULT NULL COMMENT '创建记录UTC时间',
   PRIMARY KEY (`id`),

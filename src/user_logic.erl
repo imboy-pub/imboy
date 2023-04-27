@@ -31,6 +31,8 @@ online(Uid, DType, Pid, DID) ->
     GidList = group_ds:user_join_ids(Uid),
     imboy_session:group_online(Uid, DType, Pid, GidList),
 
+    gen_server:cast(user_server, {ws_online, Uid, DType, DID}),
+
     % 用异步队列实现 检查离线消息 等
     user_server:cast_online(Uid, Pid, DID),
     ok.

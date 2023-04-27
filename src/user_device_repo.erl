@@ -6,6 +6,30 @@
 -export([save/4]).
 -export([login_count/2]).
 -export([device_name/2]).
+-export([delete/2]).
+-export([update_by_did/4]).
+-export([count_by_uid/1, page/3]).
+
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
+
+-spec page(Uid::integer(), Limit::integer(), Offset::integer()) -> mysql:query_result().
+page(Uid, Limit,  Offset) ->
+    Column = <<"device_id, device_name, device_type, last_active_at,device_vsn">>,
+    Where = <<"WHERE `status` = ? and `user_id` = ?">>,
+
+    Sql = <<"SELECT ", Column/binary, " FROM `user_device` ",
+        Where/binary, " ORDER BY `last_active_at` desc LIMIT ? OFFSET ?">>,
+    % ?LOG([Sql, Uid, Limit, Offset]),
+    mysql_pool:query(Sql, [1, Uid, Limit, Offset]).
+
+count_by_uid(Uid) ->
+    % use index uk_UserId_DeniedUserId
+    Sql = <<"SELECT count(*) as count FROM `user_device`
+        WHERE `status` = ? and `user_id` = ?">>,
+    {ok,[<<"count">>],[[Count]]} = mysql_pool:query(Sql, [1, Uid]),
+    Count.
 
 -spec device_name(integer(), binary()) -> binary().
 % user_device_repo:device_name(1, <<"3f039a2b4724a5b7">>).
@@ -32,11 +56,14 @@ login_count(Uid, DID) ->
             0
     end.
 
+-spec delete(integer(), binary()) -> ok.
+delete(Uid, DID) ->
+    Sql = <<"DELETE FROM `user_device`
+        WHERE `status` = ? AND `user_id` = ? AND `device_id` = ?">>,
+    mysql_pool:query(Sql, [1, Uid, DID]),
+    ok.
 
--spec save(Now :: integer(),
-           Uid :: integer(),
-           DID :: binary(),
-           PostVals :: list()) -> ok.
+-spec save(integer(), integer(), binary(), list()) -> ok.
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
@@ -45,25 +72,38 @@ save(_Now, _Uid, _DID, _PostVals) ->
     % 无设备ID登录，无需记录设备信息
     ok.
 
+-spec update_by_did(integer(), binary(), binary(), list()) -> ok.
+update_by_did(Uid, DID, Set, SetArgs) ->
+    % 更新登录次数，最近登录时间、IP
+    Sql = <<"UPDATE `user_device` SET ", Set/binary
+        , " WHERE `status` = ? AND `user_id` = ? AND `device_id` = ?">>,
+    SetArgs2 = SetArgs ++ [
+        <<"1">>
+        , Uid
+        , DID
+    ],
+    mysql_pool:execute(Sql, SetArgs2).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec save(Now :: integer(),
-           Uid :: integer(),
-           PostVals :: list(),
-           DID :: binary(),
-           LoginCount :: integer()) -> ok.
+-spec save(integer(), integer(), list(), binary(), integer()) -> ok.
 save(Now, Uid, PostVals, DID, LoginCount)
   when bit_size(DID) > 0, LoginCount > 0 ->
     % 更新登录次数，最近登录时间、IP
     Ip = proplists:get_value(<<"ip">>, PostVals, <<"">>),
     Sql = <<"UPDATE `user_device` SET `login_count` = ?,
-        `last_login_ip` = ?,`last_login_at` = ?
+        `last_login_ip` = ?, `last_login_at` = ?
         WHERE `status` = ? AND `user_id` = ? AND `device_id` = ?">>,
-    mysql_pool:execute(Sql,
-                       [LoginCount + 1, Ip, Now, <<"1">>, Uid, DID]);
+    mysql_pool:execute(Sql, [
+        LoginCount + 1
+        , Ip
+        , Now
+        , <<"1">>
+        , Uid
+        , DID
+    ]);
 save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     % 第一次登陆记录设备信息
     DeviceType = proplists:get_value(<<"cos">>, PostVals, <<"">>),

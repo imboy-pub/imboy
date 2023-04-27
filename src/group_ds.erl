@@ -8,27 +8,26 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ------------------------------------------------------------------
+%% api
+%% ------------------------------------------------------------------
 
 % 获取用户加入的群组ID
 % Uid = 1, group_ds:user_join_ids(Uid).
 -spec user_join_ids(integer()) -> list().
 user_join_ids(Uid) ->
     Key = {user_join_ids, Uid},
-    Val = imboy_cache:get(Key),
-    user_join_ids(Val, Key, Uid).
-
-user_join_ids({ok, List}, _K, _Uid) ->
-    List;
-user_join_ids(undefined, Key, Uid) ->
-    Column = <<"`group_id`">>,
-    case group_member_repo:find_by_uid(Uid, Column) of
-        {ok, _ColumnList, []} ->
-            [];
-        {ok, _ColumnList, Rows} ->
-            List = lists:flatten(Rows),
-            imboy_cache:set(Key, List, 864000),
-            List
-    end.
+    Fun = fun() ->
+        Column = <<"`group_id`">>,
+        case group_member_repo:find_by_uid(Uid, Column) of
+            {ok, _ColumnList, []} ->
+                [];
+            {ok, _ColumnList, Rows} ->
+                lists:flatten(Rows)
+        end
+    end,
+    % 缓存1天
+    imboy_cache:memo(Fun, Key, 86400).
 
 
 -spec check_avatar(list()) -> list().
@@ -46,3 +45,7 @@ check_avatar(Group) ->
         {<<"avatar">>, _Aaatar} ->
             Group
     end.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% -------------------------------------------------------------------

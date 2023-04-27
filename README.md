@@ -503,8 +503,7 @@ end).
 ```
 imboy_session:join(1, <<"ios">>, spawn(fun() -> receive _ -> ok end end), <<"did11">>).
 imboy_session:join(1, <<"andriod">>, spawn(fun() -> receive _ -> ok end end), <<"did12">>).
-imboy_session:join(1, <<"macos">>, self(), <<"did13">>).
-
+imboy_session:join(1, <<"macos">>, self(), <<"3f039a2b4724a5b7">>).
 
 imboy_session:join(2, <<"ios">>, spawn(fun() -> receive _ -> ok end end), <<"did21">>).
 imboy_session:join(2, <<"andriod">>, spawn(fun() -> receive _ -> ok end end), <<"did22">>).

@@ -14,7 +14,7 @@
 -export([init/0, join/4, leave/2]).
 -export([publish/2, publish/3]).
 -export([count_user/0, count_user/1, count/0]).
--export([list_by_uid/1, list_by_limit/1]).
+-export([list_by_uid/1, list_by_limit/1, online_dids/1]).
 
 -export([is_online/2]).
 
@@ -113,6 +113,13 @@ is_online(Uid, {did, DID}) ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     Li2 = [DID1 || {_P, {_DType1, DID1}} <- Li1, DID1 == DID],
     lists:member(DID, Li2).
+
+% 用户在线设备ID列表
+-spec online_dids(integer()) -> list().
+online_dids(Uid) ->
+    Li1 = list_by_uid(Uid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    [DID1 || {_P, {_DType1, DID1}} <- Li1].
 
 publish(Uid, Msg) ->
     publish(Uid, Msg, 0).

@@ -4,9 +4,9 @@
 % user_denylist related operations are put in this module, repository module
 %%%
 
--export ([add/3, remove/2]).
--export ([count_by_uid/1, in_denylist/2]).
--export([page/3]).
+-export([add/3, remove/2]).
+-export([in_denylist/2]).
+-export([count_by_uid/1, page/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").

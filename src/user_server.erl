@@ -45,6 +45,7 @@ init([]) ->
     {ok, []}.
 
 
+% gen_server:call是同步的，gen_server:cast是异步的
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 handle_call(Request, From, State) ->
@@ -72,6 +73,14 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     user_device_repo:save(Now, Uid2, DID, PostVals),
     % 记录设备信息 END
     {noreply, State, hibernate};
+% 用户登录成功后的逻辑处理
+handle_cast({ws_online, Uid, DType, DID}, State) ->
+    ?LOG([handle_cast, ws_online, Uid, DType, DID, State]),
+    % 更新 最近活跃时间
+    Set = <<"`last_active_at` = ?">>,
+    SetArgs = [imboy_dt:millisecond()],
+    user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
+    {noreply, State, hibernate};
 
 handle_cast({notice_friend, Uid, ToState}, State) ->
     ?LOG([notice_friend, Uid, ToState]),
@@ -83,7 +92,7 @@ handle_cast({offline, Uid, _Pid, DID}, State) ->
     {noreply, State, hibernate};
 handle_cast({online, Uid, Pid, DID}, State) ->
     ?LOG([online, Uid, Pid, State, DID]),
-    DName = user_device_repo:device_name(Uid, DID),
+    DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
     MsgType = <<"logged_another_device">>,
     Payload = [

@@ -63,6 +63,7 @@ do_login(Req0) ->
         {ok, Data} ->
             % 检查消息 用异步队列实现
             Uid = proplists:get_value(<<"uid">>, Data),
+            % gen_server:call是同步的，gen_server:cast是异步的
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
             imboy_response:success(Req0, [{<<"setting">>, Setting} | Data], "success.");

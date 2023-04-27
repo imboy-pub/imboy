@@ -33,6 +33,10 @@ get_routes() ->
         {"/user/setting", user_handler, #{action => setting}},
         {"/user/credential", user_handler, #{action => credential}},
 
+        {"/user_device/page", user_device_handler, #{action => page}},
+        {"/user_device/change_name", user_device_handler, #{action => change_name}},
+        {"/user_device/delete", user_device_handler, #{action => delete}},
+
         {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
         {"/location/makeMyselfUnvisible", location_handler, #{action => make_myself_unvisible}},
         {"/location/peopleNearby", location_handler, #{action => people_nearby}},
