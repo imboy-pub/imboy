@@ -38,7 +38,8 @@ online(Req0, _State) ->
     % ?LOG(Res),
     List2 = case maps:get(type, Res) of
         <<"list">> ->
-            #{limit := Limit} = cowboy_req:match_qs([{limit, [], 10}], Req0),
+            #{limit := Limit} = cowboy_req:match_qs([{limit, [], "10"}], Req0),
+            % ?LOG([limit, Limit]),
             {Limit2, _} = string:to_integer(Limit),
 
             % imboy_session:list_by_limit(Limit);

@@ -7,7 +7,7 @@
 -export([login_count/2]).
 -export([device_name/2]).
 
--spec device_name(Uid :: integer(), DID :: binary()) -> binary().
+-spec device_name(integer(), binary()) -> binary().
 % user_device_repo:device_name(1, <<"3f039a2b4724a5b7">>).
 device_name(Uid, DID) ->
     Sql = <<"SELECT `device_name` FROM `user_device`

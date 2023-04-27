@@ -38,6 +38,7 @@ init(Req0, State0) ->
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
             lager:warning("DeviceID ~p exceeded api limit", [DID]),
+            % 429 Too Many Requests
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};
         _ ->

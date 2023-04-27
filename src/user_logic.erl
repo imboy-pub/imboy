@@ -8,7 +8,6 @@
 
 -export([online/4]).
 -export([offline/3]).
--export([idle_timeout/1]).
 
 -export([is_online/1, is_online/2]).
 -export([online_state/1]).
@@ -45,11 +44,6 @@ offline(Uid, Pid, DID) ->
     % 检查离线消息 用异步队列实现
     user_server:cast_offline(Uid, Pid, DID).
 
-
-% 设置用户websocket超时时间，默认60秒
-idle_timeout(_Uid) ->
-    60000.
-
 -spec is_online(integer()) -> boolean().
 %% 检查用户是否在线
 is_online(Uid) when is_integer(Uid) ->
@@ -65,7 +59,7 @@ is_online(Uid) when is_integer(Uid) ->
 -spec is_online(integer(), binary()) -> boolean().
 %% 检查用户是否在线
 is_online(Uid, DType) when is_integer(Uid) ->
-    imboy_session:is_online(Uid, DType).
+    imboy_session:is_online(Uid, {dtype, DType}).
 
 mine_state(Uid) ->
     case user_setting_ds:chat_state_hide(Uid) of

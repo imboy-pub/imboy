@@ -102,12 +102,17 @@ list_by_uid(Uid) ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     syn:members(?CHAT_SCOPE, Uid).
 
--spec is_online(integer(), binary()) -> boolean().
-is_online(Uid, DType) ->
+-spec is_online(integer(), tuple()) -> boolean().
+is_online(Uid, {dtype, DType}) ->
     Li1 = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     Li2 = [DType1 || {_P, {DType1, _DID}} <- Li1, DType1 == DType],
-    lists:member(DType, Li2).
+    lists:member(DType, Li2);
+is_online(Uid, {did, DID}) ->
+    Li1 = list_by_uid(Uid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    Li2 = [DID1 || {_P, {_DType1, DID1}} <- Li1, DID1 == DID],
+    lists:member(DID, Li2).
 
 publish(Uid, Msg) ->
     publish(Uid, Msg, 0).
