@@ -42,11 +42,8 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 
--spec confirm_friend(CurrentUid::integer(),
-    From::binary(),
-    To::binary(),
-    Payload::list()
-) -> {ok, list()} | {error, Msg::binary(), Param::binary()}.
+-spec confirm_friend(integer(), binary(), binary(), list())
+    -> {ok, list()} | {error, binary(), binary()}.
 confirm_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"from">>};
 confirm_friend(_, _, undefined, _) ->
@@ -93,6 +90,10 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     % ?LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(FromID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
+    % 为了简单，删除好友关系清理两个缓存
+    imboy_cache:flush({is_friend, FromID, ToID}),
+    imboy_cache:flush({is_friend, ToID, FromID}),
     {ok, FromID, Remark2, Source}.
 
 
@@ -101,9 +102,15 @@ confirm_friend_resp(Uid, Remark) ->
     User = user_logic:find_by_id(Uid, Column),
     [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
 
--spec delete_friend(CurrentUid::integer(), UID::binary()) -> ok.
-delete_friend(CurrentUid, UID) ->
-    friend_repo:delete(CurrentUid, imboy_hashids:uid_decode(UID)),
+-spec delete_friend(integer(), [binary()|integer()]) -> ok.
+delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
+    Uid2 = imboy_hashids:uid_decode(Uid),
+    delete_friend(CurrentUid, Uid2);
+delete_friend(CurrentUid, Uid) ->
+    friend_repo:delete(CurrentUid, Uid),
+    % 为了简单，删除好友关系清理两个缓存
+    imboy_cache:flush({is_friend, CurrentUid, Uid}),
+    imboy_cache:flush({is_friend, Uid, CurrentUid}),
     ok.
 
 %%% 查找非好友

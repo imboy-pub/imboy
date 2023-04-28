@@ -13,21 +13,27 @@
 
 
 %% ToUid 是 FromUid 的好友？
-is_friend(FromUid, ToUid) ->
-    case friend_repo:is_friend(FromUid, ToUid) of
-        {ok, _ColumnLi, [[Count]]} when Count > 0 ->
-            true;
-        _ ->
-            false
-    end.
 
+% friend_ds:is_friend(1,2)
+-spec is_friend(integer(), integer()) -> boolean().
+is_friend(FromUid, ToUid) ->
+    {Res, _} = friend_ds:is_friend(FromUid, ToUid, <<"remark">>),
+    Res.
+
+% friend_ds:is_friend(1,2, <<"remark">>).
+-spec is_friend(integer(), integer(), binary()) -> boolean().
 is_friend(FromUid, ToUid, Field) ->
-    case friend_repo:friend_field(FromUid, ToUid, Field) of
-        {ok, _ColumnLi, [[Val]]} ->
-            {true, Val};
-        _ ->
-            {false, <<"">>}
-    end.
+    Key = {is_friend, FromUid, ToUid},
+    Fun = fun() ->
+        case friend_repo:friend_field(FromUid, ToUid, Field) of
+            {ok, _ColumnLi, [[Val]]} ->
+                {true, Val};
+            _ ->
+                {false, <<"">>}
+        end
+    end,
+    % 缓存10天
+    imboy_cache:memo(Fun, Key, 864000).
 
 -spec page_by_uid(integer()) -> list().
 page_by_uid(Uid) ->

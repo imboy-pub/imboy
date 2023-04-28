@@ -144,27 +144,27 @@ websocket_handle({text, Msg}, State) ->
     try
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
-        Id = proplists:get_value(<<"id">>, Data),
+        MsgId = proplists:get_value(<<"id">>, Data),
         Type = proplists:get_value(<<"type">>, Data),
-        % ?LOG([Id, Type, Data]),
+        % ?LOG([MsgId, Type, Data]),
         % 逻辑层负责IM系统各项功能的核心逻辑实现
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         case cowboy_bstr:to_lower(Type) of
             <<"c2c">> ->  % 单聊消息
-                websocket_logic:c2c(Id, CurrentUid, Data);
+                websocket_logic:c2c(MsgId, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
-                websocket_logic:c2c_revoke(Id, Data, Type);
+                websocket_logic:c2c_revoke(MsgId, Data, Type);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
-                websocket_logic:c2c_revoke(Id, Data, Type);
+                websocket_logic:c2c_revoke(MsgId, Data, Type);
             <<"c2g">> ->  % 群聊消息
-                websocket_logic:c2g(Id, CurrentUid, Data);
+                websocket_logic:c2g(MsgId, CurrentUid, Data);
             <<"webrtc_", _Event/binary>> ->
                 % Room = webrtc_ws_logic:room_name(
                 %     imboy_hashids:uid_encode(CurrentUid,
                 %     To),
                 To = proplists:get_value(<<"to">>, Data),
                 ToUid = imboy_hashids:uid_decode(To),
-                webrtc_ws_logic:event(ToUid, Id, Msg);
+                webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Msg);
             _ ->
                 ok
         end
@@ -204,7 +204,7 @@ websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
     ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi,
         State, Msg, cowboy_clock:rfc1123()]),
-    message_ds:send_next(Uid, MsgId, Msg, MsLi),
+    message_ds:send_next(DID, Uid, MsgId, Msg, MsLi),
     {reply, {text, Msg}, State, hibernate};
 
 websocket_info({timeout, _Ref, Msg}, State) ->

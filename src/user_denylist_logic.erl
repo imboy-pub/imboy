@@ -19,7 +19,7 @@
 %% ------------------------------------------------------------------
 
 %%% 黑名单分页列表
--spec page(Uid::integer(), Page::integer(), Size::integer()) -> list().
+-spec page(integer(), integer(), integer()) -> list().
 page(Uid, Page,  Size) when Page > 0 ->
     Offset = (Page - 1) * Size,
     Total = user_denylist_repo:count_by_uid(Uid),
@@ -29,28 +29,40 @@ page(Uid, Page,  Size) when Page > 0 ->
         {ok, ColumnLi, Items} ->
             Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
                 ColumnLi,
-                [imboy_hashids:uid_encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items],
+                [
+                    imboy_hashids:uid_encode(DeniedUserId)] ++ Row) ||
+                    [DeniedUserId | Row] <- Items
+                ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
     end.
 
--spec add(Uid::integer(), DeniedUserId::integer()) -> integer().
+-spec add(integer(), integer()) -> integer().
 add(Uid, DeniedUserId) ->
     Now = imboy_dt:millisecond(),
     user_denylist_repo:add(Uid, DeniedUserId, Now),
+    Key = {in_denylist, Uid, DeniedUserId},
+    imboy_cache:flush(Key),
     Now.
 
--spec remove(Uid::integer(), DeniedUserId::integer()) -> ok.
+-spec remove(integer(), integer()) -> ok.
 remove(Uid, DeniedUserId) ->
     user_denylist_repo:remove(Uid, DeniedUserId),
+    Key = {in_denylist, Uid, DeniedUserId},
+    imboy_cache:flush(Key),
     ok.
 
 
-% user_denylist_repo:in_denylist(107, 62913).
+% user_denylist_logic:in_denylist(107, 62913).
 -spec in_denylist(integer(), integer()) -> integer().
-in_denylist(Uid, DeniedUid)->
-    user_denylist_repo:in_denylist(Uid, DeniedUid).
+in_denylist(Uid, DeniedUserId)->
+    Key = {in_denylist, Uid, DeniedUserId},
+    Fun = fun() ->
+        user_denylist_repo:in_denylist(Uid, DeniedUserId)
+    end,
+    % 缓存10天
+    imboy_cache:memo(Fun, Key, 864000).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

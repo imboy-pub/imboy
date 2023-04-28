@@ -5,7 +5,7 @@
 %%%
 
 -export([
-    event/3
+    event/4
 ]).
 
 -ifdef(EUNIT).
@@ -21,12 +21,25 @@
 
 
 % for webrtc
--spec event(Uid::integer(), MsgId::binary(), Msg::binary()) -> ok.
-event(Uid, MsgId, Msg) ->
-    % MsLi = [0, 10000],
-    MsLi = [0],
-    message_ds:send_next(Uid, MsgId, Msg, MsLi),
-    ok.
+-spec event(integer(), integer(), binary(), binary()) -> ok.
+event(CurrentUid, ToUid, MsgId, Msg) ->
+
+    % 判断当前用户是否是 ToUid 用户的朋友
+    IsFriend = friend_ds:is_friend(ToUid, CurrentUid),
+    % 判断当前用户是否在 ToUid 的黑名单里面
+    InDenylist = user_denylist_logic:in_denylist(ToUid, CurrentUid),
+    case {IsFriend, InDenylist} of
+        {true, 0} ->
+            MsLi = [0],
+            message_ds:send_next(ToUid, MsgId, Msg, MsLi),
+            ok;
+        {_, InDenylist2} when InDenylist2 > 0 ->
+            Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
+            {reply, Msg};
+        {false, _InDenylist} ->
+            Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, ToUid),
+            {reply, Msg}
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

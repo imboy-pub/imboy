@@ -2,7 +2,6 @@
 
 -include_lib("imboy/include/log.hrl").
 
--export([is_friend/2]).
 -export([find_by_uid/2]).
 -export([friend_field/3]).
 -export([confirm_friend/6]).
@@ -36,14 +35,6 @@ confirm_friend(false, FromID, ToID, Remark, Setting, NowTs) ->
     mysql_pool:replace_into(Table, Column, Value1),
     ok.
 
-is_friend(FromID, ToID) ->
-    Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?
-        AND `status` = 1">>,
-    Sql = <<"SELECT count(*) as count FROM `user_friend` ",
-            Where/binary>>,
-    mysql_pool:query(Sql, [FromID, ToID]).
-
-
 friend_field(FromID, ToID, Field) ->
     Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?
         AND `status` = 1">>,
@@ -62,7 +53,7 @@ find_by_uid(UID, Column, Limit) ->
     mysql_pool:query(Sql, [UID, Limit]).
 
 
--spec delete(FromID::integer(), ToID::integer()) -> ok.
+-spec delete(integer(), integer()) -> ok.
 delete(FromID, ToID) ->
     Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?">>,
     Sql = <<"DELETE FROM `user_friend` ", Where/binary>>,

@@ -101,11 +101,15 @@ handle_cast({online, Uid, Pid, DID}, State) ->
         {<<"dname">>, DName}
     ],
     ToUid = imboy_hashids:uid_encode(Uid),
-    Msg = message_ds:assemble_msg(<<"S2C">>, <<"">>, ToUid, Payload, MsgType),
+    Msg = message_ds:assemble_msg(
+        <<"S2C">>, <<"">>, ToUid
+        , Payload, MsgType),
 
     MsLi = [0, 5000, 10000],
     Msg2 = jsone:encode(Msg, [native_utf8]),
     message_ds:send_next(DID, Uid, MsgType, Msg2, MsLi),
+    % end
+
     % 检查上线通知好友
     case user_setting_ds:chat_state_hide(Uid) of
         false ->

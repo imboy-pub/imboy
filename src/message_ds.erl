@@ -24,16 +24,10 @@ send_next(ToUid, MsgId, Msg, MsLi) ->
 % 那么它将按照 MillisecondList 定义的频率投递 length(MillisecondList) 次，
 % 除非投递期间收到客户端确认消息（ CLIENT_ACK,type,msgid,did ）才终止投递；
 % 也就是说，消息会按特地平率至少投递一次，至多投递 length(MillisecondList) 次。
--spec send_next(
-    binary(),
-    integer(),
-    binary(),
-    list(),
-    MillisecondList :: list()
-) -> ok.
-send_next(_ToDID, _ToUid, _MsgId, _Msg, []) ->
+-spec send_next(binary(), integer(), binary(), list(), list()) -> ok.
+send_next(_CurrentDID, _ToUid, _MsgId, _Msg, []) ->
     ok;
-send_next(ToDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
+send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
     % #Ref<0.717641544.2272788481.230829>
     % (imboy@127.0.0.1)2> flush().
@@ -42,6 +36,7 @@ send_next(ToDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg}
     % to Dest after Time milliseconds.
+
     TimerRefList = [{DID, erlang:start_timer(
         Millisecond,
         ToPid,
@@ -49,7 +44,7 @@ send_next(ToDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     )} ||
         {ToPid, {_Dtype, DID}} <- imboy_session:list_by_uid(ToUid)
             % , is_process_alive(ToPid)
-            , ToDID /= DID
+            , CurrentDID /= DID
     ],
     case TimerRefList of
         [] ->
@@ -67,7 +62,7 @@ send_next(ToDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
 %%% 系统消息 [500 -- 1000) 系统消息
 
 
--spec assemble_s2c(MsgId::binary(), MsgType::binary(), To::binary()) -> list().
+-spec assemble_s2c(binary(), binary(), [binary()|integer()]) -> list().
 assemble_s2c(MsgId, MsgType, To) ->
     Payload = [
         {<<"msg_type">>, MsgType}
