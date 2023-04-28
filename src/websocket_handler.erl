@@ -102,6 +102,7 @@ websocket_handle({text, <<"check_offline_msg">>}, State) ->
 websocket_handle({text, <<"logout">>}, State) ->
     ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
+
 % 客户端确认消息
 % CLIENT_ACK,type,msgid,did
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
@@ -126,6 +127,9 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
                     {ok, State, hibernate};
                 <<"S2C">> ->
                     websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate};
+                <<"C2G">> ->
+                    websocket_logic:c2g_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
                 _ ->
                     {ok, State, hibernate}

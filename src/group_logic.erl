@@ -2,27 +2,9 @@
 %%%
 % group 业务逻辑模块
 %%%
--export([user_group/1]).
 -export([member/1]).
 
 -include_lib("imboy/include/log.hrl").
-
-
-user_group(Uid) ->
-    Column = <<"`id`,`groupname`,`avatar`">>,
-    case group_member_ds:user_groupid(Uid) of
-        {ok, _ColumnList, []} ->
-            [];
-        {ok, _ColumnList, Rows} ->
-            {ok, ColumnList, Rows2} = group_repo:find_by_ids([Id ||
-                                                                 [Id] <- Rows],
-                                                             Column),
-            [group_ds:check_avatar(lists:zipwith(fun(X, Y) ->
-                                                        {X, Y}
-                                                 end,
-                                                 ColumnList,
-                                                 Row)) || Row <- Rows2]
-    end.
 
 
 member(Gid) ->

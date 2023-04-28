@@ -26,8 +26,8 @@ user_join_ids(Uid) ->
                 lists:flatten(Rows)
         end
     end,
-    % 缓存1天
-    imboy_cache:memo(Fun, Key, 86400).
+    % 缓存10天
+    imboy_cache:memo(Fun, Key, 864000).
 
 
 -spec check_avatar(list()) -> list().

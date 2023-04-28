@@ -27,9 +27,6 @@ online(Uid, DType, Pid, DID) ->
     ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
 
     imboy_session:join(Uid, DType, Pid, DID),
-    %
-    GidList = group_ds:user_join_ids(Uid),
-    imboy_session:group_online(Uid, DType, Pid, GidList),
 
     gen_server:cast(user_server, {ws_online, Uid, DType, DID}),
 
@@ -41,8 +38,6 @@ online(Uid, DType, Pid, DID) ->
 offline(Uid, Pid, DID) ->
     imboy_session:leave(Uid, Pid),
 
-    GidList = group_ds:user_join_ids(Uid),
-    imboy_session:group_leave(GidList, Pid),
     % 检查离线消息 用异步队列实现
     user_server:cast_offline(Uid, Pid, DID).
 

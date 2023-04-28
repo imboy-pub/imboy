@@ -209,7 +209,7 @@ CREATE TABLE `msg_c2g_timeline` (
   `created_at` bigint unsigned NOT NULL DEFAULT '0' COMMENT '创建记录Unix时间戳毫秒单位',
   `msg_id` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '消息唯一标识',
   PRIMARY KEY (`id`),
-  KEY `i_ToId` (`to_id`)
+  KEY `i_MsgId_ToId` (`msg_id`,`to_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='群聊消息时间线';
 
 CREATE TABLE `msg_s2c` (

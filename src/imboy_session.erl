@@ -18,10 +18,6 @@
 
 -export([is_online/2]).
 
-% for group
--export([group_online/4, group_leave/2]).
--export([group_publish/2, group_publish/3]).
-
 
 %% ------------------------------------------------------------------
 %% api
@@ -30,7 +26,7 @@ init() ->
     % ok.
     syn:add_node_to_scopes([
         ?CHAT_SCOPE
-        , ?GROUP_SCOPE
+        % , ?GROUP_SCOPE
         , ?ROOM_SCOPE
     ]),
     ok.
@@ -127,33 +123,6 @@ publish(Uid, Msg) ->
 -spec publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
 publish(Uid, Msg, Delay) ->
     Members = syn:members(?CHAT_SCOPE, Uid),
-    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    do_publish(Members, Msg, Delay).
-
-
--spec group_online(integer(), pid(), binary(), list()) ->
-    ok | {error, Reason :: term()}.
-group_online(_Uid, _DType, _Pid, []) ->
-    ok;
-group_online(Uid, DType, Pid, [Gid | Tail]) ->
-    syn:join(?GROUP_SCOPE, Gid, Pid, #{uid=>Uid, dtype=>DType}),
-    group_online(Uid, DType, Pid, Tail).
-
--spec group_leave(list(), pid()) ->
-    ok | {error, Reason :: term()}.
-group_leave([], _Pid) ->
-    ok;
-group_leave([Gid | Tail], Pid) ->
-    syn:leave(?GROUP_SCOPE, Gid, Pid),
-    group_leave(Tail, Pid).
-
-
-group_publish(Gid, Msg) ->
-    group_publish(Gid, Msg, 0).
-% Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
--spec group_publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
-group_publish(Gid, Msg, Delay) ->
-    Members = syn:members(?GROUP_SCOPE, Gid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     do_publish(Members, Msg, Delay).
 

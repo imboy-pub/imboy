@@ -12,6 +12,7 @@
 -export([c2g/3]).
 -export([s2c/3]).
 -export([s2c_client_ack/3]).
+-export([c2g_client_ack/3]).
 
 %% ------------------------------------------------------------------
 %% api
@@ -114,9 +115,7 @@ c2g(MsgId, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
     ToGID = imboy_hashids:uid_decode(Gid),
     % TODO check is group member
-    Column = <<"`user_id`">>,
-    {ok, _, Members} = group_member_repo:find_by_gid(ToGID, Column),
-    Uids = [ Uid || [Uid] <- Members, Uid /= CurrentUid ],
+    MemberUids = group_member_ds:member_uids(ToGID, CurrentUid),
     % Uids.
     NowTs = imboy_dt:millisecond(),
     Msg = [{<<"id">>, MsgId},
@@ -129,15 +128,27 @@ c2g(MsgId, CurrentUid, Data) ->
            {<<"server_ts">>, NowTs}],
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
+    MsLi = [0, 3500, 3500, 3000, 5000],
+    [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
 
-    % TODO use pg module
-    % _UidsOnline = lists:filtermap(fun(Uid) ->
-    %                                      % message_ds:send(Uid, Msg2, 1)
-    %                               end,
-    %                               Uids),
     % 存储消息
-    msg_c2g_ds:write_msg(NowTs, MsgId, Msg2, CurrentUid, Uids, ToGID),
+    msg_c2g_ds:write_msg(NowTs, MsgId, Msg2, CurrentUid, MemberUids, ToGID),
+
+    self() ! {reply, [{<<"id">>, MsgId},
+                      {<<"type">>, <<"C2G_SERVER_ACK">>},
+                      {<<"server_ts">>, NowTs}]},
     ok.
+
+%% 客户端确认C2G投递消息
+-spec c2g_client_ack(binary(), integer(), binary()) -> ok.
+c2g_client_ack(MsgId, CurrentUid, _DID) ->
+    msg_c2g_timeline_repo:delete_timeline(CurrentUid, MsgId),
+    case msg_c2g_timeline_repo:check_msg(MsgId) of
+        {ok, _, [[0]]} ->
+            msg_c2g_repo:delete_msg(MsgId);
+        _ ->
+            ok
+    end.
 
 
 %% 系统消息

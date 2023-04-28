@@ -5,8 +5,9 @@
 
 -include_lib("imboy/include/log.hrl").
 
+
+-export([delete_timeline/1, delete_timeline/2]).
 -export([find_by_uid/2, find_by_uid/3]).
--export([delete_timeline/1]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
 -export([delete_overflow_timeline/2]).
@@ -14,6 +15,11 @@
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
 
+
+delete_timeline(ToUid, MsgId) ->
+    Where = <<"WHERE `to_id` = ? AND `msg_id` = ? ">>,
+    Sql = <<"DELETE FROM `msg_c2g_timeline` ", Where/binary>>,
+    mysql_pool:query(Sql, [ToUid, MsgId]).
 
 find_by_uid(Uid, Column, Limit) ->
     % use index i_ToId
