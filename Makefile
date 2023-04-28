@@ -13,7 +13,7 @@ DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids 
 
 DEPS += depcache
 DEPS += syn
-DEPS += khepri
+# DEPS += khepri
 
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到

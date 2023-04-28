@@ -38,12 +38,13 @@
 
 %% @doc Start depcache instance based on site configuration
 start_link(Args) ->
+    % ?LOG(Args),
     depcache:start_link(
         ?DEPCACHE_SERVER,
-        [
-            {memory_max, proplists:get_value(depcache_memory_max, Args)},
-            {callback, {?MODULE, record_depcache_event, [Args]}}
-        ]
+        #{
+            memory_max => proplists:get_value(depcache_memory_max, Args)
+            , callback => {?MODULE, record_depcache_event, [Args]}
+        }
     ).
 
 %% @doc Cache the result of the function for an hour.

@@ -12,6 +12,7 @@ start(_Type, _Args) ->
 
     % begin handler
     Routes = imboy_router:get_routes(),
+
     % ?LOG(Routes),
     Dispatch = cowboy_router:compile(Routes),
 

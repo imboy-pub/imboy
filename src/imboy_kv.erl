@@ -9,7 +9,7 @@
 -export([start/0]).
 
 start() ->
-    khepri:start(),
+    % khepri:start(),
     ok.
 
 % % imboy_kv:put(Uid).
