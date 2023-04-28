@@ -2,7 +2,7 @@
 
 -include_lib("imboy/include/log.hrl").
 
--export([env/1]).
+-export([env/1, env/2]).
 -export([is_mobile/1]).
 -export([is_email/1]).
 -export([num_random/1]).
@@ -10,11 +10,13 @@
 
 
 env(Attr) ->
+    env(Attr, undefined).
+env(Attr, Def) ->
     case application:get_env(imboy, Attr) of
         {ok, Value} ->
             Value;
         _ ->
-            undefined
+            Def
     end.
 
 -spec is_mobile(Mobile :: list()) -> true | false.
@@ -68,7 +70,7 @@ num_random(Len) ->
 %   integer_to_list(imboy_func:num_random(6)) ++ " ，10分钟后过期。").
 -spec send_email(ToEmail :: binary(), Subject :: list()) -> {ok, pid()}.
 send_email(ToEmail, Subject) ->
-    {ok, Option} = application:get_env(imboy, smtp_option),
+    Option = imboy_func:env(smtp_option),
     Username = proplists:get_value(username, Option),
     gen_smtp_client:send({Username,
                           [binary_to_list(ToEmail)],

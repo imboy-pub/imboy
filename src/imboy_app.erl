@@ -14,11 +14,10 @@ start(_Type, _Args) ->
     Routes = imboy_router:get_routes(),
     % ?LOG(Routes),
     Dispatch = cowboy_router:compile(Routes),
-    {ok, Port} = application:get_env(imboy, http_port),
 
     {ok, _} = cowboy:start_clear(imboy_listener,
         [
-            {port, Port}
+            {port, imboy_func:env(http_port)}
         ]
 
         % PrivDir = code:priv_dir(imboy),

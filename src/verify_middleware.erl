@@ -42,9 +42,9 @@ execute(Req, Env) ->
         true ->
             {ok, Req, Env};
         false ->
-            Req1 = imboy_response:error(Req,
-                                       "Failed to verify the signature",
-                                       1),
+            Req1 = imboy_response:error(
+                Req, "Failed to verify the signature", 1
+            ),
             {stop, Req1}
     end.
 
@@ -55,7 +55,7 @@ verify_sign(undefined, _Vsn) ->
 verify_sign(_Sign, undefined) ->
     false;
 verify_sign(Sign, Vsn) ->
-    {ok, AuthKeys} = application:get_env(imboy, auth_keys),
+    AuthKeys = imboy_func:env(auth_keys),
     Key = proplists:get_value(Vsn, AuthKeys),
     Str = Key ++ binary_to_list(Vsn),
     imboy_hasher:md5(Str) == Sign.

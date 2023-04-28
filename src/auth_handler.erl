@@ -59,7 +59,7 @@ auth_for_assets(_Scene, undefined, _Name) ->
 auth_for_assets(_Scene, _AuthTk, undefined) ->
     <<"fail">>;
 auth_for_assets(Scene, AuthTk, Val) ->
-    {ok, AuthKeys} = application:get_env(imboy, auth_keys),
+    AuthKeys = imboy_func:env(auth_keys),
     Key = proplists:get_value(Scene, AuthKeys),
     Str = Key ++ binary_to_list(Val),
     case binary:part(imboy_hasher:md5(Str), {8, 16}) == AuthTk of
