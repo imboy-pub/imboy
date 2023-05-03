@@ -1,0 +1,72 @@
+-- Table: public.user
+
+-- DROP TABLE IF EXISTS public."user";
+
+CREATE TABLE IF NOT EXISTS public."user"
+(
+    id BIGSERIAL PRIMARY KEY,
+    level_id bigint NOT NULL,
+    nickname character varying(80) COLLATE pg_catalog."default" NOT NULL,
+    password character varying(800) COLLATE pg_catalog."default" NOT NULL,
+    account character varying(80) COLLATE pg_catalog."default" NOT NULL,
+    mobile character varying(40) COLLATE pg_catalog."default",
+    email character varying(80) COLLATE pg_catalog."default",
+    region character varying(80) COLLATE pg_catalog."default" NOT NULL,
+    gender integer NOT NULL DEFAULT 0,
+    experience bigint NOT NULL DEFAULT 0,
+    avatar character varying(320) COLLATE pg_catalog."default" NOT NULL,
+    sign character varying(320) COLLATE pg_catalog."default" NOT NULL,
+    login_count bigint NOT NULL DEFAULT 0,
+    last_login_ip character varying(40) COLLATE pg_catalog."default" NOT NULL,
+    last_login_at bigint NOT NULL DEFAULT 0,
+    ref_user_id bigint NOT NULL DEFAULT 0,
+    status integer NOT NULL DEFAULT 1,
+    created_at bigint NOT NULL,
+    reg_ip character varying(40) COLLATE pg_catalog."default" NOT NULL,
+    reg_cosv character varying(320) COLLATE pg_catalog."default" NOT NULL
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.user OWNER to imboy_user;
+
+CREATE UNIQUE INDEX uk_Account ON public.user (account);
+CREATE UNIQUE INDEX uk_Mobile ON public.user (mobile);
+CREATE UNIQUE INDEX uk_Email ON public.user (email);
+
+COMMENT ON TABLE public.user
+    IS '用户表';
+
+COMMENT ON COLUMN public.user.id
+    IS '主键 自增长ID';
+
+COMMENT ON COLUMN public.user.level_id
+    IS '会员等级ID';
+
+COMMENT ON COLUMN public.user.nickname
+    IS '用户昵称';
+
+COMMENT ON COLUMN public.user.password
+    IS '经过加盐的密码';
+
+COMMENT ON COLUMN public.user.account IS '会员账号';
+COMMENT ON COLUMN public.user.mobile IS '手机号码';
+COMMENT ON COLUMN public.user.email IS '会员注册Email';
+COMMENT ON COLUMN public.user.region IS '地区：广东 深圳';
+COMMENT ON COLUMN public.user.gender IS '性别 1 男  2 女  3 保密';
+COMMENT ON COLUMN public.user.experience IS '经验值';
+COMMENT ON COLUMN public.user.avatar IS '头像';
+COMMENT ON COLUMN public.user.sign IS '用户签名';
+COMMENT ON COLUMN public.user.login_count IS '登陆次数';
+COMMENT ON COLUMN public.user.last_login_ip IS '最后登陆IP';
+COMMENT ON COLUMN public.user.last_login_at IS '最后登录UTC时间';
+COMMENT ON COLUMN public.user.ref_user_id IS '推荐人ID，0表示无推荐人';
+
+COMMENT ON COLUMN public.user.status
+    IS '状态: -1 删除  0 禁用  1 启用';
+
+COMMENT ON COLUMN public.user.created_at
+    IS '创建记录Unix时间戳毫秒单位';
+
+COMMENT ON COLUMN public.user.reg_ip IS '注册IP';
+COMMENT ON COLUMN public.user.reg_cosv IS '客户端操作系统版本，例如： Linux 5.11.0-1018-gcp #20~20.04.2-Ubuntu SMP Fri Sep 3 01:01:37 UTC 2021 | "Windows 10 Pro" 10.0 (Build 19043)';
