@@ -15,12 +15,12 @@ add(Uid, Name) ->
 
 
 -spec delete(Uid :: any(), Id :: any()) ->
-          ok | {error, ErrorMsg :: any()}.
+          ok | {error, any()}.
 delete(Uid, Id) ->
     case friend_ds:set_category_id(Uid, Id, 0) of
-        {error, {_, _, ErrorMsg}} ->
+        {error, ErrorMsg} ->
             {error, ErrorMsg};
-        ok ->
+        {ok, _} ->
             friend_category_ds:delete(Uid, Id)
     end.
 

@@ -17,15 +17,17 @@
 -export([update/3]).
 
 % 顺序不能够随意修改，id 要放到第一个
--define (DEF_USER_COLUMN, <<"`id`,`account`,`mobile`,
-        `nickname`,`avatar`,`sign`,`gender`,`region`">>).
+-define (DEF_USER_COLUMN, <<"id,account,mobile,
+        nickname,avatar,sign,gender,region">>).
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
 %dtype 设备类型 web ios android macos windows等
 -spec online(integer(), binary(), pid(), binary()) -> ok.
 online(Uid, DType, Pid, DID) ->
-    ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
-
+    % ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
     imboy_session:join(Uid, DType, Pid, DID),
 
     gen_server:cast(user_server, {ws_online, Uid, DType, DID}),
@@ -90,6 +92,7 @@ find_by_id(Id) ->
 find_by_id(Id, Column) when is_binary(Id) ->
     find_by_id(imboy_hashids:uid_decode(Id), Column);
 find_by_id(Id, Column) ->
+    % user_repo:find_by_id(Id, Column).
     case user_repo:find_by_id(Id, Column) of
         {ok, _, []} ->
             [];
@@ -98,7 +101,7 @@ find_by_id(Id, Column) ->
                 lists:zipwith(
                     fun(X, Y) -> {X, Y} end,
                     ColumnList,
-                    Row
+                    tuple_to_list(Row)
                 )
             );
         _ ->
@@ -108,7 +111,6 @@ find_by_id(Id, Column) ->
 
 find_by_ids(Ids) ->
     find_by_ids(Ids, ?DEF_USER_COLUMN).
-
 
 find_by_ids([], _) ->
     [];
@@ -122,7 +124,7 @@ find_by_ids(Ids, Column) ->
                     lists:zipwith(
                         fun(X, Y) -> {X, Y} end,
                         ColumnList,
-                        Row
+                        tuple_to_list(Row)
                     )
                 ) || Row <- Rows
             ];
@@ -134,30 +136,30 @@ find_by_ids(Ids, Column) ->
 -spec update(Uid::any(), Field::binary(), list() | binary()) ->
     ok | {error, {integer(), binary(), Msg::binary()}}.
 update(Uid, <<"sign">>, Val) ->
-    mysql_pool:update(<<"user">>, Uid, <<"sign">>, Val);
+    imboy_db:update(<<"user">>, Uid, <<"sign">>, Val);
 update(Uid, <<"nickname">>, Val) ->
-    mysql_pool:update(<<"user">>, Uid, <<"nickname">>, Val);
+    imboy_db:update(<<"user">>, Uid, <<"nickname">>, Val);
 update(Uid, <<"avatar">>, Val) ->
-    mysql_pool:update(<<"user">>, Uid, <<"avatar">>, Val);
+    imboy_db:update(<<"user">>, Uid, <<"avatar">>, Val);
 
 update(Uid, <<"region">>, Val) ->
-    mysql_pool:update(<<"user">>, Uid, <<"region">>, Val);
+    imboy_db:update(<<"user">>, Uid, <<"region">>, Val);
 
 % 性别 1 男  2 女  3 保密
 update(Uid, <<"gender">>, <<"1">>) ->
-    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"1">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"1">>);
 update(Uid, <<"gender">>, <<"2">>) ->
-    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"2">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"2">>);
 update(Uid, <<"gender">>, <<"3">>) ->
-    mysql_pool:update(<<"user">>, Uid, <<"gender">>, <<"3">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"3">>);
 
 update(_Uid, _Field, _Val) ->
     {error, {1, <<"">>, <<"Unsupported field">>}}.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 %% 检查 user avatar 是否为空，如果为空设置默认
 check_avatar([]) ->

@@ -25,7 +25,7 @@
 % wsc2:stop(83235, 83235 + 12000)
 % wsc2:stop(113235, 113235 + 60000).
 
--include("common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 start_link() ->
     start_link({1, 0, {}}).
@@ -37,8 +37,8 @@ stop(Id) ->
     gen_server:call(sname(Id), stop).
 
 stop(Begin, End) ->
-    for(Begin, End, fun(Begin) ->
-        stop(Begin)
+    for(Begin, End, fun(Begin1) ->
+        stop(Begin1)
     end).
 
 sname(Id) ->
@@ -105,11 +105,11 @@ terminate(Reason, Data) ->
 
 start(Begin, End) ->
     % code:add_path("../ebin"),
-    L = for(Begin, End, fun(Begin) ->
+    L = for(Begin, End, fun(Begin1) ->
             receive
             after
                 5 ->
-                    start_link({Begin, 0, {}})
+                    start_link({Begin1, 0, {}})
             end
     end),
     {_, Time1} = statistics(runtime),

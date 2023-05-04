@@ -23,4 +23,4 @@ COMMENT ON COLUMN public.tag_user_friend.user_id IS '记录所属用户ID';
 COMMENT ON COLUMN public.tag_user_friend.tag_id IS '标签ID';
 COMMENT ON COLUMN public.tag_user_friend.tag_user_id IS '被打标签用户ID';
 
-COMMENT ON COLUMN public.user_friend.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.tag_user_friend.created_at IS '创建记录Unix时间戳毫秒单位';

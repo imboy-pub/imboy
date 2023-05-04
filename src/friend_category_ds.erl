@@ -10,26 +10,29 @@
 -export([rename/3]).
 -export([delete/2]).
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
--spec find_by_uid(integer()) -> list().
-
-
--spec add(Uid :: any(), Name :: any()) ->
-          {ok, LastInsertId :: integer()} | {error, any()}.
+-spec add(integer(), binary()) ->
+          {ok, integer()} | {error, any()}.
 add(Uid, Name) ->
     case friend_category_repo:add(Uid, Name) of
-        {error, {_, _, ErrorMsg}} ->
+        {error, ErrorMsg} ->
             {error, ErrorMsg};
-        {ok, LastInsertId} ->
-            {ok, LastInsertId}
+        {ok, Num} ->
+            {ok, Num}
     end.
 
 
 %% return [Id, Username, Avator, Sign].
+%% friend_category_ds:find_by_uid(1).
+-spec find_by_uid(integer()) -> list().
 find_by_uid(Uid) ->
-    Field = <<"`id`, `name` as groupname">>,
-    {ok, FieldList, Rows} = friend_category_repo:find_by_uid(Uid,
-                                                             Field),
+    Field = <<"id, name">>,
+    {ok, _FieldList, Rows} = friend_category_repo:find_by_uid(
+        Uid,
+        Field),
     % ?LOG({ok, FieldList, Rows}),
     Default = [{<<"id">>, 0}, {<<"groupname">>, <<"default">>}],
     case length(Rows) == 0 of
@@ -37,25 +40,24 @@ find_by_uid(Uid) ->
             [Default];
         _ ->
             [Default |
-             [lists:zipwith(fun(X, Y) -> {X, Y} end, FieldList, Row) ||
-                 Row <- Rows]]
+                [lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"id">>,<<"groupname">>], [Id, Name]) ||
+                    {Id, Name} <- Rows]
+            ]
     end.
 
 
+% friend_category_ds:rename(Uid, Id, Name).
 rename(Uid, Id, Name) ->
-    Sql = <<"UPDATE `user_friend_category` SET `name` = ?
-        WHERE `owner_user_id` = ? AND `id` = ?">>,
-    mysql_pool:query(Sql, [Name, Uid, Id]).
+    Tb = friend_category_repo:tablename(),
+    Where = <<" WHERE owner_user_id = $2 AND id = $3">>,
+    Sql = <<"UPDATE ", Tb/binary, " SET name = $1", Where/binary>>,
+    imboy_db:execute(Sql, [Name, Uid, Id]),
+    ok.
 
 
--spec delete(Uid :: any(), Id :: any()) ->
-          ok | {error, ErrorMsg :: any()}.
+-spec delete(Uid :: any(), Id :: any()) -> ok.
 delete(Uid, Id) ->
-    case friend_category_repo:delete(Uid, Id) of
-        {error, {_, _, ErrorMsg}} ->
-            {error, ErrorMsg};
-        ok ->
-            ok
-    end.
+    friend_category_repo:delete(Uid, Id),
+    ok.
 
 %% Internal.

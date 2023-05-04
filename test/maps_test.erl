@@ -1,11 +1,14 @@
+-module (maps_test).
 
+
+-export ([map_fold_test/0, map_fold_test2/0, map_fold0_test/0]).
 
 map_fold_test() ->
     Map = #{"k1" => 1, "k2" => 2, "k3" => 3},
     maps:fold(fun(K,V, Li) ->
         [{1, K, V} | Li]
-    end, [], Map)
- ok.
+    end, [], Map),
+    ok.
 
 map_fold_test2() ->
     Map = #{"k1" => 1, "k2" => 2, "k3" => 3},
@@ -17,10 +20,10 @@ map_fold_test2() ->
             _ ->
                 [{1, K, V} | Li]
         end
-    end, [], Map)
- ok.
+    end, [], Map),
+    ok.
 
 
 map_fold0_test() ->
-    maps:fold(fun(K,V, Li) -> [{1, K, V} | Li] end, [], #{})
- ok.
+    maps:fold(fun(K,V, Li) -> [{1, K, V} | Li] end, [], #{}),
+    ok.

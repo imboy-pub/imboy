@@ -14,6 +14,7 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 -export([code_change/3]).
+-export([start_account/0]).
 
 %%
 -export([allocate/0]).
@@ -25,29 +26,31 @@
          }).
 
 
-%% ------------------------------------------------------------------
-%%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 allocate() ->
     gen_server:call(?MODULE, allocate).
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %%% gen_server callbacks
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-    Start = start_account(),
+    Start = account_server:start_account(),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Start, 1000], []).
 
 
 init([Start, Len]) ->
     L = create_rand_list(Start, Len),
-    State = #state{start = Start,
-                   len = Len,
-                   l = L},
+    State = #state{
+        start = Start
+        , len = Len
+        , l = L
+    },
     % ?LOG([?MODULE, init, State]),
     {ok, State}.
 
@@ -87,9 +90,9 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -spec create_rand_list(Start :: integer(), Len :: integer()) -> list().
 create_rand_list(Start, Len) ->
@@ -97,13 +100,9 @@ create_rand_list(Start, Len) ->
     [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- L])].
 
 
--spec start_account() -> integer().
 start_account() ->
-    Sql =
-        <<"SELECT max(CONVERT(account, UNSIGNED INTEGER)) as max FROM `user`">>,
-    case mysql_pool:query(Sql) of
-        {ok, _, [[Start]]} when is_integer(Start) ->
-            Start;
-        _ ->
-            50000
-    end.
+    imboy_db:pluck(
+        <<"user">>
+        , <<"max(CAST(account as integer)) as max">>
+        , 50000
+    ).

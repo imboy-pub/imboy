@@ -5,9 +5,9 @@
 
 -include_lib("imboy/include/log.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -48,7 +48,7 @@ delete(Req0, State) ->
     case friend_category_logic:delete(CurrentUid, Id) of
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);
-        ok ->
+        {ok, 1} ->
             imboy_response:success(Req0, #{}, "success.")
     end.
 
@@ -63,6 +63,6 @@ rename(Req0, State) ->
     case friend_category_ds:rename(CurrentUid, Id, Name) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
-        ok ->
+        {ok, 1} ->
             imboy_response:success(Req0, #{}, "success.")
     end.

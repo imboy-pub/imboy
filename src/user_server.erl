@@ -26,7 +26,9 @@
 -export([cast_offline/3]).
 
 
-%% API.
+%% ===================================================================
+%% API
+%% ===================================================================
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
@@ -67,17 +69,17 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     % 更新 user_client 表
     Uid2 = imboy_hashids:uid_decode(Uid),
     Now = imboy_dt:millisecond(),
-    ?LOG([Uid, Uid2, PostVals]),
+    % ?LOG([Uid, Uid2, PostVals]),
     % 记录设备信息
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_repo:save(Now, Uid2, DID, PostVals),
     % 记录设备信息 END
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
-handle_cast({ws_online, Uid, DType, DID}, State) ->
-    ?LOG([handle_cast, ws_online, Uid, DType, DID, State]),
+handle_cast({ws_online, Uid, _DType, DID}, State) ->
+    % ?LOG([handle_cast, ws_online, Uid, DType, DID, State]),
     % 更新 最近活跃时间
-    Set = <<"`last_active_at` = ?">>,
+    Set = <<"last_active_at = $1">>,
     SetArgs = [imboy_dt:millisecond()],
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
     {noreply, State, hibernate};
@@ -164,19 +166,19 @@ cast_offline(Uid, Pid, DID) ->
     ok.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -spec notice_friend(Uid::integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
-    Column = <<"`to_user_id`">>,
+    Column = <<"to_user_id">>,
     case friend_repo:find_by_uid(Uid, Column) of
         {ok, _, []} ->
             ok;
         {ok, _ColumnList, Rows} ->
             % ?LOG([State, Rows]),
-            ToUidLi = [ToUid || [ToUid] <- Rows],
+            ToUidLi = [ToUid || {ToUid} <- Rows],
             send_state_msg(Uid, State, ToUidLi),
             ok
     end.

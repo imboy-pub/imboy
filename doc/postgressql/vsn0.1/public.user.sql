@@ -6,24 +6,24 @@ CREATE TABLE IF NOT EXISTS public."user"
 (
     id BIGSERIAL PRIMARY KEY,
     level_id bigint NOT NULL,
-    nickname character varying(80) COLLATE pg_catalog."default" NOT NULL,
-    password character varying(800) COLLATE pg_catalog."default" NOT NULL,
-    account character varying(80) COLLATE pg_catalog."default" NOT NULL,
-    mobile character varying(40) COLLATE pg_catalog."default",
-    email character varying(80) COLLATE pg_catalog."default",
-    region character varying(80) COLLATE pg_catalog."default" NOT NULL,
+    nickname varchar(80) COLLATE pg_catalog."default" NOT NULL,
+    password varchar(800) COLLATE pg_catalog."default" NOT NULL,
+    account varchar(80) COLLATE pg_catalog."default" NOT NULL,
+    mobile varchar(40) COLLATE pg_catalog."default",
+    email varchar(80) COLLATE pg_catalog."default",
+    region varchar(80) COLLATE pg_catalog."default" NOT NULL,
     gender integer NOT NULL DEFAULT 0,
     experience bigint NOT NULL DEFAULT 0,
-    avatar character varying(320) COLLATE pg_catalog."default" NOT NULL,
-    sign character varying(320) COLLATE pg_catalog."default" NOT NULL,
+    avatar varchar(320) COLLATE pg_catalog."default" NOT NULL,
+    sign varchar(320) COLLATE pg_catalog."default" NOT NULL,
     login_count bigint NOT NULL DEFAULT 0,
-    last_login_ip character varying(40) COLLATE pg_catalog."default" NOT NULL,
+    last_login_ip varchar(40) COLLATE pg_catalog."default" NOT NULL,
     last_login_at bigint NOT NULL DEFAULT 0,
     ref_user_id bigint NOT NULL DEFAULT 0,
     status integer NOT NULL DEFAULT 1,
     created_at bigint NOT NULL,
-    reg_ip character varying(40) COLLATE pg_catalog."default" NOT NULL,
-    reg_cosv character varying(320) COLLATE pg_catalog."default" NOT NULL
+    reg_ip varchar(40) COLLATE pg_catalog."default" NOT NULL,
+    reg_cosv varchar(320) COLLATE pg_catalog."default" NOT NULL
 )
 
 TABLESPACE pg_default;

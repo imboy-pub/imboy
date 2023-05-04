@@ -5,9 +5,9 @@
 
 -include_lib("imboy/include/log.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -131,18 +131,19 @@ information(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     case cowboy_req:match_qs([{type, [], undefined}], Req0) of
         #{type := <<"friend">>} ->
-            Column = <<"`id`, `nickname`, `account`,
-                `gender`, `experience`, `avatar`, `sign`">>,
+            Column = <<"id, nickname, account,gender, experience, avatar, sign">>,
             User = user_logic:find_by_id(Uid, Column),
             % ?LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
             % ?LOG([UserSetting, Uid]),
             Friend = [],
-            Data = information_transfer(CurrentUid,
-                                               <<"friend">>,
-                                               User,
-                                               UserSetting,
-                                               Friend),
+            Data = information_transfer(
+                CurrentUid
+                , <<"friend">>
+                , User
+                , UserSetting
+                , Friend
+            ),
             imboy_response:success(Req0, Data, "success.");
         #{type := <<"group">>} ->
             imboy_response:success(Req0, #{}, "success.");
@@ -167,9 +168,10 @@ change_remark(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
-    case friend_ds:change_remark(CurrentUid, Uid, Remark) of
-        {error, {_, _, ErrorMsg}} ->
+    Uid2 = imboy_hashids:uid_decode(Uid),
+    case friend_ds:change_remark(CurrentUid, Uid2, Remark) of
+        {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);
-        ok ->
+        {ok, _Num} ->
             imboy_response:success(Req0, Remark, "success.")
     end.

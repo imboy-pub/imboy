@@ -14,9 +14,9 @@
 -export([s2c_client_ack/3]).
 -export([c2g_client_ack/3]).
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 
 %% 单聊消息
@@ -38,12 +38,14 @@ c2c(MsgId, CurrentUid, Data) ->
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
             % 存储消息
-            msg_c2c_ds:write_msg(CreatedAt,
-                                 MsgId,
-                                 Payload,
-                                 CurrentUid,
-                                 ToId,
-                                 NowTs),
+            msg_c2c_ds:write_msg(
+                CreatedAt
+                , MsgId
+                , Payload
+                , CurrentUid
+                , ToId
+                , NowTs
+            ),
             %
             self() ! {reply, [{<<"id">>, MsgId},
                               {<<"type">>, <<"C2C_SERVER_ACK">>},
@@ -72,13 +74,13 @@ c2c(MsgId, CurrentUid, Data) ->
 %% 客户端确认C2C投递消息
 -spec c2c_client_ack(binary(), integer(), binary()) -> ok.
 c2c_client_ack(MsgId, CurrentUid, _DID) ->
-    Column = <<"`id`">>,
-    Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
+    Column = <<"id">>,
+    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
     {ok, _CList, Rows} = msg_c2c_repo:read_msg(
         Where, Vals, Column, 1
     ),
-    [msg_c2c_repo:delete_msg(Id) || [Id] <- Rows],
+    [msg_c2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
 
 
@@ -89,7 +91,7 @@ c2c_revoke(MsgId, Data, Type) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:uid_decode(To),
-    ?LOG([From, To, ToId, Type, Data]),
+    % ?LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:millisecond(),
 
     Msg = [{<<"id">>, MsgId},
@@ -144,7 +146,7 @@ c2g(MsgId, CurrentUid, Data) ->
 c2g_client_ack(MsgId, CurrentUid, _DID) ->
     msg_c2g_timeline_repo:delete_timeline(CurrentUid, MsgId),
     case msg_c2g_timeline_repo:check_msg(MsgId) of
-        {ok, _, [[0]]} ->
+        0 ->
             msg_c2g_repo:delete_msg(MsgId);
         _ ->
             ok
@@ -159,11 +161,15 @@ s2c(_Id, _CurrentUid, _Data) ->
 %% 客户端确认S2C投递消息
 -spec s2c_client_ack(binary(), integer(), binary()) -> ok.
 s2c_client_ack(MsgId, CurrentUid, _DID) ->
-    Column = <<"`id`">>,
-    Where = <<"WHERE `msg_id` = ? AND `to_id` = ?">>,
+    Column = <<"id">>,
+    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
     {ok, _CList, Rows} = msg_s2c_repo:read_msg(
         Where, Vals, Column, 1
     ),
-    [ msg_s2c_repo:delete_msg(Id) || [Id] <- Rows ],
+    [msg_s2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================

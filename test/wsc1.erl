@@ -36,7 +36,7 @@
 % erlang:memory().
 % length(chat_store_repo:lookall()).
 
--include("common.hrl").
+-include_lib("imboy/include/log.hrl").
 
 start(Begin, End) ->
     % code:add_path("../ebin"),
@@ -44,11 +44,11 @@ start(Begin, End) ->
     io:format("Maxmium allowed process is ~p ~n", [Max]),
     statistics(runtime),
     statistics(wall_clock),
-    for(Begin, End, fun(Begin) ->
+    for(Begin, End, fun(Begin1) ->
             receive
             after
                 1 ->
-                    spawn(wsc1, ws_start, [Begin, 0])
+                    spawn(wsc1, ws_start, [Begin1, 0])
             end
     end),
     {_, Time1} = statistics(runtime),

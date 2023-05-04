@@ -14,15 +14,16 @@ search(_Account) ->
     ok.
 
 %%
+% user_setting_ds:find_by_uid(1).
 -spec find_by_uid(any()) -> map().
 find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(imboy_hashids:uid_decode(Uid));
 find_by_uid(Uid) ->
-    Column = <<"`setting`">>,
+    Column = <<"setting">>,
     case user_setting_repo:find_by_uid(Uid, Column) of
         {ok, _, []} ->
             #{};
-        {ok, _, [[Setting]]} ->
+        {ok, _, [{Setting}]} ->
             try
                 jsone:decode(Setting, [{object_format, map}])
             of

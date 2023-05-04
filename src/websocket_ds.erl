@@ -7,10 +7,11 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
--spec check_subprotocols(list(), any()) ->
-    {ok, any()} | {cowboy_websocket, any()}.
-
+-spec check_subprotocols(list(), any()) -> {ok, any()} | {cowboy_websocket, any()}.
 check_subprotocols(undefined, Req0) ->
     % HTTP 400 - 请求无效
     Req = cowboy_req:reply(400, Req0),
@@ -42,9 +43,10 @@ auth(Auth, Req0, State0, _Opt) ->
     {ok, Req1, State0}.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
+
 -spec auth_after(boolean(), integer(), any(), map(), map()) ->
     {ok, any(), map()} | {cowboy_websocket, any(), map(), map()}.
 auth_after(true, _Uid, Req0, State0, _Opt) ->

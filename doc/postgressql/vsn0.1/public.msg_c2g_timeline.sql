@@ -22,4 +22,5 @@ COMMENT ON COLUMN public.msg_c2g_timeline.to_gid IS '消息接收群 group_id';
 COMMENT ON COLUMN public.msg_c2g_timeline.created_at IS '创建记录Unix时间戳毫秒单位';
 
 -- index
-CREATE UNIQUE INDEX uk_c2g_timeline_MsgId_ToUid ON public.msg_c2g_timeline (msg_id, to_uid);
+CREATE INDEX uk_c2g_timeline_MsgId ON public.msg_c2g_timeline (msg_id);
+CREATE UNIQUE INDEX uk_c2g_timeline_ToUid_MsgId ON public.msg_c2g_timeline (to_uid, msg_id);

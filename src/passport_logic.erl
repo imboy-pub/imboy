@@ -13,8 +13,8 @@
 % password 给元素顺序不能够随意修改，
 % login_success_transfer 按顺序匹配了
 % 密码校验取第4位为密码数据 lists:nth(4, Row)
--define (LOGIN_COLUMN, <<"`id`,`account`,`mobile`,`password`,
-        `nickname`,`avatar`,`gender`,`region`,`sign`">>).
+-define (LOGIN_COLUMN, <<"id,account,mobile,password,
+        nickname,avatar,gender,region,sign">>).
 
 -spec send_email_code(ToEmail :: binary()) ->
           {error, Msg :: list()} | {ok, any()}.
@@ -162,9 +162,9 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, "不支持的注册类型"}.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 %% 校验验证码
 -spec verify_code(Id :: binary(), VerifyCode :: binary()) ->
@@ -181,23 +181,21 @@ verify_code(Id, Code) ->
     end.
 
 
--spec do_signup_by_email(Email :: binary(),
-                         Pwd :: binary(),
-                         PostVals :: list()) ->
+-spec do_signup_by_email(binary(), binary(), list()) ->
           {ok, Msg :: list()} |
           {error, Msg :: list()} |
           {error, Msg :: list(), Code :: integer()}.
 do_signup_by_email(Email, Pwd, PostVals) ->
     % ?LOG([do_signup_by_email, Email, Pwd, PostVals]),
-    case user_repo:find_by_email(Email, <<"`email`">>) of
-        {ok, _Col, [_Email]} ->
+    case user_repo:find_by_email(Email, <<"email">>) of
+        {ok, _Col, [_]} ->
             {error, "Email已经被占用了"};
         {ok, _Col, []} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             Now = imboy_dt:millisecond(),
-            Table = <<"`user`">>,
-            Column = <<"(`account`,`email`,`password`,`ref_user_id`,
-                `reg_ip`,`reg_cosv`,`status`,`created_at`)">>,
+            Table = <<"user">>,
+            Column = <<"(account,email,password,ref_user_id,
+                reg_ip,reg_cosv,status,created_at)">>,
             Pwd2 = imboy_password:generate(Password),
             Now2 = integer_to_binary(Now),
             Status = integer_to_binary(1),
@@ -227,7 +225,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                      "', '", Status/binary,
                      "', '", Now2/binary,
                      "')">>,
-            mysql_pool:insert_into(Table, Column, Value),
+            imboy_db:insert_into(Table, Column, Value),
             % 注册成功
             {ok, #{}}
     end.
@@ -241,7 +239,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
           {error, Msg :: list()} |
           {error, Msg :: list(), Code :: integer()}.
 do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
-    % Column = <<"`id`,`account`,`password`,`mobile`">>,
+    % Column = <<"id,account,password,mobile">>,
     {error, "暂时不支持手机号码注册"}.
 
 
@@ -252,26 +250,21 @@ do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
           {error, Msg :: list()} |
           {error, Msg :: list(), Code :: integer()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
-    case user_repo:find_by_email(Email, <<"`id`,`email`">>) of
+    case user_repo:find_by_email(Email, <<"id,email">>) of
         {ok, _Col, []} ->
             {error, "Email不存在或已被删除"};
-        {ok, _Col, [[Id, _Email]]} ->
+        {ok, _Col, [{Id, _Email}]} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             % Now = imboy_dt:millisecond(),
-            poolboy:transaction(mysql, fun(Pid) ->
-               Pwd2 = imboy_password:generate(Password),
-               Sql = <<"UPDATE `user` SET `password` = ? WHERE `id` = ?">>,
-               case mysql:query(Pid,
-                                Sql,
-                                [Pwd2, Id]) of
-                   ok ->
-                       {ok, "操作成功"};
-                   Res ->
-                       Res
-               end
-            end),
-            % 注册成功
-            {ok, []}
+            Tb2 = user_repo:tablename(),
+            Pwd2 = imboy_password:generate(Password),
+           Res = imboy_db:update(Tb2, Id, <<"password">>, Pwd2),
+           case Res of
+               {ok, _} ->
+                   {ok, #{}};
+               Res ->
+                   Res
+           end
     end.
 
 

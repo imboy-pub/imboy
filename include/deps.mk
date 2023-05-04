@@ -24,17 +24,22 @@ dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 # dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
 # lager 日志库
 dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
+
 # dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
-dep_mysql = hex 1.8.0
+# dep_mysql = hex 1.8.0
 # poolboy A hunky Erlang worker pool factory
-dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
+#dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
+
+dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.0
+dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
+
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题
 dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 1.7.4
 # Recon 希望成为一套可用于生产环境的工具，用于诊断 Erlang 问题或安全地检查生产环境。
 dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.3
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
 
-dep_khepri = hex 0.7.0
+#dep_khepri = hex 0.7.0
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。

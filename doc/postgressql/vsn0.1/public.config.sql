@@ -4,14 +4,14 @@
 
 CREATE TABLE IF NOT EXISTS public.config
 (
-    tab character(20) COLLATE pg_catalog."default" NOT NULL,
-    key character(40) COLLATE pg_catalog."default" NOT NULL,
+    tab varchar(20) COLLATE pg_catalog."default" NOT NULL,
+    key varchar(40) COLLATE pg_catalog."default" NOT NULL,
     value text NOT NULL,
-    title character(40) COLLATE pg_catalog."default" NOT NULL,
+    title varchar(40) COLLATE pg_catalog."default" NOT NULL,
     sort integer NOT NULL DEFAULT 20,
-    remark character(200) COLLATE pg_catalog."default" NOT NULL,
-    system integer NOT NULL DEFAULT 0,
-    status integer NOT NULL DEFAULT 1,
+    remark varchar(200) COLLATE pg_catalog."default" NOT NULL,
+    system smallint NOT NULL DEFAULT 0,
+    status smallint NOT NULL DEFAULT 1,
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL,
     CONSTRAINT config_pkey PRIMARY KEY (key)

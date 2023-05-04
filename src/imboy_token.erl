@@ -14,16 +14,17 @@
 
 -type token_type() :: rtk | tk.
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
 %% 生成refreshtoken
 encrypt_refreshtoken(ID) ->
     encrypt_token(ID, ?REFRESHTOKEN_VALID, rtk).
 
-
 %% 生成token
 encrypt_token(ID) ->
     encrypt_token(ID, ?TOKEN_VALID, tk).
-
 
 %% 解析token
 decrypt_token(Token) ->
@@ -46,9 +47,9 @@ decrypt_token(Token) ->
     end.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().

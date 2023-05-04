@@ -2,29 +2,31 @@
 
 -include_lib("imboy/include/log.hrl").
 
+-export([tablename/0]).
 -export([find_by_uid/2]).
 -export([friend_field/3]).
 -export([confirm_friend/6]).
 -export([delete/2]).
 -export([move_to_category/3]).
 
--spec confirm_friend(
-    IsFriend::boolean(),
-    FromID::integer(),
-    ToID::integer(),
-    Remark::binary(),
-    Setting::binary(),
-    NowTs::integer()
-) -> ok.
+%% ===================================================================
+%% API
+%% ===================================================================
+
+% friend_repo:tablename(),
+tablename() ->
+    imboy_db:public_tablename(<<"user_friend">>).
+
+-spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), integer()) -> ok.
 confirm_friend(true, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, NowTs) ->
     From = integer_to_binary(FromID),
     To = integer_to_binary(ToID),
-    Table = <<"`user_friend`">>,
-    Column = <<"(`from_user_id`,`to_user_id`,`status`,
-        `category_id`,`remark`,`updated_at`,`created_at`,
-        `setting`)">>,
+    Tb = tablename(),
+    Column = <<"(from_user_id,to_user_id,status,
+        category_id,remark,updated_at,created_at,
+        setting)">>,
     CreatedAt = integer_to_binary(NowTs),
 
     SettingBin = jsone:encode(filter_friend_setting(Setting),
@@ -32,44 +34,47 @@ confirm_friend(false, FromID, ToID, Remark, Setting, NowTs) ->
     Value1 = <<"(", From/binary, ", ", To/binary, ",1, 0, '",
         Remark/binary,"', 0, ", CreatedAt/binary,", '",
         SettingBin/binary, "')">>,
-    mysql_pool:replace_into(Table, Column, Value1),
+    imboy_db:insert_into(Tb, Column, Value1),
     ok.
 
 friend_field(FromID, ToID, Field) ->
-    Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?
-        AND `status` = 1">>,
-    Sql = <<"SELECT ", Field/binary, " FROM `user_friend` ",
-            Where/binary>>,
-    mysql_pool:query(Sql, [FromID, ToID]).
+    Tb = tablename(),
+    Where = <<" WHERE from_user_id = $1 AND to_user_id = $2 AND status = 1">>,
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb/binary, Where/binary>>,
+    imboy_db:query(Sql, [FromID, ToID]).
 
 find_by_uid(UID, Column) ->
     find_by_uid(UID, Column, 10000).
 
 
 find_by_uid(UID, Column, Limit) ->
-    Where = <<"WHERE `from_user_id` = ? AND `status` = 1 LIMIT ?">>,
-    Sql = <<"SELECT ", Column/binary, " FROM `user_friend` ",
-            Where/binary>>,
-    mysql_pool:query(Sql, [UID, Limit]).
+    Tb = tablename(),
+    Where = <<" WHERE from_user_id = $1 AND status = 1 LIMIT $2">>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
+    imboy_db:query(Sql, [UID, Limit]).
 
 
 -spec delete(integer(), integer()) -> ok.
 delete(FromID, ToID) ->
-    Where = <<"WHERE `from_user_id` = ? AND `to_user_id` = ?">>,
-    Sql = <<"DELETE FROM `user_friend` ", Where/binary>>,
+    Tb = tablename(),
+    Where = <<" WHERE from_user_id = $1 AND to_user_id = $2">>,
+    Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     % ?LOG(io:format("~s  ~p ~p\n", [Sql, FromID, ToID])),
-    mysql_pool:query(Sql, [FromID, ToID]),
+    imboy_db:execute(Sql, [FromID, ToID]),
     ok.
 
 move_to_category(FromUID, ToUID, CategoryID) ->
-    Sql = <<"UPDATE `user_friend` SET `category_id` = ?
-        WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
+    Tb = tablename(),
+    Where = <<" WHERE status = 1 AND from_user_id = $2 AND to_user_id = $3">>,
+    Sql = <<"UPDATE ", Tb/binary," SET category_id = $1", Where/binary>>,
     % ?LOG([Sql, CategoryID, FromUID, ToUID]),
-    mysql_pool:query(Sql, [CategoryID, FromUID, ToUID]).
+    imboy_db:execute(Sql, [CategoryID, FromUID, ToUID]),
+    ok.
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
+
 
 % 对好友的一些权限控制配置
 filter_friend_setting(Setting) ->

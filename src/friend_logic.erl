@@ -13,6 +13,9 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
 -spec add_friend(CurrentUid::integer(),
     To::binary(),
@@ -98,7 +101,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
 
 
 confirm_friend_resp(Uid, Remark) ->
-    Column = <<"`id`,`account`,`nickname`,`avatar`,`gender`,`sign`,`region`,`status`">>,
+    Column = <<"id,account,nickname,avatar,gender,sign,region,status">>,
     User = user_logic:find_by_id(Uid, Column),
     [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
 
@@ -130,16 +133,16 @@ information(CurrentUid, Uid) ->
     Info = [],
     Info.
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
-
+%
 friend_ids(Uid) ->
-    Column = <<"`to_user_id`">>,
+    Column = <<"to_user_id">>,
     case friend_repo:find_by_uid(Uid, Column) of
-        [] ->
+        {ok, _, []} ->
             [];
-        Friends ->
-            [ID || [{<<"to_user_id">>, ID}] <- Friends]
+        {ok, _, Friends} ->
+            [Id || {Id} <- Friends]
     end.

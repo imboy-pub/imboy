@@ -14,10 +14,9 @@
 -include_lib("imboy/include/log.hrl").
 -include_lib("imboy/include/cache.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
-%%% 查找非好友
+%% ===================================================================
+%% API
+%% ===================================================================
 
 %% 让自己可见
 -spec make_myself_visible(Uid::binary(), Lat::binary(), Lng::binary()) ->
@@ -48,18 +47,18 @@ people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
     {ok, Li} = imboy_redis:georadius(?GEO_PEOPLE_NEARBY, Lng, Lat, Radius, Unit, Limit),
     Uids = [imboy_hashids:uid_decode(Uid) || [Uid, _Distince] <- Li],
-    Users = user_logic:find_by_ids(Uids, <<"`id`,`account`,`nickname`,`avatar`,`sign`,`gender`,`region`">>),
+    Users = user_logic:find_by_ids(Uids, <<"id,account,nickname,avatar,sign,gender,region">>),
     lists:zipwith(fun(User, [_, Distince]) -> [{<<"distince">>, Distince} | imboy_hashids:replace_id(User)] end, Users, Li).
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% -------------------------------------------------------------------
+%% ===================================================================
 
 %
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% EUnit tests.
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -ifdef(EUNIT).
 %addr_test_() ->

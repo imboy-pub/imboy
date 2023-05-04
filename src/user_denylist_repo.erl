@@ -4,6 +4,7 @@
 % user_denylist related operations are put in this module, repository module
 %%%
 
+-export([tablename/0]).
 -export([add/3, remove/2]).
 -export([in_denylist/2]).
 -export([count_by_uid/1, page/3]).
@@ -16,28 +17,39 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
--spec page(Uid::integer(), Limit::integer(), Offset::integer()) -> mysql:query_result().
-page(Uid, Limit,  Offset) ->
-    Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
-    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark, u.gender, u.region,", Source/binary>>,
-    Join1 = <<"inner join user as u on u.id = d.denied_user_id ">>,
-    Join2 = <<"inner join user_friend as f on d.denied_user_id = f.to_user_id ">>,
-    Where = <<"WHERE d.`user_id` = ? and f.from_user_id = ? LIMIT ? OFFSET ?">>,
+%% ===================================================================
+%% API
+%% ===================================================================
 
-    Sql = <<"SELECT ", Column/binary, " FROM `user_denylist` as d ",
+tablename() ->
+    imboy_db:public_tablename(<<"user_denylist">>).
+
+% user_denylist_repo:page(1, 10, 0).
+-spec page(integer(), integer(), integer()) ->
+    {ok, list(), list()} | {error, any()}.
+page(Uid, Limit,  Offset) ->
+    % Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
+    Source = <<"f.setting::jsonb->>'source' AS source">>,
+    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark, u.gender, u.region,", Source/binary>>,
+
+    UserTable = imboy_db:public_tablename(<<"user">>),
+    UserFTable = imboy_db:public_tablename(<<"user_friend">>),
+    Join1 = <<"inner join ", UserTable/binary, " as u on u.id = d.denied_user_id ">>,
+    Join2 = <<"inner join ", UserFTable/binary, " as f on d.denied_user_id = f.to_user_id ">>,
+    Where = <<" WHERE d.user_id = $1 and f.from_user_id = $2 LIMIT $3 OFFSET $4">>,
+
+    Tb = tablename(),
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " as d ",
         Join1/binary,
         Join2/binary,
         Where/binary>>,
     % ?LOG([Sql, Uid, Limit, Offset]),
-    mysql_pool:query(Sql, [Uid, Uid, Limit, Offset]).
+    imboy_db:query(Sql, [Uid, Uid, Limit, Offset]).
 
--spec add(Uid::integer(), DeniedUserId::integer(), Now::integer()) -> mysql:query_result().
+-spec add(integer(), integer(), integer()) -> {ok, integer()}.
 add(Uid, DeniedUserId, Now) ->
-    Table = <<"`user_denylist`">>,
-    Column = <<"(`user_id`,`denied_user_id`,`created_at`)">>,
+    Tb = tablename(),
+    Column = <<"(user_id,denied_user_id,created_at)">>,
 
     Uid2 = integer_to_binary(Uid),
     DeniedUserId2 = integer_to_binary(DeniedUserId),
@@ -45,42 +57,49 @@ add(Uid, DeniedUserId, Now) ->
 
     Value = <<"('", Uid2/binary, "', '", DeniedUserId2/binary, "', '",
         Now2/binary, "')">>,
-    mysql_pool:replace_into(Table, Column, Value).
+    imboy_db:insert_into(Tb, Column, Value).
 
 
 -spec remove(Uid::integer(), DeniedUid::integer()) -> ok.
 remove(Uid, DeniedUid) ->
-    Sql = <<"DELETE FROM `user_denylist`
-        WHERE `user_id` = ? AND `denied_user_id` = ?">>,
-    mysql_pool:execute(Sql, [Uid, DeniedUid]),
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1 AND denied_user_id = $2">>,
+    imboy_db:execute(Sql, [Uid, DeniedUid]),
     ok.
 
+% user_denylist_repo:count_by_uid(107).
 count_by_uid(Uid) ->
+    Uid2 = integer_to_binary(Uid),
     % use index uk_UserId_DeniedUserId
-    Sql = <<"SELECT count(*) as count FROM `user_denylist`
-        WHERE `user_id` = ?">>,
-    {ok,[<<"count">>],[[Count]]} = mysql_pool:query(Sql, [Uid]),
-    Count.
+    imboy_db:pluck(
+        tablename()
+        , <<"user_id = ", Uid2/binary>>
+        , <<"count(*) as count">>
+        , 0
+    ).
 
 % user_denylist_repo:in_denylist(107, 62913).
 -spec in_denylist(integer(), integer()) -> integer().
 in_denylist(Uid, DeniedUid)->
+    Uid2 = integer_to_binary(Uid),
+    DeniedUid2 = integer_to_binary(DeniedUid),
     % use index uk_UserId_DeniedUserId
-    Sql = <<"SELECT count(*) as count FROM `user_denylist`
-        WHERE `user_id` = ? AND `denied_user_id` = ?">>,
-     % mysql_pool:query(Sql, [Uid, DeniedUid]).
-    {ok,[<<"count">>],[[Count]]} = mysql_pool:query(Sql, [Uid, DeniedUid]),
-    Count.
+    imboy_db:pluck(
+        tablename()
+        , <<"user_id = ", Uid2/binary, " AND denied_user_id = ", DeniedUid2/binary>>
+        , <<"count(*) as count">>
+        , 0
+    ).
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 %
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% EUnit tests.
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -ifdef(EUNIT).
 %addr_test_() ->

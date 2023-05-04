@@ -6,14 +6,21 @@
 -export([get/2]).
 
 
+% config_logic:get(<<"site_name">>).
 get(Key) ->
     get(Key, "").
 
-
-get(Key, Defalut) ->
-    case config_repo:get_by_key(Key) of
-        {ok, _FieldList, []} ->
-            Defalut;
-        {ok, _FieldList, [[Val]]} ->
-            Val
-    end.
+get(Key, Defalut) when is_list(Key) ->
+    get(list_to_binary(Key), Defalut);
+get(ConfigKey, Defalut) ->
+    Key = {config, ConfigKey},
+    Fun = fun() ->
+        imboy_db:pluck(
+            <<"config">>
+            , <<"key = '", ConfigKey/binary, "'">>
+            , <<"value">>
+            , Defalut
+        )
+    end,
+    % 缓存10天
+    imboy_cache:memo(Fun, Key, 864000).

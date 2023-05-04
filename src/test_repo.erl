@@ -18,14 +18,14 @@ create_user_test(Prefix, Num, Limit) ->
     Mob = lists:concat([Prefix, io_lib:format("~9.10.0B", [Num])]),
     MobBin = list_to_binary(Mob),
     Username = MobBin,
-    Sql = <<"INSERT INTO `user` (`level_id`, `password`, `account`, `mobile`,
-        `email`, `experience`, `gender`, `avatar`, `sign`, `login_count`,
-        `last_login_ip`, `last_login_at`, `ref_user_id`, `status`,
-        `created_at`, `reg_ip`, `reg_cosv`) VALUES (0,'',
+    Sql = <<"INSERT INTO public.user (level_id, password, account, mobile,
+        email, experience, gender, avatar, sign, login_count,
+        last_login_ip, last_login_at, ref_user_id, status,
+        created_at, reg_ip, reg_cosv) VALUES (0,'',
         '", Username/binary, "', '", MobBin/binary,
           "', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
     % ?LOG(Sql),
-    mysql_pool:query(Sql, no_params),
+    imboy_db:execute(Sql, []),
     create_user_test(Prefix, Num + 1, Limit).
 
 
@@ -51,9 +51,9 @@ create_friend_test(FromId, ToId) when FromId > 513237; ToId > 513237 ->
     ok;
 create_friend_test(FromId, ToId) ->
     Sql =
-        <<"INSERT INTO `user_friend` (`from_user_id`, `to_user_id`,
-        `status`, `created_at`, `setting`) VALUES (?, ?, 1, ?, ?)">>,
-    mysql_pool:query(Sql, [FromId, ToId, imboy_dt:millisecond(), <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
+        <<"INSERT INTO public.user_friend (from_user_id, to_user_id,
+        status, created_at, setting) VALUES ($1, $2, 1, $3, $4)">>,
+    imboy_db:execute(Sql, [FromId, ToId, imboy_dt:millisecond(), <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
 
 
 generate_exception(1) ->

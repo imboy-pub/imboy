@@ -14,9 +14,9 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 -spec device_name(integer(), binary()) -> binary().
 % Uid = 1.
@@ -32,7 +32,7 @@ device_name(Uid, DID) ->
 
 -spec change_name(integer(), binary(), binary()) -> ok.
 change_name(Uid, DID, Name) ->
-    Set = <<"`device_name` = ?">>,
+    Set = <<"device_name = $1">>,
     SetArgs = [Name],
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
 
@@ -54,13 +54,14 @@ page(Uid, Page,  Size) when Page > 0 ->
     case user_device_repo:page(Uid, Size, Offset) of
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items} ->
+        {ok, ColumnLi, Items0} ->
+            Items1 = [tuple_to_list(Item) || Item <- Items0],
             OnlineDids =  imboy_session:online_dids(Uid),
             Items2 = [
                 lists:zipwith(fun(X, Y) -> {X, Y} end,
                 [<<"online">> | ColumnLi],
                 [lists:member(DID, OnlineDids), DID] ++ Row) ||
-                    [DID | Row]  <- Items
+                    [DID | Row]  <- Items1
             ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
@@ -68,15 +69,15 @@ page(Uid, Page,  Size) when Page > 0 ->
     end.
 
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% Internal Function Definitions
-%% -------------------------------------------------------------------
+%% ===================================================================
 
 %
 
-%% ------------------------------------------------------------------
+%% ===================================================================
 %% EUnit tests.
-%% ------------------------------------------------------------------
+%% ===================================================================
 
 -ifdef(EUNIT).
 %addr_test_() ->

@@ -9,10 +9,13 @@ include include/deps.mk
 LOCAL_DEPS = kernel stdlib mnesia sasl ssl
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager poolboy mysql jsone ranch cowlib cowboy jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle eredis
+DEPS = goldrush lager jsone ranch cowlib cowboy jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle
 
+# DEPS += mysql poolboy
+DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
+DEPS += eredis
 # DEPS += khepri
 
 

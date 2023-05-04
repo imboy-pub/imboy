@@ -11,22 +11,25 @@
 
 -include_lib("imboy/include/log.hrl").
 
+%% ===================================================================
+%% API
+%% ===================================================================
 
 %% ToUid 是 FromUid 的好友？
 
-% friend_ds:is_friend(1,2)
+% friend_ds:is_friend(1, 3)
 -spec is_friend(integer(), integer()) -> boolean().
 is_friend(FromUid, ToUid) ->
     {Res, _} = friend_ds:is_friend(FromUid, ToUid, <<"remark">>),
     Res.
 
-% friend_ds:is_friend(1,2, <<"remark">>).
+% friend_ds:is_friend(1, 3, <<"remark">>).
 -spec is_friend(integer(), integer(), binary()) -> boolean().
 is_friend(FromUid, ToUid, Field) ->
     Key = {is_friend, FromUid, ToUid},
     Fun = fun() ->
         case friend_repo:friend_field(FromUid, ToUid, Field) of
-            {ok, _ColumnLi, [[Val]]} ->
+            {ok, _ColumnLi, [{Val}]} ->
                 {true, Val};
             _ ->
                 {false, <<"">>}
@@ -35,58 +38,67 @@ is_friend(FromUid, ToUid, Field) ->
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 
+% friend_ds:page_by_uid(1).
 -spec page_by_uid(integer()) -> list().
 page_by_uid(Uid) ->
     page_by_uid(Uid, 1000, 0).
 
 -spec page_by_uid(integer(), integer(), integer()) -> list().
 page_by_uid(Uid, Limit, Offset) ->
-    Where = <<"WHERE f.status = ? AND f.from_user_id = ? LIMIT ? OFFSET ?">>,
-    WhereArgs = [1, Uid, Limit, Offset],
+    Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 LIMIT $2 OFFSET $3">>,
+    WhereArgs = [Uid, Limit, Offset],
     page(Where, WhereArgs).
 
 -spec page_by_cid(integer(), integer(), integer(), integer()) -> list().
 page_by_cid(Cid, Uid, Limit, Offset) ->
-    Where = <<"WHERE f.status = ? AND f.from_user_id = ? AND f.category_id = ? LIMIT ? OFFSET ?">>,
-    WhereArgs = [1, Uid, Cid, Limit, Offset],
+    Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.category_id = $2 LIMIT $3 OFFSET $4">>,
+    WhereArgs = [Uid, Cid, Limit, Offset],
     page(Where, WhereArgs).
 
 -spec page(binary(), list()) -> list().
 page(Where, WhereArgs) ->
-    C1 = <<"u.`id`, u.`account`, u.`nickname`, u.`avatar`, u.`sign`, u.`gender`, u.`region`,">>,
-    C_IsFrom = <<"JSON_UNQUOTE(json_extract(f.setting, '$.is_from')) AS is_from,">>,
-    C_Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source,">>,
+    C1 = <<"u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,">>,
+    C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
+    C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
     C_IsFriend = <<" case when d.denied_user_id is null then 1 else 0 end as is_friend,">>,
-    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.`remark`, f.`category_id`">>,
+    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
 
-    Join1 = <<"left join user_denylist as d on d.denied_user_id = f.to_user_id ">>,
-    Join2 = <<"inner join user as u on u.id = f.to_user_id ">>,
+    UserTable = imboy_db:public_tablename(<<"user">>),
+    UserDTable = imboy_db:public_tablename(<<"user_denylist">>),
+    Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
+    Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
 
-    Sql = <<"SELECT ", C1/binary, C2/binary, " FROM `user_friend` as f ",
+    Tb = friend_repo:tablename(),
+    Sql = <<"SELECT ", C1/binary, C2/binary, " FROM ", Tb/binary, " as f ",
         Join1/binary,
         Join2/binary,
         Where/binary>>,
+    % Res = imboy_db:query(Sql, WhereArgs),
+    % ?LOG([Res]),
+    % ok.
     % ?LOG([Sql, WhereArgs]),
-    case mysql_pool:query(Sql, WhereArgs) of
+    case imboy_db:query(Sql, WhereArgs) of
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
-            Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, Row) ||
-                Row <- Rows],
-                [user_logic:online_state(User) || User <- Friends];
+            Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- Rows],
+            [user_logic:online_state(User) || User <- Friends];
         _ ->
             []
     end.
 
+% friend_ds:change_remark(1, 2, <<" 1 to 2 f">>).
+-spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 change_remark(FromUid, ToUid, Remark) ->
-    Sql = <<"UPDATE `user_friend` SET `remark` = ?, `updated_at` = ?
-        WHERE `status` = 1 AND `from_user_id` = ? AND `to_user_id` = ?">>,
-    mysql_pool:query(Sql,
-                     [Remark, imboy_dt:millisecond(), FromUid, ToUid]).
+    Tb = friend_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
+        WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
+    imboy_db:execute(Sql, [Remark, imboy_dt:millisecond(), 1, FromUid, ToUid]).
 
-
+% friend_ds:set_category_id(1, 1, 0).
+-spec set_category_id(integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.
 set_category_id(Uid, CategoryId, NewCid) ->
-    Sql = <<"UPDATE `user_friend` SET `category_id` = ?, `updated_at` = ?
-        WHERE `status` = 1 AND `from_user_id` = ? AND `category_id` = ?">>,
-    mysql_pool:query(Sql,
-                     [NewCid, imboy_dt:millisecond(), Uid, CategoryId]).
+    Tb = friend_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2
+        WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
+    imboy_db:execute(Sql, [NewCid, imboy_dt:millisecond(), 1, Uid, CategoryId]).

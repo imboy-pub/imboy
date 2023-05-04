@@ -5,9 +5,9 @@
 
 -include_lib("imboy/include/log.hrl").
 
-%% ------------------------------------------------------------------
-%% api
-%% ------------------------------------------------------------------
+%% ===================================================================
+%% API
+%% ===================================================================
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -28,7 +28,7 @@ member(Req0, _State) ->
         #{id := undefined} ->
             imboy_response:error(Req0, "group id 必须");
         #{id := Gid} ->
-            Members = group_logic:member(Gid),
+            Members = group_logic:member_list(Gid),
             Data = member_transfer(Members),
             imboy_response:success(Req0, Data, "success.")
     end.

@@ -2,22 +2,25 @@
 %%%
 % group 业务逻辑模块
 %%%
--export([member/1]).
+-export([member_list/1]).
 
 -include_lib("imboy/include/log.hrl").
 
 
-member(Gid) ->
-    Column = <<"`user_id`,`alias`,`description`,`role`">>,
+% group_logic:member_list(1).
+member_list(Gid) ->
+    Column = <<"user_id,alias,description,role">>,
     case group_member_repo:find_by_gid(Gid, Column) of
         {ok, _, []} ->
             [];
-        {ok, ColumnLi, Members} ->
-            Uids = [Uid || [Uid, _, _, _] <- Members],
-            [_ | ColumnLi2] = ColumnLi,
-            Members2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                      ColumnLi2,
-                                      Row) || [_ | Row] <- Members],
+        {ok, _ColumnLi, Members} ->
+            Uids = [Uid || {Uid, _, _, _} <- Members],
+            Members2 = [lists:zipwith(
+                    fun(X, Y) -> {X, Y} end
+                    , [<<"alias">>, <<"description">>, <<"role">>]
+                    , [Alias, Desc, Role]
+                ) || {_Uid, Alias, Desc, Role} <- Members
+            ],
             Users = user_logic:find_by_ids(Uids),
             % 获取用户在线状态
             Users2 = [user_logic:online_state(User) || User <- Users],
