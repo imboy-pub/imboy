@@ -124,8 +124,10 @@ update(Req0, State) ->
     case user_logic:update(CurrentUid, Field, Value) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
-        ok ->
-            imboy_response:success(Req0, #{}, "success.")
+        {ok, _} ->
+            imboy_response:success(Req0, #{}, "success.");
+        _ ->
+            imboy_response:error(Req0, <<"unknown error">>)
     end.
 
 
