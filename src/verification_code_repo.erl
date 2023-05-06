@@ -32,8 +32,13 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
     VerifyCode2 = integer_to_binary(VerifyCode),
     ValidityAt2 = integer_to_binary(ValidityAt),
     Now2 = integer_to_binary(Now),
-    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '",
-              ValidityAt2/binary, "', '", Now2/binary, "')">>,
+
+    UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ",
+        ValidityAt2/binary, ", created_at = ", Now2/binary, ";">>,
+
+    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '"
+        , ValidityAt2/binary, "', '", Now2/binary
+        , "') ON CONFLICT (id) DO ", UpSql/binary>>,
     imboy_db:insert_into(Tb, Column, Value).
 
 %% ===================================================================

@@ -31,8 +31,7 @@ send_email_code(ToEmail) ->
             {ok, "一分钟内重复请求不发送Email"};
         {ok, _Col, [{ToEmail, Code, ValidityAt, _}]}
           when Now < ValidityAt ->
-            CodeLi = binary_to_list(Code),
-            Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
             % ?LOG(Msg),
             % {ok, Msg};
             imboy_func:send_email(ToEmail, Msg);
@@ -44,8 +43,8 @@ send_email_code(ToEmail) ->
                                         VerifyCode,
                                         Now + 600000,
                                         Now),
-            CodeLi = integer_to_list(VerifyCode),
-            Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",
+            Code2 = integer_to_binary(VerifyCode),
+            Msg = <<"Code is ",  Code2/binary,  " will expire in 10 minutes.">>,
             % ?LOG(Msg),
             % {ok, Msg}
             imboy_func:send_email(ToEmail, Msg)

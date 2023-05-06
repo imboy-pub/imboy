@@ -68,11 +68,21 @@ num_random(Len) ->
 %   " ，10分钟后过期。").
 % imboy_func:send_email(<<"1977699124@qq.com">>, "你的验证码为： " ++
 %   integer_to_list(imboy_func:num_random(6)) ++ " ，10分钟后过期。").
--spec send_email(ToEmail :: binary(), Subject :: list()) -> {ok, pid()}.
+-spec send_email(binary(), binary()) -> {ok, pid()}.
+send_email(ToEmail, Subject) when is_list(Subject)  ->
+    send_email(ToEmail, list_to_binary(Subject));
 send_email(ToEmail, Subject) ->
     Option = imboy_func:env(smtp_option),
     Username = proplists:get_value(username, Option),
-    gen_smtp_client:send({Username,
-                          [binary_to_list(ToEmail)],
-                          "Subject: " ++ Subject},
-                         Option).
+    Username2 = list_to_binary(Username),
+    Email = {
+        Username,
+        [ToEmail],
+        <<"From: IMBoy ", Username2/binary, "\r\nTo:  ", ToEmail/binary,"\r\nSubject: ", Subject/binary>>
+    },
+    gen_smtp_client:send_blocking(Email, Option),
+    {ok, success}.
+    % gen_smtp_client:send({Username,
+    %                       [binary_to_list(ToEmail)],
+    %                       "Subject: " ++ Subject},
+    %                      Option).
