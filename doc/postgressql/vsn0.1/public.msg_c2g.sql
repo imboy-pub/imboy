@@ -2,6 +2,10 @@
 
 -- DROP TABLE IF EXISTS public."msg_c2g";
 
+
+-- 导入数据后，需要更新自增长ID
+-- select setval('"msg_c2g_id_seq"', (select max(id) from public."msg_c2g"));
+
 CREATE TABLE IF NOT EXISTS public."msg_c2g"
 (
     id BIGSERIAL PRIMARY KEY,

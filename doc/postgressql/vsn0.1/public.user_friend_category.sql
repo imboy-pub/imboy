@@ -2,6 +2,11 @@
 
 -- DROP TABLE IF EXISTS public."user_friend_category";
 
+
+-- 导入数据后，需要更新自增长ID
+-- select setval('"user_friend_category_id_seq"', (select max(id) from public."user_friend_category"));
+
+
 CREATE TABLE IF NOT EXISTS public."user_friend_category"
 (
     id BIGSERIAL PRIMARY KEY,

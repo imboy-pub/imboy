@@ -2,6 +2,9 @@
 
 -- DROP TABLE IF EXISTS public."user_device";
 
+-- 导入数据后，需要更新自增长ID
+-- select setval('"user_device_id_seq"', (select max(id) from public."user_device"));
+
 CREATE TABLE IF NOT EXISTS public."user_device"
 (
     id BIGSERIAL PRIMARY KEY,

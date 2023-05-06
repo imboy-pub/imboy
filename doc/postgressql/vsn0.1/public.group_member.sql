@@ -2,6 +2,9 @@
 
 -- DROP TABLE IF EXISTS public."group_member";
 
+-- 导入数据后，需要更新自增长ID
+-- select setval('"group_member_id_seq"', (select max(id) from public."group_member"));
+
 CREATE TABLE IF NOT EXISTS public."group_member"
 (
     id BIGSERIAL PRIMARY KEY,
