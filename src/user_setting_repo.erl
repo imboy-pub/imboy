@@ -28,8 +28,11 @@ update(Uid, Setting) when is_binary(Uid) ->
     update(imboy_hashids:uid_decode(Uid), Setting);
 update(Uid, Setting) when is_integer(Uid) ->
     Tb = tablename(),
-    Sql = <<"REPLACE INTO ", Tb/binary, "
-        (user_id, setting, updated_at) VALUES ($1, $2, $3)">>,
+    UpSql = <<" UPDATE SET setting = $2, updated_at = $3;">>,
+    Sql = <<"INSERT INTO ", Tb/binary, "
+        (user_id, setting, updated_at) VALUES ($1, $2, $3)
+        ON CONFLICT (user_id) DO "
+        , UpSql/binary>>,
     UpAt = imboy_dt:millisecond(),
     % ?LOG([Sql, [Uid, jsone:encode(Setting), UpAt]]),
     imboy_db:execute(

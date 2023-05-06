@@ -1,0 +1,24 @@
+"tab","key","value","title","sort","remark","system","status","created_at","updated_at"
+"sys","login_pwd_rsa_encrypt","1","登录密码使用RSA算法加密",1,"系统登录开启RSA加密",1,1,"0","0"
+"sys","site_name","py_admin","前端站点名称",20,"ddd3",1,1,"0","0"
+"sys","login_rsa_priv_key","-----BEGIN RSA PRIVATE KEY-----
+MIICXQIBAAKBgQDxKL1RrEcd4szM8Df4HqsJdOvKrSQO7BBvBVsvXKfpWrM+8XGL
+1SP7nsQd6alhntotPSDezaHnFvhnP/sr8bwzzorr1dWoBVabqDFZgZ2awB7iTk4k
+/3RN1TEPoD08kaJQ0xBHZ14395q8bVh22Uh10eCO/xtHnso3I6penSvRawIDAQAB
+AoGAQKctalIHlumRAnh8aNa///8KoAGfIykCluEWuzHaCmO4nm1YhaaUyQadiW91
+a6iM0YgL4e+7MhskaXnrurJKRAweJP49OHz2JbLwyE7N7FWlY++1RVwWE32645CT
+t8hkAyFBBBR0J1by8HdGnPa69sJ6wwBYoh3SeCM8R92cfsECQQD+TbbYV/lw9KQD
+ju+18bWpAyQeMBdx11OfgN3fBkRwrl9M0DHzwFKwDY7zFxPuYKD5I39wNeSbYYHJ
+9my6/JybAkEA8sST9CmwLgCoRwciUdxH4hOW8uAdGC9T2VYSo/BbO/geF09c+Ggx
+SoyEFIoAUMDC53Yj4dXgks0gnwWygRyjcQJBAN/P59+qNbgLJ5qWHzTDYX05bX1A
+GDIyL7/Ou/bAXlXJscg55+y+VEfr9ubNZdZDpwj+C/fnBqcV/xOP1QwQrYcCQQC+
+cO0rxaQ6gjN//J20n9wYAowQnTTVqxLY1Ies6Tl40swwNwbUq0+3joFyZ0uWDZEX
+5/qAB7qzDo1/kgWU+TVRAkAwAdK+p5ippKmp2efsdqRjb/71n+EX9adpo/Wh5Ece
+Vp+MQkKMwNsQCkEthc/jEv4eG/urmWkLxaISAJRNegN2
+-----END RSA PRIVATE KEY-----","登录RSA算法加密私钥",3,"",1,1,"0","0"
+"sys","login_rsa_pub_key","-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDxKL1RrEcd4szM8Df4HqsJdOvK
+rSQO7BBvBVsvXKfpWrM+8XGL1SP7nsQd6alhntotPSDezaHnFvhnP/sr8bwzzorr
+1dWoBVabqDFZgZ2awB7iTk4k/3RN1TEPoD08kaJQ0xBHZ14395q8bVh22Uh10eCO
+/xtHnso3I6penSvRawIDAQAB
+-----END PUBLIC KEY-----","登录RSA算法加密公钥",2,"系统登录RSA加密公钥",1,1,"0","0"

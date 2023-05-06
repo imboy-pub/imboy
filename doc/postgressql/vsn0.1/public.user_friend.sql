@@ -20,7 +20,7 @@ TABLESPACE pg_default;
 ALTER TABLE IF EXISTS public.user_friend OWNER to imboy_user;
 
 
-COMMENT ON TABLE public.user_friend IS '用户登录设备表';
+COMMENT ON TABLE public.user_friend IS '聊天好友关系记录表（A请求B为好友，B接受之后，系统要自动加入一条B请求A的记录并且A自动确认 user_id 是 user表的主键）';
 
 COMMENT ON COLUMN public.user_friend.id IS '主键 自增长ID';
 
@@ -34,6 +34,7 @@ COMMENT ON COLUMN public.user_friend.remark IS '备注名';
 COMMENT ON COLUMN public.user_friend.updated_at IS '更新记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.user_friend.created_at IS '创建记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.user_friend.status IS '状态: -1 删除  0 禁用  1 启用';
+COMMENT ON COLUMN public.user_friend.setting IS '好友权限设置等信息';
 
 
 -- index

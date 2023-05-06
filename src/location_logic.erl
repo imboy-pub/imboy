@@ -19,7 +19,7 @@
 %% ===================================================================
 
 %% 让自己可见
--spec make_myself_visible(Uid::binary(), Lat::binary(), Lng::binary()) ->
+-spec make_myself_visible(integer(), binary(), binary()) ->
     ok | {error, Msg::binary()}.
 make_myself_visible(_Uid, <<"">>, _Lng) ->
     {error, <<"latitude is empty">>};
@@ -27,7 +27,8 @@ make_myself_visible(_Uid, _Lat, <<"">>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
-    imboy_redis:geoadd(?GEO_PEOPLE_NEARBY, Lng, Lat, Uid),
+    ?LOG([Uid, Lat, Lng]),
+    geo_people_nearby_repo:save(Uid, Lat, Lng),
     ok.
 
 % 让自己不可见
@@ -35,7 +36,7 @@ make_myself_visible(Uid, Lat, Lng) ->
     ok | {error, Msg::binary()}.
 make_myself_unvisible(Uid) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, false),
-    imboy_redis:zrem(?GEO_PEOPLE_NEARBY, Uid),
+    geo_people_nearby_repo:delete(Uid),
     ok.
 
 -spec people_nearby(
@@ -43,12 +44,24 @@ make_myself_unvisible(Uid) ->
     Radius::binary(), Unit::binary(),
     Limit::binary()
 ) -> list().
+people_nearby(Lng, Lat, Radius, <<"km">>, Limit) ->
+    RadiusM = binary_to_integer(Radius) * 1000,
+    people_nearby(Lng, Lat, integer_to_binary(RadiusM), <<"m">>, Limit);
 people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
-    {ok, Li} = imboy_redis:georadius(?GEO_PEOPLE_NEARBY, Lng, Lat, Radius, Unit, Limit),
-    Uids = [imboy_hashids:uid_decode(Uid) || [Uid, _Distince] <- Li],
-    Users = user_logic:find_by_ids(Uids, <<"id,account,nickname,avatar,sign,gender,region">>),
-    lists:zipwith(fun(User, [_, Distince]) -> [{<<"distince">>, Distince} | imboy_hashids:replace_id(User)] end, Users, Li).
+    % geo_people_nearby_repo:people_nearby(<<"113.88308">>, <<"22.55328">>, <<"10000000">>, <<"m">>,  <<"10">>).
+    {ok, _, Li}  = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit,  Limit),
+    [imboy_hashids:replace_id([
+        {<<"id">>, Id}
+        , {<<"account">>, Account}
+        , {<<"nickname">>, Nickname}
+        , {<<"avatar">>, Avatar}
+        , {<<"sign">>, Sign}
+        , {<<"gender">>, Gender}
+        , {<<"region">>, Region}
+        , {<<"distance">>, Distance}
+        , {<<"unit">>, Unit}
+        ]) || {Id, Account, Nickname, Avatar, Sign, Gender, Region, _, Distance} <- Li].
 
 %% ===================================================================
 %% Internal Function Definitions

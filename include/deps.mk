@@ -57,7 +57,7 @@ dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtim
 # qdate - Erlang Date and Timezone Library
 dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate 0.7.0
 dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
-dep_eredis = git https://gitee.com/imboy-tripartite-deps/eredis.git master
+
 # fs Native Listener (Mac Windows Linux) 被 sync 依赖
 dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 # Sync 是一个开发者工具。它会即时重新编译和重新加载您的 Erlang 代码。

@@ -41,12 +41,11 @@ init(Req0, State0) ->
 % 让自己可见
 make_myself_visible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    Uid = imboy_hashids:uid_encode(CurrentUid),
-
     PostVals = imboy_req:post_params(Req0),
     Lat = proplists:get_value(<<"latitude">>, PostVals, ""),
     Lng = proplists:get_value(<<"longitude">>, PostVals, ""),
-   case location_logic:make_myself_visible(Uid, Lat, Lng) of
+    % ?LOG([CurrentUid, Lat, Lng]),
+   case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
         ok ->
            imboy_response:success(Req0, #{}, "success.");
         {error, Msg} ->
@@ -56,9 +55,8 @@ make_myself_visible(Req0, State) ->
 % 让自己不可见
 make_myself_unvisible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    Uid = imboy_hashids:uid_encode(CurrentUid),
-   location_logic:make_myself_unvisible(Uid),
-   imboy_response:success(Req0, #{}, "success.").
+    location_logic:make_myself_unvisible(CurrentUid),
+    imboy_response:success(Req0, #{}, "success.").
 
 % 附近的人
 people_nearby(Req0, _State) ->
@@ -73,7 +71,7 @@ people_nearby(Req0, _State) ->
     imboy_response:success(Req0, [
         {<<"radius">>, Radius},
         {<<"size">>, length(List)},
-        {<<"unit">>, Unit},
+        {<<"unit">>, <<"m">>},
         {<<"list">>, List}
     ], "success.").
 

@@ -26,10 +26,10 @@ send_email_code(ToEmail) ->
     Now = imboy_dt:millisecond(),
     case verification_code_repo:get_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
-        {ok, _Col, [[_, _, _, CreatedAt]]}
+        {ok, _Col, [{_, _, _, CreatedAt}]}
           when (Now - CreatedAt) < 60000 ->
             {ok, "一分钟内重复请求不发送Email"};
-        {ok, _Col, [[ToEmail, Code, ValidityAt, _]]}
+        {ok, _Col, [{ToEmail, Code, ValidityAt, _}]}
           when Now < ValidityAt ->
             CodeLi = binary_to_list(Code),
             Msg = "Code is " ++ CodeLi ++ " will expire in 10 minutes.",

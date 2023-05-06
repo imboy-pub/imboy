@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.user_setting
     user_id bigint NOT NULL,
     setting json,
     updated_at bigint NOT NULL,
-    CONSTRAINT user_setting_pkey PRIMARY KEY (user_id)
+    CONSTRAINT pk_user_setting_uid PRIMARY KEY (user_id)
 )
 
 TABLESPACE pg_default;

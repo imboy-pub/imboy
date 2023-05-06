@@ -15,7 +15,6 @@ DEPS = goldrush lager jsone ranch cowlib cowboy jsx jwerl hashids recon observer
 DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
-DEPS += eredis
 # DEPS += khepri
 
 
