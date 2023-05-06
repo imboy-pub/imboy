@@ -58,8 +58,9 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
     case imboy_func:is_email(Email) of
         true ->
             {Check, User} = case user_repo:find_by_email(Email, ?LOGIN_COLUMN) of
-                {ok, _, [Row]} ->
-                    case imboy_password:verify(Pwd, lists:nth(4, Row)) of
+                {ok, _, [Row]} when is_tuple(Row) ->
+                    % 第四个元素为password
+                    case imboy_password:verify(Pwd, element(4, Row)) of
                         {ok, _} ->
                             {true, Row};
                         {error, Msg} ->
@@ -81,9 +82,9 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
     end,
     % ?LOG(Res),
     {Check, User} = case Res of
-        {ok, _, [Row]} when length(Row)>4 ->
+        {ok, _, [Row]} when is_tuple(Row) ->
             % 第四个元素为password
-            case imboy_password:verify(Pwd, lists:nth(4, Row)) of
+            case imboy_password:verify(Pwd, element(4, Row)) of
                 {ok, _} ->
                     {true, Row};
                 {error, Msg} ->
@@ -268,9 +269,9 @@ find_password_by_email(Email, Pwd, _PostVals) ->
     end.
 
 
--spec login_success_transfer(boolean(), list()) ->
+-spec login_success_transfer(boolean(), tuple()) ->
     {ok, any()} | {error, any()}.
-login_success_transfer(true, [Id, Account, _, _, Nickname, Avatar, Gender, Region, Sign]) ->
+login_success_transfer(true, {Id, Account, _, _, Nickname, Avatar, Gender, Region, Sign}) ->
     {ok, [
         {<<"token">>, token_ds:encrypt_token(Id)},
         {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)},

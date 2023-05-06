@@ -21,18 +21,22 @@
 tablename() ->
     imboy_db:public_tablename(<<"user">>).
 
-find_by_email(Mobile, Column) ->
+
+% user_repo:find_by_email("10008@imboy.pub", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
+find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    imboy_db:query(Sql, [Mobile]).
+    imboy_db:query(Sql, [Email]).
 
 
+% user_repo:find_by_mobile(<<"13692177080">>, <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
+% user_repo:find_by_mobile("13692177080", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_mobile(Mobile, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
     imboy_db:query(Sql, [Mobile]).
 
-
+% user_repo:find_by_account("550138", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_account(Username, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE account = $1">>,

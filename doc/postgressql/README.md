@@ -18,6 +18,18 @@ DROP USER postgres;
 DROP schema "config"
 
 \dx postgis*
+
+
+https://blog.51cto.com/suncj/5038850
+
+例：从ip为xxx的数据库mon导出所有的表结构到文件dump2022.sql:
+pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
+
+pg_dump -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
+
+导入到本地数据库
+psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
+
 ```
 
 https://www.runoob.com/postgresql/postgresql-index.html
