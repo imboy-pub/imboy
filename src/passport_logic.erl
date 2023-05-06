@@ -104,7 +104,7 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
           {ok, Msg :: list()} |
           {error, Msg :: list()} |
           {error, Msg :: list(), Code :: integer()}.
-do_signup(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
+do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     case imboy_func:is_email(Email) of
         true ->
             % 校验验证码
@@ -117,8 +117,7 @@ do_signup(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
         false ->
             {error, "Email格式有误"}
     end;
-do_signup(Type, Mobile, Pwd, Code, PostVals)
-  when Type == <<"mobile">> ->
+do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
     case imboy_func:is_mobile(Mobile) of
         true ->
             do_signup_by_mobile(Mobile, Pwd, Code, PostVals);
@@ -172,11 +171,9 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 verify_code(Id, Code) ->
     Now = imboy_dt:millisecond(),
     case verification_code_repo:get_by_id(Id) of
-        {ok, _Col, [[_, Code, ValidityAt, _]]} when Now < ValidityAt ->
+        {ok, _Col, [{_, Code, ValidityAt, _}]} when Now < ValidityAt ->
             {ok, "验证码有效"};
-        {ok, _Col, [[_ToEmail, _Code, _ValidityAt, _CreatedAt]]} ->
-            {error, "验证码无效"};
-        {ok, _Col, []} ->
+        _ ->
             {error, "验证码无效"}
     end.
 

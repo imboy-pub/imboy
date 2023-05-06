@@ -30,6 +30,8 @@ pg_dump -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
 导入到本地数据库
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
 
+psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f /var/lib/postgresql/data/user_data.sql
+
 ```
 
 https://www.runoob.com/postgresql/postgresql-index.html
