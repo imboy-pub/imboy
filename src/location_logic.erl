@@ -61,7 +61,8 @@ people_nearby(Lng, Lat, Radius, Unit, Limit) ->
         , {<<"region">>, Region}
         , {<<"distance">>, Distance}
         , {<<"unit">>, Unit}
-        ]) || {Id, Account, Nickname, Avatar, Sign, Gender, Region, _, Distance} <- Li].
+        , {<<"location">>, Location}
+        ]) || {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li].
 
 %% ===================================================================
 %% Internal Function Definitions
