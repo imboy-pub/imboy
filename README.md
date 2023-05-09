@@ -13,14 +13,17 @@ Strive to implement version management based on "Specification for Semantic vers
 
 ## 环境依赖  (Environment depends on)
 
-数据结构(./priv/sql/)开发中有变动，以第一个发布版为准；目前只支持MySQL
+数据结构(./doc/postgresql/vsn0.1)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL15 开发
 
-(Data structure (./priv/ SQL /) changes under development, subject to the first release; Currently, only MySQL is supported)
+There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL15
 
 ------
-Erlang/OTP 23 / Erlang/OTP 24
 
-MySQL 5.7 / MySQL 5.8
+[more](./doc/deps_service.md)
+
+Erlang/OTP 23 / Erlang/OTP 24 / Erlang/OTP 25
+
+数据库 PostgreSQL15
 
 ### kerl
 ```

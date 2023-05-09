@@ -18,9 +18,6 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.tag OWNER to imboy_user;
 
-CREATE INDEX i_CreatorUserId_Status ON public.tag (creator_user_id,status);
-
-
 COMMENT ON TABLE public.tag IS 'tag记录表';
 
 COMMENT ON COLUMN public.tag.id IS '主键 自增长ID';
@@ -32,3 +29,9 @@ COMMENT ON COLUMN public.tag.referer_time IS '被引用次数';
 COMMENT ON COLUMN public.tag.updated_at IS '更新记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.tag.created_at IS '创建记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.tag.status IS '状态: -1 删除  0 禁用  1 启用';
+
+-- index
+
+
+CREATE INDEX i_tag_CreatorUserId_Status ON public.tag (creator_user_id,status);
+
