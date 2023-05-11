@@ -47,10 +47,6 @@ kerl active
 
 ```
 
-### Redis Stack
-
-[查看](./doc/redis.md)
-
 ### Grafana
 Grafana 是一个知名且广泛使用的开源应用程序监控工具。
 

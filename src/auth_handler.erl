@@ -28,21 +28,27 @@ init(Req0, State0) ->
 
 %%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
 assets(<<"POST">>, Req0) ->
-    PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
-    % AuthToken
-    AuthTk = proplists:get_value(<<"a">>, PostVals),
-    % Sence
-    Scene = proplists:get_value(<<"s">>, PostVals),
-    % Val = md5(filepath+filename)
-    Val = proplists:get_value(<<"v">>, PostVals),
-
-    % Body is ok or fail
-    Body = auth_for_assets(Scene, AuthTk, Val),
-    cowboy_req:reply(200,
-         #{<<"content-type">> => <<"text/html">>},
-         unicode:characters_to_binary(Body, utf8),
-         Req0);
+    try
+        imboy_req:post_params(Req0)
+    of
+        PostVals when is_list(PostVals)  ->
+            % ?LOG(PostVals),
+            % AuthToken
+            AuthTk = proplists:get_value(<<"a">>, PostVals),
+            % Sence
+            Scene = proplists:get_value(<<"s">>, PostVals),
+            % Val = md5(filepath+filename)
+            Val = proplists:get_value(<<"v">>, PostVals),
+            % Body is ok or fail
+            Body = auth_for_assets(Scene, AuthTk, Val),
+            cowboy_req:reply(200,
+                 #{<<"content-type">> => <<"text/html">>},
+                 unicode:characters_to_binary(Body, utf8),
+                 Req0)
+    catch
+        _ ->
+            <<"fail">>
+    end;
 assets(<<"GET">>, Req0) ->
     % Body is ok or fail
     Body = auth_for_assets(undefined, undefined, undefined),
@@ -61,6 +67,11 @@ auth_for_assets(_Scene, _AuthTk, undefined) ->
 auth_for_assets(Scene, AuthTk, Val) ->
     AuthKeys = imboy_func:env(auth_keys),
     Key = proplists:get_value(Scene, AuthKeys),
+    do_auth(Key, AuthTk, Val).
+
+do_auth(undefined, _AuthTk, _Val) ->
+    <<"fail">>;
+do_auth(Key, AuthTk, Val) ->
     Str = Key ++ binary_to_list(Val),
     case binary:part(imboy_hasher:md5(Str), {8, 16}) == AuthTk of
         true ->
