@@ -5,6 +5,13 @@ docker network create imboy-network
 ```
 
 
+## Dockerfile
+
+```
+cd docker
+docker build --file "./postgis_15-3.3_Dockerfile" -t imboy:0.1_postgis15-3.3_pgroonga3.0.2 .
+```
+
 
 ## postgresql
 https://github.com/postgis/postgis Star 1.4K
