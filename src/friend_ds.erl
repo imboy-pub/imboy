@@ -47,29 +47,32 @@ page_by_uid(Uid) ->
 page_by_uid(Uid, Limit, Offset) ->
     Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 LIMIT $2 OFFSET $3">>,
     WhereArgs = [Uid, Limit, Offset],
-    page(Where, WhereArgs).
+    page(Where, WhereArgs, fields(Uid)).
+
+fields(Uid) when is_integer(Uid) ->
+    fields(integer_to_binary(Uid));
+fields(Uid) ->
+    C_IsFriend = <<" case when d.user_id = ", Uid/binary, " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
+    C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
+    C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
+    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
+    <<"u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,", C2/binary>>.
 
 -spec page_by_cid(integer(), integer(), integer(), integer()) -> list().
 page_by_cid(Cid, Uid, Limit, Offset) ->
     Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.category_id = $2 LIMIT $3 OFFSET $4">>,
     WhereArgs = [Uid, Cid, Limit, Offset],
-    page(Where, WhereArgs).
+    page(Where, WhereArgs, fields(Uid)).
 
--spec page(binary(), list()) -> list().
-page(Where, WhereArgs) ->
-    C1 = <<"u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,">>,
-    C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
-    C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
-    C_IsFriend = <<" case when d.denied_user_id is null then 1 else 0 end as is_friend,">>,
-    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
-
+-spec page(binary(), list(), binary()) -> list().
+page(Where, WhereArgs, Fields) ->
     UserTable = imboy_db:public_tablename(<<"user">>),
     UserDTable = imboy_db:public_tablename(<<"user_denylist">>),
     Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
     Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
 
     Tb = friend_repo:tablename(),
-    Sql = <<"SELECT ", C1/binary, C2/binary, " FROM ", Tb/binary, " as f ",
+    Sql = <<"SELECT ", Fields/binary, " FROM ", Tb/binary, " as f ",
         Join1/binary,
         Join2/binary,
         Where/binary>>,
