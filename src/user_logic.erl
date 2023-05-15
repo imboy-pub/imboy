@@ -147,11 +147,11 @@ update(Uid, <<"region">>, Val) ->
 
 % 性别 1 男  2 女  3 保密
 update(Uid, <<"gender">>, <<"1">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"1">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, 1);
 update(Uid, <<"gender">>, <<"2">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"2">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, 2);
 update(Uid, <<"gender">>, <<"3">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, <<"3">>);
+    imboy_db:update(<<"user">>, Uid, <<"gender">>, 3);
 
 update(_Uid, _Field, _Val) ->
     {error, {1, <<"">>, <<"Unsupported field">>}}.
