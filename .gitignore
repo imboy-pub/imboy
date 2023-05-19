@@ -24,3 +24,4 @@ rebar3.crashdump
 Mnesia.nonode@nohost
 elvis
 rebar.lock
+docker/pg_jieba

@@ -18,7 +18,7 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.collect_user OWNER to imboy_user;
 
-COMMENT ON TABLE public.collect_user IS 'tag记录表';
+COMMENT ON TABLE public.collect_user IS '用户收藏记录表';
 
 COMMENT ON COLUMN public.collect_user.id IS '主键 自增长ID';
 COMMENT ON COLUMN public.collect_user.user_id IS '资源的收藏者';

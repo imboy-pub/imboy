@@ -2,13 +2,12 @@
 # NOTE: THIS DOCKERFILE IS GENERATED VIA "make update"! PLEASE DO NOT EDIT IT DIRECTLY.
 #
 
-FROM --platform=linux/amd64 postgres:15-bullseye
+FROM postgres:15-bullseye
 
 LABEL maintainer="PostGIS Project - https://postgis.net" \
       org.opencontainers.image.description="PostGIS 3.3.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
       org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
 
-ENV PG_MAJOR 15
 ENV POSTGIS_MAJOR 3
 ENV POSTGIS_VERSION 3.3.2+dfsg-1.pgdg110+1
 
@@ -23,10 +22,10 @@ RUN apt-get update \
            postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
       && rm -rf /var/lib/apt/lists/*
 
-
 # for pgroonga
-# https://github.com/pgroonga/docker/blob/3.0.2/debian/15/Dockerfile
+# https://github.com/pgroonga/docker/blob/3.0.1/debian/15/Dockerfile
 ENV PGROONGA_VERSION=3.0.2-1
+
 RUN \
   apt update && \
   apt upgrade -y -V && \
@@ -43,16 +42,28 @@ RUN \
   apt clean && \
   rm -rf /var/lib/apt/lists/*
 
-COPY ./pg_jieba/pg_jieba.so /usr/lib/postgresql/15/lib/
-COPY ./pg_jieba/pg_jieba.control /usr/share/postgresql/15/extension/
-COPY ./pg_jieba/pg_jieba--1.1.1.sql /usr/share/postgresql/15/extension/
-COPY ./pg_jieba/jieba_base.dict /usr/share/postgresql/15/tsearch_data/
-COPY ./pg_jieba/jieba_hmm.model /usr/share/postgresql/15/tsearch_data/
-COPY ./pg_jieba/jieba_user.dict /usr/share/postgresql/15/tsearch_data/
-COPY ./pg_jieba/jieba.stop /usr/share/postgresql/15/tsearch_data/
-COPY ./pg_jieba/jieba.idf /usr/share/postgresql/15/tsearch_data/
+# for https://github.com/jaiminpan/pg_jieba
+RUN \
+  apt update && \
+  apt upgrade -y -V && \
+  apt install -y -V git && \
+  apt install -y -V vim && \
+  apt install -y -V cmake && \
+  apt install -y -V libpq-dev && \
+  apt-get install -y -V build-essential && \
+  apt install -y -V wget sudo curl gnupg2 -y && \
+  wget https://ftp.postgresql.org/pub/source/v15.3/postgresql-15.3.tar.gz && \
+  tar -xf postgresql-15.3.tar.gz && cd postgresql-15.3 && \
+  ./configure --without-readline --without-zlib && make && make install && \
+  cd ../ && rm -rf postgresql-15.3 &&  rm -rf pg_jieba && \
+  git clone https://github.com/jaiminpan/pg_jieba && \
+  cd pg_jieba && git checkout -f master && git submodule update --init --recursive && \
+  mkdir build && cd build && \
+  cmake -DCMAKE_CXX_FLAGS="-Wall -std=c++11" -DCMAKE_PREFIX_PATH=/usr/lib/postgresql -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/local/pgsql/include/server .. && \
+  make && make install && cd ../ && rm -rf pg_jieba && \
+  apt clean && \
+  rm -rf /var/lib/apt/lists/* && cd / && rm -rf pg_jieba && rm -rf postgresql-15.3*
 
 RUN mkdir -p /docker-entrypoint-initdb.d
 COPY ./initdb.sh /docker-entrypoint-initdb.d/10_postgis.sh
 COPY ./update-postgis.sh /usr/local/bin
-RUN chmod +x /docker-entrypoint-initdb.d/10_postgis.sh && chmod +x /usr/local/bin/update-postgis.sh

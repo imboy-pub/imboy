@@ -22,7 +22,7 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.collect_resource OWNER to imboy_user;
 
-COMMENT ON TABLE public.collect_resource IS 'tag记录表';
+COMMENT ON TABLE public.collect_resource IS '被收藏资源记录表';
 
 COMMENT ON COLUMN public.collect_resource.id IS '主键 自增长ID';
 COMMENT ON COLUMN public.collect_resource.kind IS '被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件';

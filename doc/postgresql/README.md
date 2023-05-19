@@ -25,10 +25,17 @@ https://blog.51cto.com/suncj/5038850
 例：从ip为xxx的数据库mon导出所有的表结构到文件dump2022.sql:
 pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
 
-pg_dump -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
+pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
 
+mv imboy_v1.sql /var/lib/postgresql/data/
 导入到本地数据库
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
+
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
+GRANT ALL ON SCHEMA public TO imboy_user;
+GRANT ALL ON SCHEMA public TO public;
 
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f /var/lib/postgresql/data/user_data.sql
 

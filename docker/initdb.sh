@@ -16,11 +16,10 @@ for DB in template_postgis "$POSTGRES_DB"; do
     "${psql[@]}" --dbname="$DB" <<-'EOSQL'
         CREATE EXTENSION IF NOT EXISTS postgis;
         CREATE EXTENSION IF NOT EXISTS postgis_topology;
-        -- Reconnect to update pg_setting.resetval
-        -- See https://github.com/postgis/docker-postgis/issues/288
-        \c
         CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
         CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
-        CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        CREATE EXTENSION IF NOT EXISTS pgroonga;
+        CREATE EXTENSION IF NOT EXISTS pg_jieba;
 EOSQL
 done
