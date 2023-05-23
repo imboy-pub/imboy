@@ -119,6 +119,17 @@ https://sjqzhang.github.io/go-fastdfs/#character
 
 ```
 
-
 docker rm -f imboy_fastdfs && docker run --network=imboy-network -d --name imboy_fastdfs -v /data/docker/img_fastdfs_data:/data -p 8080:8080 -e GO_FASTDFS_DIR=/data sjqzhang/go-fastdfs
+
+// 统计api
+http://127.0.0.1:8080/stat
+
+文件列表 dir : 要查看文件列表的目录名
+http://127.0.0.1:8080/list_dir
+http://127.0.0.1:8080/list_dir?dir=default
+curl http://127.0.0.1:8080/list_dir?dir=location/20235
 ```
+
+##
+
+https://blog.wu-boy.com/2018/03/nginx-reverse-proxy-image-resizing/

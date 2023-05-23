@@ -15,6 +15,9 @@ DEPS = goldrush lager jsone ranch cowlib cowboy jsx jwerl hashids recon observer
 DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
+DEPS += ecron
+DEPS += esq
+
 # DEPS += khepri
 
 
@@ -40,12 +43,13 @@ else ifeq ($(IMBOYENV),dev)
 	RELX_CONFIG = $(CURDIR)/relx.dev.config
 else ifeq ($(IMBOYENV),local)
 	RELX_CONFIG = $(CURDIR)/relx.local.config
-	ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform, debug_info}'
+	ERLC_COMPILE_OPTS = +'{debug_info}'
 else
 	RELX_CONFIG = $(CURDIR)/relx.config
 endif
 dep_cowboy_commit = 2.9.0
 dep_lager_commit = 3.9.2
+
 
 # 生成文档的时候会被用到的依赖项
 # DOC_DEPS =
@@ -63,5 +67,4 @@ ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}'
 
 # Append these settings
 ERLC_OPTS += $(ERLC_COMPILE_OPTS)
-ERLC_OPTS += +debug_info
 TEST_ERLC_OPTS += $(ERLC_COMPILE_OPTS)

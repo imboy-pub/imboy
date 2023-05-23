@@ -43,6 +43,38 @@ psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f /var/lib/postgresql/data/
 
 https://www.runoob.com/postgresql/postgresql-index.html
 
+# postgresql 扩展
+
+```
+select name from pg_available_extensions;
+```
+
+## postgis
+
+
+## pgroonga
+
+## pg_jieba
+在macos m1 上面做的 pg_jieba.so 等8个文件copy到CentOS8 里面的docker里面，没有使用；
+
+之后我在CentOS8上面弄了一个 imboy:pg15_dev ，从里面copy出 pg_jieba扩展，在 docker cp 到 imboy_pg15 才可用
+
+详细步骤参考 ./docker/README.md
+
+## timescaledb
+
+https://packagecloud.io/timescale/timescaledb/install
+https://docs.timescale.com/self-hosted/latest/install/installation-linux/
+
+
+```
+curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | sudo bash
+apt install timescaledb-2-postgresql-15
+
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+```
+上面的代码在 imboy_postgis_dev docker容器里面执行成功
 
 # FAQ
 

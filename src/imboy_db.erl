@@ -35,10 +35,16 @@ with_transaction(F) ->
       Reply :: any().
 with_transaction(F, Opts0) ->
     Driver = imboy_func:env(sql_driver),
-    Conn = pooler:take_member(Driver),
-    Res = epgsql:with_transaction(Conn, F, Opts0),
-    pooler:return_member(Driver, Conn),
-    Res.
+    case pooler:take_member(Driver) of
+        error_no_members ->
+            % 休眠 1秒
+            timer:sleep(1),
+            with_transaction(F, Opts0);
+        Conn ->
+            Res = epgsql:with_transaction(Conn, F, Opts0),
+            pooler:return_member(Driver, Conn),
+        Res
+    end.
 
 % pluck(<<"public.", Table/binary>>, Field, Default) ->
 %     pluck(Table, Field, Default);
@@ -74,8 +80,12 @@ query(Sql) ->
     Driver = imboy_func:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
-        pgsql ->
+        pgsql when is_pid(Conn) ->
             epgsql:equery(Conn, Sql);
+        pgsql when Conn == error_no_members->
+            % 休眠 1秒
+            timer:sleep(1),
+            query(Sql);
         _ ->
             {error, not_supported}
     end,
@@ -87,8 +97,12 @@ query(Sql, Params) ->
     Driver = imboy_func:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
-        pgsql ->
+        pgsql when is_pid(Conn) ->
             epgsql:equery(Conn, Sql, Params);
+        pgsql when Conn == error_no_members->
+            % 休眠 1秒
+            timer:sleep(1),
+            query(Sql, Params);
         _ ->
             {error, not_supported}
     end,
@@ -101,11 +115,15 @@ execute(Sql, Params) ->
     Driver = imboy_func:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
-        pgsql ->
+        pgsql when is_pid(Conn) ->
             {ok, Stmt} = epgsql:parse(Conn, Sql),
             [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
             % {ok, 1} | {ok, 1, {ReturningField}}
             Res0;
+        pgsql when Conn == error_no_members->
+            % 休眠 1秒
+            timer:sleep(1),
+            execute(Sql, Params);
         _ ->
             {error, not_supported}
     end,

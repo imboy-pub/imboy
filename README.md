@@ -518,61 +518,6 @@ ets:select(syn_pg_by_name_chat, [{ '$1', [], ['$1']}]).
 ets:select(syn_pg_by_name_chat, [{ '$1', [], ['$1']}], 10).
 ```
 
-## khepri
-
-```
-imboy_session:put(1, <<"ios">>, <<"did11">>, spawn(fun() -> receive _ -> ok end end)).
-imboy_session:put(1, <<"andriod">>, <<"did12">>, spawn(fun() -> receive _ -> ok end end)).
-
-imboy_session:put(2, <<"ios">>, <<"did21">>, spawn(fun() -> receive _ -> ok end end)).
-imboy_session:put(2, <<"andriod">>, <<"did22">>, spawn(fun() -> receive _ -> ok end end)).
-
-
-imboy_session:put(10000, <<"andriod">>, <<"did22">>, spawn(fun() -> receive _ -> ok end end)).
-
-imboy_session:get(1).
-
-
-```
-
-### How do I design the path to get the following data
-https://github.com/rabbitmq/khepri/discussions/201
-```
-khepri:get({s, Uid})
-{ok, [{1,<<"ios">>,<0.11996.0>,<<"did11">>}, {1,<<"andriod">>,<0.11820.1>,<<"did2">>}]}
-```
-
-*匹配任何树节点并
-**匹配树节点中的任何路径
-```
-Uid1 = 1, Uid2 = 2, DType1 = <<"ios">>,  DType2 = <<"andriod">>.
-DID1 = <<"did1">>, DID2 = <<"did2">>.
-Pid1 = self(). Pid2 = self().
-
-Uid1Bin = integer_to_binary(Uid1).
-
-Path1 = <<"/:s/", Uid1Bin/binary, "/", DType1/binary>>.
-khepri:put(Path1, {Uid1, DType1, Pid1, DID1}).
-
-Path2 = <<"/:s/", Uid1Bin/binary, "/", DType2/binary>>.
-khepri:put(Path2, {Uid1, DType2, Pid2, DID2}).
-
-khepri:get_many("/:s/1/*").
-khepri:get_many("/:s/1/**").
-
-
-    {ok, Map1} = imboy_session:get(1),
-    maps:fold(fun(K, Val, Acc) ->
-        io:format("acc~p, k ~p, val: ~p,~n", [Acc, K, Val])
-    end, [], Map1).
-
-
-
-integer_to_list(4, 2).
-
-khepri:delete_many("/:s/1/*").
-```
-
 ## eturnal
 ```
 _build/product/rel/eturnal/bin/eturnal console
