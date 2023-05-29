@@ -1,5 +1,6 @@
 -module(imboy_db).
 
+-export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
 -export([query/1]).
@@ -46,6 +47,18 @@ with_transaction(F, Opts0) ->
         Res
     end.
 
+% imboy_db:pluck(<<"to_tsquery('jiebacfg', '东区')::text">>, <<"">>).
+% imboy_db:pluck(<<"to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
+pluck(Field, Default) ->
+    Sql = <<"SELECT ", Field/binary>>,
+    ?LOG([pluck, Sql]),
+    case imboy_db:query(Sql) of
+        % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
+        {ok, _, [{Val}]} ->
+            Val;
+        _ ->
+            Default
+    end.
 % pluck(<<"public.", Table/binary>>, Field, Default) ->
 %     pluck(Table, Field, Default);
 pluck(Table, Field, Default) ->

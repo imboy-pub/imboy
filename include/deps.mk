@@ -30,7 +30,7 @@ dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 # poolboy A hunky Erlang worker pool factory
 #dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
 
-dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.0
+dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题
@@ -46,7 +46,7 @@ dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
-dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.7.0
+dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
 # bbmustache 一个无逻辑的模板。 deps by relx
 dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖

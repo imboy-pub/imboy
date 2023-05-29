@@ -128,10 +128,11 @@ tablename() ->
     imboy_db:public_tablename(<<"$(subst _repo,,$(notdir $(n)))">>).
 
 %%% demo方法描述
--spec demo(integer(), binary(), binary()) -> mysql:query_result().
+-spec demo(integer(), binary(), binary()) ->
+    {ok, list(), list()} | {error, any()}.
 demo(Uid, _Val1, _Val2) ->
     Sql = <<"SELECT id FROM $(subst _repo,,$(notdir $(n))) WHERE id = $$1">>,
-    mysql_db:query(Sql, [Uid]).
+    imboy_db:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -54,12 +54,9 @@ Grafana 是一个知名且广泛使用的开源应用程序监控工具。
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
 
-make new t=cowboy.http n=handler_passport
-make new t=cowboy.ws n=handler_websocket
-
-make new t=cowboy.middleware n=middleware_demo
-make new t=cowboy.middleware n=middleware_auth
-make new t=gen_server n=server_account
+make new t=cowboy.middleware n=demo_middleware
+make new t=cowboy.middleware n=verify_middleware
+make new t=gen_server n=account_server
 
 make distclean
 

@@ -10,6 +10,7 @@
 -export([set_category_id/3]).
 
 -include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/def_column.hrl").
 
 %% ===================================================================
 %% API
@@ -48,15 +49,6 @@ page_by_uid(Uid, Limit, Offset) ->
     Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 LIMIT $2 OFFSET $3">>,
     WhereArgs = [Uid, Limit, Offset],
     page(Where, WhereArgs, fields(Uid)).
-
-fields(Uid) when is_integer(Uid) ->
-    fields(integer_to_binary(Uid));
-fields(Uid) ->
-    C_IsFriend = <<" case when d.user_id = ", Uid/binary, " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
-    C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
-    C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
-    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
-    <<"u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,", C2/binary>>.
 
 -spec page_by_cid(integer(), integer(), integer(), integer()) -> list().
 page_by_cid(Cid, Uid, Limit, Offset) ->
@@ -105,3 +97,19 @@ set_category_id(Uid, CategoryId, NewCid) ->
     Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
     imboy_db:execute(Sql, [NewCid, imboy_dt:millisecond(), 1, Uid, CategoryId]).
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+
+fields(Uid) when is_integer(Uid) ->
+    fields(integer_to_binary(Uid));
+fields(Uid) ->
+    C_IsFriend = <<" case when d.user_id = ", Uid/binary, " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
+    C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
+    C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
+    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
+    <<"id,", F2/binary>> = ?DEF_USER_COLUMN,
+    <<"u.id,", F2/binary, ",", C2/binary>>.
+

@@ -57,6 +57,9 @@ get_routes() ->
         {"/friend/category/delete", friend_category_handler, #{action => delete}},
         {"/friend/category/rename", friend_category_handler, #{action => rename}},
 
+        % 搜索“用户允许被搜索”的用户
+        {"/fts/user_search", fts_handler, #{action => user_search}},
+
         {"/group/member", group_handler, #{action => member}},
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%

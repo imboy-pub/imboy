@@ -52,5 +52,12 @@ CREATE INDEX article_fts_gin_index ON article USING gin (fts);
 -- http://javabin.cn/2018/pg_jieba.html
 select * from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.token @@ to_tsquery('jiebacfg', '硕士小名')
 
+//用户备注包含“中国的软件世界的软件”句子
+select * from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.token @@ to_tsquery('jiebacfg', replace(to_tsquery('jiebacfg', '软件中国')::text, ' <-> ', ' & '))
+
+// ts_rank()：根据匹配词位的频率对向量进行排名。
+// ts_rank_cd 给定文档向量和查询分词的覆盖密度排名，覆盖密度相似除了ts_rank考虑到匹配词位彼此的接近程度之外，排名不分先后
+select ts_rank_cd(fts.token, to_tsquery('jiebacfg', replace(to_tsquery('jiebacfg', '软件中国')::text, ' <-> ', ' | '))) as rank,* from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.token @@ to_tsquery('jiebacfg', replace(to_tsquery('jiebacfg', '软件中国')::text, ' <-> ', ' | ')) order by rank desc
+
 (to_tsvector(‘jiebacfg’, “name”)
 */

@@ -1,0 +1,54 @@
+-module(fts_handler).
+%%%
+% fts 控制器模块
+% fts controller module
+%%%
+-behavior(cowboy_rest).
+
+-export([init/2]).
+
+-ifdef(EUNIT).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+-include_lib("imboy/include/log.hrl").
+-include_lib("kernel/include/logger.hrl").
+-include_lib("imboy/include/common.hrl").
+
+%% ===================================================================
+%% API
+%% ===================================================================
+
+init(Req0, State0) ->
+    % ?LOG(State),
+    Action = maps:get(action, State0),
+    State = maps:remove(action, State0),
+    Req1 = case Action of
+        user_search ->
+            user_search(Req0, State);
+        false ->
+            Req0
+    end,
+    {ok, Req1, State}.
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+user_search(Req0, _State) ->
+    % CurrentUid = maps:get(current_uid, State),
+    {Page, Size} = imboy_req:page_size(Req0),
+    #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
+    Payload = fts_logic:user_search_page(Page, Size, Keyword),
+    imboy_response:success(Req0, Payload).
+
+%% ===================================================================
+%% EUnit tests.
+%% ===================================================================
+
+-ifdef(EUNIT).
+%addr_test_() ->
+%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
+%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
+%     ?_test(my_if_addr(inet)),
+%     ?_test(my_if_addr(inet6))].
+-endif.

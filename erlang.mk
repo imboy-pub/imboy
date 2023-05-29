@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 0ce8ee3
+ERLANG_MK_VERSION = e1e3d15
 ERLANG_MK_WITHOUT = index
 
 # Make 3.81 and 3.82 are deprecated.
@@ -2880,7 +2880,7 @@ dialyze: $(if $(filter --src,$(DIALYZER_DIRS)),,deps app)
 else
 dialyze: $(DIALYZER_PLT)
 endif
-	$(verbose) dialyzer --no_native `$(ERL) \
+	$(verbose) dialyzer `$(ERL) \
 		-eval "$(subst $(newline),,$(call escape_dquotes,$(call filter_opts.erl)))" \
 		-extra $(ERLC_OPTS)` $(DIALYZER_DIRS) $(DIALYZER_OPTS) $(if $(wildcard ebin/),-pa ebin/)
 
@@ -3018,11 +3018,11 @@ help::
 
 escript-zip:: FULL=1
 escript-zip:: deps app
-	$(verbose) mkdir -p $(dir $(ESCRIPT_ZIP))
-	$(verbose) rm -f $(ESCRIPT_ZIP_FILE)
-	$(gen_verbose) cd .. && $(ESCRIPT_ZIP) $(ESCRIPT_ZIP_FILE) $(PROJECT)/ebin/*
+	$(verbose) mkdir -p $(dir $(abspath $(ESCRIPT_ZIP_FILE)))
+	$(verbose) rm -f $(abspath $(ESCRIPT_ZIP_FILE))
+	$(gen_verbose) cd .. && $(ESCRIPT_ZIP) $(abspath $(ESCRIPT_ZIP_FILE)) $(PROJECT)/ebin/*
 ifneq ($(DEPS),)
-	$(verbose) cd $(DEPS_DIR) && $(ESCRIPT_ZIP) $(ESCRIPT_ZIP_FILE) \
+	$(verbose) cd $(DEPS_DIR) && $(ESCRIPT_ZIP) $(abspath $(ESCRIPT_ZIP_FILE)) \
 		$(subst $(DEPS_DIR)/,,$(addsuffix /*,$(wildcard \
 			$(addsuffix /ebin,$(shell cat $(ERLANG_MK_TMP)/deps.log)))))
 endif
@@ -3032,11 +3032,11 @@ escript:: escript-zip
 		"#!$(ESCRIPT_SHEBANG)" \
 		"%% $(ESCRIPT_COMMENT)" \
 		"%%! $(ESCRIPT_EMU_ARGS)" > $(ESCRIPT_FILE)
-	$(verbose) cat $(ESCRIPT_ZIP_FILE) >> $(ESCRIPT_FILE)
+	$(verbose) cat $(abspath $(ESCRIPT_ZIP_FILE)) >> $(ESCRIPT_FILE)
 	$(verbose) chmod +x $(ESCRIPT_FILE)
 
 distclean-escript:
-	$(gen_verbose) rm -f $(ESCRIPT_FILE)
+	$(gen_verbose) rm -f $(ESCRIPT_FILE) $(abspath $(ESCRIPT_ZIP_FILE))
 
 # Copyright (c) 2015-2016, Loïc Hoguin <essen@ninenines.eu>
 # Copyright (c) 2014, Enrique Fernandez <enrique.fernandez@erlang-solutions.com>

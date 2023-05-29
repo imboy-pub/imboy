@@ -5,6 +5,7 @@
 
 -include_lib("imboy/include/log.hrl").
 -include_lib("imboy/include/chat.hrl").
+-include_lib("imboy/include/def_column.hrl").
 
 -export([online/4]).
 -export([offline/3]).
@@ -15,10 +16,6 @@
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
-
-% 顺序不能够随意修改，id 要放到第一个
--define (DEF_USER_COLUMN, <<"id,account,mobile,
-        nickname,avatar,sign,gender,region">>).
 
 %% ===================================================================
 %% API

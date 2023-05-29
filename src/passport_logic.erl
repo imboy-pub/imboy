@@ -9,12 +9,8 @@
 -export([find_password/5]).
 
 -include_lib("imboy/include/log.hrl").
+-include_lib("imboy/include/def_column.hrl").
 
-% password 给元素顺序不能够随意修改，
-% login_success_transfer 按顺序匹配了
-% 密码校验取第4位为密码数据 lists:nth(4, Row)
--define (LOGIN_COLUMN, <<"id,account,mobile,password,
-        nickname,avatar,gender,region,sign">>).
 
 -spec send_email_code(ToEmail :: binary()) ->
           {error, Msg :: list()} | {ok, any()}.
