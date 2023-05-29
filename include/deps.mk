@@ -63,6 +63,7 @@ dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 # Sync 是一个开发者工具。它会即时重新编译和重新加载您的 Erlang 代码。
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
+dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
 dep_esq = hex 2.0.6
 

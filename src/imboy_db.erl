@@ -47,7 +47,6 @@ with_transaction(F, Opts0) ->
         Res
     end.
 
-% imboy_db:pluck(<<"to_tsquery('jiebacfg', '东区')::text">>, <<"">>).
 % imboy_db:pluck(<<"to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
 pluck(Field, Default) ->
     Sql = <<"SELECT ", Field/binary>>,
