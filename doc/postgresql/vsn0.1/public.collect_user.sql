@@ -6,12 +6,14 @@ CREATE TABLE IF NOT EXISTS public."collect_user"
 (
     id BIGSERIAL PRIMARY KEY,
     user_id bigint NOT NULL DEFAULT 0,
-    hashid varchar(40) NOT NULL DEFAULT '',
+    kind int NOT NULL DEFAULT 0,
+    kind_id varchar(40) NOT NULL DEFAULT '',
     remark varchar(200) NOT NULL DEFAULT '',
 
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    created_at bigint NOT NULL,
+    CONSTRAINT uk_collect_user_UserId_Status_kindId UNIQUE  (user_id, status, kind_id)
 )
 
 TABLESPACE pg_default;
@@ -22,7 +24,7 @@ COMMENT ON TABLE public.collect_user IS '用户收藏记录表';
 
 COMMENT ON COLUMN public.collect_user.id IS '主键 自增长ID';
 COMMENT ON COLUMN public.collect_user.user_id IS '资源的收藏者';
-COMMENT ON COLUMN public.collect_user.hashid IS '资源唯一标识';
+COMMENT ON COLUMN public.collect_user.kind_id IS '资源唯一标识';
 COMMENT ON COLUMN public.collect_user.remark IS '收藏者备注';
 
 
@@ -31,5 +33,3 @@ COMMENT ON COLUMN public.collect_user.created_at IS '创建记录Unix时间戳�
 COMMENT ON COLUMN public.collect_user.status IS '状态: -1 删除  0 禁用  1 启用';
 
 -- index
-
-CREATE INDEX i_collect_user_UserId_Status ON public.collect_user (user_id, status);

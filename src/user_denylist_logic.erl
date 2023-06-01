@@ -22,8 +22,8 @@
 -spec page(integer(), integer(), integer()) -> list().
 page(Uid, Page,  Size) when Page > 0 ->
     Offset = (Page - 1) * Size,
-    Total = user_denylist_repo:count_by_uid(Uid),
-    case user_denylist_repo:page(Uid, Size, Offset) of
+    Total = user_denylist_repo:count_for_uid(Uid),
+    case user_denylist_repo:page_for_uid(Uid, Size, Offset) of
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->

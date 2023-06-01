@@ -20,11 +20,11 @@ tablename() ->
 
 write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid)
   when is_integer(FromId) ->
-    FromId2 = list_to_binary(integer_to_list(FromId)),
+    FromId2 = integer_to_binary(FromId),
     write_msg(CreatedAt, Id, Payload, FromId2, ToUids, Gid);
 write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid)
   when is_integer(Gid) ->
-    Gid2 = list_to_binary(integer_to_list(Gid)),
+    Gid2 = integer_to_binary(Gid),
     write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid2);
 % 批量插入群离线消息表 及 时间线表
 write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->

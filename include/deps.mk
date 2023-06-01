@@ -4,10 +4,11 @@
 # Hereby declare: the following dependencies have not been modified by the original author source code
 
 # https://erlang.mk/guide/deps.html
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.9.0
 dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.12.1
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.10.0
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.1.0
+
 # gen_smtp Email服务端、客户端
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 # goldrush 提供了快速的事件流处理

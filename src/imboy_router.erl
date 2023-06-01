@@ -20,6 +20,8 @@ get_routes() ->
         {"/ws", websocket_handler, #{}},
         {"/stress_testing", stress_testing_ws_handler, #{}},
         {"/auth/assets", auth_handler, #{action => assets}},
+        {"/test/req_get", test_handler, #{action => req_get}},
+        {"/test/req_post", test_handler, #{action => req_post}},
 
         {"/conversation/online", conversation_handler, #{action => online}},
         {"/conversation/mine", conversation_handler, #{action => mine}},
@@ -60,6 +62,11 @@ get_routes() ->
         % 搜索“用户允许被搜索”的用户
         {"/fts/user_search", fts_handler, #{action => user_search}},
 
+        {"/collect/page", collect_handler, #{action => page}},
+        {"/collect/add", collect_handler, #{action => add}},
+        {"/collect/remove", collect_handler, #{action => remove}},
+        {"/collect/change", collect_handler, #{action => change}},
+
         {"/group/member", group_handler, #{action => member}},
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
@@ -88,6 +95,8 @@ open() ->
         % /ws 有自己的auth
         <<"/ws">>,
         <<"/help">>,
+        <<"/test/req_get">>,
+        <<"/test/req_post">>,
         <<"/conversation/online">>,
         <<"/init">>,
         <<"/user/show">>,

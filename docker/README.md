@@ -128,6 +128,8 @@ http://127.0.0.1:8080/stat
 http://127.0.0.1:8080/list_dir
 http://127.0.0.1:8080/list_dir?dir=default
 curl http://127.0.0.1:8080/list_dir?dir=location/20235
+curl 'http://127.0.0.1:8080/delete?path=/collect/107/temp.jpg&s=dev&a=xxx&v=xxx'
+curl http://127.0.0.1:8080/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
 ```
 
 ##

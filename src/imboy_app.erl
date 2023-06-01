@@ -8,6 +8,7 @@
 
 
 start(_Type, _Args) ->
+    inets:start(),
     imboy_session:init(),
     % begin handler
     Routes = imboy_router:get_routes(),

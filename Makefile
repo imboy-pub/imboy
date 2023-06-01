@@ -6,10 +6,11 @@ PROJECT_VERSION = 0.1.0
 include include/deps.mk
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
-LOCAL_DEPS = kernel stdlib mnesia sasl ssl
+LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = goldrush lager jsone ranch cowlib cowboy jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle
+DEPS = goldrush lager jsone ranch cowlib cowboy
+DEPS += jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle
 
 # DEPS += mysql poolboy
 DEPS += epgsql pooler

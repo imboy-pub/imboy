@@ -5,17 +5,18 @@
 CREATE TABLE IF NOT EXISTS public."collect_resource"
 (
     id BIGSERIAL PRIMARY KEY,
-    kind int NOT NULL DEFAULT 0,
-    hashid varchar(40) NOT NULL DEFAULT '',
-    referer_time int NOT NULL DEFAULT 0,
 
+    kind int NOT NULL DEFAULT 0,
+    kind_id varchar(40) NOT NULL DEFAULT '',
+    info text DEFAULT '{}',
+
+    referer_time int NOT NULL DEFAULT 0,
     creator_user_id bigint NOT NULL DEFAULT 0,
-    info json DEFAULT '{}',
 
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
     created_at bigint NOT NULL,
-    CONSTRAINT uk_Hashid UNIQUE  (hashid)
+    CONSTRAINT uk_kind_id UNIQUE  (kind_id)
 )
 
 TABLESPACE pg_default;
@@ -26,7 +27,7 @@ COMMENT ON TABLE public.collect_resource IS '被收藏资源记录表';
 
 COMMENT ON COLUMN public.collect_resource.id IS '主键 自增长ID';
 COMMENT ON COLUMN public.collect_resource.kind IS '被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件';
-COMMENT ON COLUMN public.collect_resource.hashid IS '资源唯一标识';
+COMMENT ON COLUMN public.collect_resource.kind_id IS '资源唯一标识';
 COMMENT ON COLUMN public.collect_resource.referer_time IS '被引用次数';
 
 COMMENT ON COLUMN public.collect_resource.creator_user_id IS '创建人用户ID';

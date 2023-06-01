@@ -7,7 +7,7 @@
 -export([tablename/0]).
 -export([add/3, remove/2]).
 -export([in_denylist/2]).
--export([count_by_uid/1, page/3]).
+-export([count_for_uid/1, page_for_uid/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -24,10 +24,21 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_denylist">>).
 
-% user_denylist_repo:page(1, 10, 0).
--spec page(integer(), integer(), integer()) ->
+% user_denylist_repo:count_for_uid(107).
+count_for_uid(Uid) ->
+    Uid2 = integer_to_binary(Uid),
+    % use index uk_UserId_DeniedUserId
+    imboy_db:pluck(
+        tablename()
+        , <<"user_id = ", Uid2/binary>>
+        , <<"count(*) as count">>
+        , 0
+    ).
+
+% user_denylist_repo:page_for_uid(1, 10, 0).
+-spec page_for_uid(integer(), integer(), integer()) ->
     {ok, list(), list()} | {error, any()}.
-page(Uid, Limit,  Offset) ->
+page_for_uid(Uid, Limit,  Offset) ->
     % Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
     Source = <<"f.setting::jsonb->>'source' AS source">>,
     Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark, u.gender, u.region,", Source/binary>>,
@@ -66,17 +77,6 @@ remove(Uid, DeniedUid) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1 AND denied_user_id = $2">>,
     imboy_db:execute(Sql, [Uid, DeniedUid]),
     ok.
-
-% user_denylist_repo:count_by_uid(107).
-count_by_uid(Uid) ->
-    Uid2 = integer_to_binary(Uid),
-    % use index uk_UserId_DeniedUserId
-    imboy_db:pluck(
-        tablename()
-        , <<"user_id = ", Uid2/binary>>
-        , <<"count(*) as count">>
-        , 0
-    ).
 
 % user_denylist_repo:in_denylist(107, 62913).
 -spec in_denylist(integer(), integer()) -> integer().
