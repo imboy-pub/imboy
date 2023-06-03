@@ -1,8 +1,11 @@
 -module(imboy_uri).
 
+-export([exclusion_param/2]).
+-export([get_params/1, get_params/2, get_params/3]).
+
 -export([download/2]).
 -export([upload/5]).
--export([exclusion_param/2]).
+-export([check_auth/1]).
 
 -include_lib("imboy/include/log.hrl").
 
@@ -89,6 +92,45 @@ exclusion_param(Url, Keys) ->
     Query4 = iolist_to_binary(Query3),
     uri_string:normalize(UrlMap#{query => Query4}).
     % lists:droplast(uri_string:normalize(UrlMap#{query => Query4})).
+
+% 获取URL中的所有参数
+-spec get_params(list() | binary()) -> map().
+% imboy_uri:get_params("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+get_params(Url) ->
+    UrlMap = uri_string:parse(Url),
+    Query = maps:get(query, UrlMap, ""),
+    Query2 = uri_string:dissect_query(Query),
+    {UrlMap, maps:from_list(Query2)}.
+
+%% 根据指定参数名获取在URL中对应的值
+-spec get_params(atom(), list()) -> binary().
+% imboy_uri:get_params("width", "https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+get_params(Key, Url) ->
+    get_params(Key, Url, <<"">>).
+
+get_params(Key, Url, Def) ->
+    Params = get_params(Url),
+    maps:get(Key, Params, Def).
+
+-spec check_auth(list() | binary()) -> map().
+% imboy_uri:check_auth("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+check_auth(Url) when is_list(Url) ->
+    check_auth(list_to_binary(Url));
+check_auth(Url) ->
+    % Url = <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>,
+
+    {UrlMap, QMap} = get_params(Url),
+
+    % % <<"s=dev&a=344af61665efff23&v=531378&width=375">>
+    S = maps:get(<<"s">>, QMap, <<"dev">>),
+    V = imboy_dt:second(),
+    A = auth_ds:get_token(assets, S, integer_to_list(V)),
+    V2 = integer_to_binary(V),
+    NewQuery = <<"s=", S/binary
+        ,"&a=", A/binary,
+        "&v=", V2/binary>>,
+    % lager:info(Query2),
+    uri_string:normalize(UrlMap#{query => NewQuery}).
 
 %% ===================================================================
 %% Internal Function Definitions

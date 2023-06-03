@@ -62,11 +62,14 @@ do_login(Req0) ->
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
             % 检查消息 用异步队列实现
-            Uid = proplists:get_value(<<"uid">>, Data),
+            Uid = maps:get(<<"uid">>, Data),
             % gen_server:call是同步的，gen_server:cast是异步的
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
-            imboy_response:success(Req0, [{<<"setting">>, Setting} | Data], "success.");
+            Data2 = Data#{
+                <<"setting">> => Setting
+            },
+            imboy_response:success(Req0, Data2, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
         {error, Msg, Code} ->

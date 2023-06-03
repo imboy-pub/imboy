@@ -1,7 +1,5 @@
 -module(imboy_hashids).
 
--include_lib("imboy/include/hashids.hrl").
-
 %%%
 % hashids 转换器
 %
@@ -14,6 +12,7 @@
 -export([uid_decode/1]).
 -export([replace_id/1]).
 
+-define (uid_alphabet, "123456789abcdefghijkmnpqrstuvwxyz").
 
 -spec replace_id(list()) -> list().
 replace_id(Li) ->
@@ -28,9 +27,10 @@ uid_encode(Id) when is_binary(Id) ->
 uid_encode(Id) when is_list(Id) ->
     uid_encode(list_to_integer(Id));
 uid_encode(Id) ->
+    Salt = imboy_func:env(hashids_salt, ""),
     Ctx = hashids:new([{min_hash_length, 6},
                        {default_alphabet, ?uid_alphabet},
-                       {salt, ?hashids_salt}]),
+                       {salt, Salt}]),
     list_to_binary(hashids:encode(Ctx, [Id])).
 
 
@@ -39,9 +39,10 @@ uid_decode(Id) when is_binary(Id) ->
     uid_decode(binary_to_list(Id));
 uid_decode(Id) ->
     try
+        Salt = imboy_func:env(hashids_salt, ""),
         Ctx = hashids:new([{min_hash_length, 6},
                            {default_alphabet, ?uid_alphabet},
-                           {salt, ?hashids_salt}]),
+                           {salt, Salt}]),
         hashids:decode(Ctx, Id)
     of
         [Uid] ->

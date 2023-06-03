@@ -5,7 +5,7 @@
 %%%
 
 -export ([tablename/0]).
--export([count_for_uid/1, page_for_uid/3]).
+-export([count_for_where/1, page_for_where/3]).
 -export([count_by_uid_kind_id/2]).
 
 -ifdef(EUNIT).
@@ -35,33 +35,33 @@ count_by_uid_kind_id(Uid, KindId) ->
     ).
 
 
-% collect_user_repo:count_for_uid(107).
-count_for_uid(Uid) ->
-    Uid2 = integer_to_binary(Uid),
+% collect_user_repo:count_for_where(107).
+count_for_where(Where) ->
+    Tb = tablename(),
     % use index i_collect_user_UserId_Status_Hashid
     imboy_db:pluck(
-        tablename()
-        , <<"user_id = ", Uid2/binary, " and status = 1">>
+        <<Tb/binary, " cu">>
+        , Where
         , <<"count(*) as count">>
         , 0
     ).
 
 %%% 用户的收藏分页列表
-% collect_user_repo:page_for_uid(1, 10, 0).
--spec page_for_uid(integer(), integer(), integer()) ->
+% collect_user_repo:page_for_where(1, 10, 0).
+-spec page_for_where(integer(), integer(), binary()) ->
     {ok, list(), list()} | {error, any()}.
-page_for_uid(Uid, Limit,  Offset) ->
-    Column = <<"cu.kind, cu.kind_id, cu.created_at, r.info">>,
+page_for_where(Limit, Offset, Where) ->
+    Column = <<"cu.kind, cu.kind_id, cu.source, cu.created_at, r.info">>,
     Resource = imboy_db:public_tablename(<<"collect_resource">>),
     Join1 = <<"left join ", Resource/binary, " as r on r.kind_id = cu.kind_id ">>,
-    Where = <<" WHERE cu.user_id = $1 and cu.status = 1 ORDER BY cu.id desc LIMIT $2 OFFSET $3">>,
+    Where2 = <<" WHERE ", Where/binary," ORDER BY cu.id desc LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " as cu ",
         Join1/binary,
-        Where/binary>>,
-    % ?LOG([Sql, Uid, Limit, Offset]),
-    imboy_db:query(Sql, [Uid, Limit, Offset]).
+        Where2/binary>>,
+    % ?LOG(['Sql', Sql]),
+    imboy_db:query(Sql, [Limit, Offset]).
 
 
 %% ===================================================================

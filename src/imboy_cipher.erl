@@ -2,49 +2,41 @@
 
 -include_lib("imboy/include/common.hrl").
 
--export([aes_encrypt/1,
-         aes_decrypt/1]).
--export([aes_encrypt/2,
-         aes_decrypt/2]).
--export([rsa_encrypt/1,
-         rsa_decrypt/1]).
--export([rsa_encrypt/2,
-         rsa_decrypt/2]).
+-export([aes_encrypt/3, aes_decrypt/3]).
+-export([aes_encrypt/2, aes_decrypt/2]).
+-export([rsa_encrypt/1, rsa_decrypt/1]).
+-export([rsa_encrypt/2, rsa_decrypt/2]).
 
 -define(SHA_256_BLOCKSIZE, 64).
 
-
--spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) ->
-          PlainText :: binary().
-
-
--spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) ->
-          CipherText :: binary().
-
 % aes_cbc + pkcs#7填充
-% io:format("~s~n", [imboy_cipher:rsa_encrypt(<<"admin8889">>)]).
-aes_encrypt(Bin) ->
-    aes_encrypt(aes_256_cbc, Bin).
+% io:format("~s~n", [imboy_cipher:aes_encrypt(<<"admin8889">>, "")]).
+aes_encrypt(Bin, Key) ->
+    aes_encrypt(aes_256_cbc, Bin, Key).
 
 
-aes_decrypt(Bin) ->
-    aes_decrypt(aes_256_cbc, Bin).
+aes_decrypt(Bin, Key) ->
+    aes_decrypt(aes_256_cbc, Bin, Key).
 
 
-aes_encrypt(Type, Bin) ->
+aes_encrypt(Type, Bin, Key) when is_binary(Key) ->
+    aes_encrypt(Type, Bin, binary_to_list(Key));
+aes_encrypt(Type, Bin, Key) ->
     Len = erlang:size(Bin),
     Value = 16 - (Len rem 16),
     % 将<<Value>>复制Value份赋值出来
     PadBin = binary:copy(<<Value>>, Value),
     Bin2 = <<Bin/binary, PadBin/binary>>,
-    StateEnc = crypto:crypto_init(Type, ?AES_KEY, ?AES_IV, true),
+    StateEnc = crypto:crypto_init(Type, Key, ?AES_IV, true),
     EncodeB = crypto:crypto_update(StateEnc, Bin2),
     base64:encode(EncodeB).
 
 
-aes_decrypt(Type, Bin) ->
+aes_decrypt(Type, Bin, Key) when is_binary(Key) ->
+    aes_decrypt(Type, Bin, binary_to_list(Key));
+aes_decrypt(Type, Bin, Key) ->
     Bin1 = base64:decode(Bin),
-    StateDec = crypto:crypto_init(Type, ?AES_KEY, ?AES_IV, false),
+    StateDec = crypto:crypto_init(Type, Key, ?AES_IV, false),
     Bin2 = crypto_update(StateDec, Bin1, size(Bin1), <<>>),
     binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).
 
@@ -60,6 +52,11 @@ crypto_update(StateDec, Bin, _BinSize, OutBin) ->
     <<OutBin/binary, OutBin2/binary>>.
 
 
+-spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) ->
+          PlainText :: binary().
+
+-spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) ->
+          CipherText :: binary().
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
     PemBin = config_logic:get("login_rsa_pub_key"),

@@ -117,9 +117,21 @@ https://github.com/sjqzhang/go-fastdfs Star 3.5K
 
 https://sjqzhang.github.io/go-fastdfs/#character
 
+
+### a.imboy.pub
 ```
 
 docker rm -f imboy_fastdfs && docker run --network=imboy-network -d --name imboy_fastdfs -v /data/docker/img_fastdfs_data:/data -p 8080:8080 -e GO_FASTDFS_DIR=/data sjqzhang/go-fastdfs
+
+
+docker rm -f imboy_fastdfs && \
+docker run -d \
+    --name imboy_fastdfs \
+    --network imboy-network \
+    -v /data/docker/img_fastdfs_data:/data \
+    -p 8080:8080 \
+    -e GO_FASTDFS_DIR=/data \
+    sjqzhang/go-fastdfs
 
 // 统计api
 http://127.0.0.1:8080/stat
@@ -130,6 +142,34 @@ http://127.0.0.1:8080/list_dir?dir=default
 curl http://127.0.0.1:8080/list_dir?dir=location/20235
 curl 'http://127.0.0.1:8080/delete?path=/collect/107/temp.jpg&s=dev&a=xxx&v=xxx'
 curl http://127.0.0.1:8080/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
+```
+
+
+### c.imboy.pub
+```
+docker rm -f imboy_fastdfs_collect && \
+docker run -d \
+    --name imboy_fastdfs_collect \
+    --network imboy-network \
+    -v /data/docker/imboy_fastdfs_collect:/data \
+    -p 8081:8080 \
+    -e GO_FASTDFS_DIR=/data \
+    sjqzhang/go-fastdfs
+
+// 统计api
+http://127.0.0.1:8081/stat
+
+imboy_uri:check_auth("http://c.imboy.pub/collect/image/chk7efp0poqbagho741g.HEIC?").
+
+文件列表 dir : 要查看文件列表的目录名
+http://127.0.0.1:8081/list_dir
+http://127.0.0.1:8081/list_dir?dir=default
+curl http://127.0.0.1:8081/list_dir?dir=location/20235
+curl 'http://127.0.0.1:8081/delete?path=/collect/107/temp.jpg&s=dev&a=xxx&v=xxx'
+curl 'http://127.0.0.1:8081/delete?md5=3176156f892b3509f3b39751ee50b58b6f16a3a5&s=dev&a=xxx&v=xxx'
+curl http://127.0.0.1:8081/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
+
+
 ```
 
 ##

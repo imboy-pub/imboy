@@ -64,6 +64,7 @@ make distclean
 make new t=imboy.rest_handler n=demo_handler
 make new t=imboy.logic n=demo_logic
 make new t=imboy.repository n=demo_repo
+make new t=imboy.ds n=demo_ds
 
 make new t=imboy.rest_handler n=demo2_handler && make new t=imboy.logic n=demo2_logic && make new t=imboy.repository n=demo2_repo
 
@@ -80,6 +81,7 @@ Available templates:
     gen_fsm
     gen_server
     gen_statem
+    imboy.ds
     imboy.logic
     imboy.repository
     imboy.rest_handler

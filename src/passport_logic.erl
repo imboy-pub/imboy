@@ -262,19 +262,20 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 
 
 -spec login_success_transfer(boolean(), tuple()) ->
-    {ok, any()} | {error, any()}.
+    {ok, map()} | {error, any()}.
 login_success_transfer(true, {Id, Account, _, _, Nickname, Avatar, Gender, Region, Sign}) ->
-    {ok, [
-        {<<"token">>, token_ds:encrypt_token(Id)},
-        {<<"refreshtoken">>, token_ds:encrypt_refreshtoken(Id)},
-        {<<"uid">>, imboy_hashids:uid_encode(Id)},
-        {<<"nickname">>, Nickname},
-        {<<"avatar">>, Avatar},
-        {<<"account">>, Account},
-        {<<"gender">>, Gender},
-        {<<"region">>, Region},
-        {<<"sign">>, Sign},
-        {<<"role">>, 1}]
+    {ok, #{
+            <<"token">> => token_ds:encrypt_token(Id),
+            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
+            <<"uid">> => imboy_hashids:uid_encode(Id),
+            <<"nickname">> => Nickname,
+            <<"avatar">> => Avatar,
+            <<"account">> => Account,
+            <<"gender">> => Gender,
+            <<"region">> => Region,
+            <<"sign">> => Sign,
+            <<"role">> => 1
+        }
     };
 login_success_transfer(_, User) ->
     ?LOG([User]),

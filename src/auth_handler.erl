@@ -17,6 +17,8 @@ init(Req0, State0) ->
     Req1 = case Action of
         assets ->
             assets(Method, Req0);
+        get_token ->
+            get_token(Method, Req0);
         false ->
             Req0
     end,
@@ -27,6 +29,7 @@ init(Req0, State0) ->
 %% ===================================================================
 
 %%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
+% Assets服务认证
 assets(<<"POST">>, Req0) ->
     try
         imboy_req:post_params(Req0)
@@ -39,8 +42,8 @@ assets(<<"POST">>, Req0) ->
             Scene = proplists:get_value(<<"s">>, PostVals),
             % Val
             Val = proplists:get_value(<<"v">>, PostVals),
-            % Body is ok or fail
-            Body = auth_for_assets(Scene, AuthTk, Val),
+            % Body is <<"ok">> or <<"fail">>
+            Body = auth_logic:verify_for_assets(Scene, AuthTk, Val),
             cowboy_req:reply(200,
                  #{<<"content-type">> => <<"text/html">>},
                  unicode:characters_to_binary(Body, utf8),
@@ -50,45 +53,30 @@ assets(<<"POST">>, Req0) ->
             <<"fail">>
     end;
 assets(<<"GET">>, Req0) ->
-    % Body is ok or fail
-    Body = auth_for_assets(undefined, undefined, undefined),
+    % Body is <<"fail">>
+    Body = auth_logic:verify_for_assets(undefined, undefined, undefined),
     cowboy_req:reply(200,
          #{<<"content-type">> => <<"text/html">>},
          unicode:characters_to_binary(Body, utf8),
          Req0).
 
+% Assets服务认证 获取token
+get_token(<<"GET">>, Req0) ->
+    imboy_response:success(Req0, #{
+    }, "success.");
+get_token(<<"POST">>, Req0) ->
+    imboy_response:success(Req0, #{
+    }, "success.").
+    % imboy_cipher:rsa_decrypt(Password)
+    % PostVals = imboy_req:post_params(Req0),
+    % % Did = proplists:get_value(<<"did">>, PostVals, <<"did">>),
+    % S = proplists:get_value(<<"s">>, PostVals, <<"dev">>),
+    % V = imboy_dt:second(),
+    % A = auth_ds:get_token(assets, S, integer_to_list(V)),
+    % imboy_response:success(Req0, #{
+    %     a => A,
+    %     s => S,
+    %     v => V
+    % }, "success.").
 
-auth_for_assets(undefined, _AuthTk, _Name) ->
-    <<"fail">>;
-auth_for_assets(_Scene, undefined, _Name) ->
-    <<"fail">>;
-auth_for_assets(_Scene, _AuthTk, undefined) ->
-    <<"fail">>;
-auth_for_assets(Scene, AuthTk, Val) ->
-    Now = imboy_dt:second(),
-    % Now = 1685612516 + 604800,
-    % V = binary_to_integer(Val),
-    {V, _} = string:to_integer(Val),
 
-    % 在App端设置了v参数过期时间3添加重新生成authToken,
-    % 86400 * 7 = 604800 附件资源30天过期
-    Diff = 604800,
-    if
-        is_integer(V) andalso Now < (V + Diff) ->
-            AuthKeys = imboy_func:env(auth_keys),
-            Key = proplists:get_value(Scene, AuthKeys),
-            do_auth(Key, AuthTk, Val);
-        true ->
-            <<"fail">>
-    end.
-
-do_auth(undefined, _AuthTk, _Val) ->
-    <<"fail">>;
-do_auth(Key, AuthTk, Val) ->
-    Str = Key ++ binary_to_list(Val),
-    case binary:part(imboy_hasher:md5(Str), {8, 16}) == AuthTk of
-        true ->
-            <<"ok">>;
-        _ ->
-            <<"fail">>
-    end.
