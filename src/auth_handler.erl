@@ -65,18 +65,16 @@ get_token(<<"GET">>, Req0) ->
     imboy_response:success(Req0, #{
     }, "success.");
 get_token(<<"POST">>, Req0) ->
+    PostVals = imboy_req:post_params(Req0),
+    S = proplists:get_value(<<"s">>, PostVals, <<"dev">>),
+    V = imboy_dt:second(),
+    A = auth_ds:get_token(assets, S, integer_to_list(V)),
+    Key = imboy_func:env(solidified_key),
+    Bin = imboy_cipher:aes_encrypt(jsone:encode(#{
+        a => A,
+        s => S,
+        v => V
+    }), Key),
     imboy_response:success(Req0, #{
+        res => Bin
     }, "success.").
-    % imboy_cipher:rsa_decrypt(Password)
-    % PostVals = imboy_req:post_params(Req0),
-    % % Did = proplists:get_value(<<"did">>, PostVals, <<"did">>),
-    % S = proplists:get_value(<<"s">>, PostVals, <<"dev">>),
-    % V = imboy_dt:second(),
-    % A = auth_ds:get_token(assets, S, integer_to_list(V)),
-    % imboy_response:success(Req0, #{
-    %     a => A,
-    %     s => S,
-    %     v => V
-    % }, "success.").
-
-

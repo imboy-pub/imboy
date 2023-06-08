@@ -27,8 +27,8 @@ verify_for_assets(Scene, AuthTk, Val) ->
     Now = imboy_dt:second(),
     % V = binary_to_integer(Val),
     {V, _} = string:to_integer(Val),
-
     Diff = 7200,
+    lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if
         is_integer(V) andalso Now < (V + Diff) ->
             NewTk = auth_ds:get_token(assets, Scene, binary_to_list(Val)),

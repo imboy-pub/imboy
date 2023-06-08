@@ -27,7 +27,12 @@ init(Req0, State0) ->
 
 api_init(Req0) ->
     Data = init_transfer(),
-    imboy_response:success(Req0, Data, "success.").
+    % imboy_response:success(Req0, Data, "success.").
+    Key = imboy_func:env(solidified_key),
+    Bin = imboy_cipher:aes_encrypt(jsone:encode(Data), Key),
+    imboy_response:success(Req0, #{
+        res => Bin
+    }, "success.").
 
 
 %% ===================================================================
@@ -35,9 +40,10 @@ api_init(Req0) ->
 %% ===================================================================
 
 init_transfer() ->
-    [{<<"login_pwd_rsa_encrypt">>,
-      config_logic:get("login_pwd_rsa_encrypt")},
-     {<<"login_rsa_pub_key">>, config_logic:get("login_rsa_pub_key")}].
+    #{
+        <<"login_pwd_rsa_encrypt">> => config_logic:get("login_pwd_rsa_encrypt"),
+        <<"login_rsa_pub_key">> => config_logic:get("login_rsa_pub_key")
+    }.
 
 get_help(Req0) ->
     Body = "
