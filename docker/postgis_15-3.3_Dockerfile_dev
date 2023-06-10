@@ -1,15 +1,16 @@
 #
 # NOTE: THIS DOCKERFILE IS GENERATED VIA "make update"! PLEASE DO NOT EDIT IT DIRECTLY.
 #
+# https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
 
 FROM postgres:15-bullseye
 
 LABEL maintainer="PostGIS Project - https://postgis.net" \
-      org.opencontainers.image.description="PostGIS 3.3.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
+      org.opencontainers.image.description="PostGIS 3.3.3+dfsg-1~exp1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
       org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
 
 ENV POSTGIS_MAJOR 3
-ENV POSTGIS_VERSION 3.3.2+dfsg-1.pgdg110+1
+ENV POSTGIS_VERSION 3.3.3+dfsg-1~exp1.pgdg110+1
 
 RUN apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
@@ -23,11 +24,10 @@ RUN apt-get update \
       && rm -rf /var/lib/apt/lists/*
 
 # for pgroonga
-# https://github.com/pgroonga/docker/blob/3.0.1/debian/15/Dockerfile
-ENV PGROONGA_VERSION=3.0.2-1
-
+# https://github.com/pgroonga/docker/blob/3.0.6/debian/15/Dockerfile
+ENV PGROONGA_VERSION=3.0.6-1
 RUN \
-  apt update && \
+  apt update --fix-missing -o Acquire::http::No-Cache=True && \
   apt upgrade -y -V && \
   apt install -y -V wget && \
   wget https://packages.groonga.org/debian/groonga-apt-source-latest-bullseye.deb && \
@@ -42,10 +42,11 @@ RUN \
   apt clean && \
   rm -rf /var/lib/apt/lists/*
 
+
 # for https://github.com/jaiminpan/pg_jieba
 # https://www.modb.pro/db/93508
 RUN \
-  apt update && \
+  apt update --fix-missing -o Acquire::http::No-Cache=True && \
   apt upgrade -y -V && \
   apt install -y -V git && \
   apt install -y -V vim && \
@@ -57,14 +58,17 @@ RUN \
   tar -xf postgresql-15.3.tar.gz && cd postgresql-15.3 && \
   ./configure --without-readline --without-zlib && make && make install && \
   cd ../ && rm -rf postgresql-15.3 &&  rm -rf pg_jieba && \
-  git clone https://github.com/jaiminpan/pg_jieba && \
+  git clone https://gitee.com/imboy-tripartite-deps/pg_jieba && \
   cd pg_jieba && git checkout -f master && git submodule update --init --recursive && \
   mkdir build && cd build && \
   cmake -DCMAKE_CXX_FLAGS="-Wall -std=c++11" -DCMAKE_PREFIX_PATH=/usr/lib/postgresql -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/local/pgsql/include/server .. && \
   make && make install && cd ../ && rm -rf pg_jieba && \
-
-  curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | sudo bash
-
+  apt install -y gnupg postgresql-common apt-transport-https lsb-release && \
+  apt install -y postgresql-server-dev-15 && apt install -y libkrb5-dev && \
+  git clone https://gitee.com/imboy-tripartite-deps/timescaledb.git && \
+  cd timescaledb &&  git switch -c 2.11.0 && \
+  ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/15/bin/pg_config . && \
+  cd ./build && make && make install && cd ../../ && rm -rf timescaledb && \
   apt clean && \
   rm -rf /var/lib/apt/lists/* && cd / && rm -rf pg_jieba && rm -rf postgresql-15.3*
 

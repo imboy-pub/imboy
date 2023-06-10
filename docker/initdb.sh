@@ -10,6 +10,8 @@ export PGUSER="$POSTGRES_USER"
 CREATE DATABASE template_postgis IS_TEMPLATE true;
 EOSQL
 
+echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/pgdata/postgresql.conf
+
 # Load PostGIS into both template_database and $POSTGRES_DB
 for DB in template_postgis "$POSTGRES_DB"; do
     echo "Loading PostGIS extensions into $DB"
@@ -21,5 +23,6 @@ for DB in template_postgis "$POSTGRES_DB"; do
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
         CREATE EXTENSION IF NOT EXISTS pgroonga;
         CREATE EXTENSION IF NOT EXISTS pg_jieba;
+        CREATE EXTENSION IF NOT EXISTS timescaledb;
 EOSQL
 done

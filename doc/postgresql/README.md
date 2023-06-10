@@ -28,6 +28,9 @@ pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
 pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
 
 mv imboy_v1.sql /var/lib/postgresql/data/
+
+/data/docker/imboy_pg15
+
 导入到本地数据库
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
 

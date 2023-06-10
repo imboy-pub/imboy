@@ -4,6 +4,11 @@
 docker network create imboy-network
 ```
 
+# docker 云沙箱中的 Erlang
+
+* https://github.com/oltarasenko/erlang_distribution_in_docker
+* https://blog.erlware.org/epmdlessless/
+* https://github.com/tsloughter/epmdless
 
 ## Dockerfile
 from  https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
@@ -11,9 +16,10 @@ from  https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
 dev
 ```
 cd docker
-docker build --file "./postgis_15-3.3_Dockerfile_dev" -t imboy:pg15_dev .
+docker build --file "./postgis_15-3.3_Dockerfile_dev" -t imboy_pg15_3_dev:0.1.1 .
 
-docker run --name imboy_postgis_dev --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -v "pgsql15data":/var/lib/postgresql/data  -p 4322:5432 -d imboy:pg15_dev
+docker run --name imboy_postgis_dev_0.1.1 --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -v "pgsql15data":/var/lib/postgresql/data  -p 4322:5432 -d imboy_pg15_3_dev:0.1.1
+
 ```
 
 Install the project...
@@ -38,6 +44,14 @@ docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba_hmm.mode
 docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba_user.dict ./pg_jieba/jieba_user.dict && \
 docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba.stop ./pg_jieba/jieba.stop && \
 docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba.idf ./pg_jieba/jieba.idf
+
+
+docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb.so ./timescaledb/timescaledb.so && \
+docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb-2.11.0.so ./timescaledb/timescaledb-2.11.0.so && \
+docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0.so ./timescaledb/timescaledb-tsl-2.11.0.so && \
+docker cp imboy_postgis_dev:/usr/share/postgresql/15/extension/timescaledb.control ./timescaledb/timescaledb.control && \
+docker cp "imboy_postgis_dev:/usr/share/postgresql/15/extension/timescaledb--2.11.0.sql" "./timescaledb/timescaledb--2.11.0.sql"
+
 ```
 /usr/share/postgresql/15
 从宿主机拷文件到容器里面
@@ -53,6 +67,17 @@ docker cp ./pg_jieba/jieba.stop imboy_pg15:/usr/share/postgresql/15/tsearch_data
 docker cp ./pg_jieba/jieba.idf imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba.idf
 
 create extension pg_jieba;
+
+docker rename imboy-pg15 imboy_pg15
+
+docker cp ./timescaledb/timescaledb.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb.so && \
+docker cp ./timescaledb/timescaledb-2.11.0.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-2.11.0.so && \
+docker cp ./timescaledb/timescaledb-tsl-2.11.0.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0.so && \
+docker cp ./timescaledb/timescaledb.control imboy_pg15:/usr/share/postgresql/15/extension/timescaledb.control && \
+docker cp "./timescaledb/timescaledb--2.11.0.sql" "imboy_pg15:/usr/share/postgresql/15/extension/timescaledb--2.11.0.sql"
+
+echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/pgdata/postgresql.conf
+CREATE EXTENSION IF NOT EXISTS timescaledb;
 ```
 
 pro
@@ -61,11 +86,10 @@ pro
 docker volume prune
 
 cd docker
-docker build --file "./postgis_15-3.3_Dockerfile" -t imboy-pg:pg15.3 .
-
-docker save -o imboy-pg-pg15.3.tar imboy-pg:pg15.3
+docker build --file "./postgis_15-3.3_Dockerfile" -t imboy_pg15_3:0.1.1 .
 
 from https://github.com/docker-library/docs/blob/master/postgres/README.md
+imboy_pg15
 docker run -d \
     --name imboy_pg15 \
     --network imboy-network \
@@ -75,7 +99,7 @@ docker run -d \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     -v /data/docker/imboy_pg15:/var/lib/postgresql/data \
     -p 127.0.0.1:4321:5432 \
-    imboy-pg:pg15.3
+    imboy_pg15_3:0.1.1
 
 
 

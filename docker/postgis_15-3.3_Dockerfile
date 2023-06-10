@@ -1,18 +1,18 @@
 #
 # NOTE: THIS DOCKERFILE IS GENERATED VIA "make update"! PLEASE DO NOT EDIT IT DIRECTLY.
 #
+# https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
 
-FROM --platform=linux/amd64 postgres:15-bullseye
+FROM postgres:15-bullseye
 
 LABEL maintainer="PostGIS Project - https://postgis.net" \
-      org.opencontainers.image.description="PostGIS 3.3.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
+      org.opencontainers.image.description="PostGIS 3.3.3+dfsg-1~exp1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
       org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
 
-ENV PG_MAJOR 15
 ENV POSTGIS_MAJOR 3
-ENV POSTGIS_VERSION 3.3.2+dfsg-1.pgdg110+1
+ENV POSTGIS_VERSION 3.3.3+dfsg-1~exp1.pgdg110+1
 
-RUN apt-get update \
+RUN apt-get update --fix-missing -o Acquire::http::No-Cache=True \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
       && apt-get install -y --no-install-recommends \
            # ca-certificates: for accessing remote raster files;
@@ -23,12 +23,11 @@ RUN apt-get update \
            postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
       && rm -rf /var/lib/apt/lists/*
 
-
 # for pgroonga
-# https://github.com/pgroonga/docker/blob/3.0.2/debian/15/Dockerfile
-ENV PGROONGA_VERSION=3.0.2-1
+# https://github.com/pgroonga/docker/blob/3.0.6/debian/15/Dockerfile
+ENV PGROONGA_VERSION=3.0.6-1
 RUN \
-  apt update && \
+  apt update --fix-missing -o Acquire::http::No-Cache=True && \
   apt upgrade -y -V && \
   apt install -y -V wget && \
   wget https://packages.groonga.org/debian/groonga-apt-source-latest-bullseye.deb && \
@@ -43,6 +42,7 @@ RUN \
   apt clean && \
   rm -rf /var/lib/apt/lists/*
 
+# pg_jieba
 COPY ./pg_jieba/pg_jieba.so /usr/lib/postgresql/15/lib/
 COPY ./pg_jieba/pg_jieba.control /usr/share/postgresql/15/extension/
 COPY ./pg_jieba/pg_jieba--1.1.1.sql /usr/share/postgresql/15/extension/
@@ -51,6 +51,13 @@ COPY ./pg_jieba/jieba_hmm.model /usr/share/postgresql/15/tsearch_data/
 COPY ./pg_jieba/jieba_user.dict /usr/share/postgresql/15/tsearch_data/
 COPY ./pg_jieba/jieba.stop /usr/share/postgresql/15/tsearch_data/
 COPY ./pg_jieba/jieba.idf /usr/share/postgresql/15/tsearch_data/
+
+# timescaledb
+COPY ./timescaledb/timescaledb.so /usr/lib/postgresql/15/lib/
+COPY ./timescaledb/timescaledb-2.11.0.so /usr/lib/postgresql/15/lib/
+COPY ./timescaledb/timescaledb-tsl-2.11.0.so /usr/lib/postgresql/15/lib/
+COPY ./timescaledb/timescaledb.control /usr/share/postgresql/15/extension/
+COPY "./timescaledb/timescaledb--2.11.0.sql" "/usr/share/postgresql/15/extension/"
 
 RUN mkdir -p /docker-entrypoint-initdb.d
 COPY ./initdb.sh /docker-entrypoint-initdb.d/10_postgis.sh

@@ -27,7 +27,7 @@ COMMENT ON COLUMN public.collect_user.id IS '主键 自增长ID';
 COMMENT ON COLUMN public.collect_user.user_id IS '资源的收藏者';
 COMMENT ON COLUMN public.collect_user.kind IS 'Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息';
 COMMENT ON COLUMN public.collect_user.kind_id IS '资源唯一标识';
-COMMENT ON COLUMN public.collect_user.remark IS '收藏来源';
+COMMENT ON COLUMN public.collect_user.source IS '收藏来源';
 COMMENT ON COLUMN public.collect_user.remark IS '收藏者备注';
 
 
