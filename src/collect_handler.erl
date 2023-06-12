@@ -44,6 +44,7 @@ page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
     Kind = imboy_req:get_int(kind, Req0, 0),
+    #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<"">>}], Req0),
     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
     UidBin = integer_to_binary(CurrentUid),
     ?LOG([page, Kind]),
@@ -57,11 +58,14 @@ page(Req0, State) ->
         _ ->
             {error, "Kind is invalid"}
     end,
-    case KindWhere of
-        {error, Msg} ->
+    case {KindWhere, OrderBy} of
+        {{error, Msg}, _OrderBy} ->
             imboy_response:error(Req0, Msg);
-        {ok, Where} ->
-            Payload = collect_logic:page(Page, Size, Where),
+        {{ok, Where}, <<"recent_use">>} ->
+            Payload = collect_logic:page(Page, Size, Where, <<"cu.updated_at desc, cu.id desc">>),
+            imboy_response:success(Req0, Payload);
+        {{ok, Where}, _} ->
+            Payload = collect_logic:page(Page, Size, Where, <<"cu.id desc">>),
             imboy_response:success(Req0, Payload)
     end.
 

@@ -36,21 +36,21 @@ Install the project...
 从容器里面拷文件到宿主机
 > docker cp goiissy:/root/idex.html /opt
 ```
-docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/pg_jieba.so ./pg_jieba/pg_jieba.so && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/extension/pg_jieba.control ./pg_jieba/pg_jieba.control && \
-docker cp "imboy_postgis_dev:/usr/share/postgresql/15/extension/pg_jieba--1.1.1.sql" "./pg_jieba/pg_jieba--1.1.1.sql" && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba_base.dict ./pg_jieba/jieba_base.dict && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba_hmm.model ./pg_jieba/jieba_hmm.model && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba_user.dict ./pg_jieba/jieba_user.dict && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba.stop ./pg_jieba/jieba.stop && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/tsearch_data/jieba.idf ./pg_jieba/jieba.idf
+docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/pg_jieba.so ./pg_jieba/pg_jieba.so && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/pg_jieba.control ./pg_jieba/pg_jieba.control && \
+docker cp "imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/pg_jieba--1.1.1.sql" "./pg_jieba/pg_jieba--1.1.1.sql" && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_base.dict ./pg_jieba/jieba_base.dict && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_hmm.model ./pg_jieba/jieba_hmm.model && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_user.dict ./pg_jieba/jieba_user.dict && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba.stop ./pg_jieba/jieba.stop && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba.idf ./pg_jieba/jieba.idf
 
 
-docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb.so ./timescaledb/timescaledb.so && \
-docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb-2.11.0.so ./timescaledb/timescaledb-2.11.0.so && \
-docker cp imboy_postgis_dev:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0.so ./timescaledb/timescaledb-tsl-2.11.0.so && \
-docker cp imboy_postgis_dev:/usr/share/postgresql/15/extension/timescaledb.control ./timescaledb/timescaledb.control && \
-docker cp "imboy_postgis_dev:/usr/share/postgresql/15/extension/timescaledb--2.11.0.sql" "./timescaledb/timescaledb--2.11.0.sql"
+docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb.so ./timescaledb/timescaledb.so && \
+docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb-2.12.0-dev.so ./timescaledb/timescaledb-2.12.0-dev.so && \
+docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.12.0-dev.so ./timescaledb/timescaledb-tsl-2.12.0-dev.so && \
+docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/timescaledb.control ./timescaledb/timescaledb.control && \
+docker cp "imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/timescaledb--2.12.0-dev.sql" "./timescaledb/timescaledb--2.12.0-dev.sql"
 
 ```
 /usr/share/postgresql/15
@@ -71,8 +71,8 @@ create extension pg_jieba;
 docker rename imboy-pg15 imboy_pg15
 
 docker cp ./timescaledb/timescaledb.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb.so && \
-docker cp ./timescaledb/timescaledb-2.11.0.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-2.11.0.so && \
-docker cp ./timescaledb/timescaledb-tsl-2.11.0.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0.so && \
+docker cp ./timescaledb/timescaledb-2.12.0-dev.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-2.12.0-dev.so && \
+docker cp ./timescaledb/timescaledb-tsl-2.11.0-dev.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0-dev.so && \
 docker cp ./timescaledb/timescaledb.control imboy_pg15:/usr/share/postgresql/15/extension/timescaledb.control && \
 docker cp "./timescaledb/timescaledb--2.11.0.sql" "imboy_pg15:/usr/share/postgresql/15/extension/timescaledb--2.11.0.sql"
 
@@ -89,8 +89,7 @@ cd docker
 docker build --file "./postgis_15-3.3_Dockerfile" -t imboy_pg15_3:0.1.1 .
 
 from https://github.com/docker-library/docs/blob/master/postgres/README.md
-imboy_pg15
-docker run -d \
+ docker rm -f imboy_pg15 && docker run -d \
     --name imboy_pg15 \
     --network imboy-network \
     -e POSTGRES_USER=imboy_user \
@@ -100,6 +99,12 @@ docker run -d \
     -v /data/docker/imboy_pg15:/var/lib/postgresql/data \
     -p 127.0.0.1:4321:5432 \
     imboy_pg15_3:0.1.1
+
+
+ALTER EXTENSION postgis UPDATE TO '3.3.3';
+ALTER EXTENSION postgis_tiger_geocoder UPDATE TO '3.3.3';
+ALTER EXTENSION postgis_topology UPDATE TO '3.3.3';
+ALTER EXTENSION pgroonga UPDATE TO '3.0.6';
 
 
 

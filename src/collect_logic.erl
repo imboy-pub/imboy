@@ -4,7 +4,7 @@
 % collect business logic module
 %%%
 
--export ([page/3]).
+-export ([page/4]).
 -export ([add/6]).
 
 -ifdef(EUNIT).
@@ -19,11 +19,11 @@
 %% ===================================================================
 
 %%% 用户的收藏分页列表
--spec page(integer(), integer(), binary()) -> list().
-page(Page, Size, Where) when Page > 0 ->
+-spec page(integer(), integer(), binary(), binary()) -> list().
+page(Page, Size, Where, OrderBy) when Page > 0 ->
     Offset = (Page - 1) * Size,
     Total = collect_user_repo:count_for_where(Where),
-    case collect_user_repo:page_for_where(Size, Offset, Where) of
+    case collect_user_repo:page_for_where(Size, Offset, Where, OrderBy) of
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->

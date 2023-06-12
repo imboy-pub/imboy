@@ -5,7 +5,7 @@
 %%%
 
 -export ([tablename/0]).
--export([count_for_where/1, page_for_where/3]).
+-export([count_for_where/1, page_for_where/4]).
 -export([count_by_uid_kind_id/2]).
 
 -ifdef(EUNIT).
@@ -47,14 +47,14 @@ count_for_where(Where) ->
     ).
 
 %%% 用户的收藏分页列表
-% collect_user_repo:page_for_where(1, 10, 0).
--spec page_for_where(integer(), integer(), binary()) ->
+% collect_user_repo:page_for_where(1, 10, 0, <<"cu.id desc">>).
+-spec page_for_where(integer(), integer(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
-page_for_where(Limit, Offset, Where) ->
-    Column = <<"cu.kind, cu.kind_id, cu.source, cu.created_at, r.info">>,
+page_for_where(Limit, Offset, Where, OrderBy) ->
+    Column = <<"cu.kind, cu.kind_id, cu.source, cu.created_at, cu.updated_at, r.info">>,
     Resource = imboy_db:public_tablename(<<"collect_resource">>),
     Join1 = <<"left join ", Resource/binary, " as r on r.kind_id = cu.kind_id ">>,
-    Where2 = <<" WHERE ", Where/binary," ORDER BY cu.id desc LIMIT $1 OFFSET $2">>,
+    Where2 = <<" WHERE ", Where/binary," ORDER BY ", OrderBy/binary," LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " as cu ",

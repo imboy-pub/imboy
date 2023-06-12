@@ -54,10 +54,10 @@ COPY ./pg_jieba/jieba.idf /usr/share/postgresql/15/tsearch_data/
 
 # timescaledb
 COPY ./timescaledb/timescaledb.so /usr/lib/postgresql/15/lib/
-COPY ./timescaledb/timescaledb-2.11.0.so /usr/lib/postgresql/15/lib/
-COPY ./timescaledb/timescaledb-tsl-2.11.0.so /usr/lib/postgresql/15/lib/
 COPY ./timescaledb/timescaledb.control /usr/share/postgresql/15/extension/
-COPY "./timescaledb/timescaledb--2.11.0.sql" "/usr/share/postgresql/15/extension/"
+COPY ./timescaledb/timescaledb-2.12.0-dev.so /usr/lib/postgresql/15/lib/
+COPY ./timescaledb/timescaledb-tsl-2.12.0-dev.so /usr/lib/postgresql/15/lib/
+COPY "./timescaledb/timescaledb--2.12.0-dev.sql" "/usr/share/postgresql/15/extension/"
 
 RUN mkdir -p /docker-entrypoint-initdb.d
 COPY ./initdb.sh /docker-entrypoint-initdb.d/10_postgis.sh
