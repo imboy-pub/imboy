@@ -7,6 +7,8 @@
 -export ([tablename/0]).
 -export([count_for_where/1, page_for_where/4]).
 -export([count_by_uid_kind_id/2]).
+-export([delete/2]).
+-export([update/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -21,7 +23,6 @@
 
 tablename() ->
     imboy_db:public_tablename(<<"collect_user">>).
-
 
 % collect_user_repo:count_by_uid_kind_id(107, <<"">>).
 count_by_uid_kind_id(Uid, KindId) ->
@@ -38,9 +39,10 @@ count_by_uid_kind_id(Uid, KindId) ->
 % collect_user_repo:count_for_where(107).
 count_for_where(Where) ->
     Tb = tablename(),
+    Resource = imboy_db:public_tablename(<<"collect_resource">>),
     % use index i_collect_user_UserId_Status_Hashid
     imboy_db:pluck(
-        <<Tb/binary, " cu">>
+        <<Tb/binary, " cu left join ", Resource/binary, " as r on r.kind_id = cu.kind_id ">>
         , Where
         , <<"count(*) as count">>
         , 0
@@ -63,7 +65,21 @@ page_for_where(Limit, Offset, Where, OrderBy) ->
     % ?LOG(['Sql', Sql]),
     imboy_db:query(Sql, [Limit, Offset]).
 
+ % {ok, 1} | {ok, 1, {ReturningField}}
+-spec delete(integer(), binary()) -> {ok, integer()} | {ok, integer(), tuple()}.
+delete(Uid, KindId) ->
+    Tb = tablename(),
+    Where = <<" WHERE user_id = $1 AND kind_id = $2">>,
+    Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
+    imboy_db:execute(Sql, [Uid, KindId]).
 
+-spec update(integer(), binary(), list()) -> {ok, integer()} | {ok, integer(), tuple()}.
+update(Uid, KindId, Data) ->
+    Table = tablename(),
+    Set = imboy_db:get_set(Data),
+    Where = <<" WHERE user_id = $1 AND kind_id = $2">>,
+    Sql = <<"UPDATE ", Table/binary," SET ", Set/binary, Where/binary>>,
+    imboy_db:execute(Sql, [Uid, KindId]).
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================

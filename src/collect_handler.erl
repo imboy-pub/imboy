@@ -44,20 +44,30 @@ page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
     Kind = imboy_req:get_int(kind, Req0, 0),
-    #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<"">>}], Req0),
+    #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
+    #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
     UidBin = integer_to_binary(CurrentUid),
     ?LOG([page, Kind]),
+
+    KwdWhere = if
+        byte_size(Kwd) > 0 ->
+            <<" and (cu.source like '%", Kwd/binary, "%' or cu.remark like '%", Kwd/binary, "%' or r.info like '%", Kwd/binary, "%')">>;
+        true ->
+            <<>>
+    end,
+
     % use index i_collect_user_UserId_Status_Kind
     KindWhere = case Kind of
         {ok, 0}  ->
-            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1">>};
+            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1", KwdWhere/binary>>};
         {ok, Kind2} when is_integer(Kind2)  ->
             Kind3 = integer_to_binary(Kind2),
-            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1 and cu.kind = ", Kind3/binary>>};
+            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1 and cu.kind = ", Kind3/binary, KwdWhere/binary>>};
         _ ->
             {error, "Kind is invalid"}
     end,
+
     case {KindWhere, OrderBy} of
         {{error, Msg}, _OrderBy} ->
             imboy_response:error(Req0, Msg);
@@ -86,20 +96,18 @@ add(Req0, State) ->
     end.
 
 remove(Req0, State) ->
-    _CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
+    KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    % collect_logic:remove(CurrentUid, Val1, Val2),
-    imboy_response:success(Req0, PostVals, "success.").
+    collect_logic:remove(CurrentUid, KindId),
+    imboy_response:success(Req0, #{}, "success.").
 
 change(Req0, State) ->
-    _CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
-    % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    % collect_logic:change(CurrentUid, Val1, Val2),
-    imboy_response:success(Req0, PostVals, "success.").
+    collect_logic:change(CurrentUid, PostVals),
+    imboy_response:success(Req0, #{}, "success.").
 
 %% ===================================================================
 %% EUnit tests.

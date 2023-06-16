@@ -10,7 +10,7 @@ LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS = goldrush lager jsone ranch cowlib cowboy
-DEPS += jsx jwerl hashids recon observer_cli gen_smtp sync qdate throttle
+DEPS += jsx jwerl hashids recon observer_cli gen_smtp qdate throttle
 
 # DEPS += mysql poolboy
 DEPS += epgsql pooler
@@ -18,7 +18,7 @@ DEPS += depcache
 DEPS += syn
 DEPS += ecron
 DEPS += esq
-
+DEPS += sync
 # DEPS += khepri
 
 

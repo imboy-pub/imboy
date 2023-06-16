@@ -6,6 +6,8 @@
 
 -export ([page/4]).
 -export ([add/6]).
+-export ([remove/2]).
+-export ([change/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -134,6 +136,24 @@ add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_list(Info) ->
     {ok, <<"success">>};
 add(_Uid, _Kind, _KindId, _Info, _Source, _Remark) ->
     {error, <<"Unsupported collection kind">>}.
+
+remove(Uid, KindId) ->
+    collect_user_repo:delete(Uid, KindId).
+
+change(Uid, [{<<"kind_id">>, KindId}]) ->
+    % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
+    % collect_user_repo:update(Uid, KindId);
+    NowTs = imboy_dt:millisecond(),
+    collect_user_repo:update(Uid, KindId, [
+        {<<"updated_at">>, integer_to_binary(NowTs)}
+    ]),
+    ok;
+change(_Uid, PostVals) ->
+    KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
+    lager:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
+    % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
+    % collect_user_repo:update(Uid, KindId);
+    ok.
 
 %% ===================================================================
 %% Internal Function Definitions

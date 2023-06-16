@@ -24,5 +24,7 @@ for DB in template_postgis "$POSTGRES_DB"; do
         CREATE EXTENSION IF NOT EXISTS pgroonga;
         CREATE EXTENSION IF NOT EXISTS pg_jieba;
         CREATE EXTENSION IF NOT EXISTS timescaledb;
+        CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
 EOSQL
 done

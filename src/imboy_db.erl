@@ -8,6 +8,8 @@
 -export([execute/2]).
 -export([insert_into/3]).
 -export([assemble_sql/4]).
+
+-export([get_set/1]).
 -export([update/3]).
 -export([update/4]).
 -export([public_tablename/1]).
@@ -176,24 +178,34 @@ update(Table, ID, Field, Value) ->
 -spec update(binary(), integer(), list()) ->
     ok | {error,  {integer(), binary(), Msg::binary()}}.
 update(Table, ID, KV) ->
+    Set = get_set(KV),
+    Table2 = public_tablename(Table),
+    Sql = <<"UPDATE ", Table2/binary," SET ", Set/binary," WHERE id = $1">>,
+    % ?LOG(io:format("~s\n", [Sql])),
+    imboy_db:execute(Sql, [ID]).
+
+-spec get_set(list()) -> binary().
+get_set(KV) ->
     KV2 = [{K, update_filter_value(V)} || {K, V} <- KV],
     Set1 = [<<K/binary, " = '", V/binary, "'">> || {K, V} <- KV2],
     Set2 = [binary_to_list(S) || S <- Set1],
     Set3 = lists:concat(lists:join(", ", Set2)),
-    Set4 = list_to_binary(Set3),
-
-    Table2 = public_tablename(Table),
-    Sql = <<"UPDATE ", Table2/binary," SET ", Set4/binary," WHERE id = $1">>,
-    % ?LOG(io:format("~s\n", [Sql])),
-    imboy_db:execute(Sql, [ID]).
+    list_to_binary(Set3).
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
+
 query_resp({error, Msg}) ->
     {error, Msg};
+query_resp({ok,[K], Rows}) ->
+    % {ok,[<<"count">>],[{1}]}
+    {ok, [K], Rows};
 query_resp({ok, ColumnList, Rows}) ->
+    % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
+    % {ok,[{column,<<"count">>,int8,20,8,-1,1,0,0}],[1]}
+    % lager:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [element(2, C) || C <- ColumnList],
     {ok, ColumnList2, Rows}.
 

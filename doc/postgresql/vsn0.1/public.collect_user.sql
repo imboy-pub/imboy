@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.collect_user.remark IS '收藏者备注';
 
 COMMENT ON COLUMN public.collect_user.updated_at IS '更新记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.collect_user.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.collect_user.status IS '状态: -1 删除  0 禁用  1 启用';
+COMMENT ON COLUMN public.collect_user.status IS '状态: 0 禁用  1 启用';
 
 -- index
 

@@ -48,14 +48,24 @@ https://www.runoob.com/postgresql/postgresql-index.html
 
 # postgresql 扩展
 
+
+* how to set multiple shared_preload_libraries
+
+https://www.postgresql.org/docs/current/runtime-config-client.html
 ```
-select name from pg_available_extensions;
+# Add settings for extensions here
+# 它包含以逗号分隔的库名称列表； 条目之间的空格被忽略；如果需要在名称中包含空格或逗号，请用双引号将库名称括起来。
+shared_preload_libraries='pg_stat_statements,timescaledb'
+pg_stat_statements.max=10000
+pg_stat_statements.track=all
 ```
+* PostgreSQL实用技巧 https://tonydong.blog.csdn.net/article/details/128259591
 
 ## postgis
 
 
 ## pgroonga
+
 
 ## pg_jieba
 在macos m1 上面做的 pg_jieba.so 等8个文件copy到CentOS8 里面的docker里面，没有使用；
@@ -78,6 +88,51 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 ```
 上面的代码在 imboy_postgis_dev docker容器里面执行成功
+
+## pgcrypto
+
+* https://tonydong.blog.csdn.net/article/details/109073000 PostgreSQL 数据加密之 pgcrypto
+
+
+
+## pg_stat_statements
+
+查找占用资源最多的查询和进程
+```
+# CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+SELECT
+    total_exec_time,
+    mean_exec_time as avg_ms,
+    calls,
+    query
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC
+LIMIT 10;
+
+```
+
+## Posttgresql 日志功能
+
+https://tonydong.blog.csdn.net/article/details/128259591
+
+开启慢查询记录功能，执行时间等于或者大于 log_min_duration_statement 设置值的语句会被记录：
+```
+ALTER database imboy_v1 SET log_min_duration_statement = '250ms';
+```
+
+使用 log_statement 选项设置日志记录的语句类型：
+```
+ALTER DATABASE imboy_v1 SET log_statement = 'all';
+```
+有效的取值包括 all、ddl、none 以及 mod。
+
+当数据库出现锁等待事件时记录日志:
+```
+ALTER DATABASE imboy_v1 SET log_lock_waits = 'on';
+
+```
+
 
 # FAQ
 
