@@ -1,6 +1,6 @@
--module (collect_user_repo).
+-module (user_collect_repo).
 %%%
-% collect_user 相关操作都放到该模块，存储库模块
+% user_collect 相关操作都放到该模块，存储库模块
 % collect related operations are put in this module, repository module
 %%%
 
@@ -22,12 +22,12 @@
 %% ===================================================================
 
 tablename() ->
-    imboy_db:public_tablename(<<"collect_user">>).
+    imboy_db:public_tablename(<<"user_collect">>).
 
-% collect_user_repo:count_by_uid_kind_id(107, <<"">>).
+% user_collect_repo:count_by_uid_kind_id(107, <<"">>).
 count_by_uid_kind_id(Uid, KindId) ->
     Uid2 = integer_to_binary(Uid),
-    % use index uk_collect_user_UserId_Status_kindId
+    % use index uk_user_collect_UserId_Status_kindId
     imboy_db:pluck(
         tablename()
         , <<"user_id = ", Uid2/binary, " and status = 1 and kind_id = '", KindId/binary, "'">>
@@ -36,32 +36,27 @@ count_by_uid_kind_id(Uid, KindId) ->
     ).
 
 
-% collect_user_repo:count_for_where(107).
+% user_collect_repo:count_for_where(107).
 count_for_where(Where) ->
     Tb = tablename(),
-    Resource = imboy_db:public_tablename(<<"collect_resource">>),
-    % use index i_collect_user_UserId_Status_Hashid
+    % use index i_user_collect_UserId_Status_Hashid
     imboy_db:pluck(
-        <<Tb/binary, " cu left join ", Resource/binary, " as r on r.kind_id = cu.kind_id ">>
+        <<Tb/binary>>
         , Where
         , <<"count(*) as count">>
         , 0
     ).
 
 %%% 用户的收藏分页列表
-% collect_user_repo:page_for_where(1, 10, 0, <<"cu.id desc">>).
+% user_collect_repo:page_for_where(1, 10, 0, <<"id desc">>).
 -spec page_for_where(integer(), integer(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"cu.kind, cu.kind_id, cu.source, cu.created_at, cu.updated_at, r.info">>,
-    Resource = imboy_db:public_tablename(<<"collect_resource">>),
-    Join1 = <<"left join ", Resource/binary, " as r on r.kind_id = cu.kind_id ">>,
+    Column = <<"kind, kind_id, source, created_at, updated_at, info">>,
     Where2 = <<" WHERE ", Where/binary," ORDER BY ", OrderBy/binary," LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " as cu ",
-        Join1/binary,
-        Where2/binary>>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % ?LOG(['Sql', Sql]),
     imboy_db:query(Sql, [Limit, Offset]).
 

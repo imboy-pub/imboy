@@ -575,3 +575,9 @@ ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ
 ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjkwNDc2Nzc3MDgsInN1YiI6InRrIiwidWlkIjoiN2I0djFiIn0.n19M6-kR_p4EtqJMst4kO1cqgdG5F2gyNY6QL46xpR8
 {"id":"cdsgrbgppoodp0gvpb61","type":"C2C","to":"kybqdp","from":"7b4v1b","payload":{"msg_type":"text","text":"108to1"},"created_at":1668877742828}
 ```
+
+
+DROP FUNCTION IF EXISTS public.imboy_collect_user_fun();
+DROP TRIGGER IF EXISTS imboy_for_collect_user ON public.collect_user;
+ DROP TABLE IF EXISTS public."collect_resource";
+ DROP TABLE IF EXISTS public."collect_user";

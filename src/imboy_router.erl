@@ -39,6 +39,11 @@ get_routes() ->
         {"/user_device/change_name", user_device_handler, #{action => change_name}},
         {"/user_device/delete", user_device_handler, #{action => delete}},
 
+        {"/user_collect/page", user_collect_handler, #{action => page}},
+        {"/user_collect/add", user_collect_handler, #{action => add}},
+        {"/user_collect/remove", user_collect_handler, #{action => remove}},
+        {"/user_collect/change", user_collect_handler, #{action => change}},
+
         {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
         {"/location/makeMyselfUnvisible", location_handler, #{action => make_myself_unvisible}},
         {"/location/peopleNearby", location_handler, #{action => people_nearby}},
@@ -62,11 +67,6 @@ get_routes() ->
 
         % 搜索“用户允许被搜索”的用户
         {"/fts/user_search", fts_handler, #{action => user_search}},
-
-        {"/collect/page", collect_handler, #{action => page}},
-        {"/collect/add", collect_handler, #{action => add}},
-        {"/collect/remove", collect_handler, #{action => remove}},
-        {"/collect/change", collect_handler, #{action => change}},
 
         {"/group/member", group_handler, #{action => member}},
 

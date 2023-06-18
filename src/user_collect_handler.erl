@@ -1,4 +1,4 @@
--module(collect_handler).
+-module(user_collect_handler).
 %%%
 % collect 控制器模块
 % collect controller module
@@ -52,18 +52,18 @@ page(Req0, State) ->
 
     KwdWhere = if
         byte_size(Kwd) > 0 ->
-            <<" and (cu.source like '%", Kwd/binary, "%' or cu.remark like '%", Kwd/binary, "%' or r.info like '%", Kwd/binary, "%')">>;
+            <<" and (source like '%", Kwd/binary, "%' or remark like '%", Kwd/binary, "%' or info like '%", Kwd/binary, "%')">>;
         true ->
             <<>>
     end,
 
-    % use index i_collect_user_UserId_Status_Kind
+    % use index i_user_collect_UserId_Status_Kind
     KindWhere = case Kind of
         {ok, 0}  ->
-            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1", KwdWhere/binary>>};
+            {ok, <<"user_id = ", UidBin/binary," and status = 1", KwdWhere/binary>>};
         {ok, Kind2} when is_integer(Kind2)  ->
             Kind3 = integer_to_binary(Kind2),
-            {ok, <<"cu.user_id = ", UidBin/binary," and cu.status = 1 and cu.kind = ", Kind3/binary, KwdWhere/binary>>};
+            {ok, <<"user_id = ", UidBin/binary," and status = 1 and kind = ", Kind3/binary, KwdWhere/binary>>};
         _ ->
             {error, "Kind is invalid"}
     end,
@@ -72,10 +72,10 @@ page(Req0, State) ->
         {{error, Msg}, _OrderBy} ->
             imboy_response:error(Req0, Msg);
         {{ok, Where}, <<"recent_use">>} ->
-            Payload = collect_logic:page(Page, Size, Where, <<"cu.updated_at desc, cu.id desc">>),
+            Payload = user_collect_logic:page(Page, Size, Where, <<"updated_at desc, id desc">>),
             imboy_response:success(Req0, Payload);
         {{ok, Where}, _} ->
-            Payload = collect_logic:page(Page, Size, Where, <<"cu.id desc">>),
+            Payload = user_collect_logic:page(Page, Size, Where, <<"id desc">>),
             imboy_response:success(Req0, Payload)
     end.
 
@@ -88,7 +88,7 @@ add(Req0, State) ->
     Source = proplists:get_value(<<"source">>, PostVals, <<"">>),
     Remark = proplists:get_value(<<"remark">>, PostVals, <<"">>),
     Info = proplists:get_value(<<"info">>, PostVals, []),
-    case collect_logic:add(CurrentUid, Kind, KindId, Info, Source, Remark) of
+    case user_collect_logic:add(CurrentUid, Kind, KindId, Info, Source, Remark) of
         {ok, _Msg} ->
             imboy_response:success(Req0);
         {error, Msg} ->
@@ -100,13 +100,13 @@ remove(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    collect_logic:remove(CurrentUid, KindId),
+    user_collect_logic:remove(CurrentUid, KindId),
     imboy_response:success(Req0, #{}, "success.").
 
 change(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    collect_logic:change(CurrentUid, PostVals),
+    user_collect_logic:change(CurrentUid, PostVals),
     imboy_response:success(Req0, #{}, "success.").
 
 %% ===================================================================
