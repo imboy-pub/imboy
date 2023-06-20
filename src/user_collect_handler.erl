@@ -106,7 +106,9 @@ remove(Req0, State) ->
 change(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    user_collect_logic:change(CurrentUid, PostVals),
+    Action = proplists:get_value(<<"action">>, PostVals, <<>>),
+    KindId = proplists:get_value(<<"kind_id">>, PostVals, <<>>),
+    user_collect_logic:change(CurrentUid, Action, KindId, PostVals),
     imboy_response:success(Req0, #{}, "success.").
 
 %% ===================================================================

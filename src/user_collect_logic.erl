@@ -7,7 +7,7 @@
 -export ([page/4]).
 -export ([add/6]).
 -export ([remove/2]).
--export ([change/2]).
+-export ([change/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -44,7 +44,7 @@ page(Page, Size, Where, OrderBy) when Page > 0 ->
 -spec add(integer(), binary(), binary(), list(), binary(), binary()) ->
     {ok, binary()} | {error, binary()}.
 
-% Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息
+% Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
 % 检查 Kind 类型
 add(Uid, Kind, KindId, Info, Source, Remark) when is_integer(Kind) ->
     add(Uid, integer_to_binary(Kind), KindId, Info, Source, Remark);
@@ -55,7 +55,13 @@ add(_Uid, _Kind, <<"">>, _Info, _Source, _Remark) ->
     {error, <<"kind_id is empty">>};
 add(_Uid, _Kind, _KindId, [], _Source, _Remark) ->
     {error, <<"kind info is empty">>};
-% Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息
+% Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
+add(Uid, <<"7">>, KindId, Info, Source, Remark) when is_list(Info) ->
+    Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
+    Uid2 = integer_to_binary(Uid),
+    Info2 =jsone:encode(Info, [native_forward_slash]),
+    add_kind(Count, Uid2, <<"7">>, KindId, Info2, Source, Remark, []),
+    {ok, <<"success">>};
 add(Uid, <<"6">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Uid2 = integer_to_binary(Uid),
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
@@ -159,7 +165,8 @@ add(_Uid, _Kind, _KindId, _Info, _Source, _Remark) ->
 remove(Uid, KindId) ->
     user_collect_repo:delete(Uid, KindId).
 
-change(Uid, [{<<"kind_id">>, KindId}]) ->
+% 转发收藏消息回调，更新updated_at的值
+change(Uid, <<"transpond_callback">>, KindId, _PostVals) ->
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
     NowTs = imboy_dt:millisecond(),
@@ -167,9 +174,9 @@ change(Uid, [{<<"kind_id">>, KindId}]) ->
         {<<"updated_at">>, integer_to_binary(NowTs)}
     ]),
     ok;
-change(_Uid, PostVals) ->
-    KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
-    lager:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
+change(_Uid, _Action, _KindId, _PostVals) ->
+    % KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
+    % lager:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
     ok.
@@ -179,8 +186,13 @@ change(_Uid, PostVals) ->
 %% ===================================================================-
 
 get_info(0, Prefix, MimeType, Key, Info) ->
-    Payload = maps:from_list(proplists:get_value(<<"payload">>, Info)),
-
+    Payload0 = maps:from_list(proplists:get_value(<<"payload">>, Info)),
+    Payload = if
+        is_binary(Payload0) ->
+            jsone:decode(Payload0, [{object_format, map}]);
+        true ->
+            Payload0
+    end,
     {ok, Uri} = maps:find(Key, Payload),
     M1 = upload(Prefix, MimeType, Uri),
     Md5 = maps:get(<<"md5">>, M1),
@@ -199,7 +211,7 @@ get_info(0, Prefix, MimeType, Key, Info) ->
     Attach = #{
         <<"md5">> => Md5,
         <<"mime_type">> => MimeType,
-        <<"name">> => <<"">>,
+        <<"name">> => maps:get(<<"name">>, Payload, <<>>),
         <<"path">> => maps:get(<<"path">>, M1),
         <<"url">> => Url,
         <<"size">> => Size
