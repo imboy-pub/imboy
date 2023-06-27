@@ -109,7 +109,6 @@ fields(Uid) ->
     C_IsFriend = <<" case when d.user_id = ", Uid/binary, " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
     C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
     C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
-    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.category_id">>,
+    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.tag, f.category_id">>,
     <<"id,", F2/binary>> = ?DEF_USER_COLUMN,
     <<"u.id,", F2/binary, ",", C2/binary>>.
-

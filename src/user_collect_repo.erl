@@ -52,7 +52,7 @@ count_for_where(Where) ->
 -spec page_for_where(integer(), integer(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"kind, kind_id, source, created_at, updated_at, info">>,
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
     Where2 = <<" WHERE ", Where/binary," ORDER BY ", OrderBy/binary," LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),

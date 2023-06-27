@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS public."user_collect"
     kind_id varchar(40) NOT NULL DEFAULT '',
     source varchar(200) NOT NULL DEFAULT '',
     remark varchar(200) NOT NULL DEFAULT '',
-    info text COLLATE pg_catalog."C.UTF-8",
+    tag varchar(1600) DEFAULT '',
+    info text COLLATE pg_catalog."default",
     attach_md5 varchar(880) NOT NULL DEFAULT '',
 
     status smallint NOT NULL DEFAULT 1,
@@ -31,6 +32,7 @@ COMMENT ON COLUMN public.user_collect.kind IS 'Kind 被收藏的资源种类： 
 COMMENT ON COLUMN public.user_collect.kind_id IS '资源唯一标识';
 COMMENT ON COLUMN public.user_collect.source IS '收藏来源';
 COMMENT ON COLUMN public.user_collect.remark IS '收藏者备注';
+COMMENT ON COLUMN public.user_collect.tag IS '多个tag 用半角逗号分隔，单个tag不超过14字符';
 COMMENT ON COLUMN public.user_collect.info IS '被收藏的kind的json信息';
 COMMENT ON COLUMN public.user_collect.attach_md5 IS '收藏记录Md5,多个用逗号分割';
 

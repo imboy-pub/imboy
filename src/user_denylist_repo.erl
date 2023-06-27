@@ -41,7 +41,7 @@ count_for_uid(Uid) ->
 page_for_uid(Uid, Limit,  Offset) ->
     % Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
     Source = <<"f.setting::jsonb->>'source' AS source">>,
-    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark, u.gender, u.region,", Source/binary>>,
+    Column = <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark,f.tag, u.gender, u.region,", Source/binary>>,
 
     UserTable = imboy_db:public_tablename(<<"user">>),
     UserFTable = imboy_db:public_tablename(<<"user_friend">>),
