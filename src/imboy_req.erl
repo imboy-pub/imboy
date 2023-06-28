@@ -61,7 +61,10 @@ post_params(Req) ->
             % Params = jsone:decode(PostVals, [{object_format, proplist}]),
             % ?LOG(Params),
             % Params
-            jsone:decode(PostVals, [{object_format, proplist}])
+            jsone:decode(PostVals, [{object_format, proplist}]);
+        _ ->
+            lager:error(io_lib:format("imboy_req:post_params error: ContentType ~p; ~p ~n", [ContentType, Req])),
+            []
     end.
 
 

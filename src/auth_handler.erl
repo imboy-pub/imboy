@@ -32,16 +32,21 @@ init(Req0, State0) ->
 % Assets服务认证
 assets(<<"POST">>, Req0) ->
     try
-        imboy_req:post_params(Req0)
+        PostVals = imboy_req:post_params(Req0),
+        Scene = proplists:get_value(<<"s">>, PostVals),
+        % AuthToken
+        AuthTk = proplists:get_value(<<"a">>, PostVals),
+        Val = proplists:get_value(<<"v">>, PostVals),
+        Path = proplists:get_value(<<"__path__">>, PostVals),
+        {Scene, Path}
     of
-        PostVals when is_list(PostVals)  ->
-            % ?LOG(PostVals),
-            % AuthToken
-            AuthTk = proplists:get_value(<<"a">>, PostVals),
-            % Sence
-            Scene = proplists:get_value(<<"s">>, PostVals),
-            % Val
-            Val = proplists:get_value(<<"v">>, PostVals),
+        {<<"open">>, Path2} ->
+            Body = auth_logic:verify_for_open(Path2, AuthTk, Val),
+            cowboy_req:reply(200,
+                 #{<<"content-type">> => <<"text/html">>},
+                 unicode:characters_to_binary(Body, utf8),
+                 Req0);
+        {_Scene, _Path} ->
             % Body is <<"ok">> or <<"fail">>
             Body = auth_logic:verify_for_assets(Scene, AuthTk, Val),
             cowboy_req:reply(200,
@@ -50,7 +55,10 @@ assets(<<"POST">>, Req0) ->
                  Req0)
     catch
         _ ->
-            <<"fail">>
+            cowboy_req:reply(200,
+                 #{<<"content-type">> => <<"text/html">>},
+                 unicode:characters_to_binary(<<"fail">>, utf8),
+                 Req0)
     end;
 assets(<<"GET">>, Req0) ->
     % Body is <<"fail">>

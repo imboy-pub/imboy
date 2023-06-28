@@ -4,6 +4,7 @@
 % auth business logic module
 %%%
 
+-export ([verify_for_open/3]).
 -export ([verify_for_assets/3]).
 
 -ifdef(EUNIT).
@@ -17,13 +18,13 @@
 %% API
 %% ===================================================================
 
-verify_for_assets(undefined, _AuthTk, _Name) ->
+verify_for_assets(undefined, _Tk, _Name) ->
     <<"fail">>;
 verify_for_assets(_Scene, undefined, _Name) ->
     <<"fail">>;
-verify_for_assets(_Scene, _AuthTk, undefined) ->
+verify_for_assets(_Scene, _Tk, undefined) ->
     <<"fail">>;
-verify_for_assets(Scene, AuthTk, Val) ->
+verify_for_assets(Scene, Tk, Val) ->
     Now = imboy_dt:second(),
     % V = binary_to_integer(Val),
     {V, _} = string:to_integer(Val),
@@ -32,11 +33,19 @@ verify_for_assets(Scene, AuthTk, Val) ->
     if
         is_integer(V) andalso Now < (V + Diff) ->
             NewTk = auth_ds:get_token(assets, Scene, binary_to_list(Val)),
-            do_verify_for_assets(NewTk, AuthTk);
+            do_verify_for_assets(NewTk, Tk);
         true ->
             <<"fail">>
     end.
 
+verify_for_open(undefined, _Tk, _Val) ->
+    <<"fail">>;
+verify_for_open(_Path, undefined, _Val) ->
+    <<"fail">>;
+verify_for_open(Path, Tk, Val) ->
+    NewTk = auth_ds:get_token(assets, <<"open">>, binary_to_list(<<Path/binary, "?", Val/binary>>)),
+    % lager:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
+    do_verify_for_assets(NewTk, Tk).
 
 %% ===================================================================
 %% Internal Function Definitions

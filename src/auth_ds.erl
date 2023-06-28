@@ -19,6 +19,7 @@
 
 %%% 获取资源服务访问token
 % auth_ds:get_token(assets, <<"dev">>, "333").
+% auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
 get_token(assets, S, V) ->
     AuthKeys = imboy_func:env(auth_keys),
     Key = proplists:get_value(S, AuthKeys),
