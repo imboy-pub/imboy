@@ -7,7 +7,7 @@
 -export([is_email/1]).
 -export([num_random/1]).
 -export([send_email/2]).
-
+-export([remove_dups/1, implode/2]).
 
 env(Attr) ->
     env(Attr, undefined).
@@ -55,6 +55,25 @@ num_random(Len) ->
             MinNum * Prefix + Num
     end.
 
+remove_dups([])    -> [];
+remove_dups([H|T]) -> [H | [X || X <- remove_dups(T), X /= H]].
+
+% imboy_func:implode(",", [<<"a">>, "b"]).
+% imboy_func:implode("','", [<<"a">>, "b"]).
+% imboy_func:implode(",", [1,2,3.3]).   // <<"1,2,3.3">>
+-spec implode([binary() | list() | float() | integer()], list()) -> binary().
+implode(S, Li) when is_float(S) ->
+    implode(io_lib:format("~p", [S]), Li);
+implode(S, Li) when is_integer(S) ->
+    implode(integer_to_binary(S), Li);
+implode(Separator, Li) ->
+    Li2 = [[Separator
+        , if
+            is_integer(I) -> integer_to_binary(I);
+            is_float(I) -> io_lib:format("~p", [I]);
+            true -> I
+        end] || I <- Li],
+    iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
 
 % imboy_func:send_email(<<"1977699124@qq.com">>,
 %    "code is: " ++ integer_to_list(imboy_func:num_random(6)) ++

@@ -23,8 +23,12 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 = case Action of
-        demo_action ->
-            demo_action(Req0, State);
+        add ->
+            add(Req0, State);
+        remove ->
+            remove(Req0, State);
+        % page ->
+        %     page(Req0, State);
         false ->
             Req0
     end,
@@ -34,15 +38,46 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-demo_action(Req0, State) ->
+add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
-    Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
-    Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    user_tag_logic:demo(CurrentUid, Val1, Val2),
-    imboy_response:success(Req0, PostVals, "success.").
+    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
+    Tag = proplists:get_value(<<"tag">>, PostVals, []),
+    % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
+    ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
+    % user_tag_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
+    user_tag_logic:add(CurrentUid, Scene, ObjectId, Tag),
+    imboy_response:success(Req0, #{}, "success.").
+
+remove(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    PostVals = imboy_req:post_params(Req0),
+    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
+    Tag = proplists:get_value(<<"tag">>, PostVals, []),
+    % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
+    ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
+    % user_tag_logic:add(1, <<"friend">>, <<"18aw3p">>, [<<"a">>, <<"b">>]).
+    user_tag_logic:remove(CurrentUid, Scene, ObjectId, Tag),
+    imboy_response:success(Req0, #{}, "success.").
+
+% page(Req0, State) ->
+%     CurrentUid = maps:get(current_uid, State),
+%     {Page, Size} = imboy_req:page_size(Req0),
+%     Kind = imboy_req:get_int(kind, Req0, 0),
+%     #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
+%     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
+%     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
+%     UidBin = integer_to_binary(CurrentUid),
+%     ?LOG([page, Kind]),
+
+    % KwdWhere = if
+    %     byte_size(Kwd) > 0 ->
+    %         <<" and (source like '%", Kwd/binary, "%' or remark like '%", Kwd/binary, "%' or info like '%", Kwd/binary, "%')">>;
+    %     true ->
+    %         <<>>
+    % end,
 
 %% ===================================================================
 %% EUnit tests.

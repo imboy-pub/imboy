@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS public."tag"
     scene int DEFAULT 0,
     name varchar(80) DEFAULT '',
     referer_time int NOT NULL DEFAULT 0,
-    status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
     created_at bigint NOT NULL,
     CONSTRAINT uk_Scene_Name UNIQUE  (scene, name)
@@ -31,10 +30,9 @@ COMMENT ON COLUMN public.tag.referer_time IS '被引用次数';
 
 COMMENT ON COLUMN public.tag.updated_at IS '更新记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.tag.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.tag.status IS '状态: -1 删除  0 禁用  1 启用';
 
 -- index
 
 
-CREATE INDEX i_tag_CreatorUserId_Status ON public.tag (creator_user_id,status);
+CREATE INDEX i_tag_CreatorUserId ON public.tag (creator_user_id);
 
