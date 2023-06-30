@@ -4,8 +4,9 @@
 % user_tag business logic module
 %%%
 
--export ([add/4, remove/4]).
+-export ([add/4]).
 -export([merge_tag/3]).
+-export([delete/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -18,50 +19,112 @@
 %% API
 %% ===================================================================
 
+
+%%% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
+-spec delete(integer(), binary(), binary()) -> ok.
+delete(Uid, Scene, Tag) ->
+    Where = [
+        imboy_func:implode("", ["creator_user_id = ", Uid]),
+        imboy_func:implode("", ["scene = ", Scene]),
+        imboy_func:implode("", ["name = '", Tag, "'"])
+    ],
+    TagWhere = imboy_func:implode(" AND ", Where),
+    TagId = imboy_db:pluck(<<"tag">>, TagWhere, <<"id">>, 0),
+
+    imboy_db:with_transaction(fun(Conn) ->
+        % 删除 public.user_tag
+        UserTagTb = user_tag_repo:tablename(),
+        DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND tag_id = $2">>,
+        DelSql = <<"DELETE FROM ", UserTagTb/binary," WHERE ", DelWhere/binary>>,
+        lager:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
+        epgsql:equery(Conn, DelSql, [Uid, TagId]),
+
+        % 删除 public.tag
+        TagTb = imboy_db:public_tablename(<<"tag">>),
+        DelSql2 = <<"DELETE FROM ", TagTb/binary," WHERE id = $1">>,
+        lager:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
+        epgsql:equery(Conn, DelSql2, [TagId]),
+
+        %
+        UpTb = case Scene of
+            <<"1">> ->
+                imboy_db:public_tablename(<<"user_collect">>);
+            <<"2">> ->
+                imboy_db:public_tablename(<<"user_friend">>)
+        end,
+        UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,",', '') WHERE tag like '%", Tag/binary, ",%';">>,
+        lager:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
+
+        Res = epgsql:equery(Conn, UpSql),
+
+        lager:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
+        ok
+    end),
+    ok.
+
 %%% 添加标签
 -spec add(integer(), binary(), binary(), list()) -> ok.
-add(_Uid, _, <<>>, []) ->
-    ok;
-add(_Uid, _, _, []) ->
-    ok;
-add(_Uid, _, <<>>, _) ->
-    ok;
-add(Uid, <<"collect">>, ObjectId, Tag) ->
+add(Uid, Scene, <<>>, [Tag]) ->
+    lager:info(io_lib:format("user_tag_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
+    Count = imboy_db:pluck(
+        <<"tag">>
+        , <<"scene = ", Scene/binary, " AND name = ", Tag/binary>>
+        , <<"id">>, 0
+    ),
+    case Count of
+        0 ->
+            Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
+            Value = [Uid, Scene, <<"'",Tag/binary, "'">>, 0, imboy_dt:millisecond()],
+            imboy_db:insert_into(<<"tag">>, Column, Value),
+            ok;
+        _ ->
+            <<"标签名已存在"/utf8>>
+    end;
+
+add(Uid, <<"1">>, ObjectId, Tag) ->
     do_add(<<"1">>, Uid, ObjectId, Tag),
     ok;
-add(Uid, <<"friend">>, ObjectId, Tag) ->
+add(Uid, <<"2">>, ObjectId, Tag) ->
     do_add(<<"2">>, Uid, imboy_hashids:uid_decode(ObjectId), Tag),
-    ok;
-add(_, _, _, _Tag) ->
     ok.
-
--spec remove(integer(), binary(), binary(), list()) -> ok.
-remove(_Uid, _, <<>>, []) ->
-    ok;
-remove(_Uid, _, _, []) ->
-    ok;
-remove(_Uid, _, <<>>, _) ->
-    ok;
-remove(Uid, <<"collect">>, ObjectId, Tag) ->
-    do_remove(<<"1">>, Uid, ObjectId, Tag),
-    ok;
-remove(Uid, <<"friend">>, ObjectId, Tag) ->
-    do_remove(<<"2">>, Uid, imboy_hashids:uid_decode(ObjectId), Tag),
-    ok;
-remove(_, _, _, _Tag) ->
-    ok.
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
-do_remove(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
-    do_remove(Scene, Uid, integer_to_binary(ObjectId), Tag);
-% do_remove(Scene, Uid, ObjectId, Tag) ->
-do_remove(_Scene, _Uid, _ObjectId, _Tag) ->
-    ok.
 
 do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(Scene, Uid, integer_to_binary(ObjectId), Tag);
+
+% Tag = [] 移除特定对象的标签
+do_add(Scene, Uid, ObjectId, []) ->
+    Uid2 = integer_to_binary(Uid),
+    imboy_db:with_transaction(fun(Conn) ->
+        {Table, Where} = case Scene of
+            <<"1">> ->
+                {
+                    imboy_db:public_tablename(<<"user_collect">>)
+                    , <<"user_id = ", Uid2/binary, " AND kind_id = '", ObjectId/binary, "'">>
+                };
+            <<"2">> ->
+                {
+                    imboy_db:public_tablename(<<"user_friend">>)
+                    , <<"from_user_id = ", Uid2/binary, " AND to_user_id = ", ObjectId/binary>>
+                }
+        end,
+
+        % 删除 public.user_tag
+        DelTb = user_tag_repo:tablename(),
+        DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND object_id = $2)">>,
+        DelSql = <<"DELETE FROM ", DelTb/binary," WHERE ", DelWhere/binary>>,
+        lager:info(io_lib:format("user_tag_logic:do_add/4 DelSql ~p; ~n", [DelSql])),
+        epgsql:equery(Conn, DelSql, [Uid, ObjectId]),
+
+        Sql = <<"UPDATE ", Table/binary," SET tag = '' WHERE ", Where/binary>>,
+        lager:info(io_lib:format("user_tag_logic:do_add/4 sql ~p; ~n", [Sql])),
+        epgsql:equery(Conn, Sql),
+        ok
+    end),
+    ok;
+%
 do_add(Scene, Uid, ObjectId, Tag) ->
     % check public.tag
     % {ok,[<<"id">>,<<"name">>],[{1,<<"a">>},{4,<<"b">>}]}

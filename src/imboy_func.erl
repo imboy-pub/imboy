@@ -70,6 +70,7 @@ implode(Separator, Li) ->
     Li2 = [[Separator
         , if
             is_integer(I) -> integer_to_binary(I);
+            is_atom(I) -> atom_to_binary(I);
             is_float(I) -> io_lib:format("~p", [I]);
             true -> I
         end] || I <- Li],

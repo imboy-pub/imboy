@@ -35,7 +35,7 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
            Scene/binary, ", '",
            Tag/binary, "', ",
            "0, ",
-           CreatedAt/binary, ") ON CONFLICT (scene,name) DO ", UpSql/binary>>,
+           CreatedAt/binary, ") ON CONFLICT (creator_user_id,scene,name) DO ", UpSql/binary>>,
     lager:info(io_lib:format("user_tag_repo:save_tag/5 sql:~p;~n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
@@ -86,6 +86,8 @@ select_user_tag(Where, WhereArgs, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     lager:info(io_lib:format("user_tag_repo:select_user_tag/3 sql:~p, ~p;~n", [Sql, WhereArgs])),
     imboy_db:query(Sql, WhereArgs).
+
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================

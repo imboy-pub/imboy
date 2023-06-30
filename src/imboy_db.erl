@@ -5,7 +5,7 @@
 -export([pluck/4]).
 -export([query/1]).
 -export([query/2]).
--export([execute/2]).
+-export([execute/2, execute/3]).
 -export([insert_into/3]).
 -export([assemble_sql/4]).
 
@@ -77,7 +77,7 @@ pluck(Table, Field, Default) ->
 pluck(Table, Where, Field, Default) ->
     Table2 = public_tablename(Table),
     Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
-    % ?LOG([pluck, Sql]),
+    ?LOG([pluck, Sql]),
     case imboy_db:query(Sql) of
         % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
         {ok, _, [Val]} when size(Val) == 1 ->
@@ -130,10 +130,8 @@ execute(Sql, Params) ->
     Conn = pooler:take_member(Driver),
     Res = case Driver of
         pgsql when is_pid(Conn) ->
-            {ok, Stmt} = epgsql:parse(Conn, Sql),
-            [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
             % {ok, 1} | {ok, 1, {ReturningField}}
-            Res0;
+            execute(Conn, Sql, Params);
         pgsql when Conn == error_no_members->
             % 休眠 1秒
             timer:sleep(1),
@@ -143,6 +141,12 @@ execute(Sql, Params) ->
     end,
     pooler:return_member(Driver, Conn),
     Res.
+
+execute(Conn, Sql, Params) ->
+    {ok, Stmt} = epgsql:parse(Conn, Sql),
+    [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
+    % {ok, 1} | {ok, 1, {ReturningField}}
+    Res0.
 
 % replace_into(Table, Column, Value) ->
 %     % Sql like this "REPLACE INTO foo (k,v) VALUES (1,0), (2,0)"
@@ -157,11 +161,17 @@ insert_into(Table, Column, Value) ->
 
 
 % 组装 SQL 语句
+assemble_sql(Prefix, Table, Column, Value) when is_list(Column) ->
+    ColumnBin = imboy_func:implode(",", Column),
+    assemble_sql(Prefix, Table, <<"(", ColumnBin/binary, ")">>, Value);
+assemble_sql(Prefix, Table, Column, Value) when is_list(Value) ->
+    ValueBin = imboy_func:implode(",", Value),
+    assemble_sql(Prefix, Table, Column, <<"(", ValueBin/binary, ")">>);
 assemble_sql(Prefix, Table, Column, Value) ->
     Table2 = public_tablename(Table),
     Sql = <<Prefix/binary, " ", Table2/binary, " ", Column/binary,
             " VALUES ", Value/binary>>,
-    % ?LOG(io:format("~s\n", [Sql])),
+    ?LOG(io:format("~s\n", [Sql])),
     Sql.
 
 % imboy_db:update(<<"user">>, 1, <<"sign">>, <<"中国你好！😆"/utf8>>).
