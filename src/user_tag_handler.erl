@@ -27,8 +27,8 @@ init(Req0, State0) ->
             add(Req0, State);
         delete ->
             delete(Req0, State);
-        % page ->
-        %     page(Req0, State);
+        page ->
+            page(Req0, State);
         false ->
             Req0
     end,
@@ -100,22 +100,30 @@ add(Req0, State) ->
             end
     end.
 
-% page(Req0, State) ->
-%     CurrentUid = maps:get(current_uid, State),
-%     {Page, Size} = imboy_req:page_size(Req0),
-%     Kind = imboy_req:get_int(kind, Req0, 0),
-%     #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
-%     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-%     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
-%     UidBin = integer_to_binary(CurrentUid),
-%     ?LOG([page, Kind]),
+page(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {Page, Size} = imboy_req:page_size(Req0),
 
-    % KwdWhere = if
-    %     byte_size(Kwd) > 0 ->
-    %         <<" and (source like '%", Kwd/binary, "%' or remark like '%", Kwd/binary, "%' or info like '%", Kwd/binary, "%')">>;
-    %     true ->
-    %         <<>>
-    % end,
+    #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
+    OrderBy = <<"id desc">>,
+    UidBin = integer_to_binary(CurrentUid),
+    {Scene2, Where} = case Scene of
+        <<"collect">> ->
+            {<<"1">>, <<"creator_user_id = ", UidBin/binary, " and scene = 1">>};
+        <<"friend">> ->
+            {<<"2">>, <<"creator_user_id = ", UidBin/binary, " and scene = 2">>};
+        _ ->
+            {<<>>, <<>>}
+    end,
+    if
+        CurrentUid == 0 ->
+            imboy_response:error(Req0, <<"token无效"/utf8>>, 706);
+        bit_size(Scene2) == 0 ->
+            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        true ->
+            Payload = user_tag_logic:tag_page(Page, Size, Where, OrderBy) ,
+            imboy_response:success(Req0, Payload)
+    end.
 
 %% ===================================================================
 %% EUnit tests.

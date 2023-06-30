@@ -7,6 +7,7 @@
 -export ([add/4]).
 -export([merge_tag/3]).
 -export([delete/3]).
+-export([tag_page/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -18,6 +19,26 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+-spec tag_page(integer(), integer(), binary(), binary()) -> list().
+tag_page(Page, Size, Where, OrderBy) when Page > 0 ->
+    Offset = (Page - 1) * Size,
+    Total = tag_repo:count_for_where(Where),
+    case tag_repo:page_for_where(Size, Offset, Where, OrderBy) of
+        {ok, _, []} ->
+            imboy_response:page_payload(Total, Page, Size, []);
+        {ok, ColumnLi, Items0} ->
+            Items1 = [tuple_to_list(Item) || Item <- Items0],
+            Items2 = [lists:zipwith(
+                fun(X, Y) -> {X, Y} end,
+                ColumnLi, Row
+                ) ||
+                    Row <- Items1
+            ],
+            imboy_response:page_payload(Total, Page, Size, Items2);
+        _ ->
+            imboy_response:page_payload(Total, Page, Size, [])
+    end.
 
 
 %%% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
