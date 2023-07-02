@@ -32,8 +32,8 @@ verify_for_assets(Scene, Tk, Val, Path) when is_binary(Path) ->
     lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if
         is_integer(V) andalso Now < (V + Diff) ->
-            V = binary_to_list(<<Path/binary, "?", Val/binary>>,
-            NewTk = auth_ds:get_token(assets, Scene, V)),
+            V = binary_to_list(<<Path/binary, "?", Val/binary>>),
+            NewTk = auth_ds:get_token(assets, Scene, V),
             do_verify_for_assets(NewTk, Tk);
         true ->
             <<"fail">>
@@ -44,8 +44,8 @@ verify_for_open(undefined, _Tk, _Val) ->
 verify_for_open(_Path, undefined, _Val) ->
     <<"fail">>;
 verify_for_open(Path, Tk, Val) ->
-    V = binary_to_list(<<Path/binary, "?", Val/binary>>,
-    NewTk = auth_ds:get_token(assets, <<"open">>, V)),
+    V = binary_to_list(<<Path/binary, "?", Val/binary>>),
+    NewTk = auth_ds:get_token(assets, <<"open">>, V),
     % lager:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
     do_verify_for_assets(NewTk, Tk).
 
