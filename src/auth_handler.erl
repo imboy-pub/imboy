@@ -48,7 +48,7 @@ assets(<<"POST">>, Req0) ->
                  Req0);
         {_Scene, _Path} ->
             % Body is <<"ok">> or <<"fail">>
-            Body = auth_logic:verify_for_assets(Scene, AuthTk, Val),
+            Body = auth_logic:verify_for_assets(Scene, AuthTk, Val, Path),
             cowboy_req:reply(200,
                  #{<<"content-type">> => <<"text/html">>},
                  unicode:characters_to_binary(Body, utf8),
