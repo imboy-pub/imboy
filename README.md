@@ -422,6 +422,14 @@ socket 数据粘包问题、拆包问题
 4. 如果收到消息 清理定时器，清理数据库消息
 5. 4次投递都未确认消息，待用户下次登录再投递
 
+
+## cowboy Live update
+```
+Routes = imboy_router:get_routes(),
+Dispatch = cowboy_router:compile(Routes),
+cowboy:set_env(imboy_listener, dispatch, Dispatch).
+```
+
 ## erlang 的shell 访问远程节
 ```
 erl -name debug@127.0.0.1
@@ -452,6 +460,8 @@ chat_store_repo:lookup(1).
 curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
 chmod +x erldash
 ./erldash imboy@127.0.0.1 -c imboy
+
+
 ```
 
 ## webrtc

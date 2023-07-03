@@ -27,6 +27,8 @@ init(Req0, State0) ->
             add(Req0, State);
         delete ->
             delete(Req0, State);
+        set ->
+            set(Req0, State);
         page ->
             page(Req0, State);
         false ->
@@ -100,6 +102,44 @@ add(Req0, State) ->
             end
     end.
 
+set(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    % Uid = imboy_hashids:uid_encode(CurrentUid),
+
+    PostVals = imboy_req:post_params(Req0),
+    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
+    TagName = proplists:get_value(<<"tagName">>, PostVals, <<>>),
+    TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
+    % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
+    ObjectIds = proplists:get_value(<<"objectIds">>, PostVals, []),
+    % user_tag_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
+    Scene2 = case Scene of
+        <<"collect">> ->
+            <<"1">>;
+        <<"friend">> ->
+            <<"2">>;
+        _ ->
+            <<>>
+    end,
+    TagLen = string:length(TagName),
+    if
+        bit_size(Scene2) == 0 ->
+            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        TagLen > 14 ->
+            imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+        TagId < 1 ->
+            imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
+        true ->
+            case user_tag_logic:set(CurrentUid, Scene2, ObjectIds, TagId, TagName) of
+                ok ->
+                    imboy_response:success(Req0, #{}, "success.");
+                {Code, Err} ->
+                    imboy_response:error(Req0, Err, Code);
+                Err ->
+                    imboy_response:error(Req0, Err)
+            end
+    end.
+
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
@@ -121,7 +161,7 @@ page(Req0, State) ->
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         true ->
-            Payload = user_tag_logic:tag_page(Page, Size, Where, OrderBy) ,
+            Payload = user_tag_logic:tag_page(Scene2, Page, Size, Where, OrderBy) ,
             imboy_response:success(Req0, Payload)
     end.
 

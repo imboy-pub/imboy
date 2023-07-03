@@ -1,8 +1,10 @@
 -module(imboy_db).
 
+-export([list/1]).
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
+
 -export([query/1]).
 -export([query/2]).
 -export([execute/2, execute/3]).
@@ -49,43 +51,44 @@ with_transaction(F, Opts0) ->
         Res
     end.
 
-% imboy_db:pluck(<<"to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
-pluck(Field, Default) ->
-    Sql = <<"SELECT ", Field/binary>>,
-    % ?LOG([pluck, Sql]),
-    case imboy_db:query(Sql) of
-        % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
-        {ok, _, [{Val}]} ->
-            Val;
-        _ ->
-            Default
-    end.
+% imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
+
 % pluck(<<"public.", Table/binary>>, Field, Default) ->
 %     pluck(Table, Field, Default);
 pluck(Table, Field, Default) ->
     Table2 = public_tablename(Table),
     Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary>>,
     % ?LOG([pluck, Sql]),
-    case imboy_db:query(Sql) of
-        % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
-        {ok, _, [{Val}]} ->
+    pluck(Sql, Default).
+
+pluck(Table, Where, Field, Default) ->
+    Table2 = public_tablename(Table),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
+    % ?LOG([pluck, Sql]),
+    pluck(Sql, Default).
+
+pluck(<<"SELECT ", Field/binary>>, Default) ->
+    pluck(Field, Default);
+pluck(Field, Default) ->
+    Res = imboy_db:query(<<"SELECT ", Field/binary>>),
+    % lager:info(io_lib:format("imboy_db:pluck/2 Field:~p ~n", [Field])),
+    % lager:info(io_lib:format("imboy_db:pluck/2 Res:~p ~n", [Res])),
+    case Res of
+        {ok, _,[{Val}]} ->
+            % lager:info(io_lib:format("imboy_db:pluck/2 Val:~p ~n", [Val])),
+            Val;
+        {ok, _, [Val]} ->
             Val;
         _ ->
             Default
     end.
 
-pluck(Table, Where, Field, Default) ->
-    Table2 = public_tablename(Table),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
-    ?LOG([pluck, Sql]),
+list(Sql) ->
     case imboy_db:query(Sql) of
-        % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
-        {ok, _, [Val]} when size(Val) == 1 ->
-            element(1, Val);
-        {ok, _, [Val]} ->
+        {ok, _, Val} ->
             Val;
         _ ->
-            Default
+            []
     end.
 
 % imboy_db:query("select * from user where id = 2")

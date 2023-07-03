@@ -47,6 +47,7 @@ get_routes() ->
         {"/user_tag/page", user_tag_handler, #{action => page}},
         {"/user_tag/add", user_tag_handler, #{action => add}},
         {"/user_tag/delete", user_tag_handler, #{action => delete}},
+        {"/user_tag/set", user_tag_handler, #{action => set}},
 
         {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
         {"/location/makeMyselfUnvisible", location_handler, #{action => make_myself_unvisible}},

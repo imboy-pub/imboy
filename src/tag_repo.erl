@@ -36,12 +36,13 @@ count_for_where(Where) ->
 -spec page_for_where(integer(), integer(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"name, referer_time, updated_at, created_at">>,
+
+    Column = <<"id, name, referer_time, updated_at, created_at">>,
     Where2 = <<" WHERE ", Where/binary," ORDER BY ", OrderBy/binary," LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
-    lager:info(io_lib:format("user_tag_repo:page_for_where/4 sql:~p;~n", [Sql])),
+    % lager:info(io_lib:format("user_tag_repo:page_for_where/4 sql:~p;~n", [Sql])),
     imboy_db:query(Sql, [Limit, Offset]).
 
 %% ===================================================================
