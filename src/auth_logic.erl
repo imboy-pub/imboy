@@ -22,26 +22,30 @@ verify_for_assets(undefined, _Tk, _Name, _) ->
     <<"fail">>;
 verify_for_assets(_Scene, undefined, _Name, _) ->
     <<"fail">>;
-verify_for_assets(_Scene, _Tk, undefined, _) ->
+verify_for_assets(_Scene, _Tk, error, _) ->
     <<"fail">>;
-verify_for_assets(Scene, Tk, Val, Path) when is_binary(Path) ->
+% verify_for_assets(Scene, Tk, Val, Path) when is_binary(Path) ->
+verify_for_assets(Scene, Tk, V, _Path) ->
     Now = imboy_dt:second(),
     % V = binary_to_integer(Val),
-    {V, _} = string:to_integer(Val),
     Diff = 7200,
     lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if
         is_integer(V) andalso Now < (V + Diff) ->
-            V = binary_to_list(<<Path/binary, "?", Val/binary>>),
-            NewTk = auth_ds:get_token(assets, Scene, V),
+            % V = binary_to_list(<<Path/binary, "?", Val/binary>>),
+            % NewTk = auth_ds:get_token(assets, Scene, V),
+            NewTk = auth_ds:get_token(assets, Scene, integer_to_list(V)),
             do_verify_for_assets(NewTk, Tk);
         true ->
             <<"fail">>
     end.
 
+
 verify_for_open(undefined, _Tk, _Val) ->
     <<"fail">>;
-verify_for_open(_Path, undefined, _Val) ->
+verify_for_open(_, undefined, _Val) ->
+    <<"fail">>;
+verify_for_open(_Path, _, undefined) ->
     <<"fail">>;
 verify_for_open(Path, Tk, Val) ->
     V = binary_to_list(<<Path/binary, "?", Val/binary>>),

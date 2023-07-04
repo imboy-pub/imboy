@@ -20,7 +20,6 @@ get_routes() ->
         {"/ws", websocket_handler, #{}},
         {"/stress_testing", stress_testing_ws_handler, #{}},
         {"/auth/assets", auth_handler, #{action => assets}},
-        {"/auth/get_token", auth_handler, #{action => get_token}},
         {"/test/req_get", test_handler, #{action => req_get}},
         {"/test/req_post", test_handler, #{action => req_post}},
 

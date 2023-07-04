@@ -29,7 +29,8 @@ api_init(Req0) ->
     Data = init_transfer(),
     % imboy_response:success(Req0, Data, "success.").
     Key = imboy_func:env(solidified_key),
-    Bin = imboy_cipher:aes_encrypt(jsone:encode(Data), Key),
+    IV = imboy_func:env(solidified_key_iv),
+    Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     imboy_response:success(Req0, #{
         res => Bin
     }, "success.").

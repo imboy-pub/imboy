@@ -26,7 +26,7 @@ encrypt_token(ID) ->
 %% 解析token
 decrypt_token(Token) ->
     try
-        jwerl:verify(Token, hs256, ?JWT_KEY)
+        jwerl:verify(Token, hs256, imboy_func:env(jwt_key))
     of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
@@ -58,12 +58,13 @@ encrypt_token(ID, Millisecond, Sub) ->
     % ExpireAt = Now + Millisecond / 1000,
     ExpireAt = imboy_dt:millisecond() + Millisecond,
     Data = #{
-             % iss => imboy  % iss (issuer)：签发人
-             % , nbf => Now + 1 % nbf (Not Before)：生效时间
-             % , iat => Now % iat (Issued At)：签发时间
-             sub => Sub  % sub (subject)：主题
-             ,
-             exp => ExpireAt  % exp (expiration time)：过期时间
-             ,
-             uid => imboy_hashids:uid_encode(ID)},
-    jwerl:sign(Data, hs256, ?JWT_KEY).
+         % iss => imboy  % iss (issuer)：签发人
+         % , nbf => Now + 1 % nbf (Not Before)：生效时间
+         % , iat => Now % iat (Issued At)：签发时间
+         sub => Sub  % sub (subject)：主题
+         ,
+         exp => ExpireAt  % exp (expiration time)：过期时间
+         ,
+         uid => imboy_hashids:uid_encode(ID)
+    },
+    jwerl:sign(Data, hs256, imboy_func:env(jwt_key)).

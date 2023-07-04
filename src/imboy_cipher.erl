@@ -3,53 +3,43 @@
 -include_lib("imboy/include/common.hrl").
 
 -export([aes_encrypt/3, aes_decrypt/3]).
--export([aes_encrypt/2, aes_decrypt/2]).
+-export([aes_encrypt/4, aes_decrypt/4]).
 -export([rsa_encrypt/1, rsa_decrypt/1]).
 -export([rsa_encrypt/2, rsa_decrypt/2]).
 
 -define(SHA_256_BLOCKSIZE, 64).
 
 % aes_cbc + pkcs#7填充
-% io:format("~s~n", [imboy_cipher:aes_encrypt(<<"admin8889">>, "")]).
-aes_encrypt(Bin, Key) ->
-    aes_encrypt(aes_256_cbc, Bin, Key).
+% io:format("~s~n", [imboy_cipher:aes_encrypt(<<"admin8889">>, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa")]).
+aes_encrypt(Bin, Key, IV) ->
+    aes_encrypt(aes_256_cbc, Bin, Key, IV).
 
 
-aes_decrypt(Bin, Key) ->
-    aes_decrypt(aes_256_cbc, Bin, Key).
+aes_decrypt(Bin, Key, IV) ->
+    aes_decrypt(aes_256_cbc, Bin, Key, IV).
 
 
-aes_encrypt(Type, Bin, Key) when is_binary(Key) ->
-    aes_encrypt(Type, Bin, binary_to_list(Key));
-aes_encrypt(Type, Bin, Key) ->
+aes_encrypt(Type, Bin, Key, IV) when is_binary(Key) ->
+    aes_encrypt(Type, Bin, binary_to_list(Key), IV);
+aes_encrypt(Type, Bin, Key, IV) ->
     Len = erlang:size(Bin),
     Value = 16 - (Len rem 16),
     % 将<<Value>>复制Value份赋值出来
     PadBin = binary:copy(<<Value>>, Value),
     Bin2 = <<Bin/binary, PadBin/binary>>,
-    StateEnc = crypto:crypto_init(Type, Key, ?AES_IV, true),
+    StateEnc = crypto:crypto_init(Type, Key, IV, true),
     EncodeB = crypto:crypto_update(StateEnc, Bin2),
     base64:encode(EncodeB).
 
 
-aes_decrypt(Type, Bin, Key) when is_binary(Key) ->
-    aes_decrypt(Type, Bin, binary_to_list(Key));
-aes_decrypt(Type, Bin, Key) ->
+aes_decrypt(Type, Bin, Key, IV) when is_binary(Key) ->
+    aes_decrypt(Type, Bin, binary_to_list(Key), IV);
+aes_decrypt(Type, Bin, Key, IV) ->
     Bin1 = base64:decode(Bin),
-    StateDec = crypto:crypto_init(Type, Key, ?AES_IV, false),
+    IV = imboy_func:env(solidified_key_iv),
+    StateDec = crypto:crypto_init(Type, Key, IV, false),
     Bin2 = crypto_update(StateDec, Bin1, size(Bin1), <<>>),
     binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).
-
-
-crypto_update(StateDec, Bin, BinSize, OutBin) when BinSize > 16 ->
-    Bin2 = binary:part(Bin, {0, 16}),
-    OutBin2 = crypto:crypto_update(StateDec, Bin2),
-    OutBin3 = <<OutBin/binary, OutBin2/binary>>,
-    Bin3 = binary:part(Bin, {16, BinSize - 16}),
-    crypto_update(StateDec, Bin3, BinSize - 16, OutBin3);
-crypto_update(StateDec, Bin, _BinSize, OutBin) ->
-    OutBin2 = crypto:crypto_update(StateDec, Bin),
-    <<OutBin/binary, OutBin2/binary>>.
 
 
 -spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) ->
@@ -90,7 +80,23 @@ rsa_decrypt(CipherText, PrivKey) ->
     Result.
 
 
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+
+crypto_update(StateDec, Bin, BinSize, OutBin) when BinSize > 16 ->
+    Bin2 = binary:part(Bin, {0, 16}),
+    OutBin2 = crypto:crypto_update(StateDec, Bin2),
+    OutBin3 = <<OutBin/binary, OutBin2/binary>>,
+    Bin3 = binary:part(Bin, {16, BinSize - 16}),
+    crypto_update(StateDec, Bin3, BinSize - 16, OutBin3);
+crypto_update(StateDec, Bin, _BinSize, OutBin) ->
+    OutBin2 = crypto:crypto_update(StateDec, Bin),
+    <<OutBin/binary, OutBin2/binary>>.
+
 %% @fun 拿密钥内容
 get_rsa_key_str(PemBin) ->
     [Entry] = public_key:pem_decode(PemBin),
     public_key:pem_entry_decode(Entry).
+
