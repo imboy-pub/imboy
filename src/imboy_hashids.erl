@@ -27,7 +27,7 @@ uid_encode(Id) when is_binary(Id) ->
 uid_encode(Id) when is_list(Id) ->
     uid_encode(list_to_integer(Id));
 uid_encode(Id) ->
-    Salt = imboy_func:env(hashids_salt, ""),
+    Salt = config_ds:env(hashids_salt, ""),
     Ctx = hashids:new([{min_hash_length, 6},
                        {default_alphabet, ?uid_alphabet},
                        {salt, Salt}]),
@@ -39,7 +39,7 @@ uid_decode(Id) when is_binary(Id) ->
     uid_decode(binary_to_list(Id));
 uid_decode(Id) ->
     try
-        Salt = imboy_func:env(hashids_salt, ""),
+        Salt = config_ds:env(hashids_salt, ""),
         Ctx = hashids:new([{min_hash_length, 6},
                            {default_alphabet, ?uid_alphabet},
                            {salt, Salt}]),

@@ -11,7 +11,7 @@ start_link() ->
 
 init([]) ->
 
-    PgConf = imboy_func:env(pg_conf),
+    PgConf = config_ds:env(pg_conf),
     pooler:new_pool(PgConf),
 
     AccountServer = {account_server, {account_server, start_link, []},
@@ -27,7 +27,7 @@ init([]) ->
                          [user_server]},
 
     % KVProps default is [{depcache_memory_max, 100}],
-    KVProps = imboy_func:env(depcache),
+    KVProps = config_ds:env(depcache),
     IMBoyCache = {imboy_cache, {imboy_cache, start_link, [KVProps]},
             permanent,
             5000,

@@ -47,10 +47,6 @@ kerl active
 
 ```
 
-### Grafana
-Grafana 是一个知名且广泛使用的开源应用程序监控工具。
-
-
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
 
@@ -104,6 +100,9 @@ observer_cli:start().
 
 make new t=gen_server n=server_demo
 
+// 重新加载 sys.config 配置
+config_ds:local_reload()
+
 make dialyze
 ```
 
@@ -124,6 +123,7 @@ erl> help().
 
 // 更新 erlang.mk
 make erlang-mk
+
 ```
 
 ## edoc
@@ -428,6 +428,12 @@ socket 数据粘包问题、拆包问题
 Routes = imboy_router:get_routes(),
 Dispatch = cowboy_router:compile(Routes),
 cowboy:set_env(imboy_listener, dispatch, Dispatch).
+```
+
+## reload sys.config
+```
+config_ds:reload().
+config_ds:local_reload()
 ```
 
 ## erlang 的shell 访问远程节

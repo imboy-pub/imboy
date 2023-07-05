@@ -39,12 +39,15 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS)
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
     % ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
+    Key = config_ds:env(postgre_aes_key),
+    Payload0 = base64:encode(Payload),
+    Payload2 = <<"encode(encrypt('", Payload0/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
     Tb = tablename(),
     Column = <<"(payload, from_id, to_id,
         created_at, server_ts, msg_id)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
     ServerTS2 = integer_to_binary(ServerTS),
-    Value = <<"('", Payload/binary, "', '", FromId/binary, "', '",
+    Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '",
               ToId/binary, "', '", CreatedAt2/binary, "', '",
               ServerTS2/binary, "', '", Id/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

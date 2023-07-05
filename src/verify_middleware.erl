@@ -55,7 +55,7 @@ verify_sign(undefined, _Vsn) ->
 verify_sign(_Sign, undefined) ->
     false;
 verify_sign(Sign, Vsn) ->
-    AuthKeys = imboy_func:env(auth_keys),
+    AuthKeys = config_ds:env(auth_keys),
     Key = proplists:get_value(Vsn, AuthKeys),
     Str = Key ++ binary_to_list(Vsn),
     imboy_hasher:md5(Str) == Sign.

@@ -231,7 +231,7 @@ upload(Prefix, MimeType, Uri) ->
 
     imboy_uri:download(Uri2, FilePath),
 
-    BaseUrl = imboy_func:env(upload_for_collect),
+    BaseUrl = config_ds:env(upload_for_collect),
 
     TS = {_, _, _Micro} = os:timestamp(),
     {{Year, Month, Day}, {Hour, _M, _S}} = calendar:now_to_universal_time(TS),
@@ -278,6 +278,7 @@ upload(Prefix, MimeType, Uri) ->
 %     ok;
 add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
     NowTs = imboy_dt:millisecond(),
+    % logger:error("user_collect_logic:add_kind ~p~n", [NowTs]),
     imboy_db:with_transaction(fun(Conn) ->
         CreatedAt = integer_to_binary(NowTs),
         attachment_repo:save(Conn, CreatedAt, Uid, Attach),
@@ -291,6 +292,9 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
             <<",", Md52/binary>> ->
                 Md52
         end,
+        Key = config_ds:env(postgre_aes_key),
+        Info2 = base64:encode(Info),
+        Info3 = <<"encode(encrypt('", Info2/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
         UpSql2 = <<" UPDATE SET updated_at = ", CreatedAt/binary, ", status = 1;">>,
         Tb2 = <<"public.user_collect">>,
         Column2 = <<"(user_id, kind, kind_id, source, remark, info, attach_md5, created_at)">>,
@@ -300,11 +304,11 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
                Kind/binary, ", '",
                KindId/binary, "', '",
                Source/binary, "', '",
-               Remark/binary, "', '",
-               Info/binary, "', '",
+               Remark/binary, "', ",
+               Info3/binary, ", '",
                AttachMd5/binary, "', ",
                CreatedAt/binary, ") ON CONFLICT (user_id, status, kind_id) DO ", UpSql2/binary>>,
-        % ?LOG([sql2, Sql2]),
+        logger:error("user_collect_logic:add_kind ~s~n", [Sql2]),
         {ok, Stmt2} = epgsql:parse(Conn, Sql2),
 
         epgsql:execute_batch(Conn, [{Stmt2, []}]),

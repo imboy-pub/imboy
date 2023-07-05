@@ -2,22 +2,12 @@
 
 -include_lib("imboy/include/log.hrl").
 
--export([env/1, env/2]).
 -export([is_mobile/1]).
 -export([is_email/1]).
 -export([num_random/1]).
 -export([send_email/2]).
 -export([remove_dups/1, implode/2]).
 
-env(Attr) ->
-    env(Attr, undefined).
-env(Attr, Def) ->
-    case application:get_env(imboy, Attr) of
-        {ok, Value} ->
-            Value;
-        _ ->
-            Def
-    end.
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 is_mobile(Mobile) ->
@@ -92,7 +82,7 @@ implode(Separator, Li) ->
 send_email(ToEmail, Subject) when is_list(Subject)  ->
     send_email(ToEmail, list_to_binary(Subject));
 send_email(ToEmail, Subject) ->
-    Option = imboy_func:env(smtp_option),
+    Option = config_ds:env(smtp_option),
     Username = proplists:get_value(username, Option),
     Username2 = list_to_binary(Username),
     Email = {

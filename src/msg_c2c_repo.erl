@@ -26,10 +26,10 @@ read_msg(Where, Vals, Column, Limit) ->
     % use index i_ToId
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary," ", Where/binary,
             " ORDER BY id ASC LIMIT $", LimitIndex/binary>>,
-    % ?LOG(Sql),
+    % logger:error("msg_c2c_repo:read_msg/4 ~s~n", [Sql]),
     imboy_db:query(Sql, Vals ++ [Limit]).
 
-
+% msg_c2c_repo:write_msg(imboy_dt:millisecond(), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:millisecond()).
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS)
   when is_integer(FromId) ->
     FromId2 = list_to_binary(integer_to_list(FromId)),
@@ -40,12 +40,15 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS)
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
     % ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
+    Key = config_ds:env(postgre_aes_key),
     Tb = tablename(),
     Column = <<"(payload, from_id, to_id,
         created_at, server_ts, msg_id)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
     ServerTS2 = integer_to_binary(ServerTS),
-    Value = <<"('", Payload/binary, "', '", FromId/binary, "', '",
+    Payload0 = base64:encode(Payload),
+    Payload2 = <<"encode(encrypt('", Payload0/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
+    Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '",
               ToId/binary, "', '", CreatedAt2/binary, "', '",
               ServerTS2/binary, "', '", Id/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

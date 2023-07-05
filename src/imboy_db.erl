@@ -39,7 +39,7 @@ with_transaction(F) ->
 -spec with_transaction(fun((epgsql:connection()) -> Reply), epgsql:transaction_opts()) -> Reply | {rollback, any()} | no_return() when
       Reply :: any().
 with_transaction(F, Opts0) ->
-    Driver = imboy_func:env(sql_driver),
+    Driver = config_ds:env(sql_driver),
     case pooler:take_member(Driver) of
         error_no_members ->
             % 休眠 1秒
@@ -94,7 +94,7 @@ list(Sql) ->
 % imboy_db:query("select * from user where id = 2")
 -spec query(binary() | list()) -> {ok, list(), list()} | {error, any()}.
 query(Sql) ->
-    Driver = imboy_func:env(sql_driver),
+    Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
         pgsql when is_pid(Conn) ->
@@ -111,7 +111,7 @@ query(Sql) ->
 
 -spec query(binary() | list(), list()) -> {ok, list(), list()} | {error, any()}.
 query(Sql, Params) ->
-    Driver = imboy_func:env(sql_driver),
+    Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
         pgsql when is_pid(Conn) ->
@@ -129,7 +129,7 @@ query(Sql, Params) ->
 -spec execute(any(), list()) ->
           {ok, LastInsertId :: integer()} | {error, any()}.
 execute(Sql, Params) ->
-    Driver = imboy_func:env(sql_driver),
+    Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
         pgsql when is_pid(Conn) ->
@@ -225,7 +225,7 @@ query_resp({ok, ColumnList, Rows}) ->
 public_tablename(<<"public.", Table/binary>>) ->
     public_tablename(Table);
 public_tablename(Table) ->
-    case imboy_func:env(sql_driver) of
+    case config_ds:env(sql_driver) of
         pgsql ->
             <<"public.", Table/binary>>;
         _ ->

@@ -33,11 +33,11 @@ verify(Plaintext, Ciphertext) ->
             verify(Plaintext, hmac_sha512, Salt, Ciphertext3);
         _Msg ->
             % ?LOG(Msg),
-            verify(Plaintext, default_md5, imboy_func:env(password_salt), Ciphertext)
+            verify(Plaintext, default_md5, config_ds:env(password_salt), Ciphertext)
     catch
         _:_ ->
             % ?LOG([default_md5, Plaintext, Ciphertext]),
-            verify(Plaintext, default_md5, imboy_func:env(password_salt), Ciphertext)
+            verify(Plaintext, default_md5, config_ds:env(password_salt), Ciphertext)
     end.
 
 -ifdef(TEST).

@@ -21,7 +21,7 @@
 % {imboy_dt:second(), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:second()))}.
 % auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
 get_token(assets, S, V) ->
-    AuthKeys = imboy_func:env(auth_keys),
+    AuthKeys = config_ds:env(auth_keys),
     Key = proplists:get_value(S, AuthKeys),
     binary:part(imboy_hasher:md5(Key ++ V), {8, 16}).
 

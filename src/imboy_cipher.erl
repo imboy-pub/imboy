@@ -36,7 +36,7 @@ aes_decrypt(Type, Bin, Key, IV) when is_binary(Key) ->
     aes_decrypt(Type, Bin, binary_to_list(Key), IV);
 aes_decrypt(Type, Bin, Key, IV) ->
     Bin1 = base64:decode(Bin),
-    IV = imboy_func:env(solidified_key_iv),
+    IV = config_ds:env(solidified_key_iv),
     StateDec = crypto:crypto_init(Type, Key, IV, false),
     Bin2 = crypto_update(StateDec, Bin1, size(Bin1), <<>>),
     binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).

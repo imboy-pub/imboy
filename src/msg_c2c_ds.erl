@@ -49,7 +49,9 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 read_msg(ToUid, Limit, undefined) ->
-    Column = <<"id, payload, from_id, to_id,
+    Key = config_ds:env(postgre_aes_key),
+    P = <<"decode(encode(decrypt(decode(payload,'base64'), '", Key/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as payload">>,
+    Column = <<"id, ", P/binary,", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
@@ -57,7 +59,9 @@ read_msg(ToUid, Limit, undefined) ->
 read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
     read_msg(ToUid, Limit, binary_to_integer(Ts));
 read_msg(ToUid, Limit, Ts) ->
-    Column = <<"id, payload, from_id, to_id,
+    Key = config_ds:env(postgre_aes_key),
+    P = <<"decode(encode(decrypt(decode(payload,'base64'), '", Key/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as payload">>,
+    Column = <<"id, ", P/binary,", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1 AND created_at > $2">>,
     Vals = [ToUid, Ts],

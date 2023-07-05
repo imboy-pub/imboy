@@ -28,8 +28,8 @@ init(Req0, State0) ->
 api_init(Req0) ->
     Data = init_transfer(),
     % imboy_response:success(Req0, Data, "success.").
-    Key = imboy_func:env(solidified_key),
-    IV = imboy_func:env(solidified_key_iv),
+    Key = config_ds:env(solidified_key),
+    IV = config_ds:env(solidified_key_iv),
     Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     imboy_response:success(Req0, #{
         res => Bin

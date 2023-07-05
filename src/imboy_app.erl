@@ -18,7 +18,7 @@ start(_Type, _Args) ->
 
     {ok, _} = cowboy:start_clear(imboy_listener,
         [
-            {port, imboy_func:env(http_port)}
+            {port, config_ds:env(http_port)}
         ]
 
         % PrivDir = code:priv_dir(imboy),

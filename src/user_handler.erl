@@ -33,8 +33,8 @@ init(Req0, State0) ->
 
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
-    Uris = imboy_func:env(eturnal_uris),
-    Secret = imboy_func:env(eturnal_secret),
+    Uris = config_ds:env(eturnal_uris),
+    Secret = config_ds:env(eturnal_secret),
     CurrentUid = maps:get(current_uid, State),
     Uid = imboy_hashids:uid_encode(CurrentUid),
     TmBin = integer_to_binary(imboy_dt:second() + 86400),

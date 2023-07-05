@@ -6,7 +6,7 @@
 
 %% 服务端所有路由定义再这里(包含 option/0 open/0 里面的定义)
 get_routes() ->
-    [{imboy_func:env(host), [
+    [{config_ds:env(host), [
         {"/", index_handler, #{action => help}},
         {"/help", index_handler, #{action => help}},
         {"/init", index_handler, #{action => init}},

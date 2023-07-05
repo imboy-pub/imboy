@@ -1,17 +1,18 @@
 -- Table: public.msg_c2c
 
+-- 导入数据后，需要更新自增长ID
+-- select setval('"msg_c2c_id_seq"', (select max(id) from public."msg_c2c"));
+
 -- DROP TABLE IF EXISTS public."msg_c2c";
 
 
--- 导入数据后，需要更新自增长ID
--- select setval('"msg_c2c_id_seq"', (select max(id) from public."msg_c2c"));
 CREATE TABLE IF NOT EXISTS public."msg_c2c"
 (
     id BIGSERIAL PRIMARY KEY,
     from_id bigint NOT NULL,
     to_id bigint NOT NULL,
     msg_id varchar(40) NOT NULL,
-    payload json not null,
+    payload text not null,
     server_ts bigint DEFAULT 0,
     created_at bigint NOT NULL
 )

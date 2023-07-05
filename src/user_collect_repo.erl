@@ -52,12 +52,14 @@ count_for_where(Where) ->
 -spec page_for_where(integer(), integer(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
+    Key = config_ds:env(postgre_aes_key),
+    Info = <<"decode(encode(decrypt(decode(info,'base64'), '", Key/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as info">>,
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
     Where2 = <<" WHERE ", Where/binary," ORDER BY ", OrderBy/binary," LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
-    % ?LOG(['Sql', Sql]),
+    ?LOG(['Sql', Sql]),
     imboy_db:query(Sql, [Limit, Offset]).
 
  % {ok, 1} | {ok, 1, {ReturningField}}
