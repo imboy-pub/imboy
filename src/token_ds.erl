@@ -5,7 +5,7 @@
 
 -export([encrypt_token/1]).
 -export([encrypt_refreshtoken/1]).
--export([decrypt_token/1]).
+-export([decrypt_token/1, decrypt_token/2]).
 % -export ([get_uid/1]).
 
 -include_lib("imboy/include/common.hrl").
@@ -25,6 +25,9 @@ encrypt_token(ID) ->
 
 %% 解析token
 decrypt_token(Token) ->
+    decrypt_token(Token, tk).
+
+decrypt_token(Token, Type) ->
     try
         jwerl:verify(Token, hs256, config_ds:env(jwt_key))
     of
@@ -34,8 +37,10 @@ decrypt_token(Token) ->
             ExpireAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
             {ok, ID, ExpireAt, Sub};
-        {error, _JWT_ERR} ->
+        {error, _JWT_ERR} when Type == tk ->
             {error, 705, "Please refresh token", #{}};
+        {error, _JWT_ERR} ->
+            {error, 706, "Please refresh token", #{}};
         _JWT_ERR ->
             {error, 706, "Invalid token", #{}}
     catch
