@@ -1,4 +1,8 @@
 
+# 0.1.2
+* fix refreshtoken error
+* 新增 config_ds 模块，替换相关代码； 使用 pgcrypto 组件aes算法存储c2c c2g消息 payload字段信息收藏的 info字段信息
+* 其他一些数据安全相关优化
 
 # 0.1.1
 * 实现给联系人添加、删除、列表标签的功能

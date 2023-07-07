@@ -42,8 +42,8 @@ api_init(Req0) ->
 
 init_transfer() ->
     #{
-        <<"login_pwd_rsa_encrypt">> => config_logic:get("login_pwd_rsa_encrypt"),
-        <<"login_rsa_pub_key">> => config_logic:get("login_rsa_pub_key")
+        <<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
+        <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
     }.
 
 get_help(Req0) ->

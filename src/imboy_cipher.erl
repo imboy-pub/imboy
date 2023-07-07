@@ -14,7 +14,7 @@
 aes_encrypt(Bin, Key, IV) ->
     aes_encrypt(aes_256_cbc, Bin, Key, IV).
 
-
+% imboy_cipher:aes_decrypt(base64:decode(Va)l, config_ds:env(postgre_aes_key), <<>>).
 aes_decrypt(Bin, Key, IV) ->
     aes_decrypt(aes_256_cbc, Bin, Key, IV).
 
@@ -49,11 +49,11 @@ aes_decrypt(Type, Bin, Key, IV) ->
           CipherText :: binary().
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
-    PemBin = config_logic:get("login_rsa_pub_key"),
+    PemBin = config_ds:get("login_rsa_pub_key"),
     rsa_encrypt(PlainText, PemBin);
 rsa_encrypt(PlainText) ->
     %%公钥加密
-    PemBin = config_logic:get("login_rsa_pub_key"),
+    PemBin = config_ds:get("login_rsa_pub_key"),
     BinData = list_to_binary(PlainText),
     rsa_encrypt(BinData, PemBin).
 
@@ -68,7 +68,7 @@ rsa_encrypt(BinData, PemBin) ->
 -spec rsa_decrypt(CipherText :: binary()) -> any().
 rsa_decrypt(CipherText) ->
     %%私钥解密
-    PemBin = config_logic:get("login_rsa_priv_key"),
+    PemBin = config_ds:get("login_rsa_priv_key"),
     rsa_decrypt(CipherText, PemBin).
 
 

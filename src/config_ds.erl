@@ -4,6 +4,10 @@
 % config domain service 缩写
 %%%
 
+
+-export([get/1, get/2]).
+-export([aes_encrypt/1]).
+
 -export([env/1, env/2, env/3]).
 -export([reload/0, local_reload/0]).
 
@@ -46,6 +50,41 @@ local_reload() ->
     reload(To),
     ok.
 
+% config_ds:get(<<"site_name">>).
+get(Key) ->
+    get(Key, <<>>).
+
+get(Key, Defalut) when is_list(Key) ->
+    get(list_to_binary(Key), Defalut);
+get(ConfigKey, Defalut) ->
+    Key = {config2, ConfigKey},
+    Fun = fun() ->
+        AesKey = config_ds:env(postgre_aes_key),
+        Val = <<"decode(encode(decrypt(decode(replace(value, 'aes_cbc_', ''),'base64'), '", AesKey/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as value">>,
+        imboy_db:pluck(
+            <<"config">>
+            , <<"key = '", ConfigKey/binary, "'">>
+            , Val
+            , Defalut
+        )
+    end,
+    % 缓存10天
+    imboy_cache:memo(Fun, Key, 864000).
+
+% config_ds:aes_encrypt(<<"login_rsa_pub_key">>).
+% config_ds:get(<<"login_rsa_pub_key">>).
+
+% config_ds:get(<<"login_rsa_priv_key">>).
+% config_ds:aes_encrypt(<<"login_rsa_priv_key">>).
+
+% config_ds:aes_encrypt(<<"login_pwd_rsa_encrypt">>).
+% config_ds:aes_encrypt(<<"site_name">>).
+aes_encrypt(Key) when is_list(Key) ->
+    aes_encrypt(list_to_binary(Key));
+aes_encrypt(Key) ->
+    Val = imboy_db:pluck(<<"config">>, <<"key = '", Key/binary,"'">>, <<"value">>, <<>>),
+    do_aes_encrypt(Key, Val).
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -60,3 +99,13 @@ reload(Path) ->
 config_file() ->
     {imboy, _, Vsn} = lists:keyfind(imboy, 1, application:which_applications()),
     code:root_dir() ++ "/releases/" ++ Vsn ++ "/sys.config".
+
+do_aes_encrypt(Key, <<"aes_cbc_", _Val/binary>>) ->
+    imboy_db:pluck(<<"config">>, <<"key = '", Key/binary,"'">>, <<"value">>, <<>>);
+do_aes_encrypt(Key, Val) ->
+    AesKey = config_ds:env(postgre_aes_key),
+    Where = <<"key = '", Key/binary,"'">>,
+    Val1 = base64:encode(Val),
+    Set = <<"value = 'aes_cbc_' || encode(encrypt('", Val1/binary, "', '", AesKey/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
+    imboy_db:update(<<"config">>, Where, Set),
+    imboy_db:pluck(<<"config">>, <<"key = '", Key/binary,"'">>, <<"value">>, <<>>).

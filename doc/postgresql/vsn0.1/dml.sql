@@ -1,7 +1,56 @@
 
 INSERT INTO public.config (tab, key, value, title, sort, remark, system, status, created_at, updated_at)
 VALUES
-    ('sys', 'login_pwd_rsa_encrypt', '1', '登录密码使用RSA算法加密', 1, '系统登录开启RSA加密', 1, 1, 0, 0),
-    ('sys', 'login_rsa_priv_key', '-----BEGIN RSA PRIVATE KEY-----\nMIICXQIBAAKBgQDxKL1RrEcd4szM8Df4HqsJdOvKrSQO7BBvBVsvXKfpWrM+8XGL\n1SP7nsQd6alhntotPSDezaHnFvhnP/sr8bwzzorr1dWoBVabqDFZgZ2awB7iTk4k\n/3RN1TEPoD08kaJQ0xBHZ14395q8bVh22Uh10eCO/xtHnso3I6penSvRawIDAQAB\nAoGAQKctalIHlumRAnh8aNa///8KoAGfIykCluEWuzHaCmO4nm1YhaaUyQadiW91\na6iM0YgL4e+7MhskaXnrurJKRAweJP49OHz2JbLwyE7N7FWlY++1RVwWE32645CT\nt8hkAyFBBBR0J1by8HdGnPa69sJ6wwBYoh3SeCM8R92cfsECQQD+TbbYV/lw9KQD\nju+18bWpAyQeMBdx11OfgN3fBkRwrl9M0DHzwFKwDY7zFxPuYKD5I39wNeSbYYHJ\n9my6/JybAkEA8sST9CmwLgCoRwciUdxH4hOW8uAdGC9T2VYSo/BbO/geF09c+Ggx\nSoyEFIoAUMDC53Yj4dXgks0gnwWygRyjcQJBAN/P59+qNbgLJ5qWHzTDYX05bX1A\nGDIyL7/Ou/bAXlXJscg55+y+VEfr9ubNZdZDpwj+C/fnBqcV/xOP1QwQrYcCQQC+\ncO0rxaQ6gjN//J20n9wYAowQnTTVqxLY1Ies6Tl40swwNwbUq0+3joFyZ0uWDZEX\n5/qAB7qzDo1/kgWU+TVRAkAwAdK+p5ippKmp2efsdqRjb/71n+EX9adpo/Wh5Ece\nVp+MQkKMwNsQCkEthc/jEv4eG/urmWkLxaISAJRNegN2\n-----END RSA PRIVATE KEY-----', '登录RSA算法加密私钥', 3, '', 1, 1, 0, 0),
-    ('sys', 'site_name', 'py_admin', '前端站点名称', 20, 'ddd3', 1, 1, 0, 0),
-    ('sys', 'login_rsa_pub_key', '-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDxKL1RrEcd4szM8Df4HqsJdOvK\nrSQO7BBvBVsvXKfpWrM+8XGL1SP7nsQd6alhntotPSDezaHnFvhnP/sr8bwzzorr\n1dWoBVabqDFZgZ2awB7iTk4k/3RN1TEPoD08kaJQ0xBHZ14395q8bVh22Uh10eCO\n/xtHnso3I6penSvRawIDAQAB\n-----END PUBLIC KEY-----', '登录RSA算法加密公钥', 2, '系统登录RSA加密公钥', 1, 1, 0, 0);
+    ('sys', 'login_pwd_rsa_encrypt', 'aes_cbc_i2jC226tIyltl1R6FXFF2A==', '登录密码使用RSA算法加密', 1, '系统登录开启RSA加密', 1, 1, 0, 0),
+    ('sys', 'login_rsa_priv_key', 'aes_cbc_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', '登录RSA算法加密私钥', 3, '', 1, 1, 0, 0),
+    ('sys', 'site_name', 'aes_cbc_5xkwbfQ60Rx3XjJO6zmM3g==', '前端站点名称', 20, 'ddd3', 1, 1, 0, 0),
+    ('sys', 'login_rsa_pub_key', 'aes_cbc_RpwIhFje4KyGf1JKyeKZJg0Ua/ZCSpvSz+fscrIQPk+zmuko9GX6/pAlDKQMAoRS7R1CZGAHb8LS
+Gqz2H1KoVEn8jrq7qdd06CrUQYHMFWUJGvOJ/5yOmIS8wiiob8TuzQrll898PN2xPWm7BeNLyldb
+XZK5io7GOrPeECDjhHSs4LXtCBYI0fXXfaMbWr60upAHOlfRGUd1IOgj/eSi16PSIx2zExX66Kpl
+7HQ7I/lPEnYSd01c2DE6inV8vUqofy3hZJXTNTViB3/FGZUYCpmxaqUat4nQD0jfMLzd+NurU0kf
+8mRZvom/BLnGqlJ47DyTGtFbfOMOqYCrh746nM0LbGen1v/vCoEoJrhGISkCsgra0SOHXDZ4GTdq
+QybT5Dj7BcWt8CaSYI2geZnMvTeOadgZtmINLd5mZC5cxhEOJM+fpeVEccx2bYOju8e0RKP6/6LH
+hLjTpm5alO/LLthyQggoa8fhJ8Oi3Q595vTLIuu2O0TLw/x3sQuZQfAxDIdwTw7nvyvY2C2/rUgK
+hAP/xFrVD8YMFOs4R7/VChbXtv+nROKnbAx6i009odojZ4/8a60tIHnixz/VmYW2ylEB4qNl8SuB
+i3a6v4/TOeUKLJwa3YU2Hg4GhbN1DRKwmhSEnFrLMwPFNIuHHL7g8AT9npq3ascFf3CQ1BndWzEw
+X1V/WnLv8BhzlwA5RrZ/9DGn3rauA0hl1ueo4dVoM7tzuD8t9QhSXZ/0RerVEH5gaZGWvlWpdDVh
+HFsHDUoVbT9MT55IFcGSNpOg0w1cst0y59ixiV5JX5AwJHm2Wag=', '登录RSA算法加密公钥', 2, '系统登录RSA加密公钥', 1, 1, 0, 0);

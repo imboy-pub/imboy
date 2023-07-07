@@ -52,7 +52,15 @@ do_login(Req0) ->
     % ?LOG(['Type', Type,'Password', Password]),
     Pwd = case RsaEncrypt == <<"1">> of
         true ->
-            imboy_cipher:rsa_decrypt(Password);
+            try
+                imboy_cipher:rsa_decrypt(Password)
+            of
+                Pwd0 ->
+                    Pwd0
+            catch
+                _Type:_Reason ->
+                    <<>>
+            end;
         _ ->
             Password
     end,

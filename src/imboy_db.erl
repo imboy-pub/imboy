@@ -178,7 +178,7 @@ assemble_sql(Prefix, Table, Column, Value) ->
     Sql.
 
 % imboy_db:update(<<"user">>, 1, <<"sign">>, <<"中国你好！😆"/utf8>>).
--spec update(binary(), integer(), binary(), list() | binary()) ->
+-spec update(binary(), binary(), binary(), list() | binary()) ->
     ok | {error,  {integer(), binary(), Msg::binary()}}.
 update(Table, ID, Field, Value) when is_list(Value) ->
     update(Table, ID, Field, unicode:characters_to_binary(Value));
@@ -186,16 +186,20 @@ update(Table, ID, Field, Value) ->
     Table2 = public_tablename(Table),
     Sql = <<"UPDATE ", Table2/binary," SET ",
         Field/binary, " = $1 WHERE id = $2">>,
+        % Field/binary, " = $1 WHERE ", Where/binary>>,
     imboy_db:execute(Sql, [Value, ID]).
 
--spec update(binary(), integer(), list()) ->
+% imboy_db:update(<<"user">>, <<"id = 1">>, [{<<"gender">>, <<"1">>}, {<<"nickname">>, <<"中国你好！2😆"/utf8>>}]).
+-spec update(binary(), binary(), [list() | binary()]) ->
     ok | {error,  {integer(), binary(), Msg::binary()}}.
-update(Table, ID, KV) ->
+update(Table, Where, KV) when is_list(KV) ->
     Set = get_set(KV),
+    update(Table, Where, Set);
+update(Table, Where, KV) ->
     Table2 = public_tablename(Table),
-    Sql = <<"UPDATE ", Table2/binary," SET ", Set/binary," WHERE id = $1">>,
+    Sql = <<"UPDATE ", Table2/binary," SET ", KV/binary," WHERE ", Where/binary>>,
     % ?LOG(io:format("~s\n", [Sql])),
-    imboy_db:execute(Sql, [ID]).
+    imboy_db:execute(Sql, []).
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
@@ -248,8 +252,8 @@ updateuser_test_() ->
     KV2 = [{<<"gender">>, <<"1">>}, {<<"nickname">>, "中国你好！😆😆"}],
 
     [
-        ?_assert(imboy_db:update(<<"user">>, 1, KV1)),
-        ?_assert(imboy_db:update(<<"user">>, 2, KV2))
+        ?_assert(imboy_db:update(<<"user">>, id, 1, KV1)),
+        ?_assert(imboy_db:update(<<"user">>, id, 2, KV2))
     ].
 
 -endif.

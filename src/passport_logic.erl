@@ -47,8 +47,10 @@ send_email_code(ToEmail) ->
     end.
 
 
--spec do_login(Type :: binary(), Email :: binary(), Pwd :: binary()) ->
+-spec do_login(binary(), binary(), binary()) ->
           {ok, any()} | {error, any()}.
+do_login(_Type, _Email, <<>>) ->
+    {error, "密码有误"};
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
     case imboy_func:is_email(Email) of
         true ->
