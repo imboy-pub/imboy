@@ -1,6 +1,6 @@
 -module(imboy_db).
 
--export([list/1]).
+-export([list/1, list/2]).
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
@@ -85,6 +85,14 @@ pluck(Field, Default) ->
 
 list(Sql) ->
     case imboy_db:query(Sql) of
+        {ok, _, Val} ->
+            Val;
+        _ ->
+            []
+    end.
+
+list(Conn, Sql) ->
+    case epgsql:equery(Conn, Sql) of
         {ok, _, Val} ->
             Val;
         _ ->

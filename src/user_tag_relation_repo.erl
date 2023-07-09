@@ -37,14 +37,15 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
            Tag/binary, "', ",
            "0, ",
            CreatedAt/binary, ") ON CONFLICT (creator_user_id,scene,name) DO ", UpSql/binary>>,
-    lager:info(io_lib:format("user_tag_relation_repo:save_tag/5-------------------------------------------------------------------------------- sql:~p;~n", [Sql])),
+    % lager:info(io_lib:format("user_tag_relation_repo:save_tag/5 sql:~s ~n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
+    % Res = epgsql:equery(Conn, Sql, []),
+    % lager:error(io_lib:format("user_tag_relation_repo:save_tag/5 --------------------------------------------------------------------------------Res:~p ~n", [Res])),
     case Res of
         [{ok, _, [{Id}]}] ->
             {Id, Tag};
         _ ->
-            lager:error(io_lib:format("user_tag_relation_repo:save_tag/5 Res:~p ~n", [Res])),
             {0, Tag}
     end.
 

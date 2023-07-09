@@ -414,7 +414,7 @@ https://blog.csdn.net/Jessechanrui/article/details/88399012
 
 socket 数据粘包问题、拆包问题
 
-## 消息投递机制 (未实现功能)
+## 消息投递机制
 
 1. 判断用户是否在线，如果用户离线，直接存储离线消息
 2. 用户在线（or 用户上线），判断 erlang is_process_alive(Pid) 马上投递一次
