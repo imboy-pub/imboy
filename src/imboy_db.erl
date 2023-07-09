@@ -64,7 +64,7 @@ pluck(Table, Field, Default) ->
 pluck(Table, Where, Field, Default) ->
     Table2 = public_tablename(Table),
     Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
-    % ?LOG([pluck, Sql]),
+    ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 pluck(<<"SELECT ", Field/binary>>, Default) ->

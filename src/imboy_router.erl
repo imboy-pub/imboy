@@ -43,9 +43,12 @@ get_routes() ->
         {"/user_collect/remove", user_collect_handler, #{action => remove}},
         {"/user_collect/change", user_collect_handler, #{action => change}},
 
+        {"/user_tag/page", user_tag_handler, #{action => page}},
+        {"/user_tag/add", user_tag_handler, #{action => add}},
+        {"/user_tag/change_name", user_tag_handler, #{action => change_name}},
+        {"/user_tag/delete", user_tag_handler, #{action => delete}},
         {"/user_tag_relation/page", user_tag_relation_handler, #{action => page}},
         {"/user_tag_relation/add", user_tag_relation_handler, #{action => add}},
-        {"/user_tag_relation/delete", user_tag_relation_handler, #{action => delete}},
         {"/user_tag_relation/set", user_tag_relation_handler, #{action => set}},
 
         {"/location/makeMyselfVisible", location_handler, #{action => make_myself_visible}},
