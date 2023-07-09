@@ -144,6 +144,7 @@ page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
 
+    #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
     OrderBy = <<"id desc">>,
     UidBin = integer_to_binary(CurrentUid),
@@ -155,13 +156,20 @@ page(Req0, State) ->
         _ ->
             {<<>>, <<>>}
     end,
+    Where2 = if
+        byte_size(Kwd) > 0 ->
+            <<Where/binary, " and name like '%", Kwd/binary, "%'">>;
+        true ->
+            Where
+    end,
+
     if
         CurrentUid == 0 ->
             imboy_response:error(Req0, <<"token无效"/utf8>>, 706);
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         true ->
-            Payload = user_tag_relation_logic:tag_page(Scene2, Page, Size, Where, OrderBy) ,
+            Payload = user_tag_relation_logic:tag_page(Scene2, Page, Size, Where2, OrderBy) ,
             imboy_response:success(Req0, Payload)
     end.
 
