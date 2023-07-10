@@ -53,7 +53,7 @@ assets(<<"POST">>, Req0) ->
                  unicode:characters_to_binary(Body, utf8),
                  Req0)
     catch
-        _ ->
+        _:_ ->
             cowboy_req:reply(200,
                  #{<<"content-type">> => <<"text/html">>},
                  unicode:characters_to_binary(<<"fail">>, utf8),

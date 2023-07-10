@@ -64,7 +64,7 @@ pluck(Table, Field, Default) ->
 pluck(Table, Where, Field, Default) ->
     Table2 = public_tablename(Table),
     Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
-    ?LOG([pluck, Sql]),
+    % ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 pluck(<<"SELECT ", Field/binary>>, Default) ->
@@ -229,7 +229,10 @@ query_resp({ok,[K], Rows}) ->
     {ok, [K], Rows};
 query_resp({ok, ColumnList, Rows}) ->
     % {ok,[{column,<<"max">>,int4,23,4,-1,1,0,0}],[{551223}]}
-    % {ok,[{column,<<"count">>,int8,20,8,-1,1,0,0}],[1]}
+    % {ok,
+    %     [{column,<<"count">>,int8,20,8,-1,1,0,0}]
+    %     , [1]
+    % }
     % lager:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [element(2, C) || C <- ColumnList],
     {ok, ColumnList2, Rows}.
