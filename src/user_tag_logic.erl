@@ -5,7 +5,7 @@
 %%%
 
 -export([page/5]).
--export([change_name/4]).
+-export([change_name/5]).
 -export ([add/3]).
 -export([merge_tag/4]).
 -export([change_scene_tag/5]).
@@ -84,7 +84,7 @@ delete(Uid, Scene, Tag) ->
                 imboy_db:public_tablename(<<"user_friend">>)
         end,
         UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,",', '') WHERE tag like '%", Tag/binary, ",%';">>,
-        lager:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
+        % lager:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
 
         _Res = epgsql:equery(Conn, UpSql),
         % 清理缓存
@@ -95,28 +95,26 @@ delete(Uid, Scene, Tag) ->
     ok.
 
 
--spec change_name(integer(), binary(), integer(), binary()) -> ok.
-change_name(Uid, Scene, TagId, TagName) when is_integer(TagId) ->
-    change_name(Uid, Scene, integer_to_binary(TagId), TagName);
-change_name(Uid, Scene, TagId, TagName) ->
+-spec change_name(integer(), binary(), binary(), integer(), binary()) -> ok.
+change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
+    <<TagName/binary, " 已存在"/utf8>>;
+change_name(0, Uid, Scene, TagId, TagName) ->
     NowTs = imboy_dt:millisecond(),
-    Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),
-
     RefCount = imboy_db:pluck(
         <<"user_tag_relation">>
-        , <<"scene = ", Scene/binary," AND tag_id = ", TagId/binary, " AND user_id = ", Uid2/binary>>
+        , <<"scene = ", Scene/binary," AND tag_id = ", TagId/binary, " AND user_id = ", Uid/binary>>
         , <<"count(*)">>
         , 0
     ),
-    Sql = <<"SELECT object_id FROM public.user_tag_relation WHERE scene = ", Scene/binary, " AND user_id = ", Uid2/binary, " AND tag_id = ", TagId/binary>>,
+    Sql = <<"SELECT object_id FROM public.user_tag_relation WHERE scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND tag_id = ", TagId/binary>>,
     ObjectIds2 = imboy_db:list(Sql),
     % lager:error(io_lib:format("user_tag_logic:change_name/4 ~s ObjectIds2: ~p; ~n", [Sql, ObjectIds2])),
     imboy_db:with_transaction(fun(Conn) ->
         % 保存 public.user_tag
-        user_tag_relation_repo:update_tag(Conn, TagId, TagName, RefCount, Uid2, CreatedAt),
+        user_tag_relation_repo:update_tag(Conn, TagId, TagName, RefCount, Uid, CreatedAt),
 
-        [change_scene_tag(Conn, Scene, Uid2, I, [{TagId, TagName}]) || {I} <- ObjectIds2],
+        [change_scene_tag(Conn, Scene, Uid, I, [{TagId, TagName}]) || {I} <- ObjectIds2],
         ok
     end),
     % 清理缓存
@@ -161,7 +159,7 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
     % 合并新旧tag，排重，不修改tag顺序
     TagBin = user_tag_logic:merge_tag(Tag, Scene, Uid2, ObjectId),
     Sql = <<"UPDATE ", Table/binary," SET tag = '", TagBin/binary
-        ,"' WHERE ", Where/binary>>,
+        ,",' WHERE ", Where/binary>>,
     % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  --------------------------------------------------------------------------------====================== sql:~p;~n", [Sql])),
     % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
     % epgsql:equery(Conn, Sql),

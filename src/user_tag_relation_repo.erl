@@ -62,7 +62,7 @@ update_tag(Conn, TagId, TagName, RefCount, Uid, CreatedAt) ->
     % lager:info(io_lib:format("user_tag_relation_repo:update_tag/6 sql:~p;~n", [UpSql])),
     {ok, Stmt} = epgsql:parse(Conn, UpSql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Res:~p;~n", [Res])),
+    % lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Res:~p;~n", [Res])),
     case Res of
         [{ok,1}] ->
             {TagId, TagName};

@@ -100,7 +100,15 @@ change_name(Req0, State) ->
         TagId < 1 ->
             imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         true ->
-            case user_tag_logic:change_name(CurrentUid, Scene2, TagId, TagName) of
+            Uid2 = integer_to_binary(CurrentUid),
+            TagId2 = integer_to_binary(TagId),
+            Count = imboy_db:pluck(
+                <<"user_tag">>
+                , <<"scene = ", Scene2/binary, " AND creator_user_id = ", Uid2/binary, " AND name = '", TagName/binary, "' AND id != ", TagId2/binary>>
+                , <<"count(*)">>
+                , 0
+            ),
+            case user_tag_logic:change_name(Count, Uid2, Scene2, TagId2, TagName) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
                 {Code, Err} ->
