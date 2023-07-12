@@ -27,8 +27,12 @@ init(Req0, State0) ->
             add(Req0, State);
         set ->
             set(Req0, State);
-        page ->
-            page(Req0, State);
+        remove ->
+            remove(Req0, State);
+        collect_page ->
+            page(<<"collect">>, Req0, State);
+        friend_page ->
+            page(<<"friend">>, Req0, State);
         false ->
             Req0
     end,
@@ -38,6 +42,7 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+% 用户标签_给特定对象打标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
@@ -77,6 +82,8 @@ add(Req0, State) ->
             end
     end.
 
+
+% 用户标签_修改特定对象标签
 set(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
@@ -115,37 +122,61 @@ set(Req0, State) ->
             end
     end.
 
-page(Req0, State) ->
+%% 用户标签_标签详情-标签联系人列表-移除对象
+remove(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    % Uid = imboy_hashids:uid_encode(CurrentUid),
+
+    PostVals = imboy_req:post_params(Req0),
+    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
+    TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
+    % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
+    ObjectId = proplists:get_value(<<"objectId">>, PostVals, []),
+    % user_tag_relation_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
+    Scene2 = case Scene of
+        <<"collect">> ->
+            <<"1">>;
+        <<"friend">> ->
+            <<"2">>;
+        _ ->
+            <<>>
+    end,
+    if
+        bit_size(Scene2) == 0 ->
+            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        TagId < 1 ->
+            imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
+        true ->
+            case user_tag_relation_logic:remove(CurrentUid, Scene2, imboy_hashids:uid_decode(ObjectId), TagId) of
+                ok ->
+                    imboy_response:success(Req0, #{}, "success.");
+                {Code, Err} ->
+                    imboy_response:error(Req0, Err, Code);
+                Err ->
+                    imboy_response:error(Req0, Err)
+            end
+    end.
+
+%% 用户标签_标签详情-标签联系人列表 / 标签收藏列表
+page(Scene, Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-    #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
-    OrderBy = <<"id desc">>,
-    UidBin = integer_to_binary(CurrentUid),
-    {Scene2, Where} = case Scene of
-        <<"collect">> ->
-            {<<"1">>, <<"creator_user_id = ", UidBin/binary, " and scene = 1">>};
-        <<"friend">> ->
-            {<<"2">>, <<"creator_user_id = ", UidBin/binary, " and scene = 2">>};
-        _ ->
-            {<<>>, <<>>}
-    end,
-    Where2 = if
-        byte_size(Kwd) > 0 ->
-            <<Where/binary, " and name like '%", Kwd/binary, "%'">>;
-        true ->
-            Where
-    end,
-
+    {ok, TagId} = imboy_req:get_int(tag_id, Req0, 0),
+    % lager:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
     if
         CurrentUid == 0 ->
             imboy_response:error(Req0, <<"token无效"/utf8>>, 706);
-        bit_size(Scene2) == 0 ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        TagId == 0 ->
+            imboy_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
+        Scene == <<"collect">> ->
+            imboy_response:success(Req0, #{});
+        Scene == <<"friend">> ->
+            Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
+            imboy_response:success(Req0, Payload);
         true ->
-            Payload = user_tag_relation_logic:tag_page(Scene2, Page, Size, Where2, OrderBy) ,
-            imboy_response:success(Req0, Payload)
+            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
 
 %% ===================================================================

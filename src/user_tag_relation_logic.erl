@@ -5,8 +5,8 @@
 %%%
 
 -export ([add/4]).
+-export ([remove/4]).
 -export([set/5]).
--export([page/5]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -18,34 +18,23 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+-spec remove(integer(), binary(), integer(), binary()) -> ok.
+remove(Uid, Scene, ObjectId, TagId) when is_integer(TagId) ->
+    remove(Uid, Scene, ObjectId, integer_to_binary(TagId));
+remove(Uid, Scene, ObjectId, TagId) ->
+    Uid2 = integer_to_binary(Uid),
+    % TagName = <<"aaa">>,
+    TagName = imboy_db:pluck(<<"user_tag">>, <<"id = ", TagId/binary>>, <<"name">>, <<>>),
+    imboy_db:with_transaction(fun(Conn) ->
+        % 移除 public.user_tag_relation
+        user_tag_relation_repo:remove_user_tag_relation(Conn, Scene, Uid2, TagId, ObjectId),
 
--spec page(binary(), integer(), integer(), binary(), binary()) -> list().
-page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
-    Offset = (Page - 1) * Size,
-    Total = user_tag_repo:count_for_where(Where),
-    case user_tag_repo:page_for_where(Size, Offset, Where, OrderBy) of
-        {ok, _, []} ->
-            imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
-            % ColumnLi2 = ColumnLi ++ [<<"subtitle">>],
-            Items2 = [lists:zipwith(
-                fun(X, Y) -> {X, Y} end,
-                ColumnLi, Row
-                ) ||
-                    Row <- Items1
-            ],
-            Items3 = [Item ++ [{<<"subtitle">>, user_tag_relation_repo:tag_subtitle(
-                Scene
-                , proplists:get_value(<<"id">>, Item, "")
-                , proplists:get_value(<<"referer_time">>, Item, 0)
-                )}] || Item <- Items2],
-
-            % lager:info(io_lib:format("user_tag_relation_logic:tag_page/5 Items2:~p;~n", [Items2])),
-            imboy_response:page_payload(Total, Page, Size, Items3);
-        _ ->
-            imboy_response:page_payload(Total, Page, Size, [])
-    end.
+        user_tag_logic:change_scene_tag(Conn, Scene, Uid2, integer_to_binary(ObjectId), [{TagId, TagName}]),
+        ok
+    end),
+    % 清理缓存
+    user_tag_relation_repo:flush_subtitle(TagId),
+    ok.
 
 -spec set(integer(), binary(), list(), integer(), binary()) -> ok.
 set(Uid, Scene, ObjectIds, TagId, TagName) when is_integer(TagId) ->
@@ -159,7 +148,6 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     % ),
     % TagIdNewLi = [Id || {Id, _} <- Tag2],
     % lager:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
-
     NowTs = imboy_dt:millisecond(),
     Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),

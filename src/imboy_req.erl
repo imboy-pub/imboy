@@ -29,13 +29,16 @@ page_size(Req) ->
 
 get_int(Key, Req, Def) ->
     #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
-    % ?LOG([get_int, Val]),
     if
         Val == Def ->
             {ok, Def};
         true  ->
-            {Val2, _} = string:to_integer(Val),
-            {ok, Val2}
+            case string:to_integer(Val) of
+                {error, _} ->
+                    {ok, Def};
+                {Val2, _} ->
+                    {ok, Val2}
+            end
     end.
 
 

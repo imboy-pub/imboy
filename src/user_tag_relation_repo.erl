@@ -5,6 +5,7 @@
 %%%
 
 -export ([tablename/0]).
+-export ([remove_user_tag_relation/5]).
 -export ([save_tag/5, update_tag/6, save_user_tag_relation/6]).
 -export ([select_tag/3, select_user_tag_relation/3]).
 -export ([tag_subtitle/3, flush_subtitle/1]).
@@ -22,6 +23,15 @@
 
 tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
+
+remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
+    Tb = tablename(),
+    % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
+    DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND object_id = '$2' AND tag_id = $3;">>,
+    DelSql = <<"DELETE FROM ", Tb/binary," WHERE ", DelWhere/binary>>,
+    % lager:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
+    epgsql:equery(Conn, DelSql, [Uid, ObjectId, TagId]),
+    ok.
 
 %%% 保存tag数据
 -spec save_tag(any(), integer(), binary(), binary(), binary()) ->

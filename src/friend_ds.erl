@@ -6,6 +6,7 @@
 -export([is_friend/3]).
 -export([page_by_uid/1, page_by_uid/3]).
 -export([page_by_cid/4]).
+-export([page_by_tag/5]).
 -export([change_remark/3]).
 -export([set_category_id/3]).
 
@@ -56,6 +57,49 @@ page_by_cid(Cid, Uid, Limit, Offset) ->
     WhereArgs = [Uid, Cid, Limit, Offset],
     page(Where, WhereArgs, fields(Uid)).
 
+-spec page_by_tag(integer(), integer(), integer(), integer(), binary()) -> list().
+page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
+    Offset = (Page - 1) * Size,
+    TagId2 = integer_to_binary(TagId),
+    % TagName = <<"aaa">>,
+    TagName = imboy_db:pluck(<<"user_tag">>, <<"id = ", TagId2/binary>>, <<"name">>, <<>>),
+    {Total0, Items0} = if
+        TagName == <<>> ->
+            {0, []};
+        bit_size(Kwd) > 0 ->
+            Where0 = imboy_func:implode(" AND ", [
+                "f.status = 1"
+                , "f.from_user_id = $1"
+                , <<"f.tag like '%", TagName/binary, ",%'">>
+                , <<"(f.tag like '%", Kwd/binary,",%' OR f.remark like '%", Kwd/binary,"%' OR u.nickname like '%", Kwd/binary,"%' OR u.sign like '%", Kwd/binary,"%')">>
+            ]),
+            Where = <<"WHERE ", Where0/binary," LIMIT $2 OFFSET $3">>,
+
+            WhereArgs = [Uid, Size, Offset],
+
+            Items = page(Where, WhereArgs, fields(Uid)),
+            Total = count(Where, WhereArgs),
+            {Total, Items};
+        true ->
+            Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.tag like '%", TagName/binary,",%' LIMIT $2 OFFSET $3">>,
+
+            WhereArgs = [Uid, Size, Offset],
+
+            Items = page(Where, WhereArgs, fields(Uid)),
+            Total = count(Where, WhereArgs),
+            {Total, Items}
+    end,
+    imboy_response:page_payload(Total0, Page, Size, Items0).
+
+-spec count(binary(), list()) -> list().
+count(Where, WhereArgs) ->
+    case page(Where, WhereArgs, <<"count(*) count">>) of
+        [{Count}] ->
+            Count;
+        _ ->
+            0
+    end.
+
 -spec page(binary(), list(), binary()) -> list().
 page(Where, WhereArgs, Fields) ->
     UserTable = imboy_db:public_tablename(<<"user">>),
@@ -73,11 +117,13 @@ page(Where, WhereArgs, Fields) ->
     % ok.
     % ?LOG([Sql, WhereArgs]),
     case imboy_db:query(Sql, WhereArgs) of
+        {ok, _ColumnList, Rows} when Fields == <<"count(*) count">> ->
+            Rows;
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
             Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- Rows],
-            [user_logic:online_state(User) || User <- Friends];
+            [user_logic:online_state(imboy_hashids:replace_id(User)) || User <- Friends];
         _ ->
             []
     end.
