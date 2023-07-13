@@ -161,13 +161,13 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
     Sql = <<"UPDATE ", Table/binary," SET tag = '", TagBin/binary
         ,",' WHERE ", Where/binary>>,
     % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  --------------------------------------------------------------------------------====================== sql:~p;~n", [Sql])),
-    % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
+    lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
     % epgsql:equery(Conn, Sql),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     epgsql:execute_batch(Conn, [{Stmt, []}]),
     % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
     % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  ====================== Res:~p;~n", [Res])),
-ok.
+    ok.
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -28,8 +28,7 @@ remove(Uid, Scene, ObjectId, TagId) ->
     imboy_db:with_transaction(fun(Conn) ->
         % 移除 public.user_tag_relation
         user_tag_relation_repo:remove_user_tag_relation(Conn, Scene, Uid2, TagId, ObjectId),
-
-        user_tag_logic:change_scene_tag(Conn, Scene, Uid2, integer_to_binary(ObjectId), [{TagId, TagName}]),
+        user_tag_relation_repo:replace_object_tag(Conn, Scene, Uid2, ObjectId, TagName, <<>>),
         ok
     end),
     % 清理缓存

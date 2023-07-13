@@ -5,7 +5,7 @@
 %%%
 
 -export ([tablename/0]).
--export ([remove_user_tag_relation/5]).
+-export ([remove_user_tag_relation/5, replace_object_tag/6]).
 -export ([save_tag/5, update_tag/6, save_user_tag_relation/6]).
 -export ([select_tag/3, select_user_tag_relation/3]).
 -export ([tag_subtitle/3, flush_subtitle/1]).
@@ -24,14 +24,42 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
 
+remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) when is_integer(ObjectId) ->
+    remove_user_tag_relation(Conn, Scene, Uid, TagId, integer_to_binary(ObjectId));
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     Tb = tablename(),
     % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
-    DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND object_id = '$2' AND tag_id = $3;">>,
+    DelWhere = <<"scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND object_id = '", ObjectId/binary, "' AND tag_id = ", TagId/binary, ";">>,
     DelSql = <<"DELETE FROM ", Tb/binary," WHERE ", DelWhere/binary>>,
-    % lager:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
-    epgsql:equery(Conn, DelSql, [Uid, ObjectId, TagId]),
+    lager:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
+    epgsql:equery(Conn, DelSql, []),
     ok.
+
+replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) when is_integer(ObjectId) ->
+    replace_object_tag(Conn, Scene, Uid2, integer_to_binary(ObjectId), FromName, ToName);
+replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) ->
+    % lager:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 args:~p;~n", [[Conn, Scene, Uid2, ObjectId, FromName, ToName]])),
+    {Table, Where} = case Scene of
+        <<"1">> ->
+            {
+                imboy_db:public_tablename(<<"user_collect">>)
+                , <<"user_id = ", Uid2/binary, " AND kind_id = '", ObjectId/binary, "'">>
+            };
+        <<"2">> ->
+
+            {
+                imboy_db:public_tablename(<<"user_friend">>)
+                , <<"from_user_id = ", Uid2/binary, " AND to_user_id = ", ObjectId/binary>>
+            }
+    end,
+    Sql = <<"UPDATE ", Table/binary," SET tag = replace(tag, '", FromName/binary, ",', '", ToName/binary,"') WHERE ", Where/binary>>,
+    lager:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 sql:~s;~n", [Sql])),
+    Res = epgsql:equery(Conn, Sql),
+    % {ok, Stmt} = epgsql:parse(Conn, Sql),
+    % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
+    lager:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 Res:~p;~n", [Res])),
+    ok.
+
 
 %%% 保存tag数据
 -spec save_tag(any(), integer(), binary(), binary(), binary()) ->

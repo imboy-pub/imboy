@@ -48,7 +48,7 @@ with_transaction(F, Opts0) ->
         Conn ->
             Res = epgsql:with_transaction(Conn, F, Opts0),
             pooler:return_member(Driver, Conn),
-        Res
+            Res
     end.
 
 % imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).

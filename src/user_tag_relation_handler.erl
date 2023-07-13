@@ -122,7 +122,7 @@ set(Req0, State) ->
             end
     end.
 
-%% 用户标签_标签详情-标签联系人列表-移除对象
+%% 用户标签_标签详情-标签联系人列表-移除标签里的联系人
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
@@ -131,8 +131,11 @@ remove(Req0, State) ->
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
-    ObjectId = proplists:get_value(<<"objectId">>, PostVals, []),
+    ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
     % user_tag_relation_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
+    % INSERT INTO user_tag_relation (id, scene, user_id, tag_id, object_id, created_at) VALUES(43, 2, 109, 56, 108, 1688916074887);
+    % aaa30,aaa1,你好你好你好你好你好你好你1,abc1,端订单1,
+    % user_tag_relation_logic:remove(109, <<"2">>, 108, 56).
     Scene2 = case Scene of
         <<"collect">> ->
             <<"1">>;
@@ -144,6 +147,8 @@ remove(Req0, State) ->
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        bit_size(ObjectId) == 0 ->
+            imboy_response:error(Req0, <<"ObjectId 不能同时为空"/utf8>>);
         TagId < 1 ->
             imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         true ->
