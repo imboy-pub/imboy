@@ -7,7 +7,7 @@
 -export([page/5]).
 -export([change_name/5]).
 -export ([add/3]).
--export([merge_tag/4]).
+-export([merge_tag/5]).
 -export([change_scene_tag/5]).
 -export([delete/3]).
 
@@ -123,8 +123,8 @@ change_name(0, Uid, Scene, TagId, TagName) ->
 
 
 %%% 添加标签
--spec add(integer(), binary(), list()) -> ok.
-add(Uid, Scene, [Tag]) ->
+-spec add(integer(), binary(), binary()) -> [binary() | {ok, _, [{integer()}]}].
+add(Uid, Scene, Tag) ->
     % lager:info(io_lib:format("user_tag_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
     Uid2 = integer_to_binary(Uid),
     Count = imboy_db:pluck(
@@ -136,13 +136,14 @@ add(Uid, Scene, [Tag]) ->
         0 ->
             Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
             Value = [Uid, Scene, <<"'",Tag/binary, "'">>, 0, imboy_dt:millisecond()],
-            imboy_db:insert_into(<<"user_tag">>, Column, Value),
-            ok;
+            % {ok,1,[{10}]}
+            imboy_db:insert_into(<<"user_tag">>, Column, Value);
         _ ->
             <<"标签名已存在"/utf8>>
     end.
 
 change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
+    % lager:error(io_lib:format("user_tag_relation_repo:change_scene_tag/5 args:~p;~n", [[Conn, Scene, Uid2, ObjectId, Tag]])),
     {Table, Where} = case Scene of
         <<"1">> ->
             {
@@ -157,33 +158,33 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
             }
     end,
     % 合并新旧tag，排重，不修改tag顺序
-    TagBin = user_tag_logic:merge_tag(Tag, Scene, Uid2, ObjectId),
+    TagBin = user_tag_logic:merge_tag(Conn, Tag, Scene, Uid2, ObjectId),
     Sql = <<"UPDATE ", Table/binary," SET tag = '", TagBin/binary
         ,",' WHERE ", Where/binary>>,
-    % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  --------------------------------------------------------------------------------====================== sql:~p;~n", [Sql])),
-    lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
+
+    % lager:error(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
     % epgsql:equery(Conn, Sql),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
-    epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
+    % epgsql:execute_batch(Conn, [{Stmt, []}]),
+    Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
     % lager:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  ====================== Res:~p;~n", [Res])),
-    ok.
+    Res.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
 
 % 合并新旧tag，排重，不修改tag顺序
-merge_tag(Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
-    Sql = <<"SELECT t.id, t.name FROM public.user_tag_relation ut LEFT JOIN public.user_tag t ON t.id = ut.tag_id WHERE ut.scene = ", Scene/binary, " AND ut.user_id = ", Uid/binary, " AND ut.object_id = '", ObjectId/binary,"'">>,
-    % lager:error(io_lib:format("user_tag_logic:merge_tag/4 Sql: ~p; ~n", [Sql])),
-    TagOldLi = imboy_db:list(Sql),
-    % lager:error(io_lib:format("user_tag_logic:merge_tag/4 Tag ~p, TagOldLi: ~p; ~n", [Tag, TagOldLi])),
+merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
+    Sql = <<"SELECT t.id, t.name FROM public.user_tag_relation ut INNER JOIN public.user_tag t ON t.id = ut.tag_id WHERE ut.scene = ", Scene/binary, " AND ut.user_id = ", Uid/binary, " AND ut.object_id = '", ObjectId/binary,"'">>,
+    % lager:error(io_lib:format("user_tag_logic:merge_tag/5 Sql: ~p; ~n", [Sql])),
+    TagOldLi = imboy_db:list(Conn, Sql),
+    % lager:error(io_lib:format("user_tag_logic:merge_tag/5 Tag ~p, TagOldLi: ~p; ~n", [Tag, TagOldLi])),
     % TagIds = [Id || {Id, _} <- Tag],
     TagOld = imboy_func:implode(",", [Name || {Id, Name} <- TagOldLi, lists:keymember(integer_to_binary(Id), 1, Tag) == false]),
     TagBin = imboy_func:implode(",", [Name || {_, Name} <- Tag]),
     MergedTag = binary:split(<<TagBin/binary, ",", TagOld/binary>>, <<",">>, [global]),
-    % lager:error(io_lib:format("user_tag_logic:merge_tag/4 old ~p, new ~p, merged: ~p; ~n", [TagOld, TagBin, MergedTag])),
+    % lager:error(io_lib:format("user_tag_logic:merge_tag/5 old ~p, new ~p, merged: ~p; ~n", [TagOld, TagBin, MergedTag])),
     imboy_func:implode(",", imboy_func:remove_dups(MergedTag)).
 
 %% ===================================================================

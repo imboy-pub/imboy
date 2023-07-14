@@ -35,6 +35,8 @@ remove(Uid, Scene, ObjectId, TagId) ->
     user_tag_relation_repo:flush_subtitle(TagId),
     ok.
 
+
+%% 用户标签_联系人标签设置标签
 -spec set(integer(), binary(), list(), integer(), binary()) -> ok.
 set(Uid, Scene, ObjectIds, TagId, TagName) when is_integer(TagId) ->
     set(Uid, Scene, ObjectIds, integer_to_binary(TagId), TagName);
@@ -54,23 +56,27 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
             <<TagName/binary, " 已存在"/utf8>>;
         true ->
             % [imboy_hashids:uid_encode(108), imboy_hashids:uid_encode(62902), imboy_hashids:uid_encode(62903)].
-            ObjectIds2 = [imboy_hashids:uid_decode(I) || I <- ObjectIds],
+            ObjectIds2 = [integer_to_binary(imboy_hashids:uid_decode(I)) || I <- ObjectIds, imboy_hashids:uid_decode(I) > 0],
+            Tb = imboy_db:public_tablename(<<"user_friend">>),
+            OldObjectIds = imboy_db:list(<<"SELECT to_user_id::text FROM ", Tb/binary," WHERE tag like '%", TagName/binary, ",%'">>),
+            OldObjectIds2 = [Id || {Id} <- OldObjectIds],
 
-            RefCount = imboy_db:pluck(
-                <<"user_tag_relation">>
-                , <<"scene = ", Scene/binary," AND tag_id = ", TagId/binary, " AND user_id = ", Uid2/binary>>
-                , <<"count(*)">>
-                , 0
-            ),
+            DelObjectId = OldObjectIds2 -- ObjectIds2,
+
             imboy_db:with_transaction(fun(Conn) ->
+                %
+                [user_tag_relation_repo:remove_user_tag_relation(Conn, Scene, Uid2, TagId, I) || I <- DelObjectId],
                 % lager:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid2, CreatedAt]])),
                 % 保存 public.user_tag
-                user_tag_relation_repo:update_tag(Conn, TagId,TagName, RefCount, Uid2, CreatedAt),
+                user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid2, CreatedAt),
 
                 % 插入 public.user_tag_relation
-                [user_tag_relation_repo:save_user_tag_relation(Conn, Scene, Uid2, TagId, integer_to_binary(I), CreatedAt) || I <- ObjectIds2, I > 0],
+                [user_tag_relation_repo:save_user_tag_relation(Conn, Scene, Uid2, TagId, I, CreatedAt) || I <- ObjectIds2, I > 0],
 
-                [user_tag_logic:change_scene_tag(Conn, Scene, Uid2, integer_to_binary(I), [{TagId, TagName}]) || I <- ObjectIds2],
+                [user_tag_logic:change_scene_tag(Conn, Scene, Uid2, I, [{TagId, TagName}]) || I <- ObjectIds2],
+                % Conn, Scene, Uid2, ObjectId, FromName, ToName
+                %
+                [user_tag_relation_repo:replace_object_tag(Conn, Scene, Uid2, I, TagName, <<>>) || I <- DelObjectId],
                 ok
             end),
             % 清理缓存

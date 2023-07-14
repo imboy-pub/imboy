@@ -83,7 +83,7 @@ add(Req0, State) ->
     end.
 
 
-% 用户标签_修改特定对象标签
+% 用户标签_联系人标签设置标签
 set(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),

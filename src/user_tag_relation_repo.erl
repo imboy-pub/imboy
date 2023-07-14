@@ -6,7 +6,7 @@
 
 -export ([tablename/0]).
 -export ([remove_user_tag_relation/5, replace_object_tag/6]).
--export ([save_tag/5, update_tag/6, save_user_tag_relation/6]).
+-export ([save_tag/5, update_tag/5, save_user_tag_relation/6]).
 -export ([select_tag/3, select_user_tag_relation/3]).
 -export ([tag_subtitle/3, flush_subtitle/1]).
 
@@ -24,8 +24,7 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
 
-remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) when is_integer(ObjectId) ->
-    remove_user_tag_relation(Conn, Scene, Uid, TagId, integer_to_binary(ObjectId));
+
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     Tb = tablename(),
     % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
@@ -87,13 +86,13 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
             {0, Tag}
     end.
 
--spec update_tag(any(), binary(), integer(), binary(), binary(), binary()) ->
+-spec update_tag(any(), binary(), binary(), binary(), binary()) ->
     ok.
-update_tag(Conn, TagId, TagName, RefCount, Uid, CreatedAt) ->
+update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
     Tb = imboy_db:public_tablename(<<"user_tag">>),
     % lager:info(io_lib:format("user_tag_relation_repo:update_tag/6 Tb:~p ~n", [Tb])),
     Args = [
-        "UPDATE ", Tb, <<" SET name = '", TagName/binary, "', referer_time = ">>, RefCount, ", updated_at = ", CreatedAt, " WHERE id =", TagId, " AND creator_user_id = ", Uid
+        "UPDATE ", Tb, <<" SET name = '", TagName/binary, "', ">>, " updated_at = ", CreatedAt, " WHERE id =", TagId, " AND creator_user_id = ", Uid
     ],
     % lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Args:~p ~n", [Args])),
     UpSql = imboy_func:implode("", Args),
@@ -123,7 +122,7 @@ save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
            TagId/binary, ", ",
            ObjectId/binary, ", ",
            CreatedAt/binary, ") ON CONFLICT (scene, user_id, object_id, tag_id) DO ", UpSql/binary>>,
-    lager:info(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 sql:~p;~n", [Sql])),
+    % lager:info(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 sql:~p;~n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
     % lager:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 Res:~p ~n", [Res])),

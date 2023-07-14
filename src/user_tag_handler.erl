@@ -73,6 +73,7 @@ page(Req0, State) ->
             imboy_response:success(Req0, Payload)
     end.
 
+%% 修改标签名称
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
@@ -118,13 +119,14 @@ change_name(Req0, State) ->
             end
     end.
 
+%% 新建标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
-    Tag = proplists:get_value(<<"tag">>, PostVals, []),
+    Tag = proplists:get_value(<<"tag">>, PostVals, <<>>),
 
     Scene2 = case Scene of
         <<"collect">> ->
@@ -134,18 +136,20 @@ add(Req0, State) ->
         _ ->
             <<>>
     end,
-    Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
+    TagLen = string:length(Tag),
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        length(Tag2) > 0 ->
+        TagLen > 14 ->
             imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
         true ->
             case user_tag_logic:add(CurrentUid, Scene2, Tag) of
-                ok ->
-                    imboy_response:success(Req0, #{}, "success.");
+                {ok, _, [{ID}]} ->
+                    imboy_response:success(Req0, #{tagId => ID}, "success.");
                 {Code, Err} ->
                     imboy_response:error(Req0, Err, Code);
+                Err when is_binary(Err) ->
+                    imboy_response:error(Req0, Err);
                 Err ->
                     imboy_response:error(Req0, Err)
             end

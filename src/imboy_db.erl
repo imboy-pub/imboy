@@ -168,7 +168,8 @@ execute(Conn, Sql, Params) ->
 insert_into(Table, Column, Value) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     Sql = assemble_sql(<<"INSERT INTO">>, Table, Column, Value),
-    imboy_db:execute(Sql, []).
+    % return {ok,1,[{10}]}
+    imboy_db:execute(<<Sql/binary, " RETURNING id;">>, []).
 
 
 % 组装 SQL 语句
@@ -182,7 +183,7 @@ assemble_sql(Prefix, Table, Column, Value) ->
     Table2 = public_tablename(Table),
     Sql = <<Prefix/binary, " ", Table2/binary, " ", Column/binary,
             " VALUES ", Value/binary>>,
-    ?LOG(io:format("~s\n", [Sql])),
+    % ?LOG(io:format("~s\n", [Sql])),
     Sql.
 
 % imboy_db:update(<<"user">>, 1, <<"sign">>, <<"中国你好！😆"/utf8>>).
