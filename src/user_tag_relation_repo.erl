@@ -119,19 +119,19 @@ save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
            Column/binary, " VALUES(",
            Scene/binary, ", ",
            Uid/binary, ", ",
-           TagId/binary, ", ",
-           ObjectId/binary, ", ",
+           TagId/binary, ", '",
+           ObjectId/binary, "', ",
            CreatedAt/binary, ") ON CONFLICT (scene, user_id, object_id, tag_id) DO ", UpSql/binary>>,
-    % lager:info(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 sql:~p;~n", [Sql])),
+    % lager:info(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 sql:~p;~n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % lager:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 Res:~p ~n", [Res])),
+    % lager:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 Res:~p ~n", [Res])),
     case Res of
         % [{ok,1,[{18}]}]
         [{ok, _, [{Id}]}] ->
             Id;
         _ ->
-            lager:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/5 Res:~p ~n", [Res])),
+            lager:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 Res:~p ~n", [Res])),
             0
     end.
 
