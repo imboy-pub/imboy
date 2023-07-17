@@ -51,6 +51,13 @@ init(Req0, State0) ->
                     websocket_ds:auth(Auth, Req1, State1, Opt0)
             end
     end.
+    % case websocket_ds:check_subprotocols(SubPt, Req0) of
+    %     {ok, Req1} ->
+    %         {ok, Req1, State1};
+    %     {cowboy_websocket, Req1} ->
+    %         % ?LOG([State1]),
+    %         websocket_ds:auth(Auth, Req1, State1, Opt0)
+    % end.
 
 %%连接初始 onopen
 websocket_init(State) ->

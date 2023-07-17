@@ -33,6 +33,10 @@ init() ->
 -spec join(integer(), binary(), pid(), binary()) ->
     ok | {error, Reason :: term()}.
 join(Uid, DType, Pid, DID) ->
+    % Li = list_by_uid(Uid),
+    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
+    % ?LOG(["imboy_session:join/4", Uid, Li]),
+    % [P ! stop || {P, {_DT, DID1}} <- Li, DID1 == DID],
     syn:join(?CHAT_SCOPE, Uid, Pid, {DType, DID}),
     ok.
 
@@ -40,7 +44,6 @@ join(Uid, DType, Pid, DID) ->
     ok | {error, Reason :: term()}.
 leave(Uid, Pid) ->
     syn:leave(?CHAT_SCOPE, Uid, Pid).
-
 
 % 在线用户数量统计，一个用户在多个不同的设备类型登录，算一个
 -spec count_user() -> non_neg_integer().

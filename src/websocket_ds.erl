@@ -29,10 +29,9 @@ check_subprotocols([H|_Tail], Req0) ->
 auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
+        % TODO check token expire
         {ok, Uid, _ExpireAt, _Type} ->
-            DID = maps:get(did, State, <<"">>),
-            DIDIsOnline = imboy_session:is_online(Uid, {did, DID}),
-            auth_after(DIDIsOnline, Uid, Req, State, Opt);
+            auth_after(Uid, Req, State, Opt);
         {error, Code, Msg, _Map} ->
             {ok, Req, State#{error => Code, msg => Msg}}
     end;
@@ -47,14 +46,14 @@ auth(Auth, Req0, State0, _Opt) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec auth_after(boolean(), integer(), any(), map(), map()) ->
+-spec auth_after(integer(), any(), map(), map()) ->
     {ok, any(), map()} | {cowboy_websocket, any(), map(), map()}.
-auth_after(true, _Uid, Req0, State0, _Opt) ->
-    % lager:warning("DeviceID ~p is online", [State0]),
-    % 429 Too Many Requests
-    Req = cowboy_req:reply(429, Req0),
-    {ok, Req, State0};
-auth_after(false, Uid, Req, State, Opt) ->
+% auth_after(true, _Uid, Req0, State0, _Opt) ->
+%     % lager:warning("DeviceID ~p is online", [State0]),
+%     % 429 Too Many Requests
+%     Req = cowboy_req:reply(429, Req0),
+%     {ok, Req, State0};
+auth_after(Uid, Req, State, Opt) ->
     Timeout = idle_timeout(Uid),
     {
         cowboy_websocket,

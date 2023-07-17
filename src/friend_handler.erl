@@ -109,7 +109,7 @@ friend_list(Req0, State) ->
 
 friend_list_transfer(User, Friends) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
-     {<<"friend">>, [imboy_hashids:replace_id(F) || F <- Friends]}
+     {<<"friend">>, Friends}
     % {<<"mine">>, User}
     % , {<<"friend">>, Friends}
     ].

@@ -29,7 +29,7 @@ verify_for_assets(Scene, Tk, V, _Path) ->
     Now = imboy_dt:second(),
     % V = binary_to_integer(Val),
     Diff = 7200,
-    lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
+    % lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if
         is_integer(V) andalso Now < (V + Diff) ->
             % V = binary_to_list(<<Path/binary, "?", Val/binary>>),
