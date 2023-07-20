@@ -55,6 +55,8 @@ chat_state_hide(Uid) ->
 %           group 群聊;
 %           visit_card 名片;
 %           people_nearby 附近的人
+%           recently_user 新注册的朋友
+%
 % user_setting_ds:save(1, <<"add_friend_type">>, [<<"qrcode">>, <<"visit_card">>, <<"people_nearby">>]).
 save(Uid, <<"add_friend_type">>, TypeLi) ->
     priv_save(Uid, <<"add_friend_type">>, TypeLi);

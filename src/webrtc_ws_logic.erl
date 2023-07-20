@@ -21,7 +21,6 @@
 % for webrtc
 -spec event(integer(), integer(), binary(), binary()) -> ok.
 event(CurrentUid, ToUid, MsgId, Msg) ->
-
     % 判断当前用户是否是 ToUid 用户的朋友
     IsFriend = friend_ds:is_friend(ToUid, CurrentUid),
     % 判断当前用户是否在 ToUid 的黑名单里面

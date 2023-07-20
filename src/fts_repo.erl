@@ -35,7 +35,7 @@ user_search_page(Keyword, Limit, Offset) ->
 
 % fts_repo:count_for_user_search_page(<<"leeyi"/utf8>>).
 % fts_repo:count_for_user_search_page(<<"东区"/utf8>>).
-count_for_user_search_page(<<"">>) ->
+count_for_user_search_page(<<>>) ->
     0;
 count_for_user_search_page(Keyword) ->
     % use index uk_UserId_DeniedUserId

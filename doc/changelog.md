@@ -1,3 +1,7 @@
+# 0.1.7
+* /fts/user_search 新增响应 is_friend 、 remark ；
+* 添加 /fts/recently_user
+
 # 0.1.6
 * 调整 websocket链接频率控制（1 秒钟内3次链接，1分钟内5次年级）；
 * 修复 /friend/list 接口报错；

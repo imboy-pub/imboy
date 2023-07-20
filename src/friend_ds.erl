@@ -20,7 +20,7 @@
 %% ToUid 是 FromUid 的好友？
 
 % friend_ds:is_friend(1, 3)
--spec is_friend(integer(), integer()) -> boolean().
+-spec is_friend(integer(), integer()) -> {boolean(), any()}.
 is_friend(FromUid, ToUid) ->
     {Res, _} = friend_ds:is_friend(FromUid, ToUid, <<"remark">>),
     Res.
@@ -34,11 +34,12 @@ is_friend(FromUid, ToUid, Field) ->
             {ok, _ColumnLi, [{Val}]} ->
                 {true, Val};
             _ ->
-                {false, <<"">>}
+                {false, <<>>}
         end
     end,
-    % 缓存10天
-    imboy_cache:memo(Fun, Key, 864000).
+    %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
+    % 缓存1天，
+    imboy_cache:memo(Fun, Key, 86400).
 
 % friend_ds:page_by_uid(1).
 -spec page_by_uid(integer()) -> list().

@@ -25,7 +25,7 @@ begin
     --       setweight(to_tsvector('jiebacfg', new.region), 'B') WHERE user_id=NEW.id;
     RETURN NEW;
   ELSIF (TG_OP = 'INSERT') THEN
-    INSERT INTO public.fts_user (user_id, allow_search, token) VALUES (new.id, 2, setweight(to_tsvector('jiebacfg', new.nickname), 'A') ||
+    INSERT INTO public.fts_user (user_id, allow_search, token) VALUES (new.id, 1, setweight(to_tsvector('jiebacfg', new.nickname), 'A') ||
           setweight(to_tsvector('jiebacfg', new.sign), 'B') ||
           setweight(to_tsvector('jiebacfg', new.region), 'C'));
   return new;

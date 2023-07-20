@@ -77,6 +77,8 @@ get_routes() ->
 
         % 搜索“用户允许被搜索”的用户
         {"/fts/user_search", fts_handler, #{action => user_search}},
+        % 最近新注册的并且允许被搜索到的朋友
+        {"/fts/recently_user", fts_handler, #{action => recently_user}},
 
         {"/group/member", group_handler, #{action => member}},
 

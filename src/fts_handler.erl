@@ -25,6 +25,8 @@ init(Req0, State0) ->
     Req1 = case Action of
         user_search ->
             user_search(Req0, State);
+        recently_user ->
+            recently_user(Req0, State);
         false ->
             Req0
     end,
@@ -34,11 +36,20 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-user_search(Req0, _State) ->
-    % CurrentUid = maps:get(current_uid, State),
+% 搜索“用户允许被搜索”的用户
+user_search(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
-    Payload = fts_logic:user_search_page(Page, Size, Keyword),
+    Payload = fts_logic:user_search_page(CurrentUid, Page, Size, Keyword),
+    imboy_response:success(Req0, Payload).
+
+% 最近新注册的并且允许被搜索到的朋友
+recently_user(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {Page, Size} = imboy_req:page_size(Req0),
+    #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
+    Payload = fts_logic:recently_user_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).
 
 %% ===================================================================
