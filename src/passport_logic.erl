@@ -12,8 +12,8 @@
 -include_lib("imboy/include/def_column.hrl").
 
 
--spec send_email_code(ToEmail :: binary()) ->
-          {error, Msg :: list()} | {ok, any()}.
+-spec send_email_code(binary()) ->
+          {error, list()} | {ok, any()}.
 send_email_code(undefined) ->
     {error, "Email必须"};
 % send_email_code(ToEmail) ->

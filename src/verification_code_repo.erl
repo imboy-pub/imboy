@@ -22,10 +22,7 @@ get_by_id(Id) ->
 %   imboy_func:num_random(6),
 %   imboy_dt:millisecond() + 600000,
 %   imboy_dt:millisecond()).
--spec save(ToEmail :: binary(),
-           VerifyCode :: integer(),
-           ValidityAt :: integer(),
-           Now :: integer()) -> ok.
+-spec save(binary(), integer(), integer(), integer()) -> ok.
 save(ToEmail, VerifyCode, ValidityAt, Now) ->
     Tb = tablename(),
     Column = <<"(id,code,validity_at,created_at)">>,
@@ -39,7 +36,8 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
     Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '"
         , ValidityAt2/binary, "', '", Now2/binary
         , "') ON CONFLICT (id) DO ", UpSql/binary>>,
-    imboy_db:insert_into(Tb, Column, Value).
+    Sql = imboy_db:assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
+    imboy_db:execute(Sql, []).
 
 %% ===================================================================
 %% Internal Function Definitions
