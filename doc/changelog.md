@@ -1,3 +1,10 @@
+
+# 0.1.8
+* 修正 verification_code_repo:save/4 报错问题；
+* 添加 imboy_db:insert_into/4 ；
+* 添加 /fts/recently_user API ；
+* 添加 /fts/user_search API 新增响应 is_friend 、 remark ；
+
 # 0.1.7
 * /fts/user_search 新增响应 is_friend 、 remark ；
 * 添加 /fts/recently_user

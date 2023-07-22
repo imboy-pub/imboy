@@ -61,20 +61,24 @@ confirm_friend(CurrentUid, From, To, Payload) ->
 
     FromSetting = proplists:get_value(<<"from">>, Payload2),
     % Remark1 为 from 对 to 定义的 remark
-    Remark1 = proplists:get_value(<<"remark">>, FromSetting),
+    Remark1 = proplists:get_value(<<"remark">>, FromSetting, <<>>),
+    % ToTag 为 from 对 to 定义的 tag
+    ToTag = proplists:get_value(<<"tag">>, FromSetting, <<>>),
     Source = proplists:get_value(<<"source">>, FromSetting),
     FromToIsFriend = friend_ds:is_friend(FromID, ToID),
     % 好友关系写入数据库
     friend_repo:confirm_friend(FromToIsFriend,
-        FromID, ToID, Remark1, [{<<"is_from">>, 1} | FromSetting], NowTs),
+        FromID, ToID, Remark1, [{<<"is_from">>, 1} | FromSetting], ToTag, NowTs),
 
     ToSetting = proplists:get_value(<<"to">>, Payload2),
     ToFromIsFriend = friend_ds:is_friend(ToID, FromID),
     % Remark2 为 to 对 from 定义的 remark
-    Remark2 = proplists:get_value(<<"remark">>, ToSetting),
+    Remark2 = proplists:get_value(<<"remark">>, ToSetting, <<>>),
+    % FromTag 为 to 对 from 定义的 tag
+    FromTag = proplists:get_value(<<"tag">>, ToSetting, <<>>),
     % 好友关系写入数据库
     friend_repo:confirm_friend(ToFromIsFriend,
-        ToID, FromID, Remark2, [{<<"source">>, Source} | ToSetting], NowTs),
+        ToID, FromID, Remark2, [{<<"source">>, Source} | ToSetting], FromTag, NowTs),
 
     % 因为是 ToID 通过API确认的，所以只需要给FromID 发送消息
     MsgId = <<"afc_", From/binary, "_", To/binary>>,

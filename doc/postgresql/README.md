@@ -133,6 +133,20 @@ ALTER DATABASE imboy_v1 SET log_lock_waits = 'on';
 
 ```
 
+## 清空 标签系统相关数据
+```
+
+truncate public.user_tag_relation;
+truncate public.user_tag;
+
+update public.user_friend set tag = '' where 1=1;
+update public.user_collect set tag = '' where 1=1;
+
+
+select * from public.user_tag
+select * from public.user_tag_relation
+select id,tag from public.user_friend where (from_user_id = 62913 and to_user_id = 513242) or (to_user_id = 62913 and from_user_id = 513242)
+```
 
 # FAQ
 

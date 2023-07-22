@@ -5,7 +5,7 @@
 -export([tablename/0]).
 -export([find_by_uid/2]).
 -export([friend_field/3]).
--export([confirm_friend/6]).
+-export([confirm_friend/7]).
 -export([delete/2]).
 -export([move_to_category/3]).
 
@@ -17,23 +17,23 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_friend">>).
 
--spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), integer()) -> ok.
-confirm_friend(true, _, _, _, _, _) ->
+-spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), binary(), integer()) -> ok.
+confirm_friend(true, _, _, _, _, _, _) ->
     ok;
-confirm_friend(false, FromID, ToID, Remark, Setting, NowTs) ->
+confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     From = integer_to_binary(FromID),
     To = integer_to_binary(ToID),
     Tb = tablename(),
     Column = <<"(from_user_id,to_user_id,status,
         category_id,remark,updated_at,created_at,
-        setting)">>,
+        setting,tag)">>,
     CreatedAt = integer_to_binary(NowTs),
 
     SettingBin = jsone:encode(filter_friend_setting(Setting),
         [native_utf8]),
     Value1 = <<"(", From/binary, ", ", To/binary, ",1, 0, '",
         Remark/binary,"', 0, ", CreatedAt/binary,", '",
-        SettingBin/binary, "')">>,
+        SettingBin/binary, "', '", Tag/binary,"')">>,
     imboy_db:insert_into(Tb, Column, Value1),
     ok.
 

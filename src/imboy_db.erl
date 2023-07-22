@@ -8,7 +8,7 @@
 -export([query/1]).
 -export([query/2]).
 -export([execute/2, execute/3]).
--export([insert_into/3]).
+-export([insert_into/3, insert_into/4]).
 -export([assemble_sql/4]).
 
 -export([get_set/1]).
@@ -137,6 +137,7 @@ query(Sql, Params) ->
 -spec execute(any(), list()) ->
           {ok, LastInsertId :: integer()} | {error, any()}.
 execute(Sql, Params) ->
+    % ?LOG(io:format("~s\n", [Sql])),
     Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res = case Driver of
@@ -159,17 +160,15 @@ execute(Conn, Sql, Params) ->
     % {ok, 1} | {ok, 1, {ReturningField}}
     Res0.
 
-% replace_into(Table, Column, Value) ->
-%     % Sql like this "REPLACE INTO foo (k,v) VALUES (1,0), (2,0)"
-%     Sql = assemble_sql(<<"REPLACE INTO">>, Table, Column, Value),
-%     imboy_db:execute(Sql, []).
-
 
 insert_into(Table, Column, Value) ->
+    insert_into(Table, Column, Value, <<"RETURNING id;">>).
+
+insert_into(Table, Column, Value, Returning) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
-    Sql = assemble_sql(<<"INSERT INTO">>, Table, Column, Value),
     % return {ok,1,[{10}]}
-    imboy_db:execute(<<Sql/binary, " RETURNING id;">>, []).
+    Sql = assemble_sql(<<"INSERT INTO">>, Table, Column, Value),
+    imboy_db:execute(<<Sql/binary, " ", Returning/binary>>, []).
 
 
 % 组装 SQL 语句

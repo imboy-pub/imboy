@@ -173,13 +173,13 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
                 WHERE f.from_user_id = t.user_id AND t.scene = 2 AND t.tag_id = "
                 , TagId/binary
                 , " order by t.id asc limit 10 ">>,
-        % lager:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 query resp: ~p ;~n", [imboy_db:query(Sql)])),
+        % lager:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 query resp: ~s ~n", [Sql])),
         Items = imboy_db:list(Sql),
         % lager:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 Items: ~p ;~n", [Items])),
         imboy_func:implode(", ", [I || {I} <- Items])
     end,
-    % 缓存10天
-    imboy_cache:memo(Fun, Key, 1).
+    % 缓存1天
+    imboy_cache:memo(Fun, Key, 86400).
 
 % user_tag_relation_repo:flush_subtitle()
 flush_subtitle(TagId) ->

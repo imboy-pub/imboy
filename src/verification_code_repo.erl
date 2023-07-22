@@ -31,7 +31,7 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
     Now2 = integer_to_binary(Now),
 
     UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ",
-        ValidityAt2/binary, ", created_at = ", Now2/binary, ";">>,
+        ValidityAt2/binary, ", created_at = ", Now2/binary>>,
 
     Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '"
         , ValidityAt2/binary, "', '", Now2/binary
