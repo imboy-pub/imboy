@@ -34,15 +34,15 @@ user_search_page(Uid, Page, Size, Keywrod) ->
                 lists:zipwith(
                     fun(X, Y) -> {X, Y} end,
                     [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                    case friend_ds:is_friend(Uid, DeniedUserId) of
+                    case friend_ds:is_friend(Uid, Uid2) of
                         {B1, Remark} ->
                             [B1, Remark];
                         _ ->
                             [false, <<>>]
-                    end ++ [imboy_hashids:uid_encode(DeniedUserId) | Row ]
+                    end ++ [imboy_hashids:uid_encode(Uid2) | Row ]
                 ) ||
-                    [DeniedUserId | Row
-                ] <- Items1
+                    [Uid2 | Row
+                ] <- Items1, Uid2 /= Uid
             ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
@@ -79,15 +79,15 @@ recently_user_page(Uid, Page, Size, Keywrod) ->
                 lists:zipwith(
                     fun(X, Y) -> {X, Y} end,
                     [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                    case friend_ds:is_friend(Uid, DeniedUserId) of
+                    case friend_ds:is_friend(Uid, Uid2) of
                         {B1, Remark} ->
                             [B1, Remark];
                         _ ->
                             [false, <<>>]
-                    end ++ [imboy_hashids:uid_encode(DeniedUserId) | Row ]
+                    end ++ [imboy_hashids:uid_encode(Uid2) | Row]
                 ) ||
-                    [DeniedUserId | Row
-                ] <- Items1
+                    [Uid2 | Row
+                ] <- Items1, Uid2 /= Uid
             ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
