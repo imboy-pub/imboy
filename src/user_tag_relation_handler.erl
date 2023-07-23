@@ -61,7 +61,14 @@ add(Req0, State) ->
         _ ->
             <<>>
     end,
+    IsFriend = friend_ds:is_friend(CurrentUid, imboy_hashids:uid_decode(ObjectId)),
     Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
+    ObjectId2 = if
+        Scene2 == <<"2">>, IsFriend == false ->
+            <<>>;
+        true ->
+            ObjectId
+    end,
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
@@ -72,7 +79,7 @@ add(Req0, State) ->
         length(Tag) > 1, bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
         true ->
-            case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId, Tag) of
+            case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
                 {Code, Err} ->

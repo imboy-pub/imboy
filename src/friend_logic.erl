@@ -83,8 +83,8 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     % 因为是 ToID 通过API确认的，所以只需要给FromID 发送消息
     MsgId = <<"afc_", From/binary, "_", To/binary>>,
     MsgType = proplists:get_value(<<"msg_type">>, Payload2),
-    Payload3 = confirm_friend_resp(ToID, Remark1),
-    Payload4 = [{<<"is_from">>, 1} | Payload3],
+    % Payload3 = confirm_friend_resp(ToID, Remark1),
+    Payload4 = [{<<"is_from">>, 1} | Payload2],
     Payload5 = [{<<"source">>, Source} | Payload4],
     Payload6 = [{<<"msg_type">>, MsgType} | Payload5],
 
@@ -98,6 +98,20 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(FromID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
+    if
+        ToTag == <<>> ->
+            ok;
+        true ->
+            ToTag2 = [I || I <- binary:split(ToTag,<<",">>, [global]), I /= <<>>],
+            user_tag_relation_logic:add(FromID, <<"2">>, ToID, ToTag2)
+    end,
+    if
+        FromTag == <<>> ->
+            ok;
+        true ->
+            FromTag2 = [I || I <- binary:split(FromTag,<<",">>, [global]), I /= <<>>],
+            user_tag_relation_logic:add(ToID, <<"2">>, FromID, FromTag2)
+    end,
     % 为了简单，删除好友关系清理两个缓存
     imboy_cache:flush({is_friend, FromID, ToID}),
     imboy_cache:flush({is_friend, ToID, FromID}),

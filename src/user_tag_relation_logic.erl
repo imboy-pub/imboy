@@ -107,6 +107,9 @@ add(Uid, Scene, <<>>, [Tag]) ->
 add(Uid, <<"1">>, ObjectId, Tag) ->
     do_add(<<"1">>, Uid, ObjectId, Tag),
     ok;
+add(Uid, <<"2">>, ObjectId, Tag) when is_integer(ObjectId) ->
+    do_add(<<"2">>, Uid, ObjectId, Tag),
+    ok;
 add(Uid, <<"2">>, ObjectId, Tag) ->
     do_add(<<"2">>, Uid, imboy_hashids:uid_decode(ObjectId), Tag),
     ok.
