@@ -224,6 +224,8 @@ get_set(KV) ->
 
 query_resp({error, Msg}) ->
     {error, Msg};
+query_resp({ok, Num}) ->
+    {ok, Num};
 query_resp({ok,[K], Rows}) ->
     % {ok,[<<"count">>],[{1}]}
     {ok, [K], Rows};

@@ -129,6 +129,7 @@ delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
     delete_friend(CurrentUid, Uid2);
 delete_friend(CurrentUid, Uid) ->
     friend_repo:delete(CurrentUid, Uid),
+    user_tag_relation_repo:delete(<<"2">>, CurrentUid, Uid),
     % 为了简单，删除好友关系清理两个缓存
     imboy_cache:flush({is_friend, CurrentUid, Uid}),
     imboy_cache:flush({is_friend, Uid, CurrentUid}),

@@ -5,6 +5,7 @@
 %%%
 
 -export ([tablename/0]).
+-export ([delete/3]).
 -export ([remove_user_tag_relation/5, replace_object_tag/6]).
 -export ([save_tag/5, update_tag/5, save_user_tag_relation/6]).
 -export ([select_tag/3, select_user_tag_relation/3]).
@@ -24,13 +25,24 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
 
+delete(Scene, Uid, ObjectId) when is_integer(Uid) ->
+    delete(Scene, integer_to_binary(Uid), ObjectId);
+delete(Scene, Uid, ObjectId) when is_integer(ObjectId) ->
+    delete(Scene, Uid, integer_to_binary(ObjectId));
+delete(Scene, Uid, ObjectId) ->
+    Tb = tablename(),
+    % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
+    DelWhere = <<"scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND object_id = '", ObjectId/binary, "'">>,
+    DelSql = <<"DELETE FROM ", Tb/binary," WHERE ", DelWhere/binary>>,
+    lager:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 DelSql ~p; ~n", [DelSql])),
+    imboy_db:query(DelSql, []).
 
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     Tb = tablename(),
     % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
-    DelWhere = <<"scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND object_id = '", ObjectId/binary, "' AND tag_id = ", TagId/binary, ";">>,
+    DelWhere = <<"scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND object_id = '", ObjectId/binary, "' AND tag_id = ", TagId/binary>>,
     DelSql = <<"DELETE FROM ", Tb/binary," WHERE ", DelWhere/binary>>,
-    lager:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
+    lager:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
     epgsql:equery(Conn, DelSql, []),
     ok.
 

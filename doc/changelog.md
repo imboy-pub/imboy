@@ -2,6 +2,7 @@
 * 添加 imboy_hasher:encoded_val/1 imboy_hasher:decoded_payload/0 imboy_hasher:decoded_field/1 等方法，替换相关逻辑；
 * 修正 msg_type = apply_friend_confirm 的消息，结构错误导致APP端无法解析的问题；
 * 非好友情况下添加标签，只是先插入标签，标签和朋友关系在确认好友的时候绑定
+* 删除朋友关系的时候清理相关tag关系
 
 # 0.1.8
 * 修正 verification_code_repo:save/4 报错问题；
