@@ -1,3 +1,5 @@
+# 0.1.9
+* 添加 imboy_hasher:encoded_val/1 imboy_hasher:decoded_payload/0 imboy_hasher:decoded_field/1 等方法，替换相关逻辑；
 
 # 0.1.8
 * 修正 verification_code_repo:save/4 报错问题；

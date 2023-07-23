@@ -29,12 +29,10 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid)
 % 批量插入群离线消息表 及 时间线表
 write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
     Tb = tablename(),
-    Key = config_ds:env(postgre_aes_key),
     % ?LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
     imboy_db:with_transaction(fun(Conn) ->
         CreatedAt2 = integer_to_binary(CreatedAt),
-        Payload0 = base64:encode(Payload),
-        Payload2 = <<"encode(encrypt('", Payload0/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
+        Payload2 = imboy_hasher:encoded_val(Payload),
         % ?LOG(CreatedAt2),
         Column = <<"(payload,to_groupid,from_id,created_at,msg_id)">>,
         Sql = <<"INSERT INTO ", Tb/binary," ",

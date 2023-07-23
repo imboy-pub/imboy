@@ -45,7 +45,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 read_msg(ToUid, Limit, undefined) ->
-    Column = <<"id, payload, from_id, to_id,
+    P = imboy_hasher:decoded_payload(),
+    Column = <<"id, ", P/binary,", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
@@ -53,7 +54,8 @@ read_msg(ToUid, Limit, undefined) ->
 read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
     read_msg(ToUid, Limit, binary_to_integer(Ts));
 read_msg(ToUid, Limit, Ts) ->
-    Column = <<"id, payload, from_id, to_id,
+    P = imboy_hasher:decoded_payload(),
+    Column = <<"id, ", P/binary,", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1 AND created_at > $2">>,
     Vals = [ToUid, Ts],
@@ -84,10 +86,16 @@ revoke_offline_msg(NowTs, Id, FromId, ToId) ->
 %% ===================================================================
 
 read_msg(Where, Vals, Column, Limit) ->
-    {ok, ColumnLi, Rows} = msg_s2c_repo:read_msg(
+    Res = msg_s2c_repo:read_msg(
         Where,
         Vals,
         Column,
         Limit
     ),
-    [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, tuple_to_list(Row)) || Row <- Rows].
+    % ?LOG([Res]),
+    case Res of
+        {ok, ColumnLi, Rows} ->
+            [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, tuple_to_list(Row)) || Row <- Rows];
+        _ ->
+            []
+    end.

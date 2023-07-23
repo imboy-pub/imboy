@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.1.8
+PROJECT_VERSION = 0.1.9
 
 
 include include/deps.mk

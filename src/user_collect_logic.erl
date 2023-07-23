@@ -292,9 +292,7 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
             <<",", Md52/binary>> ->
                 Md52
         end,
-        Key = config_ds:env(postgre_aes_key),
-        Info2 = base64:encode(Info),
-        Info3 = <<"encode(encrypt('", Info2/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>,
+        Info2 = imboy_hasher:encoded_val(Info),
         UpSql2 = <<" UPDATE SET updated_at = ", CreatedAt/binary, ", status = 1;">>,
         Tb2 = <<"public.user_collect">>,
         Column2 = <<"(user_id, kind, kind_id, source, remark, info, attach_md5, created_at)">>,
@@ -305,7 +303,7 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
                KindId/binary, "', '",
                Source/binary, "', '",
                Remark/binary, "', ",
-               Info3/binary, ", '",
+               Info2/binary, ", '",
                AttachMd5/binary, "', ",
                CreatedAt/binary, ") ON CONFLICT (user_id, status, kind_id) DO ", UpSql2/binary>>,
         logger:error("user_collect_logic:add_kind ~s~n", [Sql2]),

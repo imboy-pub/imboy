@@ -59,8 +59,7 @@ get(Key, Defalut) when is_list(Key) ->
 get(ConfigKey, Defalut) ->
     Key = {config2, ConfigKey},
     Fun = fun() ->
-        AesKey = config_ds:env(postgre_aes_key),
-        Val = <<"decode(encode(decrypt(decode(replace(value, 'aes_cbc_', ''),'base64'), '", AesKey/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as value">>,
+        Val = imboy_hasher:decoded_field(<<"value">>),
         imboy_db:pluck(
             <<"config">>
             , <<"key = '", ConfigKey/binary, "'">>

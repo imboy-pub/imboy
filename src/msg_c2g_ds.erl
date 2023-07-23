@@ -39,8 +39,7 @@ read_msg(ToUid, Limit) ->
         , Rows
     ),
     % Column2 = <<"payload">>,
-    Key = config_ds:env(postgre_aes_key),
-    Column2 = <<"decode(encode(decrypt(decode(payload,'base64'), '", Key/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as payload">>,
+    Column2 = imboy_hasher:decoded_payload(),
     case msg_c2g_repo:find_by_ids(MsgIds, Column2) of
         {ok, _, []} ->
             [];
