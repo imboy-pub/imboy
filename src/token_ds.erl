@@ -36,16 +36,18 @@ decrypt_token(Token, Type) ->
             ID = imboy_hashids:uid_decode(Uid),
             ExpireAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
-            {ok, ID, ExpireAt, Sub};
-        {error, _JWT_ERR} when Type == tk ->
-            {error, 705, "Please refresh token", #{}};
-        {error, _JWT_ERR} ->
-            {error, 706, "Please refresh token", #{}};
+            Now = imboy_dt:millisecond(),
+            if
+                (ExpireAt - Now) > 0 ->
+                    {ok, ID, ExpireAt, Sub};
+                true ->
+                    {error, 705, "Please refresh token", #{}}
+            end;
         _JWT_ERR ->
             {error, 706, "Invalid token", #{}}
     catch
         _:_ ->
-            {error, 706, "Invalid token", #{}}
+            {error, 706, "Invalid token.", #{}}
     end.
 
 

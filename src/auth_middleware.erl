@@ -46,10 +46,6 @@ do_authorization(Authorization, Req, Env) ->
             #{handler_opts := HandlerOpts} = Env,
             Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
             {ok, Req, Env2};
-        {ok, Id, _ExpireAt, <<"tk">>} when is_binary(Id) ->
-            #{handler_opts := HandlerOpts} = Env,
-            Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
-            {ok, Req, Env2};
         {ok, _Id, _ExpireAt, <<"rtk">>} ->
             Err = "Does not support refreshtoken",
             Req1 = imboy_response:error(Req, Err, 1),
