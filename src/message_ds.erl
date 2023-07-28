@@ -10,7 +10,7 @@
 -export([assemble_s2c/3]).
 -export([assemble_msg/5]).
 
--export([send_next/4, send_next/5]).
+-export([send_next/4, send_next/6]).
 
 
 %% ===================================================================
@@ -18,16 +18,20 @@
 %% ===================================================================
 
 send_next(ToUid, MsgId, Msg, MsLi) ->
-    send_next(<<"">>, ToUid, MsgId, Msg, MsLi).
+    % 给指定用户所有设备发送消息
+    send_next(ToUid, MsgId, Msg, MsLi, [], false).
 
 % 如果消息一直没有被客户端确认，
 % 那么它将按照 MillisecondList 定义的频率投递 length(MillisecondList) 次，
 % 除非投递期间收到客户端确认消息（ CLIENT_ACK,type,msgid,did ）才终止投递；
 % 也就是说，消息会按特地平率至少投递一次，至多投递 length(MillisecondList) 次。
--spec send_next(binary(), integer(), binary(), list(), list()) -> ok.
-send_next(_CurrentDID, _ToUid, _MsgId, _Msg, []) ->
+-spec send_next(integer(), binary(), list(), list(), list(), boolean()) -> ok.
+send_next( _ToUid, _MsgId, _Msg, [], _, _) ->
     ok;
-send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
+send_next(ToUid, MsgId, Msg, [F | MLTail], DIDLi, IsMember) when is_function(F) ->
+    apply(F, []),
+    send_next(ToUid, MsgId, Msg, MLTail, DIDLi, IsMember);
+send_next(ToUid, MsgId, Msg, [Millisecond | MLTail], DIDLi, IsMember) ->
     % start_timer/3 返回的是 TimerRef erlang:start_timer(1, self(), 1234).
     % #Ref<0.717641544.2272788481.230829>
     % (imboy@127.0.0.1)2> flush().
@@ -36,7 +40,12 @@ send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     % 如果有多端设备在线，可以给多端推送
     % Starts a timer which will send the message {timeout, TimerRef, Msg}
     % to Dest after Time milliseconds.
-
+    IsMember2 = case DIDLi of
+        [] ->
+            false;
+        _ ->
+            IsMember
+    end,
     TimerRefList = [{DID, erlang:start_timer(
         Millisecond,
         ToPid,
@@ -44,7 +53,7 @@ send_next(CurrentDID, ToUid, MsgId, Msg, [Millisecond | MLTail]) ->
     )} ||
         {ToPid, {_Dtype, DID}} <- imboy_session:list_by_uid(ToUid)
             % , is_process_alive(ToPid)
-            , CurrentDID /= DID
+            , lists:member(DID, DIDLi) == IsMember2
     ],
     case TimerRefList of
         [] ->

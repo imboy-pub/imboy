@@ -1,3 +1,9 @@
+
+# 0.1.10
+* 新增新的WebSocket 链接token校验机制，提示APP体验
+* 修改 message_ds:send_next/5 为 message_ds:send_next/6 解决消息不按频率发送的问题
+* 新增 message_ds:send_next/6 第4个参数的元素支持 fun/1
+
 # 0.1.9
 * 添加 imboy_hasher:encoded_val/1 imboy_hasher:decoded_payload/0 imboy_hasher:decoded_field/1 等方法，替换相关逻辑；
 * 修正 msg_type = apply_friend_confirm 的消息，结构错误导致APP端无法解析的问题；

@@ -5,7 +5,7 @@
 
 -export([encrypt_token/1]).
 -export([encrypt_refreshtoken/1]).
--export([decrypt_token/1, decrypt_token/2]).
+-export([decrypt_token/1]).
 % -export ([get_uid/1]).
 
 -include_lib("imboy/include/common.hrl").
@@ -25,9 +25,6 @@ encrypt_token(ID) ->
 
 %% 解析token
 decrypt_token(Token) ->
-    decrypt_token(Token, tk).
-
-decrypt_token(Token, Type) ->
     try
         jwerl:verify(Token, hs256, config_ds:env(jwt_key))
     of
@@ -41,7 +38,7 @@ decrypt_token(Token, Type) ->
                 (ExpireAt - Now) > 0 ->
                     {ok, ID, ExpireAt, Sub};
                 true ->
-                    {error, 705, "Please refresh token", #{}}
+                    {error, 705, "Please refresh token", #{uid => ID, expire_at => ExpireAt}}
             end;
         _JWT_ERR ->
             {error, 706, "Invalid token", #{}}

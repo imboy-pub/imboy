@@ -38,7 +38,8 @@ execute(Req, Env) ->
     % 签名结果
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
-    case verify_sign(Sign, Vsn) of
+    Method = cowboy_req:header(<<"method">>, Req),
+    case verify_sign(Sign, Vsn, Method) of
         true ->
             {ok, Req, Env};
         false ->
@@ -48,14 +49,18 @@ execute(Req, Env) ->
             {stop, Req1}
     end.
 
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
 
-% 内部方法
-verify_sign(undefined, _Vsn) ->
+verify_sign(undefined, _Vsn, _Method) ->
     false;
-verify_sign(_Sign, undefined) ->
+verify_sign(_Sign, undefined, _Method) ->
     false;
-verify_sign(Sign, Vsn) ->
+verify_sign(Sign, Vsn, <<"md5">>) ->
     AuthKeys = config_ds:env(auth_keys),
     Key = proplists:get_value(Vsn, AuthKeys),
     Str = Key ++ binary_to_list(Vsn),
-    imboy_hasher:md5(Str) == Sign.
+    imboy_hasher:md5(Str) == Sign;
+verify_sign(_, _, _) ->
+    false.

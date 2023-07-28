@@ -96,20 +96,21 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     ?LOG([online, Uid, Pid, State, DID]),
     DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
-    MsgType = <<"logged_another_device">>,
+    MsgId = <<"logged_another_device">>,
     Payload = [
-        {<<"msg_type">>, MsgType},
+        {<<"msg_type">>, MsgId},
         {<<"did">>, DID},
         {<<"dname">>, DName}
     ],
     ToUid = imboy_hashids:uid_encode(Uid),
     Msg = message_ds:assemble_msg(
-        <<"S2C">>, <<"">>, ToUid
-        , Payload, MsgType),
+        <<"S2C">>, <<>>, ToUid
+        , Payload, MsgId),
 
     MsLi = [0, 5000, 10000],
     Msg2 = jsone:encode(Msg, [native_utf8]),
-    message_ds:send_next(DID, Uid, MsgType, Msg2, MsLi),
+    % 给自己的其他设备发生消息
+    message_ds:send_next(Uid, MsgId, Msg2, MsLi, [DID], false),
     % end
 
     % 检查上线通知好友

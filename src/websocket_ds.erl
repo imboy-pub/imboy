@@ -32,6 +32,24 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
         % TODO check token expire
         {ok, Uid, _ExpireAt, _Type} ->
             auth_after(Uid, Req, State, Opt);
+        {error, 705,  _,  Map} ->
+            Uid = maps:get(uid, Map),
+            DID = maps:get(did, State),
+            MsgId = <<"please_refresh_token">>,
+            ToUid = imboy_hashids:uid_encode(Uid),
+            Msg = message_ds:assemble_msg(
+                <<"S2C">>, <<>>, ToUid
+                , [{<<"msg_type">>, MsgId}]
+                , MsgId),
+            Msg2 = jsone:encode(Msg, [native_utf8]),
+            Fun = fun() ->
+                Li = imboy_session:list_by_uid(Uid),
+                Reason = <<"token invalid, please login again.">>,
+                [Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID]
+            end,
+            % 只给当前设备发生消息
+            message_ds:send_next(Uid, MsgId, Msg2, [0, 3000, 5000] ++ [Fun], [DID], true),
+            auth_after(Uid, Req, State, Opt);
         {error, Code, Msg, _Map} ->
             {ok, Req, State#{error => Code, msg => Msg}}
     end;

@@ -51,13 +51,6 @@ init(Req0, State0) ->
                     websocket_ds:auth(Auth, Req1, State1, Opt0)
             end
     end.
-    % case websocket_ds:check_subprotocols(SubPt, Req0) of
-    %     {ok, Req1} ->
-    %         {ok, Req1, State1};
-    %     {cowboy_websocket, Req1} ->
-    %         % ?LOG([State1]),
-    %         websocket_ds:auth(Auth, Req1, State1, Opt0)
-    % end.
 
 %%连接初始 onopen
 websocket_init(State) ->
@@ -208,19 +201,21 @@ websocket_info({reply, Msg}, State) ->
     ?LOG([reply, State]),
     {reply, {text, jsone:encode(Msg, [native_utf8])}, State,
             hibernate};
-websocket_info({timeout, _Ref, {[], {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, Msg,
-        State, cowboy_clock:rfc1123()]),
+
+websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
     {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
     ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi,
         State, Msg, cowboy_clock:rfc1123()]),
-    message_ds:send_next(DID, Uid, MsgId, Msg, MsLi),
+    message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
     {reply, {text, Msg}, State, hibernate};
 
 websocket_info({timeout, _Ref, Msg}, State) ->
     ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};
+websocket_info({close, CloseCode, Reason}, State) ->
+    ?LOG([close, CloseCode, Reason, State]),
+    {reply, {close, CloseCode, Reason}, State};
 websocket_info(stop, State) ->
     ?LOG([stop, State]),
     {stop, State};
@@ -235,7 +230,7 @@ terminate(Reason, _Req, State) ->
     ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case maps:find(current_uid, State) of
         {ok, Uid} when is_integer(Uid)  ->
-            DID = maps:get(did, State, <<"">>),
+            DID = maps:get(did, State, <<>>),
             user_logic:offline(Uid, self(), DID),
             ok;
         error ->
