@@ -3,6 +3,7 @@
 * 新增 imboy_hasher:hmac_sha512/2 方法，API验证同时支持 sha256 sha512 md5 等方法
 * 新增错误码 707 ，表示：签名错误，需要下载最新版本APP；
 * 新增配置 api_auth_switch ，为原子 on 的时候开启API签名验证
+* 初始化配置、刷新token 和 WebSocket 链接这3个 API 必须做签名校验，其他 open 类型的API不用做签名校验；
 
 # 0.1.10
 * 新增新的WebSocket 链接token校验机制，提示APP体验
