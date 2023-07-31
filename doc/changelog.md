@@ -1,4 +1,9 @@
 
+# 0.1.11
+* 新增 imboy_hasher:hmac_sha512/2 方法，API验证同时支持 sha256 sha512 md5 等方法
+* 新增错误码 707 ，表示：签名错误，需要下载最新版本APP；
+* 新增配置 api_auth_switch ，为原子 on 的时候开启API签名验证
+
 # 0.1.10
 * 新增新的WebSocket 链接token校验机制，提示APP体验
 * 修改 message_ds:send_next/5 为 message_ds:send_next/6 解决消息不按频率发送的问题

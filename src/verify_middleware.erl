@@ -10,7 +10,8 @@
 %% 这个是回调函数
 execute(Req, Env) ->
     % app version 1.0.0
-    Vsn = cowboy_req:header(<<"vsn">>, Req),
+    Vsn = cowboy_req:header(<<"vsn">>, Req, <<"0.1.1">>),
+    Did = cowboy_req:header(<<"did">>, Req, <<>>),
     % /// A string representing the operating system or platform.
     % ///
     % /// Possible values include:
@@ -39,12 +40,16 @@ execute(Req, Env) ->
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
-    case verify_sign(Sign, Vsn, Method) of
+    [X,Y, _Z] = binary:split(Vsn, <<".">>, [global]),
+    VsnXY = iolist_to_binary([X, ".", Y]),
+    PlainText = iolist_to_binary([Did, "|", VsnXY]),
+    case verify_sign(Sign, PlainText, VsnXY, Method) of
         true ->
             {ok, Req, Env};
         false ->
             Req1 = imboy_response:error(
-                Req, "Failed to verify the signature", 1
+                % 签名错误，需要下载最新版本APP
+                Req, "Failed to verify the signature", 707
             ),
             {stop, Req1}
     end.
@@ -53,14 +58,20 @@ execute(Req, Env) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-verify_sign(undefined, _Vsn, _Method) ->
+verify_sign(undefined, _, _VsnXY, _Method) ->
     false;
-verify_sign(_Sign, undefined, _Method) ->
+verify_sign(_Sign, _, undefined, _Method) ->
     false;
-verify_sign(Sign, Vsn, <<"md5">>) ->
+
+verify_sign(Sign, PlainText, VsnXY, <<"sha256">>) ->
     AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(Vsn, AuthKeys),
-    Str = Key ++ binary_to_list(Vsn),
-    imboy_hasher:md5(Str) == Sign;
-verify_sign(_, _, _) ->
+    Key = proplists:get_value(VsnXY, AuthKeys),
+    imboy_hasher:hmac_sha256(PlainText, Key) == Sign;
+verify_sign(Sign, PlainText, VsnXY, <<"sha512">>) ->
+    AuthKeys = config_ds:env(auth_keys),
+    Key = proplists:get_value(VsnXY, AuthKeys),
+    imboy_hasher:hmac_sha512(PlainText, Key) == Sign;
+verify_sign(Sign, PlainText, _VsnXY, <<"md5">>) ->
+    imboy_hasher:md5(PlainText) == Sign;
+verify_sign(_, _, _, _) ->
     false.

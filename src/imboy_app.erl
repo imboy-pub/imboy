@@ -16,6 +16,17 @@ start(_Type, _Args) ->
     % ?LOG(Routes),
     Dispatch = cowboy_router:compile(Routes),
 
+    Middlewares = [
+        cowboy_router
+        , auth_middleware
+        , cowboy_handler
+    ],
+    AuthMiddle = case config_ds:env(api_auth_switch) of
+        on ->
+            [verify_middleware];
+        _ ->
+            []
+    end,
     {ok, _} = cowboy:start_clear(imboy_listener,
         [
             {port, config_ds:env(http_port)}
@@ -29,14 +40,8 @@ start(_Type, _Args) ->
         %         , {certfile, PrivDir ++ "/ssl/server.crt"}
         %         , {keyfile, PrivDir ++ "/ssl/server.key"}
         %     ],
-
         , #{
-            middlewares => [
-                cowboy_router
-                % , verify_middleware
-                , auth_middleware
-                , cowboy_handler
-            ],
+            middlewares => AuthMiddle ++ Middlewares,
             % metrics_callback => do_metrics_callback(),
             stream_handlers => [
                 cowboy_compress_h

@@ -1,12 +1,9 @@
 -module(imboy_hasher).
 
 -export([md5/1]).
--export([hmac_sha512/2]).
+-export([hmac_sha256/2, hmac_sha512/2]).
 
 -export([encoded_val/1, decoded_payload/0, decoded_field/1]).
-
--define(SHA_256_BLOCKSIZE, 64).
-
 
 %% ===================================================================
 %% API
@@ -30,14 +27,21 @@ decoded_field(Field) ->
     <<"decode(encode(decrypt(decode(replace(", Field/binary, ", 'aes_cbc_', ''),'base64'), '", Key/binary, "', 'aes-cbc/pad:pkcs') , 'escape'), 'base64') as ", Field/binary>>.
 
 %% erlang md5 16进制字符串
+% imboy_hasher:md5("ddd").
 md5(Str) ->
     Sig = erlang:md5(Str),
     iolist_to_binary([io_lib:format("~2.16.0b", [S]) ||
                          S <- binary_to_list(Sig)]).
 
-
--spec hmac_sha512(PlainText :: list(), Key :: list()) ->
-          Ciphertext :: binary().
+% imboy_hasher:hmac_sha512("", "").
+-spec hmac_sha512(list(), list()) -> binary().
 hmac_sha512(PlainText, Key) ->
-    Bin = crypto:macN(hmac, sha512, Key, PlainText, ?SHA_256_BLOCKSIZE),
+    % Bin = crypto:macN(hmac, sha512, Key, PlainText, ?SHA_256_BLOCKSIZE),
+    Bin = crypto:mac(hmac, sha512, Key, PlainText),
+    base64:encode(Bin).
+
+% imboy_hasher:hmac_sha512("", "").
+-spec hmac_sha256(list(), list()) -> binary().
+hmac_sha256(PlainText, Key) ->
+    Bin = crypto:mac(hmac, sha256, Key, PlainText),
     base64:encode(Bin).
