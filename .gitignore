@@ -6,8 +6,10 @@ relx
 .erlang.mk
 priv/static/layim
 ebin
-*.local.*
-*.prod.*
+*local*.config
+*prod*.config
+*local*.args
+*prod*.args
 .imboy.plt
 deps
 priv/static/layim*

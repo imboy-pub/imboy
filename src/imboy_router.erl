@@ -90,7 +90,7 @@ get_routes() ->
     ]}].
 
 %% 因为 除去 option 和 open 的路由，就是必须要 auth 的路由了
-%% 所以 这里不需要订阅 auth/0 方法
+%% 所以 这里不需要定义 auth/0 方法
 
 %% 如果请求头里面有 authorization 字段，就需要认证的API
 %% 列表元素必须为binary

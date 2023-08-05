@@ -1,4 +1,9 @@
 
+# 0.1.12
+* "/passport/" 开通的api也需要做签名验证；
+* 优化 Makefile
+* 整理一些文档；
+
 # 0.1.11
 * 新增 imboy_hasher:hmac_sha512/2 方法，API验证同时支持 sha256 sha512 md5 等方法
 * 新增错误码 707 ，表示：签名错误，需要下载最新版本APP；

@@ -4,7 +4,8 @@
 
 因为我是中国人，所以选择了[木兰宽松许可证, 第2版](https://gitee.com/imboy-pub/imboy-flutter/blob/main/LICENSE)
 
-https://ninenines.eu/docs/en/cowboy/2.9/guide/getting_started/
+
+一些功能的设计思考权衡过程，请参考[文档](./doc/design_thinking.md)
 
 ## Version
 力求基于“语义化版本控制的规范”([语义化版本 2.0.0](https://semver.org/lang/zh-CN/))实施版本管理.
@@ -32,7 +33,6 @@ kerl list releases
 
 kerl build 24.3.4.2 / kerl delete build 24.3.3
 
-
 kerl list builds
 
 kerl install 24.3.4.2 ~/kerl/24.3.4.2
@@ -44,7 +44,6 @@ kerl_deactivate
 
 Anytime you can check which installation, if any, is currently active with:
 kerl active
-
 ```
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
@@ -65,25 +64,7 @@ make new t=imboy.ds n=demo_ds
 make new t=imboy.rest_handler n=demo2_handler && make new t=imboy.logic n=demo2_logic && make new t=imboy.repository n=demo2_repo
 
 make list-templates
-Available templates:
-    cowboy.http
-    cowboy.loop
-    cowboy.rest
-    cowboy.ws
-    cowboy_http
-    cowboy_loop
-    cowboy_rest
-    cowboy_ws
-    gen_fsm
-    gen_server
-    gen_statem
-    imboy.ds
-    imboy.logic
-    imboy.repository
-    imboy.rest_handler
-    module
-    ranch_protocol
-    supervisor
+...
 
 make run
 
@@ -92,6 +73,8 @@ IMBOYENV=prod make run
 IMBOYENV=test make run
 IMBOYENV=dev make run
 IMBOYENV=local make run
+
+make rel IMBOYENV=local
 
 // on CentOS8 OR macOS
 export IMBOYENV='local' && make run
@@ -110,6 +93,9 @@ make dialyze
 ## make
 
 ```
+// 小心！这将构建该文件，即使它之前已经存在。
+make rebar.config
+
 make rel
 
 make help

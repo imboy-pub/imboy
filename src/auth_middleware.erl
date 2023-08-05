@@ -20,12 +20,15 @@ execute(Req, Env) ->
             InOpenLi = lists:member(Path, OpenLi),
             InOptionLi = lists:member(Path, OptionLi),
             Switch = config_ds:env(api_auth_switch),
+            Passport = string:sub_string(binary_to_list(Path), 1, 10),
             Res1 = if
                 Path == <<"/ws">>, Switch == on ->
                     verify_sign(Req, Env);
                 Path == <<"/init">>, Switch == on ->
                     verify_sign(Req, Env);
                 Path == <<"/refreshtoken">>, Switch == on ->
+                    verify_sign(Req, Env);
+                Passport == "/passport/", Switch == on ->
                     verify_sign(Req, Env);
                 InOpenLi == false, Switch == on ->
                     verify_sign(Req, Env);

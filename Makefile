@@ -1,7 +1,11 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.1.11
+PROJECT_VERSION = 0.1.12
 
+# usage: make TARGET IMBOYENV=...
+#    make run IMBOYENV=local
+#    make rel IMBOYENV=local
+RELX_CONFIG = $(CURDIR)/relx_$(IMBOYENV).config
 
 include include/deps.mk
 
@@ -12,6 +16,8 @@ LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
 DEPS = goldrush lager jsone ranch cowlib cowboy
 DEPS += jsx jwerl hashids recon observer_cli gen_smtp qdate throttle
 
+# Erlang 的纯函数式和泛型编程
+DEPS += datum
 # DEPS += mysql poolboy
 DEPS += epgsql pooler
 DEPS += depcache
@@ -20,7 +26,6 @@ DEPS += ecron
 DEPS += esq
 DEPS += sync
 # DEPS += khepri
-
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = bbmustache relx
@@ -36,21 +41,8 @@ SP = 4
 DOC_DEPS = edown
 EDOC_OPTS = {doclet, edown_doclet}
 
-ifeq ($(IMBOYENV),prod)
-	RELX_CONFIG = $(CURDIR)/relx.prod.config
-else ifeq ($(IMBOYENV),test)
-	RELX_CONFIG = $(CURDIR)/relx.test.config
-else ifeq ($(IMBOYENV),dev)
-	RELX_CONFIG = $(CURDIR)/relx.dev.config
-else ifeq ($(IMBOYENV),local)
-	RELX_CONFIG = $(CURDIR)/relx.local.config
-	ERLC_COMPILE_OPTS = +'{debug_info}'
-else
-	RELX_CONFIG = $(CURDIR)/relx.config
-endif
 dep_cowboy_commit = 2.9.0
 dep_lager_commit = 3.9.2
-
 
 # 生成文档的时候会被用到的依赖项
 # DOC_DEPS =
