@@ -11,9 +11,9 @@ ebin
 *local*.args
 *prod*.args
 .imboy.plt
-deps
 priv/static/layim*
 nginx_img.conf
+deps
 deps.23
 deps.24
 efmt

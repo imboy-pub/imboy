@@ -82,6 +82,9 @@ get_routes() ->
 
         {"/group/member", group_handler, #{action => member}},
 
+        %
+        {"/live_room/[:stream_id]", live_room_stream_handler, #{}},
+
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 
         {"/static/[...]", cowboy_static,

@@ -86,6 +86,10 @@ make new t=gen_server n=server_demo
 // 重新加载 sys.config 配置
 config_ds:local_reload()
 
+Routes = imboy_router:get_routes(),
+Dispatch = cowboy_router:compile(Routes),
+cowboy:set_env(imboy_listener, dispatch, Dispatch).
+
 make dialyze
 ```
 
@@ -93,6 +97,7 @@ make dialyze
 ## make
 
 ```
+
 // 小心！这将构建该文件，即使它之前已经存在。
 make rebar.config
 
@@ -110,6 +115,11 @@ erl> help().
 // 更新 erlang.mk
 make erlang-mk
 
+```
+
+## Many applications in one repository
+```
+make new-app in=webchat
 ```
 
 ## edoc

@@ -14,6 +14,9 @@ execute(Req, Env) ->
             {ok, Req, Env};
         <<"/webrtc/", _Tail/binary>> ->
             {ok, Req, Env};
+        % 为了调试方便，先不鉴权
+        <<"/live_room/", _Tail/binary>> ->
+            {ok, Req, Env};
         _ ->
             OpenLi = imboy_router:open(),
             OptionLi = imboy_router:option(),

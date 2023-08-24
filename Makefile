@@ -6,11 +6,15 @@ PROJECT_VERSION = 0.1.12
 #    make run IMBOYENV=local
 #    make rel IMBOYENV=local
 RELX_CONFIG = $(CURDIR)/relx_$(IMBOYENV).config
+# APPS_DIR ?= $(CURDIR)/app
+# DEPS_DIR  = plugin/*/
 
 include include/deps.mk
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
+
+# LOCAL_DEPS += erlmedia
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS = goldrush lager jsone ranch cowlib cowboy
@@ -41,7 +45,7 @@ SP = 4
 DOC_DEPS = edown
 EDOC_OPTS = {doclet, edown_doclet}
 
-dep_cowboy_commit = 2.9.0
+dep_cowboy_commit = 2.10.0
 dep_lager_commit = 3.9.2
 
 # 生成文档的时候会被用到的依赖项
