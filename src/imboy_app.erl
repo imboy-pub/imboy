@@ -14,36 +14,31 @@ start(_Type, _Args) ->
     Routes = imboy_router:get_routes(),
 
     % ?LOG(Routes),
+    Port = config_ds:env(http_port),
     Dispatch = cowboy_router:compile(Routes),
-
-    {ok, _} = cowboy:start_clear(imboy_listener,
-        [
-            {port, config_ds:env(http_port)}
-        ]
-
-        % PrivDir = code:priv_dir(imboy),
-        % {ok, _} = cowboy:start_tls(imboy_listener,
-        %     [
-        %         {port, Port}
-        %         , {cacertfile, PrivDir ++ "/ssl/cowboy-ca.crt"}
-        %         , {certfile, PrivDir ++ "/ssl/server.crt"}
-        %         , {keyfile, PrivDir ++ "/ssl/server.key"}
-        %     ],
-        , #{
-            middlewares => [
-                cowboy_router
-                , auth_middleware
-                , cowboy_handler
-            ],
-            % metrics_callback => do_metrics_callback(),
-            stream_handlers => [
-                cowboy_compress_h
-                , cowboy_stream_h
-                % , cowboy_metrics_h
-            ],
-            env => #{dispatch => Dispatch}
-        }
-    ),
+    ProtoOpts = #{
+        middlewares => [
+            cowboy_router
+            , auth_middleware
+            , cowboy_handler
+        ],
+        % metrics_callback => do_metrics_callback(),
+        stream_handlers => [
+            cowboy_compress_h
+            , cowboy_stream_h
+            % , cowboy_metrics_h
+        ],
+        env => #{dispatch => Dispatch}
+    },
+    % StartMode = config_ds:env(),
+    case config_ds:env(start_mode) of
+        quic ->
+            start_quic(Dispatch);
+        tls ->
+            start_tls(Port, ProtoOpts);
+        _ ->
+            start_clear(Port, ProtoOpts)
+    end,
     % end handler
     imboy_sup:start_link().
 
@@ -55,3 +50,45 @@ start(_Type, _Args) ->
 
 stop(_State) ->
     ok = cowboy:stop_listener(imboy_listener).
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+-spec start_quic(map())
+    -> {ok, pid()} | {error, any()}.
+start_quic(Dispatch) ->
+    PrivDir = code:priv_dir(imboy),
+    cowboy:start_quic(#{
+        socket_opts => [
+            % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
+            % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
+            {cert, PrivDir ++ config_ds:env(certfile)}
+            , {key, PrivDir ++ config_ds:env(keyfile)}
+        ]
+    }, #{
+        env => #{dispatch => Dispatch}
+    }).
+
+-spec start_tls(integer(), any())
+    -> {ok, pid()} | {error, any()}.
+start_tls(Port, ProtoOpts) ->
+    PrivDir = code:priv_dir(imboy),
+    cowboy:start_tls(imboy_listener
+        , [
+            {port, Port}
+            , {cacertfile, PrivDir ++ config_ds:env(cacertfile)}
+            , {certfile, PrivDir ++ config_ds:env(certfile)}
+            , {keyfile, PrivDir ++ config_ds:env(keyfile)}
+        ]
+        , ProtoOpts
+    ).
+
+-spec start_clear(integer(), any())
+    -> {ok, pid()} | {error, any()}.
+start_clear(Port, ProtoOpts) ->
+    cowboy:start_clear(imboy_listener
+        , [
+            {port, Port}
+        ]
+        , ProtoOpts
+    ).
