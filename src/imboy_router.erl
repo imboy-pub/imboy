@@ -84,6 +84,7 @@ get_routes() ->
 
         %
         {"/live_room/[:stream_id]", live_room_stream_handler, #{}},
+        {"/whip/publish/[:stream_id]/[:id]", whip_handler, #{action => publish}},
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 

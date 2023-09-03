@@ -28,8 +28,8 @@ init(Req0, State0) ->
             publish(Req0, State);
         unpublish ->
             unpublish(Req0, State);
-        publish ->
-            publish(Req0, State);
+        subscribe ->
+            subscribe(Req0, State);
         unsubscribe ->
             unsubscribe(Req0, State);
         % candidate ->
@@ -48,15 +48,13 @@ publish(Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
     {ok, OfferSdp, _Req} = cowboy_req:read_body(Req0),
-    {ok, OfferSdp1} = ersip:parse(OfferSdp),
-    new_sdp(),
-    AsswerSdp = [],
+    AsswerSdp = generate_answer_sdp(OfferSdp),
     {ok, NewReq} = cowboy_req:reply(200
         , #{
             <<"Content-Type">> => "application/sdp"
             , <<"server">> => "imboy"
         }
-        , iolist_to_binary(AsswerSdp)
+        , AsswerSdp
         , Req0),
    {ok, NewReq, State}.
 
@@ -73,13 +71,13 @@ subscribe(Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
     {ok, OfferSdp, _Req} = cowboy_req:read_body(Req0),
-    AsswerSdp = [],
+    AsswerSdp = generate_answer_sdp(OfferSdp),
     {ok, NewReq} = cowboy_req:reply(200
         , #{
             <<"Content-Type">> => "application/sdp"
             , <<"server">> => "imboy"
         }
-        , iolist_to_binary(AsswerSdp)
+        , AsswerSdp
         , Req0),
    {ok, NewReq, State}.
 
@@ -109,7 +107,17 @@ unsubscribe(Req0, _State) ->
 %     ?_test(my_if_addr(inet6))].
 -endif.
 
-new_sdp() =>
-    IP4FQDN = make_in_ip4(<<"pc33.atlanta.com">>),
-    {od, Addr} = ersip_sdp_addr:from_raw(ersip_sdp_addr:raw(IP4FQDN)),
-    ersip_sdp_conn:new(Addr).
+%% 根据 Offer SDP 生成 Answer SDP
+generate_answer_sdp(OfferSdp) ->
+    %% 在这里编写你的逻辑来生成 Answer SDP
+    %% 可以使用 ersip_sdp 库来解析和构建 SDP 数据
+    %% 例如：
+    {ok, AnswerSdp} = ersip_sdp:parse(OfferSdp),
+
+    %% 构建 Answer SDP
+    ersip_sdp:set_origin(AnswerSdp, "-","0","0","IN","IP4","127.0.0.1"),
+    %% 添加其他需要的信息
+
+    %% 返回生成的 Answer SDP
+    ersip_sdp:to_binary(AnswerSdp).
+
