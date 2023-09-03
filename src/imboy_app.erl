@@ -12,34 +12,34 @@ start(_Type, _Args) ->
     imboy_session:init(),
     % begin handler
     Routes = imboy_router:get_routes(),
-
-    % ?LOG(Routes),
-    Port = config_ds:env(http_port),
+    % cowboy_router:dispatch_rules()
     Dispatch = cowboy_router:compile(Routes),
-    ProtoOpts = #{
-        middlewares => [
-            cowboy_router
-            , auth_middleware
-            , cowboy_handler
-        ],
-        % metrics_callback => do_metrics_callback(),
-        stream_handlers => [
-            cowboy_compress_h
-            , cowboy_stream_h
-            % , cowboy_metrics_h
-        ],
-        env => #{dispatch => Dispatch}
-    },
-    % StartMode = config_ds:env(),
-    case config_ds:env(start_mode) of
-        quic ->
+    StartMode = config_ds:env(start_mode),
+    if
+        StartMode == quic ->
             start_quic(Dispatch);
-        tls ->
-            start_tls(Port, ProtoOpts);
-        _ ->
-            start_clear(Port, ProtoOpts)
+        true ->
+            ProtoOpts = #{
+                middlewares => [
+                    cowboy_router
+                    , auth_middleware
+                    , cowboy_handler
+                ],
+                % metrics_callback => do_metrics_callback(),
+                stream_handlers => [
+                    cowboy_compress_h
+                    , cowboy_stream_h
+                    % , cowboy_metrics_h
+                ],
+                env => #{dispatch => Dispatch}
+            },
+            case StartMode of
+                tls ->
+                    start_tls(ProtoOpts);
+                _ ->
+                    start_clear(ProtoOpts)
+            end
     end,
-    % end handler
     imboy_sup:start_link().
 
 % do_metrics_callback() ->
@@ -54,7 +54,7 @@ stop(_State) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
--spec start_quic(map())
+-spec start_quic(cowboy_router:dispatch_rules())
     -> {ok, pid()} | {error, any()}.
 start_quic(Dispatch) ->
     PrivDir = code:priv_dir(imboy),
@@ -69,9 +69,10 @@ start_quic(Dispatch) ->
         env => #{dispatch => Dispatch}
     }).
 
--spec start_tls(integer(), any())
+-spec start_tls(map())
     -> {ok, pid()} | {error, any()}.
-start_tls(Port, ProtoOpts) ->
+start_tls(ProtoOpts) ->
+    Port = config_ds:env(http_port),
     PrivDir = code:priv_dir(imboy),
     cowboy:start_tls(imboy_listener
         , [
@@ -83,9 +84,10 @@ start_tls(Port, ProtoOpts) ->
         , ProtoOpts
     ).
 
--spec start_clear(integer(), any())
+-spec start_clear(map())
     -> {ok, pid()} | {error, any()}.
-start_clear(Port, ProtoOpts) ->
+start_clear(ProtoOpts) ->
+    Port = config_ds:env(http_port),
     cowboy:start_clear(imboy_listener
         , [
             {port, Port}

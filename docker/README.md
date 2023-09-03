@@ -201,6 +201,88 @@ curl http://127.0.0.1:8081/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
 
 ```
 
+## WebRTCServer
+
+### membrane_videoroom
+https://github.com/membraneframework/membrane_videoroom
+```
+git clone https://github.com/membraneframework/membrane_videoroom
+docker build -t membrane_videoroom .
+
+docker rm -f imboy_rtc1 && \
+docker run -d \
+    --name imboy_rtc1 \
+    --network imboy-network \
+    -p 50000-50050:50000-50050/udp \
+    -p 4000:4000/tcp \
+    -e INTEGRATED_TURN_PORT_RANGE=50000-50050 \
+    -e EXTERNAL_IP=192.168.0.144 \
+    -e VIRTUAL_HOST=localhost \
+     membrane_videoroom:latest
+
+Finally, go to http://localhost:4000/
+EXTERNAL_IP=192.168.0.144 mix phx.server
+```
+
+### SRS
+```
+
+docker rm -f imboy_srs && \
+docker run -d \
+    --name imboy_srs \
+    --network imboy-network \
+    -p 1935:1935 \
+    -p 1985:1985 \
+    -p 9080:8080 \
+    -p 1990:1990 \
+    -p 8088:8088 \
+    -p 8000:8000/udp \
+    -e CANDIDATE="turn:dev.imboy.pub:34780?transport=udp" \
+    registry.cn-hangzhou.aliyuncs.com/ossrs/srs:5 \
+    ./objs/srs -c conf/https.docker.conf
+
+
+docker rm -f imboy_srs && \
+docker run -d \
+    --name imboy_srs \
+    --network imboy-network \
+    -p 1935:1935 \
+    -p 1985:1985 \
+    -p 9080:8080 \
+    -p 1990:1990 \
+    -p 8088:8088 \
+    -p 8000:8000/udp \
+    -e CANDIDATE="81.68.209.56" \
+    registry.cn-hangzhou.aliyuncs.com/ossrs/srs:6 \
+    ./objs/srs -c conf/rtc2rtmp.conf
+
+rtmp://81.68.209.56/live/livestream
+
+rtmp://81.68.209.56/live/livestream
+live
+/root/srs/trunk/conf/https.docker.conf
+
+git clone -b develop https://gitee.com/ossrs/srs.git
+cd srs/trunk
+./configure
+make
+
+// 启动服务器：
+CANDIDATE="192.168.0.144"
+./objs/srs -c conf/srs.conf
+```
+
+https://81.68.209.56:9080/players/rtc_publisher.html?autostart=true&stream=livestream&port=9080&schema=http
+
+本机推拉流（即浏览器和SRS都在本机），使用WebRTC推流到SRS：WebRTC: Publish
+
+https://192.168.0.144:9080/players/rtc_publisher.html?autostart=true&stream=livestream&port=9080&schema=http
+
+https://192.168.0.144:8088/players/rtc_publisher.html?autostart=true&stream=livestream&port=9080&schema=https
+
+打开页面观看WebRTC流
+https://192.168.0.144:8088/players/rtc_player.html?autostart=true&stream=livestream&port=9080&schema=https
+
 ##
 
 https://blog.wu-boy.com/2018/03/nginx-reverse-proxy-image-resizing/

@@ -4,10 +4,10 @@
 # Hereby declare: the following dependencies have not been modified by the original author source code
 
 # https://erlang.mk/guide/deps.html
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.12.1
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.10.0
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.1.0
+dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.12.1
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.10.0
 
 # gen_smtp Email服务端、客户端
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
@@ -47,7 +47,7 @@ dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
-dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
+dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git master
 # bbmustache 一个无逻辑的模板。 deps by relx
 dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
@@ -56,7 +56,7 @@ dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_common
 # 被 qdate 依赖
 dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.1
 # qdate - Erlang Date and Timezone Library
-dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate 0.7.0
+dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
 dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 
 # fs Native Listener (Mac Windows Linux) 被 sync 依赖
@@ -65,8 +65,15 @@ dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
+dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.2.1
+dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
+dep_vice = git https://gitee.com/imboy-tripartite-deps/vice.git 0.1.0
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
 dep_esq = hex 2.0.6
+
+dep_membrane_rtc_engine = hex 0.17.0
+dep_membrane_rtc_engine_webrtc = hex 0.2.1
+
 
 # sumo_db旨在简化 erlang 应用程序的数据库访问。
 # 它提供了一个非常简单的持久层，能够与不同的数据库交互，同时为您的代码提供一致的 api。

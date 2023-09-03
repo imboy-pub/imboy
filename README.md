@@ -571,3 +571,16 @@ ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ
 ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjkwNDc2Nzc3MDgsInN1YiI6InRrIiwidWlkIjoiN2I0djFiIn0.n19M6-kR_p4EtqJMst4kO1cqgdG5F2gyNY6QL46xpR8
 {"id":"cdsgrbgppoodp0gvpb61","type":"C2C","to":"kybqdp","from":"7b4v1b","payload":{"msg_type":"text","text":"108to1"},"created_at":1668877742828}
 ```
+
+token_ds:decrypt_token(<<"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTQwNTI2NDEyNjQsInN1YiI6InJ0ayIsInVpZCI6IjlkNG5uayJ9.N7X7mpInEbiawIP7qiDOf00Gbmm4H-4HM2cAukQ-040">>).
+
+{ok,513244,1694052641264,<<"rtk">>}
+
+1694052641264 - imboy_dt:millisecond().
+rtmp_proxy:run(1935, <<"rtmp://192.168.0.144/live_room">>).
+
+
+rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.5/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so
+
+
+
