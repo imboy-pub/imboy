@@ -203,6 +203,12 @@ curl http://127.0.0.1:8081/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
 
 ## WebRTCServer
 
+### webrtc-streamer
+```
+docker run -p 9801:8000 -it mpromonet/webrtc-streamer -n raspicam -u rtsp://pi2.local:8554/unicast
+
+```
+
 ### membrane_videoroom
 https://github.com/membraneframework/membrane_videoroom
 ```

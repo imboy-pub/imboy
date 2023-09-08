@@ -66,9 +66,20 @@ dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
 dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.2.1
+
 dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
-dep_vice = git https://gitee.com/imboy-tripartite-deps/vice.git 0.1.0
+
+# 用一句简单的话总结：RTSP发起/终结流媒体、RTP传输流媒体数据 、RTCP对RTP进行控制、同步。
+# RTSP体系结位于RTP和RTCP之上（RTCP用于控制传输，RTP用于数据传输），使用TCP或UDP完成数据传输！
+# RTSP全称实时流协议（Real Time Streaming Protocol），它是一个网络控制协议，设计用于娱乐、会议系统中控制流媒体服务器。RTSP用于在希望通讯的两端建立并控制媒体会话（session），客户端通过发出VCR-style命令如play、record和pause等来实时控制媒体流。可以参考RTSP 2326 中文版
+
+
+# RTPS协议设计初衷为多播、无连接的最大努力交付，像是UDP/IP
+# https://udds-portal-public.oss-cn-hangzhou.aliyuncs.com/pdf/RTPS规范-v2.2-中文版-pfu.pdf
+dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
+# dep_vice = git https://gitee.com/imboy-tripartite-deps/vice.git 0.1.0
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
+
 dep_esq = hex 2.0.6
 
 dep_membrane_rtc_engine = hex 0.17.0

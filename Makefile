@@ -31,7 +31,7 @@ DEPS += depcache
 DEPS += syn
 DEPS += ecron
 DEPS += sync
-DEPS += ersip vice
+DEPS += ersip rtps
 
 # DEPS += esq
 # DEPS += khepri
