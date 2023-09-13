@@ -28,3 +28,4 @@ elvis
 rebar.lock
 docker/pg_jieba
 docker/timescaledb
+priv/ssl

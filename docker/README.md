@@ -203,6 +203,20 @@ curl http://127.0.0.1:8081/repair_fileinfo?s=dev&a=xxx&v=xxx&width=375
 
 ## WebRTCServer
 
+### ZLMediaKit
+
+```
+#国内用户推荐从同步镜像网站gitee下载
+git clone --depth 1 https://gitee.com/xia-chu/ZLMediaKit
+cd ZLMediaKit
+#千万不要忘记执行这句命令
+git submodule update --init
+
+mkdir build && cd build
+cmake .. -DENABLE_WEBRTC=true  -DOPENSSL_ROOT_DIR=/usr/local/openssl  -DOPENSSL_LIBRARIES=/opt/homebrew/Cellar/openssl@1.1/1.1.1v/lib
+cmake --build . --target MediaServer
+```
+
 ### webrtc-streamer
 ```
 docker run -p 9801:8000 -it mpromonet/webrtc-streamer -n raspicam -u rtsp://pi2.local:8554/unicast

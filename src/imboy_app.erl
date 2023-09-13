@@ -33,11 +33,15 @@ start(_Type, _Args) ->
                 ],
                 env => #{dispatch => Dispatch}
             },
+            Port = config_ds:env(http_port),
             case StartMode of
                 tls ->
-                    start_tls(ProtoOpts);
+                    start_tls(ProtoOpts, Port);
+                http_tls ->
+                    start_clear(ProtoOpts, Port),
+                    start_tls(ProtoOpts, Port + 1);
                 _ ->
-                    start_clear(ProtoOpts)
+                    start_clear(ProtoOpts, Port)
             end
     end,
     imboy_sup:start_link().
@@ -49,7 +53,16 @@ start(_Type, _Args) ->
 %    end.
 
 stop(_State) ->
-    ok = cowboy:stop_listener(imboy_listener).
+    StartMode = config_ds:env(start_mode),
+    case StartMode of
+        http_tls ->
+            cowboy:stop_listener(imboy_listener),
+            cowboy:stop_listener(imboy_listener_tls);
+        tls ->
+            cowboy:stop_listener(imboy_listener_tls);
+        _ ->
+            cowboy:stop_listener(imboy_listener)
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -69,12 +82,12 @@ start_quic(Dispatch) ->
         env => #{dispatch => Dispatch}
     }).
 
--spec start_tls(map())
+-spec start_tls(map(), integer())
     -> {ok, pid()} | {error, any()}.
-start_tls(ProtoOpts) ->
-    Port = config_ds:env(http_port),
+start_tls(ProtoOpts, Port) ->
+    % Port = config_ds:env(http_port),
     PrivDir = code:priv_dir(imboy),
-    cowboy:start_tls(imboy_listener
+    cowboy:start_tls(imboy_listener_tls
         , [
             {port, Port}
             , {cacertfile, PrivDir ++ config_ds:env(cacertfile)}
@@ -84,10 +97,9 @@ start_tls(ProtoOpts) ->
         , ProtoOpts
     ).
 
--spec start_clear(map())
+-spec start_clear(map(), integer())
     -> {ok, pid()} | {error, any()}.
-start_clear(ProtoOpts) ->
-    Port = config_ds:env(http_port),
+start_clear(ProtoOpts, Port) ->
     cowboy:start_clear(imboy_listener
         , [
             {port, Port}

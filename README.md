@@ -515,7 +515,11 @@ ets:select(syn_pg_by_name_chat, [{ '$1', [], ['$1']}], 10).
 
 ## eturnal
 ```
+cd /www/wwwroot/eturnal/
+
 _build/product/rel/eturnal/bin/eturnal console
+
+ _build/product/rel/eturnal/bin/eturnal daemon
 ```
 
 ## 消息确认机制

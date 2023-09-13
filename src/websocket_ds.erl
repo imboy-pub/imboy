@@ -48,7 +48,7 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
                 [Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID]
             end,
             % 只给当前设备发生消息
-            message_ds:send_next(Uid, MsgId, Msg2, [0, 3000, 5000] ++ [Fun], [DID], true),
+            message_ds:send_next(Uid, MsgId, Msg2, [0, 5000, 6000] ++ [Fun], [DID], true),
             auth_after(Uid, Req, State, Opt);
         {error, Code, Msg, _Map} ->
             {ok, Req, State#{error => Code, msg => Msg}}

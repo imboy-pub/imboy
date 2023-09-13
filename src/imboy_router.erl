@@ -84,12 +84,12 @@ get_routes() ->
 
         %
         {"/live_room/[:stream_id]", live_room_stream_handler, #{}},
-        {"/whip/publish/[:stream_id]/[:id]", whip_handler, #{action => publish}},
-        {"/whip/[:stream_id]/[:id]", whip_handler, #{action => check}},
+        {"/whip/publish/[:room_id]/[:stream_id]", whip_handler, #{action => publish}},
+        {"/whip/[:room_id]/[:stream_id]", whip_handler, #{action => check}},
 
-        {"/whip/unpublish/[:stream_id]/[:id]", whip_handler, #{action => unpublish}},
-        {"/whip/subscribe/[:stream_id]/[:id]", whip_handler, #{action => subscribe}},
-        {"/whip/unsubscribe/[:stream_id]/[:id]", whip_handler, #{action => unsubscribe}},
+        {"/whip/unpublish/[:room_id]/[:stream_id]", whip_handler, #{action => unpublish}},
+        {"/whip/subscribe/[:room_id]/[:stream_id]", whip_handler, #{action => subscribe}},
+        {"/whip/unsubscribe/[:room_id]/[:stream_id]", whip_handler, #{action => unsubscribe}},
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 

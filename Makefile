@@ -31,6 +31,7 @@ DEPS += depcache
 DEPS += syn
 DEPS += ecron
 DEPS += sync
+# DEPS += nksip
 DEPS += ersip rtps
 
 # DEPS += esq

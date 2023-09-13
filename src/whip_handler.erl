@@ -15,6 +15,8 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imboy/include/common.hrl").
 
+-define(crlf, <<"\r\n">>).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -51,20 +53,32 @@ publish(Req0, State) ->
     % lager:error(io_lib:format("whip_handler/publish state:~p ~n", [State])),
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
-    Id = cowboy_req:binding(id, Req0),
+    RoomId = cowboy_req:binding(room_id, Req0),
     StreamId = cowboy_req:binding(stream_id, Req0),
-    {ok, OfferSdp, _Req} = cowboy_req:read_body(Req0),
-    AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:passive"),
+    {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
+    % lager:info(io_lib:format("whip_handler/publish State ~p, ~n", [State])),
+    % lager:info(io_lib:format("whip_handler/publish Sdp: ~p ~n", [Sdp])),
+
+    {ok, OfferSdp} = sdp_parse(Sdp),
+
+    Origin = ersip_sdp:origin(OfferSdp),
+    Username = ersip_sdp_origin:username(Origin),
+    lager:info(io_lib:format("whip_handler/publish Username: ~p ~n", [Username])),
+    SessionId = ersip_sdp_origin:session_id(Origin),
+    lager:info(io_lib:format("whip_handler/publish SessionId: ~p ~n", [SessionId])),
+    AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:passive", State),
     NewReq = cowboy_req:reply(201
         , #{
             <<"Content-Type">> => "application/sdp"
             , <<"server">> => "cowboy"
-            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
         }
         , AsswerSdp
+        % , generate_answer_sdp2()
         , Req0),
    {ok, NewReq, State}.
 
+% check(<<"PATCH">>, Req0, State) ->
 check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     {ok, Ice, _Req} = cowboy_req:read_body(Req0),
     lager:error(io_lib:format("whip_handler/check PATCH Ice:~p ~n", [Ice])),
@@ -72,12 +86,13 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     % <<"candidate:2435201596 1 tcp 1518157055 ::1 64756 typ host tcptype passive generation 0 ufrag ZZt4 network-id 3">>
     % <<"candidate:3388485749 1 tcp 1518083839 127.0.0.1 64755 typ host tcptype passive generation 0 ufrag ZZt4 network-id 2">>
     % 不执行 ICE 重启
-    NewReq = cowboy_req:reply(204
+    NewReq = cowboy_req:reply(200
         , #{
             <<"Content-Type">> => "application/trickle-ice-sdpfrag"
             , <<"server">> => "cowboy"
             % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
         }
+        , <<"candidate: candidate:2152662189 1 udp 2122194687 192.168.0.144 64291 typ host generation 0 ufrag CNcn network-id 0 network-cost 50, sdpMid: 0, sdpMLineIndex: 0">>
         , Req0),
    {ok, NewReq, State};
 
@@ -118,17 +133,19 @@ unpublish(Req0, _State) ->
 subscribe(Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
-    Id = cowboy_req:binding(id, Req0),
+    RoomId = cowboy_req:binding(room_id, Req0),
     StreamId = cowboy_req:binding(stream_id, Req0),
-    {ok, OfferSdp, _Req} = cowboy_req:read_body(Req0),
-    AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:active"),
+    {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
+    {ok, OfferSdp} = sdp_parse(Sdp),
+    AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:active", State),
     NewReq = cowboy_req:reply(201
         , #{
             <<"Content-Type">> => "application/sdp"
             , <<"server">> => "cowboy"
-            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
         }
         , AsswerSdp
+        % , generate_answer_sdp2()
         , Req0),
    {ok, NewReq, State}.
 
@@ -159,24 +176,43 @@ unsubscribe(Req0, _State) ->
 %     ?_test(my_if_addr(inet6))].
 -endif.
 
-%% 根据 Offer SDP 生成 Answer SDP
-% https://aggresss.blog.csdn.net/article/details/126991583
-% 为了降低复杂性，不支持 SDP 重新协商，因此在完成通过 HTTP 的初始 SDP Offer/Answer 后，不能添加或删除任何 track 或 stream 。
-generate_answer_sdp(OfferSdp, Setup) ->
+sdp_parse(Sdp) ->
     % lager:error(io_lib:format("whip_handler/publish OfferSdp ~p :~p ~n", [is_binary(OfferSdp), OfferSdp])),
-    OfferSdp1 = check_crlf(OfferSdp),
+    Sdp1 = check_crlf(Sdp),
 
     % lager:error(io_lib:format("whip_handler/publish OfferSdp1 ~p :~p ~n", [is_binary(OfferSdp), OfferSdp1])),
     % WebRTC 中 answer SDP 中 m-line 不能随意增加和删除，顺序不能随意变更，需要和 Offer SDP 中保持一致。
     %% 在这里编写你的逻辑来生成 Answer SDP
     %% 可以使用 ersip_sdp 库来解析和构建 SDP 数据
-    %% 例如：
-    {ok, AnswerSdp} = ersip_sdp:parse(OfferSdp1),
-    OrigOrigin = ersip_sdp:origin(AnswerSdp),
+    ersip_sdp:parse(Sdp1).
 
-    ExpectedOrigin = ersip_sdp_origin:set_address(ersip_sdp_addr:make(<<"IN IP4 192.168.0.144">>), OrigOrigin),
+% generate_answer_sdp2() ->
+%     % CurrentUid = maps:get(current_uid, State),
+%     %% 例如：
+%     Sdp = [
+%         "v=0", ?crlf,
+%         "o=- 1234567890 1 IN IP4 192.168.0.144", ?crlf,
+%         "s=WebRTC Session", ?crlf,
+%         "t=0 0", ?crlf,
+%         "a=setup:active", ?crlf,
+%         "a=connection:new", ?crlf,
+%         "m=audio 50000 RTP/AVP 0", ?crlf,
+%         "c=IN IP4 192.168.0.144", ?crlf,
+%         "a=rtpmap:0 PCMU/8000", ?crlf
+%     ],
+%     iolist_to_binary(Sdp).
+
+%% 根据 Offer SDP 生成 Answer SDP
+% https://aggresss.blog.csdn.net/article/details/126991583
+% 为了降低复杂性，不支持 SDP 重新协商，因此在完成通过 HTTP 的初始 SDP Offer/Answer 后，不能添加或删除任何 track 或 stream 。
+generate_answer_sdp(OfferSdp, Setup, _State) ->
+    % CurrentUid = maps:get(current_uid, State),
+    %% 例如：
+    OrigOrigin = ersip_sdp:origin(OfferSdp),
+
+    ExpectedOrigin = ersip_sdp_origin:set_address(ersip_sdp_addr:make(<<"IN IP4 dev.imboy.pub">>), OrigOrigin),
     %% 构建 Answer SDP
-    AnswerSdp2 = ersip_sdp:set_origin(ExpectedOrigin, AnswerSdp),
+    AnswerSdp2 = ersip_sdp:set_origin(ExpectedOrigin, OfferSdp),
     % SDP Offer 应该使用 sendonly 属性，SDP Answer 必须使用 recvonly 属性。
     % The SDP offer SHOULD use the "sendonly" attribute and the SDP answer MUST use the "recvonly" attribute in any case.
     %% 添加其他需要的信息
@@ -191,39 +227,47 @@ generate_answer_sdp(OfferSdp, Setup) ->
         "a=setup:active" ->
             iolist_to_binary(string:replace(AnswerSdp3, <<"a=recvonly">>, <<"a=sendonly">>, all))
     end,
-    AnswerSdp5 = remove_m(AnswerSdp4, Setup),
+
+    % CurrentUid = 0,
+    % {Username, Credential, _Uris} = user_ds:webrtc_credential(CurrentUid),
+    SdpLi = remove_item(AnswerSdp4),
+    Append = [
+        [[Setup, ?crlf]]
+        % , ["a=connection:new", ?crlf]
+        % , ["m=audio 50000 RTP/AVP 0", ?crlf]
+        % , ["a=mid:audio", ?crlf]
+        % , [["a=ice-ufrag:", Username, ?crlf]]
+        % , [["a=ice-pwd:", Credential, ?crlf]]
+        % , [["a=ice-lite", ?crlf]]
+    ],
+    AnswerSdp5 = iolist_to_binary(SdpLi ++ Append),
     % lager:error(io_lib:format("whip_handler/publish AnswerSdp5 ~p :~p ~n", [is_binary(AnswerSdp5), AnswerSdp5])),
     AnswerSdp5.
 
 check_crlf(Sdp) ->
-    case string:find(Sdp, <<"\r\n">>) of
+    case string:find(Sdp, ?crlf) of
         nomatch ->
-            iolist_to_binary(string:replace(Sdp, <<"\n">>, <<"\r\n">>, all));
+            iolist_to_binary(string:replace(Sdp, <<"\n">>, ?crlf, all));
         _ ->
             Sdp
     end.
 
-remove_m(Sdp, Setup) ->
-    case string:find(Sdp, <<"m=">>) of
-        nomatch ->
-            Sdp;
+remove_item(Sdp) ->
+    [[I, ?crlf] || I <- binary:split(Sdp, ?crlf, [global]), case I of
+        % <<"m=", _T1/binary>> ->
+        %     false;
+        % <<"a=ice", _T1/binary>> ->
+        %     false;
+        % a=setup:actpass 既可以是客户端，也可以是服务器
+        % a=setup:active 客户端
+        % a=setup:passive 服务器
+        <<"a=setup:", _T1/binary>> ->
+            false;
+        <<"a=mid:", _T1/binary>> ->
+            false;
+        <<>> ->
+            false;
         _ ->
-            iolist_to_binary([[I, "\r\n"] || I <- binary:split(Sdp,<<"\r\n">>, [global]), case I of
-                % <<"m=", _T1/binary>> ->
-                %     false;
-                % <<"a=ice", _T1/binary>> ->
-                %     false;
-                % a=setup:actpass 既可以是客户端，也可以是服务器
-                % a=setup:active 客户端
-                % a=setup:passive 服务器
-                <<"a=setup:", _T1/binary>> ->
-                    false;
-                <<"a=mid:", _T1/binary>> ->
-                    false;
-                <<>> ->
-                    false;
-                _ ->
-                    true
-            end] ++ [[Setup, "\r\n"]])
-    end.
+            true
+    end].
 

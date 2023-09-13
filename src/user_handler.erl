@@ -33,16 +33,12 @@ init(Req0, State0) ->
 
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
-    Uris = config_ds:env(eturnal_uris),
-    Secret = config_ds:env(eturnal_secret),
     CurrentUid = maps:get(current_uid, State),
-    Uid = imboy_hashids:uid_encode(CurrentUid),
-    TmBin = integer_to_binary(imboy_dt:second() + 86400),
-    Username = <<TmBin/binary, ":", Uid/binary>>,
+    {Username, Credential, Uris} = user_ds:webrtc_credential(CurrentUid),
     imboy_response:success(Req0, [
          {<<"uris">>, Uris},
          {<<"username">>, Username},
-         {<<"credential">>, base64:encode(crypto:mac(hmac, sha, Secret, Username))}
+         {<<"credential">>, Credential}
         ], "success.").
 
 %% 扫描“我的二维码”

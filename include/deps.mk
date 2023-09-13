@@ -47,7 +47,7 @@ dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
-dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git master
+dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
 # bbmustache 一个无逻辑的模板。 deps by relx
 dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
@@ -65,9 +65,13 @@ dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
-dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.2.1
+dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
+
+# dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
+# dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master
 
 dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
+dep_ersip_proxy = git https://gitee.com/imboy-tripartite-deps/ersip_proxy.git master
 
 # 用一句简单的话总结：RTSP发起/终结流媒体、RTP传输流媒体数据 、RTCP对RTP进行控制、同步。
 # RTSP体系结位于RTP和RTCP之上（RTCP用于控制传输，RTP用于数据传输），使用TCP或UDP完成数据传输！

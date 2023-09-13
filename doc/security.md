@@ -31,3 +31,41 @@ openssl rsa -in test_rsa_private_key.pem -out test_rsa_private_key.pem
 # 分离出公钥
 openssl rsa -in test_rsa_private_key.pem -pubout -out test_rsa_public_key.pem
 ```
+
+## 使用 OpenSSL 工具来生成自签名的 HTTPS 证书
+
+自制证书在浏览器中通常会被标记为不受信任
+
+```
+brew install openssl
+```
+
+
+生成私钥文件（key.pem）
+```
+
+openssl genrsa -out ./priv/ssl/server.key 2048
+```
+
+生成自签名中间证书（chain.crt）
+```
+openssl req -new -sha256 -key ./priv/ssl/server.key -out ./priv/ssl/chain.csr
+openssl x509 -req -in ./priv/ssl/chain.csr -signkey ./priv/ssl/server.key -out ./priv/ssl/chain.crt -days 365
+
+    Signature ok
+    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy.pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
+    Getting Private key
+```
+
+
+生成公共证书（ public.crt）：
+```
+openssl req -new -sha256 -key ./priv/ssl/server.key -out ./priv/ssl/public.csr
+openssl x509 -req -in ./priv/ssl/public.csr -CA ./priv/ssl/chain.crt -CAkey ./priv/ssl/server.key -CAcreateserial -out ./priv/ssl/public.crt -days 365
+    Signature ok
+    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy..pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
+    Getting CA Private Key
+
+```
+已经生成了一个自制的 HTTPS 证书，其中 key.pem 是私钥文件，cert.pem 是自签名证书文件。
+自制证书在浏览器中通常会被标记为不受信任
