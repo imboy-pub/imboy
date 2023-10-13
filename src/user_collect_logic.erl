@@ -115,18 +115,18 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
             Attach1 = #{
                 <<"md5">> => maps:get(<<"md5">>, Thumb),
                 <<"mime_type">> => MimeType,
-                <<"name">> => <<"">>,
-                <<"path">> => maps:get(<<"path">>, Thumb),
+                <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
+                <<"path">> => maps:get(<<"path">>, Thumb, <<>>),
                 <<"url">> => maps:get(<<"uri">>, Thumb),
-                <<"size">> => maps:get(<<"size">>, Thumb)
+                <<"size">> => maps:get(<<"size">>, Thumb, 0)
             },
             Attach2 = #{
                 <<"md5">> => maps:get(<<"md5">>, Video),
                 <<"mime_type">> => VideoMimeType,
-                <<"name">> => <<"">>,
-                <<"path">> => maps:get(<<"path">>, Video),
-                <<"url">> => maps:get(<<"url">>, Video),
-                <<"size">> => maps:get(<<"size">>, Video)
+                <<"name">> => maps:get(<<"name">>, Video, <<>>),
+                <<"path">> => maps:get(<<"path">>, Video, <<>>),
+                <<"url">> => maps:get(<<"uri">>, Video),
+                <<"size">> => maps:get(<<"size">>, Video, 0)
             },
 
             Uid2 = integer_to_binary(Uid),
