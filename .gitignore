@@ -29,3 +29,4 @@ rebar.lock
 docker/pg_jieba
 docker/timescaledb
 priv/ssl
+install_erlang_for_m1.sh

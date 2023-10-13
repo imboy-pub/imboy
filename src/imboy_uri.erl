@@ -96,6 +96,12 @@ exclusion_param(Url, Keys) ->
 % 获取URL中的所有参数
 -spec get_params(list() | binary()) -> map().
 % imboy_uri:get_params("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+% {#{host => "a.imboy.pub",
+%    path => "/img/20235/20_15/chk7ef90poqbagho7410.jpg",
+%    query => "s=dev&a=344af61665efff23&v=531378&width=375",
+%    scheme => "https"},
+%  #{"a" => "344af61665efff23","s" => "dev","v" => "531378",
+%    "width" => "375"}}
 get_params(Url) ->
     UrlMap = uri_string:parse(Url),
     Query = maps:get(query, UrlMap, ""),

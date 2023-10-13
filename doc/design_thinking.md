@@ -108,7 +108,9 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 ## 用户收藏
 一个类似”微信里面的收藏“功能，收藏聊天的是发布的图片、视频、文件等用户觉得重要的信息。
 
-> 收藏记录一做再postgresql 里面已做AES加密存储
+> 收藏记录已经在 postgresql 里面已做AES加密存储
+
+> 调整收藏方案：清除 收藏专有的存储服务，改用定时任务扫描，在判断资源配如果没收藏嘞，就不删除；否则，过期删除之
 
 * 需求：
     * 用户在聊天中参数的图片、视频、文件数据按特定目录、特定时间存储在 Go-FastDFS 存（ String savePath = "/$prefix/${dt.year}${dt.month}/${dt.day}_${dt.hour}/";），我计划定期删除超过半年或者一年的 savePath 里面的文件。

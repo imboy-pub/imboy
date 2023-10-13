@@ -4,6 +4,7 @@
 
 -export([is_mobile/1]).
 -export([is_email/1]).
+-export([to_binary/1]).
 -export([num_random/1]).
 -export([send_email/2]).
 -export([remove_dups/1, implode/2]).
@@ -96,3 +97,11 @@ send_email(ToEmail, Subject) ->
     %                       [binary_to_list(ToEmail)],
     %                       "Subject: " ++ Subject},
     %                      Option).
+
+
+to_binary(Val) when is_integer(Val) ->
+    integer_to_binary(Val);
+to_binary(Val) when is_list(Val) ->
+    list_to_binary(Val);
+to_binary(Val) when is_binary(Val) ->
+    Val.

@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 04c473a
+ERLANG_MK_VERSION = cb3b5f6
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -4018,7 +4018,7 @@ define dep_autopatch_rebar.erl
 			false -> ok;
 			{_, Files0} ->
 				Files = [begin
-					hd(filelib:wildcard("$(call core_native_path,$(DEPS_DIR)/$1/src/**/" ++ filename:rootname(F) ++ ".*rl")))
+					hd(filelib:wildcard("$(call core_native_path,$(DEPS_DIR)/$1/src/)**/" ++ filename:rootname(F) ++ ".*rl"))
 				end || "src/" ++ F <- Files0],
 				Names = [[" ", case lists:reverse(F) of
 					"lre." ++ Elif -> lists:reverse(Elif);
@@ -4147,8 +4147,8 @@ define dep_autopatch_rebar.erl
 					"\t$$\(CC) -o $$\@ $$\? $$\(LDFLAGS) $$\(ERL_LDFLAGS) $$\(DRV_LDFLAGS) $$\(LDLIBS) $$\(EXE_LDFLAGS)",
 					case {filename:extension(Output), $(PLATFORM)} of
 					    {[], _} -> "\n";
-					    {".so", darwin} -> "-shared\n";
-					    {".dylib", darwin} -> "-shared\n";
+					    {".so", darwin} -> " -shared\n";
+					    {".dylib", darwin} -> " -shared\n";
 					    {_, darwin} -> "\n";
 					    _ -> " -shared\n"
 					end])

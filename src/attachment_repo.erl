@@ -31,6 +31,7 @@ save(Conn, CreatedAt, Uid, [Attach|Tail]) ->
         Tb1 = <<"public.attachment">>,
 
         UpSql1 = <<" UPDATE SET last_referer_user_id = ", Uid/binary, ", last_referer_at = ", CreatedAt/binary, ", updated_at = ", CreatedAt/binary, ", referer_time = public.attachment.referer_time + 1;">>,
+        % lager:info(io_lib:format("attachment_repo:save/4: CreatedAt ~p ~n", [CreatedAt])),
 
         Md5 = maps:get(<<"md5">>, Attach),
         MimeType = maps:get(<<"mime_type">>, Attach),
@@ -39,23 +40,24 @@ save(Conn, CreatedAt, Uid, [Attach|Tail]) ->
         Url = maps:get(<<"url">>, Attach),
         Size = maps:get(<<"size">>, Attach),
         Ext = filename:extension(Path),
-        Size2 = if
-            is_integer(Size) ->
-                integer_to_binary(Size);
-            is_list(Size) ->
-                list_to_binary(Size);
-            true ->
-                Size
-        end,
+
+        Ext2 = imboy_func:to_binary(Ext),
+        Size2 = imboy_func:to_binary(Size),
+        Path2 = imboy_func:to_binary(Path),
         Attach2 = jsone:encode(Attach),
 
+        % lager:info(io_lib:format("attachment_repo:save/4: Attach2 ~p ~n", [Attach2])),
+
+        % lager:info(io_lib:format("attachment_repo:save/4: Sql1 before ~p ~n", [[
+        %     Tb1, Column1,Md5,MimeType,Ext2,Name,Path2, Url, Size2,Uid,CreatedAt,UpSql1
+        %     ]])),
         Sql1 = <<"INSERT INTO ", Tb1/binary," ",
                Column1/binary, " VALUES('",
                Md5/binary, "', '",
                MimeType/binary, "', '",
-               Ext/binary, "','",
+               Ext2/binary, "','",
                Name/binary, "', '",
-               Path/binary, "', '",
+               Path2/binary, "', '",
                Url/binary, "', '",
                Size2/binary, "', '",
                Attach2/binary, "'::text, ",
@@ -66,9 +68,11 @@ save(Conn, CreatedAt, Uid, [Attach|Tail]) ->
                CreatedAt/binary, ", ", % updated_at, created_at, status
                CreatedAt/binary, ", 1) ON CONFLICT (md5) DO ", UpSql1/binary>>,
 
-        lager:info(io_lib:format("attachment_repo/save: Sql1 ~p ~n", [Sql1])),
+        lager:info(io_lib:format("attachment_repo:save/4: Sql1 ~p ~n", [Sql1])),
         {ok, Stmt1} = epgsql:parse(Conn, Sql1),
         epgsql:execute_batch(Conn, [{Stmt1, []}]),
+        % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
+        % lager:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
         % 递归保存附近信息
         save(Conn, CreatedAt, Uid, Tail),
         ok.

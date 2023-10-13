@@ -66,14 +66,14 @@ add(Uid, <<"6">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Uid2 = integer_to_binary(Uid),
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/png">>,
-    {Attach, Info2} = get_info(Count, "c_location", MimeType, <<"thumb">>, Info),
+    {Attach, Info2} = get_info(Count, MimeType, <<"thumb">>, Info),
     add_kind(Count, Uid2, <<"6">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 add(Uid, <<"5">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Uid2 = integer_to_binary(Uid),
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"octet-stream">>,
-    {Attach, Info2} = get_info(Count, "c_file", MimeType, <<"uri">>, Info),
+    {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
     add_kind(Count, Uid2, <<"5">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
@@ -83,56 +83,56 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
             Payload = maps:from_list(proplists:get_value(<<"payload">>, Info)),
             % ?LOG([4, 'Payload', Payload]),
             Thumb= maps:from_list(maps:get(<<"thumb">>, Payload)),
-            ThumbUri= maps:get(<<"uri">>, Thumb),
+            % ThumbUri= maps:get(<<"uri">>, Thumb),
             MimeType = <<"image/jpeg">>,
-            Thumb2 = upload("c_video_thumb", MimeType, ThumbUri),
-            Thumb3 = Thumb#{
-                <<"md5">> => maps:get(<<"md5">>, Thumb2),
-                <<"size">> => maps:get(<<"size">>, Thumb2),
-                <<"uri">> => maps:get(<<"url">>, Thumb2)
-            },
+            % Thumb2 = upload("c_video_thumb", MimeType, ThumbUri),
+            % Thumb3 = Thumb#{
+            %     <<"md5">> => maps:get(<<"md5">>, Thumb2),
+            %     <<"size">> => maps:get(<<"size">>, Thumb2),
+            %     <<"uri">> => maps:get(<<"url">>, Thumb2)
+            % },
 
             VideoMimeType = <<"octet-stream">>,
             Video= maps:from_list(maps:get(<<"video">>, Payload)),
-            VideoUri= maps:get(<<"uri">>, Video),
-            Video2 = upload("c_video", VideoMimeType, VideoUri),
-            Video3 = Video#{
-                <<"md5">> => maps:get(<<"md5">>, Video2),
-                <<"size">> => maps:get(<<"size">>, Video2),
-                <<"uri">> => maps:get(<<"url">>, Video2)
-            },
+            % VideoUri= maps:get(<<"uri">>, Video),
+            % Video2 = upload("c_video", VideoMimeType, VideoUri),
+            % Video3 = Video#{
+            %     <<"md5">> => maps:get(<<"md5">>, Video2),
+            %     <<"size">> => maps:get(<<"size">>, Video2),
+            %     <<"uri">> => maps:get(<<"url">>, Video2)
+            % },
 
-            Payload2 = Payload#{
-                <<"thumb">> => Thumb3,
-                <<"video">> => Video3
-            },
+            % Payload2 = Payload#{
+            %     <<"thumb">> => Thumb3,
+            %     <<"video">> => Video3
+            % },
             % Uri = proplists:get_value(<<"uri">>, Info),
-            Info2 = maps:from_list(Info),
-            Info3 = Info2#{
-                <<"payload">> => Payload2
-            },
+            % Info2 = maps:from_list(Info),
+            % Info3 = Info2#{
+            %     <<"payload">> => Payload2
+            % },
 
             Attach1 = #{
-                <<"md5">> => maps:get(<<"md5">>, Thumb2),
+                <<"md5">> => maps:get(<<"md5">>, Thumb),
                 <<"mime_type">> => MimeType,
                 <<"name">> => <<"">>,
-                <<"path">> => maps:get(<<"path">>, Thumb2),
-                <<"url">> => maps:get(<<"url">>, Thumb2),
-                <<"size">> => maps:get(<<"size">>, Thumb2)
+                <<"path">> => maps:get(<<"path">>, Thumb),
+                <<"url">> => maps:get(<<"uri">>, Thumb),
+                <<"size">> => maps:get(<<"size">>, Thumb)
             },
             Attach2 = #{
-                <<"md5">> => maps:get(<<"md5">>, Video2),
+                <<"md5">> => maps:get(<<"md5">>, Video),
                 <<"mime_type">> => VideoMimeType,
                 <<"name">> => <<"">>,
-                <<"path">> => maps:get(<<"path">>, Video2),
-                <<"url">> => maps:get(<<"url">>, Video2),
-                <<"size">> => maps:get(<<"size">>, Video2)
+                <<"path">> => maps:get(<<"path">>, Video),
+                <<"url">> => maps:get(<<"url">>, Video),
+                <<"size">> => maps:get(<<"size">>, Video)
             },
 
             Uid2 = integer_to_binary(Uid),
-            % ?LOG(['k4', Count, Info3]),
-            Info4 =jsone:encode(Info3, [native_forward_slash]),
-            add_kind(Count, Uid2, <<"4">>, KindId, Info4, Source, Remark, [Attach1, Attach2]);
+            Info2 =jsone:encode(Info, [native_forward_slash]),
+            % ?LOG(['k4', Count, Info2]),
+            add_kind(Count, Uid2, <<"4">>, KindId, Info2, Source, Remark, [Attach1, Attach2]);
         _ ->
             ok
     end,
@@ -141,15 +141,19 @@ add(Uid, <<"3">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Uid2 = integer_to_binary(Uid),
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"audio/aac">>,
-    {Attach, Info2} = get_info(Count, "c_audio", MimeType, <<"uri">>, Info),
+    {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
     add_kind(Count, Uid2, <<"3">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Uid2 = integer_to_binary(Uid),
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/jpeg">>,
-    {Attach, Info2} = get_info(Count, "c_img", MimeType, <<"uri">>, Info),
-    lager:info(io_lib:format("user_collect_logic/add_2: Attach ~p ~n", [Attach])),
+    {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
+    lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [[
+        Count, Uid2,KindId, Source, Remark
+        ]])),
+    lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])),
+    % lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, Info2 ~p ~n", [Count, Info2])),
     add_kind(Count, Uid2, <<"2">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 
@@ -185,7 +189,7 @@ change(_Uid, _Action, _KindId, _PostVals) ->
 %% Internal Function Definitions
 %% ===================================================================-
 
-get_info(0, Prefix, MimeType, Key, Info) ->
+get_info(0, MimeType, Key, Info) ->
     Payload0 = maps:from_list(proplists:get_value(<<"payload">>, Info)),
     Payload = if
         is_binary(Payload0) ->
@@ -194,83 +198,26 @@ get_info(0, Prefix, MimeType, Key, Info) ->
             Payload0
     end,
     {ok, Uri} = maps:find(Key, Payload),
-    M1 = upload(Prefix, MimeType, Uri),
-    Md5 = maps:get(<<"md5">>, M1),
-    Size = maps:get(<<"size">>, M1),
-    Url = maps:get(<<"url">>, M1),
-    Payload2 = Payload#{
-        <<"md5">> => Md5,
-        <<"size">> => Size,
-        Key => Url
-    },
+    Md5 = maps:get(<<"md5">>, Payload),
+    Size = maps:get(<<"size">>, Payload),
+
+    {UrlMap, _UpData} = imboy_uri:get_params(binary_to_list(Uri)),
+    Path = maps:get(path, UrlMap),
+
     % Uri = proplists:get_value(<<"uri">>, Info),
     Info2 = maps:from_list(Info),
-    Info3 = Info2#{
-        <<"payload">> => Payload2
-    },
     Attach = #{
         <<"md5">> => Md5,
         <<"mime_type">> => MimeType,
         <<"name">> => maps:get(<<"name">>, Payload, <<>>),
-        <<"path">> => maps:get(<<"path">>, M1),
-        <<"url">> => Url,
+        <<"path">> => Path,
+        <<"url">> => Uri,
         <<"size">> => Size
     },
-    {Attach, jsone:encode(Info3, [native_forward_slash])};
-get_info(_Count, _Prefix, _MimeType, _Key, _Info) ->
+    {Attach, jsone:encode(Info2, [native_forward_slash])};
+get_info(_Count, _MimeType, _Key, _Info) ->
     % 已经收藏，不需要再上传附件了
     {#{}, ok}.
-
-upload(Prefix, MimeType, Uri) ->
-    Uri2 = imboy_uri:check_auth(Uri),
-    {UrlMap, UpData} = imboy_uri:get_params(binary_to_list(Uri2)),
-
-    FileName = list_to_binary(filename:basename(maps:get(path, UrlMap))),
-    % ?LOG(['Uri2', Uri2]),
-    FilePath = <<"./", FileName/binary>>,
-
-    imboy_uri:download(Uri2, FilePath),
-
-    BaseUrl = config_ds:env(upload_for_collect),
-
-    TS = {_, _, _Micro} = os:timestamp(),
-    {{Year, Month, Day}, {Hour, _M, _S}} = calendar:now_to_universal_time(TS),
-    % "/$prefix/${dt.year}${dt.month}/${dt.day}_${dt.hour}/"
-    Path = io_lib:format(
-        "/~s/~p~p/~p_~p/",
-        [Prefix, Year, Month, Day, Hour]
-    ),
-
-    % ?LOG(['UpData', UpData]),
-    UpData2 = UpData#{
-        "output" => "json2"
-        % , "path" => "/collect/image/"
-        , "path" => Path
-        , "scene" => maps:get("s", UpData, "")
-        , "filename" => FileName
-    },
-    % ?LOG(['UpData2', UpData2]),
-    UpUrl = <<BaseUrl/binary, "/upload">>,
-
-    FieldName = <<"file">>,
-    {ok, Resp} = imboy_uri:upload(
-        UpUrl
-        , FilePath
-        , FieldName
-        , MimeType
-        , [{list_to_binary(K), list_to_binary(V)} || {K, V} <- maps:to_list(UpData2), is_list(K), is_list(V)]
-    ),
-    % 删除成功后删除本地数据
-    file:delete(FilePath),
-
-    lager:info(io_lib:format("user_collect_logic/upload: UpUrl, ~p; Resp ~p ~n", [UpUrl, jsone:encode(Resp)])),
-    Data = maps:get(<<"data">>, Resp),
-    #{
-        <<"md5">> => maps:get(<<"md5">>, Data),
-        <<"size">> => maps:get(<<"size">>, Data),
-        <<"path">> => maps:get(<<"path">>, Data),
-        <<"url">> => maps:get(<<"url">>, Data)
-    }.
 
 -spec add_kind(integer(), binary(), binary(), binary(), binary(), binary(), binary(), list()) ->
     ok.
@@ -278,7 +225,7 @@ upload(Prefix, MimeType, Uri) ->
 %     ok;
 add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
     NowTs = imboy_dt:millisecond(),
-    % logger:error("user_collect_logic:add_kind ~p~n", [NowTs]),
+    lager:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     imboy_db:with_transaction(fun(Conn) ->
         CreatedAt = integer_to_binary(NowTs),
         attachment_repo:save(Conn, CreatedAt, Uid, Attach),

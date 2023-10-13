@@ -82,7 +82,7 @@ page(Req0, State) ->
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    % 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件
+    % Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
     Kind = proplists:get_value(<<"kind">>, PostVals, <<"">>),
     KindId = proplists:get_value(<<"kind_id">>, PostVals, <<"">>),
     Source = proplists:get_value(<<"source">>, PostVals, <<"">>),
