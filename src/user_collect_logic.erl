@@ -199,7 +199,7 @@ get_info(0, MimeType, Key, Info) ->
     end,
     {ok, Uri} = maps:find(Key, Payload),
     Md5 = maps:get(<<"md5">>, Payload),
-    Size = maps:get(<<"size">>, Payload),
+    Size = maps:get(<<"size">>, Payload, 0),
 
     {UrlMap, _UpData} = imboy_uri:get_params(binary_to_list(Uri)),
     Path = maps:get(path, UrlMap),
