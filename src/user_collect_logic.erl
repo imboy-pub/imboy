@@ -83,50 +83,30 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
             Payload = maps:from_list(proplists:get_value(<<"payload">>, Info)),
             % ?LOG([4, 'Payload', Payload]),
             Thumb= maps:from_list(maps:get(<<"thumb">>, Payload)),
-            % ThumbUri= maps:get(<<"uri">>, Thumb),
-            MimeType = <<"image/jpeg">>,
-            % Thumb2 = upload("c_video_thumb", MimeType, ThumbUri),
-            % Thumb3 = Thumb#{
-            %     <<"md5">> => maps:get(<<"md5">>, Thumb2),
-            %     <<"size">> => maps:get(<<"size">>, Thumb2),
-            %     <<"uri">> => maps:get(<<"url">>, Thumb2)
-            % },
+            ThumbUri= maps:get(<<"uri">>, Thumb),
+            {ThumbMap, _} = imboy_uri:get_params(ThumbUri),
+            ThumbPath = maps:get(path, ThumbMap),
 
-            VideoMimeType = <<"octet-stream">>,
             Video= maps:from_list(maps:get(<<"video">>, Payload)),
-            % VideoUri= maps:get(<<"uri">>, Video),
-            % Video2 = upload("c_video", VideoMimeType, VideoUri),
-            % Video3 = Video#{
-            %     <<"md5">> => maps:get(<<"md5">>, Video2),
-            %     <<"size">> => maps:get(<<"size">>, Video2),
-            %     <<"uri">> => maps:get(<<"url">>, Video2)
-            % },
-
-            % Payload2 = Payload#{
-            %     <<"thumb">> => Thumb3,
-            %     <<"video">> => Video3
-            % },
-            % Uri = proplists:get_value(<<"uri">>, Info),
-            % Info2 = maps:from_list(Info),
-            % Info3 = Info2#{
-            %     <<"payload">> => Payload2
-            % },
+            VideoUri= maps:get(<<"uri">>, Video),
+            {VideoMap, _} = imboy_uri:get_params(VideoUri),
+            VideoPath = maps:get(path, VideoMap),
 
             Attach1 = #{
                 <<"md5">> => maps:get(<<"md5">>, Thumb),
-                <<"mime_type">> => MimeType,
+                <<"mime_type">> => <<"image/jpeg">>,
                 <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
-                <<"path">> => maps:get(<<"path">>, Thumb, <<>>),
-                <<"url">> => maps:get(<<"uri">>, Thumb),
+                <<"path">> => ThumbPath,
+                <<"url">> => ThumbUri,
                 <<"size">> => maps:get(<<"size">>, Thumb, 0)
             },
             Attach2 = #{
                 <<"md5">> => maps:get(<<"md5">>, Video),
-                <<"mime_type">> => VideoMimeType,
+                <<"mime_type">> => <<"octet-stream">>,
                 <<"name">> => maps:get(<<"name">>, Video, <<>>),
-                <<"path">> => maps:get(<<"path">>, Video, <<>>),
-                <<"url">> => maps:get(<<"uri">>, Video),
-                <<"size">> => maps:get(<<"size">>, Video, 0)
+                <<"path">> => VideoPath,
+                <<"url">> => VideoUri,
+                <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
             },
 
             Uid2 = integer_to_binary(Uid),

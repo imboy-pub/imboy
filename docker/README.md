@@ -173,6 +173,8 @@ curl 'http://127.0.0.1:8080/delete?path=/collect/107/temp.jpg&s=dev&a=xxx&v=xxx'
 
 curl http://127.0.0.1:8080/get_file_info?md5=0505831cf4baf0e84a421e96cdb064e963dcca1a
 curl 'http://127.0.0.1:8080/get_file_info?path=/img/20238/21_12/cjhe7e988ho9tm77og6g.jpg'
+
+curl http://127.0.0.1:8080/get_file_info?md5=f3fd20e8010f94bc8fd3e49701a7ef83370b31fd
 ```
 
 

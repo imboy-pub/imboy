@@ -44,7 +44,17 @@ save(Conn, CreatedAt, Uid, [Attach|Tail]) ->
         Ext2 = imboy_func:to_binary(Ext),
         Size2 = imboy_func:to_binary(Size),
         Path2 = imboy_func:to_binary(Path),
+        % Path2 = imboy_func:to_binary(Path),
         Attach2 = jsone:encode(Attach),
+
+        MimeType2 = case binary:split(MimeType, <<"/">>) of
+            [<<"image">>, _] ->
+                <<".", Ext3/binary>> = Ext2,
+                <<"image/", Ext3/binary>>;
+            _ ->
+                MimeType
+        end,
+
 
         % lager:info(io_lib:format("attachment_repo:save/4: Attach2 ~p ~n", [Attach2])),
 
@@ -54,7 +64,7 @@ save(Conn, CreatedAt, Uid, [Attach|Tail]) ->
         Sql1 = <<"INSERT INTO ", Tb1/binary," ",
                Column1/binary, " VALUES('",
                Md5/binary, "', '",
-               MimeType/binary, "', '",
+               MimeType2/binary, "', '",
                Ext2/binary, "','",
                Name/binary, "', '",
                Path2/binary, "', '",
