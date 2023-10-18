@@ -3,8 +3,8 @@
 % user_repo 是 user repository 缩写
 %%%
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/def_column.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/def_column.hrl").
 
 -export([tablename/0]).
 -export([

@@ -3,8 +3,8 @@
 % msg_c2g_repo 是 msg_c2g repository 缩写
 %%%
 
--include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -export([tablename/0]).
 -export([write_msg/6]).

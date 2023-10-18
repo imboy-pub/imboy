@@ -23,8 +23,8 @@
 %% The Module name was changed in order to maintain a uniform project style and not rely on zotonic.hrl
 
 -module(imboy_cache).
--include_lib("imboy/include/cache.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/cache.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% gen_server API
 -export([start_link/1]).

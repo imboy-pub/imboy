@@ -6,8 +6,8 @@
 %%%
 
 -include_lib("stdlib/include/qlc.hrl").
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/chat.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
 
 % for user
 -export([init/0, join/4, leave/2]).

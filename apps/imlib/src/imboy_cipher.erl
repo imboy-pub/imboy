@@ -1,6 +1,6 @@
 -module(imboy_cipher).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/common.hrl").
 
 -export([aes_encrypt/3, aes_decrypt/3]).
 -export([aes_encrypt/4, aes_decrypt/4]).

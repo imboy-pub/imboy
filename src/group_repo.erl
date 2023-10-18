@@ -10,7 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include_lib("kernel/include/logger.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API

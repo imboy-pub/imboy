@@ -4,7 +4,7 @@
 %%%
 -export([member_uids/1]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 
 % group_member_ds:member_uids(1).

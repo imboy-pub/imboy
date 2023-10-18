@@ -8,7 +8,7 @@
 -export([get/1, get/2]).
 -export([post/2, post/3]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -define (ReqHeaders, [
     {"content-type", "application/json"}
@@ -88,6 +88,9 @@ post(Url, Params, Headers) ->
 %% ===================================================================
 
 % https://stackoverflow.com/questions/19103694/simple-example-using-erlang-for-https-post
+% imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).
+% imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
+% imboy_req:get("http://127.0.0.1:9800/test/req_get").
 -spec req(atom(), list() | binary(), list() | map(), list()) -> {ok, map()} | {error, any()}.
 req(Method, Url, Params, Headers) ->
     application:ensure_started(ssl),
@@ -112,7 +115,7 @@ req(Method, Url, Params, Headers) ->
     % ?LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
-            {ok, jsx:decode(list_to_binary(Body))};
+            {ok, jsone:decode(list_to_binary(Body))};
         {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
             {error, StatusCode};
         {error, Reason} ->

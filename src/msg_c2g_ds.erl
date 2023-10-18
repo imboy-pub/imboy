@@ -6,7 +6,7 @@
 -export([read_msg/2]).
 -export([delete_msg/1]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 
 -spec write_msg(integer(),

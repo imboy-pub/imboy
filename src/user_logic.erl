@@ -3,9 +3,9 @@
 % user 业务逻辑模块
 %%%
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/def_column.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
+-include_lib("imlib/include/def_column.hrl").
 
 -export([online/4]).
 -export([offline/3]).

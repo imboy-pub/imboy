@@ -1,8 +1,8 @@
 -module(user_server).
 
--include_lib("imboy/include/chat.hrl").
+-include_lib("imlib/include/chat.hrl").
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 %%%
 % 用户异步行为服务
 %%%

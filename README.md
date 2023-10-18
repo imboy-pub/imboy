@@ -64,6 +64,10 @@ make new t=imboy.ds n=demo_ds
 make new t=imboy.rest_handler n=demo2_handler && make new t=imboy.logic n=demo2_logic && make new t=imboy.repository n=demo2_repo
 
 make list-templates
+
+make new-lib in=common
+make new-lib in=cron
+make new t=imboy.logic n=demo_cron_logic in=cron
 ...
 
 make run

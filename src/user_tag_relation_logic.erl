@@ -11,9 +11,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/common.hrl").
 
 %% ===================================================================
 %% API

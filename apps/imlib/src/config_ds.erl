@@ -11,7 +11,7 @@
 -export([env/1, env/2, env/3]).
 -export([reload/0, local_reload/0]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/common.hrl").
 
 %% ===================================================================
 %% API
@@ -44,6 +44,7 @@ local_reload() ->
     To = config_file(),
     % Res1 = file:delete(To),
     % lager:error("~p~n", [Res1]),
+    lager:info("~p~n", [#{from => From, to => To}]),
     file:copy(From, To, infinity),
     % Res2 = file:copy(From, To, infinity),
     % lager:error("copy file res: ~p~n", [Res2]),

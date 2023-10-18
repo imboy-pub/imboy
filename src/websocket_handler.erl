@@ -9,8 +9,8 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/chat.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
 
 
 %%websocket 握手

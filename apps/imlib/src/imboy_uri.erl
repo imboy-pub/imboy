@@ -7,7 +7,7 @@
 -export([upload/5]).
 -export([check_auth/1]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API
@@ -36,7 +36,7 @@ download(Url, FilePath) ->
 %%
 %% Usage with RequestData:
 %% Payload = [{upload_type, <<"user_picture">>}],
-%% PayloadContent = jsx:encode(Payload),
+%% PayloadContent = jsone:encode(Payload),
 %% RequestData = [
 %%     {<<"payload">>, PayloadContent}
 %% ]
@@ -72,7 +72,7 @@ upload(URL, FilePath, Name, MimeType, RequestData) ->
     % ?LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
-            {ok, jsx:decode(Body)};
+            {ok, jsone:decode(Body)};
         {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
             {error, StatusCode};
         {error, Reason} ->

@@ -1,6 +1,6 @@
 -module(index_handler).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -behavior(cowboy_rest).
 

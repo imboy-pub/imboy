@@ -4,8 +4,8 @@
 %%%
 -export([check_msg/3]).
 
--include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API
@@ -51,7 +51,7 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
            {<<"from">>, imboy_hashids:uid_encode(FromId)},
            {<<"to">>, imboy_hashids:uid_encode(ToId)},
            {<<"payload">>,
-            jsx:decode(Payload, [{return_maps, false}])},
+            jsone:decode(Payload, [{object_format, proplist}])},
            lists:keyfind(<<"created_at">>, 1, Row),
            lists:keyfind(<<"server_ts">>, 1, Row)],
     % ?LOG([Delay, "Msg: ", Msg]),

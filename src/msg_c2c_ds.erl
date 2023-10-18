@@ -3,8 +3,8 @@
 % msg_c2c_ds 是 msg_c2c domain service 缩写
 %%%
 
--include_lib("imboy/include/chat.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -export([write_msg/6]).
 -export([revoke_offline_msg/4]).

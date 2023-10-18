@@ -5,7 +5,7 @@
 -export([check_subprotocols/2]).
 -export([auth/4]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API

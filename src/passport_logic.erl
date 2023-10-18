@@ -8,8 +8,8 @@
 -export([do_signup/5]).
 -export([find_password/5]).
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/def_column.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/def_column.hrl").
 
 
 -spec send_email_code(binary()) ->

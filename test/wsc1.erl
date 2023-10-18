@@ -36,7 +36,7 @@
 % erlang:memory().
 % length(chat_store_repo:lookall()).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 start(Begin, End) ->
     % code:add_path("../ebin"),

@@ -3,7 +3,7 @@
 % user_setting_repo 是 user_setting repository 缩写
 %%%
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -export([tablename/0]).
 -export([find_by_uid/2]).

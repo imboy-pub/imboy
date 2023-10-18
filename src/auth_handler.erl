@@ -1,7 +1,7 @@
 -module(auth_handler).
 -behavior(cowboy_rest).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -export([init/2]).
 

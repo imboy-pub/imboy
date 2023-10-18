@@ -63,9 +63,15 @@ dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 # Sync 是一个开发者工具。它会即时重新编译和重新加载您的 Erlang 代码。
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
+# ecron 用于 Erlang 的轻量级/高效的类似 cron 的作业调度库。
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
+# Erlang 的纯函数式和泛型编程
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
+# telemetry 用于指标和仪器的动态调度库。
 dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
+# Erlang 的简单持久队列
+# dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
+dep_esq = hex 2.0.6
 
 # dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
 # dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master
@@ -82,9 +88,6 @@ dep_ersip_proxy = git https://gitee.com/imboy-tripartite-deps/ersip_proxy.git ma
 # https://udds-portal-public.oss-cn-hangzhou.aliyuncs.com/pdf/RTPS规范-v2.2-中文版-pfu.pdf
 dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 # dep_vice = git https://gitee.com/imboy-tripartite-deps/vice.git 0.1.0
-# dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
-
-dep_esq = hex 2.0.6
 
 dep_membrane_rtc_engine = hex 0.17.0
 dep_membrane_rtc_engine_webrtc = hex 0.2.1

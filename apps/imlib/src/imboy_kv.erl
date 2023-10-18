@@ -3,8 +3,8 @@
 % imboy 对 khepri 的封装
 %%%
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/common.hrl").
 
 -export([start/0]).
 

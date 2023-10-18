@@ -6,7 +6,7 @@
 -export([check_avatar/1]).
 -export([user_join_ids/1]).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API

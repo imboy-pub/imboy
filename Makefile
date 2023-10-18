@@ -14,12 +14,13 @@ include include/deps.mk
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
-
+LOCAL_DEPS += imlib
+LOCAL_DEPS += cron
 # LOCAL_DEPS += erlmedia
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS = telemetry lager jsone ranch cowlib cowboy
-DEPS += jsx jwerl hashids recon observer_cli gen_smtp throttle
+DEPS += jwerl hashids recon observer_cli gen_smtp throttle
 DEPS += qdate qdate_localtime
 # goldrush 提供了快速的事件流处理
 DEPS += goldrush

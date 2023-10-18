@@ -3,7 +3,7 @@
 % friend_category_ds 是 friend_category domain service 缩写
 %%%
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -export([add/2]).
 -export([find_by_uid/1]).

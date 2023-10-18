@@ -120,5 +120,7 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
     * 假设两个 Go-FastDFS 服务（需要两个二级域名 c.imboy.pub 用于收藏； a.imboy.pub 用于聊天等零时附件存储）；
     * 数据库新建 attachment 表，最收藏的资源做引用计数管理，当计算器为0的时候，可以删除对应资源；
     * a.imboy.pub 服务的资源，可以按时间戳定时直接清理；
+    * 该方案有缺陷：从a.imboy.pub copy 附件到 c.imboy.pub 比较耗时（解决耗时问题需要调整 Go-FastDFS 服务）
+*
 
 ## More

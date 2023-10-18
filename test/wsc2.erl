@@ -25,7 +25,7 @@
 % wsc2:stop(83235, 83235 + 12000)
 % wsc2:stop(113235, 113235 + 60000).
 
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 start_link() ->
     start_link({1, 0, {}}).

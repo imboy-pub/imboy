@@ -4,7 +4,7 @@
 -export([init/2]).
 
 -include_lib("kernel/include/inet.hrl").
--include_lib("imboy/include/log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API

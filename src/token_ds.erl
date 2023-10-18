@@ -8,7 +8,7 @@
 -export([decrypt_token/1]).
 % -export ([get_uid/1]).
 
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/common.hrl").
 
 -type token_type() :: rtk | tk.
 

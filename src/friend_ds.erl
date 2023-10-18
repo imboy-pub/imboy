@@ -10,8 +10,8 @@
 -export([change_remark/3]).
 -export([set_category_id/3]).
 
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/def_column.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/def_column.hrl").
 
 %% ===================================================================
 %% API

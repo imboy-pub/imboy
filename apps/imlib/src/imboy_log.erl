@@ -8,7 +8,7 @@
     error/1, error/2
 ]).
 
--include("log.hrl").
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API

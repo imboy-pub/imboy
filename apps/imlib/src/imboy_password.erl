@@ -3,8 +3,8 @@
 % Pwd = imboy_password:generate("admin888").
 % imboy_password:verify("admin888", Pwd).
 %%%
--include_lib("imboy/include/log.hrl").
--include_lib("imboy/include/common.hrl").
+-include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/common.hrl").
 
 -export([generate/1, generate/2]).
 -export([verify/2]).
