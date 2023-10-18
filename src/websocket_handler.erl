@@ -24,17 +24,12 @@ init(Req0, State0) ->
     SubPt = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
     % ?LOG([Env, DID, DType, Auth, SubPt]),
-    Opt0 = #{
-        num_acceptors => infinity,
-        max_connections => infinity,
-        max_frame_size => 1048576,  % 1MB
-        % Cowboy关闭连接空闲120秒 默认值为 60000
-        idle_timeout => 120000
-    },
-    State1 = State0#{
-        dtype => DType,
-        did => DID
-    },
+    Opt0 = #{num_acceptors => infinity,
+             max_connections => infinity,
+             max_frame_size => 1048576,  % 1MB
+             % Cowboy关闭连接空闲120秒 默认值为 60000
+             idle_timeout => 120000},
+    State1 = State0#{dtype => DType, did => DID},
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
             lager:warning("DeviceID ~p exceeded api limit", [DID]),
@@ -52,15 +47,12 @@ init(Req0, State0) ->
             end
     end.
 
+
 %%连接初始 onopen
 websocket_init(State) ->
     case maps:find(error, State) of
         {ok, Code} ->
-            Msg = [
-                {<<"type">>, <<"error">>},
-                {<<"code">>, Code},
-                {<<"server_ts">>, imboy_dt:millisecond()}
-            ],
+            Msg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"server_ts">>, imboy_dt:millisecond()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
@@ -109,12 +101,12 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     ?LOG(["CLIENT_ACK", Tail, State]),
     CurrentUid = maps:get(current_uid, State),
     try
-         binary:split(Tail, <<",">>, [global])
+        binary:split(Tail, <<",">>, [global])
     of
         [Type, MsgId, DID] ->
             ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}]),
             % 缓存在 message_ds:send_next/5 中设置
-            case imboy_cache:get({CurrentUid , DID, MsgId}) of
+            case imboy_cache:get({CurrentUid, DID, MsgId}) of
                 undefined ->
                     ok;
                 {ok, TimerRef} ->
@@ -136,9 +128,12 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
             end
     catch
         Class:Reason:Stacktrace ->
-            ?LOG(["websocket_handle try catch: Class:", Class,
-                  "Reason:", Reason,
-                  "Stacktrace:", Stacktrace,
+            ?LOG(["websocket_handle try catch: Class:",
+                  Class,
+                  "Reason:",
+                  Reason,
+                  "Stacktrace:",
+                  Stacktrace,
                   erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
@@ -177,16 +172,17 @@ websocket_handle({text, Msg}, State) ->
             {ok, State, hibernate};
         {reply, Msg2} ->
             ?LOG([reply, 2, Msg2, State]),
-            {reply, {text, jsone:encode(Msg2, [native_utf8])}, State,
-                    hibernate};
+            {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate};
         {reply, Msg3, State3} ->
-            {reply, {text, jsone:encode(Msg3, [native_utf8])}, State3,
-                    hibernate}
+            {reply, {text, jsone:encode(Msg3, [native_utf8])}, State3, hibernate}
     catch
         Class:Reason:Stacktrace ->
-            ?LOG(["websocket_handle try catch: Class:", Class,
-                  "Reason:", Reason,
-                  "Stacktrace:", Stacktrace,
+            ?LOG(["websocket_handle try catch: Class:",
+                  Class,
+                  "Reason:",
+                  Reason,
+                  "Stacktrace:",
+                  Stacktrace,
                   erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
@@ -196,17 +192,16 @@ websocket_handle({binary, Msg}, State) ->
 websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
 
+
 %% 处理erlang 发送的消息
 websocket_info({reply, Msg}, State) ->
     ?LOG([reply, State]),
-    {reply, {text, jsone:encode(Msg, [native_utf8])}, State,
-            hibernate};
+    {reply, {text, jsone:encode(Msg, [native_utf8])}, State, hibernate};
 
 websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
     {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi,
-        State, Msg, cowboy_clock:rfc1123()]),
+    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi, State, Msg, cowboy_clock:rfc1123()]),
     message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
     {reply, {text, Msg}, State, hibernate};
 
@@ -229,7 +224,7 @@ websocket_info(_Info, State) ->
 terminate(Reason, _Req, State) ->
     ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case maps:find(current_uid, State) of
-        {ok, Uid} when is_integer(Uid)  ->
+        {ok, Uid} when is_integer(Uid) ->
             DID = maps:get(did, State, <<>>),
             user_logic:offline(Uid, self(), DID),
             ok;

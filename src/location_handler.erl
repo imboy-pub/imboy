@@ -14,6 +14,7 @@
 -include_lib("imlib/include/common.hrl").
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -23,17 +24,19 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     % ?LOG([people_nearby, handler, Action]),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        make_myself_visible ->
-            make_myself_visible(Req0, State);
-        make_myself_unvisible ->
-            make_myself_unvisible(Req0, State);
-        people_nearby ->
-            people_nearby(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            make_myself_visible ->
+                make_myself_visible(Req0, State);
+            make_myself_unvisible ->
+                make_myself_unvisible(Req0, State);
+            people_nearby ->
+                people_nearby(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -45,18 +48,20 @@ make_myself_visible(Req0, State) ->
     Lat = proplists:get_value(<<"latitude">>, PostVals, ""),
     Lng = proplists:get_value(<<"longitude">>, PostVals, ""),
     % ?LOG([CurrentUid, Lat, Lng]),
-   case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
+    case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
         ok ->
-           imboy_response:success(Req0, #{}, "success.");
+            imboy_response:success(Req0, #{}, "success.");
         {error, Msg} ->
-           imboy_response:error(Req0, Msg)
+            imboy_response:error(Req0, Msg)
     end.
+
 
 % 让自己不可见
 make_myself_unvisible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     location_logic:make_myself_unvisible(CurrentUid),
     imboy_response:success(Req0, #{}, "success.").
+
 
 % 附近的人
 people_nearby(Req0, _State) ->
@@ -68,12 +73,12 @@ people_nearby(Req0, _State) ->
 
     % ?LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
     List = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
-    imboy_response:success(Req0, [
-        {<<"radius">>, Radius},
-        {<<"size">>, length(List)},
-        {<<"unit">>, <<"m">>},
-        {<<"list">>, List}
-    ], "success.").
+    imboy_response:success(Req0,
+                           [{<<"radius">>, Radius},
+                            {<<"size">>, length(List)},
+                            {<<"unit">>, <<"m">>},
+                            {<<"list">>, List}],
+                           "success.").
 
 %% ===================================================================
 %% EUnit tests.

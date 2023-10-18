@@ -19,20 +19,12 @@ start(_Type, _Args) ->
         StartMode == quic ->
             start_quic(Dispatch);
         true ->
-            ProtoOpts = #{
-                middlewares => [
-                    cowboy_router
-                    , auth_middleware
-                    , cowboy_handler
-                ],
-                % metrics_callback => do_metrics_callback(),
-                stream_handlers => [
-                    cowboy_compress_h
-                    , cowboy_stream_h
-                    % , cowboy_metrics_h
-                ],
-                env => #{dispatch => Dispatch}
-            },
+            ProtoOpts = #{middlewares => [cowboy_router, auth_middleware, cowboy_handler],
+                          % metrics_callback => do_metrics_callback(),
+                          stream_handlers => [cowboy_compress_h, cowboy_stream_h
+                              % , cowboy_metrics_h
+                              ],
+                          env => #{dispatch => Dispatch}},
             Port = config_ds:env(http_port),
             case StartMode of
                 tls ->
@@ -45,6 +37,7 @@ start(_Type, _Args) ->
             end
     end,
     imboy_sup:start_link().
+
 
 % do_metrics_callback() ->
 %    fun(Metrics) ->
@@ -64,45 +57,33 @@ stop(_State) ->
             cowboy:stop_listener(imboy_listener)
     end.
 
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
--spec start_quic(cowboy_router:dispatch_rules())
-    -> {ok, pid()} | {error, any()}.
+-spec start_quic(cowboy_router:dispatch_rules()) -> {ok, pid()} | {error, any()}.
 start_quic(Dispatch) ->
     PrivDir = code:priv_dir(imboy),
-    cowboy:start_quic(#{
-        socket_opts => [
-            % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
-            % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
-            {cert, PrivDir ++ config_ds:env(certfile)}
-            , {key, PrivDir ++ config_ds:env(keyfile)}
-        ]
-    }, #{
-        env => #{dispatch => Dispatch}
-    }).
+    cowboy:start_quic(#{socket_opts => [
+                                        % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
+                                        % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
+                                        {cert, PrivDir ++ config_ds:env(certfile)},
+                                        {key, PrivDir ++ config_ds:env(keyfile)}]},
+                      #{env => #{dispatch => Dispatch}}).
 
--spec start_tls(map(), integer())
-    -> {ok, pid()} | {error, any()}.
+
+-spec start_tls(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_tls(ProtoOpts, Port) ->
     % Port = config_ds:env(http_port),
     PrivDir = code:priv_dir(imboy),
-    cowboy:start_tls(imboy_listener_tls
-        , [
-            {port, Port}
-            , {cacertfile, PrivDir ++ config_ds:env(cacertfile)}
-            , {certfile, PrivDir ++ config_ds:env(certfile)}
-            , {keyfile, PrivDir ++ config_ds:env(keyfile)}
-        ]
-        , ProtoOpts
-    ).
+    cowboy:start_tls(imboy_listener_tls,
+                     [{port, Port},
+                      {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
+                      {certfile, PrivDir ++ config_ds:env(certfile)},
+                      {keyfile, PrivDir ++ config_ds:env(keyfile)}],
+                     ProtoOpts).
 
--spec start_clear(map(), integer())
-    -> {ok, pid()} | {error, any()}.
+
+-spec start_clear(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_clear(ProtoOpts, Port) ->
-    cowboy:start_clear(imboy_listener
-        , [
-            {port, Port}
-        ]
-        , ProtoOpts
-    ).
+    cowboy:start_clear(imboy_listener, [{port, Port}], ProtoOpts).

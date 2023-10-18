@@ -97,15 +97,9 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
     MsgId = <<"logged_another_device">>,
-    Payload = [
-        {<<"msg_type">>, MsgId},
-        {<<"did">>, DID},
-        {<<"dname">>, DName}
-    ],
+    Payload = [{<<"msg_type">>, MsgId}, {<<"did">>, DID}, {<<"dname">>, DName}],
     ToUid = imboy_hashids:uid_encode(Uid),
-    Msg = message_ds:assemble_msg(
-        <<"S2C">>, <<>>, ToUid
-        , Payload, MsgId),
+    Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, Payload, MsgId),
 
     MsLi = [0, 5000, 10000],
     Msg2 = jsone:encode(Msg, [native_utf8]),
@@ -171,7 +165,7 @@ cast_offline(Uid, Pid, DID) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec notice_friend(Uid::integer(), binary()) -> ok.
+-spec notice_friend(Uid :: integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
     Column = <<"to_user_id">>,
     case friend_repo:find_by_uid(Uid, Column) of
@@ -186,18 +180,18 @@ notice_friend(Uid, State) ->
 
 
 -spec send_state_msg(any(), user_chat_state(), list()) -> ok.
-send_state_msg(_FromId, _State, []) -> ok;
+send_state_msg(_FromId, _State, []) ->
+    ok;
 % 给在线好友发送上线消息
 send_state_msg(FromId, State, [ToUid | Tail]) ->
     % ?LOG([FromId, State, ToUid, Tail]), % echo [1,<<"3">>,<0.892.0>]
     % 用户在线状态变更
     % State: <<"online">> | <<"offline">> | <<"hide">>.
-    Msg = jsone:encode(message_ds:assemble_msg(
-        <<"S2C">>,
-        imboy_hashids:uid_encode(FromId),
-        imboy_hashids:uid_encode(ToUid),
-        [{<<"msg_type">>, State}],
-        <<"">>
-    ), [native_utf8]),
+    Msg = jsone:encode(message_ds:assemble_msg(<<"S2C">>,
+                                               imboy_hashids:uid_encode(FromId),
+                                               imboy_hashids:uid_encode(ToUid),
+                                               [{<<"msg_type">>, State}],
+                                               <<"">>),
+                       [native_utf8]),
     imboy_session:publish(ToUid, Msg),
     send_state_msg(FromId, State, Tail).

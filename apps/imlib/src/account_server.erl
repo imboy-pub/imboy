@@ -46,11 +46,9 @@ start_link() ->
 
 init([Start, Len]) ->
     L = create_rand_list(Start, Len),
-    State = #state{
-        start = Start
-        , len = Len
-        , l = L
-    },
+    State = #state{start = Start,
+                   len = Len,
+                   l = L},
     % ?LOG([?MODULE, init, State]),
     {ok, State}.
 
@@ -101,8 +99,4 @@ create_rand_list(Start, Len) ->
 
 
 start_account() ->
-    imboy_db:pluck(
-        <<"user">>
-        , <<"max(CAST(account as integer)) as max">>
-        , 50000
-    ).
+    imboy_db:pluck(<<"user">>, <<"max(CAST(account as integer)) as max">>, 50000).

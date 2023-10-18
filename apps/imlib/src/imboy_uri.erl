@@ -9,6 +9,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -29,6 +30,7 @@ download(Url, FilePath) ->
             {error, Reason}
     end.
 
+
 % https://gist.github.com/leeyisoft/4cc8acd930910006b5251092e0013d07
 
 %% Usage:
@@ -41,12 +43,9 @@ download(Url, FilePath) ->
 %%     {<<"payload">>, PayloadContent}
 %% ]
 %% upload(<<"site.com/api/upload">>, <<"path/to/file.png">>, <<"upload">>, <<"image/png">>, RequestData)
--spec upload(URL, FilePath, Name, MimeType, RequestData) -> {ok, binary()} | {error, list()} when
-    URL:: binary(),
-    FilePath:: binary(),
-    Name:: binary(),
-    MimeType:: binary(),
-    RequestData:: list().
+-spec upload(URL, FilePath, Name, MimeType, RequestData) ->
+          {ok, binary()} | {error, list()}
+            when URL :: binary(), FilePath :: binary(), Name :: binary(), MimeType :: binary(), RequestData :: list().
 upload(URL, FilePath, Name, MimeType, RequestData) ->
     application:ensure_started(ssl),
     application:ensure_started(inets),
@@ -59,16 +58,10 @@ upload(URL, FilePath, Name, MimeType, RequestData) ->
     ContentType = "multipart/form-data; boundary=" ++ integer_to_list(Boundary),
 
     ContentLength = integer_to_list(length(binary_to_list(RequestBody))),
-    Headers = [
-        {"Content-Length", ContentLength}
-    ],
+    Headers = [{"Content-Length", ContentLength}],
     HTTPOptions = [],
     Options = [{body_format, binary}],
-    Response = httpc:request(post
-        , {binary_to_list(URL), Headers, ContentType, RequestBody}
-        , HTTPOptions
-        , Options
-    ),
+    Response = httpc:request(post, {binary_to_list(URL), Headers, ContentType, RequestBody}, HTTPOptions, Options),
     % ?LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
@@ -91,7 +84,9 @@ exclusion_param(Url, Keys) ->
     Query3 = [[K, "=", V, "&"] || {K, V} <- Query2, lists:member(K, Keys) == false],
     Query4 = iolist_to_binary(Query3),
     uri_string:normalize(UrlMap#{query => Query4}).
-    % lists:droplast(uri_string:normalize(UrlMap#{query => Query4})).
+
+
+% lists:droplast(uri_string:normalize(UrlMap#{query => Query4})).
 
 % 获取URL中的所有参数
 -spec get_params(list() | binary()) -> map().
@@ -108,15 +103,18 @@ get_params(Url) ->
     Query2 = uri_string:dissect_query(Query),
     {UrlMap, maps:from_list(Query2)}.
 
+
 %% 根据指定参数名获取在URL中对应的值
 -spec get_params(atom(), list()) -> binary().
 % imboy_uri:get_params("width", "https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
 get_params(Key, Url) ->
     get_params(Key, Url, <<"">>).
 
+
 get_params(Key, Url, Def) ->
     Params = get_params(Url),
     maps:get(Key, Params, Def).
+
 
 -spec check_auth(list() | binary()) -> map().
 % imboy_uri:check_auth("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
@@ -132,46 +130,60 @@ check_auth(Url) ->
     V = imboy_dt:second(),
     A = auth_ds:get_token(assets, S, integer_to_list(V)),
     V2 = integer_to_binary(V),
-    NewQuery = <<"s=", S/binary
-        ,"&a=", A/binary,
-        "&v=", V2/binary>>,
+    NewQuery = <<"s=", S/binary, "&a=", A/binary, "&v=", V2/binary>>,
     % lager:info(Query2),
     uri_string:normalize(UrlMap#{query => NewQuery}).
+
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
 % https://gist.github.com/leeyisoft/4cc8acd930910006b5251092e0013d07
--spec format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) -> binary() when
-    Data:: binary(),
-    Params:: list(),
-    Name:: binary(),
-    FileNames:: list(),
-    MimeType:: binary(),
-    Boundary:: binary().
+-spec format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) ->
+          binary()
+            when Data :: binary(),
+                 Params :: list(),
+                 Name :: binary(),
+                 FileNames :: list(),
+                 MimeType :: binary(),
+                 Boundary :: binary().
 format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) ->
     StartBoundary = erlang:iolist_to_binary([<<"--">>, Boundary]),
     LineSeparator = <<"\r\n">>,
     % ?LOG(['Params', Params]),
     WithParams = lists:foldl(fun({Key, Value}, Acc) ->
-        erlang:iolist_to_binary([
-            Acc,
-            StartBoundary, LineSeparator,
-            <<"Content-Disposition: form-data; name=\"">>, Key, <<"\"">>, LineSeparator, LineSeparator,
-            Value, LineSeparator
-        ])
-    end, <<"">>, Params),
+                                    erlang:iolist_to_binary([Acc,
+                                                             StartBoundary,
+                                                             LineSeparator,
+                                                             <<"Content-Disposition: form-data; name=\"">>,
+                                                             Key,
+                                                             <<"\"">>,
+                                                             LineSeparator,
+                                                             LineSeparator,
+                                                             Value,
+                                                             LineSeparator])
+                             end,
+                             <<"">>,
+                             Params),
     WithPaths = lists:foldl(fun(FileName, Acc) ->
-        erlang:iolist_to_binary([
-            Acc,
-            StartBoundary, LineSeparator,
-            <<"Content-Disposition: form-data; name=\"">>, Name,
-            <<"\"; filename=\"">>, FileName, <<"\"">>, LineSeparator,
-            <<"Content-Type: application/">>, MimeType, LineSeparator, LineSeparator,
-            % <<"Content-Type: application/octet-stream;">>, LineSeparator, LineSeparator,
-            Data,
-            LineSeparator
-        ])
-    end, WithParams, FileNames),
+                                   erlang:iolist_to_binary([Acc,
+                                                            StartBoundary,
+                                                            LineSeparator,
+                                                            <<"Content-Disposition: form-data; name=\"">>,
+                                                            Name,
+                                                            <<"\"; filename=\"">>,
+                                                            FileName,
+                                                            <<"\"">>,
+                                                            LineSeparator,
+                                                            <<"Content-Type: application/">>,
+                                                            MimeType,
+                                                            LineSeparator,
+                                                            LineSeparator,
+                                                            % <<"Content-Type: application/octet-stream;">>, LineSeparator, LineSeparator,
+                                                            Data,
+                                                            LineSeparator])
+                            end,
+                            WithParams,
+                            FileNames),
     erlang:iolist_to_binary([WithPaths, StartBoundary, <<"--">>, LineSeparator]).

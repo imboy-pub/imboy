@@ -14,6 +14,7 @@
 -include_lib("imlib/include/common.hrl").
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,26 +23,19 @@ init(Req0, Opts) ->
     StreamId = cowboy_req:binding(stream_id, Req0),
     lager:info("StreamId ~p~n", [StreamId]),
     check_role(StreamId, Opts),
-    Req = cowboy_req:stream_reply(200, #{
-        <<"content-type">> => <<"text/event-stream">>
-    }, Req0),
+    Req = cowboy_req:stream_reply(200, #{<<"content-type">> => <<"text/event-stream">>}, Req0),
     erlang:send_after(1000, self(), {message, "Tick"}),
     {cowboy_loop, Req, Opts}.
 
+
 info({message, Msg}, Req, State) ->
     lager:info("info_Msg ~p, State ~p~n", [Msg, State]),
-    cowboy_req:stream_events(#{
-        id => id(),
-        data => Msg
-    }, nofin, Req),
+    cowboy_req:stream_events(#{id => id(), data => Msg}, nofin, Req),
     % erlang:send_after(10, self(), {message, "Tick"}),
     {ok, Req, State};
 info(Msg, Req, State) ->
     lager:info("info_Msg2 ~p, State ~p~n", [Msg, State]),
-    cowboy_req:stream_events(#{
-        id => id(),
-        data => Msg
-    }, nofin, Req),
+    cowboy_req:stream_events(#{id => id(), data => Msg}, nofin, Req),
     {ok, Req, State}.
 
 
@@ -53,9 +47,9 @@ check_role(StreamId, State) ->
     lager:info("StreamId ~p, State ~p~n", [StreamId, State]),
     ok.
 
+
 id() ->
     integer_to_list(erlang:unique_integer([positive, monotonic]), 16).
-
 
 %% ===================================================================
 %% EUnit tests.

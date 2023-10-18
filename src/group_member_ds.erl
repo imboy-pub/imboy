@@ -12,10 +12,9 @@
 member_uids(Gid) ->
     Key = {member_uids, Gid},
     Fun = fun() ->
-        Column = <<"user_id">>,
-        {ok, _, Members} = group_member_repo:find_by_gid(Gid, Column),
-        [Uid || {Uid} <- Members]
-    end,
+                 Column = <<"user_id">>,
+                 {ok, _, Members} = group_member_repo:find_by_gid(Gid, Column),
+                 [Uid || {Uid} <- Members]
+        end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
-

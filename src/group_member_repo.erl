@@ -6,12 +6,14 @@
 -export([find_by_gid/2, find_by_gid/3]).
 -export([find_by_uid/2, find_by_uid/3]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
 tablename() ->
     imboy_db:public_tablename(<<"group_member">>).
+
 
 find_by_gid(Gid, Column) ->
     find_by_gid(Gid, Column, 10000).
@@ -22,6 +24,7 @@ find_by_gid(Gid, Column, Limit) ->
     Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     imboy_db:query(Sql, [Gid, Limit]).
+
 
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 10000).
@@ -36,4 +39,3 @@ find_by_uid(Uid, Column, Limit) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-

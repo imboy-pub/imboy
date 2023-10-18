@@ -12,6 +12,7 @@
 -export([count_by_to_id/1]).
 -export([delete_overflow_timeline/2]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -19,9 +20,11 @@
 tablename() ->
     imboy_db:public_tablename(<<"msg_c2g_timeline">>).
 
+
 % msg_c2g_timeline_repo:find_by_uid(2, <<"msg_id">>, 10).
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
+
 
 find_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
@@ -39,26 +42,18 @@ delete_timeline(ToUid, MsgId) ->
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     imboy_db:execute(Sql, [ToUid, MsgId]).
 
+
 % msg_c2g_timeline_repo:check_msg(1).
 check_msg(MsgId) ->
     % use index uk_c2g_timeline_MsgId
-    imboy_db:pluck(
-        tablename()
-        , <<"msg_id = ", MsgId/binary>>
-        , <<"count(*) as count">>
-        , 0
-    ).
+    imboy_db:pluck(tablename(), <<"msg_id = ", MsgId/binary>>, <<"count(*) as count">>, 0).
+
 
 % msg_c2g_timeline_repo:count_by_to_id(1).
 count_by_to_id(ToUid) ->
     ToUid2 = integer_to_binary(ToUid),
     % use index uk_c2g_timeline_ToUid_MsgId
-    imboy_db:pluck(
-        tablename()
-        , <<"to_uid = ", ToUid2/binary>>
-        , <<"count(*) as count">>
-        , 0
-    ).
+    imboy_db:pluck(tablename(), <<"to_uid = ", ToUid2/binary>>, <<"count(*) as count">>, 0).
 
 
 % msg_c2g_timeline_repo:delete_overflow_timeline(1, 100).
@@ -79,4 +74,3 @@ delete_overflow_timeline(ToUid, Limit) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-

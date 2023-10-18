@@ -14,6 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,17 +23,19 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        page ->
-            page(Req0, State);
-        change_name ->
-            change_name(Req0, State);
-        delete ->
-            delete(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            page ->
+                page(Req0, State);
+            change_name ->
+                change_name(Req0, State);
+            delete ->
+                delete(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -44,6 +47,7 @@ page(Req0, State) ->
     Payload = user_device_logic:page(CurrentUid, Page, Size),
     imboy_response:success(Req0, Payload).
 
+
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
@@ -52,6 +56,7 @@ change_name(Req0, State) ->
     Name = proplists:get_value(<<"name">>, PostVals, <<"">>),
     user_device_logic:change_name(CurrentUid, DID, Name),
     imboy_response:success(Req0).
+
 
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),

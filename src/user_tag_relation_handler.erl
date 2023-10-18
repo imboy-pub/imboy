@@ -14,6 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,21 +23,23 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        add ->
-            add(Req0, State);
-        set ->
-            set(Req0, State);
-        remove ->
-            remove(Req0, State);
-        collect_page ->
-            page(<<"collect">>, Req0, State);
-        friend_page ->
-            page(<<"friend">>, Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            add ->
+                add(Req0, State);
+            set ->
+                set(Req0, State);
+            remove ->
+                remove(Req0, State);
+            collect_page ->
+                page(<<"collect">>, Req0, State);
+            friend_page ->
+                page(<<"friend">>, Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -53,30 +56,32 @@ add(Req0, State) ->
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
     % user_tag_relation_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     IsFriend = friend_ds:is_friend(CurrentUid, imboy_hashids:uid_decode(ObjectId)),
     Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
-    ObjectId2 = if
-        Scene2 == <<"2">>, IsFriend == false ->
-            <<>>;
-        true ->
-            ObjectId
-    end,
+    ObjectId2 =
+        if
+            Scene2 == <<"2">>,IsFriend == false ->
+                <<>>;
+            true ->
+                ObjectId
+        end,
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         length(Tag2) > 0 ->
             imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-        length(Tag) == 0, bit_size(ObjectId) == 0 ->
+        length(Tag) == 0,bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
-        length(Tag) > 1, bit_size(ObjectId) == 0 ->
+        length(Tag) > 1,bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
         true ->
             case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
@@ -102,14 +107,15 @@ set(Req0, State) ->
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     ObjectIds = proplists:get_value(<<"objectIds">>, PostVals, []),
     % user_tag_relation_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     TagLen = string:length(TagName),
     if
         bit_size(Scene2) == 0 ->
@@ -129,6 +135,7 @@ set(Req0, State) ->
             end
     end.
 
+
 %% 用户标签_标签详情-标签联系人列表-移除标签里的联系人
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -143,14 +150,15 @@ remove(Req0, State) ->
     % INSERT INTO user_tag_relation (id, scene, user_id, tag_id, object_id, created_at) VALUES(43, 2, 109, 56, 108, 1688916074887);
     % aaa30,aaa1,你好你好你好你好你好你好你1,abc1,端订单1,
     % user_tag_relation_logic:remove(109, <<"2">>, 108, 56).
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
@@ -168,6 +176,7 @@ remove(Req0, State) ->
                     imboy_response:error(Req0, Err)
             end
     end.
+
 
 %% 用户标签_标签详情-标签联系人列表 / 标签收藏列表
 page(Scene, Req0, State) ->

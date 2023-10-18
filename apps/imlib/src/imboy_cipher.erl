@@ -2,17 +2,23 @@
 
 -include_lib("imlib/include/common.hrl").
 
--export([aes_encrypt/3, aes_decrypt/3]).
--export([aes_encrypt/4, aes_decrypt/4]).
--export([rsa_encrypt/1, rsa_decrypt/1]).
--export([rsa_encrypt/2, rsa_decrypt/2]).
+-export([aes_encrypt/3,
+         aes_decrypt/3]).
+-export([aes_encrypt/4,
+         aes_decrypt/4]).
+-export([rsa_encrypt/1,
+         rsa_decrypt/1]).
+-export([rsa_encrypt/2,
+         rsa_decrypt/2]).
 
 -define(SHA_256_BLOCKSIZE, 64).
+
 
 % aes_cbc + pkcs#7填充
 % io:format("~s~n", [imboy_cipher:aes_encrypt(<<"admin8889">>, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa")]).
 aes_encrypt(Bin, Key, IV) ->
     aes_encrypt(aes_256_cbc, Bin, Key, IV).
+
 
 % imboy_cipher:aes_decrypt(base64:decode(Va)l, config_ds:env(postgre_aes_key), <<>>).
 aes_decrypt(Bin, Key, IV) ->
@@ -42,11 +48,10 @@ aes_decrypt(Type, Bin, Key, IV) ->
     binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).
 
 
--spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) ->
-          PlainText :: binary().
+-spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) -> PlainText :: binary().
 
--spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) ->
-          CipherText :: binary().
+
+-spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) -> CipherText :: binary().
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
     PemBin = config_ds:get("login_rsa_pub_key"),
@@ -84,7 +89,6 @@ rsa_decrypt(CipherText, PrivKey) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-
 crypto_update(StateDec, Bin, BinSize, OutBin) when BinSize > 16 ->
     Bin2 = binary:part(Bin, {0, 16}),
     OutBin2 = crypto:crypto_update(StateDec, Bin2),
@@ -95,8 +99,8 @@ crypto_update(StateDec, Bin, _BinSize, OutBin) ->
     OutBin2 = crypto:crypto_update(StateDec, Bin),
     <<OutBin/binary, OutBin2/binary>>.
 
+
 %% @fun 拿密钥内容
 get_rsa_key_str(PemBin) ->
     [Entry] = public_key:pem_decode(PemBin),
     public_key:pem_entry_decode(Entry).
-

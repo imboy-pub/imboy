@@ -5,6 +5,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -13,16 +14,17 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        add ->
-            add(Req0, State);
-        delete ->
-            delete(Req0, State);
-        rename ->
-            rename(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            add ->
+                add(Req0, State);
+            delete ->
+                delete(Req0, State);
+            rename ->
+                rename(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 

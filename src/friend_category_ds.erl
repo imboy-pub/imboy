@@ -10,12 +10,12 @@
 -export([rename/3]).
 -export([delete/2]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
--spec add(integer(), binary()) ->
-          {ok, integer()} | {error, any()}.
+-spec add(integer(), binary()) -> {ok, integer()} | {error, any()}.
 add(Uid, Name) ->
     case friend_category_repo:add(Uid, Name) of
         {error, ErrorMsg} ->
@@ -30,9 +30,7 @@ add(Uid, Name) ->
 -spec find_by_uid(integer()) -> list().
 find_by_uid(Uid) ->
     Field = <<"id, name">>,
-    {ok, _FieldList, Rows} = friend_category_repo:find_by_uid(
-        Uid,
-        Field),
+    {ok, _FieldList, Rows} = friend_category_repo:find_by_uid(Uid, Field),
     % ?LOG({ok, FieldList, Rows}),
     Default = [{<<"id">>, 0}, {<<"groupname">>, <<"default">>}],
     case length(Rows) == 0 of
@@ -40,9 +38,7 @@ find_by_uid(Uid) ->
             [Default];
         _ ->
             [Default |
-                [lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"id">>,<<"groupname">>], [Id, Name]) ||
-                    {Id, Name} <- Rows]
-            ]
+             [lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"id">>, <<"groupname">>], [Id, Name]) || {Id, Name} <- Rows]]
     end.
 
 

@@ -4,8 +4,8 @@
 % auth business logic module
 %%%
 
--export ([verify_for_open/3]).
--export ([verify_for_assets/4]).
+-export([verify_for_open/3]).
+-export([verify_for_assets/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -13,6 +13,7 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
+
 
 %% ===================================================================
 %% API
@@ -53,10 +54,10 @@ verify_for_open(Path, Tk, Val) ->
     % lager:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
     do_verify_for_assets(NewTk, Tk).
 
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
-
 
 %%% 执行验证码
 do_verify_for_assets(NewTk, T) when NewTk == T ->

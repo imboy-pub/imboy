@@ -5,6 +5,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -13,26 +14,27 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        friend_list ->
-            friend_list(Req0, State);
-        add_friend ->
-            add_friend(Req0, State);
-        confirm_friend ->
-            confirm_friend(Req0, State);
-        delete_friend ->
-            delete_friend(Req0, State);
-        move ->
-            move(Req0, State);
-        information ->
-            information(Req0, State);
-        find ->
-            find(Req0, State);
-        change_remark ->
-            change_remark(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            friend_list ->
+                friend_list(Req0, State);
+            add_friend ->
+                add_friend(Req0, State);
+            confirm_friend ->
+                confirm_friend(Req0, State);
+            delete_friend ->
+                delete_friend(Req0, State);
+            move ->
+                move(Req0, State);
+            information ->
+                information(Req0, State);
+            find ->
+                find(Req0, State);
+            change_remark ->
+                change_remark(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 
@@ -49,6 +51,7 @@ add_friend(Req0, State) ->
         {error, Msg, Param} ->
             imboy_response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
+
 
 %%% 申请添加好友确认
 confirm_friend(Req0, State) ->
@@ -67,6 +70,7 @@ confirm_friend(Req0, State) ->
             imboy_response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
 
+
 %%% 删除好友关系
 delete_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -74,6 +78,7 @@ delete_friend(Req0, State) ->
     Uid = proplists:get_value(<<"uid">>, PostVals),
     friend_logic:delete_friend(CurrentUid, Uid),
     imboy_response:success(Req0, #{}, "success.").
+
 
 %%% 查找非好友
 find(Req0, State) ->
@@ -83,17 +88,13 @@ find(Req0, State) ->
     Data = find_transfer(Mine, Friends),
     imboy_response:success(Req0, Data, "success.").
 
+
 find_transfer(User, Friend) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
      {<<"friend">>,
-      [[{<<"id">>,
-         imboy_hashids:uid_encode(proplists:get_value(<<"id">>,
-                                                           GF))},
+      [[{<<"id">>, imboy_hashids:uid_encode(proplists:get_value(<<"id">>, GF))},
         {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
-        {<<"list">>,
-         [imboy_hashids:replace_id(U) ||
-             U <- proplists:get_value(<<"list">>, GF)]}] ||
-          GF <- Friend]}].
+        {<<"list">>, [imboy_hashids:replace_id(U) || U <- proplists:get_value(<<"list">>, GF)]}] || GF <- Friend]}].
 
 
 %%% 我的好友，无好友分组的
@@ -107,12 +108,13 @@ friend_list(Req0, State) ->
     % ?LOG(Data),
     imboy_response:success(Req0, Data, "success.").
 
+
 friend_list_transfer(User, Friends) ->
-    [{<<"mine">>, imboy_hashids:replace_id(User)},
-     {<<"friend">>, Friends}
+    [{<<"mine">>, imboy_hashids:replace_id(User)}, {<<"friend">>, Friends}
     % {<<"mine">>, User}
     % , {<<"friend">>, Friends}
     ].
+
 
 %%% 移动好友分组
 move(Req0, State) ->
@@ -137,13 +139,7 @@ information(Req0, State) ->
             UserSetting = user_setting_ds:find_by_uid(Uid),
             % ?LOG([UserSetting, Uid]),
             Friend = [],
-            Data = information_transfer(
-                CurrentUid
-                , <<"friend">>
-                , User
-                , UserSetting
-                , Friend
-            ),
+            Data = information_transfer(CurrentUid, <<"friend">>, User, UserSetting, Friend),
             imboy_response:success(Req0, Data, "success.");
         #{type := <<"group">>} ->
             imboy_response:success(Req0, #{}, "success.");
@@ -151,15 +147,13 @@ information(Req0, State) ->
             imboy_response:success(Req0, #{}, "success.")
     end.
 
+
 information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
-    lists:append([
-        [
-            {<<"mine_uid">>, imboy_hashids:uid_encode(CurrentUid)}
-            , {<<"type">>, Type}
-            , {<<"user_setting">>, UserSetting}
-        ],
-        imboy_hashids:replace_id(User),
-        Friend]).
+    lists:append([[{<<"mine_uid">>, imboy_hashids:uid_encode(CurrentUid)},
+                   {<<"type">>, Type},
+                   {<<"user_setting">>, UserSetting}],
+                  imboy_hashids:replace_id(User),
+                  Friend]).
 
 
 %%% 修改好友备注

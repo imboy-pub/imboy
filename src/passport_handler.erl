@@ -6,6 +6,7 @@
 -include_lib("kernel/include/inet.hrl").
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -14,20 +15,21 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        refreshtoken ->
-            refreshtoken(Req0);
-        do_login ->
-            do_login(Req0);
-        do_signup ->
-            do_signup(Req0);
-        send_code ->
-            send_code(Req0);
-        find_password ->
-            find_password(Req0);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            refreshtoken ->
+                refreshtoken(Req0);
+            do_login ->
+                do_login(Req0);
+            do_signup ->
+                do_signup(Req0);
+            send_code ->
+                send_code(Req0);
+            find_password ->
+                find_password(Req0);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 
@@ -44,26 +46,25 @@ do_login(Req0) ->
     PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
-    RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>,
-                                     PostVals,
-                                     <<"1">>),
+    RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
     % ?LOG(['Type', Type,'Password', Password]),
-    Pwd = case RsaEncrypt == <<"1">> of
-        true ->
-            try
-                imboy_cipher:rsa_decrypt(Password)
-            of
-                Pwd0 ->
-                    Pwd0
-            catch
-                _Type:_Reason ->
-                    <<>>
-            end;
-        _ ->
-            Password
-    end,
+    Pwd =
+        case RsaEncrypt == <<"1">> of
+            true ->
+                try
+                    imboy_cipher:rsa_decrypt(Password)
+                of
+                    Pwd0 ->
+                        Pwd0
+                catch
+                    _Type:_Reason ->
+                        <<>>
+                end;
+            _ ->
+                Password
+        end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"ip">>, Ip} | PostVals],
@@ -74,9 +75,7 @@ do_login(Req0) ->
             % gen_server:call是同步的，gen_server:cast是异步的
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
-            Data2 = Data#{
-                <<"setting">> => Setting
-            },
+            Data2 = Data#{<<"setting">> => Setting},
             imboy_response:success(Req0, Data2, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg);
@@ -93,15 +92,15 @@ refreshtoken(Req0) ->
         {limit_exceeded, _, _} ->
             % lager:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
             cowboy_req:reply(429, Req0);
-    _ ->
-        case token_ds:decrypt_token(Refreshtoken) of
-            {ok, Id, _ExpireAt, <<"rtk">>} ->
-                Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
-                imboy_response:success(Req0, Data, "success.");
-            {error, Code, Msg, _Map} ->
-                imboy_response:error(Req0, Msg, Code)
-        end
-  end.
+        _ ->
+            case token_ds:decrypt_token(Refreshtoken) of
+                {ok, Id, _ExpireAt, <<"rtk">>} ->
+                    Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
+                    imboy_response:success(Req0, Data, "success.");
+                {error, Code, Msg, _Map} ->
+                    imboy_response:error(Req0, Msg, Code)
+            end
+    end.
 
 
 send_code(Req0) ->
@@ -147,11 +146,7 @@ do_signup(Req0) ->
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
-    case passport_logic:do_signup(Type,
-                                  Account,
-                                  Password,
-                                  Code,
-                                  Post2) of
+    case passport_logic:do_signup(Type, Account, Password, Code, Post2) of
         {ok, Data} ->
             imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->
@@ -182,11 +177,7 @@ find_password(Req0) ->
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
-    case passport_logic:find_password(Type,
-                                      Account,
-                                      Password,
-                                      Code,
-                                      Post2) of
+    case passport_logic:find_password(Type, Account, Password, Code, Post2) of
         {ok, Data} ->
             imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->

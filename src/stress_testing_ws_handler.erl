@@ -39,9 +39,7 @@ websocket_init(State) ->
     CurrentPid = self(),
     case maps:find(error, State) of
         {ok, Code} ->
-            Msg = [{<<"type">>, <<"error">>},
-                   {<<"code">>, Code},
-                   {<<"timestamp">>, imboy_dt:millisecond()}],
+            Msg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:millisecond()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
@@ -58,8 +56,7 @@ websocket_handle(ping, State) ->
 websocket_handle({text, <<"ping">>}, State) ->
     % ?LOG(State),
     {reply, {text, <<"pong">>}, State, hibernate};
-websocket_handle({text, <<"{\"action\":\"confirmMessage", _/binary>>},
-                 State) ->
+websocket_handle({text, <<"{\"action\":\"confirmMessage", _/binary>>}, State) ->
     % 匹配前端确认消息，不做任何处理
     {ok, State, hibernate};
 websocket_handle({text, Msg}, State) ->
@@ -67,16 +64,13 @@ websocket_handle({text, Msg}, State) ->
     try
         case lists:keyfind(error, 1, State) of
             {error, Code} ->
-                ErrMsg = [{<<"type">>, <<"error">>},
-                          {<<"code">>, Code},
-                          {<<"timestamp">>, imboy_dt:millisecond()}],
+                ErrMsg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:millisecond()}],
                 {reply, ErrMsg};
             false ->
                 CurrentUid = maps:get(current_uid, State),
                 Data = jsone:decode(Msg, [{object_format, proplist}]),
                 % C2C/SYSTEM/GROUP
-                Type = proplists:get_value(<<"conversation_type">>,
-                                           Data),
+                Type = proplists:get_value(<<"conversation_type">>, Data),
                 % ?LOG(Type),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
@@ -96,14 +90,11 @@ websocket_handle({text, Msg}, State) ->
                 ok ->
                     {ok, State, hibernate};
                 {reply, Msg2} ->
-                    {reply, {text, jsone:encode(Msg2, [native_utf8])},
-                            State,
-                            hibernate}
+                    {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate}
             end
     catch
         ErrCode:ErrorMsg ->
-            ?LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg,
-                  Msg]),
+            ?LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg, Msg]),
             {ok, State, hibernate}
     end;
 websocket_handle({binary, Msg}, State) ->
@@ -128,7 +119,7 @@ websocket_info(_Info, State) ->
 terminate(Reason, _Req, State) ->
     ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case maps:find(current_uid, State) of
-        {ok, Uid} when is_integer(Uid)  ->
+        {ok, Uid} when is_integer(Uid) ->
             DID = maps:get(did, State, <<"">>),
             user_logic:offline(Uid, self(), DID),
             ok;

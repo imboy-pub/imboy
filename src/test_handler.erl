@@ -14,6 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,15 +23,17 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        req_get ->
-            req_get(Req0, State);
-        req_post ->
-            req_post(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            req_get ->
+                req_get(Req0, State);
+            req_post ->
+                req_post(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -45,14 +48,14 @@ req_get(Req0, _State) ->
     #{a := A} = cowboy_req:match_qs([{a, [], 0}], Req0),
 
     % test_logic:demo(CurrentUid, Val1, Val2),
-    imboy_response:success(Req0, [
-        {<<"a">>, A}
-        , {<<"config">>, imboy_func:implode("", [config_ds:env(test)])}
-        , {<<"type">>, Type}
-        , {<<"host">>, cowboy_req:header(<<"host">>, Req0)}
-        , {<<"client">>, cowboy_req:header(<<"client">>, Req0)}
-        , {<<"content-type">>, cowboy_req:header(<<"content-type">>, Req0)}
-    ], "success.").
+    imboy_response:success(Req0,
+                           [{<<"a">>, A},
+                            {<<"config">>, imboy_func:implode("", [config_ds:env(test)])},
+                            {<<"type">>, Type},
+                            {<<"host">>, cowboy_req:header(<<"host">>, Req0)},
+                            {<<"client">>, cowboy_req:header(<<"client">>, Req0)},
+                            {<<"content-type">>, cowboy_req:header(<<"content-type">>, Req0)}],
+                           "success.").
 
 
 % imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).

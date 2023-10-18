@@ -4,9 +4,9 @@
 % whip domain service 缩写
 %%%
 
--export ([parse/1]).
--export ([make/1]).
--export ([make_ip4_addr/1]).
+-export([parse/1]).
+-export([make/1]).
+-export([make_ip4_addr/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -14,6 +14,7 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
+
 
 %% ===================================================================
 %% API
@@ -33,9 +34,11 @@ parse(Bin) ->
             Error
     end.
 
+
 make(Bin) ->
     {ok, Conn} = parse(Bin),
     Conn.
+
 
 make_ip4_addr(AddrBin) ->
     {ok, Addr} = ersip_sdp_addr:parse(<<"in">>, <<"ip4">>, AddrBin),

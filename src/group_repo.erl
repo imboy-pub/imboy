@@ -12,12 +12,14 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
 tablename() ->
     imboy_db:public_tablename(<<"group">>).
+
 
 % group_repo:find_by_ids([1,2], <<"*">>).
 find_by_ids(Ids, Column) ->
@@ -35,6 +37,7 @@ find_by_ids(Ids, Column) ->
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 10000).
 
+
 find_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     Where = <<"WHERE owner_uid = $1 AND status = 1 LIMIT $2">>,
@@ -44,4 +47,3 @@ find_by_uid(Uid, Column, Limit) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-

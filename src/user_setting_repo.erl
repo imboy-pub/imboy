@@ -9,11 +9,13 @@
 -export([find_by_uid/2]).
 -export([update/2]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 tablename() ->
     imboy_db:public_tablename(<<"user_setting">>).
+
 
 find_by_uid(Uid, Column) when is_binary(Uid) ->
     find_by_uid(imboy_hashids:uid_decode(Uid), Column);
@@ -31,11 +33,7 @@ update(Uid, Setting) when is_integer(Uid) ->
     UpSql = <<" UPDATE SET setting = $2, updated_at = $3;">>,
     Sql = <<"INSERT INTO ", Tb/binary, "
         (user_id, setting, updated_at) VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO "
-        , UpSql/binary>>,
+        ON CONFLICT (user_id) DO ", UpSql/binary>>,
     UpAt = imboy_dt:millisecond(),
     % ?LOG([Sql, [Uid, jsone:encode(Setting), UpAt]]),
-    imboy_db:execute(
-        Sql,
-        [Uid, jsone:encode(Setting, [native_utf8]), UpAt]
-    ).
+    imboy_db:execute(Sql, [Uid, jsone:encode(Setting, [native_utf8]), UpAt]).

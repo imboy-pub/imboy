@@ -14,6 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,19 +23,21 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        page ->
-            page(Req0, State);
-        change_name ->
-            change_name(Req0, State);
-        add ->
-            add(Req0, State);
-        delete ->
-            delete(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            page ->
+                page(Req0, State);
+            change_name ->
+                change_name(Req0, State);
+            add ->
+                add(Req0, State);
+            delete ->
+                delete(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -48,20 +51,22 @@ page(Req0, State) ->
     #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
     OrderBy = <<"id desc">>,
     UidBin = integer_to_binary(CurrentUid),
-    {Scene2, Where} = case Scene of
-        <<"collect">> ->
-            {<<"1">>, <<"creator_user_id = ", UidBin/binary, " and scene = 1">>};
-        <<"friend">> ->
-            {<<"2">>, <<"creator_user_id = ", UidBin/binary, " and scene = 2">>};
-        _ ->
-            {<<>>, <<>>}
-    end,
-    Where2 = if
-        byte_size(Kwd) > 0 ->
-            <<Where/binary, " and name like '%", Kwd/binary, "%'">>;
-        true ->
-            Where
-    end,
+    {Scene2, Where} =
+        case Scene of
+            <<"collect">> ->
+                {<<"1">>, <<"creator_user_id = ", UidBin/binary, " and scene = 1">>};
+            <<"friend">> ->
+                {<<"2">>, <<"creator_user_id = ", UidBin/binary, " and scene = 2">>};
+            _ ->
+                {<<>>, <<>>}
+        end,
+    Where2 =
+        if
+            byte_size(Kwd) > 0 ->
+                <<Where/binary, " and name like '%", Kwd/binary, "%'">>;
+            true ->
+                Where
+        end,
 
     if
         CurrentUid == 0 ->
@@ -69,9 +74,10 @@ page(Req0, State) ->
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         true ->
-            Payload = user_tag_logic:page(Scene2, Page, Size, Where2, OrderBy) ,
+            Payload = user_tag_logic:page(Scene2, Page, Size, Where2, OrderBy),
             imboy_response:success(Req0, Payload)
     end.
+
 
 %% 修改标签名称
 change_name(Req0, State) ->
@@ -84,14 +90,15 @@ change_name(Req0, State) ->
     TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     % user_tag_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     TagLen = string:length(TagName),
     if
         bit_size(Scene2) == 0 ->
@@ -103,12 +110,11 @@ change_name(Req0, State) ->
         true ->
             Uid2 = integer_to_binary(CurrentUid),
             TagId2 = integer_to_binary(TagId),
-            Count = imboy_db:pluck(
-                <<"user_tag">>
-                , <<"scene = ", Scene2/binary, " AND creator_user_id = ", Uid2/binary, " AND name = '", TagName/binary, "' AND id != ", TagId2/binary>>
-                , <<"count(*)">>
-                , 0
-            ),
+            Count = imboy_db:pluck(<<"user_tag">>,
+                                   <<"scene = ", Scene2/binary, " AND creator_user_id = ", Uid2/binary, " AND name = '",
+                                     TagName/binary, "' AND id != ", TagId2/binary>>,
+                                   <<"count(*)">>,
+                                   0),
             case user_tag_logic:change_name(Count, Uid2, Scene2, TagId2, TagName) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
@@ -119,6 +125,7 @@ change_name(Req0, State) ->
             end
     end.
 
+
 %% 新建标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -128,14 +135,15 @@ add(Req0, State) ->
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     Tag = proplists:get_value(<<"tag">>, PostVals, <<>>),
 
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     TagLen = string:length(Tag),
     if
         bit_size(Scene2) == 0 ->
@@ -155,6 +163,7 @@ add(Req0, State) ->
             end
     end.
 
+
 % 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -162,14 +171,15 @@ delete(Req0, State) ->
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     Tag = proplists:get_value(<<"tag">>, PostVals, <<>>),
 
-    Scene2 = case Scene of
-        <<"collect">> ->
-            <<"1">>;
-        <<"friend">> ->
-            <<"2">>;
-        _ ->
-            <<>>
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                <<"1">>;
+            <<"friend">> ->
+                <<"2">>;
+            _ ->
+                <<>>
+        end,
     if
         bit_size(Scene2) == 0 ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
@@ -177,7 +187,6 @@ delete(Req0, State) ->
             user_tag_logic:delete(CurrentUid, Scene2, Tag),
             imboy_response:success(Req0, #{}, "success.")
     end.
-
 
 %% ===================================================================
 %% EUnit tests.

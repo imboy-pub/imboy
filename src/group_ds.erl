@@ -8,6 +8,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -18,14 +19,14 @@
 user_join_ids(Uid) ->
     Key = {user_join_ids, Uid},
     Fun = fun() ->
-        Column = <<"group_id">>,
-        case group_member_repo:find_by_uid(Uid, Column) of
-            {ok, _ColumnList, []} ->
-                [];
-            {ok, _ColumnList, Rows} ->
-                [Gid || {Gid} <- Rows]
-        end
-    end,
+                 Column = <<"group_id">>,
+                 case group_member_repo:find_by_uid(Uid, Column) of
+                     {ok, _ColumnList, []} ->
+                         [];
+                     {ok, _ColumnList, Rows} ->
+                         [Gid || {Gid} <- Rows]
+                 end
+        end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 
@@ -38,12 +39,7 @@ check_avatar(Group) ->
     Default = <<"/static/image/group_default_avatar.jpeg">>,
     case lists:keyfind(<<"avatar">>, 1, Group) of
         {<<"avatar">>, <<>>} ->
-            lists:keyreplace(
-                <<"avatar">>
-                , 1
-                , Group
-                , {<<"avatar">>, Default}
-            );
+            lists:keyreplace(<<"avatar">>, 1, Group, {<<"avatar">>, Default});
         {<<"avatar">>, _Aaatar} ->
             Group
     end.

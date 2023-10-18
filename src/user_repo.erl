@@ -7,14 +7,13 @@
 -include_lib("imlib/include/def_column.hrl").
 
 -export([tablename/0]).
--export([
-    find_by_email/2
-    , find_by_mobile/2
-    , find_by_account/2
-]).
+-export([find_by_email/2,
+         find_by_mobile/2,
+         find_by_account/2]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/2]).
 -export([select_by_where/4]).
+
 
 %% ===================================================================
 %% API
@@ -29,10 +28,24 @@ select_by_where(Where, Limit, Offset, OrderBy) ->
     FtsTb = fts_repo:tablename(),
     Limit2 = integer_to_binary(Limit),
     Offset2 = integer_to_binary(Offset),
-    Sql = <<"SELECT ", ?DEF_USER_COLUMN/binary, " FROM ", Tb/binary, " u LEFT JOIN ", FtsTb/binary, " fts ON fts.user_id = u.id
-     WHERE ", Where/binary, " order by ", OrderBy/binary, " LIMIT ", Limit2/binary," OFFSET ", Offset2/binary>>,
+    Sql = <<"SELECT ",
+            ?DEF_USER_COLUMN/binary,
+            " FROM ",
+            Tb/binary,
+            " u LEFT JOIN ",
+            FtsTb/binary,
+            " fts ON fts.user_id = u.id
+     WHERE ",
+            Where/binary,
+            " order by ",
+            OrderBy/binary,
+            " LIMIT ",
+            Limit2/binary,
+            " OFFSET ",
+            Offset2/binary>>,
     lager:info(io_lib:format("user_repo/select_by_where/4: Sql ~p ~n", [Sql])),
     imboy_db:query(Sql, []).
+
 
 % user_repo:find_by_email("10008@imboy.pub", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_email(Email, Column) ->
@@ -47,6 +60,7 @@ find_by_mobile(Mobile, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
     imboy_db:query(Sql, [Mobile]).
+
 
 % user_repo:find_by_account("550138", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_account(Username, Column) ->

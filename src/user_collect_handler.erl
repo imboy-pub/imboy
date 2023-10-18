@@ -14,6 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -22,19 +23,21 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        page ->
-            page(Req0, State);
-        add ->
-            add(Req0, State);
-        remove ->
-            remove(Req0, State);
-        change ->
-            change(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            page ->
+                page(Req0, State);
+            add ->
+                add(Req0, State);
+            remove ->
+                remove(Req0, State);
+            change ->
+                change(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -50,23 +53,26 @@ page(Req0, State) ->
     UidBin = integer_to_binary(CurrentUid),
     ?LOG([page, Kind]),
 
-    KwdWhere = if
-        byte_size(Kwd) > 0 ->
-            <<" and (source like '%", Kwd/binary, "%' or remark like '%", Kwd/binary, "%' or info like '%", Kwd/binary, "%')">>;
-        true ->
-            <<>>
-    end,
+    KwdWhere =
+        if
+            byte_size(Kwd) > 0 ->
+                <<" and (source like '%", Kwd/binary, "%' or remark like '%", Kwd/binary, "%' or info like '%",
+                  Kwd/binary, "%')">>;
+            true ->
+                <<>>
+        end,
 
     % use index i_user_collect_UserId_Status_Kind
-    KindWhere = case Kind of
-        {ok, 0}  ->
-            {ok, <<"user_id = ", UidBin/binary," and status = 1", KwdWhere/binary>>};
-        {ok, Kind2} when is_integer(Kind2)  ->
-            Kind3 = integer_to_binary(Kind2),
-            {ok, <<"user_id = ", UidBin/binary," and status = 1 and kind = ", Kind3/binary, KwdWhere/binary>>};
-        _ ->
-            {error, "Kind is invalid"}
-    end,
+    KindWhere =
+        case Kind of
+            {ok, 0} ->
+                {ok, <<"user_id = ", UidBin/binary, " and status = 1", KwdWhere/binary>>};
+            {ok, Kind2} when is_integer(Kind2) ->
+                Kind3 = integer_to_binary(Kind2),
+                {ok, <<"user_id = ", UidBin/binary, " and status = 1 and kind = ", Kind3/binary, KwdWhere/binary>>};
+            _ ->
+                {error, "Kind is invalid"}
+        end,
 
     case {KindWhere, OrderBy} of
         {{error, Msg}, _OrderBy} ->
@@ -78,6 +84,7 @@ page(Req0, State) ->
             Payload = user_collect_logic:page(Page, Size, Where, <<"id desc">>),
             imboy_response:success(Req0, Payload)
     end.
+
 
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -95,6 +102,7 @@ add(Req0, State) ->
             imboy_response:error(Req0, Msg)
     end.
 
+
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
@@ -102,6 +110,7 @@ remove(Req0, State) ->
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
     user_collect_logic:remove(CurrentUid, KindId),
     imboy_response:success(Req0, #{}, "success.").
+
 
 change(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),

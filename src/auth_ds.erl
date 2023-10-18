@@ -4,7 +4,7 @@
 % auth domain service 缩写
 %%%
 
--export ([get_token/3]).
+-export([get_token/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -12,6 +12,7 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
+
 
 %% ===================================================================
 %% API

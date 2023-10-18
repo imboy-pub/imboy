@@ -12,20 +12,15 @@
 -export([read_msg/3]).
 -export([delete_msg/1]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
--spec write_msg(integer(),
-                binary(),
-                binary() | list(),
-                integer(),
-                integer(),
-                integer()) -> any().
+-spec write_msg(integer(), binary(), binary() | list(), integer(), integer(), integer()) -> any().
 %% 存储消息
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
-    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]),
-        From, To, ServerTS);
+    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     case msg_c2c_repo:count_by_to_id(To) of
@@ -35,22 +30,17 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
         _ ->
             ok
     end,
-    msg_c2c_repo:write_msg(
-        CreatedAt
-        , Id
-        , Payload
-        , From
-        , To
-        , ServerTS
-    ).
+    msg_c2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS).
 
 
 %% 读取消息
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
+
+
 read_msg(ToUid, Limit, undefined) ->
     P = imboy_hasher:decoded_payload(),
-    Column = <<"id, ", P/binary,", from_id, to_id,
+    Column = <<"id, ", P/binary, ", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
@@ -59,11 +49,12 @@ read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
     read_msg(ToUid, Limit, binary_to_integer(Ts));
 read_msg(ToUid, Limit, Ts) ->
     P = imboy_hasher:decoded_payload(),
-    Column = <<"id, ", P/binary,", from_id, to_id,
+    Column = <<"id, ", P/binary, ", from_id, to_id,
         created_at, server_ts, msg_id">>,
     Where = <<"WHERE to_id = $1 AND created_at > $2">>,
     Vals = [ToUid, Ts],
     read_msg(Where, Vals, Column, Limit).
+
 
 delete_msg(Id) ->
     msg_c2c_repo:delete_msg(Id),
@@ -71,13 +62,9 @@ delete_msg(Id) ->
 
 
 %% 撤销离线消息
--spec revoke_offline_msg(integer(), binary(), integer(), integer()) ->
-          ok.
+-spec revoke_offline_msg(integer(), binary(), integer(), integer()) -> ok.
 revoke_offline_msg(NowTs, Id, FromId, ToId) ->
-    Payload = jsone:encode([
-        {<<"msg_type">>, <<"custom">>}
-        , {<<"custom_type">>, <<"peer_revoked">>}
-    ]),
+    Payload = jsone:encode([{<<"msg_type">>, <<"custom">>}, {<<"custom_type">>, <<"peer_revoked">>}]),
     % 存储消息
     msg_c2c_ds:write_msg(NowTs, Id, Payload, FromId, ToId, NowTs),
     Tb = msg_c2c_repo:tablename(),
@@ -91,12 +78,7 @@ revoke_offline_msg(NowTs, Id, FromId, ToId) ->
 %% ===================================================================
 
 read_msg(Where, Vals, Column, Limit) ->
-    Res = msg_c2c_repo:read_msg(
-        Where,
-        Vals,
-        Column,
-        Limit
-    ),
+    Res = msg_c2c_repo:read_msg(Where, Vals, Column, Limit),
     % ?LOG([Res]),
     case Res of
         {ok, ColumnLi, Rows} ->

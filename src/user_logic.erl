@@ -17,6 +17,7 @@
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -33,12 +34,14 @@ online(Uid, DType, Pid, DID) ->
     user_server:cast_online(Uid, Pid, DID),
     ok.
 
--spec offline(Uid::integer(), Pid :: pid(), DID :: binary()) -> ok.
+
+-spec offline(Uid :: integer(), Pid :: pid(), DID :: binary()) -> ok.
 offline(Uid, Pid, DID) ->
     imboy_session:leave(Uid, Pid),
 
     % 检查离线消息 用异步队列实现
     user_server:cast_offline(Uid, Pid, DID).
+
 
 -spec is_online(integer()) -> boolean().
 %% 检查用户是否在线
@@ -51,11 +54,13 @@ is_online(Uid) when is_integer(Uid) ->
             true
     end.
 
+
 % user_logic:is_online(1, <<"ios">>).
 -spec is_online(integer(), binary()) -> boolean().
 %% 检查用户是否在线
 is_online(Uid, DType) when is_integer(Uid) ->
     imboy_session:is_online(Uid, {dtype, DType}).
+
 
 mine_state(Uid) ->
     case user_setting_ds:chat_state_hide(Uid) of
@@ -82,9 +87,11 @@ online_state(User) ->
             end
     end.
 
+
 -spec find_by_id(binary()) -> list().
 find_by_id(Id) ->
     find_by_id(Id, ?DEF_USER_COLUMN).
+
 
 find_by_id(Id, Column) when is_binary(Id) ->
     find_by_id(imboy_hashids:uid_decode(Id), Column);
@@ -94,13 +101,7 @@ find_by_id(Id, Column) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, [Row]} ->
-            check_avatar(
-                lists:zipwith(
-                    fun(X, Y) -> {X, Y} end,
-                    ColumnList,
-                    tuple_to_list(Row)
-                )
-            );
+            check_avatar(lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)));
         _ ->
             []
     end.
@@ -109,6 +110,7 @@ find_by_id(Id, Column) ->
 find_by_ids(Ids) ->
     find_by_ids(Ids, ?DEF_USER_COLUMN).
 
+
 find_by_ids([], _) ->
     [];
 find_by_ids(Ids, Column) ->
@@ -116,22 +118,14 @@ find_by_ids(Ids, Column) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
-            [
-                check_avatar(
-                    lists:zipwith(
-                        fun(X, Y) -> {X, Y} end,
-                        ColumnList,
-                        tuple_to_list(Row)
-                    )
-                ) || Row <- Rows
-            ];
+            [check_avatar(lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row))) || Row <- Rows];
         _ ->
             []
     end.
 
 
--spec update(Uid::any(), Field::binary(), list() | binary()) ->
-    ok | {error, {integer(), binary(), Msg::binary()}}.
+-spec update(Uid :: any(), Field :: binary(), list() | binary()) ->
+          ok | {error, {integer(), binary(), Msg :: binary()}}.
 update(Uid, <<"sign">>, Val) ->
     imboy_db:update(<<"user">>, Uid, <<"sign">>, Val);
 update(Uid, <<"nickname">>, Val) ->
@@ -166,12 +160,7 @@ check_avatar(User) ->
     case lists:keyfind(<<"avatar">>, 1, User) of
         {<<"avatar">>, <<>>} ->
             % <<>> == <<"">> is true
-            lists:keyreplace(
-                <<"avatar">>,
-                1,
-                User,
-                {<<"avatar">>, Default}
-            );
+            lists:keyreplace(<<"avatar">>, 1, User, {<<"avatar">>, Default});
         {<<"avatar">>, _Aaatar} ->
             User
     end.

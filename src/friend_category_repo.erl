@@ -7,6 +7,7 @@
 -export([add/2]).
 -export([delete/2]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -14,8 +15,10 @@
 tablename() ->
     imboy_db:public_tablename(<<"user_friend_category">>).
 
+
 find_by_uid(Uid, Column) ->
     find_by_uid(Uid, Column, 1000).
+
 
 % friend_category_repo:add(1, "测试").
 % friend_category_repo:add(1, <<"测试2"/utf8>>).
@@ -24,7 +27,7 @@ add(Uid, Name) ->
     Sql = <<"INSERT INTO ", Tb/binary, " (name, owner_user_id)
         VALUES ($1, $2)  RETURNING id">>,
     case imboy_db:execute(Sql, [Name, Uid]) of
-        {ok,1,[{Id}]} ->
+        {ok, 1, [{Id}]} ->
             {ok, Id};
         {error, Reason} ->
             {error, Reason};
@@ -40,10 +43,10 @@ delete(Uid, Id) ->
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     imboy_db:execute(Sql, [Id, Uid]).
 
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 % friend_category_repo:find_by_uid(1, <<"name">>).
 % friend_category_repo:find_by_uid(1, <<"id,name">>).

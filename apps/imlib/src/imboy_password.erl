@@ -9,6 +9,7 @@
 -export([generate/1, generate/2]).
 -export([verify/2]).
 
+
 -spec generate(Plaintext :: list()) -> Ciphertext :: binary().
 generate(Plaintext) ->
     generate(Plaintext, hmac_sha512).
@@ -21,8 +22,7 @@ generate(Plaintext, hmac_sha512) ->
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
 
--spec verify(Plaintext :: list(), Ciphertext :: list()) ->
-          {ok, any()} | {error, Msg :: list()}.
+-spec verify(Plaintext :: list(), Ciphertext :: list()) -> {ok, any()} | {error, Msg :: list()}.
 verify(Plaintext, Ciphertext) ->
     % ?LOG([Plaintext, Ciphertext]),
     try
@@ -45,8 +45,7 @@ verify(Plaintext, Ciphertext) ->
 
 
 md5_test() ->
-    Resp1 = imboy_password:verify("admin888",
-                                 "299e0c8fbc9cf877bcc46bcee2ca5987"),
+    Resp1 = imboy_password:verify("admin888", "299e0c8fbc9cf877bcc46bcee2ca5987"),
     ?LOG(Resp1),
     Plaintext = "abc",
     Ciphertext = generate(Plaintext),
@@ -70,11 +69,9 @@ hmac_sha512_test() ->
 %% Internal Function Definitions
 %% ===================================================================
 
-verify(Plaintext, default_md5, Salt, Ciphertext)
-  when is_list(Plaintext) ->
+verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Plaintext) ->
     verify(list_to_binary(Plaintext), default_md5, Salt, Ciphertext);
-verify(Plaintext, default_md5, Salt, Ciphertext)
-  when is_list(Ciphertext) ->
+verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Ciphertext) ->
     verify(Plaintext, default_md5, Salt, list_to_binary(Ciphertext));
 verify(Plaintext, default_md5, Salt, Ciphertext) ->
     Plaintext2 = <<Plaintext/binary, Salt/binary>>,

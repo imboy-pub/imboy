@@ -6,6 +6,7 @@
 -export([execute/2]).
 -export([remove_last_forward_slash/1]).
 
+
 %% 这个是回调函数
 execute(Req, Env) ->
     Path = remove_last_forward_slash(cowboy_req:path(Req)),
@@ -26,20 +27,21 @@ execute(Req, Env) ->
             InOptionLi = lists:member(Path, OptionLi),
             Switch = config_ds:env(api_auth_switch),
             Passport = string:sub_string(binary_to_list(Path), 1, 10),
-            Res1 = if
-                Path == <<"/ws">>, Switch == on ->
-                    verify_sign(Req, Env);
-                Path == <<"/init">>, Switch == on ->
-                    verify_sign(Req, Env);
-                Path == <<"/refreshtoken">>, Switch == on ->
-                    verify_sign(Req, Env);
-                Passport == "/passport/", Switch == on ->
-                    verify_sign(Req, Env);
-                InOpenLi == false, Switch == on ->
-                    verify_sign(Req, Env);
-                true ->
-                    {ok, Req, Env}
-            end,
+            Res1 =
+                if
+                    Path == <<"/ws">>,Switch == on ->
+                        verify_sign(Req, Env);
+                    Path == <<"/init">>,Switch == on ->
+                        verify_sign(Req, Env);
+                    Path == <<"/refreshtoken">>,Switch == on ->
+                        verify_sign(Req, Env);
+                    Passport == "/passport/",Switch == on ->
+                        verify_sign(Req, Env);
+                    InOpenLi == false,Switch == on ->
+                        verify_sign(Req, Env);
+                    true ->
+                        {ok, Req, Env}
+                end,
             case Res1 of
                 {ok, Req, Env} ->
                     Authorization = cowboy_req:header(<<"authorization">>, Req),
@@ -85,7 +87,7 @@ verify_sign(Req, Env) ->
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
-    [X,Y, _Z] = binary:split(Vsn, <<".">>, [global]),
+    [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
     VsnXY = iolist_to_binary([X, ".", Y]),
     PlainText = iolist_to_binary([Did, "|", VsnXY]),
     case do_verify_sign(Sign, PlainText, VsnXY, Method) of
@@ -93,11 +95,13 @@ verify_sign(Req, Env) ->
             {ok, Req, Env};
         false ->
             Req1 = imboy_response:error(
-                % 签名错误，需要下载最新版本APP
-                Req, "Failed to verify the signature", 707
-            ),
+                                        % 签名错误，需要下载最新版本APP
+                                        Req,
+                                        "Failed to verify the signature",
+                                        707),
             {stop, Req1}
     end.
+
 
 do_verify_sign(undefined, _, _VsnXY, _Method) ->
     false;
@@ -117,6 +121,7 @@ do_verify_sign(Sign, PlainText, _VsnXY, <<"md5">>) ->
 do_verify_sign(_, _, _, _) ->
     false.
 
+
 condition(true, _, undefined, Req, Env) ->
     {ok, Req, Env};
 condition(true, _, Authorization, Req, Env) ->
@@ -125,6 +130,7 @@ condition(_, true, _, Req, Env) ->
     {ok, Req, Env};
 condition(_, _, Authorization, Req, Env) ->
     do_authorization(Authorization, Req, Env).
+
 
 do_authorization(undefined, Req, _Env) ->
     {stop, Req};
@@ -144,6 +150,7 @@ do_authorization(Authorization, Req, Env) ->
             {stop, Req1}
     end.
 
+
 %% Remove the last forward slash
 %% 删除最后一个正斜杠
 %% auth_middleware:remove_last_forward_slash(<<"/abc/">>).
@@ -156,8 +163,7 @@ remove_last_forward_slash(<<"/">>) ->
 remove_last_forward_slash(Path) ->
     case binary:last(Path) of
         47 ->
-            binary:part(Path, 0, byte_size(Path)-1);
+            binary:part(Path, 0, byte_size(Path) - 1);
         _ ->
             Path
     end.
-

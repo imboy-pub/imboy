@@ -4,7 +4,9 @@
 % location business logic module
 %%%
 
--export ([make_myself_visible/3, make_myself_unvisible/1, people_nearby/5]).
+-export([make_myself_visible/3,
+         make_myself_unvisible/1,
+         people_nearby/5]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -14,13 +16,13 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/cache.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
 %% 让自己可见
--spec make_myself_visible(integer(), binary(), binary()) ->
-    ok | {error, Msg::binary()}.
+-spec make_myself_visible(integer(), binary(), binary()) -> ok | {error, Msg :: binary()}.
 make_myself_visible(_Uid, <<"">>, _Lng) ->
     {error, <<"latitude is empty">>};
 make_myself_visible(_Uid, _Lat, <<"">>) ->
@@ -31,38 +33,35 @@ make_myself_visible(Uid, Lat, Lng) ->
     geo_people_nearby_repo:save(Uid, Lat, Lng),
     ok.
 
+
 % 让自己不可见
--spec make_myself_unvisible(Uid::binary()) ->
-    ok | {error, Msg::binary()}.
+-spec make_myself_unvisible(Uid :: binary()) -> ok | {error, Msg :: binary()}.
 make_myself_unvisible(Uid) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, false),
     geo_people_nearby_repo:delete(Uid),
     ok.
 
--spec people_nearby(
-    Lng::binary(), Lat::binary(),
-    Radius::binary(), Unit::binary(),
-    Limit::binary()
-) -> list().
+
+-spec people_nearby(Lng :: binary(), Lat :: binary(), Radius :: binary(), Unit :: binary(), Limit :: binary()) ->
+          list().
 people_nearby(Lng, Lat, Radius, <<"km">>, Limit) ->
     RadiusM = binary_to_integer(Radius) * 1000,
     people_nearby(Lng, Lat, integer_to_binary(RadiusM), <<"m">>, Limit);
 people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
     % geo_people_nearby_repo:people_nearby(<<"113.88308">>, <<"22.55328">>, <<"10000000">>, <<"m">>,  <<"10">>).
-    {ok, _, Li}  = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit,  Limit),
-    [imboy_hashids:replace_id([
-        {<<"id">>, Id}
-        , {<<"account">>, Account}
-        , {<<"nickname">>, Nickname}
-        , {<<"avatar">>, Avatar}
-        , {<<"sign">>, Sign}
-        , {<<"gender">>, Gender}
-        , {<<"region">>, Region}
-        , {<<"distance">>, Distance}
-        , {<<"unit">>, Unit}
-        , {<<"location">>, Location}
-        ]) || {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li].
+    {ok, _, Li} = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
+    [imboy_hashids:replace_id([{<<"id">>, Id},
+                               {<<"account">>, Account},
+                               {<<"nickname">>, Nickname},
+                               {<<"avatar">>, Avatar},
+                               {<<"sign">>, Sign},
+                               {<<"gender">>, Gender},
+                               {<<"region">>, Region},
+                               {<<"distance">>, Distance},
+                               {<<"unit">>, Unit},
+                               {<<"location">>, Location}]) ||
+        {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li].
 
 %% ===================================================================
 %% Internal Function Definitions

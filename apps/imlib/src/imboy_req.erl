@@ -1,6 +1,5 @@
 -module(imboy_req).
 
-
 -export([get_int/3]).
 -export([page_size/1]).
 -export([post_params/1]).
@@ -10,10 +9,8 @@
 
 -include_lib("imlib/include/log.hrl").
 
--define (ReqHeaders, [
-    {"content-type", "application/json"}
-    , {"client", "imboy-req"}
-]).
+-define(ReqHeaders, [{"content-type", "application/json"}, {"client", "imboy-req"}]).
+
 
 %% ===================================================================
 %% API
@@ -27,12 +24,13 @@ page_size(Req) ->
     {Size2, _} = string:to_integer(Size),
     pase_page_size(Page2, Size2).
 
+
 get_int(Key, Req, Def) ->
     #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
     if
         Val == Def ->
             {ok, Def};
-        true  ->
+        true ->
             case string:to_integer(Val) of
                 {error, _} ->
                     {ok, Def};
@@ -74,14 +72,18 @@ post_params(Req) ->
 get(Url) ->
     req(get, Url, #{}, ?ReqHeaders).
 
+
 get(Url, Headers) ->
     req(get, Url, #{}, Headers).
+
 
 post(Url, Params) ->
     req(post, Url, Params, ?ReqHeaders).
 
+
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -97,21 +99,17 @@ req(Method, Url, Params, Headers) ->
     application:ensure_started(inets),
     % 检查 content-type
     ContentType = proplists:get_value("content-type", Headers, "application/json"),
-    Request = case Method of
-        post ->
-            Bin = jsone:encode(Params, [native_utf8]),
-            {Url, Headers, ContentType, Bin};
-        get ->
-            {Url, Headers};
-        _ ->
-           {Url, Headers}
-    end,
-    Response = httpc:request(
-        Method
-        , Request
-        , []
-        , []
-    ),
+    Request =
+        case Method of
+            post ->
+                Bin = jsone:encode(Params, [native_utf8]),
+                {Url, Headers, ContentType, Bin};
+            get ->
+                {Url, Headers};
+            _ ->
+                {Url, Headers}
+        end,
+    Response = httpc:request(Method, Request, [], []),
     % ?LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
@@ -122,17 +120,18 @@ req(Method, Url, Params, Headers) ->
             {error, Reason}
     end.
 
-pase_page_size(error,  error) ->
-    pase_page_size(1,  10);
-pase_page_size(error,  Size) ->
-    pase_page_size(1,  Size);
-pase_page_size(Page,  error) ->
-    pase_page_size(Page,  10);
-pase_page_size(Page,  Size) when Page < 1 ->
-    pase_page_size(1,  Size);
-pase_page_size(Page,  Size) when Size < 1 ->
+
+pase_page_size(error, error) ->
+    pase_page_size(1, 10);
+pase_page_size(error, Size) ->
+    pase_page_size(1, Size);
+pase_page_size(Page, error) ->
     pase_page_size(Page, 10);
-pase_page_size(Page,  Size) when Size > 1000 ->
+pase_page_size(Page, Size) when Page < 1 ->
+    pase_page_size(1, Size);
+pase_page_size(Page, Size) when Size < 1 ->
+    pase_page_size(Page, 10);
+pase_page_size(Page, Size) when Size > 1000 ->
     pase_page_size(Page, 1000);
 pase_page_size(Page, Size) ->
     {Page, Size}.

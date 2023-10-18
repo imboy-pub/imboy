@@ -14,14 +14,13 @@
 -export([s2c_client_ack/3]).
 -export([c2g_client_ack/3]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
 %% 单聊消息
--spec c2c(binary(), integer(), Data :: list()) ->
-          ok | {reply, Msg :: list()}.
+-spec c2c(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
 c2c(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = imboy_hashids:uid_decode(To),
@@ -38,18 +37,9 @@ c2c(MsgId, CurrentUid, Data) ->
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
             % 存储消息
-            msg_c2c_ds:write_msg(
-                CreatedAt
-                , MsgId
-                , Payload
-                , CurrentUid
-                , ToId
-                , NowTs
-            ),
+            msg_c2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
             %
-            self() ! {reply, [{<<"id">>, MsgId},
-                              {<<"type">>, <<"C2C_SERVER_ACK">>},
-                              {<<"server_ts">>, NowTs}]},
+            self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2C_SERVER_ACK">>}, {<<"server_ts">>, NowTs}]},
 
             Msg = [{<<"id">>, MsgId},
                    {<<"type">>, <<"C2C">>},
@@ -77,16 +67,13 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"id">>,
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
-    {ok, _CList, Rows} = msg_c2c_repo:read_msg(
-        Where, Vals, Column, 1
-    ),
+    {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where, Vals, Column, 1),
     [msg_c2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
 
 
 %% 客户端撤回消息
--spec c2c_revoke(binary(), Data :: list(), binary()) ->
-          ok | {reply, Msg :: list()}.
+-spec c2c_revoke(binary(), Data :: list(), binary()) -> ok | {reply, Msg :: list()}.
 c2c_revoke(MsgId, Data, Type) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
@@ -94,10 +81,7 @@ c2c_revoke(MsgId, Data, Type) ->
     % ?LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:millisecond(),
 
-    Msg = [{<<"id">>, MsgId},
-           {<<"from">>, From},
-           {<<"to">>, To},
-           {<<"server_ts">>, NowTs}],
+    Msg = [{<<"id">>, MsgId}, {<<"from">>, From}, {<<"to">>, To}, {<<"server_ts">>, NowTs}],
     % 判断是否在线
     case user_logic:is_online(ToId) of
         true ->
@@ -125,8 +109,7 @@ c2g(MsgId, CurrentUid, Data) ->
            {<<"from">>, imboy_hashids:uid_encode(CurrentUid)},
            {<<"to">>, Gid},
            {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
-           {<<"created_at">>,
-            proplists:get_value(<<"created_at">>, Data)},
+           {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
            {<<"server_ts">>, NowTs}],
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
@@ -136,10 +119,9 @@ c2g(MsgId, CurrentUid, Data) ->
     % 存储消息
     msg_c2g_ds:write_msg(NowTs, MsgId, Msg2, CurrentUid, MemberUids, ToGID),
 
-    self() ! {reply, [{<<"id">>, MsgId},
-                      {<<"type">>, <<"C2G_SERVER_ACK">>},
-                      {<<"server_ts">>, NowTs}]},
+    self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2G_SERVER_ACK">>}, {<<"server_ts">>, NowTs}]},
     ok.
+
 
 %% 客户端确认C2G投递消息
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
@@ -158,15 +140,14 @@ c2g_client_ack(MsgId, CurrentUid, _DID) ->
 s2c(_Id, _CurrentUid, _Data) ->
     ok.
 
+
 %% 客户端确认S2C投递消息
 -spec s2c_client_ack(binary(), integer(), binary()) -> ok.
 s2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"id">>,
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
-    {ok, _CList, Rows} = msg_s2c_repo:read_msg(
-        Where, Vals, Column, 1
-    ),
+    {ok, _CList, Rows} = msg_s2c_repo:read_msg(Where, Vals, Column, 1),
     [msg_s2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
 

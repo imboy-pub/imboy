@@ -13,6 +13,7 @@
 search(_Account) ->
     ok.
 
+
 %%
 % user_setting_ds:find_by_uid(1).
 -spec find_by_uid(any()) -> map().
@@ -34,6 +35,7 @@ find_by_uid(Uid) ->
                     #{}
             end
     end.
+
 
 %% 检查用户是否隐藏在线状态
 %% user_setting_ds:chat_state_hide(1).
@@ -73,10 +75,11 @@ save(Uid, <<"people_nearby_visible">>, Visible) ->
 save(Uid, <<"chat_state">>, State) ->
     priv_save(Uid, <<"chat_state">>, State).
 
--spec priv_save(Uid::any(), Key::binary(), Val::any()) -> ok.
+
+-spec priv_save(Uid :: any(), Key :: binary(), Val :: any()) -> ok.
 priv_save(Uid, Key, State) ->
     Setting = user_setting_ds:find_by_uid(Uid),
     Setting2 = Setting#{Key => State},
-   % ?LOG(Setting2),
+    % ?LOG(Setting2),
     user_setting_repo:update(Uid, Setting2),
     ok.

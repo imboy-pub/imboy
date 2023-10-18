@@ -15,12 +15,9 @@ member_list(Gid) ->
             [];
         {ok, _ColumnLi, Members} ->
             Uids = [Uid || {Uid, _, _, _} <- Members],
-            Members2 = [lists:zipwith(
-                    fun(X, Y) -> {X, Y} end
-                    , [<<"alias">>, <<"description">>, <<"role">>]
-                    , [Alias, Desc, Role]
-                ) || {_Uid, Alias, Desc, Role} <- Members
-            ],
+            Members2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                      [<<"alias">>, <<"description">>, <<"role">>],
+                                      [Alias, Desc, Role]) || {_Uid, Alias, Desc, Role} <- Members],
             Users = user_logic:find_by_ids(Uids),
             % 获取用户在线状态
             Users2 = [user_logic:online_state(User) || User <- Users],

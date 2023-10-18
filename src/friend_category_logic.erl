@@ -8,14 +8,12 @@
 -include_lib("imlib/include/log.hrl").
 
 
--spec add(Uid :: any(), Name :: any()) ->
-          {ok, LastInsertId :: integer()} | {error, any()}.
+-spec add(Uid :: any(), Name :: any()) -> {ok, LastInsertId :: integer()} | {error, any()}.
 add(Uid, Name) ->
     friend_category_ds:add(Uid, Name).
 
 
--spec delete(Uid :: any(), Id :: any()) ->
-          ok | {error, any()}.
+-spec delete(Uid :: any(), Id :: any()) -> ok | {error, any()}.
 delete(Uid, Id) ->
     case friend_ds:set_category_id(Uid, Id, 0) of
         {error, ErrorMsg} ->

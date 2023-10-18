@@ -1,14 +1,13 @@
 -module(imboy_log).
 
--export([
-    debug/1, debug/2,
-    info/1, info/2,
-    notice/1, notice/2,
-    warning/1, warning/2,
-    error/1, error/2
-]).
+-export([debug/1, debug/2,
+         info/1, info/2,
+         notice/1, notice/2,
+         warning/1, warning/2,
+         error/1, error/2]).
 
 -include_lib("imlib/include/log.hrl").
+
 
 %% ===================================================================
 %% API
@@ -16,29 +15,40 @@
 
 debug(Message) ->
     log(debug, Message).
+
+
 debug(Format, Args) ->
     log(debug, Format, Args).
 
 
 info(Message) ->
     log(info, Message).
+
+
 info(Format, Args) ->
     log(info, Format, Args).
 
 
 notice(Message) ->
     log(notice, Message).
+
+
 notice(Format, Args) ->
     log(notice, Format, Args).
 
+
 warning(Message) ->
     log(warning, Message).
+
+
 warning(Format, Args) ->
     log(warning, Format, Args).
 
 
 error(Message) ->
     log(error, Message).
+
+
 error(Format, Args) ->
     log(error, Format, Args).
 
@@ -46,7 +56,6 @@ error(Format, Args) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 %% @doc Manually log a message into lager without using the parse transform.
 -spec log(lager:log_level(), list()) -> ok | {error, lager_not_running}.

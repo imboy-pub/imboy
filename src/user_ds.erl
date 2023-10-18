@@ -4,8 +4,8 @@
 % user domain service 缩写
 %%%
 
--export ([webrtc_credential/1]).
--export ([auth_webrtc_credential/2]).
+-export([webrtc_credential/1]).
+-export([auth_webrtc_credential/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -14,12 +14,13 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
 %%% demo方法描述
--spec webrtc_credential(Uid::integer()) -> {binary(), binary()}.
+-spec webrtc_credential(Uid :: integer()) -> {binary(), binary()}.
 webrtc_credential(Uid) ->
     Uris = config_ds:env(eturnal_uris),
     Secret = config_ds:env(eturnal_secret),
@@ -30,10 +31,10 @@ webrtc_credential(Uid) ->
     Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
     {Username, Credential, Uris}.
 
+
 auth_webrtc_credential(Username, Credential) ->
     Secret = config_ds:env(eturnal_secret),
     Credential == base64:encode(crypto:mac(hmac, sha, Secret, Username)).
-
 
 %% ===================================================================
 %% Internal Function Definitions

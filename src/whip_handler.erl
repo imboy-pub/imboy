@@ -17,6 +17,7 @@
 
 -define(crlf, <<"\r\n">>).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -25,24 +26,26 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        publish ->
-            publish(Req0, State);
-        check ->
-            Method = cowboy_req:method(Req0),
-            check(Method, Req0, State);
-        unpublish ->
-            unpublish(Req0, State);
-        subscribe ->
-            subscribe(Req0, State);
-        unsubscribe ->
-            unsubscribe(Req0, State);
-        % candidate ->
-        %     candidate(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            publish ->
+                publish(Req0, State);
+            check ->
+                Method = cowboy_req:method(Req0),
+                check(Method, Req0, State);
+            unpublish ->
+                unpublish(Req0, State);
+            subscribe ->
+                subscribe(Req0, State);
+            unsubscribe ->
+                unsubscribe(Req0, State);
+            % candidate ->
+            %     candidate(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
+
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -67,16 +70,16 @@ publish(Req0, State) ->
     SessionId = ersip_sdp_origin:session_id(Origin),
     lager:info(io_lib:format("whip_handler/publish SessionId: ~p ~n", [SessionId])),
     AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:passive", State),
-    NewReq = cowboy_req:reply(201
-        , #{
-            <<"Content-Type">> => "application/sdp"
-            , <<"server">> => "cowboy"
-            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
-        }
-        , AsswerSdp
-        % , generate_answer_sdp2()
-        , Req0),
-   {ok, NewReq, State}.
+    NewReq = cowboy_req:reply(201,
+                              #{<<"Content-Type">> => "application/sdp",
+                                <<"server">> => "cowboy",
+                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])},
+                              AsswerSdp
+                              % , generate_answer_sdp2()
+                              ,
+                              Req0),
+    {ok, NewReq, State}.
+
 
 % check(<<"PATCH">>, Req0, State) ->
 check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
@@ -86,39 +89,36 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     % <<"candidate:2435201596 1 tcp 1518157055 ::1 64756 typ host tcptype passive generation 0 ufrag ZZt4 network-id 3">>
     % <<"candidate:3388485749 1 tcp 1518083839 127.0.0.1 64755 typ host tcptype passive generation 0 ufrag ZZt4 network-id 2">>
     % 不执行 ICE 重启
-    NewReq = cowboy_req:reply(200
-        , #{
-            <<"Content-Type">> => "application/trickle-ice-sdpfrag"
-            , <<"server">> => "cowboy"
-            % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
-        }
-        , <<"candidate: candidate:2152662189 1 udp 2122194687 192.168.0.144 64291 typ host generation 0 ufrag CNcn network-id 0 network-cost 50, sdpMid: 0, sdpMLineIndex: 0">>
-        , Req0),
-   {ok, NewReq, State};
+    NewReq = cowboy_req:reply(200,
+                              #{<<"Content-Type">> => "application/trickle-ice-sdpfrag", <<"server">> => "cowboy"
+                              % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+                              },
+                              <<"candidate: candidate:2152662189 1 udp 2122194687 192.168.0.144 64291 typ host generation 0 ufrag CNcn network-id 0 network-cost 50, sdpMid: 0, sdpMLineIndex: 0">>,
+                              Req0),
+    {ok, NewReq, State};
 
-    % 执行ice重启
-   %  NewReq = cowboy_req:reply(200
-   %      , #{
-   %          <<"Content-Type">> => "application/trickle-ice-sdpfrag"
-   %          , <<"If-Match">> => "*"
-   %          , <<"server">> => "cowboy"
-   %          % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
-   %      }
-   %      % , ersip_sdp_ice_candidate
-   %      , Ice
-   %      , Req0),
-   % {ok, NewReq, State};
+% 执行ice重启
+%  NewReq = cowboy_req:reply(200
+%      , #{
+%          <<"Content-Type">> => "application/trickle-ice-sdpfrag"
+%          , <<"If-Match">> => "*"
+%          , <<"server">> => "cowboy"
+%          % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+%      }
+%      % , ersip_sdp_ice_candidate
+%      , Ice
+%      , Req0),
+% {ok, NewReq, State};
 
 check(<<"DELETE">>, Req0, State) ->
     % To explicitly terminate a session, the WHIP client MUST perform an HTTP DELETE request to the resource URL returned in the Location header field of the initial HTTP POST. Upon receiving the HTTP DELETE request, the WHIP resource will be removed and the resources freed on the Media Server, terminating the ICE and DTLS sessions.
     Req1 = cowboy_req:reply(200, Req0),
     % lager:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
-   {ok, Req1, State};
+    {ok, Req1, State};
 check(_Method, Req0, State) ->
     Req1 = cowboy_req:reply(405, Req0),
     % lager:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
-   {ok, Req1, State}.
-
+    {ok, Req1, State}.
 
 
 % webrtc unpublish
@@ -138,16 +138,15 @@ subscribe(Req0, State) ->
     {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
     {ok, OfferSdp} = sdp_parse(Sdp),
     AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:active", State),
-    NewReq = cowboy_req:reply(201
-        , #{
-            <<"Content-Type">> => "application/sdp"
-            , <<"server">> => "cowboy"
-            , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
-        }
-        , AsswerSdp
-        % , generate_answer_sdp2()
-        , Req0),
-   {ok, NewReq, State}.
+    NewReq = cowboy_req:reply(201,
+                              #{<<"Content-Type">> => "application/sdp",
+                                <<"server">> => "cowboy",
+                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])},
+                              AsswerSdp
+                              % , generate_answer_sdp2()
+                              ,
+                              Req0),
+    {ok, NewReq, State}.
 
 
 % webrtc unsubscribe
@@ -156,7 +155,6 @@ unsubscribe(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),,
     imboy_response:success(Req0).
-
 
 % candidate(Req0, _State) ->
 %     % CurrentUid = maps:get(current_uid, State),
@@ -176,6 +174,7 @@ unsubscribe(Req0, _State) ->
 %     ?_test(my_if_addr(inet6))].
 -endif.
 
+
 sdp_parse(Sdp) ->
     % lager:error(io_lib:format("whip_handler/publish OfferSdp ~p :~p ~n", [is_binary(OfferSdp), OfferSdp])),
     Sdp1 = check_crlf(Sdp),
@@ -185,6 +184,7 @@ sdp_parse(Sdp) ->
     %% 在这里编写你的逻辑来生成 Answer SDP
     %% 可以使用 ersip_sdp 库来解析和构建 SDP 数据
     ersip_sdp:parse(Sdp1).
+
 
 % generate_answer_sdp2() ->
 %     % CurrentUid = maps:get(current_uid, State),
@@ -221,28 +221,29 @@ generate_answer_sdp(OfferSdp, Setup, _State) ->
     % ersip_sdp:assemble(AnswerSdp2).
     AnswerSdp3 = ersip_sdp:assemble(AnswerSdp2),
 
-    AnswerSdp4 = case Setup of
-        "a=setup:passive" ->
-            iolist_to_binary(string:replace(AnswerSdp3, <<"a=sendonly">>, <<"a=recvonly">>, all));
-        "a=setup:active" ->
-            iolist_to_binary(string:replace(AnswerSdp3, <<"a=recvonly">>, <<"a=sendonly">>, all))
-    end,
+    AnswerSdp4 =
+        case Setup of
+            "a=setup:passive" ->
+                iolist_to_binary(string:replace(AnswerSdp3, <<"a=sendonly">>, <<"a=recvonly">>, all));
+            "a=setup:active" ->
+                iolist_to_binary(string:replace(AnswerSdp3, <<"a=recvonly">>, <<"a=sendonly">>, all))
+        end,
 
     % CurrentUid = 0,
     % {Username, Credential, _Uris} = user_ds:webrtc_credential(CurrentUid),
     SdpLi = remove_item(AnswerSdp4),
-    Append = [
-        [[Setup, ?crlf]]
+    Append = [[[Setup, ?crlf]]
         % , ["a=connection:new", ?crlf]
         % , ["m=audio 50000 RTP/AVP 0", ?crlf]
         % , ["a=mid:audio", ?crlf]
         % , [["a=ice-ufrag:", Username, ?crlf]]
         % , [["a=ice-pwd:", Credential, ?crlf]]
         % , [["a=ice-lite", ?crlf]]
-    ],
+        ],
     AnswerSdp5 = iolist_to_binary(SdpLi ++ Append),
     % lager:error(io_lib:format("whip_handler/publish AnswerSdp5 ~p :~p ~n", [is_binary(AnswerSdp5), AnswerSdp5])),
     AnswerSdp5.
+
 
 check_crlf(Sdp) ->
     case string:find(Sdp, ?crlf) of
@@ -252,22 +253,24 @@ check_crlf(Sdp) ->
             Sdp
     end.
 
-remove_item(Sdp) ->
-    [[I, ?crlf] || I <- binary:split(Sdp, ?crlf, [global]), case I of
-        % <<"m=", _T1/binary>> ->
-        %     false;
-        % <<"a=ice", _T1/binary>> ->
-        %     false;
-        % a=setup:actpass 既可以是客户端，也可以是服务器
-        % a=setup:active 客户端
-        % a=setup:passive 服务器
-        <<"a=setup:", _T1/binary>> ->
-            false;
-        <<"a=mid:", _T1/binary>> ->
-            false;
-        <<>> ->
-            false;
-        _ ->
-            true
-    end].
 
+remove_item(Sdp) ->
+    [[I, ?crlf] ||
+        I <- binary:split(Sdp, ?crlf, [global]),
+        case I of
+            % <<"m=", _T1/binary>> ->
+            %     false;
+            % <<"a=ice", _T1/binary>> ->
+            %     false;
+            % a=setup:actpass 既可以是客户端，也可以是服务器
+            % a=setup:active 客户端
+            % a=setup:passive 服务器
+            <<"a=setup:", _T1/binary>> ->
+                false;
+            <<"a=mid:", _T1/binary>> ->
+                false;
+            <<>> ->
+                false;
+            _ ->
+                true
+        end].

@@ -12,13 +12,13 @@
 -export([uid_decode/1]).
 -export([replace_id/1]).
 
--define (uid_alphabet, "123456789abcdefghijkmnpqrstuvwxyz").
+-define(uid_alphabet, "123456789abcdefghijkmnpqrstuvwxyz").
+
 
 -spec replace_id(list()) -> list().
 replace_id(Li) ->
     Id = proplists:get_value(<<"id">>, Li),
-    [{<<"id">>, imboy_hashids:uid_encode(Id)} |
-     proplists:delete(<<"id">>, Li)].
+    [{<<"id">>, imboy_hashids:uid_encode(Id)} | proplists:delete(<<"id">>, Li)].
 
 
 -spec uid_encode(integer() | binary() | list()) -> binary().
@@ -28,9 +28,7 @@ uid_encode(Id) when is_list(Id) ->
     uid_encode(list_to_integer(Id));
 uid_encode(Id) ->
     Salt = config_ds:env(hashids_salt, ""),
-    Ctx = hashids:new([{min_hash_length, 6},
-                       {default_alphabet, ?uid_alphabet},
-                       {salt, Salt}]),
+    Ctx = hashids:new([{min_hash_length, 6}, {default_alphabet, ?uid_alphabet}, {salt, Salt}]),
     list_to_binary(hashids:encode(Ctx, [Id])).
 
 
@@ -40,9 +38,7 @@ uid_decode(Id) when is_binary(Id) ->
 uid_decode(Id) ->
     try
         Salt = config_ds:env(hashids_salt, ""),
-        Ctx = hashids:new([{min_hash_length, 6},
-                           {default_alphabet, ?uid_alphabet},
-                           {salt, Salt}]),
+        Ctx = hashids:new([{min_hash_length, 6}, {default_alphabet, ?uid_alphabet}, {salt, Salt}]),
         hashids:decode(Ctx, Id)
     of
         [Uid] ->

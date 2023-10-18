@@ -4,7 +4,9 @@
 % user_device business logic module
 %%%
 
--export([device_name/2, change_name/3, delete/2]).
+-export([device_name/2,
+         change_name/3,
+         delete/2]).
 -export([page/3]).
 
 -ifdef(EUNIT).
@@ -13,6 +15,7 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
+
 
 %% ===================================================================
 %% API
@@ -30,6 +33,7 @@ device_name(Uid, DID) ->
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 
+
 -spec change_name(integer(), binary(), binary()) -> ok.
 change_name(Uid, DID, Name) ->
     Set = <<"device_name = $1">>,
@@ -40,6 +44,7 @@ change_name(Uid, DID, Name) ->
     imboy_cache:flush(Key),
     ok.
 
+
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
     user_device_repo:delete(Uid, DID),
@@ -47,8 +52,9 @@ delete(Uid, DID) ->
     imboy_cache:flush(Key),
     ok.
 
--spec page(Uid::integer(), Page::integer(), Size::integer()) -> list().
-page(Uid, Page,  Size) when Page > 0 ->
+
+-spec page(Uid :: integer(), Page :: integer(), Size :: integer()) -> list().
+page(Uid, Page, Size) when Page > 0 ->
     Offset = (Page - 1) * Size,
     Total = user_device_repo:count_by_uid(Uid),
     case user_device_repo:page(Uid, Size, Offset) of
@@ -56,18 +62,14 @@ page(Uid, Page,  Size) when Page > 0 ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
             Items1 = [tuple_to_list(Item) || Item <- Items0],
-            OnlineDids =  imboy_session:online_dids(Uid),
-            Items2 = [
-                lists:zipwith(fun(X, Y) -> {X, Y} end,
-                [<<"online">> | ColumnLi],
-                [lists:member(DID, OnlineDids), DID] ++ Row) ||
-                    [DID | Row]  <- Items1
-            ],
+            OnlineDids = imboy_session:online_dids(Uid),
+            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                    [<<"online">> | ColumnLi],
+                                    [lists:member(DID, OnlineDids), DID] ++ Row) || [DID | Row] <- Items1],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
     end.
-
 
 %% ===================================================================
 %% Internal Function Definitions

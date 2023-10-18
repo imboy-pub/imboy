@@ -5,6 +5,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -13,12 +14,13 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = case Action of
-        member ->
-            member(Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            member ->
+                member(Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 
@@ -32,6 +34,7 @@ member(Req0, _State) ->
             Data = member_transfer(Members),
             imboy_response:success(Req0, Data, "success.")
     end.
+
 
 member_transfer(Members) ->
     [{<<"list">>, [imboy_hashids:replace_id(M) || M <- Members]}].

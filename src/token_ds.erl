@@ -62,13 +62,12 @@ encrypt_token(ID, Millisecond, Sub) ->
     % ExpireAt = Now + Millisecond / 1000,
     ExpireAt = imboy_dt:millisecond() + Millisecond,
     Data = #{
-         % iss => imboy  % iss (issuer)：签发人
-         % , nbf => Now + 1 % nbf (Not Before)：生效时间
-         % , iat => Now % iat (Issued At)：签发时间
-         sub => Sub  % sub (subject)：主题
-         ,
-         exp => ExpireAt  % exp (expiration time)：过期时间
-         ,
-         uid => imboy_hashids:uid_encode(ID)
-    },
+             % iss => imboy  % iss (issuer)：签发人
+             % , nbf => Now + 1 % nbf (Not Before)：生效时间
+             % , iat => Now % iat (Issued At)：签发时间
+             sub => Sub  % sub (subject)：主题
+             ,
+             exp => ExpireAt  % exp (expiration time)：过期时间
+             ,
+             uid => imboy_hashids:uid_encode(ID)},
     jwerl:sign(Data, hs256, config_ds:env(jwt_key)).

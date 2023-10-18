@@ -7,14 +7,16 @@
 -export([get_by_id/1]).
 -export([save/4]).
 
+
 tablename() ->
     imboy_db:public_tablename(<<"verification_code">>).
+
 
 -spec get_by_id(binary()) -> {ok, ColumnList :: list(), Values :: list()}.
 get_by_id(Id) ->
     Tb = tablename(),
     Column = <<"id,code,validity_at,created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary," WHERE id = $1">>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     imboy_db:query(Sql, [Id]).
 
 
@@ -30,12 +32,11 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
     ValidityAt2 = integer_to_binary(ValidityAt),
     Now2 = integer_to_binary(Now),
 
-    UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ",
-        ValidityAt2/binary, ", created_at = ", Now2/binary>>,
+    UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ", ValidityAt2/binary, ", created_at = ",
+              Now2/binary>>,
 
-    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '"
-        , ValidityAt2/binary, "', '", Now2/binary
-        , "') ON CONFLICT (id) DO ", UpSql/binary>>,
+    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '", ValidityAt2/binary, "', '", Now2/binary,
+              "') ON CONFLICT (id) DO ", UpSql/binary>>,
     Sql = imboy_db:assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
     imboy_db:execute(Sql, []).
 

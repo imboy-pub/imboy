@@ -23,7 +23,7 @@ create_user_test(Prefix, Num, Limit) ->
         last_login_ip, last_login_at, ref_user_id, status,
         created_at, reg_ip, reg_cosv) VALUES (0,'',
         '", Username/binary, "', '", MobBin/binary,
-          "', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
+            "', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
     % ?LOG(Sql),
     imboy_db:execute(Sql, []),
     create_user_test(Prefix, Num + 1, Limit).
@@ -35,8 +35,7 @@ create_user_test(Prefix, Num, Limit) ->
 create_friend_test(FromId) when FromId > 500000 ->
     ok;
 create_friend_test(FromId) ->
-    [create_friend_test(FromId, ToId) ||
-        ToId <- lists:seq(FromId - 100, FromId)],
+    [create_friend_test(FromId, ToId) || ToId <- lists:seq(FromId - 100, FromId)],
     create_friend_test(FromId + 1).
 
 
@@ -50,10 +49,13 @@ create_friend_test(FromId, ToId) when FromId == ToId ->
 create_friend_test(FromId, ToId) when FromId > 513237; ToId > 513237 ->
     ok;
 create_friend_test(FromId, ToId) ->
-    Sql =
-        <<"INSERT INTO public.user_friend (from_user_id, to_user_id,
+    Sql = <<"INSERT INTO public.user_friend (from_user_id, to_user_id,
         status, created_at, setting) VALUES ($1, $2, 1, $3, $4)">>,
-    imboy_db:execute(Sql, [FromId, ToId, imboy_dt:millisecond(), <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
+    imboy_db:execute(Sql,
+                     [FromId,
+                      ToId,
+                      imboy_dt:millisecond(),
+                      <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
 
 
 generate_exception(1) ->

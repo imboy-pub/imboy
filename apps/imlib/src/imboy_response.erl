@@ -7,18 +7,15 @@
 -export([error/4, error/1, error/2, error/3]).
 -export([page_payload/4]).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
 
 -spec page_payload(integer(), integer(), integer(), list()) -> list().
-page_payload(Total, Page,  Size, List) ->
-    [
-        {<<"total">>, Total},
-        {<<"page">>, Page},
-        {<<"size">>, Size},
-        {<<"list">>, List}
-    ].
+page_payload(Total, Page, Size, List) ->
+    [{<<"total">>, Total}, {<<"page">>, Page}, {<<"size">>, Size}, {<<"list">>, List}].
+
 
 success(Req) ->
     reply_json(0, "success", #{}, Req).
@@ -61,13 +58,6 @@ reply_json(Code, Msg, Payload, Req) ->
 
 
 reply_json(Code, Msg, Payload, Req, Options) ->
-    LPayload = [
-        {<<"code">>, Code},
-        {<<"msg">>, unicode:characters_to_binary(Msg)},
-        {<<"payload">>, Payload}
-    ],
+    LPayload = [{<<"code">>, Code}, {<<"msg">>, unicode:characters_to_binary(Msg)}, {<<"payload">>, Payload}],
     Body = jsone:encode(LPayload ++ Options, [native_utf8]),
-    cowboy_req:reply(200,
-        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
-        Body,
-        Req).
+    cowboy_req:reply(200, #{<<"content-type">> => <<"application/json; charset=utf-8">>}, Body, Req).
