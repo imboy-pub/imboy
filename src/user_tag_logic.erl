@@ -98,18 +98,18 @@ change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
 change_name(0, Uid, Scene, TagId, TagName) ->
     NowTs = imboy_dt:millisecond(),
     CreatedAt = integer_to_binary(NowTs),
-    RefCount = imboy_db:pluck(<<"user_tag_relation">>,
-                              <<"scene = ", Scene/binary, " AND tag_id = ", TagId/binary, " AND user_id = ",
-                                Uid/binary>>,
-                              <<"count(*)">>,
-                              0),
+    % RefCount = imboy_db:pluck(<<"user_tag_relation">>,
+    %                           <<"scene = ", Scene/binary, " AND tag_id = ", TagId/binary, " AND user_id = ",
+    %                             Uid/binary>>,
+    %                           <<"count(*)">>,
+    %                           0),
     Sql = <<"SELECT object_id FROM public.user_tag_relation WHERE scene = ", Scene/binary, " AND user_id = ",
             Uid/binary, " AND tag_id = ", TagId/binary>>,
     ObjectIds2 = imboy_db:list(Sql),
     % lager:error(io_lib:format("user_tag_logic:change_name/4 ~s ObjectIds2: ~p; ~n", [Sql, ObjectIds2])),
     imboy_db:with_transaction(fun(Conn) ->
                                      % 保存 public.user_tag
-                                     user_tag_relation_repo:update_tag(Conn, TagId, TagName, RefCount, Uid, CreatedAt),
+                                     user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 
                                      [change_scene_tag(Conn, Scene, Uid, I, [{TagId, TagName}]) || {I} <- ObjectIds2],
                                      ok

@@ -62,14 +62,15 @@ stop(_State) ->
 %% Internal Function Definitions
 %% ===================================================================
 -spec start_quic(cowboy_router:dispatch_rules()) -> {ok, pid()} | {error, any()}.
-start_quic(Dispatch) ->
-    PrivDir = code:priv_dir(imboy),
-    cowboy:start_quic(#{socket_opts => [
-                                        % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
-                                        % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
-                                        {cert, PrivDir ++ config_ds:env(certfile)},
-                                        {key, PrivDir ++ config_ds:env(keyfile)}]},
-                      #{env => #{dispatch => Dispatch}}).
+start_quic(_Dispatch) ->
+    {error, "调整中的功能"}.
+    % PrivDir = code:priv_dir(imboy),
+    % cowboy:start_quic(#{socket_opts => [
+    %                                     % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
+    %                                     % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
+    %                                     {cert, PrivDir ++ config_ds:env(certfile)},
+    %                                     {key, PrivDir ++ config_ds:env(keyfile)}]},
+    %                   #{env => #{dispatch => Dispatch}}).
 
 
 -spec start_tls(map(), integer()) -> {ok, pid()} | {error, any()}.

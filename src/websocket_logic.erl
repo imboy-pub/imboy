@@ -101,7 +101,7 @@ c2g(MsgId, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
     ToGID = imboy_hashids:uid_decode(Gid),
     % TODO check is group member
-    MemberUids = group_member_ds:member_uids(ToGID, CurrentUid),
+    MemberUids = group_member_ds:member_uids(ToGID),
     % Uids.
     NowTs = imboy_dt:millisecond(),
     Msg = [{<<"id">>, MsgId},

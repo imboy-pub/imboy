@@ -106,7 +106,7 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
 -spec update_tag(any(), binary(), binary(), binary(), binary()) -> ok.
 update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
     Tb = imboy_db:public_tablename(<<"user_tag">>),
-    % lager:info(io_lib:format("user_tag_relation_repo:update_tag/6 Tb:~p ~n", [Tb])),
+    % lager:info(io_lib:format("user_tag_relation_repo:update_tag/5 Tb:~p ~n", [Tb])),
     Args = ["UPDATE ",
             Tb,
             <<" SET name = '", TagName/binary, "', ">>,
@@ -116,17 +116,17 @@ update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
             TagId,
             " AND creator_user_id = ",
             Uid],
-    % lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Args:~p ~n", [Args])),
+    % lager:error(io_lib:format("user_tag_relation_repo:update_tag/5 Args:~p ~n", [Args])),
     UpSql = imboy_func:implode("", Args),
-    % lager:info(io_lib:format("user_tag_relation_repo:update_tag/6 sql:~p;~n", [UpSql])),
+    % lager:info(io_lib:format("user_tag_relation_repo:update_tag/5 sql:~p;~n", [UpSql])),
     {ok, Stmt} = epgsql:parse(Conn, UpSql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Res:~p;~n", [Res])),
+    % lager:error(io_lib:format("user_tag_relation_repo:update_tag/5 Res:~p;~n", [Res])),
     case Res of
         [{ok, 1}] ->
             {TagId, TagName};
         _ ->
-            % lager:error(io_lib:format("user_tag_relation_repo:update_tag/6 Res:~p ~n", [Res])),
+            % lager:error(io_lib:format("user_tag_relation_repo:update_tag/5 Res:~p ~n", [Res])),
             {0, TagName}
     end.
 

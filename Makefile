@@ -19,8 +19,8 @@ LOCAL_DEPS += cron
 # LOCAL_DEPS += erlmedia
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = telemetry lager jsone ranch cowlib cowboy
-DEPS += jwerl hashids recon observer_cli gen_smtp throttle
+DEPS =  jsone ranch cowlib cowboy
+DEPS += jwerl hashids gen_smtp throttle
 DEPS += qdate qdate_localtime
 # goldrush 提供了快速的事件流处理
 DEPS += goldrush
@@ -31,7 +31,11 @@ DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
 DEPS += ecron
+
+# 运维诊断类型的库
+DEPS += telemetry lager observer_cli recon redbug
 DEPS += sync
+
 # DEPS += nksip
 DEPS += ersip rtps
 

@@ -64,5 +64,5 @@ assets(<<"POST">>, Req0) ->
     end;
 assets(<<"GET">>, Req0) ->
     % Body is <<"fail">>
-    Body = auth_logic:verify_for_assets(undefined, undefined, undefined),
+    Body = auth_logic:verify_for_assets(undefined, undefined, undefined, undefined),
     cowboy_req:reply(200, #{<<"content-type">> => <<"text/html">>}, unicode:characters_to_binary(Body, utf8), Req0).

@@ -31,13 +31,16 @@ Erlang/OTP 23 / Erlang/OTP 24 / Erlang/OTP 25
 // 列表可安装的版本号
 kerl list releases
 
-kerl build 24.3.4.2 / kerl delete build 24.3.3
+
+CPP=cpp EGREP=egrep kerl build 25.3.2.7
+
+kerl delete build 24.3.3
 
 kerl list builds
 
-kerl install 24.3.4.2 ~/kerl/24.3.4.2
+kerl install 25.3.2.7 ~/kerl/25.3.2.7
 
-. /Users/leeyi/kerl/24.3.4.2/activate
+. /Users/leeyi/kerl/25.3.2.7/activate
 
 Later on, you can leave the installation typing:
 kerl_deactivate

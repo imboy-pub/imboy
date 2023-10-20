@@ -28,7 +28,7 @@
 % demo_cron_logic:add_every_4am_job()
 add_every_4am_job() ->
     JobName = every_4am_job,
-    MFA = {?MODULE, insepct, ["at 04:00 everyday."]},
+    MFA = {?MODULE, inspect, ["at 04:00 everyday."]},
     {ok, JobName} = ecron:add(JobName, "0 4 * * *", MFA).
 
 
