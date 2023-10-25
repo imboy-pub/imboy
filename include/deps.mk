@@ -68,6 +68,8 @@ dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
 # erlang tracing debugger
 dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.7
+# PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
+dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
 
 
 # dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0

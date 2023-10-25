@@ -64,13 +64,14 @@ make new t=imboy.logic n=demo_logic
 make new t=imboy.repository n=demo_repo
 make new t=imboy.ds n=demo_ds
 
-make new t=imboy.rest_handler n=demo2_handler && make new t=imboy.logic n=demo2_logic && make new t=imboy.repository n=demo2_repo
 
 make list-templates
 
-make new-lib in=common
-make new-lib in=cron
-make new t=imboy.logic n=demo_cron_logic in=cron
+make new-lib in=imlib
+make new-lib in=imcron
+make new t=imboy.logic n=demo_cron_logic in=imcron
+
+make new-app in=imsos
 ...
 
 make run
@@ -592,6 +593,3 @@ rtmp_proxy:run(1935, <<"rtmp://192.168.0.144/live_room">>).
 
 
 rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.5/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so
-
-
-

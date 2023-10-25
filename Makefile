@@ -12,12 +12,6 @@ RELX_CONFIG = $(CURDIR)/relx_$(IMBOYENV).config
 
 include include/deps.mk
 
-#LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
-LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
-LOCAL_DEPS += imlib
-LOCAL_DEPS += cron
-# LOCAL_DEPS += erlmedia
-
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS =  jsone ranch cowlib cowboy
 DEPS += jwerl hashids gen_smtp throttle
@@ -36,11 +30,21 @@ DEPS += ecron
 DEPS += telemetry lager observer_cli recon redbug
 DEPS += sync
 
+# DEPS += vix
 # DEPS += nksip
 DEPS += ersip rtps
 
 # DEPS += esq
 # DEPS += khepri
+
+
+#LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
+LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
+LOCAL_DEPS += imlib
+LOCAL_DEPS += imcron
+# LOCAL_DEPS += imsos
+# LOCAL_DEPS += erlmedia
+
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
 BUILD_DEPS = relx
