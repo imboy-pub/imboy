@@ -5,7 +5,7 @@ PROJECT_VERSION = 0.1.13
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
 #    make rel IMBOYENV=local
-RELX_CONFIG = $(CURDIR)/relx_$(IMBOYENV).config
+RELX_CONFIG = $(CURDIR)/relx$(IMBOYENV).config
 
 # APPS_DIR ?= $(CURDIR)/app
 # DEPS_DIR  = plugin/*/
@@ -13,13 +13,13 @@ RELX_CONFIG = $(CURDIR)/relx_$(IMBOYENV).config
 include include/deps.mk
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS =  jsone ranch cowlib cowboy
+DEPS =  ranch cowlib cowboy
 DEPS += jwerl hashids gen_smtp throttle
 DEPS += qdate qdate_localtime
 # goldrush 提供了快速的事件流处理
 DEPS += goldrush
 # Erlang 的纯函数式和泛型编程
-DEPS += datum
+DEPS += datum jsone jsx
 # DEPS += mysql poolboy
 DEPS += epgsql pooler
 DEPS += depcache
@@ -32,7 +32,7 @@ DEPS += sync
 
 # DEPS += vix
 # DEPS += nksip
-DEPS += ersip rtps
+# DEPS += ersip rtps
 
 # DEPS += esq
 # DEPS += khepri

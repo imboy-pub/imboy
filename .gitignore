@@ -31,3 +31,4 @@ docker/timescaledb
 priv/ssl
 install_erlang_for_m1.sh
 docker/img_fastdfs_data
+docker/pgsql15data

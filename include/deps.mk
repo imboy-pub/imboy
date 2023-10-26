@@ -30,7 +30,9 @@ dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # bbmustache 一个无逻辑的模板。 deps by relx
-dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
+# dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
+dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
+
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.6.0
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
@@ -85,6 +87,8 @@ dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 # dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
 # dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master
 
+
+dep_vix = git https://gitee.com/imboy-tripartite-deps/vix.git v0.23.1
 dep_ersip = git https://gitee.com/imboy-tripartite-deps/ersip.git master
 dep_ersip_proxy = git https://gitee.com/imboy-tripartite-deps/ersip_proxy.git master
 
