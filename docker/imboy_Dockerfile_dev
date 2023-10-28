@@ -1,0 +1,90 @@
+#FROM debian:bookworm
+FROM debian:bookworm-slim
+
+# from https://github.com/erlang/docker-erlang-otp/blob/master/26/slim/Dockerfile
+
+# ENV OTP_VERSION=26.1.2 \
+ENV OTP_VERSION=25.3.2.6 \
+    REBAR3_VERSION=3.22.1
+
+LABEL org.opencontainers.image.version=$OTP_VERSION
+
+WORKDIR /www/wwwroot/imboy-api
+
+# We'll install the build dependencies, and purge them on the last step to make
+# sure our final image contains only what we've just built:
+RUN set -xe \
+    && OTP_DOWNLOAD_URL="https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION}/otp_src_${OTP_VERSION}.tar.gz" \
+    && OTP_DOWNLOAD_SHA256="14f519bb63f9cc8d1db62ef7c58abc56fa94f8f76d918d23acad374f38434088" \
+    && fetchDeps=' \
+        curl \
+        git vim \
+        make gcc g++ \
+        apt-transport-https \
+        ca-certificates' \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends $fetchDeps \
+    && curl -fSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
+    && echo "$OTP_DOWNLOAD_SHA256  otp-src.tar.gz" | sha256sum -c - \
+    && runtimeDeps=' \
+        libodbc1 \
+        libssl3 \
+        libsctp1 \
+    ' \
+    && buildDeps=' \
+        autoconf \
+        dpkg-dev \
+        libncurses-dev \
+        unixodbc-dev \
+        libssl-dev \
+        libsctp-dev \
+    ' \
+    && apt-get install -y --no-install-recommends $runtimeDeps \
+    && apt-get install -y --no-install-recommends $buildDeps \
+    && export ERL_TOP="/usr/src/otp_src_${OTP_VERSION%%@*}" \
+    && mkdir -vp $ERL_TOP \
+    && tar -xzf otp-src.tar.gz -C $ERL_TOP --strip-components=1 \
+    && rm otp-src.tar.gz \
+    && ( cd $ERL_TOP \
+      && ./otp_build autoconf \
+      && gnuArch="$(dpkg-architecture --query DEB_HOST_GNU_TYPE)" \
+      && ./configure --build="$gnuArch" \
+      && make -j$(nproc) \
+      && make install ) \
+    && find /usr/local -name examples | xargs rm -rf \
+    && REBAR3_DOWNLOAD_URL="https://github.com/erlang/rebar3/archive/${REBAR3_VERSION}.tar.gz" \
+    && REBAR3_DOWNLOAD_SHA256="2855b5784300865d2e43cb7a135cb2bba144cf15214c619065b918afc8cc6eb9" \
+    && mkdir -p /usr/src/rebar3-src \
+    && curl -fSL -o rebar3-src.tar.gz "$REBAR3_DOWNLOAD_URL" \
+    && echo "$REBAR3_DOWNLOAD_SHA256 rebar3-src.tar.gz" | sha256sum -c - \
+    && tar -xzf rebar3-src.tar.gz -C /usr/src/rebar3-src --strip-components=1 \
+    && rm rebar3-src.tar.gz \
+    && cd /usr/src/rebar3-src \
+    && HOME=$PWD ./bootstrap \
+    && install -v ./rebar3 /usr/local/bin/ \
+    && rm -rf /usr/src/rebar3-src \
+    && apt-get purge -y --auto-remove $buildDeps \
+    && rm -rf $ERL_TOP /var/lib/apt/lists/*
+
+RUN set -xe \
+    && mkdir -p /www /www/wwwroot /www/wwwroot /www/wwwroot/imboy-api && cd /www/wwwroot/imboy-api \
+    && ls -la \
+    && git clone https://gitee.com/imboy-pub/imboy.git \. \
+    && git fetch origin dev && git checkout dev
+
+RUN set -xe \
+    && curl -fSL -o /www/wwwroot/imboy-api/deps.tar.gz https://uat-yeahgo.oss-cn-shenzhen.aliyuncs.com/file/deps.tar.gz \
+    && cd /www/wwwroot/imboy-api && mkdir -p deps && tar xf deps.tar.gz -C ./ && rm deps.tar.gz && make erlang-mk && make clean && make deps
+
+RUN set -xe \
+    && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
+    && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc
+
+COPY docker/imboy_api_sys.config /www/wwwroot/imboy-api/config/sys.config
+
+ENV SYS_CONF=config/sys.config
+EXPOSE 9800 9801
+WORKDIR /www/wwwroot/imboy-api
+USER root
+#CMD ["erl"]
+#CMD ["make", "run"]

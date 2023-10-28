@@ -26,6 +26,7 @@ https://blog.51cto.com/suncj/5038850
 pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
 
 pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
+pg_dump -h 127.0.0.1 -U imboy_user -p 5432 -d imboy_v1 --inserts > imboy_v1.sql
 
 mv imboy_v1.sql /var/lib/postgresql/data/
 
@@ -33,6 +34,8 @@ mv imboy_v1.sql /var/lib/postgresql/data/
 
 导入到本地数据库
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
+
+psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 4322 -f ./docker/imboy_v1.sql
 
 DROP SCHEMA public CASCADE;
 CREATE SCHEMA public;

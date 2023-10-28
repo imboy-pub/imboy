@@ -2,6 +2,17 @@
 
 ```
 docker network create imboy-network
+
+docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' imboy-network
+
+
+docker exec imboy_postgis cat /etc/hosts
+docker exec imboy_fastdfs cat /etc/hosts
+
+
+docker exec -it imboy_api bash
+docker exec -it imboy_fastdfs bash
+    ping imboy_postgis
 ```
 
 # docker 云沙箱中的 Erlang
@@ -10,16 +21,84 @@ docker network create imboy-network
 * https://blog.erlware.org/epmdlessless/
 * https://github.com/tsloughter/epmdless
 
+## docker-compose.yml
+
+```
+docker-compose -f docker-compose.yml up
+
+# 如果你想在后台执行该服务可以加上 -d 参数：
+docker-compose -f docker-compose.yml up -d
+
+
+
+shasum -a 256 ~/Downloads/otp-OTP-26.1.2.tar.gz
+56042d53b30863d4e720ebf463d777f0502f8c986957fc3a9e63dae870bbafe0
+
+openssl sha256 ~/Downloads/otp-OTP-26.1.2.tar.gz
+56042d53b30863d4e720ebf463d777f0502f8c986957fc3a9e63dae870bbafe0
+
+openssl sha256 ~/Downloads/otp-OTP-25.3.2.6.tar.gz
+SHA256(/Users/leeyi/Downloads/otp-OTP-25.3.2.6.tar.gz)= 67e0f5c209a335cfc216a57b1f016072a69eb9683d36d6d101bf2f60a2e45926
+
+zsh
+OTP_DOWNLOAD_SHA256="56042d53b30863d4e720ebf463d777f0502f8c986957fc3a9e63dae870bbafe0"
+echo "$OTP_DOWNLOAD_SHA256  otp-src.tar.gz" | sha256sum -c
+echo "$OTP_DOWNLOAD_SHA256  /Users/leeyi/Downloads/otp-OTP-26.1.2.tar.gz" | sha256sum -c
+
+
+
+echo "$OTP_DOWNLOAD_SHA256  /Users/leeyi/Downloads/otp-OTP-26.1.2.tar.gz" | sha256sum -c
+
+REBAR3_DOWNLOAD_SHA256="2855b5784300865d2e43cb7a135cb2bba144cf15214c619065b918afc8cc6eb9"
+echo "$REBAR3_DOWNLOAD_SHA256  /Users/leeyi/Downloads/rebar3-3.22.1.tar.gz" | sha256sum -c
+```
+
 ## Dockerfile
-from  https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
+
+### Erlang 26
+
+```
+docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:dev .
+docker push imboy/imboy-api:dev
+
+docker run -it imboy-api:dev
+
+docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:0.1.3 .
+docker push imboy/imboy-api:0.1.3
+
+
+
+mkdir -p /www /www/wwwroot && git clone https://gitee.com/imboy-pub/imboy.git imboy-api && cd imboy-api
+git fetch origin dev && git checkout dev
+make deps
+
+```
+
+### Erlang 25
+```
+https://github.com/erlang/otp/archive/refs/tags/OTP-25.3.2.6.tar.gz
+
+https://github.com/erlang/otp/archive/refs/tags/otp_src_25.3.2.6.tar.gz
+```
+
+
+### PG16
+```
+cd docker
+
+wget https://raw.githubusercontent.com/postgis/docker-postgis/master/16-3.4/Dockerfile -O 'postgis_16-3.4_Dockerfile'
+```
+
+### PG15
+from  https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 dev
 ```
-cd docker
-docker build --file "./postgis_15-3.3_Dockerfile_dev" -t imboy_pg15_3_dev:0.1.1 .
+docker build --file "./docker/postgis15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev .
 
-docker run --name imboy_postgis_dev_0.1.1 --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -v "pgsql15data":/var/lib/postgresql/data  -p 4322:5432 -d imboy_pg15_3_dev:0.1.1
+docker run --name imboy_postgis_dev_0.1.2 --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -v "pgsql15data":/var/lib/postgresql/data  -p 4321:5432 -d imboy-pg:15.3.4.1.dev
 
+docker build --file "./docker/postgis15_Dockerfile" -t imboy-pg:15.3.4.1 .
 ```
 
 Install the project...
@@ -36,45 +115,18 @@ Install the project...
 从容器里面拷文件到宿主机
 > docker cp goiissy:/root/idex.html /opt
 ```
-docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/pg_jieba.so ./pg_jieba/pg_jieba.so && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/pg_jieba.control ./pg_jieba/pg_jieba.control && \
-docker cp "imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/pg_jieba--1.1.1.sql" "./pg_jieba/pg_jieba--1.1.1.sql" && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_base.dict ./pg_jieba/jieba_base.dict && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_hmm.model ./pg_jieba/jieba_hmm.model && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba_user.dict ./pg_jieba/jieba_user.dict && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba.stop ./pg_jieba/jieba.stop && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/tsearch_data/jieba.idf ./pg_jieba/jieba.idf
-
-
-docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb.so ./timescaledb/timescaledb.so && \
-docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb-2.12.0-dev.so ./timescaledb/timescaledb-2.12.0-dev.so && \
-docker cp imboy_postgis_dev_0.1.1:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.12.0-dev.so ./timescaledb/timescaledb-tsl-2.12.0-dev.so && \
-docker cp imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/timescaledb.control ./timescaledb/timescaledb.control && \
-docker cp "imboy_postgis_dev_0.1.1:/usr/share/postgresql/15/extension/timescaledb--2.12.0-dev.sql" "./timescaledb/timescaledb--2.12.0-dev.sql"
-
+docker cp imboy_postgis_dev_0.1.2:/usr/lib/postgresql/15/lib/pg_jieba.so ./docker/pg_jieba/pg_jieba.so && \
+...
 ```
 /usr/share/postgresql/15
 从宿主机拷文件到容器里面
 > docker cp /opt/test.js goiissy:/root
 ```
-docker cp ./pg_jieba/pg_jieba.so imboy_pg15:/usr/lib/postgresql/15/lib/pg_jieba.so && \
-docker cp ./pg_jieba/pg_jieba.control imboy_pg15:/usr/share/postgresql/15/extension/pg_jieba.control && \
-docker cp ./pg_jieba/pg_jieba--1.1.1.sql "imboy_pg15:/usr/share/postgresql/15/extension/pg_jieba--1.1.1.sql" && \
-docker cp ./pg_jieba/jieba_base.dict imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba_base.dict && \
-docker cp ./pg_jieba/jieba_hmm.model imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba_hmm.model && \
-docker cp ./pg_jieba/jieba_user.dict imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba_user.dict && \
-docker cp ./pg_jieba/jieba.stop imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba.stop && \
-docker cp ./pg_jieba/jieba.idf imboy_pg15:/usr/share/postgresql/15/tsearch_data/jieba.idf
+docker cp ./docker/pg_jieba/pg_jieba.so imboy-pg:15./usr/lib/postgresql/15/lib/pg_jieba.so
+...
 
 create extension pg_jieba;
 
-docker rename imboy-pg15 imboy_pg15
-
-docker cp ./timescaledb/timescaledb.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb.so && \
-docker cp ./timescaledb/timescaledb-2.12.0-dev.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-2.12.0-dev.so && \
-docker cp ./timescaledb/timescaledb-tsl-2.11.0-dev.so imboy_pg15:/usr/lib/postgresql/15/lib/timescaledb-tsl-2.11.0-dev.so && \
-docker cp ./timescaledb/timescaledb.control imboy_pg15:/usr/share/postgresql/15/extension/timescaledb.control && \
-docker cp "./timescaledb/timescaledb--2.11.0.sql" "imboy_pg15:/usr/share/postgresql/15/extension/timescaledb--2.11.0.sql"
 
 echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/pgdata/postgresql.conf
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -86,19 +138,19 @@ pro
 docker volume prune
 
 cd docker
-docker build --file "./postgis_15-3.3_Dockerfile" -t imboy_pg15_3:0.1.1 .
+docker build --file "./docker/postgis15_Dockerfile" -t imboy-pg:15.3.4.1 .
 
 from https://github.com/docker-library/docs/blob/master/postgres/README.md
- docker rm -f imboy_pg15 && docker run -d \
-    --name imboy_pg15 \
+ docker rm -f imboy-pg 15.&& docker run -d \
+    --name imboy-pg 15.\
     --network imboy-network \
     -e POSTGRES_USER=imboy_user \
     -e POSTGRES_PASSWORD=abc54321 \
     -e POSTGRES_DB=imboy_v1 \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
-    -v /data/docker/imboy_pg15:/var/lib/postgresql/data \
+    -v /data/docker/imboy-pg:15./var/lib/postgresql/data \
     -p 127.0.0.1:4321:5432 \
-    imboy_pg15_3:0.1.1
+    imboy-pg:15.3.4.1
 
 
 ALTER EXTENSION postgis UPDATE TO '3.3.3';
@@ -123,7 +175,6 @@ GRANT ALL ON SCHEMA public TO imboy_user;
 GRANT ALL ON SCHEMA public TO public;
 
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 4321 -f /Users/leeyi/Downloads/imboy_v1.sql
-
 
 
 ```

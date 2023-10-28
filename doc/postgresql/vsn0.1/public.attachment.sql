@@ -40,7 +40,7 @@ COMMENT ON COLUMN public.attachment.name IS '附件 名称';
 COMMENT ON COLUMN public.attachment.path IS '附件 path';
 COMMENT ON COLUMN public.attachment.url IS '附件 访问地址';
 COMMENT ON COLUMN public.attachment.size IS '附件 大小，单位 ';
-COMMENT ON COLUMN public.attachment.info IS '附近信息json';
+COMMENT ON COLUMN public.attachment.info IS '附件信息json';
 
 COMMENT ON COLUMN public.attachment.referer_time IS '被引用次数';
 COMMENT ON COLUMN public.attachment.last_referer_user_id IS '最后引用用户';
