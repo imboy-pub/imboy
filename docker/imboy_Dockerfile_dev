@@ -73,10 +73,10 @@ RUN set -xe \
     && git fetch origin dev && git checkout dev
 
 RUN set -xe \
-    && curl -fSL -o /www/wwwroot/imboy-api/deps.tar.gz https://uat-yeahgo.oss-cn-shenzhen.aliyuncs.com/file/deps.tar.gz \
-    && cd /www/wwwroot/imboy-api && mkdir -p deps && tar xf deps.tar.gz -C ./ && rm deps.tar.gz && make erlang-mk && make clean && make deps
+    && cd /www/wwwroot/imboy-api && make erlang-mk && make clean && make deps
 
 RUN set -xe \
+    && apt-get install -y ping \
     && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
     && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc
 

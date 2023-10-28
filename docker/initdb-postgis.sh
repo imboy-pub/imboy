@@ -1,16 +1,19 @@
 #!/bin/bash
 
-set -e
+set -xe
 
 # Perform all actions as $POSTGRES_USER
 export PGUSER="$POSTGRES_USER"
+
+echo "shared_preload_libraries = 'pg_jieba'" >> /var/lib/postgresql/data/postgresql.conf
+echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/postgresql.conf
+
+pg_ctl restart
 
 # Create the 'template_postgis' template db
 "${psql[@]}" <<- 'EOSQL'
 CREATE DATABASE template_postgis IS_TEMPLATE true;
 EOSQL
-
-echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/pgdata/postgresql.conf
 
 # Load PostGIS into both template_database and $POSTGRES_DB
 for DB in template_postgis "$POSTGRES_DB"; do

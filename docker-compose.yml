@@ -19,7 +19,7 @@ services:
       LANG: en_US.UTF-8
     volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
       - "./docker/imboy_api_sys.config:/www/wwwroot/imboy-api/config/sys.config"
-    # ports: # 映射端口
+    ports: # 映射端口
       - "9810:9800"
       - "9811:9801"
     working_dir: /www/wwwroot/imboy-api
@@ -27,7 +27,7 @@ services:
     #command: ["erl"]
 
   imboy_postgis:
-    image: imboy-pg:pg15.3
+    image: imboy/imboy-pg:15.3.4.1.dev
     container_name: imboy_postgis
     hostname: pg.docker.imboy.pub
     networks:
