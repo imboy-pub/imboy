@@ -79,7 +79,8 @@ dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
 # poolboy A hunky Erlang worker pool factory
 #dep_poolboy = git https://gitee.com/imboy-tripartite-deps/poolboy 1.5.2
 
-dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
+#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
+dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.

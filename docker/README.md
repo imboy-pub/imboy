@@ -2,10 +2,12 @@
 
 ```
 docker network create imboy-network
-docker network create imboy_db_nt
 
 docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' imboy-network
 
+docker run -it --network imboy-network imboy/imboy-api:dev bash
+
+inet:getaddr("imboy_fastdfs", inet).
 
 docker exec imboy_postgis cat /etc/hosts
 docker exec imboy_fastdfs cat /etc/hosts

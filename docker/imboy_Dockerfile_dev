@@ -67,16 +67,12 @@ RUN set -xe \
     && rm -rf $ERL_TOP /var/lib/apt/lists/*
 
 RUN set -xe \
-    && mkdir -p /www /www/wwwroot /www/wwwroot /www/wwwroot/imboy-api && cd /www/wwwroot/imboy-api \
-    && ls -la \
+    && mkdir -vp /www /www/wwwroot /www/wwwroot /www/wwwroot/imboy-api && cd /www/wwwroot/imboy-api \
     && git clone https://gitee.com/imboy-pub/imboy.git \. \
-    && git fetch origin dev && git checkout dev
-
-RUN set -xe \
+    && git fetch origin dev && git checkout dev \
     && cd /www/wwwroot/imboy-api && make erlang-mk && make clean && make deps
 
 RUN set -xe \
-    && apt-get install -y ping \
     && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
     && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc
 
