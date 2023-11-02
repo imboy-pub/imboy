@@ -90,18 +90,6 @@ pro
 删除所有未使用的卷
 docker volume prune
 
-select * from to_tsquery('jiebacfg', '是拖拉机学院手扶拖拉机专业的。不用多久，我就会升职加薪，当上CEO，走上人生巅峰。');
-
-
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
-
-GRANT ALL ON SCHEMA public TO imboy_user;
-GRANT ALL ON SCHEMA public TO public;
-
-psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 9820 -f docker/imboy_v1.sql
-
-
 ```
 
 ## postgresql

@@ -37,6 +37,17 @@ psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
 
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 4322 -f ./docker/imboy_v1.sql
 
+psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 9820 -f docker/imboy_v1.sql
+
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
+GRANT ALL ON SCHEMA public TO imboy_user;
+GRANT ALL ON SCHEMA public TO public;
+
+select * from to_tsquery('jiebacfg', '是拖拉机学院手扶拖拉机专业的。不用多久，我就会升职加薪，当上CEO，走上人生巅峰。');
+
+
 DROP SCHEMA public CASCADE;
 CREATE SCHEMA public;
 
