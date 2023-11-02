@@ -71,6 +71,8 @@ make new-lib in=imlib
 make new-lib in=imcron
 make new t=imboy.logic n=demo_cron_logic in=imcron
 
+make new-lib in=imapi
+
 make new-app in=imsos
 ...
 

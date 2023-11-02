@@ -6,6 +6,7 @@ docker network create imboy-network
 docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' imboy-network
 
 docker run -it --network imboy-network imboy/imboy-api:dev bash
+docker run -it --network imboy-network imboy/imboy-pg:15.3.4.1.dev bash
 
 inet:getaddr("imboy_fastdfs", inet).
 
@@ -115,6 +116,7 @@ mkdir -p /data/ && mkdir -p /data/docker/ && mkdir -p /data/docker/pgsql15data
 # Server container
 docker run --name imboy_postgis --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -v /data/docker/pgsql15data:/var/lib/postgresql/data  -p 4321:5432 -d postgis/postgis:15-3.3
 ```
+
 
 ## go-fastdfs
 https://github.com/sjqzhang/go-fastdfs Star 3.5K

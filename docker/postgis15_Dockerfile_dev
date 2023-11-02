@@ -26,7 +26,7 @@ RUN set -xe \
 # for pgroonga
 # https://github.com/pgroonga/docker/blob/3.1.5/debian/15/Dockerfile
 RUN set -xe \
-  && apt-get install -y -V wget\
+  && apt-get install -y -V wget \
   && wget https://packages.groonga.org/debian/groonga-apt-source-latest-bullseye.deb \
   && apt-get install -y -V ./groonga-apt-source-latest-bullseye.deb && rm groonga-apt-source-latest-bullseye.deb \
   && echo "deb http://apt.postgresql.org/pub/repos/apt/ bullseye-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list \
@@ -46,6 +46,7 @@ RUN set -xe \
   && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/15/bin/pg_config . \
   && cd ./build && make && make install && cd ../../ && rm -rf timescaledb
 
+
 # for https://github.com/jaiminpan/pg_jieba
 # run 5/8
 RUN set -xe \
@@ -59,6 +60,13 @@ RUN set -xe \
   && tar -xf postgresql-15.4.tar.gz && cd postgresql-15.4 \
   && ./configure --without-readline --without-zlib && make && make install \
   && cd ../ && rm -rf postgresql-15.4 && rm -rf postgresql-15.4.tar.gz
+
+
+RUN set -xe \
+  && apt-get install -y -V postgresql-15-pgvector \
+  && git clone https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git \
+  && cd pg_roaringbitmap && git checkout -f master && git submodule update --init --recursive \
+  && make && make install && cd ../ && rm -rf pg_roaringbitmap
 
 RUN set -xe \
   && git clone https://gitee.com/imboy-tripartite-deps/pg_jieba \

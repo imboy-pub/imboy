@@ -14,6 +14,17 @@ IMBoy项目依赖的相关服务
 * GEO 附近的人
 *
 
+## pg_jieba 开放搜索权限的用户搜索
+
+## pgroonga
+
+## pgvector
+https://github.com/pgvector/pgvector
+
+
+## timescaledb
+
+
 # 文件存储服务
 ## go-fastdfs 使用中
 

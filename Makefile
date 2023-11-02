@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.1.13
+PROJECT_VERSION = 0.2.0
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -41,6 +41,7 @@ DEPS += sync
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
 LOCAL_DEPS += imlib
+LOCAL_DEPS += imapi
 LOCAL_DEPS += imcron
 # LOCAL_DEPS += imsos
 # LOCAL_DEPS += erlmedia

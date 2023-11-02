@@ -7,8 +7,6 @@ export PGUSER="$POSTGRES_USER"
 
 POSTGIS_VERSION="${POSTGIS_VERSION%%+*}"
 
-echo "shared_preload_libraries = 'timescaledb'" >> /var/lib/postgresql/data/postgresql.conf
-
 # Load PostGIS into both template_database and $POSTGRES_DB
 for DB in template_postgis "$POSTGRES_DB" "${@}"; do
     echo "Updating PostGIS extensions '$DB' to $POSTGIS_VERSION"

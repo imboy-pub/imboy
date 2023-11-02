@@ -1,8 +1,11 @@
+# 0.2.0
+* 项目支持 multi app （引入 apps/imlib apps/imcron apps/imapi），调整相关目录
+* 重新整理dockerfile数据库引入， vector roaringbitmap timescaledb 等插件
+* 新增 docker-compose.yml
 
 # 0.1.13
 * 调整收藏方案：清除 收藏专有的存储服务，改用定时任务扫描，在判断资源配如果没收藏嘞，就不删除；否则，过期删除之
 * json 库只用jsone，移除 jsx依赖
-* 项目支持 multi app （引入 apps/imlib apps/cron），调整相关目录
 * 引入 redbug 库
 
 # 0.1.12
