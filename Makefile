@@ -25,6 +25,7 @@ DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
 DEPS += ecron
+DEPS += aho_corasick
 
 # 运维诊断类型的库
 DEPS += telemetry lager observer_cli recon redbug

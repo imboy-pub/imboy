@@ -31,8 +31,8 @@ init(Req0, State0) ->
 %% ===================================================================
 
 online(Req0, _State) ->
-    CountUser = imboy_session:count_user(),
-    Count = imboy_session:count(),
+    CountUser = imboy_syn:count_user(),
+    Count = imboy_syn:count(),
     Msg = io_lib:format("在线总人数: ~p, 在线设备数~p", [CountUser, Count]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
     % ?LOG(Res),
@@ -43,8 +43,8 @@ online(Req0, _State) ->
                 % ?LOG([limit, Limit]),
                 {Limit2, _} = string:to_integer(Limit),
 
-                % imboy_session:list_by_limit(Limit);
-                List1 = imboy_session:list_by_limit(Limit2),
+                % imboy_syn:list_by_limit(Limit);
+                List1 = imboy_syn:list_by_limit(Limit2),
                 Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
                 [lists:zipwith(fun(X, Y) -> {X, Y} end,
                                Column,

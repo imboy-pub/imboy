@@ -86,7 +86,7 @@ c2c_revoke(MsgId, Data, Type) ->
     case user_logic:is_online(ToId) of
         true ->
             Msg2 = jsone:encode([{<<"type">>, Type} | Msg], [native_utf8]),
-            imboy_session:publish(ToId, Msg2),
+            imboy_syn:publish(ToId, Msg2),
             ok;
         false ->  % 对端离线处理
             FromId = imboy_hashids:uid_decode(From),

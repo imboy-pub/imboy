@@ -83,4 +83,4 @@ openssl x509 -req -in ./priv/ssl/public.csr -CA ./priv/ssl/chain.crt -CAkey ./pr
 * https://gitee.com/humingzhang/wordfilter
 * Serverless 实战：3 分钟实现文本敏感词过滤 https://www.infoq.cn/article/d0jzjh0lpttjqhj32vg1
     * 什么是 AC 自动机？简单来说，AC 自动机就是字典树+kmp 算法+失配指针，一个常见的例子就是给出 n 个单词，再给出一段包含 m 个字符的文章，让你找出有多少个单词在文章里出现过。
-
+* https://github.com/toolgood/ToolGood.Words

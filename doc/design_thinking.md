@@ -123,4 +123,10 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
     * 该方案有缺陷：从a.imboy.pub copy 附件到 c.imboy.pub 比较耗时（解决耗时问题需要调整 Go-FastDFS 服务）
 *
 
+## 基于jieba 分成 和 AC自动机的敏感词过滤系统
+* 按敏感词分类创建 tree A1 = aho_corasick:build_tree(["BC","ABCD"]). 缓存到 内存
+* 对用户数文本 InputTxt 使用jieba分词
+* 循环分词结果，调用  aho_corasick:match(Word1, A1).
+* https://wudeng.github.io/2018/04/13/wordfilter/
+
 ## More

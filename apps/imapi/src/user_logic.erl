@@ -26,7 +26,7 @@
 -spec online(integer(), binary(), pid(), binary()) -> ok.
 online(Uid, DType, Pid, DID) ->
     % ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
-    imboy_session:join(Uid, DType, Pid, DID),
+    imboy_syn:join(Uid, DType, Pid, DID),
 
     gen_server:cast(user_server, {ws_online, Uid, DType, DID}),
 
@@ -37,7 +37,7 @@ online(Uid, DType, Pid, DID) ->
 
 -spec offline(Uid :: integer(), Pid :: pid(), DID :: binary()) -> ok.
 offline(Uid, Pid, DID) ->
-    imboy_session:leave(Uid, Pid),
+    imboy_syn:leave(Uid, Pid),
 
     % 检查离线消息 用异步队列实现
     user_server:cast_offline(Uid, Pid, DID).
@@ -47,7 +47,7 @@ offline(Uid, Pid, DID) ->
 %% 检查用户是否在线
 is_online(Uid) when is_integer(Uid) ->
     % 用户在线设备统计
-    case imboy_session:count_user(Uid) of
+    case imboy_syn:count_user(Uid) of
         0 ->
             false;
         _ ->
@@ -59,7 +59,7 @@ is_online(Uid) when is_integer(Uid) ->
 -spec is_online(integer(), binary()) -> boolean().
 %% 检查用户是否在线
 is_online(Uid, DType) when is_integer(Uid) ->
-    imboy_session:is_online(Uid, {dtype, DType}).
+    imboy_syn:is_online(Uid, {dtype, DType}).
 
 
 mine_state(Uid) ->
@@ -74,7 +74,7 @@ mine_state(Uid) ->
 % 获取用户在线状态
 online_state(User) ->
     {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
-    case imboy_session:count_user(Uid) of
+    case imboy_syn:count_user(Uid) of
         0 ->
             [{<<"status">>, offline} | User];
         _Count ->

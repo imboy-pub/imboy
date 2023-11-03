@@ -167,6 +167,13 @@ IMBOYENV=prod make rel
 IMBOYENV=test make rel
 IMBOYENV=dev make rel -j8
 IMBOYENV=local make rel
+
+% 生成自解压存档
+% 自解压脚本目前仅支持以console模式启动发布
+IMBOYENV=local make SFX=1
+% run
+_rel/imboy.run
+
 ```
 
 复制代码到特定的目录  (Copy code to a specific directory)
@@ -428,6 +435,11 @@ config_ds:local_reload()
 
 ## erlang 的shell 访问远程节
 ```
+erl -name debug -setcookie imboy
+net_adm:ping('imboy@api.docker.imboy.pub').
+net_kernel:connect_node('imboy@api.docker.imboy.pub').
+
+
 erl -name debug@127.0.0.1
 auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
 net_adm:names().

@@ -42,7 +42,7 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, [{<<"msg_type">>, MsgId}], MsgId),
             Msg2 = jsone:encode(Msg, [native_utf8]),
             Fun = fun() ->
-                         Li = imboy_session:list_by_uid(Uid),
+                         Li = imboy_syn:list_by_uid(Uid),
                          Reason = <<"token invalid, please login again.">>,
                          [Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID]
                 end,

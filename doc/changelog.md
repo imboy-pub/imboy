@@ -2,6 +2,8 @@
 * 项目支持 multi app （引入 apps/imlib apps/imcron apps/imapi），调整相关目录
 * 重新整理dockerfile数据库引入， vector roaringbitmap timescaledb 等插件
 * 新增 docker-compose.yml
+* imboy_session module 修改为 imboy_syn module
+* 引入 aho_corasick
 
 # 0.1.13
 * 调整收藏方案：清除 收藏专有的存储服务，改用定时任务扫描，在判断资源配如果没收藏嘞，就不删除；否则，过期删除之

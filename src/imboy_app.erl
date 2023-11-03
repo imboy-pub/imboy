@@ -9,7 +9,7 @@
 
 start(_Type, _Args) ->
     inets:start(),
-    imboy_session:init(),
+    imboy_syn:init(),
     % begin handler
     Routes = imboy_router:get_routes(),
     % cowboy_router:dispatch_rules()

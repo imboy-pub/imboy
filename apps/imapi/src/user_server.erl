@@ -193,5 +193,5 @@ send_state_msg(FromId, State, [ToUid | Tail]) ->
                                                [{<<"msg_type">>, State}],
                                                <<"">>),
                        [native_utf8]),
-    imboy_session:publish(ToUid, Msg),
+    imboy_syn:publish(ToUid, Msg),
     send_state_msg(FromId, State, Tail).

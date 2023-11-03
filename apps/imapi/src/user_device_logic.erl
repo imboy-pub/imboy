@@ -62,7 +62,7 @@ page(Uid, Page, Size) when Page > 0 ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
             Items1 = [tuple_to_list(Item) || Item <- Items0],
-            OnlineDids = imboy_session:online_dids(Uid),
+            OnlineDids = imboy_syn:online_dids(Uid),
             Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
                                     [<<"online">> | ColumnLi],
                                     [lists:member(DID, OnlineDids), DID] ++ Row) || [DID | Row] <- Items1],

@@ -48,7 +48,7 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MLTail], DIDLi, IsMember) ->
                 IsMember
         end,
     TimerRefList = [{DID, erlang:start_timer(Millisecond, ToPid, {MLTail, {ToUid, DID, MsgId}, Msg})} ||
-                       {ToPid, {_Dtype, DID}} <- imboy_session:list_by_uid(ToUid)
+                       {ToPid, {_Dtype, DID}} <- imboy_syn:list_by_uid(ToUid)
                        % , is_process_alive(ToPid)
                        ,
                        lists:member(DID, DIDLi) == IsMember2],

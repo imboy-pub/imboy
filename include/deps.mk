@@ -72,6 +72,9 @@ dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
 dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.7
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
 dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
+# 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
+dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
+
 
 
 # dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
