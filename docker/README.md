@@ -55,11 +55,7 @@ echo "$REBAR3_DOWNLOAD_SHA256  /Users/leeyi/Downloads/rebar3-3.22.1.tar.gz" | sh
 
 ```
 docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:dev .
-docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:dev_x86_64 .
-docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:dev_arm64 .
-docker push imboy/imboy-api:dev_x86_64
-docker push imboy/imboy-api:dev_arm64
-
+docker push imboy/imboy-api:dev
 
 
 docker run -it imboy/imboy-api:dev_arm64 bash --link=imboy_postgis
@@ -80,9 +76,7 @@ from  https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 dev
 ```
-docker build --file "./docker/postgis15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev_x86_64 .
-docker build --file "./docker/postgis15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev_arm64 .
-docker build --file "./docker/postgis15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev .
+docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev .
 ```
 
 pro

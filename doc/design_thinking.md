@@ -9,7 +9,7 @@
 * 小部分open路由不需要做签名验证，其他所有路由都需要签名验证；
 * 用户获取公钥数据的路由 /init 响应的数据通过基于版本号管的密钥的AES算法加密
 * 用户注册登录密码通过公钥做 RSA 算法加密传输，通过 hmac_sha512 算法加盐存储；
-* 发送到客户端的用户ID都是经过 hashids 算法混淆；
+* 发送到客户端的用户ID都要经过 hashids 算法混淆；
 
 ## 数据库存储
 选择强大的关系型数据库 PostgreSQL 15 ;
@@ -21,12 +21,16 @@
 * plpgsql postgresql 内置的，可载入的过程语言。
 * pg_jieba 用户在线搜索
 * postgis 附件的人功能，postgis的基本核心功能，仅支持地理图形（矢量要素）
+* pgrouting PgRouting是基于开源空间数据库PostGIS用于网络分析的扩展模块，最初它被称作pgDijkstra，因为它只是利用Dijkstra算法实现最短路径搜索，之后慢慢添加了其他的路径分析算法，如A算法，双向A算法，Dijkstra算法，双向Dijkstra算法，tsp货郎担算法等，然后被更名为pgRouting
 * postgis_tiger_geocoder
 * postgis_topology 拓扑功能的支持
 * pgcrypto 单聊、群聊等离线消息加密存储； 用户收藏资料加密存储
 * pg_stat_statements 运维相关的
 * timescaledb 暂无用例 （计划用于群聊消息存储）
 * pgroonga 暂无用例
+* pgcrypto
+* vector Postgres 的开源向量相似度搜索
+* roaringbitmap
 
 
 ## GEO 方案
@@ -125,8 +129,16 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 
 ## 基于jieba 分成 和 AC自动机的敏感词过滤系统
 * 按敏感词分类创建 tree A1 = aho_corasick:build_tree(["BC","ABCD"]). 缓存到 内存
-* 对用户数文本 InputTxt 使用jieba分词
-* 循环分词结果，调用  aho_corasick:match(Word1, A1).
+* 对用户数文本 InputTxt 使用jieba分词 应该自动过滤的无效词
+* 比较零时生成的分词集合 是否 预 特定分类的敏感词分词集合是否有交集
+* 有交集，循环分词结果，调用  aho_corasick:match(Word1, A1). 找出分词，api响应警告
+* 无交集，api 响应pass
 * https://wudeng.github.io/2018/04/13/wordfilter/
+
+## 基于地理位置的文学阅读APP
+基于postgis，做一个一带一路的沿途文化介绍的地图功能
+
+* https://www.cnblogs.com/ssjxx98/articles/14131142.html
+* https://download.geofabrik.de/asia.html
 
 ## More

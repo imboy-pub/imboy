@@ -16,6 +16,10 @@ IMBoy项目依赖的相关服务
 
 ## pg_jieba 开放搜索权限的用户搜索
 
+* https://github.com/fxsjy/jieba
+
+支持繁体分词更好的词典文件 https://github.com/fxsjy/jieba/raw/master/extra_dict/dict.txt.big
+
 ## pgroonga
 
 ## pgvector
