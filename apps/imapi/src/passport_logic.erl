@@ -233,10 +233,11 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 
 
 -spec login_success_transfer(boolean(), tuple()) -> {ok, map()} | {error, any()}.
-login_success_transfer(true, {Id, Account, _, _, Nickname, Avatar, Gender, Region, Sign}) ->
+login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender, Region, Sign}) ->
     {ok, #{<<"token">> => token_ds:encrypt_token(Id),
            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
            <<"uid">> => imboy_hashids:uid_encode(Id),
+           <<"email">> => Email,
            <<"nickname">> => Nickname,
            <<"avatar">> => Avatar,
            <<"account">> => Account,
