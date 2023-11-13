@@ -53,22 +53,22 @@ init(Req0, State0) ->
 
 % webrtc推流接口
 publish(Req0, State) ->
-    % lager:error(io_lib:format("whip_handler/publish state:~p ~n", [State])),
+    % imboy_log:error(io_lib:format("whip_handler/publish state:~p ~n", [State])),
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
     RoomId = cowboy_req:binding(room_id, Req0),
     StreamId = cowboy_req:binding(stream_id, Req0),
     {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
-    % lager:info(io_lib:format("whip_handler/publish State ~p, ~n", [State])),
-    % lager:info(io_lib:format("whip_handler/publish Sdp: ~p ~n", [Sdp])),
+    % imboy_log:info(io_lib:format("whip_handler/publish State ~p, ~n", [State])),
+    % imboy_log:info(io_lib:format("whip_handler/publish Sdp: ~p ~n", [Sdp])),
 
     {ok, OfferSdp} = sdp_parse(Sdp),
 
     Origin = ersip_sdp:origin(OfferSdp),
     Username = ersip_sdp_origin:username(Origin),
-    lager:info(io_lib:format("whip_handler/publish Username: ~p ~n", [Username])),
+    imboy_log:info(io_lib:format("whip_handler/publish Username: ~p ~n", [Username])),
     SessionId = ersip_sdp_origin:session_id(Origin),
-    lager:info(io_lib:format("whip_handler/publish SessionId: ~p ~n", [SessionId])),
+    imboy_log:info(io_lib:format("whip_handler/publish SessionId: ~p ~n", [SessionId])),
     AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:passive", State),
     NewReq = cowboy_req:reply(201,
                               #{<<"Content-Type">> => "application/sdp",
@@ -84,7 +84,7 @@ publish(Req0, State) ->
 % check(<<"PATCH">>, Req0, State) ->
 check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     {ok, Ice, _Req} = cowboy_req:read_body(Req0),
-    lager:error(io_lib:format("whip_handler/check PATCH Ice:~p ~n", [Ice])),
+    imboy_log:error(io_lib:format("whip_handler/check PATCH Ice:~p ~n", [Ice])),
     % <<"candidate:2921655801 1 tcp 1518214911 169.254.244.209 64754 typ host tcptype passive generation 0 ufrag ZZt4 network-id 4 network-cost 50">>
     % <<"candidate:2435201596 1 tcp 1518157055 ::1 64756 typ host tcptype passive generation 0 ufrag ZZt4 network-id 3">>
     % <<"candidate:3388485749 1 tcp 1518083839 127.0.0.1 64755 typ host tcptype passive generation 0 ufrag ZZt4 network-id 2">>
@@ -113,11 +113,11 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
 check(<<"DELETE">>, Req0, State) ->
     % To explicitly terminate a session, the WHIP client MUST perform an HTTP DELETE request to the resource URL returned in the Location header field of the initial HTTP POST. Upon receiving the HTTP DELETE request, the WHIP resource will be removed and the resources freed on the Media Server, terminating the ICE and DTLS sessions.
     Req1 = cowboy_req:reply(200, Req0),
-    % lager:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
+    % imboy_log:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
     {ok, Req1, State};
 check(_Method, Req0, State) ->
     Req1 = cowboy_req:reply(405, Req0),
-    % lager:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
+    % imboy_log:error(io_lib:format("whip_handler/publish Req1:~p ~n", [Req1])),
     {ok, Req1, State}.
 
 
@@ -176,10 +176,10 @@ unsubscribe(Req0, _State) ->
 
 
 sdp_parse(Sdp) ->
-    % lager:error(io_lib:format("whip_handler/publish OfferSdp ~p :~p ~n", [is_binary(OfferSdp), OfferSdp])),
+    % imboy_log:error(io_lib:format("whip_handler/publish OfferSdp ~p :~p ~n", [is_binary(OfferSdp), OfferSdp])),
     Sdp1 = check_crlf(Sdp),
 
-    % lager:error(io_lib:format("whip_handler/publish OfferSdp1 ~p :~p ~n", [is_binary(OfferSdp), OfferSdp1])),
+    % imboy_log:error(io_lib:format("whip_handler/publish OfferSdp1 ~p :~p ~n", [is_binary(OfferSdp), OfferSdp1])),
     % WebRTC 中 answer SDP 中 m-line 不能随意增加和删除，顺序不能随意变更，需要和 Offer SDP 中保持一致。
     %% 在这里编写你的逻辑来生成 Answer SDP
     %% 可以使用 ersip_sdp 库来解析和构建 SDP 数据
@@ -241,7 +241,7 @@ generate_answer_sdp(OfferSdp, Setup, _State) ->
         % , [["a=ice-lite", ?crlf]]
         ],
     AnswerSdp5 = iolist_to_binary(SdpLi ++ Append),
-    % lager:error(io_lib:format("whip_handler/publish AnswerSdp5 ~p :~p ~n", [is_binary(AnswerSdp5), AnswerSdp5])),
+    % imboy_log:error(io_lib:format("whip_handler/publish AnswerSdp5 ~p :~p ~n", [is_binary(AnswerSdp5), AnswerSdp5])),
     AnswerSdp5.
 
 

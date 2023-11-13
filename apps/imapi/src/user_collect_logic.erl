@@ -121,9 +121,9 @@ add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_list(Info) ->
     Count = user_collect_repo:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/jpeg">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [[Count, Uid2, KindId, Source, Remark]])),
-    lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])),
-    % lager:info(io_lib:format("user_collect_logic/add_2: Count ~p, Info2 ~p ~n", [Count, Info2])),
+    imboy_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [[Count, Uid2, KindId, Source, Remark]])),
+    imboy_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])),
+    % imboy_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, Info2 ~p ~n", [Count, Info2])),
     add_kind(Count, Uid2, <<"2">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 
@@ -150,7 +150,7 @@ change(Uid, <<"transpond_callback">>, KindId, _PostVals) ->
     ok;
 change(_Uid, _Action, _KindId, _PostVals) ->
     % KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
-    % lager:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
+    % imboy_log:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
     ok.
@@ -195,7 +195,7 @@ get_info(_Count, _MimeType, _Key, _Info) ->
 %     ok;
 add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
     NowTs = imboy_dt:millisecond(),
-    lager:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
+    imboy_log:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     imboy_db:with_transaction(fun(Conn) ->
                                      CreatedAt = integer_to_binary(NowTs),
                                      attachment_repo:save(Conn, CreatedAt, Uid, Attach),

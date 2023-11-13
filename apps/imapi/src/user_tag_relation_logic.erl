@@ -81,7 +81,7 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
                                                                                               Uid2,
                                                                                               TagId,
                                                                                               I) || I <- DelObjectId],
-                                             % lager:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid2, CreatedAt]])),
+                                             % imboy_log:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid2, CreatedAt]])),
                                              % 保存 public.user_tag
                                              user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid2, CreatedAt),
 
@@ -118,7 +118,7 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 %%% 添加标签
 -spec add(integer(), binary(), binary(), list()) -> ok.
 add(Uid, Scene, <<>>, [Tag]) ->
-    lager:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
+    imboy_log:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
     Count = imboy_db:pluck(<<"user_tag">>, <<"scene = ", Scene/binary, " AND name = ", Tag/binary>>, <<"id">>, 0),
     case Count of
         0 ->
@@ -164,7 +164,7 @@ do_add(Scene, Uid, ObjectId, []) ->
                                                     ObjectId/binary>>}
                                          end,
                                      Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", Where/binary>>,
-                                     % lager:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
+                                     % imboy_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
                                      epgsql:equery(Conn, Sql),
 
                                      % 删除 public.user_tag_relation
@@ -182,7 +182,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     %     , <<"id, name">>
     % ),
     % TagIdNewLi = [Id || {Id, _} <- Tag2],
-    % lager:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
+    % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
     NowTs = imboy_dt:millisecond(),
     Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),
@@ -197,7 +197,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
                                                                                    CreatedAt,
                                                                                    Name) || Name <- Tag],
 
-                                     % lager:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
+                                     % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
 
                                      % 插入 public.user_tag_relation
                                      [user_tag_relation_repo:save_user_tag_relation(Conn,
@@ -230,16 +230,16 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
 
     DelItems = imboy_db:list(Conn, <<"SELECT tag_id FROM ", DelTb/binary, " WHERE ", DelWhere/binary>>),
 
-    % lager:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelItems ~p; ~n", [DelItems])),
+    % imboy_log:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelItems ~p; ~n", [DelItems])),
 
     DelSql = <<"DELETE FROM ", DelTb/binary, " WHERE ", DelWhere/binary>>,
-    % lager:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelSql ~p; ~n", [DelSql])),
+    % imboy_log:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelSql ~p; ~n", [DelSql])),
     % Res = epgsql:equery(Conn, DelSql, []),
 
     {ok, Stmt} = epgsql:parse(Conn, DelSql),
     epgsql:execute_batch(Conn, [{Stmt, []}]),
     % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % lager:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
+    % imboy_log:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
 
     % 清理缓存
     [user_tag_relation_repo:flush_subtitle(TagId) || {TagId} <- DelItems],

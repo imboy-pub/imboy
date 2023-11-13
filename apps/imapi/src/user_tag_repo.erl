@@ -40,7 +40,7 @@ page_for_where(Limit, Offset, Where, OrderBy) ->
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
-    % lager:info(io_lib:format("user_tag_relation_repo:page_for_where/4 sql:~p;~n", [Sql])),
+    % imboy_log:info(io_lib:format("user_tag_relation_repo:page_for_where/4 sql:~p;~n", [Sql])),
     imboy_db:query(Sql, [Limit, Offset]).
 
 %% ===================================================================

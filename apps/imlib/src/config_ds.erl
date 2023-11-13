@@ -50,11 +50,11 @@ local_reload() ->
     From = code:root_dir() ++ "/../../config/sys." ++ IMBoyEnv ++ ".config",
     To = config_file(),
     % Res1 = file:delete(To),
-    % lager:error("~p~n", [Res1]),
-    lager:info("~p~n", [#{from => From, to => To}]),
+    % imboy_log:error("~p~n", [Res1]),
+    imboy_log:info("~p~n", [#{from => From, to => To}]),
     file:copy(From, To, infinity),
     % Res2 = file:copy(From, To, infinity),
-    % lager:error("copy file res: ~p~n", [Res2]),
+    % imboy_log:error("copy file res: ~p~n", [Res2]),
     reload(To),
     ok.
 
@@ -97,7 +97,7 @@ aes_encrypt(Key) ->
 
 reload(Path) ->
     {ok, Items} = file:consult(Path),
-    % lager:error("~p~n", [Items]),
+    % imboy_log:error("~p~n", [Items]),
     [application:set_env(Conf) || Conf <- Items],
     ok.
 

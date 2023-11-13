@@ -73,11 +73,11 @@ pluck(<<"SELECT ", Field/binary>>, Default) ->
     pluck(Field, Default);
 pluck(Field, Default) ->
     Res = imboy_db:query(<<"SELECT ", Field/binary>>),
-    % lager:info(io_lib:format("imboy_db:pluck/2 Field:~p ~n", [Field])),
-    % lager:info(io_lib:format("imboy_db:pluck/2 Res:~p ~n", [Res])),
+    % imboy_log:info(io_lib:format("imboy_db:pluck/2 Field:~p ~n", [Field])),
+    % imboy_log:info(io_lib:format("imboy_db:pluck/2 Res:~p ~n", [Res])),
     case Res of
         {ok, _, [{Val}]} ->
-            % lager:info(io_lib:format("imboy_db:pluck/2 Val:~p ~n", [Val])),
+            % imboy_log:info(io_lib:format("imboy_db:pluck/2 Val:~p ~n", [Val])),
             Val;
         {ok, _, [Val]} ->
             Val;
@@ -245,7 +245,7 @@ query_resp({ok, ColumnList, Rows}) ->
     %     [{column,<<"count">>,int8,20,8,-1,1,0,0}]
     %     , [1]
     % }
-    % lager:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
+    % imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [element(2, C) || C <- ColumnList],
     {ok, ColumnList2, Rows}.
 

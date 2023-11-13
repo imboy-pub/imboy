@@ -131,7 +131,7 @@ check_auth(Url) ->
     A = auth_ds:get_token(assets, S, integer_to_list(V)),
     V2 = integer_to_binary(V),
     NewQuery = <<"s=", S/binary, "&a=", A/binary, "&v=", V2/binary>>,
-    % lager:info(Query2),
+    % imboy_log:info(Query2),
     uri_string:normalize(UrlMap#{query => NewQuery}).
 
 

@@ -90,7 +90,7 @@ refreshtoken(Req0) ->
     % ?LOG(["refreshtoken ", Refreshtoken]),
     case throttle:check(refreshtoken, Refreshtoken) of
         {limit_exceeded, _, _} ->
-            % lager:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
+            % imboy_log:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
             cowboy_req:reply(429, Req0);
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of

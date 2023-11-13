@@ -46,7 +46,7 @@ get_int(Key, Req, Def) ->
 post_params(Req) ->
     ContentType = cowboy_req:parse_header(<<"content-type">>, Req),
     % ?LOG([ContentType]),
-    % lager:info(io_lib:format("ContentType: ~p ContentType_End~n", [ContentType])),
+    % imboy_log:info(io_lib:format("ContentType: ~p ContentType_End~n", [ContentType])),
     % ?LOG(Method = cowboy_req:method(Req)),
     case ContentType of
         % {<<"text">>,<<"plain">>, [{<<"charset">>,<<"utf-8">>}]} ->
@@ -54,7 +54,7 @@ post_params(Req) ->
         %     [];
         {<<"application">>, <<"x-www-form-urlencoded">>, _} ->
             {ok, Params, _Req} = cowboy_req:read_urlencoded_body(Req, #{length => 640000000, period => 50000}),
-            % lager:info(io_lib:format("Params: ~p Params_End~n", [Params])),
+            % imboy_log:info(io_lib:format("Params: ~p Params_End~n", [Params])),
             Params;
         {<<"application">>, <<"json">>, _} ->
             {ok, PostVals, _Req} = cowboy_req:read_body(Req),
@@ -64,7 +64,7 @@ post_params(Req) ->
             % Params
             jsone:decode(PostVals, [{object_format, proplist}]);
         _ ->
-            lager:error(io_lib:format("imboy_req:post_params error: ContentType ~p; ~p ~n", [ContentType, Req])),
+            imboy_log:error(io_lib:format("imboy_req:post_params error: ContentType ~p; ~p ~n", [ContentType, Req])),
             []
     end.
 

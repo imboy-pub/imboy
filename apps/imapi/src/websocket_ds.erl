@@ -65,7 +65,7 @@ auth(Auth, Req0, State0, _Opt) ->
 
 -spec auth_after(integer(), any(), map(), map()) -> {ok, any(), map()} | {cowboy_websocket, any(), map(), map()}.
 % auth_after(true, _Uid, Req0, State0, _Opt) ->
-%     % lager:warning("DeviceID ~p is online", [State0]),
+%     % imboy_log:warning("DeviceID ~p is online", [State0]),
 %     % 429 Too Many Requests
 %     Req = cowboy_req:reply(429, Req0),
 %     {ok, Req, State0};

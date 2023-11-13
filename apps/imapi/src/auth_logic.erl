@@ -30,7 +30,7 @@ verify_for_assets(Scene, Tk, V, _Path) ->
     Now = imboy_dt:second(),
     % V = binary_to_integer(Val),
     Diff = 7200,
-    % lager:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
+    % imboy_log:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if
         is_integer(V) andalso Now < (V + Diff) ->
             % V = binary_to_list(<<Path/binary, "?", Val/binary>>),
@@ -51,7 +51,7 @@ verify_for_open(_Path, _, undefined) ->
 verify_for_open(Path, Tk, Val) ->
     V = binary_to_list(<<Path/binary, "?", Val/binary>>),
     NewTk = auth_ds:get_token(assets, <<"open">>, V),
-    % lager:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
+    % imboy_log:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
     do_verify_for_assets(NewTk, Tk).
 
 

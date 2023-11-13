@@ -185,7 +185,7 @@ page(Scene, Req0, State) ->
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     {ok, TagId} = imboy_req:get_int(tag_id, Req0, 0),
-    % lager:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
+    % imboy_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
     if
         CurrentUid == 0 ->
             imboy_response:error(Req0, <<"token无效"/utf8>>, 706);

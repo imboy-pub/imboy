@@ -43,7 +43,7 @@ select_by_where(Where, Limit, Offset, OrderBy) ->
             Limit2/binary,
             " OFFSET ",
             Offset2/binary>>,
-    lager:info(io_lib:format("user_repo/select_by_where/4: Sql ~p ~n", [Sql])),
+    imboy_log:info(io_lib:format("user_repo/select_by_where/4: Sql ~p ~n", [Sql])),
     imboy_db:query(Sql, []).
 
 

@@ -21,7 +21,7 @@
 
 init(Req0, Opts) ->
     StreamId = cowboy_req:binding(stream_id, Req0),
-    lager:info("StreamId ~p~n", [StreamId]),
+    imboy_log:info("StreamId ~p~n", [StreamId]),
     check_role(StreamId, Opts),
     Req = cowboy_req:stream_reply(200, #{<<"content-type">> => <<"text/event-stream">>}, Req0),
     erlang:send_after(1000, self(), {message, "Tick"}),
@@ -29,12 +29,12 @@ init(Req0, Opts) ->
 
 
 info({message, Msg}, Req, State) ->
-    lager:info("info_Msg ~p, State ~p~n", [Msg, State]),
+    imboy_log:info("info_Msg ~p, State ~p~n", [Msg, State]),
     cowboy_req:stream_events(#{id => id(), data => Msg}, nofin, Req),
     % erlang:send_after(10, self(), {message, "Tick"}),
     {ok, Req, State};
 info(Msg, Req, State) ->
-    lager:info("info_Msg2 ~p, State ~p~n", [Msg, State]),
+    imboy_log:info("info_Msg2 ~p, State ~p~n", [Msg, State]),
     cowboy_req:stream_events(#{id => id(), data => Msg}, nofin, Req),
     {ok, Req, State}.
 
@@ -44,7 +44,7 @@ info(Msg, Req, State) ->
 %% ===================================================================
 
 check_role(StreamId, State) ->
-    lager:info("StreamId ~p, State ~p~n", [StreamId, State]),
+    imboy_log:info("StreamId ~p, State ~p~n", [StreamId, State]),
     ok.
 
 
