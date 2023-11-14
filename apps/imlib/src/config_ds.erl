@@ -5,12 +5,15 @@
 %%%
 
 -export([get/1, get/2]).
+-export([set/2,
+         save/2]).
 -export([aes_encrypt/1]).
 
 -export([env/1, env/2, env/3]).
 -export([reload/0,
          local_reload/0]).
 
+-include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/common.hrl").
 
 
@@ -67,13 +70,39 @@ get(Key) ->
 get(Key, Defalut) when is_list(Key) ->
     get(list_to_binary(Key), Defalut);
 get(ConfigKey, Defalut) ->
-    Key = {config2, ConfigKey},
+    % Key = {config3, ConfigKey},
     Fun = fun() ->
                  Val = imboy_hasher:decoded_field(<<"value">>),
                  imboy_db:pluck(<<"config">>, <<"key = '", ConfigKey/binary, "'">>, Val, Defalut)
         end,
     % 缓存10天
-    imboy_cache:memo(Fun, Key, 864000).
+    imboy_cache:memo(Fun, cache_key(ConfigKey), 864000).
+
+
+% config_ds:set(<<"dbc">>, <<"ddd2">>).
+% config_ds:get(<<"dbc">>).
+set(Key, Val) ->
+    save(Key, [{<<"value">>, Val}, {<<"tab">>, <<"sys">>}, {<<"title">>, <<"">>}, {<<"remark">>, <<"">>}]).
+
+
+save(Key, Data) ->
+    % ?LOG([Key, Val, Tab]),
+    case imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"count(*) as count">>, 0) of
+        0 ->
+            % Now = imboy_dt:millisecond(),
+            % Data2 = [{<<"created_at">>, integer_to_binary(Now)} | [{<<"key">>, Key}|Data]],
+            Data2 = [{<<"key">>, Key} | Data],
+            Column = [K || {K, _} <- Data2],
+            Value = [<<"'", V/binary, "'">> || {_, V} <- Data2],
+            imboy_db:insert_into(<<"config">>, Column, Value, <<"">>);
+        _ ->
+            Now = imboy_dt:millisecond(),
+            Data2 = [{<<"updated_at">>, integer_to_binary(Now)} | Data],
+            imboy_db:update(<<"config">>, <<"key = '", Key/binary, "'">>, Data2)
+    end,
+    Key2 = cache_key(Key),
+    imboy_cache:flush(Key2),
+    aes_encrypt(Key).
 
 
 % config_ds:aes_encrypt(<<"login_rsa_pub_key">>).
@@ -94,6 +123,10 @@ aes_encrypt(Key) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+cache_key(K) ->
+    {config3, K}.
+
 
 reload(Path) ->
     {ok, Items} = file:consult(Path),

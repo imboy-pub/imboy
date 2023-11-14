@@ -1,3 +1,10 @@
+# 0.2.1
+* 新增 imboy_dt:now/1 imboy_dt:now/2 imboy_dt:to_rfc3339/2 方法；
+* 新增 config_ds:set/2 config_ds:save/2 方法；
+* 删除没有被使用过的 imboy_dt/utc_date/1 imboy_dt/to_rfc3339/1 方法；
+* 格式化代码
+*
+
 # 0.2.0
 * 项目支持 multi app （引入 apps/imlib apps/imcron apps/imapi），调整相关目录
 * 重新整理dockerfile数据库引入， vector roaringbitmap timescaledb 等插件

@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -42,6 +42,7 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -119,6 +120,7 @@ change(Req0, State) ->
     KindId = proplists:get_value(<<"kind_id">>, PostVals, <<>>),
     user_collect_logic:change(CurrentUid, Action, KindId, PostVals),
     imboy_response:success(Req0, #{}, "success.").
+
 
 %% ===================================================================
 %% EUnit tests.

@@ -1,7 +1,7 @@
 
-INSERT INTO public.config (tab, key, value, title, sort, remark, system, status, created_at, updated_at)
+INSERT INTO public.config (tab, key, value, title, sort, remark, system, status)
 VALUES
-    ('sys', 'login_pwd_rsa_encrypt', 'aes_cbc_i2jC226tIyltl1R6FXFF2A==', '登录密码使用RSA算法加密', 1, '系统登录开启RSA加密', 1, 1, 0, 0),
+    ('sys', 'login_pwd_rsa_encrypt', 'aes_cbc_i2jC226tIyltl1R6FXFF2A==', '登录密码使用RSA算法加密', 1, '系统登录开启RSA加密', 1, 1),
     ('sys', 'login_rsa_priv_key', 'aes_cbc_Qj6co2HY//X6VnHJUKKWrU1KOfexGHQYDfl+kGJgEGriOCDn90zW9dwkkNLMYM2dBOYxP5ltFUo6
 hI2sHv8UCImgo5XfacCsoGZ64+47oV9tF6q+vXsl1LNCKBYcLmWw4yFjkr80xi3OoMDb62neyvrs
 FeOwljfIA+TdVnKEFtkjA9H5hSI5zyc+o44k5r44Sk8iSve1448QtuPWYBaEmQWdZqADmVKUOq7r
@@ -41,8 +41,8 @@ zM/KpBF/HUNeL5hMDAtZ1K0x41setlNuV+khyjke08S2Mtpmms2a4OkqMHtejLuT8SZ+Q6h9WBfQ
 Wu5e5WtuYy8jKX8ofhVeAASXaPFv8gipvVIJVKBfvjWs63lAODrO8dA795blUNKjV2f1vnXQcZvu
 m8dKROr6DyV+DOuiKCVU39wkxTpJn2M5Rhyz9V3lYj9V27Y1hRKznrEkmVAJ6s/fIHwsDU2K+esY
 nFY62+Xh0wl3WE6KBEjK09g53Eh0Uu/4873tX0gkD9RHpfbl7xk3toCR34I7s8LsuXIISrcgnK6a
-l/fF/WViBt2p5x0gSSok4MIhoXossweKUD4eneuNjVcp', '登录RSA算法加密私钥', 3, '', 1, 1, 0, 0),
-    ('sys', 'site_name', 'aes_cbc_5xkwbfQ60Rx3XjJO6zmM3g==', '前端站点名称', 20, 'ddd3', 1, 1, 0, 0),
+l/fF/WViBt2p5x0gSSok4MIhoXossweKUD4eneuNjVcp', '登录RSA算法加密私钥', 3, '', 1, 1),
+    ('sys', 'site_name', 'aes_cbc_5xkwbfQ60Rx3XjJO6zmM3g==', '前端站点名称', 20, 'ddd3', 1, 1),
     ('sys', 'login_rsa_pub_key', 'aes_cbc_RpwIhFje4KyGf1JKyeKZJg0Ua/ZCSpvSz+fscrIQPk+zmuko9GX6/pAlDKQMAoRS7R1CZGAHb8LS
 Gqz2H1KoVEn8jrq7qdd06CrUQYHMFWUJGvOJ/5yOmIS8wiiob8TuzQrll898PN2xPWm7BeNLyldb
 XZK5io7GOrPeECDjhHSs4LXtCBYI0fXXfaMbWr60upAHOlfRGUd1IOgj/eSi16PSIx2zExX66Kpl
@@ -53,4 +53,4 @@ hLjTpm5alO/LLthyQggoa8fhJ8Oi3Q595vTLIuu2O0TLw/x3sQuZQfAxDIdwTw7nvyvY2C2/rUgK
 hAP/xFrVD8YMFOs4R7/VChbXtv+nROKnbAx6i009odojZ4/8a60tIHnixz/VmYW2ylEB4qNl8SuB
 i3a6v4/TOeUKLJwa3YU2Hg4GhbN1DRKwmhSEnFrLMwPFNIuHHL7g8AT9npq3ascFf3CQ1BndWzEw
 X1V/WnLv8BhzlwA5RrZ/9DGn3rauA0hl1ueo4dVoM7tzuD8t9QhSXZ/0RerVEH5gaZGWvlWpdDVh
-HFsHDUoVbT9MT55IFcGSNpOg0w1cst0y59ixiV5JX5AwJHm2Wag=', '登录RSA算法加密公钥', 2, '系统登录RSA加密公钥', 1, 1, 0, 0);
+HFsHDUoVbT9MT55IFcGSNpOg0w1cst0y59ixiV5JX5AwJHm2Wag=', '登录RSA算法加密公钥', 2, '系统登录RSA加密公钥', 1, 1);

@@ -28,21 +28,9 @@ select_by_where(Where, Limit, Offset, OrderBy) ->
     FtsTb = fts_repo:tablename(),
     Limit2 = integer_to_binary(Limit),
     Offset2 = integer_to_binary(Offset),
-    Sql = <<"SELECT ",
-            ?DEF_USER_COLUMN/binary,
-            " FROM ",
-            Tb/binary,
-            " u LEFT JOIN ",
-            FtsTb/binary,
+    Sql = <<"SELECT ", ?DEF_USER_COLUMN/binary, " FROM ", Tb/binary, " u LEFT JOIN ", FtsTb/binary,
             " fts ON fts.user_id = u.id
-     WHERE ",
-            Where/binary,
-            " order by ",
-            OrderBy/binary,
-            " LIMIT ",
-            Limit2/binary,
-            " OFFSET ",
-            Offset2/binary>>,
+     WHERE ", Where/binary, " order by ", OrderBy/binary, " LIMIT ", Limit2/binary, " OFFSET ", Offset2/binary>>,
     imboy_log:info(io_lib:format("user_repo/select_by_where/4: Sql ~p ~n", [Sql])),
     imboy_db:query(Sql, []).
 

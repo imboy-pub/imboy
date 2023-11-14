@@ -25,10 +25,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec with_transaction(fun((epgsql:connection()) -> Reply)) -> Reply | {rollback, any()} when Reply :: any().
 with_transaction(F) ->
@@ -52,6 +52,7 @@ with_transaction(F, Opts0) ->
 
 
 % imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
+
 
 % pluck(<<"public.", Table/binary>>, Field, Default) ->
 %     pluck(Table, Field, Default);
@@ -165,6 +166,7 @@ execute(Sql, Params) ->
 
 
 execute(Conn, Sql, Params) ->
+    % ?LOG(io:format("~s\n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
     % {ok, 1} | {ok, 1, {ReturningField}}
@@ -192,7 +194,7 @@ assemble_sql(Prefix, Table, Column, Value) when is_list(Value) ->
 assemble_sql(Prefix, Table, Column, Value) ->
     Table2 = public_tablename(Table),
     Sql = <<Prefix/binary, " ", Table2/binary, " ", Column/binary, " VALUES ", Value/binary>>,
-    % ?LOG(io:format("~s\n", [Sql])),
+    ?LOG(io:format("~s\n", [Sql])),
     Sql.
 
 
@@ -221,9 +223,9 @@ update(Table, Where, KV) ->
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    KV2 = [{K, update_filter_value(V)} || {K, V} <- KV],
-    Set1 = [<<K/binary, " = '", V/binary, "'">> || {K, V} <- KV2],
-    Set2 = [binary_to_list(S) || S <- Set1],
+    KV2 = [ {K, update_filter_value(V)} || {K, V} <- KV ],
+    Set1 = [ <<K/binary, " = '", V/binary, "'">> || {K, V} <- KV2 ],
+    Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
 
@@ -231,6 +233,7 @@ get_set(KV) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 query_resp({error, Msg}) ->
     {error, Msg};
@@ -246,7 +249,7 @@ query_resp({ok, ColumnList, Rows}) ->
     %     , [1]
     % }
     % imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
-    ColumnList2 = [element(2, C) || C <- ColumnList],
+    ColumnList2 = [ element(2, C) || C <- ColumnList ],
     {ok, ColumnList2, Rows}.
 
 
@@ -266,6 +269,7 @@ update_filter_value(Val) when is_binary(Val) ->
 update_filter_value(Val) ->
     unicode:characters_to_binary(Val).
 
+
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
@@ -278,5 +282,6 @@ updateuser_test_() ->
     KV2 = [{<<"gender">>, <<"1">>}, {<<"nickname">>, "中国你好！😆😆"}],
 
     [?_assert(imboy_db:update(<<"user">>, id, 1, KV1)), ?_assert(imboy_db:update(<<"user">>, id, 2, KV2))].
+
 
 -endif.

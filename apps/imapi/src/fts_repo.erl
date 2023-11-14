@@ -33,8 +33,7 @@ user_search_page(Keyword, Limit, Offset) ->
     Keyword2 = imboy_db:pluck(<<"select temptb1.c1 from (select replace(to_tsquery('jiebacfg', '", Keyword/binary,
                                 "')::text, ' <-> ', ' | ') as c1) as temptb1">>,
                               Keyword),
-    Sql = <<"select ",
-            ?DEF_USER_COLUMN/binary,
+    Sql = <<"select ", ?DEF_USER_COLUMN/binary,
             ",ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) as rank from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.allow_search = 1 AND fts.token @@ to_tsquery('jiebacfg', $2) order by rank desc LIMIT $3 OFFSET $4">>,
     imboy_db:query(Sql, [Keyword2, Keyword2, Limit, Offset]).
 

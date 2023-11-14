@@ -52,7 +52,7 @@ remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
                  "' AND tag_id = ", TagId/binary>>,
     DelSql = <<"DELETE FROM ", Tb/binary, " WHERE ", DelWhere/binary>>,
     imboy_log:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 DelSql ~p, ~p; ~n",
-                             [DelSql, [Uid, TagId]])),
+                                 [DelSql, [Uid, TagId]])),
     epgsql:equery(Conn, DelSql, []),
     ok.
 

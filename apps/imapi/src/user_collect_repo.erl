@@ -18,10 +18,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"user_collect">>).
@@ -77,6 +77,7 @@ update(Uid, KindId, Data) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 %
 

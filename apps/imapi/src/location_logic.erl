@@ -16,10 +16,10 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/cache.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %% 让自己可见
 -spec make_myself_visible(integer(), binary(), binary()) -> ok | {error, Msg :: binary()}.
@@ -51,17 +51,18 @@ people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
     % geo_people_nearby_repo:people_nearby(<<"113.88308">>, <<"22.55328">>, <<"10000000">>, <<"m">>,  <<"10">>).
     {ok, _, Li} = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
-    [imboy_hashids:replace_id([{<<"id">>, Id},
-                               {<<"account">>, Account},
-                               {<<"nickname">>, Nickname},
-                               {<<"avatar">>, Avatar},
-                               {<<"sign">>, Sign},
-                               {<<"gender">>, Gender},
-                               {<<"region">>, Region},
-                               {<<"distance">>, Distance},
-                               {<<"unit">>, Unit},
-                               {<<"location">>, Location}]) ||
-        {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li].
+    [ imboy_hashids:replace_id([{<<"id">>, Id},
+                                {<<"account">>, Account},
+                                {<<"nickname">>, Nickname},
+                                {<<"avatar">>, Avatar},
+                                {<<"sign">>, Sign},
+                                {<<"gender">>, Gender},
+                                {<<"region">>, Region},
+                                {<<"distance">>, Distance},
+                                {<<"unit">>, Unit},
+                                {<<"location">>, Location}])
+      || {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li ].
+
 
 %% ===================================================================
 %% Internal Function Definitions
