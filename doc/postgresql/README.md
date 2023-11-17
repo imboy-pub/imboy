@@ -9,7 +9,7 @@ CREATE USER imboy_user WITH PASSWORD 'abc12345';
 
 CREATE DATABASE imboy_v1 WITH OWNER imboy_user ENCODING 'UTF8';
 
-// 将所有权限赋给postgres
+// 将所有权限赋给 imboy_user
 GRANT ALL PRIVILEGES ON DATABASE imboy_v1 to imboy_user;
 
 // 删除默认生成的postgresql

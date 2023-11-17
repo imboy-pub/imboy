@@ -27,7 +27,7 @@ https://github.com/pgvector/pgvector
 
 
 ## timescaledb
-
+* https://www.allbs.cn/posts/21383/ timescaledb 详细使用手册
 
 # 文件存储服务
 ## go-fastdfs 使用中

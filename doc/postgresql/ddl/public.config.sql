@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.config
     remark varchar(200) COLLATE pg_catalog."default" NOT NULL,
     system smallint NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
-    created_at bigint NOT NULL DEFAULT floor(EXTRACT(epoch FROM ((CURRENT_TIMESTAMP - ('1970-01-01 00:00:00'::timestamp without time zone)::timestamp with time zone) * (1000)::double precision))),
+    created_at bigint NOT NULL DEFAULT 0,
     updated_at bigint NOT NULL DEFAULT 0,
     CONSTRAINT config_pkey PRIMARY KEY (key)
 )

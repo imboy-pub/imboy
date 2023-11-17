@@ -66,7 +66,6 @@ local_reload() ->
 get(Key) ->
     get(Key, <<>>).
 
-
 get(Key, Defalut) when is_list(Key) ->
     get(list_to_binary(Key), Defalut);
 get(ConfigKey, Defalut) ->
@@ -81,27 +80,30 @@ get(ConfigKey, Defalut) ->
 
 % config_ds:set(<<"dbc">>, <<"ddd2">>).
 % config_ds:get(<<"dbc">>).
+set(Key, Val) when is_list(Key) ->
+    set(list_to_binary(Key), Val);
+set(Key, Val) when is_list(Val) ->
+    set(Key, list_to_binary(Val));
 set(Key, Val) ->
     save(Key, [{<<"value">>, Val}, {<<"tab">>, <<"sys">>}, {<<"title">>, <<"">>}, {<<"remark">>, <<"">>}]).
 
 
 save(Key, Data) ->
     % ?LOG([Key, Val, Tab]),
+    Now = imboy_dt:millisecond(),
+    Now2 = integer_to_binary(Now),
     case imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"count(*) as count">>, 0) of
         0 ->
-            % Now = imboy_dt:millisecond(),
-            % Data2 = [{<<"created_at">>, integer_to_binary(Now)} | [{<<"key">>, Key}|Data]],
-            Data2 = [{<<"key">>, Key} | Data],
+            Data2 = [{<<"created_at">>, Now2} | [{<<"key">>, Key}|Data]],
+            % Data2 = [{<<"key">>, Key} | Data],
             Column = [K || {K, _} <- Data2],
             Value = [<<"'", V/binary, "'">> || {_, V} <- Data2],
             imboy_db:insert_into(<<"config">>, Column, Value, <<"">>);
         _ ->
-            Now = imboy_dt:millisecond(),
-            Data2 = [{<<"updated_at">>, integer_to_binary(Now)} | Data],
+            Data2 = [{<<"updated_at">>, Now2} | Data],
             imboy_db:update(<<"config">>, <<"key = '", Key/binary, "'">>, Data2)
     end,
-    Key2 = cache_key(Key),
-    imboy_cache:flush(Key2),
+    imboy_cache:flush(cache_key(Key)),
     aes_encrypt(Key).
 
 

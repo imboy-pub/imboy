@@ -96,9 +96,9 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 ```
 
 ## 用户通过WS服务链接成功
-* ./imboy/src/websocket_handler.erl
+* ./apps/imapi/src/websocket_handler.erl
 	* line 70 user_logic:online/4
-* ./imboy/src/user_logic.erl
+* ./apps/imapi/src/user_logic.erl
 	* line 28  syn:join/4
 	* line 33 user_server:cast_online/3
 
@@ -134,6 +134,8 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 * 有交集，循环分词结果，调用  aho_corasick:match(Word1, A1). 找出分词，api响应警告
 * 无交集，api 响应pass
 * https://wudeng.github.io/2018/04/13/wordfilter/
+
+sensitive_word
 
 ## 基于地理位置的文学阅读APP
 基于postgis，做一个一带一路的沿途文化介绍的地图功能

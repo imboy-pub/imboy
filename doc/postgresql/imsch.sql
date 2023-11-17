@@ -1,0 +1,13 @@
+-- SCHEMA: imsch
+
+-- DROP SCHEMA IF EXISTS imsch ;
+
+CREATE SCHEMA IF NOT EXISTS imsch
+    AUTHORIZATION imboy_user;
+
+COMMENT ON SCHEMA imsch
+    IS 'imboy 特定schema';
+
+ALTER DEFAULT PRIVILEGES FOR ROLE imboy_user IN SCHEMA imsch
+GRANT ALL ON TABLES TO imboy_user WITH GRANT OPTION;
+

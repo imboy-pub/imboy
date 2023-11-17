@@ -24,6 +24,7 @@ DEPS += datum jsone jsx
 DEPS += epgsql pooler
 DEPS += depcache
 DEPS += syn
+DEPS += fuse
 DEPS += ecron
 DEPS += aho_corasick
 

@@ -40,6 +40,7 @@ dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_common
 dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.1
 # qdate - Erlang Date and Timezone Library
 dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
+# Erlang/OTP 应用程序限制资源访问速率
 dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 
 
@@ -47,6 +48,8 @@ dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
 # Erlang 的纯函数式和泛型编程
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
+# Erlang 的断路器
+dep_fuse = git https://gitee.com/imboy-tripartite-deps/fuse.git 2.5.0
 # Erlang 的简单持久队列
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
 dep_esq = hex 2.0.6
