@@ -148,6 +148,15 @@ change(Uid, <<"transpond_callback">>, KindId, _PostVals) ->
     NowTs = imboy_dt:millisecond(),
     user_collect_repo:update(Uid, KindId, [{<<"updated_at">>, integer_to_binary(NowTs)}]),
     ok;
+change(Uid, <<"remark">>, KindId, PostVals) ->
+    Remark = proplists:get_value(<<"remark">>, PostVals, ""),
+    % user_collect_repo:update(Uid, KindId);
+    NowTs = imboy_dt:millisecond(),
+    user_collect_repo:update(Uid, KindId, [
+        {<<"updated_at">>, integer_to_binary(NowTs)}
+        , {<<"remark">>, Remark}
+        ]),
+    ok;
 change(_Uid, _Action, _KindId, _PostVals) ->
     % KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
     % imboy_log:info("change KindId ~p; post ~p~n", [KindId, PostVals]),
