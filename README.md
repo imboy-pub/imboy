@@ -20,33 +20,48 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 
 ------
 
-[more](./doc/deps_service.md)
+* Erlang/OTP 23 / Erlang/OTP 24 / Erlang/OTP 25
 
-Erlang/OTP 23 / Erlang/OTP 24 / Erlang/OTP 25
+* 数据库 PostgreSQL15
 
-数据库 PostgreSQL15
+* [more](./doc/deps_service.md)
 
-### kerl
+## erlang 的shell 访问远程节
 ```
-// 列表可安装的版本号
-kerl list releases
+erl -name debug -setcookie imboy
+net_adm:ping('imboy@api.docker.imboy.pub').
+net_kernel:connect_node('imboy@api.docker.imboy.pub').
 
 
-CPP=cpp EGREP=egrep kerl build 25.3.2.7
+erl -name debug@127.0.0.1
+auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
+net_adm:names().
+{ok,[{"imboy",55042},{"debug",60595}]}
 
-kerl delete build 24.3.3
+按 Ctrl+G 出现user switch command
+然后输入
 
-kerl list builds
+r 'imboy@127.0.0.1'
 
-kerl install 25.3.2.7 ~/kerl/25.3.2.7
+按回车
 
-. /Users/leeyi/kerl/25.3.2.7/activate
+在按 J 机器显示节点:
+ --> j
+   1  {shell,start,[init]}
+   2* {'imboy@127.0.0.1',shell,start,[]}
 
-Later on, you can leave the installation typing:
-kerl_deactivate
+在 * 的就是默认的可连接节点，其中的1 行，就是你现在的master节点
 
-Anytime you can check which installation, if any, is currently active with:
-kerl active
+按 c 就能连接
+
+你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
+
+chat_store_repo:lookup(1).
+
+curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
+chmod +x erldash
+./erldash imboy@127.0.0.1 -c imboy
+
 ```
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
@@ -132,14 +147,9 @@ make erlang-mk
 make new-app in=webchat
 ```
 
-## edoc
-link http://erlang.org/doc/apps/edoc/chapter.html#Introduction
-```
-```
-
 ## test
-```
-```
+
+./doc/test.md
 
 ## 分析工具  (Analysis tool)
 * [Dialyzer](https://erlang.mk/guide/dialyzer.html)
@@ -258,166 +268,14 @@ make erlang-mk
 }.
 ```
 
-# api 约定  (api convention)
+## api 约定  (api convention)
 * [API参考](./doc/API定义.md)
 * [消息格式参考](./doc/消息类型.md)
 
 
-# erlang 优化
-```
-+K true
-开启epoll调度，在linux中开启epoll，会大大增加调度的效率
+## erlang 优化
 
-+A 1024
-异步线程池，为某些port调用服务
-
-+P 2048000
-最大进程数
-
-+Q 2048000
-最大port数
-
-+sbt db
-绑定调度器，绑定后调度器的任务队列不会在各个CPU线程之间跃迁，结合sub使用，可以让CPU负载均衡的同时也避免了大量的跃迁发生。
-
-注意：一个linux系统中，最好只有一个evm开启此选项，若同时有多个erlang虚拟机在系统中运行，还是关闭为好
-
-
-+sub true
-开启CPU负载均衡，false的时候是采用的CPU密集调度策略，优先在某个CPU线程上运行任务，直到该CPU负载较高为止。
-
-+swct eager
-此选项设置为eager后，CPU将更频繁的被唤醒，可以增加CPU利用率
-
-+spp true
-开启并行port并行调度队列，当开启后会大大增加系统吞吐量，如果关闭，则会牺牲吞吐量换取更低的延迟。
-
-+zdbbl 65536
-分布式erlang的端口buffer大小，当buffer满的时候，向分布式的远程端口发送消息会阻塞
-
-```
-
-# 压力测试
-
-```
-
-打开文件数 for mac
-sudo launchctl limit maxfiles
-sudo launchctl limit maxfiles 2097152 2097152
-sudo ulimit -n 2097152
-
-sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last
-
-## 及高范围
-net.inet.ip.portrange.hifirst: 49152
-net.inet.ip.portrange.hilast: 65535
-
-sysctl -w net.inet.ip.portrange.first=1025
-sysctl -w net.inet.ip.portrange.last=655350
-sysctl -w net.inet.ip.tcp_rmem=655350
-
-
-HAProxy + Docker * N + K8S + mnesia 集群
-erlang:system_info(port_limit).
-
-locust -f src/imboy.py --no-web -c 20000 -r 1000 -t 600s --logfile=logs/imboy-no-web.log
-length(chat_store_repo:lookall()).
-
-参考：
-
-http://m.udpwork.com/item/11782.html
-https://cloud.tencent.com/developer/article/1422476
-https://www.yuanmomo.net/2019/07/26/mac-max-connections-config/
-https://colobu.com/2014/09/18/linux-tcpip-tuning/
-
-https://www.cnblogs.com/duanxz/p/4464178.html 单服务器最大tcp连接数及调优汇总
-
-https://blog.51cto.com/yaocoder/1312821
-
-http://hk.uwenku.com/question/p-tgiqupmb-oc.html
-
-https://knowledge.zhaoweiguo.com/8tools/mqtts/emqtts/emqtt_tune.html
-
-https://studygolang.com/articles/2416
-
-https://www.iteye.com/blog/mryufeng-475003  erlang 节点间通讯的通道微调
-
-http://www.wangxingrong.com.cn/archives/tag/百万并发连接服务器
-
-https://qunfei.wordpress.com/2016/09/20/from-c10k-to-c100k-problem-push-over-1000000-messages-to-web-clients-on-1-machine-simultaneously/
-
-https://stackoverflow.com/questions/32711242/erlang-simultaneously-connect-1m-clients
-
-https://colobu.com/2015/05/22/implement-C1000K-servers-by-spray-netty-undertow-and-node-js
-
-https://blog.csdn.net/zcc_0015/article/details/26407683 Linux下基于Erlang的高并发TCP连接压力实验
-
-https://github.com/smallnest/C1000K-Servers
-
-100万并发连接服务器笔记之Erlang完成1M并发连接目标 https://blog.csdn.net/shallowgrave/article/details/19990345?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-5.nonecase&depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromBaidu-5.nonecase
-```
-
-docker run -it --rm --name imboy-1 -p 9801:9800 -v "$PWD":/usr/src/imboy -w /usr/src/imboy erlang
-
-// 后台运行
-docker-compose up -d
-docker-compose -f docker-local.yml up -d
-
-
-下面的命令增加了19个IP地址，其中一个给服务器用
-sudo ifconfig lo0 alias 127.0.0.10
-sudo ifconfig lo0 alias 127.0.0.11
-length(chat_store_repo:lookall()).
-
-sudo ifconfig lo0 -alias 127.0.0.10
-sudo ifconfig lo0 -alias 127.0.0.11
-
- Erlang虚拟机默认的端口上限为65536, erlang17通过erl +Q 1000000可以修改端口上限为1000000,利用erlang:system_info(port_limit)进行查询，系统可以打开的最大文件描述符可以通过erlang:system_info(check_io)中的max_fds进行查看，查看系统当前port数量可以用erlang:length(erlang:ports())得到
-
-erlang:system_info(port_limit)
-erlang:system_info(check_io)
-erlang:length(erlang:ports()).
-
-Pid = spawn(fun() -> etop:start([{output, text}, {interval, 1}, {lines, 20}, {sort, memory}]) end).
-
-```
-查看TCP 数量
-netstat -n | awk '/^tcp/ {++S[$NF]} END {for(a in S) print a, S[a]}'
-ESTABLISHED 28705
-
-free -h
-              total        used        free      shared  buff/cache   available
-Mem:           3.7G        2.8G        774M        452K        140M        726M
-Swap:            0B          0B          0B
-
-查看 pid
- pmap -d 6380
-```
-erl -name ws2@127.0.0.1 -setcookie imboy -hidden
-net_adm:ping('imboy@127.0.0.1').
-Ctrl + G
-h
-r 'imboy@127.0.0.1'
-j
-c 2
-
-cowboy_websocket 异步消息
-websocket close 传递参数
-
-如何动态加载配置文件
-```
-ifeq ($(ENV),prod)
-    RELX_CONFIG = $(CURDIR)/relx.prod.config
-else ifeq ($(ENV),test)
-    RELX_CONFIG = $(CURDIR)/relx.test.config
-else ifeq ($(ENV),dev)
-    RELX_CONFIG = $(CURDIR)/relx.dev.config
-else ifeq ($(ENV),local)
-    RELX_CONFIG = $(CURDIR)/relx.local.config
-else
-    RELX_CONFIG ?= $(CURDIR)/relx.config
-endif
-```
+./doc/erlang优化.md
 
 
 ## cowboy Live update
@@ -432,48 +290,6 @@ cowboy:set_env(imboy_listener, dispatch, Dispatch).
 config_ds:reload().
 config_ds:local_reload()
 ```
-
-## erlang 的shell 访问远程节
-```
-erl -name debug -setcookie imboy
-net_adm:ping('imboy@api.docker.imboy.pub').
-net_kernel:connect_node('imboy@api.docker.imboy.pub').
-
-
-erl -name debug@127.0.0.1
-auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
-net_adm:names().
-{ok,[{"imboy",55042},{"debug",60595}]}
-
-按 Ctrl+G 出现user switch command
-然后输入
-
-r 'imboy@127.0.0.1'
-
-按回车
-
-在按 J 机器显示节点:
- --> j
-   1  {shell,start,[init]}
-   2* {'imboy@127.0.0.1',shell,start,[]}
-
-在 * 的就是默认的可连接节点，其中的1 行，就是你现在的master节点
-
-按 c 就能连接
-
-你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
-
-chat_store_repo:lookup(1).
-
-curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
-chmod +x erldash
-./erldash imboy@127.0.0.1 -c imboy
-
-
-```
-
-## webrtc
-
 
 ## websocket 在线工具调试
 
@@ -498,42 +314,6 @@ gen_smtp_client:send({"sender@gmail.com", ["receiver@gmail.com"], "Subject: test
 
 ```
 
-## imboy_cache.erl
-
-copy from https://github.com/zotonic/zotonic/blob/master/apps/zotonic_core/src/support/z_depcache.erl
-
-* 为了项目风格统一，并且不依赖 zotonic.hrl ，所以修改了module名称
-* The Module name was changed in order to maintain a uniform project style and not rely on zotonic.hrl
-
-```
-imboy_cache:set(a, 1).
-imboy_cache:get(a).
-imboy_cache:memo(fun() ->
-    a
-end).
-```
-
-## imboy_session
-
-```
-imboy_session:join(1, <<"ios">>, spawn(fun() -> receive _ -> ok end end), <<"did11">>).
-imboy_session:join(1, <<"andriod">>, spawn(fun() -> receive _ -> ok end end), <<"did12">>).
-imboy_session:join(1, <<"macos">>, self(), <<"3f039a2b4724a5b7">>).
-
-imboy_session:join(2, <<"ios">>, spawn(fun() -> receive _ -> ok end end), <<"did21">>).
-imboy_session:join(2, <<"andriod">>, spawn(fun() -> receive _ -> ok end end), <<"did22">>).
-imboy_session:join(3, <<"andriod">>, spawn(fun() -> receive _ -> ok end end), <<"did32">>).
-
-imboy_session:count().
-imboy_session:count_user().
-imboy_session:count_user(1).
-imboy_session:list(1).
-
-syn:
-
-ets:select(syn_pg_by_name_chat, [{ '$1', [], ['$1']}]).
-ets:select(syn_pg_by_name_chat, [{ '$1', [], ['$1']}], 10).
-```
 
 ## eturnal
 ```
@@ -541,69 +321,10 @@ cd /www/wwwroot/eturnal/
 
 _build/product/rel/eturnal/bin/eturnal console
 
- _build/product/rel/eturnal/bin/eturnal daemon
+_build/product/rel/eturnal/bin/eturnal daemon
 ```
 
-## 消息确认机制
-服务端，发送消息代码如下：
-```
-    MillisecondList = [0, 1500, 1500, 3000, 1000, 3000, 5000],
-    message_ds:send_next(Uid, DType, MsgId, Msg, MillisecondList),
-```
-* MillisecondList 频率控制列表，列表元素以单位为毫秒；
-    * 0 标识第1条消息马上发送；
-    * 1500 表示，消息1500毫米内没有ack，的情况下会再次投递
-    * 其他逻辑元素逻辑如上
-* Uid 用户ID
-* MsgId 消息ID，消息唯一标识
-* Msg 消息json文本
 
-客户端收到消息后发送以下文本数据(对erlang来说是binary文本)，用于消息收到确认
-```
-CLIENT_ACK,type,msgid,did
-```
-4段信息以半角逗号（ , ）分隔：
-
-* 第1段： CLIENT_ACK 为固定消息确认前缀
-* 第2段： type 是IM消息类型
-* 第3段： msgid 消息唯一ID
-* 第4段： did 登录用户设备ID
-
-
-测试验证数据，收到测试观察，该消息确认机制有效
-```
-http://coolaf.com/tool/chattest
-
-ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Njg1Njk3MTY0MDksInN1YiI6InRrIiwidWlkIjoiYnltajVnIn0.zPojzN6IfxzIfU4CCJodguaAMcGPDx3XLTvou6-U9A8
-
-CLIENT_ACK,type,msgid,did
-
-CurrentUid = 13238,
-MsgId = <<"msgid">>,
-DID = <<"did">>.
-webrtc_ws_logic:event(13238, <<"ios">>, MsgId, <<"Msg bin">>).
-
-
-http://coolaf.com/tool/chattest
-
-// 1
-ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjExMDM5NDQ5MTgsInN1YiI6InRrIiwidWlkIjoia3licWRwIn0.FYhYR0KzHZe9kHEeTbcYWwahyqLXBE7rUWaQgyI5I14
-
-1 = imboy_hashids:uid_decode("kybqdp").
-108 = imboy_hashids:uid_decode("7b4v1b").
-{"id":"cdsgrbgppoodp0gvpb60","type":"C2C","from":"kybqdp","to":"7b4v1b","payload":{"msg_type":"text","text":"1to108"},"created_at":1668877742828}
-
-108
-ws://192.168.1.4:9800/ws/?authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjkwNDc2Nzc3MDgsInN1YiI6InRrIiwidWlkIjoiN2I0djFiIn0.n19M6-kR_p4EtqJMst4kO1cqgdG5F2gyNY6QL46xpR8
-{"id":"cdsgrbgppoodp0gvpb61","type":"C2C","to":"kybqdp","from":"7b4v1b","payload":{"msg_type":"text","text":"108to1"},"created_at":1668877742828}
-```
-
-token_ds:decrypt_token(<<"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTQwNTI2NDEyNjQsInN1YiI6InJ0ayIsInVpZCI6IjlkNG5uayJ9.N7X7mpInEbiawIP7qiDOf00Gbmm4H-4HM2cAukQ-040">>).
-
-{ok,513244,1694052641264,<<"rtk">>}
-
-1694052641264 - imboy_dt:millisecond().
-rtmp_proxy:run(1935, <<"rtmp://192.168.0.144/live_room">>).
-
+## other
 
 rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.5/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so

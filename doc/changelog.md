@@ -3,6 +3,7 @@
 * 新增 imboy_dt:now/1 imboy_dt:now/2 imboy_dt:to_rfc3339/2 方法；
 * 新增 config_ds:set/2 config_ds:save/2 方法；
 * 删除没有被使用过的 imboy_dt/utc_date/1 imboy_dt/to_rfc3339/1 方法；
+* 文档修改调整；
 * 格式化代码
 *
 

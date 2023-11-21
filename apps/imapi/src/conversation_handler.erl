@@ -48,7 +48,7 @@ online(Req0, _State) ->
                 Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
                 [lists:zipwith(fun(X, Y) -> {X, Y} end,
                                Column,
-                               [Uid, Pid, DType, DID, list_to_binary(imboy_dt:to_rfc3339(Nano)), Ref, Node]) ||
+                               [Uid, Pid, DType, DID, list_to_binary(imboy_dt:to_rfc3339(Nano, nanosecond)), Ref, Node]) ||
                     {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1];
             _ ->
                 []

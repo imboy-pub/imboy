@@ -3,8 +3,29 @@
 -heart
 
 +K true
-+A 1024
-+P 204800
-+Q 204800
++A 256
 +S 4
 +MSe true
+
++P 1048576
++Q 1048576
+
++sbwt none
++sbwtdcpu none
++sbwtdio none
+
++swt very_low
+
++stbt db
+
++zdbbl 81920
+
++MBas ageffcbf
++MHas ageffcbf
+
++MBlmbcs 512
++MBsmbcs 512
++MHlmbcs 512
++MHsmbcs 512
+
++MMmcs 30
