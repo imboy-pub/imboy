@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -45,9 +45,11 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 % 用户标签_给特定对象打标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
+    ?LOG(["CurrentUid ", CurrentUid]),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
@@ -56,20 +58,19 @@ add(Req0, State) ->
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
     % user_tag_relation_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
-    Scene2 =
+    {Scene2, IsFriend} =
         case Scene of
             <<"collect">> ->
-                <<"1">>;
+                {<<"1">>, false};
             <<"friend">> ->
-                <<"2">>;
+                {<<"2">>, friend_ds:is_friend(CurrentUid, imboy_hashids:uid_decode(ObjectId))};
             _ ->
                 <<>>
         end,
-    IsFriend = friend_ds:is_friend(CurrentUid, imboy_hashids:uid_decode(ObjectId)),
-    Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
+    Tag2 = [ Name || Name <- Tag, string:length(Name) > 14 ],
     ObjectId2 =
         if
-            Scene2 == <<"2">>,IsFriend == false ->
+            Scene2 == <<"2">>, IsFriend == false ->
                 <<>>;
             true ->
                 ObjectId
@@ -79,11 +80,12 @@ add(Req0, State) ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         length(Tag2) > 0 ->
             imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-        length(Tag) == 0,bit_size(ObjectId) == 0 ->
+        length(Tag) == 0, bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
-        length(Tag) > 1,bit_size(ObjectId) == 0 ->
+        length(Tag) > 1, bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
         true ->
+            ?LOG(["before logic CurrentUid ", CurrentUid]),
             case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
@@ -199,6 +201,7 @@ page(Scene, Req0, State) ->
         true ->
             imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
+
 
 %% ===================================================================
 %% EUnit tests.

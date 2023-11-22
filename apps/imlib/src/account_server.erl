@@ -25,10 +25,10 @@
           l = []
          }).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 allocate() ->
     gen_server:call(?MODULE, allocate).
@@ -38,6 +38,7 @@ allocate() ->
 %%% gen_server callbacks
 %% ===================================================================
 
+
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     Start = account_server:start_account(),
@@ -46,9 +47,11 @@ start_link() ->
 
 init([Start, Len]) ->
     L = create_rand_list(Start, Len),
-    State = #state{start = Start,
-                   len = Len,
-                   l = L},
+    State = #state{
+              start = Start,
+              len = Len,
+              l = L
+             },
     % ?LOG([?MODULE, init, State]),
     {ok, State}.
 
@@ -92,10 +95,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 -spec create_rand_list(Start :: integer(), Len :: integer()) -> list().
 create_rand_list(Start, Len) ->
     L = lists:seq(Start, Start + Len),
-    [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- L])].
+    [ X || {_, X} <- lists:sort([ {rand:uniform(), N} || N <- L ]) ].
 
 
 start_account() ->

@@ -72,12 +72,13 @@ revoke_offline_msg(NowTs, Id, FromId, ToId) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 read_msg(Where, Vals, Column, Limit) ->
     Res = msg_s2c_repo:read_msg(Where, Vals, Column, Limit),
     % ?LOG([Res]),
     case Res of
         {ok, ColumnLi, Rows} ->
-            [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, tuple_to_list(Row)) || Row <- Rows];
+            [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, tuple_to_list(Row)) || Row <- Rows ];
         _ ->
             []
     end.

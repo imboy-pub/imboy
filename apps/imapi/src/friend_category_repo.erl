@@ -7,10 +7,10 @@
 -export([add/2]).
 -export([delete/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"user_friend_category">>).
@@ -47,6 +47,7 @@ delete(Uid, Id) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 % friend_category_repo:find_by_uid(1, <<"name">>).
 % friend_category_repo:find_by_uid(1, <<"id,name">>).

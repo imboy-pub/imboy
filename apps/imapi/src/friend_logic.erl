@@ -12,10 +12,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec add_friend(CurrentUid :: integer(),
                  To :: binary(),
@@ -104,14 +104,14 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         ToTag == <<>> ->
             ok;
         true ->
-            ToTag2 = [I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>>],
+            ToTag2 = [ I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>> ],
             user_tag_relation_logic:add(FromID, <<"2">>, ToID, ToTag2)
     end,
     if
         FromTag == <<>> ->
             ok;
         true ->
-            FromTag2 = [I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>>],
+            FromTag2 = [ I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>> ],
             user_tag_relation_logic:add(ToID, <<"2">>, FromID, FromTag2)
     end,
     % 为了简单，删除好友关系清理两个缓存
@@ -163,6 +163,7 @@ information(CurrentUid, Uid) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 %
 friend_ids(Uid) ->
     Column = <<"to_user_id">>,
@@ -170,5 +171,5 @@ friend_ids(Uid) ->
         {ok, _, []} ->
             [];
         {ok, _, Friends} ->
-            [Id || {Id} <- Friends]
+            [ Id || {Id} <- Friends ]
     end.

@@ -17,10 +17,10 @@
 
 -define(crlf, <<"\r\n">>).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -51,6 +51,7 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 % webrtc推流接口
 publish(Req0, State) ->
     % imboy_log:error(io_lib:format("whip_handler/publish state:~p ~n", [State])),
@@ -71,9 +72,11 @@ publish(Req0, State) ->
     imboy_log:info(io_lib:format("whip_handler/publish SessionId: ~p ~n", [SessionId])),
     AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:passive", State),
     NewReq = cowboy_req:reply(201,
-                              #{<<"Content-Type">> => "application/sdp",
+                              #{
+                                <<"Content-Type">> => "application/sdp",
                                 <<"server">> => "cowboy",
-                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])},
+                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
+                               },
                               AsswerSdp
                               % , generate_answer_sdp2()
                               ,
@@ -90,9 +93,10 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     % <<"candidate:3388485749 1 tcp 1518083839 127.0.0.1 64755 typ host tcptype passive generation 0 ufrag ZZt4 network-id 2">>
     % 不执行 ICE 重启
     NewReq = cowboy_req:reply(200,
-                              #{<<"Content-Type">> => "application/trickle-ice-sdpfrag", <<"server">> => "cowboy"
-                              % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
-                              },
+                              #{
+                                <<"Content-Type">> => "application/trickle-ice-sdpfrag", <<"server">> => "cowboy"
+                                % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+                               },
                               <<"candidate: candidate:2152662189 1 udp 2122194687 192.168.0.144 64291 typ host generation 0 ufrag CNcn network-id 0 network-cost 50, sdpMid: 0, sdpMLineIndex: 0">>,
                               Req0),
     {ok, NewReq, State};
@@ -139,9 +143,11 @@ subscribe(Req0, State) ->
     {ok, OfferSdp} = sdp_parse(Sdp),
     AsswerSdp = generate_answer_sdp(OfferSdp, "a=setup:active", State),
     NewReq = cowboy_req:reply(201,
-                              #{<<"Content-Type">> => "application/sdp",
+                              #{
+                                <<"Content-Type">> => "application/sdp",
                                 <<"server">> => "cowboy",
-                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])},
+                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
+                               },
                               AsswerSdp
                               % , generate_answer_sdp2()
                               ,
@@ -155,6 +161,7 @@ unsubscribe(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),,
     imboy_response:success(Req0).
+
 
 % candidate(Req0, _State) ->
 %     % CurrentUid = maps:get(current_uid, State),
@@ -202,6 +209,7 @@ sdp_parse(Sdp) ->
 %     ],
 %     iolist_to_binary(Sdp).
 
+
 %% 根据 Offer SDP 生成 Answer SDP
 % https://aggresss.blog.csdn.net/article/details/126991583
 % 为了降低复杂性，不支持 SDP 重新协商，因此在完成通过 HTTP 的初始 SDP Offer/Answer 后，不能添加或删除任何 track 或 stream 。
@@ -233,13 +241,13 @@ generate_answer_sdp(OfferSdp, Setup, _State) ->
     % {Username, Credential, _Uris} = user_ds:webrtc_credential(CurrentUid),
     SdpLi = remove_item(AnswerSdp4),
     Append = [[[Setup, ?crlf]]
-        % , ["a=connection:new", ?crlf]
-        % , ["m=audio 50000 RTP/AVP 0", ?crlf]
-        % , ["a=mid:audio", ?crlf]
-        % , [["a=ice-ufrag:", Username, ?crlf]]
-        % , [["a=ice-pwd:", Credential, ?crlf]]
-        % , [["a=ice-lite", ?crlf]]
-        ],
+     % , ["a=connection:new", ?crlf]
+     % , ["m=audio 50000 RTP/AVP 0", ?crlf]
+     % , ["a=mid:audio", ?crlf]
+     % , [["a=ice-ufrag:", Username, ?crlf]]
+     % , [["a=ice-pwd:", Credential, ?crlf]]
+     % , [["a=ice-lite", ?crlf]]
+    ],
     AnswerSdp5 = iolist_to_binary(SdpLi ++ Append),
     % imboy_log:error(io_lib:format("whip_handler/publish AnswerSdp5 ~p :~p ~n", [is_binary(AnswerSdp5), AnswerSdp5])),
     AnswerSdp5.
@@ -255,22 +263,22 @@ check_crlf(Sdp) ->
 
 
 remove_item(Sdp) ->
-    [[I, ?crlf] ||
-        I <- binary:split(Sdp, ?crlf, [global]),
-        case I of
-            % <<"m=", _T1/binary>> ->
-            %     false;
-            % <<"a=ice", _T1/binary>> ->
-            %     false;
-            % a=setup:actpass 既可以是客户端，也可以是服务器
-            % a=setup:active 客户端
-            % a=setup:passive 服务器
-            <<"a=setup:", _T1/binary>> ->
-                false;
-            <<"a=mid:", _T1/binary>> ->
-                false;
-            <<>> ->
-                false;
-            _ ->
-                true
-        end].
+    [ [I, ?crlf]
+      || I <- binary:split(Sdp, ?crlf, [global]),
+         case I of
+             % <<"m=", _T1/binary>> ->
+             %     false;
+             % <<"a=ice", _T1/binary>> ->
+             %     false;
+             % a=setup:actpass 既可以是客户端，也可以是服务器
+             % a=setup:active 客户端
+             % a=setup:passive 服务器
+             <<"a=setup:", _T1/binary>> ->
+                 false;
+             <<"a=mid:", _T1/binary>> ->
+                 false;
+             <<>> ->
+                 false;
+             _ ->
+                 true
+         end ].

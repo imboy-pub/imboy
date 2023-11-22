@@ -35,7 +35,7 @@ create_user_test(Prefix, Num, Limit) ->
 create_friend_test(FromId) when FromId > 500000 ->
     ok;
 create_friend_test(FromId) ->
-    [create_friend_test(FromId, ToId) || ToId <- lists:seq(FromId - 100, FromId)],
+    [ create_friend_test(FromId, ToId) || ToId <- lists:seq(FromId - 100, FromId) ],
     create_friend_test(FromId + 1).
 
 
@@ -72,19 +72,17 @@ generate_exception(5) ->
 
 % test_repo:test_use_catch()
 test_use_catch() ->
-    [{I, catch generate_exception(I)} || I <- lists:seq(1, 5)].
+    [ {I, catch generate_exception(I)} || I <- lists:seq(1, 5) ].
 
 
 % test_repo:test_user_try_catch()
 test_user_try_catch() ->
-    [begin
-         try
-             generate_exception(I)
-         of
-             NormalRes ->
-                 {I, normal, NormalRes}
-         catch
-             ErrorType:Error ->
-                 {I, exception, ErrorType, Error}
-         end
-     end || I <- lists:seq(1, 5)].
+    [ begin
+          try generate_exception(I) of
+              NormalRes ->
+                  {I, normal, NormalRes}
+          catch
+              ErrorType:Error ->
+                  {I, exception, ErrorType, Error}
+          end
+      end || I <- lists:seq(1, 5) ].

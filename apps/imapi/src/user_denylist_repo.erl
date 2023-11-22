@@ -19,10 +19,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"user_denylist">>).
@@ -87,6 +87,7 @@ in_denylist(Uid, DeniedUid) ->
                    <<"user_id = ", Uid2/binary, " AND denied_user_id = ", DeniedUid2/binary>>,
                    <<"count(*) as count">>,
                    0).
+
 
 %% ===================================================================
 %% Internal Function Definitions

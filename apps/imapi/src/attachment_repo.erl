@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"attachment">>).
@@ -81,6 +81,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 递归保存附近信息
     save(Conn, CreatedAt, Uid, Tail),
     ok.
+
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -16,10 +16,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %%% 用户的收藏分页列表
 -spec page(integer(), integer(), binary(), binary()) -> list().
@@ -30,8 +30,8 @@ page(Page, Size, Where, OrderBy) when Page > 0 ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1 ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
@@ -88,18 +88,22 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
             {VideoMap, _} = imboy_uri:get_params(VideoUri),
             VideoPath = maps:get(path, VideoMap),
 
-            Attach1 = #{<<"md5">> => maps:get(<<"md5">>, Thumb),
+            Attach1 = #{
+                        <<"md5">> => maps:get(<<"md5">>, Thumb),
                         <<"mime_type">> => <<"image/jpeg">>,
                         <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
                         <<"path">> => ThumbPath,
                         <<"url">> => ThumbUri,
-                        <<"size">> => maps:get(<<"size">>, Thumb, 0)},
-            Attach2 = #{<<"md5">> => maps:get(<<"md5">>, Video),
+                        <<"size">> => maps:get(<<"size">>, Thumb, 0)
+                       },
+            Attach2 = #{
+                        <<"md5">> => maps:get(<<"md5">>, Video),
                         <<"mime_type">> => <<"octet-stream">>,
                         <<"name">> => maps:get(<<"name">>, Video, <<>>),
                         <<"path">> => VideoPath,
                         <<"url">> => VideoUri,
-                        <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))},
+                        <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
+                       },
 
             Uid2 = integer_to_binary(Uid),
             Info2 = jsone:encode(Info, [native_forward_slash]),
@@ -152,10 +156,10 @@ change(Uid, <<"remark">>, KindId, PostVals) ->
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
     NowTs = imboy_dt:millisecond(),
-    user_collect_repo:update(Uid, KindId, [
-        {<<"updated_at">>, integer_to_binary(NowTs)}
-        , {<<"remark">>, Remark}
-        ]),
+    user_collect_repo:update(Uid,
+                             KindId,
+                             [{<<"updated_at">>, integer_to_binary(NowTs)},
+                              {<<"remark">>, Remark}]),
     ok;
 change(_Uid, _Action, _KindId, _PostVals) ->
     % KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
@@ -168,6 +172,7 @@ change(_Uid, _Action, _KindId, _PostVals) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
+
 
 get_info(0, MimeType, Key, Info) ->
     Payload0 = maps:from_list(proplists:get_value(<<"payload">>, Info)),
@@ -187,12 +192,14 @@ get_info(0, MimeType, Key, Info) ->
 
     % Uri = proplists:get_value(<<"uri">>, Info),
     Info2 = maps:from_list(Info),
-    Attach = #{<<"md5">> => Md5,
+    Attach = #{
+               <<"md5">> => Md5,
                <<"mime_type">> => MimeType,
                <<"name">> => maps:get(<<"name">>, Payload, <<>>),
                <<"path">> => Path,
                <<"url">> => Uri,
-               <<"size">> => Size},
+               <<"size">> => Size
+              },
     {Attach, jsone:encode(Info2, [native_forward_slash])};
 get_info(_Count, _MimeType, _Key, _Info) ->
     % 已经收藏，不需要再上传附件了
@@ -206,38 +213,39 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
     NowTs = imboy_dt:millisecond(),
     imboy_log:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     imboy_db:with_transaction(fun(Conn) ->
-                                     CreatedAt = integer_to_binary(NowTs),
-                                     attachment_repo:save(Conn, CreatedAt, Uid, Attach),
+                                      CreatedAt = integer_to_binary(NowTs),
+                                      attachment_repo:save(Conn, CreatedAt, Uid, Attach),
 
-                                     Md5 = erlang:iolist_to_binary([[",", maps:get(<<"md5">>, Item)] ||
-                                                                       Item <- Attach]),
-                                     AttachMd5 =
-                                         case Md5 of
-                                             <<>> ->
-                                                 <<>>;
-                                             <<",", Md52/binary>> ->
-                                                 Md52
-                                         end,
-                                     Info2 = imboy_hasher:encoded_val(Info),
-                                     UpSql2 = <<" UPDATE SET updated_at = ", CreatedAt/binary, ", status = 1;">>,
-                                     Tb2 = <<"public.user_collect">>,
-                                     Column2 =
-                                         <<"(user_id, kind, kind_id, source, remark, info, attach_md5, created_at)">>,
-                                     Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES(", Uid/binary,
-                                              ", ", Kind/binary, ", '", KindId/binary, "', '", Source/binary, "', '",
-                                              Remark/binary, "', ", Info2/binary, ", '", AttachMd5/binary, "', ",
-                                              CreatedAt/binary, ") ON CONFLICT (user_id, status, kind_id) DO ",
-                                              UpSql2/binary>>,
-                                     logger:error("user_collect_logic:add_kind ~s~n", [Sql2]),
-                                     {ok, Stmt2} = epgsql:parse(Conn, Sql2),
+                                      Md5 = erlang:iolist_to_binary([ [",", maps:get(<<"md5">>, Item)]
+                                                                      || Item <- Attach ]),
+                                      AttachMd5 =
+                                          case Md5 of
+                                              <<>> ->
+                                                  <<>>;
+                                              <<",", Md52/binary>> ->
+                                                  Md52
+                                          end,
+                                      Info2 = imboy_hasher:encoded_val(Info),
+                                      UpSql2 = <<" UPDATE SET updated_at = ", CreatedAt/binary, ", status = 1;">>,
+                                      Tb2 = <<"public.user_collect">>,
+                                      Column2 =
+                                          <<"(user_id, kind, kind_id, source, remark, info, attach_md5, created_at)">>,
+                                      Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES(", Uid/binary,
+                                               ", ", Kind/binary, ", '", KindId/binary, "', '", Source/binary, "', '",
+                                               Remark/binary, "', ", Info2/binary, ", '", AttachMd5/binary, "', ",
+                                               CreatedAt/binary, ") ON CONFLICT (user_id, status, kind_id) DO ",
+                                               UpSql2/binary>>,
+                                      logger:error("user_collect_logic:add_kind ~s~n", [Sql2]),
+                                      {ok, Stmt2} = epgsql:parse(Conn, Sql2),
 
-                                     epgsql:execute_batch(Conn, [{Stmt2, []}]),
-                                     ok
+                                      epgsql:execute_batch(Conn, [{Stmt2, []}]),
+                                      ok
                               end),
     ok;
 add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
     % 已收藏
     ok.
+
 
 %% ===================================================================
 %% EUnit tests.

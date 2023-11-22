@@ -25,9 +25,7 @@ encrypt_token(ID) ->
 
 %% 解析token
 decrypt_token(Token) ->
-    try
-        jwerl:verify(Token, hs256, config_ds:env(jwt_key))
-    of
+    try jwerl:verify(Token, hs256, config_ds:env(jwt_key)) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
             ID = imboy_hashids:uid_decode(Uid),
@@ -52,6 +50,7 @@ decrypt_token(Token) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().
 encrypt_token(ID, Millisecond, Sub) when is_integer(ID) ->
@@ -69,5 +68,6 @@ encrypt_token(ID, Millisecond, Sub) ->
              ,
              exp => ExpireAt  % exp (expiration time)：过期时间
              ,
-             uid => imboy_hashids:uid_encode(ID)},
+             uid => imboy_hashids:uid_encode(ID)
+            },
     jwerl:sign(Data, hs256, config_ds:env(jwt_key)).

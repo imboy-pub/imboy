@@ -20,11 +20,12 @@ init(Req0, State0) ->
             Req1 = cowboy_req:reply(412, Req0),
             {ok, Req1, State0};
         #{token := Token} ->
-            Opt = #{num_acceptors => infinity,
+            Opt = #{
+                    num_acceptors => infinity,
                     max_connections => infinity,
                     max_frame_size => 1048576,  % 1MB
                     idle_timeout => 86400000  %  % Cowboy关闭连接空闲60秒 默认值为 60000
-                },
+                   },
             case catch token_ds:decrypt_token(Token) of
                 {ok, Uid, _ExpireAt, _Type} ->
                     {cowboy_websocket, Req0, State0#{current_uid => Uid}, Opt};
@@ -61,8 +62,7 @@ websocket_handle({text, <<"{\"action\":\"confirmMessage", _/binary>>}, State) ->
     {ok, State, hibernate};
 websocket_handle({text, Msg}, State) ->
     % ?LOG(Msg),
-    try
-        case lists:keyfind(error, 1, State) of
+    try case lists:keyfind(error, 1, State) of
             {error, Code} ->
                 ErrMsg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:millisecond()}],
                 {reply, ErrMsg};
@@ -82,8 +82,7 @@ websocket_handle({text, Msg}, State) ->
                     <<"S2C">> ->
                         websocket_logic:s2c(CurrentUid, Data)
                 end
-        end
-    of
+        end of
         Res ->
             % ?LOG(Res),
             case Res of

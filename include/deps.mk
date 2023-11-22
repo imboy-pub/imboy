@@ -24,7 +24,10 @@ dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 
 
 #dep_khepri = hex 0.7.0
+
+# depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
+
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
@@ -89,7 +92,8 @@ dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git 
 dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 
-# depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
+# Django templates for Erlang
+dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
 
 # dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
 # dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master
@@ -109,8 +113,8 @@ dep_ersip_proxy = git https://gitee.com/imboy-tripartite-deps/ersip_proxy.git ma
 dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 # dep_vice = git https://gitee.com/imboy-tripartite-deps/vice.git 0.1.0
 
-dep_membrane_rtc_engine = hex 0.17.0
-dep_membrane_rtc_engine_webrtc = hex 0.2.1
+#dep_membrane_rtc_engine = hex 0.17.0
+#dep_membrane_rtc_engine_webrtc = hex 0.2.1
 
 
 # sumo_db旨在简化 erlang 应用程序的数据库访问。

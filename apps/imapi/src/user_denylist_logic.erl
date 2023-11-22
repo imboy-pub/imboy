@@ -15,10 +15,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %%% 黑名单分页列表
 -spec page(integer(), integer(), integer()) -> list().
@@ -29,10 +29,10 @@ page(Uid, Page, Size) when Page > 0 ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                    ColumnLi,
-                                    [imboy_hashids:uid_encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items1],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                     ColumnLi,
+                                     [imboy_hashids:uid_encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items1 ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
@@ -63,6 +63,7 @@ in_denylist(Uid, DeniedUserId) ->
     Fun = fun() -> user_denylist_repo:in_denylist(Uid, DeniedUserId) end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
+
 
 %% ===================================================================
 %% Internal Function Definitions

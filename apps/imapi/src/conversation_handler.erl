@@ -5,10 +5,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -30,6 +30,7 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 online(Req0, _State) ->
     CountUser = imboy_syn:count_user(),
     Count = imboy_syn:count(),
@@ -46,10 +47,10 @@ online(Req0, _State) ->
                 % imboy_syn:list_by_limit(Limit);
                 List1 = imboy_syn:list_by_limit(Limit2),
                 Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
-                [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                               Column,
-                               [Uid, Pid, DType, DID, list_to_binary(imboy_dt:to_rfc3339(Nano, nanosecond)), Ref, Node]) ||
-                    {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1];
+                [ lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                Column,
+                                [Uid, Pid, DType, DID, list_to_binary(imboy_dt:to_rfc3339(Nano, nanosecond)), Ref, Node])
+                  || {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1 ];
             _ ->
                 []
         end,
@@ -67,5 +68,4 @@ mine(Req0, State) ->
 
 
 mine_transfer(List) ->
-    [[{<<"id">>, proplists:get_value(<<"id">>, Msg)} |
-      jsone:decode(proplists:get_value(<<"payload">>, Msg), [{object_format, proplist}])] || Msg <- List].
+    [ [{<<"id">>, proplists:get_value(<<"id">>, Msg)} | jsone:decode(proplists:get_value(<<"payload">>, Msg), [{object_format, proplist}])] || Msg <- List ].

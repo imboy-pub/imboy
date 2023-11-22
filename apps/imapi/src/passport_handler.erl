@@ -6,10 +6,10 @@
 -include_lib("kernel/include/inet.hrl").
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -53,9 +53,7 @@ do_login(Req0) ->
     Pwd =
         case RsaEncrypt == <<"1">> of
             true ->
-                try
-                    imboy_cipher:rsa_decrypt(Password)
-                of
+                try imboy_cipher:rsa_decrypt(Password) of
                     Pwd0 ->
                         Pwd0
                 catch

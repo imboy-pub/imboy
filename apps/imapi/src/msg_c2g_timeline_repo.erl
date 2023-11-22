@@ -12,10 +12,10 @@
 -export([count_by_to_id/1]).
 -export([delete_overflow_timeline/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"msg_c2g_timeline">>).
@@ -67,8 +67,8 @@ delete_overflow_timeline(ToUid, Limit) ->
         {ok, _, []} ->
             ok;
         {ok, _, Rows} ->
-            [delete_timeline(ToUid, MsgId) || {MsgId} <- Rows],
-            {msg_ids, [MsgId || {MsgId} <- Rows]}
+            [ delete_timeline(ToUid, MsgId) || {MsgId} <- Rows ],
+            {msg_ids, [ MsgId || {MsgId} <- Rows ]}
     end.
 
 %% ===================================================================

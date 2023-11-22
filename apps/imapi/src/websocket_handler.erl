@@ -24,11 +24,13 @@ init(Req0, State0) ->
     SubPt = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
     % ?LOG([Env, DID, DType, Auth, SubPt]),
-    Opt0 = #{num_acceptors => infinity,
+    Opt0 = #{
+             num_acceptors => infinity,
              max_connections => infinity,
              max_frame_size => 1048576,  % 1MB
              % Cowboy关闭连接空闲120秒 默认值为 60000
-             idle_timeout => 120000},
+             idle_timeout => 120000
+            },
     State1 = State0#{dtype => DType, did => DID},
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
@@ -66,6 +68,7 @@ websocket_init(State) ->
 
 %%处理客户端发送投递的消息 onmessage
 
+
 websocket_handle(ping, State) ->
     ?LOG([ping, cowboy_clock:rfc1123(), State]),
     case maps:find(error, State) of
@@ -100,9 +103,7 @@ websocket_handle({text, <<"logout">>}, State) ->
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     ?LOG(["CLIENT_ACK", Tail, State]),
     CurrentUid = maps:get(current_uid, State),
-    try
-        binary:split(Tail, <<",">>, [global])
-    of
+    try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
             ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}]),
             % 缓存在 message_ds:send_next/5 中设置

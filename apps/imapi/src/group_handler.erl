@@ -5,10 +5,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -37,4 +37,4 @@ member(Req0, _State) ->
 
 
 member_transfer(Members) ->
-    [{<<"list">>, [imboy_hashids:replace_id(M) || M <- Members]}].
+    [{<<"list">>, [ imboy_hashids:replace_id(M) || M <- Members ]}].

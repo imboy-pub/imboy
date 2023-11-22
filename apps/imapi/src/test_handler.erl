@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -40,6 +40,7 @@ init(Req0, State0) ->
 %% ===================================================================
 
 % imboy_req:get("http://127.0.0.1:9800/test/req_get?type=list&a=1").
+
 
 req_get(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
@@ -68,6 +69,7 @@ req_post(Req0, _State) ->
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
     imboy_response:success(Req0, PostVals, "success.").
+
 
 %% ===================================================================
 %% EUnit tests.

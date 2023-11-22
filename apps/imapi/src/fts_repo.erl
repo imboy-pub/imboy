@@ -16,10 +16,10 @@
 -include_lib("imlib/include/common.hrl").
 -include_lib("imlib/include/def_column.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"fts_user">>).
@@ -49,6 +49,7 @@ count_for_user_search_page(Keyword) ->
                      Keyword/binary, "')::text, ' <-> ', ' | '))">>,
                    <<"count(*) as count">>,
                    0).
+
 
 %% ===================================================================
 %% Internal Function Definitions

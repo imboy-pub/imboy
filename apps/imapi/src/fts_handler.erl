@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -39,6 +39,7 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 % 搜索“用户允许被搜索”的用户
 user_search(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -55,6 +56,7 @@ recently_user(Req0, State) ->
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
     Payload = fts_logic:recently_user_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).
+
 
 %% ===================================================================
 %% EUnit tests.

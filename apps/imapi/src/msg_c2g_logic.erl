@@ -21,6 +21,7 @@ check_msg(Uid, Pid, _DID) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 sent_offline_msg(_Uid, _Pid, [], _Index) ->
     ok;
 sent_offline_msg(Uid, Pid, [Row | Tail], Index) ->

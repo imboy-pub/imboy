@@ -30,7 +30,8 @@ init() ->
     % ok.
     syn:add_node_to_scopes([?CHAT_SCOPE
                             % , ?GROUP_SCOPE
-                            , ?ROOM_SCOPE]),
+                            ,
+                            ?ROOM_SCOPE]),
     ok.
 
 
@@ -71,15 +72,15 @@ count() ->
         TableByName ->
             DuplicatedGroups = ets:select(TableByName, [{{{'$1', '_'}, '_', '_', '_', '_'}, [], ['$1']}]),
             length(DuplicatedGroups)
-    % DuplicatedGroups
-    % ordsets:from_list(DuplicatedGroups)
+            % DuplicatedGroups
+            % ordsets:from_list(DuplicatedGroups)
     end.
 
 
 -spec list_by_limit(integer() | error) -> list().
 list_by_limit(error) ->
     [
-    % {<<"tips">>, "Limit参数有误"}
+     % {<<"tips">>, "Limit参数有误"}
     ];
 list_by_limit(Limit) ->
     Scope = ?CHAT_SCOPE,
@@ -109,12 +110,12 @@ list_by_uid(Uid) ->
 is_online(Uid, {dtype, DType}) ->
     Li1 = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    Li2 = [DType1 || {_P, {DType1, _DID}} <- Li1, DType1 == DType],
+    Li2 = [ DType1 || {_P, {DType1, _DID}} <- Li1, DType1 == DType ],
     lists:member(DType, Li2);
 is_online(Uid, {did, DID}) ->
     Li1 = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    Li2 = [DID1 || {_P, {_DType1, DID1}} <- Li1, DID1 == DID],
+    Li2 = [ DID1 || {_P, {_DType1, DID1}} <- Li1, DID1 == DID ],
     lists:member(DID, Li2).
 
 
@@ -123,7 +124,7 @@ is_online(Uid, {did, DID}) ->
 online_dids(Uid) ->
     Li1 = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    [DID1 || {_P, {_DType1, DID1}} <- Li1].
+    [ DID1 || {_P, {_DType1, DID1}} <- Li1 ].
 
 
 publish(Uid, Msg) ->
@@ -142,12 +143,13 @@ publish(Uid, Msg, Delay) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 -spec do_publish(list(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
 do_publish(Members, Message, Delay) ->
     lists:foreach(fun({Pid, _Meta}) ->
-                         % Pid ! Message
-                         % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
-                         erlang:start_timer(Delay, Pid, Message)
+                          % Pid ! Message
+                          % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
+                          erlang:start_timer(Delay, Pid, Message)
                   end,
                   Members),
     {ok, length(Members)}.

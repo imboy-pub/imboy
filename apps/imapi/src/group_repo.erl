@@ -12,10 +12,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"group">>).

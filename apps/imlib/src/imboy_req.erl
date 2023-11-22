@@ -11,10 +11,10 @@
 
 -define(ReqHeaders, [{"content-type", "application/json"}, {"client", "imboy-req"}]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % {Page, Size} = imboy_req:page_size(Req0),
 page_size(Req) ->
@@ -88,6 +88,7 @@ post(Url, Params, Headers) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 % https://stackoverflow.com/questions/19103694/simple-example-using-erlang-for-https-post
 % imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).

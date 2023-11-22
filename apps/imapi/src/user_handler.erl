@@ -5,10 +5,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -88,9 +88,7 @@ setting(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Li = proplists:get_value(<<"setting">>, PostVals, []),
     % ?LOG({CurrentUid, Li}),
-    try
-        [user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li]
-    of
+    try [ user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li ] of
         _ ->
             imboy_response:success(Req0, #{}, "success.")
     catch

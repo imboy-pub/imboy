@@ -8,10 +8,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 debug(Message) ->
     log(debug, Message).
@@ -56,6 +56,7 @@ error(Format, Args) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 %% @doc Manually log a message into lager without using the parse transform.
 -spec log(lager:log_level(), list()) -> ok | {error, lager_not_running}.

@@ -9,10 +9,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % imboy_uri:download("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375", "./temp_temp.png").
 download(Url, FilePath) ->
@@ -33,6 +33,7 @@ download(Url, FilePath) ->
 
 % https://gist.github.com/leeyisoft/4cc8acd930910006b5251092e0013d07
 
+
 %% Usage:
 %% upload(<<"site.com/api/upload">>, <<"path/to/file.png">>, <<"upload">>, <<"image/png">>, [], <<"some-token">>)
 %%
@@ -45,7 +46,7 @@ download(Url, FilePath) ->
 %% upload(<<"site.com/api/upload">>, <<"path/to/file.png">>, <<"upload">>, <<"image/png">>, RequestData)
 -spec upload(URL, FilePath, Name, MimeType, RequestData) ->
           {ok, binary()} | {error, list()}
-            when URL :: binary(), FilePath :: binary(), Name :: binary(), MimeType :: binary(), RequestData :: list().
+              when URL :: binary(), FilePath :: binary(), Name :: binary(), MimeType :: binary(), RequestData :: list().
 upload(URL, FilePath, Name, MimeType, RequestData) ->
     application:ensure_started(ssl),
     application:ensure_started(inets),
@@ -81,12 +82,13 @@ exclusion_param(Url, Keys) ->
     UrlMap = uri_string:parse(Url),
     Query = maps:get(query, UrlMap),
     Query2 = uri_string:dissect_query(Query),
-    Query3 = [[K, "=", V, "&"] || {K, V} <- Query2, lists:member(K, Keys) == false],
+    Query3 = [ [K, "=", V, "&"] || {K, V} <- Query2, lists:member(K, Keys) == false ],
     Query4 = iolist_to_binary(Query3),
     uri_string:normalize(UrlMap#{query => Query4}).
 
 
 % lists:droplast(uri_string:normalize(UrlMap#{query => Query4})).
+
 
 % 获取URL中的所有参数
 -spec get_params(list() | binary()) -> map().
@@ -139,50 +141,51 @@ check_auth(Url) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 % https://gist.github.com/leeyisoft/4cc8acd930910006b5251092e0013d07
 -spec format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) ->
           binary()
-            when Data :: binary(),
-                 Params :: list(),
-                 Name :: binary(),
-                 FileNames :: list(),
-                 MimeType :: binary(),
-                 Boundary :: binary().
+              when Data :: binary(),
+                   Params :: list(),
+                   Name :: binary(),
+                   FileNames :: list(),
+                   MimeType :: binary(),
+                   Boundary :: binary().
 format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) ->
     StartBoundary = erlang:iolist_to_binary([<<"--">>, Boundary]),
     LineSeparator = <<"\r\n">>,
     % ?LOG(['Params', Params]),
     WithParams = lists:foldl(fun({Key, Value}, Acc) ->
-                                    erlang:iolist_to_binary([Acc,
-                                                             StartBoundary,
-                                                             LineSeparator,
-                                                             <<"Content-Disposition: form-data; name=\"">>,
-                                                             Key,
-                                                             <<"\"">>,
-                                                             LineSeparator,
-                                                             LineSeparator,
-                                                             Value,
-                                                             LineSeparator])
+                                     erlang:iolist_to_binary([Acc,
+                                                              StartBoundary,
+                                                              LineSeparator,
+                                                              <<"Content-Disposition: form-data; name=\"">>,
+                                                              Key,
+                                                              <<"\"">>,
+                                                              LineSeparator,
+                                                              LineSeparator,
+                                                              Value,
+                                                              LineSeparator])
                              end,
                              <<"">>,
                              Params),
     WithPaths = lists:foldl(fun(FileName, Acc) ->
-                                   erlang:iolist_to_binary([Acc,
-                                                            StartBoundary,
-                                                            LineSeparator,
-                                                            <<"Content-Disposition: form-data; name=\"">>,
-                                                            Name,
-                                                            <<"\"; filename=\"">>,
-                                                            FileName,
-                                                            <<"\"">>,
-                                                            LineSeparator,
-                                                            <<"Content-Type: application/">>,
-                                                            MimeType,
-                                                            LineSeparator,
-                                                            LineSeparator,
-                                                            % <<"Content-Type: application/octet-stream;">>, LineSeparator, LineSeparator,
-                                                            Data,
-                                                            LineSeparator])
+                                    erlang:iolist_to_binary([Acc,
+                                                             StartBoundary,
+                                                             LineSeparator,
+                                                             <<"Content-Disposition: form-data; name=\"">>,
+                                                             Name,
+                                                             <<"\"; filename=\"">>,
+                                                             FileName,
+                                                             <<"\"">>,
+                                                             LineSeparator,
+                                                             <<"Content-Type: application/">>,
+                                                             MimeType,
+                                                             LineSeparator,
+                                                             LineSeparator,
+                                                             % <<"Content-Type: application/octet-stream;">>, LineSeparator, LineSeparator,
+                                                             Data,
+                                                             LineSeparator])
                             end,
                             WithParams,
                             FileNames),

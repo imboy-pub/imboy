@@ -23,10 +23,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
@@ -180,11 +180,11 @@ tag_subtitle(<<"2">>, _TagId, 0) ->
 tag_subtitle(<<"2">>, TagId, _Count) ->
     Key = imboy_func:implode("_", ["tag_subtitle_2", TagId]),
     Fun = fun() ->
-                 TagTb = imboy_db:public_tablename(<<"user_tag_relation">>),
-                 FTb = imboy_db:public_tablename(<<"user_friend">>),
-                 UTb = imboy_db:public_tablename(<<"user">>),
-                 % Sql = <<"SELECT f.remark,u.nickname,u.account FROM ", TagTb/binary, " t
-                 Sql = <<"SELECT CASE
+                  TagTb = imboy_db:public_tablename(<<"user_tag_relation">>),
+                  FTb = imboy_db:public_tablename(<<"user_friend">>),
+                  UTb = imboy_db:public_tablename(<<"user">>),
+                  % Sql = <<"SELECT f.remark,u.nickname,u.account FROM ", TagTb/binary, " t
+                  Sql = <<"SELECT CASE
                 WHEN f.remark != '' then f.remark
                 WHEN u.nickname != '' then u.nickname
                 ELSE u.account
@@ -192,12 +192,12 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
                 LEFT JOIN ", FTb/binary, " f ON t.object_id::int = f.to_user_id
                 LEFT JOIN ", UTb/binary, " u ON t.object_id::int = u.id
                 WHERE f.from_user_id = t.user_id AND t.scene = 2 AND t.tag_id = ", TagId/binary,
-                         " order by t.id asc limit 10 ">>,
-                 % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 query resp: ~s ~n", [Sql])),
-                 Items = imboy_db:list(Sql),
-                 % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 Items: ~p ;~n", [Items])),
-                 imboy_func:implode(", ", [I || {I} <- Items])
-        end,
+                          " order by t.id asc limit 10 ">>,
+                  % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 query resp: ~s ~n", [Sql])),
+                  Items = imboy_db:list(Sql),
+                  % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 Items: ~p ;~n", [Items])),
+                  imboy_func:implode(", ", [ I || {I} <- Items ])
+          end,
     % 缓存1天
     imboy_cache:memo(Fun, Key, 86400).
 
@@ -206,6 +206,7 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
 flush_subtitle(TagId) ->
     Key = imboy_func:implode("_", ["tag_subtitle_2", TagId]),
     imboy_cache:flush(Key).
+
 
 %% ===================================================================
 %% Internal Function Definitions

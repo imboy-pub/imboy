@@ -18,10 +18,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %% Add job run at 04:00 everyday.
 %% by ecron:add/3
@@ -55,6 +55,7 @@ all_job_stats() ->
 %% Predict latest N datetime.
 predict_datetime_by_spec(Spec, N) ->
     ecron:parse_spec(Spec, N).
+
 
 %% ===================================================================
 %% Internal Function Definitions

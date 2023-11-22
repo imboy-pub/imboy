@@ -14,10 +14,10 @@
 -include_lib("imlib/include/common.hrl").
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, Opts) ->
     StreamId = cowboy_req:binding(stream_id, Req0),
@@ -43,6 +43,7 @@ info(Msg, Req, State) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 check_role(StreamId, State) ->
     imboy_log:info("StreamId ~p, State ~p~n", [StreamId, State]),
     ok.
@@ -50,6 +51,7 @@ check_role(StreamId, State) ->
 
 id() ->
     integer_to_list(erlang:unique_integer([positive, monotonic]), 16).
+
 
 %% ===================================================================
 %% EUnit tests.

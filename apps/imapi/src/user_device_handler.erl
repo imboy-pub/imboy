@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -40,6 +40,7 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -65,6 +66,7 @@ delete(Req0, State) ->
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_logic:delete(CurrentUid, DID),
     imboy_response:success(Req0).
+
 
 %% ===================================================================
 %% EUnit tests.

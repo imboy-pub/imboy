@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 verify_for_assets(undefined, _Tk, _Name, _) ->
     <<"fail">>;
@@ -59,11 +59,13 @@ verify_for_open(Path, Tk, Val) ->
 %% Internal Function Definitions
 %% ===================================================================-
 
+
 %%% 执行验证码
 do_verify_for_assets(NewTk, T) when NewTk == T ->
     <<"ok">>;
 do_verify_for_assets(_, _) ->
     <<"fail">>.
+
 
 %% ===================================================================
 %% EUnit tests.

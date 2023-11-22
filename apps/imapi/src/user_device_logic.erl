@@ -16,10 +16,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec device_name(integer(), binary()) -> binary().
 % Uid = 1.
@@ -61,15 +61,16 @@ page(Uid, Page, Size) when Page > 0 ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
             OnlineDids = imboy_syn:online_dids(Uid),
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                    [<<"online">> | ColumnLi],
-                                    [lists:member(DID, OnlineDids), DID] ++ Row) || [DID | Row] <- Items1],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                     [<<"online">> | ColumnLi],
+                                     [lists:member(DID, OnlineDids), DID] ++ Row) || [DID | Row] <- Items1 ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
     end.
+
 
 %% ===================================================================
 %% Internal Function Definitions

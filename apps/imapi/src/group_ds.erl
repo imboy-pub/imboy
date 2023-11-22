@@ -8,10 +8,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % 获取用户加入的群组ID
 % Uid = 1, group_ds:user_join_ids(Uid).
@@ -19,14 +19,14 @@
 user_join_ids(Uid) ->
     Key = {user_join_ids, Uid},
     Fun = fun() ->
-                 Column = <<"group_id">>,
-                 case group_member_repo:find_by_uid(Uid, Column) of
-                     {ok, _ColumnList, []} ->
-                         [];
-                     {ok, _ColumnList, Rows} ->
-                         [Gid || {Gid} <- Rows]
-                 end
-        end,
+                  Column = <<"group_id">>,
+                  case group_member_repo:find_by_uid(Uid, Column) of
+                      {ok, _ColumnList, []} ->
+                          [];
+                      {ok, _ColumnList, Rows} ->
+                          [ Gid || {Gid} <- Rows ]
+                  end
+          end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 

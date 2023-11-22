@@ -29,15 +29,15 @@ execute(Req, Env) ->
             Passport = string:sub_string(binary_to_list(Path), 1, 10),
             Res1 =
                 if
-                    Path == <<"/ws">>,Switch == on ->
+                    Path == <<"/ws">>, Switch == on ->
                         verify_sign(Req, Env);
-                    Path == <<"/init">>,Switch == on ->
+                    Path == <<"/init">>, Switch == on ->
                         verify_sign(Req, Env);
-                    Path == <<"/refreshtoken">>,Switch == on ->
+                    Path == <<"/refreshtoken">>, Switch == on ->
                         verify_sign(Req, Env);
-                    Passport == "/passport/",Switch == on ->
+                    Passport == "/passport/", Switch == on ->
                         verify_sign(Req, Env);
-                    InOpenLi == false,Switch == on ->
+                    InOpenLi == false, Switch == on ->
                         verify_sign(Req, Env);
                     true ->
                         {ok, Req, Env}
@@ -95,10 +95,10 @@ verify_sign(Req, Env) ->
             {ok, Req, Env};
         false ->
             Req1 = imboy_response:error(
-                                        % 签名错误，需要下载最新版本APP
-                                        Req,
-                                        "Failed to verify the signature",
-                                        707),
+                     % 签名错误，需要下载最新版本APP
+                     Req,
+                     "Failed to verify the signature",
+                     707),
             {stop, Req1}
     end.
 

@@ -6,10 +6,10 @@
 -export([find_by_gid/2, find_by_gid/3]).
 -export([find_by_uid/2, find_by_uid/3]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"group_member">>).

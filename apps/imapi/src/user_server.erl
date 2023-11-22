@@ -25,10 +25,10 @@
 -export([cast_online/3]).
 -export([cast_offline/3]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
@@ -41,6 +41,7 @@ stop() ->
 
 
 %% gen_server.
+
 
 -spec init([]) -> {ok, []}.
 init([]) ->
@@ -56,6 +57,7 @@ handle_call(Request, From, State) ->
 
 
 % 异步处理请求
+
 
 % 用户注册成功后的逻辑处理
 handle_cast({signup_success, Uid, PostVals}, State) ->
@@ -149,6 +151,7 @@ cast_notice_friend(CurrentUid, ChatState) ->
 
 %% 检查消息 用异步队列实现
 
+
 -spec cast_online(Uid :: binary(), Pid :: pid(), DID :: binary()) -> ok.
 cast_online(Uid, Pid, DID) ->
     gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
@@ -165,6 +168,7 @@ cast_offline(Uid, Pid, DID) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 -spec notice_friend(Uid :: integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
     Column = <<"to_user_id">>,
@@ -173,7 +177,7 @@ notice_friend(Uid, State) ->
             ok;
         {ok, _ColumnList, Rows} ->
             % ?LOG([State, Rows]),
-            ToUidLi = [ToUid || {ToUid} <- Rows],
+            ToUidLi = [ ToUid || {ToUid} <- Rows ],
             send_state_msg(Uid, State, ToUidLi),
             ok
     end.

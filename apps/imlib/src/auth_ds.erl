@@ -13,10 +13,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %%% 获取资源服务访问token
 % {imboy_dt:second(), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:second()))}.
@@ -25,6 +25,7 @@ get_token(assets, S, V) ->
     AuthKeys = config_ds:env(auth_keys),
     Key = proplists:get_value(S, AuthKeys),
     binary:part(imboy_hasher:md5(Key ++ V), {8, 16}).
+
 
 %% ===================================================================
 %% Internal Function Definitions

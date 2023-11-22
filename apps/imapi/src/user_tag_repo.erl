@@ -15,10 +15,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"user_tag">>).
@@ -42,6 +42,7 @@ page_for_where(Limit, Offset, Where, OrderBy) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % imboy_log:info(io_lib:format("user_tag_relation_repo:page_for_where/4 sql:~p;~n", [Sql])),
     imboy_db:query(Sql, [Limit, Offset]).
+
 
 %% ===================================================================
 %% Internal Function Definitions

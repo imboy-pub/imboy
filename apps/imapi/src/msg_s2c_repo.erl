@@ -12,10 +12,10 @@
 -export([count_by_to_id/1]).
 -export([delete_overflow_msg/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"msg_s2c">>).
@@ -79,7 +79,7 @@ delete_overflow_msg(ToUid, Limit) ->
         {ok, _, []} ->
             ok;
         {ok, _, Rows} ->
-            [delete_msg(Id) || {Id} <- Rows],
+            [ delete_msg(Id) || {Id} <- Rows ],
             ok
     end.
 

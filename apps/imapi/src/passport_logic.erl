@@ -150,6 +150,7 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 %% 校验验证码
 -spec verify_code(Id :: binary(), VerifyCode :: binary()) -> {error, Msg :: list()} | {ok, any()}.
 verify_code(Id, Code) ->
@@ -234,7 +235,8 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 
 -spec login_success_transfer(boolean(), tuple()) -> {ok, map()} | {error, any()}.
 login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender, Region, Sign}) ->
-    {ok, #{<<"token">> => token_ds:encrypt_token(Id),
+    {ok, #{
+           <<"token">> => token_ds:encrypt_token(Id),
            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
            <<"uid">> => imboy_hashids:uid_encode(Id),
            <<"email">> => Email,
@@ -244,7 +246,8 @@ login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender
            <<"gender">> => Gender,
            <<"region">> => Region,
            <<"sign">> => Sign,
-           <<"role">> => 1}};
+           <<"role">> => 1
+          }};
 login_success_transfer(_, User) ->
     ?LOG([User]),
     {error, "账号或密码错误"}.

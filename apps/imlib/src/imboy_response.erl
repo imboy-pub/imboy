@@ -7,10 +7,10 @@
 -export([error/4, error/1, error/2, error/3]).
 -export([page_payload/4]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec page_payload(integer(), integer(), integer(), list()) -> list().
 page_payload(Total, Page, Size, List) ->
@@ -52,6 +52,7 @@ error(Req, Msg, Code, Options) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 reply_json(Code, Msg, Payload, Req) ->
     reply_json(Code, Msg, Payload, Req, []).

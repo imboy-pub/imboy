@@ -13,10 +13,10 @@
 -include_lib("imlib/include/common.hrl").
 -include_lib("kernel/include/logger.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % for webrtc
 -spec event(integer(), integer(), binary(), binary()) -> ok.
@@ -37,6 +37,7 @@ event(CurrentUid, ToUid, MsgId, Msg) ->
             Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, ToUid),
             {reply, Msg}
     end.
+
 
 %% ===================================================================
 %% Internal Function Definitions

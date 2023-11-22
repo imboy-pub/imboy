@@ -13,12 +13,12 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/def_column.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
 
 %% ToUid 是 FromUid 的好友？
+
 
 % friend_ds:is_friend(1, 3)
 -spec is_friend(integer(), integer()) -> {boolean(), any()}.
@@ -32,13 +32,13 @@ is_friend(FromUid, ToUid) ->
 is_friend(FromUid, ToUid, Field) ->
     Key = {is_friend, FromUid, ToUid},
     Fun = fun() ->
-                 case friend_repo:friend_field(FromUid, ToUid, Field) of
-                     {ok, _ColumnLi, [{Val}]} ->
-                         {true, Val};
-                     _ ->
-                         {false, <<>>}
-                 end
-        end,
+                  case friend_repo:friend_field(FromUid, ToUid, Field) of
+                      {ok, _ColumnLi, [{Val}]} ->
+                          {true, Val};
+                      _ ->
+                          {false, <<>>}
+                  end
+          end,
     %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
     % 缓存1天，
     imboy_cache:memo(Fun, Key, 86400).
@@ -131,8 +131,8 @@ page(Where, WhereArgs, Fields) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
-            Friends = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- Rows],
-            [user_logic:online_state(imboy_hashids:replace_id(User)) || User <- Friends];
+            Friends = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- Rows ],
+            [ user_logic:online_state(imboy_hashids:replace_id(User)) || User <- Friends ];
         _ ->
             []
     end.
@@ -159,6 +159,7 @@ set_category_id(Uid, CategoryId, NewCid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 fields(Uid) when is_integer(Uid) ->
     fields(integer_to_binary(Uid));

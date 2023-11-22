@@ -5,10 +5,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -92,9 +92,9 @@ find(Req0, State) ->
 find_transfer(User, Friend) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
      {<<"friend">>,
-      [[{<<"id">>, imboy_hashids:uid_encode(proplists:get_value(<<"id">>, GF))},
-        {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
-        {<<"list">>, [imboy_hashids:replace_id(U) || U <- proplists:get_value(<<"list">>, GF)]}] || GF <- Friend]}].
+      [ [{<<"id">>, imboy_hashids:uid_encode(proplists:get_value(<<"id">>, GF))},
+         {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
+         {<<"list">>, [ imboy_hashids:replace_id(U) || U <- proplists:get_value(<<"list">>, GF) ]}] || GF <- Friend ]}].
 
 
 %%% 我的好友，无好友分组的
@@ -111,8 +111,8 @@ friend_list(Req0, State) ->
 
 friend_list_transfer(User, Friends) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)}, {<<"friend">>, Friends}
-    % {<<"mine">>, User}
-    % , {<<"friend">>, Friends}
+     % {<<"mine">>, User}
+     % , {<<"friend">>, Friends}
     ].
 
 

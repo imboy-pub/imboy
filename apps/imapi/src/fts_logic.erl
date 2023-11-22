@@ -14,10 +14,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %%% user_search_page 好有搜索全文索引
 -spec user_search_page(integer(), integer(), integer(), binary()) -> ok.
@@ -30,16 +30,16 @@ user_search_page(Uid, Page, Size, Keywrod) ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                    [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                    case friend_ds:is_friend(Uid, Uid2) of
-                                        {B1, Remark} ->
-                                            [B1, Remark];
-                                        _ ->
-                                            [false, <<>>]
-                                    end ++ [imboy_hashids:uid_encode(Uid2) | Row]) ||
-                         [Uid2 | Row] <- Items1, Uid2 /= Uid],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                     [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
+                                     case friend_ds:is_friend(Uid, Uid2) of
+                                         {B1, Remark} ->
+                                             [B1, Remark];
+                                         _ ->
+                                             [false, <<>>]
+                                     end ++ [imboy_hashids:uid_encode(Uid2) | Row])
+                       || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
@@ -64,20 +64,21 @@ recently_user_page(Uid, Page, Size, Keywrod) ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                    [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                    case friend_ds:is_friend(Uid, Uid2) of
-                                        {B1, Remark} ->
-                                            [B1, Remark];
-                                        _ ->
-                                            [false, <<>>]
-                                    end ++ [imboy_hashids:uid_encode(Uid2) | Row]) ||
-                         [Uid2 | Row] <- Items1, Uid2 /= Uid],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
+                                     [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
+                                     case friend_ds:is_friend(Uid, Uid2) of
+                                         {B1, Remark} ->
+                                             [B1, Remark];
+                                         _ ->
+                                             [false, <<>>]
+                                     end ++ [imboy_hashids:uid_encode(Uid2) | Row])
+                       || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])
     end.
+
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -2,6 +2,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+-export([generate_session_id/0]).
 -export([is_mobile/1]).
 -export([is_email/1]).
 -export([to_binary/1]).
@@ -9,6 +10,15 @@
 -export([send_email/2]).
 -export([remove_dups/1,
          implode/2]).
+
+
+% generate a session id string
+% imboy_func:generate_session_id().
+% 1700_475816_502993
+-spec generate_session_id() -> list().
+generate_session_id() ->
+    {T1, T2, T3} = erlang:timestamp(),
+    lists:flatten(io_lib:format("~p_~p_~p", [T1, T2, T3])).
 
 
 -spec is_mobile(Mobile :: list()) -> true | false.
@@ -50,7 +60,7 @@ num_random(Len) ->
 remove_dups([]) ->
     [];
 remove_dups([H | T]) ->
-    [H | [X || X <- remove_dups(T), X /= H]].
+    [H | [ X || X <- remove_dups(T), X /= H ]].
 
 
 % imboy_func:implode(",", [<<"a">>, "b"]).
@@ -62,17 +72,17 @@ implode(S, Li) when is_float(S) ->
 implode(S, Li) when is_integer(S) ->
     implode(integer_to_binary(S), Li);
 implode(Separator, Li) ->
-    Li2 = [[Separator,
-            if
-                is_integer(I) ->
-                    integer_to_binary(I);
-                is_atom(I) ->
-                    atom_to_binary(I);
-                is_float(I) ->
-                    io_lib:format("~p", [I]);
-                true ->
-                    I
-            end] || I <- Li],
+    Li2 = [ [Separator,
+             if
+                 is_integer(I) ->
+                     integer_to_binary(I);
+                 is_atom(I) ->
+                     atom_to_binary(I);
+                 is_float(I) ->
+                     io_lib:format("~p", [I]);
+                 true ->
+                     I
+             end] || I <- Li ],
     iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
 
 
@@ -106,6 +116,7 @@ send_email(ToEmail, Subject) ->
 %                       [binary_to_list(ToEmail)],
 %                       "Subject: " ++ Subject},
 %                      Option).
+
 
 to_binary(Val) when is_integer(Val) ->
     integer_to_binary(Val);

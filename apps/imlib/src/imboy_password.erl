@@ -40,6 +40,7 @@ verify(Plaintext, Ciphertext) ->
             verify(Plaintext, default_md5, config_ds:env(password_salt), Ciphertext)
     end.
 
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
@@ -62,12 +63,13 @@ hmac_sha512_test() ->
     ?assert(Resp =:= {ok, []}),
     ?LOG(Resp).
 
--endif.
 
+-endif.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Plaintext) ->
     verify(list_to_binary(Plaintext), default_md5, Salt, Ciphertext);

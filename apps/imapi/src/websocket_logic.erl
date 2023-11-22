@@ -14,10 +14,10 @@
 -export([s2c_client_ack/3]).
 -export([c2g_client_ack/3]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %% 单聊消息
 -spec c2c(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
@@ -68,7 +68,7 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
     {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where, Vals, Column, 1),
-    [msg_c2c_repo:delete_msg(Id) || {Id} <- Rows],
+    [ msg_c2c_repo:delete_msg(Id) || {Id} <- Rows ],
     ok.
 
 
@@ -114,7 +114,7 @@ c2g(MsgId, CurrentUid, Data) ->
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
     MsLi = [0, 3500, 3500, 3000, 5000],
-    [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+    [ message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid ],
 
     % 存储消息
     msg_c2g_ds:write_msg(NowTs, MsgId, Msg2, CurrentUid, MemberUids, ToGID),
@@ -148,7 +148,7 @@ s2c_client_ack(MsgId, CurrentUid, _DID) ->
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     Vals = [MsgId, CurrentUid],
     {ok, _CList, Rows} = msg_s2c_repo:read_msg(Where, Vals, Column, 1),
-    [msg_s2c_repo:delete_msg(Id) || {Id} <- Rows],
+    [ msg_s2c_repo:delete_msg(Id) || {Id} <- Rows ],
     ok.
 
 %% ===================================================================

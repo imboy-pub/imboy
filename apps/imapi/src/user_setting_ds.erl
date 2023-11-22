@@ -25,9 +25,7 @@ find_by_uid(Uid) ->
         {ok, _, []} ->
             #{};
         {ok, _, [{Setting}]} ->
-            try
-                jsone:decode(Setting, [{object_format, map}])
-            of
+            try jsone:decode(Setting, [{object_format, map}]) of
                 Res ->
                     Res
             catch

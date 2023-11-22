@@ -10,10 +10,10 @@
 -export([rename/3]).
 -export([delete/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec add(integer(), binary()) -> {ok, integer()} | {error, any()}.
 add(Uid, Name) ->
@@ -37,8 +37,7 @@ find_by_uid(Uid) ->
         true ->
             [Default];
         _ ->
-            [Default |
-             [lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"id">>, <<"groupname">>], [Id, Name]) || {Id, Name} <- Rows]]
+            [Default | [ lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"id">>, <<"groupname">>], [Id, Name]) || {Id, Name} <- Rows ]]
     end.
 
 

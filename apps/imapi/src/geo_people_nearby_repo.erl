@@ -16,16 +16,17 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 tablename() ->
     imboy_db:public_tablename(<<"geo_people_nearby">>).
 
 
 %%% demo方法描述
+
 
 -spec save(integer(), binary(), binary()) -> ok | {error, Msg :: binary()}.
 save(Uid, Lat, Lng) ->
@@ -68,6 +69,7 @@ people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
             Lng/binary, " ", Lat/binary, ")'), ", Radius/binary, ") order by distance asc limit ", Limit/binary, ";">>,
     % ?LOG(Sql),
     imboy_db:query(Sql).
+
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -27,19 +27,19 @@ remove(Uid, Scene, ObjectId, TagId) ->
     % TagName = <<"aaa">>,
     TagName = imboy_db:pluck(<<"user_tag">>, <<"id = ", TagId/binary>>, <<"name">>, <<>>),
     imboy_db:with_transaction(fun(Conn) ->
-                                     % 移除 public.user_tag_relation
-                                     user_tag_relation_repo:remove_user_tag_relation(Conn,
-                                                                                     Scene,
-                                                                                     Uid2,
-                                                                                     TagId,
-                                                                                     ObjectId),
-                                     user_tag_relation_repo:replace_object_tag(Conn,
-                                                                               Scene,
-                                                                               Uid2,
-                                                                               ObjectId,
-                                                                               TagName,
-                                                                               <<>>),
-                                     ok
+                                      % 移除 public.user_tag_relation
+                                      user_tag_relation_repo:remove_user_tag_relation(Conn,
+                                                                                      Scene,
+                                                                                      Uid2,
+                                                                                      TagId,
+                                                                                      ObjectId),
+                                      user_tag_relation_repo:replace_object_tag(Conn,
+                                                                                Scene,
+                                                                                Uid2,
+                                                                                ObjectId,
+                                                                                TagName,
+                                                                                <<>>),
+                                      ok
                               end),
     % 清理缓存
     user_tag_relation_repo:flush_subtitle(TagId),
@@ -65,49 +65,49 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
             <<TagName/binary, " 已存在"/utf8>>;
         true ->
             % [imboy_hashids:uid_encode(108), imboy_hashids:uid_encode(62902), imboy_hashids:uid_encode(62903)].
-            ObjectIds2 = [integer_to_binary(imboy_hashids:uid_decode(I)) ||
-                             I <- ObjectIds, imboy_hashids:uid_decode(I) > 0],
+            ObjectIds2 = [ integer_to_binary(imboy_hashids:uid_decode(I))
+                           || I <- ObjectIds, imboy_hashids:uid_decode(I) > 0 ],
             Tb = imboy_db:public_tablename(<<"user_friend">>),
             OldObjectIds = imboy_db:list(<<"SELECT to_user_id::text FROM ", Tb/binary, " WHERE tag like '%",
                                            TagName/binary, ",%'">>),
-            OldObjectIds2 = [Id || {Id} <- OldObjectIds],
+            OldObjectIds2 = [ Id || {Id} <- OldObjectIds ],
 
             DelObjectId = OldObjectIds2 -- ObjectIds2,
 
             imboy_db:with_transaction(fun(Conn) ->
-                                             %
-                                             [user_tag_relation_repo:remove_user_tag_relation(Conn,
+                                              %
+                                              [ user_tag_relation_repo:remove_user_tag_relation(Conn,
+                                                                                                Scene,
+                                                                                                Uid2,
+                                                                                                TagId,
+                                                                                                I) || I <- DelObjectId ],
+                                              % imboy_log:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid2, CreatedAt]])),
+                                              % 保存 public.user_tag
+                                              user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid2, CreatedAt),
+
+                                              % 插入 public.user_tag_relation
+                                              [ user_tag_relation_repo:save_user_tag_relation(Conn,
                                                                                               Scene,
                                                                                               Uid2,
                                                                                               TagId,
-                                                                                              I) || I <- DelObjectId],
-                                             % imboy_log:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid2, CreatedAt]])),
-                                             % 保存 public.user_tag
-                                             user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid2, CreatedAt),
+                                                                                              I,
+                                                                                              CreatedAt)
+                                                || I <- ObjectIds2, I > 0 ],
 
-                                             % 插入 public.user_tag_relation
-                                             [user_tag_relation_repo:save_user_tag_relation(Conn,
-                                                                                            Scene,
-                                                                                            Uid2,
-                                                                                            TagId,
-                                                                                            I,
-                                                                                            CreatedAt) ||
-                                                 I <- ObjectIds2, I > 0],
-
-                                             [user_tag_logic:change_scene_tag(Conn,
-                                                                              Scene,
-                                                                              Uid2,
-                                                                              I,
-                                                                              [{TagId, TagName}]) || I <- ObjectIds2],
-                                             % Conn, Scene, Uid2, ObjectId, FromName, ToName
-                                             %
-                                             [user_tag_relation_repo:replace_object_tag(Conn,
-                                                                                        Scene,
-                                                                                        Uid2,
-                                                                                        I,
-                                                                                        TagName,
-                                                                                        <<>>) || I <- DelObjectId],
-                                             ok
+                                              [ user_tag_logic:change_scene_tag(Conn,
+                                                                                Scene,
+                                                                                Uid2,
+                                                                                I,
+                                                                                [{TagId, TagName}]) || I <- ObjectIds2 ],
+                                              % Conn, Scene, Uid2, ObjectId, FromName, ToName
+                                              %
+                                              [ user_tag_relation_repo:replace_object_tag(Conn,
+                                                                                          Scene,
+                                                                                          Uid2,
+                                                                                          I,
+                                                                                          TagName,
+                                                                                          <<>>) || I <- DelObjectId ],
+                                              ok
                                       end),
             % 清理缓存
             user_tag_relation_repo:flush_subtitle(TagId),
@@ -145,6 +145,7 @@ add(Uid, <<"2">>, ObjectId, Tag) ->
 %% Internal Function Definitions
 %% ===================================================================-
 
+
 do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(Scene, Uid, integer_to_binary(ObjectId), Tag);
 
@@ -152,24 +153,24 @@ do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
 do_add(Scene, Uid, ObjectId, []) ->
     Uid2 = integer_to_binary(Uid),
     imboy_db:with_transaction(fun(Conn) ->
-                                     {Table, Where} =
-                                         case Scene of
-                                             <<"1">> ->
-                                                 {imboy_db:public_tablename(<<"user_collect">>),
-                                                  <<"user_id = ", Uid2/binary, " AND kind_id = '", ObjectId/binary,
-                                                    "'">>};
-                                             <<"2">> ->
-                                                 {imboy_db:public_tablename(<<"user_friend">>),
-                                                  <<"from_user_id = ", Uid2/binary, " AND to_user_id = ",
-                                                    ObjectId/binary>>}
-                                         end,
-                                     Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", Where/binary>>,
-                                     % imboy_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
-                                     epgsql:equery(Conn, Sql),
+                                      {Table, Where} =
+                                          case Scene of
+                                              <<"1">> ->
+                                                  {imboy_db:public_tablename(<<"user_collect">>),
+                                                   <<"user_id = ", Uid2/binary, " AND kind_id = '", ObjectId/binary,
+                                                     "'">>};
+                                              <<"2">> ->
+                                                  {imboy_db:public_tablename(<<"user_friend">>),
+                                                   <<"from_user_id = ", Uid2/binary, " AND to_user_id = ",
+                                                     ObjectId/binary>>}
+                                          end,
+                                      Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", Where/binary>>,
+                                      % imboy_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
+                                      epgsql:equery(Conn, Sql),
 
-                                     % 删除 public.user_tag_relation
-                                     delete_object_tag(Conn, Scene, Uid2, ObjectId),
-                                     ok
+                                      % 删除 public.user_tag_relation
+                                      delete_object_tag(Conn, Scene, Uid2, ObjectId),
+                                      ok
                               end),
     ok;
 %
@@ -187,38 +188,38 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),
     imboy_db:with_transaction(fun(Conn) ->
-                                     % 删除 public.user_tag_relation
-                                     delete_object_tag(Conn, Scene, Uid2, ObjectId),
+                                      % 删除 public.user_tag_relation
+                                      delete_object_tag(Conn, Scene, Uid2, ObjectId),
 
-                                     % 插入 public.user_tag
-                                     TagIdNewLi = [user_tag_relation_repo:save_tag(Conn,
-                                                                                   Uid2,
-                                                                                   Scene,
-                                                                                   CreatedAt,
-                                                                                   Name) || Name <- Tag],
+                                      % 插入 public.user_tag
+                                      TagIdNewLi = [ user_tag_relation_repo:save_tag(Conn,
+                                                                                     Uid2,
+                                                                                     Scene,
+                                                                                     CreatedAt,
+                                                                                     Name) || Name <- Tag ],
 
-                                     % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
+                                      % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
 
-                                     % 插入 public.user_tag_relation
-                                     [user_tag_relation_repo:save_user_tag_relation(Conn,
-                                                                                    Scene,
-                                                                                    Uid2,
-                                                                                    integer_to_binary(TagId),
-                                                                                    ObjectId,
-                                                                                    CreatedAt) ||
-                                         {TagId, _Name} <- TagIdNewLi, TagId > 0],
-                                     % change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag),
-                                     [user_tag_logic:change_scene_tag(Conn,
-                                                                      Scene,
-                                                                      Uid2,
-                                                                      ObjectId,
-                                                                      [{integer_to_binary(TagId), N}]) ||
-                                         {TagId, N} <- TagIdNewLi, TagId > 0],
+                                      % 插入 public.user_tag_relation
+                                      [ user_tag_relation_repo:save_user_tag_relation(Conn,
+                                                                                      Scene,
+                                                                                      Uid2,
+                                                                                      integer_to_binary(TagId),
+                                                                                      ObjectId,
+                                                                                      CreatedAt)
+                                        || {TagId, _Name} <- TagIdNewLi, TagId > 0 ],
+                                      % change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag),
+                                      [ user_tag_logic:change_scene_tag(Conn,
+                                                                        Scene,
+                                                                        Uid2,
+                                                                        ObjectId,
+                                                                        [{integer_to_binary(TagId), N}])
+                                        || {TagId, N} <- TagIdNewLi, TagId > 0 ],
 
-                                     % 清理缓存
-                                     [user_tag_relation_repo:flush_subtitle(TagId) || {TagId, _} <- TagIdNewLi],
+                                      % 清理缓存
+                                      [ user_tag_relation_repo:flush_subtitle(TagId) || {TagId, _} <- TagIdNewLi ],
 
-                                     ok
+                                      ok
                               end),
     ok.
 
@@ -242,8 +243,9 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
     % imboy_log:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
 
     % 清理缓存
-    [user_tag_relation_repo:flush_subtitle(TagId) || {TagId} <- DelItems],
+    [ user_tag_relation_repo:flush_subtitle(TagId) || {TagId} <- DelItems ],
     ok.
+
 
 %% ===================================================================
 %% EUnit tests.

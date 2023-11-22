@@ -15,7 +15,6 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -25,6 +24,7 @@
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
+
 
 parse(Bin) ->
     case ersip_sdp_conn:parse(<<Bin/binary, "\r\n">>) of
@@ -43,6 +43,7 @@ make(Bin) ->
 make_ip4_addr(AddrBin) ->
     {ok, Addr} = ersip_sdp_addr:parse(<<"in">>, <<"ip4">>, AddrBin),
     Addr.
+
 
 %% ===================================================================
 %% EUnit tests.

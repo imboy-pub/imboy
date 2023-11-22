@@ -8,10 +8,10 @@
          decoded_payload/0,
          decoded_field/1]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % Payload2 = imboy_hasher:encoded_val(Val),
 -spec encoded_val(list() | binary() | map()) -> binary().
@@ -38,7 +38,7 @@ decoded_field(Field) ->
 % imboy_hasher:md5("ddd").
 md5(Str) ->
     Sig = erlang:md5(Str),
-    iolist_to_binary([io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig)]).
+    iolist_to_binary([ io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig) ]).
 
 
 % imboy_hasher:hmac_sha512("", "").

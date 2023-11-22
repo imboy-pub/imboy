@@ -6,10 +6,10 @@
 
 -export([init/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 init(Req0, State0) ->
     % ?LOG(State),
@@ -49,9 +49,12 @@ api_init(Req0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 init_transfer() ->
-    #{<<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
-      <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")}.
+    #{
+      <<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
+      <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
+     }.
 
 
 get_help(Req0) ->

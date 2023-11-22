@@ -17,10 +17,10 @@
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 %dtype 设备类型 web ios android macos windows等
 -spec online(integer(), binary(), pid(), binary()) -> ok.
@@ -118,7 +118,7 @@ find_by_ids(Ids, Column) ->
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
-            [check_avatar(lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row))) || Row <- Rows];
+            [ check_avatar(lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row))) || Row <- Rows ];
         _ ->
             []
     end.
@@ -151,6 +151,7 @@ update(_Uid, _Field, _Val) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 %% 检查 user avatar 是否为空，如果为空设置默认
 check_avatar([]) ->

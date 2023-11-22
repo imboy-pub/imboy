@@ -11,10 +11,10 @@
 
 -export([send_next/4, send_next/6]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 send_next(ToUid, MsgId, Msg, MsLi) ->
     % 给指定用户所有设备发送消息
@@ -47,11 +47,11 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MLTail], DIDLi, IsMember) ->
             _ ->
                 IsMember
         end,
-    TimerRefList = [{DID, erlang:start_timer(Millisecond, ToPid, {MLTail, {ToUid, DID, MsgId}, Msg})} ||
-                       {ToPid, {_Dtype, DID}} <- imboy_syn:list_by_uid(ToUid)
-                       % , is_process_alive(ToPid)
-                       ,
-                       lists:member(DID, DIDLi) == IsMember2],
+    TimerRefList = [ {DID, erlang:start_timer(Millisecond, ToPid, {MLTail, {ToUid, DID, MsgId}, Msg})}
+                     || {ToPid, {_Dtype, DID}} <- imboy_syn:list_by_uid(ToUid)
+                        % , is_process_alive(ToPid)
+                        ,
+                        lists:member(DID, DIDLi) == IsMember2 ],
     case TimerRefList of
         [] ->
             ok;
@@ -59,13 +59,14 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MLTail], DIDLi, IsMember) ->
             % 第二次发送的时候，记录到缓存系统；
             % 再 Millisecond 时间内 ack 之后，就撤销 ref 并且清理缓存
             % timeout 的时候判断 Ref 有效才 reply
-            [imboy_cache:set({ToUid, DID, MsgId}, TimerRef, Millisecond + 1) || {DID, TimerRef} <- TimerRefList]
+            [ imboy_cache:set({ToUid, DID, MsgId}, TimerRef, Millisecond + 1) || {DID, TimerRef} <- TimerRefList ]
     end,
     ?LOG(['Millisecond', Millisecond, TimerRefList]),
     ok.
 
 
 %%% 系统消息 [500 -- 1000) 系统消息
+
 
 -spec assemble_s2c(binary(), binary(), [binary() | integer()]) -> list().
 assemble_s2c(MsgId, MsgType, To) ->
@@ -74,6 +75,7 @@ assemble_s2c(MsgId, MsgType, To) ->
 
 
 %%% 系统消息 end
+
 
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(From), From > 0 ->
     assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, MsgId);

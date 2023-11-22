@@ -18,10 +18,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec page(binary(), integer(), integer(), binary(), binary()) -> list().
 page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
@@ -31,15 +31,15 @@ page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
-            Items1 = [tuple_to_list(Item) || Item <- Items0],
+            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
             % ColumnLi2 = ColumnLi ++ [<<"subtitle">>],
-            Items2 = [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1],
-            Items3 = [Item ++ [{<<"subtitle">>,
-                                user_tag_relation_repo:tag_subtitle(Scene,
-                                                                    proplists:get_value(<<"id">>, Item, ""),
-                                                                    proplists:get_value(<<"referer_time">>,
-                                                                                        Item,
-                                                                                        0))}] || Item <- Items2],
+            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1 ],
+            Items3 = [ Item ++ [{<<"subtitle">>,
+                                 user_tag_relation_repo:tag_subtitle(Scene,
+                                                                     proplists:get_value(<<"id">>, Item, ""),
+                                                                     proplists:get_value(<<"referer_time">>,
+                                                                                         Item,
+                                                                                         0))}] || Item <- Items2 ],
 
             % imboy_log:info(io_lib:format("user_tag_logic:page/5 Items2:~p;~n", [Items2])),
             imboy_response:page_payload(Total, Page, Size, Items3);
@@ -58,36 +58,36 @@ delete(Uid, Scene, Tag) ->
     TagId = imboy_db:pluck(<<"user_tag">>, TagWhere, <<"id">>, 0),
 
     imboy_db:with_transaction(fun(Conn) ->
-                                     % 删除 public.user_tag_relation
-                                     UserTagTb = user_tag_relation_repo:tablename(),
-                                     DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND tag_id = $2">>,
-                                     DelSql = <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
-                                     % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
-                                     epgsql:equery(Conn, DelSql, [Uid, TagId]),
+                                      % 删除 public.user_tag_relation
+                                      UserTagTb = user_tag_relation_repo:tablename(),
+                                      DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND tag_id = $2">>,
+                                      DelSql = <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
+                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
+                                      epgsql:equery(Conn, DelSql, [Uid, TagId]),
 
-                                     % 删除 public.user_tag
-                                     TagTb = imboy_db:public_tablename(<<"user_tag">>),
-                                     DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
-                                     % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
-                                     epgsql:equery(Conn, DelSql2, [TagId]),
+                                      % 删除 public.user_tag
+                                      TagTb = imboy_db:public_tablename(<<"user_tag">>),
+                                      DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
+                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
+                                      epgsql:equery(Conn, DelSql2, [TagId]),
 
-                                     %
-                                     UpTb =
-                                         case Scene of
-                                             <<"1">> ->
-                                                 imboy_db:public_tablename(<<"user_collect">>);
-                                             <<"2">> ->
-                                                 imboy_db:public_tablename(<<"user_friend">>)
-                                         end,
-                                     UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,
-                                               ",', '') WHERE tag like '%", Tag/binary, ",%';">>,
-                                     % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
+                                      %
+                                      UpTb =
+                                          case Scene of
+                                              <<"1">> ->
+                                                  imboy_db:public_tablename(<<"user_collect">>);
+                                              <<"2">> ->
+                                                  imboy_db:public_tablename(<<"user_friend">>)
+                                          end,
+                                      UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,
+                                                ",', '') WHERE tag like '%", Tag/binary, ",%';">>,
+                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
 
-                                     _Res = epgsql:equery(Conn, UpSql),
-                                     % 清理缓存
-                                     user_tag_relation_repo:flush_subtitle(TagId),
-                                     % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
-                                     ok
+                                      _Res = epgsql:equery(Conn, UpSql),
+                                      % 清理缓存
+                                      user_tag_relation_repo:flush_subtitle(TagId),
+                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
+                                      ok
                               end),
     ok.
 
@@ -108,11 +108,11 @@ change_name(0, Uid, Scene, TagId, TagName) ->
     ObjectIds2 = imboy_db:list(Sql),
     % imboy_log:error(io_lib:format("user_tag_logic:change_name/4 ~s ObjectIds2: ~p; ~n", [Sql, ObjectIds2])),
     imboy_db:with_transaction(fun(Conn) ->
-                                     % 保存 public.user_tag
-                                     user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                                      % 保存 public.user_tag
+                                      user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 
-                                     [change_scene_tag(Conn, Scene, Uid, I, [{TagId, TagName}]) || {I} <- ObjectIds2],
-                                     ok
+                                      [ change_scene_tag(Conn, Scene, Uid, I, [{TagId, TagName}]) || {I} <- ObjectIds2 ],
+                                      ok
                               end),
     % 清理缓存
     user_tag_relation_repo:flush_subtitle(TagId),
@@ -169,6 +169,7 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
 %% Internal Function Definitions
 %% ===================================================================-
 
+
 % 合并新旧tag，排重，不修改tag顺序
 merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     Sql =
@@ -179,12 +180,13 @@ merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     % imboy_log:error(io_lib:format("user_tag_logic:merge_tag/5 Tag ~p, TagOldLi: ~p; ~n", [Tag, TagOldLi])),
     % TagIds = [Id || {Id, _} <- Tag],
     TagOld = imboy_func:implode(",",
-                                [Name ||
-                                    {Id, Name} <- TagOldLi, lists:keymember(integer_to_binary(Id), 1, Tag) == false]),
-    TagBin = imboy_func:implode(",", [Name || {_, Name} <- Tag]),
+                                [ Name
+                                  || {Id, Name} <- TagOldLi, lists:keymember(integer_to_binary(Id), 1, Tag) == false ]),
+    TagBin = imboy_func:implode(",", [ Name || {_, Name} <- Tag ]),
     MergedTag = binary:split(<<TagBin/binary, ",", TagOld/binary>>, <<",">>, [global]),
     % imboy_log:error(io_lib:format("user_tag_logic:merge_tag/5 old ~p, new ~p, merged: ~p; ~n", [TagOld, TagBin, MergedTag])),
     imboy_func:implode(",", imboy_func:remove_dups(MergedTag)).
+
 
 %% ===================================================================
 %% EUnit tests.

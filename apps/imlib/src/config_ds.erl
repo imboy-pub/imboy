@@ -16,10 +16,10 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 % config_ds:env(test).
 % config_ds:env(lager, colors, undefined).
@@ -66,14 +66,15 @@ local_reload() ->
 get(Key) ->
     get(Key, <<>>).
 
+
 get(Key, Defalut) when is_list(Key) ->
     get(list_to_binary(Key), Defalut);
 get(ConfigKey, Defalut) ->
     % Key = {config3, ConfigKey},
     Fun = fun() ->
-                 Val = imboy_hasher:decoded_field(<<"value">>),
-                 imboy_db:pluck(<<"config">>, <<"key = '", ConfigKey/binary, "'">>, Val, Defalut)
-        end,
+                  Val = imboy_hasher:decoded_field(<<"value">>),
+                  imboy_db:pluck(<<"config">>, <<"key = '", ConfigKey/binary, "'">>, Val, Defalut)
+          end,
     % 缓存10天
     imboy_cache:memo(Fun, cache_key(ConfigKey), 864000).
 
@@ -94,10 +95,10 @@ save(Key, Data) ->
     Now2 = integer_to_binary(Now),
     case imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"count(*) as count">>, 0) of
         0 ->
-            Data2 = [{<<"created_at">>, Now2} | [{<<"key">>, Key}|Data]],
+            Data2 = [{<<"created_at">>, Now2} | [{<<"key">>, Key} | Data]],
             % Data2 = [{<<"key">>, Key} | Data],
-            Column = [K || {K, _} <- Data2],
-            Value = [<<"'", V/binary, "'">> || {_, V} <- Data2],
+            Column = [ K || {K, _} <- Data2 ],
+            Value = [ <<"'", V/binary, "'">> || {_, V} <- Data2 ],
             imboy_db:insert_into(<<"config">>, Column, Value, <<"">>);
         _ ->
             Data2 = [{<<"updated_at">>, Now2} | Data],
@@ -113,6 +114,7 @@ save(Key, Data) ->
 % config_ds:get(<<"login_rsa_priv_key">>).
 % config_ds:aes_encrypt(<<"login_rsa_priv_key">>).
 
+
 % config_ds:aes_encrypt(<<"login_pwd_rsa_encrypt">>).
 % config_ds:aes_encrypt(<<"site_name">>).
 aes_encrypt(Key) when is_list(Key) ->
@@ -126,6 +128,7 @@ aes_encrypt(Key) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
 cache_key(K) ->
     {config3, K}.
 
@@ -133,7 +136,7 @@ cache_key(K) ->
 reload(Path) ->
     {ok, Items} = file:consult(Path),
     % imboy_log:error("~p~n", [Items]),
-    [application:set_env(Conf) || Conf <- Items],
+    [ application:set_env(Conf) || Conf <- Items ],
     ok.
 
 

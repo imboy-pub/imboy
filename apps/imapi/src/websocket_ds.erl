@@ -7,10 +7,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
+
 
 -spec check_subprotocols(list(), any()) -> {ok, any()} | {cowboy_websocket, any()}.
 check_subprotocols(undefined, Req0) ->
@@ -42,10 +42,10 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, [{<<"msg_type">>, MsgId}], MsgId),
             Msg2 = jsone:encode(Msg, [native_utf8]),
             Fun = fun() ->
-                         Li = imboy_syn:list_by_uid(Uid),
-                         Reason = <<"token invalid, please login again.">>,
-                         [Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID]
-                end,
+                          Li = imboy_syn:list_by_uid(Uid),
+                          Reason = <<"token invalid, please login again.">>,
+                          [ Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID ]
+                  end,
             % 只给当前设备发生消息
             message_ds:send_next(Uid, MsgId, Msg2, [0, 5000, 6000] ++ [Fun], [DID], true),
             auth_after(Uid, Req, State, Opt);
@@ -62,6 +62,7 @@ auth(Auth, Req0, State0, _Opt) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
 
 -spec auth_after(integer(), any(), map(), map()) -> {ok, any(), map()} | {cowboy_websocket, any(), map(), map()}.
 % auth_after(true, _Uid, Req0, State0, _Opt) ->
