@@ -76,9 +76,7 @@ do_login(Req0) ->
             Data2 = Data#{<<"setting">> => Setting},
             imboy_response:success(Req0, Data2, "success.");
         {error, Msg} ->
-            imboy_response:error(Req0, Msg);
-        {error, Msg, Code} ->
-            imboy_response:error(Req0, Msg, Code)
+            imboy_response:error(Req0, Msg)
     end.
 
 

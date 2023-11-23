@@ -14,11 +14,13 @@
 
 
 %% 生成refreshtoken
+-spec encrypt_refreshtoken(iodata()) -> any().
 encrypt_refreshtoken(ID) ->
     encrypt_token(ID, ?REFRESHTOKEN_VALID, rtk).
 
 
 %% 生成token
+-spec encrypt_token(iodata()) -> any().
 encrypt_token(ID) ->
     encrypt_token(ID, ?TOKEN_VALID, tk).
 
@@ -53,9 +55,6 @@ decrypt_token(Token) ->
 
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().
-encrypt_token(ID, Millisecond, Sub) when is_integer(ID) ->
-    ID2 = integer_to_binary(ID),
-    encrypt_token(ID2, Millisecond, Sub);
 encrypt_token(ID, Millisecond, Sub) ->
     % Now = os:system_time(seconds),
     % ExpireAt = Now + Millisecond / 1000,

@@ -24,7 +24,7 @@ tablename() ->
 
 
 %%% 保存附近信息，不存在就新增，存在就递增应用次数
--spec save(integer(), binary(), binary(), list()) -> {ok, list(), list()} | {error, any()}.
+-spec save(integer(), binary(), binary(), list()) -> ok.
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
@@ -73,9 +73,9 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
              CreatedAt/binary, ", ",  % updated_at, created_at, status
              CreatedAt/binary, ", 1) ON CONFLICT (md5) DO ", UpSql1/binary>>,
 
-    imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 ~p ~n", [Sql1])),
+    % imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 ~p ~n", [Sql1])),
     {ok, Stmt1} = epgsql:parse(Conn, Sql1),
-    epgsql:execute_batch(Conn, [{Stmt1, []}]),
+    {ok, _} = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息

@@ -152,7 +152,7 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 
 
 %% 校验验证码
--spec verify_code(Id :: binary(), VerifyCode :: binary()) -> {error, Msg :: list()} | {ok, any()}.
+-spec verify_code(binary(), binary()) -> {error, list()} | {ok, list()}.
 verify_code(Id, Code) ->
     Now = imboy_dt:millisecond(),
     case verification_code_repo:get_by_id(Id) of
@@ -205,8 +205,8 @@ do_signup_by_email(Email, Pwd, PostVals) ->
     end.
 
 
--spec do_signup_by_mobile(Account :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: list()) ->
-          {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
+-spec do_signup_by_mobile(binary(), binary(), binary(), list()) ->
+          {ok, list()} | {error, list()}.
 do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
     % Column = <<"id,account,password,mobile">>,
     {error, "暂时不支持手机号码注册"}.

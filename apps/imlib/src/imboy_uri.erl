@@ -91,7 +91,7 @@ exclusion_param(Url, Keys) ->
 
 
 % 获取URL中的所有参数
--spec get_params(list() | binary()) -> map().
+-spec get_params(list() | binary()) -> {map(), map()}.
 % imboy_uri:get_params("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
 % {#{host => "a.imboy.pub",
 %    path => "/img/20235/20_15/chk7ef90poqbagho7410.jpg",
@@ -107,26 +107,25 @@ get_params(Url) ->
 
 
 %% 根据指定参数名获取在URL中对应的值
--spec get_params(atom(), list()) -> binary().
+-spec get_params(binary(), binary()) -> binary().
 % imboy_uri:get_params("width", "https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+% imboy_uri:get_params(<<"width">>, <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>).
 get_params(Key, Url) ->
     get_params(Key, Url, <<"">>).
 
 
+-spec get_params(binary(), binary(), binary()) -> binary().
 get_params(Key, Url, Def) ->
-    Params = get_params(Url),
+    {_, Params} = get_params(Url),
     maps:get(Key, Params, Def).
 
 
--spec check_auth(list() | binary()) -> map().
+-spec check_auth(list() | binary()) -> binary().
 % imboy_uri:check_auth("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
 check_auth(Url) when is_list(Url) ->
     check_auth(list_to_binary(Url));
 check_auth(Url) ->
-    % Url = <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>,
-
     {UrlMap, QMap} = get_params(Url),
-
     % % <<"s=dev&a=344af61665efff23&v=531378&width=375">>
     S = maps:get(<<"s">>, QMap, <<"dev">>),
     V = imboy_dt:second(),

@@ -42,7 +42,7 @@ md5(Str) ->
 
 
 % imboy_hasher:hmac_sha512("", "").
--spec hmac_sha512(list(), list()) -> binary().
+-spec hmac_sha512(binary(), any()) -> binary().
 hmac_sha512(PlainText, Key) ->
     % Bin = crypto:macN(hmac, sha512, Key, PlainText, ?SHA_256_BLOCKSIZE),
     Bin = crypto:mac(hmac, sha512, Key, PlainText),
@@ -50,7 +50,7 @@ hmac_sha512(PlainText, Key) ->
 
 
 % imboy_hasher:hmac_sha512("", "").
--spec hmac_sha256(list(), list()) -> binary().
+-spec hmac_sha256(binary(), any()) -> binary().
 hmac_sha256(PlainText, Key) ->
     Bin = crypto:mac(hmac, sha256, Key, PlainText),
     base64:encode(Bin).
