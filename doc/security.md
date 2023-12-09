@@ -63,7 +63,7 @@ openssl x509 -req -in ./priv/ssl/chain.csr -signkey ./priv/ssl/server.key -out .
 openssl req -new -sha256 -key ./priv/ssl/server.key -out ./priv/ssl/public.csr
 openssl x509 -req -in ./priv/ssl/public.csr -CA ./priv/ssl/chain.crt -CAkey ./priv/ssl/server.key -CAcreateserial -out ./priv/ssl/public.crt -days 365
     Signature ok
-    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy..pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
+    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy.pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
     Getting CA Private Key
 
 ```

@@ -14,7 +14,7 @@ Strive to implement version management based on "Specification for Semantic vers
 
 ## 环境依赖  (Environment depends on)
 
-数据结构(./doc/postgresql/vsn0.1)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL15 开发
+数据结构(./doc/postgresql/)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL15 开发
 
 There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL15
 
@@ -85,6 +85,8 @@ make list-templates
 make new-lib in=imlib
 make new-lib in=imcron
 make new t=imboy.logic n=demo_cron_logic in=imcron
+
+make new t=imboy.rest_handler n=adm_passport_handler in=imadm
 
 make new-lib in=imapi
 
@@ -327,4 +329,4 @@ _build/product/rel/eturnal/bin/eturnal daemon
 
 ## other
 
-rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.5/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so
+rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.7/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so

@@ -80,7 +80,8 @@ dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.7
 dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
-
+# erlang fault tolerant service to generate unique identities
+dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
 
 
 # dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
@@ -92,8 +93,8 @@ dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git 
 dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 
-# Django templates for Erlang
-dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
+# dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
+dep_simple_captcha = git https://gitee.com/imboy-tripartite-deps/simple_captcha.git master
 
 # dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
 # dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master

@@ -1,4 +1,7 @@
 ## kerl
+
+https://github.com/kerl/kerl
+
 ```
 // 列表可安装的版本号
 kerl list releases
@@ -10,6 +13,7 @@ kerl delete build 24.3.3
 
 kerl list builds
 
+kerl build 25.3 25.3
 kerl install 25.3.2.7 ~/kerl/25.3.2.7
 
 . /Users/leeyi/kerl/25.3.2.7/activate

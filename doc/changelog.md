@@ -1,3 +1,9 @@
+# 0.2.2
+* 新增依赖  simple_captcha uid;
+* 引入 simple_captcha layui ；
+* 新增 imadm 应用；
+* 新增2 api (/adm/passport/login  /adm/passport/captcha)
+
 # 0.2.1
 * 备注收藏功能；
 * 新增 imboy_dt:now/1 imboy_dt:now/2 imboy_dt:to_rfc3339/2 方法；

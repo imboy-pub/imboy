@@ -2,6 +2,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+-export([uid/0, uid/1]).
 -export([generate_session_id/0]).
 -export([is_mobile/1]).
 -export([is_email/1]).
@@ -20,6 +21,14 @@ generate_session_id() ->
     {T1, T2, T3} = erlang:timestamp(),
     lists:flatten(io_lib:format("~p_~p_~p", [T1, T2, T3])).
 
+-spec uid() -> binary().
+uid() ->
+    uid("").
+
+-spec uid(integer() | list() | binary()) -> binary().
+uid(Prefix) ->
+    U1 = uid:encode64(uid:g()),
+    iolist_to_binary([to_binary(Prefix), U1]).
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 is_mobile(Mobile) ->
@@ -118,6 +127,11 @@ send_email(ToEmail, Subject) ->
 %                      Option).
 
 
+% to_binary(Val) when is_float(Val) ->
+%     % float_to_binary(Val, [{decimals, 40}, compact]);
+%     iolist_to_binary(io_lib:format("~p", [Val]));
+
+-spec to_binary(integer() | list() | binary()) -> binary().
 to_binary(Val) when is_integer(Val) ->
     integer_to_binary(Val);
 to_binary(Val) when is_list(Val) ->
