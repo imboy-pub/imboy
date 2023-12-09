@@ -53,7 +53,7 @@ captcha(Req, _State) ->
 
 
 login(Req0, _State) ->
-    {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/static/login.html"])),
+    {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/login.html"])),
     % imboy_log:info(Body),
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"text/html; charset=utf-8">>
