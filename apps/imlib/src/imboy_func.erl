@@ -11,7 +11,7 @@
 -export([send_email/2]).
 -export([remove_dups/1,
          implode/2]).
-
+-export([check_json/1]).
 
 % generate a session id string
 % imboy_func:generate_session_id().
@@ -138,3 +138,13 @@ to_binary(Val) when is_list(Val) ->
     list_to_binary(Val);
 to_binary(Val) when is_binary(Val) ->
     Val.
+
+%
+check_json(Val) ->
+    case jsx:is_json(Val) of
+        true ->
+            jsx:decode(Val);
+        false ->
+            Val
+    end.
+

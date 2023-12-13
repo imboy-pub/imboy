@@ -44,6 +44,13 @@ get_routes() ->
        {"/user_collect/remove", user_collect_handler, #{action => remove}},
        {"/user_collect/change", user_collect_handler, #{action => change}},
 
+       {"/feedback/page", feedback_handler, #{action => page}},
+       {"/feedback/add", feedback_handler, #{action => add}},
+       {"/feedback/change", feedback_handler, #{action => change}},
+       {"/feedback/remove", feedback_handler, #{action => remove}},
+       {"/feedback/reply", feedback_handler, #{action => reply}},
+       {"/feedback/page_reply", feedback_handler, #{action => page_reply}},
+
        {"/user_tag/page", user_tag_handler, #{action => page}},
        {"/user_tag/add", user_tag_handler, #{action => add}},
        {"/user_tag/change_name", user_tag_handler, #{action => change_name}},

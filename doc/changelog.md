@@ -1,8 +1,10 @@
+
 # 0.2.2
-* 新增依赖  simple_captcha uid;
+* 新增依赖  simple_captcha uid erlydtl;
 * 引入 simple_captcha layui ；
 * 新增 imadm 应用；
-* 新增2 api (/adm/passport/login  /adm/passport/captcha)
+* 新增后台 api (/adm/passport/login  /adm/passport/captcha)
+* 新增用户反馈相关功能
 
 # 0.2.1
 * 备注收藏功能；

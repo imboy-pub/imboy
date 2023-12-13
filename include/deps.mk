@@ -82,7 +82,8 @@ dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
 # erlang fault tolerant service to generate unique identities
 dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
-
+# Django templates for Erlang
+dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
 
 # dep_mysql = git https://gitee.com/imboy-tripartite-deps/mysql-otp 1.7.0
 # dep_mysql = hex 1.8.0

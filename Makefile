@@ -33,7 +33,7 @@ DEPS += uid
 DEPS += telemetry lager observer_cli recon redbug
 DEPS += sync
 DEPS += simple_captcha
-
+DEPS += erlydtl
 # DEPS += vix
 # DEPS += nksip
 # DEPS += ersip rtps
