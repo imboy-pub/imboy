@@ -7,6 +7,7 @@
 -export([page/4]).
 -export([page_reply/4]).
 -export ([add/8]).
+-export ([remove/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -71,6 +72,18 @@ add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach) ->
             feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach, FeedbackMd5)
     end.
 
+-spec remove(integer(), binary()) -> ok.
+remove(Uid, FeedbackId) ->
+    % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
+    Where = imboy_func:implode("", ["user_id = ", Uid," AND id = ", FeedbackId]),
+    imboy_db:update(feedback_repo:tablename(), Where, [
+        {<<"status">>, <<"-1">>}
+        , {<<"updated_at">>, integer_to_binary(imboy_dt:millisecond())}
+    ]),
+    % feedback_repo:delete(Uid, FeedbackId),
+    % Key = {user_device_name, Uid, FeedbackId},
+    % imboy_cache:flush(Key),
+    ok.
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-

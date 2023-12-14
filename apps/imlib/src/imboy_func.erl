@@ -132,6 +132,8 @@ send_email(ToEmail, Subject) ->
 %     iolist_to_binary(io_lib:format("~p", [Val]));
 
 -spec to_binary(integer() | list() | binary()) -> binary().
+to_binary(Val) when is_atom(Val) ->
+    atom_to_binary(Val);
 to_binary(Val) when is_integer(Val) ->
     integer_to_binary(Val);
 to_binary(Val) when is_list(Val) ->

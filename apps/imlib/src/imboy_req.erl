@@ -27,9 +27,12 @@ page_size(Req) ->
 % imboy_req:get_int()
 get_int(Key, Req, Def) ->
     #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
+    % ?LOG([get_int, Val == Def]),
     if
         Val == Def ->
-            {ok, Def};
+            PostVals = post_params(Req),
+            % ?LOG([get_int, PostVals, proplists:get_value(imboy_func:to_binary(Key), PostVals, Def)]),
+            {ok, proplists:get_value(imboy_func:to_binary(Key), PostVals, Def)};
         true ->
             case string:to_integer(Val) of
                 {error, _} ->

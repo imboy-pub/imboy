@@ -28,8 +28,8 @@ init(Req0, State0) ->
             page(Req0, State);
         add ->
             add(Req0, State);
-        % remove ->
-        %     remove(Req0, State);
+        remove ->
+            remove(Req0, State);
         % change ->
         %     change(Req0, State);
         % reply ->
@@ -49,7 +49,8 @@ page(Req0, State) ->
     {Page, Size} = imboy_req:page_size(Req0),
 
     Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
-    Payload = feedback_logic:page(Page, Size, Where, <<"id desc">>),
+    Where2 = <<"status > 0 AND ", Where/binary>>,
+    Payload = feedback_logic:page(Page, Size, Where2, <<"id desc">>),
     imboy_response:success(Req0, Payload).
 
 page_reply(Req0, _State) ->
@@ -92,6 +93,18 @@ add(Req0, State) ->
         , Attach),
     imboy_response:success(Req0).
 
+remove(Req0, State) ->
+    Def =  <<"反馈ID必须是整数"/utf8>>,
+    case imboy_req:get_int(feedback_id, Req0, Def) of
+        {ok, Def} ->
+            imboy_response:error(Req0, Def);
+        {ok, FeedbackId} ->
+            CurrentUid = maps:get(current_uid, State),
+            Payload = feedback_logic:remove(CurrentUid, FeedbackId),
+            imboy_response:success(Req0, Payload);
+        {error, ErrorMsg} ->
+            imboy_response:error(Req0, ErrorMsg)
+    end.
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================

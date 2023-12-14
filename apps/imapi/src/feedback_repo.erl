@@ -10,6 +10,8 @@
          page_for_where/4]).
 
 -export ([add/9]).
+-export([save/2]).
+-export([delete/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -67,6 +69,22 @@ add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach, FeedbackMd5) ->
         , imboy_dt:millisecond()
     ],
     imboy_db:insert_into(Tb, Column, Value),
+    ok.
+
+-spec save(integer(), binary()) -> ok.
+save(Uid, FeedbackId) ->
+    Tb = tablename(),
+    % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND id = $2">>,
+    imboy_db:execute(Sql, [Uid, FeedbackId]),
+    ok.
+
+-spec delete(integer(), binary()) -> ok.
+delete(Uid, FeedbackId) ->
+    Tb = tablename(),
+    % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND id = $2">>,
+    imboy_db:execute(Sql, [Uid, FeedbackId]),
     ok.
 
 %% ===================================================================

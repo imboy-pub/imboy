@@ -4,7 +4,7 @@
 * 引入 simple_captcha layui ；
 * 新增 imadm 应用；
 * 新增后台 api (/adm/passport/login  /adm/passport/captcha)
-* 新增用户反馈相关功能
+* 新增用户反馈相关功能（新增反馈、反馈列表、反馈回复列表、移除反馈功能)
 
 # 0.2.1
 * 备注收藏功能；
