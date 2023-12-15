@@ -47,7 +47,7 @@ COMMENT ON COLUMN public.feedback.rating IS '反馈评级 bad neutral good';
 COMMENT ON COLUMN public.feedback.title IS '反馈内容标题';
 COMMENT ON COLUMN public.feedback.attach IS '反馈内容附件';
 COMMENT ON COLUMN public.feedback.body IS '反馈内容';
-COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + type + body + attach)';
+COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + type + body)';
 COMMENT ON COLUMN public.feedback.reply_count IS '回复数量，回复的回复也计算在内';
 COMMENT ON COLUMN public.feedback.status IS '状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）';
 COMMENT ON COLUMN public.feedback.created_at IS '创建记录Unix时间戳毫秒单位';

@@ -59,7 +59,7 @@ page_reply(Page, Size, Where, OrderBy) when Page > 0 ->
 % feedback_logic:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach) ->
     FeedbackMd5 = imboy_hasher:md5(imboy_func:implode("", [
-        Uid, Did, AppVsn, Type, Body, Attach
+        Uid, Did, AppVsn, Type, Body
         ])),
 
     Count = imboy_db:pluck(<<"feedback">>,
