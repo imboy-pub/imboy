@@ -6,7 +6,7 @@
 
 -export([page/4]).
 -export([page_reply/4]).
--export ([add/8]).
+-export ([add/10]).
 -export ([remove/2]).
 
 -ifdef(EUNIT).
@@ -54,12 +54,12 @@ page_reply(Page, Size, Where, OrderBy) when Page > 0 ->
 
 %%% add方法
 %%% 新增用户反馈
--spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
+-spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 % feedback_logic:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach)
-add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach) ->
+add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach) ->
     FeedbackMd5 = imboy_hasher:md5(imboy_func:implode("", [
-        Uid, Did, AppVsn,Body, Attach
+        Uid, Did, AppVsn, Type, Body, Attach
         ])),
 
     Count = imboy_db:pluck(<<"feedback">>,
@@ -69,7 +69,7 @@ add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach) ->
     if Count > 0 ->
             ok;
         true ->
-            feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach, FeedbackMd5)
+            feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach, FeedbackMd5)
     end.
 
 -spec remove(integer(), binary()) -> ok.

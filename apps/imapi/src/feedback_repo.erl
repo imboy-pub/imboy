@@ -9,7 +9,7 @@
 -export([count_for_where/1,
          page_for_where/4]).
 
--export ([add/9]).
+-export ([add/11]).
 -export([save/2]).
 -export([delete/2]).
 
@@ -49,18 +49,20 @@ page_for_where(Limit, Offset, Where, OrderBy) ->
 
 
 %%% 新增用户反馈
--spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
+-spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach, FeedbackMd5)
-add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach, FeedbackMd5) ->
+add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach, FeedbackMd5) ->
     Tb = tablename(),
-    Column = <<"(user_id, device_id, client_operating_system, client_operating_system_vsn, app_vsn, title, body, attach, feedback_md5, status, created_at)">>,
+    Column = <<"(user_id, device_id, client_operating_system, client_operating_system_vsn, app_vsn, type, rating, title, body, attach, feedback_md5, status, created_at)">>,
     Value = [
         Uid
         , <<"'", Did/binary, "'">>
         , <<"'", COS/binary, "'">>
         , <<"'", COSV/binary, "'">>
         , <<"'", AppVsn/binary, "'">>
+        , <<"'", Type/binary, "'">>
+        , <<"'", Rating/binary, "'">>
         , <<"'", Title/binary, "'">>
         , <<"'", Body/binary, "'">>
         , <<"'", Attach/binary, "'">>

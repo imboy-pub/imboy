@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS public."feedback"
     client_operating_system_vsn varchar(680),
     feedback_md5 varchar(40),
     app_vsn varchar(40),
+    type varchar(40),
+    rating varchar(40),
     title varchar(200),
     body text not null,
     attach json,
@@ -40,10 +42,12 @@ COMMENT ON COLUMN public.feedback.client_operating_system IS '设备类型 web i
 COMMENT ON COLUMN public.feedback.device_id IS '设备ID web设备留空';
 COMMENT ON COLUMN public.feedback.client_operating_system_vsn IS '设备版本 {"baseOS":"HUAWEI/CLT-AL00/HWINE:8.1.0/HUAWEICLT-AL00/173(C00):user/release-keys","sdkInt":27,"release":"8.1.0","codename":"REL","incremental":"176(C00)","previewSdkInt":0,"securityPatch":"2018-10-01"}';
 
+COMMENT ON COLUMN public.feedback.type IS '反馈类型 bugReport featureRequest';
+COMMENT ON COLUMN public.feedback.rating IS '反馈评级 bad neutral good';
 COMMENT ON COLUMN public.feedback.title IS '反馈内容标题';
 COMMENT ON COLUMN public.feedback.attach IS '反馈内容附件';
 COMMENT ON COLUMN public.feedback.body IS '反馈内容';
-COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + body + attach)';
+COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + type + body + attach)';
 COMMENT ON COLUMN public.feedback.reply_count IS '回复数量，回复的回复也计算在内';
 COMMENT ON COLUMN public.feedback.status IS '状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）';
 COMMENT ON COLUMN public.feedback.created_at IS '创建记录Unix时间戳毫秒单位';

@@ -78,6 +78,8 @@ add(Req0, State) ->
     Did = cowboy_req:header(<<"did">>, Req0),
 
     PostVals = imboy_req:post_params(Req0),
+    Type = proplists:get_value(<<"type">>, PostVals, ""),
+    Rating = proplists:get_value(<<"rating">>, PostVals, ""),
     Title = proplists:get_value(<<"title">>, PostVals, ""),
     Description = proplists:get_value(<<"description">>, PostVals, ""),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
@@ -88,6 +90,8 @@ add(Req0, State) ->
         , COS
         , COSV
         , AppVsn
+        , Type
+        , Rating
         , Title
         , Description
         , Attach),
