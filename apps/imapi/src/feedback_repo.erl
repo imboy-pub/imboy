@@ -39,7 +39,7 @@ count_for_where(Where) ->
 % feedback_repo:page_for_where(1, 10, 0, <<"id desc">>).
 -spec page_for_where(integer(), integer(), binary(), binary()) -> {ok, list(), list()} | {error, any()}.
 page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"id as feedback_id, device_id, title, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
+    Column = <<"id as feedback_id, device_id, type, rating, title, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
     Where2 = <<" WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
