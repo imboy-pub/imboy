@@ -53,8 +53,13 @@ captcha(Req, _State) ->
 
 
 login(Req0, _State) ->
-    {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/login.html"])),
-    % imboy_log:info(Body),
+    % {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/login.html"])),
+    {ok, Body} = imboy_dtl:template(login_dtl, [
+         {name, "IMBoy Admin System"}
+         , {public_key, "xxxxxx"}
+    ], imadm),
+
+    imboy_log:info(Body),
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"text/html; charset=utf-8">>
         , <<"Access-Control-Allow-Origin">> => <<"*">>

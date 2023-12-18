@@ -9,6 +9,5 @@
 template(Name, Vars, AppName) ->
     % Path = iolist_to_binary([code:priv_dir(imadm), "/template/login.html"]),
     Path = imboy_func:implode("", [code:priv_dir(AppName), "/template/", Name, ".html"]),
-    erlydtl:compile(Path, Name),
-    {ok, Tpl} = erlang:apply(Name, render, [Vars]),
-    list_to_binary(Tpl).
+    erlydtl:compile_file(binary_to_list(Path), Name),
+    Name:render(Vars).
