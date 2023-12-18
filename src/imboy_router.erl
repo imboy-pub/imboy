@@ -111,7 +111,10 @@ get_routes() ->
 %% 列表元素必须为binary
 %% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
 option() ->
-    [<<"/uqrcode">>].
+    [
+        <<"/uqrcode">>
+        , <<"/feedback/add">> % 没有登录也可以提交反馈建议
+    ].
 
 
 %% 不需要认证的API

@@ -124,6 +124,8 @@ do_verify_sign(_, _, _, _) ->
 
 condition(true, _, undefined, Req, Env) ->
     {ok, Req, Env};
+condition(true, _, <<>>, Req, Env) ->
+    {ok, Req, Env};
 condition(true, _, Authorization, Req, Env) ->
     do_authorization(Authorization, Req, Env);
 condition(_, true, _, Req, Env) ->

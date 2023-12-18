@@ -69,7 +69,7 @@ page_reply(Req0, _State) ->
     end.
 
 add(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State, 0),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
 
     COS = cowboy_req:header(<<"cos">>, Req0),
@@ -84,7 +84,6 @@ add(Req0, State) ->
     Description = proplists:get_value(<<"description">>, PostVals, ""),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
-    % feedback_logic:add(CurrentUid, Val1, Val2),
     feedback_logic:add(CurrentUid
         , Did
         , COS
