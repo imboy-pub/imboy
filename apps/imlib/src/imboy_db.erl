@@ -11,6 +11,8 @@
 -export([insert_into/3, insert_into/4]).
 -export([assemble_sql/4]).
 
+-export([assemble_value/1]).
+
 -export([get_set/1]).
 -export([update/3]).
 -export([update/4]).
@@ -223,13 +225,28 @@ update(Table, Where, KV) ->
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    KV2 = [ {K, update_filter_value(V)} || {K, V} <- KV ],
+    KV2 = [ {imboy_func:to_binary(K), imboy_func:to_binary(V)} || {K, V} <- KV ],
     Set1 = [ <<K/binary, " = '", V/binary, "'">> || {K, V} <- KV2 ],
     Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
 
+% imboy_db:assemble_value(#{mobile => "13692177080", password => "admin888", account => "13692177080", "status" => 1}).
+% imboy_db:assemble_value(#{mobile => <<"13692177080">>, password => "admin888", account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>}).
+assemble_value(Values) when is_map(Values) ->
+    assemble_value(maps:values(Values));
+assemble_value(Values) when is_list(Values) ->
+    [assemble_value_filter(V) || V <- Values].
 
+assemble_value_filter(V) ->
+    if
+        is_list(V); is_binary(V)->
+            imboy_func:implode("", ["'", V, "'"]);
+        is_tuple(V) ->
+            imboy_func:implode("", ["'{", imboy_func:implode(",", tuple_to_list(V)), "}'"]);
+        true ->
+            V
+    end.
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -262,12 +279,6 @@ public_tablename(Table) ->
         _ ->
             Table
     end.
-
-
-update_filter_value(Val) when is_binary(Val) ->
-    Val;
-update_filter_value(Val) ->
-    unicode:characters_to_binary(Val).
 
 
 %% ===================================================================

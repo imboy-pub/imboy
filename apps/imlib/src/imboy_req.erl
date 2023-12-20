@@ -1,5 +1,6 @@
 -module(imboy_req).
 
+-export([cookie/2]).
 -export([get_int/3]).
 -export([page_size/1]).
 -export([post_params/1]).
@@ -86,6 +87,16 @@ post(Url, Params) ->
 
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
+
+
+cookie(Key, Req) ->
+    Cookies = cowboy_req:parse_cookies(Req),
+    case lists:keyfind(Key, 1, Cookies) of
+        {_, Val} ->
+            Val;
+        false ->
+            false
+    end.
 
 
 %% ===================================================================

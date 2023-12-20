@@ -47,6 +47,7 @@ find_by_email(Email, Column) ->
 find_by_mobile(Mobile, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
+    ?LOG(["sql ", Sql]),
     imboy_db:query(Sql, [Mobile]).
 
 

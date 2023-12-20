@@ -22,7 +22,7 @@ generate(Plaintext, hmac_sha512) ->
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
 
--spec verify(Plaintext :: list(), Ciphertext :: list()) -> {ok, any()} | {error, Msg :: list()}.
+-spec verify(list(), list()) -> {ok, any()} | {error, Msg :: list()}.
 verify(Plaintext, Ciphertext) ->
     % ?LOG([Plaintext, Ciphertext]),
     try

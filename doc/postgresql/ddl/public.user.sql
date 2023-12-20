@@ -51,7 +51,7 @@ COMMENT ON COLUMN public.user.nickname
     IS '用户昵称';
 
 COMMENT ON COLUMN public.user.password
-    IS '经过加盐的密码';
+    IS '经过加盐的密码 imboy_password:generate(imboy_hasher:md5("admin888")).';
 
 COMMENT ON COLUMN public.user.account IS '会员账号';
 COMMENT ON COLUMN public.user.mobile IS '手机号码';

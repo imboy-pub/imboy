@@ -50,17 +50,18 @@
             <span class="bg2"></span>
         </div>
         <form class="layui-form login-bottom">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="center">
                 <div class="item">
                     Account
                     <span class="icon icon-2"></span>
-                    <input type="text" name="username" lay-verify="required"  placeholder="请输入登录账号" maxlength="24" value="admin" />
+                    <input type="tel" name="account" lay-verify="required|phone" autocomplete="off" class="layui-input" value="">
                 </div>
 
                 <div class="item">
                     Password
                     <span class="icon icon-3"></span>
-                    <input type="password" name="password" lay-verify="required"  placeholder="请输入密码" maxlength="20" value="admin888">
+                    <input type="password" name="pwd" lay-verify="pass" placeholder="请输入密码" autocomplete="off" class="layui-input" value="">
                     <span class="bind-password icon icon-4"></span>
                 </div>
 
@@ -74,7 +75,7 @@
                 </div>
 
             </div>
-            <div class="tip">
+            <div class="tip" style="display: none;">
                 <span class="icon-nocheck"></span>
                 <span class="login-tip">保持登录</span>
                 <a href="javascript:" class="forget-password">忘记密码？</a>
@@ -92,8 +93,16 @@
 <!-- 引入 layui.js -->
 <script src="/static/layui/layui.js"></script>
 
-<script>
-
+<script src="/static/js/jsencrypt.js" charset="utf-8"></script>
+<script src="/static/js/md5.min.js" charset="utf-8"></script>
+<script type="text/javascript">
+var public_key = "{{public_key}}";
+public_key = public_key.substr(26, public_key.length - 24 - 26)
+// console.log('public_key ', public_key)
+//layui绑定扩展
+layui.config({
+    base: '/static/js/'
+})
 layui.use(['jquery', 'layer', 'form'], function(){
     var layer = layui.layer ,form = layui.form;
     var $ = layui.$
@@ -102,15 +111,52 @@ layui.use(['jquery', 'layer', 'form'], function(){
         $(this).attr('src', '/adm/passport/captcha?r=' + Math.random());
     });
 
-    var public_key = "{{public_key}}";
+    // 表单验证
+    form.verify({
+        account : [/[A-Za-z0-9\u4e00-\u9fa5]{2,40}$/, '用户名必须2到40位字母、数字、汉字组合'],
+        password : [/(.+){8,40}$/, '8到40个任意字符'],
+        number : [/^[0-9]*$/, '必须输入数字啊']
+    })
+    form.on('submit(login)', function(obj){
+        layer.msg('数据提交中...',{time:50000})
 
-    //监听提交
-    form.on('submit(login)', function(data){
-        layer.alert(JSON.stringify(data.field), {
-            title: '最终的提交信息'
+        // Encrypt with the public key...
+        var encrypt = new JSEncrypt()
+        encrypt.setPublicKey(public_key)
+        obj.field.pwd = encrypt.encrypt(md5(obj.field.pwd))
+
+        var post_data = obj.field
+        $.ajax({
+            type: "POST",
+            url: "/adm/passport/login",
+            data: post_data,
+            headers: {},
+            success: function(res) {
+                // console.log("res: ", res)
+                if (res && res.code==0) {
+                    // 设置有效时间为 10天
+                    location.href = res.payload.next ? res.payload.next : '/adm/'
+                } else if(res && res.msg) {
+                    layer.msg(res.msg)
+                    $(":input[name='account']").focus()
+                } else {
+                    layer.msg('未知错误')
+                    // setTimeout(function(){
+                    //     location.reload()
+                    // }, 3000)
+                }
+            },
+            error: function(xhr) {
+                console.log('xhr: ', xhr.responseJSON)
+                if (xhr.responseJSON && xhr.responseJSON.msg) {
+                    layer.msg(xhr.responseJSON.msg)
+                } else {
+                    layer.msg('未知错误')
+                }
+            }
         })
         return false;
-    });
+    })
 });
 
 </script>

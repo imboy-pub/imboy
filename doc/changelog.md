@@ -1,10 +1,17 @@
 
+# 0.2.3
+* 新增管理员用户表、用户角色表；
+* 新增 apps/imadm/priv/static/js/jsencrypt.js
+* 新增 apps/imadm/priv/static/js/md5.min.js
+* 新增管理员登录功能（登录的时候，提交表单之前经过，密码一次md5加密，保证调试代码的打印日志的时候也不泄露用户密码；）
+
 # 0.2.2
 * 新增依赖  simple_captcha uid erlydtl;
 * 引入 simple_captcha layui ；
 * 新增 imadm 应用；
 * 新增后台 api (/adm/passport/login  /adm/passport/captcha)
 * 新增用户反馈相关功能（新增反馈、反馈列表、反馈回复列表、移除反馈功能)
+*
 
 # 0.2.1
 * 备注收藏功能；

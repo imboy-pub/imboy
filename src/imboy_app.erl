@@ -19,12 +19,20 @@ start(_Type, _Args) ->
         StartMode == quic ->
             start_quic(Dispatch);
         true ->
-            ProtoOpts = #{middlewares => [cowboy_router, auth_middleware, cowboy_handler],
-                          % metrics_callback => do_metrics_callback(),
-                          stream_handlers => [cowboy_compress_h, cowboy_stream_h
-                              % , cowboy_metrics_h
-                              ],
-                          env => #{dispatch => Dispatch}},
+            ProtoOpts = #{
+                middlewares => [
+                    cowboy_router % 必须是第一个元素
+                    , auth_middleware % 必须是第二个元素
+                    , cowboy_handler
+                ],
+                % metrics_callback => do_metrics_callback(),
+                stream_handlers => [
+                    cowboy_compress_h
+                    , cowboy_stream_h
+                    % , cowboy_metrics_h
+                ],
+                env => #{dispatch => Dispatch}
+            },
             Port = config_ds:env(http_port),
             case StartMode of
                 tls ->

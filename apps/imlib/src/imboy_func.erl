@@ -12,6 +12,7 @@
 -export([remove_dups/1,
          implode/2]).
 -export([check_json/1]).
+-export([is_proplist/1]).
 
 % generate a session id string
 % imboy_func:generate_session_id().
@@ -81,17 +82,7 @@ implode(S, Li) when is_float(S) ->
 implode(S, Li) when is_integer(S) ->
     implode(integer_to_binary(S), Li);
 implode(Separator, Li) ->
-    Li2 = [ [Separator,
-             if
-                 is_integer(I) ->
-                     integer_to_binary(I);
-                 is_atom(I) ->
-                     atom_to_binary(I);
-                 is_float(I) ->
-                     io_lib:format("~p", [I]);
-                 true ->
-                     I
-             end] || I <- Li ],
+    Li2 = [ [Separator, to_binary(I)] || I <- Li ],
     iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
 
 
@@ -134,12 +125,20 @@ send_email(ToEmail, Subject) ->
 -spec to_binary(integer() | list() | binary()) -> binary().
 to_binary(Val) when is_atom(Val) ->
     atom_to_binary(Val);
+to_binary(Val) when is_float(Val) ->
+    float_to_binary(Val, [{decimals, 15}, compact]);
 to_binary(Val) when is_integer(Val) ->
     integer_to_binary(Val);
 to_binary(Val) when is_list(Val) ->
     list_to_binary(Val);
 to_binary(Val) when is_binary(Val) ->
-    Val.
+    Val;
+to_binary(Val) ->
+    unicode:characters_to_binary(Val).
+
+
+is_proplist(Var) ->
+    is_list(Var) andalso lists:all(fun({_, _}) -> true; (_) -> false end, Var).
 
 %
 check_json(Val) ->
