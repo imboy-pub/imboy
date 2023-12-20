@@ -134,6 +134,10 @@ layui.use(['jquery', 'layer', 'form'], function(){
             success: function(res) {
                 // console.log("res: ", res)
                 if (res && res.code==0) {
+                    var exp = new Date()
+                    document.cookie = "back_uri=''; expires=" + exp.toGMTString()+ "; path=/"
+                    document.cookie = "captcha_key=''; expires=" + exp.toGMTString()+ "; path=/"
+
                     // 设置有效时间为 10天
                     location.href = res.payload.next ? res.payload.next : '/adm/'
                 } else if(res && res.msg) {

@@ -88,7 +88,10 @@ login(<<"POST">>, Req0, _State) ->
                     #{<<"id">> := AdmUserId} = AdmUser,
                     % ?LOG(['AdmUserId ', AdmUserId]),
 
-                    Req1 = cowboy_req:set_resp_cookie(<<"adm_user_id">>, AdmUserId, Req0, #{path => <<"/">>}),
+                    Req1 = cowboy_req:set_resp_cookie(<<"adm_user_id">>
+                        , AdmUserId
+                        , Req0
+                        , #{path => <<"/">>}),
                     Next = case imboy_req:cookie(<<"back_uri">>, Req0) of
                         BackUri when is_binary(BackUri) ->
                             BackUri;
