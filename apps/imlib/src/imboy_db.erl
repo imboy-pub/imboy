@@ -8,7 +8,7 @@
 -export([query/1]).
 -export([query/2]).
 -export([execute/2, execute/3]).
--export([insert_into/3, insert_into/4]).
+-export([insert_into/2, insert_into/3, insert_into/4]).
 -export([assemble_sql/4]).
 
 -export([assemble_value/1]).
@@ -56,18 +56,18 @@ with_transaction(F, Opts0) ->
 % imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
 
 
-% pluck(<<"public.", Table/binary>>, Field, Default) ->
-%     pluck(Table, Field, Default);
-pluck(Table, Field, Default) ->
-    Table2 = public_tablename(Table),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary>>,
+% pluck(<<"public.", Tb/binary>>, Field, Default) ->
+%     pluck(Tb, Field, Default);
+pluck(Tb, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
     % ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 
-pluck(Table, Where, Field, Default) ->
-    Table2 = public_tablename(Table),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Table2/binary, " WHERE ", Where/binary>>,
+pluck(Tb, Where, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
     % ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
@@ -175,61 +175,68 @@ execute(Conn, Sql, Params) ->
     Res0.
 
 
-insert_into(Table, Column, Value) ->
-    insert_into(Table, Column, Value, <<"RETURNING id;">>).
+insert_into(Tb, Data) ->
+    Column = <<"("
+        , (imboy_func:implode("," , maps:keys(Data)))/binary
+        , ")">>,
+    Value = assemble_value(Data),
+    imboy_db:insert_into(Tb, Column, Value).
+
+insert_into(Tb, Column, Value) ->
+    insert_into(Tb, Column, Value, <<"RETURNING id;">>).
 
 
-insert_into(Table, Column, Value, Returning) ->
+insert_into(Tb, Column, Value, Returning) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
-    Sql = assemble_sql(<<"INSERT INTO">>, Table, Column, Value),
+    Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
     imboy_db:execute(<<Sql/binary, " ", Returning/binary>>, []).
 
 
 % 组装 SQL 语句
-assemble_sql(Prefix, Table, Column, Value) when is_list(Column) ->
+assemble_sql(Prefix, Tb, Column, Value) when is_list(Column) ->
     ColumnBin = imboy_func:implode(",", Column),
-    assemble_sql(Prefix, Table, <<"(", ColumnBin/binary, ")">>, Value);
-assemble_sql(Prefix, Table, Column, Value) when is_list(Value) ->
+    assemble_sql(Prefix, Tb, <<"(", ColumnBin/binary, ")">>, Value);
+assemble_sql(Prefix, Tb, Column, Value) when is_list(Value) ->
     ValueBin = imboy_func:implode(",", Value),
-    assemble_sql(Prefix, Table, Column, <<"(", ValueBin/binary, ")">>);
-assemble_sql(Prefix, Table, Column, Value) ->
-    Table2 = public_tablename(Table),
-    Sql = <<Prefix/binary, " ", Table2/binary, " ", Column/binary, " VALUES ", Value/binary>>,
-    ?LOG(io:format("~s\n", [Sql])),
+    assemble_sql(Prefix, Tb, Column, <<"(", ValueBin/binary, ")">>);
+assemble_sql(Prefix, Tb, Column, Value) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<Prefix/binary, " ", Tb2/binary, " ", Column/binary, " VALUES ", Value/binary>>,
+    % ?LOG(io:format("~s\n", [Sql])),
     Sql.
 
 
 % imboy_db:update(<<"user">>, 1, <<"sign">>, <<"中国你好！😆"/utf8>>).
 -spec update(binary(), binary(), binary(), list() | binary()) -> ok | {error, {integer(), binary(), Msg :: binary()}}.
-update(Table, ID, Field, Value) when is_list(Value) ->
-    update(Table, ID, Field, unicode:characters_to_binary(Value));
-update(Table, ID, Field, Value) ->
-    Table2 = public_tablename(Table),
-    Sql = <<"UPDATE ", Table2/binary, " SET ", Field/binary, " = $1 WHERE id = $2">>,
+update(Tb, ID, Field, Value) when is_list(Value) ->
+    update(Tb, ID, Field, unicode:characters_to_binary(Value));
+update(Tb, ID, Field, Value) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"UPDATE ", Tb2/binary, " SET ", Field/binary, " = $1 WHERE id = $2">>,
     % Field/binary, " = $1 WHERE ", Where/binary>>,
     imboy_db:execute(Sql, [Value, ID]).
 
 
 % imboy_db:update(<<"user">>, <<"id = 1">>, [{<<"gender">>, <<"1">>}, {<<"nickname">>, <<"中国你好！2😆"/utf8>>}]).
 -spec update(binary(), binary(), [list() | binary()]) -> ok | {error, {integer(), binary(), Msg :: binary()}}.
-update(Table, Where, KV) when is_list(KV) ->
+update(Tb, Where, KV) when is_list(KV) ->
     Set = get_set(KV),
-    update(Table, Where, Set);
-update(Table, Where, KV) ->
-    Table2 = public_tablename(Table),
-    Sql = <<"UPDATE ", Table2/binary, " SET ", KV/binary, " WHERE ", Where/binary>>,
+    update(Tb, Where, Set);
+update(Tb, Where, KV) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"UPDATE ", Tb2/binary, " SET ", KV/binary, " WHERE ", Where/binary>>,
     % ?LOG(io:format("~s\n", [Sql])),
     imboy_db:execute(Sql, []).
 
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    KV2 = [ {imboy_func:to_binary(K), imboy_func:to_binary(V)} || {K, V} <- KV ],
-    Set1 = [ <<K/binary, " = '", V/binary, "'">> || {K, V} <- KV2 ],
+    Set1 = [ <<(imboy_func:to_binary(K))/binary, " = ", (assemble_value_filter(V))/binary>> || {K, V} <- KV ],
     Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
+
 
 % imboy_db:assemble_value(#{mobile => "13692177080", password => "admin888", account => "13692177080", "status" => 1}).
 % imboy_db:assemble_value(#{mobile => <<"13692177080">>, password => "admin888", account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>}).
@@ -238,14 +245,16 @@ assemble_value(Values) when is_map(Values) ->
 assemble_value(Values) when is_list(Values) ->
     [assemble_value_filter(V) || V <- Values].
 
+assemble_value_filter({raw, V}) when is_binary(V) ->
+    V;
 assemble_value_filter(V) ->
     if
-        is_list(V); is_binary(V)->
+        is_list(V); is_binary(V) ->
             imboy_func:implode("", ["'", V, "'"]);
         is_tuple(V) ->
             imboy_func:implode("", ["'{", imboy_func:implode(",", tuple_to_list(V)), "}'"]);
         true ->
-            V
+            imboy_func:to_binary(V)
     end.
 %% ===================================================================
 %% Internal Function Definitions
@@ -270,14 +279,14 @@ query_resp({ok, ColumnList, Rows}) ->
     {ok, ColumnList2, Rows}.
 
 
-public_tablename(<<"public.", Table/binary>>) ->
-    public_tablename(Table);
-public_tablename(Table) ->
+public_tablename(<<"public.", Tb/binary>>) ->
+    public_tablename(Tb);
+public_tablename(Tb) ->
     case config_ds:env(sql_driver) of
         pgsql ->
-            <<"public.", Table/binary>>;
+            <<"public.", Tb/binary>>;
         _ ->
-            Table
+            Tb
     end.
 
 

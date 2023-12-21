@@ -17,10 +17,10 @@
 %% ===================================================================
 
 
--spec add_friend(CurrentUid :: integer(),
-                 To :: binary(),
-                 Payload :: list(),
-                 CreatedAt :: integer() | CreatedAt :: binary()) -> ok | {error, Msg :: binary(), Param :: binary()}.
+-spec add_friend(integer(),
+                 binary(),
+                 list(),
+                 integer() | binary()) -> ok | {error, binary(), binary()}.
 add_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"to">>};
 add_friend(_, _, undefined, _) ->

@@ -57,7 +57,7 @@ login(<<"GET">>, Req0, _State) ->
     imboy_cache:set(Csrf, 1),
     % cowboy_req:set_resp_cookie("csrf_token", Csrf, Req0),
     {ok, Body} = imboy_dtl:template(login_dtl, [
-         {name, "IMBoy Admin System"}
+         {system_name, "IMBoy Admin System"}
         , {csrf_token, Csrf}
         , {public_key, re:replace(config_ds:get("login_rsa_pub_key"), "\\n", "", [global, {return, list}])}
     ], imadm),
@@ -66,6 +66,7 @@ login(<<"GET">>, Req0, _State) ->
         <<"content-type">> => <<"text/html; charset=utf-8">>
         , <<"Access-Control-Allow-Origin">> => <<"*">>
     }, Body, Req0);
+
 login(<<"POST">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),

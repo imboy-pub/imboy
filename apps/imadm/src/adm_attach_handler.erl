@@ -1,7 +1,7 @@
--module(adm_index_handler).
+-module(adm_attach_handler).
 %%%
-% adm_index 控制器模块
-% adm_index controller module
+% adm_attach 控制器模块
+% adm_attach controller module
 %%%
 -behavior(cowboy_rest).
 
@@ -24,8 +24,8 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 = case Action of
-        index ->
-            index(Method, Req0, State);
+        auth ->
+            auth(Method, Req0, State);
         false ->
             Req0
     end,
@@ -35,19 +35,13 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-index(<<"GET">>, Req0, State) ->
-    % AdmUserId = maps:get(adm_user_id, State, []),
-    {ok, Body} = imboy_dtl:template(adm_index_dtl, [
-         {"coversation_online_user", imboy_syn:count_user()}
-         , {"coversation_online_device", imboy_syn:count()}
-    ] ++ imboy_dtl:imadm_param(State), imadm),
-
-    % {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/adm_index_dtl.html"])),
-    cowboy_req:reply(200, #{
-        <<"content-type">> => <<"text/html; charset=utf-8">>
-        , <<"Access-Control-Allow-Origin">> => <<"*">>
-    }, Body, Req0).
-
+% 获取特定附近的反馈token参数
+auth(<<"POST">>, Req0, _State) ->
+    PostVals = imboy_req:post_params(Req0),
+    Uri = proplists:get_value(<<"uri">>, PostVals, ""),
+    imboy_response:success(Req0, [
+        {<<"uri">>, [imboy_uri:check_auth(I) || I <- binary:split(Uri,<<",">>)]}
+    ], "success.").
 
 %% ===================================================================
 %% EUnit tests.

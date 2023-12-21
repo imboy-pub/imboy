@@ -45,9 +45,11 @@ DEPS += erlydtl
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
 LOCAL_DEPS += imlib
+LOCAL_DEPS += imcommon
+LOCAL_DEPS += imrepo
 LOCAL_DEPS += imapi
-LOCAL_DEPS += imcron
 LOCAL_DEPS += imadm
+LOCAL_DEPS += imcron
 
 # LOCAL_DEPS += imsos
 # LOCAL_DEPS += erlmedia

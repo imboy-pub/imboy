@@ -23,9 +23,10 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
+    Method = cowboy_req:method(Req0),
     Req1 = case Action of
         demo_action ->
-            demo_action(Req0, State);
+            demo_action(Method, Req0, State);
         false ->
             Req0
     end,
@@ -35,7 +36,14 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-demo_action(Req0, State) ->
+demo_action(<<"GET">>, Req0, _State) ->
+    Body = <<>>,
+    cowboy_req:reply(200, #{
+        <<"content-type">> => <<"text/html; charset=utf-8">>
+        , <<"Access-Control-Allow-Origin">> => <<"*">>
+    }, Body, Req0).
+
+demo_action(<<"POST">>, Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:uid_encode(CurrentUid),
 

@@ -4,6 +4,9 @@
 * 新增 apps/imadm/priv/static/js/jsencrypt.js
 * 新增 apps/imadm/priv/static/js/md5.min.js
 * 新增管理员登录功能（登录的时候，提交表单之前经过，密码一次md5加密，保证调试代码的打印日志的时候也不泄露用户密码；）
+* 模块化管理后台html模板布局，参考 https://sight-wcg.github.io/layui-theme-dark/
+* 新增 反馈列表；回复反馈功能；
+* 调整代码布局；
 
 # 0.2.2
 * 新增依赖  simple_captcha uid erlydtl;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>IMBoy Admin Login</title>
+  <title>{{ system_name }} Login</title>
   <link rel="shortcut icon" href="/static/favicon.ico">
   <!-- 引入 layui.css -->
   <link rel="stylesheet" href="/static/layui/css/layui.css">
@@ -45,7 +45,7 @@
 <div class="main-body">
     <div class="login-main">
         <div class="login-top">
-            <span>Welcome back {{ name }}!</span>
+            <span>Welcome back {{ system_name }}!</span>
             <span class="bg1"></span>
             <span class="bg2"></span>
         </div>
@@ -91,7 +91,7 @@
 
 <!-- https://github.com/layui/layui/tags -->
 <!-- 引入 layui.js -->
-<script src="/static/layui/layui.js"></script>
+<script src="/static/layui/layui.js" charset="utf-8"></script>
 
 <script src="/static/js/jsencrypt.js" charset="utf-8"></script>
 <script src="/static/js/md5.min.js" charset="utf-8"></script>
@@ -137,8 +137,6 @@ layui.use(['jquery', 'layer', 'form'], function(){
                     var exp = new Date()
                     document.cookie = "back_uri=''; expires=" + exp.toGMTString()+ "; path=/"
                     document.cookie = "captcha_key=''; expires=" + exp.toGMTString()+ "; path=/"
-
-                    // 设置有效时间为 10天
                     location.href = res.payload.next ? res.payload.next : '/adm/'
                 } else if(res && res.msg) {
                     layer.msg(res.msg)
@@ -159,7 +157,7 @@ layui.use(['jquery', 'layer', 'form'], function(){
                 }
             }
         })
-        return false;
+        return false; // 阻止默认 form 跳转
     })
 });
 

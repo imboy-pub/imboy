@@ -6,8 +6,7 @@
 
 -export ([tablename/0]).
 
--export([count_for_where/1,
-         page_for_where/4]).
+-export([count_for_where/1, page_for_where/5]).
 
 -export ([add/11]).
 -export([save/2]).
@@ -36,17 +35,15 @@ count_for_where(Where) ->
 
 
 %%% 用户的收藏分页列表
-% feedback_repo:page_for_where(1, 10, 0, <<"id desc">>).
--spec page_for_where(integer(), integer(), binary(), binary()) -> {ok, list(), list()} | {error, any()}.
-page_for_where(Limit, Offset, Where, OrderBy) ->
-    Column = <<"id as feedback_id, device_id, type, rating, title, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
+% feedback_repo:page_for_where(1, 10, 0, <<"id desc">>, <<"*">>).
+-spec page_for_where(integer(), integer(), binary(), binary(), binary()) -> {ok, list(), list()} | {error, any()}.
+page_for_where(Limit, Offset, Where, OrderBy, Column) ->
     Where2 = <<" WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT $1 OFFSET $2">>,
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % ?LOG(['Sql', Sql]),
     imboy_db:query(Sql, [Limit, Offset]).
-
 
 %%% 新增用户反馈
 -spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->

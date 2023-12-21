@@ -14,6 +14,12 @@ start(_Type, _Args) ->
                 % need auth
                 {"/adm", adm_index_handler, #{action => index}},
                 {"/adm/index", adm_index_handler, #{action => index}},
+                % feedback
+                {"/adm/feedback/index", adm_feedback_handler, #{action => index}},
+                {"/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
+                % attach
+                {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
+                % need auth end
 
                 % open
                 {"/adm/passport/login", adm_passport_handler, #{action => login}},
