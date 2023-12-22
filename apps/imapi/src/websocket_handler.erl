@@ -17,6 +17,7 @@
 init(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
     % DID device id
+    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
     Auth = cowboy_req:header(<<"authorization">>, Req0, undefined),
@@ -31,7 +32,7 @@ init(Req0, State0) ->
              % Cowboy关闭连接空闲128秒 默认值为 60000
              idle_timeout => 128000
             },
-    State1 = State0#{dtype => DType, did => DID},
+    State1 = State0#{dtype => DType, did => DID, vsn => AppVsn},
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
             imboy_log:warning("DeviceID ~p exceeded api limit", [DID]),

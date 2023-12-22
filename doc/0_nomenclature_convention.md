@@ -1,6 +1,61 @@
 
 # 名词术语约定 / Nomenclature convention
 
+## 代码布局约定
+目前共有 6个app，其中 imds imlib imrepo imcron 等4个位 lib APP；imadm为运营后台入口；imapi 未前端APP的API入口
+
+### apps/imadm
+
+存放运营后台特有的API代码和静态文件等；
+
+所有后台特有业务逻辑相关代码都放到这里；
+
+* 静态html等文件放到 apps/imadm/priv/static/ 目录
+* 静态html模板文件放到 apps/imadm/priv/template/ 目录
+* 文件命名规则为
+    * 业务模块名称_handler.erl
+    * 业务模块名称_logic.erl
+    * html模板文件 业务模块名称_方法名称_dtl.html
+
+### apps/imapi
+所有与前端APP对接的API特有的业务逻辑都放到这里；
+
+* 文件命名规则为
+    * 业务模块名称_handler.erl
+    * 业务模块名称_logic.erl
+
+### apps/imcron
+所有定时任务处理特有业务逻辑，都放到这里；
+
+* 文件命名规则为
+    * 业务模块名称_logic.erl
+    * 业务模块名称_cron.erl
+    * 业务模块名称_consumer.erl
+
+### apps/imds
+被 apps/imadm apps/imapi 和 apps/imcron 共用的业务逻辑代码放到里；
+
+* 文件命名规则为
+    * 业务模块名称_ds.erl
+
+### apps/limlib
+存放一些全局通用的基础功能封装的方法，例如：
+
+* account_server.erl 生成用户注册账号的模块；
+* imboy_cache.erl 封装了基于 depcache 库的缓存功能模块；
+* imboy_cipher.erl 封装了 AES RSA 算法的加解密功能；
+* imboy_db.erl 封装了基于 epgsql 和 pooler 库的操作PostgreSql数据库的功能；
+* ...
+
+### apps/imrepo
+直接使用SQL语句操作数据库相关的模块
+
+存放一些操作数据库方法，被 apps/imadm apps/imapi 和 apps/imcron 共用；
+
+* 文件命名规则为
+    * 业务模块名称_repo.erl
+    * 原则上是一个数据库表对应一个 xxx_repo.erl
+
 ## 避免 master/slave 等术语
 
 Old | New | 说明
