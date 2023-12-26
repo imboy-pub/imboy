@@ -32,9 +32,10 @@ init(Req0, State0) ->
 
 
 online(Req0, _State) ->
+    {ok, Vsn} =  application:get_key(imboy, vsn),
     CountUser = imboy_syn:count_user(),
     Count = imboy_syn:count(),
-    Msg = io_lib:format("在线总人数: ~p, 在线设备数~p", [CountUser, Count]),
+    Msg = io_lib:format("vsn ~s, 在线总人数: ~p, 在线设备数~p", [Vsn, CountUser, Count]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
     % ?LOG(Res),
     List2 =

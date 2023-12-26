@@ -1,0 +1,60 @@
+{application, imboy,
+    [
+        {description,"基于cowboy的一款即时聊天软件"}
+        , {vsn,"0.2.4"}
+        , {modules, ['imboy_app','imboy_router','imboy_sup']}
+        , {registered, [imboy_sup]}
+        , {applications,[
+            kernel
+            , stdlib
+            , kernel
+            , stdlib
+            , mnesia
+            , sasl
+            , ssl
+            , inets
+            , imlib
+            , imds
+            , imrepo
+            , imapi
+            , imadm
+            , imcron
+            , ranch
+            , cowlib
+            , cowboy
+            , jwerl
+            , hashids
+            , gen_smtp
+            , throttle
+            , qdate
+            , qdate_localtime
+            , goldrush
+            , datum
+            , jsone
+            , jsx
+            , epgsql
+            , pooler
+            , depcache
+            , syn
+            , fuse
+            , ecron
+            , aho_corasick
+            , uid
+            , telemetry
+            , lager
+            , observer_cli
+            , recon
+            , redbug
+            , sync
+            , simple_captcha
+            , erlydtl
+        ]}
+        , {optional_applications, []}
+        , {mod
+            , {
+                imboy_app
+                , []
+            }
+        }
+        , {env, []}
+]}.

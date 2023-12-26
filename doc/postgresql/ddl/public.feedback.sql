@@ -51,4 +51,4 @@ COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_i
 COMMENT ON COLUMN public.feedback.reply_count IS '回复数量，回复的回复也计算在内';
 COMMENT ON COLUMN public.feedback.status IS '状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）';
 COMMENT ON COLUMN public.feedback.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.feedback.updated_at IS '更新记录Unix时间戳毫秒单位';
