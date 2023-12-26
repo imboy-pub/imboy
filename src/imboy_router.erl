@@ -12,6 +12,7 @@ get_routes() ->
        {"/help", index_handler, #{action => help}},
        {"/init", index_handler, #{action => init}},
        {"/refreshtoken", passport_handler, #{action => refreshtoken}},
+       {"/app/version", app_version_handler, #{action => version}},
 
        {"/passport/login", passport_handler, #{action => do_login}},
        {"/passport/signup", passport_handler, #{action => do_signup}},

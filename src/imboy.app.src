@@ -1,7 +1,7 @@
 {application, imboy,
     [
         {description,"基于cowboy的一款即时聊天软件"}
-        , {vsn,"0.2.4"}
+        , {vsn,"0.2.5"}
         , {modules, ['imboy_app','imboy_router','imboy_sup']}
         , {registered, [imboy_sup]}
         , {applications,[
