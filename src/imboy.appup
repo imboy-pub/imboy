@@ -1,5 +1,4 @@
-
 {"0.2.5",
-    [{"0.2\\.[0-9]+", [{restart_application, imboy_app}],
-    [{"0.2\\.[0-9]+", [{restart_application, imboy_app}]}]
+    [{"0.2.4", [{restart_application, imboy}]}],
+    [{"0.2.4", [{restart_application, imboy}]}]
 }.

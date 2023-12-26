@@ -241,16 +241,25 @@ $ mv path/to/example-2.tar.gz releases/2/
 ```
 
 Finally, upgrade the release:
+
+https://erlang.mk/guide/relx.html
+
 ```
-$ bin/example_release upgrade "2/example_release"
+IMBOYENV=local make relup
 
-scp ./_rel/imboy/imboy-0.1.1.tar.gz root@120.24.63.33:/usr/local/imboy
+mkdir -p /usr/local/imboy/releases/0.2.5/ && mv _rel/imboy/imboy-0.2.5.tar.gz /usr/local/imboy/releases/0.2.5/
 
-mv imboy-0.1.1.tar.gz releases/0.1.1/
-bin/imboy upgrade "0.1.1/imboy"
+cd /usr/local/imboy
+./bin/imboy upgrade 0.2.5
+    Release 0.2.5 not found, attempting to unpack releases/0.2.5/imboy-0.2.5.tar.gz
+    Unpacked successfully: "0.2.5"
+    Installed Release: 0.2.5
+    Made release permanent: "0.2.5"
 
-bin/imboy downgrade "0.1.0/imboy"
-
+./bin/imboy versions
+    Installed versions:
+    * 0.2.5 permanent
+    * 0.2.4 old
 ```
 Your release was upgraded!
 
