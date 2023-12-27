@@ -2,6 +2,7 @@
 
 -include_lib("imlib/include/log.hrl").
 
+-export([start_at/0]).
 -export([uid/0, uid/1]).
 -export([generate_session_id/0]).
 -export([is_mobile/1]).
@@ -13,6 +14,30 @@
          implode/2]).
 -export([check_json/1]).
 -export([is_proplist/1]).
+
+
+
+start_at() ->
+    Fun = fun() ->
+        FilePath = "./imboy_start_at.txt",
+        case filelib:is_file(FilePath) of
+            true ->
+                case file:read_file(FilePath) of
+                    {ok, Binary} ->
+                        Binary;
+                    {error, _} ->
+                        Now = imboy_dt:now(),
+                        file:write_file(FilePath, Now),
+                        Now
+                end;
+            false ->
+                Now = imboy_dt:now(),
+                file:write_file(FilePath, Now),
+                Now
+        end
+    end,
+    imboy_cache:memo(Fun, <<"imboy_start_at">>, 864000000).
+
 
 % generate a session id string
 % imboy_func:generate_session_id().
