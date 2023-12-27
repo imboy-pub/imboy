@@ -247,22 +247,22 @@ https://erlang.mk/guide/relx.html
 ```
 IMBOYENV=local make relup
 
-mkdir -p /usr/local/imboy/releases/0.2.5/ && mv _rel/imboy/imboy-0.2.5.tar.gz /usr/local/imboy/releases/0.2.5/
+mkdir -p /usr/local/imboy/releases/0.2.6/ && mv _rel/imboy/imboy-0.2.6.tar.gz /usr/local/imboy/releases/0.2.6/
 
 cd /usr/local/imboy
-./bin/imboy upgrade 0.2.5
-    Release 0.2.5 not found, attempting to unpack releases/0.2.5/imboy-0.2.5.tar.gz
-    Unpacked successfully: "0.2.5"
-    Installed Release: 0.2.5
-    Made release permanent: "0.2.5"
+./bin/imboy upgrade 0.2.6
+    Release 0.2.6 not found, attempting to unpack releases/0.2.6/imboy-0.2.6.tar.gz
+    Unpacked successfully: "0.2.6"
+    Installed Release: 0.2.6
+    Made release permanent: "0.2.6"
 
-"msg": "vsn 0.2.5, StartAt: 2023-12-27 16:13:23.617664+08:00, 在线总人数: 1, 在线设备数1",
+"msg": "vsn 0.2.5, StartAt: 2023-12-27 16:42:05.874957+08:00, 在线总人数: 0, 在线设备数0",
 
 
 ./bin/imboy versions
     Installed versions:
-    * 0.2.5 permanent
-    * 0.2.4 old
+    * 0.2.6 permanent
+    * 0.2.5 old
 ```
 Your release was upgraded!
 
