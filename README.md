@@ -256,8 +256,8 @@ cd /usr/local/imboy
     Installed Release: 0.2.6
     Made release permanent: "0.2.6"
 
-"msg": "vsn 0.2.5, StartAt: 2023-12-27 16:42:05.874957+08:00, 在线总人数: 0, 在线设备数0",
-
+ ./bin/imboy pid
+2147601
 
 ./bin/imboy versions
     Installed versions:
