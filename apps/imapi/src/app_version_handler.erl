@@ -36,20 +36,13 @@ init(Req0, State0) ->
 %% ===================================================================
 
 version(<<"GET">>, Req0, _State) ->
-    Cos = cowboy_req:parse_header(<<"cos">>, Req0),
+    Cos = cowboy_req:header(<<"cos">>, Req0),
+    % imboy_log:info(Cos),
     #{vsn := Vsn} = cowboy_req:match_qs([{vsn, [], <<"">>}], Req0),
-
-    imboy_response:success(Req0, #{
-        % device_type: iso android macos web
-        <<"type">> => Cos,
-        <<"package_name">> => "",
-        <<"app_name">> => "",
-        <<"vsn">> => Vsn,
-        <<"download_url">> => "",
-        <<"description">> => "",
-        <<"app_db_index">> => "",
-        <<"force_update">> => ""
-        }, "success.").
+    Column = <<"type, package_name, app_name, vsn, download_url, description, app_db_vsn, force_update">>,
+    Where = <<"vsn='", Vsn/binary,"' AND type='", Cos/binary, "'">>,
+    Res = app_version_repo:find(Where, Column),
+    imboy_response:success(Req0, Res).
 
 
 %% ===================================================================

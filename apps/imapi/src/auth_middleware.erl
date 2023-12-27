@@ -87,8 +87,8 @@ verify_sign(Req, Env) ->
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
-    [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
-    VsnXY = iolist_to_binary([X, ".", Y]),
+    % [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
+    VsnXY = samovar:major_minor(Vsn),
     PlainText = iolist_to_binary([Did, "|", VsnXY]),
     case do_verify_sign(Sign, PlainText, VsnXY, Method) of
         true ->

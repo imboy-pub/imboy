@@ -256,6 +256,9 @@ cd /usr/local/imboy
     Installed Release: 0.2.5
     Made release permanent: "0.2.5"
 
+"msg": "vsn 0.2.5, StartAt: 2023-12-27 16:13:23.617664+08:00, 在线总人数: 1, 在线设备数1",
+
+
 ./bin/imboy versions
     Installed versions:
     * 0.2.5 permanent
@@ -269,6 +272,9 @@ make erlang-mk
 ```
 
 ## imboy.appup
+
+Appup Cookbook https://cloud.tencent.com/developer/section/1122611
+
 ```
 {"0.2.0",
     所有版本"0.1.*"升级到版本"0.2.0",重启应用

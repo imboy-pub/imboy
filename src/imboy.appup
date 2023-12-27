@@ -1,3 +1,10 @@
+
+{"0.2.6",
+    [{"0.2.5", [{restart_application, imboy}]}],
+    [{"0.2.5", [{restart_application, imboy}]}]
+}.
+
+
 {"0.2.5",
     [{"0.2.4", [{restart_application, imboy}]}],
     [{"0.2.4", [{restart_application, imboy}]}]

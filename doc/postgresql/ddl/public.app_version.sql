@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public."app_version"
     download_url varchar(320),
     description text not null,
 
-    app_db_index int NOT NULL DEFAULT 0,
+    app_db_vsn int NOT NULL DEFAULT 0,
     sort int NOT NULL DEFAULT 0,
     force_update int NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
@@ -35,7 +35,7 @@ COMMENT ON COLUMN public.app_version.type IS 'APP类型 web ios android macos wi
 COMMENT ON COLUMN public.app_version.package_name IS '包名 | Bundle ID';
 COMMENT ON COLUMN public.app_version.app_name IS 'APP名称';
 COMMENT ON COLUMN public.app_version.vsn IS '版本号： x.y.z格式';
-COMMENT ON COLUMN public.app_version.app_db_index IS 'APP的Sqlite3数据的版本序号 为正整数';
+COMMENT ON COLUMN public.app_version.app_db_vsn IS 'APP的Sqlite3数据的版本序号 为正整数';
 
 COMMENT ON COLUMN public.app_version.sign_key IS 'APP签名密码';
 COMMENT ON COLUMN public.app_version.download_url IS '下载地址';

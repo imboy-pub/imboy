@@ -1,5 +1,6 @@
 -module(imboy_db).
 
+-export([find/1]).
 -export([list/1, list/2]).
 -export([pluck/2]).
 -export([pluck/3]).
@@ -88,6 +89,15 @@ pluck(Field, Default) ->
             Default
     end.
 
+find(Sql) ->
+    case imboy_db:query(Sql) of
+        {ok, _, []} ->
+            #{};
+        {ok, Col, [Val]} ->
+            lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val));
+        _ ->
+            []
+    end.
 
 list(Sql) ->
     case imboy_db:query(Sql) of

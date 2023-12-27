@@ -115,6 +115,7 @@ option() ->
     [
         <<"/uqrcode">>
         , <<"/feedback/add">> % 没有登录也可以提交反馈建议
+        , <<"/app/version">>
     ].
 
 

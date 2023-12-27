@@ -1,3 +1,12 @@
+# 0.2.6
+* 引入 samovar library ，调整 auth_middleware 相关代码 VsnXY = samovar:major_minor(Vsn)
+* 新增 app_version_repo.erl ,实现 app/version API
+* 现在 ./doc/app_sqlite3/db_vsn_5.sql 文件等
+
+# 0.2.5
+* 添加 imboy.appup 文件
+* debug relup
+
 # 0.2.4
 * 调整代码布局；
 
