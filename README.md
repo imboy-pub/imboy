@@ -247,14 +247,7 @@ https://erlang.mk/guide/relx.html
 ```
 IMBOYENV=local make relup
 
-mkdir -p /usr/local/imboy/releases/0.2.6/ && mv _rel/imboy/imboy-0.2.6.tar.gz /usr/local/imboy/releases/0.2.6/
-
-cd /usr/local/imboy
-./bin/imboy upgrade 0.2.6
-    Release 0.2.6 not found, attempting to unpack releases/0.2.6/imboy-0.2.6.tar.gz
-    Unpacked successfully: "0.2.6"
-    Installed Release: 0.2.6
-    Made release permanent: "0.2.6"
+vsn=0.2.7 ./appup.sh
 
  ./bin/imboy pid
 2147601
