@@ -1,4 +1,19 @@
 
+{"0.2.8",
+    [{<<"0\\.2\\.[0-9]+.*">>, [
+        {load_module, adm_feedback_handler}
+        , {load_module, feedback_handler}
+        , {load_module, feedback_logic}
+        , {load_module, feedback_repo}
+    ]}],
+    [{<<"0\\.2\\.[0-9]+.*">>, [
+        {load_module, adm_feedback_handler}
+        , {load_module, feedback_handler}
+        , {load_module, feedback_logic}
+        , {load_module, feedback_repo}
+    ]}]
+}.
+
 {"0.2.7",
     [{<<"0\\.2\\.[0-9]+.*">>, [
         {load_module, adm_feedback_handler}
