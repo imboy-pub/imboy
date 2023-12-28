@@ -46,8 +46,8 @@ page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
 %%% 新增用户反馈
 -spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
-% feedback_logic:add(Uid, Did, COS, COSV, AppVsn, Title, Body, Attach)
-add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach) ->
+% feedback_logic:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
+add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     FeedbackMd5 = imboy_hasher:md5(imboy_func:implode("", [
         Uid, Did, AppVsn, Type, Body
         ])),
@@ -59,7 +59,7 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach) ->
     if Count > 0 ->
             ok;
         true ->
-            feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, Title, Body, Attach, FeedbackMd5)
+            feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5)
     end.
 
 -spec remove(integer(), binary()) -> ok.

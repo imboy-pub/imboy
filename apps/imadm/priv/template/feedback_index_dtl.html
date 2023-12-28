@@ -89,6 +89,7 @@ layui.use(function(){
       {field:'rating', title: '反馈评级', width: 168, templet: function(d) {
         return '<div class="feedback-rating" lay-options="{value: '+d.rating+'}"></div> ' + d.rating
       }},
+      {field:'contact_detail', title: '联系方式', width: 300},
       {field:'body', title: '反馈内容', width: 300},
       {field:'attach', title: '反馈附件', width: 120, templet: function(d) {
           return '<a href="javascript:;" class="feedback-attach" data-attach="'+ d.attach +'", data-body="' + d.body + '">查看附件</a>';

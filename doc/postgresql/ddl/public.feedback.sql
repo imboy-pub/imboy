@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public."feedback"
     app_vsn varchar(40),
     type varchar(40),
     rating varchar(40),
-    title varchar(200),
+    contact_detail varchar(200),
     body text not null,
     attach json,
 
@@ -44,7 +44,7 @@ COMMENT ON COLUMN public.feedback.client_operating_system_vsn IS '设备版本 {
 
 COMMENT ON COLUMN public.feedback.type IS '反馈类型 bugReport featureRequest';
 COMMENT ON COLUMN public.feedback.rating IS '反馈评级 bad neutral good';
-COMMENT ON COLUMN public.feedback.title IS '反馈内容标题';
+COMMENT ON COLUMN public.feedback.contact_detail IS '联系方式';
 COMMENT ON COLUMN public.feedback.attach IS '反馈内容附件';
 COMMENT ON COLUMN public.feedback.body IS '反馈内容';
 COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + type + body)';

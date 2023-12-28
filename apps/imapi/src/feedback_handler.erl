@@ -80,7 +80,7 @@ add(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Type = proplists:get_value(<<"type">>, PostVals, ""),
     Rating = proplists:get_value(<<"rating">>, PostVals, ""),
-    Title = proplists:get_value(<<"title">>, PostVals, ""),
+    ContactDetail = proplists:get_value(<<"contact_detail">>, PostVals, ""),
     Description = proplists:get_value(<<"description">>, PostVals, ""),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
@@ -91,7 +91,7 @@ add(Req0, State) ->
         , AppVsn
         , Type
         , Rating
-        , Title
+        , ContactDetail
         , Description
         , Attach),
     imboy_response:success(Req0).

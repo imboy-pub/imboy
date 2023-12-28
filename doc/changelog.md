@@ -1,3 +1,6 @@
+# 0.2.7
+* 用户反馈添加联系方式字段；
+
 # 0.2.6
 * 引入 samovar library ，调整 auth_middleware 相关代码 VsnXY = samovar:major_minor(Vsn)
 * 新增 app_version_repo.erl ,实现 app/version API

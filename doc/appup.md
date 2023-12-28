@@ -1,5 +1,7 @@
 # Erlang相关Appups/热更介绍及坑点
 
+https://www.erlang.org/doc/design_principles/appup_cookbook
+
 ## load_module
 简单代码替换，针对某功能模块部分修改，仅需载入新版本即可
 

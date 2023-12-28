@@ -1,5 +1,6 @@
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
+-- 联系人
 CREATE TABLE IF NOT EXISTS contact (
         auto_id INTEGER,
         user_id varchar(40) NOT NULL,
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS contact (
             peer_id
         )
         );
+-- 会话
 CREATE TABLE IF NOT EXISTS conversation (
         `id` INTEGER,
         `user_id` varchar(40) NOT NULL,
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS conversation (
             peer_id
         )
         );
+-- 消息
 CREATE TABLE IF NOT EXISTS message (
         auto_id INTEGER,
         id varchar(40) NOT NULL,
@@ -63,6 +66,7 @@ CREATE TABLE IF NOT EXISTS message (
             id
         )
         );
+-- 新朋友
 CREATE TABLE IF NOT EXISTS new_friend (
         auto_id INTEGER,
         uid varchar(40) NOT NULL,
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS new_friend (
             to_id
         )
         );
+-- 用户禁用名单
 CREATE TABLE IF NOT EXISTS user_denylist (
         auto_id INTEGER,
         user_id varchar(40) NOT NULL,
@@ -100,6 +105,7 @@ CREATE TABLE IF NOT EXISTS user_denylist (
             denied_user_id
         )
         );
+-- 用户设备
 CREATE TABLE IF NOT EXISTS user_device (
         auto_id INTEGER,
         user_id varchar(40) NOT NULL,
@@ -114,6 +120,7 @@ CREATE TABLE IF NOT EXISTS user_device (
             device_id
         )
         );
+-- 用户收藏
 CREATE TABLE IF NOT EXISTS user_collect (
         auto_id INTEGER,
         user_id varchar(40) NOT NULL,
@@ -131,6 +138,7 @@ CREATE TABLE IF NOT EXISTS user_collect (
             kind_id
         )
         );
+-- 用户标签
 CREATE TABLE IF NOT EXISTS user_tag (
         auto_id INTEGER,
         user_id varchar(40) NOT NULL,
@@ -148,6 +156,7 @@ CREATE TABLE IF NOT EXISTS user_tag (
             name
         )
         );
+
 CREATE INDEX IF NOT EXISTS i_UserId_IsFriend_UpdateTime
           ON contact
           (user_id, is_friend, update_at);
