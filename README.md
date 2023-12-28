@@ -244,7 +244,7 @@ Finally, upgrade the release:
 
 https://erlang.mk/guide/relx.html
 
-/usr/local/imboy/bin/imboy downgrade 0.2.7
+
 ```
 IMBOYENV=local make relup
 
@@ -259,6 +259,14 @@ vsn=0.2.7 ./appup.sh
     * 0.2.5 old
 ```
 Your release was upgraded!
+
+重复升级到
+```
+/usr/local/imboy/bin/imboy downgrade 0.2.7
+IMBOYENV=local make relup
+/usr/local/imboy/bin/imboy reinstall 0.2.8
+vsn=0.2.8 ./appup.sh
+```
 
 ## [Updating Erlang.mk](https://erlang.mk/guide/updating.html#_initial_bootstrap)
 ```
