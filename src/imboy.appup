@@ -3,10 +3,12 @@
     [{<<"0\\.2\\.[0-9]+.*">>, [
         {restart_application, imboy}
         , {restart_application, imapi}
+        , {restart_application, imrepo}
     ]}],
     [{<<"0\\.2\\.[0-9]+.*">>, [
         {restart_application, imboy}
         , {restart_application, imapi}
+        , {restart_application, imrepo}
     ]}]
 }.
 
