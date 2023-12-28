@@ -78,10 +78,10 @@ add(Req0, State) ->
     Did = cowboy_req:header(<<"did">>, Req0),
 
     PostVals = imboy_req:post_params(Req0),
-    Type = proplists:get_value(<<"type">>, PostVals, ""),
-    Rating = proplists:get_value(<<"rating">>, PostVals, ""),
-    ContactDetail = proplists:get_value(<<"contact_detail">>, PostVals, ""),
-    Description = proplists:get_value(<<"description">>, PostVals, ""),
+    Type = proplists:get_value(<<"type">>, PostVals, <<>>),
+    Rating = proplists:get_value(<<"rating">>, PostVals, <<"0">>),
+    ContactDetail = proplists:get_value(<<"contact_detail">>, PostVals, <<>>),
+    Description = proplists:get_value(<<"description">>, PostVals, <<>>),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
     feedback_logic:add(CurrentUid
@@ -90,7 +90,7 @@ add(Req0, State) ->
         , COSV
         , AppVsn
         , Type
-        , Rating
+        , imboy_func:to_binary(Rating)
         , ContactDetail
         , Description
         , Attach),
