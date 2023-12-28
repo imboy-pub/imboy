@@ -1,0 +1,9 @@
+
+{"0.1.5",
+    [{<<"0\\.1\\.[0-9]+.*">>, [
+        {restart_application, imapi}
+    ]}],
+    [{<<"0\\.1\\.[0-9]+.*">>, [
+        {restart_application, imapi}
+    ]}]
+}.

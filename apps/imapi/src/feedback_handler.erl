@@ -92,7 +92,7 @@ add(Req0, State) ->
         , imboy_func:to_binary(Type)
         , imboy_func:to_binary(Rating)
         , imboy_func:to_binary(ContactDetail)
-        , Description
+        , imboy_func:to_binary(Description)
         , Attach),
     imboy_response:success(Req0).
 

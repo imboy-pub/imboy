@@ -1,16 +1,12 @@
 
 {"0.2.8",
     [{<<"0\\.2\\.[0-9]+.*">>, [
-        {load_module, adm_feedback_handler}
-        , {load_module, feedback_handler}
-        , {load_module, feedback_logic}
-        , {load_module, feedback_repo}
+        {restart_application, imboy}
+        , {restart_application, imapi}
     ]}],
     [{<<"0\\.2\\.[0-9]+.*">>, [
-        {load_module, adm_feedback_handler}
-        , {load_module, feedback_handler}
-        , {load_module, feedback_logic}
-        , {load_module, feedback_repo}
+        {restart_application, imboy}
+        , {restart_application, imapi}
     ]}]
 }.
 
