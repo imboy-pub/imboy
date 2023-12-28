@@ -1,5 +1,7 @@
 # 0.2.8
 * 用户反馈添加联系方式字段；
+* 修复 ./apps/imadm/priv/template/feedback_index_dtl.html 表个数据错了样式问题；
+* 升级 layui 到 2.9.2；
 
 # 0.2.7
 * 新增 appup.sh 脚本 vsn=0.2.7 ./appup.sh

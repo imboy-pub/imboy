@@ -32,7 +32,7 @@
           <button type="reset" class="layui-btn layui-btn-primary">Clear</button>
         </div>
       </form>
-      <table class="layui-hide" id="feedback-search"></table>
+      <table class="layui-hide" id="user-search"></table>
     </div>
 
   {% include 'layout/layout_footer.html' %}
@@ -60,7 +60,7 @@ layui.use(function(){
 
   // 创建表格实例
   table.render({
-    elem: '#feedback-search',
+    elem: '#user-search',
     url: '/adm/feedback/index?ajax=1', // 此处为静态模拟数据，实际使用时需换成真实接口
     cols: [[
       {field:'feedback_id', title: 'ID', width:80, sort: true, fixed: true},
@@ -110,7 +110,7 @@ layui.use(function(){
   form.on('submit(demo-table-search)', function(data){
     var field = data.field; // 获得表单字段
     // 执行搜索重载
-    table.reload('feedback-search', {
+    table.reload('user-search', {
       page: {
         curr: 1 // 重新从第 1 页开始
       },

@@ -47,14 +47,12 @@
 </script>
 
 <style type="text/css">
-.layui-table-cell {
-  height:auto; line-height: auto;
-    padding: 6px 6px;
-    position: relative;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    box-sizing: border-box;
+.feedback-rating-box {
+  line-height: 10px;
+}
+.feedback-rating-box .rating {
+  margin-top: 11px;
+  float: right;
 }
 </style>
 <script type="text/javascript">
@@ -86,8 +84,8 @@ layui.use(function(){
           return '<span>其他</span>';
         }
       }},
-      {field:'rating', title: '反馈评级', width: 168, templet: function(d) {
-        return '<div class="feedback-rating" lay-options="{value: '+d.rating+'}"></div> ' + d.rating
+      {field:'rating', title: '反馈评级', width: 180, templet: function(d) {
+        return '<div class="feedback-rating-box"><div class="feedback-rating" lay-options="{value: '+d.rating+'}"></div> <div class="rating">' + d.rating + '</div></div>'
       }},
       {field:'contact_detail', title: '联系方式', width: 300},
       {field:'body', title: '反馈内容', width: 300},
