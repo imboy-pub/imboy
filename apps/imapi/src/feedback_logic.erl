@@ -24,7 +24,7 @@
 %%% 用户反馈分页列表
 -spec page(integer(), integer(), binary(), binary()) -> list().
 page(Page, Size, Where, OrderBy) when Page > 0 ->
-    Column = <<"id as feedback_id, device_id, type, rating, title, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
+    Column = <<"id as feedback_id, device_id, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
     page(Page, Size, Where, OrderBy, Column).
 -spec page(integer(), integer(), binary(), binary(), binary()) -> list().
 page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
