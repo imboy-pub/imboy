@@ -264,7 +264,7 @@ Your release was upgraded!
 ```
 /usr/local/imboy/bin/imboy downgrade 0.2.7
 IMBOYENV=local make relup
-/usr/local/imboy/bin/imboy reinstall 0.2.8
+/usr/local/imboy/bin/imboy uninstall 0.2.8
 vsn=0.2.8 ./appup.sh
 ```
 
