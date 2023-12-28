@@ -89,9 +89,9 @@ add(Req0, State) ->
         , COS
         , COSV
         , AppVsn
-        , Type
+        , imboy_func:to_binary(Type)
         , imboy_func:to_binary(Rating)
-        , ContactDetail
+        , imboy_func:to_binary(ContactDetail)
         , Description
         , Attach),
     imboy_response:success(Req0).
