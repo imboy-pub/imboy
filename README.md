@@ -244,7 +244,7 @@ Finally, upgrade the release:
 
 https://erlang.mk/guide/relx.html
 
-/usr/local/imboy/bin/imboy downgrade 0.2.6
+/usr/local/imboy/bin/imboy downgrade 0.2.7
 ```
 IMBOYENV=local make relup
 

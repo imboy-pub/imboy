@@ -1,6 +1,6 @@
 PROJECT = imadm
 PROJECT_DESCRIPTION = IMBoy 简单的管理后台用用
-PROJECT_VERSION = 0.1.0
+PROJECT_VERSION = 0.1.1
 
 # Whitespace to be used when creating files from templates.
 SP = 4
