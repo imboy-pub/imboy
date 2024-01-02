@@ -99,6 +99,7 @@ find(Sql) ->
             []
     end.
 
+
 list(Sql) ->
     case imboy_db:query(Sql) of
         {ok, _, Val} ->
