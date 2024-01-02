@@ -94,9 +94,9 @@ find(Sql) ->
         {ok, _, []} ->
             #{};
         {ok, Col, [Val]} ->
-            lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val));
+            maps:from_list(lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val)));
         _ ->
-            []
+            #{}
     end.
 
 

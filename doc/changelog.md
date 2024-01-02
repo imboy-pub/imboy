@@ -1,5 +1,6 @@
 # 0.2.8
 * 用户反馈添加联系方式字段；
+* app/version 接口响应 updatable 字段等；
 * 修复 ./apps/imadm/priv/template/feedback_index_dtl.html 表个数据错了样式问题；
 * 升级 layui 到 2.9.2；
 

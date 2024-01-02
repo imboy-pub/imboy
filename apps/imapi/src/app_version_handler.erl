@@ -39,10 +39,28 @@ version(<<"GET">>, Req0, _State) ->
     Cos = cowboy_req:header(<<"cos">>, Req0),
     % imboy_log:info(Cos),
     #{vsn := Vsn} = cowboy_req:match_qs([{vsn, [], <<"">>}], Req0),
-    Column = <<"type, package_name, app_name, vsn, download_url, description, app_db_vsn, force_update">>,
-    Where = <<"vsn='", Vsn/binary,"' AND type='", Cos/binary, "'">>,
+    #{region_code := RegionCode} = cowboy_req:match_qs([{region_code, [], <<>>}], Req0),
+    Column = <<"region_code,type, package_name, app_name, vsn, download_url, description, app_db_vsn, force_update">>,
+    Where = case RegionCode of
+        <<>> ->
+            <<"status=1 AND type='", Cos/binary, "'">>;
+        _ ->
+             <<"status=1 AND region_code='", RegionCode/binary, "' AND type='", Cos/binary, "'">>
+    end,
+
     Res = app_version_repo:find(Where, Column),
-    imboy_response:success(Req0, Res).
+    % ?LOG([Res]),
+    LastVsn = maps:get(<<"vsn">>, Res, <<>>),
+    % LastVsn = Vsn,
+    U1 = case samovar:check(binary_to_list(Vsn), binary_to_list(<<"<", LastVsn/binary>>)) of
+        {error, invalid_range} ->
+            false;
+        U0 ->
+            U0
+    end,
+    % ?LOG([U1, LastVsn, Res]),
+    % imboy_response:success(Req0, [{<<"updatable">>, U1} | Res]).
+    imboy_response:success(Req0, Res#{<<"updatable">> => U1}).
 
 
 %% ===================================================================

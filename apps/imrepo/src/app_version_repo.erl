@@ -25,11 +25,12 @@ tablename() ->
 
 find(Where, Column) ->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " order by vsn desc limit 1">>,
     % ?LOG(['Sql', Sql]),
     imboy_db:find(Sql).
 
-% app_version_repo:save(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.26", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:millisecond(), <<"sign_key">> => <<"">>})
+% app_version_repo:save(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:millisecond(), <<"sign_key">> => <<"">>})
+% app_version_repo:save(#{<<"region_code">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:millisecond(), <<"sign_key">> => <<"">>})
 save(Data) ->
     Tb = tablename(),
     % Column = <<"(user_id, status, created_at)">>,
