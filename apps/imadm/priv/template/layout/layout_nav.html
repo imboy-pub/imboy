@@ -1,49 +1,53 @@
 <div class="layui-header">
-  <!-- 头部区域（可配合layui 已有的水平导航） -->
-  <ul class="layui-nav layui-layout-left">
-    <!-- 移动端显示 -->
-    <li class="layui-nav-item layui-show-xs-inline-block" lay-header-event="menuLeft">
-      <i class="layui-icon layui-icon-spread-left"></i>
-    </li>
-    <li class="layui-nav-item"><span id="layuiv" style="margin-left: 20px; font-size: 10px"></span></li>
+    <!-- 头部区域（可配合layui 已有的水平导航） -->
+    <ul class="layui-nav layui-layout-left">
+        <!-- 移动端显示 -->
+        <li class="layui-nav-item layui-show-xs-inline-block" lay-header-event="menuLeft">
+            <i class="layui-icon layui-icon-spread-left"></i>
+        </li>
+        <li class="layui-nav-item">
+            <span id="layuiv" style="margin-left: 20px; font-size: 10px"></span></li>
 
-    <li class="layui-nav-item layui-hide-xs"><a href="">nav 1</a></li>
-    <li class="layui-nav-item layui-hide-xs"><a href="">nav 2</a></li>
-    <li class="layui-nav-item layui-hide-xs"><a href="">nav 3</a></li>
-    <li class="layui-nav-item">
-      <a href="javascript:;">nav groups</a>
-      <dl class="layui-nav-child">
-        <dd><a href="">menu 11</a></dd>
-        <dd><a href="">menu 22</a></dd>
-        <dd><a href="">menu 33</a></dd>
-      </dl>
-    </li>
+        <li class="layui-nav-item layui-hide-xs"><a href="">nav 1</a></li>
+        <li class="layui-nav-item layui-hide-xs"><a href="">nav 2</a></li>
+        <li class="layui-nav-item layui-hide-xs"><a href="">nav 3</a></li>
+        <li class="layui-nav-item">
+            <a href="javascript:;">nav groups</a>
+            <dl class="layui-nav-child">
+                <dd><a href="">menu 11</a></dd>
+                <dd><a href="">menu 22</a></dd>
+                <dd><a href="">menu 33</a></dd>
+            </dl>
+        </li>
 
-  </ul>
-  <ul class="layui-nav layui-layout-right">
-    <li class="layui-nav-item">
-      <i id="change-theme" class="layui-icon layui-icon-theme" style="font-size: 20px"></i>
-    </li>
-    <li class="layui-nav-item" lay-unselect>
-      <a href="https://github.com/Sight-wcg/layui-theme-dark" target="_blank" style="background-color: unset">
-        <i class="layui-icon layui-icon-github" style="font-size: 20px"></i>
-      </a>
-    </li>
-    <li class="layui-nav-item layui-hide layui-show-md-inline-block">
-      <a href="javascript:;">
-        <!-- <img src="//tva1.sinaimg.cn/crop.0.0.118.118.180/5db11ff4gw1e77d3nqrv8j203b03cweg.jpg" class="layui-nav-img"> -->
-        {{adm_nickname}}
-      </a>
-      <dl class="layui-nav-child">
-        <dd><a href="">Your Profile</a></dd>
-        <dd><a href="">Settings</a></dd>
-        <dd><a href="javascript:sign_out();">Sign out</a></dd>
-      </dl>
-    </li>
-    <li class="layui-nav-item" lay-header-event="menuRight" lay-unselect>
-      <a href="javascript:;" style="background-color: unset; padding-left: 0">
-        <i class="layui-icon layui-icon-more-vertical"></i>
-      </a>
-    </li>
-  </ul>
+    </ul>
+    <ul class="layui-nav layui-layout-right">
+
+        <li class="layui-nav-item" lay-unselect>
+            <a href="https://gitee.com/imboy-pub" target="_blank">
+                <i class="layui-icon layui-icon-gitee" style="font-size: 20px"></i>
+            </a>
+        </li>
+        <li class="layui-nav-item" lay-unselect>
+            <a href="https://github.com/imboy-pub" target="_blank" style="background-color: unset">
+                <i class="layui-icon layui-icon-github" style="font-size: 20px"></i>
+            </a>
+        </li>
+        <li class="layui-nav-item layui-hide layui-show-md-inline-block">
+            <a href="javascript:;">
+                <!-- <img src="//tva1.sinaimg.cn/crop.0.0.118.118.180/5db11ff4gw1e77d3nqrv8j203b03cweg.jpg" class="layui-nav-img"> -->
+                {{adm_nickname}}
+            </a>
+            <dl class="layui-nav-child">
+                <dd><a href="">Your Profile</a></dd>
+                <dd><a href="">Settings</a></dd>
+                <dd><a href="javascript:sign_out();">Sign out</a></dd>
+            </dl>
+        </li>
+        <li class="layui-nav-item" lay-header-event="menuRight" lay-unselect>
+            <a href="javascript:;" style="background-color: unset; padding-left: 0">
+                <i class="layui-icon layui-icon-more-vertical"></i>
+            </a>
+        </li>
+    </ul>
 </div>

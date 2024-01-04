@@ -1,11 +1,11 @@
--module (feedback_reply_repo).
+-module (app_ddl_repo).
 %%%
-% feedback_reply 相关操作都放到该模块，存储库模块
-% feedback_reply related operations are put in this module, repository module
+% app_ddl 相关操作都放到该模块，存储库模块
+% app_ddl related operations are put in this module, repository module
 %%%
 
 -export ([tablename/0]).
-
+-export ([add/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -19,8 +19,17 @@
 %% ===================================================================
 
 tablename() ->
-    imboy_db:public_tablename(<<"feedback_reply">>).
+    imboy_db:public_tablename(<<"app_ddl">>).
 
+% app_ddl_repo:save(#{<<"ddl">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:millisecond(), <<"sign_key">> => <<"">>})
+add(Data) ->
+    Tb = tablename(),
+    % Column = <<"(user_id, status, created_at)">>,
+    % Value = [],
+    % Column = [ binary_to_list(S) || S <- Data ],
+    Column = <<"(", (imboy_func:implode(",", maps:keys(Data)))/binary, ")">>,
+    Value = imboy_db:assemble_value(Data),
+    imboy_db:insert_into(Tb, Column, Value).
 
 %% ===================================================================
 %% Internal Function Definitions

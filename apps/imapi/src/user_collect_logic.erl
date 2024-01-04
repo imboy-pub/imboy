@@ -24,18 +24,19 @@
 %%% 用户的收藏分页列表
 -spec page(integer(), integer(), binary(), binary()) -> list().
 page(Page, Size, Where, OrderBy) when Page > 0 ->
+    Info = imboy_hasher:decoded_field(<<"info">>),
     Offset = (Page - 1) * Size,
-    Total = user_collect_repo:count_for_where(Where),
-    case user_collect_repo:page_for_where(Size, Offset, Where, OrderBy) of
-        {ok, _, []} ->
-            imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items0} ->
-            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1 ],
-            imboy_response:page_payload(Total, Page, Size, Items2);
-        _ ->
-            imboy_response:page_payload(Total, Page, Size, [])
-    end.
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+
+    Tb = user_collect_repo:tablename(),
+    Total = imboy_db:count_for_where(Tb, Where),
+    Items = imboy_db:page_for_where(Tb,
+        Size,
+        Offset,
+        Where,
+        OrderBy,
+        Column),
+    imboy_response:page_payload(Total, Page, Size, Items).
 
 
 -spec add(integer(), binary(), binary(), list(), binary(), binary()) -> {ok, binary()} | {error, binary()}.

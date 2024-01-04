@@ -5,8 +5,6 @@
 %%%
 
 -export([tablename/0]).
--export([count_for_where/1,
-         page_for_where/4]).
 -export([count_by_uid_kind_id/2]).
 -export([delete/2]).
 -export([update/3]).
@@ -35,28 +33,6 @@ count_by_uid_kind_id(Uid, KindId) ->
                    <<"user_id = ", Uid2/binary, " and status = 1 and kind_id = '", KindId/binary, "'">>,
                    <<"count(*) as count">>,
                    0).
-
-
-% user_collect_repo:count_for_where(107).
-count_for_where(Where) ->
-    Tb = tablename(),
-    % use index i_user_collect_UserId_Status_Hashid
-    imboy_db:pluck(<<Tb/binary>>, Where, <<"count(*) as count">>, 0).
-
-
-%%% 用户的收藏分页列表
-% user_collect_repo:page_for_where(1, 10, 0, <<"id desc">>).
--spec page_for_where(integer(), integer(), binary(), binary()) -> {ok, list(), list()} | {error, any()}.
-page_for_where(Limit, Offset, Where, OrderBy) ->
-    Info = imboy_hasher:decoded_field(<<"info">>),
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-    Where2 = <<" WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT $1 OFFSET $2">>,
-
-    Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
-    ?LOG(['Sql', Sql]),
-    imboy_db:query(Sql, [Limit, Offset]).
-
 
 % {ok, 1} | {ok, 1, {ReturningField}}
 -spec delete(integer(), binary()) -> {ok, integer()} | {ok, integer(), tuple()}.

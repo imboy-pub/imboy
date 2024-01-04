@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.2.8
+PROJECT_VERSION = 0.2.9
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -35,6 +35,7 @@ DEPS += sync
 DEPS += simple_captcha
 DEPS += erlydtl
 DEPS += samovar
+
 # DEPS += rebar3_appup_plugin
 # DEPS += vix
 # DEPS += nksip

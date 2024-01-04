@@ -19,10 +19,10 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    ?LOG(State0),
+    % ?LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    ?LOG([Action, State]),
+    % ?LOG([Action, State]),
     Req1 = case Action of
         page ->
             page(Req0, State);
@@ -50,7 +50,7 @@ page(Req0, State) ->
 
     Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
     Where2 = <<"status > 0 AND ", Where/binary>>,
-    Payload = feedback_logic:page(Page, Size, Where2, <<"id desc">>),
+    Payload = feedback_ds:page(Page, Size, Where2, <<"id desc">>),
     imboy_response:success(Req0, Payload).
 
 page_reply(Req0, _State) ->
@@ -62,7 +62,7 @@ page_reply(Req0, _State) ->
             % CurrentUid = maps:get(current_uid, State),
             {Page, Size} = imboy_req:page_size(Req0),
             Where = imboy_func:implode("", [<<"feedback_id=">>, FeedbackId]),
-            Payload = feedback_logic:page_reply(Page, Size, Where, <<"id desc">>),
+            Payload = feedback_ds:page_reply(Page, Size, Where, <<"id desc">>),
             imboy_response:success(Req0, Payload);
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg)
@@ -84,7 +84,7 @@ add(Req0, State) ->
     Description = proplists:get_value(<<"description">>, PostVals, <<>>),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
-    feedback_logic:add(CurrentUid
+    feedback_ds:add(CurrentUid
         , Did
         , COS
         , COSV
@@ -103,7 +103,7 @@ remove(Req0, State) ->
             imboy_response:error(Req0, Def);
         {ok, FeedbackId} ->
             CurrentUid = maps:get(current_uid, State),
-            Payload = feedback_logic:remove(CurrentUid, FeedbackId),
+            Payload = feedback_ds:remove(CurrentUid, FeedbackId),
             imboy_response:success(Req0, Payload);
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg)

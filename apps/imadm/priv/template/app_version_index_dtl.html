@@ -1,0 +1,531 @@
+{% include 'layout/layout_header.html' %}
+<body>
+    <div class="layui-layout layui-layout-admin">
+        <div style="margin:10px;">
+            <form class="layui-form layui-row layui-col-space16">
+                <div class="layui-col-md4">
+                    <div class="layui-input-wrap">
+                        <div class="layui-input-prefix">
+                            <i class="layui-icon layui-icon-username"></i>
+                        </div>
+                        <input type="text" name="A" value="" placeholder="Field A" class="layui-input" lay-affix="clear">
+                    </div>
+                </div>
+                <div class="layui-col-md4">
+                    <div class="layui-input-wrap">
+                        <input type="text" name="B" placeholder="Field B" lay-affix="clear" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-col-md4">
+                    <div class="layui-input-wrap">
+                        <div class="layui-input-prefix">
+                            <i class="layui-icon layui-icon-date"></i>
+                        </div>
+                        <input type="text" name="C" readonly placeholder="Field C" class="layui-input demo-table-search-date">
+                    </div>
+                </div>
+                <div class="layui-btn-container layui-col-xs12">
+                    <button class="layui-btn" lay-submit lay-filter="demo-table-search">Search</button>
+                    <button type="reset" class="layui-btn layui-btn-primary">Clear</button>
+                </div>
+            </form>
+            <table class="layui-hide" id="page-search" lay-filter="page-toolbar-filter"></table>
+        </div>
+    </div>
+</body>
+
+{% include 'layout/layout_footer.html' %}
+
+<!-- 工具栏模板 -->
+
+<script type="text/html" id="page-toolbar">
+  <div class="layui-btn-container">
+    <div class="layui-btn-group">
+        <button type="button" class="layui-btn layui-btn-sm" lay-event="add">
+            <i class="layui-icon layui-icon-add-1"></i>
+        </button>
+    </div>
+  </div>
+</script>
+
+<script type="text/html" id="operation-toolbar" lay-filter="page-toolbar-filter">
+    <div class="layui-btn-container">
+        <button class="layui-btn layui-btn-sm" lay-event="update">编辑</button>
+        <button class="layui-btn layui-btn-sm" lay-event="delete">删除</button>
+    </div>
+</script>
+
+<style type="text/css">
+.feedback-rating-box {
+    line-height: 10px;
+}
+.feedback-rating-box .rating {
+    margin-top: 11px;
+    float: right;
+}
+.layui-form-label {
+width: 120px;
+}
+</style>
+<script type="text/javascript">
+
+//JS
+layui.use(function(){
+    var element = layui.element;
+    var layer = layui.layer;
+    var util = layui.util;
+    var $ = layui.$;
+    var table = layui.table;
+    var laydate = layui.laydate;
+    var form = layui.form;
+
+    // 创建表格实例
+    var inst = table.render({
+        elem: '#page-search',
+        toolbar: '#page-toolbar',
+        url: '/adm/app_version/index?ajax=1', // 此处为静态模拟数据，实际使用时需换成真实接口
+        cols: [[
+            {field:'id', title: 'ID', width:80, sort: true, fixed: true},
+            {field:'region_code', title: '区域码', width: 100, templet: function(d) {
+                return '<a href="https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2" target="_blank"> '+d.region_code+' </a>';
+            }},
+            {field:'type', title: '类型', width: 100},
+            {field:'package_name', title: '包名 | Bundle ID', width: 160},
+            {field:'app_name', title: 'APP名称', width: 100},
+            {field:'vsn', title: '版本x.y.z', width: 100},
+            {field:'sign_key', title: 'APP签名密码', width: 160},
+            {field:'download_url', title: '下载地址', width: 100},
+            {field:'description', title: '升级说明', width: 200},
+            {field:'app_db_vsn', title: 'APP数据库版本', width: 140},
+            {field:'force_update', title: '强制更新', width: 100, templet: function(d) {
+                if(d.force_update == 1) {
+                    return '<span style="color: blue">是</span>';
+                } else if (d.force_update == 2 ) {
+                    return '<span style="color: gray">否</span>';
+                } else {
+                    return '<span style="color: pink">unkonw</span>';
+                }
+            }},
+            {field:'status', title: '状态', width: 85, templet: function(d) {
+                if(d.status == 1) {
+                    return '<span style="color: blue">已启用</span>';
+                } else if (d.status == 0 ) {
+                    return '<span style="color: gray">已禁用</span>';
+                } else if (d.status == -1 ) {
+                    return '<span style="color: red">已删除</span>';
+                } else {
+                    return '<span style="color: pink">unkonw</span>';
+                }
+            }},
+            {field:'updated_at', title: '编辑时间', width: 180, templet: function(d) {
+                if (d.updated_at > 0) {
+                    return layui.util.toDateString(d.updated_at, 'yyyy-MM-dd HH:mm:SSS');
+                } else {
+                    return '';
+                }
+            }},
+            {field:'created_at', title: '添加时间', width: 180, templet: function(d) {
+                if (d.created_at > 0) {
+                    return layui.util.toDateString(d.created_at, 'yyyy-MM-dd HH:mm:SSS');
+                } else {
+                    return '';
+                }
+            }},
+            {fixed: 'right', title:'操作', minWidth: 128, toolbar: '#operation-toolbar'}
+        ]],
+        height: 500,
+        page: true,
+        limit: 10,
+        limits:[10, 20, 80, 160, 300],
+        request: {
+            pageName: 'page',
+            limitName: 'size'
+        },
+        parseData: function(res){ // res 即为原始返回的数据
+            return {
+                "code": res.code, // 解析接口状态
+                "msg": res.msg, // 解析提示文本
+                "count": res.payload.total, // 解析数据长度
+                "data": res.payload.list // 解析数据列表
+            };
+        },
+        complete: function(xhr, ts) {
+            // 渲染五星评级
+            layui.rate.render({
+                elem: '.feedback-rating'
+                , readonly: true
+                , half: true // 开启半星
+            });
+        }
+    });
+
+    // inst.resize(); // 对当前表格重新适配尺寸
+
+    // 头部工具栏事件
+    table.on('toolbar(page-toolbar-filter)', function(obj){
+        var options = obj.config; // 获取当前表格属性配置项
+        var checkStatus = table.checkStatus(options.id); // 获取选中行相关数据
+        console.log(obj); // 查看对象所有成员
+
+        // 根据不同的事件名进行相应的操作
+        switch(obj.event){ // 对应模板元素中的 lay-event 属性值
+          case 'add':
+            title = '发布APP'
+            add_app_save(title, {
+                id: 0
+                , status : 'only0'
+                , region_code: 'cn'
+                , force_update: 'only2'
+                , type: 'android'
+                , package_name: ''
+                , app_name: ''
+                , vsn: ''
+                , app_db_vsn: '5'
+                , sign_key: ''
+                , download_url: ''
+                , description: ''
+                , sort: 100
+            });
+          break;
+        };
+    });
+
+    // 单元格工具事件「单击触发]
+    table.on('tool(page-toolbar-filter)', function(obj){
+        var options = obj.config; // 获取当前表格属性配置项
+        var checkStatus = table.checkStatus(options.id); // 获取选中行相关数据
+        // console.log(obj.data); // 查看对象所有成员
+
+        // 根据不同的事件名进行相应的操作
+        switch(obj.event){ // 对应模板元素中的 lay-event 属性值
+          case 'delete':
+            if (obj.data.status == 1) {
+                layer.msg('只能删除禁用的记录')
+                return;
+            }
+            // layer.msg('删除 TODO');
+            layer.confirm('确定要删除吗？（删除后不可恢复！）', {
+                btn: ['确定', '关闭'] //按钮
+            }, function() { // 第一个回调
+                console.log('ok');
+                 $.ajax({
+                        type: "DELETE",
+                        url: "/adm/app_version/delete",
+                        data: {id: obj.data.id},
+                        headers: {},
+                        success: function(res) {
+                            // console.log("res: ", res)
+                            if (res && res.code==0) {
+                                layer.msg('操作成功')
+                                setTimeout(function(){
+                                    location.reload()
+                                }, 1000)
+                            } else if(res && res.msg) {
+                                layer.msg(res.msg)
+                                $(":input[name='account']").focus()
+                            } else {
+                                layer.msg('未知错误')
+                                // setTimeout(function(){
+                                //     location.reload()
+                                // }, 3000)
+                            }
+                        },
+                        error: function(xhr) {
+                            console.log('xhr: ', xhr.responseJSON)
+                            if (xhr.responseJSON && xhr.responseJSON.msg) {
+                                layer.msg(xhr.responseJSON.msg)
+                            } else {
+                                layer.msg('未知错误')
+                            }
+                        }
+                    });
+                    return false; // 阻止默认 form 跳转
+                // layer.msg('第一个回调', {icon: 1});
+            }, function(){ // 第二个回调
+                console.log('close');
+            });
+          break;
+          case 'update':
+            title = '编辑APP数据库DDL语句'
+            add_app_save(title, obj.data);
+          break;
+        };
+    });
+
+    // 日期
+    laydate.render({
+        elem: '.demo-table-search-date'
+    });
+    // 搜索提交
+    form.on('submit(demo-table-search)', function(data){
+        var field = data.field; // 获得表单字段
+        // 执行搜索重载
+        table.reload('page-search', {
+            page: {
+                curr: 1 // 重新从第 1 页开始
+            },
+            where: field // 搜索的字段
+        });
+        layer.msg('搜索成功<br>此处为静态模拟数据，实际使用时换成真实接口即可');
+        return false; // 阻止默认 form 跳转
+    });
+
+    function add_app_save(title, data) {
+        var statusHtml = `
+            <input type="radio" name="status" value="1" title="启用">
+            <input type="radio" name="status" value="0" title="禁用">
+        `;
+        if (data.status == 1) {
+            statusHtml = `
+                <input type="radio" name="status" value="1" title="启用" checked>
+                <input type="radio" name="status" value="0" title="禁用">
+            `;
+        } else if (data.status == 'only0') {
+            statusHtml = `
+                <input type="radio" name="status" value="0" title="禁用" checked>
+            `;
+        } else if (data.status == 0) {
+            statusHtml = `
+                <input type="radio" name="status" value="1" title="启用">
+                <input type="radio" name="status" value="0" title="禁用" checked>
+            `;
+        }
+
+        var force_updateHtml = `
+            <input type="radio" name="force_update" value="1" title="是">
+            <input type="radio" name="force_update" value="2" title="否">
+        `;
+        if (data.force_update == 1) {
+            force_updateHtml = `
+                <input type="radio" name="force_update" value="1" title="是" checked>
+                <input type="radio" name="force_update" value="2" title="否">
+            `;
+        } else if (data.force_update == 'only2') {
+            force_updateHtml = `
+                <input type="radio" name="force_update" value="2" title="否" checked>
+            `;
+        } else if (data.force_update == 0) {
+            force_updateHtml = `
+                <input type="radio" name="force_update" value="1" title="是">
+                <input type="radio" name="force_update" value="2" title="否" checked>
+            `;
+        }
+        var typeHtml = '<select name="type"><option value="">请选择</option>';
+        var typeLi = [
+            'ios'
+            , 'android'
+        ];
+        typeLi.forEach(function(e, i) {
+            if (e== data.type) {
+                typeHtml += '<option value="'+e+'" selected>'+e+'</option>';
+            } else {
+                typeHtml += '<option value="'+e+'">'+e+'</option>';
+            }
+        })
+
+        typeHtml += '</select>';
+
+
+        // top.layer.open({
+        layer.open({
+            type: 1,
+            area: ['95%', '100%'],
+            resize: false,
+            shadeClose: true,
+            title: title,
+            content: `
+                <div class="layui-form" lay-filter="filter-test-layer" style="margin: 16px;">
+                    <input type="hidden" name="id" value="`+data.id+`"/>
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                区域码
+                            </label>
+                            <div class="layui-input-block">
+                                <input type="text"
+                                    placeholder="区域码"
+                                    name="region_code"
+                                    value="`+data.region_code+`"
+                                    class="layui-input">
+                            </div>
+                            <label class="layui-form-label">
+                                APP类型
+                            </label><div class="layui-input-block">`+ typeHtml +`</div>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                包名 | Bundle ID
+                            </label>
+                            <input type="text" lay-affix="text"
+                                placeholder="包名 | Bundle ID"
+                                name="package_name"
+                                value="`+data.package_name+`"
+                                class="layui-input">
+                            <label class="layui-form-label">
+                                APP名称
+                            </label>
+                            <input type="text" lay-affix="text"
+                                placeholder="APP名称"
+                                name="app_name"
+                                value="`+data.app_name+`"
+                                class="layui-input">
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                版本号： x.y.z格式
+                            </label>
+                            <input type="text" lay-affix="text"
+                                placeholder="版本号： x.y.z格式"
+                                name="vsn"
+                                value="`+data.vsn+`"
+                                class="layui-input">
+                            <label class="layui-form-label">
+                                数据库版本
+                            </label>
+                            <input type="number" lay-affix="number"
+                                placeholder="数据库版本"
+                                name="app_db_vsn"
+                                value="`+data.app_db_vsn+`"
+                                class="layui-input"> APP的Sqlite3数据的版本序号 为正整数
+                        </div>
+                    </div>
+                    <div class="layui-form-item">
+                            <label class="layui-form-label">
+                                APP签名密码
+                            </label>
+                            <div class="layui-input-block">
+                                <input type="text"
+                                    placeholder="APP签名密码"
+                                    name="sign_key"
+                                    value="`+data.sign_key+`"
+                                    class="layui-input">
+                            </div>
+                    </div>
+                    <div class="layui-form-item">
+                            <label class="layui-form-label">
+                                下载地址
+                            </label>
+                            <div class="layui-input-block">
+                                <input type="text"
+                                    placeholder="下载地址"
+                                    name="download_url"
+                                    value="`+data.download_url+`"
+                                    class="layui-input">
+                            </div>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                是否强制升级
+                            </label>
+                            <div class="layui-input-block">`+force_updateHtml+`</div>
+                        </div>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                状态
+                            </label>
+                            <div class="layui-input-block">`+statusHtml+`</div>
+                        </div>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-input-group">
+                            <label class="layui-form-label">
+                                版本说明
+                            </label>
+                            <textarea name="description" placeholder="" class="layui-textarea"
+                                rows="10" cols="80"
+                                lay-verify="required">`+data.description+`</textarea>
+                        </div>
+                    </div>
+                    <div class="layui-form-item">
+                        <button class="layui-btn layui-btn-fluid" lay-submit lay-filter="on-reply-btn">提交</button>
+                    </div>
+                </div>
+            `,
+            success: function(){
+                // 对弹层中的表单进行初始化渲染
+                form.render();
+                // 表单提交事件
+                form.on('submit(on-reply-btn)', function(data) {
+                    var post_data = data.field; // 获取表单字段值
+                    // 类型 1 升、降级  3 全量安装
+                    if (post_data['type'] == 1) {
+                        if (post_data['new_vsn'] <= post_data['old_vsn']) {
+                            layer.msg('新版本必须大于就版本', {
+                                icon: 3,
+                                time: 1000
+                            })
+                            return;
+                        }
+                        if (post_data['ddl'] == '' || post_data['down_ddl'] == '') {
+                            layer.msg('升、降级DDL语句必须', {
+                                icon: 3,
+                                time: 1000
+                            })
+                            return;
+                        }
+                    } else if (post_data['type'] == 3) {
+                        if (post_data['ddl'] == '') {
+                            layer.msg('DDL语句必须', {
+                                icon: 3,
+                                time: 1000
+                            })
+                            return;
+                        }
+                        if (post_data['old_vsn'] != post_data['new_vsn']) {
+                            layer.msg('全量安装新旧版本必须一致', {
+                                icon: 3,
+                                time: 1000
+                            })
+                            return;
+                        }
+                    }
+                    post_data['ddl'] = encode_base64(post_data['ddl']);
+                    post_data['down_ddl'] = encode_base64(post_data['down_ddl']);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm/app_version/save",
+                        data: post_data,
+                        headers: {},
+                        success: function(res) {
+                            // console.log("res: ", res)
+                            if (res && res.code==0) {
+                                layer.msg('操作成功')
+                                setTimeout(function(){
+                                    location.reload()
+                                }, 1000)
+                            } else if(res && res.msg) {
+                                layer.msg(res.msg)
+                                $(":input[name='account']").focus()
+                            } else {
+                                layer.msg('未知错误')
+                                // setTimeout(function(){
+                                //     location.reload()
+                                // }, 3000)
+                            }
+                        },
+                        error: function(xhr) {
+                            console.log('xhr: ', xhr.responseJSON)
+                            if (xhr.responseJSON && xhr.responseJSON.msg) {
+                                layer.msg(xhr.responseJSON.msg)
+                            } else {
+                                layer.msg('未知错误')
+                            }
+                        }
+                    });
+                    return false; // 阻止默认 form 跳转
+                });
+            }
+        });
+
+    }
+});
+</script>

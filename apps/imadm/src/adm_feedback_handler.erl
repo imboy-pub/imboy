@@ -45,7 +45,7 @@ index(<<"GET">>, 1, Req0, _State) ->
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"status > -2">>,
     Column = <<"id as feedback_id, user_id, device_id, client_operating_system, client_operating_system_vsn, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
-    Payload = feedback_logic:page(Page, Size, Where, <<"id desc">>, Column),
+    Payload = feedback_ds:page(Page, Size, Where, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} = imboy_dtl:template(feedback_index_dtl, [
@@ -73,10 +73,10 @@ reply(<<"POST">>, Req0, State) ->
         {Val2, _} ->
             {ok, Val2}
     end,
-    ?LOG(["FeedbackId", FeedbackId, PostVals]),
+    % ?LOG(["FeedbackId", FeedbackId, PostVals]),
     if
         is_integer(FeedbackId), FeedbackId > 0 ->
-            feedback_logic:add_reply(#{
+            feedback_ds:add_reply(#{
                 <<"feedback_id">> => FeedbackId
                 , <<"feedback_reply_pid">> => proplists:get_value(<<"feedback_reply_pid">>, PostVals, 0)
                 , <<"replier_user_id">> => AdmUserId

@@ -26,26 +26,22 @@
 -spec page(binary(), integer(), integer(), binary(), binary()) -> list().
 page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
     Offset = (Page - 1) * Size,
-    Total = user_tag_repo:count_for_where(Where),
-    case user_tag_repo:page_for_where(Size, Offset, Where, OrderBy) of
-        {ok, _, []} ->
-            imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items0} ->
-            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-            % ColumnLi2 = ColumnLi ++ [<<"subtitle">>],
-            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1 ],
-            Items3 = [ Item ++ [{<<"subtitle">>,
-                                 user_tag_relation_repo:tag_subtitle(Scene,
-                                                                     proplists:get_value(<<"id">>, Item, ""),
-                                                                     proplists:get_value(<<"referer_time">>,
-                                                                                         Item,
-                                                                                         0))}] || Item <- Items2 ],
-
-            % imboy_log:info(io_lib:format("user_tag_logic:page/5 Items2:~p;~n", [Items2])),
-            imboy_response:page_payload(Total, Page, Size, Items3);
-        _ ->
-            imboy_response:page_payload(Total, Page, Size, [])
-    end.
+    Column = <<"id, name, referer_time, updated_at, created_at">>,
+    Tb = user_tag_repo:tablename(),
+    Total = imboy_db:count_for_where(Tb, Where),
+    Items2 = imboy_db:page_for_where(Tb,
+        Size,
+        Offset,
+        Where,
+        OrderBy,
+        Column),
+    Items3 = [ Item ++ [{<<"subtitle">>,
+                         user_tag_relation_repo:tag_subtitle(Scene,
+                                                             proplists:get_value(<<"id">>, Item, ""),
+                                                             proplists:get_value(<<"referer_time">>,
+                                                                                 Item,
+                                                                                 0))}] || Item <- Items2 ],
+    imboy_response:page_payload(Total, Page, Size, Items3).
 
 
 %%% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。

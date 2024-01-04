@@ -1,3 +1,12 @@
+# 0.2.9
+* 引入 layuid的 tabPage.js 模块，实现管理后台多菜单切换功能；
+* 实现 APP版本 分页列表、编辑、删除功能；
+* 实现 APP数据库版本 分页列表、编辑、删除功能；
+* 实现APP版本检查功能、实现APP数据库版本升级、降级，创建获取相关DDL语句功能；
+* imboy_db 模块新增 count_for_where/2, page_for_where/6 assemble_where/1，调整相关代码；
+* 新增 imboy_func/to_int/1-2 方法
+* 升级 layui 到 2.9.3
+
 # 0.2.8
 * 用户反馈添加联系方式字段；
 * app/version 接口响应 updatable 字段等；

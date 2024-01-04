@@ -1,4 +1,4 @@
--module(feedback_logic).
+-module(feedback_ds).
 %%%
 % feedback 业务逻辑模块
 % feedback business logic module
@@ -29,24 +29,22 @@ page(Page, Size, Where, OrderBy) when Page > 0 ->
 -spec page(integer(), integer(), binary(), binary(), binary()) -> list().
 page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
     Offset = (Page - 1) * Size,
-    Total = feedback_repo:count_for_where(Where),
-    case feedback_repo:page_for_where(Size, Offset, Where, OrderBy, Column) of
-        {ok, _, []} ->
-            imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items0} ->
-            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-            Items2 = [ lists:zipwith(fun(X, Y) -> {X, imboy_func:check_json(Y)} end, ColumnLi, Row) || Row <- Items1 ],
-            imboy_response:page_payload(Total, Page, Size, Items2);
-        _ ->
-            imboy_response:page_payload(Total, Page, Size, [])
-    end.
+    Tb = feedback_repo:tablename(),
+    Total = imboy_db:count_for_where(Tb, Where),
+    Items = imboy_db:page_for_where(Tb,
+        Size,
+        Offset,
+        Where,
+        OrderBy,
+        Column),
+    imboy_response:page_payload(Total, Page, Size, Items).
 
 
 %%% add方法
 %%% 新增用户反馈
 -spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
-% feedback_logic:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
+% feedback_ds:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     FeedbackMd5 = imboy_hasher:md5(imboy_func:implode("", [
         Uid, Did, AppVsn, Type, Body
@@ -80,19 +78,18 @@ remove(Uid, FeedbackId) ->
 -spec page_reply(integer(), integer(), binary(), binary()) -> list().
 page_reply(Page, Size, Where, OrderBy) when Page > 0 ->
     Offset = (Page - 1) * Size,
-    Total = feedback_reply_repo:count_for_where(Where),
-    case feedback_reply_repo:page_for_where(Size, Offset, Where, OrderBy) of
-        {ok, _, []} ->
-            imboy_response:page_payload(Total, Page, Size, []);
-        {ok, ColumnLi, Items0} ->
-            Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1 ],
-            imboy_response:page_payload(Total, Page, Size, Items2);
-        _ ->
-            imboy_response:page_payload(Total, Page, Size, [])
-    end.
+    Column = <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_user_id, replier_name, body, status, updated_at, created_at">>,
+    Tb = feedback_repo:tablename(),
+    Total = imboy_db:count_for_where(Tb, Where),
+    Items = imboy_db:page_for_where(Tb,
+        Size,
+        Offset,
+        Where,
+        OrderBy,
+        Column),
+    imboy_response:page_payload(Total, Page, Size, Items).
 
-% feedback_logic:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:millisecond()})
+% feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:millisecond()})
 add_reply(Data) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data),
     Tb = feedback_reply_repo:tablename(),

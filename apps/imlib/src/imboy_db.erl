@@ -2,6 +2,8 @@
 
 -export([find/1]).
 -export([list/1, list/2]).
+-export([count_for_where/2, page_for_where/6]).
+
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
@@ -12,6 +14,7 @@
 -export([insert_into/2, insert_into/3, insert_into/4]).
 -export([assemble_sql/4]).
 
+-export([assemble_where/1]).
 -export([assemble_value/1]).
 
 -export([get_set/1]).
@@ -100,6 +103,37 @@ find(Sql) ->
     end.
 
 
+% imboy_db:count_for_where(Tb, <<"status=1">>).
+-spec count_for_where(binary(), binary()) -> binary().
+count_for_where(Tb, Where) ->
+    % Tb = tablename(),
+    imboy_db:pluck(<<Tb/binary>>, Where, <<"count(*) as count">>, 0).
+-spec page_for_where(integer(), integer(), binary(), binary(), binary(), binary())
+    -> list().
+page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
+    Where2 = <<" WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT $1 OFFSET $2">>,
+    % Tb = tablename(),
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
+    % Res = imboy_db:query(Sql, [Limit, Offset]),
+    % ?LOG(['Sql', Sql]),
+    % ?LOG(['Res', Res]),
+    % case Res of
+    case imboy_db:query(Sql, [Limit, Offset]) of
+        {ok, _, []} ->
+            [];
+        {ok, [{column, C1, _, _, _, _, _, _,_}], Items0} ->
+            to_proplists([C1], Items0);
+        {ok, ColumnLi, Items0} ->
+            to_proplists(ColumnLi, Items0);
+        _ ->
+            []
+    end.
+
+% private
+to_proplists(ColumnLi, Items0) ->
+    Items1 = [tuple_to_list(Item) || Item <- Items0],
+    [lists:zipwith(fun(X, Y) -> {X, imboy_func:check_json(Y)} end, ColumnLi, Row) || Row <- Items1].
+
 list(Sql) ->
     case imboy_db:query(Sql) of
         {ok, _, Val} ->
@@ -179,7 +213,7 @@ execute(Sql, Params) ->
 
 
 execute(Conn, Sql, Params) ->
-    % ?LOG(io:format("~s\n", [Sql])),
+    ?LOG(io:format("~s\n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
     % {ok, 1} | {ok, 1, {ReturningField}}
@@ -225,7 +259,7 @@ update(Tb, ID, Field, Value) when is_list(Value) ->
 update(Tb, ID, Field, Value) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", Field/binary, " = $1 WHERE id = $2">>,
-    % Field/binary, " = $1 WHERE ", Where/binary>>,
+    % ?LOG(io:format("~s\n", [Sql])),
     imboy_db:execute(Sql, [Value, ID]).
 
 
@@ -234,10 +268,13 @@ update(Tb, ID, Field, Value) ->
 update(Tb, Where, KV) when is_list(KV) ->
     Set = get_set(KV),
     update(Tb, Where, Set);
+update(Tb, Where, KV) when is_map(KV) ->
+    Set = get_set(maps:to_list(KV)),
+    update(Tb, Where, Set);
 update(Tb, Where, KV) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", KV/binary, " WHERE ", Where/binary>>,
-    % ?LOG(io:format("~s\n", [Sql])),
+    ?LOG(io:format("~s\n", [Sql])),
     imboy_db:execute(Sql, []).
 
 
@@ -247,6 +284,19 @@ get_set(KV) ->
     Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
+
+assemble_where(Where) ->
+    Separator = <<" AND ">>,
+    Li2 = [<<
+        Separator/binary
+        , (imboy_func:to_binary(K))/binary
+        , " "
+        , (imboy_func:to_binary(Op))/binary
+        , " "
+        , (assemble_value_filter(V))/binary
+    >> || [K, Op, V] <- Where],
+    iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
+
 
 
 % imboy_db:assemble_value(#{mobile => "13692177080", password => "admin888", account => "13692177080", "status" => 1}).

@@ -12,7 +12,10 @@ get_routes() ->
        {"/help", index_handler, #{action => help}},
        {"/init", index_handler, #{action => init}},
        {"/refreshtoken", passport_handler, #{action => refreshtoken}},
-       {"/app/version", app_version_handler, #{action => version}},
+
+       {"/app_version/check", app_version_handler, #{action => check}},
+
+       {"/app_ddl/get", app_ddl_handler, #{action => get_ddl}},
 
        {"/passport/login", passport_handler, #{action => do_login}},
        {"/passport/signup", passport_handler, #{action => do_signup}},
@@ -115,7 +118,8 @@ option() ->
     [
         <<"/uqrcode">>
         , <<"/feedback/add">> % 没有登录也可以提交反馈建议
-        , <<"/app/version">>
+        , <<"/app_version/check">>
+        , <<"/app_ddl/get">>
     ].
 
 

@@ -20,6 +20,7 @@ encrypt_refreshtoken(ID) ->
 
 
 %% 生成token
+% io:format("~s~n", [token_ds:encrypt_token(1)]).
 -spec encrypt_token(iodata()) -> any().
 encrypt_token(ID) ->
     encrypt_token(ID, ?TOKEN_VALID, tk).

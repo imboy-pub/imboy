@@ -26,6 +26,8 @@ init(Req0, State0) ->
     Req1 = case Action of
         index ->
             index(Method, Req0, State);
+        welcome ->
+            welcome(Method, Req0, State);
         false ->
             Req0
     end,
@@ -48,6 +50,19 @@ index(<<"GET">>, Req0, State) ->
         , <<"Access-Control-Allow-Origin">> => <<"*">>
     }, Body, Req0).
 
+
+welcome(<<"GET">>, Req0, State) ->
+    % AdmUserId = maps:get(adm_user_id, State, []),
+    {ok, Body} = imboy_dtl:template(adm_welcome_dtl, [
+         {"coversation_online_user", imboy_syn:count_user()}
+         , {"coversation_online_device", imboy_syn:count()}
+    ] ++ imboy_dtl:imadm_param(State), imadm),
+
+    % {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/adm_welcome_dtl.html"])),
+    cowboy_req:reply(200, #{
+        <<"content-type">> => <<"text/html; charset=utf-8">>
+        , <<"Access-Control-Allow-Origin">> => <<"*">>
+    }, Body, Req0).
 
 %% ===================================================================
 %% EUnit tests.

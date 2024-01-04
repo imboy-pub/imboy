@@ -5,8 +5,6 @@
 %%%
 
 -export([tablename/0]).
--export([count_for_where/1,
-         page_for_where/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -22,26 +20,6 @@
 
 tablename() ->
     imboy_db:public_tablename(<<"user_tag">>).
-
-
-% user_tag_repo:count_for_where(107).
-count_for_where(Where) ->
-    Tb = tablename(),
-    % use index i_user_collect_UserId_Status_Hashid
-    imboy_db:pluck(<<Tb/binary>>, Where, <<"count(*) as count">>, 0).
-
-
-% user_tag_repo:page_for_where(1, 10, 0, <<"id desc">>).
--spec page_for_where(integer(), integer(), binary(), binary()) -> {ok, list(), list()} | {error, any()}.
-page_for_where(Limit, Offset, Where, OrderBy) ->
-
-    Column = <<"id, name, referer_time, updated_at, created_at">>,
-    Where2 = <<" WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT $1 OFFSET $2">>,
-
-    Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:page_for_where/4 sql:~p;~n", [Sql])),
-    imboy_db:query(Sql, [Limit, Offset]).
 
 
 %% ===================================================================

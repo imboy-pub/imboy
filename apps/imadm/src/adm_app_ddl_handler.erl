@@ -1,7 +1,7 @@
--module(adm_app_version_handler).
+-module(adm_app_ddl_handler).
 %%%
-% adm_app_version 控制器模块
-% adm_app_version controller module
+% adm_app_ddl 控制器模块
+% adm_app_ddl controller module
 %%%
 -behavior(cowboy_rest).
 
@@ -42,14 +42,12 @@ init(Req0, State0) ->
 %% ===================================================================
 index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
-    % Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
-    % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"1=1">>,
-    Column = <<"*">>,
-    Payload = adm_app_version_logic:page(Page, Size, Where, <<"id desc">>, Column),
+    Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,type,status,updated_at,created_at">>,
+    Payload = app_ddl_ds:page(Page, Size, Where, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
-    {ok, Body} = imboy_dtl:template(app_version_index_dtl, [
+    {ok, Body} = imboy_dtl:template(app_ddl_index_dtl, [
         {attach_token, ""}
     ] ++ imboy_dtl:imadm_param(State), imadm),
 
@@ -60,46 +58,30 @@ index(<<"GET">>, _, Req0, State) ->
     }, Body, Req0).
 
 
-save(<<"POST">>, Req0, _State) ->
-    % AdmUserId = maps:get(adm_user_id, State),
+save(<<"POST">>, Req0, State) ->
+    % CurrentUid = maps:get(current_uid, State),
+    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    AdmUserId = maps:get(adm_user_id, State),
 
     PostVals = imboy_req:post_params(Req0),
-
-    RCode = proplists:get_value(<<"region_code">>, PostVals, <<"cn">>),
-    Type = proplists:get_value(<<"type">>, PostVals, <<>>),
-    PkgName = proplists:get_value(<<"package_name">>, PostVals, <<>>),
-    AppName = proplists:get_value(<<"app_name">>, PostVals, <<>>),
-    Vsn = proplists:get_value(<<"vsn">>, PostVals, <<>>),
-    DbVsn = proplists:get_value(<<"app_db_vsn">>, PostVals, 5),
-    SKey = proplists:get_value(<<"sign_key">>, PostVals, <<>>),
-    DUrl = proplists:get_value(<<"download_url">>, PostVals, <<>>),
-    Desc = proplists:get_value(<<"description">>, PostVals, <<>>),
-    ForceUpdate = proplists:get_value(<<"force_update">>, PostVals, 2),
+    Type = proplists:get_value(<<"type">>, PostVals, 3),
+    NewVsn = proplists:get_value(<<"new_vsn">>, PostVals, 0),
+    OldVsn = proplists:get_value(<<"old_vsn">>, PostVals, 0),
     Status = proplists:get_value(<<"status">>, PostVals, 0),
-    Id = proplists:get_value(<<"id">>, PostVals, 0),
-    Data = #{
-        id => Id
-        , region_code => RCode
-        , type => Type
-        , package_name => PkgName
-        , app_name => AppName
-        , vsn => Vsn
-        , app_db_vsn => imboy_func:to_int(DbVsn)
-        , sign_key => SKey
-        , download_url => DUrl
-        , description => Desc
-        , force_update => imboy_func:to_int(ForceUpdate)
-        , status => imboy_func:to_int(Status)
-    },
-    adm_app_version_logic:save(Data),
+    Ddl = proplists:get_value(<<"ddl">>, PostVals, <<>>),
+    DownDdl = proplists:get_value(<<"down_ddl">>, PostVals, <<>>),
+    app_ddl_ds:save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl),
     imboy_response:success(Req0, PostVals, "success.").
 
 delete(<<"DELETE">>, Req0, _State) ->
+    % CurrentUid = maps:get(current_uid, State),
+    % Uid = imboy_hashids:uid_encode(CurrentUid),
+
     PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals, ""),
 
     Where = <<"status = 0 AND id = ", (imboy_func:to_binary(Id))/binary>>,
-    adm_app_version_logic:delete(Where),
+    app_ddl_ds:delete(Where),
     imboy_response:success(Req0, PostVals, "success.").
 %% ===================================================================
 %% EUnit tests.

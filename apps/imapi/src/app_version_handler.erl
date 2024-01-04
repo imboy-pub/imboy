@@ -19,13 +19,13 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 = case Action of
-        version ->
-            version(Method, Req0, State);
+        check ->
+            check(Method, Req0, State);
         false ->
             Req0
     end,
@@ -35,8 +35,8 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-version(<<"GET">>, Req0, _State) ->
-    Cos = cowboy_req:header(<<"cos">>, Req0),
+check(<<"GET">>, Req0, _State) ->
+    Cos = cowboy_req:header(<<"cos">>, Req0, <<"web">>),
     % imboy_log:info(Cos),
     #{vsn := Vsn} = cowboy_req:match_qs([{vsn, [], <<"">>}], Req0),
     #{region_code := RegionCode} = cowboy_req:match_qs([{region_code, [], <<>>}], Req0),
@@ -53,6 +53,8 @@ version(<<"GET">>, Req0, _State) ->
     LastVsn = maps:get(<<"vsn">>, Res, <<>>),
     % LastVsn = Vsn,
     U1 = case samovar:check(binary_to_list(Vsn), binary_to_list(<<"<", LastVsn/binary>>)) of
+        {error, invalid_version} ->
+            false;
         {error, invalid_range} ->
             false;
         U0 ->
@@ -61,7 +63,6 @@ version(<<"GET">>, Req0, _State) ->
     % ?LOG([U1, LastVsn, Res]),
     % imboy_response:success(Req0, [{<<"updatable">>, U1} | Res]).
     imboy_response:success(Req0, Res#{<<"updatable">> => U1}).
-
 
 %% ===================================================================
 %% EUnit tests.

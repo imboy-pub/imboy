@@ -248,6 +248,6 @@ login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender
            <<"sign">> => Sign,
            <<"role">> => 1
           }};
-login_success_transfer(_, User) ->
-    ?LOG([User]),
+login_success_transfer(_, _) ->
+    % ?LOG([User]),
     {error, "账号或密码错误"}.

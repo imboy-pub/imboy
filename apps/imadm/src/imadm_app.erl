@@ -14,9 +14,18 @@ start(_Type, _Args) ->
                 % need auth
                 {"/adm", adm_index_handler, #{action => index}},
                 {"/adm/index", adm_index_handler, #{action => index}},
+                {"/adm/welcome", adm_index_handler, #{action => welcome}},
                 % feedback
                 {"/adm/feedback/index", adm_feedback_handler, #{action => index}},
                 {"/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
+                % app ddl
+                {"/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
+                {"/adm/app_ddl/save", adm_app_ddl_handler, #{action => save}},
+                {"/adm/app_ddl/delete", adm_app_ddl_handler, #{action => delete}},
+                % app version
+                {"/adm/app_version/index", adm_app_version_handler, #{action => index}},
+                {"/adm/app_version/save", adm_app_version_handler, #{action => save}},
+                {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
                 % attach
                 {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
                 % need auth end

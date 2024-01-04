@@ -7,6 +7,7 @@
 -export([generate_session_id/0]).
 -export([is_mobile/1]).
 -export([is_email/1]).
+-export([to_int/1, to_int/2]).
 -export([to_binary/1]).
 -export([num_random/1]).
 -export([send_email/2]).
@@ -141,6 +142,16 @@ send_email(ToEmail, Subject) ->
 %                       "Subject: " ++ Subject},
 %                      Option).
 
+
+to_int(Val) ->
+    to_int(Val, 0).
+to_int(Val, Def) ->
+    case string:to_integer(Val) of
+        {error, _} ->
+            Def;
+        {Val2, _} ->
+            Val2
+    end.
 
 % to_binary(Val) when is_float(Val) ->
 %     % float_to_binary(Val, [{decimals, 40}, compact]);

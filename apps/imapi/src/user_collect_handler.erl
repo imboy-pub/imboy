@@ -52,7 +52,7 @@ page(Req0, State) ->
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
     UidBin = integer_to_binary(CurrentUid),
-    ?LOG([page, Kind]),
+    % ?LOG([page, Kind]),
 
     KwdWhere =
         if

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>{{ system_name }}</title>
@@ -8,69 +8,73 @@
     <!-- 引入 layui.css -->
     <link rel="stylesheet" href="/static/layui/css/layui.css">
     <style type="text/css">
-      wc-include{
+    :root {
+
+        /* 主题颜色 */
+        --global-primary-color: #16baaa;
+
+        /** 圆角度数 */
+        --global-border-radius: 4px;
+
+    }
+    wc-include{
         padding: 15px;
         display: block;
-      }
-      .layui-layout-right .layui-nav-bar {
+    }
+    .layui-layout-right .layui-nav-bar {
         background-color: unset !important;
-      }
+    }
 
-      .layui-layout-admin .layui-side {
+    .layui-layout-admin .layui-side {
         top: 0 !important;
         z-index: 1001;
-      }
+    }
 
-      .layui-layout-admin .layui-logo {
+    .layui-layout-admin .layui-logo {
         position: relative !important;
         height: 60px !important;
         top: -2px !important;
         left: 20px;
-      }
+    }
 
-      .layui-side,
-      .layui-header,
-      .layui-body,
-      .layui-footer {
+    .layui-side,
+    .layui-header,
+    .layui-body,
+    .layui-footer {
         transition: left 0.3s;
-      }
+    }
 
-      .collapse .layui-layout-admin .layui-side,
-      .collapse .layui-layout-admin .layui-header {
+    .collapse .layui-layout-admin .layui-side,
+    .collapse .layui-layout-admin .layui-header {
         left: -200px;
-      }
+    }
 
-      .collapse .layui-layout-admin .layui-footer,
-      .collapse .layui-layout-admin .layui-body {
+    .collapse .layui-layout-admin .layui-footer,
+    .collapse .layui-layout-admin .layui-body {
         left: 0px;
-      }
+    }
     </style>
     <style type="text/css">
-      ::view-transition-old(root),
-      ::view-transition-new(root) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
         animation: none;
         mix-blend-mode: normal;
-      }
+    }
 
-      ::view-transition-old(root) {
+    ::view-transition-old(root) {
         z-index: 9999;
-      }
+    }
 
-      ::view-transition-new(root) {
+    ::view-transition-new(root) {
         z-index: 1;
-      }
+    }
 
-      .dark::view-transition-old(root) {
+    .dark::view-transition-old(root) {
         z-index: 1;
-      }
+    }
 
-      .dark::view-transition-new(root) {
+    .dark::view-transition-new(root) {
         z-index: 9999;
-      }
+    }
     </style>
-  </head>
-
-  <body>
-    <div class="layui-layout layui-layout-admin">
-      <div class="layui-body">
-
+</head>
