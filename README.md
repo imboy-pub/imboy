@@ -20,7 +20,8 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 
 ------
 
-* Erlang/OTP 23 / Erlang/OTP 24 / Erlang/OTP 25
+* Erlang/OTP 23 / Erlang/OTP 24
+* Erlang/OTP 25
 
 * 数据库 PostgreSQL15
 
@@ -248,7 +249,7 @@ https://erlang.mk/guide/relx.html
 ```
 IMBOYENV=local make relup
 
-vsn=0.2.7 ./appup.sh
+vsn=0.2.9 ./appup.sh
 
  ./bin/imboy pid
 2147601
