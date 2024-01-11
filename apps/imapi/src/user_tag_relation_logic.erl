@@ -179,7 +179,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     % {ok,[<<"id">>,<<"name">>],[{1,<<"a">>},{4,<<"b">>}]}
     % {ok, _, Tag2} = user_tag_relation_repo:select_tag(
     %     <<"scene = ", Scene/binary, " AND name = any(string_to_array($1, ','))">>
-    %     , [imboy_func:implode(",",Tag)]
+    %     , [imboy_cnv:implode(",",Tag)]
     %     , <<"id, name">>
     % ),
     % TagIdNewLi = [Id || {Id, _} <- Tag2],

@@ -38,7 +38,7 @@ page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
 -spec save(integer(), binary(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
 save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
-    Where = <<"type=", (imboy_func:to_binary(Type))/binary, " AND new_vsn= ", (imboy_func:to_binary(NewVsn))/binary>>,
+    Where = <<"type=", (ec_cnv:to_binary(Type))/binary, " AND new_vsn= ", (ec_cnv:to_binary(NewVsn))/binary>>,
     Count = imboy_db:pluck(
         <<"app_ddl">>
         , Where
@@ -48,10 +48,10 @@ save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
         ddl => Ddl
         , down_ddl => DownDdl
         , admin_user_id => AdmUserId
-        , old_vsn => imboy_func:to_int(OldVsn)
-        , new_vsn => imboy_func:to_int(NewVsn)
-        , type => imboy_func:to_int(Type)
-        , status => imboy_func:to_int(Status)
+        , old_vsn => ec_cnv:to_integer(OldVsn)
+        , new_vsn => ec_cnv:to_integer(NewVsn)
+        , type => ec_cnv:to_integer(Type)
+        , status => ec_cnv:to_integer(Status)
     },
 
     % ?LOG([count, Count]),

@@ -88,9 +88,9 @@ verify_sign(Req, Env) ->
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
     % [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
-    VsnXY = samovar:major_minor(Vsn),
-    PlainText = iolist_to_binary([Did, "|", VsnXY]),
-    case do_verify_sign(Sign, PlainText, VsnXY, Method) of
+    VsnMajor = imboy_cnv:vsn_major(Vsn),
+    PlainText = iolist_to_binary([Did, "|", VsnMajor]),
+    case do_verify_sign(Sign, PlainText, VsnMajor, Method) of
         true ->
             {ok, Req, Env};
         false ->
@@ -103,20 +103,20 @@ verify_sign(Req, Env) ->
     end.
 
 
-do_verify_sign(undefined, _, _VsnXY, _Method) ->
+do_verify_sign(undefined, _, _, _Method) ->
     false;
 do_verify_sign(_Sign, _, undefined, _Method) ->
     false;
 
-do_verify_sign(Sign, PlainText, VsnXY, <<"sha256">>) ->
+do_verify_sign(Sign, PlainText, VsnMajor, <<"sha256">>) ->
     AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(VsnXY, AuthKeys),
+    Key = proplists:get_value(VsnMajor, AuthKeys),
     imboy_hasher:hmac_sha256(PlainText, Key) == Sign;
-do_verify_sign(Sign, PlainText, VsnXY, <<"sha512">>) ->
+do_verify_sign(Sign, PlainText, VsnMajor, <<"sha512">>) ->
     AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(VsnXY, AuthKeys),
+    Key = proplists:get_value(VsnMajor, AuthKeys),
     imboy_hasher:hmac_sha512(PlainText, Key) == Sign;
-do_verify_sign(Sign, PlainText, _VsnXY, <<"md5">>) ->
+do_verify_sign(Sign, PlainText, _, <<"md5">>) ->
     imboy_hasher:md5(PlainText) == Sign;
 do_verify_sign(_, _, _, _) ->
     false.

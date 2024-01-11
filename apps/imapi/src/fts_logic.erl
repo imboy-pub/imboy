@@ -57,7 +57,7 @@ recently_user_page(Uid, Page, Size, Keywrod) ->
             Kwd ->
                 ["fts.allow_search = 1", <<" AND fts.token @@ to_tsquery('jiebacfg', '", Kwd, "'">>]
         end,
-    Where = imboy_func:implode(" ", WhereLi),
+    Where = imboy_cnv:implode(" ", WhereLi),
     Total = imboy_db:pluck(<<"user">>, Where, <<"count(*) as count">>, 0),
     OrderBy = <<"u.created_at desc">>,
     case user_repo:select_by_where(Where, Size, Offset, OrderBy) of

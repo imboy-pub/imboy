@@ -75,7 +75,7 @@ publish(Req0, State) ->
                               #{
                                 <<"Content-Type">> => "application/sdp",
                                 <<"server">> => "cowboy",
-                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
+                                <<"location">> => imboy_cnv:implode("/", ["/whip", StreamId, RoomId])
                                },
                               AsswerSdp
                               % , generate_answer_sdp2()
@@ -95,7 +95,7 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
     NewReq = cowboy_req:reply(200,
                               #{
                                 <<"Content-Type">> => "application/trickle-ice-sdpfrag", <<"server">> => "cowboy"
-                                % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+                                % , <<"location">> => imboy_cnv:implode("/", ["/whip", StreamId, Id])
                                },
                               <<"candidate: candidate:2152662189 1 udp 2122194687 192.168.0.144 64291 typ host generation 0 ufrag CNcn network-id 0 network-cost 50, sdpMid: 0, sdpMLineIndex: 0">>,
                               Req0),
@@ -107,7 +107,7 @@ check(<<"PATCH_NO_SUPERT">>, Req0, State) ->
 %          <<"Content-Type">> => "application/trickle-ice-sdpfrag"
 %          , <<"If-Match">> => "*"
 %          , <<"server">> => "cowboy"
-%          % , <<"location">> => imboy_func:implode("/", ["/whip", StreamId, Id])
+%          % , <<"location">> => imboy_cnv:implode("/", ["/whip", StreamId, Id])
 %      }
 %      % , ersip_sdp_ice_candidate
 %      , Ice
@@ -146,7 +146,7 @@ subscribe(Req0, State) ->
                               #{
                                 <<"Content-Type">> => "application/sdp",
                                 <<"server">> => "cowboy",
-                                <<"location">> => imboy_func:implode("/", ["/whip", StreamId, RoomId])
+                                <<"location">> => imboy_cnv:implode("/", ["/whip", StreamId, RoomId])
                                },
                               AsswerSdp
                               % , generate_answer_sdp2()

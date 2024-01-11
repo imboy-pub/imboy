@@ -132,7 +132,7 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
 % private
 to_proplists(ColumnLi, Items0) ->
     Items1 = [tuple_to_list(Item) || Item <- Items0],
-    [lists:zipwith(fun(X, Y) -> {X, imboy_func:check_json(Y)} end, ColumnLi, Row) || Row <- Items1].
+    [lists:zipwith(fun(X, Y) -> {X, imboy_str:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
 
 list(Sql) ->
     case imboy_db:query(Sql) of
@@ -222,7 +222,7 @@ execute(Conn, Sql, Params) ->
 
 insert_into(Tb, Data) ->
     Column = <<"("
-        , (imboy_func:implode("," , maps:keys(Data)))/binary
+        , (imboy_cnv:implode("," , maps:keys(Data)))/binary
         , ")">>,
     Value = assemble_value(Data),
     imboy_db:insert_into(Tb, Column, Value).
@@ -240,10 +240,10 @@ insert_into(Tb, Column, Value, Returning) ->
 
 % 组装 SQL 语句
 assemble_sql(Prefix, Tb, Column, Value) when is_list(Column) ->
-    ColumnBin = imboy_func:implode(",", Column),
+    ColumnBin = imboy_cnv:implode(",", Column),
     assemble_sql(Prefix, Tb, <<"(", ColumnBin/binary, ")">>, Value);
 assemble_sql(Prefix, Tb, Column, Value) when is_list(Value) ->
-    ValueBin = imboy_func:implode(",", Value),
+    ValueBin = imboy_cnv:implode(",", Value),
     assemble_sql(Prefix, Tb, Column, <<"(", ValueBin/binary, ")">>);
 assemble_sql(Prefix, Tb, Column, Value) ->
     Tb2 = public_tablename(Tb),
@@ -280,7 +280,7 @@ update(Tb, Where, KV) ->
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    Set1 = [ <<(imboy_func:to_binary(K))/binary, " = ", (assemble_value_filter(V))/binary>> || {K, V} <- KV ],
+    Set1 = [ <<(ec_cnv:to_binary(K))/binary, " = ", (assemble_value_filter(V))/binary>> || {K, V} <- KV ],
     Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
@@ -289,9 +289,9 @@ assemble_where(Where) ->
     Separator = <<" AND ">>,
     Li2 = [<<
         Separator/binary
-        , (imboy_func:to_binary(K))/binary
+        , (ec_cnv:to_binary(K))/binary
         , " "
-        , (imboy_func:to_binary(Op))/binary
+        , (ec_cnv:to_binary(Op))/binary
         , " "
         , (assemble_value_filter(V))/binary
     >> || [K, Op, V] <- Where],
@@ -311,11 +311,11 @@ assemble_value_filter({raw, V}) when is_binary(V) ->
 assemble_value_filter(V) ->
     if
         is_list(V); is_binary(V) ->
-            imboy_func:implode("", ["'", V, "'"]);
+            imboy_cnv:implode("", ["'", V, "'"]);
         is_tuple(V) ->
-            imboy_func:implode("", ["'{", imboy_func:implode(",", tuple_to_list(V)), "}'"]);
+            imboy_cnv:implode("", ["'{", imboy_cnv:implode(",", tuple_to_list(V)), "}'"]);
         true ->
-            imboy_func:to_binary(V)
+            ec_cnv:to_binary(V)
     end.
 %% ===================================================================
 %% Internal Function Definitions

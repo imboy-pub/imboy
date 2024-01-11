@@ -74,7 +74,7 @@ save(Data) ->
     % Column = <<"(user_id, status, created_at)">>,
     % Value = [],
     % Column = [ binary_to_list(S) || S <- Data ],
-    Column = <<"(", (imboy_func:implode(",", maps:keys(Data)))/binary, ")">>,
+    Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
     Value = imboy_db:assemble_value(Data),
     imboy_db:insert_into(Tb, Column, Value).
 

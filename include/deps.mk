@@ -99,7 +99,8 @@ dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 dep_simple_captcha = git https://gitee.com/imboy-tripartite-deps/simple_captcha.git master
 
 # SEMVER library for Erlang
-dep_samovar = git https://gitee.com/imboy-tripartite-deps/samovar.git master
+# /erlware_commons/src/ec_semver.erl
+
 # dep_nksip = git https://gitee.com/imboy-tripartite-deps/nksip v0.6.1
 # dep_nkpacket = git https://gitee.com/imboy-tripartite-deps/nkpacket.git master
 

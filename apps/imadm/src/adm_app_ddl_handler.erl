@@ -80,7 +80,7 @@ delete(<<"DELETE">>, Req0, _State) ->
     PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals, ""),
 
-    Where = <<"status = 0 AND id = ", (imboy_func:to_binary(Id))/binary>>,
+    Where = <<"status = 0 AND id = ", (ec_cnv:to_binary(Id))/binary>>,
     app_ddl_ds:delete(Where),
     imboy_response:success(Req0, PostVals, "success.").
 %% ===================================================================

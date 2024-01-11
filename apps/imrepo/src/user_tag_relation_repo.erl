@@ -117,7 +117,7 @@ update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
             " AND creator_user_id = ",
             Uid],
     % imboy_log:error(io_lib:format("user_tag_relation_repo:update_tag/5 Args:~p ~n", [Args])),
-    UpSql = imboy_func:implode("", Args),
+    UpSql = imboy_cnv:implode("", Args),
     % imboy_log:info(io_lib:format("user_tag_relation_repo:update_tag/5 sql:~p;~n", [UpSql])),
     {ok, Stmt} = epgsql:parse(Conn, UpSql),
     Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
@@ -178,7 +178,7 @@ tag_subtitle(<<"1">>, _TagId, _Count) ->
 tag_subtitle(<<"2">>, _TagId, 0) ->
     <<>>;
 tag_subtitle(<<"2">>, TagId, _Count) ->
-    Key = imboy_func:implode("_", ["tag_subtitle_2", TagId]),
+    Key = imboy_cnv:implode("_", ["tag_subtitle_2", TagId]),
     Fun = fun() ->
                   TagTb = imboy_db:public_tablename(<<"user_tag_relation">>),
                   FTb = imboy_db:public_tablename(<<"user_friend">>),
@@ -196,7 +196,7 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
                   % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 query resp: ~s ~n", [Sql])),
                   Items = imboy_db:list(Sql),
                   % imboy_log:info(io_lib:format("user_tag_relation_repo:tag_subtitle/2 Items: ~p ;~n", [Items])),
-                  imboy_func:implode(", ", [ I || {I} <- Items ])
+                  imboy_cnv:implode(", ", [ I || {I} <- Items ])
           end,
     % 缓存1天
     imboy_cache:memo(Fun, Key, 86400).
@@ -204,7 +204,7 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
 
 % user_tag_relation_repo:flush_subtitle()
 flush_subtitle(TagId) ->
-    Key = imboy_func:implode("_", ["tag_subtitle_2", TagId]),
+    Key = imboy_cnv:implode("_", ["tag_subtitle_2", TagId]),
     imboy_cache:flush(Key).
 
 

@@ -50,19 +50,12 @@ check(<<"GET">>, Req0, _State) ->
 
     Res = app_version_repo:find(Where, Column),
     % ?LOG([Res]),
-    LastVsn = maps:get(<<"vsn">>, Res, <<>>),
-    % LastVsn = Vsn,
-    U1 = case samovar:check(binary_to_list(Vsn), binary_to_list(<<"<", LastVsn/binary>>)) of
-        {error, invalid_version} ->
-            false;
-        {error, invalid_range} ->
-            false;
-        U0 ->
-            U0
-    end,
-    % ?LOG([U1, LastVsn, Res]),
-    % imboy_response:success(Req0, [{<<"updatable">>, U1} | Res]).
-    imboy_response:success(Req0, Res#{<<"updatable">> => U1}).
+    LastVsn = maps:get(<<"vsn">>, Res, <<"0.0.0">>),
+    % ?LOG([LastVsn, Res]),
+    %  updatable = [true | false]
+    imboy_response:success(Req0, Res#{
+        <<"updatable">> => ec_semver:lt(Vsn, LastVsn)
+    }).
 
 %% ===================================================================
 %% EUnit tests.

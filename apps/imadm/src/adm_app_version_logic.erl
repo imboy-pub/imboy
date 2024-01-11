@@ -46,11 +46,11 @@ save(Data) ->
     %     , 0),
 
     % ?LOG([count, Count, " Where ", Where]),
-    Id = imboy_func:to_int(maps:get(id, Data)),
+    Id = ec_cnv:to_integer(maps:get(id, Data)),
     if Id > 0 ->
             imboy_db:update(
                 app_version_repo:tablename()
-                , <<"id = ", (imboy_func:to_binary(Id))/binary>>
+                , <<"id = ", (ec_cnv:to_binary(Id))/binary>>
                 , Data#{updated_at => imboy_dt:millisecond()}
             );
         true ->

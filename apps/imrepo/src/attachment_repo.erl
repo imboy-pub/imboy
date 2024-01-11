@@ -44,10 +44,10 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     Size = maps:get(<<"size">>, Attach),
     Ext = filename:extension(Path),
 
-    Ext2 = imboy_func:to_binary(Ext),
-    Size2 = imboy_func:to_binary(Size),
-    Path2 = imboy_func:to_binary(Path),
-    % Path2 = imboy_func:to_binary(Path),
+    Ext2 = ec_cnv:to_binary(Ext),
+    Size2 = ec_cnv:to_binary(Size),
+    Path2 = ec_cnv:to_binary(Path),
+    % Path2 = ec_cnv:to_binary(Path),
     Attach2 = jsone:encode(Attach),
 
     MimeType2 =

@@ -48,7 +48,7 @@ page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
 
-    Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
+    Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     Where2 = <<"status > 0 AND ", Where/binary>>,
     Payload = feedback_ds:page(Page, Size, Where2, <<"id desc">>),
     imboy_response:success(Req0, Payload).
@@ -61,7 +61,7 @@ page_reply(Req0, _State) ->
         {ok, FeedbackId} ->
             % CurrentUid = maps:get(current_uid, State),
             {Page, Size} = imboy_req:page_size(Req0),
-            Where = imboy_func:implode("", [<<"feedback_id=">>, FeedbackId]),
+            Where = imboy_cnv:implode("", [<<"feedback_id=">>, FeedbackId]),
             Payload = feedback_ds:page_reply(Page, Size, Where, <<"id desc">>),
             imboy_response:success(Req0, Payload);
         {error, ErrorMsg} ->
@@ -89,10 +89,10 @@ add(Req0, State) ->
         , COS
         , COSV
         , AppVsn
-        , imboy_func:to_binary(Type)
-        , imboy_func:to_binary(Rating)
-        , imboy_func:to_binary(ContactDetail)
-        , imboy_func:to_binary(Description)
+        , ec_cnv:to_binary(Type)
+        , ec_cnv:to_binary(Rating)
+        , ec_cnv:to_binary(ContactDetail)
+        , ec_cnv:to_binary(Description)
         , Attach),
     imboy_response:success(Req0).
 

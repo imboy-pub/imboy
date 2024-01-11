@@ -1,3 +1,10 @@
+# 0.2.10
+* 删除 imboy_func:to_binary/1 方法，使用 ec_cnv:to_binary/1 替代；
+* 删除 imboy_func:to_int/1-2 方法，使用 ec_cnv:to_integer/1 替代；
+* 删除 imboy_func:start_at/0 方法；
+* 移除 samovar 包依赖，使用 erlware_commons/src/ec_semver.erl 替代；
+* 调整用于API验证签名的auth_keys 规则；
+
 # 0.2.9
 * 引入 layuid的 tabPage.js 模块，实现管理后台多菜单切换功能；
 * 实现 APP版本 分页列表、编辑、删除功能；

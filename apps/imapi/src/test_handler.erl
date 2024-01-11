@@ -51,7 +51,7 @@ req_get(Req0, _State) ->
     % test_logic:demo(CurrentUid, Val1, Val2),
     imboy_response:success(Req0,
                            [{<<"a">>, A},
-                            {<<"config">>, imboy_func:implode("", [config_ds:env(test)])},
+                            {<<"config">>, imboy_cnv:implode("", [config_ds:env(test)])},
                             {<<"type">>, Type},
                             {<<"host">>, cowboy_req:header(<<"host">>, Req0)},
                             {<<"client">>, cowboy_req:header(<<"client">>, Req0)},

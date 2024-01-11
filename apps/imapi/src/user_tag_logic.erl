@@ -47,10 +47,10 @@ page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
 %%% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
 -spec delete(integer(), binary(), binary()) -> ok.
 delete(Uid, Scene, Tag) ->
-    Where = [imboy_func:implode("", ["creator_user_id = ", Uid]),
-             imboy_func:implode("", ["scene = ", Scene]),
-             imboy_func:implode("", ["name = '", Tag, "'"])],
-    TagWhere = imboy_func:implode(" AND ", Where),
+    Where = [imboy_cnv:implode("", ["creator_user_id = ", Uid]),
+             imboy_cnv:implode("", ["scene = ", Scene]),
+             imboy_cnv:implode("", ["name = '", Tag, "'"])],
+    TagWhere = imboy_cnv:implode(" AND ", Where),
     TagId = imboy_db:pluck(<<"user_tag">>, TagWhere, <<"id">>, 0),
 
     imboy_db:with_transaction(fun(Conn) ->
@@ -175,13 +175,13 @@ merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     TagOldLi = imboy_db:list(Conn, Sql),
     % imboy_log:error(io_lib:format("user_tag_logic:merge_tag/5 Tag ~p, TagOldLi: ~p; ~n", [Tag, TagOldLi])),
     % TagIds = [Id || {Id, _} <- Tag],
-    TagOld = imboy_func:implode(",",
+    TagOld = imboy_cnv:implode(",",
                                 [ Name
                                   || {Id, Name} <- TagOldLi, lists:keymember(integer_to_binary(Id), 1, Tag) == false ]),
-    TagBin = imboy_func:implode(",", [ Name || {_, Name} <- Tag ]),
+    TagBin = imboy_cnv:implode(",", [ Name || {_, Name} <- Tag ]),
     MergedTag = binary:split(<<TagBin/binary, ",", TagOld/binary>>, <<",">>, [global]),
     % imboy_log:error(io_lib:format("user_tag_logic:merge_tag/5 old ~p, new ~p, merged: ~p; ~n", [TagOld, TagBin, MergedTag])),
-    imboy_func:implode(",", imboy_func:remove_dups(MergedTag)).
+    imboy_cnv:implode(",", imboy_cnv:remove_dups(MergedTag)).
 
 
 %% ===================================================================

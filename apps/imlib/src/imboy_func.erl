@@ -2,41 +2,13 @@
 
 -include_lib("imlib/include/log.hrl").
 
--export([start_at/0]).
 -export([uid/0, uid/1]).
 -export([generate_session_id/0]).
 -export([is_mobile/1]).
 -export([is_email/1]).
--export([to_int/1, to_int/2]).
--export([to_binary/1]).
 -export([num_random/1]).
 -export([send_email/2]).
--export([remove_dups/1,
-         implode/2]).
--export([check_json/1]).
 -export([is_proplist/1]).
-
-
-start_at() ->
-    Fun = fun() ->
-        FilePath = "./imboy_start_at.txt",
-        case filelib:is_file(FilePath) of
-            true ->
-                case file:read_file(FilePath) of
-                    {ok, Binary} ->
-                        Binary;
-                    {error, _} ->
-                        Now = imboy_dt:now(),
-                        file:write_file(FilePath, Now),
-                        Now
-                end;
-            false ->
-                Now = imboy_dt:now(),
-                file:write_file(FilePath, Now),
-                Now
-        end
-    end,
-    imboy_cache:memo(Fun, <<"imboy_start_at">>, 864000000).
 
 
 % generate a session id string
@@ -54,7 +26,7 @@ uid() ->
 -spec uid(integer() | list() | binary()) -> binary().
 uid(Prefix) ->
     U1 = uid:encode64(uid:g()),
-    iolist_to_binary([to_binary(Prefix), U1]).
+    iolist_to_binary([ec_cnv:to_binary(Prefix), U1]).
 
 -spec is_mobile(Mobile :: list()) -> true | false.
 is_mobile(Mobile) ->
@@ -92,25 +64,6 @@ num_random(Len) ->
     end.
 
 
-remove_dups([]) ->
-    [];
-remove_dups([H | T]) ->
-    [H | [ X || X <- remove_dups(T), X /= H ]].
-
-
-% imboy_func:implode(",", [<<"a">>, "b"]).
-% imboy_func:implode("','", [<<"a">>, "b"]).
-% imboy_func:implode(",", [1,2,3.3]).   // <<"1,2,3.3">>
--spec implode([binary() | list() | float() | integer()], list()) -> binary().
-implode(S, Li) when is_float(S) ->
-    implode(io_lib:format("~p", [S]), Li);
-implode(S, Li) when is_integer(S) ->
-    implode(integer_to_binary(S), Li);
-implode(Separator, Li) ->
-    Li2 = [ [Separator, to_binary(I)] || I <- Li ],
-    iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
-
-
 % imboy_func:send_email(<<"1977699124@qq.com">>,
 %    "code is: " ++ integer_to_list(imboy_func:num_random(6)) ++
 %    " , will expire in 10 minutes.").
@@ -143,44 +96,5 @@ send_email(ToEmail, Subject) ->
 %                      Option).
 
 
-to_int(Val) ->
-    to_int(Val, 0).
-to_int(Val, Def) ->
-    case string:to_integer(Val) of
-        {error, _} ->
-            Def;
-        {Val2, _} ->
-            Val2
-    end.
-
-% to_binary(Val) when is_float(Val) ->
-%     % float_to_binary(Val, [{decimals, 40}, compact]);
-%     iolist_to_binary(io_lib:format("~p", [Val]));
-
--spec to_binary(integer() | list() | binary()) -> binary().
-to_binary(Val) when is_atom(Val) ->
-    atom_to_binary(Val);
-to_binary(Val) when is_float(Val) ->
-    float_to_binary(Val, [{decimals, 15}, compact]);
-to_binary(Val) when is_integer(Val) ->
-    integer_to_binary(Val);
-to_binary(Val) when is_list(Val) ->
-    list_to_binary(Val);
-to_binary(Val) when is_binary(Val) ->
-    Val;
-to_binary(Val) ->
-    unicode:characters_to_binary(Val).
-
-
 is_proplist(Var) ->
     is_list(Var) andalso lists:all(fun({_, _}) -> true; (_) -> false end, Var).
-
-%
-check_json(Val) ->
-    case jsx:is_json(Val) of
-        true ->
-            jsx:decode(Val);
-        false ->
-            Val
-    end.
-

@@ -41,7 +41,7 @@ init(Req0, State0) ->
 
 index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
-    % Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
+    % Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"status > -2">>,
     Column = <<"id as feedback_id, user_id, device_id, client_operating_system, client_operating_system_vsn, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,

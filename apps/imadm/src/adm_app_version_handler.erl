@@ -42,7 +42,7 @@ init(Req0, State0) ->
 %% ===================================================================
 index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
-    % Where = imboy_func:implode("", [<<"user_id=">>, CurrentUid]),
+    % Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"1=1">>,
     Column = <<"*">>,
@@ -84,12 +84,12 @@ save(<<"POST">>, Req0, _State) ->
         , package_name => PkgName
         , app_name => AppName
         , vsn => Vsn
-        , app_db_vsn => imboy_func:to_int(DbVsn)
+        , app_db_vsn => ec_cnv:to_integer(DbVsn)
         , sign_key => SKey
         , download_url => DUrl
         , description => Desc
-        , force_update => imboy_func:to_int(ForceUpdate)
-        , status => imboy_func:to_int(Status)
+        , force_update => ec_cnv:to_integer(ForceUpdate)
+        , status => ec_cnv:to_integer(Status)
     },
     adm_app_version_logic:save(Data),
     imboy_response:success(Req0, PostVals, "success.").
@@ -98,7 +98,7 @@ delete(<<"DELETE">>, Req0, _State) ->
     PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals, ""),
 
-    Where = <<"status = 0 AND id = ", (imboy_func:to_binary(Id))/binary>>,
+    Where = <<"status = 0 AND id = ", (ec_cnv:to_binary(Id))/binary>>,
     adm_app_version_logic:delete(Where),
     imboy_response:success(Req0, PostVals, "success.").
 %% ===================================================================

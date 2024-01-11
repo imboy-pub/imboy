@@ -46,7 +46,7 @@ page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
     {ok, list(), list()} | {error, any()}.
 % feedback_ds:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
-    FeedbackMd5 = imboy_hasher:md5(imboy_func:implode("", [
+    FeedbackMd5 = imboy_hasher:md5(imboy_cnv:implode("", [
         Uid, Did, AppVsn, Type, Body
         ])),
 
@@ -63,7 +63,7 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
 -spec remove(integer(), binary()) -> ok.
 remove(Uid, FeedbackId) ->
     % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
-    Where = imboy_func:implode("", ["user_id = ", Uid," AND id = ", FeedbackId]),
+    Where = imboy_cnv:implode("", ["user_id = ", Uid," AND id = ", FeedbackId]),
     imboy_db:update(feedback_repo:tablename(), Where, [
         {<<"status">>, <<"-1">>}
         , {<<"updated_at">>, integer_to_binary(imboy_dt:millisecond())}
@@ -94,7 +94,7 @@ add_reply(Data) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data),
     Tb = feedback_reply_repo:tablename(),
     imboy_db:insert_into(Tb, Data),
-    Where = <<"id = ", (imboy_func:to_binary(FeedbackId))/binary>>,
+    Where = <<"id = ", (ec_cnv:to_binary(FeedbackId))/binary>>,
     KV = [
         % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）'
         {<<"status">>, <<"2">>}

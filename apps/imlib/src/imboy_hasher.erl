@@ -40,7 +40,6 @@ md5(Str) ->
     Sig = erlang:md5(Str),
     iolist_to_binary([ io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig) ]).
 
-
 % imboy_hasher:hmac_sha512("", "").
 -spec hmac_sha512(binary(), any()) -> binary().
 hmac_sha512(PlainText, Key) ->

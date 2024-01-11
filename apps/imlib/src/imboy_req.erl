@@ -33,8 +33,8 @@ get_int(Key, Req, Def) ->
     if
         Val == Def, Method == <<"POST">> ->
             PostVals = post_params(Req),
-            ?LOG([get_int, PostVals, proplists:get_value(imboy_func:to_binary(Key), PostVals, Def)]),
-            {ok, proplists:get_value(imboy_func:to_binary(Key), PostVals, Def)};
+            ?LOG([get_int, PostVals, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)]),
+            {ok, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)};
         true ->
             case string:to_integer(Val) of
                 {error, _} ->

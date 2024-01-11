@@ -75,7 +75,7 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
             TagName == <<>> ->
                 {0, []};
             bit_size(Kwd) > 0 ->
-                Where0 = imboy_func:implode(" AND ",
+                Where0 = imboy_cnv:implode(" AND ",
                                             ["f.status = 1",
                                              "f.from_user_id = $1",
                                              <<"f.tag like '%", TagName/binary, ",%'">>,
