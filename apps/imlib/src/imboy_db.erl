@@ -132,7 +132,7 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
 % private
 to_proplists(ColumnLi, Items0) ->
     Items1 = [tuple_to_list(Item) || Item <- Items0],
-    [lists:zipwith(fun(X, Y) -> {X, imboy_str:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
+    [lists:zipwith(fun(X, Y) -> {X, imboy_cnv:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
 
 list(Sql) ->
     case imboy_db:query(Sql) of
