@@ -106,21 +106,23 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     CurrentUid = maps:get(current_uid, State),
     try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
-            ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}]),
+            Key = {CurrentUid, DID, MsgId},
+            ?LOG(["CLIENT_ACK", Key]),
             % 缓存在 message_ds:send_next/5 中设置
-            case imboy_cache:get({CurrentUid, DID, MsgId}) of
+            case imboy_cache:get(Key) of
                 undefined ->
                     ok;
                 {ok, TimerRef} ->
-                    ?LOG(["CLIENT_ACK", {CurrentUid, DID, MsgId}, TimerRef]),
-                    erlang:cancel_timer(TimerRef)
+                    ?LOG(["CLIENT_ACK", Key, TimerRef]),
+                    erlang:cancel_timer(TimerRef),
+                    imboy_cache:flush(Key)
             end,
             case Type of
                 <<"C2C">> ->
                     websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
                 <<"S2C">> ->
-                    websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
                 <<"C2G">> ->
                     websocket_logic:c2g_client_ack(MsgId, CurrentUid, DID),

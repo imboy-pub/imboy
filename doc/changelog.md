@@ -1,3 +1,10 @@
+# 0.2.11
+* 调整 /init API 获取AES必要的方法；
+* 修复 CLIENT_ACK 的时候 erlang:cancel_timer/1 之后 imboy_cache:flush/1 掉消息的 TimerRef
+* 调整 C2C 消息重试策略为 [0, 5000, 7000, 11000]
+* 调整 S2C 消息 please_refresh_token 重试策略为  [7000, 11000]
+* imboy_sup 代码格式调整
+
 # 0.2.10
 * 删除 imboy_func:to_binary/1 方法，使用 ec_cnv:to_binary/1 替代；
 * 删除 imboy_func:to_int/1-2 方法，使用 ec_cnv:to_integer/1 替代；

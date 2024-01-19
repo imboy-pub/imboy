@@ -49,7 +49,7 @@ c2c(MsgId, CurrentUid, Data) ->
                    {<<"created_at">>, CreatedAt},
                    {<<"server_ts">>, NowTs}],
             MsgJson = jsone:encode(Msg, [native_utf8]),
-            MsLi = [0, 3000, 5000, 7000, 11000],
+            MsLi = [0, 5000, 7000, 11000],
             message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
             ok;
         {_, InDenylist2} when InDenylist2 > 0 ->

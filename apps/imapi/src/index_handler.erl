@@ -29,13 +29,12 @@ init(Req0, State0) ->
 
 api_init(Req0) ->
     Vsn = cowboy_req:header(<<"vsn">>, Req0, <<"0.1.1">>),
-    [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
-    VsnXY = iolist_to_binary([X, ".", Y]),
+    VsnMajor = imboy_cnv:vsn_major(Vsn),
 
     Data = init_transfer(),
     % imboy_response:success(Req0, Data, "success.").
     AuthKeys = config_ds:env(auth_keys),
-    case proplists:get_value(VsnXY, AuthKeys) of
+    case proplists:get_value(VsnMajor, AuthKeys) of
         Key when is_binary(Key); is_list(Key) ->
             IV = config_ds:env(solidified_key_iv),
             Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),

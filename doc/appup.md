@@ -47,5 +47,4 @@ https://www.erlang.org/doc/design_principles/appup_cookbook
 * {restart_application, app} - 重启app应用
 
 # 参考
-* https://blog.csdn.net/Nassue_sn/article/details/78135023
 * https://zhuanlan.zhihu.com/p/29647820

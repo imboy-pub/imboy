@@ -249,7 +249,7 @@ https://erlang.mk/guide/relx.html
 ```
 IMBOYENV=local make relup
 
-vsn=0.2.9 ./appup.sh
+vsn=0.2.10 ./appup.sh
 
  ./bin/imboy pid
 2147601
@@ -281,7 +281,7 @@ Appup Cookbook https://cloud.tencent.com/developer/section/1122611
 ```
 {"0.2.0",
     所有版本"0.1.*"升级到版本"0.2.0",重启应用
-   [{"0.1\\.[0-9]+", [{restart_application, imboy_app}
+   [{"0.2\\.[0-9]+", [{restart_application, imboy_app}
              ]}],
     版本"0.2.0"降级到所有版本"0.1.*",重启应用
    [{"0.1\\.[0-9]+", [{restart_application, imboy_app}
