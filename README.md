@@ -247,9 +247,9 @@ https://erlang.mk/guide/relx.html
 
 
 ```
-IMBOYENV=local make relup
+make clean && IMBOYENV=local make relup
 
-vsn=0.2.10 ./appup.sh
+vsn=0.2.11 ./appup.sh
 
  ./bin/imboy pid
 2147601
