@@ -5,7 +5,7 @@
 %%%
 
 -export([page/5]).
--export ([save/7]).
+-export ([save/6]).
 -export ([get_ddl/3]).
 -export ([delete/1]).
 
@@ -35,10 +35,10 @@ page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
     imboy_response:page_payload(Total, Page, Size, Items).
 
 %%% save方法
--spec save(integer(), binary(), binary(), binary(), binary(), binary(), binary()) ->
+-spec save(integer(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, list(), list()} | {error, any()}.
-save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
-    Where = <<"type=", (ec_cnv:to_binary(Type))/binary, " AND new_vsn= ", (ec_cnv:to_binary(NewVsn))/binary>>,
+save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
+    Where = <<"old_vsn=", (ec_cnv:to_binary(OldVsn))/binary, " AND new_vsn= ", (ec_cnv:to_binary(NewVsn))/binary>>,
     Count = imboy_db:pluck(
         <<"app_ddl">>
         , Where
@@ -50,11 +50,9 @@ save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
         , admin_user_id => AdmUserId
         , old_vsn => ec_cnv:to_integer(OldVsn)
         , new_vsn => ec_cnv:to_integer(NewVsn)
-        , type => ec_cnv:to_integer(Type)
         , status => ec_cnv:to_integer(Status)
     },
-
-    % ?LOG([count, Count]),
+    ?LOG([count, Count]),
     if Count > 0 ->
             imboy_db:update(
                 app_ddl_repo:tablename()

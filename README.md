@@ -247,12 +247,13 @@ https://erlang.mk/guide/relx.html
 
 
 ```
+make clean
 git checkout afb81f8 && make clean && IMBOYENV=local make rel
 git checkout -f dev
 vim relxlocal.config
-
-make clean && IMBOYENV=local make rel
-make clean && IMBOYENV=local make relup
+IMBOYENV=local make rel
+make clean
+IMBOYENV=local make relup
 
 vsn=0.2.11 ./appup.sh
 

@@ -1,3 +1,12 @@
+{"0.1.19",
+    [{"0.1.18", [
+        {load_module, app_ddl_handler}
+    ]}],
+    [{"0.1.18", [
+        {load_module, app_ddl_handler}
+    ]}]
+}.
+
 {"0.1.18",
     [{"0.1.17", [
         {update, websocket_logic}
@@ -10,22 +19,3 @@
         , {load_module, index_handler}
     ]}]
 }.
-
-{"0.1.17",
-    [{"0.1.16", [
-        {restart_application, imapi}
-    ]}],
-    [{"0.1.16", [
-        {restart_application, imapi}
-    ]}]
-}.
-
-{"0.1.16",
-    [{"0.1.15", [
-        {restart_application, imapi}
-    ]}],
-    [{"0.1.15", [
-        {restart_application, imapi}
-    ]}]
-}.
-

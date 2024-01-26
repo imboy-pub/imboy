@@ -1,3 +1,14 @@
+{"0.2.12",
+    [{"0.2.11", [
+        {restart_application, imadm}
+        , {restart_application, imapi}
+    ]}],
+    [{"0.2.11", [
+        {restart_application, imadm}
+        , {restart_application, imapi}
+    ]}]
+}.
+
 {"0.2.11",
     [{"0.2.10", [
         {load_module, imboy_sup}
@@ -7,23 +18,6 @@
     [{"0.2.10", [
         {load_module, imboy_sup}
         , {restart_application, imds}
-        , {restart_application, imapi}
-    ]}]
-}.
-
-{"0.2.10",
-    [{"0.2.9", [
-        {restart_application, imlib}
-        , {restart_application, imds}
-        , {restart_application, imrepo}
-        , {restart_application, imadm}
-        , {restart_application, imapi}
-    ]}],
-    [{"0.2.9", [
-        {restart_application, imlib}
-        , {restart_application, imds}
-        , {restart_application, imrepo}
-        , {restart_application, imadm}
         , {restart_application, imapi}
     ]}]
 }.

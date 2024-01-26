@@ -43,7 +43,7 @@ init(Req0, State0) ->
 index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
     Where = <<"1=1">>,
-    Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,type,status,updated_at,created_at">>,
+    Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
     Payload = app_ddl_ds:page(Page, Size, Where, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
@@ -64,13 +64,12 @@ save(<<"POST">>, Req0, State) ->
     AdmUserId = maps:get(adm_user_id, State),
 
     PostVals = imboy_req:post_params(Req0),
-    Type = proplists:get_value(<<"type">>, PostVals, 3),
     NewVsn = proplists:get_value(<<"new_vsn">>, PostVals, 0),
     OldVsn = proplists:get_value(<<"old_vsn">>, PostVals, 0),
     Status = proplists:get_value(<<"status">>, PostVals, 0),
     Ddl = proplists:get_value(<<"ddl">>, PostVals, <<>>),
     DownDdl = proplists:get_value(<<"down_ddl">>, PostVals, <<>>),
-    app_ddl_ds:save(AdmUserId, Type, NewVsn, OldVsn, Status, Ddl, DownDdl),
+    app_ddl_ds:save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl),
     imboy_response:success(Req0, PostVals, "success.").
 
 delete(<<"DELETE">>, Req0, _State) ->

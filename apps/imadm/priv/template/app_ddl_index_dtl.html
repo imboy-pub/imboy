@@ -88,15 +88,6 @@ layui.use(function(){
             {field:'id', title: 'ID', width:80, sort: true, fixed: true},
             {field:'new_vsn', title: '新版本', width: 100},
             {field:'old_vsn', title: '旧版本', width: 100},
-            {field:'type', title: '类型', width: 100, templet: function(d) {
-                if(d.type == 1) {
-                    return '<span>升、降级</span>';
-                } else if (d.type == 3 ) {
-                    return '<span>全量安装</span>';
-                } else {
-                    return '<span></span>';
-                }
-            }},
             {field:'status', title: '状态', width: 85, templet: function(d) {
                 if(d.status == 1) {
                     return '<span style="color: blue">已启用</span>';
@@ -280,19 +271,7 @@ layui.use(function(){
                 <input type="radio" name="status" value="0" title="禁用" checked>
             `;
         }
-        var typeHtml = `
-            <input type="radio" name="type" value="1" title="升、降级" checked>
-            <input type="radio" name="type" value="3" title="全量安装">
-        `;
-        if (data.type == 1) {
-            typeHtml = `
-                <input type="radio" name="type" value="1" title="升、降级" checked>
-            `;
-        } else if (data.type == 3) {
-            typeHtml = `
-                <input type="radio" name="type" value="3" title="全量安装" checked>
-            `;
-        }
+
         // top.layer.open({
         layer.open({
             type: 1,
@@ -302,14 +281,6 @@ layui.use(function(){
             title: title,
             content: `
                 <div class="layui-form" lay-filter="filter-test-layer" style="margin: 16px;">
-                    <div class="layui-form-item">
-                        <div class="layui-input-group">
-                            <label class="layui-form-label">
-                                类型
-                            </label>
-                            <div class="layui-input-block">`+typeHtml+`</div>
-                        </div>
-                    </div>
                     <div class="layui-form-item">
                         <div class="layui-input-group">
                             <label class="layui-form-label">
@@ -371,37 +342,19 @@ layui.use(function(){
                 // 表单提交事件
                 form.on('submit(on-reply-btn)', function(data) {
                     var post_data = data.field; // 获取表单字段值
-                    // 类型 1 升、降级  3 全量安装
-                    if (post_data['type'] == 1) {
-                        if (post_data['new_vsn'] <= post_data['old_vsn']) {
-                            layer.msg('新版本必须大于就版本', {
-                                icon: 3,
-                                time: 1000
-                            })
-                            return;
-                        }
-                        if (post_data['ddl'] == '' || post_data['down_ddl'] == '') {
-                            layer.msg('升、降级DDL语句必须', {
-                                icon: 3,
-                                time: 1000
-                            })
-                            return;
-                        }
-                    } else if (post_data['type'] == 3) {
-                        if (post_data['ddl'] == '') {
-                            layer.msg('DDL语句必须', {
-                                icon: 3,
-                                time: 1000
-                            })
-                            return;
-                        }
-                        if (post_data['old_vsn'] != post_data['new_vsn']) {
-                            layer.msg('全量安装新旧版本必须一致', {
-                                icon: 3,
-                                time: 1000
-                            })
-                            return;
-                        }
+                    if (post_data['new_vsn'] <= post_data['old_vsn']) {
+                        layer.msg('新版本必须大于就版本', {
+                            icon: 3,
+                            time: 1000
+                        })
+                        return;
+                    }
+                    if (post_data['ddl'] == '' || post_data['down_ddl'] == '') {
+                        layer.msg('升、降级DDL语句必须', {
+                            icon: 3,
+                            time: 1000
+                        })
+                        return;
                     }
                     post_data['ddl'] = encode_base64(post_data['ddl']);
                     post_data['down_ddl'] = encode_base64(post_data['down_ddl']);

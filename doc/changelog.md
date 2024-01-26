@@ -1,3 +1,7 @@
+# 0.2.12
+* 因为客户端第一次安装APP的时候，使用了“Copy from asset”方案，所以 app_ddl 不在需要 type字段，做响应修改
+*
+
 # 0.2.11
 * 调整 /init API 获取AES必要的方法；
 * 修复 CLIENT_ACK 的时候 erlang:cancel_timer/1 之后 imboy_cache:flush/1 掉消息的 TimerRef

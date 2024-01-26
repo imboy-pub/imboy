@@ -43,7 +43,6 @@ get_ddl(<<"upgrade">>, Req0, _State) ->
     % -- 类型 1 升、降级  3 全量安装
     Where = [
         ["status", "=", 1]
-        , ["type", "=", 1]
         , ["new_vsn", "<=", NewVsn]
     ],
     OrderBy = <<"new_vsn asc">>,
@@ -67,7 +66,6 @@ get_ddl(<<"downgrade">>, Req0, _State) ->
     % -- 类型 1 升、降级  3 全量安装
     Where = [
         ["status", "=", 1]
-        , ["type", "=", 1]
         , ["new_vsn", ">=", MinVsn]
         , ["new_vsn", "<=", MaxVsn]
     ],
@@ -78,20 +76,6 @@ get_ddl(<<"downgrade">>, Req0, _State) ->
         ddl => Ddl
     });
 
-get_ddl(<<"create">>, Req0, _State) ->
-    {ok, NewVsn} = imboy_req:get_int(new_vsn, Req0, 0),
-    % -- 类型 1 升、降级  3 全量安装
-    Where = [
-        ["status", "=", 1]
-        , ["type", "in", {raw, <<"(1,3)">>}]
-        , ["new_vsn", "<=", NewVsn]
-    ],
-    OrderBy = <<"new_vsn asc">>,
-    Column = <<"ddl">>,
-    Ddl = app_ddl_ds:get_ddl(Where, OrderBy, Column),
-    imboy_response:success(Req0, #{
-        ddl => Ddl
-    });
 get_ddl(_, Req0, _State) ->
     imboy_response:success(Req0, #{<<"ddl">> => []}).
 
