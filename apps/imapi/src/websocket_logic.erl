@@ -65,10 +65,9 @@ c2c(MsgId, CurrentUid, Data) ->
 -spec c2c_client_ack(binary(), integer(), binary()) -> ok.
 c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"id">>,
-    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
-    Vals = [MsgId, CurrentUid],
-    {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where, Vals, Column, 1),
-    [ msg_c2c_repo:delete_msg(Id) || {Id} <- Rows ],
+    Where = <<"WHERE msg_id = '", (ec_cnv:to_binary(MsgId))/binary,"' AND to_id = ", (ec_cnv:to_binary(CurrentUid))/binary>>,
+    {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where, Column, 1),
+    [msg_c2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
 
 

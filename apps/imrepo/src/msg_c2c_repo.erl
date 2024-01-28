@@ -6,7 +6,7 @@
 -include_lib("imlib/include/log.hrl").
 
 -export([tablename/0]).
--export([read_msg/4]).
+-export([read_msg/3]).
 -export([write_msg/6]).
 -export([delete_msg/1]).
 -export([count_by_to_id/1]).
@@ -21,15 +21,15 @@ tablename() ->
     imboy_db:public_tablename(<<"msg_c2c">>).
 
 
-read_msg(Where, Vals, Column, Limit) ->
+read_msg(Where, Column, Limit) ->
     Tb = tablename(),
-    ValsLen = length(Vals),
-    LimitIndex = integer_to_binary(ValsLen + 1),
     % use index i_ToId
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary, " ORDER BY id ASC LIMIT $",
-            LimitIndex/binary>>,
-    % logger:error("msg_c2c_repo:read_msg/4 ~s~n", [Sql]),
-    imboy_db:query(Sql, Vals ++ [Limit]).
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " "
+        , Where/binary
+        , " ORDER BY id ASC LIMIT "
+        , (ec_cnv:to_binary(Limit))/binary>>,
+    % logger:error("msg_c2c_repo:read_msg/3 ~s~n", [Sql]),
+    imboy_db:query(Sql).
 
 
 % msg_c2c_repo:write_msg(imboy_dt:millisecond(), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:millisecond()).

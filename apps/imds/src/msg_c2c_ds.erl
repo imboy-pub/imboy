@@ -37,23 +37,13 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 
-
 read_msg(ToUid, Limit, undefined) ->
-    P = imboy_hasher:decoded_payload(),
-    Column = <<"id, ", P/binary, ", from_id, to_id,
-        created_at, server_ts, msg_id">>,
-    Where = <<"WHERE to_id = $1">>,
-    Vals = [ToUid],
-    read_msg(Where, Vals, Column, Limit);
-read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
-    read_msg(ToUid, Limit, binary_to_integer(Ts));
+    Where = <<"WHERE to_id = ", (ec_cnv:to_binary(ToUid))/binary>>,
+    read_msg_filter(Where, Limit);
 read_msg(ToUid, Limit, Ts) ->
-    P = imboy_hasher:decoded_payload(),
-    Column = <<"id, ", P/binary, ", from_id, to_id,
-        created_at, server_ts, msg_id">>,
-    Where = <<"WHERE to_id = $1 AND created_at > $2">>,
-    Vals = [ToUid, Ts],
-    read_msg(Where, Vals, Column, Limit).
+    Where = <<"WHERE to_id = " , (ec_cnv:to_binary(ToUid))/binary
+        , " AND created_at > ", (ec_cnv:to_binary(Ts))/binary>>,
+    read_msg_filter(Where, Limit).
 
 
 delete_msg(Id) ->
@@ -78,8 +68,10 @@ revoke_offline_msg(NowTs, Id, FromId, ToId) ->
 %% ===================================================================
 
 
-read_msg(Where, Vals, Column, Limit) ->
-    Res = msg_c2c_repo:read_msg(Where, Vals, Column, Limit),
+read_msg_filter(Where, Limit) ->
+    P = imboy_hasher:decoded_payload(),
+    Column = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
+    Res = msg_c2c_repo:read_msg(Where, Column, Limit),
     % ?LOG([Res]),
     case Res of
         {ok, ColumnLi, Rows} ->
