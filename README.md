@@ -20,7 +20,7 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 
 ------
 
-* Erlang/OTP 23 / Erlang/OTP 24
+* Erlang/OTP 24 (Cowboy 2.11 requires Erlang/OTP 24.0 or greater.)
 * Erlang/OTP 25
 
 * 数据库 PostgreSQL15
