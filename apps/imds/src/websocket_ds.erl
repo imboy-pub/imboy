@@ -76,5 +76,6 @@ auth_after(Uid, Req, State, Opt) ->
 
 
 % 设置用户websocket超时时间，默认60秒
+% Cowboy关闭连接空闲128秒 默认值为 60000
 idle_timeout(_Uid) ->
-    60000.
+    128000.
