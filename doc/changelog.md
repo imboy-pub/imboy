@@ -1,5 +1,10 @@
+# 0.2.14
+* 凌晨3点执行 pgsql备份；
+* 升级 cowboy 到 2.21.0；
+
 # 0.2.13
 * 修复c2c_client_ack 之后没删除离线消息的问题；
+* websocket 的 idle_timeout 参数的值调整为128秒(需要比客户端的心跳时间间隔大点儿);
 
 # 0.2.12
 * 因为客户端第一次安装APP的时候，使用了“Copy from asset”方案，所以 app_ddl 不在需要 type字段，做响应修改

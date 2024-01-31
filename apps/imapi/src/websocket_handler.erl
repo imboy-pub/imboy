@@ -28,6 +28,7 @@ init(Req0, State0) ->
     Opt0 = #{
              num_acceptors => infinity,
              max_connections => infinity,
+             enable_connect_protocol => true, % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
              max_frame_size => 1048576,  % 1MB
              % Cowboy关闭连接空闲128秒 默认值为 60000
              % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值

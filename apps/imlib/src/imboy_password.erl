@@ -1,7 +1,7 @@
 -module(imboy_password).
 %%%
-% Pwd = imboy_password:generate("admin888").
-% imboy_password:verify("admin888", Pwd).
+% Pwd = imboy_password:generate(imboy_hasher:md5("admin888")).
+% imboy_password:verify(imboy_hasher:md5("admin888"), Pwd).
 %%%
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/common.hrl").

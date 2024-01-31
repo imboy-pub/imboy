@@ -19,11 +19,10 @@ CREATE TABLE IF NOT EXISTS public."group"
     notification varchar(800) NOT NULL DEFAULT '',
     introduction varchar(2000) NOT NULL DEFAULT '',
     avatar varchar(200) NOT NULL DEFAULT '',
-    groupname varchar(80) NOT NULL DEFAULT '',
+    groupname varchar(80) NOT  NULL DEFAULT '',
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
-    CONSTRAINT uk_Groupname UNIQUE  (groupname)
+    created_at bigint NOT NULL
 )
 
 TABLESPACE pg_default;
