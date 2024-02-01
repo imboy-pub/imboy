@@ -3,7 +3,9 @@
 # 凌晨3点执行
 # 0 3 * * * sh /var/lib/postgresql/data/cron_backup_pgsql.sh
 # docker exec -it <container_id> /bin/sh
-# 0 3 * * * docker exec -it ff94aeeb74a0416d3e6b539600f909f6b18532eadcb50c86b8f1b4f0519ae632 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
+# crontab -e 新增下面一行
+# 0 3 * * * /usr/bin/docker exec ff94aeeb74a0416d3e6b539600f909f6b18532eadcb50c86b8f1b4f0519ae632 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
+
 #
 # 进入 pgsql的docker容器
 # clear && docker container exec -it ff94aeeb74a0416d3e6b539600f909f6b18532eadcb50c86b8f1b4f0519ae632 bash
