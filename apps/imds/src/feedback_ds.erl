@@ -79,7 +79,7 @@ remove(Uid, FeedbackId) ->
 page_reply(Page, Size, Where, OrderBy) when Page > 0 ->
     Offset = (Page - 1) * Size,
     Column = <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_user_id, replier_name, body, status, updated_at, created_at">>,
-    Tb = feedback_repo:tablename(),
+    Tb = feedback_reply_repo:tablename(),
     Total = imboy_db:count_for_where(Tb, Where),
     Items = imboy_db:page_for_where(Tb,
         Size,

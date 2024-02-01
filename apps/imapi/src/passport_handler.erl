@@ -19,10 +19,10 @@ init(Req0, State0) ->
         case Action of
             refreshtoken ->
                 refreshtoken(Req0);
-            do_login ->
-                do_login(Req0);
-            do_signup ->
-                do_signup(Req0);
+            login ->
+                login(Req0);
+            signup ->
+                signup(Req0);
             send_code ->
                 send_code(Req0);
             find_password ->
@@ -33,7 +33,7 @@ init(Req0, State0) ->
     {ok, Req1, State}.
 
 
-do_login(Req0) ->
+login(Req0) ->
     % ?LOG(["peer", cowboy_req:peer(Req0)]),
     % {Ip,_Port} = cowboy_req:peer(Req0),
     % {ok, ClientSocket} = gen_tcp:accept(State#client_state.socket_fd),
@@ -121,7 +121,7 @@ send_code(Req0) ->
     end.
 
 
-do_signup(Req0) ->
+signup(Req0) ->
     %%
     %% 在POST请求中取出内容
     %% 用户名account

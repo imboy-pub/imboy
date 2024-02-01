@@ -17,8 +17,8 @@ get_routes() ->
 
        {"/app_ddl/get", app_ddl_handler, #{action => get_ddl}},
 
-       {"/passport/login", passport_handler, #{action => do_login}},
-       {"/passport/signup", passport_handler, #{action => do_signup}},
+       {"/passport/login", passport_handler, #{action => login}},
+       {"/passport/signup", passport_handler, #{action => signup}},
        {"/passport/getcode", passport_handler, #{action => send_code}},
        {"/passport/findpassword", passport_handler, #{action => find_password}},
 
