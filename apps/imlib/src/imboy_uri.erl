@@ -128,7 +128,7 @@ check_auth(Url) ->
     {UrlMap, QMap} = get_params(Url),
     % % <<"s=dev&a=344af61665efff23&v=531378&width=375">>
     S = maps:get(<<"s">>, QMap, <<"dev">>),
-    V = imboy_dt:second(),
+    V = imboy_dt:utc(second),
     A = auth_ds:get_token(assets, S, integer_to_list(V)),
     V2 = integer_to_binary(V),
     NewQuery = <<"s=", S/binary, "&a=", A/binary, "&v=", V2/binary>>,

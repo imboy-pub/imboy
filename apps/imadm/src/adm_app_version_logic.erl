@@ -51,11 +51,11 @@ save(Data) ->
             imboy_db:update(
                 app_version_repo:tablename()
                 , <<"id = ", (ec_cnv:to_binary(Id))/binary>>
-                , Data#{updated_at => imboy_dt:millisecond()}
+                , Data#{updated_at => imboy_dt:utc(millisecond)}
             );
         true ->
             D2 = maps:remove(id, Data),
-            app_version_repo:add(D2#{created_at => imboy_dt:millisecond()})
+            app_version_repo:add(D2#{created_at => imboy_dt:utc(millisecond)})
     end.
 
 -spec delete(binary()) -> ok.

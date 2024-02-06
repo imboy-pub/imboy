@@ -32,7 +32,7 @@ c2c(MsgId, CurrentUid, Data) ->
     InDenylist = user_denylist_logic:in_denylist(ToId, CurrentUid),
     case {IsFriend, InDenylist} of
         {true, 0} ->
-            NowTs = imboy_dt:millisecond(),
+            NowTs = imboy_dt:utc(millisecond),
             From = imboy_hashids:uid_encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
@@ -78,7 +78,7 @@ c2c_revoke(MsgId, Data, Type) ->
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:uid_decode(To),
     % ?LOG([From, To, ToId, Type, Data]),
-    NowTs = imboy_dt:millisecond(),
+    NowTs = imboy_dt:utc(millisecond),
 
     Msg = [{<<"id">>, MsgId}, {<<"from">>, From}, {<<"to">>, To}, {<<"server_ts">>, NowTs}],
     % 判断是否在线
@@ -102,7 +102,7 @@ c2g(MsgId, CurrentUid, Data) ->
     % TODO check is group member
     MemberUids = group_member_ds:member_uids(ToGID),
     % Uids.
-    NowTs = imboy_dt:millisecond(),
+    NowTs = imboy_dt:utc(millisecond),
     Msg = [{<<"id">>, MsgId},
            {<<"type">>, <<"C2G">>},
            {<<"from">>, imboy_hashids:uid_encode(CurrentUid)},

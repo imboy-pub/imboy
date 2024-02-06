@@ -18,7 +18,7 @@ send_email_code(undefined) ->
 % send_email_code(ToEmail) ->
 %     {error, "Email必须"};
 send_email_code(ToEmail) ->
-    Now = imboy_dt:millisecond(),
+    Now = imboy_dt:utc(millisecond),
     case verification_code_repo:get_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
         {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 60000 ->
@@ -154,7 +154,7 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 %% 校验验证码
 -spec verify_code(binary(), binary()) -> {error, list()} | {ok, list()}.
 verify_code(Id, Code) ->
-    Now = imboy_dt:millisecond(),
+    Now = imboy_dt:utc(millisecond),
     case verification_code_repo:get_by_id(Id) of
         {ok, _Col, [{_, Code, ValidityAt, _}]} when Now < ValidityAt ->
             {ok, "验证码有效"};
@@ -172,7 +172,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             {error, "Email已经被占用了"};
         {ok, _Col, []} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
-            Now = imboy_dt:millisecond(),
+            Now = imboy_dt:utc(millisecond),
             Table = <<"user">>,
             Column = <<"(account,email,password,ref_user_id,
                 reg_ip,reg_cosv,status,created_at)">>,
@@ -220,7 +220,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             {error, "Email不存在或已被删除"};
         {ok, _Col, [{Id, _Email}]} ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
-            % Now = imboy_dt:millisecond(),
+            % Now = imboy_dt:utc(millisecond),
             Tb2 = user_repo:tablename(),
             Pwd2 = imboy_password:generate(Password),
             Res = imboy_db:update(Tb2, Id, <<"password">>, Pwd2),

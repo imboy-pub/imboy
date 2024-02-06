@@ -6,9 +6,41 @@
 -export([microsecond/0,
          millisecond/0,
          second/0]).
+
 -export([now/0, now/1]).
 -export([to_rfc3339/2]).
+-export([to_rfc3339/3]).
+-export([timezone_offset/0, timezone_offset/1]).
+-export([utc/1]).
 
+utc(millisecond) ->
+    erlang:system_time(millisecond) - timezone_offset(second) * 1000;
+utc(second) ->
+    erlang:system_time(second) - timezone_offset(second).
+
+%% 获取系统当前时区 （单位：毫秒）
+%% imboy_dt:timezone_offset()
+timezone_offset() ->
+    timezone_offset(second) * 1000.
+
+%% 获取系统当前时区 （单位：毫秒）
+timezone_offset(millisecond) ->
+    timezone_offset(second) * 1000;
+% imboy_dt:timezone_offset(minute).
+timezone_offset(hour) ->
+    ec_cnv:to_integer(timezone_offset(second) / 3600);
+timezone_offset(minute) ->
+    ec_cnv:to_integer(timezone_offset(second) / 60);
+timezone_offset(second) ->
+    %% 获取当前的UTC时间
+    UtcTime = calendar:universal_time(),
+    %% 将UTC时间转换为本地时间
+    LocalTime = calendar:local_time(),
+    %% 计算时差（单位为秒）
+    {Day,  T1} = calendar:time_difference(UtcTime, LocalTime),
+    TimeDiffSeconds = calendar:time_to_seconds(T1) + Day * 86400,
+    % TimeZoneOffset = -TimeDiffSeconds * 1000, % 计算与UTC相对于东西经180度的时区偏移量（单位：毫秒）
+    TimeDiffSeconds.
 
 %% 返回当前Erlang系统时间秒
 second() ->
@@ -16,6 +48,8 @@ second() ->
 
 
 %% 返回当前Erlang系统时间毫秒
+%% https://currentmillis.com/
+%% Methods to get the time in milliseconds since the UNIX epoch (January 1, 1970 00:00:00 UTC) in various programming languages
 millisecond() ->
     erlang:system_time(millisecond).
 
@@ -24,12 +58,9 @@ millisecond() ->
 microsecond() ->
     erlang:system_time(microsecond).
 
-
 % 默认当前时间微秒单位
 now() ->
     now(microsecond).
-
-
 now(second) ->
     list_to_binary(to_rfc3339(erlang:system_time(second), second));
 now(millisecond) ->
@@ -41,6 +72,7 @@ now(microsecond) ->
 %% link https://www.erlang.org/doc/man/calendar.html#system_time_to_rfc3339-2
 %
 % imboy_dt:to_rfc3339(imboy_dt:second(), second).
+% imboy_dt:to_rfc3339(imboy_dt:millisecond(), millisecond).
 % offset，可以是字符串或整数。默认情况下的空字符串被解释为当地时间。按原样包含非空字符串。整数的时间单位与Time 的时间单位相同。
 % time_designator the date and time separator. The default is $T.
 %
@@ -55,8 +87,17 @@ to_rfc3339(Val, microsecond) ->
     calendar:system_time_to_rfc3339(Val, [{unit, microsecond}, {time_designator, $\s}, {offset, ""}]);
 % Nanosecond from erlang:system_time().
 % imboy_dt:to_rfc3339(erlang:system_time(), nanosecond).
+% calendar:system_time_to_rfc3339(erlang:system_time(second), [{offset, "-02:00"}]).
 to_rfc3339(Nanosecond, nanosecond) ->
     calendar:system_time_to_rfc3339(Nanosecond, [{unit, nanosecond}, {time_designator, $\s}, {offset, ""}]).
+
+
+
+% imboy_dt:to_rfc3339(1707198019, second, "+08:00").
+% imboy_dt:to_rfc3339(imboy_dt:utc(second) + imboy_dt:timezone_offset(second), second, "+08:00").
+% imboy_dt:to_rfc3339(imboy_dt:utc(millisecond) + imboy_dt:timezone_offset(millisecond), millisecond, "+08:00").
+to_rfc3339(Num, Unit, Offset) ->
+    calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}]).
 
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-1
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-2

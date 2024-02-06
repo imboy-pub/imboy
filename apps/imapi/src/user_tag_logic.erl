@@ -92,7 +92,7 @@ delete(Uid, Scene, Tag) ->
 change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
     <<TagName/binary, " 已存在"/utf8>>;
 change_name(0, Uid, Scene, TagId, TagName) ->
-    NowTs = imboy_dt:millisecond(),
+    NowTs = imboy_dt:utc(millisecond),
     CreatedAt = integer_to_binary(NowTs),
     % RefCount = imboy_db:pluck(<<"user_tag_relation">>,
     %                           <<"scene = ", Scene/binary, " AND tag_id = ", TagId/binary, " AND user_id = ",
@@ -128,7 +128,7 @@ add(Uid, Scene, Tag) ->
     case Count of
         0 ->
             Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
-            Value = [Uid, Scene, <<"'", Tag/binary, "'">>, 0, imboy_dt:millisecond()],
+            Value = [Uid, Scene, <<"'", Tag/binary, "'">>, 0, imboy_dt:utc(millisecond)],
             % {ok,1,[{10}]}
             imboy_db:insert_into(<<"user_tag">>, Column, Value);
         _ ->

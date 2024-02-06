@@ -34,7 +34,7 @@ decrypt_token(Token) ->
             ID = imboy_hashids:uid_decode(Uid),
             ExpireAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
-            Now = imboy_dt:millisecond(),
+            Now = imboy_dt:utc(millisecond),
             if
                 (ExpireAt - Now) > 0 ->
                     {ok, ID, ExpireAt, Sub};
@@ -57,9 +57,7 @@ decrypt_token(Token) ->
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().
 encrypt_token(ID, Millisecond, Sub) ->
-    % Now = os:system_time(seconds),
-    % ExpireAt = Now + Millisecond / 1000,
-    ExpireAt = imboy_dt:millisecond() + Millisecond,
+    ExpireAt = imboy_dt:utc(millisecond) + Millisecond,
     Data = #{
              % iss => imboy  % iss (issuer)：签发人
              % , nbf => Now + 1 % nbf (Not Before)：生效时间

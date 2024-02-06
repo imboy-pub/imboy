@@ -32,7 +32,7 @@ read_msg(Where, Column, Limit) ->
     imboy_db:query(Sql).
 
 
-% msg_c2c_repo:write_msg(imboy_dt:millisecond(), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:millisecond()).
+% msg_c2c_repo:write_msg(imboy_dt:utc(millisecond), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:utc(millisecond)).
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(FromId) ->
     FromId2 = list_to_binary(integer_to_list(FromId)),
     write_msg(CreatedAt, Id, Payload, FromId2, ToId, ServerTS);

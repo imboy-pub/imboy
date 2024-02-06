@@ -150,4 +150,18 @@ sensitive_word
 * https://www.cnblogs.com/ssjxx98/articles/14131142.html
 * https://download.geofabrik.de/asia.html
 
+## 时间判断的问题
+前提条件1 服务端用erlang生产的 JWT 里面的过期时间是  erlang:system_time(millisecond) 获取的（假设服务器设置的时区是utc+8）,
+前提条件2  APP端 的用户（加速用户时区是utc+1）是通过dart语言的 DateTime.now().millisecondsSinceEpoch 获取的毫秒数
+
+后置结果：
+客户端通过  (jwt.claims['exp'] ?? 0) - 1500 > DateTime.now().millisecondsSinceEpoch
+        ? true
+        : false;
+
+问题： 上面的方法判断token是否过期，会不会受到时区影响？
+
+答： 会影响
+解决办法： 获取时区差，统一用utc+0时区的时间戳计算，以避免影响
+
 ## More

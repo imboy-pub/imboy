@@ -44,7 +44,7 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, Feed
         , <<"'", Attach/binary, "'">>
         , <<"'", FeedbackMd5/binary, "'">>
         , 1
-        , imboy_dt:millisecond()
+        , imboy_dt:utc(millisecond)
     ],
     imboy_db:insert_into(Tb, Column, Value),
     ok.

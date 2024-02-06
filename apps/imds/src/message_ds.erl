@@ -86,7 +86,7 @@ assemble_msg(Type, From, To, Payload, MsgId) when is_list(To), To > 0 ->
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(To), To > 0 ->
     assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) ->
-    Ts = imboy_dt:millisecond(),
+    Ts = imboy_dt:utc(millisecond),
     [{<<"id">>, MsgId},
      {<<"type">>, Type},
      {<<"from">>, From},

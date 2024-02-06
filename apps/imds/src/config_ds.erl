@@ -91,7 +91,7 @@ set(Key, Val) ->
 
 save(Key, Data) ->
     % ?LOG([Key, Val, Tab]),
-    Now = imboy_dt:millisecond(),
+    Now = imboy_dt:utc(millisecond),
     Now2 = integer_to_binary(Now),
     case imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"count(*) as count">>, 0) of
         0 ->

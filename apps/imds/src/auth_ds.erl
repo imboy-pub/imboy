@@ -19,7 +19,7 @@
 
 
 %%% 获取资源服务访问token
-% {imboy_dt:second(), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:second()))}.
+% {imboy_dt:utc(second), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:utc(second)))}.
 % auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
 get_token(assets, S, V) ->
     AuthKeys = config_ds:env(auth_keys),

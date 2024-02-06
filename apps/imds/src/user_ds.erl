@@ -26,7 +26,7 @@ webrtc_credential(Uid) ->
     Secret = config_ds:env(eturnal_secret),
 
     UidBin = imboy_hashids:uid_encode(Uid),
-    TmBin = integer_to_binary(imboy_dt:second() + 86400),
+    TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
     Username = <<TmBin/binary, ":", UidBin/binary>>,
     Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
     {Username, Credential, Uris}.

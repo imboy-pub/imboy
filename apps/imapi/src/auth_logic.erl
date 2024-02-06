@@ -27,7 +27,7 @@ verify_for_assets(_Scene, _Tk, error, _) ->
     <<"fail">>;
 % verify_for_assets(Scene, Tk, Val, Path) when is_binary(Path) ->
 verify_for_assets(Scene, Tk, V, _Path) ->
-    Now = imboy_dt:second(),
+    Now = imboy_dt:utc(second),
     % V = binary_to_integer(Val),
     Diff = 7200,
     % imboy_log:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),

@@ -21,7 +21,7 @@
 tablename() ->
     imboy_db:public_tablename(<<"app_ddl">>).
 
-% app_ddl_repo:save(#{<<"ddl">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:millisecond(), <<"sign_key">> => <<"">>})
+% app_ddl_repo:save(#{<<"ddl">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:utc(millisecond), <<"sign_key">> => <<"">>})
 add(Data) ->
     Tb = tablename(),
     % Column = <<"(user_id, status, created_at)">>,

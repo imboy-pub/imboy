@@ -51,7 +51,7 @@ remove(Uid, Scene, ObjectId, TagId) ->
 set(Uid, Scene, ObjectIds, TagId, TagName) when is_integer(TagId) ->
     set(Uid, Scene, ObjectIds, integer_to_binary(TagId), TagName);
 set(Uid, Scene, ObjectIds, TagId, TagName) ->
-    NowTs = imboy_dt:millisecond(),
+    NowTs = imboy_dt:utc(millisecond),
     Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),
 
@@ -123,7 +123,7 @@ add(Uid, Scene, <<>>, [Tag]) ->
     case Count of
         0 ->
             Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
-            Value = [Uid, Scene, <<"'", Tag/binary, "'">>, 0, imboy_dt:millisecond()],
+            Value = [Uid, Scene, <<"'", Tag/binary, "'">>, 0, imboy_dt:utc(millisecond)],
             imboy_db:insert_into(<<"user_tag">>, Column, Value),
             ok;
         _ ->
@@ -184,7 +184,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     % ),
     % TagIdNewLi = [Id || {Id, _} <- Tag2],
     % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
-    NowTs = imboy_dt:millisecond(),
+    NowTs = imboy_dt:utc(millisecond),
     Uid2 = integer_to_binary(Uid),
     CreatedAt = integer_to_binary(NowTs),
     imboy_db:with_transaction(fun(Conn) ->

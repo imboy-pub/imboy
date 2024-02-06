@@ -34,6 +34,6 @@ update(Uid, Setting) when is_integer(Uid) ->
     Sql = <<"INSERT INTO ", Tb/binary, "
         (user_id, setting, updated_at) VALUES ($1, $2, $3)
         ON CONFLICT (user_id) DO ", UpSql/binary>>,
-    UpAt = imboy_dt:millisecond(),
+    UpAt = imboy_dt:utc(millisecond),
     % ?LOG([Sql, [Uid, jsone:encode(Setting), UpAt]]),
     imboy_db:execute(Sql, [Uid, jsone:encode(Setting, [native_utf8]), UpAt]).
