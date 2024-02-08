@@ -46,7 +46,7 @@ index(<<"GET">>, 1, Req0, _State) ->
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"1=1">>,
     Column = <<"*">>,
-    Payload = adm_app_version_logic:page(Page, Size, Where, <<"id desc">>, Column),
+    Payload = adm_app_version_logic:page(Page, Size, Where, <<"sort desc, updated_at desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} = imboy_dtl:template(app_version_index_dtl, [
@@ -84,6 +84,7 @@ save(<<"POST">>, Req0, _State) ->
         , package_name => PkgName
         , app_name => AppName
         , vsn => Vsn
+        , sort => adm_app_version_logic:vsn_sort(Vsn)
         , app_db_vsn => ec_cnv:to_integer(DbVsn)
         , sign_key => SKey
         , download_url => DUrl

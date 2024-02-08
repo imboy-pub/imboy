@@ -93,19 +93,7 @@ layui.use(function(){
             {field:'package_name', title: '包名 | Bundle ID', width: 160},
             {field:'app_name', title: 'APP名称', width: 100},
             {field:'vsn', title: '版本x.y.z', width: 100},
-            {field:'sign_key', title: 'APP签名密码', width: 160},
-            {field:'download_url', title: '下载地址', width: 100},
-            {field:'description', title: '升级说明', width: 200},
             {field:'app_db_vsn', title: 'APP数据库版本', width: 140},
-            {field:'force_update', title: '强制更新', width: 100, templet: function(d) {
-                if(d.force_update == 1) {
-                    return '<span style="color: blue">是</span>';
-                } else if (d.force_update == 2 ) {
-                    return '<span style="color: gray">否</span>';
-                } else {
-                    return '<span style="color: pink">unkonw</span>';
-                }
-            }},
             {field:'status', title: '状态', width: 85, templet: function(d) {
                 if(d.status == 1) {
                     return '<span style="color: blue">已启用</span>';
@@ -113,6 +101,18 @@ layui.use(function(){
                     return '<span style="color: gray">已禁用</span>';
                 } else if (d.status == -1 ) {
                     return '<span style="color: red">已删除</span>';
+                } else {
+                    return '<span style="color: pink">unkonw</span>';
+                }
+            }},
+            {field:'sign_key', title: 'APP签名密码', width: 160},
+            {field:'download_url', title: '下载地址', width: 100},
+            {field:'description', title: '升级说明', width: 200},
+            {field:'force_update', title: '强制更新', width: 100, templet: function(d) {
+                if(d.force_update == 1) {
+                    return '<span style="color: blue">是</span>';
+                } else if (d.force_update == 2 ) {
+                    return '<span style="color: gray">否</span>';
                 } else {
                     return '<span style="color: pink">unkonw</span>';
                 }
@@ -177,9 +177,9 @@ layui.use(function(){
                 , region_code: 'cn'
                 , force_update: 'only2'
                 , type: 'android'
-                , package_name: ''
-                , app_name: ''
-                , vsn: ''
+                , package_name: 'pub.imboy.apk'
+                , app_name: 'IMBoy'
+                , vsn: '0.2.11'
                 , app_db_vsn: '5'
                 , sign_key: ''
                 , download_url: ''
@@ -207,7 +207,6 @@ layui.use(function(){
             layer.confirm('确定要删除吗？（删除后不可恢复！）', {
                 btn: ['确定', '关闭'] //按钮
             }, function() { // 第一个回调
-                console.log('ok');
                  $.ajax({
                         type: "DELETE",
                         url: "/adm/app_version/delete",
@@ -238,8 +237,8 @@ layui.use(function(){
                                 layer.msg('未知错误')
                             }
                         }
-                    });
-                    return false; // 阻止默认 form 跳转
+                });
+                return false; // 阻止默认 form 跳转
                 // layer.msg('第一个回调', {icon: 1});
             }, function(){ // 第二个回调
                 console.log('close');
@@ -304,7 +303,7 @@ layui.use(function(){
             force_updateHtml = `
                 <input type="radio" name="force_update" value="2" title="否" checked>
             `;
-        } else if (data.force_update == 0) {
+        } else if (data.force_update == 2) {
             force_updateHtml = `
                 <input type="radio" name="force_update" value="1" title="是">
                 <input type="radio" name="force_update" value="2" title="否" checked>

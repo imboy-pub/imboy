@@ -1,3 +1,8 @@
+# 0.2.16
+* 新增 app_version 表添加sort字段，值为 vsn 的 Major * 1_000_000 + Minor * 1_000 + Patch
+* 修正 发布版本默认值设置，版本管理列表排序调整；
+* 修复 /app_version/check 获取值问题（调整排序为 order by sort desc, updated_at desc limit 1）；
+
 # 0.2.15
 * APP判断token过期的当前时间去 utc+0 的时间戳，服务器端的 token 的 exp 也去 utc+0的时间戳，以避免时区差异影响；
 * 修复已经反馈回复列表获取数据为空的问题；

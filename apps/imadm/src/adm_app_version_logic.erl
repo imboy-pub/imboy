@@ -6,8 +6,9 @@
 
 -export ([delete/1]).
 -export ([save/1]).
-
 -export([page/5]).
+
+-export([vsn_sort/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -65,6 +66,25 @@ delete(Where) ->
     % ?LOG([Sql]),
     imboy_db:execute(Sql, []),
     ok.
+
+
+% adm_app_version_logic:vsn_sort(<<"0.2">>).
+% adm_app_version_logic:vsn_sort(<<"0.2.22">>).
+%  adm_app_version_logic:vsn_sort(<<"10.102.22">>).
+vsn_sort(Vsn) ->
+    {Major2, Minor2, Patch2} = case ec_semver:parse(Vsn) of
+        {{Major, Minor, Patch, _}, _} ->
+            {Major, Minor, Patch};
+        {{Major, Minor, Patch}, _} ->
+            {Major, Minor, Patch};
+        {{Major, Minor}, _} ->
+            {Major, Minor, 0};
+        {Major, _} when is_integer(Major) ->
+            {Major, 0, 0};
+        {_, _} ->
+            {0, 0, 0}
+    end,
+    Major2 * 1_000_000 + Minor2 * 1_000 + Patch2.
 
 %% ===================================================================
 %% Internal Function Definitions

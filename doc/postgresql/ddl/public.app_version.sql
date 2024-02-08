@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public."app_version"
 
     app_db_vsn int NOT NULL DEFAULT 0,
     force_update int NOT NULL DEFAULT 0,
+    sort int NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
     created_at bigint NOT NULL,
@@ -44,6 +45,7 @@ COMMENT ON COLUMN public.app_version.sign_key IS 'APP签名密码';
 COMMENT ON COLUMN public.app_version.download_url IS '下载地址';
 COMMENT ON COLUMN public.app_version.description IS '描述';
 COMMENT ON COLUMN public.app_version.force_update IS '是否强制升级 1 是  2 否';
+COMMENT ON COLUMN public.app_version.sort IS '排序，值越大越靠前： major * 1_000_000 + minor * 1_000 + patch';
 COMMENT ON COLUMN public.app_version.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.app_version.created_at IS '创建记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';

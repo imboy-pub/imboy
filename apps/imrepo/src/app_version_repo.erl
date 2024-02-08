@@ -25,8 +25,8 @@ tablename() ->
 
 find(Where, Column) ->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " order by vsn desc limit 1">>,
-    ?LOG(['Sql', Sql]),
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " order by sort desc, updated_at desc limit 1">>,
+    % ?LOG(['Sql', Sql]),
     imboy_db:find(Sql).
 
 % app_version_repo:add(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:utc(millisecond), <<"sign_key">> => <<"">>})
