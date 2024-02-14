@@ -26,12 +26,16 @@ init(Req0, State0) ->
     % ?LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
+    #{type := Type} = cowboy_req:match_qs([{type, [], <<>>}], Req0),
     % Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        get_ddl ->
-            #{type := Type} = cowboy_req:match_qs([{type, [], <<>>}], Req0),
-            get_ddl(Type, Req0, State);
-        false ->
+    Req1 = case {Action, Type} of
+        {get_ddl, <<"upgrade">>} ->
+            OrderBy = <<"new_vsn asc">>,
+            get_ddl(<<"ddl">>, Req0, OrderBy);
+        {get_ddl, <<"downgrade">>} ->
+            OrderBy = <<"new_vsn desc">>,
+            get_ddl(<<"down_ddl as ddl">>, Req0, OrderBy);
+        _ ->
             Req0
     end,
     {ok, Req1, State}.
@@ -40,23 +44,7 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-get_ddl(<<"upgrade">>, Req0, _State) ->
-    % Cos = cowboy_req:header(<<"cos">>, Req0),
-    % imboy_log:info(Cos),
-    {ok, NewVsn} = imboy_req:get_int(new_vsn, Req0, 0),
-    % -- 类型 1 升、降级  3 全量安装
-    Where = [
-        ["status", "=", 1]
-        , ["new_vsn", "<=", NewVsn]
-    ],
-    OrderBy = <<"new_vsn asc">>,
-    Column = <<"ddl">>,
-    Ddl = app_ddl_ds:get_ddl(Where, OrderBy, Column),
-    imboy_response:success(Req0, #{
-        ddl => Ddl
-    });
-
-get_ddl(<<"downgrade">>, Req0, _State) ->
+get_ddl(Column, Req0, OrderBy) ->
     % onDowngrade] is called only when [version] is lower than the last database version.
     %
     {ok, OldVsn} = imboy_req:get_int(old_vsn, Req0, 0),
@@ -70,18 +58,13 @@ get_ddl(<<"downgrade">>, Req0, _State) ->
     % -- 类型 1 升、降级  3 全量安装
     Where = [
         ["status", "=", 1]
-        , ["new_vsn", ">=", MinVsn]
+        , ["old_vsn", ">=", MinVsn]
         , ["new_vsn", "<=", MaxVsn]
     ],
-    OrderBy = <<"new_vsn desc">>,
-    Column = <<"down_ddl as ddl">>,
     Ddl = app_ddl_ds:get_ddl(Where, OrderBy, Column),
     imboy_response:success(Req0, #{
         ddl => Ddl
-    });
-
-get_ddl(_, Req0, _State) ->
-    imboy_response:success(Req0, #{<<"ddl">> => []}).
+    }).
 
 %% ===================================================================
 %% EUnit tests.

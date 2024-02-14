@@ -1,3 +1,8 @@
+# 0.3.1
+* 修复 /app_ddl/get 接口，升降级相关ddl排序不正确的问题；
+* 修复 加入群、离开群，清理群成员ID换成 group_member_ds:flush_cache(Gid)；
+* 修改 websocket_logic:c2c_revoke/3 为 websocket_logic:revoke/4，以兼容群聊撤回消息
+
 # 0.3.0
 * 新增 创建群组功能、修改群信息、面对面添加群、解散群等4个接口；
 * 新增 加入群聊、主动退群、设置群内别名、群成员分页列表等4个接口；

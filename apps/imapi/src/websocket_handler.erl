@@ -158,11 +158,15 @@ websocket_handle({text, Msg}, State) ->
             <<"c2c">> ->  % 单聊消息
                 websocket_logic:c2c(MsgId, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
-                websocket_logic:c2c_revoke(MsgId, Data, Type);
+                websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
-                websocket_logic:c2c_revoke(MsgId, Data, Type);
+                websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
             <<"c2g">> ->  % 群聊消息
                 websocket_logic:c2g(MsgId, CurrentUid, Data);
+            <<"c2g_revoke">> ->  % 客户端撤回消息
+                websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
+            <<"c2g_revoke_ack">> ->  % 客户端撤回消息ACK
+                websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
             <<"webrtc_", _Event/binary>> ->
                 % Room = webrtc_ws_logic:room_name(
                 %     imboy_hashids:encode(CurrentUid,

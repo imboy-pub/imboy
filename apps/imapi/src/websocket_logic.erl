@@ -8,7 +8,7 @@
 % -export ([subprotocol/1]).
 -export([c2c/3]).
 -export([c2c_client_ack/3]).
--export([c2c_revoke/3]).
+-export([revoke/4]).
 -export([c2g/3]).
 -export([s2c/3]).
 -export([s2c_client_ack/3]).
@@ -72,8 +72,8 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
 
 
 %% 客户端撤回消息
--spec c2c_revoke(binary(), Data :: list(), binary()) -> ok | {reply, Msg :: list()}.
-c2c_revoke(MsgId, Data, Type) ->
+-spec revoke(binary(), Data :: list(), binary(), binary()) -> ok | {reply, Msg :: list()}.
+revoke(MsgId, Data, Type, Type2) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:decode(To),
@@ -90,7 +90,8 @@ c2c_revoke(MsgId, Data, Type) ->
         false ->  % 对端离线处理
             FromId = imboy_hashids:decode(From),
             msg_c2c_ds:revoke_offline_msg(NowTs, MsgId, FromId, ToId),
-            {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
+            % {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
+            {reply, [{<<"type">>, Type2} | Msg]}
     end.
 
 
