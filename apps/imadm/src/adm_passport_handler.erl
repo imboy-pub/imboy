@@ -69,7 +69,7 @@ login(<<"GET">>, Req0, _State) ->
 
 login(<<"POST">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     CryptKey = imboy_req:cookie(<<"captcha_key">>, Req0),
     % ?LOG(['CryptKey ', CryptKey]),
     PostVals = imboy_req:post_params(Req0),

@@ -1,11 +1,10 @@
--module(user_ds).
+-module(group_notice_logic).
 %%%
-% user 领域服务模块
-% user domain service 缩写
+% group_notice 业务逻辑模块
+% group_notice business logic module
 %%%
 
--export([webrtc_credential/1]).
--export([auth_webrtc_credential/2]).
+-export ([demo/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -18,24 +17,11 @@
 %% API
 %% ===================================================================
 
-
 %%% demo方法描述
--spec webrtc_credential(Uid :: integer()) -> {binary(), binary()}.
-webrtc_credential(Uid) ->
-    Uris = config_ds:env(eturnal_uris),
-    Secret = config_ds:env(eturnal_secret),
-
-    UidBin = imboy_hashids:encode(Uid),
-    TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
-    Username = <<TmBin/binary, ":", UidBin/binary>>,
-    Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
-    {Username, Credential, Uris}.
-
-
-auth_webrtc_credential(Username, Credential) ->
-    Secret = config_ds:env(eturnal_secret),
-    Credential == base64:encode(crypto:mac(hmac, sha, Secret, Username)).
-
+-spec demo(Uid::integer(), Val1::binary(), Val2::binary()) -> ok.
+demo(Uid, Val1, Val2) ->
+    group_notice_repo:demo(Uid, Val1, Val2),
+    ok.
 
 %% ===================================================================
 %% Internal Function Definitions

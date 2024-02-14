@@ -11,7 +11,7 @@
          find_by_mobile/2,
          find_by_account/2]).
 -export([find_by_id/1, find_by_id/2]).
--export([find_by_ids/2]).
+-export([list_by_ids/2]).
 -export([select_by_where/4]).
 
 %% ===================================================================
@@ -70,7 +70,7 @@ find_by_id(Uid, Column) ->
     imboy_db:query(Sql, [Uid]).
 
 
-find_by_ids(Uids, Column) ->
+list_by_ids(Uids, Column) ->
     Tb = tablename(),
     L1 = lists:flatmap(fun(Uid) -> [Uid, ","] end, Uids),
     [_ | L2] = lists:reverse(L1),

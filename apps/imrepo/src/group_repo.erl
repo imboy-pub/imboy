@@ -3,8 +3,10 @@
 % group_repo 是 group repository 缩写
 %%%
 -export([tablename/0]).
--export([find_by_ids/2]).
--export([find_by_uid/2, find_by_uid/3]).
+-export ([add/2]).
+-export([find_by_id/2]).
+-export([list_by_ids/2]).
+-export([list_by_uid/2, list_by_uid/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -20,9 +22,23 @@
 tablename() ->
     imboy_db:public_tablename(<<"group">>).
 
+add(Conn, Data) ->
+    Tb = tablename(),
+    imboy_db:add(Conn, Tb, Data).
 
-% group_repo:find_by_ids([1,2], <<"*">>).
-find_by_ids(Ids, Column) ->
+
+% group_repo:find_by_id(1, <<"*">>).
+find_by_id(Gid, Column) ->
+    Tb = tablename(),
+    Where = <<"WHERE id =", (ec_cnv:to_binary(Gid))/binary>>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
+    % ?LOG([Sql]),
+    % imboy_db:query(Sql).
+    imboy_db:find(Sql).
+
+
+% group_repo:list_by_ids([1,2], <<"*">>).
+list_by_ids(Ids, Column) ->
     Tb = tablename(),
     L1 = lists:flatmap(fun(Id) -> [Id, ","] end, Ids),
     [_ | L2] = lists:reverse(L1),
@@ -33,12 +49,12 @@ find_by_ids(Ids, Column) ->
     imboy_db:query(Sql).
 
 
-% group_repo:find_by_uid(1, <<"*">>).
-find_by_uid(Uid, Column) ->
-    find_by_uid(Uid, Column, 10000).
+% group_repo:list_by_uid(1, <<"*">>).
+list_by_uid(Uid, Column) ->
+    list_by_uid(Uid, Column, 10000).
 
 
-find_by_uid(Uid, Column, Limit) ->
+list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     Where = <<"WHERE owner_uid = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,

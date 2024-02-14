@@ -30,9 +30,9 @@ add_friend(_, _, _, undefined) ->
 add_friend(CurrentUid, To, Payload, CreatedAt) when is_binary(CreatedAt) ->
     add_friend(CurrentUid, To, Payload, binary_to_integer(CreatedAt));
 add_friend(CurrentUid, To, Payload, CreatedAt) ->
-    ToId = imboy_hashids:uid_decode(To),
+    ToId = imboy_hashids:decode(To),
     NowTs = imboy_dt:utc(millisecond),
-    From = imboy_hashids:uid_encode(CurrentUid),
+    From = imboy_hashids:encode(CurrentUid),
     MsgId = <<"af_", From/binary, "_", To/binary>>,
     % ?LOG([is_binary(Payload), Payload]),
     % 存储消息
@@ -52,8 +52,8 @@ confirm_friend(_, _, undefined, _) ->
 confirm_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"payload">>};
 confirm_friend(CurrentUid, From, To, Payload) ->
-    FromID = imboy_hashids:uid_decode(From),
-    ToID = imboy_hashids:uid_decode(To),
+    FromID = imboy_hashids:decode(From),
+    ToID = imboy_hashids:decode(To),
     NowTs = imboy_dt:utc(millisecond),
     Payload2 = jsone:decode(Payload, [{object_format, proplist}]),
 
@@ -128,7 +128,7 @@ confirm_friend_resp(Uid, Remark) ->
 
 -spec delete_friend(integer(), [binary() | integer()]) -> ok.
 delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
-    Uid2 = imboy_hashids:uid_decode(Uid),
+    Uid2 = imboy_hashids:decode(Uid),
     delete_friend(CurrentUid, Uid2);
 delete_friend(CurrentUid, Uid) ->
     friend_repo:delete(CurrentUid, Uid),
@@ -167,7 +167,7 @@ information(CurrentUid, Uid) ->
 %
 friend_ids(Uid) ->
     Column = <<"to_user_id">>,
-    case friend_repo:find_by_uid(Uid, Column) of
+    case friend_repo:list_by_uid(Uid, Column) of
         {ok, _, []} ->
             [];
         {ok, _, Friends} ->

@@ -52,7 +52,7 @@ uqrcode(Req0, State) ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
             {ok, Req, State};
         _ ->
-            Uid2 = imboy_hashids:uid_decode(Uid),
+            Uid2 = imboy_hashids:decode(Uid),
             Column = <<"id,nickname,gender,avatar,sign,region,status">>,
             User = user_logic:find_by_id(Uid2, Column),
             Status = proplists:get_value(<<"status">>, User),
@@ -120,5 +120,5 @@ update(Req0, State) ->
 open_info(Req0, _State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     Column = <<"id, nickname, avatar, account,sign">>,
-    User = user_logic:find_by_id(imboy_hashids:uid_decode(Uid), Column),
+    User = user_logic:find_by_id(imboy_hashids:decode(Uid), Column),
     imboy_response:success(Req0, imboy_hashids:replace_id(User), "success.").

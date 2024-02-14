@@ -19,7 +19,7 @@ send_email_code(undefined) ->
 %     {error, "Email必须"};
 send_email_code(ToEmail) ->
     Now = imboy_dt:utc(millisecond),
-    case verification_code_repo:get_by_id(ToEmail) of
+    case verification_code_repo:find_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
         {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 60000 ->
             {ok, "一分钟内重复请求不发送Email"};
@@ -155,7 +155,7 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 -spec verify_code(binary(), binary()) -> {error, list()} | {ok, list()}.
 verify_code(Id, Code) ->
     Now = imboy_dt:utc(millisecond),
-    case verification_code_repo:get_by_id(Id) of
+    case verification_code_repo:find_by_id(Id) of
         {ok, _Col, [{_, Code, ValidityAt, _}]} when Now < ValidityAt ->
             {ok, "验证码有效"};
         _ ->
@@ -181,12 +181,12 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             Status = integer_to_binary(1),
             Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
             Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
-            Uid0 = imboy_hashids:uid_encode(0),
+            Uid0 = imboy_hashids:encode(0),
             RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
             RefUid2 =
                 case bit_size(RefUid) > 5 of
                     true ->
-                        integer_to_binary(imboy_hashids:uid_decode(RefUid));
+                        integer_to_binary(imboy_hashids:decode(RefUid));
                     _ ->
                         <<"0">>
                 end,
@@ -223,7 +223,10 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             % Now = imboy_dt:utc(millisecond),
             Tb2 = user_repo:tablename(),
             Pwd2 = imboy_password:generate(Password),
-            Res = imboy_db:update(Tb2, Id, <<"password">>, Pwd2),
+            Where = <<"id=", (ec_cnv:to_binary(Id))/binary>>,
+            Res = imboy_db:update(Tb2
+                , Where
+                , #{<<"password">> => Pwd2}),
             case Res of
                 {ok, _} ->
                     {ok, #{}};
@@ -238,7 +241,7 @@ login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender
     {ok, #{
            <<"token">> => token_ds:encrypt_token(Id),
            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
-           <<"uid">> => imboy_hashids:uid_encode(Id),
+           <<"uid">> => imboy_hashids:encode(Id),
            <<"email">> => Email,
            <<"nickname">> => Nickname,
            <<"avatar">> => Avatar,

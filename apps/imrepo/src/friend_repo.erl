@@ -3,7 +3,7 @@
 -include_lib("imlib/include/log.hrl").
 
 -export([tablename/0]).
--export([find_by_uid/2]).
+-export([list_by_uid/2]).
 -export([friend_field/3]).
 -export([confirm_friend/7]).
 -export([delete/2]).
@@ -45,11 +45,11 @@ friend_field(FromID, ToID, Field) ->
     imboy_db:query(Sql, [FromID, ToID]).
 
 
-find_by_uid(UID, Column) ->
-    find_by_uid(UID, Column, 10000).
+list_by_uid(UID, Column) ->
+    list_by_uid(UID, Column, 10000).
 
 
-find_by_uid(UID, Column, Limit) ->
+list_by_uid(UID, Column, Limit) ->
     Tb = tablename(),
     Where = <<" WHERE from_user_id = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,

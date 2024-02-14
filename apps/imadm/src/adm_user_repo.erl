@@ -71,12 +71,7 @@ find_by_ids(Uids, Column) ->
 % adm_user_repo:save(#{mobile => <<"13692177080">>, password => imboy_password:generate(imboy_hasher:md5("admin888")), account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>, created_at => imboy_dt:utc(millisecond)}).
 save(Data) ->
     Tb = tablename(),
-    % Column = <<"(user_id, status, created_at)">>,
-    % Value = [],
-    % Column = [ binary_to_list(S) || S <- Data ],
-    Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
-    Value = imboy_db:assemble_value(Data),
-    imboy_db:insert_into(Tb, Column, Value).
+    imboy_db:insert_into(Tb, Data).
 
 %% ===================================================================
 %% Internal Function Definitions

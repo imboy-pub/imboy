@@ -32,7 +32,7 @@ page(Uid, Page, Size) when Page > 0 ->
             Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
             Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
                                      ColumnLi,
-                                     [imboy_hashids:uid_encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items1 ],
+                                     [imboy_hashids:encode(DeniedUserId)] ++ Row) || [DeniedUserId | Row] <- Items1 ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
             imboy_response:page_payload(Total, Page, Size, [])

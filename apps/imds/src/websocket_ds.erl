@@ -32,13 +32,13 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         % TODO check token expire
-        {ok, Uid, _ExpireAt, _Type} ->
+        {ok, Uid, _ExpireDAt, _Type} ->
             auth_after(Uid, Req, State, Opt);
         {error, 705, _, Map} ->
             Uid = maps:get(uid, Map),
             DID = maps:get(did, State),
             MsgId = <<"please_refresh_token">>,
-            ToUid = imboy_hashids:uid_encode(Uid),
+            ToUid = imboy_hashids:encode(Uid),
             Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, [{<<"msg_type">>, MsgId}], MsgId),
             Msg2 = jsone:encode(Msg, [native_utf8]),
             Fun = fun() ->

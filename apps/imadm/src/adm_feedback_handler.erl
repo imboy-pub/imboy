@@ -45,7 +45,8 @@ index(<<"GET">>, 1, Req0, _State) ->
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"status > -2">>,
     Column = <<"id as feedback_id, user_id, device_id, client_operating_system, client_operating_system_vsn, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
-    Payload = feedback_ds:page(Page, Size, Where, <<"id desc">>, Column),
+    Tb = feedback_repo:tablename(),
+    Payload = imboy_db:page(Page, Size, Tb, Where, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} = imboy_dtl:template(feedback_index_dtl, [
@@ -59,7 +60,7 @@ index(<<"GET">>, _, Req0, State) ->
     }, Body, Req0).
 
 reply(<<"POST">>, Req0, State) ->
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
     Key = {adm_user_sample, AdmUserId},
     {true, {_, Nickname}} = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),

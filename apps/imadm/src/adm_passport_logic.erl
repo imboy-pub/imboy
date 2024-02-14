@@ -66,7 +66,7 @@ do_login(Mobile, Pwd) ->
 -spec login_success_transfer(boolean(), tuple()) -> {ok, map()} | {error, any()}.
 login_success_transfer(true, {Id, Account, Mobile, _, Nickname, Avatar, RoleId, Email}) ->
     {ok, #{
-           <<"id">> => imboy_hashids:uid_encode(Id),
+           <<"id">> => imboy_hashids:encode(Id),
            <<"mobile">> => Mobile,
            <<"email">> => Email,
            <<"nickname">> => Nickname,

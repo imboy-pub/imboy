@@ -50,7 +50,7 @@ init(Req0, State0) ->
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     ?LOG(["CurrentUid ", CurrentUid]),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
@@ -63,7 +63,7 @@ add(Req0, State) ->
             <<"collect">> ->
                 {<<"1">>, false};
             <<"friend">> ->
-                {<<"2">>, friend_ds:is_friend(CurrentUid, imboy_hashids:uid_decode(ObjectId))};
+                {<<"2">>, friend_ds:is_friend(CurrentUid, imboy_hashids:decode(ObjectId))};
             _ ->
                 <<>>
         end,
@@ -100,7 +100,7 @@ add(Req0, State) ->
 % 用户标签_联系人标签设置标签
 set(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
@@ -141,7 +141,7 @@ set(Req0, State) ->
 %% 用户标签_标签详情-标签联系人列表-移除标签里的联系人
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
@@ -169,7 +169,7 @@ remove(Req0, State) ->
         TagId < 1 ->
             imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         true ->
-            case user_tag_relation_logic:remove(CurrentUid, Scene2, imboy_hashids:uid_decode(ObjectId), TagId) of
+            case user_tag_relation_logic:remove(CurrentUid, Scene2, imboy_hashids:decode(ObjectId), TagId) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
                 {Code, Err} ->

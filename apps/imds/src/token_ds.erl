@@ -31,15 +31,15 @@ decrypt_token(Token) ->
     try jwerl:verify(Token, hs256, config_ds:env(jwt_key)) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
-            ID = imboy_hashids:uid_decode(Uid),
-            ExpireAt = maps:get(exp, Payload, 0),
+            ID = imboy_hashids:decode(Uid),
+            ExpireDAt = maps:get(exp, Payload, 0),
             Sub = maps:get(sub, Payload, 0),
             Now = imboy_dt:utc(millisecond),
             if
-                (ExpireAt - Now) > 0 ->
-                    {ok, ID, ExpireAt, Sub};
+                (ExpireDAt - Now) > 0 ->
+                    {ok, ID, ExpireDAt, Sub};
                 true ->
-                    {error, 705, "Please refresh token", #{uid => ID, expire_at => ExpireAt}}
+                    {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
         _JWT_ERR ->
             {error, 706, "Invalid token", #{}}
@@ -57,15 +57,15 @@ decrypt_token(Token) ->
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().
 encrypt_token(ID, Millisecond, Sub) ->
-    ExpireAt = imboy_dt:utc(millisecond) + Millisecond,
+    ExpireDAt = imboy_dt:utc(millisecond) + Millisecond,
     Data = #{
              % iss => imboy  % iss (issuer)：签发人
              % , nbf => Now + 1 % nbf (Not Before)：生效时间
              % , iat => Now % iat (Issued At)：签发时间
              sub => Sub  % sub (subject)：主题
              ,
-             exp => ExpireAt  % exp (expiration time)：过期时间
+             exp => ExpireDAt  % exp (expiration time)：过期时间
              ,
-             uid => imboy_hashids:uid_encode(ID)
+             uid => imboy_hashids:encode(ID)
             },
     jwerl:sign(Data, hs256, config_ds:env(jwt_key)).

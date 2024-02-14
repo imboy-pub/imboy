@@ -25,18 +25,9 @@
 -spec page(integer(), integer(), binary(), binary()) -> list().
 page(Page, Size, Where, OrderBy) when Page > 0 ->
     Info = imboy_hasher:decoded_field(<<"info">>),
-    Offset = (Page - 1) * Size,
     Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-
     Tb = user_collect_repo:tablename(),
-    Total = imboy_db:count_for_where(Tb, Where),
-    Items = imboy_db:page_for_where(Tb,
-        Size,
-        Offset,
-        Where,
-        OrderBy,
-        Column),
-    imboy_response:page_payload(Total, Page, Size, Items).
+    imboy_db:page(Page, Size, Tb, Where, OrderBy, Column).
 
 
 -spec add(integer(), binary(), binary(), list(), binary(), binary()) -> {ok, binary()} | {error, binary()}.

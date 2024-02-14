@@ -4,11 +4,10 @@
 % feedback business logic module
 %%%
 
--export([page/4, page/5]).
 -export ([add/10]).
 -export ([remove/2]).
 
--export([add_reply/1, page_reply/4]).
+-export([add_reply/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -20,24 +19,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
-%%% 用户反馈分页列表
--spec page(integer(), integer(), binary(), binary()) -> list().
-page(Page, Size, Where, OrderBy) when Page > 0 ->
-    Column = <<"id as feedback_id, device_id, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
-    page(Page, Size, Where, OrderBy, Column).
--spec page(integer(), integer(), binary(), binary(), binary()) -> list().
-page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
-    Offset = (Page - 1) * Size,
-    Tb = feedback_repo:tablename(),
-    Total = imboy_db:count_for_where(Tb, Where),
-    Items = imboy_db:page_for_where(Tb,
-        Size,
-        Offset,
-        Where,
-        OrderBy,
-        Column),
-    imboy_response:page_payload(Total, Page, Size, Items).
 
 
 %%% add方法
@@ -73,21 +54,6 @@ remove(Uid, FeedbackId) ->
     % imboy_cache:flush(Key),
     ok.
 
-
-%%% 用户反馈分页列表
--spec page_reply(integer(), integer(), binary(), binary()) -> list().
-page_reply(Page, Size, Where, OrderBy) when Page > 0 ->
-    Offset = (Page - 1) * Size,
-    Column = <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_user_id, replier_name, body, status, updated_at, created_at">>,
-    Tb = feedback_reply_repo:tablename(),
-    Total = imboy_db:count_for_where(Tb, Where),
-    Items = imboy_db:page_for_where(Tb,
-        Size,
-        Offset,
-        Where,
-        OrderBy,
-        Column),
-    imboy_response:page_payload(Total, Page, Size, Items).
 
 % feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:utc(millisecond)})
 add_reply(Data) ->

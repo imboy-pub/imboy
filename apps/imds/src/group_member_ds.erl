@@ -13,7 +13,7 @@ member_uids(Gid) ->
     Key = {member_uids, Gid},
     Fun = fun() ->
                   Column = <<"user_id">>,
-                  {ok, _, Members} = group_member_repo:find_by_gid(Gid, Column),
+                  {ok, _, Members} = group_member_repo:list_by_gid(Gid, Column),
                   [ Uid || {Uid} <- Members ]
           end,
     % 缓存10天

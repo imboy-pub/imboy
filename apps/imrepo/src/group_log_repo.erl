@@ -1,11 +1,12 @@
--module (app_ddl_repo).
+-module (group_log_repo).
 %%%
-% app_ddl 相关操作都放到该模块，存储库模块
-% app_ddl related operations are put in this module, repository module
+% group_log 相关操作都放到该模块，存储库模块
+% group_log related operations are put in this module, repository module
 %%%
 
 -export ([tablename/0]).
--export ([add/1]).
+-export ([add/2]).
+
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -19,12 +20,12 @@
 %% ===================================================================
 
 tablename() ->
-    imboy_db:public_tablename(<<"app_ddl">>).
+    imboy_db:public_tablename(<<"group_log">>).
 
-% app_ddl_repo:save(#{<<"ddl">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:utc(millisecond), <<"sign_key">> => <<"">>})
-add(Data) ->
+add(Conn, Data) ->
     Tb = tablename(),
-    imboy_db:insert_into(Tb, Data).
+    imboy_db:add(Conn, Tb, Data).
+
 
 %% ===================================================================
 %% Internal Function Definitions

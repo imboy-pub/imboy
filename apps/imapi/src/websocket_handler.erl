@@ -165,10 +165,10 @@ websocket_handle({text, Msg}, State) ->
                 websocket_logic:c2g(MsgId, CurrentUid, Data);
             <<"webrtc_", _Event/binary>> ->
                 % Room = webrtc_ws_logic:room_name(
-                %     imboy_hashids:uid_encode(CurrentUid,
+                %     imboy_hashids:encode(CurrentUid,
                 %     To),
                 To = proplists:get_value(<<"to">>, Data),
-                ToUid = imboy_hashids:uid_decode(To),
+                ToUid = imboy_hashids:decode(To),
                 webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Msg);
             _ ->
                 ok

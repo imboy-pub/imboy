@@ -92,7 +92,24 @@ get_routes() ->
        % 最近新注册的并且允许被搜索到的朋友
        {"/fts/recently_user", fts_handler, #{action => recently_user}},
 
-       {"/group/member", group_handler, #{action => member}},
+       {"/group/face2face", group_handler, #{action => face2face}},
+       {"/group/add", group_handler, #{action => add}},
+       {"/group/edit", group_handler, #{action => edit}},
+       {"/group/dissolve", group_handler, #{action => dissolve}},
+       {"/group/page", group_handler, #{action => page}},
+       {"/group/msg_page", group_handler, #{action => msg_page}},
+
+       {"/group_member/join", group_member_handler, #{action => join}},
+       {"/group_member/leave", group_member_handler, #{action => leave}},
+       {"/group_member/page", group_member_handler, #{action => page}},
+       {"/group_member/alias", group_member_handler, #{action => alias}},
+       % 群组公告
+       {"/group_notice/add", group_notice_handler, #{action => add}},
+       {"/group_notice/edit", group_notice_handler, #{action => edit}},
+       {"/group_notice/delete", group_notice_handler, #{action => delete}},
+       {"/group_notice/page", group_notice_handler, #{action => page}},
+       {"/group_notice/publish", group_notice_handler, #{action => publish}},
+       {"/group_notice/latest", group_notice_handler, #{action => latest}},
 
        %
        {"/live_room/[:stream_id]", live_room_stream_handler, #{}},

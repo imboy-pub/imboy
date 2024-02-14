@@ -12,6 +12,7 @@
 -export([to_rfc3339/3]).
 -export([timezone_offset/0, timezone_offset/1]).
 -export([utc/1]).
+-export([rfc3339_to_utc/2]).
 
 utc(millisecond) ->
     erlang:system_time(millisecond) - timezone_offset(second) * 1000;
@@ -92,6 +93,18 @@ to_rfc3339(Nanosecond, nanosecond) ->
     calendar:system_time_to_rfc3339(Nanosecond, [{unit, nanosecond}, {time_designator, $\s}, {offset, ""}]).
 
 
+rfc3339_to_utc(Dt, Unit) when is_binary(Dt) ->
+    rfc3339_to_utc(binary_to_list(Dt), Unit);
+rfc3339_to_utc(Dt, Unit) ->
+    try
+        calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}])
+    of
+        Num ->
+            Num - imboy_dt:timezone_offset(Unit)
+    catch
+        _:_ ->
+            {error, "时间格式有误"}
+    end.
 
 % imboy_dt:to_rfc3339(1707198019, second, "+08:00").
 % imboy_dt:to_rfc3339(imboy_dt:utc(second) + imboy_dt:timezone_offset(second), second, "+08:00").

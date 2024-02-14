@@ -20,7 +20,7 @@ user_join_ids(Uid) ->
     Key = {user_join_ids, Uid},
     Fun = fun() ->
                   Column = <<"group_id">>,
-                  case group_member_repo:find_by_uid(Uid, Column) of
+                  case group_member_repo:list_by_uid(Uid, Column) of
                       {ok, _ColumnList, []} ->
                           [];
                       {ok, _ColumnList, Rows} ->

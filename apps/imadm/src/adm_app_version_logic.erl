@@ -6,7 +6,6 @@
 
 -export ([delete/1]).
 -export ([save/1]).
--export([page/5]).
 
 -export([vsn_sort/1]).
 
@@ -20,19 +19,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
--spec page(integer(), integer(), binary(), binary(), binary()) -> list().
-page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
-    Offset = (Page - 1) * Size,
-    Tb = app_version_repo:tablename(),
-    Total = imboy_db:count_for_where(Tb, Where),
-    Items = imboy_db:page_for_where(Tb,
-        Size,
-        Offset,
-        Where,
-        OrderBy,
-        Column),
-    imboy_response:page_payload(Total, Page, Size, Items).
 
 save(Data) ->
     % Where = imboy_db:assemble_where([

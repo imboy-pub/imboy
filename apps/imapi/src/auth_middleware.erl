@@ -139,11 +139,11 @@ do_authorization(undefined, Req, _Env) ->
 do_authorization(Authorization, Req, Env) ->
     % ?LOG(['Authorization', Authorization]),
     case token_ds:decrypt_token(Authorization) of
-        {ok, Id, _ExpireAt, <<"tk">>} when is_integer(Id) ->
+        {ok, Id, _ExpireDAt, <<"tk">>} when is_integer(Id) ->
             #{handler_opts := HandlerOpts} = Env,
             Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
             {ok, Req, Env2};
-        {ok, _Id, _ExpireAt, <<"rtk">>} ->
+        {ok, _Id, _ExpireDAt, <<"rtk">>} ->
             Err = "Does not support refreshtoken",
             Req1 = imboy_response:error(Req, Err, 1),
             {stop, Req1};

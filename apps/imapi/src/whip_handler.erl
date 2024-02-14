@@ -56,7 +56,7 @@ init(Req0, State0) ->
 publish(Req0, State) ->
     % imboy_log:error(io_lib:format("whip_handler/publish state:~p ~n", [State])),
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     RoomId = cowboy_req:binding(room_id, Req0),
     StreamId = cowboy_req:binding(stream_id, Req0),
     {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
@@ -129,14 +129,14 @@ check(_Method, Req0, State) ->
 % 也可以暴力的关闭可以直接在客户端进行PeerConnection.Close(), 或者暴力关闭网页；
 unpublish(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),,
+    % Uid = imboy_hashids:encode(CurrentUid),,
     imboy_response:success(Req0).
 
 
 % webrtc拉流接口
 subscribe(Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     RoomId = cowboy_req:binding(room_id, Req0),
     StreamId = cowboy_req:binding(stream_id, Req0),
     {ok, Sdp, _Req} = cowboy_req:read_body(Req0),
@@ -159,13 +159,13 @@ subscribe(Req0, State) ->
 % 也可以暴力的关闭可以直接在客户端进行PeerConnection.Close(), 或者暴力关闭网页；
 unsubscribe(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),,
+    % Uid = imboy_hashids:encode(CurrentUid),,
     imboy_response:success(Req0).
 
 
 % candidate(Req0, _State) ->
 %     % CurrentUid = maps:get(current_uid, State),
-%     % Uid = imboy_hashids:uid_encode(CurrentUid),
+%     % Uid = imboy_hashids:encode(CurrentUid),
 %     {ok, Candidate, _Req} = cowboy_req:read_body(Req0),
 %     ok.
 

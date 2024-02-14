@@ -64,9 +64,9 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
         Check > 0 ->
             <<TagName/binary, " 已存在"/utf8>>;
         true ->
-            % [imboy_hashids:uid_encode(108), imboy_hashids:uid_encode(62902), imboy_hashids:uid_encode(62903)].
-            ObjectIds2 = [ integer_to_binary(imboy_hashids:uid_decode(I))
-                           || I <- ObjectIds, imboy_hashids:uid_decode(I) > 0 ],
+            % [imboy_hashids:encode(108), imboy_hashids:encode(62902), imboy_hashids:encode(62903)].
+            ObjectIds2 = [ integer_to_binary(imboy_hashids:decode(I))
+                           || I <- ObjectIds, imboy_hashids:decode(I) > 0 ],
             Tb = imboy_db:public_tablename(<<"user_friend">>),
             OldObjectIds = imboy_db:list(<<"SELECT to_user_id::text FROM ", Tb/binary, " WHERE tag like '%",
                                            TagName/binary, ",%'">>),
@@ -137,7 +137,7 @@ add(Uid, <<"2">>, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(<<"2">>, Uid, ObjectId, Tag),
     ok;
 add(Uid, <<"2">>, ObjectId, Tag) ->
-    do_add(<<"2">>, Uid, imboy_hashids:uid_decode(ObjectId), Tag),
+    do_add(<<"2">>, Uid, imboy_hashids:decode(ObjectId), Tag),
     ok.
 
 

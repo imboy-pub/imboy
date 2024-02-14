@@ -19,6 +19,10 @@
 %% ===================================================================
 
 init(Req0, State0) ->
+    % 查询
+    % PRAGMA user_version
+    % 修改
+    % PRAGMA user_version = 6
     % ?LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),

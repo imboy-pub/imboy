@@ -38,7 +38,7 @@ user_search_page(Uid, Page, Size, Keywrod) ->
                                              [B1, Remark];
                                          _ ->
                                              [false, <<>>]
-                                     end ++ [imboy_hashids:uid_encode(Uid2) | Row])
+                                     end ++ [imboy_hashids:encode(Uid2) | Row])
                        || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->
@@ -72,7 +72,7 @@ recently_user_page(Uid, Page, Size, Keywrod) ->
                                              [B1, Remark];
                                          _ ->
                                              [false, <<>>]
-                                     end ++ [imboy_hashids:uid_encode(Uid2) | Row])
+                                     end ++ [imboy_hashids:encode(Uid2) | Row])
                        || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
             imboy_response:page_payload(Total, Page, Size, Items2);
         _ ->

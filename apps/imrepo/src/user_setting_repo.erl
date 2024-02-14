@@ -18,7 +18,7 @@ tablename() ->
 
 
 find_by_uid(Uid, Column) when is_binary(Uid) ->
-    find_by_uid(imboy_hashids:uid_decode(Uid), Column);
+    find_by_uid(imboy_hashids:decode(Uid), Column);
 find_by_uid(Uid, Column) when is_integer(Uid) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1">>,
@@ -27,7 +27,7 @@ find_by_uid(Uid, Column) when is_integer(Uid) ->
 
 
 update(Uid, Setting) when is_binary(Uid) ->
-    update(imboy_hashids:uid_decode(Uid), Setting);
+    update(imboy_hashids:decode(Uid), Setting);
 update(Uid, Setting) when is_integer(Uid) ->
     Tb = tablename(),
     UpSql = <<" UPDATE SET setting = $2, updated_at = $3;">>,

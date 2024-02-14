@@ -1,11 +1,11 @@
--module(user_ds).
+-module (group_notice_repo).
 %%%
-% user 领域服务模块
-% user domain service 缩写
+% group_notice 相关操作都放到该模块，存储库模块
+% group_notice related operations are put in this module, repository module
 %%%
 
--export([webrtc_credential/1]).
--export([auth_webrtc_credential/2]).
+-export ([tablename/0]).
+-export ([demo/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -18,28 +18,19 @@
 %% API
 %% ===================================================================
 
+tablename() ->
+    imboy_db:public_tablename(<<"group_notice">>).
 
 %%% demo方法描述
--spec webrtc_credential(Uid :: integer()) -> {binary(), binary()}.
-webrtc_credential(Uid) ->
-    Uris = config_ds:env(eturnal_uris),
-    Secret = config_ds:env(eturnal_secret),
-
-    UidBin = imboy_hashids:encode(Uid),
-    TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
-    Username = <<TmBin/binary, ":", UidBin/binary>>,
-    Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
-    {Username, Credential, Uris}.
-
-
-auth_webrtc_credential(Username, Credential) ->
-    Secret = config_ds:env(eturnal_secret),
-    Credential == base64:encode(crypto:mac(hmac, sha, Secret, Username)).
-
+-spec demo(integer(), binary(), binary()) ->
+    {ok, list(), list()} | {error, any()}.
+demo(Uid, _Val1, _Val2) ->
+    Sql = <<"SELECT id FROM group_notice WHERE id = $1">>,
+    imboy_db:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions
-%% ===================================================================-
+%% ===================================================================
 
 %
 

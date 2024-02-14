@@ -46,7 +46,9 @@ index(<<"GET">>, 1, Req0, _State) ->
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"1=1">>,
     Column = <<"*">>,
-    Payload = adm_app_version_logic:page(Page, Size, Where, <<"sort desc, updated_at desc">>, Column),
+    Tb = app_version_repo:tablename(),
+    OrderBy = <<"sort desc, updated_at desc">>,
+    Payload = imboy_db:page(Page, Size, Tb, Where, OrderBy, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} = imboy_dtl:template(app_version_index_dtl, [

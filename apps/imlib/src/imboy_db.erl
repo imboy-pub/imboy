@@ -1,25 +1,32 @@
 -module(imboy_db).
 
--export([find/1]).
--export([list/1, list/2]).
--export([count_for_where/2, page_for_where/6]).
 
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
+-export([find/1, find/4]).
+-export([list/1, list/2]).
+-export([page/6]).
+
+-export([count_for_where/2, page_for_where/6]).
+
 
 -export([query/1]).
 -export([query/2]).
 -export([execute/2, execute/3]).
--export([insert_into/2, insert_into/3, insert_into/4]).
--export([assemble_sql/4]).
 
+-export([assemble_sql/4]).
 -export([assemble_where/1]).
 -export([assemble_value/1]).
 
 -export([get_set/1]).
+
+
+-export([add/3, add/4]).
+-export([insert_into/2, insert_into/3, insert_into/4]).
 -export([update/3]).
 -export([update/4]).
+
 -export([public_tablename/1]).
 
 -export([with_transaction/1]).
@@ -92,10 +99,18 @@ pluck(Field, Default) ->
             Default
     end.
 
+find(Tb, Where, OrderBy, Column) ->
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT 1">>,
+    find(Sql).
+
 find(Sql) ->
     case imboy_db:query(Sql) of
         {ok, _, []} ->
             #{};
+        {ok, [{column, Col1, _, _, _, _, _, _, _}], [{Val}]} ->
+            #{
+                Col1 => Val
+            };
         {ok, Col, [Val]} ->
             maps:from_list(lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val)));
         _ ->
@@ -103,7 +118,18 @@ find(Sql) ->
     end.
 
 
-% imboy_db:count_for_where(Tb, <<"status=1">>).
+-spec page(integer(), integer(), binary(), binary(), binary(), binary()) -> list().
+page(Page, Size, Tb, Where, OrderBy, Column) when Page > 0 ->
+    Offset = (Page - 1) * Size,
+    Total = count_for_where(Tb, Where),
+    Items = page_for_where(Tb,
+        Size,
+        Offset,
+        Where,
+        OrderBy,
+        Column),
+    imboy_response:page_payload(Total, Page, Size, Items).
+
 -spec count_for_where(binary(), binary()) -> binary().
 count_for_where(Tb, Where) ->
     % Tb = tablename(),
@@ -141,8 +167,6 @@ list(Sql) ->
         _ ->
             []
     end.
-
-
 list(Conn, Sql) ->
     case epgsql:equery(Conn, Sql) of
         {ok, _, Val} ->
@@ -150,7 +174,6 @@ list(Conn, Sql) ->
         _ ->
             []
     end.
-
 
 % imboy_db:query("select * from user where id = 2")
 -spec query(binary() | list()) -> {ok, list(), list()} | {error, any()}.
@@ -213,7 +236,7 @@ execute(Sql, Params) ->
 
 
 execute(Conn, Sql, Params) ->
-    ?LOG(io:format("~s\n", [Sql])),
+    % ?LOG(io:format("~s\n", [Sql])),
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
     % {ok, 1} | {ok, 1, {ReturningField}}
@@ -235,7 +258,16 @@ insert_into(Tb, Column, Value, Returning) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    imboy_db:execute(<<Sql/binary, " ", Returning/binary>>, []).
+    ?LOG([insert_into, Sql]),
+    execute(<<Sql/binary, " ", Returning/binary>>, []).
+
+add(Conn, Tb, Data) ->
+    add(Conn, Tb, Data, <<"RETURNING id;">>).
+add(Conn, Tb, Data, Returning) ->
+    Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
+    Value = assemble_value(Data),
+    Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
+    execute(Conn, <<Sql/binary, " ", Returning/binary>>, []).
 
 
 % 组装 SQL 语句
@@ -252,30 +284,26 @@ assemble_sql(Prefix, Tb, Column, Value) ->
     Sql.
 
 
-% imboy_db:update(<<"user">>, 1, <<"sign">>, <<"中国你好！😆"/utf8>>).
--spec update(binary(), binary(), binary(), list() | binary()) -> ok | {error, {integer(), binary(), Msg :: binary()}}.
-update(Tb, ID, Field, Value) when is_list(Value) ->
-    update(Tb, ID, Field, unicode:characters_to_binary(Value));
-update(Tb, ID, Field, Value) ->
-    Tb2 = public_tablename(Tb),
-    Sql = <<"UPDATE ", Tb2/binary, " SET ", Field/binary, " = $1 WHERE id = $2">>,
-    % ?LOG(io:format("~s\n", [Sql])),
-    imboy_db:execute(Sql, [Value, ID]).
-
-
-% imboy_db:update(<<"user">>, <<"id = 1">>, [{<<"gender">>, <<"1">>}, {<<"nickname">>, <<"中国你好！2😆"/utf8>>}]).
--spec update(binary(), binary(), [list() | binary()]) -> ok | {error, {integer(), binary(), Msg :: binary()}}.
-update(Tb, Where, KV) when is_list(KV) ->
-    Set = get_set(KV),
-    update(Tb, Where, Set);
-update(Tb, Where, KV) when is_map(KV) ->
-    Set = get_set(maps:to_list(KV)),
-    update(Tb, Where, Set);
+-spec update(binary(), binary(), [list() | binary()])
+    -> ok | {error, {integer(), binary(), Msg :: binary()}}.
 update(Tb, Where, KV) ->
+    Driver = config_ds:env(sql_driver),
+    Conn = pooler:take_member(Driver),
+    Res = update(Conn, Tb, Where, KV),
+    pooler:return_member(Driver, Conn),
+    Res.
+
+update(Conn, Tb, Where, KV) when is_list(KV) ->
+    Set = get_set(KV),
+    update(Conn, Tb, Where, Set);
+update(Conn, Tb, Where, KV) when is_map(KV) ->
+    Set = get_set(maps:to_list(KV)),
+    update(Conn, Tb, Where, Set);
+update(Conn, Tb, Where, KV) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", KV/binary, " WHERE ", Where/binary>>,
     ?LOG(io:format("~s\n", [Sql])),
-    imboy_db:execute(Sql, []).
+    imboy_db:execute(Conn, Sql, []).
 
 
 -spec get_set(list()) -> binary().
@@ -361,8 +389,11 @@ public_tablename(Tb) ->
 updateuser_test_() ->
     KV1 = [{<<"gender">>, <<"1">>}, {<<"nickname">>, <<"中国你好！😆"/utf8>>}],
     KV2 = [{<<"gender">>, <<"1">>}, {<<"nickname">>, "中国你好！😆😆"}],
-
-    [?_assert(imboy_db:update(<<"user">>, id, 1, KV1)), ?_assert(imboy_db:update(<<"user">>, id, 2, KV2))].
+    Tb = user_repo:tablename(),
+    imboy_db:update(Tb, Where, #{
+        <<"gender">> => <<"1">>
+    });
+    [?_assert(imboy_db:update(Tb, <<"id=", (ec_cnv:to_binary(1))/binary>>, KV1)), ?_assert(imboy_db:update(Tb, <<"id=", (ec_cnv:to_binary(2))/binary>>, KV2))].
 
 
 -endif.

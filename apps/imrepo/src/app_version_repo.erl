@@ -25,20 +25,14 @@ tablename() ->
 
 find(Where, Column) ->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " order by sort desc, updated_at desc limit 1">>,
-    % ?LOG(['Sql', Sql]),
-    imboy_db:find(Sql).
+    OrderBy = <<"sort desc, updated_at desc">>,
+    imboy_db:find(Tb, Where, OrderBy, Column).
 
 % app_version_repo:add(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:utc(millisecond), <<"sign_key">> => <<"">>})
 % app_version_repo:add(#{<<"region_code">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"app_db_vsn">> => 5, <<"force_update">> => 2, created_at => imboy_dt:utc(millisecond), <<"sign_key">> => <<"">>})
 add(Data) ->
     Tb = tablename(),
-    % Column = <<"(user_id, status, created_at)">>,
-    % Value = [],
-    % Column = [ binary_to_list(S) || S <- Data ],
-    Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
-    Value = imboy_db:assemble_value(Data),
-    imboy_db:insert_into(Tb, Column, Value).
+    imboy_db:insert_into(Tb, Data).
 
 %%% demo方法描述
 -spec demo(integer(), binary(), binary()) ->

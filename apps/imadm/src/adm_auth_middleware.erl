@@ -34,7 +34,7 @@ execute(Req, Env) ->
 condition(_, Uid, Req, Env) when is_binary(Uid) ->
     #{handler_opts := HandlerOpts} = Env,
     Env1 = maps:remove(has_sent_resp, Env),
-    Env2 = Env1#{handler_opts := HandlerOpts#{adm_user_id => imboy_hashids:uid_decode(Uid)}},
+    Env2 = Env1#{handler_opts := HandlerOpts#{adm_user_id => imboy_hashids:decode(Uid)}},
     {ok, Req, Env2};
 condition(<<"GET">>, _, Req, _State) ->
     Uri = cowboy_req:uri(Req),

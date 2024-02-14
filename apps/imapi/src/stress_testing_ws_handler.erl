@@ -27,7 +27,7 @@ init(Req0, State0) ->
                     idle_timeout => 86400000  %  % Cowboy关闭连接空闲60秒 默认值为 60000
                    },
             case catch token_ds:decrypt_token(Token) of
-                {ok, Uid, _ExpireAt, _Type} ->
+                {ok, Uid, _ExpireDAt, _Type} ->
                     {cowboy_websocket, Req0, State0#{current_uid => Uid}, Opt};
                 {error, Code, _Msg, _Map} ->
                     {ok, Req0, State0#{error => Code}, Opt}

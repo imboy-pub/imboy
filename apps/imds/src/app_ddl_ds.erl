@@ -4,7 +4,6 @@
 % feedback business logic module
 %%%
 
--export([page/5]).
 -export ([save/6]).
 -export ([get_ddl/3]).
 -export ([delete/1]).
@@ -19,20 +18,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
-%%% 分页列表
--spec page(integer(), integer(), binary(), binary(), binary()) -> list().
-page(Page, Size, Where, OrderBy, Column) when Page > 0 ->
-    Offset = (Page - 1) * Size,
-    Tb = app_ddl_repo:tablename(),
-    Total = imboy_db:count_for_where(Tb, Where),
-    Items = imboy_db:page_for_where(Tb,
-        Size,
-        Offset,
-        Where,
-        OrderBy,
-        Column),
-    imboy_response:page_payload(Total, Page, Size, Items).
 
 %%% save方法
 -spec save(integer(), binary(), binary(), binary(), binary(), binary()) ->

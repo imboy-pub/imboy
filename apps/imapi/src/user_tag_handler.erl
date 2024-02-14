@@ -83,7 +83,7 @@ page(Req0, State) ->
 %% 修改标签名称
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
@@ -130,7 +130,7 @@ change_name(Req0, State) ->
 %% 新建标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),

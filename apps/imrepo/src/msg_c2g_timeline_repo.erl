@@ -7,7 +7,7 @@
 
 -export([tablename/0]).
 -export([delete_timeline/2]).
--export([find_by_uid/2, find_by_uid/3]).
+-export([list_by_uid/2, list_by_uid/3]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
 -export([delete_overflow_timeline/2]).
@@ -21,12 +21,12 @@ tablename() ->
     imboy_db:public_tablename(<<"msg_c2g_timeline">>).
 
 
-% msg_c2g_timeline_repo:find_by_uid(2, <<"msg_id">>, 10).
-find_by_uid(Uid, Column) ->
-    find_by_uid(Uid, Column, 1000).
+% msg_c2g_timeline_repo:list_by_uid(2, <<"msg_id">>, 10).
+list_by_uid(Uid, Column) ->
+    list_by_uid(Uid, Column, 1000).
 
 
-find_by_uid(Uid, Column, Limit) ->
+list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     Where = <<" WHERE to_uid = $1 LIMIT $2">>,

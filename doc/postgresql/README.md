@@ -1,5 +1,7 @@
 
 
+* DBeaver 可以对比数据结构
+
 ```
 #psql -d template1
 #template1=# \l
@@ -26,7 +28,12 @@ https://blog.51cto.com/suncj/5038850
 pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
 
 pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
+
 pg_dump -h 127.0.0.1 -U imboy_user -p 5432 -d imboy_v1 --inserts > imboy_v1.sql
+
+如果你只想导出数据库的结构而不包含数据，可以使用以下命令：
+pg_dump -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -s -f imboy_v1_dev.sql
+
 
 mv imboy_v1.sql /var/lib/postgresql/data/
 

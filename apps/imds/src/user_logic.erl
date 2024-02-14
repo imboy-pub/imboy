@@ -94,7 +94,7 @@ find_by_id(Id) ->
 
 
 find_by_id(Id, Column) when is_binary(Id) ->
-    find_by_id(imboy_hashids:uid_decode(Id), Column);
+    find_by_id(imboy_hashids:decode(Id), Column);
 find_by_id(Id, Column) ->
     % user_repo:find_by_id(Id, Column).
     case user_repo:find_by_id(Id, Column) of
@@ -114,7 +114,7 @@ find_by_ids(Ids) ->
 find_by_ids([], _) ->
     [];
 find_by_ids(Ids, Column) ->
-    case user_repo:find_by_ids(Ids, Column) of
+    case user_repo:list_by_ids(Ids, Column) of
         {ok, _, []} ->
             [];
         {ok, ColumnList, Rows} ->
@@ -127,22 +127,43 @@ find_by_ids(Ids, Column) ->
 -spec update(Uid :: any(), Field :: binary(), list() | binary()) ->
           ok | {error, {integer(), binary(), Msg :: binary()}}.
 update(Uid, <<"sign">>, Val) ->
-    imboy_db:update(<<"user">>, Uid, <<"sign">>, Val);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"sign">> => Val
+    });
 update(Uid, <<"nickname">>, Val) ->
-    imboy_db:update(<<"user">>, Uid, <<"nickname">>, Val);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"nickname">> => Val
+    });
 update(Uid, <<"avatar">>, Val) ->
-    imboy_db:update(<<"user">>, Uid, <<"avatar">>, Val);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"avatar">> => Val
+    });
 
 update(Uid, <<"region">>, Val) ->
-    imboy_db:update(<<"user">>, Uid, <<"region">>, Val);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"region">> => Val
+    });
 
 % 性别 1 男  2 女  3 保密
 update(Uid, <<"gender">>, <<"1">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, 1);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"gender">> => <<"1">>
+    });
 update(Uid, <<"gender">>, <<"2">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, 2);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"gender">> => <<"2">>
+    });
 update(Uid, <<"gender">>, <<"3">>) ->
-    imboy_db:update(<<"user">>, Uid, <<"gender">>, 3);
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(user_repo:tablename(), Where, #{
+        <<"gender">> => <<"3">>
+    });
 
 update(_Uid, _Field, _Val) ->
     {error, {1, <<"">>, <<"Unsupported field">>}}.

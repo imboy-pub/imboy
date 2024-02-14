@@ -44,15 +44,19 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+%%% 用户反馈分页列表
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_req:page_size(Req0),
 
     Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     Where2 = <<"status > 0 AND ", Where/binary>>,
-    Payload = feedback_ds:page(Page, Size, Where2, <<"id desc">>),
+    Column = <<"id as feedback_id, device_id, type, rating, contact_detail, body, attach, reply_count, status, updated_at, created_at, app_vsn">>,
+    Tb = feedback_repo:tablename(),
+    Payload = imboy_db:page(Page, Size, Tb, Where2, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload).
 
+%%% 用户反馈分页列表
 page_reply(Req0, _State) ->
     Def =  <<"反馈ID必须是整数"/utf8>>,
     case imboy_req:get_int(feedback_id, Req0, Def) of
@@ -62,7 +66,10 @@ page_reply(Req0, _State) ->
             % CurrentUid = maps:get(current_uid, State),
             {Page, Size} = imboy_req:page_size(Req0),
             Where = imboy_cnv:implode("", [<<"feedback_id=">>, FeedbackId]),
-            Payload = feedback_ds:page_reply(Page, Size, Where, <<"id desc">>),
+
+            Column = <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_user_id, replier_name, body, status, updated_at, created_at">>,
+            Tb = feedback_reply_repo:tablename(),
+            Payload = imboy_db:page(Page, Size, Tb, Where, <<"id desc">>, Column),
             imboy_response:success(Req0, Payload);
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg)
@@ -70,7 +77,7 @@ page_reply(Req0, _State) ->
 
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     COS = cowboy_req:header(<<"cos">>, Req0),
     COSV = cowboy_req:header(<<"cosv">>, Req0),

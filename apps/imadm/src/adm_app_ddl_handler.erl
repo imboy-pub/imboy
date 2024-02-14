@@ -44,7 +44,8 @@ index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
     Where = <<"1=1">>,
     Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
-    Payload = app_ddl_ds:page(Page, Size, Where, <<"id desc">>, Column),
+    Tb = app_ddl_repo:tablename(),
+    Payload = imboy_db:page(Page, Size, Tb, Where, <<"id desc">>, Column),
     imboy_response:success(Req0, Payload);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} = imboy_dtl:template(app_ddl_index_dtl, [
@@ -60,7 +61,7 @@ index(<<"GET">>, _, Req0, State) ->
 
 save(<<"POST">>, Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
 
     PostVals = imboy_req:post_params(Req0),
@@ -74,7 +75,7 @@ save(<<"POST">>, Req0, State) ->
 
 delete(<<"DELETE">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals, ""),

@@ -30,8 +30,6 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.app_version OWNER to imboy_user;
 
-CREATE INDEX i_vsn_Status_Type_RegionCode ON public.app_version (status, type, region_code);
-
 COMMENT ON TABLE public.app_version IS 'APP版本管理表';
 COMMENT ON COLUMN public.app_version.id IS '主键 自增长ID 反馈ID';
 COMMENT ON COLUMN public.app_version.region_code IS 'The two-letter country code cn en  参考 https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2';
@@ -49,3 +47,7 @@ COMMENT ON COLUMN public.app_version.sort IS '排序，值越大越靠前： maj
 COMMENT ON COLUMN public.app_version.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.app_version.created_at IS '创建记录Unix时间戳毫秒单位';
 COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';
+
+-- index
+CREATE INDEX i_vsn_Status_Type_RegionCode ON public.app_version (status, type, region_code);
+CREATE INDEX i_vsn_Sort_UpdatedAt ON public.app_version (sort, updated_at);

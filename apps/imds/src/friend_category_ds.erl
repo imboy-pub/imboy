@@ -30,7 +30,7 @@ add(Uid, Name) ->
 -spec find_by_uid(integer()) -> list().
 find_by_uid(Uid) ->
     Field = <<"id, name">>,
-    {ok, _FieldList, Rows} = friend_category_repo:find_by_uid(Uid, Field),
+    {ok, _FieldList, Rows} = friend_category_repo:list_by_uid(Uid, Field),
     % ?LOG({ok, FieldList, Rows}),
     Default = [{<<"id">>, 0}, {<<"groupname">>, <<"default">>}],
     case length(Rows) == 0 of

@@ -54,10 +54,10 @@ add(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
 
-    DeniedUserId2 = imboy_hashids:uid_decode(DeniedUserId),
+    DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
     CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
     imboy_response:success(Req0,
-                           [{<<"user_id">>, imboy_hashids:uid_encode(CurrentUid)},
+                           [{<<"user_id">>, imboy_hashids:encode(CurrentUid)},
                             {<<"denied_user_id">>, DeniedUserId},
                             {<<"created_at">>, CreatedAt}]).
 
@@ -67,7 +67,7 @@ remove(Req0, State) ->
 
     PostVals = imboy_req:post_params(Req0),
     DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
-    DeniedUserId2 = imboy_hashids:uid_decode(DeniedUserId),
+    DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
 
     user_denylist_logic:remove(CurrentUid, DeniedUserId2),
     imboy_response:success(Req0).

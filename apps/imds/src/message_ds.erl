@@ -78,13 +78,13 @@ assemble_s2c(MsgId, MsgType, To) ->
 
 
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(From), From > 0 ->
-    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, MsgId);
+    assemble_msg(Type, imboy_hashids:encode(From), To, Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) when is_list(From), From > 0 ->
-    assemble_msg(Type, imboy_hashids:uid_encode(From), To, Payload, MsgId);
+    assemble_msg(Type, imboy_hashids:encode(From), To, Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) when is_list(To), To > 0 ->
-    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, MsgId);
+    assemble_msg(Type, From, imboy_hashids:encode(To), Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(To), To > 0 ->
-    assemble_msg(Type, From, imboy_hashids:uid_encode(To), Payload, MsgId);
+    assemble_msg(Type, From, imboy_hashids:encode(To), Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) ->
     Ts = imboy_dt:utc(millisecond),
     [{<<"id">>, MsgId},

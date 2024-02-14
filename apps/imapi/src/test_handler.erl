@@ -44,7 +44,7 @@ init(Req0, State0) ->
 
 req_get(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
     #{type := Type} = cowboy_req:match_qs([{type, [], undefined}], Req0),
     #{a := A} = cowboy_req:match_qs([{a, [], 0}], Req0),
 
@@ -63,7 +63,7 @@ req_get(Req0, _State) ->
 % imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
 req_post(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:uid_encode(CurrentUid),
+    % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),

@@ -5,6 +5,7 @@
 # docker exec -it <container_id> /bin/sh
 # crontab -e 新增下面一行
 # 0 3 * * * /usr/bin/docker exec ff94aeeb74a0416d3e6b539600f909f6b18532eadcb50c86b8f1b4f0519ae632 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
+# /usr/bin/docker exec ff94aeeb74a0416d3e6b539600f909f6b18532eadcb50c86b8f1b4f0519ae632 pg_dump -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -s -f /var/lib/postgresql/data/back_pgsql/imboy_v1_dev.sql
 
 #
 # 进入 pgsql的docker容器

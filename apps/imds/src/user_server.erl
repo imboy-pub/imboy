@@ -61,7 +61,7 @@ handle_call(Request, From, State) ->
 
 % 用户注册成功后的逻辑处理
 handle_cast({signup_success, Uid, PostVals}, State) ->
-    ?LOG([Uid, imboy_hashids:uid_decode(Uid), PostVals]),
+    ?LOG([Uid, imboy_hashids:decode(Uid), PostVals]),
     % 生成account
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
@@ -69,7 +69,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     % 用户登录成功之后的业务逻辑处理
     % 更新 user 表
     % 更新 user_client 表
-    Uid2 = imboy_hashids:uid_decode(Uid),
+    Uid2 = imboy_hashids:decode(Uid),
     Now = imboy_dt:utc(millisecond),
     % ?LOG([Uid, Uid2, PostVals]),
     % 记录设备信息
@@ -100,7 +100,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     % 在其他设备登录了
     MsgId = <<"logged_another_device">>,
     Payload = [{<<"msg_type">>, MsgId}, {<<"did">>, DID}, {<<"dname">>, DName}],
-    ToUid = imboy_hashids:uid_encode(Uid),
+    ToUid = imboy_hashids:encode(Uid),
     Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, Payload, MsgId),
 
     MsLi = [0, 5000, 10000],
@@ -172,7 +172,7 @@ cast_offline(Uid, Pid, DID) ->
 -spec notice_friend(Uid :: integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
     Column = <<"to_user_id">>,
-    case friend_repo:find_by_uid(Uid, Column) of
+    case friend_repo:list_by_uid(Uid, Column) of
         {ok, _, []} ->
             ok;
         {ok, _ColumnList, Rows} ->
@@ -192,8 +192,8 @@ send_state_msg(FromId, State, [ToUid | Tail]) ->
     % 用户在线状态变更
     % State: <<"online">> | <<"offline">> | <<"hide">>.
     Msg = jsone:encode(message_ds:assemble_msg(<<"S2C">>,
-                                               imboy_hashids:uid_encode(FromId),
-                                               imboy_hashids:uid_encode(ToUid),
+                                               imboy_hashids:encode(FromId),
+                                               imboy_hashids:encode(ToUid),
                                                [{<<"msg_type">>, State}],
                                                <<"">>),
                        [native_utf8]),

@@ -4,7 +4,7 @@
 %%%
 
 -export([tablename/0]).
--export([get_by_id/1]).
+-export([find_by_id/1]).
 -export([save/4]).
 
 
@@ -12,8 +12,8 @@ tablename() ->
     imboy_db:public_tablename(<<"verification_code">>).
 
 
--spec get_by_id(binary()) -> {ok, ColumnList :: list(), Values :: list()}.
-get_by_id(Id) ->
+-spec find_by_id(binary()) -> {ok, ColumnList :: list(), Values :: list()}.
+find_by_id(Id) ->
     Tb = tablename(),
     Column = <<"id,code,validity_at,created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,

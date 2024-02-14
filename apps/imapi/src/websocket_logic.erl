@@ -23,8 +23,8 @@
 -spec c2c(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
 c2c(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
-    ToId = imboy_hashids:uid_decode(To),
-    % CurrentUid = imboy_hashids:uid_decode(From),
+    ToId = imboy_hashids:decode(To),
+    % CurrentUid = imboy_hashids:decode(From),
     ?LOG([CurrentUid, ToId, Data]),
     % 判断当前用户是否是 ToId 用户的朋友
     IsFriend = friend_ds:is_friend(ToId, CurrentUid),
@@ -33,7 +33,7 @@ c2c(MsgId, CurrentUid, Data) ->
     case {IsFriend, InDenylist} of
         {true, 0} ->
             NowTs = imboy_dt:utc(millisecond),
-            From = imboy_hashids:uid_encode(CurrentUid),
+            From = imboy_hashids:encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
             % 存储消息
@@ -76,7 +76,7 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
 c2c_revoke(MsgId, Data, Type) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
-    ToId = imboy_hashids:uid_decode(To),
+    ToId = imboy_hashids:decode(To),
     % ?LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:utc(millisecond),
 
@@ -88,7 +88,7 @@ c2c_revoke(MsgId, Data, Type) ->
             imboy_syn:publish(ToId, Msg2),
             ok;
         false ->  % 对端离线处理
-            FromId = imboy_hashids:uid_decode(From),
+            FromId = imboy_hashids:decode(From),
             msg_c2c_ds:revoke_offline_msg(NowTs, MsgId, FromId, ToId),
             {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
     end.
@@ -98,14 +98,14 @@ c2c_revoke(MsgId, Data, Type) ->
 -spec c2g(binary(), integer(), list()) -> ok | {reply, list()}.
 c2g(MsgId, CurrentUid, Data) ->
     Gid = proplists:get_value(<<"to">>, Data),
-    ToGID = imboy_hashids:uid_decode(Gid),
+    ToGID = imboy_hashids:decode(Gid),
     % TODO check is group member
     MemberUids = group_member_ds:member_uids(ToGID),
     % Uids.
     NowTs = imboy_dt:utc(millisecond),
     Msg = [{<<"id">>, MsgId},
            {<<"type">>, <<"C2G">>},
-           {<<"from">>, imboy_hashids:uid_encode(CurrentUid)},
+           {<<"from">>, imboy_hashids:encode(CurrentUid)},
            {<<"to">>, Gid},
            {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
            {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
@@ -126,12 +126,14 @@ c2g(MsgId, CurrentUid, Data) ->
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
 c2g_client_ack(MsgId, CurrentUid, _DID) ->
     msg_c2g_timeline_repo:delete_timeline(CurrentUid, MsgId),
-    case msg_c2g_timeline_repo:check_msg(MsgId) of
-        0 ->
-            msg_c2g_repo:delete_msg(MsgId);
-        _ ->
-            ok
-    end.
+    ok.
+    % TODO clean code 2024-02-12
+    % case msg_c2g_timeline_repo:check_msg(MsgId) of
+    %     0 ->
+    %         msg_c2g_repo:delete_msg(MsgId);
+    %     _ ->
+    %         ok
+    % end.
 
 
 %% 系统消息

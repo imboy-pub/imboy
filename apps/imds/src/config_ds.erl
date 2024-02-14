@@ -102,7 +102,9 @@ save(Key, Data) ->
             imboy_db:insert_into(<<"config">>, Column, Value, <<"">>);
         _ ->
             Data2 = [{<<"updated_at">>, Now2} | Data],
-            imboy_db:update(<<"config">>, <<"key = '", Key/binary, "'">>, Data2)
+            imboy_db:update(<<"config">>
+                , <<"key = '", Key/binary, "'">>
+                , Data2)
     end,
     imboy_cache:flush(cache_key(Key)),
     aes_encrypt(Key).

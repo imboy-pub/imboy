@@ -92,7 +92,7 @@ find(Req0, State) ->
 find_transfer(User, Friend) ->
     [{<<"mine">>, imboy_hashids:replace_id(User)},
      {<<"friend">>,
-      [ [{<<"id">>, imboy_hashids:uid_encode(proplists:get_value(<<"id">>, GF))},
+      [ [{<<"id">>, imboy_hashids:encode(proplists:get_value(<<"id">>, GF))},
          {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
          {<<"list">>, [ imboy_hashids:replace_id(U) || U <- proplists:get_value(<<"list">>, GF) ]}] || GF <- Friend ]}].
 
@@ -149,7 +149,7 @@ information(Req0, State) ->
 
 
 information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
-    lists:append([[{<<"mine_uid">>, imboy_hashids:uid_encode(CurrentUid)},
+    lists:append([[{<<"mine_uid">>, imboy_hashids:encode(CurrentUid)},
                    {<<"type">>, Type},
                    {<<"user_setting">>, UserSetting}],
                   imboy_hashids:replace_id(User),
@@ -162,7 +162,7 @@ change_remark(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
-    Uid2 = imboy_hashids:uid_decode(Uid),
+    Uid2 = imboy_hashids:decode(Uid),
     case friend_ds:change_remark(CurrentUid, Uid2, Remark) of
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);

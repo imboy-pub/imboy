@@ -90,7 +90,7 @@ refreshtoken(Req0) ->
             cowboy_req:reply(429, Req0);
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
-                {ok, Id, _ExpireAt, <<"rtk">>} ->
+                {ok, Id, _ExpireDAt, <<"rtk">>} ->
                     Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
                     imboy_response:success(Req0, Data, "success.");
                 {error, Code, Msg, _Map} ->

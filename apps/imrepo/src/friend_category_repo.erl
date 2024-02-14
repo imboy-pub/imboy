@@ -3,7 +3,7 @@
 % friend_category_repo 是 friend_category repository 缩写
 %%%
 -export([tablename/0]).
--export([find_by_uid/2]).
+-export([list_by_uid/2]).
 -export([add/2]).
 -export([delete/2]).
 
@@ -16,8 +16,8 @@ tablename() ->
     imboy_db:public_tablename(<<"user_friend_category">>).
 
 
-find_by_uid(Uid, Column) ->
-    find_by_uid(Uid, Column, 1000).
+list_by_uid(Uid, Column) ->
+    list_by_uid(Uid, Column, 1000).
 
 
 % friend_category_repo:add(1, "测试").
@@ -49,9 +49,9 @@ delete(Uid, Id) ->
 %% ===================================================================
 
 
-% friend_category_repo:find_by_uid(1, <<"name">>).
-% friend_category_repo:find_by_uid(1, <<"id,name">>).
-find_by_uid(Uid, Column, Limit) ->
+% friend_category_repo:list_by_uid(1, <<"name">>).
+% friend_category_repo:list_by_uid(1, <<"id,name">>).
+list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     Where = <<" WHERE owner_user_id = $1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
