@@ -32,6 +32,7 @@ join(Uid, Gid, _, _) ->
             , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
             , Data
         ),
+        group_member_ds:flush_cache(Gid),
         % TODO 通知群成员更新信息
         ok
     end),
@@ -66,6 +67,7 @@ leave(Uid, Gid, _, GM) ->
             , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
             , Data
         ),
+        group_member_ds:flush_cache(Gid),
         % TODO 通知群成员更新信息
         ok
     end),
