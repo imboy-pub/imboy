@@ -1,6 +1,7 @@
 PROJECT = imapi
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件 api 模块
-PROJECT_VERSION = 0.1.19
+PROJECT_VERSION = 0.3.0
+
 # Whitespace to be used when creating files from templates.
 SP = 4
 

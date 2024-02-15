@@ -25,7 +25,7 @@ page_size(Req) ->
     {Size2, _} = string:to_integer(Size),
     pase_page_size(Page2, Size2).
 
-% imboy_req:get_int()
+% {ok, Ajax} = imboy_req:get_int(ajax, Req0, -2)
 get_int(Key, Req, Def) ->
     #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
     % ?LOG([get_int, Key, Val, Def, Val == Def]),

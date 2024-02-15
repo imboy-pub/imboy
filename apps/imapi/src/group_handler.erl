@@ -166,12 +166,17 @@ page(Req0, State, <<"join">>) ->
 
 msg_page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-
     #{gid := Gid} = cowboy_req:match_qs([{gid, [], undefined}], Req0),
     Gid2 = imboy_hashids:decode(Gid),
     GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
-
+    Where = case imboy_req:get_int(last_time, Req0, 0) of
+        {ok, Last} when Last > 0 ->
+            Last2 = <<"(to_timestamp((", (ec_cnv:to_binary(Last))/binary,"+timezone_offset()) / 1000.0) AT TIME ZONE current_setting('timezone'))::timestamptz">>,
+            <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary, " AND ts > ", (Last2)/binary>>;
+        _ ->
+            <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary>>
+    end,
     case Gid2 of
         0 ->
             imboy_response:error(Req0, "group id 必须");
@@ -180,10 +185,8 @@ msg_page(Req0, State) ->
         _ ->
             {Page, Size} = imboy_req:page_size(Req0),
             Tb = msg_c2g_repo:tablename(),
-            Where = <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary>>,
+
             OrderBy = <<"ts desc">>,
-
-
             P = imboy_hasher:decoded_payload(),
             Column = <<"msg_id id, 'GROUP' type, from_id, to_groupid to_id, ", P/binary, ", created_at">>,
             Payload = imboy_db:page(Page, Size, Tb, Where, OrderBy, Column),

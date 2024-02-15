@@ -141,7 +141,7 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
     % Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % Res = imboy_db:query(Sql, [Limit, Offset]),
-    % ?LOG(['Sql', Sql]),
+    ?LOG(['Sql', Sql]),
     % ?LOG(['Res', Res]),
     % case Res of
     case imboy_db:query(Sql, [Limit, Offset]) of

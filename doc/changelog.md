@@ -1,3 +1,7 @@
+# 0.3.2
+* 新增 群消息分页列表新增 last_time（utc0 的毫秒时间戳） 过滤参数；
+* 新增 postgresql 新增 CREATE OR REPLACE FUNCTION public.timezone_offset() 删除 unix_time() 方法；
+
 # 0.3.1
 * 修复 /app_ddl/get 接口，升降级相关ddl排序不正确的问题；
 * 修复 加入群、离开群，清理群成员ID换成 group_member_ds:flush_cache(Gid)；
