@@ -34,10 +34,11 @@ get_routes() ->
 
        {"/uqrcode", user_handler, #{action => uqrcode}},
        {"/user/update", user_handler, #{action => update}},
-       {"/user/show", user_handler, #{action => open_info}},
+       {"/user/show", user_handler, #{action => show}},
        {"/user/change_state", user_handler, #{action => change_state}},
        {"/user/setting", user_handler, #{action => setting}},
        {"/user/credential", user_handler, #{action => credential}},
+       {"/user/cancel", user_handler, #{action => cancel}},
 
        {"/user_device/page", user_device_handler, #{action => page}},
        {"/user_device/change_name", user_device_handler, #{action => change_name}},
@@ -71,11 +72,10 @@ get_routes() ->
        {"/location/peopleNearby", location_handler, #{action => people_nearby}},
 
        {"/friend/add", friend_handler, #{action => add_friend}},
-       {"/friend/confirm", friend_handler, #{action => confirm_friend}},
+       {"/friend/confirm", friend_handler, #{action => confirm}},
        {"/friend/delete", friend_handler, #{action => delete_friend}},
-       {"/friend/list", friend_handler, #{action => friend_list}},
+       {"/friend/list", friend_handler, #{action => list}},
        {"/friend/information", friend_handler, #{action => information}},
-       {"/friend/find", friend_handler, #{action => find}},
        {"/friend/change_remark", friend_handler, #{action => change_remark}},
 
        {"/friend/denylist/add", user_denylist_handler, #{action => add}},

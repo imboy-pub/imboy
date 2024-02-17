@@ -127,6 +127,13 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
     * 该方案有缺陷：从a.imboy.pub copy 附件到 c.imboy.pub 比较耗时（解决耗时问题需要调整 Go-FastDFS 服务）
 *
 
+## 用户注销
+* 通知当前用户所有设备已注销
+* 通知用户所有朋友，该用户已经注销
+* 清理所有用户相关数据，写入 时序数据库
+* 用户注销以后,用户的所有好友和群组关系需要解除
+
+流程参考 https://blog.51cto.com/u_15069441/4323079
 
 ## APP端 sqflite3 数据库升降级功能(以实现，待测试)
 APP端使用 sqflite 包的 onCreate/2 onUpgrade/3 onDowngrade/3 触发服务端接口（/app_ddl/get?type=[upgrade|downgrade|create]，实现可控的升降级功能

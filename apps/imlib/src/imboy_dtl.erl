@@ -15,17 +15,11 @@ template(Name, Vars, AppName) ->
 
 imadm_param(State) ->
     AdmUserId = maps:get(adm_user_id, State, 0),
-    Nickname = case maps:get(adm_user_id, State, 0) of
-        AdmUserId when AdmUserId > 0 ->
-            Key = {adm_user_sample, AdmUserId},
-            {true, {_, Nickname0}} = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
-            Nickname0;
-        _ ->
-            <<>>
-    end,
+    Key = {adm_user_sample, AdmUserId},
+    U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
     [
          {system_name, "IMBoy Admin System"}
-         , {adm_nickname, Nickname}
+         , {adm_nickname, maps:get(<<"nickname">>, U, <<>>)}
     ].
 
 

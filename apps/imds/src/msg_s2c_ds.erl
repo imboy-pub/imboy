@@ -11,6 +11,40 @@
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
+-export([send/4]).
+
+
+
+-spec send(any(), [binary()|map()], list(), atom()) -> ok.
+send(_, _, [], _) ->
+    ok;
+% 给在线好友发送上线消息
+send(FromId, MsgType, [ToUid | Tail], Save) ->
+    Payload0 = if
+        is_binary(MsgType) ->
+            [{<<"msg_type">>, MsgType}];
+        is_map(MsgType) ->
+            MsgType
+    end,
+    Payload = message_ds:assemble_msg(<<"S2C">>,
+       imboy_hashids:encode(FromId),
+       imboy_hashids:encode(ToUid),
+       Payload0 ,
+       <<"">>),
+    Msg = jsone:encode(Payload, [native_utf8]),
+    case Save of
+        save ->
+            MsgId = MsgType,
+            CreatedAt = imboy_dt:utc(millisecond),
+            write_msg(CreatedAt, MsgId, Payload, FromId, ToUid, CreatedAt),
+
+            MsLi = [0, 1_000_000, 1_000_000],
+            message_ds:send_next(ToUid, MsgId, Msg, MsLi),
+            ok;
+        _ ->
+            imboy_syn:publish(ToUid, Msg)
+    end,
+    send(FromId, MsgType, Tail, Save).
 
 
 -spec write_msg(integer(), binary(), binary() | list(), integer(), integer(), integer()) -> any().

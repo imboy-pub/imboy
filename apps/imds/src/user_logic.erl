@@ -16,11 +16,56 @@
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
+-export([cancel/2]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
+cancel(Uid, Req0) ->
+    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
+    DID = cowboy_req:header(<<"did">>, Req0, undefined),
+    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+
+    PostVals = imboy_req:post_params(Req0),
+    Password = proplists:get_value(<<"pwd">>, PostVals),
+    RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
+    Pwd = case RsaEncrypt == <<"1">> of
+        true ->
+            try imboy_cipher:rsa_decrypt(Password) of
+                Pwd0 ->
+                    Pwd0
+            catch
+                _Type:_Reason ->
+                    <<>>
+            end;
+        _ ->
+            Password
+    end,
+    User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
+    case passport_logic:do_login_transfer(Pwd, User) of
+        {ok, _} ->
+            % 通知当前用户所有设备已注销 TODO 2024-02-16 23:21:28
+            % 通知用户所有朋友，该用户已经注销
+            % 清理注销用户相关数据
+            % 用户注销以后,用户的所有好友和群组关系需要解除
+            % https://blog.51cto.com/u_15069441/4323079
+            Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+            imboy_db:update(user_repo:tablename(), Where, #{
+                % 状态: -1 删除  0 禁用  1 启用
+                <<"status">> => -1
+            }),
+            user_server:cast_cancel(Uid, imboy_dt:utc(millisecond), #{
+                <<"app_vsn">> => AppVsn,
+                <<"did">> => DID,
+                <<"dtype">> => DType,
+                <<"ip">> => Ip
+            }),
+            imboy_response:success(Req0);
+        {error, Msg} ->
+            {error, Msg}
+    end.
 
 %dtype 设备类型 web ios android macos windows等
 -spec online(integer(), binary(), pid(), binary()) -> ok.
@@ -96,15 +141,7 @@ find_by_id(Id) ->
 find_by_id(Id, Column) when is_binary(Id) ->
     find_by_id(imboy_hashids:decode(Id), Column);
 find_by_id(Id, Column) ->
-    % user_repo:find_by_id(Id, Column).
-    case user_repo:find_by_id(Id, Column) of
-        {ok, _, []} ->
-            [];
-        {ok, ColumnList, [Row]} ->
-            check_avatar(lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)));
-        _ ->
-            []
-    end.
+    check_avatar(user_repo:find_by_id(Id, Column)).
 
 
 find_by_ids(Ids) ->
@@ -177,12 +214,21 @@ update(_Uid, _Field, _Val) ->
 %% 检查 user avatar 是否为空，如果为空设置默认
 check_avatar([]) ->
     [];
+check_avatar(User) when is_map(User) ->
+    Def = <<"assets/images/def_avatar.png">>,
+    K = <<"avatar">>,
+    case maps:get(K, User, <<>>) of
+        <<>> ->
+            maps:put(K, Def, User);
+        _ ->
+            User
+    end;
 check_avatar(User) ->
-    Default = <<"assets/images/def_avatar.png">>,
+    Def = <<"assets/images/def_avatar.png">>,
     case lists:keyfind(<<"avatar">>, 1, User) of
         {<<"avatar">>, <<>>} ->
             % <<>> == <<"">> is true
-            lists:keyreplace(<<"avatar">>, 1, User, {<<"avatar">>, Default});
+            lists:keyreplace(<<"avatar">>, 1, User, {<<"avatar">>, Def});
         {<<"avatar">>, _Aaatar} ->
             User
     end.

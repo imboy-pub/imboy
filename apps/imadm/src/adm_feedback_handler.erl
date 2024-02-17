@@ -63,7 +63,8 @@ reply(<<"POST">>, Req0, State) ->
     % Uid = imboy_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
     Key = {adm_user_sample, AdmUserId},
-    {true, {_, Nickname}} = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
+    U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
+    Nickname = maps:get(<<"nickname">>, U),
     % replier_user_id
     PostVals = imboy_req:post_params(Req0),
     % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),

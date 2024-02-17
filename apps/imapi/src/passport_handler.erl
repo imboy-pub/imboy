@@ -50,19 +50,18 @@ login(Req0) ->
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
     % ?LOG(['Type', Type,'Password', Password]),
-    Pwd =
-        case RsaEncrypt == <<"1">> of
-            true ->
-                try imboy_cipher:rsa_decrypt(Password) of
-                    Pwd0 ->
-                        Pwd0
-                catch
-                    _Type:_Reason ->
-                        <<>>
-                end;
-            _ ->
-                Password
-        end,
+    Pwd = case RsaEncrypt == <<"1">> of
+        true ->
+            try imboy_cipher:rsa_decrypt(Password) of
+                Pwd0 ->
+                    Pwd0
+            catch
+                _Type:_Reason ->
+                    <<>>
+            end;
+        _ ->
+            Password
+    end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"ip">>, Ip} | PostVals],
@@ -91,8 +90,19 @@ refreshtoken(Req0) ->
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
                 {ok, Id, _ExpireDAt, <<"rtk">>} ->
-                    Data = [{<<"token">>, token_ds:encrypt_token(Id)}],
-                    imboy_response:success(Req0, Data, "success.");
+                    % 状态: -1 删除  0 禁用  1 启用
+                    Status = imboy_db:pluck(user_repo:tablename()
+                        , <<"id=", (ec_cnv:to_binary(Id))/binary>>
+                        , <<"status">>
+                        , -2),
+                    case Status of
+                        _ when Status > -1 ->
+                            imboy_response:success(Req0, #{
+                                <<"token">> => token_ds:encrypt_token(Id)
+                            });
+                        _ ->
+                            imboy_response:error(Req0, "用户被禁用或已删除")
+                    end;
                 {error, Code, Msg, _Map} ->
                     imboy_response:error(Req0, Msg, Code)
             end

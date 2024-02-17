@@ -1,3 +1,11 @@
+# 0.3.3
+* 新增用户注销接口 /user/cancel;
+* 新增 imboy_db/find/2 方法；
+* user_repo/find_by_xxx 方法响应数据类型调整为 map，修改相关代码；
+* 删除 /friend/find 接口，有 /fts/user_search 替代功能；
+* 新增 5个 S2C 消息，具体细节参考 . /doc/api/消息类型.md S2C 消息介绍
+
+
 # 0.3.2
 * 新增 群消息分页列表新增 last_time（utc0 的毫秒时间戳） 过滤参数；
 * 新增 postgresql 新增 CREATE OR REPLACE FUNCTION public.timezone_offset() 删除 unix_time() 方法；

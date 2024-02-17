@@ -7,6 +7,7 @@
 -export([do_login/3]).
 -export([do_signup/5]).
 -export([find_password/5]).
+-export([do_login_transfer/2]).
 
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/def_column.hrl").
@@ -47,47 +48,19 @@ do_login(_Type, _Email, <<>>) ->
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
     case imboy_func:is_email(Email) of
         true ->
-            {Check, User} =
-                case user_repo:find_by_email(Email, ?LOGIN_COLUMN) of
-                    {ok, _, [Row]} when is_tuple(Row) ->
-                        % 第四个元素为password
-                        case imboy_password:verify(Pwd, element(4, Row)) of
-                            {ok, _} ->
-                                {true, Row};
-                            {error, Msg} ->
-                                {false, Msg}
-                        end;
-                    _ ->
-                        {false, []}
-                end,
-            login_success_transfer(Check, User);
+            User = user_repo:find_by_email(Email, ?LOGIN_COLUMN),
+            do_login_transfer(Pwd, User);
         false ->
             {error, "Email格式有误"}
     end;
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
-    Res =
-        case imboy_func:is_mobile(Mobile) of
-            true ->
-                user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN);
-            false ->
-                user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
-        end,
-    % ?LOG(Res),
-    {Check, User} =
-        case Res of
-            {ok, _, [Row]} when is_tuple(Row) ->
-                % 第四个元素为password
-                case imboy_password:verify(Pwd, element(4, Row)) of
-                    {ok, _} ->
-                        {true, Row};
-                    {error, Msg} ->
-                        {false, Msg}
-                end;
-            _ ->
-                % io:format("res is ~p~n", [Res]),
-                {false, []}
-        end,
-    login_success_transfer(Check, User).
+    User = case imboy_func:is_mobile(Mobile) of
+        true ->
+            user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN);
+        false ->
+            user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
+    end,
+    do_login_transfer(Pwd, User).
 
 
 -spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: list()) ->
@@ -167,10 +140,14 @@ verify_code(Id, Code) ->
           {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
 do_signup_by_email(Email, Pwd, PostVals) ->
     % ?LOG([do_signup_by_email, Email, Pwd, PostVals]),
-    case user_repo:find_by_email(Email, <<"email">>) of
-        {ok, _Col, [_]} ->
+    Id = imboy_db:pluck(user_repo:tablename()
+        , <<"email='", Email/binary, "'">>
+        , <<"id">>
+        , 0),
+    case Id of
+        0 ->
             {error, "Email已经被占用了"};
-        {ok, _Col, []} ->
+        _ ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             Now = imboy_dt:utc(millisecond),
             Table = <<"user">>,
@@ -180,16 +157,15 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             Now2 = integer_to_binary(Now),
             Status = integer_to_binary(1),
             Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
-            Cosv = proplists:get_value(<<"cosv">>, PostVals, <<"">>),
+            Cosv = proplists:get_value(<<"cosv">>, PostVals, <<>>),
             Uid0 = imboy_hashids:encode(0),
             RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
-            RefUid2 =
-                case bit_size(RefUid) > 5 of
-                    true ->
-                        integer_to_binary(imboy_hashids:decode(RefUid));
-                    _ ->
-                        <<"0">>
-                end,
+            RefUid2 = case bit_size(RefUid) > 5 of
+                true ->
+                    integer_to_binary(imboy_hashids:decode(RefUid));
+                _ ->
+                    <<"0">>
+            end,
             % ?LOG(["RefUid2", RefUid2]),
             Account = integer_to_binary(account_server:allocate()),
             % ?LOG(["Email", Email]),
@@ -215,42 +191,59 @@ do_signup_by_mobile(_Account, _Pwd, _Code, _PostVals) ->
 -spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: list()) ->
           {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
-    case user_repo:find_by_email(Email, <<"id,email">>) of
-        {ok, _Col, []} ->
-            {error, "Email不存在或已被删除"};
-        {ok, _Col, [{Id, _Email}]} ->
+    Id = imboy_db:pluck(user_repo:tablename()
+        , <<"email='", Email/binary, "'">>
+        , <<"id">>
+        , 0),
+    case Id of
+        0 ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             % Now = imboy_dt:utc(millisecond),
-            Tb2 = user_repo:tablename(),
             Pwd2 = imboy_password:generate(Password),
             Where = <<"id=", (ec_cnv:to_binary(Id))/binary>>,
-            Res = imboy_db:update(Tb2
+            Res = imboy_db:update(user_repo:tablename()
                 , Where
-                , #{<<"password">> => Pwd2}),
+                , #{<<"password">> => Pwd2}
+            ),
             case Res of
                 {ok, _} ->
                     {ok, #{}};
                 Res ->
                     Res
-            end
+            end;
+        _ ->
+            {error, "Email不存在或已被删除"}
     end.
 
 
--spec login_success_transfer(boolean(), tuple()) -> {ok, map()} | {error, any()}.
-login_success_transfer(true, {Id, Account, _, _, Email, Nickname, Avatar, Gender, Region, Sign}) ->
-    {ok, #{
-           <<"token">> => token_ds:encrypt_token(Id),
-           <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
-           <<"uid">> => imboy_hashids:encode(Id),
-           <<"email">> => Email,
-           <<"nickname">> => Nickname,
-           <<"avatar">> => Avatar,
-           <<"account">> => Account,
-           <<"gender">> => Gender,
-           <<"region">> => Region,
-           <<"sign">> => Sign,
-           <<"role">> => 1
-          }};
-login_success_transfer(_, _) ->
-    % ?LOG([User]),
-    {error, "账号或密码错误"}.
+-spec do_login_transfer(binary(), map()) -> {ok, map()} | {error, any()}.
+do_login_transfer(Pwd, User) ->
+    Pwd2 = maps:get(<<"password">>, User, <<>>),
+    % 状态: -1 删除  0 禁用  1 启用
+    Status = maps:get(<<"status">>, User, -2),
+    case imboy_password:verify(Pwd, Pwd2) of
+        {ok, _} when Status == -2 ->
+            {error, "账号不存在"};
+        {ok, _} when Status == -1 ->
+            {error, "账号不存在或者已删除"};
+        {ok, _} when Status == 0 ->
+            {error, "账号被禁用"};
+        {ok, _} when Status == 1 ->
+            Id = maps:get(<<"id">>, User),
+            {ok, #{
+               <<"token">> => token_ds:encrypt_token(Id),
+               <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
+               <<"uid">> => imboy_hashids:encode(Id),
+               <<"email">> => maps:get(<<"email">>, User),
+               <<"nickname">> => maps:get(<<"nickname">>, User),
+               <<"avatar">> => maps:get(<<"avatar">>, User),
+               <<"account">> => maps:get(<<"account">>, User),
+               <<"gender">> => maps:get(<<"gender">>, User),
+               <<"region">> => maps:get(<<"region">>, User),
+               <<"sign">> => maps:get(<<"sign">>, User),
+               <<"role">> => 1
+              }};
+        {error, Msg} ->
+            {error, Msg}
+    end.
+

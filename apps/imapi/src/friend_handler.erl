@@ -16,20 +16,18 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Req1 =
         case Action of
-            friend_list ->
-                friend_list(Req0, State);
+            list ->
+                list(Req0, State);
             add_friend ->
                 add_friend(Req0, State);
-            confirm_friend ->
-                confirm_friend(Req0, State);
+            confirm ->
+                confirm(Req0, State);
             delete_friend ->
                 delete_friend(Req0, State);
             move ->
                 move(Req0, State);
             information ->
                 information(Req0, State);
-            find ->
-                find(Req0, State);
             change_remark ->
                 change_remark(Req0, State);
             false ->
@@ -54,7 +52,7 @@ add_friend(Req0, State) ->
 
 
 %%% 申请添加好友确认
-confirm_friend(Req0, State) ->
+confirm(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
     From = proplists:get_value(<<"from">>, PostVals),
@@ -64,8 +62,11 @@ confirm_friend(Req0, State) ->
         {ok, FromID, Remark, Source} ->
             % From 的个人信息
             % Remark 为 to 对 from 定义的 remark
-            Resp = friend_logic:confirm_friend_resp(FromID, Remark),
-            imboy_response:success(Req0, [{<<"source">>, Source} | Resp], "success.");
+            Payload2 = friend_logic:confirm_friend_resp(FromID, Remark),
+            Payload3 = Payload2#{
+                <<"source">> => Source
+            },
+            imboy_response:success(Req0, Payload3);
         {error, Msg, Param} ->
             imboy_response:error(Req0, Msg, 1, [{<<"field">>, Param}])
     end.
@@ -77,43 +78,26 @@ delete_friend(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     friend_logic:delete_friend(CurrentUid, Uid),
-    imboy_response:success(Req0, #{}, "success.").
-
-
-%%% 查找非好友
-find(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    Mine = user_logic:find_by_id(CurrentUid),
-    Friends = friend_logic:search(CurrentUid),
-    Data = find_transfer(Mine, Friends),
-    imboy_response:success(Req0, Data, "success.").
-
-
-find_transfer(User, Friend) ->
-    [{<<"mine">>, imboy_hashids:replace_id(User)},
-     {<<"friend">>,
-      [ [{<<"id">>, imboy_hashids:encode(proplists:get_value(<<"id">>, GF))},
-         {<<"groupname">>, proplists:get_value(<<"groupname">>, GF)},
-         {<<"list">>, [ imboy_hashids:replace_id(U) || U <- proplists:get_value(<<"list">>, GF) ]}] || GF <- Friend ]}].
+    imboy_response:success(Req0, #{}).
 
 
 %%% 我的好友，无好友分组的
-friend_list(Req0, State) ->
+list(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
     Mine = user_logic:find_by_id(CurrentUid),
-    MineState = user_logic:mine_state(CurrentUid),
+    {K, V} = user_logic:mine_state(CurrentUid),
     Friend = friend_ds:page_by_uid(CurrentUid),
-    Data = friend_list_transfer([MineState | Mine], Friend),
-    % ?LOG(Data),
-    imboy_response:success(Req0, Data, "success.").
+    Payload = list_transfer(Mine#{K => V}, Friend),
+    % ?LOG(Payload),
+    imboy_response:success(Req0, Payload).
 
 
-friend_list_transfer(User, Friends) ->
-    [{<<"mine">>, imboy_hashids:replace_id(User)}, {<<"friend">>, Friends}
-     % {<<"mine">>, User}
-     % , {<<"friend">>, Friends}
-    ].
+list_transfer(User, Friends) ->
+    #{
+        <<"mine">> => imboy_hashids:replace_id(User),
+        <<"friend">> => Friends
+    }.
 
 
 %%% 移动好友分组
@@ -124,7 +108,7 @@ move(Req0, State) ->
     CategoryId = proplists:get_value(<<"category_id">>, PostVals, 0),
 
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-    imboy_response:success(Req0, #{}, "success.").
+    imboy_response:success(Req0, #{}).
 
 
 %%% 好友群资料
@@ -138,22 +122,22 @@ information(Req0, State) ->
             % ?LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
             % ?LOG([UserSetting, Uid]),
-            Friend = [],
-            Data = information_transfer(CurrentUid, <<"friend">>, User, UserSetting, Friend),
-            imboy_response:success(Req0, Data, "success.");
+            Payload = information_transfer(CurrentUid, <<"friend">>, User, UserSetting),
+            imboy_response:success(Req0, Payload);
         #{type := <<"group">>} ->
-            imboy_response:success(Req0, #{}, "success.");
+            imboy_response:success(Req0, #{});
         _ ->
-            imboy_response:success(Req0, #{}, "success.")
+            imboy_response:success(Req0, #{})
     end.
 
 
-information_transfer(CurrentUid, Type, User, UserSetting, Friend) ->
-    lists:append([[{<<"mine_uid">>, imboy_hashids:encode(CurrentUid)},
-                   {<<"type">>, Type},
-                   {<<"user_setting">>, UserSetting}],
-                  imboy_hashids:replace_id(User),
-                  Friend]).
+information_transfer(CurrentUid, Type, User, UserSetting) ->
+    User2 = imboy_hashids:replace_id(User),
+    User2#{
+        <<"mine_uid">> => imboy_hashids:encode(CurrentUid),
+        <<"type">> => Type,
+        <<"user_setting">> => UserSetting
+    }.
 
 
 %%% 修改好友备注

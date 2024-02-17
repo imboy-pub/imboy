@@ -2,7 +2,6 @@
 %%%
 %  friend 业务逻辑模块
 %%%
--export([search/1]).
 -export([add_friend/4]).
 -export([confirm_friend/4]).
 -export([confirm_friend_resp/2]).
@@ -123,7 +122,11 @@ confirm_friend(CurrentUid, From, To, Payload) ->
 confirm_friend_resp(Uid, Remark) ->
     Column = <<"id,account,nickname,avatar,gender,sign,region,status">>,
     User = user_logic:find_by_id(Uid, Column),
-    [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
+    % [{<<"remark">>, Remark} | imboy_hashids:replace_id(User)].
+    User#{
+        <<"id">> => imboy_hashids:encode(Uid),
+        <<"remark">> => Remark
+    }.
 
 
 -spec delete_friend(integer(), [binary() | integer()]) -> ok.
@@ -137,15 +140,6 @@ delete_friend(CurrentUid, Uid) ->
     imboy_cache:flush({is_friend, CurrentUid, Uid}),
     imboy_cache:flush({is_friend, Uid, CurrentUid}),
     ok.
-
-
-%%% 查找非好友
-search(Uid) ->
-    % 只能够搜索“用户被允许搜索”的用户
-    %
-    FriendIDs = friend_ids(Uid),
-    Info = FriendIDs,
-    Info.
 
 
 move_to_category(CurrentUid, Uid, CategoryId) ->
@@ -162,14 +156,3 @@ information(CurrentUid, Uid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
-
-%
-friend_ids(Uid) ->
-    Column = <<"to_user_id">>,
-    case friend_repo:list_by_uid(Uid, Column) of
-        {ok, _, []} ->
-            [];
-        {ok, _, Friends} ->
-            [ Id || {Id} <- Friends ]
-    end.

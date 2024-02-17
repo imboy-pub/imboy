@@ -92,6 +92,10 @@ dissolve(Uid, Gid, _, G) ->
     % 解散群聊后，群成员和群主都将被移除群聊。
     Now = imboy_dt:utc(millisecond),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
+
+
+    ToUidLi = group_member_ds:member_uids(Gid),
+
     imboy_db:with_transaction(fun(Conn) ->
         group_log_repo:add(Conn, #{
             % 日志类型: 100 群转让 101 群解散  200 主动退出群   201 群解散退出群  202 被踢出群
@@ -124,7 +128,10 @@ dissolve(Uid, Gid, _, G) ->
         Tb2 = group_member_repo:tablename(),
         Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id= ", (ec_cnv:to_binary(Gid))/binary>>,
         imboy_db:execute(Conn, Sql2, []),
-        % TODO 群聊解散成功之后发送消息通知各成员客户端做相关逻辑处理 2024-02-11
+        group_member_ds:flush_cache(Gid),
+        % 群聊解散成功之后发送消息通知各成员客户端做相关逻辑处理
+        MsgType = <<"group_dissolve">>,
+        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
         ok
     end),
     ok.

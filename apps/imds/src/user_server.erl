@@ -24,6 +24,8 @@
 -export([cast_notice_friend/2]).
 -export([cast_online/3]).
 -export([cast_offline/3]).
+-export([cast_cancel/3]).
+
 
 %% ===================================================================
 %% API
@@ -60,8 +62,8 @@ handle_call(Request, From, State) ->
 
 
 % 用户注册成功后的逻辑处理
-handle_cast({signup_success, Uid, PostVals}, State) ->
-    ?LOG([Uid, imboy_hashids:decode(Uid), PostVals]),
+handle_cast({signup_success, _Uid, _PostVals}, State) ->
+    % ?LOG([Uid, imboy_hashids:decode(Uid), PostVals]),
     % 生成account
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
@@ -94,6 +96,9 @@ handle_cast({offline, Uid, _Pid, DID}, State) ->
     ?LOG([offline, Uid, State, DID]),
     notice_friend(Uid, <<"offline">>),
     {noreply, State, hibernate};
+handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
+    cancel(Uid, CreatedAt, Opt),
+    {noreply, State, hibernate};
 handle_cast({online, Uid, Pid, DID}, State) ->
     ?LOG([online, Uid, Pid, State, DID]),
     DName = user_device_logic:device_name(Uid, DID),
@@ -119,7 +124,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
             ok
     end,
     % ?LOG(["before check_msg/2",Uid, Pid, State]),
-    % 检查离线消息
+    % 检查 S2C C2C 离线消息
     msg_c2c_logic:check_msg(Uid, Pid, DID),
     % 检查群聊离线消息
     msg_c2g_logic:check_msg(Uid, Pid, DID),
@@ -152,7 +157,7 @@ cast_notice_friend(CurrentUid, ChatState) ->
 %% 检查消息 用异步队列实现
 
 
--spec cast_online(Uid :: binary(), Pid :: pid(), DID :: binary()) -> ok.
+-spec cast_online(binary(), pid(), binary()) -> ok.
 cast_online(Uid, Pid, DID) ->
     gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
     ok.
@@ -164,38 +169,104 @@ cast_offline(Uid, Pid, DID) ->
     ok.
 
 
+cast_cancel(Uid, CreatedAt, Opt) ->
+    gen_server:cast(?MODULE, {cancel, Uid, CreatedAt, Opt}),
+    ok.
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
+cancel(Uid, CreatedAt, Opt) ->
+    User = user_repo:find_by_id(Uid, <<"*">>),
+    Setting = user_setting_ds:find_by_uid(Uid),
+    ToUidLi = friend_ds:list_by_uid(Uid),
 
--spec notice_friend(Uid :: integer(), binary()) -> ok.
+    MsgType = <<"user_cancel">>,
+    msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
+    imboy_db:with_transaction(fun(Conn) ->
+        {ok, Body} = jsone_encode:encode(#{
+            <<"user">> => User,
+            <<"setting">> => Setting,
+            <<"client_opt">> => Opt
+        }, [native_utf8]),
+        user_log_repo:add(Conn, #{
+            % 日志类型: 100 用户注销备份
+            type => 100,
+            uid => Uid,
+            body => Body,
+            created_at => CreatedAt
+            }),
+        UidBin = ec_cnv:to_binary(Uid),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_repo:tablename())/binary, " WHERE id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_collect_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_denylist_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE from_user_id = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE to_user_id = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM user_friend_category WHERE owner_user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_setting_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_tag_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_tag_relation_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM fts_user WHERE user_id = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (geo_people_nearby_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+
+        %
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (group_repo:tablename())/binary, " WHERE owner_uid = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (group_member_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (group_random_code_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
+            , []),
+        ok
+    end),
+
+    ok.
+
+-spec notice_friend(integer(), binary()) -> ok.
 notice_friend(Uid, State) ->
-    Column = <<"to_user_id">>,
-    case friend_repo:list_by_uid(Uid, Column) of
-        {ok, _, []} ->
-            ok;
-        {ok, _ColumnList, Rows} ->
-            % ?LOG([State, Rows]),
-            ToUidLi = [ ToUid || {ToUid} <- Rows ],
-            send_state_msg(Uid, State, ToUidLi),
-            ok
-    end.
-
-
--spec send_state_msg(any(), user_chat_state(), list()) -> ok.
-send_state_msg(_FromId, _State, []) ->
-    ok;
-% 给在线好友发送上线消息
-send_state_msg(FromId, State, [ToUid | Tail]) ->
-    % ?LOG([FromId, State, ToUid, Tail]), % echo [1,<<"3">>,<0.892.0>]
     % 用户在线状态变更
     % State: <<"online">> | <<"offline">> | <<"hide">>.
-    Msg = jsone:encode(message_ds:assemble_msg(<<"S2C">>,
-                                               imboy_hashids:encode(FromId),
-                                               imboy_hashids:encode(ToUid),
-                                               [{<<"msg_type">>, State}],
-                                               <<"">>),
-                       [native_utf8]),
-    imboy_syn:publish(ToUid, Msg),
-    send_state_msg(FromId, State, Tail).
+    ToUidLi = friend_ds:list_by_uid(Uid),
+    msg_s2c_ds:send(Uid, State, ToUidLi, no_save),
+    ok.

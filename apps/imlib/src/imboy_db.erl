@@ -4,7 +4,7 @@
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
--export([find/1, find/4]).
+-export([find/1, find/2, find/4]).
 -export([list/1, list/2]).
 -export([page/6]).
 
@@ -79,7 +79,7 @@ pluck(Tb, Field, Default) ->
 pluck(Tb, Where, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
-    % ?LOG([pluck, Sql]),
+    ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 
@@ -104,18 +104,10 @@ find(Tb, Where, OrderBy, Column) ->
     find(Sql).
 
 find(Sql) ->
-    case imboy_db:query(Sql) of
-        {ok, _, []} ->
-            #{};
-        {ok, [{column, Col1, _, _, _, _, _, _, _}], [{Val}]} ->
-            #{
-                Col1 => Val
-            };
-        {ok, Col, [Val]} ->
-            maps:from_list(lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val)));
-        _ ->
-            #{}
-    end.
+    query_resp_map(imboy_db:query(Sql)).
+
+find(Sql, Params) ->
+    query_resp_map(imboy_db:query(Sql, Params)).
 
 
 -spec page(integer(), integer(), binary(), binary(), binary(), binary()) -> list().
@@ -349,6 +341,20 @@ assemble_value_filter(V) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+
+query_resp_map(Res) ->
+    case Res of
+        {ok, _, []} ->
+            #{};
+        {ok, [{column, Col1, _, _, _, _, _, _, _}], [{Val}]} ->
+            #{
+                Col1 => Val
+            };
+        {ok, Col, [Val]} ->
+            maps:from_list(lists:zipwith(fun(X, Y) -> {X, Y} end, Col, tuple_to_list(Val)));
+        _ ->
+            #{}
+    end.
 
 query_resp({error, Msg}) ->
     {error, Msg};

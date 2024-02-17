@@ -15,6 +15,7 @@ join(_, _, Max, Count) when Max =< Count ->
     {error, "群成员已满。"};
 join(Uid, Gid, _, _) ->
     Now = imboy_dt:utc(millisecond),
+    ToUidLi = group_member_ds:member_uids(Gid),
     imboy_db:with_transaction(fun(Conn) ->
         group_member_repo:add(Conn, #{
             group_id => Gid,
@@ -33,7 +34,8 @@ join(Uid, Gid, _, _) ->
             , Data
         ),
         group_member_ds:flush_cache(Gid),
-        % TODO 通知群成员更新信息
+        MsgType = <<"group_member_join">>,
+        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
         ok
     end),
     ok.
@@ -43,7 +45,7 @@ leave(_, _, GMSize, _) when GMSize == 0 ->
 leave(Uid, Gid, _, GM) ->
     Now = imboy_dt:utc(millisecond),
     Id = maps:get(<<"id">>, GM, 0),
-
+    ToUidLi = group_member_ds:member_uids(Gid),
     imboy_db:with_transaction(fun(Conn) ->
         Tb2 = group_member_repo:tablename(),
         Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE id= ", (ec_cnv:to_binary(Id))/binary>>,
@@ -68,7 +70,8 @@ leave(Uid, Gid, _, GM) ->
             , Data
         ),
         group_member_ds:flush_cache(Gid),
-        % TODO 通知群成员更新信息
+        MsgType = <<"group_member_leave">>,
+        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
         ok
     end),
     ok.
@@ -85,7 +88,10 @@ alias(Uid, Gid, Alias, Description) ->
         , <<"group_id = ", (ec_cnv:to_binary(Gid))/binary, " AND user_id = ", (ec_cnv:to_binary(Uid))/binary>>
         , Data
     ),
-    % TODO 通知群成员更新信息
+    ToUidLi = group_member_ds:member_uids(Gid),
+    msg_s2c_ds:send(Uid, Data#{
+        <<"msg_type">> => <<"group_member_alias">>
+        }, ToUidLi, save),
     ok.
 
 

@@ -39,23 +39,24 @@ select_by_where(Where, Limit, Offset, OrderBy) ->
 find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    imboy_db:query(Sql, [Email]).
+    % ?LOG(["sql ", Sql]),
+    imboy_db:find(Sql, [Email]).
 
 
-% user_repo:find_by_mobile(<<"13692177080">>, <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
-% user_repo:find_by_mobile("13692177080", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
+% user_repo:find_by_mobile(<<"13692177080">>, <<"*">>).
+% user_repo:find_by_mobile("13692177080", <<"*">>).
 find_by_mobile(Mobile, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
     ?LOG(["sql ", Sql]),
-    imboy_db:query(Sql, [Mobile]).
+    imboy_db:find(Sql, [Mobile]).
 
 
 % user_repo:find_by_account("550138", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_account(Username, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE account = $1">>,
-    imboy_db:query(Sql, [Username]).
+    imboy_db:find(Sql, [Username]).
 
 
 find_by_id(Uid) ->
@@ -67,7 +68,7 @@ find_by_id(Uid, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     % ?LOG([Sql]),
-    imboy_db:query(Sql, [Uid]).
+    imboy_db:find(Sql, [Uid]).
 
 
 list_by_ids(Uids, Column) ->

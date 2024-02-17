@@ -1,10 +1,11 @@
--module(adm_user_logic).
+-module (user_log_repo).
 %%%
-% adm_user 业务逻辑模块
-% adm_user business logic module
+% user_log 相关操作都放到该模块，存储库模块
+% user_log related operations are put in this module, repository module
 %%%
 
--export ([find/3]).
+-export ([tablename/0]).
+-export ([add/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -17,19 +18,16 @@
 %% API
 %% ===================================================================
 
-%%% demo方法描述
--spec find(integer(), binary(), tuple()) -> ok.
-find(Uid, Column, Key) ->
-    % Key = {adm_user, Column, Uid},
-    Fun = fun() ->
-        adm_user_repo:find_by_id(Uid, Column)
-    end,
-    %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
-    imboy_cache:memo(Fun, Key, 7200).
+tablename() ->
+    imboy_db:public_tablename(<<"user_log">>).
+
+add(Conn, Data) ->
+    Tb = tablename(),
+    imboy_db:add(Conn, Tb, Data).
 
 %% ===================================================================
 %% Internal Function Definitions
-%% ===================================================================-
+%% ===================================================================
 
 %
 

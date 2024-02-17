@@ -22,25 +22,40 @@ init(Req0, State0) ->
                 setting(Req0, State);
             update ->
                 update(Req0, State);
-            open_info ->
-                open_info(Req0, State);
+            show ->
+                show(Req0, State);
             uqrcode ->
                 uqrcode(Req0, State);
             credential ->
                 credential(Req0, State);
+            cancel ->
+                cancel(Req0, State);
             false ->
                 Req0
         end,
     {ok, Req1, State}.
 
 
+cancel(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    case user_logic:cancel(CurrentUid, Req0) of
+        {ok, _} ->
+            imboy_response:success(Req0);
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
+
+
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Username, Credential, Uris} = user_ds:webrtc_credential(CurrentUid),
-    imboy_response:success(Req0,
-                           [{<<"uris">>, Uris}, {<<"username">>, Username}, {<<"credential">>, Credential}],
-                           "success.").
+    Payload = #{
+        <<"uris">> => Uris,
+        <<"username">> => Username,
+        <<"credential">> => Credential
+    },
+    imboy_response:success(Req0, Payload).
 
 
 %% 扫描“我的二维码”
@@ -55,20 +70,34 @@ uqrcode(Req0, State) ->
             Uid2 = imboy_hashids:decode(Uid),
             Column = <<"id,nickname,gender,avatar,sign,region,status">>,
             User = user_logic:find_by_id(Uid2, Column),
-            Status = proplists:get_value(<<"status">>, User),
-            imboy_response:success(Req0, uqrcode_transfer(CurrentUid, Uid2, Status, User), "success.")
+            Status = maps:get(<<"status">>, User, -2),
+            % ?LOG([User, Status]),
+            Payload = uqrcode_transfer(CurrentUid, Status, User),
+            imboy_response:success(Req0, Payload)
     end.
 
 
-uqrcode_transfer(_, _, undefined, []) ->
-    [{<<"result">>, <<"user_not_exist">>}, {<<"msg">>, <<"用户不存在">>}];
-uqrcode_transfer(CurrentUid, Uid2, 1, User) ->
-    User2 = proplists:delete(<<"status">>, User),
+uqrcode_transfer(_, -2, #{}) ->
+    #{
+        <<"result">> => <<"user_not_exist">>,
+        <<"msg">> => <<"用户不存在"/utf8>>
+    };
+uqrcode_transfer(CurrentUid, 1, User) ->
+    Uid2 = maps:get(<<"id">>, User),
+    User2 = maps:remove(<<"status">>, User),
     {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
-    [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ imboy_hashids:replace_id(User2);
-uqrcode_transfer(_, _, _Status, _User) ->
+    User2#{
+        <<"id">> => imboy_hashids:encode(Uid2),
+        <<"isfriend">> => Isfriend,
+        <<"remark">> => Remark
+    };
+    % [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ imboy_hashids:replace_id(User2);
+uqrcode_transfer(_, _, _) ->
     % 状态: -1 删除  0 禁用  1 启用
-    [{<<"result">>, <<"user_is_disabled_or_deleted">>}, {<<"msg">>, <<"用户被禁用或已删除">>}].
+    #{
+        <<"result">> => <<"user_is_disabled_or_deleted">>,
+        <<"msg">> => <<"用户被禁用或已删除"/utf8>>
+    }.
 
 
 %% 切换在线状态
@@ -117,8 +146,8 @@ update(Req0, State) ->
 
 
 % 用户网络公开信息
-open_info(Req0, _State) ->
+show(Req0, _State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    Column = <<"id, nickname, avatar, account,sign">>,
+    Column = <<"id, nickname, avatar, account, sign">>,
     User = user_logic:find_by_id(imboy_hashids:decode(Uid), Column),
-    imboy_response:success(Req0, imboy_hashids:replace_id(User), "success.").
+    imboy_response:success(Req0, imboy_hashids:replace_id(User)).

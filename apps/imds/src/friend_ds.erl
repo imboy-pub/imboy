@@ -4,6 +4,7 @@
 %%%
 -export([is_friend/2]).
 -export([is_friend/3]).
+-export([list_by_uid/1]).
 -export([page_by_uid/1, page_by_uid/3]).
 -export([page_by_cid/4]).
 -export([page_by_tag/5]).
@@ -16,6 +17,15 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+list_by_uid(Uid) ->
+    Column = <<"to_user_id">>,
+    case friend_repo:list_by_uid(Uid, Column) of
+        {ok, _, []} ->
+            [];
+        {ok, _ColumnList, Rows} ->
+            [ToUid || {ToUid} <- Rows]
+    end.
 
 %% ToUid 是 FromUid 的好友？
 
