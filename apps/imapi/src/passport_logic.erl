@@ -146,8 +146,6 @@ do_signup_by_email(Email, Pwd, PostVals) ->
         , 0),
     case Id of
         0 ->
-            {error, "Email已经被占用了"};
-        _ ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             Now = imboy_dt:utc(millisecond),
             Table = <<"user">>,
@@ -177,7 +175,9 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                       Ip/binary, "', '", Cosv/binary, "', '", Status/binary, "', '", Now2/binary, "')">>,
             imboy_db:insert_into(Table, Column, Value),
             % 注册成功
-            {ok, #{}}
+            {ok, #{}};
+        _ ->
+            {error, "Email已经被占用了"}
     end.
 
 
