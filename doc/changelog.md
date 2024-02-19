@@ -1,3 +1,6 @@
+# 0.3.4
+* 修复 Email没有注册，确提示“Email已经被占用了”的问题
+
 # 0.3.3
 * 新增用户注销接口 /user/cancel;
 * 新增 imboy_db/find/2 方法；
