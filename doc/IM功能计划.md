@@ -3,7 +3,7 @@
 
 ## 第一版本
 
-具体功能参考： https://gitee.com/imboy-pub/imboy-flutter/blob/main/doc/feature_0.1.0_tree.md
+具体功能参考： https://gitee.com/imboy-pub/imboy-flutter/blob/main/doc/feature_tree.md
 
 ## 第二版本
 计划添加群聊相关功能

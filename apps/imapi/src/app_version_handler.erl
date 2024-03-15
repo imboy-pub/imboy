@@ -40,7 +40,7 @@ check(<<"GET">>, Req0, _State) ->
     % imboy_log:info(Cos),
     #{vsn := Vsn} = cowboy_req:match_qs([{vsn, [], <<"">>}], Req0),
     #{region_code := RegionCode} = cowboy_req:match_qs([{region_code, [], <<>>}], Req0),
-    Column = <<"region_code,type, package_name, app_name, vsn, download_url, description, app_db_vsn, force_update">>,
+    Column = <<"region_code,type, package_name, app_name, vsn, download_url, description, force_update">>,
     Where = case RegionCode of
         <<>> ->
             <<"status=1 AND type='", Cos/binary, "'">>;

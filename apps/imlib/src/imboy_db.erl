@@ -79,18 +79,18 @@ pluck(Tb, Field, Default) ->
 pluck(Tb, Where, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
-    ?LOG([pluck, Sql]),
+    % ?LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 
-pluck(<<"SELECT ", Field/binary>>, Default) ->
-    pluck(Field, Default);
-pluck(Field, Default) ->
-    Res = imboy_db:query(<<"SELECT ", Field/binary>>),
-    % imboy_log:info(io_lib:format("imboy_db:pluck/2 Field:~p ~n", [Field])),
+pluck(<<"SELECT ", Query/binary>>, Default) ->
+    pluck(Query, Default);
+pluck(Query, Default) ->
+    Res = imboy_db:query(<<"SELECT ", Query/binary>>),
+    % imboy_log:info(io_lib:format("imboy_db:pluck/2 Query:SELECT ~s ~n", [Query])),
     % imboy_log:info(io_lib:format("imboy_db:pluck/2 Res:~p ~n", [Res])),
     case Res of
-        {ok, _, [{Val}]} ->
+        {ok, _, [{Val}|_]} ->
             % imboy_log:info(io_lib:format("imboy_db:pluck/2 Val:~p ~n", [Val])),
             Val;
         {ok, _, [Val]} ->
@@ -101,6 +101,7 @@ pluck(Field, Default) ->
 
 find(Tb, Where, OrderBy, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT 1">>,
+    % ?LOG([find, Sql]),
     find(Sql).
 
 find(Sql) ->
@@ -242,6 +243,12 @@ insert_into(Tb, Data) ->
     Value = assemble_value(Data),
     imboy_db:insert_into(Tb, Column, Value).
 
+insert_into(Tb, Data, <<>>) when is_map(Data) ->
+    Column = <<"("
+        , (imboy_cnv:implode("," , maps:keys(Data)))/binary
+        , ")">>,
+    Value = assemble_value(Data),
+    insert_into(Tb, Column, Value, <<>>);
 insert_into(Tb, Column, Value) ->
     insert_into(Tb, Column, Value, <<"RETURNING id;">>).
 

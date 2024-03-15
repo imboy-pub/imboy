@@ -19,7 +19,7 @@ get_routes() ->
 
        {"/passport/login", passport_handler, #{action => login}},
        {"/passport/signup", passport_handler, #{action => signup}},
-       {"/passport/getcode", passport_handler, #{action => send_code}},
+       {"/passport/getcode", passport_handler, #{action => getcode}},
        {"/passport/findpassword", passport_handler, #{action => find_password}},
 
        {"/ws", websocket_handler, #{}},

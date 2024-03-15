@@ -1,3 +1,11 @@
+# 0.3.5
+* 优化 app_version 表，删除 app_db_vsn 字段，修改相关代码；
+* 优化面对面建群功能，使用 rabbitmq/khepri 存储群成员信息；
+* 新增 C2S 消息类型，调整相关数据库表结构；
+* 新增 C2S 消息、 C2G 消息话题功能，以支持机器人聊天功能；
+* 新增 重新部署流程文档 ./doc/redeployment_process.md
+* 更新 ./docker/pg15_Dockerfile_dev
+
 # 0.3.4
 * 修复 Email没有注册，确提示“Email已经被占用了”的问题
 

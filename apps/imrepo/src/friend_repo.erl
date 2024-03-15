@@ -87,7 +87,7 @@ filter_friend_setting(Setting) ->
      {<<"isfrom">>, proplists:get_value(<<"isfrom">>, Setting, 0)},
      {<<"source">>, proplists:get_value(<<"source">>, Setting, "")},
      % 客户端约定
-     % role 可能的值 all justchat
+     % role 可能的值 all just_chat
      {<<"role">>, proplists:get_value(<<"role">>, Setting, "all")},
      %  不让他（她）看
      {<<"donotlethimlook">>, proplists:get_value(<<"donotlethimlook">>, Setting, false)},

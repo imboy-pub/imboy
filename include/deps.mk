@@ -22,6 +22,8 @@ dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
 # 9months
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
+# Khepri 是一个用于 Erlang 和 Elixir 的树状复制磁盘数据库库。
+dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
 # jwerl JWT library
 # 1years
@@ -32,7 +34,7 @@ dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 # 6years
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
 # 7years
-dep_hashids = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
+dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
 
 
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
@@ -54,7 +56,9 @@ dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_common
 dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.1
 # qdate - Erlang Date and Timezone Library
 # 20days
-dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
+#dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
+dep_qdate = hex 0.7.2
+
 # Erlang/OTP 应用程序限制资源访问速率
 # 3years
 dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
@@ -122,6 +126,9 @@ dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
 dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git leeyi
 # 6months 245commits
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
+
+dep_idna = hex 6.1.1 idna
+dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1
 
 # dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
 # 1years 8commits

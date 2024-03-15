@@ -3,40 +3,28 @@
 #
 # https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
-#FROM postgres:15-bookworm
 FROM postgres:15-bullseye
 
 LABEL maintainer="PostGIS Project - https://postgis.net" \
-      org.opencontainers.image.description="PostGIS 3.4.0+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
+      org.opencontainers.image.description="PostGIS 3.4.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 15 bullseye" \
       org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
 
 ENV POSTGIS_MAJOR 3
-ENV POSTGIS_VERSION 3.4.0+dfsg-1.pgdg110+1
-ENV PGROUTING_VERSION 3.5.1
-#ENV PGJIEBA_VERSION
+ENV POSTGIS_VERSION 3.4.2+dfsg-1.pgdg110+1
+ENV PGROONGA_VERSION=3.1.5-1
 
-RUN set -xe \
-  && apt-get update \
-  && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
-  && apt-get install -y --no-install-recommends \
-       # ca-certificates: for accessing remote raster files;
-       #   fix: https://github.com/postgis/docker-postgis/issues/307
-       ca-certificates \
-       postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
-       postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts
+RUN apt-get update \
+      && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
+      && apt-get install -y --no-install-recommends \
+           # ca-certificates: for accessing remote raster files;
+           #   fix: https://github.com/postgis/docker-postgis/issues/307
+           ca-certificates \
+           \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts
 
 # for pgroonga
 # https://github.com/pgroonga/docker/blob/3.1.5/debian/15/Dockerfile
-RUN set -xe \
-  && apt-get install -y -V wget \
-  && wget https://packages.groonga.org/debian/groonga-apt-source-latest-bullseye.deb \
-  && apt-get install -y -V ./groonga-apt-source-latest-bullseye.deb && rm groonga-apt-source-latest-bullseye.deb \
-  && echo "deb http://apt.postgresql.org/pub/repos/apt/ bullseye-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list \
-  && apt-get update && apt-get install -y -V \
-    postgresql-15-pgdg-pgroonga \
-    groonga-normalizer-mysql \
-    groonga-token-filter-stem \
-    groonga-tokenizer-mecab
 
 # for timescaledb
 # https://www.modb.pro/db/93508
@@ -44,7 +32,7 @@ RUN set -xe \
   && apt-get install -y git cmake libpq-dev build-essential gnupg2 postgresql-common apt-transport-https lsb-release \
   && apt-get install -y postgresql-server-dev-15 && apt-get install -y libkrb5-dev \
   && git clone https://gitee.com/imboy-tripartite-deps/timescaledb.git \
-  && cd timescaledb &&  git switch -c 2.12.2 \
+  && cd timescaledb &&  git switch -c 2.14.2 \
   && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/15/bin/pg_config . \
   && cd ./build && make && make install && cd ../../ && rm -rf timescaledb
 
@@ -63,7 +51,7 @@ RUN set -xe \
 #RUN set -xe \
 #  && apt-get install -y  libboost-atomic1.74.0  libboost-chrono1.74.0  libboost-graph1.74.0  libboost-date-time1.74.0  libboost-program-options1.74.0  libboost-system1.74.0  libboost-thread1.74.0 \
 #  && git clone https://gitee.com/imboy-tripartite-deps/pgrouting.git \
-#  && cd /root/pgrouting && git fetch v3.5.1 && git checkout v3.5.1 \
+#  && cd /root/pgrouting && git fetch v3.6.1 && git checkout v3.6.1 \
 #  && mkdir build && cd build && cmake .. \
 #  && make && make install && cd ../ && rm -rf pgrouting
 

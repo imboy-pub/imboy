@@ -17,28 +17,10 @@ face2face(_, _, _, undefined) ->
     {error, <<"latitude 必须">>};
 face2face(Uid, Code, Lng, Lat) ->
     Now = imboy_dt:utc(millisecond),
-    Count = imboy_db:pluck(group_repo:tablename(),
-       <<"status = 1 AND owner_uid = ", (ec_cnv:to_binary(Uid))/binary>>,
-       <<"count(*)">>,
-       0),
     case nearby_gid(Lng, Lat, <<"50">>, <<"m">>, <<"1">>, Code) of
-        {ok, _, []} when Count > 20 ->
-            {error, "每人最多创建20个群"};
         {ok, _, []} ->
             imboy_db:with_transaction(fun(Conn) ->
-                {ok, _,[{Gid}]} = group_repo:add(Conn, #{
-                    type => 2, % 类型: 1 公开群组  2 私有群组
-                    join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
-                    owner_uid => Uid,
-                    creater_uid => Uid,
-                    created_at => Now
-                }),
-                group_member_repo:add(Conn, #{
-                    group_id => Gid,
-                    user_id => Uid,
-                    role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-                    created_at => Now
-                }),
+                Gid = group_ds:gid(),
                 % EPSG:4326 就是 WGS84 的代码。GPS 是基于 WGS84 的，所以通常我们得到的坐标数据都是 WGS84 的
                 Location = <<"ST_GeomFromText('POINT(", Lng/binary, " ", Lat/binary, ")', 4326)">>,
                 group_random_code_repo:add(Conn, #{
@@ -49,24 +31,19 @@ face2face(Uid, Code, Lng, Lat) ->
                     validity_at => Now + 7200_000,
                     created_at => Now
                 }),
+                group_ds:join(Uid, Gid),
                 {ok, Gid}
             end);
-        {ok, _, [{Gid, _, _}]} ->
-            G = group_repo:find_by_id(Gid, <<"member_max,member_count">>),
-            Max = maps:get(<<"member_max">>, G, 0),
-            Count = maps:get(<<"member_count">>, G, 0),
-            case group_member_logic:join(Uid, Gid, Max, Count) of
-                ok ->
-                    {ok, Gid};
-                {error, Msg} ->
-                    {error, Msg}
-            end;
+        % {ok, _, [{Id, Gid, Location, Distance}]}
+        {ok, _, [{_Id, Gid, _, _}]} ->
+            group_ds:join(Uid, Gid),
+            {ok, Gid};
         _ ->
             {error, "error"}
     end.
 
-add(Count, _, _) when Count > 20 ->
-    {error, "每人最多创建20个群"};
+add(Count, _, _) when Count > 100 ->
+    {error, "每人最多创建100个群"};
 add(_, Uid, Type) ->
     Now = imboy_dt:utc(millisecond),
     imboy_db:with_transaction(fun(Conn) ->
@@ -83,6 +60,7 @@ add(_, Uid, Type) ->
             role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
             created_at => Now
         }),
+        group_ds:join(Uid, Gid),
         {ok, Gid}
     end).
 
@@ -94,7 +72,7 @@ dissolve(Uid, Gid, _, G) ->
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
 
 
-    ToUidLi = group_member_ds:member_uids(Gid),
+    ToUidLi = group_ds:member_uids(Gid),
 
     imboy_db:with_transaction(fun(Conn) ->
         group_log_repo:add(Conn, #{
@@ -128,7 +106,7 @@ dissolve(Uid, Gid, _, G) ->
         Tb2 = group_member_repo:tablename(),
         Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id= ", (ec_cnv:to_binary(Gid))/binary>>,
         imboy_db:execute(Conn, Sql2, []),
-        group_member_ds:flush_cache(Gid),
+        group_ds:dissolve(Gid),
         % 群聊解散成功之后发送消息通知各成员客户端做相关逻辑处理
         MsgType = <<"group_dissolve">>,
         msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
@@ -147,7 +125,7 @@ dissolve(Uid, Gid, _, G) ->
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     Now2 = ec_cnv:to_binary(imboy_dt:utc(millisecond)),
     Sql = <<"select
-    group_id
+    id, group_id
     , ST_AsText(location) as location
     , ST_Distance(ST_GeographyFromText('SRID=4326;POINT(", Lng/binary, " ", Lat/binary, ")'), location) as distance
     from public.group_random_code where code = '", Code/binary, "' AND validity_at > ", Now2/binary," AND ST_DWithin(location::geography, ST_GeographyFromText('POINT(",

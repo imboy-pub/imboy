@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.3.3
+PROJECT_VERSION = 0.3.5
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -14,7 +14,7 @@ include include/deps.mk
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
 DEPS =  ranch cowlib cowboy
-DEPS += jwerl hashids gen_smtp throttle
+DEPS += jwerl hashids_erlang gen_smtp throttle
 DEPS += qdate qdate_localtime
 # goldrush 提供了快速的事件流处理
 DEPS += goldrush
@@ -22,7 +22,9 @@ DEPS += goldrush
 DEPS += datum jsone jsx
 # DEPS += mysql poolboy
 DEPS += epgsql pooler
+# DEPS += idna hackney
 DEPS += depcache
+DEPS += khepri
 DEPS += syn
 DEPS += fuse
 DEPS += ecron
@@ -41,7 +43,6 @@ DEPS += erlydtl
 # DEPS += ersip rtps
 
 # DEPS += esq
-# DEPS += khepri
 
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖

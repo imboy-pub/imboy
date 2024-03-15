@@ -4,7 +4,52 @@
 %%%
 % -export ([find_by_id/2]).
 -export([check_avatar/1]).
--export([user_join_ids/1]).
+-export([gid/0]).
+
+
+-export([member_uids/1]).
+-export([dissolve/1]).
+-export([join/2]).
+-export([leave/2]).
+
+% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
+join(Uid, Gid) ->
+    Key = "/:gorup_member/" ++ integer_to_list(Gid),
+    case khepri:exists(Key) of
+        false ->
+            khepri:put(Key, [Uid]);
+        true ->
+            leave(Uid, Gid),
+            {ok, Li} = khepri:get(Key),
+            khepri:put(Key, [Uid | Li])
+    end.
+
+% group_ds:leave(1,1).
+leave(Uid, Gid) ->
+    Key = "/:gorup_member/" ++ integer_to_list(Gid),
+    case khepri:exists(Key) of
+        false ->
+            ok;
+        true ->
+            {ok, Li} = khepri:get(Key),
+            khepri:put(Key, lists:delete(Uid, Li))
+    end.
+
+% group_ds:member_uids(1).
+-spec member_uids(integer()) -> list().
+member_uids(Gid) ->
+    Key = "/:gorup_member/" ++ integer_to_list(Gid),
+    case khepri:get(Key) of
+        {error,{khepri,node_not_found, _}} ->
+            [];
+        {ok, Val} ->
+            Val
+    end.
+
+% group_ds:dissolve(Gid).
+dissolve(Gid) ->
+    Key = "/:gorup_member/" ++ integer_to_list(Gid),
+    khepri:delete(Key).
 
 -include_lib("imlib/include/log.hrl").
 
@@ -12,23 +57,13 @@
 %% API
 %% ===================================================================
 
+% group_ds:gid().
+gid() ->
+    case imboy_db:query("select nextval('group_id_seq');") of
+        {ok,_,[{Gid}]} ->
+            Gid
+    end.
 
-% 获取用户加入的群组ID
-% Uid = 1, group_ds:user_join_ids(Uid).
--spec user_join_ids(integer()) -> list().
-user_join_ids(Uid) ->
-    Key = {user_join_ids, Uid},
-    Fun = fun() ->
-                  Column = <<"group_id">>,
-                  case group_member_repo:list_by_uid(Uid, Column) of
-                      {ok, _ColumnList, []} ->
-                          [];
-                      {ok, _ColumnList, Rows} ->
-                          [ Gid || {Gid} <- Rows ]
-                  end
-          end,
-    % 缓存10天
-    imboy_cache:memo(Fun, Key, 864000).
 
 
 -spec check_avatar(list()) -> list().

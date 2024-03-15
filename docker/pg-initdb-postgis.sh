@@ -30,7 +30,6 @@ for DB in template_postgis "$POSTGRES_DB"; do
         CREATE EXTENSION IF NOT EXISTS address_standardizer;
         -- 中文分词
         CREATE EXTENSION IF NOT EXISTS pg_jieba;
-        CREATE EXTENSION IF NOT EXISTS pgroonga;
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
         -- 时序数据库
         CREATE EXTENSION IF NOT EXISTS timescaledb;

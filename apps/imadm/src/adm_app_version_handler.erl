@@ -72,7 +72,6 @@ save(<<"POST">>, Req0, _State) ->
     PkgName = proplists:get_value(<<"package_name">>, PostVals, <<>>),
     AppName = proplists:get_value(<<"app_name">>, PostVals, <<>>),
     Vsn = proplists:get_value(<<"vsn">>, PostVals, <<>>),
-    DbVsn = proplists:get_value(<<"app_db_vsn">>, PostVals, 5),
     SKey = proplists:get_value(<<"sign_key">>, PostVals, <<>>),
     DUrl = proplists:get_value(<<"download_url">>, PostVals, <<>>),
     Desc = proplists:get_value(<<"description">>, PostVals, <<>>),
@@ -87,7 +86,6 @@ save(<<"POST">>, Req0, _State) ->
         , app_name => AppName
         , vsn => Vsn
         , sort => adm_app_version_logic:vsn_sort(Vsn)
-        , app_db_vsn => ec_cnv:to_integer(DbVsn)
         , sign_key => SKey
         , download_url => DUrl
         , description => Desc

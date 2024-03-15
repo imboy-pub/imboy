@@ -129,6 +129,9 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
                 <<"C2G">> ->
                     websocket_logic:c2g_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
+                <<"C2S">> ->
+                    % websocket_logic:c2s_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate};
                 _ ->
                     {ok, State, hibernate}
             end
@@ -155,18 +158,23 @@ websocket_handle({text, Msg}, State) ->
         % 逻辑层负责IM系统各项功能的核心逻辑实现
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         case cowboy_bstr:to_lower(Type) of
+            <<"c2s">> ->  % 机器人聊天消息
+                websocket_logic:c2s(MsgId, CurrentUid, Data);
+
             <<"c2c">> ->  % 单聊消息
                 websocket_logic:c2c(MsgId, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
                 websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
                 websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
+
             <<"c2g">> ->  % 群聊消息
                 websocket_logic:c2g(MsgId, CurrentUid, Data);
             <<"c2g_revoke">> ->  % 客户端撤回消息
                 websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
             <<"c2g_revoke_ack">> ->  % 客户端撤回消息ACK
                 websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
+
             <<"webrtc_", _Event/binary>> ->
                 % Room = webrtc_ws_logic:room_name(
                 %     imboy_hashids:encode(CurrentUid,

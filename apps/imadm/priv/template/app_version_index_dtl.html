@@ -93,7 +93,6 @@ layui.use(function(){
             {field:'package_name', title: '包名 | Bundle ID', width: 160},
             {field:'app_name', title: 'APP名称', width: 100},
             {field:'vsn', title: '版本x.y.z', width: 100},
-            {field:'app_db_vsn', title: 'APP数据库版本', width: 140},
             {field:'status', title: '状态', width: 85, templet: function(d) {
                 if(d.status == 1) {
                     return '<span style="color: blue">已启用</span>';
@@ -179,8 +178,7 @@ layui.use(function(){
                 , type: 'android'
                 , package_name: 'pub.imboy.apk'
                 , app_name: 'IMBoy'
-                , vsn: '0.2.11'
-                , app_db_vsn: '5'
+                , vsn: '0.3.6'
                 , sign_key: ''
                 , download_url: ''
                 , description: ''
@@ -385,17 +383,6 @@ layui.use(function(){
                                 value="`+data.vsn+`"
                                 class="layui-input">
                             <label class="layui-form-label">
-                                数据库版本
-                            </label>
-                            <input type="number" lay-affix="number"
-                                placeholder="数据库版本"
-                                name="app_db_vsn"
-                                value="`+data.app_db_vsn+`"
-                                class="layui-input"> APP的Sqlite3数据的版本序号 为正整数
-                        </div>
-                    </div>
-                    <div class="layui-form-item">
-                            <label class="layui-form-label">
                                 APP签名密码
                             </label>
                             <div class="layui-input-block">
@@ -405,6 +392,7 @@ layui.use(function(){
                                     value="`+data.sign_key+`"
                                     class="layui-input">
                             </div>
+                        </div>
                     </div>
                     <div class="layui-form-item">
                             <label class="layui-form-label">
@@ -424,10 +412,7 @@ layui.use(function(){
                                 是否强制升级
                             </label>
                             <div class="layui-input-block">`+force_updateHtml+`</div>
-                        </div>
-                    </div>
-                    <div class="layui-form-item">
-                        <div class="layui-input-group">
+
                             <label class="layui-form-label">
                                 状态
                             </label>

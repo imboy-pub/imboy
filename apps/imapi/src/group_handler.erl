@@ -77,32 +77,55 @@ add(Req0, State) ->
             end
     end.
 
-edit(Req0, _State) ->
-    % CurrentUid = maps:get(current_uid, State),
+edit(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
+
     case Gid2 of
         0 ->
             imboy_response:error(Req0, "group id 必须");
         Gid2 when Gid2 > 0 ->
+            GidBin = ec_cnv:to_binary(Gid2),
             Title = proplists:get_value(<<"title">>, PostVals, <<>>),
             Avatar = proplists:get_value(<<"avatar">>, PostVals, <<>>),
             Introduction = proplists:get_value(<<"introduction">>, PostVals, <<>>),
             % 类型: 1 公开群组  2 私有群组
             Type = proplists:get_value(<<"type">>, PostVals, <<"2">>),
+            Now = imboy_dt:utc(millisecond),
             Data = #{
                 type => Type,
                 title => Title,
                 avatar => Avatar,
                 introduction => Introduction,
-                updated_at => imboy_dt:utc(millisecond)
+                updated_at => Now
             },
-            imboy_db:update(
-                group_repo:tablename()
-                , <<"id = ", (ec_cnv:to_binary(Gid2))/binary>>
-                , Data
-            ),
+            Tb = group_repo:tablename(),
+            Count = imboy_db:pluck(Tb,
+               <<"id = ", GidBin/binary>>,
+               <<"count(*)">>,
+               0),
+            ?LOG([Tb, GidBin, Count]),
+            case Count > 0 of
+                true ->
+                    imboy_db:update(
+                        Tb
+                        , <<"id = ", GidBin/binary>>
+                        , Data
+                    );
+                false ->
+                    M3 = group_random_code_repo:find_by_gid(
+                        GidBin
+                        , <<"user_id, created_at">>),
+                    Data2 = Data#{
+                        owner_uid => maps:get(<<"user_id">>, M3, Uid),
+                        creater_uid => maps:get(<<"user_id">>, M3, Uid),
+                        created_at => maps:get(<<"created_at">>, M3, Now),
+                        id => Gid2
+                    },
+                    imboy_db:insert_into(Tb, Data2)
+            end,
             imboy_response:success(Req0, [{<<"gid">>, Gid}], "success.");
         _ ->
             imboy_response:error(Req0, "group id 格式有误")
@@ -172,8 +195,8 @@ msg_page(Req0, State) ->
     GMSize = maps:size(GM),
     Where = case imboy_req:get_int(last_time, Req0, 0) of
         {ok, Last} when Last > 0 ->
-            Last2 = <<"(to_timestamp((", (ec_cnv:to_binary(Last))/binary,"+timezone_offset()) / 1000.0) AT TIME ZONE current_setting('timezone'))::timestamptz">>,
-            <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary, " AND ts > ", (Last2)/binary>>;
+            % Last2 = <<"(to_timestamp((", (ec_cnv:to_binary(Last))/binary,"+timezone_offset()) / 1000.0) AT TIME ZONE current_setting('timezone'))::timestamptz">>,
+            <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary, " AND created_at >= ", (ec_cnv:to_binary(Last))/binary>>;
         _ ->
             <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary>>
     end,

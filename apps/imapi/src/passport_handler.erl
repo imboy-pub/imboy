@@ -23,8 +23,8 @@ init(Req0, State0) ->
                 login(Req0);
             signup ->
                 signup(Req0);
-            send_code ->
-                send_code(Req0);
+            getcode ->
+                getcode(Req0);
             find_password ->
                 find_password(Req0);
             false ->
@@ -109,7 +109,7 @@ refreshtoken(Req0) ->
     end.
 
 
-send_code(Req0) ->
+getcode(Req0) ->
     %%
     %% 在POST请求中取出内容
     %% type 验证码类型 email sms

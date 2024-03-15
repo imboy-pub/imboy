@@ -10,7 +10,10 @@
 
 -include_lib("imlib/include/log.hrl").
 
--define(ReqHeaders, [{"content-type", "application/json"}, {"client", "imboy-req"}]).
+-define(ReqHeaders, [
+    {"content-type", "application/json"}
+    , {"client", "imboy-req"}
+]).
 
 %% ===================================================================
 %% API

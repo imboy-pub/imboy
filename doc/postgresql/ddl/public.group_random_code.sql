@@ -35,4 +35,5 @@ COMMENT ON COLUMN public.group_random_code.created_at IS '创建记录Unix时间
 
 -- index
 
+CREATE UNIQUE INDEX i_group_random_code_GroupId ON public.group_random_code (group_id);
 CREATE INDEX i_group_random_code_location ON public.group_random_code USING GIST(location);

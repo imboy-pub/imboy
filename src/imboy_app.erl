@@ -10,6 +10,7 @@
 start(_Type, _Args) ->
     inets:start(),
     imboy_syn:init(),
+    khepri:start(),
     % begin handler
     Routes = imboy_router:get_routes(),
     % cowboy_router:dispatch_rules()
