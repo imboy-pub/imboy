@@ -108,7 +108,8 @@ c2s(MsgId, CurrentUid, Data) ->
                 created_at => CreatedAt
                 }),
 
-            Msg = [{<<"id">>, <<"bot_response", MsgId/binary>>},
+            MsgId2 = <<"bot_response", MsgId/binary>>,
+            Msg = [{<<"id">>, MsgId2},
                    {<<"type">>, <<"C2S">>},
                    {<<"topic_id">>, TopicId},
                    {<<"from">>, To}, % 这里交换from to
@@ -120,7 +121,7 @@ c2s(MsgId, CurrentUid, Data) ->
                    {<<"created_at">>, CreatedAt}],
             MsgJson = jsone:encode(Msg, [native_utf8]),
             MsLi = [0, 5000, 7000, 11000],
-            message_ds:send_next(CurrentUid, MsgId, MsgJson, MsLi),
+            message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi),
             ok;
         _ ->
             % 不支持的c2s消息
