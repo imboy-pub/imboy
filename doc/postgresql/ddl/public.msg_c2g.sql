@@ -8,9 +8,9 @@
 CREATE TABLE IF NOT EXISTS public."msg_c2g"
 (
     topic_id bigint NOT NULL,
-    from_id bigint NOT NULL,
-    to_id bigint NOT NULL,
-    msg_id varchar(40) NOT NULL,
+    from_id bigint NOT NULL, --  消息发送者用户ID
+    to_id bigint NOT NULL, -- 发送到哪个群的群ID
+    msg_id varchar(40) NOT NULL, -- 类似全局唯一 ID
     payload text not null,
     created_at bigint NOT NULL
 )
@@ -46,7 +46,7 @@ SELECT create_hypertable('msg_c2g', by_range('created_at', 86400000));
 ALTER TABLE public.msg_c2g SET (
   timescaledb.compress,
   timescaledb.compress_orderby = 'created_at DESC',
-  timescaledb.compress_segmentby = 'msg_id'
+  timescaledb.compress_segmentby = 'to_id'
 );
 
 -- https://docs.timescale.com/api/latest/compression/
@@ -62,6 +62,6 @@ SELECT add_compression_policy('msg_c2g', BIGINT '2592000000');
 -- https://docs.timescale.com/api/latest/data-retention/add_retention_policy/
 -- 创建数据保留策略以丢弃 12 个月前创建的块：
 -- 86400000 * 360 360天
-SELECT add_retention_policy('msg_c2g', drop_after => BIGINT '31104000000');
+-- SELECT add_retention_policy('msg_c2g', drop_after => BIGINT '31104000000');
 -- SELECT add_retention_policy('msg_c2g', drop_after => INTERVAL '12 months');
 -- SELECT add_retention_policy('msg_c2g', drop_after => INTERVAL '3 minutes');

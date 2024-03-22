@@ -340,6 +340,7 @@ gen_smtp_client:send({"sender@gmail.com", ["receiver@gmail.com"], "Subject: test
       {password, "senderpassword"}]).
 
 ```
+telnet 81.68.209.56 34780
 
 
 ## eturnal
@@ -349,6 +350,10 @@ cd /www/wwwroot/eturnal/
 _build/product/rel/eturnal/bin/eturnal console
 
 _build/product/rel/eturnal/bin/eturnal daemon
+
+/www/wwwroot/eturnal/_build/product/rel/eturnal/bin/eturnal daemon
+
+tail -f /www/wwwroot/eturnal/_build/product/rel/eturnal/log/eturnal.log
 ```
 
 

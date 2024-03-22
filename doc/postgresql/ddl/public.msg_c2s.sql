@@ -47,7 +47,7 @@ SELECT create_hypertable('msg_c2s', by_range('created_at', 86400000));
 ALTER TABLE public.msg_c2s SET (
   timescaledb.compress,
   timescaledb.compress_orderby = 'created_at DESC',
-  timescaledb.compress_segmentby = 'msg_id'
+  timescaledb.compress_segmentby = 'to_id'
 );
 
 -- 86400000 * 30 30天

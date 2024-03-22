@@ -50,6 +50,7 @@ page(Req0, State) ->
     Kind = imboy_req:get_int(kind, Req0, 0),
     #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
+    #{tag := Tag} = cowboy_req:match_qs([{tag, [], <<>>}], Req0),
     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
     UidBin = integer_to_binary(CurrentUid),
     % ?LOG([page, Kind]),
@@ -62,15 +63,22 @@ page(Req0, State) ->
             true ->
                 <<>>
         end,
+    TagWhere =
+        if
+            byte_size(Tag) > 0 ->
+                <<" and tag like '%", Tag/binary, ",%'">>;
+            true ->
+                <<>>
+        end,
 
     % use index i_user_collect_UserId_Status_Kind
     KindWhere =
         case Kind of
             {ok, 0} ->
-                {ok, <<"user_id = ", UidBin/binary, " and status = 1", KwdWhere/binary>>};
+                {ok, <<"user_id = ", UidBin/binary, " and status = 1", KwdWhere/binary, TagWhere/binary>>};
             {ok, Kind2} when is_integer(Kind2) ->
                 Kind3 = integer_to_binary(Kind2),
-                {ok, <<"user_id = ", UidBin/binary, " and status = 1 and kind = ", Kind3/binary, KwdWhere/binary>>};
+                {ok, <<"user_id = ", UidBin/binary, " and status = 1 and kind = ", Kind3/binary, KwdWhere/binary, TagWhere/binary>>};
             _ ->
                 {error, "Kind is invalid"}
         end,
