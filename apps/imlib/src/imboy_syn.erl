@@ -2,7 +2,7 @@
 %%%
 % imboy 用户websocket会话 模块
 % imboy user websocket session module
-% 计划对 https://github.com/ostinelli/syn 封装
+% 对 https://github.com/ostinelli/syn 封装
 %%%
 
 -include_lib("stdlib/include/qlc.hrl").
@@ -28,10 +28,11 @@
 %% ===================================================================
 init() ->
     % ok.
-    syn:add_node_to_scopes([?CHAT_SCOPE
-                            % , ?GROUP_SCOPE
-                            ,
-                            ?ROOM_SCOPE]),
+    syn:add_node_to_scopes([
+        ?CHAT_SCOPE
+        % , ?GROUP_SCOPE
+        , ?ROOM_SCOPE
+    ]),
     ok.
 
 
@@ -65,10 +66,9 @@ count_user(Uid) ->
 % 所有用户在线设备统计
 -spec count() -> non_neg_integer().
 count() ->
-    Scope = ?CHAT_SCOPE,
-    case syn_backbone:get_table_name(syn_pg_by_name, Scope) of
+    case syn_backbone:get_table_name(syn_pg_by_name, ?CHAT_SCOPE) of
         undefined ->
-            error({invalid_scope, Scope});
+            error({invalid_scope, ?CHAT_SCOPE});
         TableByName ->
             DuplicatedGroups = ets:select(TableByName, [{{{'$1', '_'}, '_', '_', '_', '_'}, [], ['$1']}]),
             length(DuplicatedGroups)
@@ -82,11 +82,10 @@ list_by_limit(error) ->
     [
      % {<<"tips">>, "Limit参数有误"}
     ];
-list_by_limit(Limit) ->
-    Scope = ?CHAT_SCOPE,
-    case syn_backbone:get_table_name(syn_pg_by_name, Scope) of
+list_by_limit(Limit) when Limit >= 0 ->
+    case syn_backbone:get_table_name(syn_pg_by_name, ?CHAT_SCOPE) of
         undefined ->
-            error({invalid_scope, Scope});
+            error({invalid_scope, ?CHAT_SCOPE});
         TableByName ->
             % {{Uid, Pid}, {DType, DID}, Nanosecond, Ref, Node}
             case ets:select(TableByName, [{'$1', [], ['$1']}], Limit) of
@@ -122,14 +121,12 @@ is_online(Uid, {did, DID}) ->
 % 用户在线设备ID列表
 -spec online_dids(integer()) -> list().
 online_dids(Uid) ->
-    Li1 = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    [ DID1 || {_P, {_DType1, DID1}} <- Li1 ].
+    [ DID1 || {_P, {_DType1, DID1}} <- list_by_uid(Uid) ].
 
 
 publish(Uid, Msg) ->
     publish(Uid, Msg, 0).
-
 
 % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
 -spec publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.

@@ -1,7 +1,7 @@
 
 记录一些功能的设计思考权衡过程
 
-## 客户端服务端通讯安全(以实现)
+## 客户端服务端通讯安全(已实现)
 * API 使用 HTTPS；
 * 基于JWT的权限验证；
 * 基于客户端版本号的签名密钥管理，有利于密钥更新；
@@ -11,7 +11,7 @@
 * 用户注册登录密码通过公钥做 RSA 算法加密传输，通过 hmac_sha512 算法加盐存储；
 * 发送到客户端的用户ID都要经过 hashids 算法混淆；
 
-## 数据库存储(以实现)
+## 数据库存储(已实现)
 选择强大的关系型数据库 PostgreSQL 15 ;
 
 使用了它的一些扩展
@@ -26,24 +26,24 @@
 * postgis_topology 拓扑功能的支持
 * pgcrypto 单聊、群聊等离线消息加密存储； 用户收藏资料加密存储
 * pg_stat_statements 运维相关的
-* timescaledb 暂无用例 （计划用于群聊消息存储）
+* timescaledb 计划用于群聊消息存储
 * pgroonga 暂无用例
 * pgcrypto
 * vector Postgres 的开源向量相似度搜索
 * roaringbitmap
 
 
-## GEO 方案 (以实现)
+## GEO 方案 (已实现)
 通过对比选择使用强大的 postgis
 
-## 全文索引 方案 (以实现)
+## 全文索引 方案 (已实现)
 通过对比选择使用强大的 pg_jieba + pgroonga
 
 
-## 缓存方案 (以实现)
+## 缓存方案 (已实现)
 刻意规避使用Redis，使用 erlang 的 depcache
 
-## 数据库连接池方案 (以实现)
+## 数据库连接池方案 (已实现)
 使用 epgsql + pooler
 
 ## 附件资源存储方案
@@ -55,7 +55,7 @@ https://blog.csdn.net/Jessechanrui/article/details/88399012
 
 socket 数据粘包问题、拆包问题
 
-## 消息投递机制 (以实现)
+## 消息投递机制 (已实现)
 
 1. 判断用户是否在线，如果用户离线，直接存储离线消息
 2. 用户在线（or 用户上线），判断 erlang is_process_alive(Pid) 马上投递一次
@@ -65,7 +65,7 @@ socket 数据粘包问题、拆包问题
 
 以上消息确认重复机制，可以确保消息不丢失
 
-## WebSocket 链接token校验机制 (以实现)
+## WebSocket 链接token校验机制 (已实现)
 
 为提升用户体验，在“WebSocket 链接”的时候，即使token过期也响应成功；
 
@@ -95,7 +95,7 @@ end.
 message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 ```
 
-## 用户通过WS服务链接成功(以实现)
+## 用户通过WS服务链接成功(已实现)
 * ./apps/imapi/src/websocket_handler.erl
 	* line 70 user_logic:online/4
 * ./apps/imapi/src/user_logic.erl
@@ -104,12 +104,12 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 
 > 用户所有的在线设备，用户所有加入的群组，一个用户只有一个WS链接；
 
-## 附件资源的安全验证(以实现)
+## 附件资源的安全验证(已实现)
 * s=open 的资源做安全认证的时候不做过期校验
 * 其他资源做过期校验
 
 
-## 用户收藏 (以实现)
+## 用户收藏 (已实现)
 一个类似”微信里面的收藏“功能，收藏聊天的是发布的图片、视频、文件等用户觉得重要的信息。
 
 > 收藏记录已经在 postgresql 里面已做AES加密存储
@@ -135,7 +135,7 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 
 流程参考 https://blog.51cto.com/u_15069441/4323079
 
-## APP端 sqflite3 数据库升降级功能(以实现，待测试)
+## APP端 sqflite3 数据库升降级功能(已实现，待测试)
 APP端使用 sqflite 包的 onCreate/2 onUpgrade/3 onDowngrade/3 触发服务端接口（/app_ddl/get?type=[upgrade|downgrade|create]，实现可控的升降级功能
 
 * 基于“一个初始版的DDL + 若干升级DDL” 或 “一个初始版的DDL - 若干升级DDL”

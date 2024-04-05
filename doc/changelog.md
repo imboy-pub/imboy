@@ -1,3 +1,7 @@
+# 0.3.6
+* 创建群接口 group/add 新增 member_uids 参数；
+* 其他一些文档细节调整；
+
 # 0.3.5
 * 优化 app_version 表，删除 app_db_vsn 字段，修改相关代码；
 * 优化面对面建群功能，使用 rabbitmq/khepri 存储群成员信息；

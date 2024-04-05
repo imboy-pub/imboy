@@ -3,7 +3,7 @@
 % group 业务逻辑模块
 %%%
 -export([face2face/4]).
--export([add/3]).
+-export([add/4]).
 -export([dissolve/4]).
 
 -include_lib("imlib/include/log.hrl").
@@ -42,10 +42,11 @@ face2face(Uid, Code, Lng, Lat) ->
             {error, "error"}
     end.
 
-add(Count, _, _) when Count > 100 ->
+add(Count, _, _, _) when Count > 100 ->
     {error, "每人最多创建100个群"};
-add(_, Uid, Type) ->
+add(_, Uid, Type, MemberUids) ->
     Now = imboy_dt:utc(millisecond),
+    MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
     imboy_db:with_transaction(fun(Conn) ->
         {ok, _,[{Gid}]} = group_repo:add(Conn, #{
             type => Type, % 类型: 1 公开群组  2 私有群组
@@ -61,6 +62,7 @@ add(_, Uid, Type) ->
             created_at => Now
         }),
         group_ds:join(Uid, Gid),
+        [group_member_logic:join(Uid2, Gid, 1, 0) || Uid2 <- MemberUids2],
         {ok, Gid}
     end).
 

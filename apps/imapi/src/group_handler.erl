@@ -67,7 +67,9 @@ add(Req0, State) ->
                <<"status = 1 AND owner_uid = ", (ec_cnv:to_binary(Uid))/binary>>,
                <<"count(*)">>,
                0),
-            case group_logic:add(Count, Uid, Type) of
+            PostVals = imboy_req:post_params(Req0),
+            MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
+            case group_logic:add(Count, Uid, Type, MemberUids) of
                 {ok, Gid} ->
                     imboy_response:success(Req0, [
                         {<<"gid">>, imboy_hashids:encode(Gid)}
