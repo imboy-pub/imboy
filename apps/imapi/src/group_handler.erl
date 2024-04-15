@@ -72,7 +72,11 @@ add(Req0, State) ->
             case group_logic:add(Count, Uid, Type, MemberUids) of
                 {ok, Gid} ->
                     GData = group_repo:find_by_id(Gid, <<"*">>),
-                    imboy_response:success(Req0, imboy_hashids:replace_id(GData), "success.");
+                    MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
+                    imboy_response:success(Req0, #{
+                            group => imboy_hashids:replace_id(GData),
+                            member_list =>  [imboy_hashids:replace_id(Item) || Item <- imboy_cnv:zipwith_equery(MemberListRes)],
+                        }, "success.");
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
             end

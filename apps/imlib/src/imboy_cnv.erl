@@ -10,10 +10,22 @@
 
 -export([json_maybe/1]).
 
+-export([zipwith_equery/1]).
 -export([implode/2]).
 -export([remove_dups/1]).
 -export([vsn_major/1]).
 
+
+zipwith_equery(Res) ->
+    case Res of
+        {ok, _, []} ->
+            [];
+        {ok, ColumnLi, Items0} ->
+            Items1 = [tuple_to_list(Item) || Item <- Items0],
+            [lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, Row) || Row <- Items1];
+        _ ->
+            []
+    end.
 
 % 如果是json类型的字符串，就decode，否则保持原数据类型
 json_maybe(Val) ->
