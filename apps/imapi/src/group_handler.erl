@@ -122,7 +122,7 @@ edit(Req0, State) ->
                         , <<"user_id, created_at">>),
                     Data2 = Data#{
                         owner_uid => maps:get(<<"user_id">>, M3, Uid),
-                        creater_uid => maps:get(<<"user_id">>, M3, Uid),
+                        creator_uid => maps:get(<<"user_id">>, M3, Uid),
                         created_at => maps:get(<<"created_at">>, M3, Now),
                         id => Gid2
                     },
@@ -167,7 +167,7 @@ page(Req0, State, <<"owner">>) ->
 
     Where = imboy_cnv:implode("", [<<"owner_uid=">>, CurrentUid]),
     Where2 = <<"status = 1 AND ", Where/binary>>,
-    Column = <<"id as gid, type, join_limit, content_limit, owner_uid, creater_uid, member_max, member_count, introduction, avatar, title, updated_at, created_at">>,
+    Column = <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, member_max, member_count, introduction, avatar, title, updated_at, created_at">>,
 
     Tb = group_repo:tablename(),
     Payload = imboy_db:page(Page, Size, Tb, Where2, <<"id desc">>, Column),
@@ -180,7 +180,7 @@ page(Req0, State, <<"join">>) ->
 
     Where0 = imboy_cnv:implode("", [<<"m.user_id=">>, CurrentUid]),
     Where = <<"g.status = 1 AND m.is_join = 1 AND ", Where0/binary>>,
-    Column = <<"g.id as gid, g.type, g.join_limit, g.content_limit, g.owner_uid, g.creater_uid, g.member_max, g.member_count, g.introduction, g.avatar, g.title, g.updated_at, g.created_at">>,
+    Column = <<"g.id as gid, g.type, g.join_limit, g.content_limit, g.owner_uid, g.creator_uid, g.member_max, g.member_count, g.introduction, g.avatar, g.title, g.updated_at, g.created_at">>,
     OrderBy = <<"m.created_at desc">>,
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),

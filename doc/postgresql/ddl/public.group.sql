@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public."group"
     join_limit smallint DEFAULT 2,
     content_limit smallint DEFAULT 2,
     owner_uid bigint NOT NULL,
-    creater_uid bigint NOT NULL,
+    creator_uid bigint NOT NULL,
     member_max int NOT NULL DEFAULT 1000,
     member_count int NOT NULL DEFAULT 1,
     introduction varchar(2000) NOT NULL DEFAULT '',
@@ -39,7 +39,7 @@ COMMENT ON COLUMN public.group.join_limit IS '加入限制: 1 不需审核  2 �
 
 COMMENT ON COLUMN public.group.content_limit IS '内部发布限制: 1 圈内不需审核  2 圈内需要审核  3 圈外需要审核';
 COMMENT ON COLUMN public.group.owner_uid IS '群组拥有者ID';
-COMMENT ON COLUMN public.group.creater_uid IS '群组创建者ID';
+COMMENT ON COLUMN public.group.creator_uid IS '群组创建者ID';
 COMMENT ON COLUMN public.group.member_max IS '允许最大成员数量';
 COMMENT ON COLUMN public.group.member_count IS '成员数量';
 COMMENT ON COLUMN public.group.introduction IS '简介';

@@ -52,7 +52,7 @@ add(_, Uid, Type, MemberUids) ->
             type => Type, % 类型: 1 公开群组  2 私有群组
             join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
             owner_uid => Uid,
-            creater_uid => Uid,
+            creator_uid => Uid,
             created_at => Now
         }),
         group_member_repo:add(Conn, #{
