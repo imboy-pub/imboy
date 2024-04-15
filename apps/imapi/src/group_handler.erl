@@ -71,9 +71,8 @@ add(Req0, State) ->
             MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
             case group_logic:add(Count, Uid, Type, MemberUids) of
                 {ok, Gid} ->
-                    imboy_response:success(Req0, [
-                        {<<"gid">>, imboy_hashids:encode(Gid)}
-                    ], "success.");
+                    GData = group_repo:find_by_id(Gid, <<"*">>),
+                    imboy_response:success(Req0, imboy_hashids:replace_id(GData), "success.");
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
             end
