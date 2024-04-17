@@ -58,7 +58,7 @@ add(_, Uid, Type, MemberUids) ->
                 {ok, _,[{Gid}]} = group_repo:add(Conn, #{
                     type => Type, % 类型: 1 公开群组  2 私有群组
                     join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
-                    user_id_sum => Sum, % 主要用于添加群聊的时候排重
+                    user_id_sum => Uid, % 这里用Uid，其他的UID在 group_member_logic:join 里面累计
                     owner_uid => Uid,
                     creator_uid => Uid,
                     created_at => Now
@@ -69,8 +69,8 @@ add(_, Uid, Type, MemberUids) ->
                     role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
                     created_at => Now
                 }),
+                [group_member_logic:join(Conn, Uid2, Gid) || Uid2 <- MemberUids2],
                 group_ds:join(Uid, Gid),
-                [group_member_logic:join(Uid2, Gid, 1, 0) || Uid2 <- MemberUids2],
                 {ok, Gid}
             end);
         GidOld when GidOld > 0 ->
@@ -84,9 +84,7 @@ dissolve(Uid, Gid, _, G) ->
     Now = imboy_dt:utc(millisecond),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
 
-
     ToUidLi = group_ds:member_uids(Gid),
-
     imboy_db:with_transaction(fun(Conn) ->
         group_log_repo:add(Conn, #{
             % 日志类型: 100 群转让 101 群解散  200 主动退出群   201 群解散退出群  202 被踢出群
@@ -121,8 +119,11 @@ dissolve(Uid, Gid, _, G) ->
         imboy_db:execute(Conn, Sql2, []),
         group_ds:dissolve(Gid),
         % 群聊解散成功之后发送消息通知各成员客户端做相关逻辑处理
-        MsgType = <<"group_dissolve">>,
-        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
+        Payload = #{
+            <<"gid">> => imboy_hashids:encode(Gid),
+            <<"msg_type">> => <<"group_dissolve">>
+        },
+        msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
         ok
     end),
     ok.

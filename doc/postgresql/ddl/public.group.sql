@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public."group"
     type smallint DEFAULT 1,
     join_limit smallint DEFAULT 2,
     content_limit smallint DEFAULT 2,
-    user_id_sum bigint NOT NULL DEFAULT 0, -- 主要用于添加群聊的时候排重
+    user_id_sum bigint NOT NULL DEFAULT 0, -- 主要用于添加群聊的时候排重；还可以用于校验客户端memberCount是否应该增加
     owner_uid bigint NOT NULL,
     creator_uid bigint NOT NULL,
     member_max int NOT NULL DEFAULT 1000,

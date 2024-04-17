@@ -180,10 +180,6 @@ cast_cancel(Uid, CreatedAt, Opt) ->
 cancel(Uid, CreatedAt, Opt) ->
     User = user_repo:find_by_id(Uid, <<"*">>),
     Setting = user_setting_ds:find_by_uid(Uid),
-    ToUidLi = friend_ds:list_by_uid(Uid),
-
-    MsgType = <<"user_cancel">>,
-    msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
     imboy_db:with_transaction(fun(Conn) ->
         {ok, Body} = jsone_encode:encode(#{
             <<"user">> => User,
@@ -214,7 +210,6 @@ cancel(Uid, CreatedAt, Opt) ->
         imboy_db:execute(Conn
             , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
             , []),
-
 
         imboy_db:execute(Conn
             , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE from_user_id = ", UidBin/binary>>
@@ -261,6 +256,9 @@ cancel(Uid, CreatedAt, Opt) ->
         ok
     end),
 
+    ToUidLi = friend_ds:list_by_uid(Uid),
+    MsgType = <<"user_cancel">>,
+    msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
     ok.
 
 -spec notice_friend(integer(), binary()) -> ok.

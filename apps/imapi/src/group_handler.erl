@@ -38,18 +38,27 @@ face2face(Req0, State) ->
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
     #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
     #{code := Code} = cowboy_req:match_qs([{code, [], <<>>}], Req0),
-    CurrentUid = maps:get(current_uid, State),
-    case throttle:check(three_second_once, CurrentUid) of
+    Uid = maps:get(current_uid, State),
+    case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
         _ ->
-            case group_logic:face2face(CurrentUid, Code, Lng, Lat) of
+            case group_logic:face2face(Uid, Code, Lng, Lat) of
                 {ok, Gid} ->
+                    Gid2 = imboy_hashids:encode(Gid),
                     ToUidLi = group_ds:member_uids(Gid),
-                    MsgType = <<"group_member_join">>,
-                    msg_s2c_ds:send(Gid, MsgType, ToUidLi, no_save),
+                    User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
+                    Payload = #{
+                        <<"gid">> => Gid2,
+                        <<"user_id_sum">> => 0,
+                        <<"nickname">> => maps:get(<<"nickname">>, User),
+                        <<"avatar">> => maps:get(<<"avatar">>, User),
+                        <<"account">> => maps:get(<<"account">>, User),
+                        <<"msg_type">> => <<"group_member_join">>
+                    },
+                    msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
                     imboy_response:success(Req0, [
-                        {<<"gid">>, imboy_hashids:encode(Gid)}
+                        {<<"gid">>, Gid2}
                     ], "success.");
             {error, Msg} ->
                 imboy_response:error(Req0, Msg)

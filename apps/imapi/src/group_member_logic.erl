@@ -2,7 +2,7 @@
 %%%
 % group_member 业务逻辑模块
 %%%
--export([join/4]).
+-export([join/3, join/4]).
 -export([leave/4]).
 -export([alias/4]).
 
@@ -14,30 +14,48 @@ join(_, _, 0, _) ->
 join(_, _, Max, Count) when Max =< Count ->
     {error, "群成员已满。"};
 join(Uid, Gid, _, _) ->
+    imboy_db:with_transaction(fun(Conn) ->
+        join(Conn, Uid, Gid)
+    end),
+    ok.
+
+join(Conn, Uid, Gid) ->
     Now = imboy_dt:utc(millisecond),
     ToUidLi = group_ds:member_uids(Gid),
-    imboy_db:with_transaction(fun(Conn) ->
-        group_member_repo:add(Conn, #{
-            group_id => Gid,
-            user_id => Uid,
-            role => 1, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-            is_join => 1,
-            created_at => Now
-        }),
-        Data = #{
-            member_count => {raw, <<"member_count+1">>},
-            updated_at => imboy_dt:utc(millisecond)
-        },
-        imboy_db:update(Conn
-            , group_repo:tablename()
-            , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
-            , Data
-        ),
-        group_ds:join(Uid, Gid),
-        MsgType = <<"group_member_join">>,
-        msg_s2c_ds:send(Gid, MsgType, ToUidLi, save),
-        ok
-    end),
+    ?LOG(ToUidLi),
+    group_member_repo:add(Conn, #{
+        group_id => Gid,
+        user_id => Uid,
+        role => 1, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
+        is_join => 1,
+        created_at => Now
+    }),
+    Data = #{
+        member_count => {raw, <<"member_count+1">>},
+        user_id_sum => {raw, <<"user_id_sum+", (ec_cnv:to_binary(Uid))/binary>>},
+        updated_at => imboy_dt:utc(millisecond)
+    },
+    imboy_db:update(Conn
+        , group_repo:tablename()
+        , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
+        , Data
+    ),
+    group_ds:join(Uid, Gid),
+    Sum = imboy_db:pluck(group_repo:tablename(),
+        <<"id = ",  (ec_cnv:to_binary(Gid))/binary>>,
+        <<"user_id_sum">>,
+        0
+    ),
+    User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
+    Payload = #{
+        <<"gid">> => imboy_hashids:encode(Gid),
+        <<"user_id_sum">> => Sum,
+        <<"nickname">> => maps:get(<<"nickname">>, User),
+        <<"avatar">> => maps:get(<<"avatar">>, User),
+        <<"account">> => maps:get(<<"account">>, User),
+        <<"msg_type">> => <<"group_member_join">>
+    },
+    msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
     ok.
 
 leave(_, _, GMSize, _) when GMSize == 0 ->
@@ -70,8 +88,11 @@ leave(Uid, Gid, _, GM) ->
             , Data
         ),
         group_ds:leave(Uid, Gid),
-        MsgType = <<"group_member_leave">>,
-        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
+        Payload = #{
+            <<"gid">> => imboy_hashids:encode(Gid),
+            <<"msg_type">> => <<"group_member_leave">>
+        },
+        msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
         ok
     end),
     ok.
@@ -90,6 +111,7 @@ alias(Uid, Gid, Alias, Description) ->
     ),
     ToUidLi = group_ds:member_uids(Gid),
     msg_s2c_ds:send(Uid, Data#{
+        <<"gid">> => imboy_hashids:encode(Gid),
         <<"msg_type">> => <<"group_member_alias">>
         }, ToUidLi, save),
     ok.
