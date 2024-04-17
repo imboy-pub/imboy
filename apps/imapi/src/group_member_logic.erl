@@ -35,7 +35,7 @@ join(Uid, Gid, _, _) ->
         ),
         group_ds:join(Uid, Gid),
         MsgType = <<"group_member_join">>,
-        msg_s2c_ds:send(Uid, MsgType, ToUidLi, save),
+        msg_s2c_ds:send(Gid, MsgType, ToUidLi, save),
         ok
     end),
     ok.

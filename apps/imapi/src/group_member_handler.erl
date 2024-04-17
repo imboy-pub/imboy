@@ -115,7 +115,7 @@ page(Req0, State) ->
         _ ->
             {Page, Size} = imboy_req:page_size(Req0),
 
-            Column = <<"u.avatar, u.account, u.nickname, u.sign, m.user_id, m.alias, m.description, m.role, m.status, m.created_at">>,
+            Column = <<"u.avatar, u.account, u.nickname, u.sign, m.*">>,
             Where = <<"m.group_id =", (ec_cnv:to_binary(Gid2))/binary>>,
             OrderBy = <<"m.role desc, m.created_at desc">>,
             UTb = user_repo:tablename(),
@@ -129,7 +129,7 @@ page(Req0, State) ->
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [imboy_hashids:replace_id(M, <<"user_id">>) || M <- Li],
+    Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"group_id">>), <<"user_id">>) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
 

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public."group"
     type smallint DEFAULT 1,
     join_limit smallint DEFAULT 2,
     content_limit smallint DEFAULT 2,
+    user_id_sum bigint NOT NULL DEFAULT 0, -- 主要用于添加群聊的时候排重
     owner_uid bigint NOT NULL,
     creator_uid bigint NOT NULL,
     member_max int NOT NULL DEFAULT 1000,
@@ -53,3 +54,4 @@ COMMENT ON COLUMN public.group.status IS '状态: -1 删除  0 禁用  1 启用'
 -- index
 
 CREATE INDEX i_Status_OwnerUid_Type ON public.group(status,owner_uid,type);
+CREATE INDEX i_CreatorId_MemberIdSum ON public.group(creator_uid, user_id_sum);

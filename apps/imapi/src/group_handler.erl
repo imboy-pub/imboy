@@ -45,6 +45,9 @@ face2face(Req0, State) ->
         _ ->
             case group_logic:face2face(CurrentUid, Code, Lng, Lat) of
                 {ok, Gid} ->
+                    ToUidLi = group_ds:member_uids(Gid),
+                    MsgType = <<"group_member_join">>,
+                    msg_s2c_ds:send(Gid, MsgType, ToUidLi, no_save),
                     imboy_response:success(Req0, [
                         {<<"gid">>, imboy_hashids:encode(Gid)}
                     ], "success.");
@@ -72,10 +75,13 @@ add(Req0, State) ->
             case group_logic:add(Count, Uid, Type, MemberUids) of
                 {ok, Gid} ->
                     GData = group_repo:find_by_id(Gid, <<"*">>),
+                    GData1 = imboy_hashids:replace_id(GData),
+                    GData2 = imboy_hashids:replace_id(GData1, <<"owner_uid">>),
+                    GData3 = imboy_hashids:replace_id(GData2, <<"creator_uid">>),
                     MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
                     imboy_response:success(Req0, #{
-                            group => imboy_hashids:replace_id(GData),
-                            member_list =>  [imboy_hashids:replace_id(Item) || Item <- imboy_cnv:zipwith_equery(MemberListRes)],
+                            group => GData3,
+                            member_list => [imboy_hashids:replace_id(imboy_hashids:replace_id(Item, <<"group_id">>), <<"user_id">>) || Item <- imboy_cnv:zipwith_equery(MemberListRes)]
                         }, "success.");
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
@@ -225,7 +231,7 @@ msg_page(Req0, State) ->
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [imboy_hashids:replace_id(M, <<"gid">>) || M <- Li],
+    Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"creator_uid">>), <<"owner_uid">>), <<"gid">>) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
 

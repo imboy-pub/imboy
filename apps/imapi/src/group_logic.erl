@@ -47,24 +47,35 @@ add(Count, _, _, _) when Count > 100 ->
 add(_, Uid, Type, MemberUids) ->
     Now = imboy_dt:utc(millisecond),
     MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
-    imboy_db:with_transaction(fun(Conn) ->
-        {ok, _,[{Gid}]} = group_repo:add(Conn, #{
-            type => Type, % 类型: 1 公开群组  2 私有群组
-            join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
-            owner_uid => Uid,
-            creator_uid => Uid,
-            created_at => Now
-        }),
-        group_member_repo:add(Conn, #{
-            group_id => Gid,
-            user_id => Uid,
-            role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-            created_at => Now
-        }),
-        group_ds:join(Uid, Gid),
-        [group_member_logic:join(Uid2, Gid, 1, 0) || Uid2 <- MemberUids2],
-        {ok, Gid}
-    end).
+    Sum = lists:sum(lists:usort([Uid|MemberUids2])),
+    GidOld = imboy_db:pluck(group_repo:tablename(),
+       <<"creator_uid = ", (ec_cnv:to_binary(Uid))/binary," and user_id_sum = ", (ec_cnv:to_binary(Sum))/binary>>,
+       <<"id">>,
+       0),
+    case GidOld of
+        0 ->
+            imboy_db:with_transaction(fun(Conn) ->
+                {ok, _,[{Gid}]} = group_repo:add(Conn, #{
+                    type => Type, % 类型: 1 公开群组  2 私有群组
+                    join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
+                    user_id_sum => Sum, % 主要用于添加群聊的时候排重
+                    owner_uid => Uid,
+                    creator_uid => Uid,
+                    created_at => Now
+                }),
+                group_member_repo:add(Conn, #{
+                    group_id => Gid,
+                    user_id => Uid,
+                    role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
+                    created_at => Now
+                }),
+                group_ds:join(Uid, Gid),
+                [group_member_logic:join(Uid2, Gid, 1, 0) || Uid2 <- MemberUids2],
+                {ok, Gid}
+            end);
+        GidOld when GidOld > 0 ->
+            {ok, GidOld}
+    end.
 
 dissolve(Uid, _, OwnerUid, _) when Uid =/= OwnerUid ->
     {error, "只有拥有者才能够解散该群，或者群已解散"};
