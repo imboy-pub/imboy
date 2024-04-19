@@ -42,11 +42,6 @@ dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 
 # 2years
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
-# bbmustache 一个无逻辑的模板。 deps by relx
-# dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
-# 3days
-dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
-
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 # 17days
 dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.6.0
@@ -78,10 +73,16 @@ dep_fuse = git https://gitee.com/imboy-tripartite-deps/fuse.git 2.5.0
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
 dep_esq = hex 2.0.6
 
-
+# bbmustache 一个无逻辑的模板。 deps by relx
+# dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
+# 3days
+#dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
+dep_bbmustache = hex 1.12.2
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
 # 8months
-dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
+# dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
+dep_relx = hex 4.9.0
+
 # hut 小型的日志处理库
 # 2years
 dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0

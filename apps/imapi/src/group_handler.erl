@@ -57,9 +57,12 @@ face2face(Req0, State) ->
                         <<"msg_type">> => <<"group_member_join">>
                     },
                     msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
-                    imboy_response:success(Req0, [
-                        {<<"gid">>, Gid2}
-                    ], "success.");
+
+                    MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
+                    imboy_response:success(Req0, #{
+                        gid => Gid2,
+                        member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
+                        }, "success.");
             {error, Msg} ->
                 imboy_response:error(Req0, Msg)
         end
@@ -90,7 +93,7 @@ add(Req0, State) ->
                     MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
                     imboy_response:success(Req0, #{
                             group => GData3,
-                            member_list => [imboy_hashids:replace_id(imboy_hashids:replace_id(Item, <<"group_id">>), <<"user_id">>) || Item <- imboy_cnv:zipwith_equery(MemberListRes)]
+                            member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
                         }, "success.");
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
@@ -236,6 +239,10 @@ msg_page(Req0, State) ->
             imboy_response:success(Req0, msg_page_transfer(Payload))
     end.
 
+
+%% ===================================================================
+%% EUnit tests.
+%% ===================================================================
 
 page_transfer(Payload) ->
     K = <<"list">>,

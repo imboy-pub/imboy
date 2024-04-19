@@ -20,7 +20,20 @@ face2face(Uid, Code, Lng, Lat) ->
     case nearby_gid(Lng, Lat, <<"50">>, <<"m">>, <<"1">>, Code) of
         {ok, _, []} ->
             imboy_db:with_transaction(fun(Conn) ->
-                Gid = group_ds:gid(),
+                {ok, _,[{Gid}]} = group_repo:add(Conn, #{
+                    type => 2, % 类型: 1 公开群组  2 私有群组
+                    join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
+                    user_id_sum => Uid, % 这里用Uid，其他的UID在 group_member_logic:join 里面累计
+                    owner_uid => Uid,
+                    creator_uid => Uid,
+                    created_at => Now
+                }),
+                group_member_repo:add(Conn, #{
+                    group_id => Gid,
+                    user_id => Uid,
+                    role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
+                    created_at => Now
+                }),
                 % EPSG:4326 就是 WGS84 的代码。GPS 是基于 WGS84 的，所以通常我们得到的坐标数据都是 WGS84 的
                 Location = <<"ST_GeomFromText('POINT(", Lng/binary, " ", Lat/binary, ")', 4326)">>,
                 group_random_code_repo:add(Conn, #{
@@ -36,7 +49,7 @@ face2face(Uid, Code, Lng, Lat) ->
             end);
         % {ok, _, [{Id, Gid, Location, Distance}]}
         {ok, _, [{_Id, Gid, _, _}]} ->
-            group_ds:join(Uid, Gid),
+            group_member_logic:join(Uid, Gid, 1, 0),
             {ok, Gid};
         _ ->
             {error, "error"}
@@ -69,8 +82,8 @@ add(_, Uid, Type, MemberUids) ->
                     role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
                     created_at => Now
                 }),
-                [group_member_logic:join(Conn, Uid2, Gid) || Uid2 <- MemberUids2],
                 group_ds:join(Uid, Gid),
+                [group_member_logic:join(Conn, Uid2, Gid) || Uid2 <- MemberUids2],
                 {ok, Gid}
             end);
         GidOld when GidOld > 0 ->

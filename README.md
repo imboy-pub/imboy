@@ -57,8 +57,6 @@ r 'imboy@127.0.0.1'
 
 你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
 
-chat_store_repo:lookup(1).
-
 curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
 chmod +x erldash
 ./erldash imboy@127.0.0.1 -c imboy
@@ -67,7 +65,6 @@ chmod +x erldash
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
 ```
-
 make new t=cowboy.middleware n=demo_middleware
 make new t=cowboy.middleware n=verify_middleware
 make new t=gen_server n=account_server

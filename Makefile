@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件
-PROJECT_VERSION = 0.3.6
+PROJECT_VERSION = 0.3.7
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -24,7 +24,7 @@ DEPS += datum jsone jsx
 DEPS += epgsql pooler
 # DEPS += idna hackney
 DEPS += depcache
-DEPS += khepri
+# DEPS += khepri
 DEPS += syn
 DEPS += fuse
 DEPS += ecron

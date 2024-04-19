@@ -76,7 +76,7 @@ from  https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 dev
 ```
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.1.dev .
+docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev .
 ```
 
 pro
@@ -90,7 +90,7 @@ docker volume prune
 https://github.com/postgis/postgis Star 1.4K
 基于 https://github.com/postgis/docker-postgis
 
-https://github.com/postgis/docker-postgis/blob/master/15-3.3/Dockerfile
+https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 ```
 mkdir -p /data/ && mkdir -p /data/docker/ && mkdir -p /data/docker/pgsql15data

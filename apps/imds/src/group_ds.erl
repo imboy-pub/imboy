@@ -12,50 +12,104 @@
 -export([join/2]).
 -export([leave/2]).
 
-% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
-join(Uid, Gid) ->
-    Key = "/:gorup_member/" ++ integer_to_list(Gid),
-    case khepri:exists(Key) of
-        false ->
-            khepri:put(Key, [Uid]);
-        true ->
-            leave(Uid, Gid),
-            {ok, Li} = khepri:get(Key),
-            khepri:put(Key, [Uid | Li])
-    end.
-
-% group_ds:leave(1,1).
-leave(Uid, Gid) ->
-    Key = "/:gorup_member/" ++ integer_to_list(Gid),
-    case khepri:exists(Key) of
-        false ->
-            ok;
-        true ->
-            {ok, Li} = khepri:get(Key),
-            khepri:put(Key, lists:delete(Uid, Li))
-    end.
-
-% group_ds:member_uids(1).
--spec member_uids(integer()) -> list().
-member_uids(Gid) ->
-    Key = "/:gorup_member/" ++ integer_to_list(Gid),
-    case khepri:get(Key) of
-        {error,{khepri,node_not_found, _}} ->
-            [];
-        {ok, Val} ->
-            Val
-    end.
-
-% group_ds:dissolve(Gid).
-dissolve(Gid) ->
-    Key = "/:gorup_member/" ++ integer_to_list(Gid),
-    khepri:delete(Key).
-
 -include_lib("imlib/include/log.hrl").
+
+-define(GROUP_CACHE_KEY(Gid), {group, Gid}).
 
 %% ===================================================================
 %% API
 %% ===================================================================
+
+% group_ds:member_uids(1).
+-spec member_uids(integer()) -> list().
+member_uids(Gid) ->
+    CacheKey = ?GROUP_CACHE_KEY(Gid),
+    case imboy_cache:get(CacheKey) of
+        undefined ->
+            case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
+                {ok, _, []} ->
+                    [];
+                {ok, _ColumnLi, Items} ->
+                    Li = [Uid || {Uid} <- Items],
+                    imboy_cache:set(CacheKey, Li),
+                    Li;
+                _ ->
+                    []
+            end;
+        {ok, Li} ->
+            Li
+    end.
+
+% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
+-spec join(integer(), integer()) -> ok.
+join(Uid, Gid) ->
+    CacheKey = ?GROUP_CACHE_KEY(Gid),
+    case imboy_cache:get(CacheKey) of
+        undefined ->
+            imboy_cache:set(CacheKey, [Uid]);
+        {ok, Li} ->
+            case lists:member(Uid, Li) of
+                true ->
+                    ok;
+                false ->
+                    imboy_cache:set(CacheKey, [Uid | Li])
+            end
+    end.
+
+% group_ds:leave(1,1).
+leave(Uid, Gid) ->
+    CacheKey = ?GROUP_CACHE_KEY(Gid),
+    case imboy_cache:get(CacheKey) of
+        undefined ->
+            ok;
+        {ok, Li} ->
+            imboy_cache:set(CacheKey, lists:delete(Uid, Li))
+    end.
+
+% group_ds:dissolve(Gid).
+-spec dissolve(integer()) -> ok.
+dissolve(Gid) ->
+    CacheKey = ?GROUP_CACHE_KEY(Gid),
+    imboy_cache:flush(CacheKey).
+
+% group_ds:member_uids(1).
+% -spec member_uids(integer()) -> list().
+% member_uids(Gid) ->
+%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
+%     case khepri:get(Key) of
+%         {error,{khepri,node_not_found, _}} ->
+%             [];
+%         {ok, Val} ->
+%             Val
+%     end.
+
+% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
+% join(Uid, Gid) ->
+%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
+%     case khepri:exists(Key) of
+%         false ->
+%             khepri:put(Key, [Uid]);
+%         true ->
+%             leave(Uid, Gid),
+%             {ok, Li} = khepri:get(Key),
+%             khepri:put(Key, [Uid | Li])
+%     end.
+
+% group_ds:leave(1,1).
+% leave(Uid, Gid) ->
+%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
+%     case khepri:exists(Key) of
+%         false ->
+%             ok;
+%         true ->
+%             {ok, Li} = khepri:get(Key),
+%             khepri:put(Key, lists:delete(Uid, Li))
+%     end.
+
+% group_ds:dissolve(Gid).
+% dissolve(Gid) ->
+%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
+%     khepri:delete(Key).
 
 % group_ds:gid().
 gid() ->
@@ -63,8 +117,6 @@ gid() ->
         {ok,_,[{Gid}]} ->
             Gid
     end.
-
-
 
 -spec check_avatar(list()) -> list().
 %% 检查 group avatar 是否为空，如果为空设置默认

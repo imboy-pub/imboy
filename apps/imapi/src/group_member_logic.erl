@@ -22,7 +22,7 @@ join(Uid, Gid, _, _) ->
 join(Conn, Uid, Gid) ->
     Now = imboy_dt:utc(millisecond),
     ToUidLi = group_ds:member_uids(Gid),
-    ?LOG(ToUidLi),
+    % ?LOG(ToUidLi),
     group_member_repo:add(Conn, #{
         group_id => Gid,
         user_id => Uid,

@@ -1,5 +1,12 @@
+# 0.3.7
+* 修正group/creator_uid 字段命令错误
+* 创建群接口 group/face2face 新增响应参数 member_list，借口成功之后发送 group_member_join 消息；
+* 暂时移除 khepri 库依赖，调整相关代码；
+* erlang.mk 升级，relx 升级到4.9.0
+* ./docker/pg15_Dockerfile_dev 细微调整
+
 # 0.3.6
-* 创建群接口 group/add 新增 member_uids 参数；
+* 创建群接口 group/add 新增请求参数 member_uids；
 * 其他一些文档细节调整；
 
 # 0.3.5

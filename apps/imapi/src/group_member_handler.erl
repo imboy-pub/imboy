@@ -129,7 +129,8 @@ page(Req0, State) ->
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"group_id">>), <<"user_id">>) || M <- Li],
+    % Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"group_id">>), <<"user_id">>) || M <- Li],
+    Li2 = group_member_transfer:member_list(Li),
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
 
