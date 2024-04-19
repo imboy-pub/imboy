@@ -58,7 +58,7 @@ face2face(Req0, State) ->
                     },
                     msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
 
-                    MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
+                    MemberListRes = group_member_logic:list_member(Gid),
                     imboy_response:success(Req0, #{
                         gid => Gid2,
                         member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
@@ -90,7 +90,7 @@ add(Req0, State) ->
                     GData1 = imboy_hashids:replace_id(GData),
                     GData2 = imboy_hashids:replace_id(GData1, <<"owner_uid">>),
                     GData3 = imboy_hashids:replace_id(GData2, <<"creator_uid">>),
-                    MemberListRes = group_member_repo:list_by_gid(Gid, <<"*">>),
+                    MemberListRes = group_member_logic:list_member(Gid),
                     imboy_response:success(Req0, #{
                             group => GData3,
                             member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
@@ -234,7 +234,7 @@ msg_page(Req0, State) ->
 
             OrderBy = <<"ts desc">>,
             P = imboy_hasher:decoded_payload(),
-            Column = <<"msg_id id, 'GROUP' type, from_id, to_groupid to_id, ", P/binary, ", created_at">>,
+            Column = <<"msg_id id, 'C2G' type, from_id, to_groupid to_id, ", P/binary, ", created_at">>,
             Payload = imboy_db:page(Page, Size, Tb, Where, OrderBy, Column),
             imboy_response:success(Req0, msg_page_transfer(Payload))
     end.

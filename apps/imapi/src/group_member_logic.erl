@@ -5,9 +5,18 @@
 -export([join/3, join/4]).
 -export([leave/4]).
 -export([alias/4]).
+-export([list_member/1]).
+
 
 -include_lib("imlib/include/log.hrl").
 
+% group_member_logic:list_member(40).
+-spec list_member(integer()) -> list().
+list_member(Gid) ->
+    TbA = group_member_repo:tablename(),
+    TbB = user_repo:tablename(),
+    Sql = <<"select u.nickname,u.account,u.avatar, gm.* from ", TbA/binary, " gm left join ", TbB/binary, " u on u.id = gm.user_id WHERE gm.group_id = ", (ec_cnv:to_binary(Gid))/binary>>,
+    imboy_db:query(Sql).
 
 join(_, _, 0, _) ->
     {error, "群不存在，或者群ID有误。"};
