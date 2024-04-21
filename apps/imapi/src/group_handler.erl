@@ -60,7 +60,7 @@ face2face(Req0, State) ->
                     },
                     msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
 
-                    MemberListRes = group_member_logic:list_member(Gid),
+                    MemberListRes = user_repo:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
                     imboy_response:success(Req0, #{
                         gid => Gid2,
                         member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
