@@ -8,10 +8,11 @@
 
 
 -export([member_uids/1]).
--export([dissolve/1]).
 -export([join/2]).
 -export([leave/2]).
+-export([dissolve/1]).
 
+-include_lib("imlib/include/cache.hrl").
 -include_lib("imlib/include/log.hrl").
 
 -define(GROUP_CACHE_KEY(Gid), {group, Gid}).
@@ -31,7 +32,7 @@ member_uids(Gid) ->
                     [];
                 {ok, _ColumnLi, Items} ->
                     Li = [Uid || {Uid} <- Items],
-                    imboy_cache:set(CacheKey, Li),
+                    imboy_cache:set(CacheKey, Li, ?HOUR),
                     Li;
                 _ ->
                     []
@@ -44,25 +45,25 @@ member_uids(Gid) ->
 -spec join(integer(), integer()) -> ok.
 join(Uid, Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
-    case imboy_cache:get(CacheKey) of
-        undefined ->
-            imboy_cache:set(CacheKey, [Uid]);
-        {ok, Li} ->
+    case member_uids(Gid) of
+        [] ->
+            imboy_cache:set(CacheKey, [Uid], ?HOUR);
+        Li ->
             case lists:member(Uid, Li) of
                 true ->
                     ok;
                 false ->
-                    imboy_cache:set(CacheKey, [Uid | Li])
+                    imboy_cache:set(CacheKey, [Uid | Li], ?HOUR)
             end
     end.
 
 % group_ds:leave(1,1).
 leave(Uid, Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
-    case imboy_cache:get(CacheKey) of
-        undefined ->
+    case member_uids(Gid) of
+        [] ->
             ok;
-        {ok, Li} ->
+        Li ->
             imboy_cache:set(CacheKey, lists:delete(Uid, Li))
     end.
 

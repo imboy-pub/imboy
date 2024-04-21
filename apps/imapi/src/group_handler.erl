@@ -18,6 +18,8 @@ init(Req0, State0) ->
         case Action of
             face2face ->
                 face2face(Req0, State);
+            face2face_save ->
+                face2face_save(Req0, State);
             add ->
                 add(Req0, State);
             edit ->
@@ -68,6 +70,34 @@ face2face(Req0, State) ->
         end
     end.
 
+face2face_save(Req0, State) ->
+    PostVals = imboy_req:post_params(Req0),
+    Code = proplists:get_value(<<"code">>, PostVals, []),
+    Gid = proplists:get_value(<<"gid">>, PostVals, []),
+    Uid = maps:get(current_uid, State),
+    Gid2 = imboy_hashids:decode(Gid),
+    case group_logic:face2face_save(Code, Gid2, Uid) of
+            {ok, _} ->
+                User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
+                Payload = #{
+                    <<"gid">> => Gid,
+                    <<"user_id_sum">> => 0,
+                    <<"nickname">> => maps:get(<<"nickname">>, User),
+                    <<"avatar">> => maps:get(<<"avatar">>, User),
+                    <<"account">> => maps:get(<<"account">>, User),
+                    <<"msg_type">> => <<"group_member_join">>
+                },
+                ToUidLi = group_ds:member_uids(Gid),
+                msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
+
+                MemberListRes = group_member_logic:list_member(Gid2),
+                imboy_response:success(Req0, #{
+                    gid => Gid2,
+                    member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
+                    }, "success.");
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
 
 add(Req0, State) ->
     Uid = maps:get(current_uid, State),

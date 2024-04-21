@@ -93,7 +93,7 @@ memo(F, Key, MaxAge, Dep) ->
 %% @spec set(Key, Data) -> void()
 %% @doc Add the key to the depcache, hold it for 3600 seconds and no dependencies
 set(Key, Data) ->
-    depcache:set(Key, Data, 3600, [], ?DEPCACHE_SERVER).
+    depcache:set(Key, Data, ?HOUR, [], ?DEPCACHE_SERVER).
 
 
 %% @spec set(Key, Data, MaxAge) -> void()

@@ -3,6 +3,7 @@
 % group 业务逻辑模块
 %%%
 -export([face2face/4]).
+-export([face2face_save/3]).
 -export([add/4]).
 -export([dissolve/4]).
 
@@ -20,20 +21,7 @@ face2face(Uid, Code, Lng, Lat) ->
     case nearby_gid(Lng, Lat, <<"50">>, <<"m">>, <<"1">>, Code) of
         {ok, _, []} ->
             imboy_db:with_transaction(fun(Conn) ->
-                {ok, _,[{Gid}]} = group_repo:add(Conn, #{
-                    type => 2, % 类型: 1 公开群组  2 私有群组
-                    join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
-                    user_id_sum => Uid, % 这里用Uid，其他的UID在 group_member_logic:join 里面累计
-                    owner_uid => Uid,
-                    creator_uid => Uid,
-                    created_at => Now
-                }),
-                group_member_repo:add(Conn, #{
-                    group_id => Gid,
-                    user_id => Uid,
-                    role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-                    created_at => Now
-                }),
+                Gid = group_ds:gid(),
                 % EPSG:4326 就是 WGS84 的代码。GPS 是基于 WGS84 的，所以通常我们得到的坐标数据都是 WGS84 的
                 Location = <<"ST_GeomFromText('POINT(", Lng/binary, " ", Lat/binary, ")', 4326)">>,
                 group_random_code_repo:add(Conn, #{
@@ -41,7 +29,7 @@ face2face(Uid, Code, Lng, Lat) ->
                     user_id => Uid,
                     code => Code,
                     location => {raw, Location},
-                    validity_at => Now + 7200_000,
+                    validity_at => Now + 3600_000,
                     created_at => Now
                 }),
                 group_ds:join(Uid, Gid),
@@ -49,10 +37,43 @@ face2face(Uid, Code, Lng, Lat) ->
             end);
         % {ok, _, [{Id, Gid, Location, Distance}]}
         {ok, _, [{_Id, Gid, _, _}]} ->
-            group_member_logic:join(Uid, Gid, 1, 0),
+            GM = group_member_repo:find(Gid, Uid, <<"id">>),
+            GMSize = maps:size(GM),
+            if
+                GMSize > 0 ->
+                    ok;
+                true ->
+                    group_member_logic:join(Uid, Gid, 1, 0)
+            end,
             {ok, Gid};
         _ ->
             {error, "error"}
+    end.
+
+face2face_save(Code, Gid, Uid) ->
+    Row = group_random_code_repo:find_by_gid(Gid, <<"code,user_id">>),
+    RowCode = maps:get(<<"code">>, Row, <<>>),
+    % CreateUserId = maps:get(<<"user_id">>, Row, 0),
+    G = group_repo:find_by_id(Gid),
+    GSize = maps:size(G),
+    GM = group_member_repo:find(Gid, Uid, <<"id">>),
+    GMSize = maps:size(GM),
+    case {GSize, GMSize, RowCode} of
+        {_, _, <<>>} ->
+            {error, <<"群ID不存在"/utf8>>};
+        {0, _, Code}->
+            Now = imboy_dt:utc(millisecond),
+            imboy_db:with_transaction(fun(Conn) ->
+                create_group(Conn, Gid, Uid, Now, 2, 1)
+            end),
+            {ok, <<"success">>};
+        {0, 0, Code}->
+            group_member_logic:join(Uid, Gid, 1, 0),
+            {ok, <<"success">>};
+        {_, _, Code}-> % 重复提交的时候
+            {ok, <<"success">>};
+        _ ->
+            {error, <<"验证码有误"/utf8>>}
     end.
 
 add(Count, _, _, _) when Count > 100 ->
@@ -68,20 +89,7 @@ add(_, Uid, Type, MemberUids) ->
     case GidOld of
         0 ->
             imboy_db:with_transaction(fun(Conn) ->
-                {ok, _,[{Gid}]} = group_repo:add(Conn, #{
-                    type => Type, % 类型: 1 公开群组  2 私有群组
-                    join_limit => 1, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
-                    user_id_sum => Uid, % 这里用Uid，其他的UID在 group_member_logic:join 里面累计
-                    owner_uid => Uid,
-                    creator_uid => Uid,
-                    created_at => Now
-                }),
-                group_member_repo:add(Conn, #{
-                    group_id => Gid,
-                    user_id => Uid,
-                    role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-                    created_at => Now
-                }),
+                Gid = create_group(Conn, 0, Uid, Now, Type, 1),
                 group_ds:join(Uid, Gid),
                 [group_member_logic:join(Conn, Uid2, Gid) || Uid2 <- MemberUids2],
                 {ok, Gid}
@@ -145,6 +153,29 @@ dissolve(Uid, Gid, _, G) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
+    GMap =  #{
+        type => Type, % 类型: 1 公开群组  2 私有群组
+        join_limit => JoinLimit, % 加入限制: 1 不需审核  2 需要审核  3 只允许邀请加入
+        user_id_sum => Uid, % 这里用Uid，其他的UID在 group_member_logic:join 里面累计
+        owner_uid => Uid,
+        creator_uid => Uid,
+        created_at => Now
+    },
+    GMap2 = if
+        Gid > 0 ->
+            GMap#{id => Gid};
+        true ->
+            GMap
+    end,
+    {ok, _,[{Gid}]} = group_repo:add(Conn, GMap2),
+    group_member_repo:add(Conn, #{
+        group_id => Gid,
+        user_id => Uid,
+        role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
+        created_at => Now
+    }),
+    Gid.
 
 -spec nearby_gid(binary(), binary(), binary(), binary(), binary(), binary()) ->
           list().

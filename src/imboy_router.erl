@@ -93,6 +93,7 @@ get_routes() ->
        {"/fts/recently_user", fts_handler, #{action => recently_user}},
 
        {"/group/face2face", group_handler, #{action => face2face}},
+       {"/group/face2face_save", group_handler, #{action => face2face_save}},
        {"/group/add", group_handler, #{action => add}},
        {"/group/edit", group_handler, #{action => edit}},
        {"/group/dissolve", group_handler, #{action => dissolve}},
