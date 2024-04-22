@@ -170,14 +170,14 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
             GMap
     end,
     ?LOG(["group_logic/create_group", Gid, GMap2]),
-    {ok, _,[{Gid}]} = group_repo:add(Conn, GMap2),
+    {ok, _,[{Gid2}]} = group_repo:add(Conn, GMap2),
     group_member_repo:add(Conn, #{
-        group_id => Gid,
+        group_id => Gid2,
         user_id => Uid,
         role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
         created_at => Now
     }),
-    Gid.
+    Gid2.
 
 -spec nearby_gid(binary(), binary(), binary(), binary(), binary(), binary()) ->
           list().
