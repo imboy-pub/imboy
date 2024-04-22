@@ -54,10 +54,11 @@ face2face_save(Code, Gid, Uid) ->
     Row = group_random_code_repo:find_by_gid(Gid, <<"code,user_id">>),
     RowCode = maps:get(<<"code">>, Row, <<>>),
     % CreateUserId = maps:get(<<"user_id">>, Row, 0),
-    G = group_repo:find_by_id(Gid),
+    G = group_repo:find_by_id(Gid, <<"id">>),
     GSize = maps:size(G),
     GM = group_member_repo:find(Gid, Uid, <<"id">>),
     GMSize = maps:size(GM),
+    ?LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
     case {GSize, GMSize, RowCode} of
         {_, _, <<>>} ->
             {error, <<"群ID不存在"/utf8>>};
@@ -168,6 +169,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
         true ->
             GMap
     end,
+    ?LOG(["group_logic/create_group", Gid, GMap2]),
     {ok, _,[{Gid}]} = group_repo:add(Conn, GMap2),
     group_member_repo:add(Conn, #{
         group_id => Gid,

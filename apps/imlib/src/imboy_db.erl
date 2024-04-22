@@ -266,6 +266,7 @@ add(Conn, Tb, Data, Returning) ->
     Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
     Value = assemble_value(Data),
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
+    ?LOG(["imboy_db/add", Sql]),
     execute(Conn, <<Sql/binary, " ", Returning/binary>>, []).
 
 
