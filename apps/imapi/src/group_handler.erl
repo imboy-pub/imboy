@@ -78,21 +78,9 @@ face2face_save(Req0, State) ->
     Gid2 = imboy_hashids:decode(Gid),
     case group_logic:face2face_save(Code, Gid2, Uid) of
             {ok, _} ->
-                User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
-                Payload = #{
-                    <<"gid">> => Gid,
-                    <<"user_id_sum">> => 0,
-                    <<"nickname">> => maps:get(<<"nickname">>, User),
-                    <<"avatar">> => maps:get(<<"avatar">>, User),
-                    <<"account">> => maps:get(<<"account">>, User),
-                    <<"msg_type">> => <<"group_member_join">>
-                },
-                ToUidLi = group_ds:member_uids(Gid),
-                msg_s2c_ds:send(Uid, Payload, ToUidLi, no_save),
-
                 MemberListRes = group_member_logic:list_member(Gid2),
                 imboy_response:success(Req0, #{
-                    gid => Gid2,
+                    gid => Gid,
                     member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
                     }, "success.");
         {error, Msg} ->
