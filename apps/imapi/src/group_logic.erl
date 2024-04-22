@@ -61,14 +61,14 @@ face2face_save(Code, Gid, Uid) ->
     case {GSize, GMSize, RowCode} of
         {_, _, <<>>} ->
             {error, <<"群ID不存在"/utf8>>};
+        {0, 0, Code}->
+            group_member_logic:join(Uid, Gid, 1, 0),
+            {ok, <<"success">>};
         {0, _, Code}->
             Now = imboy_dt:utc(millisecond),
             imboy_db:with_transaction(fun(Conn) ->
                 create_group(Conn, Gid, Uid, Now, 2, 1)
             end),
-            {ok, <<"success">>};
-        {0, 0, Code}->
-            group_member_logic:join(Uid, Gid, 1, 0),
             {ok, <<"success">>};
         {_, _, Code}-> % 重复提交的时候
             {ok, <<"success">>};
