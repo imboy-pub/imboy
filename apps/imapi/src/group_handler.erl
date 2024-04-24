@@ -39,7 +39,7 @@ init(Req0, State0) ->
     {ok, Req1, State}.
 
 
-detail(Req0, State) ->
+detail(Req0, _State) ->
     #{gid := Gid} = cowboy_req:match_qs([{gid, [], <<>>}], Req0),
     Gid2 = imboy_hashids:decode(Gid),
     case Gid2 of
