@@ -1,4 +1,5 @@
 # 0.3.8
+* 新增 /group/detail 接口；
 * 新增 /group/face2face_save 接口；
 * 调整 /group/face2face 接口，使得查询 group_random_code，表，不存在code,的是只写入 group_random_code；
 * 修复 group_ds:member_uids/1 group_ds:join/2 group_ds:leave/2 换成过期会报错的问题；

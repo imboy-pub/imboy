@@ -97,6 +97,7 @@ get_routes() ->
        {"/group/add", group_handler, #{action => add}},
        {"/group/edit", group_handler, #{action => edit}},
        {"/group/dissolve", group_handler, #{action => dissolve}},
+       {"/group/detail", group_handler, #{action => detail}},
        {"/group/page", group_handler, #{action => page}},
        {"/group/msg_page", group_handler, #{action => msg_page}},
 

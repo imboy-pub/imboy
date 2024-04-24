@@ -26,6 +26,8 @@ init(Req0, State0) ->
                 edit(Req0, State);
             dissolve ->
                 dissolve(Req0, State);
+            detail ->
+                detail(Req0, State);
             page ->
                 #{attr := Attr} = cowboy_req:match_qs([{attr, [], undefined}], Req0),
                 page(Req0, State, Attr);
@@ -35,6 +37,22 @@ init(Req0, State0) ->
                 Req0
         end,
     {ok, Req1, State}.
+
+
+detail(Req0, State) ->
+    #{gid := Gid} = cowboy_req:match_qs([{gid, [], <<>>}], Req0),
+    Gid2 = imboy_hashids:decode(Gid),
+    case Gid2 of
+        0 ->
+            imboy_response:error(Req0, "group id 必须");
+        Gid2 when Gid2 > 0 ->
+            % Uid = maps:get(current_uid, State),
+            % GM = group_member_repo:find(Gid2, Uid, <<"id">>),
+            % GMSize = maps:size(GM),
+            % Column
+            G = group_repo:find_by_id(Gid2, <<"*">>),
+            imboy_response:success(Req0, imboy_hashids:replace_id(imboy_hashids:replace_id(imboy_hashids:replace_id(G, <<"creator_uid">>), <<"owner_uid">>), <<"id">>), "success.")
+    end.
 
 face2face(Req0, State) ->
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
