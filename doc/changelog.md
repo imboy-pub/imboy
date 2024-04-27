@@ -1,3 +1,7 @@
+# 0.3.9
+* 调整/group_member/join 请求和响应参数；
+* 调试面对面建群功能，接口响应参数做调整；
+
 # 0.3.8
 * 新增 /group/detail 接口；
 * 新增 /group/face2face_save 接口；

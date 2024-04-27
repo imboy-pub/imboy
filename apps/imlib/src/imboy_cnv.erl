@@ -14,7 +14,16 @@
 -export([implode/2]).
 -export([remove_dups/1]).
 -export([vsn_major/1]).
+-export([list_to_binary_string/1]).
 
+% imboy_cnv:list_to_binary_string([513251,62829,62825]).
+list_to_binary_string(IntList) ->
+    % 将整数列表转换为字符串列表
+    StringList = lists:map(fun(I) -> integer_to_list(I) end, IntList),
+    % 使用逗号连接字符串列表
+    JoinedString = lists:join(",", StringList),
+    % 将字符串转换为二进制
+    list_to_binary(JoinedString).
 
 zipwith_equery(Res) ->
     case Res of

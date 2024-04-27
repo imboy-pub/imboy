@@ -51,7 +51,7 @@ detail(Req0, _State) ->
             % GMSize = maps:size(GM),
             % Column
             G = group_repo:find_by_id(Gid2, <<"*">>),
-            imboy_response:success(Req0, imboy_hashids:replace_id(imboy_hashids:replace_id(imboy_hashids:replace_id(G, <<"creator_uid">>), <<"owner_uid">>), <<"id">>), "success.")
+            imboy_response:success(Req0, group_transfer(G), "success.")
     end.
 
 face2face(Req0, State) ->
@@ -70,7 +70,7 @@ face2face(Req0, State) ->
                     User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
                     Payload = #{
                         <<"gid">> => Gid2,
-                        <<"user_id_sum">> => 0,
+                        <<"user_id_sum">> => lists:sum(ToUidLi),
                         <<"nickname">> => maps:get(<<"nickname">>, User),
                         <<"avatar">> => maps:get(<<"avatar">>, User),
                         <<"account">> => maps:get(<<"account">>, User),
@@ -98,7 +98,7 @@ face2face_save(Req0, State) ->
             {ok, _} ->
                 MemberListRes = group_member_logic:list_member(Gid2),
                 imboy_response:success(Req0, #{
-                    gid => Gid,
+                    group => group_transfer(group_repo:find_by_id(Gid2, <<"*">>)),
                     member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
                     }, "success.");
         {error, Msg} ->
@@ -280,10 +280,19 @@ msg_page(Req0, State) ->
 %% EUnit tests.
 %% ===================================================================
 
+group_transfer(G) ->
+    imboy_hashids:replace_id(
+        imboy_hashids:replace_id(
+            imboy_hashids:replace_id(
+                    imboy_hashids:replace_id(G, <<"id">>)
+                , <<"creator_uid">>)
+        , <<"owner_uid">>)
+    , <<"gid">>).
+
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"creator_uid">>), <<"owner_uid">>), <<"gid">>) || M <- Li],
+    Li2 = [group_transfer(M) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
 
@@ -291,6 +300,6 @@ page_transfer(Payload) ->
 msg_page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [imboy_hashids:replace_id(imboy_hashids:replace_id(M, <<"from_id">>), <<"to_id">>) || M <- Li],
+    Li2 = [group_transfer(M) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].

@@ -21,11 +21,21 @@ replace_id(Li)->
 
 -spec replace_id(list() | map(), binary()) -> list() | map().
 replace_id(Li, K) when is_list(Li) ->
-    Id = proplists:get_value(K, Li),
-    [{K, imboy_hashids:encode(Id)} | proplists:delete(K, Li)];
+    case proplists:get_value(K, Li) of
+        undefined ->
+            Li;
+        _ ->
+            Id = proplists:get_value(K, Li),
+            [{K, imboy_hashids:encode(Id)} | proplists:delete(K, Li)]
+    end;
 replace_id(M, K) when is_map(M) ->
-    Id = maps:get(K, M, 0),
-    maps:put(K, imboy_hashids:encode(Id), M).
+    case maps:is_key(K, M) of
+        true ->
+            Id = maps:get(K, M),
+            maps:put(K, imboy_hashids:encode(Id), M);
+        _ ->
+            M
+    end.
 
 
 -spec encode(integer() | binary() | list()) -> binary().

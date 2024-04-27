@@ -32,6 +32,7 @@ init(Req0, State0) ->
 join(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
+    MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
@@ -39,26 +40,52 @@ join(Req0, State) ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
         _ when Gid2 == 0 ->
             imboy_response:error(Req0, "group id 格式有误");
+        _ when is_list(MemberUids) == false  ->
+            imboy_response:error(Req0, "member_uids 必须是list");
+        _ when MemberUids == []  ->
+            imboy_response:error(Req0, "member_uids 不能为空");
         _ ->
-            GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
-            GMSize = maps:size(GM),
+            G = group_repo:find_by_id(Gid2, <<"member_max,member_count">>),
+            Max = maps:get(<<"member_max">>, G, 0),
+            Count = maps:get(<<"member_count">>, G, 0),
+            Len = length(MemberUids),
+            Diff = Max - Count,
             if
-                GMSize > 0 ->
-                    imboy_response:success(Req0, [
-                        {<<"gid">>, Gid}
-                    ], "success.");
+                Diff == 0 ->
+                    imboy_response:error(Req0, "群成员已满。");
+                Len > Diff ->
+                    imboy_response:error(Req0, "还可以加入" + integer_to_list(Diff)+ "名群成员");
                 true ->
-                    G = group_repo:find_by_id(Gid2, <<"member_max,member_count">>),
-                    Max = maps:get(<<"member_max">>, G, 0),
-                    Count = maps:get(<<"member_count">>, G, 0),
-                    % ?LOG([Max, Count, G]),
-                    case group_member_logic:join(CurrentUid, Gid2, Max, Count) of
-                        ok ->
-                            imboy_response:success(Req0, [
-                                {<<"gid">>, Gid}
-                            ], "success.");
-                        {error, Msg} ->
-                            imboy_response:error(Req0, Msg)
+                    MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
+                    MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
+                    % ?LOG([MemberListRes]),
+                    case MemberListRes of
+                        {ok, _, []} ->
+                            imboy_db:with_transaction(fun(Conn) ->
+                                [group_member_logic:join(Conn, Uid2, Gid2) || Uid2 <- MemberUids2]
+                            end),
+                            MemberListRes2 = group_member_logic:list_member(Gid2, MemberUids2),
+                            Sum = imboy_db:pluck(group_repo:tablename(),
+                                <<"id = ",  (ec_cnv:to_binary(Gid2))/binary>>,
+                                <<"user_id_sum">>,
+                                0
+                            ),
+                            imboy_response:success(Req0, #{
+                                <<"gid">> => Gid,
+                                <<"user_id_sum">> => Sum,
+                                <<"member_list">> => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes2))
+                            }, "success.");
+                        {ok, _, _} ->
+                            Sum = imboy_db:pluck(group_repo:tablename(),
+                                <<"id = ",  (ec_cnv:to_binary(Gid2))/binary>>,
+                                <<"user_id_sum">>,
+                                0
+                            ),
+                            imboy_response:success(Req0, #{
+                                <<"gid">> => Gid,
+                                <<"user_id_sum">> => Sum,
+                                <<"member_list">> => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
+                            }, "success.")
                     end
             end
     end.
@@ -133,4 +160,3 @@ page_transfer(Payload) ->
     Li2 = group_member_transfer:member_list(Li),
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
-

@@ -56,22 +56,25 @@ face2face_save(Code, Gid, Uid) ->
     % CreateUserId = maps:get(<<"user_id">>, Row, 0),
     G = group_repo:find_by_id(Gid, <<"id">>),
     GSize = maps:size(G),
-    GM = group_member_repo:find(Gid, Uid, <<"id">>),
-    GMSize = maps:size(GM),
-    ?LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
-    case {GSize, GMSize, RowCode} of
-        {_, _, <<>>} ->
-            {error, <<"群ID不存在"/utf8>>};
-        {0, 0, Code}->
+    if
+        GSize == 0 ->
             Now = imboy_dt:utc(millisecond),
             imboy_db:with_transaction(fun(Conn) ->
                 create_group(Conn, Gid, Uid, Now, 2, 1)
-            end),
-            {ok, <<"success">>};
-        {0, _, Code}->
+            end);
+        true ->
+            ok
+    end,
+    GM = group_member_repo:find(Gid, Uid, <<"id">>),
+    GMSize = maps:size(GM),
+    ?LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
+    case {GMSize, RowCode} of
+        {_, <<>>} ->
+            {error, <<"群ID不存在"/utf8>>};
+        {0, Code}->
             group_member_logic:join(Uid, Gid, 1, 0),
             {ok, <<"success">>};
-        {_, _, Code}-> % 重复提交的时候
+        {_, Code}-> % 重复提交的时候
             {ok, <<"success">>};
         _ ->
             {error, <<"验证码有误"/utf8>>}
@@ -171,12 +174,19 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
     end,
     ?LOG(["group_logic/create_group", Gid, GMap2]),
     {ok, _,[{Gid2}]} = group_repo:add(Conn, GMap2),
-    group_member_repo:add(Conn, #{
-        group_id => Gid2,
-        user_id => Uid,
-        role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
-        created_at => Now
-    }),
+    GM = group_member_repo:find(Gid2, Uid, <<"id">>),
+    GMSize = maps:size(GM),
+    if
+        GMSize == 0 ->
+            group_member_repo:add(Conn, #{
+                group_id => Gid2,
+                user_id => Uid,
+                role => 4, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
+                created_at => Now
+            });
+        true ->
+            ok
+    end,
     Gid2.
 
 -spec nearby_gid(binary(), binary(), binary(), binary(), binary(), binary()) ->
