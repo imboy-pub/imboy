@@ -43,7 +43,8 @@ face2face(Uid, Code, Lng, Lat) ->
                 GMSize > 0 ->
                     ok;
                 true ->
-                    group_member_logic:join(Uid, Gid, 1, 0)
+                    JoinMode = <<"face2face_join">>,
+                    group_member_logic:join(JoinMode, Uid, Gid, 1, 0)
             end,
             {ok, Gid};
         _ ->
@@ -72,7 +73,7 @@ face2face_save(Code, Gid, Uid) ->
         {_, <<>>} ->
             {error, <<"群ID不存在"/utf8>>};
         {0, Code}->
-            group_member_logic:join(Uid, Gid, 1, 0),
+            group_member_logic:join(<<"face2face_join">>, Uid, Gid, 1, 0),
             {ok, <<"success">>};
         {_, Code}-> % 重复提交的时候
             {ok, <<"success">>};
@@ -92,10 +93,13 @@ add(_, Uid, Type, MemberUids) ->
        0),
     case GidOld of
         0 ->
+            % invite_[uid]_[nickname]
+            UserTitle = user_ds:title(Uid),
+            JoinMode = <<"invite_",  (ec_cnv:to_binary(Uid))/binary, "_", UserTitle/binary>>,
             imboy_db:with_transaction(fun(Conn) ->
                 Gid = create_group(Conn, 0, Uid, Now, Type, 1),
                 group_ds:join(Uid, Gid),
-                [group_member_logic:join(Conn, Uid2, Gid) || Uid2 <- MemberUids2],
+                [group_member_logic:join(Conn, JoinMode, Uid2, Gid) || Uid2 <- MemberUids2],
                 {ok, Gid}
             end);
         GidOld when GidOld > 0 ->

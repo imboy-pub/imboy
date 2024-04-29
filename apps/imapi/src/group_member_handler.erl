@@ -33,8 +33,16 @@ join(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
     MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
+    JoinMode = proplists:get_value(<<"join_mode">>, PostVals, <<>>),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
+    JoinMode2 = case JoinMode of
+        <<>> ->
+            UserTitle = user_ds:title(CurrentUid),
+            JoinMode = <<"invite_",  (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
+        _ ->
+            JoinMode
+    end,
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
@@ -62,7 +70,7 @@ join(Req0, State) ->
                     case MemberListRes of
                         {ok, _, []} ->
                             imboy_db:with_transaction(fun(Conn) ->
-                                [group_member_logic:join(Conn, Uid2, Gid2) || Uid2 <- MemberUids2]
+                                [group_member_logic:join(Conn, JoinMode2, Uid2, Gid2) || Uid2 <- MemberUids2]
                             end),
                             MemberListRes2 = group_member_logic:list_member(Gid2, MemberUids2),
                             Sum = imboy_db:pluck(group_repo:tablename(),

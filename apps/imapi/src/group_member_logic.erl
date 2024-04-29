@@ -2,7 +2,7 @@
 %%%
 % group_member 业务逻辑模块
 %%%
--export([join/3, join/4]).
+-export([join/4, join/5]).
 -export([leave/4]).
 -export([alias/4]).
 -export([list_member/1, list_member/2]).
@@ -27,17 +27,17 @@ list_member(Gid, MemberUids) when is_list(MemberUids) ->
     ?LOG([Sql]),
     imboy_db:query(Sql).
 
-join(_, _, 0, _) ->
+join(_,_, _, 0, _) ->
     {error, "群不存在，或者群ID有误。"};
-join(_, _, Max, Count) when Max =< Count ->
+join(_,_, _, Max, Count) when Max =< Count ->
     {error, "群成员已满。"};
-join(Uid, Gid, _, _) ->
+join(JoinMode,Uid, Gid, _, _) ->
     imboy_db:with_transaction(fun(Conn) ->
-        join(Conn, Uid, Gid)
+        join(Conn, JoinMode, Uid, Gid)
     end),
     ok.
 
-join(Conn, Uid, Gid) ->
+join(Conn, JoinMode, Uid, Gid) ->
     Now = imboy_dt:utc(millisecond),
     ToUidLi = group_ds:member_uids(Gid),
     % ?LOG(ToUidLi),
@@ -46,6 +46,7 @@ join(Conn, Uid, Gid) ->
         user_id => Uid,
         role => 1, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
         is_join => 1,
+        join_mode => JoinMode,
         created_at => Now
     }),
     Data = #{

@@ -1,6 +1,9 @@
 # 0.3.9
 * 调整/group_member/join 请求和响应参数；
 * 调试面对面建群功能，接口响应参数做调整；
+* 新增group_member表新增join_mode “进群方式 :  invite_[uid]_[nickname] 邀请进群  scan_qr_code 扫描二维码加入 face2face_join 面对面建群”
+* 新增 public.user_group 表，存储“用户保存到通讯录的群”
+
 
 # 0.3.8
 * 新增 /group/detail 接口；

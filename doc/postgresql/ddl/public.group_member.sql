@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public."group_member"
     description varchar(400) DEFAULT '',
     role smallint DEFAULT 0,
     is_join smallint DEFAULT 0,
+    join_mode varchar(120) DEFAULT '', -- 进群方式 :  invite_[uid]_[nickname]
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
     created_at bigint NOT NULL
@@ -26,6 +27,7 @@ ALTER TABLE IF EXISTS public.group_member OWNER to imboy_user;
 
 COMMENT ON TABLE public.group_member IS '群组成员表';
 
+COMMENT ON COLUMN public.group_member.join_mode IS '进群方式 :  invite_[uid]_[nickname] <a>leeyi</a>邀请进群  scan_qr_code 扫描二维码加入 face2face_join 面对面建群';
 COMMENT ON COLUMN public.group_member.id IS '主键 自增长ID';
 
 COMMENT ON COLUMN public.group_member.group_id IS '群组ID';
