@@ -7,7 +7,7 @@
 
 CREATE TABLE IF NOT EXISTS public."msg_c2g"
 (
-    topic_id bigint NOT NULL,
+    topic_id bigint NOT NULL DEFAULT 0,
     from_id bigint NOT NULL, --  消息发送者用户ID
     to_id bigint NOT NULL, -- 发送到哪个群的群ID
     msg_id varchar(40) NOT NULL, -- 类似全局唯一 ID

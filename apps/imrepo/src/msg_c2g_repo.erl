@@ -34,7 +34,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         CreatedAt2 = integer_to_binary(CreatedAt),
         Payload2 = imboy_hasher:encoded_val(Payload),
         % ?LOG(CreatedAt2),
-        Column = <<"(payload,to_groupid,from_id,created_at,msg_id)">>,
+        Column = <<"(payload,to_id,from_id,created_at,msg_id)">>,
         Sql = <<"INSERT INTO ", Tb/binary, " ", Column/binary, " VALUES(", Payload2/binary,
               ", '", Gid/binary, "', '", FromId/binary, "', '", CreatedAt2/binary,
               "', '", MsgId/binary, "');">>,
@@ -58,7 +58,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Tb2 = msg_c2g_timeline_repo:tablename(),
         Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES",
                Values/binary>>,
-        % ?LOG([Sql, Sql2]),
+        ?LOG([Sql, Sql2]),
         {ok, Stmt2} = epgsql:parse(Conn, Sql2),
         epgsql:execute_batch(Conn, [{Stmt2, []}]),
         ok
