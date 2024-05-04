@@ -48,3 +48,38 @@ https://www.erlang.org/doc/design_principles/appup_cookbook
 
 # 参考
 * https://zhuanlan.zhihu.com/p/29647820
+
+```
+%% imboy.appup
+{
+    "新母项目版本号", %% 新的母项目版本号
+    [ %% 升级指令
+        %% 升级 imapi 子应用
+        {apply, imapi, {appup, "新imapi版本号"}}
+        %% 其他子应用的升级指令...
+    ],
+    [ %% 降级指令
+        %% 降级 imapi 子应用
+        {apply, imapi, {appup, "旧imapi版本号"}}
+        %% 其他子应用的降级指令...
+    ],
+    %% 从其他任何版本升级到当前版本的指令
+    {downfrom, {除当前版本外的任何版本, []}}
+}
+```
+
+```
+{downfrom, {"1.0.3", [
+    %% 从 1.0.3 降级到 1.0.2 的降级指令
+    {apply, {module, downgrade_function, [Args]}}
+    %% ... 其他降级指令 ...
+]}}
+```
+
+从版本 2.0 降级到版本 1.0，并且在版本 2.0 中你添加了一个新模块或者新功能，那么你可能需要在降级时删除这个模块或撤销这些更改。downfrom 指令就是用来描述这些步骤的。
+```
+{downfrom, {"2.0", [
+    {delete_module, new_module},
+    {load_module, old_module}
+]}}
+```

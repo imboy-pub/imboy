@@ -39,7 +39,7 @@ join(Req0, State) ->
     JoinMode2 = case JoinMode of
         <<>> ->
             UserTitle = user_ds:title(CurrentUid),
-            JoinMode = <<"invite_",  (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
+            <<"invite_",  (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
         _ ->
             JoinMode
     end,
@@ -102,6 +102,7 @@ leave(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
+    MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
     Gid2 = imboy_hashids:decode(Gid),
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
@@ -109,16 +110,10 @@ leave(Req0, State) ->
         _ when Gid2 == 0 ->
             imboy_response:error(Req0, "group id 格式有误");
         _ ->
-            GM = group_member_repo:find(Gid2, CurrentUid, <<"*">>),
-            GMSize = maps:size(GM),
-            case group_member_logic:leave(CurrentUid, Gid2, GMSize, GM) of
-                ok ->
-                    imboy_response:success(Req0, [
-                        {<<"gid">>, Gid}
-                    ], "success.");
-                {error, Msg} ->
-                    imboy_response:error(Req0, Msg)
-            end
+            [group_member_logic:leave(imboy_hashids:decode(Uid), Gid2, CurrentUid) || Uid <- MemberUids],
+            imboy_response:success(Req0, [
+                {<<"gid">>, Gid}
+            ], "success.")
     end.
 
 alias(Req0, State) ->

@@ -26,15 +26,15 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
         is_map(MsgType) ->
             MsgType
     end,
+    MsgId = imboy_func:uid("s2c"),
     Payload = message_ds:assemble_msg(<<"S2C">>,
        imboy_hashids:encode(FromId),
        imboy_hashids:encode(ToUid),
        Payload0 ,
-       <<"">>),
+       MsgId),
     Msg = jsone:encode(Payload, [native_utf8]),
     case Save of
         save ->
-            MsgId = MsgType,
             CreatedAt = imboy_dt:utc(millisecond),
             write_msg(CreatedAt, MsgId, Payload, FromId, ToUid, CreatedAt),
 

@@ -38,13 +38,13 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(ToId) 
     ToId2 = list_to_binary(integer_to_list(ToId)),
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
-    % ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
     Payload2 = imboy_hasher:encoded_val(Payload),
     Tb = tablename(),
     Column = <<"(payload, from_id, to_id,
         created_at, server_ts, msg_id)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
     ServerTS2 = integer_to_binary(ServerTS),
+    ?LOG([Payload2, FromId, ToId, CreatedAt2, ServerTS2, Id]),
     Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '", ToId/binary, "', '", CreatedAt2/binary, "', '",
               ServerTS2/binary, "', '", Id/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

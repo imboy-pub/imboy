@@ -3,7 +3,7 @@
 % group_member 业务逻辑模块
 %%%
 -export([join/4, join/5]).
--export([leave/4]).
+-export([leave/3]).
 -export([alias/4]).
 -export([list_member/1, list_member/2]).
 
@@ -77,44 +77,10 @@ join(Conn, JoinMode, Uid, Gid) ->
     msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
     ok.
 
-leave(_, _, GMSize, _) when GMSize == 0 ->
-    ok;
-leave(Uid, Gid, _, GM) ->
-    Now = imboy_dt:utc(millisecond),
-    Id = maps:get(<<"id">>, GM, 0),
-    ToUidLi = group_ds:member_uids(Gid),
-    imboy_db:with_transaction(fun(Conn) ->
-        Tb2 = group_member_repo:tablename(),
-        Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE id= ", (ec_cnv:to_binary(Id))/binary>>,
-        imboy_db:execute(Conn, Sql2, []),
-
-        {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
-        group_log_repo:add(Conn, #{
-            % 日志类型: 100 群转让 101 群解散  200 主动退出群   201 群解散退出群  202 被踢出群
-            type => 200,
-            option_uid => Uid,
-            group_id => Gid,
-            body => Body,
-            created_at => Now
-            }),
-        Data = #{
-            member_count => {raw, <<"member_count-1">>},
-            updated_at => Now
-        },
-        imboy_db:update(Conn
-            , group_repo:tablename()
-            , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
-            , Data
-        ),
-        group_ds:leave(Uid, Gid),
-        Payload = #{
-            <<"gid">> => imboy_hashids:encode(Gid),
-            <<"msg_type">> => <<"group_member_leave">>
-        },
-        msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
-        ok
-    end),
-    ok.
+leave(Uid, Gid, CurrentUid) ->
+    GM = group_member_repo:find(Gid, Uid, <<"*">>),
+    GMSize = maps:size(GM),
+    leave(Uid, Gid, GMSize, GM, CurrentUid).
 
 alias(Uid, Gid, Alias, Description) ->
     Now = imboy_dt:utc(millisecond),
@@ -141,6 +107,52 @@ alias(Uid, Gid, Alias, Description) ->
 %% ===================================================================
 
 
+leave(_, _, GMSize, _, _) when GMSize == 0 ->
+    ok;
+leave(Uid, Gid, _, GM, CurrentUid) ->
+    Now = imboy_dt:utc(millisecond),
+    Id = maps:get(<<"id">>, GM, 0),
+    ToUidLi = group_ds:member_uids(Gid),
+    Res = imboy_db:with_transaction(fun(Conn) ->
+        Tb2 = group_member_repo:tablename(),
+        Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE id= ", (ec_cnv:to_binary(Id))/binary>>,
+        imboy_db:execute(Conn, Sql2, []),
+
+        {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
+        Tyep = if
+            CurrentUid == Uid ->
+                200;
+            true ->
+                202
+        end,
+        group_log_repo:add(Conn, #{
+            % 日志类型: 100 群转让 101 群解散  200 主动退出群   201 群解散退出群  202 被踢出群
+            type => Tyep,
+            option_uid => CurrentUid,
+            group_id => Gid,
+            body => Body,
+            created_at => Now
+            }),
+        Data = #{
+            user_id_sum => {raw, <<"user_id_sum-", (ec_cnv:to_binary(Uid))/binary>>},
+            member_count => {raw, <<"member_count-1">>},
+            updated_at => Now
+        },
+        imboy_db:update(Conn
+            , group_repo:tablename()
+            , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
+            , Data
+        ),
+        Payload = #{
+            <<"gid">> => imboy_hashids:encode(Gid),
+            <<"msg_type">> => <<"group_member_leave">>
+        },
+        msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
+        group_ds:leave(Uid, Gid),
+        ok
+    end, #{reraise => true}),
+    ?LOG(["leave, ", Uid, Gid, CurrentUid, Res]),
+    ok.
 
 %% ===================================================================
 %% EUnit tests.

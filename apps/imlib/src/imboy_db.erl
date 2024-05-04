@@ -45,7 +45,7 @@
 
 -spec with_transaction(fun((epgsql:connection()) -> Reply)) -> Reply | {rollback, any()} when Reply :: any().
 with_transaction(F) ->
-    with_transaction(F, [{reraise, false}]).
+    with_transaction(F, [{reraise, true}]).
 
 
 -spec with_transaction(fun((epgsql:connection()) -> Reply), epgsql:transaction_opts()) ->
@@ -266,7 +266,7 @@ add(Conn, Tb, Data, Returning) ->
     Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
     Value = assemble_value(Data),
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    ?LOG(["imboy_db/add", Sql]),
+    ?LOG(io:format("~s\n", [Sql])),
     execute(Conn, <<Sql/binary, " ", Returning/binary>>, []).
 
 
