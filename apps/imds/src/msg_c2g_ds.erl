@@ -3,7 +3,7 @@
 % msg_c2g_ds 是 msg_c2g domain service 缩写
 %%%
 -export([write_msg/6]).
--export([read_msg/2]).
+-export([read_msg/1]).
 -export([delete_msg/1]).
 
 -include_lib("imlib/include/log.hrl").
@@ -29,10 +29,10 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
 
 
 %% 读取离线消息
-% msg_c2g_ds:read_msg(3, 10).
-read_msg(ToUid, Limit) ->
+% msg_c2g_ds:read_msg(3).
+read_msg(ToUid) ->
     Column = <<"msg_id">>,
-    {ok, _CoLi, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
+    {ok, _CoLi, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column),
     MsgIds = lists:map(fun({MsgId}) ->
                                MsgId
                        end,
@@ -42,8 +42,8 @@ read_msg(ToUid, Limit) ->
     case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
         {ok, _, []} ->
             [];
-        {ok, ColumnList2, Rows2} ->
-            [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList2, tuple_to_list(Row)) || Row <- Rows2 ]
+        {ok, _, Rows2} ->
+            [ lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"payload">>], tuple_to_list(Row)) || Row <- Rows2 ]
     end.
 
 

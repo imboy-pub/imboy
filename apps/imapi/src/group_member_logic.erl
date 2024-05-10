@@ -46,7 +46,7 @@ join(Conn, JoinMode, Uid, Gid) ->
         user_id => Uid,
         role => 1, % 角色: 1 成员  2 嘉宾  3  管理员 4 群主
         is_join => 1,
-        join_mode => JoinMode,
+        join_mode => JoinMode, %
         created_at => Now
     }),
     Data = #{
@@ -143,8 +143,14 @@ leave(Uid, Gid, _, GM, CurrentUid) ->
             , <<"id = ", (ec_cnv:to_binary(Gid))/binary>>
             , Data
         ),
+        Sum = imboy_db:pluck(group_repo:tablename(),
+            <<"id = ",  (ec_cnv:to_binary(Gid))/binary>>,
+            <<"user_id_sum">>,
+            0
+        ),
         Payload = #{
             <<"gid">> => imboy_hashids:encode(Gid),
+            <<"user_id_sum">> => Sum,
             <<"msg_type">> => <<"group_member_leave">>
         },
         msg_s2c_ds:send(Uid, Payload, ToUidLi, save),

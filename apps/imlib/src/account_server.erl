@@ -41,6 +41,7 @@ allocate() ->
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
+    ?LOG(['account_server/start_link/0', imboy_dt:now()]),
     Start = account_server:start_account(),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Start, 1000], []).
 
@@ -103,4 +104,7 @@ create_rand_list(Start, Len) ->
 
 
 start_account() ->
+    ?LOG(['account_server/start_account/0', imboy_dt:now()]),
+    % 0.
+    % Sql = <<"SELECT max(CAST(account as integer)) as max FROM public.user">>.
     imboy_db:pluck(<<"user">>, <<"max(CAST(account as integer)) as max">>, 50000).

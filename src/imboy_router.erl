@@ -32,7 +32,8 @@ get_routes() ->
        {"/conversation/mine", conversation_handler, #{action => mine}},
        {"/conversation/msgbox", conversation_handler, #{action => msgbox}},
 
-       {"/uqrcode", user_handler, #{action => uqrcode}},
+       {"/uqrcode", user_handler, #{action => qrcode}},% 2024-05-10 过两个版本可以清除该路由
+       {"/user/qrcode", user_handler, #{action => qrcode}},
        {"/user/update", user_handler, #{action => update}},
        {"/user/show", user_handler, #{action => show}},
        {"/user/change_state", user_handler, #{action => change_state}},
@@ -92,6 +93,7 @@ get_routes() ->
        % 最近新注册的并且允许被搜索到的朋友
        {"/fts/recently_user", fts_handler, #{action => recently_user}},
 
+       {"/group/qrcode", group_handler, #{action => qrcode}},
        {"/group/face2face", group_handler, #{action => face2face}},
        {"/group/face2face_save", group_handler, #{action => face2face_save}},
        {"/group/add", group_handler, #{action => add}},

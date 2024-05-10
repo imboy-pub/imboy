@@ -33,6 +33,8 @@ init(Req0, State0) ->
                 page(Req0, State, Attr);
             msg_page ->
                 msg_page(Req0, State);
+            qrcode ->
+                qrcode(Req0, State);
             false ->
                 Req0
         end,
@@ -142,24 +144,41 @@ edit(Req0, State) ->
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
 
+    Title = proplists:get_value(<<"title">>, PostVals),
+    Avatar = proplists:get_value(<<"avatar">>, PostVals),
+    Introduction = proplists:get_value(<<"introduction">>, PostVals),
+    Data = #{
+        % title => Title,
+        % avatar => Avatar,
+        % introduction => Introduction,
+    },
+    Data1 = if
+        Title /= undefined ->
+            Data#{title => Title};
+        true ->
+            Data
+    end,
+    Data2 = if
+        Avatar /= undefined ->
+            Data1#{avatar => Avatar};
+        true ->
+            Data1
+    end,
+    Data3 = if
+        Introduction /= undefined ->
+            Data2#{introduction => Introduction};
+        true ->
+            Data2
+    end,
     case Gid2 of
         0 ->
             imboy_response:error(Req0, "group id 必须");
         Gid2 when Gid2 > 0 ->
             GidBin = ec_cnv:to_binary(Gid2),
-            Title = proplists:get_value(<<"title">>, PostVals, <<>>),
-            Avatar = proplists:get_value(<<"avatar">>, PostVals, <<>>),
-            Introduction = proplists:get_value(<<"introduction">>, PostVals, <<>>),
             % 类型: 1 公开群组  2 私有群组
-            Type = proplists:get_value(<<"type">>, PostVals, <<"2">>),
+            % Type = proplists:get_value(<<"type">>, PostVals, <<"2">>),
+
             Now = imboy_dt:utc(millisecond),
-            Data = #{
-                type => Type,
-                title => Title,
-                avatar => Avatar,
-                introduction => Introduction,
-                updated_at => Now
-            },
             Tb = group_repo:tablename(),
             Count = imboy_db:pluck(Tb,
                <<"id = ", GidBin/binary>>,
@@ -171,8 +190,17 @@ edit(Req0, State) ->
                     imboy_db:update(
                         Tb
                         , <<"id = ", GidBin/binary>>
-                        , Data
-                    );
+                        , Data3#{
+                            updated_at => Now
+                        }
+                    ),
+                    ToUidLi = group_ds:member_uids(Gid2),
+                    Payload = Data3#{
+                        <<"gid">> => Gid,
+                        <<"msg_type">> => <<"group_eidt">>
+                    },
+                    msg_s2c_ds:send(Uid, Payload, ToUidLi, save)
+                    ;
                 false ->
                     M3 = group_random_code_repo:find_by_gid(
                         GidBin
@@ -245,7 +273,6 @@ page(Req0, State, <<"join">>) ->
     Payload = imboy_db:page(Page, Size, Tb, Where, OrderBy, Column),
     imboy_response:success(Req0, page_transfer(Payload)).
 
-
 msg_page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     #{gid := Gid} = cowboy_req:match_qs([{gid, [], undefined}], Req0),
@@ -275,6 +302,36 @@ msg_page(Req0, State) ->
             imboy_response:success(Req0, msg_page_transfer(Payload))
     end.
 
+%% 扫描“群二维码”
+qrcode(Req0, State) ->
+    #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    CurrentUid = maps:get(current_uid, State),
+    case CurrentUid of
+        undefined ->
+            Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
+            {ok, Req, State};
+        _ ->
+            Gid2 = imboy_hashids:decode(Gid),
+            Column = <<"id,title,avatar,member_count, member_max">>,
+            G = group_repo:find_by_id(Gid2, Column),
+            Res = group_member_logic:join(<<"scan_qr_code">>
+                , CurrentUid
+                , Gid2
+                % max = 0 群不存在，或者群ID有误。
+                , maps:get(<<"member_max">>, G, 0)
+                , maps:get(<<"member_count">>, G, 0)
+                ),
+            case Res of
+                ok ->
+                    G2=  G#{
+                        <<"member_count">> := maps:get(<<"member_count">>, G)+ 1
+                        , <<"type">> => <<"group">>
+                    },
+                    imboy_response:success(Req0, group_transfer(G2));
+                {error, Msg} ->
+                    imboy_response:error(Req0, Msg)
+            end
+    end.
 
 %% ===================================================================
 %% EUnit tests.

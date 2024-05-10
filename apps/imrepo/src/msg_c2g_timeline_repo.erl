@@ -6,6 +6,7 @@
 -include_lib("imlib/include/log.hrl").
 
 -export([tablename/0]).
+-export([client_ack/2]).
 -export([delete_timeline/2]).
 -export([list_by_uid/2, list_by_uid/3]).
 -export([check_msg/1]).
@@ -23,16 +24,22 @@ tablename() ->
 
 % msg_c2g_timeline_repo:list_by_uid(2, <<"msg_id">>, 10).
 list_by_uid(Uid, Column) ->
-    list_by_uid(Uid, Column, 1000).
+    list_by_uid(Uid, Column, 10000000).
 
 
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
-    % use index uk_c2g_timeline_ToUid_MsgId
-    Where = <<" WHERE to_uid = $1 LIMIT $2">>,
+    % use index idx_c2g_timeline_ToUid_ClientAck
+    Where = <<" WHERE to_uid = $1 AND client_ack = 0 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     imboy_db:query(Sql, [Uid, Limit]).
 
+% msg_c2g_timeline_repo:client_ack(109, <<"cor1aup1a20rgjtl5t8g">>).
+client_ack(ToUid, MsgId) ->
+    Tb = tablename(),
+    % use index uk_c2g_timeline_ToUid_MsgId
+    Where = <<"to_uid = ", (ec_cnv:to_binary(ToUid))/binary," AND  msg_id = '", MsgId/binary, "'">>,
+    imboy_db:update(Tb, Where, #{client_ack => 1}).
 
 % msg_c2g_timeline_repo:delete_timeline(6).
 delete_timeline(ToUid, MsgId) ->

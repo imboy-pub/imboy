@@ -1,3 +1,8 @@
+# 0.3.10
+* 新增 /group/qrcode 接口；
+* 新增 msg_c2g_timeline 添加 client_ack字段，相关业务逻辑做调整；
+* 其他一些细节修复
+
 # 0.3.9
 * 调整 /group_member/leave 接口请求和响应参数；
 * 调整 /group_member/join 接口请求和响应参数；

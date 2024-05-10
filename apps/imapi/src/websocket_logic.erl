@@ -194,17 +194,9 @@ c2g(MsgId, CurrentUid, Data) ->
 
 %% 客户端确认C2G投递消息
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
-c2g_client_ack(MsgId, CurrentUid, _DID) ->
-    msg_c2g_timeline_repo:delete_timeline(CurrentUid, MsgId),
+c2g_client_ack(MsgId, Uid, _DID) ->
+    msg_c2g_timeline_repo:client_ack(Uid, MsgId),
     ok.
-    % TODO clean code 2024-02-12
-    % case msg_c2g_timeline_repo:check_msg(MsgId) of
-    %     0 ->
-    %         msg_c2g_repo:delete_msg(MsgId);
-    %     _ ->
-    %         ok
-    % end.
-
 
 %% 系统消息
 -spec s2c(binary(), integer(), list()) -> ok | {reply, list()}.

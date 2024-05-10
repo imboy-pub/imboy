@@ -24,8 +24,8 @@ init(Req0, State0) ->
                 update(Req0, State);
             show ->
                 show(Req0, State);
-            uqrcode ->
-                uqrcode(Req0, State);
+            qrcode ->
+                qrcode(Req0, State);
             credential ->
                 credential(Req0, State);
             cancel ->
@@ -59,7 +59,7 @@ credential(Req0, State) ->
 
 
 %% 扫描“我的二维码”
-uqrcode(Req0, State) ->
+qrcode(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     CurrentUid = maps:get(current_uid, State),
     case CurrentUid of
@@ -72,27 +72,28 @@ uqrcode(Req0, State) ->
             User = user_logic:find_by_id(Uid2, Column),
             Status = maps:get(<<"status">>, User, -2),
             % ?LOG([User, Status]),
-            Payload = uqrcode_transfer(CurrentUid, Status, User),
+            Payload = qrcode_transfer(CurrentUid, Status, User),
             imboy_response:success(Req0, Payload)
     end.
 
 
-uqrcode_transfer(_, -2, #{}) ->
+qrcode_transfer(_, -2, #{}) ->
     #{
         <<"result">> => <<"user_not_exist">>,
         <<"msg">> => <<"用户不存在"/utf8>>
     };
-uqrcode_transfer(CurrentUid, 1, User) ->
+qrcode_transfer(CurrentUid, 1, User) ->
     Uid2 = maps:get(<<"id">>, User),
     User2 = maps:remove(<<"status">>, User),
     {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
     User2#{
+        <<"type">> => <<"user">>,
         <<"id">> => imboy_hashids:encode(Uid2),
         <<"isfriend">> => Isfriend,
         <<"remark">> => Remark
     };
     % [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ imboy_hashids:replace_id(User2);
-uqrcode_transfer(_, _, _) ->
+qrcode_transfer(_, _, _) ->
     % 状态: -1 删除  0 禁用  1 启用
     #{
         <<"result">> => <<"user_is_disabled_or_deleted">>,

@@ -171,6 +171,7 @@ list(Conn, Sql) ->
 % imboy_db:query("select * from user where id = 2")
 -spec query(binary() | list()) -> {ok, list(), list()} | {error, any()}.
 query(Sql) ->
+    % ?LOG([imboy_dt:now(), Sql]),
     Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res =
@@ -178,6 +179,8 @@ query(Sql) ->
             pgsql when is_pid(Conn) ->
                 epgsql:equery(Conn, Sql);
             pgsql when Conn == error_no_members ->
+                imboy_log:error(io_lib:format("imboy_db:query/1 sql:~s;~n", [Sql])),
+                % ?LOG([imboy_dt:now(), Sql]),
                 % 休眠 1秒
                 timer:sleep(1),
                 query(Sql);
@@ -197,6 +200,7 @@ query(Sql, Params) ->
             pgsql when is_pid(Conn) ->
                 epgsql:equery(Conn, Sql, Params);
             pgsql when Conn == error_no_members ->
+                imboy_log:error(io_lib:format("imboy_db:query/1 sql:~s, ~p;~n", [Sql,Params])),
                 % 休眠 1秒
                 timer:sleep(1),
                 query(Sql, Params);
@@ -218,6 +222,7 @@ execute(Sql, Params) ->
                 % {ok, 1} | {ok, 1, {ReturningField}}
                 execute(Conn, Sql, Params);
             pgsql when Conn == error_no_members ->
+                imboy_log:error(io_lib:format("imboy_db:execute/1 sql:~s, ~p;~n", [Sql,Params])),
                 % 休眠 1秒
                 timer:sleep(1),
                 execute(Sql, Params);
@@ -266,7 +271,7 @@ add(Conn, Tb, Data, Returning) ->
     Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
     Value = assemble_value(Data),
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    ?LOG(io:format("~s\n", [Sql])),
+    % ?LOG(io:format("~s\n", [Sql])),
     execute(Conn, <<Sql/binary, " ", Returning/binary>>, []).
 
 
@@ -351,6 +356,7 @@ assemble_value_filter(V) ->
 
 
 query_resp_map(Res) ->
+    ?LOG([Res]),
     case Res of
         {ok, _, []} ->
             #{};
@@ -377,7 +383,7 @@ query_resp({ok, ColumnList, Rows}) ->
     %     [{column,<<"count">>,int8,20,8,-1,1,0,0}]
     %     , [1]
     % }
-    % imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
+    imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [ element(2, C) || C <- ColumnList ],
     {ok, ColumnList2, Rows}.
 
