@@ -234,11 +234,16 @@ execute(Sql, Params) ->
 
 
 execute(Conn, Sql, Params) ->
-    % ?LOG(io:format("~s\n", [Sql])),
+    % ?LOG(io:format("sql: ~s\n", [Sql])),
+    % ?LOG(io:format("Params: ~p\n", [Params])),
+    % Res = epgsql:parse(Conn, Sql),
+    % ?LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
+    % {ok, Stmt} = Res,
     {ok, Stmt} = epgsql:parse(Conn, Sql),
-    [Res0] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
-    % {ok, 1} | {ok, 1, {ReturningField}}
-    Res0.
+    [Res2] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
+    ?LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
+    % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
+    Res2.
 
 
 insert_into(Tb, Data) ->
@@ -304,10 +309,10 @@ update(Conn, Tb, Where, KV) when is_list(KV) ->
 update(Conn, Tb, Where, KV) when is_map(KV) ->
     Set = get_set(maps:to_list(KV)),
     update(Conn, Tb, Where, Set);
-update(Conn, Tb, Where, KV) ->
+update(Conn, Tb, Where, SetBin) ->
     Tb2 = public_tablename(Tb),
-    Sql = <<"UPDATE ", Tb2/binary, " SET ", KV/binary, " WHERE ", Where/binary>>,
-    ?LOG(io:format("~s\n", [Sql])),
+    Sql = <<"UPDATE ", Tb2/binary, " SET ", SetBin/binary, " WHERE ", Where/binary>>,
+    ?LOG(io:format("update/4 sql ~s\n", [Sql])),
     imboy_db:execute(Conn, Sql, []).
 
 

@@ -32,12 +32,49 @@ join(_,_, _, 0, _) ->
 join(_,_, _, Max, Count) when Max =< Count ->
     {error, "群成员已满。"};
 join(JoinMode,Uid, Gid, _, _) ->
+    ?LOG(["join Gid", Gid, "JoinMode ", JoinMode]),
     imboy_db:with_transaction(fun(Conn) ->
         join(Conn, JoinMode, Uid, Gid)
     end),
     ok.
 
 join(Conn, JoinMode, Uid, Gid) ->
+    IsMember = group_ds:is_member(Uid, Gid),
+    ?LOG(io:format("join/4 IsMember: Uid ~p, Gid ~p, IsMember ~p\n", [Uid, Gid, IsMember])),
+    do_join(IsMember, Conn, JoinMode, Uid, Gid).
+
+leave(Uid, Gid, CurrentUid) ->
+    GM = group_member_repo:find(Gid, Uid, <<"*">>),
+    GMSize = maps:size(GM),
+    leave(Uid, Gid, GMSize, GM, CurrentUid).
+
+alias(Uid, Gid, Alias, Description) ->
+    Now = imboy_dt:utc(millisecond),
+    Data = #{
+        alias => Alias,
+        description => Description,
+        updated_at => Now
+    },
+    imboy_db:update(
+        group_member_repo:tablename()
+        , <<"group_id = ", (ec_cnv:to_binary(Gid))/binary, " AND user_id = ", (ec_cnv:to_binary(Uid))/binary>>
+        , Data
+    ),
+    ToUidLi = group_ds:member_uids(Gid),
+    msg_s2c_ds:send(Uid, Data#{
+        <<"gid">> => imboy_hashids:encode(Gid),
+        <<"msg_type">> => <<"group_member_alias">>
+        }, ToUidLi, save),
+    ok.
+
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+do_join(true, _, _, _, _) ->
+    ok;
+do_join(false, Conn, JoinMode, Uid, Gid) ->
     Now = imboy_dt:utc(millisecond),
     ToUidLi = group_ds:member_uids(Gid),
     % ?LOG(ToUidLi),
@@ -76,36 +113,6 @@ join(Conn, JoinMode, Uid, Gid) ->
     },
     msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
     ok.
-
-leave(Uid, Gid, CurrentUid) ->
-    GM = group_member_repo:find(Gid, Uid, <<"*">>),
-    GMSize = maps:size(GM),
-    leave(Uid, Gid, GMSize, GM, CurrentUid).
-
-alias(Uid, Gid, Alias, Description) ->
-    Now = imboy_dt:utc(millisecond),
-    Data = #{
-        alias => Alias,
-        description => Description,
-        updated_at => Now
-    },
-    imboy_db:update(
-        group_member_repo:tablename()
-        , <<"group_id = ", (ec_cnv:to_binary(Gid))/binary, " AND user_id = ", (ec_cnv:to_binary(Uid))/binary>>
-        , Data
-    ),
-    ToUidLi = group_ds:member_uids(Gid),
-    msg_s2c_ds:send(Uid, Data#{
-        <<"gid">> => imboy_hashids:encode(Gid),
-        <<"msg_type">> => <<"group_member_alias">>
-        }, ToUidLi, save),
-    ok.
-
-
-%% ===================================================================
-%% Internal Function Definitions
-%% ===================================================================
-
 
 leave(_, _, GMSize, _, _) when GMSize == 0 ->
     ok;

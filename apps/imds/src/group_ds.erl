@@ -8,6 +8,7 @@
 
 
 -export([member_uids/1]).
+-export([is_member/2]).
 -export([join/2]).
 -export([leave/2]).
 -export([dissolve/1]).
@@ -20,6 +21,16 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+is_member(Uid, Gid) ->
+    Res = group_member_repo:find(Gid, Uid, <<"id">>),
+    % ?LOG(io:format("is_member/2  Uid ~p, Gid ~p, Res ~p, Size ~p\n", [Uid, Gid, Res, map_size(Res)])),
+    case map_size(Res) of
+        0 ->
+            false;
+        _ ->
+            true
+    end.
 
 % group_ds:member_uids(1).
 -spec member_uids(integer()) -> list().

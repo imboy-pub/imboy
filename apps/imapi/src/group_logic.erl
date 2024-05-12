@@ -99,7 +99,7 @@ add(_, Uid, Type, MemberUids) ->
             imboy_db:with_transaction(fun(Conn) ->
                 Gid = create_group(Conn, 0, Uid, Now, Type, 1),
                 group_ds:join(Uid, Gid),
-                [group_member_logic:join(Conn, JoinMode, Uid2, Gid) || Uid2 <- MemberUids2],
+                [group_member_logic:join(Conn, JoinMode, Uid2, Gid) || Uid2 <- MemberUids2, Uid2 /= Uid],
                 {ok, Gid}
             end);
         GidOld when GidOld > 0 ->

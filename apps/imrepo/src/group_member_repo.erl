@@ -35,6 +35,7 @@ add(Conn, Data) ->
 % group_member_repo:find(6, 1, <<"*">>).
 find(Gid, Uid, Column) ->
     Tb = tablename(),
+    % use index uk_Gid_Uid
     Where = <<"WHERE group_id = ", (ec_cnv:to_binary(Gid))/binary, " AND user_id = ", (ec_cnv:to_binary(Uid))/binary>>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
     % ?LOG([Sql]),

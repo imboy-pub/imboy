@@ -306,12 +306,14 @@ msg_page(Req0, State) ->
 qrcode(Req0, State) ->
     #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     CurrentUid = maps:get(current_uid, State),
+    ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid]),
     case CurrentUid of
         undefined ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
             {ok, Req, State};
         _ ->
             Gid2 = imboy_hashids:decode(Gid),
+            ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
             Column = <<"id,title,avatar,member_count, member_max">>,
             G = group_repo:find_by_id(Gid2, Column),
             Res = group_member_logic:join(<<"scan_qr_code">>
