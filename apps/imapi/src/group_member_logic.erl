@@ -72,12 +72,11 @@ alias(Uid, Gid, Alias, Description) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-do_join(true, _, _, _, _) ->
+do_join(true, _, _, Uid, Gid) ->
+    group_member_join_notice(Gid, Uid),
     ok;
 do_join(false, Conn, JoinMode, Uid, Gid) ->
     Now = imboy_dt:utc(millisecond),
-    ToUidLi = group_ds:member_uids(Gid),
-    % ?LOG(ToUidLi),
     group_member_repo:add(Conn, #{
         group_id => Gid,
         user_id => Uid,
@@ -97,6 +96,12 @@ do_join(false, Conn, JoinMode, Uid, Gid) ->
         , Data
     ),
     group_ds:join(Uid, Gid),
+    group_member_join_notice(Gid, Uid),
+    ok.
+
+group_member_join_notice(Gid, Uid) ->
+    ToUidLi = group_ds:member_uids(Gid),
+    % ?LOG(ToUidLi),
     Sum = imboy_db:pluck(group_repo:tablename(),
         <<"id = ",  (ec_cnv:to_binary(Gid))/binary>>,
         <<"user_id_sum">>,
@@ -111,8 +116,7 @@ do_join(false, Conn, JoinMode, Uid, Gid) ->
         <<"account">> => maps:get(<<"account">>, User),
         <<"msg_type">> => <<"group_member_join">>
     },
-    msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
-    ok.
+    msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave).
 
 leave(_, _, GMSize, _, _) when GMSize == 0 ->
     ok;
@@ -158,6 +162,7 @@ leave(Uid, Gid, _, GM, CurrentUid) ->
         Payload = #{
             <<"gid">> => imboy_hashids:encode(Gid),
             <<"user_id_sum">> => Sum,
+            <<"leave_uid">> => imboy_hashids:encode(Uid),
             <<"msg_type">> => <<"group_member_leave">>
         },
         msg_s2c_ds:send(Uid, Payload, ToUidLi, save),

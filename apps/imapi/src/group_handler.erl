@@ -304,13 +304,31 @@ msg_page(Req0, State) ->
 
 %% 扫描“群二维码”
 qrcode(Req0, State) ->
+    % get Key
+    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<"0.1.1">>),
+    VsnMajor = imboy_cnv:vsn_major(Vsn),
+    AuthKeys = config_ds:env(auth_keys),
+    Key = proplists:get_value(VsnMajor, AuthKeys),
+    % get Key end
+
     #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    #{exp := ExpiredAt} = cowboy_req:match_qs([{exp, [], undefined}], Req0),
+    #{tk := Tk} = cowboy_req:match_qs([{tk, [], undefined}], Req0),
+    ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
+    ExpiredAtInt = binary_to_integer(ExpiredAt2),
+    Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
+    Now = imboy_dt:utc(millisecond),
     CurrentUid = maps:get(current_uid, State),
-    ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid]),
-    case CurrentUid of
-        undefined ->
+    ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid, " Verified", Verified, "Now > ExpiredAt ", Now > ExpiredAt, Now, ExpiredAt]),
+    case {CurrentUid, Verified} of
+        {undefined, _} ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
             {ok, Req, State};
+        {_, false} ->
+            Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
+            {ok, Req, State};
+        {_, true} when Now > ExpiredAtInt ->
+            imboy_response:error(Req0, "验证码已过期");
         _ ->
             Gid2 = imboy_hashids:decode(Gid),
             ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
@@ -325,11 +343,15 @@ qrcode(Req0, State) ->
                 ),
             case Res of
                 ok ->
-                    G2=  G#{
-                        <<"member_count">> := maps:get(<<"member_count">>, G)+ 1
+                    G2 = group_repo:find_by_id(Gid2, Column),
+                    Gm = group_member_repo:find(Gid2, CurrentUid, <<"*">>),
+                    [Gm2] = group_member_transfer:member_list([Gm]),
+                    G3=  G#{
+                        <<"member_count">> := maps:get(<<"member_count">>, G2)
                         , <<"type">> => <<"group">>
+                        , <<"group_member">> => Gm2
                     },
-                    imboy_response:success(Req0, group_transfer(G2));
+                    imboy_response:success(Req0, group_transfer(G3));
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
             end

@@ -22,6 +22,7 @@
 %% API
 %% ===================================================================
 
+% group_ds:is_member(62913, 11)
 is_member(Uid, Gid) ->
     Res = group_member_repo:find(Gid, Uid, <<"id">>),
     % ?LOG(io:format("is_member/2  Uid ~p, Gid ~p, Res ~p, Size ~p\n", [Uid, Gid, Res, map_size(Res)])),

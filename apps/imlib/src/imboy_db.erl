@@ -361,7 +361,7 @@ assemble_value_filter(V) ->
 
 
 query_resp_map(Res) ->
-    ?LOG([Res]),
+    % ?LOG([Res]),
     case Res of
         {ok, _, []} ->
             #{};
