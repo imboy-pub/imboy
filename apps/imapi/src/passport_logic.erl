@@ -197,6 +197,8 @@ find_password_by_email(Email, Pwd, _PostVals) ->
         , 0),
     case Id of
         0 ->
+            {error, "Email不存在或已被删除"};
+        Id ->
             Password = imboy_cipher:rsa_decrypt(Pwd),
             % Now = imboy_dt:utc(millisecond),
             Pwd2 = imboy_password:generate(Password),
@@ -210,9 +212,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
                     {ok, #{}};
                 Res ->
                     Res
-            end;
-        _ ->
-            {error, "Email不存在或已被删除"}
+            end
     end.
 
 
