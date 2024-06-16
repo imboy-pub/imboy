@@ -1,3 +1,7 @@
+# 0.3.13
+* 更新docker里面的 OTP_VERSION=25.3.2.12 TIMESCALEDB_VERSION 2.15.2
+* 新增 ./docker/pg-update-timescaledb.sh 文件，解决升级报错的问题；
+
 # 0.3.12
 * 修复 /group/qrcode 接口获取，重新获取 member_count ，而不是之前+=1，增加验证二维码有效期功能；
 * 修复 每次调用 group_member_logic:join/4-5 的收，都还发送 S2C消息 group_member_join，客户端要做消息幂等处理

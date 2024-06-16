@@ -1,6 +1,10 @@
 
 重新部署流程
 
+pro.imboy.pub
+i.imboy.puub
+turn.imboy.pub
+
 1. 安装erlang
 
 【有道云笔记】CentOS 源码安装 Erlang.md

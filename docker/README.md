@@ -61,8 +61,12 @@ docker push imboy/imboy-api:dev
 docker run -it imboy/imboy-api:dev_arm64 bash --link=imboy_postgis
 
 docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:0.1.3 .
-docker push imboy/imboy-api:0.1.3
+docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:0.1.5 .
 
+docker buildx build --platform linux/amd64 --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api-linux-arm64:0.1.5 .
+
+docker push imboy/imboy-api:0.1.3
+docker push imboy/imboy-api-linux-arm64:0.1.5 .
 
 
 mkdir -p /www /www/wwwroot && git clone https://gitee.com/imboy-pub/imboy.git imboy-api && cd imboy-api
@@ -76,7 +80,8 @@ from  https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 dev
 ```
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev .
+docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.6 .
+
 ```
 
 pro
@@ -266,6 +271,23 @@ https://192.168.0.144:8088/players/rtc_publisher.html?autostart=true&stream=live
 打开页面观看WebRTC流
 https://192.168.0.144:8088/players/rtc_player.html?autostart=true&stream=livestream&port=9080&schema=https
 
+### jenkins
+docker rm -f imboy_jenkins && \
+docker run -d \
+    --name imboy_jenkins \
+    --user root \
+    --network imboy-network \
+    -p 7080:8080 \
+    -p 50000:50000 \
+    -v /data/docker/jenkins_home:/var/jenkins_home \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /usr/bin/docker:/usr/bin/docker \
+    -v /etc/docker:/etc/docker \
+    jenkins/jenkins:latest-jdk17
+
+将 /data/docker/jenkins_home 的所有权更改为UID 1000：
+
+    chown -R 1000:1000 /data/docker/jenkins_home && chmod -R 777 /data/docker/jenkins_home
 ##
 
 https://blog.wu-boy.com/2018/03/nginx-reverse-proxy-image-resizing/

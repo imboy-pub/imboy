@@ -3,7 +3,7 @@
 version: "3.5"
 services:
   imboy_pg15:
-    image: imboy/imboy-pg:15.3.4.2.dev
+    image: imboy/imboy-pg:15.3.4.2.dev.6
     container_name: imboy_pg15
     hostname: pg.docker.imboy.pub
     restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
