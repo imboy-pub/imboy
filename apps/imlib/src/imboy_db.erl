@@ -29,6 +29,8 @@
 
 -export([public_tablename/1]).
 
+-export([migrate/0]).
+
 -export([with_transaction/1]).
 -export([with_transaction/2]).
 
@@ -42,6 +44,71 @@
 %% API
 %% ===================================================================
 
+% imboy_db:migrate().
+migrate() ->
+    Conf = config_ds:env(super_account),
+    Path = config_ds:env(scripts_path),
+    {ok, Conn} = epgsql:connect(Conf),
+    MigrationCall =
+      pure_migrations:migrate(
+        Path,
+        fun(F) -> epgsql:with_transaction(Conn, fun(_) -> F() end) end,
+        fun(Q) ->
+          case epgsql:squery(Conn, Q) of
+            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
+                   {column, <<"filename">>, _, _, _, _, _, _, _}], []} ->
+                    [];
+            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
+                   {column, <<"filename">>, _, _, _, _, _, _, _}], Data} ->
+                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
+
+            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{null}]} ->
+                % 这里必须为 -1 否则在初始化的时候会报错
+                -1;
+            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{N}]} ->
+                % 版本号存储在 int4 类型中，取值范围从-2,147,483,648到2,147,483,647
+              list_to_integer(binary_to_list(N));
+
+            {ok, [
+              {column, <<"version">>, _, _, _, _, _},
+              {column, <<"filename">>, _, _, _, _, _}], Data} ->
+                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
+            {ok, [{column, <<"max">>, _, _, _, _, _}], [{null}]} -> -1;
+            {ok, [{column, <<"max">>, _, _, _, _, _}], [{N}]} ->
+              list_to_integer(binary_to_list(N));
+            [{ok, _, _}, {ok, _}] -> ok;
+            {ok, _, _} -> ok;
+            {ok, _} -> ok;
+            Default ->
+                Res = priv_is_valid(Default),
+                io:format("DefaultDefaultDefaultDefaultDefault ~p~n", [Default]),
+                case Res of
+                    true->
+                        % 匹配一个脚本多个SQL语句的情况
+                        ok;
+                    _ ->
+                        Default
+                end
+          end
+        end),
+    % ...
+    %% more preparation steps if needed
+    % ...
+    %% migration call
+    Res = MigrationCall(),
+    % imboy_log:debug(io:format("~p~n", [Res])),
+    ok = epgsql:close(Conn),
+    Res.
+
+
+priv_is_valid(List) ->
+    lists:all(fun(E) ->
+        case E of
+            {ok, _} -> true;
+            {ok, _, _} -> true;
+            _ -> false
+        end
+    end, List).
 
 -spec with_transaction(fun((epgsql:connection()) -> Reply)) -> Reply | {rollback, any()} when Reply :: any().
 with_transaction(F) ->
@@ -402,6 +469,7 @@ public_tablename(Tb) ->
         _ ->
             Tb
     end.
+
 
 
 %% ===================================================================

@@ -1,4 +1,16 @@
 
+# 使用 pure-migrations 管理数据库版本
+
+
+https://github.com/bearmug/erlang-pure-migrations
+
+
+* 数据库版本脚本文件使用8位数做前缀 00000000_xxx.sql
+* 为了数据库安全，添加 super_account 数据库账户，和api的账号分类；
+```
+imboy_db:migrate().
+./imboy migrate:run
+```
 
 * DBeaver 可以对比数据结构
 

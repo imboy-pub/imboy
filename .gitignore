@@ -34,5 +34,6 @@ docker/img_fastdfs_data
 docker/pgsql15data
 docker/imboy_pg15
 imboy_v1.sql
+*pro*
 .pgsync.yml
 schema_diff.sql

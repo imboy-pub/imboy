@@ -24,6 +24,8 @@ init(Req0, State0) ->
                 alias(Req0, State);
             page ->
                 page(Req0, State);
+            % alias -> % 设置群内昵称
+            %     alias(Req0, State);
             false ->
                 Req0
         end,

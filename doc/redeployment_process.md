@@ -14,6 +14,7 @@ https://note.youdao.com/s/7hvcSteY
 2. 安装docker
 ```
 mkdir -p /data /data/imboy
+docker network create imboy-network
 ```
 
 3. 安装postgresql15
@@ -72,15 +73,15 @@ docker rm -f imboy_fastdfs && docker run -d \
 ```
 
 修改配置如下：
-/data/imboy/img_fastdfs_data/conf/cfg.json
+/data/docker/img_fastdfs_data/conf/cfg.json
 ```
     "support_group_manage": false,
     "download_domain": "124.222.102.13:8080",
-    "scenes": ["dev", "prod"],
+    "scenes": ["dev", "pro"],
     "show_dir": false,
     "file_sum_arithmetic": "sha1",
     "admin_ips": ["127.0.0.1"],
-    "auth_url": "http://124.222.102.13:9800/auth/assets",
+    "auth_url": "https://dev.imboy.pub/auth/assets",
     "enable_download_auth": true,
     "default_download": false,
 ```

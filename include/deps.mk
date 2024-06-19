@@ -127,6 +127,7 @@ dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
 dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git leeyi
 # 6months 245commits
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
+dep_pure_migrations = git https://gitee.com/imboy-tripartite-deps/erlang-pure-migrations.git master
 
 dep_idna = hex 6.1.1 idna
 dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1

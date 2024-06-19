@@ -93,6 +93,7 @@ get_routes() ->
        % 最近新注册的并且允许被搜索到的朋友
        {"/fts/recently_user", fts_handler, #{action => recently_user}},
 
+       {"/group/remark", group_handler, #{action => remark}},
        {"/group/qrcode", group_handler, #{action => qrcode}},
        {"/group/face2face", group_handler, #{action => face2face}},
        {"/group/face2face_save", group_handler, #{action => face2face_save}},

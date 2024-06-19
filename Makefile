@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
-PROJECT_VERSION = 0.3.12
+PROJECT_VERSION = 0.3.14
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -21,7 +21,7 @@ DEPS += goldrush
 # Erlang 的纯函数式和泛型编程
 DEPS += datum jsone jsx
 # DEPS += mysql poolboy
-DEPS += epgsql pooler
+DEPS += epgsql pooler pure_migrations
 # DEPS += idna hackney
 DEPS += depcache
 # DEPS += khepri
@@ -36,7 +36,6 @@ DEPS += telemetry lager observer_cli recon redbug
 DEPS += sync
 DEPS += simple_captcha
 DEPS += erlydtl
-
 # DEPS += rebar3_appup_plugin
 # DEPS += vix
 # DEPS += nksip

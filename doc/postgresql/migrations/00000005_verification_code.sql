@@ -1,6 +1,6 @@
 -- Table: public.verification_code
 
--- DROP TABLE IF EXISTS public."verification_code";
+DROP TABLE IF EXISTS public."verification_code";
 
 CREATE TABLE IF NOT EXISTS public."verification_code"
 (

@@ -35,4 +35,4 @@ COMMENT ON COLUMN public.feedback_reply.body IS '回复内容';
 
 COMMENT ON COLUMN public.feedback_reply.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.feedback_reply.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.feedback_reply.updated_at IS '更新记录Unix时间戳毫秒单位';

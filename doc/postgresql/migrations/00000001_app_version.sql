@@ -44,7 +44,7 @@ COMMENT ON COLUMN public.app_version.force_update IS '是否强制升级 1 是  
 COMMENT ON COLUMN public.app_version.sort IS '排序，值越大越靠前： major * 1_000_000 + minor * 1_000 + patch';
 COMMENT ON COLUMN public.app_version.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.app_version.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.app_version.updated_at IS '更新记录Unix时间戳毫秒单位';
 
 -- index
 CREATE INDEX i_vsn_Status_Type_RegionCode ON public.app_version (status, type, region_code);
