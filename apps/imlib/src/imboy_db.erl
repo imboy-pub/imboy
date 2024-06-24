@@ -61,12 +61,11 @@ migrate() ->
             {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
                    {column, <<"filename">>, _, _, _, _, _, _, _}], Data} ->
                 [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
-
             {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{null}]} ->
-                % 这里必须为 -1 否则在初始化的时候会报错
+                % It has to be -1 or it will get an error during initialization
                 -1;
             {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{N}]} ->
-                % 版本号存储在 int4 类型中，取值范围从-2,147,483,648到2,147,483,647
+                % The version number is stored in the int4 type and ranges from -2,147,483,648 to 2,147,483,647
               list_to_integer(binary_to_list(N));
 
             {ok, [
@@ -76,15 +75,14 @@ migrate() ->
             {ok, [{column, <<"max">>, _, _, _, _, _}], [{null}]} -> -1;
             {ok, [{column, <<"max">>, _, _, _, _, _}], [{N}]} ->
               list_to_integer(binary_to_list(N));
-            [{ok, _, _}, {ok, _}] -> ok;
             {ok, _, _} -> ok;
             {ok, _} -> ok;
             Default ->
+                % Match multiple SQL statements in a script
                 Res = priv_is_valid(Default),
-                io:format("DefaultDefaultDefaultDefaultDefault ~p~n", [Default]),
+                % io:format("DefaultDefaultDefaultDefaultDefault ~p~n", [Default]),
                 case Res of
                     true->
-                        % 匹配一个脚本多个SQL语句的情况
                         ok;
                     _ ->
                         Default
@@ -99,7 +97,6 @@ migrate() ->
     % imboy_log:debug(io:format("~p~n", [Res])),
     ok = epgsql:close(Conn),
     Res.
-
 
 priv_is_valid(List) ->
     lists:all(fun(E) ->

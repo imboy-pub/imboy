@@ -1,6 +1,8 @@
+
 # 0.3.14
 * 引入pure-migrations 管理数据库版本，数据库版本脚本文件使用8位数做前缀 00000000_xxx.sql
 * 为了数据库安全，添加 super_account 数据库账户，和api的账号分类；
+* 修正 public.user 为空的时候，IMBOYENV=local make run 启动报错的问题；
 
 # 0.3.13
 * 更新docker里面的 OTP_VERSION=25.3.2.12 TIMESCALEDB_VERSION 2.15.2

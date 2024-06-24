@@ -22,6 +22,7 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 
 * Erlang/OTP 24 (Cowboy 2.11 requires Erlang/OTP 24.0 or greater.)
 * Erlang/OTP 25
+* Erlang/OTP 26 (没发运行，暂时没精力排查原因)
 
 * 数据库 PostgreSQL15
 
