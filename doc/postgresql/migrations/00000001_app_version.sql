@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public."app_version"
     status smallint NOT NULL DEFAULT 1,
     updated_at bigint DEFAULT 0,
     created_at bigint NOT NULL,
-    CONSTRAINT uk_Type_Vsn UNIQUE  (type, vsn)
+    CONSTRAINT uk_Vsn_PkgName_Type UNIQUE  (vsn, package_name, type)
 )
 
 TABLESPACE pg_default;

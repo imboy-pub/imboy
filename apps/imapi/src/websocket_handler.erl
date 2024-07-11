@@ -160,7 +160,6 @@ websocket_handle({text, Msg}, State) ->
         case cowboy_bstr:to_lower(Type) of
             <<"c2s">> ->  % 机器人聊天消息
                 websocket_logic:c2s(MsgId, CurrentUid, Data);
-
             <<"c2c">> ->  % 单聊消息
                 websocket_logic:c2c(MsgId, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
@@ -175,7 +174,7 @@ websocket_handle({text, Msg}, State) ->
             <<"c2g_revoke_ack">> ->  % 客户端撤回消息ACK
                 websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
 
-            <<"webrtc_", _Event/binary>> ->
+            <<"webrtc_", _Event/binary>> -> % webrt信令处理
                 % Room = webrtc_ws_logic:room_name(
                 %     imboy_hashids:encode(CurrentUid,
                 %     To),
@@ -211,7 +210,7 @@ websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
 
 
-%% 处理erlang 发送的消息
+%% 处理从其他进程发送到 WebSocket 进程的消息。
 websocket_info({reply, Msg}, State) ->
     ?LOG([reply, State]),
     {reply, {text, jsone:encode(Msg, [native_utf8])}, State, hibernate};

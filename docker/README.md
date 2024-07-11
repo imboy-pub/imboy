@@ -62,12 +62,10 @@ docker push imboy/imboy-api:dev
 
 docker run -it imboy/imboy-api:dev_arm64 bash --link=imboy_postgis
 
-docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:0.1.3 .
 docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:0.1.5 .
 
 docker buildx build --platform linux/amd64 --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api-linux-arm64:0.1.5 .
 
-docker push imboy/imboy-api:0.1.3
 docker push imboy/imboy-api-linux-arm64:0.1.5 .
 
 
