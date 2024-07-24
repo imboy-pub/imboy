@@ -107,6 +107,7 @@ save(Key, Data) ->
         0 ->
             imboy_db:insert_into(<<"config">>, Data#{
                 <<"key">> => Key,
+                <<"updated_at">> => 0,
                 <<"created_at">> => Now2
             }, <<>>);
         _ ->

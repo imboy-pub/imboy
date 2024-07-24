@@ -6,6 +6,7 @@ relx
 .erlang.mk
 priv/static/layim
 ebin
+*bak*.config
 *local*.config
 *prod*.config
 *local*.args
