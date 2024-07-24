@@ -305,10 +305,10 @@ msg_page(Req0, State) ->
 %% 扫描“群二维码”
 qrcode(Req0, State) ->
     % get Key
-    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<"0.1.1">>),
-    VsnMajor = imboy_cnv:vsn_major(Vsn),
-    AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(VsnMajor, AuthKeys),
+    ClientOS = cowboy_req:header(<<"cos">>, Req0),
+    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<>>),
+    Pkg = cowboy_req:header(<<"pkg">>, Req0, <<"pub.imboy.apk">>),
+    Key = app_version_ds:sign_key(ClientOS, Vsn, Pkg),
     % get Key end
 
     #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
@@ -316,10 +316,10 @@ qrcode(Req0, State) ->
     #{tk := Tk} = cowboy_req:match_qs([{tk, [], undefined}], Req0),
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
-    Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
+    Verified = imboy_hasher:hmac_sha256(ExpiredAt2,  Key) == Tk,
     Now = imboy_dt:utc(millisecond),
     CurrentUid = maps:get(current_uid, State),
-    ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid, " Verified", Verified, "Now > ExpiredAt ", Now > ExpiredAt, Now, ExpiredAt]),
+    % ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid, " Verified", Verified, "Now > ExpiredAt ", Now > ExpiredAt, Now, ExpiredAt]),
     case {CurrentUid, Verified} of
         {undefined, _} ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),

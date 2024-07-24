@@ -5,7 +5,7 @@
 %%%
 
 -export([get/1, get/2]).
--export([set/2,
+-export([set/2, set/4,
          save/2]).
 -export([aes_encrypt/1]).
 
@@ -66,45 +66,54 @@ local_reload() ->
 get(Key) ->
     get(Key, <<>>).
 
-
-get(Key, Defalut) when is_list(Key) ->
-    get(list_to_binary(Key), Defalut);
-get(ConfigKey, Defalut) ->
-    % Key = {config3, ConfigKey},
+get(Key, Defalut) ->
+    Key2 = ec_cnv:to_binary(Key),
+    % Val = imboy_hasher:decoded_field(<<"value">>),
+    % Res = imboy_db:pluck(<<"config">>, <<"key = '", Key2/binary, "'">>, Val, Defalut),
+    % imboy_cnv:json_maybe(Res).
     Fun = fun() ->
-                  Val = imboy_hasher:decoded_field(<<"value">>),
-                  imboy_db:pluck(<<"config">>, <<"key = '", ConfigKey/binary, "'">>, Val, Defalut)
-          end,
+        Val = imboy_hasher:decoded_field(<<"value">>),
+        Res = imboy_db:pluck(<<"config">>, <<"key = '", Key2/binary, "'">>, Val, Defalut),
+        imboy_cnv:json_maybe(Res)
+    end,
     % 缓存10天
-    imboy_cache:memo(Fun, cache_key(ConfigKey), 864000).
-
+    imboy_cache:memo(Fun, cache_key(Key2), 864000).
 
 % config_ds:set(<<"dbc">>, <<"ddd2">>).
 % config_ds:get(<<"dbc">>).
-set(Key, Val) when is_list(Key) ->
-    set(list_to_binary(Key), Val);
-set(Key, Val) when is_list(Val) ->
-    set(Key, list_to_binary(Val));
 set(Key, Val) ->
-    save(Key, [{<<"value">>, Val}, {<<"tab">>, <<"sys">>}, {<<"title">>, <<"">>}, {<<"remark">>, <<"">>}]).
+    set(Key, Val, <<>>, <<>>).
+
+set(Key, Val, Title, Remark) ->
+    Key2 = ec_cnv:to_binary(Key),
+    imboy_cache:flush(cache_key(Key2)),
+    save(Key2, #{
+        % value 的值在 do_aes_encrypt/2 放里面处理加密，这里给明文
+        <<"value">> => jsone:encode(Val, [native_utf8]),
+        <<"tab">> => <<"sys">>,
+        <<"system">> => 1,
+        <<"title">> => ec_cnv:to_binary(Title),
+        <<"remark">> => ec_cnv:to_binary(Remark)
+    }).
 
 
 save(Key, Data) ->
     % ?LOG([Key, Val, Tab]),
     Now = imboy_dt:utc(millisecond),
     Now2 = integer_to_binary(Now),
-    case imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"count(*) as count">>, 0) of
+    Where =  <<"key = '", Key/binary, "'">>,
+    Field = <<"count(*) as count">>,
+    case imboy_db:pluck(<<"config">>, Where, Field, 0) of
         0 ->
-            Data2 = [{<<"created_at">>, Now2} | [{<<"key">>, Key} | Data]],
-            % Data2 = [{<<"key">>, Key} | Data],
-            Column = [ K || {K, _} <- Data2 ],
-            Value = [ <<"'", V/binary, "'">> || {_, V} <- Data2 ],
-            imboy_db:insert_into(<<"config">>, Column, Value, <<"">>);
+            imboy_db:insert_into(<<"config">>, Data#{
+                <<"key">> => Key,
+                <<"created_at">> => Now2
+            }, <<>>);
         _ ->
-            Data2 = [{<<"updated_at">>, Now2} | Data],
             imboy_db:update(<<"config">>
                 , <<"key = '", Key/binary, "'">>
-                , Data2)
+                , Data#{<<"updated_at">> => Now2}
+            )
     end,
     imboy_cache:flush(cache_key(Key)),
     aes_encrypt(Key).
@@ -149,12 +158,15 @@ config_file() ->
 
 
 do_aes_encrypt(Key, <<"aes_cbc_", _Val/binary>>) ->
-    imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"value">>, <<>>);
+    Where = <<"key = '", Key/binary, "'">>,
+    imboy_db:pluck(<<"config">>, Where, <<"value">>, <<>>);
 do_aes_encrypt(Key, Val) ->
     AesKey = config_ds:env(postgre_aes_key),
     Where = <<"key = '", Key/binary, "'">>,
     Val1 = base64:encode(Val),
-    Set = <<"value = 'aes_cbc_' || encode(encrypt('", Val1/binary, "', '", AesKey/binary,
-            "', 'aes-cbc/pad:pkcs'), 'base64')">>,
+    Set = <<"value = 'aes_cbc_' || encode(encrypt('",
+        Val1/binary, "', '",
+        AesKey/binary,
+        "', 'aes-cbc/pad:pkcs'), 'base64')">>,
     imboy_db:update(<<"config">>, Where, Set),
-    imboy_db:pluck(<<"config">>, <<"key = '", Key/binary, "'">>, <<"value">>, <<>>).
+    imboy_db:pluck(<<"config">>, Where, <<"value">>, <<>>).

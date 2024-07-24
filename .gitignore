@@ -37,3 +37,4 @@ imboy_v1.sql
 *pro*
 .pgsync.yml
 schema_diff.sql
+sys.dev.config

@@ -28,7 +28,7 @@ encrypt_token(ID) ->
 
 %% 解析token
 decrypt_token(Token) ->
-    try jwerl:verify(Token, hs256, config_ds:env(jwt_key)) of
+    try jwerl:verify(Token, hs256, config_ds:get(jwt_key)) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
             ID = imboy_hashids:decode(Uid),
@@ -68,4 +68,4 @@ encrypt_token(ID, Millisecond, Sub) ->
              ,
              uid => imboy_hashids:encode(ID)
             },
-    jwerl:sign(Data, hs256, config_ds:env(jwt_key)).
+    jwerl:sign(Data, hs256, config_ds:get(jwt_key)).

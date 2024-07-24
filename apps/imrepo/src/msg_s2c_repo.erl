@@ -44,7 +44,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
         created_at, server_ts, msg_id)">>,
     CreatedAt2 = integer_to_binary(CreatedAt),
     ServerTS2 = integer_to_binary(ServerTS),
-    ?LOG([Payload2, FromId, ToId, CreatedAt2, ServerTS2, Id]),
+    % ?LOG([Payload2, FromId, ToId, CreatedAt2, ServerTS2, Id]),
     Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '", ToId/binary, "', '", CreatedAt2/binary, "', '",
               ServerTS2/binary, "', '", Id/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

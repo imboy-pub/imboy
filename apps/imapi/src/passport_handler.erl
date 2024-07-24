@@ -49,7 +49,7 @@ login(Req0) ->
     RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
-    % ?LOG(['Type', Type,'Password', Password]),
+    % ?LOG(['Type', Type,'Password', Password, "PostVals ", PostVals]),
     Pwd = case RsaEncrypt == <<"1">> of
         true ->
             try imboy_cipher:rsa_decrypt(Password) of
@@ -63,7 +63,7 @@ login(Req0) ->
             Password
     end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
-    % ?LOG(["Ip", Ip]),
+    % ?LOG(["Ip", Ip, "Pwd " , Pwd]),
     Post2 = [{<<"ip">>, Ip} | PostVals],
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
@@ -148,7 +148,8 @@ signup(Req0) ->
     % 注册客服端操作系统
     % RegCos = proplists:get_value(<<"reg_cos">>, PostVals),
 
-    Cosv = cowboy_req:header(<<"cosv">>, Req0),
+    % Cosv = cowboy_req:header(<<"cosv">>, Req0),
+    Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
@@ -179,7 +180,8 @@ find_password(Req0) ->
     % 注册客服端操作系统
     % RegCos = proplists:get_value(<<"reg_cos">>, PostVals),
 
-    Cosv = cowboy_req:header(<<"cosv">>, Req0),
+    % Cosv = cowboy_req:header(<<"cosv">>, Req0),
+    Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],

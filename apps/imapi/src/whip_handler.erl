@@ -237,8 +237,6 @@ generate_answer_sdp(OfferSdp, Setup, _State) ->
                 iolist_to_binary(string:replace(AnswerSdp3, <<"a=recvonly">>, <<"a=sendonly">>, all))
         end,
 
-    % CurrentUid = 0,
-    % {Username, Credential, _Uris} = user_ds:webrtc_credential(CurrentUid),
     SdpLi = remove_item(AnswerSdp4),
     Append = [[[Setup, ?crlf]]
      % , ["a=connection:new", ?crlf]

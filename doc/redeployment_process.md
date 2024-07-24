@@ -22,8 +22,7 @@ docker network create imboy-network
 ```
 cd /data/imboy/imboyapi
 docker pull postgres:15-bullseye
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev .
-docker rm -f imboy_pgsql && docker run -d --name imboy_pgsql --network imboy-network -e POSTGRES_USER=imboy_user -e POSTGRES_PASSWORD=abc54321 -e POSTGRES_DB=imboy_v1 -e PGDATA=/var/lib/postgresql/data/pgdata -v /data/imboy/imboy_pgsql:/var/lib/postgresql/data -p 127.0.0.1:4321:5432 imboy/imboy-pg:15.3.4.2.dev
+docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.6
 
 docker rm -f imboy_pg15 && docker run -d --name imboy_pg15 \
     --network imboy-network \
@@ -35,7 +34,7 @@ docker rm -f imboy_pg15 && docker run -d --name imboy_pg15 \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     -v /data/docker/imboy_pg15:/var/lib/postgresql/data \
     -p 127.0.0.1:4321:5432 \
-    imboy/imboy-pg:15.3.4.2.dev
+    imboy/imboy-pg:15.3.4.2.dev.6
 
 // 解决升级 timescaledb 后加载报错的问题
 psql -U imboy_user -d imboy_v1
@@ -137,3 +136,45 @@ Escape character is '^]'.
 
 STUN_URL=stun:124.222.102.13:3478
 TURN_URL=turn:124.222.102.13:3478?transport=udp
+
+7. 数据库初始化配置
+
+./project/imboy.pub/doc/keystore/imboy_init_config_dev.md
+./project/imboy.pub/doc/keystore/imboy_init_config_pro.md
+
+```
+
+config_ds:set(<<"api_auth_switch">>, on). % on | off
+
+config_ds:set(<<"hashids_salt">>, <<>>).
+config_ds:set(<<"jwt_key">>, <<>>).
+config_ds:set(<<"password_salt">>, <<>>).
+
+
+config_ds:set(<<"login_pwd_rsa_encrypt">>, 1, <<"登录密码使用RSA算法加密"/utf8>>, <<"系统登录是否开启RSA加密 1 是； 0 否"/utf8>>).
+config_ds:set(<<"site_name">>, <<"IMBoy"/utf8>>, <<"前端站点名称"/utf8>>, <<>>).
+
+config_ds:set(<<"login_rsa_pub_key">>, <<"">>, <<"登录RSA算法加密公钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+
+config_ds:set(<<"login_rsa_priv_key">>, <<"">>, <<"登录RSA算法加密私钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+
+
+
+config_ds:set(<<"upload_url">>, <<"https://a.imboy.pub">>).
+config_ds:set(<<"upload_key">>, <<"">>).
+config_ds:set(<<"upload_scene">>, <<"dev">>).
+config_ds:set(<<"ws_url">>, <<"wss://dev.imboy.pub/ws/">>).
+config_ds:set(<<"ws_url">>, <<"ws://http://192.168.2.226:9800/ws/">>).
+
+config_ds:set(<<"eturnal_secret">>, "").
+config_ds:set(<<"turn_urls">>, [<<"turn:dev.imboy.pub:34780?transport=udp">>]).
+config_ds:set(<<"stun_urls">>, [<<"stun:dev.imboy.pub:34780">>]).
+
+config_ds:set(<<"solidified_key">>, <<"">>, <<"接口默认签名秘钥"/utf8>>, <<"如果没有自动获取到sign_key 就用这个值来签名"/utf8>>).
+config_ds:set(<<"solidified_key_iv">>, <<"">>, <<"秘钥IV"/utf8>>, <<"IV 必须都为128比特，也就是16字节"/utf8>>).
+
+config_ds:get(<<"upload_url">>).
+config_ds:get(<<"ws_url">>).
+config_ds:get(<<"turn_urls">>).
+
+```

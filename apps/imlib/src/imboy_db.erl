@@ -154,10 +154,11 @@ pluck(Query, Default) ->
     % imboy_log:info(io_lib:format("imboy_db:pluck/2 Query:SELECT ~s ~n", [Query])),
     % imboy_log:info(io_lib:format("imboy_db:pluck/2 Res:~p ~n", [Res])),
     case Res of
-        {ok, _, [{Val}|_]} ->
-            % imboy_log:info(io_lib:format("imboy_db:pluck/2 Val:~p ~n", [Val])),
+        {ok, _, [{Val}]} ->
+            % imboy_log:info(io_lib:format("imboy_db:pluck/2 1 Val:~p ~n", [Val])),
             Val;
-        {ok, _, [Val]} ->
+        {ok, _, [{Val}|_]} ->
+            % imboy_log:info(io_lib:format("imboy_db:pluck/2 2 Val:~p ~n", [Val])),
             Val;
         _ ->
             Default
@@ -198,7 +199,7 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
     % Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % Res = imboy_db:query(Sql, [Limit, Offset]),
-    ?LOG(['Sql', Sql]),
+    % ?LOG(['Sql', Sql]),
     % ?LOG(['Res', Res]),
     % case Res of
     case imboy_db:query(Sql, [Limit, Offset]) of
@@ -305,7 +306,7 @@ execute(Conn, Sql, Params) ->
     % {ok, Stmt} = Res,
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     [Res2] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
-    ?LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
+    % ?LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
     % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
     Res2.
 
@@ -331,7 +332,7 @@ insert_into(Tb, Column, Value, Returning) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    ?LOG([insert_into, Sql]),
+    % ?LOG([insert_into, Sql]),
     execute(<<Sql/binary, " ", Returning/binary>>, []).
 
 add(Conn, Tb, Data) ->
@@ -376,7 +377,7 @@ update(Conn, Tb, Where, KV) when is_map(KV) ->
 update(Conn, Tb, Where, SetBin) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", SetBin/binary, " WHERE ", Where/binary>>,
-    ?LOG(io:format("update/4 sql ~s\n", [Sql])),
+    % ?LOG(io:format("update/4 sql ~s\n", [Sql])),
     imboy_db:execute(Conn, Sql, []).
 
 
@@ -408,7 +409,7 @@ assemble_value(Values) when is_map(Values) ->
 assemble_value(Values) when is_list(Values) ->
     [assemble_value_filter(V) || V <- Values].
 
-assemble_value_filter({raw, V}) when is_binary(V) ->
+assemble_value_filter({raw, V}) ->
     V;
 assemble_value_filter(V) ->
     if
@@ -452,7 +453,7 @@ query_resp({ok, ColumnList, Rows}) ->
     %     [{column,<<"count">>,int8,20,8,-1,1,0,0}]
     %     , [1]
     % }
-    imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
+    % imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [ element(2, C) || C <- ColumnList ],
     {ok, ColumnList2, Rows}.
 

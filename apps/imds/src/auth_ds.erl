@@ -21,11 +21,11 @@
 %%% 获取资源服务访问token
 % {imboy_dt:utc(second), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:utc(second)))}.
 % auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
-get_token(assets, S, V) ->
-    AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(S, AuthKeys),
-    binary:part(imboy_hasher:md5(Key ++ V), {8, 16}).
-
+get_token(assets, _Scene, Num) ->
+    % TODO public key sign
+    Key = config_ds:get(<<"upload_key">>),
+    Num2 = ec_cnv:to_binary(Num),
+    binary:part(imboy_hasher:md5(<<Key/binary, Num2/binary>>), {8, 16}).
 
 %% ===================================================================
 %% Internal Function Definitions

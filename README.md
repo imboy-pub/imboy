@@ -357,4 +357,7 @@ tail -f /www/wwwroot/eturnal/_build/product/rel/eturnal/log/eturnal.log
 
 ## other
 
+docker-compose -f docker-compose.yml up
+docker-compose -f docker-compose-pro.yml up
+
 rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.7/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so

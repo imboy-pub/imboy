@@ -49,12 +49,7 @@ cancel(Req0, State) ->
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Username, Credential, Uris} = user_ds:webrtc_credential(CurrentUid),
-    Payload = #{
-        <<"uris">> => Uris,
-        <<"username">> => Username,
-        <<"credential">> => Credential
-    },
+    Payload = user_ds:webrtc_credential(CurrentUid),
     imboy_response:success(Req0, Payload).
 
 

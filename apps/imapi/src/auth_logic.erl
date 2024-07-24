@@ -35,7 +35,7 @@ verify_for_assets(Scene, Tk, V, _Path) ->
         is_integer(V) andalso Now < (V + Diff) ->
             % V = binary_to_list(<<Path/binary, "?", Val/binary>>),
             % NewTk = auth_ds:get_token(assets, Scene, V),
-            NewTk = auth_ds:get_token(assets, Scene, integer_to_list(V)),
+            NewTk = auth_ds:get_token(assets, Scene, V),
             do_verify_for_assets(NewTk, Tk);
         true ->
             <<"fail">>

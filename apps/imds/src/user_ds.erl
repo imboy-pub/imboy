@@ -33,18 +33,25 @@ title(Uid) ->
 %%% demo方法描述
 -spec webrtc_credential(Uid :: integer()) -> {binary(), binary()}.
 webrtc_credential(Uid) ->
-    Uris = config_ds:env(eturnal_uris),
-    Secret = config_ds:env(eturnal_secret),
-
+    Secret = config_ds:get(<<"eturnal_secret">>),
+    TurnUrls = config_ds:get(<<"turn_urls">>),
+    StunUrls = config_ds:get(<<"stun_urls">>),
     UidBin = imboy_hashids:encode(Uid),
     TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
     Username = <<TmBin/binary, ":", UidBin/binary>>,
     Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
-    {Username, Credential, Uris}.
+    #{
+        <<"ttl">> => 86400,
+        <<"turn_urls">> => TurnUrls,
+        <<"stun_urls">> => StunUrls,
+        <<"username">> => Username,
+        <<"credential">> => Credential
+    }.
 
 
 auth_webrtc_credential(Username, Credential) ->
-    Secret = config_ds:env(eturnal_secret),
+    % Secret = config_ds:env(eturnal_secret),
+    Secret = config_ds:get(<<"eturnal_secret">>),
     Credential == base64:encode(crypto:mac(hmac, sha, Secret, Username)).
 
 

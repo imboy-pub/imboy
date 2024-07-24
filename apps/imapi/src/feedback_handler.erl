@@ -80,7 +80,6 @@ add(Req0, State) ->
     % Uid = imboy_hashids:encode(CurrentUid),
 
     COS = cowboy_req:header(<<"cos">>, Req0),
-    COSV = cowboy_req:header(<<"cosv">>, Req0),
     AppVsn = cowboy_req:header(<<"vsn">>, Req0),
     Did = cowboy_req:header(<<"did">>, Req0),
 
@@ -91,6 +90,8 @@ add(Req0, State) ->
     Description = proplists:get_value(<<"description">>, PostVals, <<>>),
     Dcreenshot = proplists:get_value(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
+
+    COSV = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     feedback_ds:add(CurrentUid
         , Did
         , COS

@@ -25,19 +25,19 @@ execute(Req, Env) ->
             OptionLi = imboy_router:option(),
             InOpenLi = lists:member(Path, OpenLi),
             InOptionLi = lists:member(Path, OptionLi),
-            Switch = config_ds:env(api_auth_switch),
+            Switch = ec_cnv:to_binary(config_ds:get(<<"api_auth_switch">>)),
             Passport = string:sub_string(binary_to_list(Path), 1, 10),
             Res1 =
                 if
-                    Path == <<"/ws">>, Switch == on ->
+                    Path == <<"/ws">>, Switch == <<"on">> ->
                         verify_sign(Req, Env);
-                    Path == <<"/init">>, Switch == on ->
+                    Path == <<"/init">>, Switch == <<"on">> ->
                         verify_sign(Req, Env);
-                    Path == <<"/refreshtoken">>, Switch == on ->
+                    Path == <<"/refreshtoken">>, Switch == <<"on">> ->
                         verify_sign(Req, Env);
-                    Passport == "/passport/", Switch == on ->
+                    Passport == "/passport/", Switch == <<"on">> ->
                         verify_sign(Req, Env);
-                    InOpenLi == false, Switch == on ->
+                    InOpenLi == false, Switch == <<"on">> ->
                         verify_sign(Req, Env);
                     true ->
                         {ok, Req, Env}
@@ -58,7 +58,9 @@ execute(Req, Env) ->
 verify_sign(Req, Env) ->
     % app version 1.0.0
     Vsn = cowboy_req:header(<<"vsn">>, Req, <<"0.1.1">>),
+    Pkg = cowboy_req:header(<<"pkg">>, Req, <<"pub.imboy.apk">>),
     Did = cowboy_req:header(<<"did">>, Req, <<>>),
+    % TzOffset = cowboy_req:header(<<"tz_offset">>, Req, 0),
     % /// A string representing the operating system or platform.
     % ///
     % /// Possible values include:
@@ -71,7 +73,7 @@ verify_sign(Req, Env) ->
     % ///
     % /// Note that this list may change over time so platform-specific logic
     % /// should be guarded by the appropriate boolean getter e.g. [isMacOS].
-    _ClientOS = cowboy_req:header(<<"cos">>, Req),
+    ClientOS = cowboy_req:header(<<"cos">>, Req),
 
     %A string representing the version of the operating system or platform.
     %
@@ -81,16 +83,18 @@ verify_sign(Req, Env) ->
     %   #20~20.04.2-Ubuntu SMP Fri Sep 3 01:01:37 UTC 2021"
     %  "Version 14.5 (Build 18E182)"
     %  '"Windows 10 Pro" 10.0 (Build 19043)'
-    _ClientOSVsn = cowboy_req:header(<<"cosv">>, Req),
+    % _ClientOSVsn = cowboy_req:header(<<"cosv">>, Req),
 
     % 签名结果
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
     % [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
-    VsnMajor = imboy_cnv:vsn_major(Vsn),
-    PlainText = iolist_to_binary([Did, "|", VsnMajor]),
-    case do_verify_sign(Sign, PlainText, VsnMajor, Method) of
+
+    % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
+    PlainText = iolist_to_binary([Did, "|", Vsn, "|", ClientOS, "|", Pkg]),
+    Key = app_version_ds:sign_key(ClientOS, Vsn, Pkg),
+    case do_verify_sign(Sign, PlainText, Key, Method) of
         true ->
             {ok, Req, Env};
         false ->
@@ -108,16 +112,10 @@ do_verify_sign(undefined, _, _, _Method) ->
 do_verify_sign(_Sign, _, undefined, _Method) ->
     false;
 
-do_verify_sign(Sign, PlainText, VsnMajor, <<"sha256">>) ->
-    AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(VsnMajor, AuthKeys),
+do_verify_sign(Sign, PlainText, Key, <<"sha256">>) ->
     imboy_hasher:hmac_sha256(PlainText, Key) == Sign;
-do_verify_sign(Sign, PlainText, VsnMajor, <<"sha512">>) ->
-    AuthKeys = config_ds:env(auth_keys),
-    Key = proplists:get_value(VsnMajor, AuthKeys),
+do_verify_sign(Sign, PlainText, Key, <<"sha512">>) ->
     imboy_hasher:hmac_sha512(PlainText, Key) == Sign;
-do_verify_sign(Sign, PlainText, _, <<"md5">>) ->
-    imboy_hasher:md5(PlainText) == Sign;
 do_verify_sign(_, _, _, _) ->
     false.
 

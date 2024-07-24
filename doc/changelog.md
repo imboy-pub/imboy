@@ -1,3 +1,10 @@
+# 0.4.0
+* 优化 config_ds 模块（solidified_key AES加密存储在 public.config 里面 config_ds:set/4.）;
+* 优化调整接口签名算规则；
+* 新增 public.user_device/public_key 字段，存储客户端登录上次的RSA公钥；
+* 新增 app_version_ds模块，设置、获取 签名秘钥；
+* 整理 ./imboy/config/sys.config 文件，尽可能把安全验证相关配置放入 public.config 表；
+
 
 # 0.3.14
 * 引入pure-migrations 管理数据库版本，数据库版本脚本文件使用8位数做前缀 00000000_xxx.sql

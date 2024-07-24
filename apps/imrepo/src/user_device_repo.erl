@@ -12,6 +12,7 @@
 -export([count_by_uid/1,
          page/3]).
 
+-include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
 %% API
@@ -44,10 +45,8 @@ count_by_uid(Uid) ->
 % user_device_repo:device_name(1, <<"3f039a2b4724a5b7">>).
 device_name(Uid, DID) ->
     Uid2 = integer_to_binary(Uid),
-    imboy_db:pluck(tablename(),
-                   <<"status = 1 AND user_id = ", Uid2/binary, " AND device_id = '", DID/binary, "'">>,
-                   <<"device_name">>,
-                   <<"">>).
+    Where = <<"status = 1 AND user_id = ", Uid2/binary, " AND device_id = '", DID/binary, "'">>,
+    imboy_db:pluck(tablename(), Where, <<"device_name">>, <<>>).
 
 
 % user_device_repo:login_count(1, <<"3f039a2b4724a5b7">>).
@@ -73,6 +72,7 @@ delete(Uid, DID) ->
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
+    ?LOG(["login save ", Now, Uid, DID, LoginCount]),
     save(Now, Uid, PostVals, DID, LoginCount);
 save(_Now, _Uid, _DID, _PostVals) ->
     % 无设备ID登录，无需记录设备信息
@@ -101,19 +101,35 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 -spec save(integer(), integer(), list(), binary(), integer()) -> ok.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->
     % 更新登录次数，最近登录时间、IP
-    Ip = proplists:get_value(<<"ip">>, PostVals, <<"">>),
+    Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),
+    PublicKey = proplists:get_value(<<"public_key">>, PostVals, <<>>),
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET login_count = $1,
-        last_login_ip = $2, last_login_at = $3
-        WHERE status = 1 AND user_id = $4 AND device_id = $5">>,
-    imboy_db:execute(Sql, [LoginCount + 1, Ip, Now, Uid, DID]);
+    Ip2 = case Ip of
+        undefined ->
+            <<>>;
+        _ ->
+            Ip
+    end,
+    Where = <<"status = 1 AND user_id = ", (ec_cnv:to_binary(Uid))/binary," AND device_id = '", DID/binary,"'">>,
+    imboy_db:update(Tb, Where, #{
+        login_count => LoginCount + 1,
+        last_login_ip => Ip2,
+        last_login_at => Now,
+        public_key => PublicKey
+    });
 save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     % 第一次登陆记录设备信息
-    DeviceType = proplists:get_value(<<"cos">>, PostVals, <<"">>),
-    DeviceVsn = proplists:get_value(<<"dvsn">>, PostVals, <<"">>),
-    DeviceName = proplists:get_value(<<"dname">>, PostVals, <<"">>),
-    Ip = proplists:get_value(<<"ip">>, PostVals, <<"">>),
-
+    DeviceType = proplists:get_value(<<"cos">>, PostVals, <<>>),
+    DeviceVsn = proplists:get_value(<<"dvsn">>, PostVals, <<>>),
+    DeviceName = proplists:get_value(<<"dname">>, PostVals, <<>>),
+    PublicKey = proplists:get_value(<<"public_key">>, PostVals, <<>>),
+    Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),
+    Ip2 = case Ip of
+        undefined ->
+            <<>>;
+        _ ->
+            Ip
+    end,
     Uid2 = integer_to_binary(Uid),
     Status = <<"1">>,
     LoginCount2 = <<"1">>,
@@ -121,8 +137,10 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
 
     Tb = tablename(),
     Column = <<"(user_id,device_type,device_id,device_vsn,device_name,
-        login_count,last_login_ip,last_login_at,status,created_at)">>,
+        login_count,last_login_ip,last_login_at,status,public_key,created_at)">>,
     Value = <<"('", Uid2/binary, "', '", DeviceType/binary, "', '", DID/binary, "', '", DeviceVsn/binary, "', '",
-              DeviceName/binary, "', '", LoginCount2/binary, "', '", Ip/binary, "', '", Now2/binary, "', '",
-              Status/binary, "', '", Now2/binary, "')">>,
+              DeviceName/binary, "', '", LoginCount2/binary, "', '", Ip2/binary, "', '", Now2/binary, "', '"
+              , Status/binary, "', '"
+              , (ec_cnv:to_binary(PublicKey))/binary, "', '"
+              , Now2/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

@@ -8,6 +8,8 @@
          decoded_payload/0,
          decoded_field/1]).
 
+-include_lib("imlib/include/log.hrl").
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -18,6 +20,8 @@
 encoded_val(Val) ->
     Key = config_ds:env(postgre_aes_key),
     Val1 = base64:encode(Val),
+    % Val1 = ec_cnv:to_binary(Val),
+    % ?LOG(["encoded_val ", Val, " val1 ", Val1]),
     <<"encode(encrypt('", Val1/binary, "', '", Key/binary, "', 'aes-cbc/pad:pkcs'), 'base64')">>.
 
 

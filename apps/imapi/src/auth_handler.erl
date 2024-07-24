@@ -43,6 +43,7 @@ assets(<<"POST">>, Req0) ->
         {Scene, Path}
     of
         {<<"open">>, Path2} ->
+            % ?LOG([Path2, AuthTk, Val]),
             Body = auth_logic:verify_for_open(Path2, AuthTk, Val),
             cowboy_req:reply(200,
                              #{<<"content-type">> => <<"text/html">>},

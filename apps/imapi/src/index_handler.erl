@@ -28,32 +28,41 @@ init(Req0, State0) ->
 
 
 api_init(Req0) ->
-    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<"0.1.1">>),
-    VsnMajor = imboy_cnv:vsn_major(Vsn),
+    % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
+    % Did = cowboy_req:header(<<"did">>, Req0, <<>>),
+    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<>>),
+    DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
+    Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
 
-    Data = init_transfer(),
+    SolKey = config_ds:get(solidified_key),
+    SignKey = case app_version_ds:sign_key(DType, Vsn, Pkg) of
+        undefined ->
+            SolKey;
+        SK ->
+            SK
+    end,
+    Data = #{
+        <<"ws_url">> => config_ds:get("ws_url"),
+        <<"upload_url">> => config_ds:get("upload_url"),
+        <<"upload_key">> => config_ds:get("upload_key"),
+        <<"upload_scene">> => config_ds:get("upload_scene"),
+
+        <<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
+        <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
+     },
     % imboy_response:success(Req0, Data, "success.").
-    AuthKeys = config_ds:env(auth_keys),
-    case proplists:get_value(VsnMajor, AuthKeys) of
-        Key when is_binary(Key); is_list(Key) ->
-            IV = config_ds:env(solidified_key_iv),
-            Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
-            imboy_response:success(Req0, #{res => Bin}, "success.");
-        _ ->
-            imboy_response:success(Req0, #{vsn => Vsn}, "success.")
-    end.
+    % ?LOG([DType, Vsn, Pkg, SignKey, Data]),
+    % imboy_response:success(Req0, Data, "success.").
+    IV = config_ds:get(solidified_key_iv),
+    Key = imboy_hasher:md5(SignKey),
+    Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
+    imboy_response:success(Req0, #{res => Bin}, "success.").
 
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
-
-init_transfer() ->
-    #{
-      <<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
-      <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
-     }.
 
 
 get_help(Req0) ->

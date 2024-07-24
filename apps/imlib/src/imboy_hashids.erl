@@ -4,7 +4,7 @@
 % hashids 转换器
 %
 % imboy_hashids:encode(12345)
-% imboy_hashids:decode(<<"bxyxr9">>)
+% imboy_hashids:decode(<<"qxzvr9">>)
 % imboy_hashids:replace_id(list())
 %%%
 
@@ -44,18 +44,29 @@ encode(Id) when is_binary(Id) ->
 encode(Id) when is_list(Id) ->
     encode(list_to_integer(Id));
 encode(Id) ->
-    Salt = config_ds:env(hashids_salt, ""),
-    Ctx = hashids:new([{min_hash_length, 6}, {default_alphabet, ?uid_alphabet}, {salt, Salt}]),
+    Salt = config_ds:get(hashids_salt, ""),
+    Salt2 = ec_cnv:to_binary(Salt),
+    Ctx = hashids:new([
+        {min_hash_length, 6},
+        {default_alphabet, ?uid_alphabet},
+        {salt, binary_to_list(Salt2)}
+    ]),
     list_to_binary(hashids:encode(Ctx, [Id])).
-
 
 -spec decode(list() | binary()) -> integer().
 decode(Id) when is_binary(Id) ->
     decode(binary_to_list(Id));
 decode(Id) ->
     try
-        Salt = config_ds:env(hashids_salt, ""),
-        Ctx = hashids:new([{min_hash_length, 6}, {default_alphabet, ?uid_alphabet}, {salt, Salt}]),
+        Salt = config_ds:get(hashids_salt, ""),
+        Salt = config_ds:get(hashids_salt, ""),
+        Salt2 = ec_cnv:to_binary(Salt),
+
+        Ctx = hashids:new([
+            {min_hash_length, 6},
+            {default_alphabet, ?uid_alphabet},
+            {salt, binary_to_list(Salt2)}
+        ]),
         hashids:decode(Ctx, Id)
     of
         [Id2] ->
