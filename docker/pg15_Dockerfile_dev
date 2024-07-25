@@ -63,12 +63,17 @@ COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/15/tsearch_data/ji
 COPY ./docker/pg-initdb-postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
 COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/11_postgis.sh
 COPY ./docker/pg-update-timescaledb.sh /docker-entrypoint-initdb.d/12_timescaledb.sh
+RUN chmod -x /docker-entrypoint-initdb.d/10_postgis.sh
+
+
 #COPY ./docker/pg-update-postgis.sh /usr/local/bin
 
 RUN set -xe \
   && mkdir -p /docker-entrypoint-initdb.d \
   && chmod -x /docker-entrypoint-initdb.d/10_postgis.sh \
-  #&& chmod -x /docker-entrypoint-initdb.d/11_imboy.sh \
+  && chmod -x /docker-entrypoint-initdb.d/11_postgis.sh \
+  && chmod -x /docker-entrypoint-initdb.d/12_timescaledb.sh \
+  && chown -R postgres:postgres /var/lib/postgresql/data \
   && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-15 \
   && apt-get purge -y --autoremove \
         build-essential \

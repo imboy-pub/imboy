@@ -178,3 +178,4 @@ config_ds:get(<<"ws_url">>).
 config_ds:get(<<"turn_urls">>).
 
 ```
+nginx 配置
