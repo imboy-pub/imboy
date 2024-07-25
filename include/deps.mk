@@ -6,15 +6,15 @@
 # https://erlang.mk/guide/deps.html
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.1.0
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.12.1
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.11.0
+dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.13.0
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.12.0
 
 # gen_smtp Email服务端、客户端
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 
 # jsone An Erlang library for encoding, decoding JSON data.
 # 4months
-dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.8.0
+dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.8.1
 # jsx an erlang application for consuming, producing and manipulating json
 # 2years
 dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
@@ -44,7 +44,7 @@ dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 # 17days
-dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.6.0
+dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.7.0
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
 # 被 qdate 依赖
 # 1years
@@ -61,7 +61,7 @@ dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 
 # ecron 用于 Erlang 的轻量级/高效的类似 cron 的作业调度库。
 # 1years
-dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v0.6.1
+dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v1.0.0
 # Erlang 的纯函数式和泛型编程
 # 6months
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
@@ -77,7 +77,7 @@ dep_esq = hex 2.0.6
 # dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
 # 3days
 #dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
-dep_bbmustache = hex 1.12.2
+dep_bbmustache = hex 1.14.1
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
 # 8months
 # dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0

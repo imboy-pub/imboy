@@ -20,7 +20,7 @@ docker network create imboy-network
 3. 安装postgresql15
 
 ```
-cd /data/imboy/imboyapi
+cd /www/wwwroot/imboy-api
 docker pull postgres:15-bullseye
 docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .
 
