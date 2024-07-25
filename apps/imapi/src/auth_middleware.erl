@@ -73,7 +73,7 @@ verify_sign(Req, Env) ->
     % ///
     % /// Note that this list may change over time so platform-specific logic
     % /// should be guarded by the appropriate boolean getter e.g. [isMacOS].
-    ClientOS = cowboy_req:header(<<"cos">>, Req),
+    ClientOS = cowboy_req:header(<<"cos">>, Req, <<>>),
 
     %A string representing the version of the operating system or platform.
     %
