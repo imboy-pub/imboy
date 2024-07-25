@@ -4,8 +4,8 @@ FROM debian:bookworm-slim
 # from https://github.com/erlang/docker-erlang-otp/blob/master/26/slim/Dockerfile
 
 # ENV OTP_VERSION=26.1.2 \
-ENV OTP_VERSION=25.3.2.12 \
-    OTP_DOWNLOAD_SHA256=fd690c843100c3268ac7d8ada02af8310e8520bf32581eb72f28c26ae61b46ad \
+ENV OTP_VERSION=25.3.2.13 \
+    OTP_DOWNLOAD_SHA256=00c2619648e05a25b39035ea51b65fc79c998e55f178cccc6c1b920f3f10dfba \
     REBAR3_VERSION=3.23.0 \
     REBAR3_DOWNLOAD_SHA256=00646b692762ffd340560e8f16486dbda840e1546749ee5a7f58feeb77e7b516
 

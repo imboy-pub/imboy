@@ -22,7 +22,7 @@ docker network create imboy-network
 ```
 cd /data/imboy/imboyapi
 docker pull postgres:15-bullseye
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.6
+docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .
 
 docker rm -f imboy_pg15 && docker run -d --name imboy_pg15 \
     --network imboy-network \
@@ -34,7 +34,7 @@ docker rm -f imboy_pg15 && docker run -d --name imboy_pg15 \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     -v /data/docker/imboy_pg15:/var/lib/postgresql/data \
     -p 127.0.0.1:4321:5432 \
-    imboy/imboy-pg:15.3.4.2.dev.6
+    imboy/imboy-pg:15.3.4.2.dev.7
 
 // 解决升级 timescaledb 后加载报错的问题
 psql -U imboy_user -d imboy_v1
