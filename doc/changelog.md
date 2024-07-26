@@ -1,3 +1,9 @@
+# 0.4.1
+* fix init config_ds:set/2-4
+* 升级一些otp依赖
+* 升级相关Dockerfile依赖版本（TIMESCALEDB_VERSION 2.15.3 OTP_VERSION=25.3.2.13）
+*
+
 # 0.4.0
 * 优化 config_ds 模块（solidified_key AES加密存储在 public.config 里面 config_ds:set/4.）;
 * 优化调整接口签名算规则；

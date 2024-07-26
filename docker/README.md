@@ -16,6 +16,8 @@ docker exec imboy_postgis cat /etc/hosts
 docker exec imboy_fastdfs cat /etc/hosts
 
 
+
+docker exec -it imboy_eturnal sh
 docker exec -it imboy_api bash
 docker exec -it imboy_fastdfs bash
     ping imboy_postgis
