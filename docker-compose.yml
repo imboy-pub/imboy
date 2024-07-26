@@ -48,42 +48,53 @@ services:
     mem_limit: 400M
     memswap_limit: 2g
 
-  imboy_eturnal:
-    # https://github.com/processone/eturnal/blob/master/examples/docker-compose/docker-compose.yml
-    image: ghcr.io/processone/eturnal:latest
-    container_name: imboy_eturnal # 容器名为'imboy_eturnal'
-    hostname: eturnal.docker.imboy.pub
-    restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-    ### security options
-    read_only: true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    ### Note: if eturnal binds to privileged ports (<1024) directly, the option "security_opt" below must be commented out.
-    security_opt:
-      - no-new-privileges:true
-    ### Environment variables - information on https://eturnal.net/doc/#Environment_Variables
-    # 设置环境变量,相当于docker run命令中的-e
-    environment:
-      TZ: Asia/Shanghai
-      LANG: en_US.UTF-8
-      ETURNAL_RELAY_MIN_PORT: 50000
-      ETURNAL_RELAY_MAX_PORT: 50500
-      # - ETURNAL_RELAY_IPV4_ADDR="203.0.113.4"
-      # - ETURNAL_RELAY_IPV6_ADDR="2001:db8::4"
-      # - STUN_SERVICE="false"
-    # env_file:
-    #   - eturnal.env
-    ### Volume mounts - Note: directories/files must be (at least) readable by the eturnal user (9000:9000)
-    # volumes:
-    #   - /path/to/eturnal.yml:/etc/eturnal.yml:ro # for custom config file
-    #   - /path/to/tls-files:/opt/eturnal/tls      # for custom tls files
-    ports: # 映射端口
-      - "9840:3478"
-      - "9840:3478/udp"
-      - "50000-50500:50000-50500/udp"
-    # network_mode: "host"
+
+  # eturnal 比较耗费内存，暂时没有找到原因，直接在宿主机安装了
+  # eturnalctl daemon /data/docker/eturnal/eturnal.yml
+  # eturnalctl remote_console
+  # imboy_eturnal:
+  #   # https://github.com/processone/eturnal/blob/master/examples/docker-compose/docker-compose.yml
+  #   image: ghcr.io/processone/eturnal:latest
+  #   container_name: imboy_eturnal # 容器名为'imboy_eturnal'
+  #   hostname: eturnal.docker.imboy.pub
+  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
+  #   ### security options
+  #   read_only: true
+  #   cap_drop:
+  #     - ALL
+  #   cap_add:
+  #     - NET_BIND_SERVICE
+  #   ### Note: if eturnal binds to privileged ports (<1024) directly, the option "security_opt" below must be commented out.
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   ### Environment variables - information on https://eturnal.net/doc/#Environment_Variables
+  #   # 设置环境变量,相当于docker run命令中的-e
+  #   environment:
+  #     TZ: Asia/Shanghai
+  #     LANG: en_US.UTF-8
+  #     ETURNAL_RELAY_MIN_PORT: 50000
+  #     ETURNAL_RELAY_MAX_PORT: 50500
+  #     # - ETURNAL_RELAY_IPV4_ADDR="203.0.113.4"
+  #     # - ETURNAL_RELAY_IPV6_ADDR="2001:db8::4"
+  #     # - STUN_SERVICE="false"
+  #   # env_file:
+  #   #   - eturnal.env
+  #   ### Volume mounts - Note: directories/files must be (at least) readable by the eturnal user (9000:9000)
+  #   volumes:
+  #     - /data/docker/eturnal/eturnal.yml:/etc/eturnal.yml:ro
+  #   ports: # 映射端口
+  #     - "3478:3478"
+  #     - "3478:3478/udp"
+  #     - "50000-50500:50000-50500/udp"
+  #   # network_mode: "host"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 800M
+  #       reservations:
+  #         memory: 800M
+  #   mem_limit: 800M
+  #   memswap_limit: 4g
 
   # imboy_api:
   #   image: imboy/imboy-api:dev

@@ -168,6 +168,22 @@ config_ds:get(<<"turn_urls">>).
 ```
 nginx 配置
 
+./nginx_dev.imboy.pub.conf
+```
+
+cp -Rf /www/wwwroot/imboy-api/apps/imadm/priv/static /www/wwwroot/dev.imboy.pub/
+
+cp -Rf /www/wwwroot/imboy-api/apps/imadm/priv/static /www/wwwroot/pro.imboy.pub/
+
+    # 解决静态资源404问题
+    location ~ .*\.(js|css|ttf|woff|woff2)?$
+    {
+        expires      12h;
+        error_log /dev/null;
+        access_log /dev/null;
+    }
+```
+
 adm
 Captcha
 
