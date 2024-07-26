@@ -28,6 +28,7 @@ encrypt_token(ID) ->
 
 %% 解析token
 decrypt_token(Token) ->
+    % io:format("Token: ~p, ~n", [Token]),
     try jwerl:verify(Token, hs256, config_ds:get(jwt_key)) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
@@ -44,7 +45,9 @@ decrypt_token(Token) ->
         _JWT_ERR ->
             {error, 706, "Invalid token", #{}}
     catch
-        _:_ ->
+        Class:Reason:Stacktrace ->
+            % 异常处理代码
+            io:format("Class: ~p, Reason: ~p, Stacktrace ~p~n", [Class, Reason, Stacktrace]),
             {error, 706, "Invalid token.", #{}}
     end.
 

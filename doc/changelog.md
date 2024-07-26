@@ -1,3 +1,6 @@
+# 0.4.2
+* 群二维码签名tk还原为md5生成；
+
 # 0.4.1
 * fix init config_ds:set/2-4
 * 升级一些otp依赖
