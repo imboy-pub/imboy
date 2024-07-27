@@ -74,8 +74,8 @@ read_msg_filter(Where, Limit) ->
     Res = msg_c2c_repo:read_msg(Where, Column, Limit),
     % ?LOG([Res]),
     case Res of
-        {ok, ColumnLi, Rows} ->
-            [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnLi, tuple_to_list(Row)) || Row <- Rows ];
+        {ok, Column2, Rows} ->
+            [ lists:zipwith(fun(X, Y) -> {X, Y} end, Column2, tuple_to_list(Row)) || Row <- Rows ];
         _ ->
             []
     end.
