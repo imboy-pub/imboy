@@ -304,24 +304,17 @@ msg_page(Req0, State) ->
 
 %% 扫描“群二维码”
 qrcode(Req0, State) ->
-    % get Key
-    ClientOS = cowboy_req:header(<<"cos">>, Req0),
-    Vsn = cowboy_req:header(<<"vsn">>, Req0, <<>>),
-    Pkg = cowboy_req:header(<<"pkg">>, Req0, <<"pub.imboy.apk">>),
-    Key = app_version_ds:sign_key(ClientOS, Vsn, Pkg),
-    % get Key end
-
     #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     #{exp := ExpiredAt} = cowboy_req:match_qs([{exp, [], undefined}], Req0),
     #{tk := Tk} = cowboy_req:match_qs([{tk, [], undefined}], Req0),
 
+    Key = config_ds:get(<<"solidified_key">>),
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
     Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
     Now = imboy_dt:utc(millisecond),
     CurrentUid = maps:get(current_uid, State),
     % ?LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
-    % ?LOG(["Gid", Gid, "CurrentUid ", CurrentUid, " Verified", Verified, "Now > ExpiredAt ", Now > ExpiredAt, Now, ExpiredAt]),
     case {CurrentUid, Verified} of
         {undefined, _} ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
@@ -342,7 +335,7 @@ qrcode(Req0, State) ->
                 % max = 0 群不存在，或者群ID有误。
                 , maps:get(<<"member_max">>, G, 0)
                 , maps:get(<<"member_count">>, G, 0)
-                ),
+            ),
             % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
             case Res of
                 ok ->
@@ -354,7 +347,7 @@ qrcode(Req0, State) ->
                         , <<"type">> => <<"group">>
                         , <<"group_member">> => Gm2
                     },
-                    ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_transfer(G3)]),
+                    % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_transfer(G3)]),
                     imboy_response:success(Req0, group_transfer(G3));
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
