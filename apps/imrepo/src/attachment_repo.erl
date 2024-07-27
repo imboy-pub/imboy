@@ -64,7 +64,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 before ~p ~n", [[
     %     Tb1, Column1,Md5,MimeType,Ext2,Name,Path2, Url, Size2,Uid,CreatedAt,UpSql1
     %     ]])),
-    Sql1 = <<"INSERT INTO ", Tb1/binary, " ", Column1/binary, " VALUES('", Md5/binary, "', '", MimeType2/binary, "', '",
+    Sql1 = <<"INSERT INTO ", Tb1/binary, " ", Column1/binary, " VALUES('", (ec_cnv:to_binary(Md5))/binary, "', '", MimeType2/binary, "', '",
              Ext2/binary, "','", Name/binary, "', '", Path2/binary, "', '", Url/binary, "', '", Size2/binary, "', '",
              Attach2/binary, "'::text, ", "1, ",  % referer_time
              Uid/binary, ", ",  % last_referer_user_id
@@ -75,7 +75,12 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
 
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 ~p ~n", [Sql1])),
     {ok, Stmt1} = epgsql:parse(Conn, Sql1),
-    {ok, _} = epgsql:execute_batch(Conn, [{Stmt1, []}]),
+    case epgsql:execute_batch(Conn, [{Stmt1, []}]) of
+        [{ok,1}] ->
+            ok;
+        {ok, _} ->
+            ok
+    end,
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息

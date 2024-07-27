@@ -1,6 +1,7 @@
 # 0.4.2
 * 群二维码签名tk还原为md5生成；
 * 修复扫描群二维码报错的问题；
+* 修复收藏消息报错问题；
 
 # 0.4.1
 * fix init config_ds:set/2-4
@@ -14,7 +15,6 @@
 * 新增 public.user_device/public_key 字段，存储客户端登录上次的RSA公钥；
 * 新增 app_version_ds模块，设置、获取 签名秘钥；
 * 整理 ./imboy/config/sys.config 文件，尽可能把安全验证相关配置放入 public.config 表；
-
 
 # 0.3.14
 * 引入pure-migrations 管理数据库版本，数据库版本脚本文件使用8位数做前缀 00000000_xxx.sql
