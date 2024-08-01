@@ -5,19 +5,28 @@ pro.imboy.pub
 i.imboy.puub
 turn.imboy.pub
 
+* 使用 docker容器启动 eturnal 服务，会非常占用内存，直接源码安装或者用依赖包在宿主机安装和省内存；
+* 按下面流程配置好各个依赖后，通过 docker-compose-pro.yml 管理 postgresql15 服务
+
+```
+cd imboy
+docker-compose -f docker-compose-pro.yml up -d
+```
+
+
 1. 安装erlang
 
 【有道云笔记】CentOS 源码安装 Erlang.md
 https://note.youdao.com/s/7hvcSteY
 
 
-2. 安装docker
+2. 安装 docker
 ```
 mkdir -p /data /data/imboy
 docker network create imboy-network
 ```
 
-3. 安装postgresql15
+3. 安装 postgresql15
 
 ```
 cd /www/wwwroot/imboy-api
