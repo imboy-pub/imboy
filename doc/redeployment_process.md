@@ -1,5 +1,7 @@
 
-重新部署流程
+# 重新部署流程
+
+共有1-10个注意事项：
 
 pro.imboy.pub
 i.imboy.puub
@@ -175,7 +177,9 @@ config_ds:get(<<"ws_url">>).
 config_ds:get(<<"turn_urls">>).
 
 ```
-nginx 配置
+
+
+8. nginx 配置
 
 ./nginx_dev.imboy.pub.conf
 ```
@@ -193,9 +197,21 @@ cp -Rf /www/wwwroot/imboy-api/apps/imadm/priv/static /www/wwwroot/pro.imboy.pub/
     }
 ```
 
-adm
+9. adm
 Captcha
 
 https://www.cnblogs.com/ziyouchutuwenwu/p/4424499.html
 sudo apt-get install imagemagick
 
+10. 定时备份数据
+
+
+在宿主机上面：
+
+```
+
+cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/imboy_pg15 && chmod +x /data/docker/imboy_pg15
+
+[root@imboy ~]# crontab -e
+0 3 * * * /usr/bin/docker exec imboy_pg15 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
+```
