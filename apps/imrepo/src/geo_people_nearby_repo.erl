@@ -20,15 +20,10 @@
 %% API
 %% ===================================================================
 
-
 tablename() ->
     imboy_db:public_tablename(<<"geo_people_nearby">>).
 
-
-%%% demo方法描述
-
-
--spec save(integer(), binary(), binary()) -> ok | {error, Msg :: binary()}.
+-spec save(integer(), binary(), binary()) -> {ok, LastInsertId :: integer()} | {error, any()}.
 save(Uid, Lat, Lng) ->
     Tb = tablename(),
     % EPSG:4326 就是 WGS84 的代码。GPS 是基于 WGS84 的，所以通常我们得到的坐标数据都是 WGS84 的
@@ -51,9 +46,8 @@ delete(Uid) ->
     imboy_db:execute(Sql, [Uid]).
 
 
--spec people_nearby(Lng :: binary(), Lat :: binary(), Radius :: binary(), Unit :: binary(), Limit :: binary()) ->
+-spec people_nearby(binary(), binary(), binary(), binary(), binary()) ->
           list().
-
 people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
     Sql = <<"select
     u.id

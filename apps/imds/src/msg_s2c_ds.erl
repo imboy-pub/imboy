@@ -7,7 +7,6 @@
 -include_lib("imlib/include/log.hrl").
 
 -export([write_msg/6]).
--export([revoke_offline_msg/4]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
@@ -88,18 +87,6 @@ read_msg(ToUid, Limit, Ts) ->
 
 delete_msg(Id) ->
     msg_s2c_repo:delete_msg(Id).
-
-
-%% 撤销离线消息
--spec revoke_offline_msg(integer(), binary(), integer(), integer()) -> ok.
-revoke_offline_msg(NowTs, Id, FromId, ToId) ->
-    Payload = jsone:encode([{<<"msg_type">>, <<"custom">>}, {<<"custom_type">>, <<"revoked">>}]),
-    Tb = msg_s2c_repo:tablename(),
-    % 存储消息
-    msg_s2c_ds:write_msg(NowTs, Id, Payload, FromId, ToId, NowTs),
-    Sql = <<"UPDATE ", Tb/binary, " SET payload = $1 WHERE msg_id = $2">>,
-    imboy_db:execute(Sql, [Payload, Id]),
-    ok.
 
 
 %% ===================================================================

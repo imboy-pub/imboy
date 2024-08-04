@@ -108,26 +108,16 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     CurrentUid = maps:get(current_uid, State),
     try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
-            Key = {CurrentUid, DID, MsgId},
-            ?LOG(["CLIENT_ACK", Key]),
-            % 缓存在 message_ds:send_next/5 中设置
-            case imboy_cache:get(Key) of
-                undefined ->
-                    ok;
-                {ok, TimerRef} ->
-                    ?LOG(["CLIENT_ACK", Key, TimerRef]),
-                    erlang:cancel_timer(TimerRef),
-                    imboy_cache:flush(Key)
-            end,
+            websocket_logic:ack_before(CurrentUid, DID, MsgId),
             case Type of
                 <<"C2C">> ->
-                    websocket_logic:c2c_client_ack(MsgId, CurrentUid, DID),
-                    {ok, State, hibernate};
-                <<"S2C">> ->
-                websocket_logic:s2c_client_ack(MsgId, CurrentUid, DID),
+                    msg_c2c_logic:c2c_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
                 <<"C2G">> ->
-                    websocket_logic:c2g_client_ack(MsgId, CurrentUid, DID),
+                    msg_c2g_logic:c2g_client_ack(MsgId, CurrentUid, DID),
+                    {ok, State, hibernate};
+                <<"S2C">> ->
+                    msg_s2c_logic:s2c_client_ack(MsgId, CurrentUid, DID),
                     {ok, State, hibernate};
                 <<"C2S">> ->
                     % websocket_logic:c2s_client_ack(MsgId, CurrentUid, DID),
@@ -137,12 +127,9 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
             end
     catch
         Class:Reason:Stacktrace ->
-            ?LOG(["websocket_handle try catch: Class:",
-                  Class,
-                  "Reason:",
-                  Reason,
-                  "Stacktrace:",
-                  Stacktrace,
+            ?LOG(["websocket_handle try catch: Class:", Class,
+                  "Reason:", Reason,
+                  "Stacktrace:", Stacktrace,
                   erlang:trace(all, true, [call])]),
             {ok, State, hibernate}
     end;
@@ -160,19 +147,25 @@ websocket_handle({text, Msg}, State) ->
         case cowboy_bstr:to_lower(Type) of
             <<"c2s">> ->  % 机器人聊天消息
                 websocket_logic:c2s(MsgId, CurrentUid, Data);
+            <<"s2c">> ->  %
+                Payload = proplists:get_value(<<"payload">>, Data),
+                MsgType = proplists:get_value(<<"msg_type">>, Payload),
+                msg_s2c_logic:s2c(MsgType, MsgId, CurrentUid, Data);
             <<"c2c">> ->  % 单聊消息
-                websocket_logic:c2c(MsgId, CurrentUid, Data);
+                msg_c2c_logic:c2c(MsgId, CurrentUid, Data);
             <<"c2c_revoke">> ->  % 客户端撤回消息
-                websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
+                msg_c2c_logic:c2c_revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
             <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
-                websocket_logic:revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
+                msg_c2c_logic:c2c_revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
 
             <<"c2g">> ->  % 群聊消息
-                websocket_logic:c2g(MsgId, CurrentUid, Data);
+                msg_c2g_logic:c2g(MsgId, CurrentUid, Data);
             <<"c2g_revoke">> ->  % 客户端撤回消息
-                websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
+                msg_c2g_logic:c2g_revoke(CurrentUid,
+                    MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
             <<"c2g_revoke_ack">> ->  % 客户端撤回消息ACK
-                websocket_logic:revoke(MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
+                msg_c2g_logic:c2g_revoke(CurrentUid,
+                    MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
 
             <<"webrtc_", _Event/binary>> -> % webrt信令处理
                 % Room = webrtc_ws_logic:room_name(

@@ -5,7 +5,7 @@ pro.imboy.pub
 i.imboy.puub
 turn.imboy.pub
 
-* 使用 docker容器启动 eturnal 服务，会非常占用内存，直接源码安装或者用依赖包在宿主机安装和省内存；
+* 使用 docker容器启动 eturnal 服务，会非常占用内存，直接源码安装或者用依赖包在宿主机安装很省内存；
 * 按下面流程配置好各个依赖后，通过 docker-compose-pro.yml 管理 postgresql15 服务
 
 ```

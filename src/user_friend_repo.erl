@@ -1,11 +1,11 @@
--module (user_log_repo).
+-module (user_friend_repo).
 %%%
-% user_log 相关操作都放到该模块，存储库模块
-% user_log related operations are put in this module, repository module
+% user_friend 相关操作都放到该模块，存储库模块
+% user_friend related operations are put in this module, repository module
 %%%
 
 -export ([tablename/0]).
--export ([add/2]).
+-export ([demo/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -19,11 +19,14 @@
 %% ===================================================================
 
 tablename() ->
-    imboy_db:public_tablename(<<"user_log">>).
+    imboy_db:public_tablename(<<"user_friend">>).
 
-add(Conn, Data) ->
-    Tb = tablename(),
-    imboy_db:add(Conn, Tb, Data, <<>>).
+%%% demo方法描述
+-spec demo(integer(), binary(), binary()) ->
+    {ok, list(), list()} | {error, any()}.
+demo(Uid, _Val1, _Val2) ->
+    Sql = <<"SELECT id FROM user_friend WHERE id = $1">>,
+    imboy_db:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

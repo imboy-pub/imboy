@@ -35,7 +35,7 @@ do_login(Mobile, Pwd) ->
             adm_user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
     end,
     % ?LOG(User),
-    do_login_transfer(Pwd, User).
+    verify_user(Pwd, User).
 
 
 
@@ -44,8 +44,8 @@ do_login(Mobile, Pwd) ->
 %% ===================================================================-
 
 
--spec do_login_transfer(binary(), map()) -> {ok, map()} | {error, any()}.
-do_login_transfer(Pwd, User) ->
+-spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
+verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % 状态: -1 删除  0 禁用  1 启用
     Status = maps:get(<<"status">>, User, -2),

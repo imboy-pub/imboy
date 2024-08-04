@@ -68,7 +68,7 @@ people_nearby(Req0, _State) ->
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
     #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
     #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
-    #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"km">>}], Req0),
+    #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"m">>}], Req0),
     #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
 
     % ?LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),

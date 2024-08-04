@@ -377,7 +377,7 @@ update(Conn, Tb, Where, KV) when is_map(KV) ->
 update(Conn, Tb, Where, SetBin) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", SetBin/binary, " WHERE ", Where/binary>>,
-    % ?LOG(io:format("update/4 sql ~s\n", [Sql])),
+    ?LOG(io:format("update/4 sql ~s\n", [Sql])),
     imboy_db:execute(Conn, Sql, []).
 
 

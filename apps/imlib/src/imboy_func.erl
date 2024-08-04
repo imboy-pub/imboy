@@ -8,6 +8,7 @@
 -export([is_email/1]).
 -export([num_random/1]).
 -export([send_email/2]).
+-export([send_email/3]).
 -export([is_proplist/1]).
 
 
@@ -39,6 +40,7 @@ is_mobile(Mobile) ->
     end.
 
 
+%% imboy_func:is_email(Email)
 -spec is_email(Email :: list()) -> true | false.
 is_email(Email) ->
     {_, P} = re:compile("^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$"),
@@ -64,31 +66,39 @@ num_random(Len) ->
     end.
 
 
-% imboy_func:send_email(<<"1977699124@qq.com">>,
-%    "code is: " ++ integer_to_list(imboy_func:num_random(6)) ++
-%    " , will expire in 10 minutes.").
-% imboy_func:send_email(<<"leeyisoft@icloud.com">>,
-%   "code is: " ++ integer_to_list(imboy_func:num_random(6)) ++
-%   " , will expire in 10 minutes.").
-% 中文支持，TODO
-% imboy_func:send_email(<<"leeyisoft@icloud.com">>,
-%   "你的验证码为： " ++ integer_to_list(imboy_func:num_random(6)) ++
-%   " ，10分钟后过期。").
-% imboy_func:send_email(<<"1977699124@qq.com">>, "你的验证码为： " ++
-%   integer_to_list(imboy_func:num_random(6)) ++ " ，10分钟后过期。").
+% imboy_func:send_email(<<"leeyisoft@icloud.com">>, <<"你的验证码为： 12345，10分钟后过期。"/utf8>>).
 -spec send_email(binary(), binary()) -> {ok, pid()}.
 send_email(ToEmail, Subject) when is_list(Subject) ->
-    send_email(ToEmail, list_to_binary(Subject));
+    send_email(ToEmail, ec_cnv:to_binary(Subject));
 send_email(ToEmail, Subject) ->
+    send_email(ToEmail, Subject, <<>>).
+
+send_email(ToEmail, Subject, Body) ->
     Option = config_ds:env(smtp_option),
     Username = proplists:get_value(username, Option),
-    Username2 = list_to_binary(Username),
-    Email = {Username,
-             [ToEmail],
-             <<"From: IMBoy ", Username2/binary, "\r\nTo:  ", ToEmail/binary, "\r\nSubject: ", Subject/binary>>},
-    gen_smtp_client:send_blocking(Email, Option),
-    {ok, success}.
+    Username2 = ec_cnv:to_binary(Username),
 
+    Email = {
+        <<"text">>,
+        <<"html">>,
+        [
+            {<<"From">>, Username2},
+            {<<"To">>, ToEmail},
+            {<<"Subject">>, Subject}
+        ],
+        #{content_type_params => [
+            {<<"charset">>, <<"utf-8">>}],
+            disposition => <<"inline">>
+        } ,
+        Body
+    },
+
+    gen_smtp_client:send({
+        Username2,
+        [ToEmail],
+        mimemail:encode(Email)
+    }, Option),
+    {ok, success}.
 
 % gen_smtp_client:send({Username,
 %                       [binary_to_list(ToEmail)],

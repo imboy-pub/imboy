@@ -6,6 +6,7 @@
 
 -export([webrtc_credential/1]).
 -export([title/1]).
+-export([title/2]).
 -export([auth_webrtc_credential/2]).
 
 -ifdef(EUNIT).
@@ -19,6 +20,7 @@
 %% API
 %% ===================================================================
 
+%% user_ds:title(Uid).
 -spec title(integer()) -> binary().
 title(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
@@ -29,6 +31,17 @@ title(Uid) ->
         _ ->
             Nickname
     end.
+
+title(Uid, 2) ->
+    U = user_repo:find_by_id(Uid, <<"account,nickname">>),
+    #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
+    Title = case {Account, Nickname} of
+        {_, <<>>} ->
+            Account;
+        _ ->
+            Nickname
+    end,
+    {Title, Nickname}.
 
 %%% demo方法描述
 -spec webrtc_credential(Uid :: integer()) -> {binary(), binary()}.

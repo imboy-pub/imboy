@@ -21,6 +21,7 @@ get_routes() ->
        {"/passport/signup", passport_handler, #{action => signup}},
        {"/passport/getcode", passport_handler, #{action => getcode}},
        {"/passport/findpassword", passport_handler, #{action => find_password}},
+       {"/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
        {"/ws", websocket_handler, #{}},
        {"/stress_testing", stress_testing_ws_handler, #{}},
@@ -39,7 +40,9 @@ get_routes() ->
        {"/user/change_state", user_handler, #{action => change_state}},
        {"/user/setting", user_handler, #{action => setting}},
        {"/user/credential", user_handler, #{action => credential}},
-       {"/user/cancel", user_handler, #{action => cancel}},
+       {"/user/change_password", user_handler, #{action => change_password}},
+       {"/user/apply_logout", user_handler, #{action => apply_logout}},
+       {"/user/cancel_logout", user_handler, #{action => cancel_logout}},
 
        {"/user_device/page", user_device_handler, #{action => page}},
        {"/user_device/change_name", user_device_handler, #{action => change_name}},
@@ -164,5 +167,6 @@ open() ->
      <<"/passport/signup">>,
      <<"/passport/getcode">>,
      <<"/passport/findpassword">>,
+     <<"/passport/bind_mail">>,
      <<"/auth/assets">>,
      <<"/">>].

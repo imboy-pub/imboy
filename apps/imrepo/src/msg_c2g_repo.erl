@@ -10,6 +10,7 @@
 -export([write_msg/6]).
 -export([list_by_ids/2]).
 -export([delete_msg/1]).
+-export([delete_msg/2]).
 
 %% ===================================================================
 %% API
@@ -58,7 +59,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Tb2 = msg_c2g_timeline_repo:tablename(),
         Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES",
                Values/binary>>,
-        ?LOG([Sql, Sql2]),
+        % ?LOG([Sql, Sql2]),
         {ok, Stmt2} = epgsql:parse(Conn, Sql2),
         epgsql:execute_batch(Conn, [{Stmt2, []}]),
         ok
@@ -83,10 +84,10 @@ list_by_ids(Ids, Column) ->
 % msg_c2g_repo:delete_msg(6).
 delete_msg(Id) ->
     Where = <<"WHERE msg_id = $1">>,
-    delete_msg(Where, Id).
+    delete_msg(Where, [Id]).
 
 
-delete_msg(Where, Val) ->
+delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    imboy_db:execute(Sql, [Val]).
+    imboy_db:execute(Sql, Params).

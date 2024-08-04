@@ -15,23 +15,78 @@ init(Req0, State0) ->
     % ?LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 =
-        case Action of
-            refreshtoken ->
-                refreshtoken(Req0);
-            login ->
-                login(Req0);
-            signup ->
-                signup(Req0);
-            getcode ->
-                getcode(Req0);
-            find_password ->
-                find_password(Req0);
-            false ->
-                Req0
-        end,
+    Req1 = case Action of
+        bind_mail ->
+            bind_mail(Req0);
+        refreshtoken ->
+            refreshtoken(Req0);
+        login ->
+            login(Req0);
+        signup ->
+            signup(Req0);
+        getcode ->
+            getcode(Req0);
+        find_password ->
+            find_password(Req0);
+        false ->
+            Req0
+    end,
     {ok, Req1, State}.
 
+%% 根据 user_logic:send_bind_email/2 方法生成的规则校验绑定EMail
+bind_mail(Req0) ->
+    #{ts := Ts} = cowboy_req:match_qs([{ts, [], <<>>}], Req0),
+    #{tk := Tk} = cowboy_req:match_qs([{tk, [], <<>>}], Req0),
+    #{uin := Uid} = cowboy_req:match_qs([{uin, [], <<>>}], Req0),
+    #{mail := Mail} = cowboy_req:match_qs([{mail, [], <<>>}], Req0),
+
+    CacheKey = {bind_mail, Mail, Ts},
+    % CacheVal =  imboy_cache:get(CacheKey),
+    CacheVal = undefined,
+    ?LOG(["CacheVal ", CacheVal]),
+    SolKey = config_ds:get(solidified_key), % {ok, 1}
+    Args = #{
+        ts => Ts,
+        uin => Uid,
+        mail => Mail
+    },
+    Tk2 = imboy_str:replace(Tk, " ", "+"),
+    % ?LOG(["tk ", Tk]),
+    % ?LOG(["tk ", Tk2]),
+    % ?LOG(["Ts ", Ts]),
+    Now = imboy_dt:second(),
+    Ts2 = binary_to_integer(Ts),
+    NewTk = imboy_hasher:hmac_sha512(
+        imboy_cnv:map_to_query(Args), SolKey),
+
+    % User = user_repo:find_by_email(Mail, <<"id">>),
+    % CheckUser = maps:size(User),
+    Err1 = case CacheVal of
+        undefined ->
+                Id = imboy_db:pluck(user_repo:tablename()
+                    , <<"email='", Mail/binary, "'">>
+                    , <<"id">>
+                    , 0),
+                if Id > 0 -> true; true -> false end;
+        _ ->
+            true
+    end,
+    if
+        Err1 ->
+            imboy_response:error(Req0, "抱歉，该邮箱地址验证已失效\n造成此情况可能是您更改了邮箱，也可能是您已确认过该邮箱不是您的。");
+        Now > Ts2 ->
+            imboy_response:error(Req0, "签名已过期");
+        NewTk == Tk2 ->
+            Uid2 = imboy_hashids:decode(Uid),
+            Where = <<"id=", (ec_cnv:to_binary(Uid2))/binary>>,
+            imboy_db:update(user_repo:tablename(), Where, #{
+                <<"email">> => Mail
+            }),
+            imboy_cache:set(CacheKey, 1, 86400),
+            imboy_response:success(Req0, #{});
+        true ->
+            imboy_response:error(Req0, "签名有误")
+    end.
 
 login(Req0) ->
     % ?LOG(["peer", cowboy_req:peer(Req0)]),
@@ -56,7 +111,11 @@ login(Req0) ->
                 Pwd0 ->
                     Pwd0
             catch
-                _Type:_Reason ->
+                Class:Reason:Stacktrace ->
+                    ?LOG(["websocket_handle try catch: Class:", Class,
+                          "Reason:", Reason,
+                          "Stacktrace:", Stacktrace,
+                          erlang:trace(all, true, [call])]),
                     <<>>
             end;
         _ ->
@@ -140,7 +199,7 @@ signup(Req0) ->
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
-    Password = proplists:get_value(<<"pwd">>, PostVals),
+    Pwd = proplists:get_value(<<"pwd">>, PostVals),
     Code = proplists:get_value(<<"code">>, PostVals),
     % 邀请人ID
     % RefUid = proplists:get_value(<<"ref_uid">>, PostVals),
@@ -153,7 +212,7 @@ signup(Req0) ->
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
-    case passport_logic:do_signup(Type, Account, Password, Code, Post2) of
+    case passport_logic:do_signup(Type, Account, Pwd, Code, Post2) of
         {ok, Data} ->
             imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->
@@ -172,7 +231,7 @@ find_password(Req0) ->
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
-    Password = proplists:get_value(<<"pwd">>, PostVals),
+    Pwd = proplists:get_value(<<"pwd">>, PostVals),
     Code = proplists:get_value(<<"code">>, PostVals),
     % 邀请人ID
     % RefUid = proplists:get_value(<<"ref_uid">>, PostVals),
@@ -185,7 +244,7 @@ find_password(Req0) ->
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
-    case passport_logic:find_password(Type, Account, Password, Code, Post2) of
+    case passport_logic:find_password(Type, Account, Pwd, Code, Post2) of
         {ok, Data} ->
             imboy_response:success(Req0, Data, "success.");
         {error, Msg} ->

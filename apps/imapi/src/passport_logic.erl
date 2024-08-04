@@ -7,7 +7,7 @@
 -export([do_login/3]).
 -export([do_signup/5]).
 -export([find_password/5]).
--export([do_login_transfer/2]).
+-export([verify_user/2]).
 
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/def_column.hrl").
@@ -49,7 +49,7 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
     case imboy_func:is_email(Email) of
         true ->
             User = user_repo:find_by_email(Email, ?LOGIN_COLUMN),
-            do_login_transfer(Pwd, User);
+            verify_user(Pwd, User);
         false ->
             {error, "Email格式有误"}
     end;
@@ -60,7 +60,7 @@ do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
         false ->
             user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
     end,
-    do_login_transfer(Pwd, User).
+    verify_user(Pwd, User).
 
 
 -spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: list()) ->
@@ -199,9 +199,9 @@ find_password_by_email(Email, Pwd, _PostVals) ->
         0 ->
             {error, "Email不存在或已被删除"};
         Id ->
-            Password = imboy_cipher:rsa_decrypt(Pwd),
+            PwdPlaintext = imboy_cipher:rsa_decrypt(Pwd),
             % Now = imboy_dt:utc(millisecond),
-            Pwd2 = imboy_password:generate(Password),
+            Pwd2 = imboy_password:generate(PwdPlaintext),
             Where = <<"id=", (ec_cnv:to_binary(Id))/binary>>,
             Res = imboy_db:update(user_repo:tablename()
                 , Where
@@ -216,10 +216,10 @@ find_password_by_email(Email, Pwd, _PostVals) ->
     end.
 
 
--spec do_login_transfer(binary(), map()) -> {ok, map()} | {error, any()}.
-do_login_transfer(Pwd, User) ->
+-spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
+verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
-    % 状态: -1 删除  0 禁用  1 启用
+    % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
     case imboy_password:verify(Pwd, Pwd2) of
         {ok, _} when Status == -2 ->
@@ -228,7 +228,7 @@ do_login_transfer(Pwd, User) ->
             {error, "账号不存在或者已删除"};
         {ok, _} when Status == 0 ->
             {error, "账号被禁用"};
-        {ok, _} when Status == 1 ->
+        {ok, _} when Status == 1; Status == 2 ->
             Id = maps:get(<<"id">>, User),
             {ok, #{
                <<"token">> => token_ds:encrypt_token(Id),
@@ -241,6 +241,7 @@ do_login_transfer(Pwd, User) ->
                <<"gender">> => maps:get(<<"gender">>, User),
                <<"region">> => maps:get(<<"region">>, User),
                <<"sign">> => maps:get(<<"sign">>, User),
+               <<"status">> => Status,
                <<"role">> => 1
               }};
         {error, Msg} ->

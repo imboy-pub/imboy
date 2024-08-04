@@ -7,7 +7,7 @@
 -include_lib("imlib/include/log.hrl").
 
 -export([write_msg/6]).
--export([revoke_offline_msg/4]).
+-export([revoke_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
@@ -41,8 +41,8 @@ read_msg(ToUid, Limit, undefined) ->
     Where = <<"WHERE to_id = ", (ec_cnv:to_binary(ToUid))/binary>>,
     read_msg_filter(Where, Limit);
 read_msg(ToUid, Limit, Ts) ->
-    Where = <<"WHERE to_id = " , (ec_cnv:to_binary(ToUid))/binary
-        , " AND created_at > ", (ec_cnv:to_binary(Ts))/binary>>,
+    Where = <<"WHERE to_id = " , (ec_cnv:to_binary(ToUid))/binary,
+        " AND created_at > ", (ec_cnv:to_binary(Ts))/binary>>,
     read_msg_filter(Where, Limit).
 
 
@@ -51,17 +51,18 @@ delete_msg(Id) ->
     ok.
 
 
-%% 撤销离线消息
--spec revoke_offline_msg(integer(), binary(), integer(), integer()) -> ok.
-revoke_offline_msg(NowTs, Id, FromId, ToId) ->
-    Payload = jsone:encode([{<<"msg_type">>, <<"custom">>}, {<<"custom_type">>, <<"peer_revoked">>}]),
+%% 离线消息
+-spec revoke_offline_msg(binary(), integer(), binary(), integer(), integer()) -> ok.
+revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
-    msg_c2c_ds:write_msg(NowTs, Id, Payload, FromId, ToId, NowTs),
+    msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
     Tb = msg_c2c_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET payload = $1 WHERE msg_id = $2">>,
-    imboy_db:execute(Sql, [Payload, Id]),
+    Payload2 = imboy_hasher:encoded_val(Payload),
+    Sql = <<"UPDATE ", Tb/binary,
+        " SET payload = ", Payload2/binary,
+        " WHERE msg_id = $1">>,
+    imboy_db:execute(Sql, [MsgId]),
     ok.
-
 
 %% ===================================================================
 %% Internal Function Definitions

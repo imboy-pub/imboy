@@ -28,23 +28,49 @@ init(Req0, State0) ->
                 qrcode(Req0, State);
             credential ->
                 credential(Req0, State);
-            cancel ->
-                cancel(Req0, State);
+            change_password ->
+                change_password(Req0, State);
+            apply_logout ->
+                apply_logout(Req0, State);
+            cancel_logout ->
+                cancel_logout(Req0, State);
             false ->
                 Req0
         end,
     {ok, Req1, State}.
 
 
-cancel(Req0, State) ->
+%%修改密码
+change_password(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    case user_logic:cancel(CurrentUid, Req0) of
+    case user_logic:change_password(CurrentUid, Req0) of
         {ok, _} ->
             imboy_response:success(Req0);
         {error, Msg} ->
             imboy_response:error(Req0, Msg)
     end.
 
+
+%%注销申请
+apply_logout(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    case user_logic:apply_logout(CurrentUid, Req0) of
+        {ok, _} ->
+            imboy_response:success(Req0);
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
+
+
+%%撤销注销申请
+cancel_logout(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    case user_logic:cancel_logout(CurrentUid, Req0) of
+        {ok, _} ->
+            imboy_response:success(Req0);
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
 
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 credential(Req0, State) ->
@@ -129,12 +155,15 @@ setting(Req0, State) ->
 update(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    Field = proplists:get_value(<<"field">>, PostVals, <<"">>),
-    Value = proplists:get_value(<<"value">>, PostVals, <<"">>),
+    Field = proplists:get_value(<<"field">>, PostVals, <<>>),
+    Value = proplists:get_value(<<"value">>, PostVals, <<>>),
+    % ?LOG(["update ", Field, Value]),
     case user_logic:update(CurrentUid, Field, Value) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
-        {ok, _} ->
+        {ok, Msg} ->
+            imboy_response:success(Req0, #{}, Msg);
+        ok ->
             imboy_response:success(Req0, #{}, "success.");
         _ ->
             imboy_response:error(Req0, <<"unknown error">>)

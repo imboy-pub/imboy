@@ -67,7 +67,7 @@ COMMENT ON COLUMN public.user.last_login_at IS '最后登录UTC时间';
 COMMENT ON COLUMN public.user.ref_user_id IS '推荐人ID，0表示无推荐人';
 
 COMMENT ON COLUMN public.user.status
-    IS '状态: -1 删除  0 禁用  1 启用';
+    IS '状态: -1 删除  0 禁用  1 启用  2 申请注销中';
 
 COMMENT ON COLUMN public.user.created_at
     IS '创建记录Unix时间戳毫秒单位';

@@ -9,6 +9,7 @@
 -export([read_msg/3]).
 -export([write_msg/6]).
 -export([delete_msg/1]).
+-export([delete_msg/2]).
 -export([count_by_to_id/1]).
 -export([delete_overflow_msg/2]).
 
@@ -54,17 +55,18 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
 
 delete_msg(Id) when is_integer(Id) ->
     Where = <<"WHERE id = $1">>,
-    delete_msg(Where, Id);
+    delete_msg(Where, [Id]);
 delete_msg(Id) ->
     % use index uk_c2c_MsgId
     Where = <<"WHERE msg_id = $1">>,
-    delete_msg(Where, Id).
+    delete_msg(Where, [Id]).
 
 
-delete_msg(Where, Val) ->
+delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    imboy_db:execute(Sql, [Val]).
+    ?LOG(['delete_msg', Params, Sql]),
+    imboy_db:execute(Sql, Params).
 
 
 % msg_c2c_repo:count_by_to_id(1).

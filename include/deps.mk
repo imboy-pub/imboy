@@ -10,6 +10,7 @@ dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.13.0
 dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.12.0
 
 # gen_smtp Email服务端、客户端
+# https://github.com/gen-smtp/gen_smtp.git
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 
 # jsone An Erlang library for encoding, decoding JSON data.

@@ -98,6 +98,8 @@ set(Key, Data) ->
 
 %% @spec set(Key, Data, MaxAge) -> void()
 %% @doc Add the key to the depcache, hold it for MaxAge seconds and no dependencies
+% imboy_cache:set("test", 1, 3).
+% imboy_cache:get("test").
 set(Key, Data, MaxAge) ->
     % ?LOG(["imboy_cache/set/3", Key, "; ", Data, "; ", MaxAge]),
     depcache:set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).

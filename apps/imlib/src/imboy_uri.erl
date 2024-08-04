@@ -1,5 +1,6 @@
 -module(imboy_uri).
 
+-export([build_query/3]).
 -export([exclusion_param/2]).
 -export([get_params/1, get_params/2, get_params/3]).
 
@@ -13,6 +14,27 @@
 %% API
 %% ===================================================================
 
+%
+
+-spec build_query(binary(), binary(), map()) -> binary().
+build_query(Base, Path, Args) ->
+    Base1 = ec_cnv:to_binary(Base),
+    CheckBase = imboy_str:endswith(<<"/">>, Base1),
+    Base2 = if
+        CheckBase ->
+            binary:part(Base1, 0, byte_size(Base1) -1);
+        true ->
+            Base1
+    end,
+    CheckPath = imboy_str:startswith(<<"/">>, Path),
+    Path2 = if
+        CheckPath ->
+            Path;
+        true ->
+            <<"/", Path/binary>>
+    end,
+    Args2 = imboy_cnv:map_to_query(Args),
+    <<Base2/binary, Path2/binary, "?", Args2/binary>>.
 
 % imboy_uri:download("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375", "./temp_temp.png").
 download(Url, FilePath) ->

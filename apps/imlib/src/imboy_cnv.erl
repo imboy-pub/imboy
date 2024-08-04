@@ -14,7 +14,15 @@
 -export([implode/2]).
 -export([remove_dups/1]).
 -export([vsn_major/1]).
+-export([map_to_query/1]).
 -export([list_to_binary_string/1]).
+
+
+% imboy_cnv:map_to_query(#{d=>4, a => 1, b => 2, c => 3}).
+map_to_query(Map) ->
+    Pairs = [[ec_cnv:to_list(Key), "=", ec_cnv:to_list(Value)] || {Key, Value} <- maps:to_list(Map)],
+    list_to_binary(string:join(Pairs, "&")).
+
 
 % imboy_cnv:list_to_binary_string([513251,62829,62825]).
 list_to_binary_string(IntList) ->

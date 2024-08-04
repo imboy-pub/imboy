@@ -83,7 +83,7 @@ verify(Plaintext, default_md5, Salt, Ciphertext) ->
     eq(Ciphertext, Ciphertext2);
 verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = imboy_hasher:hmac_sha512(Plaintext, Salt),
-    % ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
     eq(Ciphertext, Ciphertext2).
 
 
@@ -92,5 +92,6 @@ eq(Ciphertext, Ciphertext2) ->
         true ->
             {ok, []};
         _ ->
-            {error, "密码有误"}
+            % error_password 为APP端的多语言吗
+            {error, "error_password"}
     end.

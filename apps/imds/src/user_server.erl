@@ -100,7 +100,7 @@ handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
     cancel(Uid, CreatedAt, Opt),
     {noreply, State, hibernate};
 handle_cast({online, Uid, Pid, DID}, State) ->
-    ?LOG([online, Uid, Pid, State, DID]),
+    % ?LOG([online, Uid, Pid, State, DID]),
     DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
     MsgId = <<"logged_another_device">>,
@@ -125,6 +125,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     end,
     % ?LOG(["before check_msg/2",Uid, Pid, State]),
     % 检查 S2C C2C 离线消息
+    msg_s2c_logic:check_msg(Uid, Pid, DID),
     msg_c2c_logic:check_msg(Uid, Pid, DID),
     % 检查群聊离线消息
     msg_c2g_logic:check_msg(Uid, Pid, DID),
@@ -156,7 +157,7 @@ cast_notice_friend(CurrentUid, ChatState) ->
 
 %% 检查消息 用异步队列实现
 
-
+%% ws 上线后的异步操作 例如检查离线消息等
 -spec cast_online(binary(), pid(), binary()) -> ok.
 cast_online(Uid, Pid, DID) ->
     gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
@@ -168,7 +169,7 @@ cast_offline(Uid, Pid, DID) ->
     gen_server:cast(?MODULE, {offline, Uid, Pid, DID}),
     ok.
 
-
+%% 异步注销用户
 cast_cancel(Uid, CreatedAt, Opt) ->
     gen_server:cast(?MODULE, {cancel, Uid, CreatedAt, Opt}),
     ok.

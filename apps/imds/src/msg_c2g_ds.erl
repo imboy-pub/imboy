@@ -3,6 +3,7 @@
 % msg_c2g_ds 是 msg_c2g domain service 缩写
 %%%
 -export([write_msg/6]).
+-export([revoke_offline_msg/6]).
 -export([read_msg/1]).
 -export([delete_msg/1]).
 
@@ -27,6 +28,26 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
             ok
     end.
 
+%% 离线消息
+-spec revoke_offline_msg(binary(), binary(), integer(), binary(), integer(), list()) -> ok.
+revoke_offline_msg(Msg2, NowTs, MsgId, FromId, MemberUids, Gid) ->
+    % 存储消息
+    write_msg(NowTs, MsgId, Msg2, FromId, MemberUids, Gid),
+    Tb = msg_c2g_repo:tablename(),
+    Payload3 = imboy_hasher:encoded_val(Msg2),
+    Sql = <<"UPDATE ", Tb/binary,
+        " SET payload = ", Payload3/binary,
+        " WHERE msg_id = $1">>,
+    % ?LOG(["Sql ", Sql, "; MsgId ", MsgId]),
+    imboy_db:execute(Sql, [MsgId]),
+    % 已确认的消息需要重新确认
+    imboy_db:update(
+        msg_c2g_timeline_repo:tablename()
+        , <<"msg_id = '", (ec_cnv:to_binary(MsgId))/binary, "'">>
+        , #{client_ack => 0}
+    ),
+    ok.
+
 
 %% 读取离线消息
 % msg_c2g_ds:read_msg(3).
@@ -45,7 +66,6 @@ read_msg(ToUid) ->
         {ok, _, Rows2} ->
             [ lists:zipwith(fun(X, Y) -> {X, Y} end, [<<"payload">>], tuple_to_list(Row)) || Row <- Rows2 ]
     end.
-
 
 delete_msg(Id) ->
     msg_c2g_repo:delete_msg(Id).

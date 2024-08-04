@@ -16,56 +16,121 @@
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
 -export([update/3]).
--export([cancel/2]).
+% -export([send_bind_email/2]).
+-export([change_password/2]).
+-export([apply_logout/2]).
+-export([cancel_logout/2]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-cancel(Uid, Req0) ->
+change_password(Uid, Req0) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
 
+
     PostVals = imboy_req:post_params(Req0),
-    Password = proplists:get_value(<<"pwd">>, PostVals),
-    RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
-    Pwd = case RsaEncrypt == <<"1">> of
-        true ->
-            try imboy_cipher:rsa_decrypt(Password) of
-                Pwd0 ->
-                    Pwd0
-            catch
-                _Type:_Reason ->
-                    <<>>
-            end;
-        _ ->
-            Password
-    end,
+    ExistingPwd = proplists:get_value(<<"existing_pwd">>, PostVals),
+    NewPwd = proplists:get_value(<<"new_pwd">>, PostVals),
+
+
     User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
-    case passport_logic:do_login_transfer(Pwd, User) of
+        ExistingPwd2 = imboy_cipher:rsa_decrypt(ExistingPwd),
+
+    VerifyUser = passport_logic:verify_user(ExistingPwd2, User),
+    case VerifyUser of
         {ok, _} ->
-            % 通知当前用户所有设备已注销 TODO 2024-02-16 23:21:28
-            % 通知用户所有朋友，该用户已经注销
-            % 清理注销用户相关数据
-            % 用户注销以后,用户的所有好友和群组关系需要解除
-            % https://blog.51cto.com/u_15069441/4323079
-            Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
-            imboy_db:update(user_repo:tablename(), Where, #{
-                % 状态: -1 删除  0 禁用  1 启用
-                <<"status">> => -1
+            PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
+            Pwd2 = imboy_password:generate(PwdPlaintext),
+            imboy_db:with_transaction(fun(Conn) ->
+                Now = imboy_dt:utc(millisecond),
+                Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+                imboy_db:update(Conn,
+                    user_repo:tablename(),
+                    Where,
+                    #{
+                        <<"password">> => Pwd2
+                    }),
+                {ok, Body} = jsone_encode:encode(#{
+                        <<"app_vsn">> => AppVsn,
+                        <<"did">> => DID,
+                        <<"dtype">> => DType,
+                        <<"ip">> => Ip
+                }, [native_utf8]),
+                user_log_repo:add(Conn, #{
+                    % 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
+                    type => 110,
+                    uid => Uid,
+                    body => Body,
+                    created_at => Now
+                }),
+                ok
+            end),
+            {ok, "success"};
+        {error, Msg} ->
+            {error, Msg}
+    end.
+
+%%注销申请
+apply_logout(Uid, Req0) ->
+    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
+    DID = cowboy_req:header(<<"did">>, Req0, undefined),
+    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+
+
+    % 通知用户所有朋友，该用户已经注销
+    % 清理注销用户相关数据
+    % 用户注销以后,用户的所有好友和群组关系需要解除
+    % https://blog.51cto.com/u_15069441/4323079
+    imboy_db:with_transaction(fun(Conn) ->
+        Now = imboy_dt:utc(millisecond),
+        Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+        imboy_db:update(Conn,
+            user_repo:tablename(),
+            Where,
+            #{
+                % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
+                <<"status">> => 2
             }),
-            user_server:cast_cancel(Uid, imboy_dt:utc(millisecond), #{
+        {ok, Body} = jsone_encode:encode(#{
                 <<"app_vsn">> => AppVsn,
                 <<"did">> => DID,
                 <<"dtype">> => DType,
                 <<"ip">> => Ip
-            }),
-            imboy_response:success(Req0);
-        {error, Msg} ->
-            {error, Msg}
-    end.
+        }, [native_utf8]),
+        user_log_repo:add(Conn, #{
+            % 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
+            type => 102,
+            uid => Uid,
+            body => Body,
+            created_at => Now
+        }),
+        ok
+    end),
+
+    % user_server:cast_apply_logout(Uid, imboy_dt:utc(millisecond), #{
+    %     <<"app_vsn">> => AppVsn,
+    %     <<"did">> => DID,
+    %     <<"dtype">> => DType,
+    %     <<"ip">> => Ip
+    % }),
+    {ok, "success"}.
+
+%%撤销注销申请
+cancel_logout(Uid, _Req0) ->
+    Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(
+        user_repo:tablename(),
+        Where,
+        #{
+            % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
+            <<"status">> => 1
+        }),
+    {ok, "success"}.
 
 %dtype 设备类型 web ios android macos windows等
 -spec online(integer(), binary(), pid(), binary()) -> ok.
@@ -161,8 +226,24 @@ find_by_ids(Ids, Column) ->
     end.
 
 
--spec update(Uid :: any(), Field :: binary(), list() | binary()) ->
-          ok | {error, {integer(), binary(), Msg :: binary()}}.
+-spec update(integer(), binary(), list() | binary()) ->
+          ok | {error, {integer(), binary(), binary()}}.
+update(Uid, <<"email">>, Val) ->
+    IsEmail = imboy_func:is_email(Val),
+    User = if
+        IsEmail ->
+            user_repo:find_by_email(Val, <<"id">>);
+        true ->
+            #{}
+    end,
+    case {IsEmail, maps:size(User)} of
+        {true, 0} ->
+            send_bind_email(Uid, Val);
+        {true, _} ->
+            {error, {1, <<"">>, <<"Email 被占用"/utf8>>}};
+        {_, _} ->
+            {error, {1, <<"">>, <<"Email 格式有误"/utf8>>}}
+    end;
 update(Uid, <<"sign">>, Val) ->
     Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
     imboy_db:update(user_repo:tablename(), Where, #{
@@ -232,3 +313,33 @@ check_avatar(User) ->
         {<<"avatar">>, _Aaatar} ->
             User
     end.
+
+% user_logic:send_bind_email(108, <<"leeyisoft@icloud.com">>).
+-spec send_bind_email(integer(), binary()) ->
+          ok | {error, {integer(), binary(), binary()}}.
+send_bind_email(Uid, Email) ->
+    ExpireAtS = imboy_dt:second() + 86400,
+    ExpireAt = imboy_dt:to_rfc3339(ExpireAtS, second),
+    {Title, Nickname} = user_ds:title(Uid, 2),
+
+    SolKey = config_ds:get(solidified_key),
+    Args = #{
+        ts => ExpireAtS,
+        uin => imboy_hashids:encode(Uid),
+        mail => Email
+    },
+    Tk = imboy_hasher:hmac_sha512(imboy_cnv:map_to_query(Args), SolKey),
+    Url = imboy_uri:build_query(
+        config_ds:env(base_url),
+        <<"/passport/bind_mail">>,
+        Args#{tk => Tk}),
+    Body = <<"Hi, ", Title/binary,
+        "：<br/><br/>IMBoy正在尝试绑定邮件地址 "/utf8,
+        Email/binary,
+        " 到你的账号（昵称："/utf8, Nickname/binary,
+        " )。<br/><br/>如果这是你的操作，请 <a href=\""/utf8, Url/binary,
+        "\" target=\"_blank\">点击确认</a> 完成邮箱绑定，截止之"/utf8,
+        (ec_cnv:to_binary(ExpireAt))/binary, "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：https://www.imboy.pub/"/utf8>>,
+    % ?LOG(Body),
+    imboy_func:send_email(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
+    {ok, "success"}.
