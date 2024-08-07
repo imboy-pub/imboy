@@ -1,3 +1,6 @@
+
+* 修复 bad argument in call to unicode:characters_to_binary(1)
+
 # 0.4.3
 * 修复单聊撤回消息对端离线的情况下，导致对端再也收取不到离线消息的bug；
 * 修复群聊消息撤回功能无效的的问题；

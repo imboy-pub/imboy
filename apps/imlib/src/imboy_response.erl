@@ -59,7 +59,13 @@ reply_json(Code, Msg, Payload, Req) ->
 
 
 reply_json(Code, Msg, Payload, Req, Options) ->
-    LPayload = [{<<"code">>, Code}, {<<"msg">>, unicode:characters_to_binary(Msg)}, {<<"payload">>, Payload}],
+    Msg2 = case io_lib:printable_unicode_list(Msg) of
+        true ->
+            unicode:characters_to_binary(Msg);
+        false ->
+            ec_cnv:to_binary(Msg)
+    end,
+    LPayload = [{<<"code">>, Code}, {<<"msg">>, Msg2}, {<<"payload">>, Payload}],
     Body = jsone:encode(LPayload ++ Options, [native_utf8]),
     cowboy_req:reply(200
         , #{<<"content-type">> => <<"application/json; charset=utf-8">>}
