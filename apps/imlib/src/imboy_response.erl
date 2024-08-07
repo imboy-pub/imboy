@@ -59,13 +59,17 @@ reply_json(Code, Msg, Payload, Req) ->
 
 
 reply_json(Code, Msg, Payload, Req, Options) ->
-    Msg2 = case io_lib:printable_unicode_list(Msg) of
+    Msg2 = if
+         is_list(Msg) == false ->
+            ec_cnv:to_binary(Msg);
         true ->
-            unicode:characters_to_binary(Msg);
-        false ->
-            ec_cnv:to_binary(Msg)
+            unicode:characters_to_binary(Msg)
     end,
-    LPayload = [{<<"code">>, Code}, {<<"msg">>, Msg2}, {<<"payload">>, Payload}],
+    LPayload = [
+        {<<"code">>, Code},
+        {<<"IsUnicode">>, io_lib:printable_unicode_list(Msg)},
+        {<<"msg">>, Msg2},
+        {<<"payload">>, Payload}],
     Body = jsone:encode(LPayload ++ Options, [native_utf8]),
     cowboy_req:reply(200
         , #{<<"content-type">> => <<"application/json; charset=utf-8">>}
