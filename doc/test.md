@@ -98,3 +98,20 @@ Swap:            0B          0B          0B
 
 查看 pid
  pmap -d 6380
+
+
+
+模拟对端短时间内重复发消息，解决““消息重复投递导致的聊天列表消息重复显示问题””
+ ```
+Msg = [{<<"id">>,<<"cqpp7f101oplmuvgrfp1">>},
+                                        {<<"type">>,<<"C2C">>},
+                                        {<<"from">>,<<"3wdy4w">>},
+                                        {<<"to">>,<<"2ge24g">>},
+                                        {<<"payload">>,
+                                         [{<<"msg_type">>,<<"text">>},
+                                          {<<"text">>,<<"hello">>}]},
+                                        {<<"created_at">>,1723015997297}].
+    Msg2 = jsone:encode(Msg, [native_utf8]),
+    MsLi = [0, 1, 1, 1, 5000].
+message_ds:send_next(108, <<"cqpp7f101oplmuvgrfp1">>, Msg2, MsLi).
+ ```
