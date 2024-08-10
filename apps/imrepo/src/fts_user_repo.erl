@@ -1,10 +1,11 @@
--module(fts_repo).
+-module(fts_user_repo).
 %%%
 % fts 相关操作都放到该模块，存储库模块
 % fts related operations are put in this module, repository module
 %%%
 
 -export([tablename/0]).
+-export([allow_search/1]).
 -export([count_for_user_search_page/1,
          user_search_page/3]).
 
@@ -24,8 +25,20 @@
 tablename() ->
     imboy_db:public_tablename(<<"fts_user">>).
 
+% fts_user_repo:allow_search(108).
+allow_search(Uid) ->
+    Uid2 = ec_cnv:to_binary(Uid),
+    Where = <<"user_id = ", Uid2/binary>>,
+    % allow_search 用户允许被搜索 1 是  2 否
+    Allow = imboy_db:pluck(tablename(), Where, <<"allow_search">>, 2),
+    case Allow of
+        1 ->
+            true;
+        _ ->
+            false
+    end.
 
-% fts_repo:user_search_page(<<"东区"/utf8>>, 10, 0).
+% fts_user_repo:user_search_page(<<"东区"/utf8>>, 10, 0).
 %%% 分页搜索好友
 -spec user_search_page(binary(), integer(), integer()) -> {ok, list(), list()} | {error, any()}.
 user_search_page(Keyword, Limit, Offset) ->
@@ -38,8 +51,9 @@ user_search_page(Keyword, Limit, Offset) ->
     imboy_db:query(Sql, [Keyword2, Keyword2, Limit, Offset]).
 
 
-% fts_repo:count_for_user_search_page(<<"leeyi"/utf8>>).
-% fts_repo:count_for_user_search_page(<<"东区"/utf8>>).
+
+% fts_user_repo:count_for_user_search_page(<<"leeyi"/utf8>>).
+% fts_user_repo:count_for_user_search_page(<<"东区"/utf8>>).
 count_for_user_search_page(<<>>) ->
     0;
 count_for_user_search_page(Keyword) ->

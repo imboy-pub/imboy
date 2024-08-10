@@ -25,7 +25,7 @@ tablename() ->
 
 select_by_where(Where, Limit, Offset, OrderBy) ->
     Tb = tablename(),
-    FtsTb = fts_repo:tablename(),
+    FtsTb = fts_user_repo:tablename(),
     Limit2 = integer_to_binary(Limit),
     Offset2 = integer_to_binary(Offset),
     Sql = <<"SELECT ", ?DEF_USER_COLUMN/binary, " FROM ", Tb/binary, " u LEFT JOIN ", FtsTb/binary,
@@ -53,10 +53,10 @@ find_by_mobile(Mobile, Column) ->
 
 
 % user_repo:find_by_account("550138", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
-find_by_account(Username, Column) ->
+find_by_account(Account, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE account = $1">>,
-    imboy_db:find(Sql, [Username]).
+    imboy_db:find(Sql, [Account]).
 
 
 find_by_id(Uid) ->

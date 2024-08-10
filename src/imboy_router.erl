@@ -43,6 +43,7 @@ get_routes() ->
        {"/user/change_password", user_handler, #{action => change_password}},
        {"/user/apply_logout", user_handler, #{action => apply_logout}},
        {"/user/cancel_logout", user_handler, #{action => cancel_logout}},
+       {"/user/search", user_handler, #{action => search}},
 
        {"/user_device/page", user_device_handler, #{action => page}},
        {"/user_device/change_name", user_device_handler, #{action => change_name}},

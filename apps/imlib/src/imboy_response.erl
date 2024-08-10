@@ -67,7 +67,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
     end,
     LPayload = [
         {<<"code">>, Code},
-        {<<"IsUnicode">>, io_lib:printable_unicode_list(Msg)},
+        % {<<"IsUnicode">>, io_lib:printable_unicode_list(Msg)},
         {<<"msg">>, Msg2},
         {<<"payload">>, Payload}],
     Body = jsone:encode(LPayload ++ Options, [native_utf8]),

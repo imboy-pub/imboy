@@ -282,7 +282,16 @@ update(Uid, <<"gender">>, <<"3">>) ->
     imboy_db:update(user_repo:tablename(), Where, #{
         <<"gender">> => <<"3">>
     });
-
+update(Uid, <<"allow_search">>, <<"1">>) ->
+    Where = <<"user_id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(fts_user_repo:tablename(), Where, #{
+        <<"allow_search">> => <<"1">>
+    });
+update(Uid, <<"allow_search">>, <<"2">>) ->
+    Where = <<"user_id=", (ec_cnv:to_binary(Uid))/binary>>,
+    imboy_db:update(fts_user_repo:tablename(), Where, #{
+        <<"allow_search">> => <<"2">>
+    });
 update(_Uid, _Field, _Val) ->
     {error, {1, <<"">>, <<"Unsupported field">>}}.
 

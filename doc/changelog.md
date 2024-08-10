@@ -1,4 +1,6 @@
-
+# 0.4.4
+* 新增 /user/search?page=&size=&keyword= 接口
+* 新增“用户被搜索开关”功能 /user/update?field=allow_search&value=2
 * 修复 bad argument in call to unicode:characters_to_binary(1)
 
 # 0.4.3

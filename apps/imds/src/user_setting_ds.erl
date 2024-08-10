@@ -21,7 +21,7 @@ find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(imboy_hashids:decode(Uid));
 find_by_uid(Uid) ->
     Column = <<"setting">>,
-    case user_setting_repo:find_by_uid(Uid, Column) of
+    S = case user_setting_repo:find_by_uid(Uid, Column) of
         {ok, _, []} ->
             #{};
         {ok, _, [{Setting}]} ->
@@ -32,7 +32,10 @@ find_by_uid(Uid) ->
                 _:_ ->
                     #{}
             end
-    end.
+    end,
+    S#{
+        <<"allow_search">> => fts_user_repo:allow_search(Uid)
+    }.
 
 
 %% 检查用户是否隐藏在线状态

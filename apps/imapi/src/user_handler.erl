@@ -4,6 +4,7 @@
 -export([init/2]).
 
 -include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/def_column.hrl").
 
 %% ===================================================================
 %% API
@@ -34,11 +35,51 @@ init(Req0, State0) ->
                 apply_logout(Req0, State);
             cancel_logout ->
                 cancel_logout(Req0, State);
+            search ->
+                search(Req0, State);
             false ->
                 Req0
         end,
     {ok, Req1, State}.
 
+
+search(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State, 0),
+    {Page, Size} = imboy_req:page_size(Req0),
+    #{keyword := Kwd} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
+    IsEmail = imboy_func:is_email(Kwd),
+    IsMobile = imboy_func:is_mobile(Kwd),
+    User = if IsEmail ->
+            user_repo:find_by_email(Kwd, ?DEF_USER_COLUMN);
+        IsMobile ->
+            user_repo:find_by_mobile(Kwd, ?DEF_USER_COLUMN);
+        true ->
+            user_repo:find_by_account(Kwd, ?DEF_USER_COLUMN)
+    end,
+    % ?LOG(['User ', User]),
+    Uid2 = maps:get(<<"id">>, User, 0),
+    AllowSearch = fts_user_repo:allow_search(Uid2),
+    Payload = if
+        Uid2 == 0 ->
+            imboy_response:page_payload(0, Page, Size, []);
+        AllowSearch == false ->
+            imboy_response:page_payload(0, Page, Size, []);
+        true ->
+             [IsF, Remark] = case friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>) of
+                 {B1, R} ->
+                     [B1, R];
+                 _ ->
+                     [false, <<>>]
+             end,
+             User2 = User#{
+                <<"is_friend">> => IsF,
+                <<"remark">> => Remark
+            },
+            imboy_response:page_payload(1, Page, Size, [
+                imboy_hashids:replace_id(User2)
+            ])
+    end,
+    imboy_response:success(Req0, Payload).
 
 %%修改密码
 change_password(Req0, State) ->
@@ -158,7 +199,7 @@ update(Req0, State) ->
     Field = proplists:get_value(<<"field">>, PostVals, <<>>),
     Value = proplists:get_value(<<"value">>, PostVals, <<>>),
     % ?LOG(["update ", Field, Value]),
-    case user_logic:update(CurrentUid, Field, Value) of
+    case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value)) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
         {ok, Msg} ->
