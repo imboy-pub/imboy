@@ -29,3 +29,6 @@
 +MHsmbcs 512
 
 +MMmcs 30
+
++MMscs 1024
++MMscrpm false

@@ -51,7 +51,7 @@ check(<<"GET">>, Req0, _State) ->
     Res = app_version_repo:find(Where, Column),
     % ?LOG([Res]),
     LastVsn = maps:get(<<"vsn">>, Res, <<"0.0.0">>),
-    % ?LOG([LastVsn, Res]),
+    % ?LOG([LastVsn, Res, Where]),
     %  updatable = [true | false]
     imboy_response:success(Req0, Res#{
         <<"updatable">> => ec_semver:lt(Vsn, LastVsn)

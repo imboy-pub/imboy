@@ -49,6 +49,23 @@ https://www.youtube.com/watch?v=tW49z8HqsNw&feature=youtu.be&t=11m2s
 
 Rabbit MQ explain
 https://www.rabbitmq.com/runtime.html#distribution-buffer
+
+
+https://www.cnblogs.com/sunbin-hello/p/13092056.html
++MMmcs <amount>
+        最大缓存段。 存储在内存段缓存中的最大内存段数。 有效范围是[0，30]。 默认为10。
+
+
+https://blog.yufeng.info/archives/category/调优
++MMscrpm true|false
+        设置超级载体保留物理内存标志。 默认为true。 当此标志为true时，物理内存在创建时将立即为整个超级载体保留。 此后保留保留不变。 当此标志设置为false时，在创建时仅为超级载体保留虚拟地址空间。 系统尝试在超级载体中创建载体时保留物理内存，并尝试在超级载体中破坏载体时取消物理内存。
+
++MMscs <size in MB>
+        设置超级载体大小（以MB为单位）。 默认为0，即默认情况下禁用超级载体。 超级载体是虚拟地址空间中的一个大连续区域。 如果存在，则mseg_alloc始终尝试在超级载体中创建新载体。 注意，alloc_util框架可以创建sys_alloc载体。 有关更多信息，请参见+ MMsco。
+
+关键参数有二个： MMscs 控制一次向内核申请的内存的总量， MMscrpm 控制申请的内存要不要马上兑现（马上分配物理内存）。
+
+
 ```
 
 ### +sbwt、+sbwtdcpu、 和+sbwtdio

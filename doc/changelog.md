@@ -1,3 +1,7 @@
+
+# 0.4.5
+* 新增 globalSignKeyVsn ，解决频繁发布版本需要频繁设置签名秘钥的问题；
+
 # 0.4.4
 * 新增 /user/search?page=&size=&keyword= 接口
 * 新增“用户被搜索开关”功能 /user/update?field=allow_search&value=2

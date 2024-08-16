@@ -93,7 +93,8 @@ verify_sign(Req, Env) ->
 
     % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
     PlainText = iolist_to_binary([Did, "|", Vsn, "|", ClientOS, "|", Pkg]),
-    Key = app_version_ds:sign_key(ClientOS, Vsn, Pkg),
+    SignKeyVsn = cowboy_req:header(<<"sk">>, Req, Vsn),
+    Key = app_version_ds:sign_key(ClientOS, SignKeyVsn, Pkg),
     case do_verify_sign(Sign, PlainText, Key, Method) of
         true ->
             {ok, Req, Env};

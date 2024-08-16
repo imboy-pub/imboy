@@ -33,9 +33,10 @@ api_init(Req0) ->
     Vsn = cowboy_req:header(<<"vsn">>, Req0, <<>>),
     DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
     Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
+    SignKeyVsn = cowboy_req:header(<<"sk">>, Req0, Vsn),
 
     SolKey = config_ds:get(solidified_key),
-    SignKey = case app_version_ds:sign_key(DType, Vsn, Pkg) of
+    SignKey = case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
         undefined ->
             SolKey;
         SK ->

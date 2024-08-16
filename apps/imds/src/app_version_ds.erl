@@ -19,42 +19,16 @@
 %% API
 %% ===================================================================
 
-% app_version_ds:get_sign_key(<<"android">>, <<"0.5.0">>, <<"pub.imboy.apk">>, <<"sign_key">>).
-% app_version_ds:sign_key(<<"android">>, <<"0.5.0">>, <<"pub.imboy.apk">>).
-sign_key(ClientOS, Vsn, Pkg) ->
+% app_version_ds:sign_key(<<"android">>, <<"1">>, <<"pub.imboy.apk">>).
+% app_version_ds:sign_key(<<"ios">>, <<"1">>, <<"pub.imboy.2">>).
+sign_key(ClientOS, Vsn, Pkg) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
     % get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>).
-    Key = {sign_key, ClientOS, Vsn, Pkg},
-    Fun = fun() -> get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>) end,
-    % 缓存10天
-    imboy_cache:memo(Fun, Key, 864000).
+    Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
+    config_ds:get(Key).
 
-
-set_sign_key(ClientOS, Vsn, Pkg, Key) ->
-    OldKey = get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>),
-    case OldKey of
-        undefined ->
-            app_version_repo:add(#{
-                <<"type">> => ClientOS,
-                <<"package_name">> => Pkg,
-                <<"app_name">> => <<>>,
-                <<"vsn">> => Vsn,
-                <<"download_url">> => <<>>,
-                <<"description">> => <<>>,
-                <<"force_update">> => 2,
-                created_at => imboy_dt:utc(millisecond),
-                <<"sign_key">> => Key});
-        _ ->
-            Where = [
-                <<"vsn = '", Vsn/binary, "'">>,
-                <<"package_name = '", Pkg/binary, "'">>,
-                <<"type = '", ClientOS/binary, "'">>
-            ],
-            Where2 = imboy_cnv:implode(" AND ", Where),
-            imboy_db:update(<<"app_version">>, Where2, #{
-                <<"sign_key">> => Key
-            })
-    end,
-    imboy_cache:flush({sign_key, ClientOS, Vsn, Pkg}).
+set_sign_key(ClientOS, Vsn, Pkg, Val) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
+    Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
+    config_ds:set(Key, Val).
 
 %% ===================================================================
 %% Internal Function Definitions
