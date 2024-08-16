@@ -39,6 +39,8 @@ api_init(Req0) ->
     SignKey = case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
         undefined ->
             SolKey;
+        <<>> ->
+            SolKey;
         SK ->
             SK
     end,

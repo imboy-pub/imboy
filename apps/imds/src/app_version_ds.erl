@@ -22,17 +22,21 @@
 % app_version_ds:sign_key(<<"android">>, <<"1">>, <<"pub.imboy.apk">>).
 % app_version_ds:sign_key(<<"ios">>, <<"1">>, <<"pub.imboy.2">>).
 sign_key(ClientOS, Vsn, Pkg) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
-    % get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>).
+    %
     Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
-    config_ds:get(Key).
+    case config_ds:get(Key) of
+        <<>> ->
+            % 兼容旧之前版本，一年后可以不兼容 2024-08-16
+            get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>);
+        Val ->
+            Val
+    end.
 
 set_sign_key(ClientOS, Vsn, Pkg, Val) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
     Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
     config_ds:set(Key, Val).
 
-%% ===================================================================
-%% Internal Function Definitions
-%% ===================================================================-
+
 get_sign_key(ClientOS, Vsn, Pkg, Field) ->
     Where = [
         <<"vsn = '", Vsn/binary, "'">>,
@@ -43,6 +47,9 @@ get_sign_key(ClientOS, Vsn, Pkg, Field) ->
     % Defalut = config_ds:env(solidified_key),
     imboy_db:pluck(<<"app_version">>, Where2, Field, undefined).
 
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================-
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
