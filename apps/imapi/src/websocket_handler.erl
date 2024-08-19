@@ -205,7 +205,7 @@ websocket_handle(_Frame, State) ->
 
 %% 处理从其他进程发送到 WebSocket 进程的消息。
 websocket_info({reply, Msg}, State) ->
-    ?LOG([reply, State]),
+    % ?LOG([reply, State, Msg]),
     {reply, {text, jsone:encode(Msg, [native_utf8])}, State, hibernate};
 
 websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
