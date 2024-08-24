@@ -46,7 +46,7 @@ list_by_ids(Ids, Column) ->
     Where = <<"WHERE id IN (", Ids2/binary, ")">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
     % ?LOG([Sql]),
-    imboy_db:query(Sql).
+    imboy_db:proplists(Sql).
 
 
 % group_repo:list_by_uid(1, <<"*">>).

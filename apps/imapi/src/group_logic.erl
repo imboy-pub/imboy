@@ -2,6 +2,7 @@
 %%%
 % group 业务逻辑模块
 %%%
+-export([group_transfer/1]).
 -export([face2face/4]).
 -export([face2face_save/3]).
 -export([add/4]).
@@ -9,6 +10,15 @@
 
 -include_lib("imlib/include/log.hrl").
 
+% group_logic:group_transfer(G)
+group_transfer(G) ->
+    imboy_hashids:replace_id(
+        imboy_hashids:replace_id(
+            imboy_hashids:replace_id(
+                    imboy_hashids:replace_id(G, <<"id">>)
+                , <<"creator_uid">>)
+        , <<"owner_uid">>)
+    , <<"gid">>).
 
 face2face(_, <<>>, _, _) ->
     {error, <<"Code 必须">>};

@@ -58,6 +58,7 @@ api_init(Req0) ->
     % imboy_response:success(Req0, Data, "success.").
     IV = config_ds:get(solidified_key_iv),
     Key = imboy_hasher:md5(SignKey),
+    % ?LOG([key, Key, iv, IV]),
     Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     imboy_response:success(Req0, #{res => Bin}, "success.").
 

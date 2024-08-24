@@ -177,7 +177,9 @@ getcode(Req0) ->
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
+    ?LOG([Type, Account]),
     case Type of
+        % <<"sms">> ->
         <<"email">> ->
             case passport_logic:send_email_code(Account) of
                 {ok, _} ->

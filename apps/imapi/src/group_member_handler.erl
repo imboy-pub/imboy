@@ -24,12 +24,38 @@ init(Req0, State0) ->
                 alias(Req0, State);
             page ->
                 page(Req0, State);
+            same_group ->
+                same_group(Req0, State);
             % alias -> % 设置群内昵称
             %     alias(Req0, State);
             false ->
                 Req0
         end,
     {ok, Req1, State}.
+
+same_group(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    PostVals = imboy_req:post_params(Req0),
+    A = proplists:get_value(<<"uid1">>, PostVals, <<>>),
+    B = proplists:get_value(<<"uid2">>, PostVals, <<>>),
+    A1 = imboy_hashids:decode(A),
+    B1 = imboy_hashids:decode(B),
+
+    {Count, Li4} = if
+        CurrentUid == A1; CurrentUid == B1 ->
+            Li = group_member_repo:list_same_group(A1, B1),
+            Column = <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, member_max, member_count, introduction, avatar, title, updated_at, created_at">>,
+            Li2 = group_repo:list_by_ids(Li, Column),
+            Li3 = [group_logic:group_transfer(M) || M <- Li2],
+            {length(Li), Li3};
+        true ->
+            {0, []}
+    end,
+    imboy_response:success(Req0, #{
+        <<"count">> => Count,
+        <<"list">> => Li4
+    }, "success.").
+
 
 join(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),

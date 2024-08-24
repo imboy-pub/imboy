@@ -112,6 +112,7 @@ get_routes() ->
        {"/group_member/leave", group_member_handler, #{action => leave}},
        {"/group_member/page", group_member_handler, #{action => page}},
        {"/group_member/alias", group_member_handler, #{action => alias}},
+       {"/group_member/same_group", group_member_handler, #{action => same_group}},
        % 群组公告
        {"/group_notice/add", group_notice_handler, #{action => add}},
        {"/group_notice/edit", group_notice_handler, #{action => edit}},

@@ -6,6 +6,7 @@
 -export([pluck/4]).
 -export([find/1, find/2, find/4]).
 -export([list/1, list/2]).
+-export([proplists/1]).
 -export([page/6]).
 
 -export([count_for_where/2, page_for_where/6]).
@@ -218,6 +219,14 @@ to_proplists(ColumnLi, Items0) ->
     Items1 = [tuple_to_list(Item) || Item <- Items0],
     [lists:zipwith(fun(X, Y) -> {X, imboy_cnv:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
 
+proplists(Sql) ->
+    case imboy_db:query(Sql) of
+        {ok, Col, Val} ->
+            to_proplists(Col, Val);
+        _ ->
+            []
+    end.
+
 list(Sql) ->
     case imboy_db:query(Sql) of
         {ok, _, Val} ->
@@ -225,6 +234,7 @@ list(Sql) ->
         _ ->
             []
     end.
+
 list(Conn, Sql) ->
     case epgsql:equery(Conn, Sql) of
         {ok, _, Val} ->

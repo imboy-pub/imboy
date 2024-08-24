@@ -47,3 +47,4 @@ COMMENT ON COLUMN public.group_member.status IS '状态: -1 删除  0 禁用  1 
 -- index
 CREATE UNIQUE INDEX uk_Gid_Uid ON public.group_member (group_id, user_id);
 CREATE INDEX i_Uid_Gid_IsJoin ON public.group_member (user_id, group_id, is_join);
+CREATE INDEX i_Uid_Status ON public.group_member (user_id, status);

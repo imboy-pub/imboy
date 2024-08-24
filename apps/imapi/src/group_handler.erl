@@ -53,7 +53,10 @@ detail(Req0, _State) ->
             % GMSize = maps:size(GM),
             % Column
             G = group_repo:find_by_id(Gid2, <<"*">>),
-            imboy_response:success(Req0, group_transfer(G), "success.")
+            imboy_response:success(
+                Req0,
+                group_logic:group_transfer(G),
+                "success.")
     end.
 
 face2face(Req0, State) ->
@@ -100,7 +103,7 @@ face2face_save(Req0, State) ->
             {ok, _} ->
                 MemberListRes = group_member_logic:list_member(Gid2),
                 imboy_response:success(Req0, #{
-                    group => group_transfer(group_repo:find_by_id(Gid2, <<"*">>)),
+                    group => group_logic:group_transfer(group_repo:find_by_id(Gid2, <<"*">>)),
                     member_list => group_member_transfer:member_list(imboy_cnv:zipwith_equery(MemberListRes))
                     }, "success.");
         {error, Msg} ->
@@ -347,8 +350,8 @@ qrcode(Req0, State) ->
                         , <<"type">> => <<"group">>
                         , <<"group_member">> => Gm2
                     },
-                    % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_transfer(G3)]),
-                    imboy_response:success(Req0, group_transfer(G3));
+                    % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
+                    imboy_response:success(Req0, group_logic:group_transfer(G3));
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)
             end
@@ -358,19 +361,10 @@ qrcode(Req0, State) ->
 %% EUnit tests.
 %% ===================================================================
 
-group_transfer(G) ->
-    imboy_hashids:replace_id(
-        imboy_hashids:replace_id(
-            imboy_hashids:replace_id(
-                    imboy_hashids:replace_id(G, <<"id">>)
-                , <<"creator_uid">>)
-        , <<"owner_uid">>)
-    , <<"gid">>).
-
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [group_transfer(M) || M <- Li],
+    Li2 = [group_logic:group_transfer(M) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
 
@@ -378,6 +372,6 @@ page_transfer(Payload) ->
 msg_page_transfer(Payload) ->
     K = <<"list">>,
     Li = proplists:get_value(K, Payload),
-    Li2 = [group_transfer(M) || M <- Li],
+    Li2 = [group_logic:group_transfer(M) || M <- Li],
     proplists:delete(K, Payload),
     Payload ++ [{K, Li2}].
