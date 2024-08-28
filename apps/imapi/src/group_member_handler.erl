@@ -35,9 +35,9 @@ init(Req0, State0) ->
 
 same_group(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
-    A = proplists:get_value(<<"uid1">>, PostVals, <<>>),
-    B = proplists:get_value(<<"uid2">>, PostVals, <<>>),
+    #{uid1 := A} = cowboy_req:match_qs([{uid1, [], <<>>}], Req0),
+    #{uid2 := B} = cowboy_req:match_qs([{uid2, [], <<>>}], Req0),
+
     A1 = imboy_hashids:decode(A),
     B1 = imboy_hashids:decode(B),
 
