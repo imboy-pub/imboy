@@ -11,6 +11,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/def_column.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("imlib/include/common.hrl").
 
@@ -57,10 +58,11 @@ recently_user_page(Uid, Page, Size, Keywrod) ->
             Kwd ->
                 ["fts.allow_search = 1", <<" AND fts.token @@ to_tsquery('jiebacfg', '", Kwd, "'">>]
         end,
+    Column = <<?DEF_USER_COLUMN/binary, ",created_at">>,
     Where = imboy_cnv:implode(" ", WhereLi),
     Total = imboy_db:pluck(<<"user">>, Where, <<"count(*) as count">>, 0),
     OrderBy = <<"u.created_at desc">>,
-    case user_repo:select_by_where(Where, Size, Offset, OrderBy) of
+    case user_repo:select_by_where(Column, Where, Size, Offset, OrderBy) of
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->

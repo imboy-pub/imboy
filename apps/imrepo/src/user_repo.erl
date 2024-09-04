@@ -13,6 +13,7 @@
 -export([find_by_id/1, find_by_id/2]).
 -export([list_by_ids/2]).
 -export([select_by_where/4]).
+-export([select_by_where/5]).
 
 %% ===================================================================
 %% API
@@ -24,14 +25,17 @@ tablename() ->
 
 
 select_by_where(Where, Limit, Offset, OrderBy) ->
+    select_by_where(?DEF_USER_COLUMN, Where, Limit, Offset, OrderBy).
+
+select_by_where(Column, Where, Limit, Offset, OrderBy) ->
     Tb = tablename(),
     FtsTb = fts_user_repo:tablename(),
     Limit2 = integer_to_binary(Limit),
     Offset2 = integer_to_binary(Offset),
-    Sql = <<"SELECT ", ?DEF_USER_COLUMN/binary, " FROM ", Tb/binary, " u LEFT JOIN ", FtsTb/binary,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " u LEFT JOIN ", FtsTb/binary,
             " fts ON fts.user_id = u.id
      WHERE ", Where/binary, " order by ", OrderBy/binary, " LIMIT ", Limit2/binary, " OFFSET ", Offset2/binary>>,
-    imboy_log:info(io_lib:format("user_repo/select_by_where/4: Sql ~p ~n", [Sql])),
+    imboy_log:info(io_lib:format("user_repo/select_by_where/5: Sql ~p ~n", [Sql])),
     imboy_db:query(Sql, []).
 
 

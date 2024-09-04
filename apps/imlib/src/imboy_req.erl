@@ -129,12 +129,13 @@ req(Method, Url, Params, Headers) ->
                 {Url, Headers}
         end,
     Response = httpc:request(Method, Request, [], []),
-    % ?LOG([response, Response]),
+    ?LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
             {ok, jsone:decode(list_to_binary(Body))};
-        {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
-            {error, StatusCode};
+        % {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
+        {ok, {{_, StatusCode, _}, _Headers, Body}} ->
+            {error, StatusCode, jsone:decode(list_to_binary(Body))};
         {error, Reason} ->
             {error, Reason}
     end.
