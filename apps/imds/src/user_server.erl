@@ -105,8 +105,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     % 在其他设备登录了
     MsgId = <<"logged_another_device">>,
     Payload = [{<<"msg_type">>, MsgId}, {<<"did">>, DID}, {<<"dname">>, DName}],
-    ToUid = imboy_hashids:encode(Uid),
-    Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, ToUid, Payload, MsgId),
+    Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, Uid, Payload, MsgId),
 
     MsLi = [0, 5000, 10000],
     Msg2 = jsone:encode(Msg, [native_utf8]),

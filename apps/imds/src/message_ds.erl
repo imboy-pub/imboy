@@ -61,7 +61,7 @@ send_next(ToUid, MsgId, Msg, [Millisecond | MLTail], DIDLi, IsMember) ->
             % timeout 的时候判断 Ref 有效才 reply
             [ imboy_cache:set({ToUid, DID, MsgId}, TimerRef, Millisecond + 1) || {DID, TimerRef} <- TimerRefList ]
     end,
-    ?LOG(['Millisecond', Millisecond, TimerRefList]),
+    ?LOG(['Millisecond', Millisecond, TimerRefList, MsgId, Msg]),
     ok.
 
 

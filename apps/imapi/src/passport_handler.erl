@@ -177,18 +177,12 @@ getcode(Req0) ->
     % ?LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
-    ?LOG([Type, Account]),
-    case Type of
-        % <<"sms">> ->
-        <<"email">> ->
-            case passport_logic:send_email_code(Account) of
-                {ok, _} ->
-                    imboy_response:success(Req0, #{}, "success.");
-                {error, Msg} ->
-                    imboy_response:error(Req0, [], Msg)
-            end;
-        _ ->
-            imboy_response:success(Req0, [], "暂未实现功能.")
+    % ?LOG([Type, Account]),
+    case passport_logic:send_code(Account, Type) of
+        {ok, _} ->
+            imboy_response:success(Req0, #{}, "success.");
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
     end.
 
 
@@ -199,6 +193,7 @@ signup(Req0) ->
     %% 密码 pwd
     PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
+    % type = email | mobile
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
     Pwd = proplists:get_value(<<"pwd">>, PostVals),
