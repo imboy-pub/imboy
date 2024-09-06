@@ -175,14 +175,35 @@ getcode(Req0) ->
     %% account 账号 Email 或者 手机号码
     PostVals = imboy_req:post_params(Req0),
     % ?LOG(PostVals),
+    % type sms | email
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
+    % scene = forgot_pwd | signup
+    Scene = proplists:get_value(<<"scene">>, PostVals),
     Account = proplists:get_value(<<"account">>, PostVals),
     % ?LOG([Type, Account]),
-    case passport_logic:send_code(Account, Type) of
-        {ok, _} ->
-            imboy_response:success(Req0, #{}, "success.");
-        {error, Msg} ->
-            imboy_response:error(Req0, Msg)
+    Id = if
+        Type == <<"sms">>, Scene == <<"signup">> ->
+            imboy_db:pluck(user_repo:tablename()
+                , <<"mobile='", Account/binary, "'">>
+                , <<"id">>
+                , 0);
+            % imboy_response:error(Req0, "Msg1");
+        true ->
+            0
+            % imboy_response:error(Req0, "Msg2")
+    end,
+    ?LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
+    if
+        Id > 0 ->
+            imboy_response:error(Req0, "param_already_exist");
+        true ->
+            % imboy_response:success(Req0, #{}, "success.")
+            case passport_logic:send_code(Account, Type) of
+                {ok, _} ->
+                    imboy_response:success(Req0, #{}, "success.");
+                {error, Msg} ->
+                    imboy_response:error(Req0, Msg)
+            end
     end.
 
 
