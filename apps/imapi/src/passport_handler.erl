@@ -192,7 +192,7 @@ getcode(Req0) ->
             0
             % imboy_response:error(Req0, "Msg2")
     end,
-    ?LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
+    % ?LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
     if
         Id > 0 ->
             imboy_response:error(Req0, "param_already_exist");
