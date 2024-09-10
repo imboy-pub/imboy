@@ -18,12 +18,60 @@
 -export([update/3]).
 % -export([send_bind_email/2]).
 -export([change_password/2]).
+-export([set_password/2]).
 -export([apply_logout/2]).
 -export([cancel_logout/2]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
+
+set_password(Uid, Req0) ->
+    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
+    DID = cowboy_req:header(<<"did">>, Req0, undefined),
+    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+
+    PostVals = imboy_req:post_params(Req0),
+    NewPwd = proplists:get_value(<<"new_pwd">>, PostVals),
+
+    % ?LOG(['Uid ', Uid]),
+    User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
+    OldPwd = maps:get(<<"password">>, User, not_find),
+    case OldPwd of
+        not_find ->
+            {error, "用户不存在"};
+        <<>> ->
+            PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
+            Pwd2 = imboy_password:generate(PwdPlaintext),
+            imboy_db:with_transaction(fun(Conn) ->
+                Now = imboy_dt:utc(millisecond),
+                Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
+                imboy_db:update(Conn,
+                    user_repo:tablename(),
+                    Where,
+                    #{
+                        <<"password">> => Pwd2
+                    }),
+                {ok, Body} = jsone_encode:encode(#{
+                        <<"app_vsn">> => AppVsn,
+                        <<"did">> => DID,
+                        <<"dtype">> => DType,
+                        <<"ip">> => Ip
+                }, [native_utf8]),
+                user_log_repo:add(Conn, #{
+                    % 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
+                    type => 110,
+                    uid => Uid,
+                    body => Body,
+                    created_at => Now
+                }),
+                ok
+            end),
+            {ok, "success"};
+        _ ->
+            {error, "have_set"}
+    end.
 
 change_password(Uid, Req0) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),

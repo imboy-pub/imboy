@@ -1,4 +1,7 @@
 
+# 0.4.7
+* 新增 基于 jverify 的一键登录功能；
+* 新增 根据用户ID设置密码功能；
 * 优化 “/passport/getcode”接口新增scene=signup 的时候判断account是否存在；
 
 # 0.4.6

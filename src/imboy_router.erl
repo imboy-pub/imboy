@@ -17,6 +17,7 @@ get_routes() ->
 
        {"/app_ddl/get", app_ddl_handler, #{action => get_ddl}},
 
+       {"/passport/quick_login", passport_handler, #{action => quick_login}},
        {"/passport/login", passport_handler, #{action => login}},
        {"/passport/signup", passport_handler, #{action => signup}},
        {"/passport/getcode", passport_handler, #{action => getcode}},
@@ -41,6 +42,7 @@ get_routes() ->
        {"/user/setting", user_handler, #{action => setting}},
        {"/user/credential", user_handler, #{action => credential}},
        {"/user/change_password", user_handler, #{action => change_password}},
+       {"/user/set_password", user_handler, #{action => set_password}},
        {"/user/apply_logout", user_handler, #{action => apply_logout}},
        {"/user/cancel_logout", user_handler, #{action => cancel_logout}},
        {"/user/search", user_handler, #{action => search}},
@@ -166,6 +168,7 @@ open() ->
      <<"/refreshtoken">>,
      <<"/stress_testing">>,
      <<"/passport/login">>,
+     <<"/passport/quick_login">>,
      <<"/passport/signup">>,
      <<"/passport/getcode">>,
      <<"/passport/findpassword">>,

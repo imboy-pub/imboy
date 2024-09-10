@@ -31,6 +31,8 @@ init(Req0, State0) ->
                 credential(Req0, State);
             change_password ->
                 change_password(Req0, State);
+            set_password ->
+                set_password(Req0, State);
             apply_logout ->
                 apply_logout(Req0, State);
             cancel_logout ->
@@ -91,6 +93,14 @@ change_password(Req0, State) ->
             imboy_response:error(Req0, Msg)
     end.
 
+set_password(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    case user_logic:set_password(CurrentUid, Req0) of
+        {ok, _} ->
+            imboy_response:success(Req0);
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
 
 %%注销申请
 apply_logout(Req0, State) ->

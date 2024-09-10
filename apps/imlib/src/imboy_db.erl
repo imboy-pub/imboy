@@ -328,12 +328,12 @@ insert_into(Tb, Data) ->
     Value = assemble_value(Data),
     imboy_db:insert_into(Tb, Column, Value).
 
-insert_into(Tb, Data, <<>>) when is_map(Data) ->
+insert_into(Tb, Data, Returning) when is_map(Data) ->
     Column = <<"("
         , (imboy_cnv:implode("," , maps:keys(Data)))/binary
         , ")">>,
     Value = assemble_value(Data),
-    insert_into(Tb, Column, Value, <<>>);
+    insert_into(Tb, Column, Value, Returning);
 insert_into(Tb, Column, Value) ->
     insert_into(Tb, Column, Value, <<"RETURNING id;">>).
 

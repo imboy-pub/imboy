@@ -8,9 +8,38 @@
 -export([do_signup/5]).
 -export([find_password/5]).
 -export([verify_user/2]).
+-export([quick_login/4]).
 
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/def_column.hrl").
+
+
+quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
+    case imboy_sms:jverification(Token) of
+        {error, Msg} ->
+            {error, Msg};
+        {ok, Mobile} ->
+            Mobile2 = <<"+86", Mobile/binary>>,
+            User = user_repo:find_by_mobile(Mobile2, ?LOGIN_COLUMN),
+            Uid = maps:get(<<"id">>, User, 0),
+            case Uid of
+                0 ->
+                    Tb = user_repo:tablename(),
+                    Data = pick_data_for_insert(#{
+                        <<"source">> => <<"jverify">>
+                        , <<"mobile">> => Mobile2
+                        , <<"password">> => <<>>
+                        }, PostVals),
+                    {ok, _, [{Uid2}]} = imboy_db:insert_into(Tb, Data, <<"RETURNING id;">>),
+                    User2 = user_repo:find_by_id(Uid2, ?LOGIN_COLUMN),
+                    {ok, login_resp(User2, #{<<"action">> => <<"need_set_password">>})};
+                _ ->
+                    {ok, login_resp(User, #{})}
+            end
+    end;
+quick_login(_, _, _, _) ->
+    {error, <<"不支持的已经登录服务"/utf8>>}.
+
 
 % passport_logic:send_code(<<"">>, <<"sms">>).
 % passport_logic:send_code(<<"">>, <<"email">>).
@@ -219,17 +248,20 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
 pick_data_for_insert(Data, PostVals) ->
     Uid0 = imboy_hashids:encode(0),
 
+    Source = proplists:get_value(<<"source">>, PostVals, <<>>),
     Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
     Nickname = proplists:get_value(<<"nickname">>, PostVals, <<>>),
     Avatar = proplists:get_value(<<"avatar">>, PostVals, <<>>),
     Cosv = proplists:get_value(<<"cosv">>, PostVals, <<>>),
     RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
 
-    RefUid2 = case bit_size(RefUid) > 5 of
+    [RefUid2, ParentRefUid2] = case bit_size(RefUid) > 5 of
         true ->
-            integer_to_binary(imboy_hashids:decode(RefUid));
+            RefUid2_in = imboy_hashids:decode(RefUid),
+            P = user_repo:find_by_id(RefUid2_in, <<"ref_user_id">>),
+            [RefUid2_in, maps:get(<<"ref_user_id">>, P, 0)];
         _ ->
-            <<"0">>
+            [0, 0]
     end,
     % ?LOG(["RefUid2", RefUid2]),
     Account = integer_to_binary(account_server:allocate()),
@@ -243,8 +275,10 @@ pick_data_for_insert(Data, PostVals) ->
         , <<"nickname">> => Nickname
         , <<"avatar">> => Avatar
         , <<"ref_user_id">> => RefUid2
+        , <<"ref_parent_user_id">> => ParentRefUid2
         , <<"reg_ip">> => Ip
         , <<"reg_cosv">> => Cosv
+        , <<"source">> => Source
         , <<"status">> => 1
         , <<"created_at">> => imboy_dt:utc(millisecond)
     }, Data).
@@ -292,22 +326,24 @@ verify_user(Pwd, User) ->
         {ok, _} when Status == 0 ->
             {error, "账号被禁用"};
         {ok, _} when Status == 1; Status == 2 ->
-            Id = maps:get(<<"id">>, User),
-            {ok, #{
-               <<"token">> => token_ds:encrypt_token(Id),
-               <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
-               <<"uid">> => imboy_hashids:encode(Id),
-               <<"email">> => maps:get(<<"email">>, User),
-               <<"nickname">> => maps:get(<<"nickname">>, User),
-               <<"avatar">> => maps:get(<<"avatar">>, User),
-               <<"account">> => maps:get(<<"account">>, User),
-               <<"gender">> => maps:get(<<"gender">>, User),
-               <<"region">> => maps:get(<<"region">>, User),
-               <<"sign">> => maps:get(<<"sign">>, User),
-               <<"status">> => Status,
-               <<"role">> => 1
-              }};
+            {ok, login_resp(User, #{})};
         {error, Msg} ->
             {error, Msg}
     end.
 
+login_resp(User, Resp) ->
+    Id = maps:get(<<"id">>, User),
+    maps:merge(#{
+       <<"uid">> => imboy_hashids:encode(Id),
+       <<"token">> => token_ds:encrypt_token(Id),
+       <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
+       <<"email">> => maps:get(<<"email">>, User),
+       <<"nickname">> => maps:get(<<"nickname">>, User),
+       <<"avatar">> => maps:get(<<"avatar">>, User),
+       <<"account">> => maps:get(<<"account">>, User),
+       <<"gender">> => maps:get(<<"gender">>, User),
+       <<"region">> => maps:get(<<"region">>, User),
+       <<"sign">> => maps:get(<<"sign">>, User),
+       <<"status">> => maps:get(<<"status">>, User),
+       <<"role">> => 1
+      }, Resp).

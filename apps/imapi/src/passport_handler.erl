@@ -22,6 +22,8 @@ init(Req0, State0) ->
             refreshtoken(Req0);
         login ->
             login(Req0);
+        quick_login ->
+            quick_login(Req0);
         signup ->
             signup(Req0);
         getcode ->
@@ -121,9 +123,9 @@ login(Req0) ->
         _ ->
             Password
     end,
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
-    % ?LOG(["Ip", Ip, "Pwd " , Pwd]),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     Post2 = [{<<"ip">>, Ip} | PostVals],
+    % ?LOG(["Ip", Ip, "Pwd " , Post2]),
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
             % 检查消息 用异步队列实现
@@ -132,6 +134,36 @@ login(Req0) ->
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
             Data2 = Data#{<<"setting">> => Setting},
+            imboy_response:success(Req0, Data2, "success.");
+        {error, Msg} ->
+            imboy_response:error(Req0, Msg)
+    end.
+
+
+quick_login(Req0) ->
+    PostVals = imboy_req:post_params(Req0),
+    % ?LOG(PostVals),
+    % jverify | huawei
+    Service = proplists:get_value(<<"service">>, PostVals, <<>>),
+    % 成功时为对应运营商，CM代表中国移动，CU代表中国联通，CT代表中国电信。失败时可能为 null
+    Operator = proplists:get_value(<<"operator">>, PostVals, <<>>),
+    %
+    Token = proplists:get_value(<<"token">>, PostVals),
+    Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
+    % ?LOG(["Ip", Ip]),
+    Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
+    % ?LOG(["PostVals", PostVals, Post2]),
+    case passport_logic:quick_login(Service, Operator, Token, Post2) of
+        {ok, Data} ->
+            % ?LOG(["Data", Data]),
+            % 检查消息 用异步队列实现
+            Uid = maps:get(<<"uid">>, Data),
+            % gen_server:call是同步的，gen_server:cast是异步的
+            gen_server:cast(user_server, {login_success, Uid, Post2}),
+            Setting = user_setting_ds:find_by_uid(Uid),
+            Data2 = Data#{<<"setting">> => Setting},
+            % ?LOG(["Data2", Data2]),
             imboy_response:success(Req0, Data2, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg)
@@ -259,7 +291,7 @@ find_password(Req0) ->
 
     % Cosv = cowboy_req:header(<<"cosv">>, Req0),
     Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
+    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     % ?LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
     case passport_logic:find_password(Type, Account, Pwd, Code, Post2) of

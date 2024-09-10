@@ -15,8 +15,8 @@ filter_mobile(Mobile) ->
 send(Mobile, Content, <<"yjsms">>) ->
     Username = config_ds:get(<<"yjsms_account">>),
     Password = config_ds:get(<<"yjsms_secret">>),
+    URL = config_ds:get(<<"yjsms_url">>),
     Ts = imboy_dt:millisecond(),
-    URL = <<"http://39.108.93.159:8001/sms/api/sendMessageOne">>,
     Headers = [
         {"Content-Type","application/json"}
     ],
@@ -80,6 +80,8 @@ send(Mobile, Code, <<"jsms">>) ->
     RespMap.
 
 
+% https://docs.jiguang.cn/jverification/server/rest_api/loginTokenVerify_api
+% 提交 loginToken，验证后返回加密的手机号码。
 % imboy_sms:jverification(LoginToken).
 jverification(Tk) ->
     Username = config_ds:get(<<"jpush_app_key">>),
@@ -95,7 +97,7 @@ jverification(Tk) ->
     },
     {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     % RespMap = imboy_req:post(URL, Data, Headers),
-    % ?LOG([RespMap]),
+    ?LOG([RespMap]),
     case maps:get(<<"code">>, RespMap, undefined) of
         8000 ->
             Phone = maps:get(<<"phone">>, RespMap),
