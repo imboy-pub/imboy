@@ -53,7 +53,7 @@ dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtim
 # qdate - Erlang Date and Timezone Library
 # 20days
 #dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
-dep_qdate = hex 0.7.2
+dep_qdate = hex 0.7.3
 
 # Erlang/OTP 应用程序限制资源访问速率
 # 3years
@@ -82,7 +82,7 @@ dep_bbmustache = hex 1.14.1
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
 # 8months
 # dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
-dep_relx = hex 4.9.0
+dep_relx = hex 4.10.0
 
 # hut 小型的日志处理库
 # 2years

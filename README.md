@@ -22,7 +22,7 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 
 * Erlang/OTP 24 (Cowboy 2.11 requires Erlang/OTP 24.0 or greater.)
 * Erlang/OTP 25
-* Erlang/OTP 26 (没发运行，暂时没精力排查原因)
+* Erlang/OTP 26
 
 * 数据库 PostgreSQL15
 
@@ -83,7 +83,7 @@ make list-templates
 
 make new-lib in=imlib
 make new-lib in=imcron
-make new-lib in=imservice
+make new-lib in=imds
 make new t=imboy.logic n=demo_cron_logic in=imcron
 
 make new t=imboy.rest_handler n=adm_passport_handler in=imadm
@@ -342,7 +342,18 @@ telnet 81.68.209.56 34780
 
 
 ## eturnal
+
+https://icetest.atec-systems.com/
+
+https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
+
 ```
+
+cp /data/docker/eturnal/eturnal.yml /etc/
+
+eturnalctl daemon
+
+
 cd /www/wwwroot/eturnal/
 
 _build/product/rel/eturnal/bin/eturnal console

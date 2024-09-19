@@ -61,7 +61,7 @@ webrtc_credential(Uid) ->
         <<"credential">> => Credential
     }.
 
-
+% user_ds:auth_webrtc_credential(<<"1726238658">>, <<"38NAnjTI0NnBA4xQSm5PiUKd1B4=">>).
 auth_webrtc_credential(Username, Credential) ->
     % Secret = config_ds:env(eturnal_secret),
     Secret = config_ds:get(<<"eturnal_secret">>),

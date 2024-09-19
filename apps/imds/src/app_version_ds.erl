@@ -21,6 +21,7 @@
 
 % app_version_ds:sign_key(<<"android">>, <<"1">>, <<"pub.imboy.apk">>).
 % app_version_ds:sign_key(<<"ios">>, <<"1">>, <<"pub.imboy.2">>).
+% app_version_ds:sign_key(<<"macos">>, <<"1">>, <<"pub.imboy.macos">>).
 sign_key(ClientOS, Vsn, Pkg) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
     %
     Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,

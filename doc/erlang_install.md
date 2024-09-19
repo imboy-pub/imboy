@@ -1,4 +1,24 @@
 
+# on Debian 12
+
+```
+
+apt-get update
+
+apt-get install -y --no-install-recommends curl git vim make gcc g++ apt-transport-https ca-certificates libodbc1 libssl3 libsctp1 autoconf dpkg-dev libncurses-dev unixodbc-dev libssl-dev libsctp-dev
+
+wget https://github.com/erlang/otp/releases/download/OTP-26.2.5.3/otp_src_26.2.5.3.tar.gz
+
+echo "c2707ce08e91235145cdfc487352f05570a2a0bddf1c478154549eb9e68805b0  otp_src_26.2.5.3.tar.gz" | sha256sum -c -
+
+
+tar -xzf otp_src_26.2.5.3.tar.gz && cd otp_src_26.2.5.3
+./otp_build autoconf
+gnuArch="$(dpkg-architecture --query DEB_HOST_GNU_TYPE)" && ./configure --build="$gnuArch"
+
+make && make install
+````
+
 # on CentOS8
 ```
 sudo yum install -y gcc gcc-c++ glibc-devel make ncurses-devel openssl-devel autoconf java-1.8.0-openjdk-devel git perl wget

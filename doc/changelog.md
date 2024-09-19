@@ -1,3 +1,7 @@
+# 0.4.8
+* 升级 erlang-mk (make erlang-mk);
+* 升级 relx qdate  等其他几个依赖；
+* 移除 LOCAL_DEPS = kernel stdlib 依赖，使得在 Erlang/OTP 26 (26.2.5)中正常运行
 
 # 0.4.7
 * 新增 基于 jverify 的一键登录功能；

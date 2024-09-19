@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
-PROJECT_VERSION = 0.4.7
+PROJECT_VERSION = 0.4.8
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -45,7 +45,7 @@ DEPS += erlydtl
 
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
-LOCAL_DEPS = kernel stdlib mnesia sasl ssl inets
+LOCAL_DEPS = mnesia sasl ssl inets
 LOCAL_DEPS += imlib
 LOCAL_DEPS += imds
 LOCAL_DEPS += imrepo

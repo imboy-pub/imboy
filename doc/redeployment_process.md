@@ -18,6 +18,8 @@ docker-compose -f docker-compose-pro.yml up -d
 
 1. 安装erlang
 
+./doc/erlang_install.md
+
 【有道云笔记】CentOS 源码安装 Erlang.md
 https://note.youdao.com/s/7hvcSteY
 
