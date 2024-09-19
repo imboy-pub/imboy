@@ -1,13 +1,12 @@
-#FROM debian:bookworm
+# from https://github.com/erlang/docker-erlang-otp/blob/master/26/slim/Dockerfile
+# sha256sum ~/Downloads/rebar3-3.24.0.tar.gz
+
 FROM debian:bookworm-slim
 
-# from https://github.com/erlang/docker-erlang-otp/blob/master/26/slim/Dockerfile
-
-# ENV OTP_VERSION=26.2.5.3 \
-ENV OTP_VERSION=25.3.2.13 \
-    OTP_DOWNLOAD_SHA256=00c2619648e05a25b39035ea51b65fc79c998e55f178cccc6c1b920f3f10dfba \
-    REBAR3_VERSION=3.23.0 \
-    REBAR3_DOWNLOAD_SHA256=00646b692762ffd340560e8f16486dbda840e1546749ee5a7f58feeb77e7b516
+ENV OTP_VERSION=26.2.5.3 \
+    OTP_DOWNLOAD_SHA256=c2707ce08e91235145cdfc487352f05570a2a0bddf1c478154549eb9e68805b0 \
+    REBAR3_VERSION=3.24.0 \
+    REBAR3_DOWNLOAD_SHA256=391b0eaa2825bb427fef1e55a0d166493059175f57a33b00346b84a20398216c
 
 LABEL org.opencontainers.image.version=$OTP_VERSION
 
@@ -15,6 +14,7 @@ WORKDIR /www/wwwroot/imboy-api
 
 # We'll install the build dependencies, and purge them on the last step to make
 # sure our final image contains only what we've just built:
+
 RUN set -xe \
     && OTP_DOWNLOAD_URL="https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION}/otp_src_${OTP_VERSION}.tar.gz" \
     && OTP_DOWNLOAD_SHA256="${OTP_DOWNLOAD_SHA256}" \
@@ -80,7 +80,7 @@ RUN set -xe \
 #COPY docker/imboy_api_sys.config /www/wwwroot/imboy-api/config/sys.config
 
 ENV SYS_CONF=config/sys.config
-EXPOSE 9800 9801
+EXPOSE 9800 9806
 WORKDIR /www/wwwroot/imboy-api
 USER root
 #CMD ["erl"]

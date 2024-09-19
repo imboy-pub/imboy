@@ -55,11 +55,10 @@ echo "$REBAR3_DOWNLOAD_SHA256  /Users/leeyi/Downloads/rebar3-3.22.1.tar.gz" | sh
 
 ## Dockerfile
 
-### Erlang 25
+### Erlang 26
 
 ```
-docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-api:dev .
-docker push imboy/imboy-api:dev
+docker build --file "docker/imboy_Dockerfile_dev" -t imboy/imboy-0.2.0:26.2.5.3 .
 
 
 docker run -it imboy/imboy-api:dev_arm64 bash --link=imboy_postgis
@@ -77,11 +76,13 @@ make deps
 
 ```
 
-### PG15
+### PG15 / PG16
 from  https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 dev
 ```
+docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/imboy-pg16:3.4.2.dev.1 .
+
 docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .
 
 ```
