@@ -1,5 +1,5 @@
 #!/bin/bash
-# cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/imboy_pg15 && chmod +x /data/docker/imboy_pg15
+# cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/imboy_pg15/ && chmod +x /data/docker/imboy_pg15/cron_backup_pgsql.sh
 
 # docker exec -it imboy_pg15 /bin/sh
 # crontab -e 新增下面一行

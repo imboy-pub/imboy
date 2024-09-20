@@ -1,4 +1,9 @@
 
+
+# PostgreSQL规约（PG16）
+
+https://vonng.com/cn/blog/db/pg-convention/
+
 # 使用 pure-migrations 管理数据库版本
 
 
@@ -41,12 +46,19 @@ https://blog.51cto.com/suncj/5038850
 例：从ip为xxx的数据库mon导出所有的表结构到文件dump2022.sql:
 pg_dump -h 127.0.0.1 mon -U postgres -p 5432  -f dump2022.sql
 
-pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
 
-pg_dump -h 127.0.0.1 -U imboy_user -p 5432 -d imboy_v1 --inserts > imboy_v1.sql
+pg_dump 只导出 public 模式数据，不导出数据结构的SQL
+
+
+pg_dump -h 127.0.0.1 -U imboy_user -p 5432 -d imboy_v1 --data-only --column-inserts --schema=public --exclude-table=public.fts_user --exclude-table=public.database_migrations_history --exclude-table=public.spatial_ref_sys > imboy_v1_data.sql
+
+psql -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -f imboy_v1_data.sql
+
 
 如果你只想导出数据库的结构而不包含数据，可以使用以下命令：
 pg_dump -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -s -f imboy_v1_dev.sql
+
+psql -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -f imboy_v1_dev.sql
 
 
 mv imboy_v1.sql /var/lib/postgresql/data/

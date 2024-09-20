@@ -1,3 +1,5 @@
+* 使用 pg16 数据，准备以一些SQL
+
 # 0.5.0
 * 整理 ./docker/pg16_Dockerfile_dev 文件，计划数据库升级到pg16；
 * 升级 layui-2.9.16；

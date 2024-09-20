@@ -1,9 +1,12 @@
 #
 # NOTE: THIS DOCKERFILE IS GENERATED VIA "make update"! PLEASE DO NOT EDIT IT DIRECTLY.
 #
-# https://raw.githubusercontent.com/postgis/docker-postgis/refs/heads/master/16-3.4/Dockerfile
+# https://github.com/postgis/docker-postgis/blob/master/16-3.4/Dockerfile
 # https://gitee.com/imboy-tripartite-deps/timescaledb.git
 # https://github.com/timescale/timescaledb.git
+# https://github.com/ChenHuajun/pg_roaringbitmap.git
+# https://github.com/jaiminpan/pg_jieba.git
+#
 
 FROM postgres:16-bullseye
 
