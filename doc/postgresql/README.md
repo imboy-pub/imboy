@@ -2,7 +2,6 @@
 
 # PostgreSQL规约（PG16）
 
-https://vonng.com/cn/blog/db/pg-convention/
 
 # 使用 pure-migrations 管理数据库版本
 

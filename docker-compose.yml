@@ -1,10 +1,9 @@
 # docker network create imboy-network
 # docker-compose -f docker-compose.yml up -d
-version: "3.8"
 services:
-  imboy_pg15:
-    image: imboy/imboy-pg:15.3.4.2.dev.7
-    container_name: imboy_pg15
+  imboy_pg16:
+    image: imboy/pg16:3.4.2.dev.6
+    container_name: imboy_pg16
     hostname: pg.docker.imboy.pub
     restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
     environment: # 设置环境变量,相当于docker run命令中的-e
@@ -14,7 +13,7 @@ services:
       POSTGRES_PASSWORD: abc54321
       POSTGRES_DB: imboy_v1
     volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-      - "./docker/imboy_pg15:/var/lib/postgresql/data"
+      - "./docker/imboy_pg16:/var/lib/postgresql/data"
     ports: # 映射端口
       - "9820:5432"
     deploy:
@@ -36,7 +35,7 @@ services:
       LANG: en_US.UTF-8
       GO_FASTDFS_DIR: /data
     volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-      - "/data/docker/img_fastdfs_data:/data"
+      - "./docker/img_fastdfs_data:/data"
     ports: # 映射端口
       - "9830:8080"
     deploy:

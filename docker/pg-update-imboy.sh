@@ -41,3 +41,29 @@ psql --dbname="$POSTGRES_DB" -c "
 "
 
 echo "timescaledb extension updated successfully for database '$POSTGRES_DB'."
+
+################################################
+#
+# PGROUTING_VERSION
+# 判断 pgrouting 是否存在，如果存在就移除它
+psql --dbname="$POSTGRES_DB" -c "
+DO \$\$
+BEGIN
+    IF EXISTS (
+        SELECT FROM pg_catalog.pg_extension
+        WHERE extname = 'pgrouting'
+    ) THEN
+        RAISE NOTICE 'pgrouting extension found. Dropping...';
+        EXECUTE 'DROP EXTENSION pgrouting CASCADE';
+    ELSE
+        RAISE NOTICE 'pgrouting extension not found. No action taken.';
+    END IF;
+END \$\$;
+"
+echo "Updating pgrouting extension for database '$POSTGRES_DB' to version $PGROUTING_VERSION"
+psql --dbname="$POSTGRES_DB" -c "
+    -- Install pgrouting
+    CREATE EXTENSION IF NOT EXISTS pgrouting VERSION '$PGROUTING_VERSION';
+"
+
+echo "pgrouting extension updated successfully for database '$POSTGRES_DB'."

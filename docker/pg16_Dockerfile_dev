@@ -2,6 +2,7 @@
 # NOTE: THIS DOCKERFILE IS GENERATED VIA "make update"! PLEASE DO NOT EDIT IT DIRECTLY.
 #
 # https://github.com/postgis/docker-postgis/blob/master/16-3.4/Dockerfile
+# https://gitee.com/imboy-tripartite-deps/pgrouting.git
 # https://gitee.com/imboy-tripartite-deps/timescaledb.git
 # https://github.com/timescale/timescaledb.git
 # https://github.com/ChenHuajun/pg_roaringbitmap.git
@@ -17,6 +18,7 @@ LABEL maintainer="PostGIS Project - https://postgis.net" \
 ENV POSTGIS_MAJOR 3
 ENV POSTGIS_VERSION 3.4.2+dfsg-1.pgdg110+1
 ENV TIMESCALEDB_VERSION 2.16.1
+ENV PGROUTING_VERSION 3.6.2
 
 RUN apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
@@ -55,30 +57,29 @@ RUN set -xe \
   && mkdir build && cd build && cmake -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/include/postgresql/16/server .. \
   && make && make install && cd ../ && rm -rf pg_jieba
 
+RUN set -xe \
+  && apt-get install -y libboost-all-dev \
+  && git clone https://gitee.com/imboy-tripartite-deps/pgrouting.git \
+  && cd pgrouting && git checkout tags/v$PGROUTING_VERSION \
+  && mkdir build && cd build && cmake .. \
+  && make && make install && cd ../ && rm -rf pgrouting
+
 COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/16/tsearch_data/jieba_user.dict
 COPY ./docker/pg-initdb-postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
-COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/11_postgis.sh
-COPY ./docker/pg-update-timescaledb.sh /docker-entrypoint-initdb.d/12_timescaledb.sh
+COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/21_postgis.sh
+COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/22_imboy.sh
 RUN chmod -x /docker-entrypoint-initdb.d/10_postgis.sh
 
 RUN set -xe \
   && mkdir -p /docker-entrypoint-initdb.d \
   && chmod -x /docker-entrypoint-initdb.d/10_postgis.sh \
-  && chmod -x /docker-entrypoint-initdb.d/11_postgis.sh \
-  && chmod -x /docker-entrypoint-initdb.d/12_timescaledb.sh \
+  && chmod -x /docker-entrypoint-initdb.d/21_postgis.sh \
+  && chmod -x /docker-entrypoint-initdb.d/22_imboy.sh \
   && chown -R postgres:postgres /var/lib/postgresql/data \
-  && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-15 \
+  && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-16 \
   && apt-get purge -y --autoremove \
         build-essential \
-        libpq-dev \
-        libboost-graph-dev \
-        libboost-atomic1.74.0 \
-        libboost-chrono1.74.0 \
-        libboost-graph1.74.0 \
-        libboost-date-time1.74.0 \
-        libboost-program-options1.74.0 \
-        libboost-system1.74.0 \
-        libboost-thread1.74.0 \
-  && apt clean && rm -rf /var/lib/apt/lists/* \
+        libboost-all-dev \
+  && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
   && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
   && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc
