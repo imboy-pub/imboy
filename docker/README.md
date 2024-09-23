@@ -21,6 +21,11 @@ docker exec -it imboy_eturnal sh
 docker exec -it imboy_api bash
 docker exec -it imboy_fastdfs bash
     ping imboy_postgis
+
+你可以使用以下命令清理所有未使用的镜像、容器和网络，以释放空间：
+docker system prune -a
+
+
 ```
 
 # docker 云沙箱中的 Erlang
@@ -80,7 +85,7 @@ from  https://github.com/postgis/docker-postgis
 
 dev
 ```
-docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/pg16:3.4.2.dev.6 .
+docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/pg16:3.4.2.dev.7 .
 
 
 docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .

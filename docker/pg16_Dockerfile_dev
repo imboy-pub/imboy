@@ -40,29 +40,29 @@ RUN apt-get update \
     libpq-dev \
     cmake \
     git \
-  && git clone https://gitee.com/imboy-tripartite-deps/timescaledb.git \
-  && cd timescaledb &&  git checkout $TIMESCALEDB_VERSION \
+  && cd / && git clone https://gitee.com/imboy-tripartite-deps/timescaledb.git \
+  && cd /timescaledb &&  git checkout $TIMESCALEDB_VERSION \
   && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/16/bin/pg_config . \
-  && cd ./build && make && make install && cd ../../ && rm -rf timescaledb
+  && cd ./build && make && make install && cd / && rm -rf /timescaledb
 
 RUN set -xe \
   && apt-get install -y -V postgresql-16-pgvector \
-  && git clone https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git \
-  && cd pg_roaringbitmap && git checkout -f master && git submodule update --init --recursive \
-  && make && make install && cd ../ && rm -rf pg_roaringbitmap
+  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git \
+  && cd /pg_roaringbitmap && git checkout -f master && git submodule update --init --recursive \
+  && make && make install && cd / && rm -rf /pg_roaringbitmap
 
 RUN set -xe \
-  && git clone https://gitee.com/imboy-tripartite-deps/pg_jieba.git \
-  && cd pg_jieba && git checkout -f master && git submodule update --init --recursive \
+  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pg_jieba.git \
+  && cd /pg_jieba && git checkout -f master && git submodule update --init --recursive \
   && mkdir build && cd build && cmake -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/include/postgresql/16/server .. \
-  && make && make install && cd ../ && rm -rf pg_jieba
+  && make && make install && cd / && rm -rf /pg_jieba
 
 RUN set -xe \
   && apt-get install -y libboost-all-dev \
-  && git clone https://gitee.com/imboy-tripartite-deps/pgrouting.git \
-  && cd pgrouting && git checkout tags/v$PGROUTING_VERSION \
+  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pgrouting.git \
+  && cd /pgrouting && git checkout tags/v$PGROUTING_VERSION \
   && mkdir build && cd build && cmake .. \
-  && make && make install && cd ../ && rm -rf pgrouting
+  && make && make install && cd / && rm -rf /pgrouting
 
 COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/16/tsearch_data/jieba_user.dict
 COPY ./docker/pg-initdb-postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
@@ -70,16 +70,103 @@ COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/21_postgis.sh
 COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/22_imboy.sh
 RUN chmod -x /docker-entrypoint-initdb.d/10_postgis.sh
 
+# 清理不再需要的包
+RUN set -xe \
+  && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-16 \
+  && apt-get purge -y --autoremove \
+        build-essential \
+        libboost-all-dev \
+        binutils \
+        binutils-common \
+        binutils-x86-64-linux-gnu \
+        bzip2 \
+        clang-13 \
+        cmake-data \
+        cpp \
+        cpp-10 \
+        dpkg-dev \
+        g++ \
+        gcc \
+        git \
+        git-man \
+        icu-devtools \
+        libarchive13 \
+        libasan6 \
+        libatomic1 \
+        libbinutils \
+        libc-dev-bin \
+        libc6-dev \
+        libc6-i386 \
+        libcc1-0 \
+        libclang-common-13-dev \
+        libclang-cpp13 \
+        libclang1-13 \
+        libcrypt-dev \
+        libctf-nobfd0 \
+        libctf0 \
+        libcurl4 \
+        libdpkg-perl \
+        liberror-perl \
+        libffi-dev \
+        libgc1 \
+        libgcc-10-dev \
+        libgomp1 \
+        libicu-dev \
+        libisl23 \
+        libitm1 \
+        libjsoncpp24 \
+        liblsan0 \
+        libmpc3 \
+        libmpdec3 \
+        libncurses-dev \
+        libncurses6 \
+        libnsl-dev \
+        libobjc-10-dev \
+        libobjc4 \
+        libpfm4 \
+        libpq-dev \
+        libprocps8 \
+        libpython3-stdlib \
+        libpython3.9-minimal \
+        libpython3.9-stdlib \
+        librhash0 \
+        libssl-dev \
+        libstdc++-10-dev \
+        libtinfo-dev \
+        libtirpc-dev \
+        libtsan0 \
+        libubsan1 \
+        libuv1 \
+        libxml2-dev \
+        libyaml-0-2 \
+        libz3-dev \
+        linux-libc-dev \
+        llvm-13 \
+        llvm-13-dev \
+        llvm-13-linker-tools \
+        llvm-13-runtime \
+        llvm-13-tools \
+        make \
+        media-types \
+        patch \
+        procps \
+        python3 \
+        python3-minimal \
+        python3-pkg-resources \
+        python3-pygments \
+        python3-yaml \
+        python3.9 \
+        python3.9-minimal \
+  && apt-get autoremove -y \
+  && apt-get clean \
+  && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
+
+
 RUN set -xe \
   && mkdir -p /docker-entrypoint-initdb.d \
   && chmod -x /docker-entrypoint-initdb.d/10_postgis.sh \
   && chmod -x /docker-entrypoint-initdb.d/21_postgis.sh \
   && chmod -x /docker-entrypoint-initdb.d/22_imboy.sh \
   && chown -R postgres:postgres /var/lib/postgresql/data \
-  && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-16 \
-  && apt-get purge -y --autoremove \
-        build-essential \
-        libboost-all-dev \
-  && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
   && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
   && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc

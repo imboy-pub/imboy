@@ -2,7 +2,7 @@
 # docker-compose -f docker-compose.yml up -d
 services:
   imboy_pg16:
-    image: imboy/pg16:3.4.2.dev.6
+    image: imboy/pg16:3.4.2.dev.7
     container_name: imboy_pg16
     hostname: pg.docker.imboy.pub
     restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
