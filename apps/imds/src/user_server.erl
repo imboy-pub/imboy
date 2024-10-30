@@ -22,7 +22,7 @@
 
 %%
 -export([cast_notice_friend/2]).
--export([cast_online/3]).
+-export([cast_online/4]).
 -export([cast_offline/3]).
 -export([cast_cancel/3]).
 
@@ -157,8 +157,9 @@ cast_notice_friend(CurrentUid, ChatState) ->
 %% 检查消息 用异步队列实现
 
 %% ws 上线后的异步操作 例如检查离线消息等
--spec cast_online(binary(), pid(), binary()) -> ok.
-cast_online(Uid, Pid, DID) ->
+-spec cast_online(binary(), pid(), binary(), binary()) -> ok.
+cast_online(Uid, Pid, DID, DType) ->
+    gen_server:cast(?MODULE, {ws_online, Uid, DType, DID}),
     gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
     ok.
 

@@ -100,7 +100,7 @@ message_ds:send_next(Uid, MsgId, Msg2, [3000, 5000, Fun], [DID], true).
 	* line 70 user_logic:online/4
 * ./apps/imapi/src/user_logic.erl
 	* line 28  syn:join/4
-	* line 33 user_server:cast_online/3
+	* line 33 user_server:cast_online/4
 
 > 用户所有的在线设备，用户所有加入的群组，一个用户只有一个WS链接；
 

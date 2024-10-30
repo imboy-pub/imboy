@@ -185,11 +185,8 @@ cancel_logout(Uid, _Req0) ->
 online(Uid, DType, Pid, DID) ->
     % ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
     imboy_syn:join(Uid, DType, Pid, DID),
-
-    gen_server:cast(user_server, {ws_online, Uid, DType, DID}),
-
     % 用异步队列实现 检查离线消息 等
-    user_server:cast_online(Uid, Pid, DID),
+    user_server:cast_online(Uid, Pid, DID, DType),
     ok.
 
 
