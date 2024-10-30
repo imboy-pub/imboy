@@ -34,13 +34,15 @@ start(_Type, _Args) ->
                 ],
                 env => #{dispatch => Dispatch}
             },
-            Port = config_ds:env(http_port),
+            Port = case os:getenv("HTTP_PORT") of
+                P when is_list(P) ->
+                    list_to_integer(P);
+                false ->
+                    config_ds:env(http_port)
+            end,
             case StartMode of
                 tls ->
                     start_tls(ProtoOpts, Port);
-                http_tls ->
-                    start_clear(ProtoOpts, Port),
-                    start_tls(ProtoOpts, Port + 1);
                 _ ->
                     start_clear(ProtoOpts, Port)
             end

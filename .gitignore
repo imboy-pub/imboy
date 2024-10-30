@@ -40,3 +40,7 @@ imboy_v1.sql
 schema_diff.sql
 sys.dev.config
 docker/imboy_pg16
+relxnode1.config
+relxnode2.config
+config/vm.node1.args
+config/vm.node2.args

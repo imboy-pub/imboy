@@ -24,7 +24,7 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 * Erlang/OTP 25
 * Erlang/OTP 26
 
-* 数据库 PostgreSQL15
+* 数据库 PostgreSQL16
 
 * [more](./doc/deps_service.md)
 
@@ -34,6 +34,7 @@ erl -name debug -setcookie imboy
 net_adm:ping('imboy@api.docker.imboy.pub').
 net_kernel:connect_node('imboy@api.docker.imboy.pub').
 
+net_adm:ping('node1@127.0.0.1').
 
 erl -name debug@127.0.0.1
 auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
@@ -92,6 +93,12 @@ make new-lib in=imapi
 
 make new-app in=imsos
 ...
+
+IMBOYENV=local make run HTTP_PORT=9800
+
+IMBOYENV=node1 make run HTTP_PORT=9801
+IMBOYENV=node2 make run HTTP_PORT=9802
+
 
 make run
 
