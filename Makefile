@@ -36,6 +36,7 @@ DEPS += telemetry lager observer_cli recon redbug
 DEPS += sync
 DEPS += simple_captcha
 DEPS += erlydtl
+DEPS += guanco
 # DEPS += rebar3_appup_plugin
 # DEPS += vix
 # DEPS += nksip

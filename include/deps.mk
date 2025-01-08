@@ -132,6 +132,7 @@ dep_pure_migrations = git https://gitee.com/imboy-tripartite-deps/erlang-pure-mi
 
 dep_idna = hex 6.1.1 idna
 dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1
+dep_guanco = git https://gitee.com/imboy-tripartite-deps/guanco.git main
 
 # dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
 # 1years 8commits
