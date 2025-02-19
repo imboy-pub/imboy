@@ -25,27 +25,27 @@ services:
     mem_limit: 800M
     memswap_limit: 2g
 
-  imboy_fastdfs:
-    image: sjqzhang/go-fastdfs
-    container_name: imboy_fastdfs
-    hostname: a.docker.imboy.pub
-    restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-    environment: # 设置环境变量,相当于docker run命令中的-e
-      TZ: Asia/Shanghai
-      LANG: en_US.UTF-8
-      GO_FASTDFS_DIR: /data
-    volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-      - "./docker/img_fastdfs_data:/data"
-    ports: # 映射端口
-      - "9830:8080"
-    deploy:
-      resources:
-        limits:
-          memory: 400M
-        reservations:
-          memory: 400M
-    mem_limit: 400M
-    memswap_limit: 2g
+  # imboy_fastdfs:
+  #   image: sjqzhang/go-fastdfs
+  #   container_name: imboy_fastdfs
+  #   hostname: a.docker.imboy.pub
+  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
+  #   environment: # 设置环境变量,相当于docker run命令中的-e
+  #     TZ: Asia/Shanghai
+  #     LANG: en_US.UTF-8
+  #     GO_FASTDFS_DIR: /data
+  #   volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
+  #     - "./docker/img_fastdfs_data:/data"
+  #   ports: # 映射端口
+  #     - "9830:8080"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 400M
+  #       reservations:
+  #         memory: 400M
+  #   mem_limit: 400M
+  #   memswap_limit: 2g
 
 
   # eturnal 比较耗费内存，暂时没有找到原因，直接在宿主机安装了

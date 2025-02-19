@@ -2,6 +2,11 @@
 -setcookie imboy
 -heart
 
+# https://erlef.org/blog/eef/epmd-public-exposure
+# 确保分发端口只能通过本地主机或私有网络接口访问，进一步减少攻击面。
+-kernel inet_dist_use_interface '{127,0,0,1}'
+-env ERL_EPMD_ADDRESS 127.0.0.1
+
 +K true
 +A 256
 +S 4
@@ -32,3 +37,5 @@
 
 +MMscs 1024
 +MMscrpm false
+
+
