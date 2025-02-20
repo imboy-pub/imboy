@@ -85,6 +85,8 @@ from  https://github.com/postgis/docker-postgis
 
 dev
 ```
+docker build --file "./docker/pg17_Dockerfile_dev" -t imboy/pg17:3.5.1.dev.1 .
+
 docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/pg16:3.4.2.dev.7 .
 
 
