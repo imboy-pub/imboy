@@ -41,7 +41,7 @@ page(Uid, Page, Size) when Page > 0 ->
 
 -spec add(integer(), integer()) -> integer().
 add(Uid, DeniedUserId) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     user_denylist_repo:add(Uid, DeniedUserId, Now),
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:flush(Key),

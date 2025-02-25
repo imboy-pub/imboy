@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS public."group_random_code"
     user_id bigint NOT NULL,
     code varchar(20) DEFAULT '',
     location geometry,
-    validity_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    validity_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -31,7 +31,7 @@ COMMENT ON COLUMN public.group_random_code.user_id IS '创建用户ID';
 COMMENT ON COLUMN public.group_random_code.code IS '随机码';
 COMMENT ON COLUMN public.group_random_code.validity_at IS '有效期截止时间';
 
-COMMENT ON COLUMN public.group_random_code.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.group_random_code.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 

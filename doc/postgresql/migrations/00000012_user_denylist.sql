@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public."user_denylist"
     id BIGSERIAL PRIMARY KEY,
     user_id bigint NOT NULL,
     denied_user_id bigint NOT NULL DEFAULT '0',
-    created_at bigint DEFAULT 0,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_UserId_DeniedUserId UNIQUE  (user_id,denied_user_id)
 )
 

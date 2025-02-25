@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS public."adm_user"
     role_id integer[],
     login_count bigint NOT NULL DEFAULT 0,
     last_login_ip varchar(40) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
-    last_login_at bigint NOT NULL DEFAULT 0,
-    status integer NOT NULL DEFAULT 1,
-    created_at bigint NOT NULL
+    last_login_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    status smallint NOT NULL DEFAULT 1,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 -- imboy_db:assemble_value(#{mobile => "13692177080", password => "password", account => "13692177080", "status" => 1, "role_id" => [1,3], "nickname" => "大大大"}).
@@ -54,4 +54,4 @@ COMMENT ON COLUMN public.adm_user.status
     IS '状态: -1 删除  0 禁用  1 启用';
 
 COMMENT ON COLUMN public.adm_user.created_at
-    IS '创建记录Unix时间戳毫秒单位';
+    IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';

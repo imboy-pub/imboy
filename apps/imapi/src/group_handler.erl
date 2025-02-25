@@ -181,7 +181,7 @@ edit(Req0, State) ->
             % 类型: 1 公开群组  2 私有群组
             % Type = proplists:get_value(<<"type">>, PostVals, <<"2">>),
 
-            Now = imboy_dt:utc(millisecond),
+            Now = imboy_dt:now(),
             Tb = group_repo:tablename(),
             Count = imboy_db:pluck(Tb,
                <<"id = ", GidBin/binary>>,
@@ -315,7 +315,7 @@ qrcode(Req0, State) ->
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
     Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     CurrentUid = maps:get(current_uid, State),
     % ?LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of

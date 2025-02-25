@@ -39,7 +39,7 @@ c2s(MsgId, CurrentUid, Data) ->
     % 判断当前用户是否在 ToId 的黑名单里面
     case cowboy_bstr:to_lower(To) of
         <<"bot_qian_fan">> ->
-            NowTs = imboy_dt:utc(millisecond),
+            NowTs = imboy_dt:now(),
 
             self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2S_SERVER_ACK">>}, {<<"server_ts">>, NowTs}]},
 

@@ -84,7 +84,7 @@ reply(<<"POST">>, Req0, State) ->
                 , <<"replier_user_id">> => AdmUserId
                 , <<"replier_name">> => Nickname
                 , <<"body">> => proplists:get_value(<<"body">>, PostVals, "")
-                , <<"created_at">> => imboy_dt:utc(millisecond)}),
+                , <<"created_at">> => imboy_dt:now()}),
             imboy_response:success(Req0, PostVals, "success.");
         true ->
             imboy_response:error(Req0)

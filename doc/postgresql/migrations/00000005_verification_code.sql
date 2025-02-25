@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public."verification_code"
     id varchar(80) PRIMARY KEY,
     code varchar(40) DEFAULT '',
     validity_at bigint DEFAULT 0,
-    created_at bigint DEFAULT 0
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;

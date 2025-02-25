@@ -29,10 +29,9 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Column = <<"(from_user_id,to_user_id,status,
         category_id,remark,updated_at,created_at,
         setting,tag)">>,
-    CreatedAt = integer_to_binary(NowTs),
 
     SettingBin = jsone:encode(filter_friend_setting(Setting), [native_utf8]),
-    Value1 = <<"(", From/binary, ", ", To/binary, ",1, 0, '", Remark/binary, "', 0, ", CreatedAt/binary, ", '",
+    Value1 = <<"(", From/binary, ", ", To/binary, ",1, 0, '", Remark/binary, "', 0, ", NowTs/binary, ", '",
                SettingBin/binary, "', '", Tag/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value1),
     ok.

@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS public."group_member"
     is_join smallint DEFAULT 0,
     join_mode varchar(120) DEFAULT '', -- 进群方式 :  invite_[uid]_[nickname]
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -40,8 +40,8 @@ COMMENT ON COLUMN public.group_member.description IS '群内描述';
 COMMENT ON COLUMN public.group_member.role IS '角色: 1 成员  2 嘉宾  3  管理员 4 群主';
 COMMENT ON COLUMN public.group_member.is_join IS '是否加入的群： 1 是 0 否 （0 是群创建者或者拥有者 1 是 成员 嘉宾 管理员等）';
 
-COMMENT ON COLUMN public.group_member.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.group_member.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.group_member.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.group_member.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 COMMENT ON COLUMN public.group_member.status IS '状态: -1 删除  0 禁用  1 启用 ';
 
 -- index

@@ -54,7 +54,7 @@ create_friend_test(FromId, ToId) ->
     imboy_db:execute(Sql,
                      [FromId,
                       ToId,
-                      imboy_dt:utc(millisecond),
+                      imboy_dt:now(),
                       <<"{\"role\":\"all\",\"isfrom\":0,\"source\":\"qrcode\",\"donotlookhim\":false,\"donotlethimlook\":false}">>]).
 
 

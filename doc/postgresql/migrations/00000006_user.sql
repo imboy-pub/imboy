@@ -16,16 +16,16 @@ CREATE TABLE IF NOT EXISTS public."user"
     mobile varchar(40) COLLATE pg_catalog."default",
     email varchar(80) COLLATE pg_catalog."default",
     region varchar(80) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
-    gender integer NOT NULL DEFAULT 0,
+    gender int4 NOT NULL DEFAULT 0,
     experience bigint NOT NULL DEFAULT 0,
     avatar varchar(320) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
     sign varchar(320) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
     login_count bigint NOT NULL DEFAULT 0,
     last_login_ip varchar(40) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
-    last_login_at bigint NOT NULL DEFAULT 0,
+    last_login_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     ref_user_id bigint NOT NULL DEFAULT 0,
-    status integer NOT NULL DEFAULT 1,
-    created_at bigint NOT NULL,
+    status smallint NOT NULL DEFAULT 1,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     reg_ip varchar(40) COLLATE pg_catalog."default" NOT NULL,
     reg_cosv varchar(320) COLLATE pg_catalog."default" NOT NULL
 )
@@ -70,7 +70,7 @@ COMMENT ON COLUMN public.user.status
     IS '状态: -1 删除  0 禁用  1 启用  2 申请注销中';
 
 COMMENT ON COLUMN public.user.created_at
-    IS '创建记录Unix时间戳毫秒单位';
+    IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 COMMENT ON COLUMN public.user.reg_ip IS '注册IP';
 COMMENT ON COLUMN public.user.reg_cosv IS '客户端操作系统版本，例如： Linux 5.11.0-1018-gcp #20~20.04.2-Ubuntu SMP Fri Sep 3 01:01:37 UTC 2021 | "Windows 10 Pro" 10.0 (Build 19043)';

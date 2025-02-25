@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS public."user_tag"
     scene int DEFAULT 0,
     name varchar(80) DEFAULT '',
     referer_time int NOT NULL DEFAULT 0,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_Scene_CreatorId_Name UNIQUE  (scene, creator_user_id, name)
 )
 
@@ -28,7 +28,7 @@ COMMENT ON COLUMN public.user_tag.scene IS '标签应用场景 1  用户收藏�
 COMMENT ON COLUMN public.user_tag.name IS '标签名称';
 COMMENT ON COLUMN public.user_tag.referer_time IS '被引用次数 关联object_id 数量';
 
-COMMENT ON COLUMN public.user_tag.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.user_tag.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.user_tag.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.user_tag.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index

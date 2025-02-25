@@ -63,9 +63,8 @@ add(Uid, DeniedUserId, Now) ->
 
     Uid2 = integer_to_binary(Uid),
     DeniedUserId2 = integer_to_binary(DeniedUserId),
-    Now2 = integer_to_binary(Now),
 
-    Value = <<"('", Uid2/binary, "', '", DeniedUserId2/binary, "', '", Now2/binary, "')">>,
+    Value = <<"('", Uid2/binary, "', '", DeniedUserId2/binary, "', '", Now/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).
 
 

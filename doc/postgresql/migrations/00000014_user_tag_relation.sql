@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public."user_tag_relation"
     user_id bigint DEFAULT 0,
     tag_id bigint DEFAULT 0,
     object_id varchar(40) NOT NULL DEFAULT '',
-    created_at bigint NOT NULL
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -25,7 +25,7 @@ COMMENT ON COLUMN public.user_tag_relation.user_id IS '记录所属用户ID';
 COMMENT ON COLUMN public.user_tag_relation.tag_id IS '标签ID public.tag 表的自增长ID';
 COMMENT ON COLUMN public.user_tag_relation.object_id IS '被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)';
 
-COMMENT ON COLUMN public.user_tag_relation.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.user_tag_relation.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 

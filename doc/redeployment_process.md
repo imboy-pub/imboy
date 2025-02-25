@@ -8,7 +8,7 @@ i.imboy.puub
 turn.imboy.pub
 
 * 使用 docker容器启动 eturnal 服务，会非常占用内存，直接源码安装或者用依赖包在宿主机安装很省内存；
-* 按下面流程配置好各个依赖后，通过 docker-compose-pro.yml 管理 postgresql15 服务
+* 按下面流程配置好各个依赖后，通过 docker-compose-pro.yml 管理 postgresql17 服务
 
 ```
 cd imboy
@@ -30,12 +30,12 @@ mkdir -p /data /data/imboy
 docker network create imboy-network
 ```
 
-3. 安装 postgresql15
+3. 安装 postgresql17
 
 ```
 cd /www/wwwroot/imboy-api
 docker pull postgres:15-bullseye
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .
+docker build --file "./docker/pg17_Dockerfile_dev" -t imboy/pg17:3.5.1.dev.1 .
 
 // 解决升级 timescaledb 后加载报错的问题
 psql -U imboy_user -d imboy_v1

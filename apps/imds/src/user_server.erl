@@ -72,7 +72,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     % 更新 user 表
     % 更新 user_client 表
     Uid2 = imboy_hashids:decode(Uid),
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     % ?LOG([Uid, Uid2, PostVals]),
     % 记录设备信息
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
@@ -84,7 +84,7 @@ handle_cast({ws_online, Uid, _DType, DID}, State) ->
     % ?LOG([handle_cast, ws_online, Uid, DType, DID, State]),
     % 更新 最近活跃时间
     Set = <<"last_active_at = $1">>,
-    SetArgs = [imboy_dt:utc(millisecond)],
+    SetArgs = [imboy_dt:now()],
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
     {noreply, State, hibernate};
 

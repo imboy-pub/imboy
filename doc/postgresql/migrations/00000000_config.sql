@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS public.config
     remark varchar(200) COLLATE pg_catalog."default" NOT NULL,
     system smallint NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
-    created_at bigint NOT NULL DEFAULT 0,
-    updated_at bigint NOT NULL DEFAULT 0,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     CONSTRAINT config_pkey PRIMARY KEY (key)
 )
 
@@ -35,9 +35,9 @@ COMMENT ON COLUMN public.config.system IS '是否为系统配置，系统配置�
 
 COMMENT ON COLUMN public.config.status IS '状态: -1 删除  0 禁用  1 启用';
 
-COMMENT ON COLUMN public.config.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.config.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
-COMMENT ON COLUMN public.config.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.config.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 

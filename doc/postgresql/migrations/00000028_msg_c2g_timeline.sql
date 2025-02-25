@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public."msg_c2g_timeline"
     to_uid bigint NOT NULL,
     to_gid bigint NOT NULL,
     client_ack smallint NOT NULL DEFAULT 0, -- 0 客户端未确认  1 客户端已确认
-    created_at bigint NOT NULL
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -20,7 +20,7 @@ COMMENT ON COLUMN public.msg_c2g_timeline.msg_id IS '消息唯一标识';
 
 COMMENT ON COLUMN public.msg_c2g_timeline.to_uid IS '消息接收人user_id';
 COMMENT ON COLUMN public.msg_c2g_timeline.to_gid IS '消息接收群 group_id';
-COMMENT ON COLUMN public.msg_c2g_timeline.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.msg_c2g_timeline.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 CREATE INDEX uk_c2g_timeline_MsgId ON public.msg_c2g_timeline (msg_id);

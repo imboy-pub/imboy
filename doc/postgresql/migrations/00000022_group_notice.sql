@@ -13,9 +13,9 @@ CREATE TABLE IF NOT EXISTS public."group_notice"
     edit_user_id bigint NOT NULL DEFAULT 0,
     body varchar(2000) DEFAULT '',
     status smallint NOT NULL DEFAULT 0,
-    expired_at bigint DEFAULT 0,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    expired_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -34,7 +34,7 @@ COMMENT ON COLUMN public.group_notice.body IS '公告类容';
 COMMENT ON COLUMN public.group_notice.status IS '状态 0 待发布  1 已发布 2 取消发布';
 COMMENT ON COLUMN public.group_notice.updated_at IS '有效期截止时间';
 COMMENT ON COLUMN public.group_notice.updated_at IS '更新截止时间';
-COMMENT ON COLUMN public.group_notice.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.group_notice.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 CREATE INDEX i_Gid_Status_ExpiredAt ON public.group_notice (group_id, status, expired_at asc);

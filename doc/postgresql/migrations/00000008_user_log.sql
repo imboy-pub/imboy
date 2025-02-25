@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public."user_log"
     uid bigint NOT NULL DEFAULT 0,
     body text NOT NULL,
     remark varchar(200) NOT NULL DEFAULT '',
-    created_at bigint NOT NULL
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -29,7 +29,7 @@ COMMENT ON COLUMN public.user_log.uid IS '用户ID';
 COMMENT ON COLUMN public.user_log.body IS '相关操作类型的json字符串数据';
 COMMENT ON COLUMN public.user_log.remark IS '备注';
 
-COMMENT ON COLUMN public.user_log.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.user_log.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 CREATE INDEX i_user_log_Type_Uid_CreatedAt ON public.user_log(type, uid, created_at asc);

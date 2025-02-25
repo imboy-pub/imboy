@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public."conversation"
     type varchar(40) DEFAULT '', -- C2C C2G C2S S2C
     msg_type varchar(40) DEFAULT '',
     is_show INT DEFAULT 0,
-    last_time INT DEFAULT 0,
+    last_time timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     last_msg_id varchar(40) DEFAULT '',
     last_msg_status INT DEFAULT 0,
     payload TEXT DEFAULT ''

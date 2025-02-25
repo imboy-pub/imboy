@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS public."app_ddl"
     old_vsn int NOT NULL DEFAULT 0,
     new_vsn int NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_OldVsn_NewVsn UNIQUE  (old_vsn, new_vsn)
 )
 
@@ -31,5 +31,5 @@ COMMENT ON COLUMN public.app_ddl.old_vsn IS '版本号： 整形数字';
 COMMENT ON COLUMN public.app_ddl.new_vsn IS '版本号： 整形数字';
 COMMENT ON COLUMN public.app_ddl.ddl IS '需要更新的DDL语句文本，每个SQL半角逗号 ; 分割，因为DDL语句可能有顺序要求，所以用 text类型，而不用 json 数据类型';
 COMMENT ON COLUMN public.app_ddl.status IS '状态: -1 删除  0 禁用  1 启用';
-COMMENT ON COLUMN public.app_ddl.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.app_ddl.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.app_ddl.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.app_ddl.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';

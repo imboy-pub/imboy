@@ -141,16 +141,16 @@ remove(Uid, KindId) ->
 change(Uid, <<"transpond_callback">>, KindId, _PostVals) ->
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
-    NowTs = imboy_dt:utc(millisecond),
-    user_collect_repo:update(Uid, KindId, [{<<"updated_at">>, integer_to_binary(NowTs)}]),
+    NowTs = imboy_dt:now(),
+    user_collect_repo:update(Uid, KindId, [{<<"updated_at">>, NowTs}]),
     ok;
 change(Uid, <<"remark">>, KindId, PostVals) ->
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
     % user_collect_repo:update(Uid, KindId);
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
     user_collect_repo:update(Uid,
                              KindId,
-                             [{<<"updated_at">>, integer_to_binary(NowTs)},
+                             [{<<"updated_at">>, NowTs},
                               {<<"remark">>, Remark}]),
     ok;
 change(_Uid, _Action, _KindId, _PostVals) ->
@@ -202,10 +202,10 @@ get_info(_Count, _MimeType, _Key, _Info) ->
 % add_kind(_, _, _, _KindId, ok, _Source, _Remark, _Attach)
 %     ok;
 add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
     imboy_log:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     imboy_db:with_transaction(fun(Conn) ->
-                                      CreatedAt = integer_to_binary(NowTs),
+                                      CreatedAt = NowTs,
                                       attachment_repo:save(Conn, CreatedAt, Uid, Attach),
 
                                       Md5 = erlang:iolist_to_binary([ [",", maps:get(<<"md5">>, Item)]

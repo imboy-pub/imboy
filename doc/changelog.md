@@ -1,3 +1,10 @@
+# 0.6.0
+* 数据库升级到 pgsql17;
+* 数据库字段时间线相关的类型有bigint修改为timestamptz;
+* 新增 imboy_dt:add/2 imboy_dt:minus2 imboy_dt:compare_rfc3339/3
+* 更新 layui 到 2.9.23;
+* 升级 ranch: 2.2.0 cowlib 2.14.0 cowoby: 2.13.0 jsone: 1.9.0 depcache: 2.0.0
+
 # 0.5.1
 * 更新 layui 到 2.9.17;
 * 添加 pgrouting 3.6.2；

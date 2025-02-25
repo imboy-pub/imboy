@@ -42,10 +42,10 @@ save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
             imboy_db:update(
                 app_ddl_repo:tablename()
                 , Where
-                , Data#{updated_at => imboy_dt:utc(millisecond)}
+                , Data#{updated_at => imboy_dt:now()}
             );
         true ->
-            app_ddl_repo:add(Data#{created_at => imboy_dt:utc(millisecond)})
+            app_ddl_repo:add(Data#{created_at => imboy_dt:now()})
     end.
 
 -spec delete(binary()) -> ok.

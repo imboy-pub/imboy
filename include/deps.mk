@@ -5,9 +5,9 @@
 
 # https://erlang.mk/guide/deps.html
 # Ranch is a socket acceptor pool for TCP protocols.
-dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.1.0
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.13.0
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.12.0
+dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.2.0
+dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.14.0
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.13.0
 
 # gen_smtp Email服务端、客户端
 # https://github.com/gen-smtp/gen_smtp.git
@@ -15,81 +15,84 @@ dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 
 # jsone An Erlang library for encoding, decoding JSON data.
 # 4months
-dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.8.1
+dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.9.0
+
+# depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
+dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git 2.0.0
+
 # jsx an erlang application for consuming, producing and manipulating json
 # 2years
 dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
 
-# depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
-# 9months
-dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git master
 # Khepri 是一个用于 Erlang 和 Elixir 的树状复制磁盘数据库库。
 dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
 # jwerl JWT library
-# 1years
+# 2years https://github.com/G-Corp/jwerl
 dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 # dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
 
 # goldrush 提供了快速的事件流处理
 # 6years
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
-# 7years
+# 9years https://github.com/snaiper80/hashids-erlang
 dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
 
 
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。
-# 2years
+# https://github.com/ostinelli/syn
 dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
-# 17days
+# https://github.com/erlware/erlware_commons.git
 dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.7.0
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
 # 被 qdate 依赖
-# 1years
+# https://github.com/choptastic/qdate_localtime.git
 dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.1
 # qdate - Erlang Date and Timezone Library
-# 20days
+# https://github.com/choptastic/qdate
 #dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
 dep_qdate = hex 0.7.3
 
 # Erlang/OTP 应用程序限制资源访问速率
-# 3years
+# 4years https://github.com/lambdaclass/throttle.git
 dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
 
 
 # ecron 用于 Erlang 的轻量级/高效的类似 cron 的作业调度库。
-# 1years
-dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v1.0.0
+# https://github.com/zhongwencool/ecron
+dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v1.1.0
 # Erlang 的纯函数式和泛型编程
 # 6months
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
 # Erlang 的断路器
-# 3years
+# 4years https://github.com/jlouis/fuse.git
 dep_fuse = git https://gitee.com/imboy-tripartite-deps/fuse.git 2.5.0
 # Erlang 的简单持久队列
-# 1years
+# 3years https://github.com/fogfish/esq.git
+
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
 dep_esq = hex 2.0.6
 
 # bbmustache 一个无逻辑的模板。 deps by relx
-# dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git v1.12.2
-# 3days
+# https://github.com/soranoba/bbmustache
 #dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
 dep_bbmustache = hex 1.14.1
+
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
-# 8months
-# dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.8.0
+# https://github.com/erlware/relx
+# dep_relx = git https://gitee.com/imboy-tripartite-deps/relx.git v4.10.0
 dep_relx = hex 4.10.0
+
+# lager 日志库
+# https://github.com/erlang-lager/lager
+dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 
 # hut 小型的日志处理库
 # 2years
 dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0
-# lager 日志库
-# 3months
-dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题
 # 8months
 dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 1.7.4
@@ -116,8 +119,9 @@ dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 # 6years
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
+
 # erlang fault tolerant service to generate unique identities
-# 12months
+# 12months https://github.com/fogfish/uid.git
 dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
 # Django templates for Erlang
 # 8years

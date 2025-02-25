@@ -133,14 +133,13 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     Uid2 = integer_to_binary(Uid),
     Status = <<"1">>,
     LoginCount2 = <<"1">>,
-    Now2 = integer_to_binary(Now),
 
     Tb = tablename(),
     Column = <<"(user_id,device_type,device_id,device_vsn,device_name,
         login_count,last_login_ip,last_login_at,status,public_key,created_at)">>,
     Value = <<"('", Uid2/binary, "', '", DeviceType/binary, "', '", DID/binary, "', '", DeviceVsn/binary, "', '",
-              DeviceName/binary, "', '", LoginCount2/binary, "', '", Ip2/binary, "', '", Now2/binary, "', '"
+              DeviceName/binary, "', '", LoginCount2/binary, "', '", Ip2/binary, "', '", Now/binary, "', '"
               , Status/binary, "', '"
               , (ec_cnv:to_binary(PublicKey))/binary, "', '"
-              , Now2/binary, "')">>,
+              , Now/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).

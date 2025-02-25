@@ -32,12 +32,11 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
     Tb = tablename(),
     % ?LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
     imboy_db:with_transaction(fun(Conn) ->
-        CreatedAt2 = integer_to_binary(CreatedAt),
         Payload2 = imboy_hasher:encoded_val(Payload),
-        % ?LOG(CreatedAt2),
+        % ?LOG(CreatedAt),
         Column = <<"(payload,to_id,from_id,created_at,msg_id)">>,
         Sql = <<"INSERT INTO ", Tb/binary, " ", Column/binary, " VALUES(", Payload2/binary,
-              ", '", Gid/binary, "', '", FromId/binary, "', '", CreatedAt2/binary,
+              ", '", Gid/binary, "', '", FromId/binary, "', '", CreatedAt/binary,
               "', '", MsgId/binary, "');">>,
         % ?LOG(Sql),
         {ok, Stmt} = epgsql:parse(Conn, Sql),
@@ -48,7 +47,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Vals = lists:map(fun(ToId) ->
                 ToId2 = ec_cnv:to_binary(ToId),
                Val = <<"('", MsgId/binary, "', '", ToId2/binary, "', '",
-                       Gid/binary, "', '", CreatedAt2/binary, "')">>,
+                       Gid/binary, "', '", CreatedAt/binary, "')">>,
                binary_to_list(Val)
            end,
            ToUids),

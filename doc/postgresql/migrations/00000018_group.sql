@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS public."group"
     avatar varchar(320) NOT NULL DEFAULT '',
     title varchar(200) NOT  NULL DEFAULT '',
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -47,8 +47,8 @@ COMMENT ON COLUMN public.group.introduction IS '简介';
 COMMENT ON COLUMN public.group.avatar IS '群组头像';
 COMMENT ON COLUMN public.group.title IS '群组名称';
 
-COMMENT ON COLUMN public.group.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.group.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.group.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.group.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 COMMENT ON COLUMN public.group.status IS '状态: -1 删除  0 禁用  1 启用';
 
 -- index

@@ -99,21 +99,20 @@ set(Key, Val, Title, Remark) ->
 
 save(Key, Data) ->
     % ?LOG([Key, Val, Tab]),
-    Now = imboy_dt:utc(millisecond),
-    Now2 = integer_to_binary(Now),
+    Now = imboy_dt:now(),
     Where =  <<"key = '", Key/binary, "'">>,
     Field = <<"count(*) as count">>,
     case imboy_db:pluck(<<"config">>, Where, Field, 0) of
         0 ->
             imboy_db:insert_into(<<"config">>, Data#{
                 <<"key">> => Key,
-                <<"updated_at">> => 0,
-                <<"created_at">> => Now2
+                <<"updated_at">> => null,
+                <<"created_at">> => Now
             }, <<>>);
         _ ->
             imboy_db:update(<<"config">>
                 , <<"key = '", Key/binary, "'">>
-                , Data#{<<"updated_at">> => Now2}
+                , Data#{<<"updated_at">> => Now}
             )
     end,
     imboy_cache:flush(cache_key(Key)),

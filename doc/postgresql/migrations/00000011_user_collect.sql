@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS public."user_collect"
     attach_md5 varchar(880) NOT NULL DEFAULT '',
 
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_user_collect_UserId_Status_kindId UNIQUE  (user_id, status, kind_id)
 )
 
@@ -37,8 +37,8 @@ COMMENT ON COLUMN public.user_collect.info IS '被收藏的kind的json信息';
 COMMENT ON COLUMN public.user_collect.attach_md5 IS '收藏记录Md5,多个用逗号分割';
 
 
-COMMENT ON COLUMN public.user_collect.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.user_collect.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.user_collect.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.user_collect.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 COMMENT ON COLUMN public.user_collect.status IS '状态: 0 禁用  1 启用';
 
 -- index

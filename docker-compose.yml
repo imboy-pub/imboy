@@ -1,54 +1,55 @@
 # docker network create imboy-network
-# docker-compose -f docker-compose.yml up -d
+# docker-compose -f docker-compose-pro.yml up -d
+# docker-compose -f docker-compose-pg17-pro.yml up -d
 services:
-  imboy_pg16:
-    image: imboy/pg16:3.4.2.dev.7
-    container_name: imboy_pg16
+  imboy_pg17:
+    image: imboy/pg17:3.5.1.dev.1
+    container_name: imboy_pg17
     hostname: pg.docker.imboy.pub
     restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
     environment: # 设置环境变量,相当于docker run命令中的-e
       TZ: Asia/Shanghai
       LANG: en_US.UTF-8
       POSTGRES_USER: imboy_user
-      POSTGRES_PASSWORD: abc54321
+      POSTGRES_PASSWORD: V6uucUwhU9pUAYis
       POSTGRES_DB: imboy_v1
     volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-      - "./docker/imboy_pg16:/var/lib/postgresql/data"
+      # - "/data/docker/imboy_pg17:/var/lib/postgresql/data"
+      - "./docker/imboy_pg17:/var/lib/postgresql/data"
     ports: # 映射端口
-      - "9820:5432"
+      - "4323:5432"
     deploy:
       resources:
         limits:
-          memory: 800M
+          memory: 4096M
         reservations:
-          memory: 800M
-    mem_limit: 800M
-    memswap_limit: 2g
+          memory: 4096M
+    mem_limit: 4096M
+    memswap_limit: 4g
 
   # imboy_fastdfs:
   #   image: sjqzhang/go-fastdfs
   #   container_name: imboy_fastdfs
-  #   hostname: a.docker.imboy.pub
+  #   hostname: i.imboy.pub
   #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
   #   environment: # 设置环境变量,相当于docker run命令中的-e
   #     TZ: Asia/Shanghai
   #     LANG: en_US.UTF-8
   #     GO_FASTDFS_DIR: /data
   #   volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-  #     - "./docker/img_fastdfs_data:/data"
+  #     - "/data/docker/img_fastdfs_data:/data"
   #   ports: # 映射端口
-  #     - "9830:8080"
+  #     - "8080:8080"
   #   deploy:
   #     resources:
   #       limits:
-  #         memory: 400M
+  #         memory: 800M
   #       reservations:
-  #         memory: 400M
-  #   mem_limit: 400M
-  #   memswap_limit: 2g
+  #         memory: 800M
+  #   mem_limit: 800M
+  #   memswap_limit: 4g
 
-
-  # eturnal 比较耗费内存，暂时没有找到原因，直接在宿主机安装了
+  # 比较耗费内存，暂时没有找到原因
   # eturnalctl daemon /data/docker/eturnal/eturnal.yml
   # eturnalctl remote_console
   # imboy_eturnal:
@@ -94,52 +95,6 @@ services:
   #         memory: 800M
   #   mem_limit: 800M
   #   memswap_limit: 4g
-
-  # imboy_api:
-  #   image: imboy/imboy-api:dev
-  #   container_name: imboy_api # 容器名为'imboy_api'
-  #   hostname: api.docker.imboy.pub
-  #   links:
-  #     - imboy_postgis
-  #     - imboy_fastdfs
-  #   depends_on:
-  #     - imboy_fastdfs
-  #     - imboy_postgis
-  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-  #   environment: # 设置环境变量,相当于docker run命令中的-e
-  #     TZ: Asia/Shanghai
-  #     LANG: en_US.UTF-8
-  #   volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-  #     #- "./docker/imboy_api1_vm.args:/www/wwwroot/imboy-api/config/vm.args"
-  #     - "./docker/imboy_api_sys.config:/www/wwwroot/imboy-api/config/sys.config"
-  #   ports: # 映射端口
-  #     - "9810:9800"
-  #     - "9811:9801"
-  #   working_dir: /www/wwwroot/imboy-api
-  #   command: ["make", "run"]
-
-  # imboy_api2:
-  #   image: imboy/imboy-api:dev
-  #   container_name: imboy_api2 # 容器名为'imboy_api'
-  #   hostname: api2.docker.imboy.pub
-  #   links:
-  #     - imboy_postgis
-  #     - imboy_fastdfs
-  #   depends_on:
-  #     - imboy_fastdfs
-  #     - imboy_postgis
-  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-  #   environment: # 设置环境变量,相当于docker run命令中的-e
-  #     TZ: Asia/Shanghai
-  #     LANG: en_US.UTF-8
-  #   volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-  #     - "./docker/imboy_api2_vm.args:/www/wwwroot/imboy-api/config/vm.args"
-  #     - "./docker/imboy_api_sys.config:/www/wwwroot/imboy-api/config/sys.config"
-  #   ports: # 映射端口
-  #     - "9812:9800"
-  #     - "9813:9801"
-  #   working_dir: /www/wwwroot/imboy-api
-  #   command: ["make", "run"]
 
 networks:
   default:

@@ -34,7 +34,7 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
     Msg = jsone:encode(Payload, [native_utf8]),
     case Save of
         save ->
-            CreatedAt = imboy_dt:utc(millisecond),
+            CreatedAt = imboy_dt:now(),
             write_msg(CreatedAt, MsgId, Payload, FromId, ToUid, CreatedAt),
 
             MsLi = [0, 1_000_000, 1_000_000],

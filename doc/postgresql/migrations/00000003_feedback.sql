@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS public."feedback"
 
     reply_count int NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_FeedbackMd5 UNIQUE  (feedback_md5)
 )
 
@@ -50,5 +50,5 @@ COMMENT ON COLUMN public.feedback.body IS '反馈内容';
 COMMENT ON COLUMN public.feedback.feedback_md5 IS '反馈唯一标识 md5(user_id + device_id + app_vsn + type + body)';
 COMMENT ON COLUMN public.feedback.reply_count IS '回复数量，回复的回复也计算在内';
 COMMENT ON COLUMN public.feedback.status IS '状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）';
-COMMENT ON COLUMN public.feedback.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.feedback.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.feedback.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.feedback.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';

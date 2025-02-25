@@ -154,7 +154,7 @@ change_remark(FromUid, ToUid, Remark) ->
     Tb = friend_repo:tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
-    imboy_db:execute(Sql, [Remark, imboy_dt:utc(millisecond), 1, FromUid, ToUid]).
+    imboy_db:execute(Sql, [Remark, imboy_dt:now(), 1, FromUid, ToUid]).
 
 
 % friend_ds:set_category_id(1, 1, 0).
@@ -163,7 +163,7 @@ set_category_id(Uid, CategoryId, NewCid) ->
     Tb = friend_repo:tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
-    imboy_db:execute(Sql, [NewCid, imboy_dt:utc(millisecond), 1, Uid, CategoryId]).
+    imboy_db:execute(Sql, [NewCid, imboy_dt:now(), 1, Uid, CategoryId]).
 
 
 %% ===================================================================

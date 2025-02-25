@@ -54,7 +54,7 @@ add(<<"POST">>, Req0, State) ->
     Status = proplists:get_value(<<"status">>, PostVals, 0),
     ExpiredAt = proplists:get_value(<<"expired_at">>, PostVals, <<>>),
     ExpiredAt2 = imboy_dt:rfc3339_to_utc(ExpiredAt, millisecond),
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     % ?LOG([ExpiredAt, ExpiredAt2]),
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
@@ -93,7 +93,7 @@ edit(<<"POST">>, Req0, State) ->
     Body = proplists:get_value(<<"body">>, PostVals, ""),
     ExpiredAt = proplists:get_value(<<"expired_at">>, PostVals, <<>>),
     ExpiredAt2 = imboy_dt:rfc3339_to_utc(ExpiredAt, millisecond),
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
 
     % ?LOG([ExpiredAt, ExpiredAt2]),
     case throttle:check(three_second_once, Uid) of
@@ -127,7 +127,7 @@ publish(<<"POST">>, Req0, State) ->
     Gid = proplists:get_value(<<"gid">>, PostVals, ""),
     Gid2 = imboy_hashids:decode(Gid),
 
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
 
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->

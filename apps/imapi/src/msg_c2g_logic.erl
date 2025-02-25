@@ -24,7 +24,7 @@ c2g(MsgId, CurrentUid, Data) ->
     % TODO check is group member
     MemberUids = group_ds:member_uids(ToGID),
     % Uids.
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
     Msg = [{<<"id">>, MsgId},
            {<<"type">>, <<"C2G">>},
            {<<"from">>, imboy_hashids:encode(CurrentUid)},
@@ -60,7 +60,7 @@ c2g_revoke(CurrentUid, MsgId, Data, Type, Type2) ->
     % TODO check is group member
     MemberUids = group_ds:member_uids(ToGID),
     % Uids.
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
 
     Payload = [
         {<<"msg_type">>, Type},

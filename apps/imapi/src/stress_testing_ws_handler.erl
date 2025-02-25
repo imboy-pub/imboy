@@ -40,7 +40,7 @@ websocket_init(State) ->
     CurrentPid = self(),
     case maps:find(error, State) of
         {ok, Code} ->
-            Msg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:utc(millisecond)}],
+            Msg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:now()}],
             {reply, {text, jsone:encode(Msg)}, State, hibernate};
         error ->
             CurrentUid = maps:get(current_uid, State),
@@ -64,7 +64,7 @@ websocket_handle({text, Msg}, State) ->
     % ?LOG(Msg),
     try case lists:keyfind(error, 1, State) of
             {error, Code} ->
-                ErrMsg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:utc(millisecond)}],
+                ErrMsg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:now()}],
                 {reply, ErrMsg};
             false ->
                 CurrentUid = maps:get(current_uid, State),

@@ -80,7 +80,7 @@ make deps
 
 ```
 
-### PG15 / PG16
+### PG15 / PG16 / PG17
 from  https://github.com/postgis/docker-postgis
 
 dev
@@ -89,8 +89,6 @@ docker build --file "./docker/pg17_Dockerfile_dev" -t imboy/pg17:3.5.1.dev.1 .
 
 docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/pg16:3.4.2.dev.7 .
 
-
-docker build --file "./docker/pg15_Dockerfile_dev" -t imboy/imboy-pg:15.3.4.2.dev.7 .
 ```
 
 pro

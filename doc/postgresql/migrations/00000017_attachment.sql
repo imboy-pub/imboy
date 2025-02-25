@@ -12,16 +12,16 @@ CREATE TABLE IF NOT EXISTS public."attachment"
     name varchar(160) NOT NULL DEFAULT '',
     path varchar(255) NOT NULL DEFAULT '',
     url varchar(255) NOT NULL DEFAULT '',
-    size bigint NOT NULL DEFAULT 0,
+    size int NOT NULL DEFAULT 0,
     info text DEFAULT '{}',
 
     referer_time int NOT NULL DEFAULT 0,
     last_referer_user_id bigint NOT NULL DEFAULT 0,
-    last_referer_at bigint NOT NULL DEFAULT 0,
+    last_referer_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     creator_user_id bigint NOT NULL DEFAULT 0,
 
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     status smallint NOT NULL DEFAULT 1,
     CONSTRAINT uk_attachment_md5 UNIQUE  (md5)
 )
@@ -48,8 +48,8 @@ COMMENT ON COLUMN public.attachment.last_referer_at IS '最后引用时间';
 
 COMMENT ON COLUMN public.attachment.creator_user_id IS '创建人用户ID';
 
-COMMENT ON COLUMN public.attachment.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.attachment.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.attachment.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.attachment.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 COMMENT ON COLUMN public.attachment.status IS '状态: -1 删除  0 禁用  1 启用';
 
 -- index

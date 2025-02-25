@@ -22,20 +22,18 @@ find_by_id(Id) ->
 
 % verification_code_repo:save(<<"test@imboy.pub">>,
 %   imboy_func:num_random(6),
-%   imboy_dt:utc(millisecond) + 600000,
-%   imboy_dt:utc(millisecond)).
--spec save(binary(), integer(), integer(), integer()) -> ok.
+%   imboy_dt:now() + 600000,
+%   imboy_dt:now()).
+-spec save(binary(), integer(), binary(), binary()) -> ok.
 save(ToEmail, VerifyCode, ValidityAt, Now) ->
     Tb = tablename(),
     Column = <<"(id,code,validity_at,created_at)">>,
     VerifyCode2 = integer_to_binary(VerifyCode),
-    ValidityAt2 = integer_to_binary(ValidityAt),
-    Now2 = integer_to_binary(Now),
 
-    UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ", ValidityAt2/binary, ", created_at = ",
-              Now2/binary>>,
+    UpSql = <<" UPDATE SET code = ", VerifyCode2/binary, ", validity_at = ", ValidityAt/binary, ", created_at = ",
+              Now/binary>>,
 
-    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '", ValidityAt2/binary, "', '", Now2/binary,
+    Value = <<"('", ToEmail/binary, "', '", VerifyCode2/binary, "', '", ValidityAt/binary, "', '", Now/binary,
               "') ON CONFLICT (id) DO ", UpSql/binary>>,
     Sql = imboy_db:assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
     imboy_db:execute(Sql, []).

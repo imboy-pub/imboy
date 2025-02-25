@@ -27,7 +27,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     OldMsgId = proplists:get_value(<<"old_msg_id">>, Payload),
     % CurrentUid = imboy_hashids:decode(From),
     ?LOG([CurrentUid, ToId, Data]),
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
 
     % 删除原有消息
     % use index uk_c2c_MsgId
@@ -66,7 +66,7 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 
     OldMsgId = proplists:get_value(<<"old_msg_id">>, Payload),
     % CurrentUid = imboy_hashids:decode(From),
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
 
     % 删除原有消息
     % use index uk_c2c_MsgId

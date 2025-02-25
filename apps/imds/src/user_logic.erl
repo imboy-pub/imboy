@@ -45,7 +45,7 @@ set_password(Uid, Req0) ->
             PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
             Pwd2 = imboy_password:generate(PwdPlaintext),
             imboy_db:with_transaction(fun(Conn) ->
-                Now = imboy_dt:utc(millisecond),
+                Now = imboy_dt:now(),
                 Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
                 imboy_db:update(Conn,
                     user_repo:tablename(),
@@ -94,7 +94,7 @@ change_password(Uid, Req0) ->
             PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
             Pwd2 = imboy_password:generate(PwdPlaintext),
             imboy_db:with_transaction(fun(Conn) ->
-                Now = imboy_dt:utc(millisecond),
+                Now = imboy_dt:now(),
                 Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
                 imboy_db:update(Conn,
                     user_repo:tablename(),
@@ -135,7 +135,7 @@ apply_logout(Uid, Req0) ->
     % 用户注销以后,用户的所有好友和群组关系需要解除
     % https://blog.51cto.com/u_15069441/4323079
     imboy_db:with_transaction(fun(Conn) ->
-        Now = imboy_dt:utc(millisecond),
+        Now = imboy_dt:now(),
         Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
         imboy_db:update(Conn,
             user_repo:tablename(),
@@ -160,7 +160,7 @@ apply_logout(Uid, Req0) ->
         ok
     end),
 
-    % user_server:cast_apply_logout(Uid, imboy_dt:utc(millisecond), #{
+    % user_server:cast_apply_logout(Uid, imboy_dt:now(), #{
     %     <<"app_vsn">> => AppVsn,
     %     <<"did">> => DID,
     %     <<"dtype">> => DType,

@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS public."adm_role"
 (
     id BIGSERIAL PRIMARY KEY,
     parent_id bigint NOT NULL DEFAULT 0,
-    sort bigint NOT NULL DEFAULT 100,
+    sort int NOT NULL DEFAULT 100,
     role_name varchar(80) COLLATE pg_catalog."default" NOT NULL,
-    status integer NOT NULL DEFAULT 1,
-    updated_at bigint NOT NULL,
-    created_at bigint NOT NULL
+    status smallint NOT NULL DEFAULT 1,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -30,4 +30,4 @@ COMMENT ON COLUMN public.adm_role.sort IS '排序(数字越小越靠前)';
 
 COMMENT ON COLUMN public.adm_role.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.adm_role.updated_at IS '修改记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.adm_role.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.adm_role.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';

@@ -197,3 +197,12 @@ select id,tag from public.user_friend where (from_user_id = 62913 and to_user_id
 # FAQ
 
 PostgreSQL 如何存储 emoji 表情 https://www.oschina.net/question/2286362_2190411
+
+
+
+
+ALTER TABLE public.adm_user ADD COLUMN created_at_ts timestamp with time zone DEFAULT CURRENT_TIMESTAMP;
+
+UPDATE public.adm_user SET created_at_ts = to_timestamp(created_at/1000.0);
+
+select created_at_ts from public.adm_user

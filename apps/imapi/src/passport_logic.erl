@@ -143,10 +143,13 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 send_email_code(undefined) ->
     {error, "Email必须"};
 send_email_code(ToEmail) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
+    Nowp1M = imboy_dt:minus(Now, {1, minute}),
     case verification_code_repo:find_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
-        {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 60000 ->
+        % {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 60000 ->
+        %  Now - 1m < CreatedAt
+        {ok, _Col, [{_, _, _, CreatedAt}]} when Nowp1M < CreatedAt ->
             {ok, "一分钟内重复请求不发送Email"};
         {ok, _Col, [{ToEmail, Code, ValidityAt, _}]} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
@@ -157,7 +160,7 @@ send_email_code(ToEmail) ->
         _ ->
             VerifyCode = imboy_func:num_random(6),
             % 600000 = 600 * 1000 = 10分钟
-            verification_code_repo:save(ToEmail, VerifyCode, Now + 600000, Now),
+            verification_code_repo:save(ToEmail, VerifyCode, imboy_dt:add(Now, {10, minute}), Now),
             Code2 = integer_to_binary(VerifyCode),
             Msg = <<"Code is ", Code2/binary, " will expire in 10 minutes.">>,
             % ?LOG(Msg),
@@ -166,7 +169,7 @@ send_email_code(ToEmail) ->
     end.
 
 send_sms_code(Mobile) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     case verification_code_repo:find_by_id(Mobile) of
         % 120000 = 120 * 1000 = 2分钟
         {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 120000 ->
@@ -187,7 +190,7 @@ send_sms_code(Mobile) ->
 %% 校验验证码
 -spec verify_code(binary(), binary()) -> {error, list()} | {ok, list()}.
 verify_code(Id, Code) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     case verification_code_repo:find_by_id(Id) of
         {ok, _Col, [{_, Code, ValidityAt, _}]} when Now < ValidityAt ->
             {ok, "验证码有效"};
@@ -280,7 +283,7 @@ pick_data_for_insert(Data, PostVals) ->
         , <<"reg_cosv">> => Cosv
         , <<"source">> => Source
         , <<"status">> => 1
-        , <<"created_at">> => imboy_dt:utc(millisecond)
+        , <<"created_at">> => imboy_dt:now()
     }, Data).
 
 -spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: list()) ->
@@ -295,7 +298,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             {error, "Email不存在或已被删除"};
         Id ->
             PwdPlaintext = imboy_cipher:rsa_decrypt(Pwd),
-            % Now = imboy_dt:utc(millisecond),
+            % Now = imboy_dt:now(),
             Pwd2 = imboy_password:generate(PwdPlaintext),
             Where = <<"id=", (ec_cnv:to_binary(Id))/binary>>,
             Res = imboy_db:update(user_repo:tablename()

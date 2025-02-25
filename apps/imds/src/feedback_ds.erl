@@ -47,7 +47,7 @@ remove(Uid, FeedbackId) ->
     Where = imboy_cnv:implode("", ["user_id = ", Uid," AND id = ", FeedbackId]),
     imboy_db:update(feedback_repo:tablename(), Where, [
         {<<"status">>, <<"-1">>}
-        , {<<"updated_at">>, integer_to_binary(imboy_dt:utc(millisecond))}
+        , {<<"updated_at">>, imboy_dt:now()}
     ]),
     % feedback_repo:delete(Uid, FeedbackId),
     % Key = {user_device_name, Uid, FeedbackId},
@@ -55,7 +55,7 @@ remove(Uid, FeedbackId) ->
     ok.
 
 
-% feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:utc(millisecond)})
+% feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:now()})
 add_reply(Data) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data),
     Tb = feedback_reply_repo:tablename(),
@@ -65,7 +65,7 @@ add_reply(Data) ->
         % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）'
         {<<"status">>, <<"2">>}
         , {<<"reply_count">>, {raw, <<"reply_count + 1">>}}
-        , {<<"updated_at">>, imboy_dt:utc(millisecond)}
+        , {<<"updated_at">>, imboy_dt:now()}
     ],
     imboy_db:update(feedback_repo:tablename(), Where, KV),
     ok.

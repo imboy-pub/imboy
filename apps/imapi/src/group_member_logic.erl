@@ -49,7 +49,7 @@ leave(Uid, Gid, CurrentUid) ->
     leave(Uid, Gid, GMSize, GM, CurrentUid).
 
 alias(Uid, Gid, Alias, Description) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     Data = #{
         alias => Alias,
         description => Description,
@@ -76,7 +76,7 @@ do_join(true, _, _, Uid, Gid) ->
     group_member_join_notice(Gid, Uid),
     ok;
 do_join(false, Conn, JoinMode, Uid, Gid) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     group_member_repo:add(Conn, #{
         group_id => Gid,
         user_id => Uid,
@@ -88,7 +88,7 @@ do_join(false, Conn, JoinMode, Uid, Gid) ->
     Data = #{
         member_count => {raw, <<"member_count+1">>},
         user_id_sum => {raw, <<"user_id_sum+", (ec_cnv:to_binary(Uid))/binary>>},
-        updated_at => imboy_dt:utc(millisecond)
+        updated_at => imboy_dt:now()
     },
     imboy_db:update(Conn
         , group_repo:tablename()
@@ -121,7 +121,7 @@ group_member_join_notice(Gid, Uid) ->
 leave(_, _, GMSize, _, _) when GMSize == 0 ->
     ok;
 leave(Uid, Gid, _, GM, CurrentUid) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     Id = maps:get(<<"id">>, GM, 0),
     ToUidLi = group_ds:member_uids(Gid),
     Res = imboy_db:with_transaction(fun(Conn) ->

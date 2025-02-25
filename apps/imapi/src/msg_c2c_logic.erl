@@ -30,7 +30,7 @@ c2c(MsgId, CurrentUid, Data) ->
     InDenylist = user_denylist_logic:in_denylist(ToId, CurrentUid),
     case {IsFriend, InDenylist} of
         {true, 0} ->
-            NowTs = imboy_dt:utc(millisecond),
+            NowTs = imboy_dt:now(),
             From = imboy_hashids:encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
@@ -76,7 +76,7 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:decode(To),
     % ?LOG([From, To, ToId, Type, Data]),
-    NowTs = imboy_dt:utc(millisecond),
+    NowTs = imboy_dt:now(),
 
     Payload = [
         {<<"text">>, <<>>},

@@ -33,7 +33,7 @@ read_msg(Where, Column, Limit) ->
     imboy_db:query(Sql).
 
 
-% msg_c2c_repo:write_msg(imboy_dt:utc(millisecond), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:utc(millisecond)).
+% msg_c2c_repo:write_msg(imboy_dt:now(), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\",\"text\":\"ddd的点点滴滴\"},\"created_at\":1688551567306}">>, 1, 2, imboy_dt:now()).
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(FromId) ->
     FromId2 = list_to_binary(integer_to_list(FromId)),
     write_msg(CreatedAt, Id, Payload, FromId2, ToId, ServerTS);
@@ -45,11 +45,9 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
     Tb = tablename(),
     Column = <<"(payload, from_id, to_id,
         created_at, server_ts, msg_id)">>,
-    CreatedAt2 = integer_to_binary(CreatedAt),
-    ServerTS2 = integer_to_binary(ServerTS),
     Payload2 = imboy_hasher:encoded_val(Payload),
-    Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '", ToId/binary, "', '", CreatedAt2/binary, "', '",
-              ServerTS2/binary, "', '", Id/binary, "')">>,
+    Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '", ToId/binary, "', '", CreatedAt/binary, "', '",
+              ServerTS/binary, "', '", Id/binary, "')">>,
     imboy_db:insert_into(Tb, Column, Value).
 
 

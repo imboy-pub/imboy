@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public."group_log"
     group_id bigint NOT NULL,
     body text NOT NULL,
     remark varchar(200) NOT NULL DEFAULT '',
-    created_at bigint NOT NULL
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.group_log.group_id IS '群组ID';
 COMMENT ON COLUMN public.group_log.body IS '相关操作类型的json字符串数据';
 COMMENT ON COLUMN public.group_log.remark IS '备注';
 
-COMMENT ON COLUMN public.group_log.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.group_log.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
 CREATE INDEX i_group_log_Type_OptionUid_CreatedAt ON public.group_log(type, option_uid, created_at);

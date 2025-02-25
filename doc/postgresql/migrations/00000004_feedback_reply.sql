@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS public."feedback_reply"
     body text not null,
 
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;
@@ -34,5 +34,5 @@ COMMENT ON COLUMN public.feedback_reply.replier_name IS '回复人称呼';
 COMMENT ON COLUMN public.feedback_reply.body IS '回复内容';
 
 COMMENT ON COLUMN public.feedback_reply.status IS '状态: -1 删除  0 禁用  1 启用';
-COMMENT ON COLUMN public.feedback_reply.created_at IS '创建记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.feedback_reply.updated_at IS '更新记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.feedback_reply.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.feedback_reply.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';

@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS public."user_friend"
     remark varchar(80) DEFAULT '',
     tag varchar(1600) DEFAULT '',
     status smallint NOT NULL DEFAULT 1,
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL,
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     setting json
 )
 
@@ -37,8 +37,8 @@ COMMENT ON COLUMN public.user_friend.remark IS '朋友备注名';
 
 COMMENT ON COLUMN public.user_friend.tag IS '给朋友的标签，多个tag 用半角逗号分隔，单个tag不超过14字符';
 
-COMMENT ON COLUMN public.user_friend.updated_at IS '更新记录Unix时间戳毫秒单位';
-COMMENT ON COLUMN public.user_friend.created_at IS '创建记录Unix时间戳毫秒单位';
+COMMENT ON COLUMN public.user_friend.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
+COMMENT ON COLUMN public.user_friend.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 COMMENT ON COLUMN public.user_friend.status IS '状态: -1 删除  0 禁用  1 启用';
 COMMENT ON COLUMN public.user_friend.setting IS '好友权限设置等信息';
 

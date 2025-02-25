@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS public."msg_topic"
     to_id varchar(40) DEFAULT '',
     type varchar(40) DEFAULT '', -- C2S C2G
     title varchar(400) DEFAULT '',
-    updated_at bigint DEFAULT 0,
-    created_at bigint NOT NULL
+    updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
 TABLESPACE pg_default;

@@ -27,7 +27,7 @@ face2face(_, _, undefined, _) ->
 face2face(_, _, _, undefined) ->
     {error, <<"latitude 必须">>};
 face2face(Uid, Code, Lng, Lat) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     case nearby_gid(Lng, Lat, <<"50">>, <<"m">>, <<"1">>, Code) of
         {ok, _, []} ->
             imboy_db:with_transaction(fun(Conn) ->
@@ -69,7 +69,7 @@ face2face_save(Code, Gid, Uid) ->
     GSize = maps:size(G),
     if
         GSize == 0 ->
-            Now = imboy_dt:utc(millisecond),
+            Now = imboy_dt:now(),
             imboy_db:with_transaction(fun(Conn) ->
                 create_group(Conn, Gid, Uid, Now, 2, 1)
             end);
@@ -94,7 +94,7 @@ face2face_save(Code, Gid, Uid) ->
 add(Count, _, _, _) when Count > 100 ->
     {error, "每人最多创建100个群"};
 add(_, Uid, Type, MemberUids) ->
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
     Sum = lists:sum(lists:usort([Uid|MemberUids2])),
     GidOld = imboy_db:pluck(group_repo:tablename(),
@@ -120,7 +120,7 @@ dissolve(Uid, _, OwnerUid, _) when Uid =/= OwnerUid ->
     {error, "只有拥有者才能够解散该群，或者群已解散"};
 dissolve(Uid, Gid, _, G) ->
     % 解散群聊后，群成员和群主都将被移除群聊。
-    Now = imboy_dt:utc(millisecond),
+    Now = imboy_dt:now(),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
 
     ToUidLi = group_ds:member_uids(Gid),
@@ -207,7 +207,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
           list().
 
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
-    Now2 = ec_cnv:to_binary(imboy_dt:utc(millisecond)),
+    Now2 = ec_cnv:to_binary(imboy_dt:now()),
     Sql = <<"select
     id, group_id
     , ST_AsText(location) as location
