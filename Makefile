@@ -21,7 +21,9 @@ DEPS += goldrush
 # Erlang 的纯函数式和泛型编程
 DEPS += datum jsone jsx
 # DEPS += mysql poolboy
-DEPS += epgsql pooler pure_migrations
+DEPS += epgsql pooler
+# DEPS += pg_types pgo
+DEPS += pure_migrations
 # DEPS += idna
 # DEPS += hackney jiffy
 DEPS += depcache

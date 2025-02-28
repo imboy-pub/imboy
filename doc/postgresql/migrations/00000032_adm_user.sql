@@ -23,9 +23,7 @@ CREATE TABLE IF NOT EXISTS public."adm_user"
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
--- imboy_db:assemble_value(#{mobile => "13692177080", password => "password", account => "13692177080", "status" => 1, "role_id" => [1,3], "nickname" => "大大大"}).
-
--- insert public."adm_user" (mobile, password, account, status, role_id,nickname) value ('13692177080', 'password', '13692177080', 1, '[1,3]', '大大大').
+-- adm_user_repo:save(#{mobile => <<"13692177080">>, password => imboy_password:generate(imboy_hasher:md5("admin888")), account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>, created_at => imboy_dt:now()}).
 TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.adm_user OWNER to imboy_user;

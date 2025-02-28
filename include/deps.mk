@@ -127,11 +127,20 @@ dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
 # 8years
 dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
 
-# 8months
-#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
-dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git leeyi
-# 6months 245commits
+# Erlang Postgres 客户端和连接池
+# https://github.com/erleans/pgo.git
+# https://gitee.com/imboy-tripartite-deps/pgo
+dep_pgo = git https://gitee.com/imboy-tripartite-deps/pgo main
+# dep_pgo = git https://github.com/chiroptical/pgo.git main
+dep_pg_types = ln ../../pg_types
+# dep_pgo = ln ../../pgo
+
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
+#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
+# https://github.com/epgsql/epgsql.git
+#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git leeyi
+dep_epgsql = ln ../../epgsql
+
 dep_pure_migrations = git https://gitee.com/imboy-tripartite-deps/erlang-pure-migrations.git leeyi
 
 dep_idna = hex 6.1.1 idna

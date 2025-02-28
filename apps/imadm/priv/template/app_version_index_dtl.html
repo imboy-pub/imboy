@@ -116,18 +116,18 @@ layui.use(function(){
                     return '<span style="color: pink">unkonw</span>';
                 }
             }},
-            {field:'updated_at', title: '编辑时间', width: 180, templet: function(d) {
+            {field:'updated_at', title: '编辑时间', width: 258, templet: function(d) {
                 if (d.updated_at > 0) {
                     return layui.util.toDateString(d.updated_at, 'yyyy-MM-dd HH:mm:SSS');
                 } else {
-                    return '';
+                    return d.updated_at;
                 }
             }},
-            {field:'created_at', title: '添加时间', width: 180, templet: function(d) {
+            {field:'created_at', title: '添加时间', width: 258, templet: function(d) {
                 if (d.created_at > 0) {
                     return layui.util.toDateString(d.created_at, 'yyyy-MM-dd HH:mm:SSS');
                 } else {
-                    return '';
+                    return d.created_at;
                 }
             }},
             {fixed: 'right', title:'操作', minWidth: 128, toolbar: '#operation-toolbar'}

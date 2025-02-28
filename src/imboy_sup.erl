@@ -10,6 +10,13 @@ start_link() ->
 
 
 init([]) ->
+    % application:ensure_all_started(pgo),
+    % {PoolName, PoolConfig} = config_ds:env(pgo),
+    % PgoChildSpec = #{
+    %     id => pgo_pool
+    %     , start => {pgo_pool, start_link, [PoolName, PoolConfig]}
+    %     , shutdown => 1000
+    % },
 
     PgConf = config_ds:env(pg_conf),
     pooler:new_pool(PgConf),
@@ -52,6 +59,7 @@ init([]) ->
     },
     Specs = [
         IMBoyCache
+        % , PgoChildSpec
         , AccountServer
         , UserServer
     ],

@@ -130,7 +130,8 @@ with_transaction(F, Opts0) ->
 
 
 % imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
-
+% imboy_db:pluck(<<"adm_user">>, <<>>, <<"count(*) as count">>, 0).
+% imboy_db:pluck(<<"user">>, <<"1=1">>, <<"count(*) as count">>, 0).
 
 % pluck(<<"public.", Tb/binary>>, Field, Default) ->
 %     pluck(Tb, Field, Default);
@@ -141,6 +142,11 @@ pluck(Tb, Field, Default) ->
     pluck(Sql, Default).
 
 
+pluck(Tb, <<>>, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
+    % ?LOG([pluck, Sql]),
+    pluck(Sql, Default);
 pluck(Tb, Where, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
@@ -163,7 +169,7 @@ pluck(Query, Default) ->
             Val;
         _ ->
             Default
-    end.
+      end.
 
 find(Tb, Where, OrderBy, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT 1">>,
@@ -244,6 +250,7 @@ list(Conn, Sql) ->
     end.
 
 % imboy_db:query("select * from user where id = 2")
+% imboy_db:query("select created_at from adm_user limit 1").
 -spec query(binary() | list()) -> {ok, list(), list()} | {error, any()}.
 query(Sql) ->
     % ?LOG([imboy_dt:now(), Sql]),

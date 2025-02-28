@@ -60,7 +60,10 @@ api_init(Req0) ->
     Key = imboy_hasher:md5(SignKey),
     % ?LOG([key, Key, iv, IV]),
     Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
-    imboy_response:success(Req0, #{res => Bin}, "success.").
+    imboy_response:success(Req0, #{
+        test => imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>),
+        res => Bin
+    }, "success.").
 
 
 %% ===================================================================
