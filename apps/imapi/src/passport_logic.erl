@@ -144,12 +144,12 @@ send_email_code(undefined) ->
     {error, "Email必须"};
 send_email_code(ToEmail) ->
     Now = imboy_dt:now(),
-    Nowp1M = imboy_dt:minus(Now, {1, minute}),
+    NowP1M = imboy_dt:minus(Now, {1, minute}),
     case verification_code_repo:find_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
         % {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 60000 ->
         %  Now - 1m < CreatedAt
-        {ok, _Col, [{_, _, _, CreatedAt}]} when Nowp1M < CreatedAt ->
+        {ok, _Col, [{_, _, _, CreatedAt}]} when NowP1M < CreatedAt ->
             {ok, "一分钟内重复请求不发送Email"};
         {ok, _Col, [{ToEmail, Code, ValidityAt, _}]} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
@@ -170,9 +170,11 @@ send_email_code(ToEmail) ->
 
 send_sms_code(Mobile) ->
     Now = imboy_dt:now(),
+    NowP2M = imboy_dt:minus(Now, {2, minute}),
+
     case verification_code_repo:find_by_id(Mobile) of
         % 120000 = 120 * 1000 = 2分钟
-        {ok, _Col, [{_, _, _, CreatedAt}]} when (Now - CreatedAt) < 120000 ->
+        {ok, _Col, [{_, _, _, CreatedAt}]} when NowP2M < CreatedAt ->
             {ok, "两分钟内重复请求不会重复发送"};
         {ok, _Col, [{Mobile, Code, ValidityAt, _}]} when Now < ValidityAt ->
             Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
@@ -181,7 +183,7 @@ send_sms_code(Mobile) ->
         _ ->
             Code = imboy_func:num_random(6),
             % 600000 = 600 * 1000 = 10分钟
-            verification_code_repo:save(Mobile, Code, Now + 600000, Now),
+            verification_code_repo:save(Mobile, Code, imboy_dt:add(Now, {10, minute}), Now),
             Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
             imboy_sms:send(Mobile, Content, <<"yjsms">>)
     end.

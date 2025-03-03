@@ -152,9 +152,11 @@ page(Where, WhereArgs, Fields) ->
 -spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 change_remark(FromUid, ToUid, Remark) ->
     Tb = friend_repo:tablename(),
+    Dt = imboy_dt:now(),
+    ?LOG([Dt]),
     Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
-    imboy_db:execute(Sql, [Remark, imboy_dt:now(), 1, FromUid, ToUid]).
+    imboy_db:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).
 
 
 % friend_ds:set_category_id(1, 1, 0).

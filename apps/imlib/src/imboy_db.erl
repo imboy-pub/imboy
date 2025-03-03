@@ -22,18 +22,20 @@
 
 -export([get_set/1]).
 
-
 -export([add/3, add/4]).
 -export([insert_into/2, insert_into/3, insert_into/4]).
 -export([update/3]).
 -export([update/4]).
 
+-export([with_transaction/1]).
+-export([with_transaction/2]).
+
 -export([public_tablename/1]).
 
 -export([migrate/0]).
 
--export([with_transaction/1]).
--export([with_transaction/2]).
+-export([convert_micro/1]).
+
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -44,6 +46,22 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+
+%% convert_micro/1
+%% 接收一个以微秒为单位的整数，返回 {MegaSecs, Secs, MicroSecs} 格式
+%% 其中：
+%%   MegaSecs = 总秒数除以 1,000,000 的整数部分
+%%   Secs     = 总秒数模 1,000,000 的剩余秒数（整数部分）
+%%   MicroSecs= 微秒部分（小于1,000,000）
+-spec convert_micro(Micro :: non_neg_integer()) ->
+    {MegaSecs :: non_neg_integer(), Secs :: 0..999999, MicroSecs :: 0..999999}.
+convert_micro(Micro) when is_integer(Micro) ->
+    TotalSecs = Micro div 1000000,
+    MicroSecs = Micro rem 1000000,
+    MegaSecs = TotalSecs div 1000000,
+    Secs = TotalSecs rem 1000000,
+    {MegaSecs, Secs, MicroSecs}.
 
 % imboy_db:migrate().
 migrate() ->

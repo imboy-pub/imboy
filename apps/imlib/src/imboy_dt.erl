@@ -14,15 +14,17 @@
 -export([to_rfc3339/3]).
 -export([timezone_offset/0, timezone_offset/1]).
 -export([utc/1]).
--export([rfc3339_to_utc/2]).
+-export([rfc3339_to_utc/2, rfc3339_to/2]).
 
 % imboy_dt:add(Dt, {10, minute}).
 % imboy_dt:add(Dt, {600, second}).
 add(Dt, {Num, minute}) ->
     add(Dt, {Num * 60, second});
 add(Dt, {Num, second}) ->
+    add(Dt, {Num * 1000, millisecond});
+add(Dt, {Num, millisecond}) ->
     S = imboy_dt:rfc3339_to_utc(Dt, microsecond),
-    Val = S + Num*1000000 + timezone_offset(microsecond),
+    Val = S + Num*1000 + timezone_offset(microsecond),
     list_to_binary(to_rfc3339(Val, microsecond)).
 
 minus(Dt, {Num, minute}) ->
@@ -134,14 +136,18 @@ to_rfc3339(Nanosecond, nanosecond) ->
 
 % Dt = imboy_dt:now(),
 % imboy_dt:rfc3339_to_utc(Dt, millisecond).
-rfc3339_to_utc(Dt, Unit) when is_binary(Dt) ->
-    rfc3339_to_utc(binary_to_list(Dt), Unit);
+% imboy_dt:rfc3339_to_utc(Dt, microsecond).
 rfc3339_to_utc(Dt, Unit) ->
+    rfc3339_to(Dt, Unit) - imboy_dt:timezone_offset(Unit).
+
+rfc3339_to(Dt, Unit) when is_binary(Dt) ->
+    rfc3339_to(binary_to_list(Dt), Unit);
+rfc3339_to(Dt, Unit) ->
     try
         calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}])
     of
         Num ->
-            Num - imboy_dt:timezone_offset(Unit)
+            Num
     catch
         _:_ ->
             {error, "时间格式有误"}
@@ -149,7 +155,6 @@ rfc3339_to_utc(Dt, Unit) ->
 
 % imboy_dt:to_rfc3339(1707198019, second, "+08:00").
 % imboy_dt:to_rfc3339(imboy_dt:utc(second) + imboy_dt:timezone_offset(second), second, "+08:00").
-% imboy_dt:to_rfc3339(imboy_dt:now() + imboy_dt:timezone_offset(millisecond), millisecond, "+08:00").
 to_rfc3339(Num, Unit, Offset) ->
     calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}]).
 

@@ -132,7 +132,7 @@ layui.use(function(){
                 if (d.created_at > 0) {
                     return layui.util.toDateString(d.created_at, 'yyyy-MM-dd HH:mm:SSS');
                 } else {
-                    return created_at.;
+                    return d.created_at;
                 }
             }},
             {fixed: 'right', title:'操作', minWidth: 128, toolbar: '#operation-toolbar'}

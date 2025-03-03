@@ -19,7 +19,7 @@ tablename() ->
     imboy_db:public_tablename(<<"user_friend">>).
 
 
--spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), binary(), integer()) -> ok.
+-spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), binary(), binary()) -> ok.
 confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->

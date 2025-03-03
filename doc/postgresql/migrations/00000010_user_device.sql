@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS public."user_device"
     device_name varchar(80),
     login_count bigint NOT NULL DEFAULT 0,
     last_login_ip varchar(40) NOT NULL DEFAULT '',
-    last_login_at bigint DEFAULT 0,
-    last_active_at bigint DEFAULT 0,
+    last_login_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
+    last_active_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     status smallint NOT NULL DEFAULT 1,
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uk_Status_UserID_DeviceID UNIQUE  (status,user_id,device_id)

@@ -83,6 +83,7 @@ delete(<<"DELETE">>, Req0, _State) ->
     Where = <<"status = 0 AND id = ", (ec_cnv:to_binary(Id))/binary>>,
     app_ddl_ds:delete(Where),
     imboy_response:success(Req0, PostVals, "success.").
+
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================

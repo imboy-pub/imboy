@@ -7,6 +7,7 @@
 -export([face2face_save/3]).
 -export([add/4]).
 -export([dissolve/4]).
+-export([nearby_gid/6]).
 
 -include_lib("imlib/include/log.hrl").
 
@@ -39,7 +40,7 @@ face2face(Uid, Code, Lng, Lat) ->
                     user_id => Uid,
                     code => Code,
                     location => {raw, Location},
-                    validity_at => Now + 3600_000,
+                    validity_at => imboy_dt:add(Now, {60, minute}),
                     created_at => Now
                 }),
                 group_ds:join(Uid, Gid),
@@ -205,14 +206,14 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
 
 -spec nearby_gid(binary(), binary(), binary(), binary(), binary(), binary()) ->
           list().
-
+% group_logic:nearby_gid(<<"1234">>, <<"1234">>, <<"3333333">>, "m", <<"1234">>, <<"1234">>).
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
-    Now2 = ec_cnv:to_binary(imboy_dt:now()),
+    Now = imboy_dt:now(),
     Sql = <<"select
     id, group_id
     , ST_AsText(location) as location
     , ST_Distance(ST_GeographyFromText('SRID=4326;POINT(", Lng/binary, " ", Lat/binary, ")'), location) as distance
-    from public.group_random_code where code = '", Code/binary, "' AND validity_at > ", Now2/binary," AND ST_DWithin(location::geography, ST_GeographyFromText('POINT(",
+    from public.group_random_code where code = '", Code/binary, "' AND validity_at > '", Now/binary,"' AND ST_DWithin(location::geography, ST_GeographyFromText('POINT(",
             Lng/binary, " ", Lat/binary, ")'), ", Radius/binary, ") order by distance asc limit ", Limit/binary, ";">>,
     ?LOG(Sql),
     imboy_db:query(Sql).

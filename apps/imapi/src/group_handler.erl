@@ -316,6 +316,7 @@ qrcode(Req0, State) ->
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
     Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
     Now = imboy_dt:now(),
+    NowInt = imboy_dt:rfc3339_to_utc(Now),
     CurrentUid = maps:get(current_uid, State),
     % ?LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of
@@ -325,7 +326,7 @@ qrcode(Req0, State) ->
         {_, false} ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
             {ok, Req, State};
-        {_, true} when Now > ExpiredAtInt ->
+        {_, true} when NowInt > ExpiredAtInt ->
             imboy_response:error(Req0, "验证码已过期");
         _ ->
             Gid2 = imboy_hashids:decode(Gid),

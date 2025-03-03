@@ -69,7 +69,7 @@ add(<<"POST">>, Req0, State) ->
                 user_id => Uid,
                 body => Body,
                 status => Status,
-                expired_at => ExpiredAt2,
+                expired_at => ExpiredAt,
                 created_at => Now
             },
             Tb = group_notice_repo:tablename(),

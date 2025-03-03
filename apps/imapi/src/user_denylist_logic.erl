@@ -39,7 +39,7 @@ page(Uid, Page, Size) when Page > 0 ->
     end.
 
 
--spec add(integer(), integer()) -> integer().
+-spec add(integer(), integer()) -> binary().
 add(Uid, DeniedUserId) ->
     Now = imboy_dt:now(),
     user_denylist_repo:add(Uid, DeniedUserId, Now),

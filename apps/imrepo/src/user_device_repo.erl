@@ -68,7 +68,7 @@ delete(Uid, DID) ->
 
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
--spec save(integer(), integer(), binary(), list()) -> ok.
+-spec save(binary(), integer(), binary(), list()) -> ok.
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
@@ -98,7 +98,7 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 %% ===================================================================
 
 
--spec save(integer(), integer(), list(), binary(), integer()) -> ok.
+-spec save(binary(), integer(), list(), binary(), integer()) -> ok.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->
     % 更新登录次数，最近登录时间、IP
     Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),

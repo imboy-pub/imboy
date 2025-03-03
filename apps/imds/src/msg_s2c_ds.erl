@@ -46,7 +46,7 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
     send(FromId, MsgType, Tail, Save).
 
 
--spec write_msg(integer(), binary(), binary() | list(), integer(), integer(), integer()) -> any().
+-spec write_msg(binary(), binary(), binary() | list(), integer(), integer(), binary()) -> any().
 %% 存储消息
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
