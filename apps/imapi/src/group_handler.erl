@@ -284,7 +284,6 @@ msg_page(Req0, State) ->
     GMSize = maps:size(GM),
     Where = case imboy_req:get_int(last_time, Req0, 0) of
         {ok, Last} when Last > 0 ->
-            % Last2 = <<"(to_timestamp((", (ec_cnv:to_binary(Last))/binary,"+timezone_offset()) / 1000.0) AT TIME ZONE current_setting('timezone'))::timestamptz">>,
             <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary, " AND created_at >= ", (ec_cnv:to_binary(Last))/binary>>;
         _ ->
             <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary>>
@@ -316,7 +315,7 @@ qrcode(Req0, State) ->
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
     Verified = imboy_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
     Now = imboy_dt:now(),
-    NowInt = imboy_dt:rfc3339_to_utc(Now),
+    NowInt = imboy_dt:rfc3339_to(Now),
     CurrentUid = maps:get(current_uid, State),
     % ?LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of

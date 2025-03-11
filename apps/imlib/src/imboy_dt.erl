@@ -6,15 +6,14 @@
 -export([microsecond/0,
          millisecond/0,
          second/0]).
+-export([utc/1]).
 
 -export([add/2, minus/2]).
 -export([compare_rfc3339/3]).
 -export([now/0, now/1]).
--export([to_rfc3339/2]).
--export([to_rfc3339/3]).
--export([timezone_offset/0, timezone_offset/1]).
--export([utc/1]).
--export([rfc3339_to_utc/2, rfc3339_to/2]).
+-export([to_rfc3339/2, to_rfc3339/3]).
+-export([rfc3339_to/2]).
+-export([timezone_offset/1]).
 
 % imboy_dt:add(Dt, {10, minute}).
 % imboy_dt:add(Dt, {600, second}).
@@ -23,23 +22,23 @@ add(Dt, {Num, minute}) ->
 add(Dt, {Num, second}) ->
     add(Dt, {Num * 1000, millisecond});
 add(Dt, {Num, millisecond}) ->
-    S = imboy_dt:rfc3339_to_utc(Dt, microsecond),
-    Val = S + Num*1000 + timezone_offset(microsecond),
+    S = rfc3339_to(Dt, microsecond),
+    Val = S + Num*1000,
     list_to_binary(to_rfc3339(Val, microsecond)).
 
 minus(Dt, {Num, minute}) ->
     minus(Dt, {Num * 60, second});
 minus(Dt, {Num, second}) ->
-    S = imboy_dt:rfc3339_to_utc(Dt, microsecond),
-    Val = S - Num*1000000 + timezone_offset(microsecond),
+    S = rfc3339_to(Dt, microsecond),
+    Val = S - Num*1000000,
     list_to_binary(to_rfc3339(Val, microsecond)).
 
 % Dt = imboy_dt:now().
 % Dt2 = imboy_dt:add(Dt, {10, minute}).
 % imboy_dt:compare_rfc3339(Dt, Dt2, gt).
 compare_rfc3339(A, B, Opt) ->
-    A1 = imboy_dt:rfc3339_to_utc(A, microsecond),
-    B1 = imboy_dt:rfc3339_to_utc(B, microsecond),
+    A1 = rfc3339_to(A, microsecond),
+    B1 = rfc3339_to(B, microsecond),
     case Opt of
         eq ->
             A1 == B1;
@@ -53,27 +52,14 @@ compare_rfc3339(A, B, Opt) ->
             A1 =< B1
     end.
 
+%% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
 utc(millisecond) ->
-    erlang:system_time(millisecond) - timezone_offset(second) * 1000;
+    erlang:system_time(millisecond);
 utc(second) ->
-    erlang:system_time(second) - timezone_offset(second).
+    erlang:system_time(second).
 
-%% 获取系统当前时区 （单位：毫秒）
-%% imboy_dt:timezone_offset()
-timezone_offset() ->
-    timezone_offset(second) * 1000.
-
-
-timezone_offset(microsecond) ->
-    timezone_offset(millisecond) * 1000;
-%% 获取系统当前时区 （单位：毫秒）
-timezone_offset(millisecond) ->
-    timezone_offset(second) * 1000;
-% imboy_dt:timezone_offset(minute).
-timezone_offset(hour) ->
-    ec_cnv:to_integer(timezone_offset(second) / 3600);
-timezone_offset(minute) ->
-    ec_cnv:to_integer(timezone_offset(second) / 60);
+%% 获取系统当前时区 （单位：秒）
+%% imboy_dt:timezone_offset(second).
 timezone_offset(second) ->
     %% 获取当前的UTC时间
     UtcTime = calendar:universal_time(),
@@ -85,12 +71,12 @@ timezone_offset(second) ->
     % TimeZoneOffset = -TimeDiffSeconds * 1000, % 计算与UTC相对于东西经180度的时区偏移量（单位：毫秒）
     TimeDiffSeconds.
 
-%% 返回当前Erlang系统时间秒
+%% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
 second() ->
     erlang:system_time(second).
 
-
-%% 返回当前Erlang系统时间毫秒
+%% 返回毫秒
+%% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
 %% https://currentmillis.com/
 %% Methods to get the time in milliseconds since the UNIX epoch (January 1, 1970 00:00:00 UTC) in various programming languages
 millisecond() ->
@@ -120,26 +106,25 @@ now(microsecond) ->
 % time_designator the date and time separator. The default is $T.
 %
 %%
-to_rfc3339(Val, second) ->
-    calendar:system_time_to_rfc3339(Val, [{unit, second}, {time_designator, $\s}, {offset, ""}]);
+to_rfc3339(Num, second) ->
+    to_rfc3339(Num, second, "");
 % imboy_dt:to_rfc3339(imboy_dt:millisecond(), millisecond).
-to_rfc3339(Val, millisecond) ->
-    calendar:system_time_to_rfc3339(Val, [{unit, millisecond}, {time_designator, $\s}, {offset, ""}]);
+to_rfc3339(Num, millisecond) ->
+    to_rfc3339(Num, millisecond, "");
 % imboy_dt:to_rfc3339(imboy_dt:microsecond(), microsecond).
-to_rfc3339(Val, microsecond) ->
-    calendar:system_time_to_rfc3339(Val, [{unit, microsecond}, {time_designator, $\s}, {offset, ""}]);
-% Nanosecond from erlang:system_time().
-% imboy_dt:to_rfc3339(erlang:system_time(), nanosecond).
-% calendar:system_time_to_rfc3339(erlang:system_time(second), [{offset, "-02:00"}]).
-to_rfc3339(Nanosecond, nanosecond) ->
-    calendar:system_time_to_rfc3339(Nanosecond, [{unit, nanosecond}, {time_designator, $\s}, {offset, ""}]).
+to_rfc3339(Num, microsecond) ->
+    to_rfc3339(Num, microsecond, "");
+to_rfc3339(Num, nanosecond) ->
+    to_rfc3339(Num, nanosecond, "").
+
+% imboy_dt:to_rfc3339(1707198019, second, "+08:00").
+% imboy_dt:to_rfc3339(imboy_dt:utc(second), second, "+08:00").
+to_rfc3339(Num, Unit, Offset) ->
+    calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}]).
 
 % Dt = imboy_dt:now(),
-% imboy_dt:rfc3339_to_utc(Dt, millisecond).
-% imboy_dt:rfc3339_to_utc(Dt, microsecond).
-rfc3339_to_utc(Dt, Unit) ->
-    rfc3339_to(Dt, Unit) - imboy_dt:timezone_offset(Unit).
-
+% imboy_dt:rfc3339_to(Dt, millisecond).
+% imboy_dt:rfc3339_to(Dt, microsecond).
 rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, Unit) ->
@@ -152,11 +137,6 @@ rfc3339_to(Dt, Unit) ->
         _:_ ->
             {error, "时间格式有误"}
     end.
-
-% imboy_dt:to_rfc3339(1707198019, second, "+08:00").
-% imboy_dt:to_rfc3339(imboy_dt:utc(second) + imboy_dt:timezone_offset(second), second, "+08:00").
-to_rfc3339(Num, Unit, Offset) ->
-    calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}]).
 
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-1
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-2

@@ -9,6 +9,7 @@
 % -export ([get_uid/1]).
 
 -include_lib("imlib/include/common.hrl").
+-include_lib("imlib/include/log.hrl").
 
 -type token_type() :: rtk | tk.
 
@@ -29,7 +30,8 @@ encrypt_token(ID) ->
 %% 解析token
 decrypt_token(Token) ->
     % io:format("Token: ~p, ~n", [Token]),
-    try jwerl:verify(Token, hs256, config_ds:get(jwt_key)) of
+    Opts = #{exp_leeway => 300},  % 容忍 5 分钟时钟偏差
+    try jwerl:verify(Token, hs256, config_ds:get(jwt_key), #{}, Opts) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
             ID = imboy_hashids:decode(Uid),
@@ -42,8 +44,9 @@ decrypt_token(Token) ->
                 true ->
                     {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
-        _JWT_ERR ->
-            {error, 706, "Invalid token", #{}}
+        JWT_ERR ->
+            ?LOG(['JWT_ERR', JWT_ERR]),
+            {error, 706, "Invalid token", #{err => JWT_ERR}}
     catch
         Class:Reason:Stacktrace ->
             % 异常处理代码
@@ -60,7 +63,7 @@ decrypt_token(Token) ->
 %% 生成token
 -spec encrypt_token(iodata(), integer(), token_type()) -> any().
 encrypt_token(ID, Second, Sub) ->
-    ExpireDAt = imboy_dt:utc(second) + Second,
+    ExpireDAt = erlang:system_time(second) + Second,
     Data = #{
          % iss => imboy  % iss (issuer)：签发人
          % , nbf => Now + 1 % nbf (Not Before)：生效时间

@@ -1,4 +1,6 @@
 # 0.6.0
+* 调整 imboy_dt 模块，相关的utc时间戳，不需要扣除偏移量；
+* 修改 jwt 单位问题，jwt添加 容忍 5 分钟时钟偏差；
 * 数据库升级到 pgsql17;
 * 数据库字段时间线相关的类型有bigint修改为timestamptz;
 * 新增 imboy_dt:add/2 imboy_dt:minus2 imboy_dt:compare_rfc3339/3

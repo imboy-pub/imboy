@@ -53,7 +53,7 @@ add(<<"POST">>, Req0, State) ->
     Body = proplists:get_value(<<"body">>, PostVals, ""),
     Status = proplists:get_value(<<"status">>, PostVals, 0),
     ExpiredAt = proplists:get_value(<<"expired_at">>, PostVals, <<>>),
-    ExpiredAt2 = imboy_dt:rfc3339_to_utc(ExpiredAt, millisecond),
+    ExpiredAt2 = imboy_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = imboy_dt:now(),
     % ?LOG([ExpiredAt, ExpiredAt2]),
     case throttle:check(three_second_once, Uid) of
@@ -92,7 +92,7 @@ edit(<<"POST">>, Req0, State) ->
     Status = proplists:get_value(<<"status">>, PostVals, 0),
     Body = proplists:get_value(<<"body">>, PostVals, ""),
     ExpiredAt = proplists:get_value(<<"expired_at">>, PostVals, <<>>),
-    ExpiredAt2 = imboy_dt:rfc3339_to_utc(ExpiredAt, millisecond),
+    ExpiredAt2 = imboy_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = imboy_dt:now(),
 
     % ?LOG([ExpiredAt, ExpiredAt2]),
