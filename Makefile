@@ -13,7 +13,7 @@ RELX_CONFIG = $(CURDIR)/relx$(IMBOYENV).config
 include include/deps.mk
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = hex_core ranch cowlib cowboy
+DEPS = ranch cowlib cowboy
 
 DEPS += jwerl hashids_erlang gen_smtp throttle
 DEPS += qdate qdate_localtime
