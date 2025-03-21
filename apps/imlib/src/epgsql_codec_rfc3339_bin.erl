@@ -1,5 +1,5 @@
 -module(epgsql_codec_rfc3339_bin).
--behaviour(epgsql_codec).
+% -behaviour(epgsql_codec).
 -export([init/2, names/0, encode/3, decode/3]).
 
 -define(UNIX_EPOCH_GREGORIAN, 62167219200). % 1970-01-01 00:00:00 的格里高利秒数

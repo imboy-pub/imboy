@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public.config
     value text NOT NULL,
     title varchar(40) COLLATE pg_catalog."default" NOT NULL,
     sort integer NOT NULL DEFAULT 20,
-    remark varchar(200) COLLATE pg_catalog."default" NOT NULL,
+    remark varchar(200) COLLATE pg_catalog."default" NOT NULL DEFAULT '',
     system smallint NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 1,
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,

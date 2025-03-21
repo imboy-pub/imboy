@@ -3,6 +3,8 @@
 # 特此声明：下列依赖，被人未改动过原作者源码
 # Hereby declare: the following dependencies have not been modified by the original author source code
 
+dep_hex_core = hex 0.11.0
+
 # https://erlang.mk/guide/deps.html
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.2.0
@@ -138,8 +140,8 @@ dep_pg_types = ln ../../pg_types
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 #dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
 # https://github.com/epgsql/epgsql.git
-#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git leeyi
-dep_epgsql = ln ../../epgsql
+dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
+# dep_epgsql = ln ../../epgsql
 
 dep_pure_migrations = git https://gitee.com/imboy-tripartite-deps/erlang-pure-migrations.git leeyi
 

@@ -34,9 +34,6 @@
 
 -export([migrate/0]).
 
--export([convert_micro/1]).
-
-
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -47,23 +44,8 @@
 %% API
 %% ===================================================================
 
-
-%% convert_micro/1
-%% 接收一个以微秒为单位的整数，返回 {MegaSecs, Secs, MicroSecs} 格式
-%% 其中：
-%%   MegaSecs = 总秒数除以 1,000,000 的整数部分
-%%   Secs     = 总秒数模 1,000,000 的剩余秒数（整数部分）
-%%   MicroSecs= 微秒部分（小于1,000,000）
--spec convert_micro(Micro :: non_neg_integer()) ->
-    {MegaSecs :: non_neg_integer(), Secs :: 0..999999, MicroSecs :: 0..999999}.
-convert_micro(Micro) when is_integer(Micro) ->
-    TotalSecs = Micro div 1000000,
-    MicroSecs = Micro rem 1000000,
-    MegaSecs = TotalSecs div 1000000,
-    Secs = TotalSecs rem 1000000,
-    {MegaSecs, Secs, MicroSecs}.
-
 % imboy_db:migrate().
+% 升级相关sql文件必须是顺序的
 migrate() ->
     Conf = config_ds:env(super_account),
     Path = config_ds:env(scripts_path),
@@ -97,9 +79,9 @@ migrate() ->
             {ok, _, _} -> ok;
             {ok, _} -> ok;
             Default ->
+                % io:format("DefaultDefaultDefaultDefaultDefault ~p, q: ~s~n", [Default, Q]),
                 % Match multiple SQL statements in a script
                 Res = priv_is_valid(Default),
-                % io:format("DefaultDefaultDefaultDefaultDefault ~p~n", [Default]),
                 case Res of
                     true->
                         ok;

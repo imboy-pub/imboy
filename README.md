@@ -103,7 +103,7 @@ IMBOYENV=node2 make run HTTP_PORT=9802
 make run
 
 // on Mac
-IMBOYENV=prod make run
+IMBOYENV=pro make run
 IMBOYENV=test make run
 IMBOYENV=dev make run
 IMBOYENV=local make run
