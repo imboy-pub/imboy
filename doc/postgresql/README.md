@@ -18,6 +18,21 @@ imboy_db:migrate().
 ./imboy migrate:run
 ```
 
+* 精准备份 public schema 的命令：
+```
+pg_dump -h 127.0.0.1 \
+  --inserts \                  # 生成 INSERT 语句（兼容性更好）
+  -d imboy_v1 \                # 数据库名
+  -U imboy_user \              # 用户名
+  -p 5432 \                    # 端口
+  -n 'public' \                # 限定备份 public schema
+  --no-acl \                   # 跳过权限信息（可选）
+  -f imboy_v1.sql              # 输出文件
+
+pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432 -n 'public'  -f imboy_v1.sql
+
+```
+
 * DBeaver 可以对比数据结构
 
 ```

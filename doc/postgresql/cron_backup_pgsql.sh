@@ -13,7 +13,7 @@
 # /var/lib/postgresql/data/ 等价于 宿主机的 /data/docker/imboy_pg16 目录
 mkdir -p /var/lib/postgresql/data/back_pgsql && cd /var/lib/postgresql/data/back_pgsql
 # 备份
-pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432  -f imboy_v1.sql
+pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432 -n 'public'  -f imboy_v1.sql
 tar -czf imboy_v1_$(date +%Y-%m-%d_%H-%M).tar.gz imboy_v1.sql && rm -rf imboy_v1.sql
 
 # 保留 imboy_v1_*.tar.gz 最新10个文件

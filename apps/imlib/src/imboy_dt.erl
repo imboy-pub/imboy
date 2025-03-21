@@ -129,7 +129,8 @@ rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, Unit) ->
     try
-        calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}])
+        Offset = lists:sublist(Dt, length(Dt) - 5, 6),
+        calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}])
     of
         Num ->
             Num
