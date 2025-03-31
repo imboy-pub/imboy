@@ -45,8 +45,8 @@ init(Req0, State0) ->
 make_myself_visible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    Lat = proplists:get_value(<<"latitude">>, PostVals, ""),
-    Lng = proplists:get_value(<<"longitude">>, PostVals, ""),
+    Lat = proplists:get_value(<<"latitude">>, PostVals, <<>>),
+    Lng = proplists:get_value(<<"longitude">>, PostVals, <<>>),
     % ?LOG([CurrentUid, Lat, Lng]),
     case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
         ok ->
@@ -67,10 +67,11 @@ make_myself_unvisible(Req0, State) ->
 people_nearby(Req0, _State) ->
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
     #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
-    #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
+    % #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
     #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"m">>}], Req0),
-    #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
-
+    % #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
+    {ok, Radius} = imboy_req:get_int(radius, Req0, 500),
+    {ok, Limit} = imboy_req:get_int(limit, Req0, 100),
     % ?LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
     List = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
     imboy_response:success(Req0,

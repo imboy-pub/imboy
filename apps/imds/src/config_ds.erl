@@ -100,13 +100,14 @@ set(Key, Val, Title, Remark) ->
 save(Key, Data) ->
     % ?LOG([Key, Val, Tab]),
     Now = imboy_dt:now(),
+    % Now = imboy_dt:millisecond(),
     Where =  <<"key = '", Key/binary, "'">>,
     Field = <<"count(*) as count">>,
     case imboy_db:pluck(<<"config">>, Where, Field, 0) of
         0 ->
             imboy_db:insert_into(<<"config">>, Data#{
                 <<"key">> => Key,
-                <<"updated_at">> => null,
+                <<"updated_at">> => {raw, null},
                 <<"created_at">> => Now
             }, <<>>);
         _ ->

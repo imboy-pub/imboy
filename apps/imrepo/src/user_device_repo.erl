@@ -124,22 +124,28 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     DeviceName = proplists:get_value(<<"dname">>, PostVals, <<>>),
     PublicKey = proplists:get_value(<<"public_key">>, PostVals, <<>>),
     Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),
-    Ip2 = case Ip of
-        undefined ->
-            <<>>;
-        _ ->
-            Ip
-    end,
-    Uid2 = integer_to_binary(Uid),
-    Status = <<"1">>,
-    LoginCount2 = <<"1">>,
 
-    Tb = tablename(),
-    Column = <<"(user_id,device_type,device_id,device_vsn,device_name,
-        login_count,last_login_ip,last_login_at,status,public_key,created_at)">>,
-    Value = <<"('", Uid2/binary, "', '", DeviceType/binary, "', '", DID/binary, "', '", DeviceVsn/binary, "', '",
-              DeviceName/binary, "', '", LoginCount2/binary, "', '", Ip2/binary, "', '", Now/binary, "', '"
-              , Status/binary, "', '"
-              , (ec_cnv:to_binary(PublicKey))/binary, "', '"
-              , Now/binary, "')">>,
-    imboy_db:insert_into(Tb, Column, Value).
+    imboy_db:insert_into(tablename(), #{
+        %% 用户ID (字符串类型)
+        <<"user_id">> => Uid,
+        %% 设备类型 (字符串，如"ios"/"android")
+        <<"device_type">> => DeviceType,
+        %% 设备唯一标识 (字符串)
+        <<"device_id">> => DID,
+        %% 设备版本号 (字符串)
+        <<"device_vsn">> => DeviceVsn,
+        %% 设备名称 (字符串)
+        <<"device_name">> => DeviceName,
+        %% 登录次数 (整型，使用raw标记避免引号)
+        <<"login_count">> => 1,
+        %% 最后登录IP (字符串)
+        <<"last_login_ip">> => Ip,
+        %% 最后登录时间 (时间戳，使用raw标记)
+        <<"last_login_at">> => Now,
+        %% 状态 (整型，使用raw标记)
+        <<"status">> => 1,
+        %% 公钥 (字符串，特殊字符需要处理)
+        <<"public_key">> => PublicKey,
+        %% 创建时间 (时间戳，使用raw标记)
+        <<"created_at">> => Now
+    }).

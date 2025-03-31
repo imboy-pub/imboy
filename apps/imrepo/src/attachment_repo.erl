@@ -28,14 +28,6 @@ tablename() ->
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
-    Column1 =
-        <<"(md5,mime_type,ext,name,path,url,size,info,referer_time,last_referer_user_id,last_referer_at,creator_user_id,updated_at,created_at,status)">>,
-    Tb1 = <<"public.attachment">>,
-
-    UpSql1 = <<" UPDATE SET last_referer_user_id = ", Uid/binary, ", last_referer_at = ", CreatedAt/binary,
-               ", updated_at = ", CreatedAt/binary, ", referer_time = public.attachment.referer_time + 1;">>,
-    % imboy_log:info(io_lib:format("attachment_repo:save/4: CreatedAt ~p ~n", [CreatedAt])),
-
     Md5 = maps:get(<<"md5">>, Attach),
     MimeType = maps:get(<<"mime_type">>, Attach),
     Name = maps:get(<<"name">>, Attach),
@@ -59,28 +51,34 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
                 MimeType
         end,
 
-    % imboy_log:info(io_lib:format("attachment_repo:save/4: Attach2 ~p ~n", [Attach2])),
+    % 拼接ON CONFLICT子句
+    OnConflictUpdate = <<
+        "ON CONFLICT (md5) DO UPDATE SET "
+        "last_referer_user_id = EXCLUDED.last_referer_user_id, "
+        "last_referer_at = EXCLUDED.last_referer_at, "
+        "updated_at = EXCLUDED.updated_at, "
+        "referer_time = public.attachment.referer_time + 1"
+    >>,
+    % <<"(,,,,,,,,,,,,updated_at,created_at,status)">>,
+    Attach = #{
+        <<"md5">> => Md5,
+        <<"mime_type">> => MimeType2,
+        <<"ext">> => Ext2,
+        <<"name">> => Name,
+        <<"path">> => Path2,
+        <<"url">> => Url,
+        <<"size">> => Size2,
+        <<"info">> => Attach2,
+        <<"referer_time">> => 1,                % 初始引用次数
+        <<"last_referer_user_id">> => Uid,      % 使用绑定变量
+        <<"last_referer_at">> => CreatedAt, % 使用原生时间格式
+        <<"creator_user_id">> => Uid,
+        <<"updated_at">> => CreatedAt,
+        <<"created_at">> => CreatedAt,
+        <<"status">> => 1
+    },
 
-    % imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 before ~p ~n", [[
-    %     Tb1, Column1,Md5,MimeType,Ext2,Name,Path2, Url, Size2,Uid,CreatedAt,UpSql1
-    %     ]])),
-    Sql1 = <<"INSERT INTO ", Tb1/binary, " ", Column1/binary, " VALUES('", (ec_cnv:to_binary(Md5))/binary, "', '", MimeType2/binary, "', '",
-             Ext2/binary, "','", Name/binary, "', '", Path2/binary, "', '", Url/binary, "', '", Size2/binary, "', '",
-             Attach2/binary, "'::text, ", "1, ",  % referer_time
-             Uid/binary, ", ",  % last_referer_user_id
-             CreatedAt/binary, ", ",  % last_referer_at
-             Uid/binary, ", ",  % creator_user_id
-             CreatedAt/binary, ", ",  % updated_at, created_at, status
-             CreatedAt/binary, ", 1) ON CONFLICT (md5) DO ", UpSql1/binary>>,
-
-    % imboy_log:info(io_lib:format("attachment_repo:save/4: Sql1 ~p ~n", [Sql1])),
-    {ok, Stmt1} = epgsql:parse(Conn, Sql1),
-    case epgsql:execute_batch(Conn, [{Stmt1, []}]) of
-        [{ok,1}] ->
-            ok;
-        {ok, _} ->
-            ok
-    end,
+    imboy_db:add(Conn, tablename(), Attach, OnConflictUpdate),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息

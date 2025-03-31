@@ -38,15 +38,14 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(ToId) 
     ToId2 = list_to_binary(integer_to_list(ToId)),
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
-    Payload2 = imboy_hasher:encoded_val(Payload),
-    Tb = tablename(),
-    Column = <<"(payload, from_id, to_id,
-        created_at, server_ts, msg_id)">>,
-    % ?LOG([Payload2, FromId, ToId, CreatedAt, ServerTS, Id]),
-    Value = <<"(", Payload2/binary, ", '", FromId/binary, "', '", ToId/binary, "', '", CreatedAt/binary, "', '",
-              ServerTS/binary, "', '", Id/binary, "')">>,
-    imboy_db:insert_into(Tb, Column, Value).
-
+    imboy_db:insert_into(tablename(), #{
+        payload => {raw, imboy_hasher:encoded_val(Payload)},
+        from_id => FromId,
+        to_id => ToId,
+        created_at => CreatedAt,
+        server_ts => ServerTS,
+        msg_id => Id
+    }).
 
 delete_msg(Id) when is_integer(Id) ->
     Where = <<"WHERE id = $1">>,

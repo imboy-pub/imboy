@@ -205,34 +205,39 @@ add_kind(0, Uid, Kind, KindId, Info, Source, Remark, Attach) ->
     NowTs = imboy_dt:now(),
     imboy_log:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     imboy_db:with_transaction(fun(Conn) ->
-                                      CreatedAt = NowTs,
-                                      attachment_repo:save(Conn, CreatedAt, Uid, Attach),
+        attachment_repo:save(Conn, NowTs, Uid, Attach),
+        AttachMd5 =
+            case [maps:get(<<"md5">>, Item) || Item <- Attach] of
+                [] -> <<>>;
+                Md5List ->
+                    % 使用imboy_cnv工具函数替代手工处理
+                    imboy_cnv:implode(<<",">>, Md5List)
+            end,
+        % 构建数据映射
+        Data = #{
+            <<"user_id">> => Uid,
+            <<"kind">> => Kind,
+            <<"kind_id">> => KindId,
+            <<"source">> => Source,
+            <<"remark">> => Remark,
+            <<"info">> => {raw, imboy_hasher:encoded_val(Info)}, % 原生JSON处理
+            <<"attach_md5">> => AttachMd5,
+            <<"created_at">> => NowTs, % 使用原生时间格式
+            <<"updated_at">> => NowTs,     % 冲突更新用时间
+            <<"status">> => 1                     % 显式设置初始状态
+        },
 
-                                      Md5 = erlang:iolist_to_binary([ [",", maps:get(<<"md5">>, Item)]
-                                                                      || Item <- Attach ]),
-                                      AttachMd5 =
-                                          case Md5 of
-                                              <<>> ->
-                                                  <<>>;
-                                              <<",", Md52/binary>> ->
-                                                  Md52
-                                          end,
-                                      Info2 = imboy_hasher:encoded_val(Info),
-                                      UpSql2 = <<" UPDATE SET updated_at = ", CreatedAt/binary, ", status = 1;">>,
-                                      Tb2 = <<"public.user_collect">>,
-                                      Column2 =
-                                          <<"(user_id, kind, kind_id, source, remark, info, attach_md5, created_at)">>,
-                                      Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES(", Uid/binary,
-                                               ", ", Kind/binary, ", '", KindId/binary, "', '", Source/binary, "', '",
-                                               Remark/binary, "', ", Info2/binary, ", '", AttachMd5/binary, "', ",
-                                               CreatedAt/binary, ") ON CONFLICT (user_id, status, kind_id) DO ",
-                                               UpSql2/binary>>,
-                                      logger:error("user_collect_logic:add_kind ~s~n", [Sql2]),
-                                      {ok, Stmt2} = epgsql:parse(Conn, Sql2),
+        % 构建ON CONFLICT子句（使用EXCLUDED优化）
+        OnConflictUpdate = <<
+            "ON CONFLICT (user_id, status, kind_id) DO UPDATE SET "
+            "updated_at = EXCLUDED.updated_at, "  % 直接使用插入值
+            "status = 1"                          % 硬编码状态更新
+        >>,
 
-                                      epgsql:execute_batch(Conn, [{Stmt2, []}]),
-                                      ok
-                              end),
+        % 单行调用实现UPSERT
+        imboy_db:add(Conn, <<"public.user_collect">>, Data, OnConflictUpdate),
+        ok
+    end),
     ok;
 add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
     % 已收藏

@@ -1,7 +1,7 @@
 -- Table: public.topic
 
 -- 导入数据后，需要更新自增长ID
--- select setval('"topic_id_seq"', (select max(id) from public."topic"));
+-- select setval('"msg_topic_id_seq"', (select max(id) from public."msg_topic"));
 
 -- DROP TABLE IF EXISTS public."msg_topic";
 

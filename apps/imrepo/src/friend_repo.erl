@@ -23,17 +23,17 @@ tablename() ->
 confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
-    From = integer_to_binary(FromID),
-    To = integer_to_binary(ToID),
     Tb = tablename(),
-    Column = <<"(from_user_id,to_user_id,status,
-        category_id,remark,updated_at,created_at,
-        setting,tag)">>,
-
-    SettingBin = jsone:encode(filter_friend_setting(Setting), [native_utf8]),
-    Value1 = <<"(", From/binary, ", ", To/binary, ",1, 0, '", Remark/binary, "', 0, ", NowTs/binary, ", '",
-               SettingBin/binary, "', '", Tag/binary, "')">>,
-    imboy_db:insert_into(Tb, Column, Value1),
+    imboy_db:insert_into(Tb, #{
+        from_user_id => FromID,
+        to_user_id => ToID,
+        status => 1,
+        category_id => 0,
+        remark => Remark,
+        created_at => NowTs,
+        setting => jsone:encode(filter_friend_setting(Setting), [native_utf8]),
+        tag => Tag
+        }),
     ok.
 
 

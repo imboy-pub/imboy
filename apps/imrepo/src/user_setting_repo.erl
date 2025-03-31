@@ -26,14 +26,31 @@ find_by_uid(Uid, Column) when is_integer(Uid) ->
     imboy_db:query(Sql, [Uid]).
 
 
+% user_setting_repo:update(3, #{people_nearby_visible => true}).
 update(Uid, Setting) when is_binary(Uid) ->
     update(imboy_hashids:decode(Uid), Setting);
 update(Uid, Setting) when is_integer(Uid) ->
-    Tb = tablename(),
-    UpSql = <<" UPDATE SET setting = $2, updated_at = $3;">>,
-    Sql = <<"INSERT INTO ", Tb/binary, "
-        (user_id, setting, updated_at) VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO ", UpSql/binary>>,
-    UpAt = imboy_dt:now(),
-    % ?LOG([Sql, [Uid, jsone:encode(Setting), UpAt]]),
-    imboy_db:execute(Sql, [Uid, jsone:encode(Setting, [native_utf8]), UpAt]).
+    Data = #{
+        <<"user_id">> => Uid,  % 用户ID
+        <<"setting">> => jsone:encode(Setting, [
+            native_utf8,         % 保持UTF8编码
+            {float_format, [{decimals, 4}, compact]}  % 优化浮点数格式
+        ]),
+        <<"updated_at">> => imboy_dt:now()  % 自动格式化为数据库时间
+    },
+    %% ON CONFLICT 子句
+    %% 使用EXCLUDED引用新插入的值
+    OnConflict = <<
+        "ON CONFLICT (user_id) DO UPDATE SET\n"
+        "  setting = EXCLUDED.setting,\n"
+        "  updated_at = EXCLUDED.updated_at"
+    >>,
+
+    %% 执行插入/更新
+    case imboy_db:insert_into(tablename(), Data, OnConflict) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            % ?LOG("Update setting failed: ~p", [Reason]),
+            {error, Reason}
+    end.

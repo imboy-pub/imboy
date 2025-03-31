@@ -86,13 +86,12 @@ assemble_msg(Type, From, To, Payload, MsgId) when is_list(To), To > 0 ->
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(To), To > 0 ->
     assemble_msg(Type, From, imboy_hashids:encode(To), Payload, MsgId);
 assemble_msg(Type, From, To, Payload, MsgId) ->
-    Ts = imboy_dt:now(),
     [{<<"id">>, MsgId},
      {<<"type">>, Type},
      {<<"from">>, From},
      {<<"to">>, To},
      {<<"payload">>, Payload},
-     {<<"server_ts">>, Ts}].
+     {<<"server_ts">>, imboy_dt:millisecond()}].
 
 %% ===================================================================
 %% Internal Function Definitions

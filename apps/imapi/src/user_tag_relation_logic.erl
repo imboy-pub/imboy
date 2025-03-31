@@ -122,9 +122,13 @@ add(Uid, Scene, <<>>, [Tag]) ->
     Count = imboy_db:pluck(<<"user_tag">>, <<"scene = ", Scene/binary, " AND name = ", Tag/binary>>, <<"id">>, 0),
     case Count of
         0 ->
-            Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
-            Value = [Uid, Scene, <<"'", Tag/binary, "'">>, 0, imboy_dt:now()],
-            imboy_db:insert_into(<<"user_tag">>, Column, Value),
+            imboy_db:insert_into(<<"user_tag">>, #{
+                creator_user_id => Uid
+                , scene => Scene
+                , name => <<"'", Tag/binary, "'">>
+                , referer_time => 0
+                , created_at => imboy_dt:now()
+            }),
             ok;
         _ ->
             <<"标签名已存在"/utf8>>

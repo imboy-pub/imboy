@@ -4,7 +4,7 @@
 -export([start/2]).
 -export([stop/1]).
 
--include_lib("imlib/include/log.hrl").
+% -include_lib("imlib/include/log.hrl").
 
 
 start(_Type, _Args) ->

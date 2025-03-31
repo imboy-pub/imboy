@@ -29,24 +29,21 @@ tablename() ->
     {ok, list(), list()} | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach, FeedbackMd5)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) ->
-    Tb = tablename(),
-    Column = <<"(user_id, device_id, client_operating_system, client_operating_system_vsn, app_vsn, type, rating, contact_detail, body, attach, feedback_md5, status, created_at)">>,
-    Value = [
-        Uid
-        , <<"'", Did/binary, "'">>
-        , <<"'", COS/binary, "'">>
-        , <<"'", COSV/binary, "'">>
-        , <<"'", AppVsn/binary, "'">>
-        , <<"'", Type/binary, "'">>
-        , <<"'", Rating/binary, "'">>
-        , <<"'", ContactDetail/binary, "'">>
-        , <<"'", Body/binary, "'">>
-        , <<"'", Attach/binary, "'">>
-        , <<"'", FeedbackMd5/binary, "'">>
-        , 1
-        , imboy_dt:now()
-    ],
-    imboy_db:insert_into(Tb, Column, Value),
+    imboy_db:insert_into(tablename(), #{
+        <<"user_id">> => Uid,  % 用户ID (整型)
+        <<"device_id">> => Did,  % 设备ID (字符串)
+        <<"client_operating_system">> => COS,  % 客户端操作系统 (字符串)
+        <<"client_operating_system_vsn">> => COSV,  % 系统版本 (字符串)
+        <<"app_vsn">> => AppVsn,  % 应用版本 (字符串)
+        <<"type">> => Type,  % 反馈类型 (字符串)
+        <<"rating">> => Rating,  % 评分 (原始数值，需保留类型)
+        <<"contact_detail">> => ContactDetail,  % 联系方式 (字符串)
+        <<"body">> => Body,  % 反馈内容 (字符串)
+        <<"attach">> => Attach,  % 附件信息 (JSON字符串)
+        <<"feedback_md5">> => FeedbackMd5,  % MD5校验值 (字符串)
+        <<"status">> => 1,  % 状态 (整型 1-有效)
+        <<"created_at">> => imboy_dt:now()  % 创建时间 (使用原生时间函数)
+    }),
     ok.
 
 -spec delete(integer(), binary()) -> ok.

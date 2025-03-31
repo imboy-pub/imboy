@@ -58,15 +58,11 @@ page_for_uid(Uid, Limit, Offset) ->
 
 -spec add(integer(), integer(), integer()) -> {ok, integer()}.
 add(Uid, DeniedUserId, Now) ->
-    Tb = tablename(),
-    Column = <<"(user_id,denied_user_id,created_at)">>,
-
-    Uid2 = integer_to_binary(Uid),
-    DeniedUserId2 = integer_to_binary(DeniedUserId),
-
-    Value = <<"('", Uid2/binary, "', '", DeniedUserId2/binary, "', '", Now/binary, "')">>,
-    imboy_db:insert_into(Tb, Column, Value).
-
+    imboy_db:insert_into(tablename(), #{
+        user_id => Uid,
+        denied_user_id => DeniedUserId,
+        created_at => Now
+    }).
 
 -spec remove(Uid :: integer(), DeniedUid :: integer()) -> ok.
 remove(Uid, DeniedUid) ->

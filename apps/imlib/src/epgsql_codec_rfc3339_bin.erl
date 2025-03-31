@@ -25,6 +25,7 @@ encode(Data, TypeName, CodecState) ->
 
 %% 二进制解码逻辑
 decode(Bin, 'timestamptz', _CodecState) ->
+    % (binary:decode_unsigned(Bin, big) + 946684800000000) div 1000.
     MicroSecs = binary:decode_unsigned(Bin, big),
     % MS = MicroSecs + (?POSTGRESQL_GS_EPOCH * 1000000) - (?UNIX_EPOCH_GREGORIAN * 1000000),
     MS = MicroSecs + 946684800000000,

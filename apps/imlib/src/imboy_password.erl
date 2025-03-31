@@ -15,16 +15,18 @@ generate(Plaintext) ->
     generate(Plaintext, hmac_sha512).
 
 
+% io:format("~s~n", [imboy_password:generate(imboy_hasher:md5("admin888"))]).
 generate(Plaintext, hmac_sha512) ->
     Salt1 = imboy_func:num_random(40),
     Salt2 = list_to_binary(integer_to_list(Salt1)),
     Ciphertext = imboy_hasher:hmac_sha512(Plaintext, Salt2),
+    % io:format("~s~n", [Ciphertext]),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
 
 -spec verify(list(), list()) -> {ok, any()} | {error, Msg :: list()}.
 verify(Plaintext, Ciphertext) ->
-    % ?LOG([Plaintext, Ciphertext]),
+    % ?LOG([Plaintext, base64:decode(Plaintext), Ciphertext, base64:decode(Ciphertext)]),
     try
         Ciphertext2 = base64:decode(Ciphertext),
         binary:split(Ciphertext2, <<$:>>, [global, trim])
@@ -83,7 +85,9 @@ verify(Plaintext, default_md5, Salt, Ciphertext) ->
     eq(Ciphertext, Ciphertext2);
 verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = imboy_hasher:hmac_sha512(Plaintext, Salt),
-    ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    % io:format("~p~n", [Plaintext]),
+    % io:format("~p~n", [Ciphertext2]),
+    % ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
     eq(Ciphertext, Ciphertext2).
 
 

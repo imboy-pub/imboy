@@ -31,21 +31,28 @@ c2c(MsgId, CurrentUid, Data) ->
     case {IsFriend, InDenylist} of
         {true, 0} ->
             NowTs = imboy_dt:now(),
+            NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
             From = imboy_hashids:encode(CurrentUid),
             Payload = proplists:get_value(<<"payload">>, Data),
             CreatedAt = proplists:get_value(<<"created_at">>, Data),
+            CreatedAtMs = case imboy_type:is_numeric(CreatedAt) of
+                true ->
+                    CreatedAt;
+                false ->
+                    imboy_dt:rfc3339_to(CreatedAt, millisecond)
+            end,
             % 存储消息
             msg_c2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
             %
-            self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2C_SERVER_ACK">>}, {<<"server_ts">>, NowTs}]},
+            self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2C_SERVER_ACK">>}, {<<"server_ts">>, NowMS}]},
 
             Msg = [{<<"id">>, MsgId},
                    {<<"type">>, <<"C2C">>},
                    {<<"from">>, From},
                    {<<"to">>, To},
                    {<<"payload">>, Payload},
-                   {<<"created_at">>, CreatedAt},
-                   {<<"server_ts">>, NowTs}],
+                   {<<"created_at">>, CreatedAtMs},
+                   {<<"server_ts">>, NowMS}],
             MsgJson = jsone:encode(Msg, [native_utf8]),
             MsLi = [0, 5000, 7000, 11000],
             message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
@@ -87,7 +94,7 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
         {<<"id">>, MsgId},
         {<<"from">>, From},
         {<<"to">>, To},
-        {<<"server_ts">>, NowTs},
+        {<<"server_ts">>, imboy_dt:millisecond()},
         {<<"type">>, Type},
         {<<"payload">>, Payload}
     ],

@@ -84,72 +84,84 @@ replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) ->
 %%% 保存tag数据
 -spec save_tag(any(), integer(), binary(), binary(), binary()) -> ok.
 save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
-    UpSql = <<" UPDATE SET updated_at = ", CreatedAt/binary, " RETURNING id;">>,
     Tb = imboy_db:public_tablename(<<"user_tag">>),
-    Column = <<"(creator_user_id,scene,name,referer_time,created_at)">>,
-    Sql = <<"INSERT INTO ", Tb/binary, " ", Column/binary, " VALUES(", Uid/binary, ", ", Scene/binary, ", '",
-            Tag/binary, "', ", "0, ", CreatedAt/binary, ") ON CONFLICT (creator_user_id,scene,name) DO ",
-            UpSql/binary>>,
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:save_tag/5 sql:~s ~n", [Sql])),
-    {ok, Stmt} = epgsql:parse(Conn, Sql),
-    Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % Res = epgsql:equery(Conn, Sql, []),
-    % imboy_log:error(io_lib:format("user_tag_relation_repo:save_tag/5 --------------------------------------------------------------------------------Res:~p ~n", [Res])),
-    case Res of
-        [{ok, _, [{Id}]}] ->
+    Data = #{
+        <<"creator_user_id">> => Uid,
+        <<"scene">> => Scene,
+        <<"name">> => Tag,
+        <<"referer_time">> => 0,
+        <<"created_at">> => CreatedAt,
+        <<"updated_at">> => CreatedAt
+    },
+
+    OnConflict = <<
+        "ON CONFLICT (creator_user_id, scene, name) DO "
+        "UPDATE SET updated_at = EXCLUDED.updated_at "
+        "RETURNING id"
+    >>,
+
+    case imboy_db:add(Conn, Tb, Data, OnConflict) of
+        {ok, 1, [{Id}]} ->
+            % ?LOG_INFO("Tag created: id=~p name=~s", [Id, Tag]),
             {Id, Tag};
-        _ ->
+        {ok, _Unexpected} ->
+            % ?LOG_ERROR("Unexpected response: ~p", [Unexpected]),
+            {0, Tag};
+        {error, _Reason} ->
+            % ?LOG_ERROR("Failed to create tag: ~p", [Reason]),
             {0, Tag}
     end.
 
-
--spec update_tag(any(), binary(), binary(), binary(), binary()) -> ok.
+-spec update_tag(any(), binary(), binary(), binary(), binary()) -> {integer(), binary()}.
 update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
+    %% 记录输入参数
+    % ?LOG_DEBUG("Updating tag: id=~s, new_name=~s, user=~s",
+    %           [TagId, TagName, Uid]),
+    Data = #{
+        <<"name">> => TagName,
+        <<"updated_at">> => CreatedAt
+    },
+    Where = <<"id = ", TagId/binary, " AND creator_user_id = ", Uid/binary>>,
     Tb = imboy_db:public_tablename(<<"user_tag">>),
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:update_tag/5 Tb:~p ~n", [Tb])),
-    Args = ["UPDATE ",
-            Tb,
-            <<" SET name = '", TagName/binary, "', ">>,
-            " updated_at = ",
-            CreatedAt,
-            " WHERE id =",
-            TagId,
-            " AND creator_user_id = ",
-            Uid],
-    % imboy_log:error(io_lib:format("user_tag_relation_repo:update_tag/5 Args:~p ~n", [Args])),
-    UpSql = imboy_cnv:implode("", Args),
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:update_tag/5 sql:~p;~n", [UpSql])),
-    {ok, Stmt} = epgsql:parse(Conn, UpSql),
-    Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % imboy_log:error(io_lib:format("user_tag_relation_repo:update_tag/5 Res:~p;~n", [Res])),
-    case Res of
-        [{ok, 1}] ->
+    case imboy_db:update(Conn, Tb, Where, Data) of
+        {ok, 1} ->
+            % ?LOG_INFO("Tag updated: id=~s", [TagId]),
             {TagId, TagName};
-        _ ->
-            % imboy_log:error(io_lib:format("user_tag_relation_repo:update_tag/5 Res:~p ~n", [Res])),
+        {ok, N} when is_integer(N), N > 1 ->
+            % ?LOG_ERROR("Unexpected affected rows: ~p", [N]),
+            {0, TagName};
+        {ok, 0} ->
+            % ?LOG_WARNING("No tag found to update"),
+            {0, TagName};
+        {error, _Reason} ->
+            % ?LOG_ERROR("Update failed: ~p", [Reason]),
             {0, TagName}
     end.
-
 
 %%% 保存user_tag_relation数据
 -spec save_user_tag_relation(any(), binary(), binary(), binary(), binary(), binary()) -> ok.
 save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
-    UpSql = <<" UPDATE SET created_at = ", CreatedAt/binary, " RETURNING id;">>,
-    Tb = imboy_db:public_tablename(<<"user_tag_relation">>),
-    Column = <<"(scene, user_id, tag_id, object_id, created_at)">>,
-    Sql = <<"INSERT INTO ", Tb/binary, " ", Column/binary, " VALUES(", Scene/binary, ", ", Uid/binary, ", ",
-            TagId/binary, ", '", ObjectId/binary, "', ", CreatedAt/binary,
-            ") ON CONFLICT (scene, user_id, object_id, tag_id) DO ", UpSql/binary>>,
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 sql:~p;~n", [Sql])),
-    {ok, Stmt} = epgsql:parse(Conn, Sql),
-    Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % imboy_log:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 Res:~p ~n", [Res])),
-    case Res of
-        % [{ok,1,[{18}]}]
-        [{ok, _, [{Id}]}] ->
+    Data = #{
+        <<"scene">> => Scene,
+        <<"user_id">> => Uid,
+        <<"tag_id">> => TagId,
+        <<"object_id">> => ObjectId,
+        <<"created_at">> => CreatedAt
+    },
+    OnConflict = <<
+        "ON CONFLICT (scene, user_id, object_id, tag_id) DO "
+        "UPDATE SET created_at = EXCLUDED.created_at "
+        "RETURNING id"
+    >>,
+    case imboy_db:add(Conn, tablename(), Data, OnConflict) of
+        {ok, 1, [{Id}]} ->
+            % ?LOG_DEBUG("Operation success, id=~p", [Id]),
             Id;
-        _ ->
-            imboy_log:error(io_lib:format("user_tag_relation_repo:save_user_tag_relation/6 Res:~p ~n", [Res])),
+        {ok, _Unexpected} ->
+            % ?LOG_ERROR("Unexpected response: ~p", [Unexpected]),
+            0;
+        {error, _Reason} ->
+            % ?LOG_ERROR("Database error: ~p", [Reason]),
             0
     end.
 
@@ -165,7 +177,7 @@ select_tag(Where, WhereArgs, Column) ->
 
 
 select_user_tag_relation(Where, WhereArgs, Column) ->
-    Tb = imboy_db:public_tablename(<<"user_tag_relation">>),
+    Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     imboy_log:info(io_lib:format("user_tag_relation_repo:select_user_tag_relation/3 sql:~p, ~p;~n", [Sql, WhereArgs])),
     imboy_db:query(Sql, WhereArgs).
@@ -180,7 +192,7 @@ tag_subtitle(<<"2">>, _TagId, 0) ->
 tag_subtitle(<<"2">>, TagId, _Count) ->
     Key = imboy_cnv:implode("_", ["tag_subtitle_2", TagId]),
     Fun = fun() ->
-                  TagTb = imboy_db:public_tablename(<<"user_tag_relation">>),
+                  TagTb = tablename(),
                   FTb = imboy_db:public_tablename(<<"user_friend">>),
                   UTb = imboy_db:public_tablename(<<"user">>),
                   % Sql = <<"SELECT f.remark,u.nickname,u.account FROM ", TagTb/binary, " t

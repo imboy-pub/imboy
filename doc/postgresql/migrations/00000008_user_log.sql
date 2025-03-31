@@ -2,10 +2,6 @@
 
 -- DROP TABLE IF EXISTS public."user_log";
 
-
--- 导入数据后，需要更新自增长ID
--- select setval('"user_log_id_seq"', (select max(id) from public."user_log"));
-
 CREATE TABLE IF NOT EXISTS public."user_log"
 (
     ts timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP(6),

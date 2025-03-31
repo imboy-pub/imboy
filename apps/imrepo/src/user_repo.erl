@@ -39,11 +39,11 @@ select_by_where(Column, Where, Limit, Offset, OrderBy) ->
     imboy_db:query(Sql, []).
 
 
-% user_repo:find_by_email("10008@imboy.pub", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
+% user_repo:find_by_email("100000@imboy.pub", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    % ?LOG(["sql ", Sql]),
+    ?LOG(["sql ", Sql]),
     imboy_db:find(Sql, [Email]).
 
 

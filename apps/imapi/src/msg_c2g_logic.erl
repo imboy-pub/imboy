@@ -25,13 +25,21 @@ c2g(MsgId, CurrentUid, Data) ->
     MemberUids = group_ds:member_uids(ToGID),
     % Uids.
     NowTs = imboy_dt:now(),
+    NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
+    CreatedAt = proplists:get_value(<<"created_at">>, Data),
+    CreatedAtMs = case imboy_type:is_numeric(CreatedAt) of
+        true ->
+            CreatedAt;
+        false ->
+            imboy_dt:rfc3339_to(CreatedAt, millisecond)
+    end,
     Msg = [{<<"id">>, MsgId},
            {<<"type">>, <<"C2G">>},
            {<<"from">>, imboy_hashids:encode(CurrentUid)},
            {<<"to">>, Gid},
            {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
-           {<<"created_at">>, proplists:get_value(<<"created_at">>, Data)},
-           {<<"server_ts">>, NowTs}],
+           {<<"created_at">>, CreatedAtMs},
+           {<<"server_ts">>, NowMS}],
     % ?LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
     MsLi = [0, 3500, 3500, 3000, 5000],
@@ -40,7 +48,7 @@ c2g(MsgId, CurrentUid, Data) ->
     % 存储消息
     msg_c2g_ds:write_msg(NowTs, MsgId, Msg2, CurrentUid, MemberUids, ToGID),
 
-    self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2G_SERVER_ACK">>}, {<<"server_ts">>, NowTs}]},
+    self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2G_SERVER_ACK">>}, {<<"server_ts">>, NowMS}]},
     ok.
 
 %% 客户端确认C2G投递消息
@@ -61,6 +69,7 @@ c2g_revoke(CurrentUid, MsgId, Data, Type, Type2) ->
     MemberUids = group_ds:member_uids(ToGID),
     % Uids.
     NowTs = imboy_dt:now(),
+    NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
 
     Payload = [
         {<<"msg_type">>, Type},
@@ -72,7 +81,7 @@ c2g_revoke(CurrentUid, MsgId, Data, Type, Type2) ->
         {<<"to">>, To},
         {<<"type">>, Type},
         {<<"payload">>, Payload},
-        {<<"server_ts">>, NowTs}
+        {<<"server_ts">>, NowMS}
     ],
 
     % ?LOG(Msg),
@@ -83,7 +92,7 @@ c2g_revoke(CurrentUid, MsgId, Data, Type, Type2) ->
     % 存储消息
     msg_c2g_ds:revoke_offline_msg(Msg2, NowTs, MsgId, CurrentUid, MemberUids, ToGID),
 
-    self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, Type2}, {<<"server_ts">>, NowTs}]},
+    self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, Type2}, {<<"server_ts">>, NowMS}]},
     ok.
 
 

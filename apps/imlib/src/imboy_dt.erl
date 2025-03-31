@@ -97,7 +97,6 @@ now(millisecond) ->
 now(microsecond) ->
     list_to_binary(to_rfc3339(erlang:system_time(microsecond), microsecond)).
 
-
 %% link https://www.erlang.org/doc/man/calendar.html#system_time_to_rfc3339-2
 %
 % imboy_dt:to_rfc3339(imboy_dt:second(), second).

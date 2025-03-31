@@ -23,9 +23,9 @@
 
 %% 让自己可见
 -spec make_myself_visible(integer(), binary(), binary()) -> ok | {error, Msg :: binary()}.
-make_myself_visible(_Uid, <<"">>, _Lng) ->
+make_myself_visible(_Uid, <<>>, _Lng) ->
     {error, <<"latitude is empty">>};
-make_myself_visible(_Uid, _Lat, <<"">>) ->
+make_myself_visible(_Uid, _Lat, <<>>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),

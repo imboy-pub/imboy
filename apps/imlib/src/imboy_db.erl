@@ -11,7 +11,6 @@
 
 -export([count_for_where/2, page_for_where/6]).
 
-
 -export([query/1]).
 -export([query/2]).
 -export([execute/2, execute/3]).
@@ -32,7 +31,6 @@
 
 -export([public_tablename/1]).
 
--export([migrate/0]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -44,70 +42,6 @@
 %% API
 %% ===================================================================
 
-% imboy_db:migrate().
-% 升级相关sql文件必须是顺序的
-migrate() ->
-    Conf = config_ds:env(super_account),
-    Path = config_ds:env(scripts_path),
-    {ok, Conn} = epgsql:connect(Conf),
-    MigrationCall =
-      pure_migrations:migrate(
-        Path,
-        fun(F) -> epgsql:with_transaction(Conn, fun(_) -> F() end) end,
-        fun(Q) ->
-          case epgsql:squery(Conn, Q) of
-            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
-                   {column, <<"filename">>, _, _, _, _, _, _, _}], []} ->
-                    [];
-            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
-                   {column, <<"filename">>, _, _, _, _, _, _, _}], Data} ->
-                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
-            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{null}]} ->
-                % It has to be -1 or it will get an error during initialization
-                -1;
-            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{N}]} ->
-                % The version number is stored in the int4 type and ranges from -2,147,483,648 to 2,147,483,647
-              list_to_integer(binary_to_list(N));
-
-            {ok, [
-              {column, <<"version">>, _, _, _, _, _},
-              {column, <<"filename">>, _, _, _, _, _}], Data} ->
-                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
-            {ok, [{column, <<"max">>, _, _, _, _, _}], [{null}]} -> -1;
-            {ok, [{column, <<"max">>, _, _, _, _, _}], [{N}]} ->
-              list_to_integer(binary_to_list(N));
-            {ok, _, _} -> ok;
-            {ok, _} -> ok;
-            Default ->
-                % io:format("DefaultDefaultDefaultDefaultDefault ~p, q: ~s~n", [Default, Q]),
-                % Match multiple SQL statements in a script
-                Res = priv_is_valid(Default),
-                case Res of
-                    true->
-                        ok;
-                    _ ->
-                        Default
-                end
-          end
-        end),
-    % ...
-    %% more preparation steps if needed
-    % ...
-    %% migration call
-    Res = MigrationCall(),
-    % imboy_log:debug(io:format("~p~n", [Res])),
-    ok = epgsql:close(Conn),
-    Res.
-
-priv_is_valid(List) ->
-    lists:all(fun(E) ->
-        case E of
-            {ok, _} -> true;
-            {ok, _, _} -> true;
-            _ -> false
-        end
-    end, List).
-
 -spec with_transaction(fun((epgsql:connection()) -> Reply)) -> Reply | {rollback, any()} when Reply :: any().
 with_transaction(F) ->
     with_transaction(F, [{reraise, true}]).
@@ -116,18 +50,21 @@ with_transaction(F) ->
 -spec with_transaction(fun((epgsql:connection()) -> Reply), epgsql:transaction_opts()) ->
           Reply | {rollback, any()} | no_return() when Reply :: any().
 with_transaction(F, Opts0) ->
+    with_transaction(F, Opts0, 3, 1). % 最大重试3次，初始延迟1秒
+
+with_transaction(_F, _Opts0, 0, _Delay) ->
+    {error, retries_exhausted};
+with_transaction(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
     case pooler:take_member(Driver) of
         error_no_members ->
-            % 休眠 1秒
-            timer:sleep(1),
-            with_transaction(F, Opts0);
+            timer:sleep(Delay * 1000),
+            with_transaction(F, Opts0, RetriesLeft - 1, Delay * 2);
         Conn ->
             Res = epgsql:with_transaction(Conn, F, Opts0),
             pooler:return_member(Driver, Conn),
             Res
     end.
-
 
 % imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
 % imboy_db:pluck(<<"adm_user">>, <<>>, <<"count(*) as count">>, 0).
@@ -220,11 +157,6 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
             []
     end.
 
-% private
-to_proplists(ColumnLi, Items0) ->
-    Items1 = [tuple_to_list(Item) || Item <- Items0],
-    [lists:zipwith(fun(X, Y) -> {X, imboy_cnv:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
-
 proplists(Sql) ->
     case imboy_db:query(Sql) of
         {ok, Col, Val} ->
@@ -312,11 +244,12 @@ execute(Sql, Params) ->
                 {error, not_supported}
         end,
     pooler:return_member(Driver, Conn),
+    ?LOG(['execute ', Res]),
     Res.
 
 
 execute(Conn, Sql, Params) ->
-    % ?LOG(io:format("sql: ~s\n", [Sql])),
+    ?LOG(io:format("sql: ~s\n", [Sql])),
     % ?LOG(io:format("Params: ~p\n", [Params])),
     % Res = epgsql:parse(Conn, Sql),
     % ?LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
@@ -327,39 +260,33 @@ execute(Conn, Sql, Params) ->
     % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
     Res2.
 
-
-insert_into(Tb, Data) ->
-    Column = <<"("
-        , (imboy_cnv:implode("," , maps:keys(Data)))/binary
-        , ")">>,
-    Value = assemble_value(Data),
+% imboy_db:insert_into/3
+insert_into(Tb, Data) when is_map(Data) ->
+    {Column, Value} = process_insert_data(Data),
     imboy_db:insert_into(Tb, Column, Value).
 
-insert_into(Tb, Data, Returning) when is_map(Data) ->
-    Column = <<"("
-        , (imboy_cnv:implode("," , maps:keys(Data)))/binary
-        , ")">>,
-    Value = assemble_value(Data),
-    insert_into(Tb, Column, Value, Returning);
+insert_into(Tb, Data, ReturningOnConflict) when is_map(Data) ->
+    {Column, Value} = process_insert_data(Data),
+    insert_into(Tb, Column, Value, ReturningOnConflict);
 insert_into(Tb, Column, Value) ->
     insert_into(Tb, Column, Value, <<"RETURNING id;">>).
 
 
-insert_into(Tb, Column, Value, Returning) ->
+insert_into(Tb, Column, Value, ReturningOnConflict) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    % ?LOG([insert_into, Sql]),
-    execute(<<Sql/binary, " ", Returning/binary>>, []).
+    ?LOG([insert_into, Sql]),
+    execute(<<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 
 add(Conn, Tb, Data) ->
     add(Conn, Tb, Data, <<"RETURNING id;">>).
-add(Conn, Tb, Data, Returning) ->
-    Column = <<"(", (imboy_cnv:implode(",", maps:keys(Data)))/binary, ")">>,
-    Value = assemble_value(Data),
+% imboy_db:add/4
+add(Conn, Tb, Data, ReturningOnConflict) ->
+    {Column, Value} = process_insert_data(Data),
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
     % ?LOG(io:format("~s\n", [Sql])),
-    execute(Conn, <<Sql/binary, " ", Returning/binary>>, []).
+    execute(Conn, <<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 
 
 % 组装 SQL 语句
@@ -376,6 +303,10 @@ assemble_sql(Prefix, Tb, Column, Value) ->
     Sql.
 
 
+% UPDATE public.config SET remark = '', system = 1, tab = 'sys', title = '', updated_at = '2025-03-24 08:47:22.625575+08:00', value = '"ws:\/\/192.168.1.195:9800\/ws\/"' WHERE key = 'ws_url'
+% imboy_db:update(<<"config">>, <<"key='ws_url'">>, #{updated_at => 1742777443331}).
+% imboy_db:update(<<"config">>, <<"key='ws_url'">>, #{updated_at => <<"1742777443331">>}).
+% imboy_db:update(<<"config">>, <<"key='ws_url'">>, #{updated_at => <<"2025-03-24 08:51:19.562949+08:00">>}).
 -spec update(binary(), binary(), [list() | binary()])
     -> ok | {error, {integer(), binary(), Msg :: binary()}}.
 update(Tb, Where, KV) ->
@@ -400,7 +331,7 @@ update(Conn, Tb, Where, SetBin) ->
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    Set1 = [ <<(ec_cnv:to_binary(K))/binary, " = ", (assemble_value_filter(V))/binary>> || {K, V} <- KV ],
+    Set1 = [ <<(ec_cnv:to_binary(K))/binary, " = ", (assemble_value_filter(K, V))/binary>> || {K, V} <- KV ],
     Set2 = [ binary_to_list(S) || S <- Set1 ],
     Set3 = lists:concat(lists:join(", ", Set2)),
     list_to_binary(Set3).
@@ -413,10 +344,9 @@ assemble_where(Where) ->
         , " "
         , (ec_cnv:to_binary(Op))/binary
         , " "
-        , (assemble_value_filter(V))/binary
+        , (assemble_value_filter(K, V))/binary
     >> || [K, Op, V] <- Where],
     iolist_to_binary(string:replace(iolist_to_binary(Li2), Separator, "")).
-
 
 
 % imboy_db:assemble_value(#{mobile => "13692177080", password => "admin888", account => "13692177080", "status" => 1}).
@@ -429,6 +359,37 @@ assemble_value(Values) when is_list(Values) ->
 assemble_value_filter({raw, V}) ->
     V;
 assemble_value_filter(V) ->
+    original_value_processing(V).
+
+assemble_value_filter(_K, {raw, V}) ->
+    V;
+assemble_value_filter(K, V) ->
+    case K =/= undefined andalso imboy_type:is_at_key(K) of
+        true -> handle_at_field_value(V);
+        false -> original_value_processing(V)
+    end.
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+process_insert_data(DataMap) when is_map(DataMap) ->
+    Keys = maps:keys(DataMap),
+    Column = <<"(", (imboy_cnv:implode(",", Keys))/binary, ")">>,
+    Values = [assemble_value_filter(K, maps:get(K, DataMap)) || K <- Keys],
+    ValueBin = imboy_cnv:implode(",", Values),
+    {Column, <<"(", ValueBin/binary, ")">>}.
+
+handle_at_field_value(V) ->
+    case imboy_type:is_numeric(V) of
+        true ->
+            Rfc3339 = imboy_dt:to_rfc3339(ec_cnv:to_integer(V), millisecond),
+            imboy_cnv:implode("", ["'", Rfc3339, "'"]);
+        false ->
+            imboy_cnv:implode("", ["'", V, "'"]) % 假设已经是合法格式
+    end.
+
+original_value_processing(V) ->
     if
         is_list(V); is_binary(V) ->
             imboy_cnv:implode("", ["'", V, "'"]);
@@ -437,10 +398,6 @@ assemble_value_filter(V) ->
         true ->
             ec_cnv:to_binary(V)
     end.
-%% ===================================================================
-%% Internal Function Definitions
-%% ===================================================================
-
 
 query_resp_map(Res) ->
     % ?LOG([Res]),
@@ -473,6 +430,11 @@ query_resp({ok, ColumnList, Rows}) ->
     % imboy_log:info(io_lib:format("imboy_db/query_resp: ColumnList ~p, Rows ~p ~n", [ColumnList, Rows])),
     ColumnList2 = [ element(2, C) || C <- ColumnList ],
     {ok, ColumnList2, Rows}.
+
+% private
+to_proplists(ColumnLi, Items0) ->
+    Items1 = [tuple_to_list(Item) || Item <- Items0],
+    [lists:zipwith(fun(X, Y) -> {X, imboy_cnv:json_maybe(Y)} end, ColumnLi, Row) || Row <- Items1].
 
 
 public_tablename(<<"public.", Tb/binary>>) ->

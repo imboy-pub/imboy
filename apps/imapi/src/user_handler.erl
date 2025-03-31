@@ -133,7 +133,7 @@ credential(Req0, State) ->
 %% 扫描“我的二维码”
 qrcode(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State, undefined),
     case CurrentUid of
         undefined ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
@@ -208,7 +208,8 @@ update(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Field = proplists:get_value(<<"field">>, PostVals, <<>>),
     Value = proplists:get_value(<<"value">>, PostVals, <<>>),
-    % ?LOG(["update ", Field, Value]),
+
+    ?LOG(["update ", Field, Value]),
     case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value)) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);
