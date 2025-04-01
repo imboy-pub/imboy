@@ -54,13 +54,17 @@ reply_json(Code, Msg, Payload, Req) ->
     reply_json(Code, Msg, Payload, Req, []).
 
 reply_json(Code, Msg, Payload, Req, Options) ->
-    %% 消息标准化处理
-    MsgBinary = ec_cnv:to_binary(Msg),
+    Msg2 = if
+         is_list(Msg) == false ->
+            ec_cnv:to_binary(Msg);
+        true ->
+            unicode:characters_to_binary(Msg)
+    end,
 
     %% 构造响应主体
     BasePayload = [
         {<<"code">>, Code},
-        {<<"msg">>, MsgBinary},
+        {<<"msg">>, Msg2},
         {<<"payload">>, Payload}
     ],
 

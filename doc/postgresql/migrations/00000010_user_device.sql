@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public."user_device"
     device_id varchar(40) NOT NULL,
     device_vsn varchar(680),
     device_name varchar(80),
-    login_count bigint NOT NULL DEFAULT 0,
+    login_count int NOT NULL DEFAULT 0,
     last_login_ip varchar(40) NOT NULL DEFAULT '',
     last_login_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     last_active_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
