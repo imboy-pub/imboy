@@ -124,6 +124,32 @@ to_rfc3339(Num, Unit, Offset) ->
 % Dt = imboy_dt:now(),
 % imboy_dt:rfc3339_to(Dt, millisecond).
 % imboy_dt:rfc3339_to(Dt, microsecond).
+% imboy_dt:rfc3339_to({{2024,10,29},{2,34,30.776}}, millisecond).
+rfc3339_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
+    % Handle Erlang datetime tuple like {{2024,10,29},{2,34,30.776}}
+    try
+        % 分离整数秒和小数秒
+        IntS = trunc(S),
+        FracS = S - IntS,
+        % 计算整数秒部分的时间戳
+        GregorianSecs = calendar:datetime_to_gregorian_seconds({{Y,Mo,D}, {H,Mi,IntS}}),
+        UnixEpochSecs = GregorianSecs - 62167219200,  % 从1970-01-01开始计算
+        % 根据单位处理小数部分
+        case Unit of
+            second ->
+                UnixEpochSecs + FracS;
+            millisecond ->
+                UnixEpochSecs * 1000 + round(FracS * 1000);
+            microsecond ->
+                UnixEpochSecs * 1000000 + round(FracS * 1000000);
+            nanosecond ->
+                UnixEpochSecs * 1000000000 + round(FracS * 1000000000);
+            _ ->
+                {error, "unsupported unit"}
+        end
+    catch
+        _:_ -> {error, "invalid datetime tuple"}
+    end;
 rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, Unit) ->

@@ -14,7 +14,9 @@
 %% Total: 总记录数 | Page: 当前页码 | Size: 每页数量 | List: 数据列表
 -spec page_payload(integer(), integer(), integer(), list()) -> list().
 page_payload(Total, Page, Size, List) ->
+    % io:format("List1 ~p~n", [List]),
     List2 = convert_at_timestamps(List),
+    % io:format("List2 ~p~n", [List2]),
     [{<<"total">>, Total}, {<<"page">>, Page}, {<<"size">>, Size}, {<<"list">>, List2}].
 
 %% Success系列函数
