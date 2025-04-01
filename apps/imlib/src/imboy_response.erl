@@ -21,10 +21,12 @@ page_payload(Total, Page, Size, List) ->
 success(Req) ->
     reply_json(0, "success", #{}, Req).
 
-success(Req, Payload) ->
+success(Req, Payload0) ->
+    Payload = convert_at_timestamps(Payload0),
     reply_json(0, "success", Payload, Req).
 
-success(Req, Payload, Msg) ->
+success(Req, Payload0, Msg) ->
+    Payload = convert_at_timestamps(Payload0),
     reply_json(0, Msg, Payload, Req).
 
 success(Req, Payload0, Msg, Options) ->
