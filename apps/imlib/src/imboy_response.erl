@@ -6,6 +6,9 @@
 -export([error/4, error/1, error/2, error/3]).
 -export([page_payload/4]).
 
+% imboy_response:convert_at_timestamps(List).
+-export([convert_at_timestamps/1]).
+
 %% ===================================================================
 %% API Functions
 %% ===================================================================
@@ -123,6 +126,12 @@ convert_structured(V) -> V.
 %% @doc 时间格式转换（RFC3339 -> 毫秒时间戳）
 convert_timestamp(Value) when is_binary(Value); is_list(Value) ->
     case imboy_dt:rfc3339_to(Value, millisecond) of
+        {error, _} ->
+            Value;
+        Num -> Num
+    end;
+convert_timestamp(Value) when is_tuple(Value) ->
+    case imboy_dt:datetime_to(Value, millisecond) of
         {error, _} ->
             Value;
         Num -> Num

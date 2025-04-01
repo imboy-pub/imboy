@@ -12,7 +12,7 @@
 -export([compare_rfc3339/3]).
 -export([now/0, now/1]).
 -export([to_rfc3339/2, to_rfc3339/3]).
--export([rfc3339_to/2]).
+-export([rfc3339_to/2, datetime_to/2]).
 -export([timezone_offset/1]).
 
 % imboy_dt:add(Dt, {10, minute}).
@@ -121,11 +121,9 @@ to_rfc3339(Num, nanosecond) ->
 to_rfc3339(Num, Unit, Offset) ->
     calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}]).
 
-% Dt = imboy_dt:now(),
-% imboy_dt:rfc3339_to(Dt, millisecond).
-% imboy_dt:rfc3339_to(Dt, microsecond).
-% imboy_dt:rfc3339_to({{2024,10,29},{2,34,30.776}}, millisecond).
-rfc3339_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
+
+% imboy_dt:datetime_to({{2024,10,29},{2,34,30.776}}, millisecond).
+datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
     % Handle Erlang datetime tuple like {{2024,10,29},{2,34,30.776}}
     try
         % 分离整数秒和小数秒
@@ -149,7 +147,11 @@ rfc3339_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
         end
     catch
         _:_ -> {error, "invalid datetime tuple"}
-    end;
+    end.
+
+% Dt = imboy_dt:now(),
+% imboy_dt:rfc3339_to(Dt, millisecond).
+% imboy_dt:rfc3339_to(Dt, microsecond).
 rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, Unit) ->
