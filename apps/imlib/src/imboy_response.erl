@@ -7,7 +7,7 @@
 -export([page_payload/4]).
 
 % imboy_response:convert_at_timestamps(List).
--export([convert_at_timestamps/1]).
+% -export([convert_at_timestamps/1]).
 
 %% ===================================================================
 %% API Functions
@@ -28,6 +28,7 @@ success(Req) ->
 
 success(Req, Payload0) ->
     Payload = convert_at_timestamps(Payload0),
+    io:format("Payload0 ~p~n", [Payload0]),
     reply_json(0, "success", Payload, Req).
 
 success(Req, Payload0, Msg) ->
@@ -67,7 +68,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
         true ->
             unicode:characters_to_binary(Msg)
     end,
-
+    io:format("reply_json Payload ~p~n", [Payload]),
     %% 构造响应主体
     BasePayload = [
         {<<"code">>, Code},
@@ -89,7 +90,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 -spec convert_at_timestamps(any()) -> any().
 convert_at_timestamps([]) ->
     #{};
-convert_at_timestamps(#{}) ->
+convert_at_timestamps(Map) when is_map(Map) andalso map_size(Map) == 0 ->
     #{};
 convert_at_timestamps(Map) when is_map(Map) ->
     maps:fold(fun(K, V, Acc) ->
