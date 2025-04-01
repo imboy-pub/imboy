@@ -58,9 +58,6 @@ COMMENT ON COLUMN public.user.gender IS '性别 1 男  2 女  3 保密';
 COMMENT ON COLUMN public.user.experience IS '经验值';
 COMMENT ON COLUMN public.user.avatar IS '头像';
 COMMENT ON COLUMN public.user.sign IS '用户签名';
-COMMENT ON COLUMN public.user.login_count IS '登陆次数';
-COMMENT ON COLUMN public.user.last_login_ip IS '最后登陆IP';
-COMMENT ON COLUMN public.user.last_login_at IS '最后登录UTC时间';
 COMMENT ON COLUMN public.user.ref_user_id IS '推荐人ID，0表示无推荐人';
 
 COMMENT ON COLUMN public.user.status
