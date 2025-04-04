@@ -89,7 +89,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 %% 支持处理Map、Proplist和嵌套结构
 -spec convert_at_timestamps(any()) -> any().
 convert_at_timestamps([]) ->
-    #{};
+    [];
 convert_at_timestamps(Map) when is_map(Map) andalso map_size(Map) == 0 ->
     #{};
 convert_at_timestamps(Map) when is_map(Map) ->
