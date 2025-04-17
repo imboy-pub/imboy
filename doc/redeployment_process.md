@@ -147,7 +147,6 @@ TURN_URL=turn:124.222.102.13:3478?transport=udp
 
 config_ds:set(<<"api_auth_switch">>, on). % on | off
 
-config_ds:set(<<"hashids_salt">>, <<>>).
 config_ds:set(<<"jwt_key">>, <<>>).
 config_ds:set(<<"password_salt">>, <<>>).
 
