@@ -87,7 +87,9 @@ list(Req0, State) ->
     % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
     Mine = user_logic:find_by_id(CurrentUid),
     {K, V} = user_logic:mine_state(CurrentUid),
+    % ?LOG(["CurrentUid", CurrentUid, "; State ", K, V, Mine#{K => V}]),
     Friend = friend_ds:page_by_uid(CurrentUid),
+    % ?LOG(["friend_handler/list", CurrentUid, "; Friend ", Friend]),
     Payload = list_transfer(Mine#{K => V}, Friend),
     % ?LOG(Payload),
     imboy_response:success(Req0, Payload).

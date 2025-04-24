@@ -139,6 +139,7 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
     {<<"from_id">>, FromId} = lists:keyfind(<<"from_id">>, 1, Row),
     {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
     {<<"payload">>, Payload} = lists:keyfind(<<"payload">>, 1, Row),
+    Row2 = imboy_cnv:convert_at_timestamps(Row),
     % ?LOG(["Row", Row, "; Payload: ", Payload]),
     Delay = 100 + Index * 100,
     Msg = [{<<"id">>, MsgId},
@@ -146,8 +147,8 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
            {<<"from">>, imboy_hashids:encode(FromId)},
            {<<"to">>, imboy_hashids:encode(ToId)},
            {<<"payload">>, jsone:decode(Payload, [{object_format, proplist}])},
-           lists:keyfind(<<"created_at">>, 1, Row),
-           lists:keyfind(<<"server_ts">>, 1, Row)],
+           lists:keyfind(<<"created_at">>, 1, Row2),
+           lists:keyfind(<<"server_ts">>, 1, Row2)],
     % ?LOG([Delay, "Msg: ", Msg]),
     erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
     sent_offline_msg(Pid, Type, Tail, Index + 1).

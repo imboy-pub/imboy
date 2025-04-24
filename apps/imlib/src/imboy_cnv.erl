@@ -17,6 +17,10 @@
 -export([map_to_query/1]).
 -export([list_to_binary_string/1]).
 
+% imboy_cnv:convert_at_timestamps(List).
+-export([convert_at_timestamps/1]).
+
+
 
 % imboy_cnv:map_to_query(#{d=>4, a => 1, b => 2, c => 3}).
 map_to_query(Map) ->
@@ -89,3 +93,56 @@ vsn_major(Vsn) ->
             Major
     end,
     ec_cnv:to_binary(Major2).
+
+%% @doc 递归处理数据结构，转换以_at结尾的字段时间格式
+%% 支持处理Map、Proplist和嵌套结构
+-spec convert_at_timestamps(any()) -> any().
+convert_at_timestamps([]) ->
+    [];
+convert_at_timestamps(Map) when is_map(Map) andalso map_size(Map) == 0 ->
+    #{};
+convert_at_timestamps(Map) when is_map(Map) ->
+    maps:fold(fun(K, V, Acc) ->
+        Acc#{K => process_key_value(K, V)}
+    end, #{}, Map);
+
+convert_at_timestamps([{_, _}|_] = Proplist) ->
+    [{K, process_key_value(K, V)} || {K, V} <- Proplist];
+
+convert_at_timestamps(List) when is_list(List) ->
+    [process_item(Elem) || Elem <- List];
+
+convert_at_timestamps(Value) -> Value.
+
+%% @doc 处理列表中的单个元素
+process_item({K, V}) -> {K, process_key_value(K, V)};
+process_item(Item) when is_map(Item); is_list(Item) ->
+    convert_at_timestamps(Item);
+process_item(Item) -> Item.
+
+%% @doc 处理键值对
+process_key_value(Key, Value) ->
+    case imboy_str:endswith(<<"_at">>, Key) or imboy_str:endswith(<<"_ts">>, Key) of
+        true  -> convert_timestamp(Value);       % 时间字段转换
+        false -> convert_structured(Value)      % 结构化数据处理
+    end.
+
+%% @doc 处理结构化数据的递归转换
+convert_structured(V) when is_map(V); is_list(V) ->
+    convert_at_timestamps(V);
+convert_structured(V) -> V.
+
+%% @doc 时间格式转换（RFC3339 -> 毫秒时间戳）
+convert_timestamp(Value) when is_binary(Value); is_list(Value) ->
+    case imboy_dt:rfc3339_to(Value, millisecond) of
+        {error, _} ->
+            Value;
+        Num -> Num
+    end;
+convert_timestamp(Value) when is_tuple(Value) ->
+    case imboy_dt:datetime_to(Value, millisecond) of
+        {error, _} ->
+            Value;
+        Num -> Num
+    end;
+convert_timestamp(Value) -> Value.  % 非时间字符串保持原样

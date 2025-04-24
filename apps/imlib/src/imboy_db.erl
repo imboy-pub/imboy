@@ -364,7 +364,7 @@ assemble_value_filter(V) ->
 assemble_value_filter(_K, {raw, V}) ->
     V;
 assemble_value_filter(K, V) ->
-    case K =/= undefined andalso imboy_type:is_at_key(K) of
+    case K =/= undefined andalso (imboy_str:endswith(<<"_at">>, K) or imboy_str:endswith(<<"_ts">>, K)) of
         true -> handle_at_field_value(V);
         false -> original_value_processing(V)
     end.

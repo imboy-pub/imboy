@@ -20,6 +20,7 @@ dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
 dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.9.0
 
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
+# https://github.com/zotonic/depcache.git
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git 2.0.0
 
 # jsx an erlang application for consuming, producing and manipulating json

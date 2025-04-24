@@ -23,10 +23,15 @@ There are changes in the data structure (./doc/postgresql/vsn0.1) under developm
 * Erlang/OTP 24 (Cowboy 2.11 requires Erlang/OTP 24.0 or greater.)
 * Erlang/OTP 25
 * Erlang/OTP 26
+* Erlang/OTP 27
 
 * 数据库 PostgreSQL16
 
 * [more](./doc/deps_service.md)
+
+```
+erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell
+```
 
 ## erlang 的shell 访问远程节
 ```

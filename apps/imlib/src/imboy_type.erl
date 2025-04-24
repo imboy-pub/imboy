@@ -1,7 +1,6 @@
 -module(imboy_type).
 
 -export([is_numeric/1]).
--export([is_at_key/1]).
 
 -on_load(init/0).
 
@@ -28,18 +27,6 @@ is_numeric(Value) when is_list(Value) ->
     re:run(Value, Regex, [{capture, none}]) =:= match;
 is_numeric(_) ->
     false.
-
-% imboy_type:is_at_key(Key)
-%% @doc 检查是否为时间字段（以_at结尾）
-is_at_key(Key) when is_atom(Key) ->
-    is_at_key(atom_to_binary(Key, utf8));
-is_at_key(Key) when is_binary(Key) ->
-    Size = byte_size(Key),
-    Size >= 3 andalso binary:part(Key, Size-3, 3) =:= <<"_at">>;
-is_at_key(Key) when is_list(Key) ->
-    lists:suffix("_at", Key);
-is_at_key(_) -> false.
-
 
 %%%%% test
 
