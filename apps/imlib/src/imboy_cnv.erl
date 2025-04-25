@@ -122,7 +122,8 @@ process_item(Item) -> Item.
 
 %% @doc 处理键值对
 process_key_value(Key, Value) ->
-    case imboy_str:endswith(<<"_at">>, Key) or imboy_str:endswith(<<"_ts">>, Key) of
+    K = ec_cnv:to_binary(Key),
+    case imboy_str:endswith(<<"_at">>, K) or imboy_str:endswith(<<"_ts">>, K) of
         true  -> convert_timestamp(Value);       % 时间字段转换
         false -> convert_structured(Value)      % 结构化数据处理
     end.
