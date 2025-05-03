@@ -1,3 +1,8 @@
+
+# 0.6.2
+* 更新 layui 到 2.11.0;
+*
+
 # 0.6.1
 * 添加专门的 imboy_migrate 模块；
 * 添加 imboy_type 模块；
