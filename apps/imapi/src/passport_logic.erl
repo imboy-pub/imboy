@@ -45,7 +45,7 @@ quick_login(_, _, _, _) ->
 % passport_logic:send_code(<<"">>, <<"email">>).
 send_code(Mobile, <<"sms">>) ->
     % Res = throttle:check(per_minute_once, Mobile),
-    % ?LOG([per_minute_once, Res]),
+    % ?DEBUG_LOG([per_minute_once, Res]),
     % case Res of
     case throttle:check(per_minute_once, {send_code, Mobile}) of
         {limit_exceeded, _, _} ->
@@ -64,7 +64,7 @@ do_login(_Type, _Email, <<>>) ->
     {error, "密码有误"};
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
     User = user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN),
-    % ?LOG([do_login, Mobile, Pwd, User]),
+    % ?DEBUG_LOG([do_login, Mobile, Pwd, User]),
     verify_user(Pwd, User);
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
     case imboy_func:is_email(Email) of
@@ -153,7 +153,7 @@ send_email_code(ToEmail) ->
             {ok, "一分钟内重复请求不发送Email"};
         {ok, _Col, [{ToEmail, Code, ValidityAt, _}]} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            % ?LOG(Msg),
+            % ?DEBUG_LOG(Msg),
             % {ok, Msg};
             imboy_func:send_email(ToEmail, Msg);
         % {ok, _Col, []} ->
@@ -163,7 +163,7 @@ send_email_code(ToEmail) ->
             verification_code_repo:save(ToEmail, VerifyCode, imboy_dt:add(Now, {10, minute}), Now),
             Code2 = integer_to_binary(VerifyCode),
             Msg = <<"Code is ", Code2/binary, " will expire in 10 minutes.">>,
-            % ?LOG(Msg),
+            % ?DEBUG_LOG(Msg),
             % {ok, Msg}
             imboy_func:send_email(ToEmail, Msg)
     end.
@@ -243,7 +243,7 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
             {ok, _, _} = imboy_db:insert_into(Tb, Data),
             % {ok, _, [{Uid}]} = imboy_db:insert_into(Tb, Data),
             % ["do_signup_by_mobile",{ok,1,[{43}]}]
-            % ?LOG(["do_signup_by_mobile", Uid]),
+            % ?DEBUG_LOG(["do_signup_by_mobile", Uid]),
             % 注册成功
             {ok, #{}};
         _ ->
@@ -268,13 +268,13 @@ pick_data_for_insert(Data, PostVals) ->
         _ ->
             [0, 0]
     end,
-    % ?LOG(["RefUid2", RefUid2]),
+    % ?DEBUG_LOG(["RefUid2", RefUid2]),
     Account = integer_to_binary(account_server:allocate()),
-    % ?LOG(["Email", Email]),
-    % ?LOG(["Pwd2", Pwd2]),
-    % ?LOG(["PostVals", PostVals]),
-    % ?LOG(["Ip", Ip]),
-    % ?LOG(["Cosv", Cosv]),
+    % ?DEBUG_LOG(["Email", Email]),
+    % ?DEBUG_LOG(["Pwd2", Pwd2]),
+    % ?DEBUG_LOG(["PostVals", PostVals]),
+    % ?DEBUG_LOG(["Ip", Ip]),
+    % ?DEBUG_LOG(["Cosv", Cosv]),
     maps:merge(#{
         <<"account">> => Account
         , <<"nickname">> => Nickname

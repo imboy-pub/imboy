@@ -30,7 +30,7 @@
 %     end.
 ack_before(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
-    ?LOG(["CLIENT_ACK", Key]),
+    ?DEBUG_LOG(["CLIENT_ACK", Key]),
     % 缓存在 message_ds:send_next/5 中设置
     message_ds:ack(CurrentUid, DID, MsgId).
 
@@ -39,7 +39,7 @@ ack_before(CurrentUid, DID, MsgId) ->
 c2s(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     % CurrentUid = imboy_hashids:decode(From),
-    % ?LOG([CurrentUid, ToId, Data]),
+    % ?DEBUG_LOG([CurrentUid, ToId, Data]),
     % 判断当前用户是否是 ToId 用户的朋友
     % 判断当前用户是否在 ToId 的黑名单里面
     case cowboy_bstr:to_lower(To) of

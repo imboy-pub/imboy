@@ -40,7 +40,7 @@ init() ->
 join(Uid, DType, Pid, DID) ->
     % Li = list_by_uid(Uid),
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    % ?LOG(["imboy_syn:join/4", Uid, Li]),
+    % ?DEBUG_LOG(["imboy_syn:join/4", Uid, Li]),
     % [P ! stop || {P, {_DT, DID1}} <- Li, DID1 == DID],
     try
         ok = syn:join(?CHAT_SCOPE, Uid, Pid, {DType, DID}),

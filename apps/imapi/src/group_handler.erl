@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -187,7 +187,7 @@ edit(Req0, State) ->
                <<"id = ", GidBin/binary>>,
                <<"count(*)">>,
                0),
-            ?LOG([Tb, GidBin, Count]),
+            ?DEBUG_LOG([Tb, GidBin, Count]),
             case Count > 0 of
                 true ->
                     imboy_db:update(
@@ -235,7 +235,7 @@ dissolve(Req0, State) ->
         _ when Gid2 > 0 ->
             G = group_repo:find_by_id(Gid2, <<"*">>),
             OwnerUid = maps:get(<<"owner_uid">>, G, 0),
-            % ?LOG(["OwnerUid", OwnerUid, "uid", CurrentUid, G]),
+            % ?DEBUG_LOG(["OwnerUid", OwnerUid, "uid", CurrentUid, G]),
             case group_logic:dissolve(CurrentUid, Gid2, OwnerUid, G) of
                 ok ->
                     imboy_response:success(Req0, [
@@ -317,7 +317,7 @@ qrcode(Req0, State) ->
     Now = imboy_dt:now(),
     NowInt = imboy_dt:rfc3339_to(Now),
     CurrentUid = maps:get(current_uid, State),
-    % ?LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
+    % ?DEBUG_LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of
         {undefined, _} ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
@@ -329,7 +329,7 @@ qrcode(Req0, State) ->
             imboy_response:error(Req0, "验证码已过期");
         _ ->
             Gid2 = imboy_hashids:decode(Gid),
-            % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
+            % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
             Column = <<"id,title,avatar,member_count, member_max">>,
             G = group_repo:find_by_id(Gid2, Column),
             Res = group_member_logic:join(<<"scan_qr_code">>
@@ -339,7 +339,7 @@ qrcode(Req0, State) ->
                 , maps:get(<<"member_max">>, G, 0)
                 , maps:get(<<"member_count">>, G, 0)
             ),
-            % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
+            % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
             case Res of
                 ok ->
                     G2 = group_repo:find_by_id(Gid2, Column),
@@ -350,7 +350,7 @@ qrcode(Req0, State) ->
                         , <<"type">> => <<"group">>
                         , <<"group_member">> => Gm2
                     },
-                    % ?LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
+                    % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
                     imboy_response:success(Req0, group_logic:group_transfer(G3));
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg)

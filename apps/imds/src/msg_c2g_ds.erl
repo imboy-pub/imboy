@@ -20,7 +20,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) ->
         , <<"msg_id = '", Id/binary, "'">>
         , <<"count(*)">>
         , 0),
-    % ?LOG([Count]),
+    % ?DEBUG_LOG([Count]),
     case Count of
         0 ->
             msg_c2g_repo:write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid);
@@ -38,7 +38,7 @@ revoke_offline_msg(Msg2, NowTs, MsgId, FromId, MemberUids, Gid) ->
     Sql = <<"UPDATE ", Tb/binary,
         " SET payload = ", Payload3/binary,
         " WHERE msg_id = $1">>,
-    % ?LOG(["Sql ", Sql, "; MsgId ", MsgId]),
+    % ?DEBUG_LOG(["Sql ", Sql, "; MsgId ", MsgId]),
     imboy_db:execute(Sql, [MsgId]),
     % 已确认的消息需要重新确认
     imboy_db:update(

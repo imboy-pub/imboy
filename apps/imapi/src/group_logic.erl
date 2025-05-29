@@ -79,7 +79,7 @@ face2face_save(Code, Gid, Uid) ->
     end,
     GM = group_member_repo:find(Gid, Uid, <<"id">>),
     GMSize = maps:size(GM),
-    ?LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
+    ?DEBUG_LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
     case {GMSize, RowCode} of
         {_, <<>>} ->
             {error, <<"群ID不存在"/utf8>>};
@@ -187,7 +187,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
         true ->
             GMap
     end,
-    ?LOG(["group_logic/create_group", Gid, GMap2]),
+    ?DEBUG_LOG(["group_logic/create_group", Gid, GMap2]),
     {ok, _,[{Gid2}]} = group_repo:add(Conn, GMap2),
     GM = group_member_repo:find(Gid2, Uid, <<"id">>),
     GMSize = maps:size(GM),
@@ -215,7 +215,7 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     , ST_Distance(ST_GeographyFromText('SRID=4326;POINT(", Lng/binary, " ", Lat/binary, ")'), location) as distance
     from public.group_random_code where code = '", Code/binary, "' AND validity_at > '", Now/binary,"' AND ST_DWithin(location::geography, ST_GeographyFromText('POINT(",
             Lng/binary, " ", Lat/binary, ")'), ", Radius/binary, ") order by distance asc limit ", Limit/binary, ";">>,
-    ?LOG(Sql),
+    ?DEBUG_LOG(Sql),
     imboy_db:query(Sql).
 
 

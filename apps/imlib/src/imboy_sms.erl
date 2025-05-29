@@ -33,10 +33,10 @@ send(Mobile, Content, <<"yjsms">>) ->
         , <<"timestamp">> => Ts
         , <<"sign">> => Sign
     },
-    % ?LOG([Data]),
+    % ?DEBUG_LOG([Data]),
     {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     % RespMap = imboy_req:post(URL, Data, Headers),
-    ?LOG([RespMap]),
+    ?DEBUG_LOG([RespMap]),
     Code = maps:get(<<"code">>, RespMap),
     case Code of
         0 ->
@@ -73,10 +73,10 @@ send(Mobile, Code, <<"jsms">>) ->
         , <<"mobile">> => Mobile
         , <<"sign_id">> => <<"28010">> % IMBoy
     },
-    % ?LOG([Data]),
+    % ?DEBUG_LOG([Data]),
     % {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     RespMap = imboy_req:post(URL, Data, Headers),
-    ?LOG([RespMap]),
+    ?DEBUG_LOG([RespMap]),
     RespMap.
 
 
@@ -97,7 +97,7 @@ jverification(Tk) ->
     },
     {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     % RespMap = imboy_req:post(URL, Data, Headers),
-    ?LOG([RespMap]),
+    ?DEBUG_LOG([RespMap]),
     case maps:get(<<"code">>, RespMap, undefined) of
         8000 ->
             Phone = maps:get(<<"phone">>, RespMap),

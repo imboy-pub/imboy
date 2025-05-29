@@ -37,7 +37,7 @@ save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
         , new_vsn => ec_cnv:to_integer(NewVsn)
         , status => ec_cnv:to_integer(Status)
     },
-    ?LOG([count, Count]),
+    ?DEBUG_LOG([count, Count]),
     if Count > 0 ->
             imboy_db:update(
                 app_ddl_repo:tablename()
@@ -52,7 +52,7 @@ save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
 delete(Where) ->
     Tb = app_ddl_repo:tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    ?LOG([Sql]),
+    ?DEBUG_LOG([Sql]),
     imboy_db:execute(Sql, []),
     ok.
 
@@ -64,7 +64,7 @@ get_ddl(Where, OrderBy, Column) ->
     % -- 类型 1 升、降级  3 全量安装
     % Where = <<"status=1 AND type = 1 AND new_vsn<=", NewVsn2/binary>>,
      Page = imboy_db:page_for_where(Tb, 500, 0, Where, OrderBy, Column),
-    % ?LOG(Page),
+    % ?DEBUG_LOG(Page),
     % Page.
     Items = [ddl_to_list(proplists:get_value(<<"ddl">>, Item))  || Item <- Page],
     lists:flatten(Items).

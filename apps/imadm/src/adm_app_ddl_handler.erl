@@ -19,7 +19,7 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),

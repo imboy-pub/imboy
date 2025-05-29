@@ -54,7 +54,7 @@ init([]) ->
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 handle_call(Request, From, State) ->
-    ?LOG([handle_call, Request, From, State]),
+    ?DEBUG_LOG([handle_call, Request, From, State]),
     {reply, ignored, State}.
 
 
@@ -63,7 +63,7 @@ handle_call(Request, From, State) ->
 
 % 用户注册成功后的逻辑处理
 handle_cast({signup_success, _Uid, _PostVals}, State) ->
-    % ?LOG([Uid, imboy_hashids:decode(Uid), PostVals]),
+    % ?DEBUG_LOG([Uid, imboy_hashids:decode(Uid), PostVals]),
     % 生成account
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
@@ -73,7 +73,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     % 更新 user_client 表
     Uid2 = imboy_hashids:decode(Uid),
     Now = imboy_dt:now(),
-    % ?LOG([Uid, Uid2, PostVals]),
+    % ?DEBUG_LOG([Uid, Uid2, PostVals]),
     % 记录设备信息
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_repo:save(Now, Uid2, DID, PostVals),
@@ -81,7 +81,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
 handle_cast({ws_online, Uid, _DType, DID}, State) ->
-    % ?LOG([handle_cast, ws_online, Uid, DType, DID, State]),
+    % ?DEBUG_LOG([handle_cast, ws_online, Uid, DType, DID, State]),
     % 更新 最近活跃时间
     Set = <<"last_active_at = $1">>,
     SetArgs = [imboy_dt:now()],
@@ -89,18 +89,18 @@ handle_cast({ws_online, Uid, _DType, DID}, State) ->
     {noreply, State, hibernate};
 
 handle_cast({notice_friend, Uid, ToState}, State) ->
-    ?LOG([notice_friend, Uid, ToState]),
+    ?DEBUG_LOG([notice_friend, Uid, ToState]),
     notice_friend(Uid, ToState),
     {noreply, State, hibernate};
 handle_cast({offline, Uid, _Pid, DID}, State) ->
-    ?LOG([offline, Uid, State, DID]),
+    ?DEBUG_LOG([offline, Uid, State, DID]),
     notice_friend(Uid, <<"offline">>),
     {noreply, State, hibernate};
 handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
     cancel(Uid, CreatedAt, Opt),
     {noreply, State, hibernate};
 handle_cast({online, Uid, Pid, DID}, State) ->
-    % ?LOG([online, Uid, Pid, State, DID]),
+    % ?DEBUG_LOG([online, Uid, Pid, State, DID]),
     DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
     MsgId = <<"logged_another_device">>,
@@ -122,7 +122,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
         true ->
             ok
     end,
-    % ?LOG(["before check_msg/2",Uid, Pid, State]),
+    % ?DEBUG_LOG(["before check_msg/2",Uid, Pid, State]),
     % 检查 S2C C2C 离线消息
     msg_s2c_logic:check_msg(Uid, Pid, DID),
     msg_c2c_logic:check_msg(Uid, Pid, DID),
@@ -131,7 +131,7 @@ handle_cast({online, Uid, Pid, DID}, State) ->
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
-    ?LOG([Msg, State]),
+    ?DEBUG_LOG([Msg, State]),
     {noreply, State}.
 
 

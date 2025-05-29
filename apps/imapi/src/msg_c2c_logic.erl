@@ -23,7 +23,7 @@ c2c(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = imboy_hashids:decode(To),
     % CurrentUid = imboy_hashids:decode(From),
-    ?LOG([CurrentUid, ToId, Data]),
+    ?DEBUG_LOG([CurrentUid, ToId, Data]),
     % 判断当前用户是否是 ToId 用户的朋友
     IsFriend = friend_ds:is_friend(ToId, CurrentUid),
     % 判断当前用户是否在 ToId 的黑名单里面
@@ -82,7 +82,7 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:decode(To),
-    % ?LOG([From, To, ToId, Type, Data]),
+    % ?DEBUG_LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:now(),
 
     Payload = [
@@ -116,7 +116,7 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量
 %%
 check_msg(Uid, Pid, _DID) ->
-    % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
+    % ?DEBUG_LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
     case msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of
         [] ->
             ok;
@@ -140,7 +140,7 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
     {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
     {<<"payload">>, Payload} = lists:keyfind(<<"payload">>, 1, Row),
     Row2 = imboy_cnv:convert_at_timestamps(Row),
-    % ?LOG(["Row", Row, "; Payload: ", Payload]),
+    % ?DEBUG_LOG(["Row", Row, "; Payload: ", Payload]),
     Delay = 100 + Index * 100,
     Msg = [{<<"id">>, MsgId},
            {<<"type">>, Type},
@@ -149,6 +149,6 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
            {<<"payload">>, jsone:decode(Payload, [{object_format, proplist}])},
            lists:keyfind(<<"created_at">>, 1, Row2),
            lists:keyfind(<<"server_ts">>, 1, Row2)],
-    % ?LOG([Delay, "Msg: ", Msg]),
+    % ?DEBUG_LOG([Delay, "Msg: ", Msg]),
     erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
     sent_offline_msg(Pid, Type, Tail, Index + 1).

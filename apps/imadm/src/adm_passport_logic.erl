@@ -34,7 +34,7 @@ do_login(Mobile, Pwd) ->
         false ->
             adm_user_repo:find_by_account(Mobile, ?LOGIN_COLUMN)
     end,
-    % ?LOG(User),
+    % ?DEBUG_LOG(User),
     verify_user(Pwd, User).
 
 

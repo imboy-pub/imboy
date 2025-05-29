@@ -12,7 +12,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -54,11 +54,11 @@ api_init(Req0) ->
         <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
      },
     % imboy_response:success(Req0, Data, "success.").
-    % ?LOG([DType, Vsn, Pkg, SignKey, Data]),
+    % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % imboy_response:success(Req0, Data, "success.").
     IV = config_ds:get(solidified_key_iv),
     Key = imboy_hasher:md5(SignKey),
-    % ?LOG([key, Key, iv, IV]),
+    % ?DEBUG_LOG([key, Key, iv, IV]),
     Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     imboy_response:success(Req0, #{
         test => imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>),

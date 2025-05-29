@@ -26,7 +26,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 
     OldMsgId = proplists:get_value(<<"old_msg_id">>, Payload),
     % CurrentUid = imboy_hashids:decode(From),
-    ?LOG([CurrentUid, ToId, Data]),
+    ?DEBUG_LOG([CurrentUid, ToId, Data]),
     NowTs = imboy_dt:now(),
 
     % 删除原有消息
@@ -41,7 +41,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 按策略发送消息
     From = imboy_hashids:encode(CurrentUid),
     Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId),
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     % 给操作者回复消息
@@ -93,7 +93,7 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload ) ->
 
     % 按策略发送消息
     Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId),
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(Uid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
@@ -112,7 +112,7 @@ s2c_client_ack(MsgId, CurrentUid, _DID) ->
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量
 %%
 check_msg(Uid, Pid, _DID) ->
-    % ?LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
+    % ?DEBUG_LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
     case msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of
         [] ->
             ok;
@@ -134,7 +134,7 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
     {<<"from_id">>, FromId} = lists:keyfind(<<"from_id">>, 1, Row),
     {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
     {<<"payload">>, Payload} = lists:keyfind(<<"payload">>, 1, Row),
-    % ?LOG(["Row", Row, "; Payload: ", Payload]),
+    % ?DEBUG_LOG(["Row", Row, "; Payload: ", Payload]),
     Row2 = imboy_cnv:convert_at_timestamps(Row),
     Delay = 100 + Index * 100,
     Msg = [{<<"id">>, MsgId},
@@ -144,6 +144,6 @@ sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
            {<<"payload">>, jsone:decode(Payload, [{object_format, proplist}])},
            lists:keyfind(<<"created_at">>, 1, Row2),
            lists:keyfind(<<"server_ts">>, 1, Row2)],
-    % ?LOG([Delay, "Msg: ", Msg]),
+    % ?DEBUG_LOG([Delay, "Msg: ", Msg]),
     erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
     sent_offline_msg(Pid, Type, Tail, Index + 1).

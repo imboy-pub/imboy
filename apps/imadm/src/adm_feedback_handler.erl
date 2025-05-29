@@ -19,7 +19,7 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
@@ -75,7 +75,7 @@ reply(<<"POST">>, Req0, State) ->
         {Val2, _} ->
             {ok, Val2}
     end,
-    % ?LOG(["FeedbackId", FeedbackId, PostVals]),
+    % ?DEBUG_LOG(["FeedbackId", FeedbackId, PostVals]),
     if
         is_integer(FeedbackId), FeedbackId > 0 ->
             feedback_ds:add_reply(#{

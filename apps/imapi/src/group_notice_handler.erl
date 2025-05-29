@@ -19,7 +19,7 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
@@ -55,7 +55,7 @@ add(<<"POST">>, Req0, State) ->
     ExpiredAt = proplists:get_value(<<"expired_at">>, PostVals, <<>>),
     ExpiredAt2 = imboy_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = imboy_dt:now(),
-    % ?LOG([ExpiredAt, ExpiredAt2]),
+    % ?DEBUG_LOG([ExpiredAt, ExpiredAt2]),
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
@@ -95,7 +95,7 @@ edit(<<"POST">>, Req0, State) ->
     ExpiredAt2 = imboy_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = imboy_dt:now(),
 
-    % ?LOG([ExpiredAt, ExpiredAt2]),
+    % ?DEBUG_LOG([ExpiredAt, ExpiredAt2]),
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
@@ -158,7 +158,7 @@ delete(<<"DELETE">>, Req0, _State) ->
     Tb = group_notice_repo:tablename(),
     Where = <<"id=", (ec_cnv:to_binary(Id))/binary, " AND group_id=", (ec_cnv:to_binary(Gid2))/binary>>,
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     imboy_db:execute(Sql, []),
     imboy_response:success(Req0).
 

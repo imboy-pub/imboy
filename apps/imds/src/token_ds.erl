@@ -45,7 +45,7 @@ decrypt_token(Token) ->
                     {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
         JWT_ERR ->
-            ?LOG(['JWT_ERR', JWT_ERR]),
+            ?DEBUG_LOG(['JWT_ERR', JWT_ERR]),
             {error, 706, "Invalid token", #{err => JWT_ERR}}
     catch
         Class:Reason:Stacktrace ->

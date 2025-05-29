@@ -40,7 +40,7 @@ find(Gid, Uid, Column) ->
     % use index uk_Gid_Uid
     Where = <<"WHERE group_id = ", (ec_cnv:to_binary(Gid))/binary, " AND user_id = ", (ec_cnv:to_binary(Uid))/binary>>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     imboy_db:find(Sql).
 
 list_by_gid(Gid, Column) ->

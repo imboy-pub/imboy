@@ -26,7 +26,7 @@ generate(Plaintext, hmac_sha512) ->
 
 -spec verify(list(), list()) -> {ok, any()} | {error, Msg :: list()}.
 verify(Plaintext, Ciphertext) ->
-    % ?LOG([Plaintext, base64:decode(Plaintext), Ciphertext, base64:decode(Ciphertext)]),
+    % ?DEBUG_LOG([Plaintext, base64:decode(Plaintext), Ciphertext, base64:decode(Ciphertext)]),
     try
         Ciphertext2 = base64:decode(Ciphertext),
         binary:split(Ciphertext2, <<$:>>, [global, trim])
@@ -34,11 +34,11 @@ verify(Plaintext, Ciphertext) ->
         [Salt, <<"hmac_sha512">>, Ciphertext3] ->
             verify(Plaintext, hmac_sha512, Salt, Ciphertext3);
         _Msg ->
-            % ?LOG(Msg),
+            % ?DEBUG_LOG(Msg),
             verify(Plaintext, default_md5, config_ds:get(password_salt), Ciphertext)
     catch
         _:_ ->
-            % ?LOG([default_md5, Plaintext, Ciphertext]),
+            % ?DEBUG_LOG([default_md5, Plaintext, Ciphertext]),
             verify(Plaintext, default_md5, config_ds:get(password_salt), Ciphertext)
     end.
 
@@ -49,13 +49,13 @@ verify(Plaintext, Ciphertext) ->
 
 md5_test() ->
     Resp1 = imboy_password:verify("admin888", "299e0c8fbc9cf877bcc46bcee2ca5987"),
-    ?LOG(Resp1),
+    ?DEBUG_LOG(Resp1),
     Plaintext = "abc",
     Ciphertext = generate(Plaintext),
     Resp = verify(Plaintext, Ciphertext),
 
     ?assert(Resp =:= {ok, []}),
-    ?LOG(Resp).
+    ?DEBUG_LOG(Resp).
 
 
 hmac_sha512_test() ->
@@ -63,7 +63,7 @@ hmac_sha512_test() ->
     Ciphertext = generate(Plaintext),
     Resp = verify(Plaintext, Ciphertext),
     ?assert(Resp =:= {ok, []}),
-    ?LOG(Resp).
+    ?DEBUG_LOG(Resp).
 
 
 -endif.
@@ -79,15 +79,15 @@ verify(Plaintext, default_md5, Salt, Ciphertext) when is_list(Ciphertext) ->
     verify(Plaintext, default_md5, Salt, list_to_binary(Ciphertext));
 verify(Plaintext, default_md5, Salt, Ciphertext) ->
     Plaintext2 = <<Plaintext/binary, Salt/binary>>,
-    % ?LOG(Plaintext2),
+    % ?DEBUG_LOG(Plaintext2),
     Ciphertext2 = imboy_hasher:md5(binary_to_list(Plaintext2)),
-    % ?LOG([default_md5, Ciphertext2, Ciphertext]),
+    % ?DEBUG_LOG([default_md5, Ciphertext2, Ciphertext]),
     eq(Ciphertext, Ciphertext2);
 verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = imboy_hasher:hmac_sha512(Plaintext, Salt),
     % io:format("~p~n", [Plaintext]),
     % io:format("~p~n", [Ciphertext2]),
-    % ?LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    % ?DEBUG_LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
     eq(Ciphertext, Ciphertext2).
 
 

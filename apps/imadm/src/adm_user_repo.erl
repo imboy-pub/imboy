@@ -33,7 +33,7 @@ tablename() ->
 find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:find(Sql, [Email]).
 
 
@@ -42,7 +42,7 @@ find_by_email(Email, Column) ->
 find_by_mobile(Mobile, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
-    % ?LOG(["sql ", Sql]),
+    % ?DEBUG_LOG(["sql ", Sql]),
     imboy_db:find(Sql, [Mobile]).
 
 
@@ -56,7 +56,7 @@ find_by_account(Username, Column) ->
 find_by_id(Uid, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     imboy_db:find(Sql, [Uid]).
 
 

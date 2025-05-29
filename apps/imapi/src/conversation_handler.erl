@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -39,12 +39,12 @@ online(Req0, _State) ->
         , CountUser
         , Count]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
-    % ?LOG(Res),
+    % ?DEBUG_LOG(Res),
     List2 =
         case maps:get(type, Res) of
             <<"list">> ->
                 #{limit := Limit} = cowboy_req:match_qs([{limit, [], "10"}], Req0),
-                % ?LOG([limit, Limit]),
+                % ?DEBUG_LOG([limit, Limit]),
                 {Limit2, _} = string:to_integer(Limit),
 
                 % imboy_syn:list_by_limit(Limit);
@@ -62,10 +62,10 @@ online(Req0, _State) ->
 
 mine(Req0, State) ->
     #{last_server_ts := ServerTS} = cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
-    % ?LOG(ServerTS),
+    % ?DEBUG_LOG(ServerTS),
     CurrentUid = maps:get(current_uid, State),
     List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
-    % ?LOG(["mine_list", List]),
+    % ?DEBUG_LOG(["mine_list", List]),
     List2 = mine_transfer(List),
     imboy_response:success(Req0, List2).
 

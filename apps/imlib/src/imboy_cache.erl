@@ -47,7 +47,7 @@
 
 %% @doc Start depcache instance based on site configuration
 start_link(Args) ->
-    % ?LOG(Args),
+    % ?DEBUG_LOG(Args),
     depcache:start_link(?DEPCACHE_SERVER,
                         #{
                           memory_max => proplists:get_value(depcache_memory_max, Args),
@@ -101,7 +101,7 @@ set(Key, Data) ->
 % imboy_cache:set("test", 1, 3).
 % imboy_cache:get("test").
 set(Key, Data, MaxAge) ->
-    % ?LOG(["imboy_cache/set/3", Key, "; ", Data, "; ", MaxAge]),
+    % ?DEBUG_LOG(["imboy_cache/set/3", Key, "; ", Data, "; ", MaxAge]),
     depcache:set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).
 
 
@@ -122,7 +122,7 @@ get_wait(Key) ->
 %% @spec get(Key) -> {ok, Data} | undefined
 %% @doc Fetch the key from the cache, return the data or an undefined if not found (or not valid)
 get(Key) ->
-    % ?LOG(["imboy_cache/get/`", Key]),
+    % ?DEBUG_LOG(["imboy_cache/get/`", Key]),
     depcache:get(Key, ?DEPCACHE_SERVER).
 
 

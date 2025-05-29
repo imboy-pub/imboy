@@ -52,7 +52,7 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 init({Id, Index, Ip}) ->
-    % ?LOG({Id, Index, Ip}),
+    % ?DEBUG_LOG({Id, Index, Ip}),
     case connect_ws(Id, Index, Ip) of
         {ok, Socket, Id, Index} ->
             gen_tcp:controlling_process(Socket, self()),
@@ -63,11 +63,11 @@ init({Id, Index, Ip}) ->
     end,
     {ok, []};
 init(Args) ->
-    ?LOG(Args),
+    ?DEBUG_LOG(Args),
     {ok, []}.
 
 handle_info(Info, State) ->
-    ?LOG([Info, State]),
+    ?DEBUG_LOG([Info, State]),
     {noreply, State}.
 
 handle_cast({receive_msg, Socket, Id, Index, Ip}, State) ->
@@ -80,27 +80,27 @@ handle_cast({receive_msg, Socket, Id, Index, Ip}, State) ->
             timer:sleep(3000 + Index * 100),
             init({Id, Index + 1, Ip});
         Err ->
-            ?LOG(Err),
+            ?DEBUG_LOG(Err),
             timer:sleep(3000 + Index * 100),
             init({Id, Index + 1, Ip})
     end,
     {noreply, State, hibernate};
 handle_cast(Msg, State) ->
-    ?LOG([Msg, State]),
+    ?DEBUG_LOG([Msg, State]),
     {noreply, State}.
 
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 handle_call(Msg, From, State) ->
-    ?LOG([Msg, From, State]),
+    ?DEBUG_LOG([Msg, From, State]),
     {reply, ok, State}.
 
 code_change(OldVsn, State, Extra) ->
-    ?LOG([OldVsn, State, Extra]),
+    ?DEBUG_LOG([OldVsn, State, Extra]),
     {ok, State}.
 
 terminate(Reason, Data) ->
-    ?LOG([Reason, Data]),
+    ?DEBUG_LOG([Reason, Data]),
     ok.
 
 start(Begin, End) ->
@@ -114,7 +114,7 @@ start(Begin, End) ->
     end),
     {_, Time1} = statistics(runtime),
     {_, Time2} = statistics(wall_clock),
-    ?LOG(L),
+    ?DEBUG_LOG(L),
     U1 = Time1 * 1000 / End,
     U2 = Time2 * 1000 /End,
     io:format("Process spawn time=~p (~p) microseconds ~n", [U1, U2]).
@@ -157,10 +157,10 @@ connect_ws(Id, Index, _Ip) ->
                     <<"Sec-WebSocket-Key: u5uqxRXPut2megmbeLqEsQ==\r\n">>,
                     <<"Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n">>,
                     <<"\r\n">>],
-                % ?LOG([Id, Token, Header]),
+                % ?DEBUG_LOG([Id, Token, Header]),
                 gen_tcp:send(Socket, Header),
                 {ok, Socket, Id, Index};
             {error, Reason} ->
-                ?LOG([error, Reason, Id, Index]),
+                ?DEBUG_LOG([error, Reason, Id, Index]),
                 {Id, Index}
     end.

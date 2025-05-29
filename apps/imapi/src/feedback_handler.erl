@@ -19,10 +19,10 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State0),
+    % ?DEBUG_LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    % ?LOG([Action, State]),
+    % ?DEBUG_LOG([Action, State]),
     Req1 = case Action of
         page ->
             page(Req0, State);

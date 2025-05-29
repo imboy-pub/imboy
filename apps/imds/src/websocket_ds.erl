@@ -29,7 +29,7 @@ check_subprotocols([H | _Tail], Req0) ->
 
 -spec auth(binary(), any(), map(), any()) -> any().
 auth(Token, Req, State, Opt) when is_binary(Token) ->
-    % ?LOG(["token", Token, token_ds:decrypt_token(Token)]),
+    % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         % TODO check token expire
         {ok, Uid, _ExpireDAt, _Type} ->
@@ -53,7 +53,7 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             {ok, Req, State#{error => Code, msg => Msg}}
     end;
 auth(Auth, Req0, State0, _Opt) ->
-    ?LOG(["Auth", Auth]),
+    ?DEBUG_LOG(["Auth", Auth]),
     % HTTP 412 - 先决条件失败 缺少token参数
     Req1 = cowboy_req:reply(412, Req0),
     {ok, Req1, State0}.

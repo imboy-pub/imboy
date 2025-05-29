@@ -136,7 +136,7 @@ condition(_, _, Authorization, Req, Env) ->
 do_authorization(undefined, Req, _Env) ->
     {stop, Req};
 do_authorization(Authorization, Req, Env) ->
-    % ?LOG(['Authorization', Authorization]),
+    % ?DEBUG_LOG(['Authorization', Authorization]),
     case token_ds:decrypt_token(Authorization) of
         {ok, Id, _ExpireDAt, <<"tk">>} when is_integer(Id) ->
             #{handler_opts := HandlerOpts} = Env,

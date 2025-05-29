@@ -30,7 +30,7 @@ page(Uid, Limit, Offset) ->
 
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary,
             " ORDER BY last_active_at desc LIMIT $3 OFFSET $4">>,
-    % ?LOG([Sql, Uid, Limit, Offset]),
+    % ?DEBUG_LOG([Sql, Uid, Limit, Offset]),
     imboy_db:query(Sql, [1, Uid, Limit, Offset]).
 
 
@@ -72,7 +72,7 @@ delete(Uid, DID) ->
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
-    ?LOG(["login save ", Now, Uid, DID, LoginCount]),
+    ?DEBUG_LOG(["login save ", Now, Uid, DID, LoginCount]),
     save(Now, Uid, PostVals, DID, LoginCount);
 save(_Now, _Uid, _DID, _PostVals) ->
     % 无设备ID登录，无需记录设备信息

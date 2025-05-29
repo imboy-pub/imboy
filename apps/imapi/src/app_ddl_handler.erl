@@ -23,7 +23,7 @@ init(Req0, State0) ->
     % PRAGMA user_version
     % 修改
     % PRAGMA user_version = 6
-    % ?LOG(State0),
+    % ?DEBUG_LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     #{type := Type} = cowboy_req:match_qs([{type, [], <<>>}], Req0),

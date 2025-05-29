@@ -35,7 +35,7 @@ set_password(Uid, Req0) ->
     PostVals = imboy_req:post_params(Req0),
     NewPwd = proplists:get_value(<<"new_pwd">>, PostVals),
 
-    % ?LOG(['Uid ', Uid]),
+    % ?DEBUG_LOG(['Uid ', Uid]),
     User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
     OldPwd = maps:get(<<"password">>, User, not_find),
     case OldPwd of
@@ -183,7 +183,7 @@ cancel_logout(Uid, _Req0) ->
 %dtype 设备类型 web ios android macos windows等
 -spec online(integer(), binary(), pid(), binary()) -> ok.
 online(Uid, DType, Pid, DID) ->
-    % ?LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
+    % ?DEBUG_LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
     imboy_syn:join(Uid, DType, Pid, DID),
     % 用异步队列实现 检查离线消息 等
     user_server:cast_online(Uid, Pid, DID, DType),
@@ -394,6 +394,6 @@ send_bind_email(Uid, Email) ->
         " )。<br/><br/>如果这是你的操作，请 <a href=\""/utf8, Url/binary,
         "\" target=\"_blank\">点击确认</a> 完成邮箱绑定，截止之"/utf8,
         (ec_cnv:to_binary(ExpireAt))/binary, "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：https://www.imboy.pub/"/utf8>>,
-    % ?LOG(Body),
+    % ?DEBUG_LOG(Body),
     imboy_func:send_email(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
     {ok, "success"}.

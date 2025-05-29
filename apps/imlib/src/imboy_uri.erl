@@ -76,7 +76,7 @@ upload(URL, FilePath, Name, MimeType, RequestData) ->
     {ok, Data} = file:read_file(FilePath),
     Boundary = imboy_dt:microsecond(),
     RequestBody = format_multipart_formdata(Data, RequestData, Name, [Filename], MimeType, integer_to_binary(Boundary)),
-    % ?LOG(['RequestBody', RequestBody]),
+    % ?DEBUG_LOG(['RequestBody', RequestBody]),
     % RequestBody.
     ContentType = "multipart/form-data; boundary=" ++ integer_to_list(Boundary),
 
@@ -85,7 +85,7 @@ upload(URL, FilePath, Name, MimeType, RequestData) ->
     HTTPOptions = [],
     Options = [{body_format, binary}],
     Response = httpc:request(post, {binary_to_list(URL), Headers, ContentType, RequestBody}, HTTPOptions, Options),
-    % ?LOG([response, Response]),
+    % ?DEBUG_LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
             {ok, jsone:decode(Body)};
@@ -175,7 +175,7 @@ check_auth(Url) ->
 format_multipart_formdata(Data, Params, Name, FileNames, MimeType, Boundary) ->
     StartBoundary = erlang:iolist_to_binary([<<"--">>, Boundary]),
     LineSeparator = <<"\r\n">>,
-    % ?LOG(['Params', Params]),
+    % ?DEBUG_LOG(['Params', Params]),
     WithParams = lists:foldl(fun({Key, Value}, Acc) ->
                                      erlang:iolist_to_binary([Acc,
                                                               StartBoundary,

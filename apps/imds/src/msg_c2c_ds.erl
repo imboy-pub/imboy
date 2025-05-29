@@ -73,7 +73,7 @@ read_msg_filter(Where, Limit) ->
     P = imboy_hasher:decoded_payload(),
     Column = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
     Res = msg_c2c_repo:read_msg(Where, Column, Limit),
-    % ?LOG([Res]),
+    % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Column2, Rows} ->
             [ lists:zipwith(fun(X, Y) -> {X, Y} end, Column2, tuple_to_list(Row)) || Row <- Rows ];

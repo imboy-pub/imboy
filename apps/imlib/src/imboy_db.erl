@@ -75,19 +75,19 @@ with_transaction(F, Opts0, RetriesLeft, Delay) ->
 pluck(Tb, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
-    % ?LOG([pluck, Sql]),
+    % ?DEBUG_LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 
 pluck(Tb, <<>>, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
-    % ?LOG([pluck, Sql]),
+    % ?DEBUG_LOG([pluck, Sql]),
     pluck(Sql, Default);
 pluck(Tb, Where, Field, Default) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
-    % ?LOG([pluck, Sql]),
+    % ?DEBUG_LOG([pluck, Sql]),
     pluck(Sql, Default).
 
 
@@ -110,7 +110,7 @@ pluck(Query, Default) ->
 
 find(Tb, Where, OrderBy, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT 1">>,
-    % ?LOG([find, Sql]),
+    % ?DEBUG_LOG([find, Sql]),
     find(Sql).
 
 find(Sql) ->
@@ -143,8 +143,8 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
     % Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % Res = imboy_db:query(Sql, [Limit, Offset]),
-    % ?LOG(['Sql', Sql]),
-    % ?LOG(['Res', Res]),
+    % ?DEBUG_LOG(['Sql', Sql]),
+    % ?DEBUG_LOG(['Res', Res]),
     % case Res of
     case imboy_db:query(Sql, [Limit, Offset]) of
         {ok, _, []} ->
@@ -185,7 +185,7 @@ list(Conn, Sql) ->
 % imboy_db:query("select created_at from adm_user limit 1").
 -spec query(binary() | list()) -> {ok, list(), list()} | {error, any()}.
 query(Sql) ->
-    % ?LOG([imboy_dt:now(), Sql]),
+    % ?DEBUG_LOG([imboy_dt:now(), Sql]),
     Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res =
@@ -194,7 +194,7 @@ query(Sql) ->
                 epgsql:equery(Conn, Sql);
             pgsql when Conn == error_no_members ->
                 imboy_log:error(io_lib:format("imboy_db:query/1 sql:~s;~n", [Sql])),
-                % ?LOG([imboy_dt:now(), Sql]),
+                % ?DEBUG_LOG([imboy_dt:now(), Sql]),
                 % 休眠 1秒
                 timer:sleep(1),
                 query(Sql);
@@ -227,7 +227,7 @@ query(Sql, Params) ->
 
 -spec execute(any(), list()) -> {ok, LastInsertId :: integer()} | {error, any()}.
 execute(Sql, Params) ->
-    % ?LOG(io:format("~s\n", [Sql])),
+    % ?DEBUG_LOG(io:format("~s\n", [Sql])),
     Driver = config_ds:env(sql_driver),
     Conn = pooler:take_member(Driver),
     Res =
@@ -244,19 +244,19 @@ execute(Sql, Params) ->
                 {error, not_supported}
         end,
     pooler:return_member(Driver, Conn),
-    ?LOG(['execute ', Res]),
+    ?DEBUG_LOG(['execute ', Res]),
     Res.
 
 
 execute(Conn, Sql, Params) ->
-    ?LOG(io:format("sql: ~s\n", [Sql])),
-    % ?LOG(io:format("Params: ~p\n", [Params])),
+    ?DEBUG_LOG(io:format("sql: ~s\n", [Sql])),
+    % ?DEBUG_LOG(io:format("Params: ~p\n", [Params])),
     % Res = epgsql:parse(Conn, Sql),
-    % ?LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
+    % ?DEBUG_LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
     % {ok, Stmt} = Res,
     {ok, Stmt} = epgsql:parse(Conn, Sql),
     [Res2] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
-    % ?LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
+    % ?DEBUG_LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
     % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
     Res2.
 
@@ -276,7 +276,7 @@ insert_into(Tb, Column, Value, ReturningOnConflict) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    ?LOG([insert_into, Sql]),
+    ?DEBUG_LOG([insert_into, Sql]),
     execute(<<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 
 add(Conn, Tb, Data) ->
@@ -285,7 +285,7 @@ add(Conn, Tb, Data) ->
 add(Conn, Tb, Data, ReturningOnConflict) ->
     {Column, Value} = process_insert_data(Data),
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    % ?LOG(io:format("~s\n", [Sql])),
+    % ?DEBUG_LOG(io:format("~s\n", [Sql])),
     execute(Conn, <<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 
 
@@ -299,7 +299,7 @@ assemble_sql(Prefix, Tb, Column, Value) when is_list(Value) ->
 assemble_sql(Prefix, Tb, Column, Value) ->
     Tb2 = public_tablename(Tb),
     Sql = <<Prefix/binary, " ", Tb2/binary, " ", Column/binary, " VALUES ", Value/binary>>,
-    % ?LOG(io:format("~s\n", [Sql])),
+    % ?DEBUG_LOG(io:format("~s\n", [Sql])),
     Sql.
 
 
@@ -325,7 +325,7 @@ update(Conn, Tb, Where, KV) when is_map(KV) ->
 update(Conn, Tb, Where, SetBin) ->
     Tb2 = public_tablename(Tb),
     Sql = <<"UPDATE ", Tb2/binary, " SET ", SetBin/binary, " WHERE ", Where/binary>>,
-    ?LOG(io:format("update/4 sql ~s\n", [Sql])),
+    ?DEBUG_LOG(io:format("update/4 sql ~s\n", [Sql])),
     imboy_db:execute(Conn, Sql, []).
 
 
@@ -400,7 +400,7 @@ original_value_processing(V) ->
     end.
 
 query_resp_map(Res) ->
-    % ?LOG([Res]),
+    % ?DEBUG_LOG([Res]),
     case Res of
         {ok, _, []} ->
             #{};

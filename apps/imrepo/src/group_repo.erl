@@ -32,7 +32,7 @@ find_by_id(Gid, Column) ->
     Tb = tablename(),
     Where = <<"WHERE id =", (ec_cnv:to_binary(Gid))/binary>>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     % imboy_db:query(Sql).
     imboy_db:find(Sql).
 
@@ -45,7 +45,7 @@ list_by_ids(Ids, Column) ->
     Ids2 = list_to_binary(lists:concat(L2)),
     Where = <<"WHERE id IN (", Ids2/binary, ")">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary>>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     imboy_db:proplists(Sql).
 
 

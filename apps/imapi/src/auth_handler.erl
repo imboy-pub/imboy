@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
@@ -43,7 +43,7 @@ assets(<<"POST">>, Req0) ->
         {Scene, Path}
     of
         {<<"open">>, Path2} ->
-            % ?LOG([Path2, AuthTk, Val]),
+            % ?DEBUG_LOG([Path2, AuthTk, Val]),
             Body = auth_logic:verify_for_open(Path2, AuthTk, Val),
             cowboy_req:reply(200,
                              #{<<"content-type">> => <<"text/html">>},

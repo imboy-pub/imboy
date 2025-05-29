@@ -29,7 +29,7 @@ make_myself_visible(_Uid, _Lat, <<>>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
-    ?LOG([Uid, Lat, Lng]),
+    ?DEBUG_LOG([Uid, Lat, Lng]),
     geo_people_nearby_repo:save(Uid, Lat, Lng),
     ok.
 
@@ -48,7 +48,7 @@ people_nearby(Lng, Lat, Radius, <<"km">>, Limit) ->
     RadiusM = binary_to_integer(Radius) * 1000,
     people_nearby(Lng, Lat, integer_to_binary(RadiusM), <<"m">>, Limit);
 people_nearby(Lng, Lat, Radius, Unit, Limit) ->
-    % ?LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
+    % ?DEBUG_LOG([people_nearby, logic, Lng, Lat, Radius, Unit, Limit]),
     % geo_people_nearby_repo:people_nearby(<<"113.88308">>, <<"22.55328">>, <<"10000000">>, <<"m">>,  <<"10">>).
     {ok, _, Li} = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
     [ imboy_hashids:replace_id([{<<"id">>, Id},

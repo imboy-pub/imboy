@@ -12,7 +12,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -58,7 +58,7 @@ search(Req0, State) ->
         true ->
             user_repo:find_by_account(Kwd, ?DEF_USER_COLUMN)
     end,
-    % ?LOG(['User ', User]),
+    % ?DEBUG_LOG(['User ', User]),
     Uid2 = maps:get(<<"id">>, User, 0),
     AllowSearch = fts_user_repo:allow_search(Uid2),
     Payload = if
@@ -143,7 +143,7 @@ qrcode(Req0, State) ->
             Column = <<"id,nickname,gender,avatar,sign,region,status">>,
             User = user_logic:find_by_id(Uid2, Column),
             Status = maps:get(<<"status">>, User, -2),
-            % ?LOG([User, Status]),
+            % ?DEBUG_LOG([User, Status]),
             Payload = qrcode_transfer(CurrentUid, Status, User),
             imboy_response:success(Req0, Payload)
     end.
@@ -189,7 +189,7 @@ setting(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
     Li = proplists:get_value(<<"setting">>, PostVals, []),
-    % ?LOG({CurrentUid, Li}),
+    % ?DEBUG_LOG({CurrentUid, Li}),
     try [ user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li ] of
         _ ->
             imboy_response:success(Req0, #{}, "success.")
@@ -197,7 +197,7 @@ setting(Req0, State) ->
         error:function_clause ->
             imboy_response:error(Req0, <<"undefined setting key">>);
         error:Err1 ->
-            ?LOG([err1, Err1]),
+            ?DEBUG_LOG([err1, Err1]),
             imboy_response:error(Req0, <<"unknown">>, 1)
     end.
 
@@ -209,7 +209,7 @@ update(Req0, State) ->
     Field = proplists:get_value(<<"field">>, PostVals, <<>>),
     Value = proplists:get_value(<<"value">>, PostVals, <<>>),
 
-    ?LOG(["update ", Field, Value]),
+    ?DEBUG_LOG(["update ", Field, Value]),
     case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value)) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);

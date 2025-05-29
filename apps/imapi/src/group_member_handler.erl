@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -94,7 +94,7 @@ join(Req0, State) ->
                 true ->
                     MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
                     MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
-                    % ?LOG([MemberListRes]),
+                    % ?DEBUG_LOG([MemberListRes]),
                     case MemberListRes of
                         {ok, _, []} ->
                             imboy_db:with_transaction(fun(Conn) ->

@@ -52,7 +52,7 @@ page_for_uid(Uid, Limit, Offset) ->
 
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " as d ", Join1/binary, Join2/binary, Where/binary>>,
-    % ?LOG([Sql, Uid, Limit, Offset]),
+    % ?DEBUG_LOG([Sql, Uid, Limit, Offset]),
     imboy_db:query(Sql, [Uid, Uid, Limit, Offset]).
 
 

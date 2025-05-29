@@ -111,7 +111,7 @@ set(Key, Val, Title, Remark) ->
 
 
 save(Key, Data) ->
-    % ?LOG([Key, Val, Tab]),
+    % ?DEBUG_LOG([Key, Val, Tab]),
     Now = imboy_dt:now(),
     % Now = imboy_dt:millisecond(),
     Where =  <<"key = '", Key/binary, "'">>,

@@ -12,7 +12,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 = case Action of
@@ -45,7 +45,7 @@ bind_mail(Req0) ->
     CacheKey = {bind_mail, Mail, Ts},
     % CacheVal =  imboy_cache:get(CacheKey),
     CacheVal = undefined,
-    ?LOG(["CacheVal ", CacheVal]),
+    ?DEBUG_LOG(["CacheVal ", CacheVal]),
     SolKey = config_ds:get(solidified_key), % {ok, 1}
     Args = #{
         ts => Ts,
@@ -53,9 +53,9 @@ bind_mail(Req0) ->
         mail => Mail
     },
     Tk2 = imboy_str:replace(Tk, " ", "+"),
-    % ?LOG(["tk ", Tk]),
-    % ?LOG(["tk ", Tk2]),
-    % ?LOG(["Ts ", Ts]),
+    % ?DEBUG_LOG(["tk ", Tk]),
+    % ?DEBUG_LOG(["tk ", Tk2]),
+    % ?DEBUG_LOG(["Ts ", Ts]),
     Now = imboy_dt:second(),
     Ts2 = binary_to_integer(Ts),
     NewTk = imboy_hasher:hmac_sha512(
@@ -91,7 +91,7 @@ bind_mail(Req0) ->
     end.
 
 login(Req0) ->
-    % ?LOG(["peer", cowboy_req:peer(Req0)]),
+    % ?DEBUG_LOG(["peer", cowboy_req:peer(Req0)]),
     % {Ip,_Port} = cowboy_req:peer(Req0),
     % {ok, ClientSocket} = gen_tcp:accept(State#client_state.socket_fd),
     % {ok,{IP_Address,Port}} = inet:peername(ClientSocket),
@@ -101,12 +101,12 @@ login(Req0) ->
     %%% 用户名account
     %%% 密码 pwd
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
     Account = proplists:get_value(<<"account">>, PostVals),
     Password = proplists:get_value(<<"pwd">>, PostVals),
-    % ?LOG(['Type', Type,'Password', Password, "PostVals ", PostVals]),
+    % ?DEBUG_LOG(['Type', Type,'Password', Password, "PostVals ", PostVals]),
     Pwd = case RsaEncrypt == <<"1">> of
         true ->
             try imboy_cipher:rsa_decrypt(Password) of
@@ -114,7 +114,7 @@ login(Req0) ->
                     Pwd0
             catch
                 Class:Reason:Stacktrace ->
-                    ?LOG(["websocket_handle try catch: Class:", Class,
+                    ?DEBUG_LOG(["websocket_handle try catch: Class:", Class,
                           "Reason:", Reason,
                           "Stacktrace:", Stacktrace,
                           erlang:trace(all, true, [call])]),
@@ -125,7 +125,7 @@ login(Req0) ->
     end,
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
     Post2 = [{<<"ip">>, Ip} | PostVals],
-    % ?LOG(["Ip", Ip, "Pwd " , Post2]),
+    % ?DEBUG_LOG(["Ip", Ip, "Pwd " , Post2]),
     case passport_logic:do_login(Type, Account, Pwd) of
         {ok, Data} ->
             % 检查消息 用异步队列实现
@@ -142,7 +142,7 @@ login(Req0) ->
 
 quick_login(Req0) ->
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     % jverify | huawei
     Service = proplists:get_value(<<"service">>, PostVals, <<>>),
     % 成功时为对应运营商，CM代表中国移动，CU代表中国联通，CT代表中国电信。失败时可能为 null
@@ -151,19 +151,19 @@ quick_login(Req0) ->
     Token = proplists:get_value(<<"token">>, PostVals),
     Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
-    % ?LOG(["Ip", Ip]),
+    % ?DEBUG_LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
-    % ?LOG(["PostVals", PostVals, Post2]),
+    % ?DEBUG_LOG(["PostVals", PostVals, Post2]),
     case passport_logic:quick_login(Service, Operator, Token, Post2) of
         {ok, Data} ->
-            % ?LOG(["Data", Data]),
+            % ?DEBUG_LOG(["Data", Data]),
             % 检查消息 用异步队列实现
             Uid = maps:get(<<"uid">>, Data),
             % gen_server:call是同步的，gen_server:cast是异步的
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
             Data2 = Data#{<<"setting">> => Setting},
-            % ?LOG(["Data2", Data2]),
+            % ?DEBUG_LOG(["Data2", Data2]),
             imboy_response:success(Req0, Data2, "success.");
         {error, Msg} ->
             imboy_response:error(Req0, Msg)
@@ -173,7 +173,7 @@ quick_login(Req0) ->
 refreshtoken(Req0) ->
     % Token = cowboy_req:header(<<"authorization">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
-    % ?LOG(["refreshtoken ", Refreshtoken]),
+    % ?DEBUG_LOG(["refreshtoken ", Refreshtoken]),
     case throttle:check(refreshtoken, Refreshtoken) of
         {limit_exceeded, _, _} ->
             % imboy_log:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
@@ -206,13 +206,13 @@ getcode(Req0) ->
     %% type 验证码类型 email sms
     %% account 账号 Email 或者 手机号码
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     % type sms | email
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     % scene = forgot_pwd | signup
     Scene = proplists:get_value(<<"scene">>, PostVals),
     Account = proplists:get_value(<<"account">>, PostVals),
-    % ?LOG([Type, Account]),
+    % ?DEBUG_LOG([Type, Account]),
     Id = if
         Type == <<"sms">>, Scene == <<"signup">> ->
             imboy_db:pluck(user_repo:tablename()
@@ -224,7 +224,7 @@ getcode(Req0) ->
             0
             % imboy_response:error(Req0, "Msg2")
     end,
-    % ?LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
+    % ?DEBUG_LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
     if
         Id > 0 ->
             imboy_response:error(Req0, "param_already_exist");
@@ -245,7 +245,7 @@ signup(Req0) ->
     %% 用户名account
     %% 密码 pwd
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     % type = email | mobile
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
@@ -260,7 +260,7 @@ signup(Req0) ->
     % Cosv = cowboy_req:header(<<"cosv">>, Req0),
     Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
-    % ?LOG(["Ip", Ip]),
+    % ?DEBUG_LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
     case passport_logic:do_signup(Type, Account, Pwd, Code, Post2) of
         {ok, Data} ->
@@ -278,7 +278,7 @@ find_password(Req0) ->
     %% 用户名account
     %% 密码 pwd
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),
     Pwd = proplists:get_value(<<"pwd">>, PostVals),
@@ -292,7 +292,7 @@ find_password(Req0) ->
     % Cosv = cowboy_req:header(<<"cosv">>, Req0),
     Cosv = proplists:get_value(<<"sys_version">>, PostVals, <<>>),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
-    % ?LOG(["Ip", Ip]),
+    % ?DEBUG_LOG(["Ip", Ip]),
     Post2 = [{<<"cosv">>, Cosv} | [{<<"ip">>, Ip} | PostVals]],
     case passport_logic:find_password(Type, Account, Pwd, Code, Post2) of
         {ok, Data} ->

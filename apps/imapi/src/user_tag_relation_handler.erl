@@ -20,7 +20,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -49,7 +49,7 @@ init(Req0, State0) ->
 % 用户标签_给特定对象打标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    ?LOG(["CurrentUid ", CurrentUid]),
+    ?DEBUG_LOG(["CurrentUid ", CurrentUid]),
     % Uid = imboy_hashids:encode(CurrentUid),
 
     PostVals = imboy_req:post_params(Req0),
@@ -85,7 +85,7 @@ add(Req0, State) ->
         length(Tag) > 1, bit_size(ObjectId) == 0 ->
             imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
         true ->
-            ?LOG(["before logic CurrentUid ", CurrentUid]),
+            ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
             case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");

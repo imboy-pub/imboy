@@ -13,7 +13,7 @@
 
 %%websocket 握手
 init(Req0, State0) ->
-    % ?LOG(cowboy_req:match_qs([{token, [], undefined}], Req0)),
+    % ?DEBUG_LOG(cowboy_req:match_qs([{token, [], undefined}], Req0)),
     case cowboy_req:match_qs([{token, [], undefined}], Req0) of
         #{token := undefined} ->
             % HTTP 412 - 先决条件失败
@@ -52,16 +52,16 @@ websocket_init(State) ->
 
 %%处理客户端发送投递的消息 onmessage
 websocket_handle(ping, State) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     {reply, pong, State, hibernate};
 websocket_handle({text, <<"ping">>}, State) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     {reply, {text, <<"pong">>}, State, hibernate};
 websocket_handle({text, <<"{\"action\":\"confirmMessage", _/binary>>}, State) ->
     % 匹配前端确认消息，不做任何处理
     {ok, State, hibernate};
 websocket_handle({text, Msg}, State) ->
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     try case lists:keyfind(error, 1, State) of
             {error, Code} ->
                 ErrMsg = [{<<"type">>, <<"error">>}, {<<"code">>, Code}, {<<"timestamp">>, imboy_dt:now()}],
@@ -71,7 +71,7 @@ websocket_handle({text, Msg}, State) ->
                 Data = jsone:decode(Msg, [{object_format, proplist}]),
                 % C2C/SYSTEM/GROUP
                 Type = proplists:get_value(<<"conversation_type">>, Data),
-                % ?LOG(Type),
+                % ?DEBUG_LOG(Type),
                 case cowboy_bstr:to_upper(Type) of
                     <<"C2C">> ->
                         websocket_logic:dialog(CurrentUid, Data);
@@ -84,7 +84,7 @@ websocket_handle({text, Msg}, State) ->
                 end
         end of
         Res ->
-            % ?LOG(Res),
+            % ?DEBUG_LOG(Res),
             case Res of
                 ok ->
                     {ok, State, hibernate};
@@ -93,7 +93,7 @@ websocket_handle({text, Msg}, State) ->
             end
     catch
         ErrCode:ErrorMsg ->
-            ?LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg, Msg]),
+            ?DEBUG_LOG(["websocket_handle try catch: ", ErrCode, ErrorMsg, Msg]),
             {ok, State, hibernate}
     end;
 websocket_handle({binary, Msg}, State) ->
@@ -104,7 +104,7 @@ websocket_handle(_Frame, State) ->
 
 %% 处理erlang 发送的消息
 websocket_info({timeout, _Ref, Msg}, State) ->
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     {reply, {text, Msg}, State, hibernate};
 websocket_info(stop, State) ->
     {stop, State};
@@ -116,7 +116,7 @@ websocket_info(_Info, State) ->
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(Reason, _Req, State) ->
-    ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
+    ?DEBUG_LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case maps:find(current_uid, State) of
         {ok, Uid} when is_integer(Uid) ->
             DID = maps:get(did, State, <<"">>),

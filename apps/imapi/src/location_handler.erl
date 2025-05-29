@@ -20,9 +20,9 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
-    % ?LOG([people_nearby, handler, Action]),
+    % ?DEBUG_LOG([people_nearby, handler, Action]),
     State = maps:remove(action, State0),
     Req1 =
         case Action of
@@ -47,7 +47,7 @@ make_myself_visible(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Lat = proplists:get_value(<<"latitude">>, PostVals, <<>>),
     Lng = proplists:get_value(<<"longitude">>, PostVals, <<>>),
-    % ?LOG([CurrentUid, Lat, Lng]),
+    % ?DEBUG_LOG([CurrentUid, Lat, Lng]),
     case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
         ok ->
             imboy_response:success(Req0, #{}, "success.");
@@ -72,7 +72,7 @@ people_nearby(Req0, _State) ->
     % #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
     {ok, Radius} = imboy_req:get_int(radius, Req0, 500),
     {ok, Limit} = imboy_req:get_int(limit, Req0, 100),
-    % ?LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
+    % ?DEBUG_LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
     List = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
     imboy_response:success(Req0,
                            [{<<"radius">>, Radius},

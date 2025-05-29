@@ -24,7 +24,7 @@ list_member(Gid, MemberUids) when is_list(MemberUids) ->
     TbB = user_repo:tablename(),
     Bin = imboy_cnv:list_to_binary_string(MemberUids),
     Sql = <<"select u.nickname,u.account,u.avatar,u.sign, gm.* from ", TbA/binary, " gm left join ", TbB/binary, " u on u.id = gm.user_id WHERE gm.group_id = ", (ec_cnv:to_binary(Gid))/binary, " and gm.user_id in(", Bin/binary,");">>,
-    ?LOG([Sql]),
+    ?DEBUG_LOG([Sql]),
     imboy_db:query(Sql).
 
 join(_,_, _, 0, _) ->
@@ -32,7 +32,7 @@ join(_,_, _, 0, _) ->
 join(_,_, _, Max, Count) when Max =< Count ->
     {error, "群成员已满。"};
 join(JoinMode,Uid, Gid, _, _) ->
-    ?LOG(["join Gid", Gid, "JoinMode ", JoinMode]),
+    ?DEBUG_LOG(["join Gid", Gid, "JoinMode ", JoinMode]),
     imboy_db:with_transaction(fun(Conn) ->
         join(Conn, JoinMode, Uid, Gid)
     end),
@@ -40,7 +40,7 @@ join(JoinMode,Uid, Gid, _, _) ->
 
 join(Conn, JoinMode, Uid, Gid) ->
     IsMember = group_ds:is_member(Uid, Gid),
-    ?LOG(io:format("join/4 IsMember: Uid ~p, Gid ~p, IsMember ~p\n", [Uid, Gid, IsMember])),
+    ?DEBUG_LOG(io:format("join/4 IsMember: Uid ~p, Gid ~p, IsMember ~p\n", [Uid, Gid, IsMember])),
     do_join(IsMember, Conn, JoinMode, Uid, Gid).
 
 leave(Uid, Gid, CurrentUid) ->
@@ -101,7 +101,7 @@ do_join(false, Conn, JoinMode, Uid, Gid) ->
 
 group_member_join_notice(Gid, Uid) ->
     ToUidLi = group_ds:member_uids(Gid),
-    % ?LOG(ToUidLi),
+    % ?DEBUG_LOG(ToUidLi),
     Sum = imboy_db:pluck(group_repo:tablename(),
         <<"id = ",  (ec_cnv:to_binary(Gid))/binary>>,
         <<"user_id_sum">>,
@@ -169,7 +169,7 @@ leave(Uid, Gid, _, GM, CurrentUid) ->
         group_ds:leave(Uid, Gid),
         ok
     end, #{reraise => true}),
-    ?LOG(["leave, ", Uid, Gid, CurrentUid, Res]),
+    ?DEBUG_LOG(["leave, ", Uid, Gid, CurrentUid, Res]),
     ok.
 
 %% ===================================================================

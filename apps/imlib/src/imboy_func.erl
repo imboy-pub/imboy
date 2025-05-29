@@ -57,7 +57,7 @@ num_random(Len) ->
     Prefix = rand:uniform(9),
     MinNum = round(math:pow(10, Len - 1)),
     Num = rand:uniform(MinNum),
-    % ?LOG([MinNum]),
+    % ?DEBUG_LOG([MinNum]),
     case Num > MinNum of
         true ->
             Num;

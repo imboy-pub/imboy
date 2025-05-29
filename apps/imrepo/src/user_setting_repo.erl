@@ -51,6 +51,6 @@ update(Uid, Setting) when is_integer(Uid) ->
         {ok, _} ->
             ok;
         {error, Reason} ->
-            % ?LOG("Update setting failed: ~p", [Reason]),
+            % ?DEBUG_LOG("Update setting failed: ~p", [Reason]),
             {error, Reason}
     end.

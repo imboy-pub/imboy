@@ -19,7 +19,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
@@ -71,7 +71,7 @@ login(<<"POST">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
     CryptKey = imboy_req:cookie(<<"captcha_key">>, Req0),
-    % ?LOG(['CryptKey ', CryptKey]),
+    % ?DEBUG_LOG(['CryptKey ', CryptKey]),
     PostVals = imboy_req:post_params(Req0),
     Captcha = proplists:get_value(<<"captcha">>, PostVals, ""),
     Csrf = proplists:get_value(<<"csrf_token">>, PostVals, ""),
@@ -82,12 +82,12 @@ login(<<"POST">>, Req0, _State) ->
             Account = proplists:get_value(<<"account">>, PostVals),
             Pwd = proplists:get_value(<<"pwd">>, PostVals),
             Password = imboy_cipher:rsa_decrypt(Pwd),
-            % ?LOG([Account, 'pwd ', Password]),
+            % ?DEBUG_LOG([Account, 'pwd ', Password]),
             case adm_passport_logic:do_login(Account, Password) of
                 {ok, AdmUser} ->
                     imboy_cache:flush(Csrf),
                     #{<<"id">> := AdmUserId} = AdmUser,
-                    % ?LOG(['AdmUserId ', AdmUserId]),
+                    % ?DEBUG_LOG(['AdmUserId ', AdmUserId]),
 
                     Req1 = cowboy_req:set_resp_cookie(<<"adm_user_id">>
                         , AdmUserId
@@ -100,7 +100,7 @@ login(<<"POST">>, Req0, _State) ->
                             % 必须是binnary
                             <<"/adm/">>
                     end,
-                    % ?LOG(["NextNextNextNextNextNext", Next]),
+                    % ?DEBUG_LOG(["NextNextNextNextNextNext", Next]),
                     imboy_response:success(Req1, AdmUser#{next => Next}, "操作成功.");
                 {error, Msg} ->
                     imboy_response:error(Req0, Msg);

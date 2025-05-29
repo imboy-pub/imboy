@@ -69,7 +69,7 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
     case Count of
         0 ->
             Payload = maps:from_list(proplists:get_value(<<"payload">>, Info)),
-            % ?LOG([4, 'Payload', Payload]),
+            % ?DEBUG_LOG([4, 'Payload', Payload]),
             Thumb = maps:from_list(maps:get(<<"thumb">>, Payload)),
             ThumbUri = maps:get(<<"uri">>, Thumb),
             {ThumbMap, _} = imboy_uri:get_params(ThumbUri),
@@ -99,7 +99,7 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_list(Info) ->
 
             Uid2 = integer_to_binary(Uid),
             Info2 = jsone:encode(Info, [native_forward_slash]),
-            % ?LOG(['k4', Count, Info2]),
+            % ?DEBUG_LOG(['k4', Count, Info2]),
             add_kind(Count, Uid2, <<"4">>, KindId, Info2, Source, Remark, [Attach1, Attach2]);
         _ ->
             ok

@@ -23,7 +23,7 @@ create_user_test(Prefix, Num, Limit) ->
         created_at, reg_ip, reg_cosv) VALUES (0,'',
         '", Username/binary, "', '", MobBin/binary,
             "', NULL, 0, 'hide', '', '', 0, '', NULL, 0, 1, NULL, NULL, NULL)">>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:execute(Sql, []),
     create_user_test(Prefix, Num + 1, Limit).
 

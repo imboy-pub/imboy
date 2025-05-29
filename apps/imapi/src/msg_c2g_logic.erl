@@ -40,7 +40,7 @@ c2g(MsgId, CurrentUid, Data) ->
            {<<"payload">>, proplists:get_value(<<"payload">>, Data)},
            {<<"created_at">>, CreatedAtMs},
            {<<"server_ts">>, NowMS}],
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
     MsLi = [0, 3500, 3500, 3000, 5000],
     [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
@@ -84,7 +84,7 @@ c2g_revoke(CurrentUid, MsgId, Data, Type, Type2) ->
         {<<"server_ts">>, NowMS}
     ],
 
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
     MsLi = [0, 3500, 3500, 3000, 5000],
     [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
@@ -111,7 +111,7 @@ sent_offline_msg(_Uid, _Pid, [], _Index) ->
     ok;
 sent_offline_msg(Uid, Pid, [Row | Tail], Index) ->
     {<<"payload">>, Msg} = lists:keyfind(<<"payload">>, 1, Row),
-    ?LOG([Uid, Pid, Index, Msg]),
+    ?DEBUG_LOG([Uid, Pid, Index, Msg]),
     Delay = 100 + Index * 100,
     erlang:start_timer(Delay, Pid, Msg),
     sent_offline_msg(Uid, Pid, Tail, Index + 1).

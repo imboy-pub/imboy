@@ -19,7 +19,7 @@
 %% ===================================================================
 
 init(Req0, State0) ->
-    % ?LOG(State0),
+    % ?DEBUG_LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
@@ -49,9 +49,9 @@ check(<<"GET">>, Req0, _State) ->
     end,
 
     Res = app_version_repo:find(Where, Column),
-    % ?LOG([Res]),
+    % ?DEBUG_LOG([Res]),
     LastVsn = maps:get(<<"vsn">>, Res, <<"0.0.0">>),
-    % ?LOG([LastVsn, Res, Where]),
+    % ?DEBUG_LOG([LastVsn, Res, Where]),
     %  updatable = [true | false]
     imboy_response:success(Req0, Res#{
         <<"updatable">> => ec_semver:lt(Vsn, LastVsn)

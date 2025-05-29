@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -61,7 +61,7 @@ rename(Req0, State) ->
     PostVals = imboy_req:post_params(Req0),
     Id = proplists:get_value(<<"id">>, PostVals),
     Name = proplists:get_value(<<"name">>, PostVals),
-    % ?LOG([CurrentUid, Id, Name, PostVals]),
+    % ?DEBUG_LOG([CurrentUid, Id, Name, PostVals]),
     case friend_category_ds:rename(CurrentUid, Id, Name) of
         {error, {_, _, ErrorMsg}} ->
             imboy_response:error(Req0, ErrorMsg);

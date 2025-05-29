@@ -96,7 +96,7 @@ delete_msg(Id) ->
 
 read_msg(Where, Vals, Column, Limit) ->
     Res = msg_s2c_repo:read_msg(Where, Vals, Column, Limit),
-    % ?LOG([Res]),
+    % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Column2, Rows} ->
             [ lists:zipwith(fun(X, Y) -> {X, Y} end, Column2, tuple_to_list(Row)) || Row <- Rows ];

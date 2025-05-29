@@ -41,7 +41,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) when is_integer(ToId) 
     ToId2 = list_to_binary(integer_to_list(ToId)),
     write_msg(CreatedAt, Id, Payload, FromId, ToId2, ServerTS);
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
-    % ?LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
+    % ?DEBUG_LOG([CreatedAt, Id, Payload, FromId, ToId, ServerTS]),
     Tb = tablename(),
     imboy_db:insert_into(Tb, #{
         payload => {raw, imboy_hasher:encoded_val(Payload)},
@@ -65,7 +65,7 @@ delete_msg(Id) ->
 delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    ?LOG(['delete_msg', Params, Sql]),
+    ?DEBUG_LOG(['delete_msg', Params, Sql]),
     imboy_db:execute(Sql, Params).
 
 

@@ -27,7 +27,7 @@ read_msg(Where, Vals, Column, Limit) ->
     % use index i_ToId
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary, " ORDER BY id ASC LIMIT $",
             LimitIndex/binary>>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:query(Sql, Vals ++ [Limit]).
 
 

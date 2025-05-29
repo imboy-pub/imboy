@@ -24,7 +24,7 @@ init(Req0, State0) ->
     % [<<"sip">>,<<"text">>] = Subprotocols
     SubPt = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
 
-    % ?LOG([Env, DID, DType, Auth, SubPt]),
+    % ?DEBUG_LOG([Env, DID, DType, Auth, SubPt]),
     Opt0 = #{
              num_acceptors => infinity,
              max_connections => infinity,
@@ -42,12 +42,12 @@ init(Req0, State0) ->
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};
         _ ->
-            % ?LOG([SubPt]),
+            % ?DEBUG_LOG([SubPt]),
             case websocket_ds:check_subprotocols(SubPt, Req0) of
                 {ok, Req1} ->
                     {ok, Req1, State1};
                 {cowboy_websocket, Req1} ->
-                    % ?LOG([State1]),
+                    % ?DEBUG_LOG([State1]),
                     websocket_ds:auth(Auth, Req1, State1, Opt0)
             end
     end.
@@ -73,7 +73,7 @@ websocket_init(State) ->
 
 
 websocket_handle(ping, State) ->
-    ?LOG([ping, cowboy_clock:rfc1123(), State]),
+    ?DEBUG_LOG([ping, cowboy_clock:rfc1123(), State]),
     case maps:find(error, State) of
         {ok, _Code} ->
             {stop, State};
@@ -81,7 +81,7 @@ websocket_handle(ping, State) ->
             {reply, pong, State, hibernate}
     end;
 websocket_handle({text, <<"ping">>}, State) ->
-    % ?LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
+    % ?DEBUG_LOG([<<"ping">>, cowboy_clock:rfc1123(), State]),
     case maps:find(error, State) of
         {ok, _Code} ->
             {stop, State};
@@ -98,13 +98,13 @@ websocket_handle({text, <<"check_offline_msg">>}, State) ->
     msg_c2g_logic:check_msg(CurrentUid, Pid, DID),
     {ok, State, hibernate};
 websocket_handle({text, <<"logout">>}, State) ->
-    ?LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
+    ?DEBUG_LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
     {stop, State};
 
 % 客户端确认消息
 % CLIENT_ACK,type,msgid,did
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
-    ?LOG(["CLIENT_ACK", Tail, State]),
+    ?DEBUG_LOG(["CLIENT_ACK", Tail, State]),
     CurrentUid = maps:get(current_uid, State),
     try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
@@ -127,7 +127,7 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
             end
     catch
         Class:Reason:Stacktrace ->
-            ?LOG(["websocket_handle try catch: Class:", Class,
+            ?DEBUG_LOG(["websocket_handle try catch: Class:", Class,
                   "Reason:", Reason,
                   "Stacktrace:", Stacktrace,
                   erlang:trace(all, true, [call])]),
@@ -135,13 +135,13 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     end;
 
 websocket_handle({text, Msg}, State) ->
-    % ?LOG([State, Msg]),
+    % ?DEBUG_LOG([State, Msg]),
     try
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         MsgId = proplists:get_value(<<"id">>, Data),
         Type = proplists:get_value(<<"type">>, Data),
-        % ?LOG([MsgId, Type, Data]),
+        % ?DEBUG_LOG([MsgId, Type, Data]),
         % 逻辑层负责IM系统各项功能的核心逻辑实现
         % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
         case cowboy_bstr:to_lower(Type) of
@@ -181,13 +181,13 @@ websocket_handle({text, Msg}, State) ->
         ok ->
             {ok, State, hibernate};
         {reply, Msg2} ->
-            ?LOG([reply, 2, Msg2, State]),
+            ?DEBUG_LOG([reply, 2, Msg2, State]),
             {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate};
         {reply, Msg3, State3} ->
             {reply, {text, jsone:encode(Msg3, [native_utf8])}, State3, hibernate}
     catch
         Class:Reason:Stacktrace ->
-            ?LOG(["websocket_handle try catch: Class:",
+            ?DEBUG_LOG(["websocket_handle try catch: Class:",
                   Class,
                   "Reason:",
                   Reason,
@@ -205,24 +205,24 @@ websocket_handle(_Frame, State) ->
 
 %% 处理从其他进程发送到 WebSocket 进程的消息。
 websocket_info({reply, Msg}, State) ->
-    % ?LOG([reply, State, Msg]),
+    % ?DEBUG_LOG([reply, State, Msg]),
     {reply, {text, jsone:encode(Msg, [native_utf8])}, State, hibernate};
 
 websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
     {reply, {text, Msg}, State, hibernate};
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
-    ?LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi, State, Msg, cowboy_clock:rfc1123()]),
+    ?DEBUG_LOG([timeout, _Ref, {Uid, DID, MsgId}, MsLi, State, Msg, cowboy_clock:rfc1123()]),
     message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
     {reply, {text, Msg}, State, hibernate};
 
 websocket_info({timeout, _Ref, Msg}, State) ->
-    ?LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
+    ?DEBUG_LOG([timeout, cowboy_clock:rfc1123(), _Ref, Msg, State]),
     {reply, {text, Msg}, State, hibernate};
 websocket_info({close, CloseCode, Reason}, State) ->
-    ?LOG([close, CloseCode, Reason, State]),
+    ?DEBUG_LOG([close, CloseCode, Reason, State]),
     {reply, {close, CloseCode, Reason}, State};
 websocket_info(stop, State) ->
-    ?LOG([stop, State]),
+    ?DEBUG_LOG([stop, State]),
     {stop, State};
 websocket_info(_Info, State) ->
     {ok, State}.
@@ -232,7 +232,7 @@ websocket_info(_Info, State) ->
 %% Rename websocket_terminate/3 to terminate/3
 %% link: https://github.com/ninenines/cowboy/issues/787
 terminate(Reason, _Req, State) ->
-    ?LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
+    ?DEBUG_LOG([terminate, cowboy_clock:rfc1123(), State, Reason]),
     case maps:find(current_uid, State) of
         {ok, Uid} when is_integer(Uid) ->
             DID = maps:get(did, State, <<>>),

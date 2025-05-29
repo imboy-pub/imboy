@@ -33,11 +33,11 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     NowTs = imboy_dt:now(),
     From = imboy_hashids:encode(CurrentUid),
     MsgId = <<"af_", From/binary, "_", To/binary>>,
-    % ?LOG([is_binary(Payload), Payload]),
+    % ?DEBUG_LOG([is_binary(Payload), Payload]),
     % 存储消息
     msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
     Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId),
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
@@ -95,7 +95,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     % 这里的From To 需要对调，离线消息需要对调
     Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload, MsgId),
 
-    % ?LOG(Msg),
+    % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
     message_ds:send_next(FromID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
@@ -148,7 +148,7 @@ move_to_category(CurrentUid, Uid, CategoryId) ->
 
 
 information(CurrentUid, Uid) ->
-    ?LOG([CurrentUid, Uid]),
+    ?DEBUG_LOG([CurrentUid, Uid]),
     Info = [],
     Info.
 

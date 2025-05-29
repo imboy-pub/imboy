@@ -62,7 +62,7 @@ for(N, N, F) -> [F(N)];
 for(I, N, F) -> [F(I)|for(I+1, N, F)].
 
 ws_start(Id, Index) when Index > 1000 ->
-    ?LOG([Id, 'over 1000']),
+    ?DEBUG_LOG([Id, 'over 1000']),
     ok;
 ws_start(Id, Index) ->
     % Host = <<"localhost">>,
@@ -101,7 +101,7 @@ ws_start(Id, Index) ->
                         <<"Sec-WebSocket-Key: u5uqxRXPut2megmbeLqEsQ==\r\n">>,
                         <<"Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n">>,
                         <<"\r\n">>],
-                    % ?LOG([Id, Header]),
+                    % ?DEBUG_LOG([Id, Header]),
                     gen_tcp:send(Socket, Header),
                     % gen_tcp:send(Socket, cow_ws:masked_frame(ping, "")),
                     loop(Socket, Id);
@@ -115,7 +115,7 @@ ws_start(Id, Index) ->
         _:_ ->
             ok
         % ErrCode2:ErrorMsg2 ->
-        %     ?LOG(["ws_start try catch: ", ErrCode2, ErrorMsg2, Id, Index, self(), CPid])
+        %     ?DEBUG_LOG(["ws_start try catch: ", ErrCode2, ErrorMsg2, Id, Index, self(), CPid])
     end,
     % erlang:garbage_collect(self()),
     timer:sleep(3000 + Index * 100),
@@ -132,7 +132,7 @@ loop(Socket, Id) ->
                     gen_tcp:close(Socket),
                     throw({closed, Socket, Id});
                 Err ->
-                    ?LOG(Err),
+                    ?DEBUG_LOG(Err),
                     throw(Err)
             end
     end,

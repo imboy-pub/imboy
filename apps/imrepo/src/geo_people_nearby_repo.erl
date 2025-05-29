@@ -35,7 +35,7 @@ save(Uid, Lat, Lng) ->
     %     , UpSql/binary>>,
     Sql = <<"INSERT INTO ", Tb/binary, "(user_id, location) VALUES($1, ", Location/binary,
             ") ON CONFLICT (user_id) DO ", UpSql/binary>>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:execute(Sql, [Uid]).
 
 
@@ -61,7 +61,7 @@ people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
     , ST_Distance(ST_GeographyFromText('SRID=4326;POINT(", Lng/binary, " ", Lat/binary, ")'), location) as distance
     from public.geo_people_nearby gpn left join public.user u on u.id = gpn.user_id where ST_DWithin(location::geography, ST_GeographyFromText('POINT(",
             Lng/binary, " ", Lat/binary, ")'), ", (ec_cnv:to_binary(Radius))/binary, ") order by distance asc limit ", (ec_cnv:to_binary(Limit))/binary, ";">>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:query(Sql).
 
 

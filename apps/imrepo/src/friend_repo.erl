@@ -60,7 +60,7 @@ delete(FromID, ToID) ->
     Tb = tablename(),
     Where = <<" WHERE from_user_id = $1 AND to_user_id = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    % ?LOG(io:format("~s  ~p ~p\n", [Sql, FromID, ToID])),
+    % ?DEBUG_LOG(io:format("~s  ~p ~p\n", [Sql, FromID, ToID])),
     imboy_db:execute(Sql, [FromID, ToID]),
     ok.
 
@@ -69,7 +69,7 @@ move_to_category(FromUID, ToUID, CategoryID) ->
     Tb = tablename(),
     Where = <<" WHERE status = 1 AND from_user_id = $2 AND to_user_id = $3">>,
     Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1", Where/binary>>,
-    % ?LOG([Sql, CategoryID, FromUID, ToUID]),
+    % ?DEBUG_LOG([Sql, CategoryID, FromUID, ToUID]),
     imboy_db:execute(Sql, [CategoryID, FromUID, ToUID]),
     ok.
 

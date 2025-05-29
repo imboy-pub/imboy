@@ -31,12 +31,12 @@ page_size(Req) ->
 % {ok, Ajax} = imboy_req:get_int(ajax, Req0, -2)
 get_int(Key, Req, Def) ->
     #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
-    % ?LOG([get_int, Key, Val, Def, Val == Def]),
+    % ?DEBUG_LOG([get_int, Key, Val, Def, Val == Def]),
     Method = cowboy_req:method(Req),
     if
         Val == Def, Method == <<"POST">> ->
             PostVals = post_params(Req),
-            ?LOG([get_int, PostVals, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)]),
+            ?DEBUG_LOG([get_int, PostVals, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)]),
             {ok, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)};
         true ->
             case string:to_integer(Val) of
@@ -53,9 +53,9 @@ get_int(Key, Req, Def) ->
 % PostVals = imboy_req:post_params(Req0),
 post_params(Req) ->
     ContentType = cowboy_req:parse_header(<<"content-type">>, Req),
-    % ?LOG([ContentType]),
+    % ?DEBUG_LOG([ContentType]),
     % imboy_log:info(io_lib:format("ContentType: ~p ContentType_End~n", [ContentType])),
-    % ?LOG(Method = cowboy_req:method(Req)),
+    % ?DEBUG_LOG(Method = cowboy_req:method(Req)),
     case ContentType of
         % {<<"text">>,<<"plain">>, [{<<"charset">>,<<"utf-8">>}]} ->
         % {<<"text">>,<<"plain">>, _} ->
@@ -66,9 +66,9 @@ post_params(Req) ->
             Params;
         {<<"application">>, <<"json">>, _} ->
             {ok, PostVals, _Req} = cowboy_req:read_body(Req),
-            % ?LOG(PostVals),
+            % ?DEBUG_LOG(PostVals),
             % Params = jsone:decode(PostVals, [{object_format, proplist}]),
-            % ?LOG(Params),
+            % ?DEBUG_LOG(Params),
             % Params
             jsone:decode(PostVals, [{object_format, proplist}]);
         _ ->
@@ -129,7 +129,7 @@ req(Method, Url, Params, Headers) ->
                 {Url, Headers}
         end,
     Response = httpc:request(Method, Request, [], []),
-    ?LOG([response, Response]),
+    ?DEBUG_LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
             {ok, jsone:decode(list_to_binary(Body))};

@@ -81,6 +81,6 @@ save(Uid, <<"chat_state">>, State) ->
 priv_save(Uid, Key, State) ->
     Setting = user_setting_ds:find_by_uid(Uid),
     Setting2 = Setting#{Key => State},
-    % ?LOG(Setting2),
+    % ?DEBUG_LOG(Setting2),
     user_setting_repo:update(Uid, Setting2),
     ok.

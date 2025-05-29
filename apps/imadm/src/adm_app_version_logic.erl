@@ -32,7 +32,7 @@ save(Data) ->
     %     , <<"count(*)">>
     %     , 0),
 
-    % ?LOG([count, Count, " Where ", Where]),
+    % ?DEBUG_LOG([count, Count, " Where ", Where]),
     Id = ec_cnv:to_integer(maps:get(id, Data)),
     if Id > 0 ->
             imboy_db:update(
@@ -49,7 +49,7 @@ save(Data) ->
 delete(Where) ->
     Tb = app_version_repo:tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    % ?LOG([Sql]),
+    % ?DEBUG_LOG([Sql]),
     imboy_db:execute(Sql, []),
     ok.
 

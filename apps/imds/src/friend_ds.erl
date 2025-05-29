@@ -132,9 +132,9 @@ page(Where, WhereArgs, Fields) ->
     Tb = friend_repo:tablename(),
     Sql = <<"SELECT ", Fields/binary, " FROM ", Tb/binary, " as f ", Join1/binary, Join2/binary, Where/binary>>,
     % Res = imboy_db:query(Sql, WhereArgs),
-    % ?LOG([Res]),
+    % ?DEBUG_LOG([Res]),
     % ok.
-    % ?LOG([Sql, WhereArgs]),
+    % ?DEBUG_LOG([Sql, WhereArgs]),
     case imboy_db:query(Sql, WhereArgs) of
         {ok, _ColumnList, Rows} when Fields == <<"count(*) count">> ->
             Rows;
@@ -153,7 +153,7 @@ page(Where, WhereArgs, Fields) ->
 change_remark(FromUid, ToUid, Remark) ->
     Tb = friend_repo:tablename(),
     Dt = imboy_dt:now(),
-    ?LOG([Dt]),
+    ?DEBUG_LOG([Dt]),
     Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
     imboy_db:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).

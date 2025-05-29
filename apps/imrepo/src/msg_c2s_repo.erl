@@ -29,19 +29,19 @@ write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) when is_integer(Gid) ->
 % 批量插入群离线消息表 及 时间线表
 write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
     Tb = tablename(),
-    % ?LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
+    % ?DEBUG_LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
     imboy_db:with_transaction(fun(Conn) ->
         Payload2 = imboy_hasher:encoded_val(Payload),
-        % ?LOG(CreatedAt),
+        % ?DEBUG_LOG(CreatedAt),
         Column = <<"(payload,to_groupid,from_id,created_at,msg_id)">>,
         Sql = <<"INSERT INTO ", Tb/binary, " ", Column/binary, " VALUES(", Payload2/binary,
               ", '", Gid/binary, "', '", FromId/binary, "', '", CreatedAt/binary,
               "', '", MsgId/binary, "');">>,
-        % ?LOG(Sql),
+        % ?DEBUG_LOG(Sql),
         {ok, Stmt} = epgsql:parse(Conn, Sql),
         epgsql:execute_batch(Conn, [{Stmt, []}]),
         % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-        % ?LOG(["Res", Res]), % [{ok,1}]
+        % ?DEBUG_LOG(["Res", Res]), % [{ok,1}]
          % [{ok, 1, _}] = Res,
         Vals = lists:map(fun(ToId) ->
                 ToId2 = ec_cnv:to_binary(ToId),
@@ -57,7 +57,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Tb2 = msg_c2g_timeline_repo:tablename(),
         Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES",
                Values/binary>>,
-        % ?LOG([Sql, Sql2]),
+        % ?DEBUG_LOG([Sql, Sql2]),
         {ok, Stmt2} = epgsql:parse(Conn, Sql2),
         epgsql:execute_batch(Conn, [{Stmt2, []}]),
         ok
@@ -75,7 +75,7 @@ list_by_ids(Ids, Column) ->
     Ids2 = erlang:iolist_to_binary(L2),
     Where = <<" WHERE msg_id IN ('", Ids2/binary, "')">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary, " order by created_at ASC">>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     imboy_db:query(Sql).
 
 

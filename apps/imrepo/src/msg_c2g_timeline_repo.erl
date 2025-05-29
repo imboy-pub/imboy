@@ -69,7 +69,7 @@ delete_overflow_timeline(ToUid, Limit) ->
     % use index uk_c2g_timeline_ToUid_MsgId
     Where = <<" WHERE to_uid = $1 ORDER BY created_at ASC LIMIT $2">>,
     Sql = <<"SELECT msg_id FROM ", Tb/binary, Where/binary>>,
-    % ?LOG(Sql),
+    % ?DEBUG_LOG(Sql),
     case imboy_db:query(Sql, [ToUid, Limit]) of
         {ok, _, []} ->
             ok;

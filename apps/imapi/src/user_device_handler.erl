@@ -20,7 +20,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -52,7 +52,7 @@ page(Req0, State) ->
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     Name = proplists:get_value(<<"name">>, PostVals, <<"">>),
     user_device_logic:change_name(CurrentUid, DID, Name),
@@ -62,7 +62,7 @@ change_name(Req0, State) ->
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_req:post_params(Req0),
-    % ?LOG(PostVals),
+    % ?DEBUG_LOG(PostVals),
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_logic:delete(CurrentUid, DID),
     imboy_response:success(Req0).

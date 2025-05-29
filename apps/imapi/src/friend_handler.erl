@@ -11,7 +11,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -84,14 +84,14 @@ delete_friend(Req0, State) ->
 %%% 我的好友，无好友分组的
 list(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    % ?LOG(["CurrentUid", CurrentUid, "; State ", State]),
+    % ?DEBUG_LOG(["CurrentUid", CurrentUid, "; State ", State]),
     Mine = user_logic:find_by_id(CurrentUid),
     {K, V} = user_logic:mine_state(CurrentUid),
-    % ?LOG(["CurrentUid", CurrentUid, "; State ", K, V, Mine#{K => V}]),
+    % ?DEBUG_LOG(["CurrentUid", CurrentUid, "; State ", K, V, Mine#{K => V}]),
     Friend = friend_ds:page_by_uid(CurrentUid),
-    % ?LOG(["friend_handler/list", CurrentUid, "; Friend ", Friend]),
+    % ?DEBUG_LOG(["friend_handler/list", CurrentUid, "; Friend ", Friend]),
     Payload = list_transfer(Mine#{K => V}, Friend),
-    % ?LOG(Payload),
+    % ?DEBUG_LOG(Payload),
     imboy_response:success(Req0, Payload).
 
 
@@ -121,9 +121,9 @@ information(Req0, State) ->
         #{type := <<"friend">>} ->
             Column = <<"id, nickname, account,gender, experience, avatar, sign">>,
             User = user_logic:find_by_id(Uid, Column),
-            % ?LOG(User),
+            % ?DEBUG_LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
-            % ?LOG([UserSetting, Uid]),
+            % ?DEBUG_LOG([UserSetting, Uid]),
             Payload = information_transfer(CurrentUid, <<"friend">>, User, UserSetting),
             imboy_response:success(Req0, Payload);
         #{type := <<"group">>} ->

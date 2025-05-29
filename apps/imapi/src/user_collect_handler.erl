@@ -20,7 +20,7 @@
 
 
 init(Req0, State0) ->
-    % ?LOG(State),
+    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
@@ -53,7 +53,7 @@ page(Req0, State) ->
     #{tag := Tag} = cowboy_req:match_qs([{tag, [], <<>>}], Req0),
     % #{kind := Kind} = cowboy_req:match_qs([{kind, [], 0}], Req0),
     UidBin = integer_to_binary(CurrentUid),
-    % ?LOG([page, Kind]),
+    % ?DEBUG_LOG([page, Kind]),
 
     KwdWhere =
         if
