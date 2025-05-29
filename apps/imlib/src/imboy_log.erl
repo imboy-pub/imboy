@@ -6,66 +6,88 @@
          warning/1, warning/2,
          error/1, error/2]).
 
--include_lib("imlib/include/log.hrl").
+%% 实际处理函数（导出但仅供内部使用）
+-export([internal_log/4, internal_log/5]).
+
+%% 使用parse_transform自动注入模块和行号
+-compile({parse_transform, lager_transform}).
+
+%% 日志级别阈值
+-define(LOG_LEVEL, debug).
+
+
+internal_log(Level, Msg, Module, Line) ->
+    safe_log(Level, Msg, Module, Line).
+
+internal_log(Level, Fmt, Args, Module, Line) ->
+    safe_log(Level, Fmt, Args, Module, Line).
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
+debug(Msg) when ?LOG_LEVEL =:= debug ->
+    safe_log(debug, Msg, ?MODULE, ?LINE).
 
-debug(Message) ->
-    log(debug, Message).
+debug(Fmt, Args) when ?LOG_LEVEL =:= debug ->
+    safe_log(debug, Fmt, Args, ?MODULE, ?LINE).
 
+info(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info ->
+    safe_log(info, Msg, ?MODULE, ?LINE).
 
-debug(Format, Args) ->
-    log(debug, Format, Args).
+info(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info ->
+    safe_log(info, Fmt, Args, ?MODULE, ?LINE).
 
+notice(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info; ?LOG_LEVEL =:= notice ->
+    safe_log(notice, Msg, ?MODULE, ?LINE).
 
-info(Message) ->
-    log(info, Message).
+notice(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info; ?LOG_LEVEL =:= notice ->
+    safe_log(notice, Fmt, Args, ?MODULE, ?LINE).
 
+warning(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
+                  ?LOG_LEVEL =:= notice; ?LOG_LEVEL =:= warning ->
+    safe_log(warning, Msg, ?MODULE, ?LINE).
 
-info(Format, Args) ->
-    log(info, Format, Args).
+warning(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
+                        ?LOG_LEVEL =:= notice; ?LOG_LEVEL =:= warning ->
+    safe_log(warning, Fmt, Args, ?MODULE, ?LINE).
 
+error(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
+                ?LOG_LEVEL =:= notice; ?LOG_LEVEL =:= warning; ?LOG_LEVEL =:= error ->
+    safe_log(error, Msg, ?MODULE, ?LINE).
 
-notice(Message) ->
-    log(notice, Message).
-
-
-notice(Format, Args) ->
-    log(notice, Format, Args).
-
-
-warning(Message) ->
-    log(warning, Message).
-
-
-warning(Format, Args) ->
-    log(warning, Format, Args).
-
-
-error(Message) ->
-    log(error, Message).
-
-
-error(Format, Args) ->
-    log(error, Format, Args).
-
+error(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
+                      ?LOG_LEVEL =:= notice; ?LOG_LEVEL =:= warning; ?LOG_LEVEL =:= error ->
+    safe_log(error, Fmt, Args, ?MODULE, ?LINE).
 
 %% ===================================================================
-%% Internal Function Definitions
+%% Internal Functions
 %% ===================================================================
 
+safe_log(Level, Msg, Module, Line) ->
+    try
+        lager:log(Level, [{module, Module}, {line, Line}], "~ts", [ensure_string(Msg)])
+    catch
+        _:_ -> lager:log(Level, [{module, Module}, {line, Line}], "INVALID_MESSAGE")
+    end.
 
-%% @doc Manually log a message into lager without using the parse transform.
--spec log(lager:log_level(), list()) -> ok | {error, lager_not_running}.
-log(Level, Message) ->
-    Pid = self(),
-    lager:log(Level, Pid, Message).
+safe_log(Level, Fmt, Args, Module, Line) ->
+    try
+        lager:log(Level, [{module, Module}, {line, Line}], "~ts", [
+            io_lib:format(Fmt, sanitize_args(Args))
+        ])
+    catch
+        _:_ ->
+            lager:log(Level, [{module, Module}, {line, Line}],
+                   "INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
+    end.
 
+ensure_string(Msg) when is_binary(Msg) -> unicode:characters_to_list(Msg);
+ensure_string(Msg) when is_list(Msg) -> Msg;
+ensure_string(Msg) -> io_lib:format("~p", [Msg]).
 
--spec log(lager:log_level(), string(), list()) -> ok | {error, lager_not_running}.
-log(Level, Format, Args) ->
-    Pid = self(),
-    lager:log(Level, Pid, Format, Args).
+sanitize_args(Args) ->
+    lists:map(fun
+        (Arg) when is_binary(Arg) -> unicode:characters_to_list(Arg);
+        (Arg) -> Arg
+    end, Args).

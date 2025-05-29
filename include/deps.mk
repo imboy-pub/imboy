@@ -153,7 +153,7 @@ dep_guanco = git https://gitee.com/imboy-tripartite-deps/guanco.git main
 # dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
 # 1years 8commits
 dep_simple_captcha = git https://gitee.com/imboy-tripartite-deps/simple_captcha.git master
-
+dep_eimp = git https://github.com/processone/eimp.git master
 # SEMVER library for Erlang
 # /erlware_commons/src/ec_semver.erl
 
