@@ -1,6 +1,7 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
 PROJECT_VERSION = 0.6.2
+export PROJECT_VERSION
 
 # usage: make TARGET IMBOYENV=...
 #    make run IMBOYENV=local
@@ -13,7 +14,7 @@ RELX_CONFIG = $(CURDIR)/relx$(IMBOYENV).config
 include include/deps.mk
 
 # erlang.mk会保证 DEPS依赖的包能运行在shell、run、tests命令的时候
-DEPS = ranch cowlib cowboy
+DEPS = ranch cowlib cowboy gun
 
 DEPS += jwerl hashids_erlang gen_smtp throttle
 DEPS += qdate qdate_localtime

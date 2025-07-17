@@ -1,6 +1,6 @@
 PROJECT = imcron
 PROJECT_DESCRIPTION = New project
-PROJECT_VERSION = 0.1.0
+# PROJECT_VERSION # 继承更目录版本号
 
 # Whitespace to be used when creating files from templates.
 SP = 4

@@ -1,6 +1,7 @@
 
 # 0.6.2
-* 优化 account_server 模块；
+* 添加“make start xxxxx; make stop xx”命令，启动停止多节点
+* 优化 account_server imboy_syn message_ds 模块；
 * 优化日志模块；
 * 更新 layui 到 2.11.2;
 

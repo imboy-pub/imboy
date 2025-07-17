@@ -24,10 +24,10 @@
 -spec user_search_page(integer(), integer(), integer(), binary()) -> ok.
 user_search_page(_, Page, Size, <<>>) ->
     imboy_response:page_payload(0, Page, Size, []);
-user_search_page(Uid, Page, Size, Keywrod) ->
+user_search_page(Uid, Page, Size, Keyword) ->
     Offset = (Page - 1) * Size,
-    Total = fts_user_repo:count_for_user_search_page(Keywrod),
-    case fts_user_repo:user_search_page(Keywrod, Size, Offset) of
+    Total = fts_user_repo:count_for_user_search_page(Keyword),
+    case fts_user_repo:user_search_page(Keyword, Size, Offset) of
         {ok, _, []} ->
             imboy_response:page_payload(Total, Page, Size, []);
         {ok, ColumnLi, Items0} ->
@@ -48,11 +48,11 @@ user_search_page(Uid, Page, Size, Keywrod) ->
 
 
 -spec recently_user_page(integer(), integer(), integer(), binary()) -> ok.
-recently_user_page(Uid, Page, Size, Keywrod) ->
+recently_user_page(Uid, Page, Size, Keyword) ->
     Offset = (Page - 1) * Size,
 
     WhereLi =
-        case Keywrod of
+        case Keyword of
             <<>> ->
                 ["fts.allow_search = 1"];
             Kwd ->

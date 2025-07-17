@@ -1,6 +1,6 @@
 PROJECT = imlib
 PROJECT_DESCRIPTION = 基于cowboy的一款即时聊天软件 基础模块，被本项目其他应用依赖
-PROJECT_VERSION = 0.3.0
+# PROJECT_VERSION # 继承更目录版本号
 
 # Whitespace to be used when creating files from templates.
 SP = 4
@@ -9,5 +9,9 @@ SP = 4
 ROOT_DIR ?= ../..
 APPS_DIR ?= ..
 DEPS_DIR ?= ../../deps
+
+
+DEPS += lager
+ERLC_OPTS += +'{parse_transform, lager_transform}'
 
 include $(ROOT_DIR)/erlang.mk

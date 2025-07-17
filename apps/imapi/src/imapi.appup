@@ -1,21 +1,5 @@
-{"0.1.19",
-    [{"0.1.18", [
-        {load_module, app_ddl_handler}
-    ]}],
-    [{"0.1.18", [
-        {load_module, app_ddl_handler}
-    ]}]
-}.
-
-{"0.1.18",
-    [{"0.1.17", [
-        {update, websocket_logic}
-        , {update, websocket_handler}
-        , {load_module, index_handler}
-    ]}],
-    [{"0.1.17", [
-        {update, websocket_logic}
-        , {update, websocket_handler}
-        , {load_module, index_handler}
-    ]}]
-}.
+{"0.6.1", [
+    {"0.6.2", [ {load_module, friend_handler}, {load_module, msg_c2c_logic}, {load_module, msg_s2c_logic} ], []}
+], [
+    {"0.6.1", [ {load_module, friend_handler}, {load_module, msg_c2c_logic}, {load_module, msg_s2c_logic} ], []}
+]}.

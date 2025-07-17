@@ -31,6 +31,19 @@ env(Attr, Def) ->
     env(imboy, Attr, Def).
 
 
+env(App, [Attr], Def) ->
+    %% Single-element list case
+    env(App, Attr, Def);
+
+env(App, [Key | SubKeys], Def) ->
+    %% Multi-level key access
+    case env(App, Key, undefined) of
+        ConfigList when is_list(ConfigList) ->
+            get_nested_value(SubKeys, ConfigList, Def);
+        _ ->
+            Def
+    end;
+
 env(App, Attr, Def) ->
     case application:get_env(App, Attr) of
         {ok, Value} ->
@@ -171,3 +184,14 @@ do_aes_encrypt(Key, Val) ->
         "', 'aes-cbc/pad:pkcs'), 'base64')">>,
     imboy_db:update(<<"config">>, Where, Set),
     imboy_db:pluck(<<"config">>, Where, <<"value">>, <<>>).
+
+
+%% 辅助函数：递归获取嵌套值
+%% Helper function with default value support
+get_nested_value([], Value, _Def) -> Value;
+get_nested_value([Key | Rest], ConfigList, Def) when is_list(ConfigList) ->
+    case proplists:get_value(Key, ConfigList, Def) of
+        Def when Rest =:= [] -> Def;
+        Value -> get_nested_value(Rest, Value, Def)
+    end;
+get_nested_value(_, _, Def) -> Def.

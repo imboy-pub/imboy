@@ -60,7 +60,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         "referer_time = public.attachment.referer_time + 1"
     >>,
     % <<"(,,,,,,,,,,,,updated_at,created_at,status)">>,
-    Attach = #{
+    NewAttach = #{
         <<"md5">> => Md5,
         <<"mime_type">> => MimeType2,
         <<"ext">> => Ext2,
@@ -78,7 +78,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"status">> => 1
     },
 
-    imboy_db:add(Conn, tablename(), Attach, OnConflictUpdate),
+    imboy_db:add(Conn, tablename(), NewAttach, OnConflictUpdate),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息

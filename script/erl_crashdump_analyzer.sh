@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# chmod +x ./script/erl_crashdump_analyzer.sh
+# ./script/erl_crashdump_analyzer.sh erl_crash.dump
+
 DUMP=$1
 
 echo -e "analyzing $DUMP, generated on: " `head -2 $DUMP | tail -1` "\n"

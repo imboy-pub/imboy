@@ -16,18 +16,23 @@
 %% API
 %% ===================================================================
 
+% ack_before(CurrentUid, DID, MsgId) ->
+%     Key = {CurrentUid, DID, MsgId},
+%     ?LOG(["CLIENT_ACK", Key]),
+%     % 缓存在 message_ds:send_next/5 中设置
+%     case imboy_cache:get(Key) of
+%         undefined ->
+%             ok;
+%         {ok, TimerRef} ->
+%             ?LOG(["CLIENT_ACK", Key, TimerRef]),
+%             erlang:cancel_timer(TimerRef),
+%             imboy_cache:flush(Key)
+%     end.
 ack_before(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
     ?LOG(["CLIENT_ACK", Key]),
     % 缓存在 message_ds:send_next/5 中设置
-    case imboy_cache:get(Key) of
-        undefined ->
-            ok;
-        {ok, TimerRef} ->
-            ?LOG(["CLIENT_ACK", Key, TimerRef]),
-            erlang:cancel_timer(TimerRef),
-            imboy_cache:flush(Key)
-    end.
+    message_ds:ack(CurrentUid, DID, MsgId).
 
 %% 单聊消息
 -spec c2s(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.

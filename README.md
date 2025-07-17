@@ -35,7 +35,9 @@ erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "relea
 
 ## erlang 的shell 访问远程节
 ```
-erl -name debug -setcookie imboy
+_rel/imboy/bin/imboy remote_console
+
+
 net_adm:ping('imboy@api.docker.imboy.pub').
 net_kernel:connect_node('imboy@api.docker.imboy.pub').
 
@@ -50,6 +52,7 @@ net_adm:names().
 然后输入
 
 r 'imboy@127.0.0.1'
+r 'node2@127.0.0.1'
 
 按回车
 
@@ -100,9 +103,6 @@ make new-app in=imsos
 ...
 
 IMBOYENV=local make run HTTP_PORT=9800
-
-IMBOYENV=node1 make run HTTP_PORT=9801
-IMBOYENV=node2 make run HTTP_PORT=9802
 
 
 make run
@@ -283,6 +283,54 @@ Your release was upgraded!
 IMBOYENV=local make relup
 /usr/local/imboy/bin/imboy uninstall 0.2.8
 vsn=0.2.8 ./appup.sh
+```
+
+## 分布式启动
+* 启动/停止
+```
+make start node=node1 port=9801
+make start node=node2 port=9802 cookie=imboycookie
+make start node=node3 port=9803 cookie=imboycookie exclude="imadm,imcron"
+make start node=node4 port=9804 cookie=imboycookie exclude="imadm,imcron" daemon=daemon
+
+make stop node=node1
+```
+
+* 验证分布式连接
+在任一节点 shell，输入：
+
+```
+net_adm:ping('node2@127.0.0.1').
+% 返回 pong 则连接成功
+
+net_adm:names().
+
+```
+
+* 测试 syn 分布式功能
+
+
+
+在 node1 上：
+```
+imboy_syn:init().
+
+imboy_syn:join(1, <<"ios">>, self(), <<"did11">>).
+```
+
+在 node2 上：
+```
+imboy_syn:init().
+
+imboy_syn:list_by_uid(1).
+% 应该能看到 node1 注册的设备
+```
+
+在 node2 上：
+
+```
+imboy_syn:publish(1, <<"hello from node2">>).
+% node1 的进程会收到消
 ```
 
 ## [Updating Erlang.mk](https://erlang.mk/guide/updating.html#_initial_bootstrap)

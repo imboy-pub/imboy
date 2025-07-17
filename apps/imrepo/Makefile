@@ -1,6 +1,6 @@
 PROJECT = imrepo
 PROJECT_DESCRIPTION = New project
-PROJECT_VERSION = 0.3.0
+# PROJECT_VERSION # 继承更目录版本号
 
 # Whitespace to be used when creating files from templates.
 SP = 4

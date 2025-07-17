@@ -18,7 +18,8 @@
 %% migrate/0
 %% 用于执行数据库迁移：读取 SQL 脚本并按顺序升级数据库结构
 %%
-%% imboy_migrate:migrate().  升级相关sql文件必须是顺序的
+%% imboy_migrate:migrate().
+%% 升级相关sql文件必须是顺序的
 %%------------------------------------------------------------------------------
 migrate() ->
     Conf = config_ds:env(super_account),
