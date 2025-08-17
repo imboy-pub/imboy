@@ -8,7 +8,6 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-
 init([]) ->
     % application:ensure_all_started(pgo),
     % {PoolName, PoolConfig} = config_ds:env(pgo),
@@ -29,15 +28,6 @@ init([]) ->
     %     shutdown => shutdown(),       % brutal_kill | timeout() optional 当子进程为supervisor进程时，应该设置成infinity。默认为50000;
     %     type => worker(),             % optional
     %     modules => modules()}         % optional
-    AccountServer = #{
-        id => account_server
-        , start => {account_server, start_link, []}
-        , restart => permanent
-        , shutdown => infinity
-        , type => worker
-        , modules => [account_server]
-    },
-
     UserServer = #{
         id => user_server
         , start => {user_server, start_link, []}
@@ -60,7 +50,6 @@ init([]) ->
     Specs = [
         IMBoyCache
         % , PgoChildSpec
-        , AccountServer
         , UserServer
     ],
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},

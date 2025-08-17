@@ -1,5 +1,29 @@
-{"0.6.1", [
-    {"0.6.2", [  ], []}
-], [
-    {"0.6.1", [  ], []}
-]}.
+{"0.6.3",
+ [{"0.6.2",
+   [{load_module,adm_app_ddl_handler},
+    {load_module,adm_app_version_handler},
+    {load_module,adm_app_version_logic},
+    {load_module,adm_attach_handler},
+    {load_module,adm_auth_middleware},
+    {load_module,adm_feedback_handler},
+    {load_module,adm_index_handler},
+    {load_module,adm_passport_handler},
+    {load_module,adm_passport_logic},
+    {load_module,adm_user_logic},
+    {load_module,adm_user_repo},
+    {load_module,imadm_app},
+    {load_module,imadm_sup}]}],
+ [{"0.6.2",
+   [{load_module,imadm_sup},
+    {load_module,imadm_app},
+    {load_module,adm_user_repo},
+    {load_module,adm_user_logic},
+    {load_module,adm_passport_logic},
+    {load_module,adm_passport_handler},
+    {load_module,adm_index_handler},
+    {load_module,adm_feedback_handler},
+    {load_module,adm_auth_middleware},
+    {load_module,adm_attach_handler},
+    {load_module,adm_app_version_logic},
+    {load_module,adm_app_version_handler},
+    {load_module,adm_app_ddl_handler}]}]}.

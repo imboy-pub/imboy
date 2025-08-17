@@ -135,7 +135,7 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     end;
 
 websocket_handle({text, Msg}, State) ->
-    % ?DEBUG_LOG([State, Msg]),
+    ?DEBUG_LOG([State, Msg]),
     try
         CurrentUid = maps:get(current_uid, State),
         Data = jsone:decode(Msg, [{object_format, proplist}]),

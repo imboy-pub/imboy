@@ -61,6 +61,7 @@ migrate() ->
                     true->
                         ok;
                     _ ->
+                        io:format("DefaultDefaultDefaultDefaultDefault ~p~n", [Default]),
                         Default
                 end
           end

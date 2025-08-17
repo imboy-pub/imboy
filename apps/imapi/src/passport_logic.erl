@@ -269,14 +269,13 @@ pick_data_for_insert(Data, PostVals) ->
             [0, 0]
     end,
     % ?DEBUG_LOG(["RefUid2", RefUid2]),
-    Account = integer_to_binary(account_server:allocate()),
     % ?DEBUG_LOG(["Email", Email]),
     % ?DEBUG_LOG(["Pwd2", Pwd2]),
     % ?DEBUG_LOG(["PostVals", PostVals]),
     % ?DEBUG_LOG(["Ip", Ip]),
     % ?DEBUG_LOG(["Cosv", Cosv]),
     maps:merge(#{
-        <<"account">> => Account
+        <<"account">> => account_ds:allocate()
         , <<"nickname">> => Nickname
         , <<"avatar">> => Avatar
         , <<"ref_user_id">> => RefUid2

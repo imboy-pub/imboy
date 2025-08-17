@@ -10,6 +10,8 @@
 start(_Type, _Args) ->
     inets:start(),
     imboy_syn:init(),
+    % 初始化集群管理
+    imboy_cluster:init(),
     % khepri:start(),
     % begin handler
     Routes = imboy_router:get_routes(),

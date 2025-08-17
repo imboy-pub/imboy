@@ -31,9 +31,12 @@ init() ->
         ?CHAT_SCOPE
         % , ?GROUP_SCOPE
         , ?ROOM_SCOPE
+        , ?CACHE_SCOPE
     ]) of
         ok -> ok;
-        {error, Reason} -> ?LOG(["syn:add_node_to_scopes error", Reason]), {error, Reason}
+        {error, Reason} ->
+            imboy_log:error(["syn:add_node_to_scopes error", Reason]),
+            {error, Reason}
     end.
 
 -spec join(integer(), binary(), pid(), binary()) -> ok | {error, term()}.

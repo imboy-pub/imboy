@@ -13,7 +13,7 @@
 
 -export([query/1]).
 -export([query/2]).
--export([execute/2, execute/3]).
+-export([execute/1, execute/2, execute/3]).
 
 -export([assemble_sql/4]).
 -export([assemble_where/1]).
@@ -193,7 +193,7 @@ query(Sql) ->
             pgsql when is_pid(Conn) ->
                 epgsql:equery(Conn, Sql);
             pgsql when Conn == error_no_members ->
-                imboy_log:error(io_lib:format("imboy_db:query/1 sql:~s;~n", [Sql])),
+                imboy_log:error(io_lib:format("imboy_db:query/1 sql:~s~n", [Sql])),
                 % ?DEBUG_LOG([imboy_dt:now(), Sql]),
                 % 休眠 1秒
                 timer:sleep(1),
@@ -224,6 +224,9 @@ query(Sql, Params) ->
     pooler:return_member(Driver, Conn),
     query_resp(Res).
 
+execute(Sql) ->
+    % ?DEBUG_LOG(io:format("~s\n", [Sql])),
+    execute(Sql, []).
 
 -spec execute(any(), list()) -> {ok, LastInsertId :: integer()} | {error, any()}.
 execute(Sql, Params) ->

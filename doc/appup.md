@@ -3,6 +3,9 @@
 https://www.erlang.org/doc/design_principles/appup_cookbook
 
 ## load_module
+
+find apps -name '*.appup' -exec rm {} \;
+
 简单代码替换，针对某功能模块部分修改，仅需载入新版本即可
 
 > {load_module, Module}

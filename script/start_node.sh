@@ -83,6 +83,7 @@ else
     echo "执行命令: $REL_BIN console $EXCLUDE_CMD"
     eval "$REL_BIN" console "$EXCLUDE_CMD"
   else
+    echo "执行命令: $REL_BIN console "
     # 普通console启动
     "$REL_BIN" console
   fi

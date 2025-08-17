@@ -25,6 +25,7 @@
 -module(imboy_cache).
 -include_lib("imlib/include/cache.hrl").
 -include_lib("imlib/include/log.hrl").
+-include_lib("imlib/include/chat.hrl").
 
 %% gen_server API
 -export([start_link/1]).
@@ -48,12 +49,25 @@
 %% @doc Start depcache instance based on site configuration
 start_link(Args) ->
     % ?DEBUG_LOG(Args),
+    % 启动本地depcache服务
     depcache:start_link(?DEPCACHE_SERVER,
                         #{
                           memory_max => proplists:get_value(depcache_memory_max, Args),
                           callback => {?MODULE, record_depcache_event, [Args]}
-                         }).
-
+                         }),
+    % 检查是否启用分布式缓存
+    case application:get_env(imboy, dsync_enabled, false) of
+        true ->
+            % 启动消息处理进程并注册syn处理
+            Pid = spawn(fun() -> 
+                syn:join(?CACHE_SCOPE, dsync_handler, self(), #{}),
+                message_loop() 
+            end),
+            ?DEBUG_LOG(["Started distributed cache sync process", Pid]);
+        false ->
+            ok
+    end,
+    {ok, self()}.
 
 %% @doc Cache the result of the function for an hour.
 %% @param Fun a funciton for producing a value
@@ -93,7 +107,7 @@ memo(F, Key, MaxAge, Dep) ->
 %% @spec set(Key, Data) -> void()
 %% @doc Add the key to the depcache, hold it for 3600 seconds and no dependencies
 set(Key, Data) ->
-    depcache:set(Key, Data, ?HOUR, [], ?DEPCACHE_SERVER).
+    set(Key, Data, ?HOUR, [], ?DEPCACHE_SERVER).
 
 
 %% @spec set(Key, Data, MaxAge) -> void()
@@ -102,13 +116,35 @@ set(Key, Data) ->
 % imboy_cache:get("test").
 set(Key, Data, MaxAge) ->
     % ?DEBUG_LOG(["imboy_cache/set/3", Key, "; ", Data, "; ", MaxAge]),
-    depcache:set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).
+    set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).
 
 
 %% @spec set(Key, Data, MaxAge, Depend) -> void()
 %% @doc Add the key to the depcache, hold it for MaxAge seconds and check the dependencies
 set(Key, Data, MaxAge, Depend) ->
-    depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER).
+    set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER).
+
+%% @doc 设置缓存项，支持本地缓存和分布式缓存
+set(Key, Data, MaxAge, Depend, Server) ->
+    % 首先设置本地缓存
+    depcache:set(Key, Data, MaxAge, Depend, Server),
+
+    % 检查是否需要广播到其他节点
+    case should_broadcast(Key) of
+        true ->
+            broadcast({set, Key, Data, MaxAge, Depend});
+        false ->
+            ok
+    end,
+    ok.
+
+%% @doc 判断是否需要广播缓存操作
+should_broadcast(Key) ->
+    application:get_env(imboy, dsync_enabled, false) andalso not is_local_cache_key(Key).
+
+%% @doc 检查是否为本地缓存键
+is_local_cache_key({local_cache, _}) -> true;
+is_local_cache_key(_) -> false.
 
 
 %% @spec get_wait(Key) -> {ok, Data} | undefined
@@ -144,13 +180,31 @@ get(Key, SubKey) ->
 %% [http://erlang.org/doc/man/gen_server.html#call-2 gen_server:call/2].
 %%
 flush() ->
-    depcache:flush(?DEPCACHE_SERVER).
+    depcache:flush(?DEPCACHE_SERVER),
+    % 检查是否启用分布式缓存
+    case application:get_env(imboy, dsync_enabled, false) of
+        true ->
+            % 广播到其他节点
+            broadcast(flush);
+        false ->
+            ok
+    end,
+    ok.
 
 
 %% @spec flush(Key) -> void()
 %% @doc Flush the key and all keys depending on the key
 flush(Key) ->
-    depcache:flush(Key, ?DEPCACHE_SERVER).
+    depcache:flush(Key, ?DEPCACHE_SERVER),
+    % 检查是否启用分布式缓存
+    case application:get_env(imboy, dsync_enabled, false) of
+        true ->
+            % 广播到其他节点
+            broadcast({flush, Key});
+        false ->
+            ok
+    end,
+    ok.
 
 
 %% @doc Return the total memory size of all stored terms
@@ -180,4 +234,35 @@ flush_process_dict() ->
 % TODO
 record_depcache_event(Args) ->
     ?DEBUG(Args),
+    ok.
+
+%% @doc 广播消息到所有节点
+broadcast(Message) ->
+    syn:publish(?CACHE_SCOPE, dsync_handler, {cache_sync, Message}).
+
+
+%% @doc 消息处理循环
+message_loop() ->
+    receive
+        {cache_sync, Message} ->
+            handle_sync_message(Message),
+            message_loop();
+        _ ->
+            message_loop()
+    end.
+
+
+%% @doc 处理同步消息
+handle_sync_message({set, Key, Data, MaxAge, Depend}) ->
+    ?DEBUG_LOG({set, Key, Data, MaxAge, Depend}),
+    % 在其他节点上设置缓存
+    depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER);
+handle_sync_message({flush, Key}) ->
+    % 在其他节点上清空指定键
+    depcache:flush(Key, ?DEPCACHE_SERVER);
+handle_sync_message(flush) ->
+    % 在其他节点上清空所有缓存
+    depcache:flush(?DEPCACHE_SERVER);
+handle_sync_message(_) ->
+    % 忽略未知消息
     ok.

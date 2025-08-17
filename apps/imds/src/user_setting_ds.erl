@@ -70,12 +70,14 @@ save(Uid, <<"add_friend_type">>, TypeLi) ->
 save(Uid, <<"people_nearby_visible">>, Visible) ->
     priv_save(Uid, <<"people_nearby_visible">>, Visible);
 
+save(Uid, <<"font_size">>, State) ->
+    priv_save(Uid, <<"font_size">>, State);
+
 %% 设置聊天状态
 %% State: hide online offline
 %% user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
 save(Uid, <<"chat_state">>, State) ->
     priv_save(Uid, <<"chat_state">>, State).
-
 
 -spec priv_save(Uid :: any(), Key :: binary(), Val :: any()) -> ok.
 priv_save(Uid, Key, State) ->

@@ -207,6 +207,7 @@ cp ./_rel/imboy/imboy-1.0.0.tar.gz
 // or
 scp ./_rel/imboy/imboy-1.0.0.tar.gz root@192.168.2.207:/usr/local/imboy/
 
+
 ```
 
 去启动服务  (To start the service)
@@ -220,6 +221,9 @@ cp ./_rel/imboy/imboy-1.0.0.tar.gz /usr/local/imboy/
 cd /usr/local/imboy
 
 tar -xzf imboy-1.0.0.tar.gz
+
+bin/imboy daemon
+bin/imboy remote_console
 
 bin/imboy console
 
@@ -374,6 +378,9 @@ cowboy:set_env(imboy_listener, dispatch, Dispatch).
 ```
 config_ds:reload().
 config_ds:local_reload()
+
+erl -config config/sys.dev.config -eval 'application:which_applications(), halt().'
+
 ```
 
 ## websocket 在线工具调试

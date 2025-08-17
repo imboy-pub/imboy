@@ -28,6 +28,10 @@ dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git 2.0.0
 # 2years
 dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
 
+# https://github.com/rabbitmq/ra
+# A Multi-Raft implementation for Erlang and Elixir that
+dep_ra = git https://gitee.com/imboy-tripartite-deps/ra.git v2.15.4
+
 # Khepri 是一个用于 Erlang 和 Elixir 的树状复制磁盘数据库库。
 dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
@@ -42,6 +46,13 @@ dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
 # 9years https://github.com/snaiper80/hashids-erlang
 dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
 
+# https://github.com/hnc-agency/shq.git
+# 进程间共享队列
+dep_shq = git https://gitee.com/imboy-tripartite-deps/shq.git master
+
+# https://github.com/hnc-agency/hnc-csv
+# hnc-csv - CSV Decoder/Encoder
+dep_hnc_csv = git https://github.com/hnc-agency/hnc-csv main
 
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。

@@ -82,7 +82,7 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
     ToId = imboy_hashids:decode(To),
-    % ?DEBUG_LOG([From, To, ToId, Type, Data]),
+    ?DEBUG_LOG([From, To, ToId, Type, Data]),
     NowTs = imboy_dt:now(),
 
     Payload = [
@@ -95,14 +95,14 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
         {<<"from">>, From},
         {<<"to">>, To},
         {<<"server_ts">>, imboy_dt:millisecond()},
-        {<<"type">>, Type},
         {<<"payload">>, Payload}
     ],
-    Msg2 = jsone:encode(Msg, [native_utf8]),
+    Msg2 = [{<<"type">>, Type} | Msg],
+    Msg3 = jsone:encode(Msg2, [native_utf8]),
     % 判断是否在线
     case user_logic:is_online(ToId) of
         true ->
-            imboy_syn:publish(ToId, Msg2),
+            imboy_syn:publish(ToId, Msg3),
             ok;
         false ->  % 对端离线处理
             Payload2 = jsone:encode(Payload, [native_utf8]),

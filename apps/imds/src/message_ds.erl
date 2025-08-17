@@ -85,7 +85,7 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
         Ref ->
             erlang:cancel_timer(Ref),
             imboy_cache:flush(TimerKey),
-            ?LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
+            ?DEBUG_LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
             ok
     end.
 
@@ -100,7 +100,7 @@ handle_info({timeout, Ref, {Tail, {ToUid, DID, MsgId}, Msg}}, State) ->
             % 还没被 ACK，本地继续重发
             imboy_syn:publish(ToUid, Msg, 0),
             imboy_cache:flush(TimerKey),
-            ?LOG(["timeout resend", TimerKey, Msg]),
+            ?DEBUG_LOG(["timeout resend", TimerKey, Msg]),
             send_next(ToUid, MsgId, Msg, Tail, [DID], true),
             {noreply, State};
         _ ->

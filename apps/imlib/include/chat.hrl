@@ -1,7 +1,8 @@
 
 % syn scope name
--define(CHAT_SCOPE, chat).
--define(ROOM_SCOPE, room).
+-define(CHAT_SCOPE, imboy_chat).
+-define(ROOM_SCOPE, imboy_room).
+-define(CACHE_SCOPE, imboy_cache).
 
 % 群成员系统限制
 -define (GROUP_MEMBER_LIMIT, 10000).

@@ -14,8 +14,21 @@ https://github.com/bearmug/erlang-pure-migrations
 ```
 imboy_db:migrate().
 
+import_chinese_poetry:start().
+
+
 // 下面的命令以后添加 TODO
 ./imboy migrate:run
+
+
+```
+
+
+```
+cat ./doc/postgresql/migrations/*.sql > merged.sql
+
+find /Users/leeyi/project/imboy.pub/chinese-poetry -type f -exec cat {} + > output.txt
+
 ```
 
 * 精准备份 public schema 的命令：

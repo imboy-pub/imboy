@@ -6,7 +6,7 @@ relx
 .erlang.mk
 priv/static/layim
 ebin
-*bak*.config
+*bak*
 *local*.config
 *prod*.config
 *local*.args
@@ -36,6 +36,7 @@ docker/pgsql15data
 docker/imboy_pg15
 imboy_v1.sql
 *pro*
+*dev*
 .pgsync.yml
 schema_diff.sql
 sys.dev.config
@@ -47,3 +48,7 @@ config/vm.node2.args
 docker/imboy_pg17
 .idea
 merged.sql
+chinese-poetry
+poetry-source-master
+Poetry-master
+ssl
