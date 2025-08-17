@@ -192,6 +192,9 @@ IMBOYENV=test make rel
 IMBOYENV=dev make rel -j8
 IMBOYENV=local make rel
 
+IMBOYENV=local make relup
+cp _rel/imboy/imboy-0.6.3.tar.gz /usr/local/imboy/releases/0.6.3/
+
 % 生成自解压存档
 % 自解压脚本目前仅支持以console模式启动发布
 IMBOYENV=local make SFX=1
