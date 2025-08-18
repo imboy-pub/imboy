@@ -55,18 +55,7 @@ start_link(Args) ->
                           memory_max => proplists:get_value(depcache_memory_max, Args),
                           callback => {?MODULE, record_depcache_event, [Args]}
                          }),
-    % 检查是否启用分布式缓存
-    case application:get_env(imboy, dsync_enabled, false) of
-        true ->
-            % 启动消息处理进程并注册syn处理
-            Pid = spawn(fun() -> 
-                syn:join(?CACHE_SCOPE, dsync_handler, self(), #{}),
-                message_loop() 
-            end),
-            ?DEBUG_LOG(["Started distributed cache sync process", Pid]);
-        false ->
-            ok
-    end,
+    % 分布式缓存同步由独立的gen_server处理，不在这里启动
     {ok, self()}.
 
 %% @doc Cache the result of the function for an hour.
@@ -238,31 +227,4 @@ record_depcache_event(Args) ->
 
 %% @doc 广播消息到所有节点
 broadcast(Message) ->
-    syn:publish(?CACHE_SCOPE, dsync_handler, {cache_sync, Message}).
-
-
-%% @doc 消息处理循环
-message_loop() ->
-    receive
-        {cache_sync, Message} ->
-            handle_sync_message(Message),
-            message_loop();
-        _ ->
-            message_loop()
-    end.
-
-
-%% @doc 处理同步消息
-handle_sync_message({set, Key, Data, MaxAge, Depend}) ->
-    ?DEBUG_LOG({set, Key, Data, MaxAge, Depend}),
-    % 在其他节点上设置缓存
-    depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER);
-handle_sync_message({flush, Key}) ->
-    % 在其他节点上清空指定键
-    depcache:flush(Key, ?DEPCACHE_SERVER);
-handle_sync_message(flush) ->
-    % 在其他节点上清空所有缓存
-    depcache:flush(?DEPCACHE_SERVER);
-handle_sync_message(_) ->
-    % 忽略未知消息
-    ok.
+    imboy_cache_sync:broadcast(Message).

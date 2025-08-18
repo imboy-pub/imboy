@@ -47,10 +47,25 @@ init([]) ->
         , type => worker
         , modules => dynamic
     },
+    % 根据配置决定是否启动分布式缓存同步服务器
+    CacheSyncSpec = case application:get_env(imboy, dsync_enabled, false) of
+        true ->
+            [#{
+                id => imboy_cache_sync,
+                start => {imboy_cache_sync, start_link, []},
+                restart => permanent,
+                shutdown => 5000,
+                type => worker,
+                modules => [imboy_cache_sync]
+            }];
+        false ->
+            []
+    end,
+    
     Specs = [
         IMBoyCache
         % , PgoChildSpec
         , UserServer
-    ],
+    ] ++ CacheSyncSpec,
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},
     {ok, {Restart, Specs}}.
