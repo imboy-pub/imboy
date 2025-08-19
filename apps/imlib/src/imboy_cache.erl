@@ -233,7 +233,7 @@ flush_process_dict() ->
 
 % TODO
 record_depcache_event(Args) ->
-    ?DEBUG(Args),
+    ?DEBUG_LOG(Args),
     ok.
 
 %% @doc 广播消息到所有节点
