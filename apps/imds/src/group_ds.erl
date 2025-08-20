@@ -125,8 +125,9 @@ dissolve(Gid) ->
 %     khepri:delete(Key).
 
 % group_ds:gid().
+%% @doc 获取一个新的群组ID，显式使用 public schema 的序列，避免受 search_path 影响
 gid() ->
-    case imboy_db:query("select nextval('group_id_seq');") of
+    case imboy_db:query("select nextval('public.group_id_seq');") of
         {ok,_,[{Gid}]} ->
             Gid
     end.

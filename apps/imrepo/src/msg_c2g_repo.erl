@@ -39,8 +39,8 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
               ", '", Gid/binary, "', '", FromId/binary, "', '", CreatedAt/binary,
               "', '", MsgId/binary, "');">>,
         % ?DEBUG_LOG(Sql),
-        {ok, Stmt} = epgsql:parse(Conn, Sql),
-        epgsql:execute_batch(Conn, [{Stmt, []}]),
+        %% 使用统一封装的执行接口，避免直接依赖 epgsql
+        ok = imboy_db:execute(Conn, Sql, []),
         % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
         % ?DEBUG_LOG(["Res", Res]), % [{ok,1}]
          % [{ok, 1, _}] = Res,
@@ -59,8 +59,8 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES",
                Values/binary>>,
         % ?DEBUG_LOG([Sql, Sql2]),
-        {ok, Stmt2} = epgsql:parse(Conn, Sql2),
-        epgsql:execute_batch(Conn, [{Stmt2, []}]),
+        %% 使用统一封装的执行接口，避免直接依赖 epgsql
+        ok = imboy_db:execute(Conn, Sql2, []),
         ok
     end),
     ok.

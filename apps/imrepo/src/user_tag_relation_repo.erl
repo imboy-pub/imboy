@@ -53,8 +53,9 @@ remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     DelSql = <<"DELETE FROM ", Tb/binary, " WHERE ", DelWhere/binary>>,
     imboy_log:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 DelSql ~p, ~p; ~n",
                                  [DelSql, [Uid, TagId]])),
-    epgsql:equery(Conn, DelSql, []),
-    ok.
+    %% 使用数据库封装接口执行，避免直接依赖驱动
+    ok = imboy_db:execute(Conn, DelSql, []),
+     ok.
 
 
 replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) when is_integer(ObjectId) ->
@@ -74,11 +75,11 @@ replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) ->
     Sql = <<"UPDATE ", Table/binary, " SET tag = replace(tag, '", FromName/binary, ",', '", ToName/binary, "') WHERE ",
             Where/binary>>,
     imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 sql:~s;~n", [Sql])),
-    Res = epgsql:equery(Conn, Sql),
-    % {ok, Stmt} = epgsql:parse(Conn, Sql),
-    % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 Res:~p;~n", [Res])),
-    ok.
+    Res = imboy_db:execute(Conn, Sql, []),
+     % {ok, Stmt} = epgsql:parse(Conn, Sql),
+     % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
+     imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 Res:~p;~n", [Res])),
+     ok.
 
 
 %%% 保存tag数据

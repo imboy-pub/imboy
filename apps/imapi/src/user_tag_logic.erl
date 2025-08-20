@@ -59,31 +59,31 @@ delete(Uid, Scene, Tag) ->
                                       DelWhere = <<"scene = ", Scene/binary, " AND user_id = $1 AND tag_id = $2">>,
                                       DelSql = <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
                                       % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
-                                      epgsql:equery(Conn, DelSql, [Uid, TagId]),
+                                      %% 使用封装的执行接口
+                                      ok = imboy_db:execute(Conn, DelSql, [Uid, TagId]),
 
-                                      % 删除 public.user_tag
-                                      TagTb = imboy_db:public_tablename(<<"user_tag">>),
-                                      DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
-                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
-                                      epgsql:equery(Conn, DelSql2, [TagId]),
+                                       % 删除 public.user_tag
+                                       TagTb = imboy_db:public_tablename(<<"user_tag">>),
+                                       DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
+                                       % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
+                                       ok = imboy_db:execute(Conn, DelSql2, [TagId]),
 
-                                      %
-                                      UpTb =
-                                          case Scene of
-                                              <<"1">> ->
-                                                  imboy_db:public_tablename(<<"user_collect">>);
-                                              <<"2">> ->
-                                                  imboy_db:public_tablename(<<"user_friend">>)
-                                          end,
-                                      UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,
-                                                ",', '') WHERE tag like '%", Tag/binary, ",%';">>,
-                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
-
-                                      _Res = epgsql:equery(Conn, UpSql),
-                                      % 清理缓存
-                                      user_tag_relation_repo:flush_subtitle(TagId),
-                                      % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
-                                      ok
+                                       %
+                                       UpTb =
+                                           case Scene of
+                                               <<"1">> ->
+                                                   imboy_db:public_tablename(<<"user_collect">>);
+                                               <<"2">> ->
+                                                   imboy_db:public_tablename(<<"user_friend">>)
+                                           end,
+                                       UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,
+                                                 ",', '') WHERE tag like '%", Tag/binary, ",%';">>,
+                                       % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
+                                       ok = imboy_db:execute(Conn, UpSql, []),
+                                       % 清理缓存
+                                       user_tag_relation_repo:flush_subtitle(TagId),
+                                       % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
+                                       ok
                               end),
     ok.
 
@@ -157,11 +157,10 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
 
     % imboy_log:error(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
     % epgsql:equery(Conn, Sql),
-    {ok, Stmt} = epgsql:parse(Conn, Sql),
-    % epgsql:execute_batch(Conn, [{Stmt, []}]),
-    Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % imboy_log:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5  ====================== Res:~p;~n", [Res])),
-    Res.
+    %% 使用统一封装的执行接口，避免直接依赖 epgsql
+    ok = imboy_db:execute(Conn, Sql, []),
+    % imboy_log:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 execute ok;~n", [])),
+    ok.
 
 
 %% ===================================================================

@@ -170,10 +170,12 @@ do_add(Scene, Uid, ObjectId, []) ->
                                           end,
                                       Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", Where/binary>>,
                                       % imboy_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
-                                      epgsql:equery(Conn, Sql),
+                                      % epgsql:equery(Conn, Sql),
+                                      %% 使用封装的执行接口，避免直接依赖 epgsql
+                                      ok = imboy_db:execute(Conn, Sql, []),
 
-                                      % 删除 public.user_tag_relation
-                                      delete_object_tag(Conn, Scene, Uid2, ObjectId),
+                                       % 删除 public.user_tag_relation
+                                       delete_object_tag(Conn, Scene, Uid2, ObjectId),
                                       ok
                               end),
     ok;
@@ -240,11 +242,12 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
     DelSql = <<"DELETE FROM ", DelTb/binary, " WHERE ", DelWhere/binary>>,
     % imboy_log:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelSql ~p; ~n", [DelSql])),
     % Res = epgsql:equery(Conn, DelSql, []),
-
-    {ok, Stmt} = epgsql:parse(Conn, DelSql),
-    epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-    % imboy_log:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
+    % {ok, Stmt} = epgsql:parse(Conn, DelSql),
+    % epgsql:execute_batch(Conn, [{Stmt, []}]),
+    %% 使用封装的执行接口
+    ok = imboy_db:execute(Conn, DelSql, []),
+     % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
+     % imboy_log:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
 
     % 清理缓存
     [ user_tag_relation_repo:flush_subtitle(TagId) || {TagId} <- DelItems ],
