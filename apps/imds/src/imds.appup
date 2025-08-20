@@ -1,3 +1,7 @@
+{"0.6.4",
+ [{"0.6.3",[{load_module,account_ds},{load_module,group_ds}]}],
+ [{"0.6.3",[{load_module,account_ds},{load_module,group_ds}]}]}.
+
 {"0.6.3",
  [{"0.6.2",
    [{add_module,account_ds},
@@ -43,3 +47,4 @@
     {load_module,app_version_ds},
     {load_module,app_ddl_ds},
     {delete_module,account_ds}]}]}.
+

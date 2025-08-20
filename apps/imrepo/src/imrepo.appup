@@ -1,3 +1,13 @@
+{"0.6.4",
+ [{"0.6.3",
+   [{load_module,msg_c2g_repo},
+    {load_module,msg_c2s_repo},
+    {load_module,user_tag_relation_repo}]}],
+ [{"0.6.3",
+   [{load_module,msg_c2g_repo},
+    {load_module,msg_c2s_repo},
+    {load_module,user_tag_relation_repo}]}]}.
+
 {"0.6.3",
  [{"0.6.2",
    [{load_module,app_ddl_repo},
@@ -59,3 +69,4 @@
     {load_module,attachment_repo},
     {load_module,app_version_repo},
     {load_module,app_ddl_repo}]}]}.
+

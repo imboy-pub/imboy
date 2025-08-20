@@ -1,3 +1,9 @@
+{"0.6.4",
+ [{"0.6.3",
+   [{load_module,user_tag_logic},{load_module,user_tag_relation_logic}]}],
+ [{"0.6.3",
+   [{load_module,user_tag_logic},{load_module,user_tag_relation_logic}]}]}.
+
 {"0.6.3",
  [{"0.6.2",
    [{load_module,app_ddl_handler},
@@ -93,3 +99,4 @@
     {load_module,auth_handler},
     {load_module,app_version_handler},
     {load_module,app_ddl_handler}]}]}.
+

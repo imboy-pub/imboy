@@ -1,6 +1,20 @@
+{"0.6.4",
+ [{"0.6.3",
+   [{add_module,imboy_appup},
+    {add_module,imboy_cache_sync},
+    {load_module,imboy_cache},
+    {load_module,imboy_db}]}],
+ [{"0.6.3",
+   [{delete_module,imboy_appup},
+    {delete_module,imboy_cache_sync},
+    {load_module,imboy_cache},
+    {load_module,imboy_db}]}]}.
+
 {"0.6.3",
  [{"0.6.2",
    [{add_module,imboy_cluster},
+    {add_module,import_chinese_poetry},
+    {add_module,import_poetry},
     {delete_module,account_server},
     {load_module,epgsql_codec_rfc3339_bin},
     {load_module,imboy_cache},
@@ -48,4 +62,7 @@
     {load_module,imboy_cache},
     {load_module,epgsql_codec_rfc3339_bin},
     {add_module,account_server},
+    {delete_module,import_poetry},
+    {delete_module,import_chinese_poetry},
     {delete_module,imboy_cluster}]}]}.
+

@@ -1,140 +1,96 @@
 #!/bin/bash
 
-# 生成符合relx规范的.appup文件脚本
-# 用法1 (首次发布): bash script/gen_appup.sh 0.6.1
-# 用法2 (版本升级): bash script/gen_appup.sh 0.6.1 0.6.2
-# 用法2 (版本升级): bash script/gen_appup.sh 0.6.2 0.6.3
-# 功能: 使用 Erlang systools 模块生成 appup 文件，比较git tag之间的差异，生成升级/降级指令
+# 生成符合 relx 规范的 .appup 文件
+# 用法:
+#   首次发布: bash script/gen_appup.sh 0.6.4
+#   版本升级: bash script/gen_appup.sh 0.6.3 0.6.4
+# 行为:
+#   - 子应用 apps/*: 基于 git 标签差异生成 add_module/delete_module/load_module，生成“多 term 历史格式”
+#   - 顶层 src/imboy.appup: 生成“多 term 历史格式”，新版本置顶；如 imboy_sup 变更，注入 {update, imboy_sup, supervisor}；对子应用变化与依赖变化、vsn 变化注入 {restart_application, App}
+#   - 依赖变化: 若 Makefile DEPS 或 include/deps.mk dep_* 规格变更，也纳入顶层重启集合
+#   - 幂等: 同一 {OLD -> NEW} 重复执行，顶层会覆盖同版本条目；子应用会覆盖同版本 appup 内容
+#   - 写入流程: 优先 Erlang 模块 imboy_appup 生成，失败回退到原 Bash 文本拼装
 
-# 解析参数
-if [ $# -eq 1 ]; then
-  # 首次发布模式
-  NEW_TAG="$1"
-  OLD_TAG=""
-  FIRST_RELEASE=true
-  echo "首次发布模式: 生成版本 $NEW_TAG 的 appup 文件"
-elif [ $# -eq 2 ]; then
-  # 版本升级模式
+set -e
+
+normalize_tag() {
+  local t="$1"
+  if git rev-parse "$t" >/dev/null 2>&1; then
+    echo "$t"
+  elif git rev-parse "v$t" >/dev/null 2>&1; then
+    echo "v$t"
+  else
+    echo "$t"
+  fi
+}
+
+# 解析参数（支持环境变量回退）
+if [ $# -eq 2 ]; then
   OLD_TAG="$1"
   NEW_TAG="$2"
   FIRST_RELEASE=false
   echo "版本升级模式: 从 $OLD_TAG 升级到 $NEW_TAG"
+elif [ $# -eq 1 ]; then
+  NEW_TAG="$1"
+  OLD_TAG=""
+  FIRST_RELEASE=true
+  echo "首次发布模式: 生成版本 $NEW_TAG 的 appup 文件"
 else
-  echo "用法:"
-  echo "  首次发布: $0 <new_tag>"
-  echo "  版本升级: $0 <old_tag> <new_tag>"
-  echo "示例:"
-  echo "  $0 0.6.1"
-  echo "  $0 0.6.1 0.6.2"
-  exit 1
+  # 环境变量兼容 Makefile
+  NEW_TAG="${PROJECT_VERSION:-${NEW_VERSION:-${NEW_TAG:-}}}"
+  OLD_TAG="${OLD_VERSION:-${OLD_TAG:-${PREV_VERSION:-}}}"
+  if [ -n "$NEW_TAG" ] && [ -z "$OLD_TAG" ]; then
+    FIRST_RELEASE=true
+    echo "首次发布模式(环境变量): 生成版本 $NEW_TAG 的 appup 文件"
+  elif [ -n "$NEW_TAG" ] && [ -n "$OLD_TAG" ]; then
+    FIRST_RELEASE=false
+    echo "版本升级模式(环境变量): 从 $OLD_TAG 升级到 $NEW_TAG"
+  else
+    echo "用法:"
+    echo "  首次发布: $0 <new_tag> 或设置 PROJECT_VERSION/NEW_VERSION/NEW_TAG"
+    echo "  版本升级: $0 <old_tag> <new_tag> 或设置 OLD_VERSION/OLD_TAG/PREV_VERSION 与 PROJECT_VERSION/NEW_VERSION/NEW_TAG"
+    exit 1
+  fi
 fi
 
-# 检查git tag是否存在
+# 校验/规范化 tag
 if [ "$FIRST_RELEASE" = "false" ]; then
-  if ! git rev-parse "$OLD_TAG" >/dev/null 2>&1; then
-    echo "错误: git tag '$OLD_TAG' 不存在"
-    exit 1
-  fi
-  
-  if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
-    echo "错误: git tag '$NEW_TAG' 不存在"
-    exit 1
-  fi
+  OLD_TAG="$(normalize_tag "$OLD_TAG")"
+  NEW_TAG="$(normalize_tag "$NEW_TAG")"
+  git rev-parse "$OLD_TAG" >/dev/null 2>&1 || { echo "错误: git tag '$OLD_TAG' 不存在"; exit 1; }
+  git rev-parse "$NEW_TAG" >/dev/null 2>&1 || { echo "错误: git tag '$NEW_TAG' 不存在"; exit 1; }
 else
   echo "首次发布模式: 不检查 git tag 是否存在"
 fi
 
+echo "正在生成从 '$OLD_TAG' 到 '$NEW_TAG' 的 .appup ..."; echo ""
+
+# 优先使用 Erlang 模块 imboy_appup 生成，失败则回退到 Bash 实现
+erlang_ok=0
 if [ "$FIRST_RELEASE" = "true" ]; then
-  echo "正在为首次发布生成版本 $NEW_TAG 的 .appup 文件..."
+  if erl -noshell -eval "case c:c(\"apps/imlib/src/imboy_appup.erl\") of {ok, imboy_appup} -> case imboy_appup:first_release(\"$NEW_TAG\") of ok -> halt(0); {error, R} -> io:format(\"~p~n\", [R]), halt(1) end; _ -> halt(1) end." -s init stop 2>/dev/null; then
+    erlang_ok=1
+  fi
 else
-  echo "正在生成从 $OLD_TAG 到 $NEW_TAG 的 .appup 文件..."
+  if erl -noshell -eval "case c:c(\"apps/imlib/src/imboy_appup.erl\") of {ok, imboy_appup} -> case imboy_appup:run(\"$OLD_TAG\", \"$NEW_TAG\") of ok -> halt(0); {error, R} -> io:format(\"~p~n\", [R]), halt(1) end; _ -> halt(1) end." -s init stop 2>/dev/null; then
+    erlang_ok=1
+  fi
 fi
-echo ""
 
-# 使用 systools 生成 appup 文件的函数
-# 参数: app_name app_dir old_vsn new_vsn added_modules deleted_modules modified_modules
-generate_appup_with_systools() {
-  local app_name="$1"
-  local app_dir="$2"
-  local old_vsn="$3"
-  local new_vsn="$4"
-  local added_modules="$5"
-  local deleted_modules="$6"
-  local modified_modules="$7"
-  local appup_file="$app_dir/src/$app_name.appup"
-  
-  # 构建升级指令
-  local upgrade_instructions=""
-  local downgrade_instructions=""
-  
-  # 处理新增模块（真正的新增模块）
-  if [ -n "$added_modules" ]; then
-    for module in $added_modules; do
-      upgrade_instructions="$upgrade_instructions{add_module, $module},"
-      downgrade_instructions="{delete_module, $module},$downgrade_instructions"
-    done
-  fi
-  
-  # 处理删除模块（真正的删除模块）
-  if [ -n "$deleted_modules" ]; then
-    for module in $deleted_modules; do
-      upgrade_instructions="$upgrade_instructions{delete_module, $module},"
-      downgrade_instructions="{add_module, $module},$downgrade_instructions"
-    done
-  fi
-  
-  # 处理修改模块（只需要重新加载）
-  if [ -n "$modified_modules" ]; then
-    for module in $modified_modules; do
-      upgrade_instructions="$upgrade_instructions{load_module, $module},"
-      downgrade_instructions="{load_module, $module},$downgrade_instructions"
-    done
-  fi
-  
-  # 移除末尾的逗号
-  upgrade_instructions=$(echo "$upgrade_instructions" | sed 's/,$//')
-  downgrade_instructions=$(echo "$downgrade_instructions" | sed 's/,$//')
-  
-  # 注意：允许空的升级/降级指令，以支持仅版本号变更的场景
-  
-  # 使用 Erlang 调用 systools 生成 appup 文件
-  local temp_script="/tmp/gen_appup_${app_name}.erl"
-  cat > "$temp_script" << EOF
--module(gen_appup_${app_name}).
--export([generate/0]).
+if [ $erlang_ok -eq 1 ]; then
+  echo "✓ 使用 imboy_appup 生成完成"
+  exit 0
+else
+  echo "Erlang 生成失败，回退到 Bash 逻辑..."
+fi
 
-generate() ->
-    UpgradeInstructions = [$upgrade_instructions],
-    DowngradeInstructions = [$downgrade_instructions],
-    AppupContent = {
-        "$new_vsn",
-        [{
-            "$old_vsn",
-            UpgradeInstructions
-        }],
-        [{
-            "$old_vsn",
-            DowngradeInstructions
-        }]
-    },
-    file:write_file("$appup_file", io_lib:format("~p.~n", [AppupContent])).
-EOF
-  
-  # 执行 Erlang 脚本
-  if erl -noshell -pa ebin -eval "c:c('$temp_script'), gen_appup_${app_name}:generate(), halt()." 2>/dev/null; then
-    rm -f "$temp_script"
-    return 0
-  else
-    rm -f "$temp_script"
-    return 1
-  fi
-}
+# ----------------------- 下面保留原 Bash 回退实现 -----------------------
 
-# 验证 appup 文件格式的函数
+# 函数: 验证 .appup 文件是否为 Erlang terms（可多 term）
 validate_appup_file() {
   local appup_file="$1"
   if [ -f "$appup_file" ]; then
-    if erl -noshell -eval "case file:consult('$appup_file') of {ok, _} -> halt(0); {error, Reason} -> io:format('Error: ~p~n', [Reason]), halt(1) end." 2>/dev/null; then
+    if erl -noshell -eval "case file:consult(\"$appup_file\") of {ok, _} -> halt(0); _ -> halt(1) end." 2>/dev/null; then
       return 0
     else
       return 1
@@ -144,399 +100,264 @@ validate_appup_file() {
   fi
 }
 
-# 获取指定 git tag 下的模块列表
+# 函数: 获取指定 tag 下 app_dir/src 的模块名列表
 get_modules_at_tag() {
-  local tag="$1"
-  local app_dir="$2"
+  local tag="$1"; local app_dir="$2"
   if [ -n "$tag" ]; then
-    # 使用 git ls-tree 获取指定 tag 下的文件列表
-    git ls-tree -r --name-only "$tag" "$app_dir/src/" 2>/dev/null | \
-      grep '\\.erl$' | \
-      xargs -I {} basename {} .erl | \
-      sort
+    git ls-tree -r --name-only "$tag" -- "$app_dir/src" 2>/dev/null | \
+      grep '\.erl$' | xargs -I {} basename {} .erl | sort
   else
     echo ""
   fi
 }
 
-# 获取当前的模块列表
-get_current_modules() {
-  local app_dir="$1"
-  if [ -d "$app_dir/src" ]; then
-    find "$app_dir/src" -name '*.erl' -exec basename {} .erl \; | sort
+# 函数: 使用 Erlang 生成单个 app 的 appup（允许空指令）
+# 参数: app_name app_dir old_vsn new_vsn added deleted modified
+generate_appup_with_systools() {
+  local app_name="$1" app_dir="$2" old_vsn="$3" new_vsn="$4"
+  local added="$5" deleted="$6" modified="$7"
+  local appup_file="$app_dir/src/$app_name.appup"
+
+  local up=""; local down=""
+  for m in $added; do
+    up="$up{add_module, $m},"; down="{delete_module, $m},$down"
+  done
+  for m in $deleted; do
+    up="$up{delete_module, $m},"; down="{add_module, $m},$down"
+  done
+  for m in $modified; do
+    up="$up{load_module, $m},"; down="{load_module, $m},$down"
+  done
+  up=$(echo "$up" | sed 's/,$//'); down=$(echo "$down" | sed 's/,$//')
+
+  local tmp="/tmp/gen_appup_${app_name}.erl"
+  cat > "$tmp" <<EOF
+-module(gen_appup_${app_name}).
+-export([generate/0]).
+generate() ->
+  NewVsn = "$new_vsn",
+  OldVsn = "$old_vsn",
+  UpInstr = [$up],
+  DownInstr = [$down],
+  File = "$appup_file",
+  file:write_file(File, io_lib:format("~p.~n", [{NewVsn, [{OldVsn, UpInstr}], [{OldVsn, DownInstr}]}])).
+EOF
+  if erl -noshell -pa ebin -eval "c:c(\"$tmp\"), gen_appup_${app_name}:generate(), halt()." 2>/dev/null; then
+    rm -f "$tmp"
+    return 0
   else
-    echo ""
+    rm -f "$tmp"
+    return 1
   fi
 }
 
-# 统计变量
 processed_count=0
 skipped_count=0
 failed_count=0
-# 记录在 OLD_TAG → NEW_TAG 期间有变更的子应用（用于生成顶层 imboy.appup 的 restart_application）
 changed_apps=""
 
-# 遍历 apps 目录下的每个应用
+# 遍历 apps/*
 for app_dir in apps/*/; do
-  if [ ! -d "$app_dir" ]; then
-    continue
-  fi
-  
+  [ -d "$app_dir" ] || continue
   app_name=$(basename "$app_dir")
   appup_file="$app_dir/src/$app_name.appup"
-  
   echo "处理应用: $app_name"
 
-  # 每个应用的 vsn 变更标记（默认 false）
-  vsn_changed=false
-
-  # 提示 ebin/<app>.app 的 vsn 与 NEW_TAG 是否一致（仅提示，不阻塞生成）
-  app_file="$app_dir/ebin/$app_name.app"
-  if [ -f "$app_file" ]; then
-    app_vsn=$(sed -n 's/.*{vsn, *"\([^"]*\)".*/\1/p' "$app_file" | head -1)
-    if [ -n "$app_vsn" ] && [ "$app_vsn" != "$NEW_TAG" ]; then
-      echo "  ! 警告: $app_name 的 ebin/$app_name.app vsn=$app_vsn 与 NEW_TAG=$NEW_TAG 不一致，构建 relup 时应确保 .app vsn 与 appup 一致。"
-    fi
-    # 在升级模式下尝试比较 OLD_TAG 与当前的 vsn，以决定是否需要在 imboy.appup 中重启该应用
-    if [ "$FIRST_RELEASE" = "false" ]; then
-      old_app_file_content=$(git show "$OLD_TAG:$app_dir/ebin/$app_name.app" 2>/dev/null || echo "")
-      if [ -n "$old_app_file_content" ] && [ -n "$app_vsn" ]; then
-        old_app_vsn=$(echo "$old_app_file_content" | sed -n 's/.*{vsn, *"\([^"]*\)".*/\1/p' | head -1)
-        if [ -n "$old_app_vsn" ] && [ "$old_app_vsn" != "$app_vsn" ]; then
-          vsn_changed=true
-          echo "  * 检测到 vsn 变更: $old_app_vsn -> $app_vsn (将纳入顶层重启)"
-        fi
-      fi
-    fi
-  fi
-
   if [ "$FIRST_RELEASE" = "true" ]; then
-    # 首次发布模式：创建基础 appup 文件
-    current_modules=$(get_current_modules "$app_dir")
-    
-    if [ -z "$current_modules" ]; then
-      echo "  跳过 $app_name: 没有找到 Erlang 模块"
-      skipped_count=$((skipped_count + 1))
-      continue
-    fi
-    
-    # 创建基础 appup 文件（首次发布通常只包含版本信息）
-    cat > "$appup_file" << EOF
+    # 首发: 仅写空指令 term
+    mkdir -p "$app_dir/src"
+    cat > "$appup_file" <<EOF
 {"$NEW_TAG", [], []}.
 EOF
-    
     if validate_appup_file "$appup_file"; then
-      echo "  ✓ 已生成 $app_name.appup (首次发布)"
-      processed_count=$((processed_count + 1))
+      echo "  ✓ $app_name.appup 生成 (首次)"
+      processed_count=$((processed_count+1))
     else
-      echo "  ✗ 生成 $app_name.appup 失败"
-      failed_count=$((failed_count + 1))
+      echo "  ✗ $app_name.appup 验证失败"
+      failed_count=$((failed_count+1))
     fi
-  else
-    # 版本升级模式：比较模块差异
-    old_modules=$(get_modules_at_tag "$OLD_TAG" "$app_dir")
-    new_modules=$(get_current_modules "$app_dir")
-    
-    if [ -z "$new_modules" ]; then
-      echo "  跳过 $app_name: 没有找到 Erlang 模块"
-      skipped_count=$((skipped_count + 1))
-      continue
-    fi
-    
-    # 计算模块差异
-    # 确保模块列表不为空时才进行比较
-    if [ -n "$old_modules" ] && [ -n "$new_modules" ]; then
-      added_modules=$(comm -13 <(echo "$old_modules" | sort) <(echo "$new_modules" | sort))
-      deleted_modules=$(comm -23 <(echo "$old_modules" | sort) <(echo "$new_modules" | sort))
-      common_modules=$(comm -12 <(echo "$old_modules" | sort) <(echo "$new_modules" | sort))
-    elif [ -z "$old_modules" ] && [ -n "$new_modules" ]; then
-      # 如果旧版本不可用或没有模块，所有当前模块都视为新增（回退策略）
-      added_modules="$new_modules"
-      deleted_modules=""
-      common_modules=""
-    elif [ -n "$old_modules" ] && [ -z "$new_modules" ]; then
-      # 如果当前版本没有模块，所有旧模块都被删除了
-      added_modules=""
-      deleted_modules="$old_modules"
-      common_modules=""
-    else
-      # 两个版本都没有模块
-      added_modules=""
-      deleted_modules=""
-      common_modules=""
-    fi
-    
-    # 检查修改的模块（通过比较文件内容），若无法获取旧内容则视为修改（更稳妥）
-    modified_modules=""
-    if [ -n "$common_modules" ]; then
-      while IFS= read -r module; do
-        [ -z "$module" ] && continue
-        old_content=$(git show "$OLD_TAG:$app_dir/src/$module.erl" 2>/dev/null || echo "")
-        new_content=$(cat "$app_dir/src/$module.erl" 2>/dev/null || echo "")
-        if [ -z "$old_content" ]; then
-          # 无法读取旧内容，保守起见当作修改
-          modified_modules="$modified_modules $module"
-        else
-          if [ "$old_content" != "$new_content" ]; then
-            modified_modules="$modified_modules $module"
-          fi
-        fi
-      done < <(echo "$common_modules")
-    fi
-
-    # 记录当前应用是否有变更，用于后续生成 imboy.appup 的 restart_application
-    has_changes=false
-    if [ -n "$added_modules" ] || [ -n "$deleted_modules" ] || [ -n "$modified_modules" ] || $vsn_changed; then
-      has_changes=true
-    fi
-    if $has_changes; then
-      # 仅记录子应用，顶层 imboy 自身不在 apps/* 内，此处无须排除
-      changed_apps="$changed_apps $(basename "$app_dir")"
-    fi
-
-    # 不再在“无模块变更”时跳过，改为生成一个空指令的 appup，以支持仅版本变更
-    
-    # 备份现有的 appup 文件
-    if [ -f "$appup_file" ]; then
-      cp "$appup_file" "$appup_file.bak"
-    fi
-    
-    # 尝试使用 systools 生成 appup 文件（允许空指令）
-    if generate_appup_with_systools "$app_name" "$app_dir" "$OLD_TAG" "$NEW_TAG" "$added_modules" "$deleted_modules" "$modified_modules"; then
-      echo "  ✓ 使用 systools 生成 $app_name.appup"
-      processed_count=$((processed_count + 1))
-    else
-      # 回退到传统方法
-      echo "  ! systools 生成失败，使用传统方法"
-      
-      # 构建升级指令
-      upgrade_instructions=""
-      downgrade_instructions=""
-      
-      for module in $added_modules; do
-        upgrade_instructions="$upgrade_instructions    {add_module, $module},\n"
-        downgrade_instructions="    {delete_module, $module},\n$downgrade_instructions"
-      done
-      
-      for module in $deleted_modules; do
-        upgrade_instructions="$upgrade_instructions    {delete_module, $module},\n"
-        downgrade_instructions="    {add_module, $module},\n$downgrade_instructions"
-      done
-      
-      for module in $modified_modules; do
-        upgrade_instructions="$upgrade_instructions    {load_module, $module},\n"
-        downgrade_instructions="    {load_module, $module},\n$downgrade_instructions"
-      done
-      
-      # 移除末尾的逗号和换行符
-      upgrade_instructions=$(echo -e "$upgrade_instructions" | sed 's/,$//' | sed '/^$/d')
-      downgrade_instructions=$(echo -e "$downgrade_instructions" | sed 's/,$//' | sed '/^$/d')
-      
-      # 处理现有的 appup 文件
-      if [ -f "$appup_file.bak" ]; then
-        # 读取现有版本记录
-        existing_content=$(cat "$appup_file.bak")
-        
-        # 检查是否已存在当前版本的升级路径
-        if echo "$existing_content" | grep -q "\"$NEW_TAG\""; then
-          echo "  跳过 $app_name: 版本 $NEW_TAG 的升级路径已存在"
-          mv "$appup_file.bak" "$appup_file"
-          skipped_count=$((skipped_count + 1))
-          continue
-        fi
-        
-        # 解析现有的升级和降级记录
-        existing_upgrades=$(echo "$existing_content" | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | head -1)
-        existing_downgrades=$(echo "$existing_content" | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | tail -1)
-        
-        # 构建新的 appup 文件内容
-        cat > "$appup_file" << EOF
-{"$NEW_TAG",
-  [
-    {"$OLD_TAG", [
-$upgrade_instructions
-    ]},
-$existing_upgrades
-  ],
-  [
-    {"$OLD_TAG", [
-$downgrade_instructions
-    ]},
-$existing_downgrades
-  ]
-}.
-EOF
-      else
-        # 创建新的 appup 文件（即使没有指令也生成，支持仅版本号变更）
-        cat > "$appup_file" << EOF
-{"$NEW_TAG",
-  [
-    {"$OLD_TAG", [
-$upgrade_instructions
-    ]}
-  ],
-  [
-    {"$OLD_TAG", [
-$downgrade_instructions
-    ]}
-  ]
-}.
-EOF
-      fi
-      
-      if validate_appup_file "$appup_file"; then
-        echo "  ✓ 已生成 $app_name.appup"
-        processed_count=$((processed_count + 1))
-      else
-        echo "  ✗ 生成 $app_name.appup 失败"
-        failed_count=$((failed_count + 1))
-      fi
-    fi
+    continue
   fi
 
+  old_modules=$(get_modules_at_tag "$OLD_TAG" "$app_dir")
+  new_modules=$(get_modules_at_tag "$NEW_TAG" "$app_dir")
+  if [ -z "$new_modules" ]; then
+    echo "  跳过: 未找到 .erl"
+    skipped_count=$((skipped_count+1))
+    continue
+  fi
+
+  if [ -n "$old_modules" ] && [ -n "$new_modules" ]; then
+    added=$(comm -13 <(echo "$old_modules") <(echo "$new_modules"))
+    deleted=$(comm -23 <(echo "$old_modules") <(echo "$new_modules"))
+    common=$(comm -12 <(echo "$old_modules") <(echo "$new_modules"))
+  elif [ -z "$old_modules" ] && [ -n "$new_modules" ]; then
+    added="$new_modules"; deleted=""; common=""
+  elif [ -n "$old_modules" ] && [ -z "$new_modules" ]; then
+    added=""; deleted="$old_modules"; common=""
+  else
+    added=""; deleted=""; common=""
+  fi
+
+  modified=""
+  if [ -n "$common" ]; then
+    while IFS= read -r m; do
+      [ -z "$m" ] && continue
+      old_c=$(git show "$OLD_TAG:$app_dir/src/$m.erl" 2>/dev/null || echo "")
+      new_c=$(git show "$NEW_TAG:$app_dir/src/$m.erl" 2>/dev/null || echo "")
+      if [ -z "$old_c" ] || [ "$old_c" != "$new_c" ]; then
+        modified="$modified $m"
+      fi
+    done < <(echo "$common")
+  fi
+
+  has_changes=false
+  if [ -n "$added$deleted$modified" ]; then has_changes=true; fi
+
+  if $has_changes; then
+    changed_apps="$changed_apps $app_name"
+  fi
+
+  mkdir -p "$app_dir/src"
+  if generate_appup_with_systools "$app_name" "$app_dir" "$OLD_TAG" "$NEW_TAG" "$added" "$deleted" "$modified"; then
+    echo "  ✓ 生成 $app_name.appup"
+    processed_count=$((processed_count+1))
+  else
+    echo "  ✗ 生成 $app_name.appup 失败"
+    failed_count=$((failed_count+1))
+  fi
 done
 
-# 扩展：检测第三方依赖（Makefile 中的 DEPS/dep_*）是否发生变化，若变化则加入 changed_apps
+# 依赖变化检测纳入 changed_apps
 if [ "$FIRST_RELEASE" = "false" ]; then
-  if [ -f "Makefile" ]; then
-    current_mk_content=$(cat Makefile 2>/dev/null || echo "")
-    old_mk_content=$(git show "$OLD_TAG:Makefile" 2>/dev/null || echo "")
+  if git show "$NEW_TAG:Makefile" >/dev/null 2>&1 && git show "$OLD_TAG:Makefile" >/dev/null 2>&1; then
+    cur_mk=$(git show "$NEW_TAG:Makefile" 2>/dev/null || echo "")
+    old_mk=$(git show "$OLD_TAG:Makefile" 2>/dev/null || echo "")
+    cur_deps_mk=$(git show "$NEW_TAG:include/deps.mk" 2>/dev/null || echo "")
+    old_deps_mk=$(git show "$OLD_TAG:include/deps.mk" 2>/dev/null || echo "")
 
-    # 提取 DEPS 列表（当前与旧）
-    get_deps_from_content() {
-      echo "$1" | grep -E '^[[:space:]]*DEPS[[:space:]]*(\+=|:=)' | \
-        sed -E 's/^[[:space:]]*DEPS[[:space:]]*(\+=|:=)[[:space:]]*//' | \
-        tr ' ' '\n' | sed '/^$/d' | sort -u
-    }
+    get_deps() { echo "$1" | grep -E '^[[:space:]]*DEPS[[:space:]]*(\+=|:=)' | sed -E 's/^[[:space:]]*DEPS[[:space:]]*(\+=|:=)[[:space:]]*//' | tr ' ' '\n' | sed '/^$/d' | sort -u; }
+    cur_deps=$(get_deps "$cur_mk"); old_deps=$(get_deps "$old_mk")
 
-    current_deps=$(get_deps_from_content "$current_mk_content")
-    old_deps=$(get_deps_from_content "$old_mk_content")
+    get_specs() { echo "$1" | grep -E '^[[:space:]]*dep_[A-Za-z0-9_]+[[:space:]]*[:]?=' | sed -E 's/^[[:space:]]*dep_([A-Za-z0-9_]+)[[:space:]]*[:]?=[[:space:]]*(.*)$/\1|||\2/'; }
+    cur_specs=$(get_specs "$cur_deps_mk"); old_specs=$(get_specs "$old_deps_mk")
+    spec_for(){ echo "$2" | awk -F '|||' -v n="$1" '$1==n{print $2; exit}'; }
 
-    # 提取 dep_<name> = <spec> 规格映射
-    get_dep_specs_from_content() {
-      echo "$1" | grep -E '^[[:space:]]*dep_[A-Za-z0-9_]+[[:space:]]*[:]?=' | \
-        sed -E 's/^[[:space:]]*dep_([A-Za-z0-9_]+)[[:space:]]*[:]?=[[:space:]]*(.*)$/\1|||\2/'
-    }
-
-    current_specs=$(get_dep_specs_from_content "$current_mk_content")
-    old_specs=$(get_dep_specs_from_content "$old_mk_content")
-
-    get_spec_for_dep() {
-      local name="$1"; local mapping="$2"
-      echo "$mapping" | awk -F '|||' -v n="$name" '$1==n{print $2; exit}'
-    }
-
-    # 计算依赖名并集
-    dep_union=$(printf "%s\n%s\n" "$current_deps" "$old_deps" | sort -u)
-
-    # 比较成员变化与规格变化
-    for dep in $dep_union; do
+    union=$(printf "%s\n%s\n" "$cur_deps" "$old_deps" | sort -u)
+    for dep in $union; do
       [ -z "$dep" ] && continue
-      in_current=$(echo "$current_deps" | grep -qx "$dep" && echo yes || echo no)
+      in_cur=$(echo "$cur_deps" | grep -qx "$dep" && echo yes || echo no)
       in_old=$(echo "$old_deps" | grep -qx "$dep" && echo yes || echo no)
-      if [ "$in_current" != "$in_old" ]; then
-        echo "  * 检测到第三方依赖成员变更: $dep (${in_old} -> ${in_current}) (将纳入顶层重启)"
+      if [ "$in_cur" != "$in_old" ]; then
         changed_apps="$changed_apps $dep"
+        echo "  * 第三方依赖成员变更: $dep"
         continue
       fi
-      # 成员都存在，比较规格
-      cur_spec=$(get_spec_for_dep "$dep" "$current_specs")
-      old_spec=$(get_spec_for_dep "$dep" "$old_specs")
-      # 任一为空且另一个非空，或两者不同，视为规格变化
-      if [ -n "$cur_spec" ] || [ -n "$old_spec" ]; then
-        if [ "$cur_spec" != "$old_spec" ]; then
-          echo "  * 检测到第三方依赖规格变更: $dep" | sed 's/$/ (将纳入顶层重启)/'
-          changed_apps="$changed_apps $dep"
-        fi
+      cs=$(spec_for "$dep" "$cur_specs"); os=$(spec_for "$dep" "$old_specs")
+      if [ -n "$cs$os" ] && [ "$cs" != "$os" ]; then
+        changed_apps="$changed_apps $dep"
+        echo "  * 第三方依赖规格变更: $dep"
       fi
     done
   fi
 fi
 
-# 生成顶层应用 imboy 的 appup（伞型项目顶层），根据子应用/第三方依赖的变更自动注入 restart_application
+# 顶层 imboy.appup 生成（多 term 历史格式）
 imboy_appup_file="src/imboy.appup"
+mkdir -p "$(dirname "$imboy_appup_file")"
+
 if [ "$FIRST_RELEASE" = "true" ]; then
-  # 首次发布：仅写入版本，占位空指令
-  mkdir -p "$(dirname "$imboy_appup_file")"
-  cat > "$imboy_appup_file" << EOF
+  # 首发仅写空指令 term
+  cat > "$imboy_appup_file" <<EOF
 {"$NEW_TAG", [], []}.
 EOF
   if validate_appup_file "$imboy_appup_file"; then
-    echo "  ✓ 已生成 imboy.appup (首次发布)"
+    echo "  ✓ 生成 imboy.appup (首次)"
   else
     echo "  ✗ 生成 imboy.appup 失败"
-    failed_count=$((failed_count + 1))
+    failed_count=$((failed_count+1))
   fi
 else
-  # 升级：对发生变更的子应用/第三方依赖生成 restart_application（升级/降级对称）
-  mkdir -p "$(dirname "$imboy_appup_file")"
-  # 去重并整理列表
-  unique_changed_apps=$(echo "$changed_apps" | xargs -n1 | sort -u | xargs)
-  upgrade_instructions=""
-  downgrade_instructions=""
-  for app in $unique_changed_apps; do
-    [ -z "$app" ] && continue
-    upgrade_instructions="$upgrade_instructions    {restart_application, $app},\n"
-    downgrade_instructions="$downgrade_instructions    {restart_application, $app},\n"
+  # 升级: 组装顶层升级/降级指令
+  # 检测 imboy_sup 变化
+  old_sup=$(git show "$OLD_TAG:src/imboy_sup.erl" 2>/dev/null || echo "")
+  new_sup=$(git show "$NEW_TAG:src/imboy_sup.erl" 2>/dev/null || echo "")
+  up=""; down=""
+  if [ -n "$old_sup" ] && [ -n "$new_sup" ] && [ "$old_sup" != "$new_sup" ]; then
+    up="${up}    {update, imboy_sup, supervisor},\n"
+    down="${down}    {update, imboy_sup, supervisor},\n"
+  fi
+  # 追加重启的应用
+  unique_apps=$(echo "$changed_apps" | tr ' ' '\n' | sed '/^$/d' | sort -u | xargs)
+  for a in $unique_apps; do
+    up="${up}    {restart_application, $a},\n"
+    down="${down}    {restart_application, $a},\n"
   done
-  # 去掉末尾逗号
-  upgrade_instructions=$(echo -e "$upgrade_instructions" | sed 's/,$//')
-  downgrade_instructions=$(echo -e "$downgrade_instructions" | sed 's/,$//')
+  up=$(echo -e "$up" | sed 's/,$//' ); down=$(echo -e "$down" | sed 's/,$//' )
 
-  cat > "$imboy_appup_file" << EOF
+  # 新版本 term 写入临时文件
+  new_term_file="/tmp/new_term.appup"
+  cat > "$new_term_file" <<EOF
 {"$NEW_TAG",
-  [
-    {"$OLD_TAG", [
-$upgrade_instructions
-    ]}
-  ],
-  [
-    {"$OLD_TAG", [
-$downgrade_instructions
-    ]}
-  ]
+ [{"$OLD_TAG", [
+$up
+ ]}],
+ [{"$OLD_TAG", [
+$down
+ ]}]
 }.
 EOF
-  if validate_appup_file "$imboy_appup_file"; then
-    echo "  ✓ 已生成 imboy.appup（包含 restart_application 指令）"
+
+  # 合并新旧 term: 新版本置顶；过滤相同版本
+  merge="/tmp/merge_appup.erl"
+  cat > "$merge" << EOF
+-module(merge_appup).
+-export([merge/0]).
+merge() ->
+  NewFile = "/tmp/new_term.appup",
+  CurFile = "src/imboy.appup",
+  OutFile = "src/imboy.appup",
+  {ok, [NewTerm]} = file:consult(NewFile),
+  NewV = element(1, NewTerm),
+
+  % 当前文件 terms
+  CurTerms = case file:consult(CurFile) of {ok, Ts} -> Ts; _ -> [] end,
+
+  % 读取 OLD_TAG 版本的 imboy.appup terms（若无则为空）
+  _ = os:cmd("git show $OLD_TAG:src/imboy.appup > /tmp/imboy_appup_old_tag.appup 2>/dev/null"),
+  OldTagTerms = case file:consult("/tmp/imboy_appup_old_tag.appup") of {ok, Ts} -> Ts; _ -> [] end,
+
+  % 合并去重：按版本键合并，NewTerm 覆盖同版本
+  Add = fun({V,_,_}=T, M) -> maps:put(V, T, M) end,
+  M0 = lists:foldl(Add, #{}, CurTerms),
+  M1 = lists:foldl(Add, M0, OldTagTerms),
+  M2 = maps:remove(NewV, M1),
+  M3 = maps:put(NewV, NewTerm, M2),
+
+  % 排序输出：新版本置顶，其余按字典序降序
+  Keys = maps:keys(M3),
+  Others = [K || K <- Keys, K =/= NewV],
+  Sorted = lists:reverse(lists:sort(Others)),
+  TailTerms = [maps:get(K, M3) || K <- Sorted],
+  OutTerms = [NewTerm | TailTerms],
+
+  Data = lists:flatmap(fun(T) -> io_lib:format("~p.~n~n", [T]) end, OutTerms),
+  file:write_file(OutFile, Data).
+EOF
+  if erl -noshell -eval "c:c(\"$merge\"), merge_appup:merge(), halt()." 2>/dev/null; then
+    rm -f "$merge" "$new_term_file"
+    if validate_appup_file "$imboy_appup_file"; then
+      echo "  ✓ 生成 imboy.appup（多 term 历史格式，最新置顶）"
+    else
+      echo "  ✗ 顶层 imboy.appup 验证失败"
+      failed_count=$((failed_count+1))
+    fi
   else
-    echo "  ✗ 生成 imboy.appup 失败"
-    failed_count=$((failed_count + 1))
+    rm -f "$merge" "$new_term_file"
+    echo "  ✗ 顶层 imboy.appup 合并失败"
+    failed_count=$((failed_count+1))
   fi
 fi
 
-# 验证所有生成的 appup 文件
 echo ""
-echo "验证生成的 appup 文件格式..."
-validation_failed=false
-
-for app_dir in apps/*/; do
-  if [ ! -d "$app_dir" ]; then
-    continue
-  fi
-  
-  app_name=$(basename "$app_dir")
-  appup_file="$app_dir/src/$app_name.appup"
-  
-  if [ -f "$appup_file" ]; then
-    if validate_appup_file "$appup_file"; then
-      echo "  ✓ $app_name.appup 格式正确"
-    else
-      echo "  ✗ $app_name.appup 格式错误"
-      validation_failed=true
-    fi
-  fi
- done
-
- echo ""
- echo "处理完成!"
- echo "  已处理: $processed_count 个应用"
- echo "  已跳过: $skipped_count 个应用"
- echo "  失败: $failed_count 个应用"
-
- if [ "$validation_failed" = "true" ]; then
-   echo "警告: 部分 appup 文件格式验证失败"
-   exit 1
- fi
-
- echo "所有 appup 文件格式验证通过!"
+echo "处理完成: 已处理=$processed_count 跳过=$skipped_count 失败=$failed_count"
