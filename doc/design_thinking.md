@@ -259,4 +259,22 @@ Telegram 频道的设计旨在为用户提供一个强大的信息发布平台�
 ## 基于erlang框架cowboy Web框架做的api + websocket服务，多个节点的websocket服务如何互通消息？
 
 
+## simple_captcha
+```
+sudo apt-get install imagemagick
+
+
+// mac
+brew install imagemagick
+
+// mac下如果使用convert命令找不到字体，则需要安装下这个
+
+brew install ghostscript
+
+
+```
+
+<https://www.cnblogs.com/ziyouchutuwenwu/p/4424499.html>
+
+
 ## More
