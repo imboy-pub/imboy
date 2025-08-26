@@ -1,3 +1,9 @@
+{"0.6.5",
+ [{"0.6.4",
+   [{load_module,imboy_db},{load_module,imboy_req},{load_module,imboy_syn}]}],
+ [{"0.6.4",
+   [{load_module,imboy_db},{load_module,imboy_req},{load_module,imboy_syn}]}]}.
+
 {"0.6.4",
  [{"0.6.3",
    [{add_module,imboy_appup},

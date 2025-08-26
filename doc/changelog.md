@@ -1,3 +1,15 @@
+# 0.6.5
+* 修复 上一个版本优化imboy_db模块导致的bug；
+* 优化 layui升级到2.11.5；
+* 优化 imboy_db模块，改进事务处理机制，支持重试和连接池管理
+* 优化 依赖配置 include/deps.mk，更新 hex_core 和 gen_smtp 版本
+* 优化 message_ds 消息处理模块，imboy_syn 用户会话管理模块，增强调试日志
+* 优化 imboy_req 请求处理模块，新增 param/3 函数
+* 优化 websocket_handler 处理模块，移除 check_offline_msg 处理
+* 优化 用户数据访问模块 apps/imrepo/src/user_repo.erl，移除调试日志
+* 优化 erlang.mk 构建配置，更新版本号和项目配置
+* 移除 cluster_debug.sh 集群调试脚本、hnc_csv 依赖
+
 # 0.6.4
 * 修复分布式缓存同步进程异常退出问题，新增 `imboy_cache_sync` gen_server模块，将同步进程纳入监督树管理，确保进程容错性和自动恢复；
 * 新增 ERROR_LOG/1 ERROR_LOG/2 宏，用于在代码中打印错误日志；

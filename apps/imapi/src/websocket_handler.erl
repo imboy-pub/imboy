@@ -88,18 +88,6 @@ websocket_handle({text, <<"ping">>}, State) ->
         error ->
             {reply, {text, <<"pong2">>}, State, hibernate}
     end;
-websocket_handle({text, <<"check_offline_msg">>}, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    Pid = self(),
-    DID = maps:get(did, State, <<"">>),
-    % 检查离线消息
-    msg_c2c_logic:check_msg(CurrentUid, Pid, DID),
-    % 检查群聊离线消息
-    msg_c2g_logic:check_msg(CurrentUid, Pid, DID),
-    {ok, State, hibernate};
-websocket_handle({text, <<"logout">>}, State) ->
-    ?DEBUG_LOG([<<"logout">>, cowboy_clock:rfc1123(), State]),
-    {stop, State};
 
 % 客户端确认消息
 % CLIENT_ACK,type,msgid,did

@@ -17,6 +17,7 @@
 
 %% send_next/4: 给指定用户所有设备发送消息并支持多次重发
 send_next(ToUid, MsgId, Msg, MsLi) ->
+    ?DEBUG_LOG(["message_ds:send_next/4", ToUid, MsgId, length(MsLi)]),
     send_next(ToUid, MsgId, Msg, MsLi, [], false).
 
 % 如果消息一直没有被客户端确认，
@@ -29,18 +30,25 @@ send_next(ToUid, MsgId, Msg, MsLi) ->
 send_next(_ToUid, _MsgId, _Msg, [], _, _) ->
     ok;
 send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IsMember) when is_list(MsLi), MsLi /= [] ->
+    ?DEBUG_LOG(["message_ds:send_next/6", ToUid, MsgId, length(MsLi), length(DIDLi), IsMember]),
     % 只允许整数或定时重发间隔组成的列表
     case lists:all(fun(T) -> is_integer(T) andalso T >= 0 end, MsLi) of
-        false -> ok; % 非法间隔直接忽略
+        false -> 
+            ?DEBUG_LOG(["message_ds:send_next/6 invalid MsLi", MsLi]),
+            ok; % 非法间隔直接忽略
         true -> send_next_loop(ToUid, MsgId, Msg, MsLi, DIDLi, IsMember)
     end;
 send_next(_ToUid, _MsgId, _Msg, _MsLi, _DIDLi, _IsMember) ->
+    ?DEBUG_LOG(["message_ds:send_next/6 invalid parameters", _ToUid, _MsgId, _MsLi, _DIDLi, _IsMember]),
     ok.
 
 %% 实际消息分发和定时重发控制
-send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IsMember) -> ok;
+send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IsMember) -> 
+    ?DEBUG_LOG(["message_ds:send_next_loop/6 no more retries"]),
+    ok;
 send_next_loop(ToUid, MsgId, Msg, [Delay|Tail], DIDLi, IsMember) ->
     Members = imboy_syn:list_by_uid(ToUid),
+    ?DEBUG_LOG(["message_ds:send_next_loop/6", ToUid, MsgId, Delay, length(Members), length(DIDLi), IsMember]),
     Filtered = case DIDLi of
         [] -> Members;
         _ when IsMember == true ->
@@ -48,12 +56,17 @@ send_next_loop(ToUid, MsgId, Msg, [Delay|Tail], DIDLi, IsMember) ->
         _ -> % IsMember == false
             [ {Pid, {_Dtype, DID}} || {Pid, {_Dtype, DID}} <- Members, not lists:member(DID, DIDLi) ]
     end,
+    ?DEBUG_LOG(["message_ds:send_next_loop/6 filtered members", length(Filtered)]),
     case Filtered of
-        [] -> ok;
+        [] -> 
+            ?DEBUG_LOG(["message_ds:send_next_loop/6 no filtered members"]),
+            ok;
         _ when Delay =:= 0 ->
+            ?DEBUG_LOG(["message_ds:send_next_loop/6 immediate publish"]),
             [ imboy_syn:publish(ToUid, Msg, 0) || _ <- [1] ],
             send_next_loop(ToUid, MsgId, Msg, Tail, DIDLi, IsMember);
         _ when is_integer(Delay), Delay > 0 ->
+            ?DEBUG_LOG(["message_ds:send_next_loop/6 delayed publish", Delay]),
             [
                 begin
                     TimerKey = {ToUid, DID, MsgId},
@@ -72,6 +85,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay|Tail], DIDLi, IsMember) ->
 %% 任意节点收到 ACK 后广播所有节点撤销 timer
 -spec ack(integer(), binary(), binary()) -> ok.
 ack(ToUid, DID, MsgId) ->
+    ?DEBUG_LOG(["message_ds:ack/3", ToUid, DID, MsgId]),
     Nodes = [node() | nodes()],
     % 广播到所有节点（含自己），每台机器都尝试撤销本地 timer
     rpc:multicall(Nodes, ?MODULE, handle_ack_cancel, [ToUid, DID, MsgId]),
@@ -80,9 +94,13 @@ ack(ToUid, DID, MsgId) ->
 %% 实际执行 timer 撤销，只在本节点有效
 handle_ack_cancel(ToUid, DID, MsgId) ->
     TimerKey = {ToUid, DID, MsgId},
+    ?DEBUG_LOG(["message_ds:handle_ack_cancel/3", TimerKey]),
     case imboy_cache:get(TimerKey) of
-        undefined -> ok;
+        undefined -> 
+            ?DEBUG_LOG(["message_ds:handle_ack_cancel/3 timer not found", TimerKey]),
+            ok;
         Ref ->
+            ?DEBUG_LOG(["message_ds:handle_ack_cancel/3 canceling timer", TimerKey, Ref]),
             erlang:cancel_timer(Ref),
             imboy_cache:flush(TimerKey),
             ?DEBUG_LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
@@ -95,9 +113,11 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
 %% 需放到 websocket_handler 或 gen_server 的 handle_info/2 调用
 handle_info({timeout, Ref, {Tail, {ToUid, DID, MsgId}, Msg}}, State) ->
     TimerKey = {ToUid, DID, MsgId},
+    ?DEBUG_LOG(["message_ds:handle_info/2 timeout", TimerKey, Ref, length(Tail)]),
     case imboy_cache:get(TimerKey) of
         Ref ->
             % 还没被 ACK，本地继续重发
+            ?DEBUG_LOG(["message_ds:handle_info/2 resending message", TimerKey]),
             imboy_syn:publish(ToUid, Msg, 0),
             imboy_cache:flush(TimerKey),
             ?DEBUG_LOG(["timeout resend", TimerKey, Msg]),
@@ -105,6 +125,7 @@ handle_info({timeout, Ref, {Tail, {ToUid, DID, MsgId}, Msg}}, State) ->
             {noreply, State};
         _ ->
             % 已撤销，不再重发
+            ?DEBUG_LOG(["message_ds:handle_info/2 timer already canceled", TimerKey]),
             {noreply, State}
     end.
 

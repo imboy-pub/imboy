@@ -1,3 +1,7 @@
+{"0.6.5",
+ [{"0.6.4",[{load_module,message_ds}]}],
+ [{"0.6.4",[{load_module,message_ds}]}]}.
+
 {"0.6.4",
  [{"0.6.3",[{load_module,account_ds},{load_module,group_ds}]}],
  [{"0.6.3",[{load_module,account_ds},{load_module,group_ds}]}]}.

@@ -4,6 +4,7 @@
 -export([get_int/3]).
 -export([page_size/1]).
 -export([post_params/1]).
+-export([param/3]).
 
 -export([get/1, get/2]).
 -export([post/2, post/3]).
@@ -100,6 +101,27 @@ cookie(Key, Req) ->
             Val;
         false ->
             false
+    end.
+
+
+%% @doc 获取查询参数
+%% @param Key 参数名
+%% @param Req cowboy请求对象
+%% @param Default 默认值
+param(Key, Req, Default) ->
+    case cowboy_req:match_qs([{Key, [], Default}], Req) of
+        #{Key := Val} when Val =/= Default ->
+            Val;
+        _ ->
+            % 如果是默认值，检查POST参数
+            Method = cowboy_req:method(Req),
+            if
+                Method == <<"POST">> ->
+                    PostVals = post_params(Req),
+                    proplists:get_value(Key, PostVals, Default);
+                true ->
+                    Default
+            end
     end.
 
 

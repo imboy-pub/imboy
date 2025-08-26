@@ -152,8 +152,11 @@ publish(Uid, Msg) ->
 publish(Uid, Msg, Delay) when is_integer(Delay), Delay >= 0 ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     Members = list_by_uid(Uid),
+    ?DEBUG_LOG(["imboy_syn:publish/3", Uid, length(Members), Delay, Msg]),
     do_publish(Members, Msg, Delay);
-publish(_Uid, _Msg, _Delay) -> {ok, 0}.
+publish(_Uid, _Msg, _Delay) -> 
+    ?DEBUG_LOG(["imboy_syn:publish/3 invalid parameters", _Uid, _Msg, _Delay]),
+    {ok, 0}.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -161,9 +164,11 @@ publish(_Uid, _Msg, _Delay) -> {ok, 0}.
 
 -spec do_publish(list(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
 do_publish(Members, Message, 0) ->
+    ?DEBUG_LOG(["imboy_syn:do_publish/3 immediate", length(Members), Message]),
     [ Pid ! Message || {Pid, _Meta} <- Members ],
     {ok, length(Members)};
 do_publish(Members, Message, Delay) when Delay > 0 ->
+    ?DEBUG_LOG(["imboy_syn:do_publish/3 delayed", length(Members), Delay, Message]),
     % Pid ! Message
     % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
     [ erlang:start_timer(Delay, Pid, Message) || {Pid, _Meta} <- Members ],

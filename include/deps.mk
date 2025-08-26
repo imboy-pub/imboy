@@ -3,7 +3,10 @@
 # 特此声明：下列依赖，被人未改动过原作者源码
 # Hereby declare: the following dependencies have not been modified by the original author source code
 
-dep_hex_core = hex 0.11.0
+# https://github.com/hexpm/hex_core.git
+# https://gitee.com/imboy-tripartite-deps/hex_core.git
+# dep_hex_core = hex 0.11.0
+dep_hex_core = git https://gitee.com/imboy-tripartite-deps/hex_core.git v0.11.0
 
 # https://erlang.mk/guide/deps.html
 # Ranch is a socket acceptor pool for TCP protocols.
@@ -14,7 +17,7 @@ dep_gun = git https://gitee.com/imboy-tripartite-deps/gun.git 2.2.0
 
 # gen_smtp Email服务端、客户端
 # https://github.com/gen-smtp/gen_smtp.git
-dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.2.0
+dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.3.0
 
 # jsone An Erlang library for encoding, decoding JSON data.
 # 4months
@@ -118,7 +121,7 @@ dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.4
 # 8months
 dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 # Sync 是一个开发者工具。它会即时重新编译和重新加载您的 Erlang 代码。
-# 3months
+# https://github.com/rustyio/sync.git
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 # telemetry 用于指标和仪器的动态调度库。
 # 3months

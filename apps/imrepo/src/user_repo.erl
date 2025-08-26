@@ -43,7 +43,7 @@ select_by_where(Column, Where, Limit, Offset, OrderBy) ->
 find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    ?DEBUG_LOG(["sql ", Sql]),
+    % ?DEBUG_LOG(["sql ", Sql]),
     imboy_db:find(Sql, [Email]).
 
 

@@ -42,4 +42,15 @@ layui.use(function(){
     });
 });
 
+// 全局ESC键监听，用于关闭弹窗
+document.addEventListener('keydown', function(event) {
+    // 检查是否按下了ESC键 (keyCode 27)
+    if (event.keyCode === 27) {
+        // 使用Layui的layer模块关闭所有弹窗
+        if (typeof layui !== 'undefined' && layui.layer) {
+            layui.layer.closeAll();
+        }
+    }
+});
+
 </script>

@@ -1,3 +1,7 @@
+{"0.6.5",
+ [{"0.6.4",[{load_module,websocket_handler}]}],
+ [{"0.6.4",[{load_module,websocket_handler}]}]}.
+
 {"0.6.4",
  [{"0.6.3",
    [{load_module,user_tag_logic},{load_module,user_tag_relation_logic}]}],

@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = b8a27ab
+ERLANG_MK_VERSION = 973ccc3
 ERLANG_MK_WITHOUT = index
 
 # Make 3.81 and 3.82 are deprecated.
@@ -36,7 +36,7 @@ PROJECT ?= $(notdir $(CURDIR))
 PROJECT := $(strip $(PROJECT))
 
 PROJECT_VERSION ?= rolling
-PROJECT_MOD ?= $(PROJECT)_app
+PROJECT_MOD ?=
 PROJECT_ENV ?= []
 
 # Verbosity.
@@ -47,7 +47,7 @@ verbose_0 = @
 verbose_2 = set -x;
 verbose = $(verbose_$(V))
 
-ifeq ($(V),3)
+ifeq ($V,3)
 SHELL := $(SHELL) -x
 endif
 
@@ -66,7 +66,7 @@ export ERLANG_MK_TMP
 
 # "erl" command.
 
-ERL = erl +A1 -noinput -boot no_dot_erlang
+ERL = erl -noinput -boot no_dot_erlang -kernel start_distribution false +P 1024 +Q 1024
 
 # Platform detection.
 
@@ -162,7 +162,7 @@ define newline
 endef
 
 define comma_list
-$(subst $(space),$(comma),$(strip $(1)))
+$(subst $(space),$(comma),$(strip $1))
 endef
 
 define escape_dquotes
@@ -180,23 +180,23 @@ else
 core_native_path = $1
 endif
 
-core_http_get = curl -Lf$(if $(filter-out 0,$(V)),,s)o $(call core_native_path,$1) $2
+core_http_get = curl -Lf$(if $(filter-out 0,$V),,s)o $(call core_native_path,$1) $2
 
-core_eq = $(and $(findstring $(1),$(2)),$(findstring $(2),$(1)))
+core_eq = $(and $(findstring $1,$2),$(findstring $2,$1))
 
 # We skip files that contain spaces because they end up causing issues.
 # Files that begin with a dot are already ignored by the wildcard function.
 core_find = $(foreach f,$(wildcard $(1:%/=%)/*),$(if $(wildcard $f/.),$(call core_find,$f,$2),$(if $(filter $(subst *,%,$2),$f),$(if $(wildcard $f),$f))))
 
-core_lc = $(subst A,a,$(subst B,b,$(subst C,c,$(subst D,d,$(subst E,e,$(subst F,f,$(subst G,g,$(subst H,h,$(subst I,i,$(subst J,j,$(subst K,k,$(subst L,l,$(subst M,m,$(subst N,n,$(subst O,o,$(subst P,p,$(subst Q,q,$(subst R,r,$(subst S,s,$(subst T,t,$(subst U,u,$(subst V,v,$(subst W,w,$(subst X,x,$(subst Y,y,$(subst Z,z,$(1)))))))))))))))))))))))))))
+core_lc = $(subst A,a,$(subst B,b,$(subst C,c,$(subst D,d,$(subst E,e,$(subst F,f,$(subst G,g,$(subst H,h,$(subst I,i,$(subst J,j,$(subst K,k,$(subst L,l,$(subst M,m,$(subst N,n,$(subst O,o,$(subst P,p,$(subst Q,q,$(subst R,r,$(subst S,s,$(subst T,t,$(subst U,u,$(subst V,v,$(subst W,w,$(subst X,x,$(subst Y,y,$(subst Z,z,$1))))))))))))))))))))))))))
 
-core_ls = $(filter-out $(1),$(shell echo $(1)))
+core_ls = $(filter-out $1,$(shell echo $1))
 
 # @todo Use a solution that does not require using perl.
 core_relpath = $(shell perl -e 'use File::Spec; print File::Spec->abs2rel(@ARGV) . "\n"' $1 $2)
 
 define core_render
-	printf -- '$(subst $(newline),\n,$(subst %,%%,$(subst ','\'',$(subst $(tab),$(WS),$(call $(1))))))\n' > $(2)
+	printf -- '$(subst $(newline),\n,$(subst %,%%,$(subst ','\'',$(subst $(tab),$(WS),$(call $1)))))\n' > $2
 endef
 
 # Automated update.
@@ -246,10 +246,10 @@ KERL_MAKEFLAGS ?=
 OTP_GIT ?= https://github.com/erlang/otp
 
 define kerl_otp_target
-$(KERL_INSTALL_DIR)/$(1): $(KERL)
+$(KERL_INSTALL_DIR)/$1: $(KERL)
 	$(verbose) if [ ! -d $$@ ]; then \
-		MAKEFLAGS="$(KERL_MAKEFLAGS)" $(KERL) build git $(OTP_GIT) $(1) $(1); \
-		$(KERL) install $(1) $(KERL_INSTALL_DIR)/$(1); \
+		MAKEFLAGS="$(KERL_MAKEFLAGS)" $(KERL) build git $(OTP_GIT) $1 $1; \
+		$(KERL) install $1 $(KERL_INSTALL_DIR)/$1; \
 	fi
 endef
 
@@ -298,7 +298,7 @@ endif
 
 define pkg_print
 	$(verbose) printf "%s\n" \
-		$(if $(call core_eq,$(1),$(pkg_$(1)_name)),,"Pkg name:    $(1)") \
+		$(if $(call core_eq,$1,$(pkg_$(1)_name)),,"Pkg name:    $1") \
 		"App name:    $(pkg_$(1)_name)" \
 		"Description: $(pkg_$(1)_description)" \
 		"Home page:   $(pkg_$(1)_homepage)" \
@@ -312,10 +312,10 @@ endef
 search:
 ifdef q
 	$(foreach p,$(PACKAGES), \
-		$(if $(findstring $(call core_lc,$(q)),$(call core_lc,$(pkg_$(p)_name) $(pkg_$(p)_description))), \
-			$(call pkg_print,$(p))))
+		$(if $(findstring $(call core_lc,$q),$(call core_lc,$(pkg_$(p)_name) $(pkg_$(p)_description))), \
+			$(call pkg_print,$p)))
 else
-	$(foreach p,$(PACKAGES),$(call pkg_print,$(p)))
+	$(foreach p,$(PACKAGES),$(call pkg_print,$p))
 endif
 
 # Copyright (c) 2013-2016, Loïc Hoguin <essen@ninenines.eu>
@@ -351,16 +351,25 @@ CACHE_DEPS ?= 0
 CACHE_DIR ?= $(if $(XDG_CACHE_HOME),$(XDG_CACHE_HOME),$(HOME)/.cache)/erlang.mk
 export CACHE_DIR
 
+HEX_CONFIG ?=
+
+define hex_config.erl
+	begin
+		Config0 = hex_core:default_config(),
+		Config0$(HEX_CONFIG)
+	end
+endef
+
 # External "early" plugins (see core/plugins.mk for regular plugins).
 # They both use the core_dep_plugin macro.
 
 define core_dep_plugin
-ifeq ($(2),$(PROJECT))
--include $$(patsubst $(PROJECT)/%,%,$(1))
+ifeq ($2,$(PROJECT))
+-include $$(patsubst $(PROJECT)/%,%,$1)
 else
--include $(DEPS_DIR)/$(1)
+-include $(DEPS_DIR)/$1
 
-$(DEPS_DIR)/$(1): $(DEPS_DIR)/$(2) ;
+$(DEPS_DIR)/$1: $(DEPS_DIR)/$2 ;
 endif
 endef
 
@@ -373,44 +382,42 @@ $(foreach p,$(DEP_EARLY_PLUGINS),\
 
 # Query functions.
 
-query_fetch_method = $(if $(dep_$(1)),$(call _qfm_dep,$(word 1,$(dep_$(1)))),$(call _qfm_pkg,$(1)))
-_qfm_dep = $(if $(dep_fetch_$(1)),$(1),$(if $(IS_DEP),legacy,fail))
+query_fetch_method = $(if $(dep_$(1)),$(call _qfm_dep,$(word 1,$(dep_$(1)))),$(call _qfm_pkg,$1))
+_qfm_dep = $(if $(dep_fetch_$(1)),$1,fail)
 _qfm_pkg = $(if $(pkg_$(1)_fetch),$(pkg_$(1)_fetch),fail)
 
-query_name = $(if $(dep_$(1)),$(1),$(if $(pkg_$(1)_name),$(pkg_$(1)_name),$(1)))
+query_name = $(if $(dep_$(1)),$1,$(if $(pkg_$(1)_name),$(pkg_$(1)_name),$1))
 
-query_repo = $(call _qr,$(1),$(call query_fetch_method,$(1)))
-_qr = $(if $(query_repo_$(2)),$(call query_repo_$(2),$(1)),$(call dep_repo,$(1)))
+query_repo = $(call _qr,$1,$(call query_fetch_method,$1))
+_qr = $(if $(query_repo_$(2)),$(call query_repo_$(2),$1),$(call query_repo_git,$1))
 
 query_repo_default = $(if $(dep_$(1)),$(word 2,$(dep_$(1))),$(pkg_$(1)_repo))
-query_repo_git = $(patsubst git://github.com/%,https://github.com/%,$(call query_repo_default,$(1)))
-query_repo_git-subfolder = $(call query_repo_git,$(1))
+query_repo_git = $(patsubst git://github.com/%,https://github.com/%,$(call query_repo_default,$1))
+query_repo_git-subfolder = $(call query_repo_git,$1)
 query_repo_git-submodule = -
-query_repo_hg = $(call query_repo_default,$(1))
-query_repo_svn = $(call query_repo_default,$(1))
-query_repo_cp = $(call query_repo_default,$(1))
-query_repo_ln = $(call query_repo_default,$(1))
-query_repo_hex = https://hex.pm/packages/$(if $(word 3,$(dep_$(1))),$(word 3,$(dep_$(1))),$(1))
+query_repo_hg = $(call query_repo_default,$1)
+query_repo_svn = $(call query_repo_default,$1)
+query_repo_cp = $(call query_repo_default,$1)
+query_repo_ln = $(call query_repo_default,$1)
+query_repo_hex = https://hex.pm/packages/$(if $(word 3,$(dep_$(1))),$(word 3,$(dep_$(1))),$1)
 query_repo_fail = -
-query_repo_legacy = -
 
-query_version = $(call _qv,$(1),$(call query_fetch_method,$(1)))
-_qv = $(if $(query_version_$(2)),$(call query_version_$(2),$(1)),$(call dep_commit,$(1)))
+query_version = $(call _qv,$1,$(call query_fetch_method,$1))
+_qv = $(if $(query_version_$(2)),$(call query_version_$(2),$1),$(call query_version_default,$1))
 
 query_version_default = $(if $(dep_$(1)_commit),$(dep_$(1)_commit),$(if $(dep_$(1)),$(word 3,$(dep_$(1))),$(pkg_$(1)_commit)))
-query_version_git = $(call query_version_default,$(1))
-query_version_git-subfolder = $(call query_version_git,$(1))
+query_version_git = $(call query_version_default,$1)
+query_version_git-subfolder = $(call query_version_default,$1)
 query_version_git-submodule = -
-query_version_hg = $(call query_version_default,$(1))
+query_version_hg = $(call query_version_default,$1)
 query_version_svn = -
 query_version_cp = -
 query_version_ln = -
 query_version_hex = $(if $(dep_$(1)_commit),$(dep_$(1)_commit),$(if $(dep_$(1)),$(word 2,$(dep_$(1))),$(pkg_$(1)_commit)))
 query_version_fail = -
-query_version_legacy = -
 
-query_extra = $(call _qe,$(1),$(call query_fetch_method,$(1)))
-_qe = $(if $(query_extra_$(2)),$(call query_extra_$(2),$(1)),-)
+query_extra = $(call _qe,$1,$(call query_fetch_method,$1))
+_qe = $(if $(query_extra_$(2)),$(call query_extra_$(2),$1),-)
 
 query_extra_git = -
 query_extra_git-subfolder = $(if $(dep_$(1)),subfolder=$(word 4,$(dep_$(1))),-)
@@ -421,18 +428,19 @@ query_extra_cp = -
 query_extra_ln = -
 query_extra_hex = $(if $(dep_$(1)),package-name=$(word 3,$(dep_$(1))),-)
 query_extra_fail = -
-query_extra_legacy = -
 
-query_absolute_path = $(addprefix $(DEPS_DIR)/,$(call query_name,$(1)))
+query_absolute_path = $(addprefix $(DEPS_DIR)/,$(call query_name,$1))
 
-# Deprecated legacy query functions.
-dep_fetch = $(call query_fetch_method,$(1))
+# Deprecated legacy query function. Used by RabbitMQ and its third party plugins.
+# Can be removed once RabbitMQ has been updated and enough time has passed.
 dep_name = $(call query_name,$(1))
-dep_repo = $(call query_repo_git,$(1))
-dep_commit = $(if $(dep_$(1)_commit),$(dep_$(1)_commit),$(if $(dep_$(1)),$(if $(filter hex,$(word 1,$(dep_$(1)))),$(word 2,$(dep_$(1))),$(word 3,$(dep_$(1)))),$(pkg_$(1)_commit)))
 
-LOCAL_DEPS_DIRS = $(foreach a,$(LOCAL_DEPS),$(if $(wildcard $(APPS_DIR)/$(a)),$(APPS_DIR)/$(a)))
-ALL_DEPS_DIRS = $(addprefix $(DEPS_DIR)/,$(foreach dep,$(filter-out $(IGNORE_DEPS),$(BUILD_DEPS) $(DEPS)),$(call dep_name,$(dep))))
+# Application directories.
+
+LOCAL_DEPS_DIRS = $(foreach a,$(LOCAL_DEPS),$(if $(wildcard $(APPS_DIR)/$a),$(APPS_DIR)/$a))
+# Elixir is handled specially as it must be built before all other deps
+# when Mix autopatching is necessary.
+ALL_DEPS_DIRS = $(addprefix $(DEPS_DIR)/,$(foreach dep,$(filter-out $(IGNORE_DEPS),$(BUILD_DEPS) $(DEPS)),$(call query_name,$(dep))))
 
 # When we are calling an app directly we don't want to include it here
 # otherwise it'll be treated both as an apps and a top-level project.
@@ -454,9 +462,17 @@ export ERL_LIBS
 
 export NO_AUTOPATCH
 
+# Elixir.
+
+# Elixir is automatically enabled in all cases except when
+# an Erlang project uses an Elixir dependency. In that case
+# $(ELIXIR) must be set explicitly.
+ELIXIR ?= $(if $(filter elixir,$(BUILD_DEPS) $(DEPS)),dep,$(if $(EX_FILES),system,disable))
+export ELIXIR
+
 # Verbosity.
 
-dep_verbose_0 = @echo " DEP    $1 ($(call dep_commit,$1))";
+dep_verbose_0 = @echo " DEP    $1 ($(call query_version,$1))";
 dep_verbose_2 = set -x;
 dep_verbose = $(dep_verbose_$(V))
 
@@ -524,9 +540,11 @@ endif
 ifneq ($(SKIP_DEPS),)
 deps::
 else
-deps:: $(ALL_DEPS_DIRS) apps clean-tmp-deps.log | $(ERLANG_MK_TMP)
-ifneq ($(ALL_DEPS_DIRS),)
-	$(verbose) set -e; for dep in $(ALL_DEPS_DIRS); do \
+ALL_DEPS_DIRS_TO_BUILD = $(if $(filter-out $(DEPS_DIR)/elixir,$(ALL_DEPS_DIRS)),$(filter-out $(DEPS_DIR)/elixir,$(ALL_DEPS_DIRS)),$(ALL_DEPS_DIRS))
+
+deps:: $(ALL_DEPS_DIRS_TO_BUILD) apps clean-tmp-deps.log | $(ERLANG_MK_TMP)
+ifneq ($(ALL_DEPS_DIRS_TO_BUILD),)
+	$(verbose) set -e; for dep in $(ALL_DEPS_DIRS_TO_BUILD); do \
 		if grep -qs ^$$dep$$ $(ERLANG_MK_TMP)/deps.log; then \
 			:; \
 		else \
@@ -550,51 +568,80 @@ endif
 
 # Deps related targets.
 
-# @todo rename GNUmakefile and makefile into Makefile first, if they exist
-# While Makefile file could be GNUmakefile or makefile,
-# in practice only Makefile is needed so far.
-define dep_autopatch
-	if [ -f $(DEPS_DIR)/$(1)/erlang.mk ]; then \
-		rm -rf $(DEPS_DIR)/$1/ebin/; \
-		$(call erlang,$(call dep_autopatch_appsrc.erl,$(1))); \
-		$(call dep_autopatch_erlang_mk,$(1)); \
-	elif [ -f $(DEPS_DIR)/$(1)/Makefile ]; then \
-		if [ -f $(DEPS_DIR)/$1/rebar.lock ]; then \
-			$(call dep_autopatch2,$1); \
-		elif [ 0 != `grep -c "include ../\w*\.mk" $(DEPS_DIR)/$(1)/Makefile` ]; then \
-			$(call dep_autopatch2,$(1)); \
-		elif [ 0 != `grep -ci "^[^#].*rebar" $(DEPS_DIR)/$(1)/Makefile` ]; then \
-			$(call dep_autopatch2,$(1)); \
-		elif [ -n "`find $(DEPS_DIR)/$(1)/ -type f -name \*.mk -not -name erlang.mk -exec grep -i "^[^#].*rebar" '{}' \;`" ]; then \
-			$(call dep_autopatch2,$(1)); \
-		fi \
-	else \
-		if [ ! -d $(DEPS_DIR)/$(1)/src/ ]; then \
-			$(call dep_autopatch_noop,$(1)); \
+autopatch_verbose_0 = @echo " PATCH " $(subst autopatch-,,$@) "(method: $(AUTOPATCH_METHOD))";
+autopatch_verbose_2 = set -x;
+autopatch_verbose = $(autopatch_verbose_$(V))
+
+define dep_autopatch_detect
+	if [ -f $(DEPS_DIR)/$1/erlang.mk ]; then \
+		echo erlang.mk; \
+	elif [ -f $(DEPS_DIR)/$1/mix.exs -a -d $(DEPS_DIR)/$1/lib ]; then \
+		if [ "$(ELIXIR)" != "disable" ]; then \
+			echo mix; \
+		elif [ -f $(DEPS_DIR)/$1/rebar.lock -o -f $(DEPS_DIR)/$1/rebar.config ]; then \
+			echo rebar3; \
+		elif [ -f $(DEPS_DIR)/$1/Makefile ]; then \
+			echo noop; \
 		else \
-			$(call dep_autopatch2,$(1)); \
+			exit 99; \
 		fi \
+	elif [ -f $(DEPS_DIR)/$1/Makefile ]; then \
+		if [ -f $(DEPS_DIR)/$1/rebar.lock ]; then \
+			echo rebar3; \
+		elif [ 0 != \`grep -c "include ../\w*\.mk" $(DEPS_DIR)/$1/Makefile\` ]; then \
+			echo rebar3; \
+		elif [ 0 != \`grep -ci "^[^#].*rebar" $(DEPS_DIR)/$1/Makefile\` ]; then \
+			echo rebar3; \
+		elif [ -n "\`find $(DEPS_DIR)/$1/ -type f -name \*.mk -not -name erlang.mk -exec grep -i "^[^#].*rebar" '{}' \;\`" ]; then \
+			echo rebar3; \
+		else \
+			echo noop; \
+		fi \
+	elif [ ! -d $(DEPS_DIR)/$1/src/ ]; then \
+		echo noop; \
+	else \
+		echo rebar3; \
 	fi
 endef
 
-define dep_autopatch2
+define dep_autopatch_for_erlang.mk
+	rm -rf $(DEPS_DIR)/$1/ebin/; \
+	$(call erlang,$(call dep_autopatch_appsrc.erl,$1)); \
+	$(call dep_autopatch_erlang_mk,$1)
+endef
+
+define dep_autopatch_for_rebar3
 	! test -f $(DEPS_DIR)/$1/ebin/$1.app || \
 	mv -n $(DEPS_DIR)/$1/ebin/$1.app $(DEPS_DIR)/$1/src/$1.app.src; \
 	rm -f $(DEPS_DIR)/$1/ebin/$1.app; \
 	if [ -f $(DEPS_DIR)/$1/src/$1.app.src.script ]; then \
-		$(call erlang,$(call dep_autopatch_appsrc_script.erl,$(1))); \
+		$(call erlang,$(call dep_autopatch_appsrc_script.erl,$1)); \
 	fi; \
-	$(call erlang,$(call dep_autopatch_appsrc.erl,$(1))); \
-	if [ -f $(DEPS_DIR)/$(1)/rebar -o -f $(DEPS_DIR)/$(1)/rebar.config -o -f $(DEPS_DIR)/$(1)/rebar.config.script -o -f $(DEPS_DIR)/$1/rebar.lock ]; then \
+	$(call erlang,$(call dep_autopatch_appsrc.erl,$1)); \
+	if [ -f $(DEPS_DIR)/$1/rebar -o -f $(DEPS_DIR)/$1/rebar.config -o -f $(DEPS_DIR)/$1/rebar.config.script -o -f $(DEPS_DIR)/$1/rebar.lock ]; then \
 		$(call dep_autopatch_fetch_rebar); \
-		$(call dep_autopatch_rebar,$(1)); \
+		$(call dep_autopatch_rebar,$1); \
 	else \
-		$(call dep_autopatch_gen,$(1)); \
+		$(call dep_autopatch_gen,$1); \
 	fi
 endef
 
-define dep_autopatch_noop
-	printf "noop:\n" > $(DEPS_DIR)/$(1)/Makefile
+define dep_autopatch_for_mix
+	$(call dep_autopatch_mix,$1)
+endef
+
+define dep_autopatch_for_noop
+	test -f $(DEPS_DIR)/$1/Makefile || printf "noop:\n" > $(DEPS_DIR)/$1/Makefile
+endef
+
+define maybe_flock
+	if command -v flock >/dev/null; then \
+		flock $1 sh -c "$2"; \
+	elif command -v lockf >/dev/null; then \
+		lockf $1 sh -c "$2"; \
+	else \
+		$2; \
+	fi
 endef
 
 # Replace "include erlang.mk" with a line that will load the parent Erlang.mk
@@ -616,18 +663,12 @@ endif
 define dep_autopatch_gen
 	printf "%s\n" \
 		"ERLC_OPTS = +debug_info" \
-		"include ../../erlang.mk" > $(DEPS_DIR)/$(1)/Makefile
+		"include ../../erlang.mk" > $(DEPS_DIR)/$1/Makefile
 endef
 
 # We use flock/lockf when available to avoid concurrency issues.
 define dep_autopatch_fetch_rebar
-	if command -v flock >/dev/null; then \
-		flock $(ERLANG_MK_TMP)/rebar.lock sh -c "$(call dep_autopatch_fetch_rebar2)"; \
-	elif command -v lockf >/dev/null; then \
-		lockf $(ERLANG_MK_TMP)/rebar.lock sh -c "$(call dep_autopatch_fetch_rebar2)"; \
-	else \
-		$(call dep_autopatch_fetch_rebar2); \
-	fi
+	$(call maybe_flock,$(ERLANG_MK_TMP)/rebar.lock,$(call dep_autopatch_fetch_rebar2))
 endef
 
 define dep_autopatch_fetch_rebar2
@@ -641,11 +682,11 @@ define dep_autopatch_fetch_rebar2
 endef
 
 define dep_autopatch_rebar
-	if [ -f $(DEPS_DIR)/$(1)/Makefile ]; then \
-		mv $(DEPS_DIR)/$(1)/Makefile $(DEPS_DIR)/$(1)/Makefile.orig.mk; \
+	if [ -f $(DEPS_DIR)/$1/Makefile ]; then \
+		mv $(DEPS_DIR)/$1/Makefile $(DEPS_DIR)/$1/Makefile.orig.mk; \
 	fi; \
-	$(call erlang,$(call dep_autopatch_rebar.erl,$(1))); \
-	rm -f $(DEPS_DIR)/$(1)/ebin/$(1).app
+	$(call erlang,$(call dep_autopatch_rebar.erl,$1)); \
+	rm -f $(DEPS_DIR)/$1/ebin/$1.app
 endef
 
 define dep_autopatch_rebar.erl
@@ -711,7 +752,6 @@ define dep_autopatch_rebar.erl
 	GetHexVsn2 = fun(N, NP) ->
 		case file:consult("$(call core_native_path,$(DEPS_DIR)/$1/rebar.lock)") of
 			{ok, Lock} ->
-				io:format("~p~n", [Lock]),
 				LockPkgs = case lists:keyfind("1.2.0", 1, Lock) of
 					{_, LP} ->
 						LP;
@@ -725,10 +765,8 @@ define dep_autopatch_rebar.erl
 				end,
 				if
 					is_list(LockPkgs) ->
-						io:format("~p~n", [LockPkgs]),
 						case lists:keyfind(atom_to_binary(N, latin1), 1, LockPkgs) of
 							{_, {pkg, _, Vsn}, _} ->
-								io:format("~p~n", [Vsn]),
 								{N, {hex, NP, binary_to_list(Vsn)}};
 							_ ->
 								false
@@ -764,6 +802,12 @@ define dep_autopatch_rebar.erl
 			GetHexVsn3Common(N, NP, S0);
 		(N, NP, S) -> {N, {hex, NP, S}}
 	end,
+	ConvertCommit = fun
+		({branch, C}) -> C;
+		({ref, C}) -> C;
+		({tag, C}) -> C;
+		(C) -> C
+	end,
 	fun() ->
 		File = case lists:keyfind(deps, 1, Conf) of
 			false -> [];
@@ -779,16 +823,15 @@ define dep_autopatch_rebar.erl
 							_ -> false
 						end of
 					false -> ok;
+					{Name, {git_subdir, Repo, Commit, SubDir}} ->
+						Write(io_lib:format("DEPS += ~s\ndep_~s = git-subfolder ~s ~s ~s~n", [Name, Name, Repo, ConvertCommit(Commit), SubDir]));
 					{Name, Source} ->
 						{Method, Repo, Commit} = case Source of
 							{hex, NPV, V} -> {hex, V, NPV};
 							{git, R} -> {git, R, master};
-							{M, R, {branch, C}} -> {M, R, C};
-							{M, R, {ref, C}} -> {M, R, C};
-							{M, R, {tag, C}} -> {M, R, C};
 							{M, R, C} -> {M, R, C}
 						end,
-						Write(io_lib:format("DEPS += ~s\ndep_~s = ~s ~s ~s~n", [Name, Name, Method, Repo, Commit]))
+						Write(io_lib:format("DEPS += ~s\ndep_~s = ~s ~s ~s~n", [Name, Name, Method, Repo, ConvertCommit(Commit)]))
 				end end || Dep <- Deps]
 		end
 	end(),
@@ -1018,7 +1061,7 @@ define dep_autopatch_appsrc.erl
 	case filelib:is_regular(AppSrcIn) of
 		false -> ok;
 		true ->
-			{ok, [{application, $(1), L0}]} = file:consult(AppSrcIn),
+			{ok, [{application, $1, L0}]} = file:consult(AppSrcIn),
 			L1 = lists:keystore(modules, 1, L0, {modules, []}),
 			L2 = case lists:keyfind(vsn, 1, L1) of
 				{_, git} -> lists:keyreplace(vsn, 1, L1, {vsn, lists:droplast(os:cmd("git -C $(DEPS_DIR)/$1 describe --dirty --tags --always"))});
@@ -1026,7 +1069,7 @@ define dep_autopatch_appsrc.erl
 				_ -> L1
 			end,
 			L3 = case lists:keyfind(registered, 1, L2) of false -> [{registered, []}|L2]; _ -> L2 end,
-			ok = file:write_file(AppSrcOut, io_lib:format("~p.~n", [{application, $(1), L3}])),
+			ok = file:write_file(AppSrcOut, io_lib:format("~p.~n", [{application, $1, L3}])),
 			case AppSrcOut of AppSrcIn -> ok; _ -> ok = file:delete(AppSrcIn) end
 	end,
 	halt()
@@ -1036,45 +1079,46 @@ ifeq ($(CACHE_DEPS),1)
 
 define dep_cache_fetch_git
 	mkdir -p $(CACHE_DIR)/git; \
-	if test -d "$(join $(CACHE_DIR)/git/,$(call dep_name,$1))"; then \
-		cd $(join $(CACHE_DIR)/git/,$(call dep_name,$1)); \
-		if ! git checkout -q $(call dep_commit,$1); then \
-			git remote set-url origin $(call dep_repo,$1) && \
+	if test -d "$(join $(CACHE_DIR)/git/,$(call query_name,$1))"; then \
+		cd $(join $(CACHE_DIR)/git/,$(call query_name,$1)); \
+		if ! git checkout -q $(call query_version,$1); then \
+			git remote set-url origin $(call query_repo_git,$1) && \
 			git pull --all && \
-			git cat-file -e $(call dep_commit,$1) 2>/dev/null; \
+			git cat-file -e $(call query_version_git,$1) 2>/dev/null; \
 		fi; \
 	else \
-		git clone -q -n -- $(call dep_repo,$1) $(join $(CACHE_DIR)/git/,$(call dep_name,$1)); \
+		git clone -q -n -- $(call query_repo_git,$1) $(join $(CACHE_DIR)/git/,$(call query_name,$1)); \
 	fi; \
-	git clone -q --branch $(call dep_commit,$1) --single-branch -- $(join $(CACHE_DIR)/git/,$(call dep_name,$1)) $2
+	git clone -q --single-branch -- $(join $(CACHE_DIR)/git/,$(call query_name,$1)) $2; \
+	cd $2 && git checkout -q $(call query_version_git,$1)
 endef
 
 define dep_fetch_git
-	$(call dep_cache_fetch_git,$1,$(DEPS_DIR)/$(call dep_name,$1));
+	$(call dep_cache_fetch_git,$1,$(DEPS_DIR)/$(call query_name,$1));
 endef
 
 define dep_fetch_git-subfolder
 	mkdir -p $(ERLANG_MK_TMP)/git-subfolder; \
-	$(call dep_cache_fetch_git,$1,$(ERLANG_MK_TMP)/git-subfolder/$(call dep_name,$1)); \
-	ln -s $(ERLANG_MK_TMP)/git-subfolder/$(call dep_name,$1)/$(word 4,$(dep_$1)) \
-		$(DEPS_DIR)/$(call dep_name,$1);
+	$(call dep_cache_fetch_git,$1,$(ERLANG_MK_TMP)/git-subfolder/$(call query_name,$1)); \
+	ln -s $(ERLANG_MK_TMP)/git-subfolder/$(call query_name,$1)/$(word 4,$(dep_$1)) \
+		$(DEPS_DIR)/$(call query_name,$1);
 endef
 
 else
 
 define dep_fetch_git
-	git clone -q -n -- $(call dep_repo,$1) $(DEPS_DIR)/$(call dep_name,$1); \
-	cd $(DEPS_DIR)/$(call dep_name,$1) && git checkout -q $(call dep_commit,$1);
+	git clone -q -n -- $(call query_repo_git,$1) $(DEPS_DIR)/$(call query_name,$1); \
+	cd $(DEPS_DIR)/$(call query_name,$1) && git checkout -q $(call query_version_git,$1);
 endef
 
 define dep_fetch_git-subfolder
 	mkdir -p $(ERLANG_MK_TMP)/git-subfolder; \
-	git clone -q -n -- $(call dep_repo,$1) \
-		$(ERLANG_MK_TMP)/git-subfolder/$(call dep_name,$1); \
-	cd $(ERLANG_MK_TMP)/git-subfolder/$(call dep_name,$1) \
-		&& git checkout -q $(call dep_commit,$1); \
-	ln -s $(ERLANG_MK_TMP)/git-subfolder/$(call dep_name,$1)/$(word 4,$(dep_$1)) \
-		$(DEPS_DIR)/$(call dep_name,$1);
+	git clone -q -n -- $(call query_repo_git-subfolder,$1) \
+		$(ERLANG_MK_TMP)/git-subfolder/$(call query_name,$1); \
+	cd $(ERLANG_MK_TMP)/git-subfolder/$(call query_name,$1) \
+		&& git checkout -q $(call query_version_git-subfolder,$1); \
+	ln -s $(ERLANG_MK_TMP)/git-subfolder/$(call query_name,$1)/$(word 4,$(dep_$1)) \
+		$(DEPS_DIR)/$(call query_name,$1);
 endef
 
 endif
@@ -1084,20 +1128,34 @@ define dep_fetch_git-submodule
 endef
 
 define dep_fetch_hg
-	hg clone -q -U $(call dep_repo,$(1)) $(DEPS_DIR)/$(call dep_name,$(1)); \
-	cd $(DEPS_DIR)/$(call dep_name,$(1)) && hg update -q $(call dep_commit,$(1));
+	hg clone -q -U $(call query_repo_hg,$1) $(DEPS_DIR)/$(call query_name,$1); \
+	cd $(DEPS_DIR)/$(call query_name,$1) && hg update -q $(call query_version_hg,$1);
 endef
 
 define dep_fetch_svn
-	svn checkout -q $(call dep_repo,$(1)) $(DEPS_DIR)/$(call dep_name,$(1));
+	svn checkout -q $(call query_repo_svn,$1) $(DEPS_DIR)/$(call query_name,$1);
 endef
 
 define dep_fetch_cp
-	cp -R $(call dep_repo,$(1)) $(DEPS_DIR)/$(call dep_name,$(1));
+	cp -R $(call query_repo_cp,$1) $(DEPS_DIR)/$(call query_name,$1);
 endef
 
 define dep_fetch_ln
-	ln -s $(call dep_repo,$(1)) $(DEPS_DIR)/$(call dep_name,$(1));
+	ln -s $(call query_repo_ln,$1) $(DEPS_DIR)/$(call query_name,$1);
+endef
+
+define hex_get_tarball.erl
+	{ok, _} = application:ensure_all_started(ssl),
+	{ok, _} = application:ensure_all_started(inets),
+	Config = $(hex_config.erl),
+	case hex_repo:get_tarball(Config, <<"$1">>, <<"$(strip $2)">>) of
+		{ok, {200, _, Tarball}} ->
+			ok = file:write_file("$(call core_native_path,$3)", Tarball),
+			halt(0);
+		{ok, {Status, _, Errors}} ->
+			io:format("Error ~b: ~0p~n", [Status, Errors]),
+			halt(79)
+	end
 endef
 
 ifeq ($(CACHE_DEPS),1)
@@ -1105,9 +1163,10 @@ ifeq ($(CACHE_DEPS),1)
 # Hex only has a package version. No need to look in the Erlang.mk packages.
 define dep_fetch_hex
 	mkdir -p $(CACHE_DIR)/hex $(DEPS_DIR)/$1; \
-	$(eval hex_tar_name=$(if $(word 3,$(dep_$1)),$(word 3,$(dep_$1)),$1)-$(strip $(word 2,$(dep_$1))).tar) \
-	$(if $(wildcard $(CACHE_DIR)/hex/$(hex_tar_name)),,$(call core_http_get,$(CACHE_DIR)/hex/$(hex_tar_name),\
-		https://repo.hex.pm/tarballs/$(hex_tar_name);)) \
+	$(eval hex_pkg_name := $(if $(word 3,$(dep_$1)),$(word 3,$(dep_$1)),$1)) \
+	$(eval hex_tar_name := $(hex_pkg_name)-$(strip $(word 2,$(dep_$1))).tar) \
+	$(if $(wildcard $(CACHE_DIR)/hex/$(hex_tar_name)),,\
+		$(call erlang,$(call hex_get_tarball.erl,$(hex_pkg_name),$(word 2,$(dep_$1)),$(CACHE_DIR)/hex/$(hex_tar_name)));) \
 	tar -xOf $(CACHE_DIR)/hex/$(hex_tar_name) contents.tar.gz | tar -C $(DEPS_DIR)/$1 -xzf -;
 endef
 
@@ -1116,57 +1175,75 @@ else
 # Hex only has a package version. No need to look in the Erlang.mk packages.
 define dep_fetch_hex
 	mkdir -p $(ERLANG_MK_TMP)/hex $(DEPS_DIR)/$1; \
-	$(call core_http_get,$(ERLANG_MK_TMP)/hex/$1.tar,\
-		https://repo.hex.pm/tarballs/$(if $(word 3,$(dep_$1)),$(word 3,$(dep_$1)),$1)-$(strip $(word 2,$(dep_$1))).tar); \
+	$(call erlang,$(call hex_get_tarball.erl,$(if $(word 3,$(dep_$1)),$(word 3,$(dep_$1)),$1),$(word 2,$(dep_$1)),$(ERLANG_MK_TMP)/hex/$1.tar)); \
 	tar -xOf $(ERLANG_MK_TMP)/hex/$1.tar contents.tar.gz | tar -C $(DEPS_DIR)/$1 -xzf -;
 endef
 
 endif
 
 define dep_fetch_fail
-	echo "Error: Unknown or invalid dependency: $(1)." >&2; \
+	echo "Error: Unknown or invalid dependency: $1." >&2; \
 	exit 78;
 endef
 
-# Kept for compatibility purposes with older Erlang.mk configuration.
-define dep_fetch_legacy
-	$(warning WARNING: '$(1)' dependency configuration uses deprecated format.) \
-	git clone -q -n -- $(word 1,$(dep_$(1))) $(DEPS_DIR)/$(1); \
-	cd $(DEPS_DIR)/$(1) && git checkout -q $(if $(word 2,$(dep_$(1))),$(word 2,$(dep_$(1))),master);
-endef
-
 define dep_target
-$(DEPS_DIR)/$(call dep_name,$1): | $(ERLANG_MK_TMP)
-	$(eval DEP_NAME := $(call dep_name,$1))
+$(DEPS_DIR)/$(call query_name,$1): $(if $(filter elixir,$(BUILD_DEPS) $(DEPS)),$(if $(filter-out elixir,$1),$(DEPS_DIR)/elixir/ebin/dep_built)) $(if $(filter hex,$(call query_fetch_method,$1)),$(if $(wildcard $(DEPS_DIR)/$(call query_name,$1)),,$(DEPS_DIR)/hex_core/ebin/dep_built)) | $(ERLANG_MK_TMP)
+	$(eval DEP_NAME := $(call query_name,$1))
 	$(eval DEP_STR := $(if $(filter $1,$(DEP_NAME)),$1,"$1 ($(DEP_NAME))"))
 	$(verbose) if test -d $(APPS_DIR)/$(DEP_NAME); then \
 		echo "Error: Dependency" $(DEP_STR) "conflicts with application found in $(APPS_DIR)/$(DEP_NAME)." >&2; \
 		exit 17; \
 	fi
 	$(verbose) mkdir -p $(DEPS_DIR)
-	$(dep_verbose) $(call dep_fetch_$(strip $(call dep_fetch,$(1))),$(1))
-	$(verbose) if [ -f $(DEPS_DIR)/$(1)/configure.ac -o -f $(DEPS_DIR)/$(1)/configure.in ] \
-			&& [ ! -f $(DEPS_DIR)/$(1)/configure ]; then \
+	$(dep_verbose) $(call dep_fetch_$(strip $(call query_fetch_method,$1)),$1)
+	$(verbose) if [ -f $(DEPS_DIR)/$1/configure.ac -o -f $(DEPS_DIR)/$1/configure.in ] \
+			&& [ ! -f $(DEPS_DIR)/$1/configure ]; then \
 		echo " AUTO  " $(DEP_STR); \
-		cd $(DEPS_DIR)/$(1) && autoreconf -Wall -vif -I m4; \
+		cd $(DEPS_DIR)/$1 && autoreconf -Wall -vif -I m4; \
 	fi
 	- $(verbose) if [ -f $(DEPS_DIR)/$(DEP_NAME)/configure ]; then \
 		echo " CONF  " $(DEP_STR); \
 		cd $(DEPS_DIR)/$(DEP_NAME) && ./configure; \
 	fi
-ifeq ($(filter $(1),$(NO_AUTOPATCH)),)
-	$(verbose) $$(MAKE) --no-print-directory autopatch-$(DEP_NAME)
+ifeq ($(filter $1,$(NO_AUTOPATCH)),)
+	$(verbose) AUTOPATCH_METHOD=`$(call dep_autopatch_detect,$1)`; \
+	if [ $$$$? -eq 99 ]; then \
+		echo "Elixir is currently disabled. Please set 'ELIXIR = system' in the Makefile to enable"; \
+		exit 99; \
+	fi; \
+	$$(MAKE) --no-print-directory autopatch-$(DEP_NAME) AUTOPATCH_METHOD=$$$$AUTOPATCH_METHOD
 endif
 
-.PHONY: autopatch-$(call dep_name,$1)
+.PHONY: autopatch-$(call query_name,$1)
 
-autopatch-$(call dep_name,$1)::
-	$(verbose) if [ "$1" = "elixir" -a "$(ELIXIR_PATCH)" ]; then \
-		ln -s lib/elixir/ebin $(DEPS_DIR)/elixir/; \
-	else \
-		$$(call dep_autopatch,$(call dep_name,$1)) \
-	fi
+ifeq ($1,elixir)
+autopatch-elixir::
+	$$(verbose) ln -s lib/elixir/ebin $(DEPS_DIR)/elixir/
+else
+autopatch-$(call query_name,$1)::
+	$$(autopatch_verbose) $$(call dep_autopatch_for_$(AUTOPATCH_METHOD),$(call query_name,$1))
+endif
 endef
+
+# We automatically depend on hex_core when the project isn't already.
+$(if $(filter hex_core,$(DEPS) $(BUILD_DEPS) $(DOC_DEPS) $(REL_DEPS) $(TEST_DEPS)),,\
+	$(eval $(call dep_target,hex_core)))
+
+$(DEPS_DIR)/hex_core/ebin/dep_built: | $(ERLANG_MK_TMP)
+	$(verbose) $(call maybe_flock,$(ERLANG_MK_TMP)/hex_core.lock,\
+		if [ ! -e $(DEPS_DIR)/hex_core/ebin/dep_built ]; then \
+			$(MAKE) $(DEPS_DIR)/hex_core; \
+			$(MAKE) -C $(DEPS_DIR)/hex_core IS_DEP=1; \
+			touch $(DEPS_DIR)/hex_core/ebin/dep_built; \
+		fi)
+
+$(DEPS_DIR)/elixir/ebin/dep_built: | $(ERLANG_MK_TMP)
+	$(verbose) $(call maybe_flock,$(ERLANG_MK_TMP)/elixir.lock,\
+		if [ ! -e $(DEPS_DIR)/elixir/ebin/dep_built ]; then \
+			$(MAKE) $(DEPS_DIR)/elixir; \
+			$(MAKE) -C $(DEPS_DIR)/elixir; \
+			touch $(DEPS_DIR)/elixir/ebin/dep_built; \
+		fi)
 
 $(foreach dep,$(BUILD_DEPS) $(DEPS),$(eval $(call dep_target,$(dep))))
 
@@ -1217,6 +1294,49 @@ ERLANG_MK_QUERY_DOC_DEPS_FILE = $(ERLANG_MK_TMP)/query-doc-deps.log
 ERLANG_MK_QUERY_REL_DEPS_FILE = $(ERLANG_MK_TMP)/query-rel-deps.log
 ERLANG_MK_QUERY_TEST_DEPS_FILE = $(ERLANG_MK_TMP)/query-test-deps.log
 ERLANG_MK_QUERY_SHELL_DEPS_FILE = $(ERLANG_MK_TMP)/query-shell-deps.log
+
+# Copyright (c) 2024, Loïc Hoguin <essen@ninenines.eu>
+# This file is part of erlang.mk and subject to the terms of the ISC License.
+
+.PHONY: beam-cache-restore-app beam-cache-restore-test clean-beam-cache distclean-beam-cache
+
+BEAM_CACHE_DIR ?= $(ERLANG_MK_TMP)/beam-cache
+PROJECT_BEAM_CACHE_DIR = $(BEAM_CACHE_DIR)/$(PROJECT)
+
+clean:: clean-beam-cache
+
+clean-beam-cache:
+	$(verbose) rm -rf $(PROJECT_BEAM_CACHE_DIR)
+
+distclean:: distclean-beam-cache
+
+$(PROJECT_BEAM_CACHE_DIR):
+	$(verbose) mkdir -p $(PROJECT_BEAM_CACHE_DIR)
+
+distclean-beam-cache:
+	$(gen_verbose) rm -rf $(BEAM_CACHE_DIR)
+
+beam-cache-restore-app: | $(PROJECT_BEAM_CACHE_DIR)
+	$(verbose) rm -rf $(PROJECT_BEAM_CACHE_DIR)/ebin-test
+ifneq ($(wildcard ebin/),)
+	$(verbose) mv ebin/ $(PROJECT_BEAM_CACHE_DIR)/ebin-test
+endif
+ifneq ($(wildcard $(PROJECT_BEAM_CACHE_DIR)/ebin-app),)
+	$(gen_verbose) mv $(PROJECT_BEAM_CACHE_DIR)/ebin-app ebin/
+else
+	$(verbose) $(MAKE) --no-print-directory clean-app
+endif
+
+beam-cache-restore-test: | $(PROJECT_BEAM_CACHE_DIR)
+	$(verbose) rm -rf $(PROJECT_BEAM_CACHE_DIR)/ebin-app
+ifneq ($(wildcard ebin/),)
+	$(verbose) mv ebin/ $(PROJECT_BEAM_CACHE_DIR)/ebin-app
+endif
+ifneq ($(wildcard $(PROJECT_BEAM_CACHE_DIR)/ebin-test),)
+	$(gen_verbose) mv $(PROJECT_BEAM_CACHE_DIR)/ebin-test ebin/
+else
+	$(verbose) $(MAKE) --no-print-directory clean-app
+endif
 
 # Copyright (c) 2013-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -1269,42 +1389,29 @@ mib_verbose_0 = @echo " MIB   " $(filter %.bin %.mib,$(?F));
 mib_verbose_2 = set -x;
 mib_verbose = $(mib_verbose_$(V))
 
-ifneq ($(wildcard src/),)
+ifneq ($(wildcard src/)$(wildcard lib/),)
 
 # Targets.
 
-app:: $(if $(wildcard ebin/test),clean) deps
+app:: $(if $(wildcard ebin/test),beam-cache-restore-app) deps
 	$(verbose) $(MAKE) --no-print-directory $(PROJECT).d
 	$(verbose) $(MAKE) --no-print-directory app-build
 
-ifeq ($(wildcard src/$(PROJECT_MOD).erl),)
+PROJECT_MOD := $(if $(PROJECT_MOD),$(PROJECT_MOD),$(if $(wildcard src/$(PROJECT)_app.erl),$(PROJECT)_app))
+
 define app_file
 {application, '$(PROJECT)', [
 	{description, "$(PROJECT_DESCRIPTION)"},
 	{vsn, "$(PROJECT_VERSION)"},$(if $(IS_DEP),
-	{id$(comma)$(space)"$(1)"}$(comma))
-	{modules, [$(call comma_list,$(2))]},
-	{registered, []},
-	{applications, [$(call comma_list,kernel stdlib $(OTP_DEPS) $(LOCAL_DEPS) $(OPTIONAL_DEPS) $(foreach dep,$(DEPS),$(call dep_name,$(dep))))]},
-	{optional_applications, [$(call comma_list,$(OPTIONAL_DEPS))]},
+	{id$(comma)$(space)"$1"}$(comma))
+	{modules, [$(call comma_list,$2)]},
+	{registered, [$(if $(PROJECT_MOD),$(call comma_list,$(if $(filter $(PROJECT_MOD),$(PROJECT)_app),$(PROJECT)_sup) $(PROJECT_REGISTERED)))]},
+	{applications, [$(call comma_list,kernel stdlib $(OTP_DEPS) $(LOCAL_DEPS) $(OPTIONAL_DEPS) $(foreach dep,$(DEPS),$(call query_name,$(dep))))]},
+	{optional_applications, [$(call comma_list,$(OPTIONAL_DEPS))]},$(if $(PROJECT_MOD),
+	{mod$(comma)$(space){$(patsubst %,'%',$(PROJECT_MOD))$(comma)$(space)[]}}$(comma))
 	{env, $(subst \,\\,$(PROJECT_ENV))}$(if $(findstring {,$(PROJECT_APP_EXTRA_KEYS)),$(comma)$(newline)$(tab)$(subst \,\\,$(PROJECT_APP_EXTRA_KEYS)),)
 ]}.
 endef
-else
-define app_file
-{application, '$(PROJECT)', [
-	{description, "$(PROJECT_DESCRIPTION)"},
-	{vsn, "$(PROJECT_VERSION)"},$(if $(IS_DEP),
-	{id$(comma)$(space)"$(1)"}$(comma))
-	{modules, [$(call comma_list,$(2))]},
-	{registered, [$(call comma_list,$(PROJECT)_sup $(PROJECT_REGISTERED))]},
-	{applications, [$(call comma_list,kernel stdlib $(OTP_DEPS) $(LOCAL_DEPS) $(OPTIONAL_DEPS) $(foreach dep,$(DEPS),$(call dep_name,$(dep))))]},
-	{optional_applications, [$(call comma_list,$(OPTIONAL_DEPS))]},
-	{mod, {$(PROJECT_MOD), []}},
-	{env, $(subst \,\\,$(PROJECT_ENV))}$(if $(findstring {,$(PROJECT_APP_EXTRA_KEYS)),$(comma)$(newline)$(tab)$(subst \,\\,$(PROJECT_APP_EXTRA_KEYS)),)
-]}.
-endef
-endif
 
 app-build: ebin/$(PROJECT).app
 	$(verbose) :
@@ -1316,6 +1423,9 @@ ALL_SRC_FILES := $(sort $(call core_find,src/,*))
 ERL_FILES := $(filter %.erl,$(ALL_SRC_FILES))
 CORE_FILES := $(filter %.core,$(ALL_SRC_FILES))
 
+ALL_LIB_FILES := $(sort $(call core_find,lib/,*))
+EX_FILES := $(filter-out lib/mix/%,$(filter %.ex,$(ALL_SRC_FILES) $(ALL_LIB_FILES)))
+
 # ASN.1 files.
 
 ifneq ($(wildcard asn1/),)
@@ -1324,7 +1434,7 @@ ERL_FILES += $(addprefix src/,$(patsubst %.asn1,%.erl,$(notdir $(ASN1_FILES))))
 
 define compile_asn1
 	$(verbose) mkdir -p include/
-	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(ERLC_ASN1_OPTS) $(1)
+	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(ERLC_ASN1_OPTS) $1
 	$(verbose) mv asn1/*.erl src/
 	-$(verbose) mv asn1/*.hrl include/
 	$(verbose) mv asn1/*.asn1db include/
@@ -1486,26 +1596,26 @@ define makedep.erl
 		[233] -> unicode:characters_to_binary(Output0);
 		_ -> Output0
 	end,
-	ok = file:write_file("$(1)", Output),
+	ok = file:write_file("$1", Output),
 	halt()
 endef
 
 ifeq ($(if $(NO_MAKEDEP),$(wildcard $(PROJECT).d),),)
-$(PROJECT).d:: $(ERL_FILES) $(call core_find,include/,*.hrl) $(MAKEFILE_LIST)
+$(PROJECT).d:: $(ERL_FILES) $(EX_FILES) $(call core_find,include/,*.hrl) $(MAKEFILE_LIST)
 	$(makedep_verbose) $(call erlang,$(call makedep.erl,$@))
 endif
 
 ifeq ($(IS_APP)$(IS_DEP),)
-ifneq ($(words $(ERL_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES)),0)
+ifneq ($(words $(ERL_FILES) $(EX_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES) $(EX_FILES)),0)
 # Rebuild everything when the Makefile changes.
 $(ERLANG_MK_TMP)/last-makefile-change: $(MAKEFILE_LIST) | $(ERLANG_MK_TMP)
 	$(verbose) if test -f $@; then \
-		touch $(ERL_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES); \
+		touch $(ERL_FILES) $(EX_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES) $(EX_FILES); \
 		touch -c $(PROJECT).d; \
 	fi
 	$(verbose) touch $@
 
-$(ERL_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES):: $(ERLANG_MK_TMP)/last-makefile-change
+$(ERL_FILES) $(EX_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES):: $(ERLANG_MK_TMP)/last-makefile-change
 ebin/$(PROJECT).app:: $(ERLANG_MK_TMP)/last-makefile-change
 endif
 endif
@@ -1522,7 +1632,7 @@ ebin/:
 
 define compile_erl
 	$(erlc_verbose) erlc -v $(if $(IS_DEP),$(filter-out -Werror,$(ERLC_OPTS)),$(ERLC_OPTS)) -o ebin/ \
-		-pa ebin/ -I include/ $(filter-out $(ERLC_EXCLUDE_PATHS),$(COMPILE_FIRST_PATHS) $(1))
+		-pa ebin/ -I include/ $(filter-out $(ERLC_EXCLUDE_PATHS),$(COMPILE_FIRST_PATHS) $1)
 endef
 
 define validate_app_file
@@ -1532,13 +1642,16 @@ define validate_app_file
 	end
 endef
 
-ebin/$(PROJECT).app:: $(ERL_FILES) $(CORE_FILES) $(wildcard src/$(PROJECT).app.src)
-	$(eval FILES_TO_COMPILE := $(filter-out src/$(PROJECT).app.src,$?))
+ebin/$(PROJECT).app:: $(ERL_FILES) $(CORE_FILES) $(wildcard src/$(PROJECT).app.src) $(EX_FILES)
+	$(eval FILES_TO_COMPILE := $(filter-out $(EX_FILES) src/$(PROJECT).app.src,$?))
 	$(if $(strip $(FILES_TO_COMPILE)),$(call compile_erl,$(FILES_TO_COMPILE)))
+	$(if $(filter $(ELIXIR),disable),,$(if $(filter $?,$(EX_FILES)),$(elixirc_verbose) $(eval MODULES := $(shell $(call erlang,$(call compile_ex.erl,$(EX_FILES)))))))
+	$(eval ELIXIR_COMP_FAILED := $(if $(filter _ERROR_,$(firstword $(MODULES))),true,false))
 # Older git versions do not have the --first-parent flag. Do without in that case.
+	$(verbose) if $(ELIXIR_COMP_FAILED); then exit 1; fi
 	$(eval GITDESCRIBE := $(shell git describe --dirty --abbrev=7 --tags --always --first-parent 2>/dev/null \
 		|| git describe --dirty --abbrev=7 --tags --always 2>/dev/null || true))
-	$(eval MODULES := $(patsubst %,'%',$(sort $(notdir $(basename \
+	$(eval MODULES := $(MODULES) $(patsubst %,'%',$(sort $(notdir $(basename \
 		$(filter-out $(ERLC_EXCLUDE_PATHS),$(ERL_FILES) $(CORE_FILES) $(BEAM_FILES)))))))
 ifeq ($(wildcard src/$(PROJECT).app.src),)
 	$(app_verbose) printf '$(subst %,%%,$(subst $(newline),\n,$(subst ','\'',$(call app_file,$(GITDESCRIBE),$(MODULES)))))' \
@@ -1571,6 +1684,209 @@ clean-app:
 		$(addprefix src/,$(patsubst %.asn1,%.erl,$(notdir $(ASN1_FILES))))
 
 endif
+
+# Copyright (c) 2024, Tyler Hughes <tyler@tylerhughes.dev>
+# Copyright (c) 2024, Loïc Hoguin <essen@ninenines.eu>
+# This file is part of erlang.mk and subject to the terms of the ISC License.
+
+ifeq ($(ELIXIR),system)
+# We expect 'elixir' to be on the path.
+ELIXIR_BIN ?= $(shell readlink -f `which elixir`)
+ELIXIR_LIBS ?= $(abspath $(dir $(ELIXIR_BIN))/../lib)
+# Fallback in case 'elixir' is a shim.
+ifeq ($(wildcard $(ELIXIR_LIBS)/elixir/),)
+ELIXIR_LIBS = $(abspath $(shell elixir -e 'IO.puts(:code.lib_dir(:elixir))')/../)
+endif
+ELIXIR_LIBS := $(ELIXIR_LIBS)
+export ELIXIR_LIBS
+ERL_LIBS := $(ERL_LIBS):$(ELIXIR_LIBS)
+else
+ifeq ($(ELIXIR),dep)
+ERL_LIBS := $(ERL_LIBS):$(DEPS_DIR)/elixir/lib/
+endif
+endif
+
+elixirc_verbose_0 = @echo " EXC    $(words $(EX_FILES)) files";
+elixirc_verbose_2 = set -x;
+elixirc_verbose = $(elixirc_verbose_$(V))
+
+# Unfortunately this currently requires Elixir.
+# https://github.com/jelly-beam/verl is a good choice
+# for an Erlang implementation, but we already have to
+# pull hex_core and Rebar3 so adding yet another pull
+# is annoying, especially one that would be necessary
+# every time we autopatch Rebar projects. Wait and see.
+define hex_version_resolver.erl
+	HexVersionResolve = fun(Name, Req) ->
+		application:ensure_all_started(ssl),
+		application:ensure_all_started(inets),
+		Config = $(hex_config.erl),
+		case hex_repo:get_package(Config, atom_to_binary(Name)) of
+			{ok, {200, _RespHeaders, Package}} ->
+				#{releases := List} = Package,
+				{value, #{version := Version}} = lists:search(fun(#{version := Vsn}) ->
+					M = list_to_atom("Elixir.Version"),
+					F = list_to_atom("match?"),
+					M:F(Vsn, Req)
+				end, List),
+				{ok, Version};
+			{ok, {Status, _, Errors}} ->
+				{error, Status, Errors}
+		end
+	end,
+	HexVersionResolveAndPrint = fun(Name, Req) ->
+		case HexVersionResolve(Name, Req) of
+			{ok, Version} ->
+				io:format("~s", [Version]),
+				halt(0);
+			{error, Status, Errors} ->
+				io:format("Error ~b: ~0p~n", [Status, Errors]),
+				halt(77)
+		end
+	end
+endef
+
+define dep_autopatch_mix.erl
+	$(call hex_version_resolver.erl),
+	{ok, _} = application:ensure_all_started(elixir),
+	{ok, _} = application:ensure_all_started(mix),
+	MixFile = <<"$(call core_native_path,$(DEPS_DIR)/$1/mix.exs)">>,
+	{Mod, Bin} =
+		case elixir_compiler:file(MixFile, fun(_File, _LexerPid) -> ok end) of
+			[{T = {_, _}, _CheckerPid}] -> T;
+			[T = {_, _}] -> T
+		end,
+	{module, Mod} = code:load_binary(Mod, binary_to_list(MixFile), Bin),
+	Project = Mod:project(),
+	Application = try Mod:application() catch error:undef -> [] end,
+	StartMod = case lists:keyfind(mod, 1, Application) of
+		{mod, {StartMod0, _StartArgs}} ->
+			atom_to_list(StartMod0);
+		_ ->
+			""
+	end,
+	Write = fun (Text) ->
+		file:write_file("$(call core_native_path,$(DEPS_DIR)/$1/Makefile)", Text, [append])
+	end,
+	Write([
+		"PROJECT = ", atom_to_list(proplists:get_value(app, Project)), "\n"
+		"PROJECT_DESCRIPTION = ", proplists:get_value(description, Project, ""), "\n"
+		"PROJECT_VERSION = ", proplists:get_value(version, Project, ""), "\n"
+		"PROJECT_MOD = ", StartMod, "\n"
+		"define PROJECT_ENV\n",
+		io_lib:format("~p", [proplists:get_value(env, Application, [])]), "\n"
+		"endef\n\n"]),
+	ExtraApps = lists:usort([eex, elixir, logger, mix] ++ proplists:get_value(extra_applications, Application, [])),
+	Write(["LOCAL_DEPS += ", lists:join(" ", [atom_to_list(App) || App <- ExtraApps]), "\n\n"]),
+	Deps = proplists:get_value(deps, Project, []) -- [elixir_make],
+	IsRequiredProdDep = fun(Opts) ->
+		(proplists:get_value(optional, Opts) =/= true)
+		andalso
+		case proplists:get_value(only, Opts, prod) of
+			prod -> true;
+			L when is_list(L) -> lists:member(prod, L);
+			_ -> false
+		end
+	end,
+	lists:foreach(fun
+		({Name, Req}) when is_binary(Req) ->
+			{ok, Vsn} = HexVersionResolve(Name, Req),
+			Write(["DEPS += ", atom_to_list(Name), "\n"]),
+			Write(["dep_", atom_to_list(Name), " = hex ", Vsn, " ", atom_to_list(Name), "\n"]);
+		({Name, Opts}) when is_list(Opts) ->
+			Path = proplists:get_value(path, Opts),
+			case IsRequiredProdDep(Opts) of
+				true when Path =/= undefined ->
+					Write(["DEPS += ", atom_to_list(Name), "\n"]),
+					Write(["dep_", atom_to_list(Name), " = ln ", Path, "\n"]);
+				true when Path =:= undefined ->
+					Write(["DEPS += ", atom_to_list(Name), "\n"]),
+					io:format(standard_error, "Warning: No version given for ~p.", [Name]);
+				false ->
+					ok
+			end;
+		({Name, Req, Opts}) ->
+			case IsRequiredProdDep(Opts) of
+				true ->
+					{ok, Vsn} = HexVersionResolve(Name, Req),
+					Write(["DEPS += ", atom_to_list(Name), "\n"]),
+					Write(["dep_", atom_to_list(Name), " = hex ", Vsn, " ", atom_to_list(Name), "\n"]);
+				false ->
+					ok
+			end;
+		(_) ->
+			ok
+	end, Deps),
+	case lists:member(elixir_make, proplists:get_value(compilers, Project, [])) of
+		false -> 
+			ok;
+		true ->
+			Write("# https://hexdocs.pm/elixir_make/Mix.Tasks.Compile.ElixirMake.html\n"),
+			MakeVal = fun(Key, Proplist, DefaultVal, DefaultReplacement) ->
+				case proplists:get_value(Key, Proplist, DefaultVal) of
+					DefaultVal -> DefaultReplacement;
+					Value -> Value
+				end
+			end,
+			MakeMakefile = binary_to_list(MakeVal(make_makefile, Project, default, <<"Makefile">>)),
+			MakeExe = MakeVal(make_executable, Project, default, "$$\(MAKE)"),
+			MakeCwd = MakeVal(make_cwd, Project, undefined, <<".">>),
+			MakeTargets = MakeVal(make_targets, Project, [], []),
+			MakeArgs = MakeVal(make_args, Project, undefined, []),
+			case file:rename("$(DEPS_DIR)/$1/" ++ MakeMakefile, "$(DEPS_DIR)/$1/elixir_make.mk") of
+				ok -> ok;
+				Err = {error, _} ->
+					io:format(standard_error, "Failed to copy Makefile with error ~p~n", [Err]),
+					halt(90)
+			end,
+			Write(["app::\n"
+				"\t", MakeExe, " -C ", MakeCwd, " -f $(DEPS_DIR)/$1/elixir_make.mk",
+				lists:join(" ", MakeTargets),
+				lists:join(" ", MakeArgs),
+				"\n\n"]),
+			case MakeVal(make_clean, Project, nil, undefined) of
+				undefined ->
+					ok;
+				Clean ->
+					Write(["clean::\n\t", Clean, "\n\n"])
+			end
+	end,
+	Write("ERLC_OPTS = +debug_info\n\n"),
+	Write("include $$\(if $$\(ERLANG_MK_FILENAME),$$\(ERLANG_MK_FILENAME),erlang.mk)"),
+	halt()
+endef
+
+define dep_autopatch_mix
+	sed 's|\(defmodule.*do\)|\1\n  try do\n    Code.compiler_options(on_undefined_variable: :warn)\n    rescue _ -> :ok\n  end\n|g' $(DEPS_DIR)/$(1)/mix.exs > $(DEPS_DIR)/$(1)/mix.exs.new; \
+	mv $(DEPS_DIR)/$(1)/mix.exs.new $(DEPS_DIR)/$(1)/mix.exs; \
+	$(MAKE) $(DEPS_DIR)/hex_core/ebin/dep_built; \
+	MIX_ENV="$(if $(MIX_ENV),$(strip $(MIX_ENV)),prod)" \
+		$(call erlang,$(call dep_autopatch_mix.erl,$1))
+endef
+
+# We change the group leader so the Elixir io:format output
+# isn't captured as we need to either print the modules on
+# success, or print _ERROR_ on failure.
+define compile_ex.erl
+	{ok, _} = application:ensure_all_started(elixir),
+	{ok, _} = application:ensure_all_started(mix),
+	$(foreach dep,$(LOCAL_DEPS),_ = application:load($(dep)),)
+	ModCode = list_to_atom("Elixir.Code"),
+	ModCode:put_compiler_option(ignore_module_conflict, true),
+	ModComp = list_to_atom("Elixir.Kernel.ParallelCompiler"),
+	ModMixProject = list_to_atom("Elixir.Mix.Project"),
+	erlang:group_leader(whereis(standard_error), self()),
+	ModMixProject:in_project($(PROJECT), ".", [], fun(_MixFile) ->
+		case ModComp:compile_to_path([$(call comma_list,$(patsubst %,<<"%">>,$1))], <<"ebin/">>) of
+			{ok, Modules, _} ->
+				lists:foreach(fun(E) -> io:format(user, "~p ", [E]) end, Modules),
+				halt(0);
+			{error, _ErroredModules, _WarnedModules} ->
+				io:format(user, "_ERROR_", []),
+				halt(1)
+		end
+	end)
+endef
 
 # Copyright (c) 2016, Loïc Hoguin <essen@ninenines.eu>
 # Copyright (c) 2015, Viktor Söderqvist <viktor@zuiderkwast.se>
@@ -1656,18 +1972,21 @@ test_erlc_verbose = $(test_erlc_verbose_$(V))
 
 define compile_test_erl
 	$(test_erlc_verbose) erlc -v $(TEST_ERLC_OPTS) -o $(TEST_DIR) \
-		-pa ebin/ -I include/ $(1)
+		-pa ebin/ -I include/ $1
 endef
 
 ERL_TEST_FILES = $(call core_find,$(TEST_DIR)/,*.erl)
+
 $(ERLANG_MK_TMP)/$(PROJECT).last-testdir-build: $(ERL_TEST_FILES) $(MAKEFILE_LIST)
-	$(eval FILES_TO_COMPILE := $(if $(filter $(MAKEFILE_LIST),$?),$(filter $(ERL_TEST_FILES),$^),$?))
+# When we have to recompile files in src/ the .d file always gets rebuilt.
+# Therefore we want to ignore it when rebuilding test files.
+	$(eval FILES_TO_COMPILE := $(if $(filter $(filter-out $(PROJECT).d,$(MAKEFILE_LIST)),$?),$(filter $(ERL_TEST_FILES),$^),$(filter $(ERL_TEST_FILES),$?)))
 	$(if $(strip $(FILES_TO_COMPILE)),$(call compile_test_erl,$(FILES_TO_COMPILE)) && touch $@)
 endif
 
 test-build:: IS_TEST=1
 test-build:: ERLC_OPTS=$(TEST_ERLC_OPTS)
-test-build:: $(if $(wildcard src),$(if $(wildcard ebin/test),,clean)) $(if $(IS_APP),,deps test-deps)
+test-build:: $(if $(wildcard src),$(if $(wildcard ebin/test),,beam-cache-restore-test)) $(if $(IS_APP),,deps test-deps)
 # We already compiled everything when IS_APP=1.
 ifndef IS_APP
 ifneq ($(wildcard src),)
@@ -1707,6 +2026,8 @@ endif
 
 .PHONY: rebar.config
 
+compat_ref = {$(shell (git -C $(DEPS_DIR)/$1 show-ref -q --verify "refs/heads/$2" && echo branch) || (git -C $(DEPS_DIR)/$1 show-ref -q --verify "refs/tags/$2" && echo tag) || echo ref),"$2"}
+
 # We strip out -Werror because we don't want to fail due to
 # warnings when used as a dependency.
 
@@ -1725,15 +2046,386 @@ endef
 define compat_rebar_config
 {deps, [
 $(call comma_list,$(foreach d,$(DEPS),\
-	$(if $(filter hex,$(call dep_fetch,$d)),\
-		{$(call dep_name,$d)$(comma)"$(call dep_repo,$d)"},\
-		{$(call dep_name,$d)$(comma)".*"$(comma){git,"$(call dep_repo,$d)"$(comma)"$(call dep_commit,$d)"}})))
+	$(if $(filter hex,$(call query_fetch_method,$d)),\
+		{$(call query_name,$d)$(comma)"$(call query_version_hex,$d)"},\
+		{$(call query_name,$d)$(comma)".*"$(comma){git,"$(call query_repo,$d)"$(comma)$(call compat_ref,$(call query_name,$d),$(call query_version,$d))}})))
 ]}.
 {erl_opts, $(call compat_erlc_opts_to_list,$(ERLC_OPTS))}.
 endef
 
-rebar.config:
+rebar.config: deps
 	$(gen_verbose) $(call core_render,compat_rebar_config,rebar.config)
+
+define tpl_application.app.src
+{application, project_name, [
+	{description, ""},
+	{vsn, "0.1.0"},
+	{id, "git"},
+	{modules, []},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib
+	]},
+	{mod, {project_name_app, []}},
+	{env, []}
+]}.
+endef
+
+define tpl_application
+-module(project_name_app).
+-behaviour(application).
+
+-export([start/2]).
+-export([stop/1]).
+
+start(_Type, _Args) ->
+	project_name_sup:start_link().
+
+stop(_State) ->
+	ok.
+endef
+
+define tpl_apps_Makefile
+PROJECT = project_name
+PROJECT_DESCRIPTION = New project
+PROJECT_VERSION = 0.1.0
+template_sp
+# Make sure we know where the applications are located.
+ROOT_DIR ?= rel_root_dir
+APPS_DIR ?= ..
+DEPS_DIR ?= rel_deps_dir
+
+include rel_root_dir/erlang.mk
+endef
+
+define tpl_cowboy_http_h
+-module(template_name).
+-behaviour(cowboy_http_handler).
+
+-export([init/3]).
+-export([handle/2]).
+-export([terminate/3]).
+
+-record(state, {
+}).
+
+init(_, Req, _Opts) ->
+	{ok, Req, #state{}}.
+
+handle(Req, State=#state{}) ->
+	{ok, Req2} = cowboy_req:reply(200, Req),
+	{ok, Req2, State}.
+
+terminate(_Reason, _Req, _State) ->
+	ok.
+endef
+
+define tpl_cowboy_loop_h
+-module(template_name).
+-behaviour(cowboy_loop_handler).
+
+-export([init/3]).
+-export([info/3]).
+-export([terminate/3]).
+
+-record(state, {
+}).
+
+init(_, Req, _Opts) ->
+	{loop, Req, #state{}, 5000, hibernate}.
+
+info(_Info, Req, State) ->
+	{loop, Req, State, hibernate}.
+
+terminate(_Reason, _Req, _State) ->
+	ok.
+endef
+
+define tpl_cowboy_rest_h
+-module(template_name).
+
+-export([init/3]).
+-export([content_types_provided/2]).
+-export([get_html/2]).
+
+init(_, _Req, _Opts) ->
+	{upgrade, protocol, cowboy_rest}.
+
+content_types_provided(Req, State) ->
+	{[{{<<"text">>, <<"html">>, '*'}, get_html}], Req, State}.
+
+get_html(Req, State) ->
+	{<<"<html><body>This is REST!</body></html>">>, Req, State}.
+endef
+
+define tpl_cowboy_websocket_h
+-module(template_name).
+-behaviour(cowboy_websocket_handler).
+
+-export([init/3]).
+-export([websocket_init/3]).
+-export([websocket_handle/3]).
+-export([websocket_info/3]).
+-export([websocket_terminate/3]).
+
+-record(state, {
+}).
+
+init(_, _, _) ->
+	{upgrade, protocol, cowboy_websocket}.
+
+websocket_init(_, Req, _Opts) ->
+	Req2 = cowboy_req:compact(Req),
+	{ok, Req2, #state{}}.
+
+websocket_handle({text, Data}, Req, State) ->
+	{reply, {text, Data}, Req, State};
+websocket_handle({binary, Data}, Req, State) ->
+	{reply, {binary, Data}, Req, State};
+websocket_handle(_Frame, Req, State) ->
+	{ok, Req, State}.
+
+websocket_info(_Info, Req, State) ->
+	{ok, Req, State}.
+
+websocket_terminate(_Reason, _Req, _State) ->
+	ok.
+endef
+
+define tpl_gen_fsm
+-module(template_name).
+-behaviour(gen_fsm).
+
+%% API.
+-export([start_link/0]).
+
+%% gen_fsm.
+-export([init/1]).
+-export([state_name/2]).
+-export([handle_event/3]).
+-export([state_name/3]).
+-export([handle_sync_event/4]).
+-export([handle_info/3]).
+-export([terminate/3]).
+-export([code_change/4]).
+
+-record(state, {
+}).
+
+%% API.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+	gen_fsm:start_link(?MODULE, [], []).
+
+%% gen_fsm.
+
+init([]) ->
+	{ok, state_name, #state{}}.
+
+state_name(_Event, StateData) ->
+	{next_state, state_name, StateData}.
+
+handle_event(_Event, StateName, StateData) ->
+	{next_state, StateName, StateData}.
+
+state_name(_Event, _From, StateData) ->
+	{reply, ignored, state_name, StateData}.
+
+handle_sync_event(_Event, _From, StateName, StateData) ->
+	{reply, ignored, StateName, StateData}.
+
+handle_info(_Info, StateName, StateData) ->
+	{next_state, StateName, StateData}.
+
+terminate(_Reason, _StateName, _StateData) ->
+	ok.
+
+code_change(_OldVsn, StateName, StateData, _Extra) ->
+	{ok, StateName, StateData}.
+endef
+
+define tpl_gen_server
+-module(template_name).
+-behaviour(gen_server).
+
+%% API.
+-export([start_link/0]).
+
+%% gen_server.
+-export([init/1]).
+-export([handle_call/3]).
+-export([handle_cast/2]).
+-export([handle_info/2]).
+-export([terminate/2]).
+-export([code_change/3]).
+
+-record(state, {
+}).
+
+%% API.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+	gen_server:start_link(?MODULE, [], []).
+
+%% gen_server.
+
+init([]) ->
+	{ok, #state{}}.
+
+handle_call(_Request, _From, State) ->
+	{reply, ignored, State}.
+
+handle_cast(_Msg, State) ->
+	{noreply, State}.
+
+handle_info(_Info, State) ->
+	{noreply, State}.
+
+terminate(_Reason, _State) ->
+	ok.
+
+code_change(_OldVsn, State, _Extra) ->
+	{ok, State}.
+endef
+
+define tpl_gen_statem
+-module(template_name).
+-behaviour(gen_statem).
+
+%% API.
+-export([start_link/0]).
+
+%% gen_statem.
+-export([callback_mode/0]).
+-export([init/1]).
+-export([state_name/3]).
+-export([handle_event/4]).
+-export([terminate/3]).
+-export([code_change/4]).
+
+-record(state, {
+}).
+
+%% API.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+	gen_statem:start_link(?MODULE, [], []).
+
+%% gen_statem.
+
+callback_mode() ->
+	state_functions.
+
+init([]) ->
+	{ok, state_name, #state{}}.
+
+state_name(_EventType, _EventData, StateData) ->
+	{next_state, state_name, StateData}.
+
+handle_event(_EventType, _EventData, StateName, StateData) ->
+	{next_state, StateName, StateData}.
+
+terminate(_Reason, _StateName, _StateData) ->
+	ok.
+
+code_change(_OldVsn, StateName, StateData, _Extra) ->
+	{ok, StateName, StateData}.
+endef
+
+define tpl_library.app.src
+{application, project_name, [
+	{description, ""},
+	{vsn, "0.1.0"},
+	{id, "git"},
+	{modules, []},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib
+	]}
+]}.
+endef
+
+define tpl_module
+-module(template_name).
+-export([]).
+endef
+
+define tpl_ranch_protocol
+-module(template_name).
+-behaviour(ranch_protocol).
+
+-export([start_link/4]).
+-export([init/4]).
+
+-type opts() :: [].
+-export_type([opts/0]).
+
+-record(state, {
+	socket :: inet:socket(),
+	transport :: module()
+}).
+
+start_link(Ref, Socket, Transport, Opts) ->
+	Pid = spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
+	{ok, Pid}.
+
+-spec init(ranch:ref(), inet:socket(), module(), opts()) -> ok.
+init(Ref, Socket, Transport, _Opts) ->
+	ok = ranch:accept_ack(Ref),
+	loop(#state{socket=Socket, transport=Transport}).
+
+loop(State) ->
+	loop(State).
+endef
+
+define tpl_relx.config
+{release, {project_name_release, "1"}, [project_name, sasl, runtime_tools]}.
+{dev_mode, false}.
+{include_erts, true}.
+{extended_start_script, true}.
+{sys_config, "config/sys.config"}.
+{vm_args, "config/vm.args"}.
+endef
+
+define tpl_supervisor
+-module(template_name).
+-behaviour(supervisor).
+
+-export([start_link/0]).
+-export([init/1]).
+
+start_link() ->
+	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+init([]) ->
+	Procs = [],
+	{ok, {{one_for_one, 1, 5}, Procs}}.
+endef
+
+define tpl_sys.config
+[
+].
+endef
+
+define tpl_top_Makefile
+PROJECT = project_name
+PROJECT_DESCRIPTION = New project
+PROJECT_VERSION = 0.1.0
+template_sp
+include erlang.mk
+endef
+
+define tpl_vm.args
+-name project_name@127.0.0.1
+-setcookie project_name
+-heart
+endef
+
 
 # Copyright (c) 2015-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -1837,387 +2529,6 @@ help::
 		"  new t=T n=N in=APP Generate a module NAME based on the template TPL in APP" \
 		"  list-templates     List available templates"
 
-# Bootstrap templates.
-
-define bs_appsrc
-{application, $p, [
-	{description, ""},
-	{vsn, "0.1.0"},
-	{id, "git"},
-	{modules, []},
-	{registered, []},
-	{applications, [
-		kernel,
-		stdlib
-	]},
-	{mod, {$p_app, []}},
-	{env, []}
-]}.
-endef
-
-define bs_appsrc_lib
-{application, $p, [
-	{description, ""},
-	{vsn, "0.1.0"},
-	{id, "git"},
-	{modules, []},
-	{registered, []},
-	{applications, [
-		kernel,
-		stdlib
-	]}
-]}.
-endef
-
-# To prevent autocompletion issues with ZSH, we add "include erlang.mk"
-# separately during the actual bootstrap.
-define bs_Makefile
-PROJECT = $p
-PROJECT_DESCRIPTION = New project
-PROJECT_VERSION = 0.1.0
-$(if $(SP),
-# Whitespace to be used when creating files from templates.
-SP = $(SP)
-)
-endef
-
-define bs_apps_Makefile
-PROJECT = $p
-PROJECT_DESCRIPTION = New project
-PROJECT_VERSION = 0.1.0
-$(if $(SP),
-# Whitespace to be used when creating files from templates.
-SP = $(SP)
-)
-# Make sure we know where the applications are located.
-ROOT_DIR ?= $(call core_relpath,$(dir $(ERLANG_MK_FILENAME)),$(APPS_DIR)/app)
-APPS_DIR ?= ..
-DEPS_DIR ?= $(call core_relpath,$(DEPS_DIR),$(APPS_DIR)/app)
-
-include $$(ROOT_DIR)/erlang.mk
-endef
-
-define bs_app
--module($p_app).
--behaviour(application).
-
--export([start/2]).
--export([stop/1]).
-
-start(_Type, _Args) ->
-	$p_sup:start_link().
-
-stop(_State) ->
-	ok.
-endef
-
-define bs_relx_config
-{release, {$p_release, "1"}, [$p, sasl, runtime_tools]}.
-{dev_mode, false}.
-{include_erts, true}.
-{extended_start_script, true}.
-{sys_config, "config/sys.config"}.
-{vm_args, "config/vm.args"}.
-endef
-
-define bs_sys_config
-[
-].
-endef
-
-define bs_vm_args
--name $p@127.0.0.1
--setcookie $p
--heart
-endef
-
-# Normal templates.
-
-define tpl_supervisor
--module($(n)).
--behaviour(supervisor).
-
--export([start_link/0]).
--export([init/1]).
-
-start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-init([]) ->
-	Procs = [],
-	{ok, {{one_for_one, 1, 5}, Procs}}.
-endef
-
-define tpl_gen_server
--module($(n)).
--behaviour(gen_server).
-
-%% API.
--export([start_link/0]).
-
-%% gen_server.
--export([init/1]).
--export([handle_call/3]).
--export([handle_cast/2]).
--export([handle_info/2]).
--export([terminate/2]).
--export([code_change/3]).
-
--record(state, {
-}).
-
-%% API.
-
--spec start_link() -> {ok, pid()}.
-start_link() ->
-	gen_server:start_link(?MODULE, [], []).
-
-%% gen_server.
-
-init([]) ->
-	{ok, #state{}}.
-
-handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
-
-handle_cast(_Msg, State) ->
-	{noreply, State}.
-
-handle_info(_Info, State) ->
-	{noreply, State}.
-
-terminate(_Reason, _State) ->
-	ok.
-
-code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
-endef
-
-define tpl_module
--module($(n)).
--export([]).
-endef
-
-define tpl_cowboy_http
--module($(n)).
--behaviour(cowboy_http_handler).
-
--export([init/3]).
--export([handle/2]).
--export([terminate/3]).
-
--record(state, {
-}).
-
-init(_, Req, _Opts) ->
-	{ok, Req, #state{}}.
-
-handle(Req, State=#state{}) ->
-	{ok, Req2} = cowboy_req:reply(200, Req),
-	{ok, Req2, State}.
-
-terminate(_Reason, _Req, _State) ->
-	ok.
-endef
-
-define tpl_gen_fsm
--module($(n)).
--behaviour(gen_fsm).
-
-%% API.
--export([start_link/0]).
-
-%% gen_fsm.
--export([init/1]).
--export([state_name/2]).
--export([handle_event/3]).
--export([state_name/3]).
--export([handle_sync_event/4]).
--export([handle_info/3]).
--export([terminate/3]).
--export([code_change/4]).
-
--record(state, {
-}).
-
-%% API.
-
--spec start_link() -> {ok, pid()}.
-start_link() ->
-	gen_fsm:start_link(?MODULE, [], []).
-
-%% gen_fsm.
-
-init([]) ->
-	{ok, state_name, #state{}}.
-
-state_name(_Event, StateData) ->
-	{next_state, state_name, StateData}.
-
-handle_event(_Event, StateName, StateData) ->
-	{next_state, StateName, StateData}.
-
-state_name(_Event, _From, StateData) ->
-	{reply, ignored, state_name, StateData}.
-
-handle_sync_event(_Event, _From, StateName, StateData) ->
-	{reply, ignored, StateName, StateData}.
-
-handle_info(_Info, StateName, StateData) ->
-	{next_state, StateName, StateData}.
-
-terminate(_Reason, _StateName, _StateData) ->
-	ok.
-
-code_change(_OldVsn, StateName, StateData, _Extra) ->
-	{ok, StateName, StateData}.
-endef
-
-define tpl_gen_statem
--module($(n)).
--behaviour(gen_statem).
-
-%% API.
--export([start_link/0]).
-
-%% gen_statem.
--export([callback_mode/0]).
--export([init/1]).
--export([state_name/3]).
--export([handle_event/4]).
--export([terminate/3]).
--export([code_change/4]).
-
--record(state, {
-}).
-
-%% API.
-
--spec start_link() -> {ok, pid()}.
-start_link() ->
-	gen_statem:start_link(?MODULE, [], []).
-
-%% gen_statem.
-
-callback_mode() ->
-	state_functions.
-
-init([]) ->
-	{ok, state_name, #state{}}.
-
-state_name(_EventType, _EventData, StateData) ->
-	{next_state, state_name, StateData}.
-
-handle_event(_EventType, _EventData, StateName, StateData) ->
-	{next_state, StateName, StateData}.
-
-terminate(_Reason, _StateName, _StateData) ->
-	ok.
-
-code_change(_OldVsn, StateName, StateData, _Extra) ->
-	{ok, StateName, StateData}.
-endef
-
-define tpl_cowboy_loop
--module($(n)).
--behaviour(cowboy_loop_handler).
-
--export([init/3]).
--export([info/3]).
--export([terminate/3]).
-
--record(state, {
-}).
-
-init(_, Req, _Opts) ->
-	{loop, Req, #state{}, 5000, hibernate}.
-
-info(_Info, Req, State) ->
-	{loop, Req, State, hibernate}.
-
-terminate(_Reason, _Req, _State) ->
-	ok.
-endef
-
-define tpl_cowboy_rest
--module($(n)).
-
--export([init/3]).
--export([content_types_provided/2]).
--export([get_html/2]).
-
-init(_, _Req, _Opts) ->
-	{upgrade, protocol, cowboy_rest}.
-
-content_types_provided(Req, State) ->
-	{[{{<<"text">>, <<"html">>, '*'}, get_html}], Req, State}.
-
-get_html(Req, State) ->
-	{<<"<html><body>This is REST!</body></html>">>, Req, State}.
-endef
-
-define tpl_cowboy_ws
--module($(n)).
--behaviour(cowboy_websocket_handler).
-
--export([init/3]).
--export([websocket_init/3]).
--export([websocket_handle/3]).
--export([websocket_info/3]).
--export([websocket_terminate/3]).
-
--record(state, {
-}).
-
-init(_, _, _) ->
-	{upgrade, protocol, cowboy_websocket}.
-
-websocket_init(_, Req, _Opts) ->
-	Req2 = cowboy_req:compact(Req),
-	{ok, Req2, #state{}}.
-
-websocket_handle({text, Data}, Req, State) ->
-	{reply, {text, Data}, Req, State};
-websocket_handle({binary, Data}, Req, State) ->
-	{reply, {binary, Data}, Req, State};
-websocket_handle(_Frame, Req, State) ->
-	{ok, Req, State}.
-
-websocket_info(_Info, Req, State) ->
-	{ok, Req, State}.
-
-websocket_terminate(_Reason, _Req, _State) ->
-	ok.
-endef
-
-define tpl_ranch_protocol
--module($(n)).
--behaviour(ranch_protocol).
-
--export([start_link/4]).
--export([init/4]).
-
--type opts() :: [].
--export_type([opts/0]).
-
--record(state, {
-	socket :: inet:socket(),
-	transport :: module()
-}).
-
-start_link(Ref, Socket, Transport, Opts) ->
-	Pid = spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
-	{ok, Pid}.
-
--spec init(ranch:ref(), inet:socket(), module(), opts()) -> ok.
-init(Ref, Socket, Transport, _Opts) ->
-	ok = ranch:accept_ack(Ref),
-	loop(#state{socket=Socket, transport=Transport}).
-
-loop(State) ->
-	loop(State).
-endef
-
 # Plugin-specific targets.
 
 ifndef WS
@@ -2228,6 +2539,26 @@ WS = $(tab)
 endif
 endif
 
+ifdef SP
+define template_sp
+
+# By default templates indent with a single tab per indentation
+# level. Set this variable to the number of spaces you prefer:
+SP = $(SP)
+
+endef
+else
+template_sp =
+endif
+
+# @todo Additional template placeholders could be added.
+subst_template = $(subst rel_root_dir,$(call core_relpath,$(dir $(ERLANG_MK_FILENAME)),$(APPS_DIR)/app),$(subst rel_deps_dir,$(call core_relpath,$(DEPS_DIR),$(APPS_DIR)/app),$(subst template_sp,$(template_sp),$(subst project_name,$p,$(subst template_name,$n,$1)))))
+
+define core_render_template
+	$(eval define _tpl_$(1)$(newline)$(call subst_template,$(tpl_$(1)))$(newline)endef)
+	$(verbose) $(call core_render,_tpl_$(1),$2)
+endef
+
 bootstrap:
 ifneq ($(wildcard src/),)
 	$(error Error: src/ directory already exists)
@@ -2236,14 +2567,13 @@ endif
 	$(if $(shell echo $p | LC_ALL=C grep -x "[a-z0-9_]*"),,\
 		$(error Error: Invalid characters in the application name))
 	$(eval n := $(PROJECT)_sup)
-	$(verbose) $(call core_render,bs_Makefile,Makefile)
-	$(verbose) echo "include erlang.mk" >> Makefile
+	$(verbose) $(call core_render_template,top_Makefile,Makefile)
 	$(verbose) mkdir src/
 ifdef LEGACY
-	$(verbose) $(call core_render,bs_appsrc,src/$(PROJECT).app.src)
+	$(verbose) $(call core_render_template,application.app.src,src/$(PROJECT).app.src)
 endif
-	$(verbose) $(call core_render,bs_app,src/$(PROJECT)_app.erl)
-	$(verbose) $(call core_render,tpl_supervisor,src/$(PROJECT)_sup.erl)
+	$(verbose) $(call core_render_template,application,src/$(PROJECT)_app.erl)
+	$(verbose) $(call core_render_template,supervisor,src/$(PROJECT)_sup.erl)
 
 bootstrap-lib:
 ifneq ($(wildcard src/),)
@@ -2252,11 +2582,10 @@ endif
 	$(eval p := $(PROJECT))
 	$(if $(shell echo $p | LC_ALL=C grep -x "[a-z0-9_]*"),,\
 		$(error Error: Invalid characters in the application name))
-	$(verbose) $(call core_render,bs_Makefile,Makefile)
-	$(verbose) echo "include erlang.mk" >> Makefile
+	$(verbose) $(call core_render_template,top_Makefile,Makefile)
 	$(verbose) mkdir src/
 ifdef LEGACY
-	$(verbose) $(call core_render,bs_appsrc_lib,src/$(PROJECT).app.src)
+	$(verbose) $(call core_render_template,library.app.src,src/$(PROJECT).app.src)
 endif
 
 bootstrap-rel:
@@ -2267,10 +2596,10 @@ ifneq ($(wildcard config/),)
 	$(error Error: config/ directory already exists)
 endif
 	$(eval p := $(PROJECT))
-	$(verbose) $(call core_render,bs_relx_config,relx.config)
+	$(verbose) $(call core_render_template,relx.config,relx.config)
 	$(verbose) mkdir config/
-	$(verbose) $(call core_render,bs_sys_config,config/sys.config)
-	$(verbose) $(call core_render,bs_vm_args,config/vm.args)
+	$(verbose) $(call core_render_template,sys.config,config/sys.config)
+	$(verbose) $(call core_render_template,vm.args,config/vm.args)
 	$(verbose) awk '/^include erlang.mk/ && !ins {print "REL_DEPS += relx";ins=1};{print}' Makefile > Makefile.bak
 	$(verbose) mv Makefile.bak Makefile
 
@@ -2286,12 +2615,12 @@ endif
 		$(error Error: Invalid characters in the application name))
 	$(eval n := $(in)_sup)
 	$(verbose) mkdir -p $(APPS_DIR)/$p/src/
-	$(verbose) $(call core_render,bs_apps_Makefile,$(APPS_DIR)/$p/Makefile)
+	$(verbose) $(call core_render_template,apps_Makefile,$(APPS_DIR)/$p/Makefile)
 ifdef LEGACY
-	$(verbose) $(call core_render,bs_appsrc,$(APPS_DIR)/$p/src/$p.app.src)
+	$(verbose) $(call core_render_template,application.app.src,$(APPS_DIR)/$p/src/$p.app.src)
 endif
-	$(verbose) $(call core_render,bs_app,$(APPS_DIR)/$p/src/$p_app.erl)
-	$(verbose) $(call core_render,tpl_supervisor,$(APPS_DIR)/$p/src/$p_sup.erl)
+	$(verbose) $(call core_render_template,application,$(APPS_DIR)/$p/src/$p_app.erl)
+	$(verbose) $(call core_render_template,supervisor,$(APPS_DIR)/$p/src/$p_sup.erl)
 
 new-lib:
 ifndef in
@@ -2304,30 +2633,40 @@ endif
 	$(if $(shell echo $p | LC_ALL=C grep -x "[a-z0-9_]*"),,\
 		$(error Error: Invalid characters in the application name))
 	$(verbose) mkdir -p $(APPS_DIR)/$p/src/
-	$(verbose) $(call core_render,bs_apps_Makefile,$(APPS_DIR)/$p/Makefile)
+	$(verbose) $(call core_render_template,apps_Makefile,$(APPS_DIR)/$p/Makefile)
 ifdef LEGACY
-	$(verbose) $(call core_render,bs_appsrc_lib,$(APPS_DIR)/$p/src/$p.app.src)
+	$(verbose) $(call core_render_template,library.app.src,$(APPS_DIR)/$p/src/$p.app.src)
 endif
 
+# These are not necessary because we don't expose those as "normal" templates.
+BOOTSTRAP_TEMPLATES = apps_Makefile top_Makefile \
+	application.app.src library.app.src application \
+	relx.config sys.config vm.args
+
+# Templates may override the path they will be written to when using 'new'.
+# Only special template paths must be listed. Default is src/template_name.erl
+# Substitution is also applied to the paths. Examples:
+#
+#tplp_top_Makefile = Makefile
+#tplp_application.app.src = src/project_name.app.src
+#tplp_application = src/project_name_app.erl
+#tplp_relx.config = relx.config
+
+# Erlang.mk bundles its own templates at build time into the erlang.mk file.
+
 new:
-ifeq ($(wildcard src/)$(in),)
-	$(error Error: src/ directory does not exist)
-endif
-ifndef t
-	$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP])
-endif
-ifndef n
-	$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP])
-endif
-ifdef in
-	$(verbose) $(call core_render,tpl_$(t),$(APPS_DIR)/$(in)/src/$(n).erl)
-else
-	$(verbose) $(call core_render,tpl_$(t),src/$(n).erl)
-endif
+	$(if $(t),,$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP]))
+	$(if $(n),,$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP]))
+	$(if $(tpl_$(t)),,$(error Error: $t template does not exist; try $(Make) list-templates))
+	$(eval dest := $(if $(in),$(APPS_DIR)/$(in)/)$(call subst_template,$(if $(tplp_$(t)),$(tplp_$(t)),src/template_name.erl)))
+	$(if $(wildcard $(dir $(dest))),,$(error Error: $(dir $(dest)) directory does not exist))
+	$(if $(wildcard $(dest)),$(error Error: The file $(dest) already exists))
+	$(eval p := $(PROJECT))
+	$(call core_render_template,$(t),$(dest))
 
 list-templates:
 	$(verbose) @echo Available templates:
-	$(verbose) printf "    %s\n" $(sort $(patsubst tpl_%,%,$(filter tpl_%,$(.VARIABLES))))
+	$(verbose) printf "    %s\n" $(sort $(filter-out $(BOOTSTRAP_TEMPLATES),$(patsubst tpl_%,%,$(filter tpl_%,$(.VARIABLES)))))
 
 # Copyright (c) 2014-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -2624,7 +2963,7 @@ ci-setup::
 ci-extra::
 	$(verbose) :
 
-ci_verbose_0 = @echo " CI    " $(1);
+ci_verbose_0 = @echo " CI    " $1;
 ci_verbose = $(ci_verbose_$(V))
 
 define ci_target
@@ -3021,17 +3360,45 @@ help::
 
 # Plugin-specific targets.
 
-escript-zip:: FULL=1
-escript-zip:: deps app
+ALL_ESCRIPT_DEPS_DIRS = $(LOCAL_DEPS_DIRS) $(addprefix $(DEPS_DIR)/,$(foreach dep,$(filter-out $(IGNORE_DEPS),$(DEPS)),$(call query_name,$(dep))))
+
+ESCRIPT_RUNTIME_DEPS_FILE ?= $(ERLANG_MK_TMP)/escript-deps.log
+
+escript-list-runtime-deps:
+ifeq ($(IS_DEP),)
+	$(verbose) rm -f $(ESCRIPT_RUNTIME_DEPS_FILE)
+endif
+	$(verbose) touch $(ESCRIPT_RUNTIME_DEPS_FILE)
+	$(verbose) set -e; for dep in $(ALL_ESCRIPT_DEPS_DIRS) ; do \
+		if ! grep -qs ^$$dep$$ $(ESCRIPT_RUNTIME_DEPS_FILE); then \
+			echo $$dep >> $(ESCRIPT_RUNTIME_DEPS_FILE); \
+			if grep -qs -E "^[[:blank:]]*include[[:blank:]]+(erlang\.mk|.*/erlang\.mk|.*ERLANG_MK_FILENAME.*)$$" \
+			 $$dep/GNUmakefile $$dep/makefile $$dep/Makefile; then \
+				$(MAKE) -C $$dep escript-list-runtime-deps \
+				 IS_DEP=1 \
+				 ESCRIPT_RUNTIME_DEPS_FILE=$(ESCRIPT_RUNTIME_DEPS_FILE); \
+			fi \
+		fi \
+	done
+ifeq ($(IS_DEP),)
+	$(verbose) sort < $(ESCRIPT_RUNTIME_DEPS_FILE) | uniq > $(ESCRIPT_RUNTIME_DEPS_FILE).sorted
+	$(verbose) mv $(ESCRIPT_RUNTIME_DEPS_FILE).sorted $(ESCRIPT_RUNTIME_DEPS_FILE)
+endif
+
+escript-prepare: deps app
+	$(MAKE) escript-list-runtime-deps
+
+escript-zip:: escript-prepare
 	$(verbose) mkdir -p $(dir $(abspath $(ESCRIPT_ZIP_FILE)))
 	$(verbose) rm -f $(abspath $(ESCRIPT_ZIP_FILE))
-	$(gen_verbose) cd .. && $(ESCRIPT_ZIP) $(abspath $(ESCRIPT_ZIP_FILE)) $(PROJECT)/ebin/*
+	$(gen_verbose) cd .. && $(ESCRIPT_ZIP) $(abspath $(ESCRIPT_ZIP_FILE)) $(notdir $(CURDIR))/ebin/*
 ifneq ($(DEPS),)
 	$(verbose) cd $(DEPS_DIR) && $(ESCRIPT_ZIP) $(abspath $(ESCRIPT_ZIP_FILE)) \
 		$(subst $(DEPS_DIR)/,,$(addsuffix /*,$(wildcard \
-			$(addsuffix /ebin,$(shell cat $(ERLANG_MK_TMP)/deps.log)))))
+		$(addsuffix /ebin,$(shell cat $(ESCRIPT_RUNTIME_DEPS_FILE))))))
 endif
 
+# @todo Only generate the zip file if there were changes.
 escript:: escript-zip
 	$(gen_verbose) printf "%s\n" \
 		"#!$(ESCRIPT_SHEBANG)" \
@@ -3048,6 +3415,11 @@ distclean-escript:
 # This file is contributed to erlang.mk and subject to the terms of the ISC License.
 
 .PHONY: eunit apps-eunit
+
+# Eunit can be disabled by setting this to any other value.
+EUNIT ?= system
+
+ifeq ($(EUNIT),system)
 
 # Configuration
 
@@ -3107,39 +3479,10 @@ apps-eunit: test-build
 endif
 endif
 
+endif
+
 # Copyright (c) 2020, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
-
-HEX_CORE_GIT ?= https://github.com/hexpm/hex_core
-HEX_CORE_COMMIT ?= v0.7.0
-
-PACKAGES += hex_core
-pkg_hex_core_name = hex_core
-pkg_hex_core_description = Reference implementation of Hex specifications
-pkg_hex_core_homepage = $(HEX_CORE_GIT)
-pkg_hex_core_fetch = git
-pkg_hex_core_repo = $(HEX_CORE_GIT)
-pkg_hex_core_commit = $(HEX_CORE_COMMIT)
-
-# We automatically depend on hex_core when the project isn't already.
-$(if $(filter hex_core,$(DEPS) $(BUILD_DEPS) $(DOC_DEPS) $(REL_DEPS) $(TEST_DEPS)),,\
-	$(eval $(call dep_target,hex_core)))
-
-hex-core: $(DEPS_DIR)/hex_core
-	$(verbose) if [ ! -e $(DEPS_DIR)/hex_core/ebin/dep_built ]; then \
-		$(MAKE) -C $(DEPS_DIR)/hex_core IS_DEP=1; \
-		touch $(DEPS_DIR)/hex_core/ebin/dep_built; \
-	fi
-
-# @todo This must also apply to fetching.
-HEX_CONFIG ?=
-
-define hex_config.erl
-	begin
-		Config0 = hex_core:default_config(),
-		Config0$(HEX_CONFIG)
-	end
-endef
 
 define hex_user_create.erl
 	{ok, _} = application:ensure_all_started(ssl),
@@ -3159,7 +3502,7 @@ define hex_user_create.erl
 endef
 
 # The $(info ) call inserts a new line after the password prompt.
-hex-user-create: hex-core
+hex-user-create: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_USERNAME),,$(eval HEX_USERNAME := $(shell read -p "Username: " username; echo $$username)))
 	$(if $(HEX_PASSWORD),,$(eval HEX_PASSWORD := $(shell stty -echo; read -p "Password: " password; stty echo; echo $$password) $(info )))
 	$(if $(HEX_EMAIL),,$(eval HEX_EMAIL := $(shell read -p "Email: " email; echo $$email)))
@@ -3189,7 +3532,7 @@ define hex_key_add.erl
 	end
 endef
 
-hex-key-add: hex-core
+hex-key-add: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_USERNAME),,$(eval HEX_USERNAME := $(shell read -p "Username: " username; echo $$username)))
 	$(if $(HEX_PASSWORD),,$(eval HEX_PASSWORD := $(shell stty -echo; read -p "Password: " password; stty echo; echo $$password) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_key_add.erl,$(HEX_USERNAME),$(HEX_PASSWORD),\
@@ -3211,7 +3554,7 @@ HEX_TARBALL_FILES ?= \
 	$(sort $(call core_find,priv/,*)) \
 	$(wildcard README*) \
 	$(wildcard rebar.config) \
-	$(sort $(call core_find,src/,*))
+	$(sort $(if $(LEGACY),$(filter-out src/$(PROJECT).app.src,$(call core_find,src/,*)),$(call core_find,src/,*)))
 
 HEX_TARBALL_OUTPUT_FILE ?= $(ERLANG_MK_TMP)/$(PROJECT).tar
 
@@ -3231,7 +3574,7 @@ define hex_tarball_create.erl
 			<<"$(if $(subst hex,,$(call query_fetch_method,$d)),$d,$(if $(word 3,$(dep_$d)),$(word 3,$(dep_$d)),$d))">> => #{
 				<<"app">> => <<"$d">>,
 				<<"optional">> => false,
-				<<"requirement">> => <<"$(call query_version,$d)">>
+				<<"requirement">> => <<"$(if $(hex_req_$d),$(strip $(hex_req_$d)),$(call query_version,$d))">>
 			},)
 		$(if $(DEPS),dummy => dummy)
 	},
@@ -3267,7 +3610,7 @@ hex_tar_verbose_0 = @echo " TAR    $(notdir $(ERLANG_MK_TMP))/$(@F)";
 hex_tar_verbose_2 = set -x;
 hex_tar_verbose = $(hex_tar_verbose_$(V))
 
-$(HEX_TARBALL_OUTPUT_FILE): hex-core app
+$(HEX_TARBALL_OUTPUT_FILE): $(DEPS_DIR)/hex_core/ebin/dep_built app
 	$(hex_tar_verbose) $(call erlang,$(call hex_tarball_create.erl))
 
 hex-tarball-create: $(HEX_TARBALL_OUTPUT_FILE)
@@ -3318,14 +3661,14 @@ define hex_release_publish.erl
 	end
 endef
 
-hex-release-tarball: hex-core $(HEX_TARBALL_OUTPUT_FILE)
+hex-release-tarball: $(DEPS_DIR)/hex_core/ebin/dep_built $(HEX_TARBALL_OUTPUT_FILE)
 	$(verbose) $(call erlang,$(call hex_release_publish_summary.erl))
 
-hex-release-publish: hex-core hex-release-tarball
+hex-release-publish: $(DEPS_DIR)/hex_core/ebin/dep_built hex-release-tarball
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_release_publish.erl,$(HEX_SECRET),false))
 
-hex-release-replace: hex-core hex-release-tarball
+hex-release-replace: $(DEPS_DIR)/hex_core/ebin/dep_built hex-release-tarball
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_release_publish.erl,$(HEX_SECRET),true))
 
@@ -3344,7 +3687,7 @@ define hex_release_delete.erl
 	end
 endef
 
-hex-release-delete: hex-core
+hex-release-delete: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_release_delete.erl,$(HEX_SECRET)))
 
@@ -3364,7 +3707,7 @@ define hex_release_retire.erl
 	end
 endef
 
-hex-release-retire: hex-core
+hex-release-retire: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_release_retire.erl,$(HEX_SECRET),\
 		$(if $(HEX_VERSION),$(HEX_VERSION),$(PROJECT_VERSION)),\
@@ -3386,7 +3729,7 @@ define hex_release_unretire.erl
 	end
 endef
 
-hex-release-unretire: hex-core
+hex-release-unretire: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_release_unretire.erl,$(HEX_SECRET),\
 		$(if $(HEX_VERSION),$(HEX_VERSION),$(PROJECT_VERSION))))
@@ -3395,7 +3738,7 @@ HEX_DOCS_DOC_DIR ?= doc/
 HEX_DOCS_TARBALL_FILES ?= $(sort $(call core_find,$(HEX_DOCS_DOC_DIR),*))
 HEX_DOCS_TARBALL_OUTPUT_FILE ?= $(ERLANG_MK_TMP)/$(PROJECT)-docs.tar.gz
 
-$(HEX_DOCS_TARBALL_OUTPUT_FILE): hex-core app docs
+$(HEX_DOCS_TARBALL_OUTPUT_FILE): $(DEPS_DIR)/hex_core/ebin/dep_built app docs
 	$(hex_tar_verbose) tar czf $(HEX_DOCS_TARBALL_OUTPUT_FILE) -C $(HEX_DOCS_DOC_DIR) \
 		$(HEX_DOCS_TARBALL_FILES:$(HEX_DOCS_DOC_DIR)%=%)
 
@@ -3419,7 +3762,7 @@ define hex_docs_publish.erl
 	end
 endef
 
-hex-docs-publish: hex-core hex-docs-tarball-create
+hex-docs-publish: $(DEPS_DIR)/hex_core/ebin/dep_built hex-docs-tarball-create
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_docs_publish.erl,$(HEX_SECRET)))
 
@@ -3439,7 +3782,7 @@ define hex_docs_delete.erl
 	end
 endef
 
-hex-docs-delete: hex-core
+hex-docs-delete: $(DEPS_DIR)/hex_core/ebin/dep_built
 	$(if $(HEX_SECRET),,$(eval HEX_SECRET := $(shell stty -echo; read -p "Secret: " secret; stty echo; echo $$secret) $(info )))
 	$(gen_verbose) $(call erlang,$(call hex_docs_delete.erl,$(HEX_SECRET),\
 		$(if $(HEX_VERSION),$(HEX_VERSION),$(PROJECT_VERSION))))
@@ -3670,17 +4013,13 @@ endef
 relx-rel: rel-deps app
 	$(call erlang,$(call relx_release.erl),-pa ebin/)
 	$(verbose) $(MAKE) relx-post-rel
-ifeq ($(RELX_TAR),1)
-	$(call erlang,$(call relx_tar.erl),-pa ebin/)
-endif
+	$(if $(filter-out 0,$(RELX_TAR)),$(call erlang,$(call relx_tar.erl),-pa ebin/))
 
 relx-relup: rel-deps app
 	$(call erlang,$(call relx_release.erl),-pa ebin/)
 	$(MAKE) relx-post-rel
 	$(call erlang,$(call relx_relup.erl),-pa ebin/)
-ifeq ($(RELX_TAR),1)
-	$(call erlang,$(call relx_tar.erl),-pa ebin/)
-endif
+	$(if $(filter-out 0,$(RELX_TAR)),$(call erlang,$(call relx_tar.erl),-pa ebin/))
 
 distclean-relx-rel:
 	$(gen_verbose) rm -rf $(RELX_OUTPUT_DIR)
@@ -3723,6 +4062,7 @@ ifeq ($(PLATFORM),msys2)
 RELX_REL_EXT := .cmd
 endif
 
+run:: RELX_TAR := 0
 run:: all
 	$(verbose) $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/bin/$(RELX_REL_NAME)$(RELX_REL_EXT) $(RELX_REL_CMD)
 
@@ -4451,9 +4791,7 @@ endif
 ifeq ($(IS_APP)$(IS_DEP),)
 	$(verbose) sort < $(ERLANG_MK_RECURSIVE_TMP_LIST) | \
 		uniq > $(ERLANG_MK_RECURSIVE_TMP_LIST).sorted
-	$(verbose) cmp -s $(ERLANG_MK_RECURSIVE_TMP_LIST).sorted $@ \
-		|| mv $(ERLANG_MK_RECURSIVE_TMP_LIST).sorted $@
-	$(verbose) rm -f $(ERLANG_MK_RECURSIVE_TMP_LIST).sorted
+	$(verbose) mv $(ERLANG_MK_RECURSIVE_TMP_LIST).sorted $@
 	$(verbose) rm $(ERLANG_MK_RECURSIVE_TMP_LIST)
 endif
 endif # ifneq ($(SKIP_DEPS),)
@@ -4480,14 +4818,14 @@ list-deps list-doc-deps list-rel-deps list-test-deps list-shell-deps:
 QUERY ?= name fetch_method repo version
 
 define query_target
-$(1): $(2) clean-tmp-query.log
+$1: $2 clean-tmp-query.log
 ifeq ($(IS_APP)$(IS_DEP),)
-	$(verbose) rm -f $(4)
+	$(verbose) rm -f $4
 endif
-	$(verbose) $(foreach dep,$(3),\
-		echo $(PROJECT): $(foreach q,$(QUERY),$(call query_$(q),$(dep))) >> $(4) ;)
-	$(if $(filter-out query-deps,$(1)),,\
-		$(verbose) set -e; for dep in $(3) ; do \
+	$(verbose) $(foreach dep,$3,\
+		echo $(PROJECT): $(foreach q,$(QUERY),$(call query_$(q),$(dep))) >> $4 ;)
+	$(if $(filter-out query-deps,$1),,\
+		$(verbose) set -e; for dep in $3 ; do \
 			if grep -qs ^$$$$dep$$$$ $(ERLANG_MK_TMP)/query.log; then \
 				:; \
 			else \
@@ -4496,8 +4834,8 @@ endif
 			fi \
 		done)
 ifeq ($(IS_APP)$(IS_DEP),)
-	$(verbose) touch $(4)
-	$(verbose) cat $(4)
+	$(verbose) touch $4
+	$(verbose) cat $4
 endif
 endef
 
