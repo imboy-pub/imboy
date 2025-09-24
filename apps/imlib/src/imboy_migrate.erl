@@ -4,6 +4,8 @@
 -export([migrate/0]).
 -export([set_max_id_seq/0]).
 
+-export([get_scripts_path/0]).
+
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -23,7 +25,8 @@
 %%------------------------------------------------------------------------------
 migrate() ->
     Conf = config_ds:env(super_account),
-    Path = config_ds:env(scripts_path),
+    Path = get_scripts_path(),
+    imboy_log:info(Path),
     {ok, Conn} = epgsql:connect(Conf),
     MigrationCall =
       pure_migrations:migrate(
@@ -78,7 +81,7 @@ migrate() ->
 % imboy_migrate:set_max_id_seq().
 set_max_id_seq() ->
     Conf = config_ds:env(super_account),
-    Path = config_ds:env(scripts_path),
+    Path = get_scripts_path(),
     {ok, Conn} = epgsql:connect(Conf),
 
     % Get the parent directory of Path
@@ -128,11 +131,16 @@ set_max_id_seq() ->
 %% Internal Function Definitions
 %% ===================================================================
 
+% 获取处理后的脚本绝对路径
+get_scripts_path() ->
+    config_ds:env(scripts_path).
+
 priv_is_valid(List) ->
     lists:all(fun(E) ->
         case E of
             {ok, _} -> true;
-            {ok, _, _} -> true;
+            {ok, _, _} -> true;  % Handle results with 2 elements
+            {ok, _, _, _} -> true;  % Handle results with 3 elements
             _ -> false
         end
     end, List).

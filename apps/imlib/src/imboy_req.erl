@@ -1,11 +1,9 @@
 -module(imboy_req).
 
--export([cookie/2]).
--export([get_int/3]).
--export([page_size/1]).
--export([post_params/1]).
--export([param/3]).
 
+-export([peer_ip/1]).
+-export([get_client_ip/1]).
+-export([cookie/2]).
 -export([get/1, get/2]).
 -export([post/2, post/3]).
 
@@ -19,64 +17,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
-
-% {Page, Size} = imboy_req:page_size(Req0),
-page_size(Req) ->
-    #{page := Page} = cowboy_req:match_qs([{page, [], <<"1">>}], Req),
-    #{size := Size} = cowboy_req:match_qs([{size, [], <<"10">>}], Req),
-    {Page2, _} = string:to_integer(Page),
-    {Size2, _} = string:to_integer(Size),
-    pase_page_size(Page2, Size2).
-
-% {ok, Ajax} = imboy_req:get_int(ajax, Req0, -2)
-get_int(Key, Req, Def) ->
-    #{Key := Val} = cowboy_req:match_qs([{Key, [], Def}], Req),
-    % ?DEBUG_LOG([get_int, Key, Val, Def, Val == Def]),
-    Method = cowboy_req:method(Req),
-    if
-        Val == Def, Method == <<"POST">> ->
-            PostVals = post_params(Req),
-            ?DEBUG_LOG([get_int, PostVals, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)]),
-            {ok, proplists:get_value(ec_cnv:to_binary(Key), PostVals, Def)};
-        true ->
-            case string:to_integer(Val) of
-                {error, _} ->
-                    {ok, Def};
-                {Val2, _} ->
-                    {ok, Val2}
-            end
-    end.
-
-
-% -spec post_params(Req::cowboy_req:req()) -> proplists().
-% imboy_req:post_params(Req0),
-% PostVals = imboy_req:post_params(Req0),
-post_params(Req) ->
-    ContentType = cowboy_req:parse_header(<<"content-type">>, Req),
-    % ?DEBUG_LOG([ContentType]),
-    % imboy_log:info(io_lib:format("ContentType: ~p ContentType_End~n", [ContentType])),
-    % ?DEBUG_LOG(Method = cowboy_req:method(Req)),
-    case ContentType of
-        % {<<"text">>,<<"plain">>, [{<<"charset">>,<<"utf-8">>}]} ->
-        % {<<"text">>,<<"plain">>, _} ->
-        %     [];
-        {<<"application">>, <<"x-www-form-urlencoded">>, _} ->
-            {ok, Params, _Req} = cowboy_req:read_urlencoded_body(Req, #{length => 640000000, period => 50000}),
-            % imboy_log:info(io_lib:format("Params: ~p Params_End~n", [Params])),
-            Params;
-        {<<"application">>, <<"json">>, _} ->
-            {ok, PostVals, _Req} = cowboy_req:read_body(Req),
-            % ?DEBUG_LOG(PostVals),
-            % Params = jsone:decode(PostVals, [{object_format, proplist}]),
-            % ?DEBUG_LOG(Params),
-            % Params
-            jsone:decode(PostVals, [{object_format, proplist}]);
-        _ ->
-            imboy_log:error(io_lib:format("imboy_req:post_params error: ContentType ~p; ~p ~n", [ContentType, Req])),
-            []
-    end.
-
 
 get(Url) ->
     req(get, Url, #{}, ?ReqHeaders).
@@ -103,27 +43,37 @@ cookie(Key, Req) ->
             false
     end.
 
+peer_ip(Req) ->
+    {IP, _Port} = cowboy_req:peer(Req),
+    % io:format("Client IP: ~p, Port: ~p~n", [IP, Port]),
+    % 将IP转换为可读格式
+    IPString = inet:ntoa(IP),
+    IPString.
 
-%% @doc 获取查询参数
-%% @param Key 参数名
-%% @param Req cowboy请求对象
-%% @param Default 默认值
-param(Key, Req, Default) ->
-    case cowboy_req:match_qs([{Key, [], Default}], Req) of
-        #{Key := Val} when Val =/= Default ->
-            Val;
+%% 获取客户端IP地址
+%% 支持代理和负载均衡器场景下的真实IP获取
+get_client_ip(Req) ->
+    % 首先检查 X-Forwarded-For 头部
+    case cowboy_req:header(<<"x-forwarded-for">>, Req, undefined) of
+        undefined ->
+            % 如果没有 X-Forwarded-For，使用直接连接的IP
+            case cowboy_req:peer(Req) of
+                {Ip, _Port} when is_tuple(Ip) ->
+                    ec_cnv:to_binary(inet:ntoa(Ip));
+                _ ->
+                    <<"unknown">>
+            end;
+        XForwardedFor when is_binary(XForwardedFor) ->
+            % 如果有 X-Forwarded-For，取第一个IP
+            case binary:split(XForwardedFor, <<",">>) of
+                [FirstIp | _] ->
+                    ec_cnv:to_binary(string:trim(FirstIp, trailing, "\s"));
+                _ ->
+                    XForwardedFor
+            end;
         _ ->
-            % 如果是默认值，检查POST参数
-            Method = cowboy_req:method(Req),
-            if
-                Method == <<"POST">> ->
-                    PostVals = post_params(Req),
-                    proplists:get_value(Key, PostVals, Default);
-                true ->
-                    Default
-            end
+            <<"unknown">>
     end.
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -161,19 +111,3 @@ req(Method, Url, Params, Headers) ->
         {error, Reason} ->
             {error, Reason}
     end.
-
-
-pase_page_size(error, error) ->
-    pase_page_size(1, 10);
-pase_page_size(error, Size) ->
-    pase_page_size(1, Size);
-pase_page_size(Page, error) ->
-    pase_page_size(Page, 10);
-pase_page_size(Page, Size) when Page < 1 ->
-    pase_page_size(1, Size);
-pase_page_size(Page, Size) when Size < 1 ->
-    pase_page_size(Page, 10);
-pase_page_size(Page, Size) when Size > 1000 ->
-    pase_page_size(Page, 1000);
-pase_page_size(Page, Size) ->
-    {Page, Size}.

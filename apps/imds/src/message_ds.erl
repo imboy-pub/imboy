@@ -8,8 +8,7 @@
 
 -export([assemble_s2c/3]).
 -export([assemble_msg/5]).
--export([handle_info/2]).
--export([send_next/4, send_next/6, ack/3, handle_ack_cancel/3]).
+-export([send_next/4, send_next/6]).
 
 %% ===================================================================
 %% API
@@ -78,57 +77,6 @@ send_next_loop(ToUid, MsgId, Msg, [Delay|Tail], DIDLi, IsMember) ->
             ok
     end.
 
-%% ===================================================================
-%% 分布式 ACK 支持
-%% ===================================================================
-
-%% 任意节点收到 ACK 后广播所有节点撤销 timer
--spec ack(integer(), binary(), binary()) -> ok.
-ack(ToUid, DID, MsgId) ->
-    ?DEBUG_LOG(["message_ds:ack/3", ToUid, DID, MsgId]),
-    Nodes = [node() | nodes()],
-    % 广播到所有节点（含自己），每台机器都尝试撤销本地 timer
-    rpc:multicall(Nodes, ?MODULE, handle_ack_cancel, [ToUid, DID, MsgId]),
-    ok.
-
-%% 实际执行 timer 撤销，只在本节点有效
-handle_ack_cancel(ToUid, DID, MsgId) ->
-    TimerKey = {ToUid, DID, MsgId},
-    ?DEBUG_LOG(["message_ds:handle_ack_cancel/3", TimerKey]),
-    case imboy_cache:get(TimerKey) of
-        undefined -> 
-            ?DEBUG_LOG(["message_ds:handle_ack_cancel/3 timer not found", TimerKey]),
-            ok;
-        Ref ->
-            ?DEBUG_LOG(["message_ds:handle_ack_cancel/3 canceling timer", TimerKey, Ref]),
-            erlang:cancel_timer(Ref),
-            imboy_cache:flush(TimerKey),
-            ?DEBUG_LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
-            ok
-    end.
-
-%% ===================================================================
-%% Timer 超时自动重发逻辑
-%% ===================================================================
-%% 需放到 websocket_handler 或 gen_server 的 handle_info/2 调用
-handle_info({timeout, Ref, {Tail, {ToUid, DID, MsgId}, Msg}}, State) ->
-    TimerKey = {ToUid, DID, MsgId},
-    ?DEBUG_LOG(["message_ds:handle_info/2 timeout", TimerKey, Ref, length(Tail)]),
-    case imboy_cache:get(TimerKey) of
-        Ref ->
-            % 还没被 ACK，本地继续重发
-            ?DEBUG_LOG(["message_ds:handle_info/2 resending message", TimerKey]),
-            imboy_syn:publish(ToUid, Msg, 0),
-            imboy_cache:flush(TimerKey),
-            ?DEBUG_LOG(["timeout resend", TimerKey, Msg]),
-            send_next(ToUid, MsgId, Msg, Tail, [DID], true),
-            {noreply, State};
-        _ ->
-            % 已撤销，不再重发
-            ?DEBUG_LOG(["message_ds:handle_info/2 timer already canceled", TimerKey]),
-            {noreply, State}
-    end.
-
 %%% 系统消息 [500 -- 1000) 系统消息
 -spec assemble_s2c(binary(), binary(), [binary() | integer()]) -> list().
 assemble_s2c(MsgId, MsgType, To) ->
@@ -136,6 +84,7 @@ assemble_s2c(MsgId, MsgType, To) ->
     assemble_msg(<<"S2C">>, <<"">>, To, Payload, MsgId).
 
 %%% 系统消息 end
+
 
 %% 组装标准 IM 消息
 assemble_msg(Type, From, To, Payload, MsgId) when is_integer(From), From > 0 ->

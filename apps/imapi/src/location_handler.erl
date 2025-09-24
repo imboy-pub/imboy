@@ -44,7 +44,7 @@ init(Req0, State0) ->
 % 让自己可见
 make_myself_visible(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Lat = proplists:get_value(<<"latitude">>, PostVals, <<>>),
     Lng = proplists:get_value(<<"longitude">>, PostVals, <<>>),
     % ?DEBUG_LOG([CurrentUid, Lat, Lng]),
@@ -70,8 +70,8 @@ people_nearby(Req0, _State) ->
     % #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
     #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"m">>}], Req0),
     % #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
-    {ok, Radius} = imboy_req:get_int(radius, Req0, 500),
-    {ok, Limit} = imboy_req:get_int(limit, Req0, 100),
+    {ok, Radius} = imboy_param:int(radius, Req0, 500),
+    {ok, Limit} = imboy_param:int(limit, Req0, 100),
     % ?DEBUG_LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
     List = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
     imboy_response:success(Req0,

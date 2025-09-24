@@ -65,7 +65,7 @@ req_post(Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
     imboy_response:success(Req0, PostVals, "success.").

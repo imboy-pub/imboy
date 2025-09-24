@@ -92,6 +92,7 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
 
 
 eq(Ciphertext, Ciphertext2) ->
+    % ?DEBUG_LOG([admin_pwd, Ciphertext2, Ciphertext]),
     case Ciphertext2 == Ciphertext of
         true ->
             {ok, []};

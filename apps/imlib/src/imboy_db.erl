@@ -6,7 +6,7 @@
 -export([pluck/4]).
 -export([find/1, find/2, find/4]).
 -export([list/1, list/2]).
--export([proplists/1]).
+-export([proplists/1, proplists/2]).
 -export([page/6]).
 
 -export([count_for_where/2, page_for_where/6]).
@@ -143,7 +143,7 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
     % Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where2/binary>>,
     % Res = imboy_db:query(Sql, [Limit, Offset]),
-    ?DEBUG_LOG(['Sql', Sql]),
+    ?DEBUG_LOG(['Sql', Sql, ' ', Limit, Offset]),
     % ?DEBUG_LOG(['Res', Res]),
     % case Res of
     case imboy_db:query(Sql, [Limit, Offset]) of
@@ -159,6 +159,14 @@ page_for_where(Tb, Limit, Offset, Where, OrderBy, Column) ->
 
 proplists(Sql) ->
     case imboy_db:query(Sql) of
+        {ok, Col, Val} ->
+            to_proplists(Col, Val);
+        _ ->
+            []
+    end.
+
+proplists(Sql, Params) ->
+    case imboy_db:query(Sql, Params) of
         {ok, Col, Val} ->
             to_proplists(Col, Val);
         _ ->
@@ -250,6 +258,7 @@ insert_into(Tb, Column, Value, ReturningOnConflict) ->
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
     ?DEBUG_LOG([insert_into, Sql]),
+    % {ok,1,[{5}]}
     execute(<<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 
 add(Conn, Tb, Data) ->
@@ -304,10 +313,15 @@ update(Conn, Tb, Where, SetBin) ->
 
 -spec get_set(list()) -> binary().
 get_set(KV) ->
-    Set1 = [ <<(ec_cnv:to_binary(K))/binary, " = ", (assemble_value_filter(K, V))/binary>> || {K, V} <- KV ],
-    Set2 = [ binary_to_list(S) || S <- Set1 ],
-    Set3 = lists:concat(lists:join(", ", Set2)),
-    list_to_binary(Set3).
+    Set1 = [ <<(ec_cnv:to_binary(K))/binary, " = ", (safe_assemble_value_filter(K, V))/binary>> || {K, V} <- KV ],
+    case Set1 of
+        [] ->
+            <<>>;
+        _ ->
+            Set2 = [ binary_to_list(S) || S <- Set1 ],
+            Set3 = lists:concat(lists:join(", ", Set2)),
+            list_to_binary(Set3)
+    end.
 
 assemble_where(Where) ->
     Separator = <<" AND ">>,
@@ -340,6 +354,14 @@ assemble_value_filter(K, V) ->
     case K =/= undefined andalso imboy_str:endswith(<<"_at">>, ec_cnv:to_binary(K)) of
         true -> handle_at_field_value(V);
         false -> original_value_processing(V)
+    end.
+
+%% 确保返回值总是二进制
+safe_assemble_value_filter(K, V) ->
+    Result = assemble_value_filter(K, V),
+    case is_binary(Result) of
+        true -> Result;
+        false -> ec_cnv:to_binary(Result)
     end.
 
 %% ===================================================================
@@ -397,7 +419,12 @@ handle_at_field_value(V) ->
 
 original_value_processing(V) ->
     if
-        is_list(V); is_binary(V) ->
+        is_list(V) ->
+            case V of
+                [] -> "'{}'";  % 空列表转换为 PostgreSQL 空数组格式
+                _ -> imboy_cnv:implode("", ["'", V, "'"])
+            end;
+        is_binary(V) ->
             imboy_cnv:implode("", ["'", V, "'"]);
         is_tuple(V) ->
             imboy_cnv:implode("", ["'{", imboy_cnv:implode(",", tuple_to_list(V)), "}'"]);
@@ -467,9 +494,7 @@ updateuser_test_() ->
     KV2 = [{<<"gender">>, <<"1">>}, {<<"nickname">>, "中国你好！😆😆"}],
     Tb = user_repo:tablename(),
     Where = <<"id = 1">>,
-    imboy_db:update(Tb, Where, #{
-        <<"gender">> => <<"1">>
-    });
+    
     [?_assert(imboy_db:update(Tb, <<"id=", (ec_cnv:to_binary(1))/binary>>, KV1)), ?_assert(imboy_db:update(Tb, <<"id=", (ec_cnv:to_binary(2))/binary>>, KV2))].
 
 

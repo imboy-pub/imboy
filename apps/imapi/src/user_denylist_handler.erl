@@ -43,7 +43,7 @@ init(Req0, State0) ->
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
     Payload = user_denylist_logic:page(CurrentUid, Page, Size),
     imboy_response:success(Req0, Payload).
 
@@ -51,7 +51,7 @@ page(Req0, State) ->
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
 
     DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
@@ -65,7 +65,7 @@ add(Req0, State) ->
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
     DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
 

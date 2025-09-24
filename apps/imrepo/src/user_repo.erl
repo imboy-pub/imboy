@@ -7,6 +7,8 @@
 -include_lib("imlib/include/def_column.hrl").
 
 -export([tablename/0]).
+-export ([save/1, update/2, delete/1]).
+
 -export([find_by_email/2,
          find_by_mobile/2,
          find_by_account/2]).
@@ -14,6 +16,8 @@
 -export([list_by_ids/2]).
 -export([select_by_where/4]).
 -export([select_by_where/5]).
+
+-export([update_friends_last_seen_at/2]).
 
 %% ===================================================================
 %% API
@@ -84,6 +88,51 @@ list_by_ids(Uids, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     imboy_db:query(Sql).
 
+
+%%% 更新好友关系中的 last_seen_at
+update_friends_last_seen_at(Uid, Timestamp) ->
+    % 更新我是from_user_id的记录
+    update_last_seen_at_by_from_uid(Uid, Timestamp),
+    % 更新我是to_user_id的记录
+    update_last_seen_at_by_to_uid(Uid, Timestamp).
+
+
+
+% user_repo:save(#{mobile => <<"13692177080">>, password => imboy_password:generate(imboy_hasher:md5("admin888")), account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>, created_at => imboy_dt:now()}).
+save(Data) ->
+    Tb = tablename(),
+    imboy_db:insert_into(Tb, Data).
+
+% user_repo:update(1, #{role_name => <<"修改后的角色名称"/utf8>>}).
+update(Id, Data) ->
+    Tb = tablename(),
+    Where = <<"id = ", (integer_to_binary(Id))/binary>>,
+    imboy_db:update(Tb, Where, Data).
+
+% user_repo:delete(1).
+delete(Id) ->
+    Tb = tablename(),
+    Where = <<"id = ", (integer_to_binary(Id))/binary>>,
+    % 软删除，更新状态为 -1
+    imboy_db:update_by_id(Tb, Where, #{<<"status">> => -1}).
+
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+
+%%% 更新from_user_id为指定用户的记录
+update_last_seen_at_by_from_uid(Uid, Timestamp) ->
+    Tb = friend_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1, updated_at = $2 ",
+            "WHERE from_user_id = $3 AND status = 1">>,
+    imboy_db:execute(Sql, [Timestamp, imboy_dt:now(), Uid]).
+
+
+%%% 更新to_user_id为指定用户的记录
+update_last_seen_at_by_to_uid(Uid, Timestamp) ->
+    Tb = friend_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1, updated_at = $2 ",
+            "WHERE to_user_id = $3 AND status = 1">>,
+    imboy_db:execute(Sql, [Timestamp, imboy_dt:now(), Uid]).

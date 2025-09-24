@@ -59,7 +59,7 @@ same_group(Req0, State) ->
 
 join(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
     JoinMode = proplists:get_value(<<"join_mode">>, PostVals, <<>>),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
@@ -128,7 +128,7 @@ join(Req0, State) ->
 
 leave(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
     Gid2 = imboy_hashids:decode(Gid),
@@ -146,7 +146,7 @@ leave(Req0, State) ->
 
 alias(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
     case Gid2 of
@@ -171,7 +171,7 @@ page(Req0, State) ->
         _ when GMSize == 0 ->
             imboy_response:error(Req0, "你不是群成员");
         _ ->
-            {Page, Size} = imboy_req:page_size(Req0),
+            {Page, Size} = imboy_param:page(Req0),
 
             Column = <<"u.avatar, u.account, u.nickname, u.sign, m.*">>,
             Where = <<"m.group_id =", (ec_cnv:to_binary(Gid2))/binary>>,

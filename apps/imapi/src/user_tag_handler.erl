@@ -46,7 +46,7 @@ init(Req0, State0) ->
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
@@ -85,7 +85,7 @@ change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     TagName = proplists:get_value(<<"tagName">>, PostVals, <<>>),
     TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
@@ -132,7 +132,7 @@ add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     Tag = proplists:get_value(<<"tag">>, PostVals, <<>>),
 
@@ -168,7 +168,7 @@ add(Req0, State) ->
 % 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     Tag = proplists:get_value(<<"tag">>, PostVals, <<>>),
 

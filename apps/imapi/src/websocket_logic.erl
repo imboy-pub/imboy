@@ -7,7 +7,7 @@
 
 % -export ([subprotocol/1]).
 
--export([ack_before/3]).
+-export([cancel_timer/3, handle_ack_cancel/3]).
 
 -export([c2s/3]).
 -export([c2s_client_ack/3]).
@@ -16,7 +16,7 @@
 %% API
 %% ===================================================================
 
-% ack_before(CurrentUid, DID, MsgId) ->
+% cancel_timer(CurrentUid, DID, MsgId) ->
 %     Key = {CurrentUid, DID, MsgId},
 %     ?LOG(["CLIENT_ACK", Key]),
 %     % 缓存在 message_ds:send_next/5 中设置
@@ -28,11 +28,30 @@
 %             erlang:cancel_timer(TimerRef),
 %             imboy_cache:flush(Key)
 %     end.
-ack_before(CurrentUid, DID, MsgId) ->
+cancel_timer(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
     ?DEBUG_LOG(["CLIENT_ACK", Key]),
     % 缓存在 message_ds:send_next/5 中设置
-    message_ds:ack(CurrentUid, DID, MsgId).
+    Nodes = [node() | nodes()],
+    % 广播到所有节点（含自己），每台机器都尝试撤销本地 timer
+    rpc:multicall(Nodes, ?MODULE, handle_ack_cancel, [CurrentUid, DID, MsgId]),
+    ok.
+
+%% 实际执行 timer 撤销，只在本节点有效
+handle_ack_cancel(ToUid, DID, MsgId) ->
+    TimerKey = {ToUid, DID, MsgId},
+    ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3", TimerKey]),
+    case imboy_cache:get(TimerKey) of
+        undefined ->
+            ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3 timer not found", TimerKey]),
+            ok;
+        Ref ->
+            ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3 canceling timer", TimerKey, Ref]),
+            erlang:cancel_timer(Ref),
+            imboy_cache:flush(TimerKey),
+            ?DEBUG_LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
+            ok
+    end.
 
 %% 单聊消息
 -spec c2s(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.

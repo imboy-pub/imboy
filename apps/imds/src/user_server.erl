@@ -77,6 +77,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     % 记录设备信息
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_repo:save(Now, Uid2, DID, PostVals),
+    user_repo:update_friends_last_seen_at(Uid2, Now),
     % 记录设备信息 END
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
@@ -194,66 +195,65 @@ cancel(Uid, CreatedAt, Opt) ->
             body => Body,
             created_at => CreatedAt
             }),
-        UidBin = ec_cnv:to_binary(Uid),
+        % 使用参数化查询避免SQL注入和类型转换问题
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_repo:tablename())/binary, " WHERE id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_repo:tablename())/binary, " WHERE id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_collect_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_collect_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_denylist_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_denylist_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE from_user_id = $1">>
+            , [Uid]),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE to_user_id = $1">>
+            , [Uid]),
+        imboy_db:execute(Conn
+            , <<"DELETE FROM user_friend_category WHERE owner_user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE from_user_id = ", UidBin/binary>>
-            , []),
-        imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_friend_repo:tablename())/binary, " WHERE to_user_id = ", UidBin/binary>>
-            , []),
-        imboy_db:execute(Conn
-            , <<"DELETE FROM user_friend_category WHERE owner_user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_device_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_setting_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_setting_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (user_tag_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_tag_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
-
+            , <<"DELETE FROM ", (user_tag_relation_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (user_tag_relation_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM fts_user WHERE user_id = $1">>
+            , [Uid]),
         imboy_db:execute(Conn
-            , <<"DELETE FROM fts_user WHERE user_id = ", UidBin/binary>>
-            , []),
-        imboy_db:execute(Conn
-            , <<"DELETE FROM ", (geo_people_nearby_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (geo_people_nearby_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
 
         %
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (group_repo:tablename())/binary, " WHERE owner_uid = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (group_repo:tablename())/binary, " WHERE owner_uid = $1">>
+            , [Uid]),
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (group_member_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (group_member_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
         imboy_db:execute(Conn
-            , <<"DELETE FROM ", (group_random_code_repo:tablename())/binary, " WHERE user_id = ", UidBin/binary>>
-            , []),
+            , <<"DELETE FROM ", (group_random_code_repo:tablename())/binary, " WHERE user_id = $1">>
+            , [Uid]),
         ok
     end),
 

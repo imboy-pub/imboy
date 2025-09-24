@@ -47,7 +47,7 @@ init(Req0, State0) ->
 
 add(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, ""),
     Gid2 = imboy_hashids:decode(Gid),
     Body = proplists:get_value(<<"body">>, PostVals, ""),
@@ -83,7 +83,7 @@ add(<<"POST">>, Req0, State) ->
 
 edit(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Id = proplists:get_value(<<"notice_id">>, PostVals, 0),
     Gid = proplists:get_value(<<"gid">>, PostVals, ""),
     Gid2 = imboy_hashids:decode(Gid),
@@ -122,7 +122,7 @@ edit(<<"POST">>, Req0, State) ->
 
 publish(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Id = proplists:get_value(<<"notice_id">>, PostVals, 0),
     Gid = proplists:get_value(<<"gid">>, PostVals, ""),
     Gid2 = imboy_hashids:decode(Gid),
@@ -150,7 +150,7 @@ publish(<<"POST">>, Req0, State) ->
 
 delete(<<"DELETE">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Id = proplists:get_value(<<"notice_id">>, PostVals, 0),
     Gid = proplists:get_value(<<"gid">>, PostVals, ""),
     Gid2 = imboy_hashids:decode(Gid),
@@ -174,7 +174,7 @@ page(<<"GET">>, Req0, State) ->
         _ when GMSize == 0 ->
             imboy_response:error(Req0, "你不是群成员");
         _ ->
-            {Page, Size} = imboy_req:page_size(Req0),
+            {Page, Size} = imboy_param:page(Req0),
 
             Column = <<"id notice_id, user_id, edit_user_id, body, status, expired_at, updated_at, created_at">>,
             Where = <<"group_id =", (ec_cnv:to_binary(Gid2))/binary>>,

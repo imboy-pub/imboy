@@ -56,7 +56,7 @@ send_code(Mobile, <<"sms">>) ->
 send_code(EMail, <<"email">>) ->
     send_email_code(EMail);
 send_code(_, _) ->
-    {error, <<"暂未实现功能.">>}.
+    {error, <<"暂未实现功能."/utf8>>}.
 
 
 -spec do_login(binary(), binary(), binary()) -> {ok, any()} | {error, any()}.

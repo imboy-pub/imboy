@@ -53,3 +53,6 @@ poetry-source-master
 Poetry-master
 ssl
 .codebuddy
+imboy-admin-frontend
+settings.json
+mcp.json

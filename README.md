@@ -14,24 +14,30 @@ Strive to implement version management based on "Specification for Semantic vers
 
 ## 环境依赖  (Environment depends on)
 
-数据结构(./doc/postgresql/)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL15 开发
+数据结构(./doc/postgresql/)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL17 开发
 
-There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL15
+There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL17
 
 ------
+* Erlang/OTP 27+
 
-* Erlang/OTP 24 (Cowboy 2.11 requires Erlang/OTP 24.0 or greater.)
-* Erlang/OTP 25
-* Erlang/OTP 26
-* Erlang/OTP 27
-
-* 数据库 PostgreSQL16
+* 数据库 PostgreSQL17+
 
 * [more](./doc/deps_service.md)
 
 ```
 erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell
 ```
+
+后端技术栈：
+
+语言: Erlang/OTP 27+
+Web框架: Cowboy (基于Erlang的HTTP服务器)
+数据库: PostgreSQL 17
+UI框架: Element UI Plus + Nuxt4
+认证方式: Cookie-based (adm_user_id)
+依赖管理: Erlang.mk
+
 
 ## erlang 的shell 访问远程节
 ```
@@ -86,7 +92,6 @@ make new t=imboy.rest_handler n=demo_handler
 make new t=imboy.logic n=demo_logic
 make new t=imboy.repository n=demo_repo
 make new t=imboy.ds n=demo_ds
-
 
 make list-templates
 

@@ -43,7 +43,7 @@ init(Req0, State0) ->
 % 搜索“用户允许被搜索”的用户
 user_search(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
     Payload = fts_logic:user_search_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).
@@ -52,7 +52,7 @@ user_search(Req0, State) ->
 % 最近新注册的并且允许被搜索到的朋友
 recently_user(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
     Payload = fts_logic:recently_user_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).

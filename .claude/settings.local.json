@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(IMBOYENV=local make run)",
+      "Bash(./bin/imboy ping:*)",
+      "Bash(curl:*)",
+      "Bash(psql:*)",
+      "Bash(find:*)",
+      "Bash(make:*)",
+      "Bash(lsof:*)",
+      "Bash(npm run dev:*)",
+      "Bash(node:*)",
+      "Bash(NODE_OPTIONS=\"--no-warnings\" VITE_SKIP_OPTIMIZE_DEPS=true npm run dev)",
+      "Bash(pkill:*)",
+      "WebSearch",
+      "Bash(pnpm add:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(gtimeout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

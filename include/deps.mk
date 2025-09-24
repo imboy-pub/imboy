@@ -11,8 +11,8 @@ dep_hex_core = git https://gitee.com/imboy-tripartite-deps/hex_core.git v0.11.0
 # https://erlang.mk/guide/deps.html
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.2.0
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.14.0
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.13.0
+dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.16.0
+dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.14.2
 dep_gun = git https://gitee.com/imboy-tripartite-deps/gun.git 2.2.0
 
 # gen_smtp Email服务端、客户端

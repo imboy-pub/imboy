@@ -39,7 +39,7 @@ init(Req0, State0) ->
 %%% 申请添加好友
 add_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     To = proplists:get_value(<<"to">>, PostVals),
     Payload = proplists:get_value(<<"payload">>, PostVals),
     CreatedAt = proplists:get_value(<<"created_at">>, PostVals),
@@ -54,7 +54,7 @@ add_friend(Req0, State) ->
 %%% 申请添加好友确认
 confirm(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     From = proplists:get_value(<<"from">>, PostVals),
     To = proplists:get_value(<<"to">>, PostVals),
     Payload = proplists:get_value(<<"payload">>, PostVals),
@@ -75,7 +75,7 @@ confirm(Req0, State) ->
 %%% 删除好友关系
 delete_friend(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     friend_logic:delete_friend(CurrentUid, Uid),
     imboy_response:success(Req0, #{}).
@@ -105,7 +105,7 @@ list_transfer(User, Friends) ->
 %%% 移动好友分组
 move(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     CategoryId = proplists:get_value(<<"category_id">>, PostVals, 0),
 
@@ -145,7 +145,7 @@ information_transfer(CurrentUid, Type, User, UserSetting) ->
 %%% 修改好友备注
 change_remark(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Uid = proplists:get_value(<<"uid">>, PostVals),
     Remark = proplists:get_value(<<"remark">>, PostVals, ""),
     Uid2 = imboy_hashids:decode(Uid),

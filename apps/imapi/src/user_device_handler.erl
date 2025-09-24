@@ -44,14 +44,14 @@ init(Req0, State0) ->
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
     Payload = user_device_logic:page(CurrentUid, Page, Size),
     imboy_response:success(Req0, Payload).
 
 
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     Name = proplists:get_value(<<"name">>, PostVals, <<"">>),
@@ -61,7 +61,7 @@ change_name(Req0, State) ->
 
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_logic:delete(CurrentUid, DID),

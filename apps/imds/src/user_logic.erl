@@ -32,7 +32,7 @@ set_password(Uid, Req0) ->
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     NewPwd = proplists:get_value(<<"new_pwd">>, PostVals),
 
     % ?DEBUG_LOG(['Uid ', Uid]),
@@ -80,7 +80,7 @@ change_password(Uid, Req0) ->
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
 
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     ExistingPwd = proplists:get_value(<<"existing_pwd">>, PostVals),
     NewPwd = proplists:get_value(<<"new_pwd">>, PostVals),
 
@@ -229,18 +229,25 @@ mine_state(Uid) ->
 % 获取用户在线状态
 online_state(User) ->
     {<<"id">>, Uid} = lists:keyfind(<<"id">>, 1, User),
-    case imboy_syn:count_user(Uid) of
+    LastSeenAt = case lists:keyfind(<<"last_seen_at">>, 1, User) of
+        {<<"last_seen_at">>, Val} ->
+            Val;
+        false ->
+            <<>>
+    end,
+    Status = case imboy_syn:count_user(Uid) of
         0 ->
-            [{<<"status">>, offline} | User];
+            offline;
         _Count ->
             case user_setting_ds:chat_state_hide(Uid) of
                 true ->
                     % 既然是 hide 就不能够返回hide 状态给API
-                    [{<<"status">>, offline} | User];
+                    offline;
                 false ->
-                    [{<<"status">>, online} | User]
+                    online
             end
-    end.
+    end,
+    [{<<"status">>, Status}, {<<"last_seen_at">>, LastSeenAt} | User].
 
 
 -spec find_by_id(binary()) -> list().

@@ -47,8 +47,8 @@ init(Req0, State0) ->
 get_ddl(Column, Req0, OrderBy) ->
     % onDowngrade] is called only when [version] is lower than the last database version.
     %
-    {ok, OldVsn} = imboy_req:get_int(old_vsn, Req0, 0),
-    {ok, NewVsn} = imboy_req:get_int(new_vsn, Req0, 0),
+    {ok, OldVsn} = imboy_param:int(old_vsn, Req0, 0),
+    {ok, NewVsn} = imboy_param:int(new_vsn, Req0, 0),
     {MinVsn, MaxVsn} = if
         OldVsn > NewVsn ->
             {NewVsn, OldVsn};

@@ -47,7 +47,7 @@ init(Req0, State0) ->
 %%% 用户反馈分页列表
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
 
     Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     Where2 = <<"status > 0 AND ", Where/binary>>,
@@ -59,12 +59,12 @@ page(Req0, State) ->
 %%% 用户反馈分页列表
 page_reply(Req0, _State) ->
     Def =  <<"反馈ID必须是整数"/utf8>>,
-    case imboy_req:get_int(feedback_id, Req0, Def) of
+    case imboy_param:int(feedback_id, Req0, Def) of
         {ok, Def} ->
             imboy_response:error(Req0, Def);
         {ok, FeedbackId} ->
             % CurrentUid = maps:get(current_uid, State),
-            {Page, Size} = imboy_req:page_size(Req0),
+            {Page, Size} = imboy_param:page(Req0),
             Where = imboy_cnv:implode("", [<<"feedback_id=">>, FeedbackId]),
 
             Column = <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_user_id, replier_name, body, status, updated_at, created_at">>,
@@ -83,7 +83,7 @@ add(Req0, State) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0),
     Did = cowboy_req:header(<<"did">>, Req0),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Type = proplists:get_value(<<"type">>, PostVals, <<>>),
     Rating = proplists:get_value(<<"rating">>, PostVals, <<"0">>),
     ContactDetail = proplists:get_value(<<"contact_detail">>, PostVals, <<>>),
@@ -106,7 +106,7 @@ add(Req0, State) ->
 
 remove(Req0, State) ->
     Def =  <<"反馈ID必须是整数"/utf8>>,
-    case imboy_req:get_int(feedback_id, Req0, Def) of
+    case imboy_param:int(feedback_id, Req0, Def) of
         {ok, Def} ->
             imboy_response:error(Req0, Def);
         {ok, FeedbackId} ->

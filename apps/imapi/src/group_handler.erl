@@ -94,7 +94,7 @@ face2face(Req0, State) ->
     end.
 
 face2face_save(Req0, State) ->
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Code = proplists:get_value(<<"code">>, PostVals, []),
     Gid = proplists:get_value(<<"gid">>, PostVals, []),
     Uid = maps:get(current_uid, State),
@@ -112,7 +112,7 @@ face2face_save(Req0, State) ->
 
 add(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    % PostVals = imboy_req:post_params(Req0),
+    % PostVals = imboy_param:post(Req0),
     % Title = proplists:get_value(<<"title">>, PostVals, <<>>),
     Type = 2, % 类型: 1 公开群组  2 私有群组
     case throttle:check(three_second_once, Uid) of
@@ -123,7 +123,7 @@ add(Req0, State) ->
                <<"status = 1 AND owner_uid = ", (ec_cnv:to_binary(Uid))/binary>>,
                <<"count(*)">>,
                0),
-            PostVals = imboy_req:post_params(Req0),
+            PostVals = imboy_param:post(Req0),
             MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
             case group_logic:add(Count, Uid, Type, MemberUids) of
                 {ok, Gid} ->
@@ -143,7 +143,7 @@ add(Req0, State) ->
 
 edit(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
 
@@ -224,7 +224,7 @@ edit(Req0, State) ->
 %% 解散群
 dissolve(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Gid = proplists:get_value(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
     case throttle:check(per_hour_once, {group, Gid2}) of
@@ -251,7 +251,7 @@ dissolve(Req0, State) ->
 %% 我拥有的群
 page(Req0, State, <<"owner">>) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
 
     Where = imboy_cnv:implode("", [<<"owner_uid=">>, CurrentUid]),
     Where2 = <<"status = 1 AND ", Where/binary>>,
@@ -264,7 +264,7 @@ page(Req0, State, <<"owner">>) ->
 %% 我加入的群
 page(Req0, State, <<"join">>) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
 
     Where0 = imboy_cnv:implode("", [<<"m.user_id=">>, CurrentUid]),
     Where = <<"g.status = 1 AND m.is_join = 1 AND ", Where0/binary>>,
@@ -282,7 +282,7 @@ msg_page(Req0, State) ->
     Gid2 = imboy_hashids:decode(Gid),
     GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
-    Where = case imboy_req:get_int(last_time, Req0, 0) of
+    Where = case imboy_param:int(last_time, Req0, 0) of
         {ok, Last} when Last > 0 ->
             <<"to_groupid=", (ec_cnv:to_binary(Gid2))/binary, " AND created_at >= ", (ec_cnv:to_binary(Last))/binary>>;
         _ ->
@@ -294,7 +294,7 @@ msg_page(Req0, State) ->
         _ when GMSize == 0 ->
             imboy_response:error(Req0, "你不是群成员");
         _ ->
-            {Page, Size} = imboy_req:page_size(Req0),
+            {Page, Size} = imboy_param:page(Req0),
             Tb = msg_c2g_repo:tablename(),
 
             OrderBy = <<"ts desc">>,

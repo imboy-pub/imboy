@@ -9,73 +9,64 @@
 # https://github.com/jaiminpan/pg_jieba.git
 #
 
-FROM postgres:17-bullseye
+# 构建阶段
+FROM imboy/pg17:3.5.1.dev.1 AS builder
 
 LABEL maintainer="PostGIS Project - https://postgis.net" \
       org.opencontainers.image.description="PostGIS 3.5.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 17 bullseye" \
       org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
 
-ENV POSTGIS_MAJOR 3
-ENV POSTGIS_VERSION 3.5.2+dfsg-1.pgdg110+1
-ENV TIMESCALEDB_VERSION 2.18.2
-ENV PGROUTING_VERSION 3.7.3
+ENV POSTGIS_MAJOR=3
+ENV POSTGIS_VERSION=3.5.2+dfsg-1.pgdg110+1
+ENV TIMESCALEDB_VERSION=2.18.2
+ENV PGROUTING_VERSION=3.7.3
 
-RUN apt-get update \
-      && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
-      && apt-get install -y --no-install-recommends \
-           # ca-certificates: for accessing remote raster files;
-           #   fix: https://github.com/postgis/docker-postgis/issues/307
-           ca-certificates \
-           \
-           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
-           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
-      && rm -rf /var/lib/apt/lists/*
+# 安装所有构建依赖并构建扩展
+# 设置apt重试机制
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
+    echo 'Acquire::http::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries && \
+    echo 'Acquire::ftp::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries
 
-# for timescaledb
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    postgresql-server-dev-17 \
-    build-essential \
-    libpq-dev \
-    cmake \
-    git \
-  && cd / && git clone https://gitee.com/imboy-tripartite-deps/timescaledb.git \
-  && cd /timescaledb &&  git checkout $TIMESCALEDB_VERSION \
-  && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/17/bin/pg_config . \
-  && cd ./build && make && make install && cd / && rm -rf /timescaledb
-
-RUN set -xe \
-  && apt-get install -y -V postgresql-17-pgvector \
-  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git \
-  && cd /pg_roaringbitmap && git checkout -f master && git submodule update --init --recursive \
-  && make && make install && cd / && rm -rf /pg_roaringbitmap
-
-RUN set -xe \
-  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pg_jieba.git \
-  && cd /pg_jieba && git checkout -f master && git submodule update --init --recursive \
-  && mkdir build && cd build && cmake -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/include/postgresql/17/server .. \
-  && make && make install && cd / && rm -rf /pg_jieba
-
-RUN set -xe \
-  && apt-get install -y libboost-all-dev \
-  && cd / && git clone https://gitee.com/imboy-tripartite-deps/pgrouting.git \
-  && cd /pgrouting && git checkout tags/v$PGROUTING_VERSION \
-  && mkdir build && cd build && cmake .. \
-  && make && make install && cd / && rm -rf /pgrouting
-
-COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/17/tsearch_data/jieba_user.dict
-COPY ./docker/pg-initdb-postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
-COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/21_postgis.sh
-COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/22_imboy.sh
-RUN chmod -x /docker-entrypoint-initdb.d/10_postgis.sh
-
-# 清理不再需要的包
-RUN set -xe \
-  && apt-get purge -y --auto-remove libpq-dev postgresql-server-dev-17 \
-  && apt-get purge -y --autoremove \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+        # 基础依赖
+        ca-certificates \
+        # 构建工具
+        postgresql-server-dev-17 \
         build-essential \
+        libpq-dev \
+        cmake \
+        git \
         libboost-all-dev \
+        # PostGIS
+        postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
+        postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
+        # pgvector
+        postgresql-17-pgvector \
+    && cd / && git clone --depth=1 --branch=$TIMESCALEDB_VERSION https://gitee.com/imboy-tripartite-deps/timescaledb.git \
+    && cd /timescaledb && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/17/bin/pg_config . \
+    && cd ./build && make && make install \
+    && cd / && rm -rf /timescaledb \
+    && git clone --depth=1 https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git \
+    && cd /pg_roaringbitmap && git submodule update --init --recursive \
+    && make && make install \
+    && cd / && rm -rf /pg_roaringbitmap \
+    && git clone --depth=1 https://gitee.com/imboy-tripartite-deps/pg_jieba.git \
+    && cd /pg_jieba && git submodule update --init --recursive \
+    && mkdir build && cd build && cmake -DPostgreSQL_TYPE_INCLUDE_DIR=/usr/include/postgresql/17/server .. \
+    && make && make install \
+    && cd / && rm -rf /pg_jieba \
+    && git clone --depth=1 --branch=v$PGROUTING_VERSION https://gitee.com/imboy-tripartite-deps/pgrouting.git \
+    && cd /pgrouting && mkdir build && cd build && cmake .. \
+    && make && make install \
+    && cd / && rm -rf /pgrouting \
+    # 清理构建工具和缓存
+    && apt-get purge -y --auto-remove \
+        postgresql-server-dev-17 \
+        build-essential \
+        libpq-dev \
+        libboost-all-dev \
+        cmake \
+        git \
         binutils \
         binutils-common \
         binutils-x86-64-linux-gnu \
@@ -87,7 +78,6 @@ RUN set -xe \
         dpkg-dev \
         g++ \
         gcc \
-        git \
         git-man \
         icu-devtools \
         libarchive13 \
@@ -124,7 +114,6 @@ RUN set -xe \
         libobjc-10-dev \
         libobjc4 \
         libpfm4 \
-        libpq-dev \
         libprocps8 \
         libpython3-stdlib \
         libpython3.9-minimal \
@@ -157,16 +146,45 @@ RUN set -xe \
         python3-yaml \
         python3.9 \
         python3.9-minimal \
-  && apt-get autoremove -y \
-  && apt-get clean \
-  && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/* /usr/share/man/* /usr/share/info/*
 
+# 最终运行阶段
+FROM imboy/pg17:3.5.1.dev.1
 
-RUN set -xe \
-  && mkdir -p /docker-entrypoint-initdb.d \
-  && chmod -x /docker-entrypoint-initdb.d/10_postgis.sh \
-  && chmod -x /docker-entrypoint-initdb.d/21_postgis.sh \
-  && chmod -x /docker-entrypoint-initdb.d/22_imboy.sh \
-  && chown -R postgres:postgres /var/lib/postgresql/data \
-  && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
-  && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc
+LABEL maintainer="PostGIS Project - https://postgis.net" \
+      org.opencontainers.image.description="PostGIS 3.5.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 17 bullseye" \
+      org.opencontainers.image.source="https://github.com/postgis/docker-postgis"
+
+ENV POSTGIS_MAJOR=3
+ENV POSTGIS_VERSION=3.5.2+dfsg-1.pgdg110+1
+
+# 只安装运行时依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
+        postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
+        postgresql-17-pgvector \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/* /usr/share/man/* /usr/share/info/*
+
+# 从构建阶段复制已编译的扩展
+COPY --from=builder /usr/lib/postgresql/17/ /usr/lib/postgresql/17/
+COPY --from=builder /usr/share/postgresql/17/ /usr/share/postgresql/17/
+
+# 复制配置文件
+COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/17/tsearch_data/jieba_user.dict
+COPY ./docker/pg-initdb-postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
+COPY ./docker/pg-update-postgis.sh /docker-entrypoint-initdb.d/21_postgis.sh
+COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/22_imboy.sh
+
+# 设置权限和配置
+RUN mkdir -p /docker-entrypoint-initdb.d \
+    && chmod -x /docker-entrypoint-initdb.d/10_postgis.sh \
+    && chmod -x /docker-entrypoint-initdb.d/21_postgis.sh \
+    && chmod -x /docker-entrypoint-initdb.d/22_imboy.sh \
+    && chown -R postgres:postgres /var/lib/postgresql/data \
+    && echo 'alias ll="ls -la --color=auto"' >> ~/.bashrc \
+    && echo 'export PS1="\[\e]0;\a\]\n\[\e[1;32m\]\[\e[1;33m\]\H\[\e[1;35m\]<\$(date +\"%Y-%m-%d %T\")> \[\e[32m\]\w\[\e[0m\]\n\u>\\$ "' >> ~/.bashrc

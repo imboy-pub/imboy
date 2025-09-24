@@ -100,7 +100,7 @@ login(Req0) ->
     %%% 在POST请求中取出内容
     %%% 用户名account
     %%% 密码 pwd
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     RsaEncrypt = proplists:get_value(<<"rsa_encrypt">>, PostVals, <<"1">>),
@@ -141,7 +141,7 @@ login(Req0) ->
 
 
 quick_login(Req0) ->
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     % jverify | huawei
     Service = proplists:get_value(<<"service">>, PostVals, <<>>),
@@ -205,7 +205,7 @@ getcode(Req0) ->
     %% 在POST请求中取出内容
     %% type 验证码类型 email sms
     %% account 账号 Email 或者 手机号码
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     % type sms | email
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
@@ -244,7 +244,7 @@ signup(Req0) ->
     %% 在POST请求中取出内容
     %% 用户名account
     %% 密码 pwd
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     % type = email | mobile
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
@@ -277,7 +277,7 @@ find_password(Req0) ->
     %% 在POST请求中取出内容
     %% 用户名account
     %% 密码 pwd
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     Type = proplists:get_value(<<"type">>, PostVals, <<"email">>),
     Account = proplists:get_value(<<"account">>, PostVals),

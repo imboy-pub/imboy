@@ -79,6 +79,9 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 
     %% 发送响应
     cowboy_req:reply(200,
-        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
+        #{
+            <<"content-type">> => <<"application/json; charset=utf-8">>,
+            <<"Referrer-Policy">> => <<"strict-origin-when-cross-origin">>
+        },
         JsonBody,
         Req).

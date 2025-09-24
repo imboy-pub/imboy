@@ -34,7 +34,7 @@ init(Req0, State0) ->
 % Assets服务认证
 assets(<<"POST">>, Req0) ->
     try
-        PostVals = imboy_req:post_params(Req0),
+        PostVals = imboy_param:post(Req0),
         Scene = proplists:get_value(<<"s">>, PostVals),
         % AuthToken
         AuthTk = proplists:get_value(<<"a">>, PostVals),

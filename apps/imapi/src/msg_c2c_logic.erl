@@ -107,10 +107,10 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
         false ->  % 对端离线处理
             Payload2 = jsone:encode(Payload, [native_utf8]),
             FromId = imboy_hashids:decode(From),
-            msg_c2c_ds:revoke_offline_msg(Payload2, NowTs, MsgId, FromId, ToId),
+            msg_c2c_ds:revoke_offline_msg(Payload2, NowTs, MsgId, FromId, ToId)
             % {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
-            {reply, [{<<"type">>, Type2} | Msg]}
-    end.
+    end,
+    {reply, [{<<"type">>, Type2} | Msg]}.
 
 %% 检查离线消息
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量

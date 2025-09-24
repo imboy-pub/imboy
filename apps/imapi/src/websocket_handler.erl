@@ -96,7 +96,7 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     CurrentUid = maps:get(current_uid, State),
     try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
-            websocket_logic:ack_before(CurrentUid, DID, MsgId),
+            websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
             case Type of
                 <<"C2C">> ->
                     msg_c2c_logic:c2c_client_ack(MsgId, CurrentUid, DID),

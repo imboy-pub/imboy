@@ -52,7 +52,7 @@ add(Req0, State) ->
     ?DEBUG_LOG(["CurrentUid ", CurrentUid]),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     Tag = proplists:get_value(<<"tag">>, PostVals, []),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
@@ -102,7 +102,7 @@ set(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     TagName = proplists:get_value(<<"tagName">>, PostVals, <<>>),
     TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
@@ -143,7 +143,7 @@ remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
 
-    PostVals = imboy_req:post_params(Req0),
+    PostVals = imboy_param:post(Req0),
     Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
     TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
@@ -183,10 +183,10 @@ remove(Req0, State) ->
 %% 用户标签_标签详情-标签联系人列表 / 标签收藏列表
 page(Scene, Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-    {ok, TagId} = imboy_req:get_int(tag_id, Req0, 0),
+    {ok, TagId} = imboy_param:int(tag_id, Req0, 0),
     % imboy_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
     if
         CurrentUid == 0 ->

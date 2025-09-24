@@ -22,11 +22,11 @@ group_transfer(G) ->
     , <<"gid">>).
 
 face2face(_, <<>>, _, _) ->
-    {error, <<"Code 必须">>};
+    {error, <<"Code 必须"/utf8>>};
 face2face(_, _, undefined, _) ->
-    {error, <<"longitude 必须">>};
+    {error, <<"longitude 必须"/utf8>>};
 face2face(_, _, _, undefined) ->
-    {error, <<"latitude 必须">>};
+    {error, <<"latitude 必须"/utf8>>};
 face2face(Uid, Code, Lng, Lat) ->
     Now = imboy_dt:now(),
     case nearby_gid(Lng, Lat, <<"50">>, <<"m">>, <<"1">>, Code) of

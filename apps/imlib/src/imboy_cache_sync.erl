@@ -7,6 +7,8 @@
 -include_lib("imlib/include/log.hrl").
 -include_lib("imlib/include/chat.hrl").
 
+-define(CACHE_GROUP_NAME, dsync_handler).
+
 %% API
 -export([start_link/0, broadcast/1]).
 
@@ -26,7 +28,7 @@ start_link() ->
 
 %% @doc 广播消息到所有节点
 broadcast(Message) ->
-    syn:publish(?CACHE_SCOPE, dsync_handler, {cache_sync, Message}).
+    syn:publish(?CACHE_SCOPE, ?CACHE_GROUP_NAME, {cache_sync, Message}).
 
 %% ===================================================================
 %% gen_server callbacks
@@ -35,7 +37,7 @@ broadcast(Message) ->
 %% @doc 初始化服务器
 init([]) ->
     % 注册到syn
-    case syn:join(?CACHE_SCOPE, dsync_handler, self(), #{}) of
+    case syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{}) of
         ok ->
             ?DEBUG_LOG(["Distributed cache sync server started and registered to syn"]),
             {ok, #state{}};
@@ -62,7 +64,7 @@ handle_info(_Info, State) ->
 %% @doc 服务器终止处理
 terminate(_Reason, _State) ->
     % 从syn中离开
-    syn:leave(?CACHE_SCOPE, dsync_handler, self()),
+    syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
     ok.
 
 %% @doc 代码更改处理
