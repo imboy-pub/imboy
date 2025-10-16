@@ -102,7 +102,8 @@ c2c_revoke(MsgId, Data, Type, Type2) ->
     % 判断是否在线
     case user_logic:is_online(ToId) of
         true ->
-            imboy_syn:publish(ToId, Msg3),
+            MsLi = [0, 5000, 7000, 11000],
+            message_ds:send_next(ToId, MsgId, Msg3, MsLi),
             ok;
         false ->  % 对端离线处理
             Payload2 = jsone:encode(Payload, [native_utf8]),
