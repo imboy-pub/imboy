@@ -125,7 +125,7 @@ delete(Id) ->
 %%% 更新from_user_id为指定用户的记录
 update_last_seen_at_by_from_uid(Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1, updated_at = $2 ",
+    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",
             "WHERE from_user_id = $3 AND status = 1">>,
     imboy_db:execute(Sql, [Timestamp, imboy_dt:now(), Uid]).
 
@@ -133,6 +133,6 @@ update_last_seen_at_by_from_uid(Uid, Timestamp) ->
 %%% 更新to_user_id为指定用户的记录
 update_last_seen_at_by_to_uid(Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1, updated_at = $2 ",
+    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",
             "WHERE to_user_id = $3 AND status = 1">>,
     imboy_db:execute(Sql, [Timestamp, imboy_dt:now(), Uid]).

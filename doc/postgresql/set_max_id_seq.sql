@@ -1,4 +1,4 @@
-# 需要充值 id_seq 的表
+-- 需要充值 id_seq 的表
 
 select setval('"app_version_id_seq"', (select max(id) from public."app_version"));
 

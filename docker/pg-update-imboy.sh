@@ -1,69 +1,40 @@
-#!/bin/sh
+#!/bin/bash
+set -euo pipefail
+set -x
 
-set -e
+# ---------- 环境变量 ----------
+PGUSER="${POSTGRES_USER:-postgres}"
+PGPASSWORD="${POSTGRES_PASSWORD:-}"
+PGDATA="${PGDATA:-/var/lib/postgresql/18/docker}"
+POSTGRES_DB="${POSTGRES_DB:-$PGUSER}"
+POSTGIS_VERSION="${POSTGIS_VERSION%%+*}"
 
-# Perform all actions as $POSTGRES_USER
-export PGUSER="$POSTGRES_USER"
+export PGUSER PGPASSWORD PGDATA
+# ---------- 安装扩展 ----------
+for DB in "$POSTGRES_DB" "${@}"; do
+    echo "Loading extensions into database: $DB"
+    psql -v ON_ERROR_STOP=1 --username "$PGUSER" --dbname "$DB" <<-EOSQL
+        -- 提供如下空间信息服务功能：空间对象、空间索引、空间操作函数和空间操作符
+        CREATE EXTENSION IF NOT EXISTS postgis;
+        --PgRouting是基于开源空间数据库PostGIS用于网络分析的扩展模块，最初它被称作pgDijkstra，因为它只是利用Dijkstra算法实现最短路径搜索，之后慢慢添加了其他的路径分析算法，如A算法，双向A算法，Dijkstra算法，双向Dijkstra算法，tsp货郎担算法等，然后被更名为pgRouting
+        CREATE EXTENSION IF NOT EXISTS pgrouting;
+        -- gis 拓扑
+        CREATE EXTENSION IF NOT EXISTS postgis_topology;
+        -- 提供了几个函数来确定字符串之间的相似性和距离
+        CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+        CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
+        CREATE EXTENSION IF NOT EXISTS address_standardizer;
+        -- 中文分词
+        CREATE EXTENSION IF NOT EXISTS pg_jieba;
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        -- 时序数据库
+        CREATE EXTENSION IF NOT EXISTS timescaledb;
+        --
+        CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+        CREATE EXTENSION IF NOT EXISTS vector;
+        CREATE EXTENSION IF NOT EXISTS roaringbitmap;
+EOSQL
+done
 
-# 确保TIMESCALEDB_VERSION环境变量被设置
-if [ -z "$TIMESCALEDB_VERSION" ]; then
-  echo "The TIMESCALEDB_VERSION environment variable is not set."
-  exit 1
-fi
-
-# 确保POSTGRES_DB环境变量被设置
-if [ -z "$POSTGRES_DB" ]; then
-  echo "The POSTGRES_DB environment variable is not set."
-  exit 1
-fi
-
-# 判断 timescaledb 是否存在，如果存在就移除它
-psql --dbname="$POSTGRES_DB" -c "
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM pg_catalog.pg_extension
-        WHERE extname = 'timescaledb'
-    ) THEN
-        RAISE NOTICE 'TimescaleDB extension found. Dropping...';
-        EXECUTE 'DROP EXTENSION timescaledb CASCADE';
-    ELSE
-        RAISE NOTICE 'TimescaleDB extension not found. No action taken.';
-    END IF;
-END \$\$;
-"
-
-# 直接对POSTGRES_DB数据库执行操作
-echo "Updating timescaledb extension for database '$POSTGRES_DB' to version $TIMESCALEDB_VERSION"
-psql --dbname="$POSTGRES_DB" -c "
-    -- Install timescaledb
-    CREATE EXTENSION IF NOT EXISTS timescaledb VERSION '$TIMESCALEDB_VERSION';
-"
-
-echo "timescaledb extension updated successfully for database '$POSTGRES_DB'."
-
-################################################
-#
-# PGROUTING_VERSION
-# 判断 pgrouting 是否存在，如果存在就移除它
-psql --dbname="$POSTGRES_DB" -c "
-DO \$\$
-BEGIN
-    IF EXISTS (
-        SELECT FROM pg_catalog.pg_extension
-        WHERE extname = 'pgrouting'
-    ) THEN
-        RAISE NOTICE 'pgrouting extension found. Dropping...';
-        EXECUTE 'DROP EXTENSION pgrouting CASCADE';
-    ELSE
-        RAISE NOTICE 'pgrouting extension not found. No action taken.';
-    END IF;
-END \$\$;
-"
-echo "Updating pgrouting extension for database '$POSTGRES_DB' to version $PGROUTING_VERSION"
-psql --dbname="$POSTGRES_DB" -c "
-    -- Install pgrouting
-    CREATE EXTENSION IF NOT EXISTS pgrouting VERSION '$PGROUTING_VERSION';
-"
-
-echo "pgrouting extension updated successfully for database '$POSTGRES_DB'."
+echo "Database initialization completed successfully."

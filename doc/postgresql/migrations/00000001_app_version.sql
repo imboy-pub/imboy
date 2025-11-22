@@ -47,5 +47,5 @@ COMMENT ON COLUMN public.app_version.created_at IS '创建记录时间 2025-02-2
 COMMENT ON COLUMN public.app_version.updated_at IS '最后更新记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
-CREATE INDEX i_vsn_Status_Type_RegionCode ON public.app_version (status, type, region_code);
-CREATE INDEX i_vsn_Sort_UpdatedAt ON public.app_version (sort, updated_at);
+CREATE INDEX IF NOT EXISTS i_vsn_Status_Type_RegionCode ON public.app_version (status, type, region_code);
+CREATE INDEX IF NOT EXISTS i_vsn_Sort_UpdatedAt ON public.app_version (sort, updated_at);

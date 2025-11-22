@@ -71,6 +71,8 @@ reply_json(Code, Msg, Payload, Req, Options) ->
     BasePayload = [
         {<<"code">>, Code},
         {<<"msg">>, Msg2},
+        {<<"timestamp">>, imboy_dt:millisecond()},
+%%        {<<"request_id">>, imboy_dt:millisecond()},
         {<<"payload">>, Payload}
     ],
 

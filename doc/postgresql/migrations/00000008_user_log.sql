@@ -29,5 +29,3 @@ COMMENT ON COLUMN public.user_log.created_at IS '创建记录时间 2025-02-21 0
 
 -- index
 CREATE INDEX i_user_log_Type_Uid_CreatedAt ON public.user_log(type, uid, created_at asc);
-
-SELECT create_hypertable('user_log', 'ts', chunk_time_interval => INTERVAL '30 day');

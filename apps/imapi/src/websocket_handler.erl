@@ -129,41 +129,25 @@ websocket_handle({text, Msg}, State) ->
         Data = jsone:decode(Msg, [{object_format, proplist}]),
         MsgId = proplists:get_value(<<"id">>, Data),
         Type = proplists:get_value(<<"type">>, Data),
-        % ?DEBUG_LOG([MsgId, Type, Data]),
-        % 逻辑层负责IM系统各项功能的核心逻辑实现
-        % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
-        case cowboy_bstr:to_lower(Type) of
-            <<"c2s">> ->  % 机器人聊天消息
-                websocket_logic:c2s(MsgId, CurrentUid, Data);
-            <<"s2c">> ->  %
-                Payload = proplists:get_value(<<"payload">>, Data),
-                MsgType = proplists:get_value(<<"msg_type">>, Payload),
-                msg_s2c_logic:s2c(MsgType, MsgId, CurrentUid, Data);
-            <<"c2c">> ->  % 单聊消息
-                msg_c2c_logic:c2c(MsgId, CurrentUid, Data);
-            <<"c2c_revoke">> ->  % 客户端撤回消息
-                msg_c2c_logic:c2c_revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
-            <<"c2c_revoke_ack">> ->  % 客户端撤回消息ACK
-                msg_c2c_logic:c2c_revoke(MsgId, Data, Type, <<"C2C_REVOKE_ACK">>);
-
-            <<"c2g">> ->  % 群聊消息
-                msg_c2g_logic:c2g(MsgId, CurrentUid, Data);
-            <<"c2g_revoke">> ->  % 客户端撤回消息
-                msg_c2g_logic:c2g_revoke(CurrentUid,
-                    MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
-            <<"c2g_revoke_ack">> ->  % 客户端撤回消息ACK
-                msg_c2g_logic:c2g_revoke(CurrentUid,
-                    MsgId, Data, Type, <<"C2G_REVOKE_ACK">>);
-
-            <<"webrtc_", _Event/binary>> -> % webrt信令处理
-                % Room = webrtc_ws_logic:room_name(
-                %     imboy_hashids:encode(CurrentUid,
-                %     To),
-                To = proplists:get_value(<<"to">>, Data),
-                ToUid = imboy_hashids:decode(To),
-                webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Msg);
+        Payload = proplists:get_value(<<"payload">>, Data),
+        Action = case Payload of
+                    undefined -> null;
+                    _ -> proplists:get_value(<<"action">>, Payload, null)
+                 end,
+        % ?DEBUG_LOG([MsgId, Type, Action, Data]),
+        % 优先检查action字段，如果存在则按action处理
+        case Action of
+            <<"message_revoke">> ->  % 消息撤销请求
+                handle_message_action(revoke, MsgId, CurrentUid, Data, Type);
+            <<"message_revoke_ack">> ->  % 消息撤销确认
+                handle_message_action(revoke_ack, MsgId, CurrentUid, Data, Type);
+            <<"message_edit">> ->  % 消息编辑请求
+                handle_message_action(edit, MsgId, CurrentUid, Data, Type);
+            <<"message_edit_ack">> ->  % 消息编辑确认
+                handle_message_action(edit_ack, MsgId, CurrentUid, Data, Type);
             _ ->
-                ok
+                % 无action字段，按原有逻辑处理
+                handle_normal_message(MsgId, CurrentUid, Data, Type)
         end
     of
         ok ->
@@ -190,6 +174,52 @@ websocket_handle({binary, Msg}, State) ->
 websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
 
+
+%% 处理基于action的消息
+handle_message_action(Action, MsgId, CurrentUid, Data, Type) ->
+    case cowboy_bstr:to_lower(Type) of
+        <<"c2c">> ->  % 单聊消息
+            case Action of
+                revoke -> msg_c2c_logic:c2c_revoke(MsgId, CurrentUid, Data);
+                revoke_ack -> msg_c2c_logic:c2c_revoke_ack(MsgId, CurrentUid, Data);
+                edit -> msg_c2c_logic:c2c_edit(MsgId, CurrentUid, Data);
+                edit_ack -> msg_c2c_logic:c2c_edit_ack(MsgId, CurrentUid, Data);
+                _ -> {error, invalid_action}
+            end;
+        <<"c2g">> ->  % 群聊消息
+            case Action of
+                revoke -> msg_c2g_logic:c2g_revoke(MsgId, CurrentUid, Data);
+                revoke_ack -> msg_c2g_logic:c2g_revoke_ack(MsgId, CurrentUid, Data);
+                edit -> msg_c2g_logic:c2g_edit(MsgId, CurrentUid, Data);
+                edit_ack -> msg_c2g_logic:c2g_edit_ack(MsgId, CurrentUid, Data);
+                _ -> {error, invalid_action}
+            end;
+        _ ->
+            {error, invalid_type}
+    end.
+
+%% 处理普通消息（无action字段）
+handle_normal_message(MsgId, CurrentUid, Data, Type) ->
+    % 逻辑层负责IM系统各项功能的核心逻辑实现
+    % Type 包括单聊（c2c）、推送(s2c)、群聊(c2g)
+    case cowboy_bstr:to_lower(Type) of
+        <<"c2s">> ->  % 机器人聊天消息
+            websocket_logic:c2s(MsgId, CurrentUid, Data);
+        <<"s2c">> ->  %
+            Payload = proplists:get_value(<<"payload">>, Data),
+            MsgType = proplists:get_value(<<"msg_type">>, Payload),
+            msg_s2c_logic:s2c(MsgType, MsgId, CurrentUid, Data);
+        <<"c2c">> ->  % 单聊消息
+            msg_c2c_logic:c2c(MsgId, CurrentUid, Data);
+        <<"c2g">> ->  % 群聊消息
+            msg_c2g_logic:c2g(MsgId, CurrentUid, Data);
+        <<"webrtc_", _Event/binary>> -> % webrt信令处理
+            To = proplists:get_value(<<"to">>, Data),
+            ToUid = imboy_hashids:decode(To),
+            webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Data);
+        _ ->
+            ok
+    end.
 
 %% 处理从其他进程发送到 WebSocket 进程的消息。
 websocket_info({reply, Msg}, State) ->

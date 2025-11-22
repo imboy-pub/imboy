@@ -8,6 +8,7 @@ efmt:
 
 
 # make gen-appup OLD_VERSION=0.6.1 PROJECT_VERSION=0.6.2
+# make gen-appup OLD_VERSION=0.6.5 PROJECT_VERSION=0.7.0
 .PHONY: gen-appup
 gen-appup:
 	bash script/gen_appup.sh $(OLD_VERSION) $(PROJECT_VERSION)

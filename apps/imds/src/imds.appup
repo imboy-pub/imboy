@@ -1,3 +1,15 @@
+{"0.7.0",
+ [{"0.6.5",
+   [{load_module,account_ds},
+    {load_module,message_ds},
+    {load_module,user_logic},
+    {load_module,user_server}]}],
+ [{"0.6.5",
+   [{load_module,account_ds},
+    {load_module,message_ds},
+    {load_module,user_logic},
+    {load_module,user_server}]}]}.
+
 {"0.6.5",
  [{"0.6.4",[{load_module,message_ds}]}],
  [{"0.6.4",[{load_module,message_ds}]}]}.

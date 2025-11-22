@@ -31,9 +31,9 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.user OWNER to imboy_user;
 
-CREATE UNIQUE INDEX uk_Account ON public.user (account);
-CREATE UNIQUE INDEX uk_Mobile ON public.user (mobile);
-CREATE UNIQUE INDEX uk_Email ON public.user (email);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Account ON public.user (account);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Mobile ON public.user (mobile);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Email ON public.user (email);
 
 COMMENT ON TABLE public.user
     IS '用户表';

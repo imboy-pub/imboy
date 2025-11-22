@@ -5,7 +5,10 @@
 
 -export([c2c/3]).
 -export([c2c_client_ack/3]).
--export([c2c_revoke/4]).
+-export([c2c_revoke/3]).
+-export([c2c_revoke_ack/3]).
+-export([c2c_edit/3]).
+-export([c2c_edit_ack/3]).
 
 -export([check_msg/3]).
 
@@ -38,8 +41,11 @@ c2c(MsgId, CurrentUid, Data) ->
             CreatedAtMs = case imboy_type:is_numeric(CreatedAt) of
                 true ->
                     CreatedAt;
+                false when is_binary(CreatedAt) orelse is_list(CreatedAt) ->
+                    imboy_dt:rfc3339_to(CreatedAt, millisecond);
                 false ->
-                    imboy_dt:rfc3339_to(CreatedAt, millisecond)
+                    % 如果时间戳格式错误，让进程崩溃
+                    erlang:error({invalid_timestamp_format, CreatedAt})
             end,
             % 存储消息
             msg_c2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
@@ -77,41 +83,136 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
 
 
 %% 客户端撤回消息 for c2c
--spec c2c_revoke(binary(), Data :: list(), binary(), binary()) -> ok | {reply, Msg :: list()}.
-c2c_revoke(MsgId, Data, Type, Type2) ->
+-spec c2c_revoke(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
+c2c_revoke(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     From = proplists:get_value(<<"from">>, Data),
+    Payload = proplists:get_value(<<"payload">>, Data),
+    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
     ToId = imboy_hashids:decode(To),
-    ?DEBUG_LOG([From, To, ToId, Type, Data]),
-    NowTs = imboy_dt:now(),
-
-    Payload = [
-        {<<"text">>, <<>>},
-        {<<"msg_type">>, <<"custom">>},
-        {<<"custom_type">>, <<"peer_revoked">>}
-    ],
-    Msg = [
-        {<<"id">>, MsgId},
-        {<<"from">>, From},
-        {<<"to">>, To},
-        {<<"server_ts">>, imboy_dt:millisecond()},
-        {<<"payload">>, Payload}
-    ],
-    Msg2 = [{<<"type">>, Type} | Msg],
-    Msg3 = jsone:encode(Msg2, [native_utf8]),
-    % 判断是否在线
-    case user_logic:is_online(ToId) of
+    FromId = imboy_hashids:decode(From),
+    ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    
+    % 验证权限：只能撤销自己发送的消息
+    case CurrentUid =:= FromId of
         true ->
-            MsLi = [0, 5000, 7000, 11000],
-            message_ds:send_next(ToId, MsgId, Msg3, MsLi),
-            ok;
-        false ->  % 对端离线处理
-            Payload2 = jsone:encode(Payload, [native_utf8]),
-            FromId = imboy_hashids:decode(From),
-            msg_c2c_ds:revoke_offline_msg(Payload2, NowTs, MsgId, FromId, ToId)
-            % {reply, [{<<"type">>, <<"C2C_REVOKE_ACK">>} | Msg]}
-    end,
-    {reply, [{<<"type">>, Type2} | Msg]}.
+            NowTs = imboy_dt:now(),
+            NowMS = imboy_dt:millisecond(),
+            
+            % 构建撤销确认消息
+            RevokePayload = [
+                {<<"msg_type">>, <<"custom">>},
+                {<<"action">>, <<"message_revoke_ack">>},
+                {<<"content">>, <<>>},
+                {<<"original_msg_id">>, OriginalMsgId},
+                {<<"revoked_at">>, NowMS}
+            ],
+            
+            RevokeMsg = [
+                {<<"id">>, MsgId},
+                {<<"type">>, <<"C2C">>},
+                {<<"from">>, From},
+                {<<"to">>, To},
+                {<<"payload">>, RevokePayload},
+                {<<"server_ts">>, NowMS}
+            ],
+            
+            % 判断对方是否在线
+            case user_logic:is_online(ToId) of
+                true ->
+                    RevokeMsgJson = jsone:encode(RevokeMsg, [native_utf8]),
+                    MsLi = [0, 5000, 7000, 11000],
+                    message_ds:send_next(ToId, MsgId, RevokeMsgJson, MsLi),
+                    ok;
+                false ->  % 对端离线处理
+                    RevokePayloadJson = jsone:encode(RevokePayload, [native_utf8]),
+                    msg_c2c_ds:revoke_offline_msg(RevokePayloadJson, NowTs, MsgId, FromId, ToId)
+            end,
+            {reply, RevokeMsg};
+        false ->
+            % 权限不足，返回错误
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+            {reply, ErrorMsg}
+    end.
+
+%% 客户端撤回消息确认 for c2c
+-spec c2c_revoke_ack(binary(), integer(), Data :: list()) -> ok.
+c2c_revoke_ack(MsgId, CurrentUid, Data) ->
+    Payload = proplists:get_value(<<"payload">>, Data),
+    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
+    ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
+    
+    % 更新本地消息状态为已撤销
+    % 这里可以添加数据库更新逻辑
+    ok.
+
+%% 客户端编辑消息 for c2c
+-spec c2c_edit(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
+c2c_edit(MsgId, CurrentUid, Data) ->
+    To = proplists:get_value(<<"to">>, Data),
+    From = proplists:get_value(<<"from">>, Data),
+    Payload = proplists:get_value(<<"payload">>, Data),
+    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
+    NewContent = proplists:get_value(<<"content">>, Payload),
+    MsgType = proplists:get_value(<<"msg_type">>, Payload),
+    ToId = imboy_hashids:decode(To),
+    FromId = imboy_hashids:decode(From),
+    ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    
+    % 验证权限：只能编辑自己发送的消息
+    case CurrentUid =:= FromId of
+        true ->
+            NowTs = imboy_dt:now(),
+            NowMS = imboy_dt:millisecond(),
+            
+            % 构建编辑确认消息
+            EditPayload = [
+                {<<"msg_type">>, MsgType},
+                {<<"action">>, <<"message_edit_ack">>},
+                {<<"content">>, NewContent},
+                {<<"original_msg_id">>, OriginalMsgId},
+                {<<"edited_at">>, NowMS}
+            ],
+            
+            EditMsg = [
+                {<<"id">>, MsgId},
+                {<<"type">>, <<"C2C">>},
+                {<<"from">>, From},
+                {<<"to">>, To},
+                {<<"payload">>, EditPayload},
+                {<<"server_ts">>, NowMS}
+            ],
+            
+            % 判断对方是否在线
+            case user_logic:is_online(ToId) of
+                true ->
+                    EditMsgJson = jsone:encode(EditMsg, [native_utf8]),
+                    MsLi = [0, 5000, 7000, 11000],
+                    message_ds:send_next(ToId, MsgId, EditMsgJson, MsLi),
+                    ok;
+                false ->  % 对端离线处理
+                    EditPayloadJson = jsone:encode(EditPayload, [native_utf8]),
+                    msg_c2c_ds:edit_offline_msg(EditPayloadJson, NowTs, MsgId, FromId, ToId)
+            end,
+            {reply, EditMsg};
+        false ->
+            % 权限不足，返回错误
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+            {reply, ErrorMsg}
+    end.
+
+%% 客户端编辑消息确认 for c2c
+-spec c2c_edit_ack(binary(), integer(), Data :: list()) -> ok.
+c2c_edit_ack(MsgId, CurrentUid, Data) ->
+    Payload = proplists:get_value(<<"payload">>, Data),
+    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
+    NewContent = proplists:get_value(<<"content">>, Payload),
+    EditedAt = proplists:get_value(<<"edited_at">>, Payload),
+    ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
+    
+    % 更新本地消息内容
+    % 这里可以添加数据库更新逻辑
+    ok.
 
 %% 检查离线消息
 % 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量

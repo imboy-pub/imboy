@@ -27,7 +27,7 @@ import_chinese_poetry:start().
 ```
 cat ./doc/postgresql/migrations/*.sql > merged.sql
 
-find /Users/leeyi/project/imboy.pub/chinese-poetry -type f -exec cat {} + > output.txt
+docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_105048.sql
 
 ```
 
@@ -104,8 +104,6 @@ CREATE SCHEMA public;
 
 GRANT ALL ON SCHEMA public TO imboy_user;
 GRANT ALL ON SCHEMA public TO public;
-
-select * from to_tsquery('jiebacfg', '是拖拉机学院手扶拖拉机专业的。不用多久，我就会升职加薪，当上CEO，走上人生巅峰。');
 
 
 DROP SCHEMA public CASCADE;

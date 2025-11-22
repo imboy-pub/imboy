@@ -72,7 +72,16 @@ c2s(MsgId, CurrentUid, Data) ->
             Text = proplists:get_value(<<"text">>, Payload),
             TopicId = proplists:get_value(<<"topic_id">>, Payload, 0),
             TopicTitle = proplists:get_value(<<"topic_title">>, Payload, <<>>),
-            CreatedAt = proplists:get_value(<<"created_at">>, Data),
+            CreatedAtRaw = proplists:get_value(<<"created_at">>, Data),
+            CreatedAt = case imboy_type:is_numeric(CreatedAtRaw) of
+                true ->
+                    CreatedAtRaw;
+                false when is_binary(CreatedAtRaw) orelse is_list(CreatedAtRaw) ->
+                    imboy_dt:rfc3339_to(CreatedAtRaw, millisecond);
+                false ->
+                    % 如果时间戳格式错误，让进程崩溃
+                    erlang:error({invalid_timestamp_format, CreatedAtRaw})
+            end,
 
             msg_c2s_ds:write_topic(<<"C2S">>, TopicId, CurrentUid, To, TopicTitle, CreatedAt),
             RespMap = qianfan_api:create_chat(CurrentUid, Text, []),

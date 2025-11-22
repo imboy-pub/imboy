@@ -28,9 +28,9 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.adm_user OWNER to imboy_user;
 
-CREATE UNIQUE INDEX uk_Adm_Account ON public.adm_user (account);
-CREATE UNIQUE INDEX uk_Adm_Mobile ON public.adm_user (mobile);
-CREATE UNIQUE INDEX uk_Adm_Email ON public.adm_user (email);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Adm_Account ON public.adm_user (account);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Adm_Mobile ON public.adm_user (mobile);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_Adm_Email ON public.adm_user (email);
 
 COMMENT ON TABLE public.adm_user IS '运营用户表';
 COMMENT ON COLUMN public.adm_user.id IS '主键 自增长ID';

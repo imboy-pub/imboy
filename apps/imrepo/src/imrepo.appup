@@ -1,3 +1,7 @@
+{"0.7.0",
+ [{"0.6.5",[{load_module,user_repo}]}],
+ [{"0.6.5",[{load_module,user_repo}]}]}.
+
 {"0.6.5",
  [{"0.6.4",[{load_module,user_repo}]}],
  [{"0.6.4",[{load_module,user_repo}]}]}.

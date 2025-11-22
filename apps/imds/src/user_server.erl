@@ -84,7 +84,7 @@ handle_cast({login_success, Uid, PostVals}, State) ->
 handle_cast({ws_online, Uid, _DType, DID}, State) ->
     % ?DEBUG_LOG([handle_cast, ws_online, Uid, DType, DID, State]),
     % 更新 最近活跃时间
-    Set = <<"last_active_at = $1">>,
+    Set = <<"last_active_at = $1::timestamptz">>,
     SetArgs = [imboy_dt:now()],
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
     {noreply, State, hibernate};

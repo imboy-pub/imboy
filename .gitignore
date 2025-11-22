@@ -36,7 +36,6 @@ docker/pgsql15data
 docker/imboy_pg15
 imboy_v1.sql
 *pro*
-*dev*
 .pgsync.yml
 schema_diff.sql
 sys.dev.config
@@ -57,3 +56,7 @@ imboy-admin-frontend
 settings.json
 mcp.json
 erl_code
+docker-compose-pg17-dev.yml
+relxdev.config
+docker/imboy_pg18
+.cline

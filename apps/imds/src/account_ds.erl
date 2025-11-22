@@ -27,6 +27,7 @@ allocate() ->
     % 使用 Depcache 的 get_wait 机制避免竞争条件
     case imboy_cache:get_wait(Key) of
         undefined ->
+            init(),
             % 缓存未命中，获取新ID
             case safe_get_max_account_id() of
                 [] ->

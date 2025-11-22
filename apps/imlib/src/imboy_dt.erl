@@ -155,16 +155,8 @@ datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
 rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, Unit) ->
-    try
-        Offset = lists:sublist(Dt, length(Dt) - 5, 6),
-        calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}, {offset, Offset}])
-    of
-        Num ->
-            Num
-    catch
-        _:_ ->
-            {error, "时间格式有误"}
-    end.
+    % 直接使用 Erlang 的 calendar:rfc3339_to_system_time，它会自动处理时区
+    calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}]).
 
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-1
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-2

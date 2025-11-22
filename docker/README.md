@@ -60,7 +60,7 @@ echo "$REBAR3_DOWNLOAD_SHA256  /Users/leeyi/Downloads/rebar3-3.22.1.tar.gz" | sh
 
 ## Dockerfile
 
-### Erlang 26
+### Erlang 28
 
 ```
 docker build --file "docker/imboy_Dockerfile_dev" -t imboy/otp26:0.5.0 .
@@ -80,14 +80,18 @@ make deps
 
 ```
 
-### PG15 / PG16 / PG17
+### PG18
 from  https://github.com/postgis/docker-postgis
 
 dev
 ```
-docker build --file "./docker/pg17_Dockerfile_dev" -t imboy/pg17:3.5.1.dev.3 .
+docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-1 .
 
-docker build --file "./docker/pg16_Dockerfile_dev" -t imboy/pg16:3.4.2.dev.7 .
+max_retries=50; retry_count=0; until docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1.-2 . || [ $retry_count -eq $max_retries ]; do retry_count=$((retry_count+1)); echo "构建失败，第 $retry_count 次重试..."; sleep 10; done
+
+
+// 导入文件中注意不要有 -- SELECT pg_catalog.set_config('search_path', '', false);
+docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_141046.sql
 
 ```
 
@@ -101,8 +105,6 @@ docker volume prune
 ## postgresql
 https://github.com/postgis/postgis Star 1.4K
 基于 https://github.com/postgis/docker-postgis
-
-https://github.com/postgis/docker-postgis/blob/master/15-3.4/Dockerfile
 
 ```
 mkdir -p /data/ && mkdir -p /data/docker/ && mkdir -p /data/docker/pgsql15data

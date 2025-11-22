@@ -46,6 +46,10 @@ migrate() ->
             {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{N}]} ->
                 % The version number is stored in the int4 type and ranges from -2,147,483,648 to 2,147,483,647
               list_to_integer(binary_to_list(N));
+            % 新增：处理 COALESCE(MAX(version), -1) 查询，列名为 "coalesce"
+            {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{null}]} -> -1;
+            {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{N}]} ->
+              list_to_integer(binary_to_list(N));
 
             {ok, [
               {column, <<"version">>, _, _, _, _, _},
@@ -53,6 +57,10 @@ migrate() ->
                 [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
             {ok, [{column, <<"max">>, _, _, _, _, _}], [{null}]} -> -1;
             {ok, [{column, <<"max">>, _, _, _, _, _}], [{N}]} ->
+              list_to_integer(binary_to_list(N));
+            % 新增：处理 COALESCE(MAX(version), -1) 查询的简化格式
+            {ok, [{column, <<"coalesce">>, _, _, _, _, _}], [{null}]} -> -1;
+            {ok, [{column, <<"coalesce">>, _, _, _, _, _}], [{N}]} ->
               list_to_integer(binary_to_list(N));
             {ok, _, _} -> ok;
             {ok, _} -> ok;
