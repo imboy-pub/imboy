@@ -87,7 +87,7 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = imboy_hasher:hmac_sha512(Plaintext, Salt),
     % io:format("~p~n", [Plaintext]),
     % io:format("~p~n", [Ciphertext2]),
-    % ?DEBUG_LOG([Plaintext, Salt, Ciphertext, Ciphertext2]),
+    % ?DEBUG_LOG([hmac_sha512, Plaintext, Salt, Ciphertext, Ciphertext2]),
     eq(Ciphertext, Ciphertext2).
 
 

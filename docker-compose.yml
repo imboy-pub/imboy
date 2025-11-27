@@ -3,7 +3,7 @@
 # docker compose -f docker-compose-pro.yml up -d
 services:
   imboy_pg18:
-    image: imboy/pg18:3.6.1-1
+    image: imboy/pg18:3.6.1-2
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
@@ -13,7 +13,6 @@ services:
       POSTGRES_USER: imboy_user
       POSTGRES_PASSWORD: V6uucUwhU9pUAYis
       POSTGRES_DB: imboy_v1
-      POSTGIS_VERSION: 3.6.1+dfsg-1.pgdg13+1
     volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
       # - "/data/docker/imboy_pg18:/var/lib/postgresql"
       - "./docker/imboy_pg18:/var/lib/postgresql"
@@ -27,6 +26,11 @@ services:
           memory: 4096M
     mem_limit: 4096M
     memswap_limit: 4g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
 
   # imboy_fastdfs:
   #   image: sjqzhang/go-fastdfs

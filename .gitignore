@@ -36,6 +36,7 @@ docker/pgsql15data
 docker/imboy_pg15
 imboy_v1.sql
 *pro*
+*dev*
 .pgsync.yml
 schema_diff.sql
 sys.dev.config

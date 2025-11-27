@@ -30,12 +30,12 @@ mkdir -p /data /data/imboy
 docker network create imboy-network
 ```
 
-3. 安装 postgresql17
+3. 安装 postgresql
 
 ```
 cd /www/wwwroot/imboy-api
-docker pull postgres:15-bullseye
-docker build --file "./docker/pg17_Dockerfile_dev" -t imboy/pg17:3.5.1.dev.1 .
+
+docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-1 .
 
 // 解决升级 timescaledb 后加载报错的问题
 psql -U imboy_user -d imboy_v1

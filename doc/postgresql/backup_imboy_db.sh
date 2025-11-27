@@ -41,6 +41,8 @@ if [ "$TYPE" == "dataonly" ]; then
     docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME \
         pg_dump -U $DB_USER -h localhost --data-only \
         --schema=public \
+        --no-comments \
+        --no-tablespaces \
         $EXCLUDE_DATA_STRING \
         $DB_NAME > $BACKUP_FILE
 else
@@ -48,14 +50,27 @@ else
     docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME \
         pg_dump -U $DB_USER -h localhost --schema-only \
         --schema=public \
+        --no-tablespaces \
         $EXCLUDE_DATA_STRING \
         $DB_NAME > $BACKUP_FILE
 
     docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME \
         pg_dump -U $DB_USER -h localhost --data-only \
         --schema=public \
+        --no-comments \
+        --no-tablespaces \
         $EXCLUDE_DATA_STRING \
         $DB_NAME >> $BACKUP_FILE
+fi
+
+# 移除不希望出现的 pg_catalog.set_config 配置语句
+if [ -f "$BACKUP_FILE" ]; then
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Removing unwanted pg_catalog.set_config statements..."
+
+    TMP_FILE="${BACKUP_FILE}.tmp"
+
+    awk '!/pg_catalog\.set_config/' "$BACKUP_FILE" > "$TMP_FILE" \
+        && mv "$TMP_FILE" "$BACKUP_FILE"
 fi
 
 if [ $? -eq 0 ]; then

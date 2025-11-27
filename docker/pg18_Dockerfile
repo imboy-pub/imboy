@@ -4,6 +4,7 @@
 #
 # 使用分阶段构建，生产环境镜像轻量化，只包含运行所需文件
 #
+# https://github.com/docker-library/postgres/blob/2925b19f45ceeb8ab8488eec226f2736abf297e1/18/trixie/Dockerfile
 # https://github.com/postgis/docker-postgis/blob/master/18-3.6/Dockerfile
 #
 # https://gitee.com/imboy-tripartite-deps/timescaledb.git
@@ -19,22 +20,24 @@
 
 #
 # 提示：请根据你实际的 Debian Trixie 环境检查和修改 BOOST_VER。
-ARG PG_VERSION=18
+ARG PG_MAJOR=18
 ARG BOOST_VER=1.83.0
 # pg_jieba 依赖的 ICU 库版本
 ARG ICU_VER=76
+# PostGIS 版本定义 - 统一在此设置，可在构建时通过 --build-arg 覆盖
+ARG POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1
 
 # ==========================================
 # 第一阶段: Builder (编译阶段)
 # ==========================================
-FROM postgres:${PG_VERSION}-trixie AS builder
+FROM postgres:${PG_MAJOR}-trixie AS builder
 
-ARG PG_VERSION
+ARG PG_MAJOR
+ARG POSTGIS_VERSION
 LABEL stage=builder
 
 # ---------- 环境变量定义 ----------
 ENV POSTGIS_MAJOR=3 \
-    POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1 \
     TIMESCALEDB_VERSION=2.23.1 \
     PGROUTING_VERSION=v4.0.0 \
     PG_ROARINGBITMAP_VERSION=v1.1.0
@@ -44,19 +47,19 @@ ENV POSTGIS_MAJOR=3 \
 RUN set -ex \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        postgresql-server-dev-${PG_VERSION} \
+        postgresql-server-dev-${PG_MAJOR} \
         build-essential libpq-dev cmake git ca-certificates pkg-config \
         libicu-dev \
         # Boost 开发库 (编译 pgRouting 需要)
         libboost-graph-dev libboost-system-dev libboost-thread-dev \
         libboost-program-options-dev libboost-date-time-dev libboost-atomic-dev \
         # PostgreSQL 扩展依赖
-        postgresql-${PG_VERSION}-pgvector \
-        postgresql-${PG_VERSION}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
-        postgresql-${PG_VERSION}-postgis-${POSTGIS_MAJOR}-scripts \
+        postgresql-${PG_MAJOR}-pgvector \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts \
     && rm -rf /var/lib/apt/lists/*
 
-# (TimescaleDB, pg_roaringbitmap, pg_jieba, pgRouting 编译步骤保持不变，这里省略以保持简洁，但实际文件需包含)
+# 编译步骤保持: TimescaleDB, pg_roaringbitmap, pg_jieba, pgRouting
 
 # --- TimescaleDB 编译 ---
 RUN set -ex \
@@ -97,13 +100,13 @@ RUN set -ex \
 # ==========================================
 # 第二阶段: Runtime (生产环境 - 极简)
 # ==========================================
-FROM postgres:${PG_VERSION}-trixie
+FROM postgres:${PG_MAJOR}-trixie
 
-ARG PG_VERSION
+ARG PG_MAJOR
 ARG BOOST_VER
 ARG ICU_VER
 ARG POSTGIS_MAJOR=3
-ARG POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1
+ARG POSTGIS_VERSION
 
 LABEL stage=runtime
 
@@ -114,9 +117,9 @@ RUN set -ex \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         # PostGIS / pgVector (Runtime)
-        postgresql-${PG_VERSION}-pgvector \
-        postgresql-${PG_VERSION}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
-        postgresql-${PG_VERSION}-postgis-${POSTGIS_MAJOR}-scripts \
+        postgresql-${PG_MAJOR}-pgvector \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts \
         # ICU 运行时库 (pg_jieba 依赖)
         libicu${ICU_VER} \
         # Boost 运行时动态库 (大幅减小体积!)
@@ -131,16 +134,20 @@ RUN set -ex \
 
 # ---------- 从 Builder 阶段复制文件 (修正 tsearch_data 缺失) ----------
 # 1. 复制 .so 动态库
-COPY --from=builder /usr/lib/postgresql/${PG_VERSION}/lib/ /usr/lib/postgresql/${PG_VERSION}/lib/
+COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/ /usr/lib/postgresql/${PG_MAJOR}/lib/
 # 2. 复制 extension 控制文件 (.control, .sql)
-COPY --from=builder /usr/share/postgresql/${PG_VERSION}/extension/ /usr/share/postgresql/${PG_VERSION}/extension/
+COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/extension/ /usr/share/postgresql/${PG_MAJOR}/extension/
 # 3. [修正] 复制 pg_jieba 的基础词典数据 (重要!)
-COPY --from=builder /usr/share/postgresql/${PG_VERSION}/tsearch_data/ /usr/share/postgresql/${PG_VERSION}/tsearch_data/
+COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/tsearch_data/ /usr/share/postgresql/${PG_MAJOR}/tsearch_data/
 
 # ---------- 配置用户自定义文件 ----------
-COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/${PG_VERSION}/tsearch_data/jieba_user.dict
+COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/${PG_MAJOR}/tsearch_data/jieba_user.dict
 COPY ./docker/pg-initdb-imboy.sh /docker-entrypoint-initdb.d/10_init.sh
 COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/20_update.sh
+
+# ---------- 设置运行时环境变量 ----------
+# 从顶层 ARG 继承，确保容器运行时和初始化脚本可用
+ENV POSTGIS_VERSION=${POSTGIS_VERSION}
 
 # ---------- 运行时权限和环境设置 ----------
 RUN set -ex \

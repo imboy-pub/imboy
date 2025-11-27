@@ -85,13 +85,16 @@ from  https://github.com/postgis/docker-postgis
 
 dev
 ```
-docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-1 .
+docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-2 .
 
-max_retries=50; retry_count=0; until docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1.-2 . || [ $retry_count -eq $max_retries ]; do retry_count=$((retry_count+1)); echo "构建失败，第 $retry_count 次重试..."; sleep 10; done
+max_retries=50; retry_count=0; until docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-1 . || [ $retry_count -eq $max_retries ]; do retry_count=$((retry_count+1)); echo "构建失败，第 $retry_count 次重试..."; sleep 10; done
 
 
 // 导入文件中注意不要有 -- SELECT pg_catalog.set_config('search_path', '', false);
+
 docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_141046.sql
+
+docker exec -i dev_imboy_pg18 psql -U imboy_user -d imboy_dev < /data/backup/imboy_db/imboy_backup_20251126_161728.sql
 
 ```
 

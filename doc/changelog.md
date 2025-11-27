@@ -1,3 +1,6 @@
+# HEAD
+*
+
 # 0.7.0
 feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 
