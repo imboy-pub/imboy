@@ -52,7 +52,10 @@ is_email(Email) ->
     end.
 
 
-%% 生成Len位随机数
+%% @doc 生成指定位数的随机数
+%% @param Len 随机数的位数
+%% @returns 生成的随机数
+-spec num_random(pos_integer()) -> pos_integer().
 num_random(Len) ->
     Prefix = rand:uniform(9),
     MinNum = round(math:pow(10, Len - 1)),
@@ -66,13 +69,23 @@ num_random(Len) ->
     end.
 
 
-% imboy_func:send_email(<<"leeyisoft@icloud.com">>, <<"你的验证码为： 12345，10分钟后过期。"/utf8>>).
--spec send_email(binary(), binary()) -> {ok, pid()}.
+%% @doc 发送邮件，只有主题
+%% @param ToEmail 收件人邮箱地址
+%% @param Subject 邮件主题
+%% @returns {ok, success}
+%% 示例: imboy_func:send_email(<<"leeyisoft@icloud.com">>, <<"你的验证码为： 12345，10分钟后过期。"/utf8>>)
+-spec send_email(binary(), binary() | list()) -> {ok, success}.
 send_email(ToEmail, Subject) when is_list(Subject) ->
     send_email(ToEmail, ec_cnv:to_binary(Subject));
 send_email(ToEmail, Subject) ->
     send_email(ToEmail, Subject, <<>>).
 
+%% @doc 发送邮件，包含主题和正文
+%% @param ToEmail 收件人邮箱地址
+%% @param Subject 邮件主题
+%% @param Body 邮件正文
+%% @returns {ok, success}
+-spec send_email(binary(), binary(), binary()) -> {ok, success}.
 send_email(ToEmail, Subject, Body) ->
     Option = config_ds:env(smtp_option),
     Username = proplists:get_value(username, Option),
@@ -106,5 +119,9 @@ send_email(ToEmail, Subject, Body) ->
 %                      Option).
 
 
+%% @doc 检查变量是否为属性列表格式
+%% @param Var 要检查的变量
+%% @returns true 如果是属性列表，否则返回 false
+-spec is_proplist(any()) -> boolean().
 is_proplist(Var) ->
     is_list(Var) andalso lists:all(fun({_, _}) -> true; (_) -> false end, Var).

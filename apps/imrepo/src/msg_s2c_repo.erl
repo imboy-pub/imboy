@@ -1,6 +1,7 @@
 -module(msg_s2c_repo).
 %%%
 % msg_s2c_repo 是 msg_s2c repository 缩写
+% 系统到用户消息数据仓库层，提供S2C消息的基础数据库操作
 %%%
 
 -include_lib("imlib/include/log.hrl").
@@ -9,14 +10,20 @@
 -export([read_msg/4]).
 -export([write_msg/6]).
 -export([delete_msg/1]).
+-export([delete_msg/2]).
 -export([count_by_to_id/1]).
+-export([delete_by_to_id/1]).
+-export([delete_by_msg_id_and_to_id/2]).
+-export([delete_by_msg_ids_and_to_id/2]).
 -export([delete_overflow_msg/2]).
 
 %% ===================================================================
-%% API
+%% API functions
 %% ===================================================================
 
-
+%% @doc 获取S2C消息表的表名
+%% @return 返回S2C消息表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"msg_s2c">>).
 
@@ -79,6 +86,25 @@ delete_overflow_msg(ToUid, Limit) ->
             [ delete_msg(Id) || {Id} <- Rows ],
             ok
     end.
+
+% 删除用户的所有系统消息
+delete_by_to_id(ToUid) ->
+    Where = <<"WHERE to_id = $1">>,
+    delete_msg(Where, ToUid).
+
+% 根据消息ID和接收者ID删除特定系统消息
+delete_by_msg_id_and_to_id(MsgId, ToUid) ->
+    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
+    delete_msg(Where, [MsgId, ToUid]).
+
+% 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
+    % 构建占位符字符串 ($1, $2, $3, ...)
+    Placeholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]),
+    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
+    delete_msg(Where, MsgIds ++ [ToUid]);
+delete_by_msg_ids_and_to_id([], _ToUid) ->
+    {ok, 0}.
 
 %% ===================================================================
 %% Internal Function Definitions

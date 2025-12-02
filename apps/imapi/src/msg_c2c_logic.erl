@@ -10,8 +10,6 @@
 -export([c2c_edit/3]).
 -export([c2c_edit_ack/3]).
 
--export([check_msg/3]).
-
 -include_lib("imlib/include/chat.hrl").
 -include_lib("imlib/include/log.hrl").
 
@@ -76,7 +74,7 @@ c2c(MsgId, CurrentUid, Data) ->
 -spec c2c_client_ack(binary(), integer(), binary()) -> ok.
 c2c_client_ack(MsgId, CurrentUid, _DID) ->
     Column = <<"id">>,
-    Where = <<"WHERE msg_id = '", (ec_cnv:to_binary(MsgId))/binary,"' AND to_id = ", (ec_cnv:to_binary(CurrentUid))/binary>>,
+    Where = <<"msg_id = '", (ec_cnv:to_binary(MsgId))/binary,"' AND to_id = ", (ec_cnv:to_binary(CurrentUid))/binary>>,
     {ok, _CList, Rows} = msg_c2c_repo:read_msg(Where, Column, 1),
     [msg_c2c_repo:delete_msg(Id) || {Id} <- Rows],
     ok.
@@ -214,43 +212,6 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
     % 这里可以添加数据库更新逻辑
     ok.
 
-%% 检查离线消息
-% 单聊离线消息，每个离线用户的消息获取10条（差不多一屏幕多），如果多于10条，再返回消除总数量
-%%
-check_msg(Uid, Pid, _DID) ->
-    % ?DEBUG_LOG(["msg_c2c_logic/check_msg/2", Uid, Pid]),
-    case msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT) of
-        [] ->
-            ok;
-        MsgsC2C ->
-            % 发送C2C离线消息
-            sent_offline_msg(Pid, <<"C2C">>, MsgsC2C, 0)
-    end,
-    ok.
-
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
-
-sent_offline_msg(_Pid, _Type, [], _Index) ->
-    ok;
-sent_offline_msg(Pid, Type, [Row | Tail], Index) ->
-    {<<"msg_id">>, MsgId} = lists:keyfind(<<"msg_id">>, 1, Row),
-    {<<"from_id">>, FromId} = lists:keyfind(<<"from_id">>, 1, Row),
-    {<<"to_id">>, ToId} = lists:keyfind(<<"to_id">>, 1, Row),
-    {<<"payload">>, Payload} = lists:keyfind(<<"payload">>, 1, Row),
-    Row2 = imboy_cnv:convert_at_timestamps(Row),
-    % ?DEBUG_LOG(["Row", Row, "; Payload: ", Payload]),
-    Delay = 100 + Index * 100,
-    Msg = [{<<"id">>, MsgId},
-           {<<"type">>, Type},
-           {<<"from">>, imboy_hashids:encode(FromId)},
-           {<<"to">>, imboy_hashids:encode(ToId)},
-           {<<"payload">>, jsone:decode(Payload, [{object_format, proplist}])},
-           lists:keyfind(<<"created_at">>, 1, Row2),
-           lists:keyfind(<<"server_ts">>, 1, Row2)],
-    % ?DEBUG_LOG([Delay, "Msg: ", Msg]),
-    erlang:start_timer(Delay, Pid, jsone:encode(Msg, [native_utf8])),
-    sent_offline_msg(Pid, Type, Tail, Index + 1).

@@ -150,10 +150,10 @@ add(Uid, <<"2">>, ObjectId, Tag) ->
 %% ===================================================================-
 
 
+-spec do_add(binary(), any(), any(), any()) -> ok.
 do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(Scene, Uid, integer_to_binary(ObjectId), Tag);
 
-% Tag = [] 移除特定对象的标签
 do_add(Scene, Uid, ObjectId, []) ->
     Uid2 = integer_to_binary(Uid),
     imboy_db:with_transaction(fun(Conn) ->
@@ -172,14 +172,14 @@ do_add(Scene, Uid, ObjectId, []) ->
                                       % imboy_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
                                       % epgsql:equery(Conn, Sql),
                                       %% 使用封装的执行接口，避免直接依赖 epgsql
-                                      ok = imboy_db:execute(Conn, Sql, []),
+                                      {ok, _} = imboy_db:execute(Conn, Sql, []),
 
                                        % 删除 public.user_tag_relation
                                        delete_object_tag(Conn, Scene, Uid2, ObjectId),
                                       ok
                               end),
     ok;
-%
+
 do_add(Scene, Uid, ObjectId, Tag) ->
     % check public.user_tag
     % {ok,[<<"id">>,<<"name">>],[{1,<<"a">>},{4,<<"b">>}]}
@@ -231,6 +231,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
 
 
 % 删除 public.user_tag_relation
+-spec delete_object_tag(any(), binary(), binary(), binary()) -> ok.
 delete_object_tag(Conn, Scene, Uid, ObjectId) ->
     DelTb = user_tag_relation_repo:tablename(),
     DelWhere = <<"scene = ", Scene/binary, " AND user_id = ", Uid/binary, " AND object_id = '", ObjectId/binary, "'">>,
@@ -245,7 +246,7 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
     % {ok, Stmt} = epgsql:parse(Conn, DelSql),
     % epgsql:execute_batch(Conn, [{Stmt, []}]),
     %% 使用封装的执行接口
-    ok = imboy_db:execute(Conn, DelSql, []),
+    {ok, _} = imboy_db:execute(Conn, DelSql, []),
      % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
      % imboy_log:error(io_lib:format("user_tag_relation_repo:delete_object_tag/4 Res:~p ~n", [Res])),
 

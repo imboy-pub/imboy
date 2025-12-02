@@ -164,7 +164,8 @@ config_ds:set(<<"upload_url">>, <<"https://a.imboy.pub">>).
 config_ds:set(<<"upload_key">>, <<"">>).
 config_ds:set(<<"upload_scene">>, <<"dev">>).
 config_ds:set(<<"ws_url">>, <<"wss://dev.imboy.pub/ws/">>).
-config_ds:set(<<"ws_url">>, <<"ws://192.168.31.110:9800/ws/">>).
+# config_ds:set(<<"ws_url">>, <<"ws://192.168.31.110:9800/ws/">>).
+# config_ds:set(<<"ws_url">>, <<"ws://172.20.10.3:9800/ws/">>).
 config_ds:set(<<"ws_url">>, <<"ws://api.imboy.local/ws/">>).
 
 config_ds:set(<<"eturnal_secret">>, "").

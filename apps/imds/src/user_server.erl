@@ -8,6 +8,14 @@
 %%%
 -behaviour(gen_server).
 
+%% Types
+-type user_id() :: integer() | binary().
+-type device_id() :: binary().
+-type device_type() :: binary().
+-type chat_state() :: binary().
+-type timestamp() :: integer().
+-type gen_server_state() :: any().
+
 %% API.
 -export([start_link/0]).
 -export([stop/0]).
@@ -32,11 +40,17 @@
 %% ===================================================================
 
 
--spec start_link() -> {ok, pid()}.
+%% @doc 启动用户服务器
+%% 启动一个本地注册的gen_server进程来处理用户相关的异步操作。
+%% @returns 成功返回{ok, Pid}，失败返回错误信息
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
+%% @doc 停止用户服务器
+%% 停止用户服务器进程，终止所有异步操作。
+%% @returns 停止结果
 -spec stop() -> stopped.
 stop() ->
     gen_server:call(?MODULE, stop).
@@ -45,7 +59,10 @@ stop() ->
 %% gen_server.
 
 
--spec init([]) -> {ok, []}.
+%% @doc 初始化用户服务器
+%% 初始化gen_server的状态数据。
+%% @returns 成功返回{ok, State}，State为空列表
+-spec init([]) -> {ok, gen_server_state()}.
 init([]) ->
     {ok, []}.
 
@@ -59,7 +76,6 @@ handle_call(Request, From, State) ->
 
 
 % 异步处理请求
-
 
 % 用户注册成功后的逻辑处理
 handle_cast({signup_success, _Uid, _PostVals}, State) ->
@@ -78,15 +94,20 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
     user_device_repo:save(Now, Uid2, DID, PostVals),
     user_repo:update_friends_last_seen_at(Uid2, Now),
+    % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息
+    message_ds:check_and_notify_offline_msgs(Uid2),
+
     % 记录设备信息 END
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
-handle_cast({ws_online, Uid, _DType, DID}, State) ->
-    % ?DEBUG_LOG([handle_cast, ws_online, Uid, DType, DID, State]),
+handle_cast({ws_online, Uid, _Pid, _DType, DID}, State) ->
+    % ?DEBUG_LOG([handle_cast, ws_online, Uid, Pid, DType, DID, State]),
     % 更新 最近活跃时间
     Set = <<"last_active_at = $1::timestamptz">>,
     SetArgs = [imboy_dt:now()],
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
+    % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息
+    message_ds:check_and_notify_offline_msgs(imboy_hashids:decode(Uid)),
     {noreply, State, hibernate};
 
 handle_cast({notice_friend, Uid, ToState}, State) ->
@@ -100,7 +121,7 @@ handle_cast({offline, Uid, _Pid, DID}, State) ->
 handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
     cancel(Uid, CreatedAt, Opt),
     {noreply, State, hibernate};
-handle_cast({online, Uid, Pid, DID}, State) ->
+handle_cast({online, Uid, _Pid, DID}, State) ->
     % ?DEBUG_LOG([online, Uid, Pid, State, DID]),
     DName = user_device_logic:device_name(Uid, DID),
     % 在其他设备登录了
@@ -123,12 +144,6 @@ handle_cast({online, Uid, Pid, DID}, State) ->
         true ->
             ok
     end,
-    % ?DEBUG_LOG(["before check_msg/2",Uid, Pid, State]),
-    % 检查 S2C C2C 离线消息
-    msg_s2c_logic:check_msg(Uid, Pid, DID),
-    msg_c2c_logic:check_msg(Uid, Pid, DID),
-    % 检查群聊离线消息
-    msg_c2g_logic:check_msg(Uid, Pid, DID),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
@@ -136,6 +151,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 
+-spec handle_info(any(), any()) -> {noreply, any()}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -145,11 +161,16 @@ terminate(_Reason, _State) ->
     ok.
 
 
+-spec code_change(any(), any(), any()) -> {ok, any()}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-
-%% 切换在线状态 异步通知好友
+%% @doc 异步通知好友状态变更
+%% 异步发送通知给用户的所有好友，告知用户状态变更。
+%% @param CurrentUid 当前用户ID
+%% @param ChatState 聊天状态（如online、offline、hide等）
+%% @returns ok
+-spec cast_notice_friend(user_id(), chat_state()) -> ok.
 cast_notice_friend(CurrentUid, ChatState) ->
     gen_server:cast(?MODULE, {notice_friend, CurrentUid, ChatState}),
     ok.
@@ -157,20 +178,39 @@ cast_notice_friend(CurrentUid, ChatState) ->
 
 %% 检查消息 用异步队列实现
 
-%% ws 上线后的异步操作 例如检查离线消息等
--spec cast_online(binary(), pid(), binary(), binary()) -> ok.
+%% @doc WebSocket上线异步处理
+%% 处理用户WebSocket连接上线后的异步操作，如检查离线消息、
+%% 更新设备信息、通知好友等。
+%% @param Uid 用户ID
+%% @param Pid WebSocket连接进程PID
+%% @param DID 设备ID
+%% @param DType 设备类型
+%% @returns ok
+-spec cast_online(user_id(), pid(), device_id(), device_type()) -> ok.
 cast_online(Uid, Pid, DID, DType) ->
-    gen_server:cast(?MODULE, {ws_online, Uid, DType, DID}),
+    gen_server:cast(?MODULE, {ws_online, Uid, Pid, DType, DID}),
     gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
     ok.
 
-
-%% 检查离线消息 用异步队列实现
+%% @doc 用户下线异步处理
+%% 处理用户下线后的异步操作，如通知好友等。
+%% @param Uid 用户ID
+%% @param Pid 下线的进程PID
+%% @param DID 设备ID
+%% @returns ok
+-spec cast_offline(user_id(), pid(), device_id()) -> ok.
 cast_offline(Uid, Pid, DID) ->
     gen_server:cast(?MODULE, {offline, Uid, Pid, DID}),
     ok.
 
-%% 异步注销用户
+%% @doc 异步注销用户
+%% 异步处理用户注销，删除用户相关数据并通知好友。
+%% 会清理用户的所有关联数据，包括好友关系、设备信息等。
+%% @param Uid 用户ID
+%% @param CreatedAt 注销时间戳
+%% @param Opt 客户端选项信息
+%% @returns ok
+-spec cast_cancel(user_id(), timestamp(), map()) -> ok.
 cast_cancel(Uid, CreatedAt, Opt) ->
     gen_server:cast(?MODULE, {cancel, Uid, CreatedAt, Opt}),
     ok.
@@ -179,15 +219,16 @@ cast_cancel(Uid, CreatedAt, Opt) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+-spec cancel(any(), any(), any()) -> ok.
 cancel(Uid, CreatedAt, Opt) ->
     User = user_repo:find_by_id(Uid, <<"*">>),
     Setting = user_setting_ds:find_by_uid(Uid),
     imboy_db:with_transaction(fun(Conn) ->
-        {ok, Body} = jsone_encode:encode(#{
+        Body = jsone:encode(#{
             <<"user">> => User,
             <<"setting">> => Setting,
             <<"client_opt">> => Opt
-        }, [native_utf8]),
+        }),
         user_log_repo:add(Conn, #{
             % 日志类型: 100 用户注销备份
             type => 100,
@@ -269,3 +310,4 @@ notice_friend(Uid, State) ->
     ToUidLi = friend_ds:list_by_uid(Uid),
     msg_s2c_ds:send(Uid, State, ToUidLi, no_save),
     ok.
+

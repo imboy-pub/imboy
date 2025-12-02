@@ -5,6 +5,12 @@
 -export([stop/1]).
 
 
+%% @doc 启动管理后台应用
+%% 初始化验证码 ETS 表、配置路由、启动 Cowboy 监听器和监督者
+%% @param Type 启动类型（通常为 normal）
+%% @param Args 启动参数
+%% @return {ok, Pid} | {error, Reason} 启动结果
+-spec start(atom(), any()) -> {ok, pid()} | {error, any()}.
 start(_Type, _Args) ->
     simple_captcha_ets:init(),
     Routes = [
@@ -56,11 +62,21 @@ start(_Type, _Args) ->
     imadm_sup:start_link().
 
 
+%% @doc 停止管理后台应用
+%% 停止 Cowboy 监听器并清理资源
+%% @param State 应用状态
+%% @return ok 停止成功标识
+-spec stop(any()) -> ok.
 stop(_State) ->
     cowboy:stop_listener(imadm_listener),
     ok.
 
 
+%% @doc 启动明文 HTTP 监听器
+%% 配置并启动 Cowboy HTTP 监听器
+%% @param ProtoOpts 协议选项配置
+%% @param Port 监听端口号
+%% @return {ok, Pid} | {error, Reason} 启动结果
 -spec start_clear(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_clear(ProtoOpts, Port) ->
     cowboy:start_clear(imadm_listener, [{port, Port}], ProtoOpts).

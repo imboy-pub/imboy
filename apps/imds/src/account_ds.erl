@@ -10,6 +10,12 @@
 -export([allocate/0]).
 -export([safe_get_max_account_id/0]).
 
+
+%% @doc 初始化账户ID序列
+%% 创建账户ID序列，如果序列不存在则创建并设置起始值为50000。
+%% 使用public模式显式创建序列，避免受search_path影响。
+-spec init() -> ok.
+
 -define(ACCOUNT_SEQ, <<"public.imboy_account_id_seq">>).
 -define(ACCOUNT_ID_CACHE_TTL, 8640000).  % 100天
 % -define(BATCH_SIZE, 10).  % 每次从数据库获取的ID数量
@@ -21,7 +27,10 @@ init() ->
     ok.
 
 %% @doc 分配一个账户ID
-% account_ds:allocate().
+%% 从缓存或数据库中分配一个唯一的账户ID。
+%% 使用Depcache的get_wait机制避免竞争条件，确保ID的唯一性。
+%% 当缓存为空或数据库无法获取ID时，返回{error, no_ids}。
+-spec allocate() -> {ok, non_neg_integer()} | {error, term() | no_ids}.
 allocate() ->
     Key = {local_cache, account_list},
     % 使用 Depcache 的 get_wait 机制避免竞争条件
@@ -68,12 +77,20 @@ allocate() ->
 %%% Internal functions
 %%%===================================================================
 
-% account_ds:safe_get_max_account_id().
-%% @doc 从序列中批量申请 10 个 ID；为避免 search_path 异常，使用 public 前缀。
+%% @doc 从序列中批量申请 10 个 ID
+%% 使用public模式显式访问序列，避免search_path异常。
+%% 返回随机排序的ID列表，避免连续分配。
+%% @returns 账户ID列表或空列表
+-spec safe_get_max_account_id() -> [non_neg_integer()].
 safe_get_max_account_id() ->
     Q = <<"SELECT nextval('", ?ACCOUNT_SEQ/binary, "') FROM generate_series(1, 10);">>,
     Res = imboy_db:list(Q),
     create_rand_list(Res).
 
+%% @doc 创建随机排序的ID列表
+%% 为避免连续分配ID导致的安全问题，对ID列表进行随机排序。
+%% @param List 数据库查询返回的原始ID列表
+%% @returns 随机排序后的ID列表
+-spec create_rand_list([{non_neg_integer()}]) -> [non_neg_integer()].
 create_rand_list(List) ->
     [X || {_,X} <- lists:sort([{rand:uniform(), N} || {N} <- List])].

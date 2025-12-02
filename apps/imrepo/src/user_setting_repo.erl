@@ -1,6 +1,7 @@
 -module(user_setting_repo).
 %%%
 % user_setting_repo 是 user_setting repository 缩写
+% 用户设置数据仓库层，提供用户设置信息的基础数据库操作
 %%%
 
 -include_lib("imlib/include/log.hrl").
@@ -9,10 +10,13 @@
 -export([find_by_uid/2]).
 -export([update/2]).
 
+%% ===================================================================
+%% API functions
+%% ===================================================================
 
-%% ===================================================================
-%% API
-%% ===================================================================
+%% @doc 获取用户设置表的表名
+%% @return 返回用户设置表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"user_setting">>).
 

@@ -32,6 +32,7 @@ tablename() ->
     imboy_db:public_tablename(<<"user_tag_relation">>).
 
 
+-spec delete(binary(), any(), any()) -> any().
 delete(Scene, Uid, ObjectId) when is_integer(Uid) ->
     delete(Scene, integer_to_binary(Uid), ObjectId);
 delete(Scene, Uid, ObjectId) when is_integer(ObjectId) ->
@@ -45,6 +46,7 @@ delete(Scene, Uid, ObjectId) ->
     imboy_db:query(DelSql, []).
 
 
+-spec remove_user_tag_relation(any(), binary(), binary(), binary(), binary()) -> ok.
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     Tb = tablename(),
     % uk_user_tag_relation_Scene_UserId_ObjectId_TagId
@@ -54,10 +56,11 @@ remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     imboy_log:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 DelSql ~p, ~p; ~n",
                                  [DelSql, [Uid, TagId]])),
     %% 使用数据库封装接口执行，避免直接依赖驱动
-    ok = imboy_db:execute(Conn, DelSql, []),
+    {ok, _} = imboy_db:execute(Conn, DelSql, []),
      ok.
 
 
+-spec replace_object_tag(any(), binary(), binary(), any(), binary(), binary()) -> ok.
 replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) when is_integer(ObjectId) ->
     replace_object_tag(Conn, Scene, Uid2, integer_to_binary(ObjectId), FromName, ToName);
 replace_object_tag(Conn, Scene, Uid2, ObjectId, FromName, ToName) ->
@@ -170,6 +173,7 @@ save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
 % user_tag_relation_repo:select_tag(<<"scene = $1 AND name = any($2)">>, [2, <<"['a', 'b']">>], <<"id, name">>).
 % user_tag_relation_repo:select_tag(<<"scene = $1 AND name = any(string_to_array($2, ','))">>, [2, "a,b"], <<"id, name">>).
 % {ok,[<<"id">>,<<"name">>],[{1,<<"a">>},{4,<<"b">>}]}
+-spec select_tag(binary(), list(), binary()) -> any().
 select_tag(Where, WhereArgs, Column) ->
     Tb = imboy_db:public_tablename(<<"user_tag">>),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
@@ -177,6 +181,7 @@ select_tag(Where, WhereArgs, Column) ->
     imboy_db:query(Sql, WhereArgs).
 
 
+-spec select_user_tag_relation(binary(), list(), binary()) -> any().
 select_user_tag_relation(Where, WhereArgs, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
@@ -184,6 +189,7 @@ select_user_tag_relation(Where, WhereArgs, Column) ->
     imboy_db:query(Sql, WhereArgs).
 
 
+-spec tag_subtitle(binary(), any(), any()) -> binary().
 tag_subtitle(S, TagId, Count) when is_integer(TagId) ->
     tag_subtitle(S, integer_to_binary(TagId), Count);
 tag_subtitle(<<"1">>, _TagId, _Count) ->
@@ -216,6 +222,7 @@ tag_subtitle(<<"2">>, TagId, _Count) ->
 
 
 % user_tag_relation_repo:flush_subtitle()
+-spec flush_subtitle(any()) -> ok.
 flush_subtitle(TagId) ->
     Key = imboy_cnv:implode("_", ["tag_subtitle_2", TagId]),
     imboy_cache:flush(Key).

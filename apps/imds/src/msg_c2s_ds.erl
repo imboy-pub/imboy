@@ -9,13 +9,23 @@
 -export([write_topic/6]).
 -export([write_msg/2]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
 
+%% @doc 写入消息主题
+%%
+%% 创建或更新客户端到服务端的消息主题，用于分类和管理消息
+%%
+%% @param Type 消息类型，通常为 <<"C2S">>
+%% @param TopicId 主题ID
+%% @param Uid 用户ID
+%% @param To 接收方标识
+%% @param Title 主题标题
+%% @param CreatedAt 创建时间戳
+%% @returns ok 表示操作成功
 % msg_c2s_ds:write_topic(1, #{}).
--spec write_topic(binary(), binary(), integer(), binary(), Title::binary(), integer()) -> ok.
+-spec write_topic(binary(), binary(), integer(), binary(), binary(), integer()) -> ok.
 write_topic(<<"C2S">>, _, _, _, <<>>, _) ->
     ok;
 write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAt) ->
@@ -41,9 +51,14 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAt) ->
             ok
     end.
 
-
+%% @doc 存储客户端到服务端的消息
+%%
+%% 将消息存储到数据库中，避免重复存储相同的消息ID
+%%
+%% @param MsgId 消息ID
+%% @param Data 消息数据映射
+%% @returns any() 数据库操作结果
 -spec write_msg(binary(), map()) -> any().
-%% 存储消息
 write_msg(MsgId, Data) ->
     Tb = <<"msg_c2s">>,
     Where = <<"msg_id = '", MsgId/binary, "'">>,

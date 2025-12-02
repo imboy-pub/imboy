@@ -1,6 +1,9 @@
 -module(imboy_db).
 
 
+%% 数据库操作模块 - 提供高级数据库访问接口
+%% 支持 PostgreSQL 数据库，包含查询、更新、事务、分页等功能
+
 -export([pluck/2]).
 -export([pluck/3]).
 -export([pluck/4]).
@@ -66,31 +69,12 @@ with_transaction(F, Opts0, RetriesLeft, Delay) ->
         RetriesLeft,
         Delay).
 
-% imboy_db:pluck(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, <<"">>).
-% imboy_db:pluck(<<"adm_user">>, <<>>, <<"count(*) as count">>, 0).
-% imboy_db:pluck(<<"user">>, <<"1=1">>, <<"count(*) as count">>, 0).
-
-% pluck(<<"public.", Tb/binary>>, Field, Default) ->
-%     pluck(Tb, Field, Default);
-pluck(Tb, Field, Default) ->
-    Tb2 = public_tablename(Tb),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
-    % ?DEBUG_LOG([pluck, Sql]),
-    pluck(Sql, Default).
-
-
-pluck(Tb, <<>>, Field, Default) ->
-    Tb2 = public_tablename(Tb),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
-    % ?DEBUG_LOG([pluck, Sql]),
-    pluck(Sql, Default);
-pluck(Tb, Where, Field, Default) ->
-    Tb2 = public_tablename(Tb),
-    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
-    % ?DEBUG_LOG([pluck, Sql]),
-    pluck(Sql, Default).
-
-
+%% @doc 执行 SQL 查询并返回第一行的第一个字段值
+%% @param Query 完整的 SQL 查询语句（不包含 SELECT）
+%% @param Default 默认值
+%% @returns 查询结果或默认值
+%% 示例: imboy_db:pluck(<<"to_tsquery('jiebacfg', '软件中国')">>, <<>>)
+-spec pluck(binary(), any()) -> any().
 pluck(<<"SELECT ", Query/binary>>, Default) ->
     pluck(Query, Default);
 pluck(Query, Default) ->
@@ -108,14 +92,64 @@ pluck(Query, Default) ->
             Default
       end.
 
+
+%% @doc 从指定表查询字段值，无 WHERE 条件
+%% @param Tb 表名
+%% @param Field 要查询的字段
+%% @param Default 默认值
+%% @returns 查询结果或默认值
+%% 示例: imboy_db:pluck(<<"adm_user">>, <<>>, <<"count(*) as count">>, 0)
+-spec pluck(binary(), binary(), any()) -> any().
+pluck(Tb, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
+    % ?DEBUG_LOG([pluck, Sql]),
+    pluck(Sql, Default).
+
+
+%% @doc 从指定表查询字段值，支持 WHERE 条件
+%% @param Tb 表名
+%% @param Where WHERE 条件，空二进制表示无条件
+%% @param Field 要查询的字段
+%% @param Default 默认值
+%% @returns 查询结果或默认值
+%% 示例: imboy_db:pluck(<<"user">>, <<"1=1">>, <<"count(*) as count">>, 0)
+-spec pluck(binary(), binary(), binary(), any()) -> any().
+pluck(Tb, <<>>, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary>>,
+    % ?DEBUG_LOG([pluck, Sql]),
+    pluck(Sql, Default);
+pluck(Tb, Where, Field, Default) ->
+    Tb2 = public_tablename(Tb),
+    Sql = <<"SELECT ", Field/binary, " FROM ", Tb2/binary, " WHERE ", Where/binary>>,
+    % ?DEBUG_LOG([pluck, Sql]),
+    pluck(Sql, Default).
+
+%% @doc 查找表中单条记录，支持排序条件
+%% @param Tb 表名
+%% @param Where WHERE 条件
+%% @param OrderBy 排序条件
+%% @param Column 要查询的列
+%% @returns 包含查询结果的 map 或空 map
+-spec find(binary(), binary(), binary(), binary()) -> map().
 find(Tb, Where, OrderBy, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ", OrderBy/binary, " LIMIT 1">>,
     % ?DEBUG_LOG([find, Sql]),
     find(Sql).
 
+%% @doc 执行查询并返回第一条记录的 map 格式
+%% @param Sql SQL 查询语句
+%% @returns 包含查询结果的 map 或空 map
+-spec find(binary()) -> map().
 find(Sql) ->
     find(Sql, []).
 
+%% @doc 执行带参数的查询并返回第一条记录的 map 格式
+%% @param Sql SQL 查询语句
+%% @param Params 查询参数列表
+%% @returns 包含查询结果的 map 或空 map
+-spec find(binary(), list()) -> map().
 find(Sql, Params) ->
     find_resp_map(imboy_db:query(Sql, Params)).
 
@@ -132,7 +166,11 @@ page(Page, Size, Tb, Where, OrderBy, Column) when Page > 0 ->
         Column),
     imboy_response:page_payload(Total, Page, Size, Items).
 
--spec count_for_where(binary(), binary()) -> binary().
+%% @doc 统计满足条件的记录数
+%% @param Tb 表名
+%% @param Where WHERE 条件
+%% @returns 记录总数
+-spec count_for_where(binary(), binary()) -> non_neg_integer().
 count_for_where(Tb, Where) ->
     % Tb = tablename(),
     imboy_db:pluck(<<Tb/binary>>, Where, <<"count(*) as count">>, 0).
@@ -217,7 +255,11 @@ execute(Sql) ->
     % ?DEBUG_LOG(io:format("~s\n", [Sql])),
     execute(Sql, []).
 
--spec execute(any(), list()) -> {ok, LastInsertId :: integer()} | {error, any()}.
+%% @doc 执行 SQL 语句并支持参数化查询
+%% @param Sql SQL 语句
+%% @param Params 查询参数列表
+%% @returns {ok, LastInsertId} | {error, any()}
+-spec execute(binary(), list()) -> {ok, non_neg_integer()} | {error, any()}.
 execute(Sql, Params) ->
     Driver = config_ds:env(sql_driver),
     do_with_conn(Driver,
@@ -239,6 +281,8 @@ execute(Conn, Sql, Params) ->
     [Res2] = epgsql:execute_batch(Conn, [{Stmt, Params}]),
     % ?DEBUG_LOG(io:format("execute/3 Res2: ~p\n", [Res2])),
     % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
+    % 没有 RETURNING 子句：返回 {ok, 1} （二元组）
+    % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
     Res2.
 
 % imboy_db:insert_into/3
@@ -257,7 +301,7 @@ insert_into(Tb, Column, Value, ReturningOnConflict) ->
     % Sql like this "INSERT INTO foo (k,v) VALUES (1,0), (2,0)"
     % return {ok,1,[{10}]}
     Sql = assemble_sql(<<"INSERT INTO">>, Tb, Column, Value),
-    ?DEBUG_LOG([insert_into, Sql]),
+    % ?DEBUG_LOG([insert_into, Sql]),
     % {ok,1,[{5}]}
     execute(<<Sql/binary, " ", ReturningOnConflict/binary>>, []).
 

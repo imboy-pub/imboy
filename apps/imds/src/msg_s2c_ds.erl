@@ -14,6 +14,15 @@
 
 
 
+%% @doc 发送服务端到客户端的消息
+%%
+%% 向指定用户列表发送消息，支持实时发送和先存储再发送两种模式
+%%
+%% @param FromId 发送方用户ID
+%% @param MsgType 消息类型，可以是二进制或映射格式
+%% @param ToUids 接收消息的用户ID列表
+%% @param Save 发送模式，save表示先存储再发送，其他表示直接发送
+%% @returns ok 表示操作成功
 -spec send(any(), [binary()|map()], list(), atom()) -> ok.
 send(_, _, [], _) ->
     ok;
@@ -45,9 +54,18 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
     end,
     send(FromId, MsgType, Tail, Save).
 
-
+%% @doc 存储服务端到客户端的消息
+%%
+%% 将消息存储到数据库中，支持列表格式的自动JSON编码，如果存储的消息数量超过限制，会自动删除旧消息
+%%
+%% @param CreatedAt 消息创建时间戳
+%% @param Id 消息ID
+%% @param Payload 消息内容，可以是JSON格式的列表或二进制数据
+%% @param From 发送方用户ID
+%% @param To 接收方用户ID
+%% @param ServerTS 服务器时间戳
+%% @returns any() 数据库操作结果
 -spec write_msg(binary(), binary(), binary() | list(), integer(), integer(), binary()) -> any().
-%% 存储消息
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
@@ -61,12 +79,26 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS).
 
-
-%% 读取消息
+%% @doc 读取服务端到客户端的消息
+%%
+%% 从数据库中读取指定用户的消息，默认从最早的消息开始读取
+%%
+%% @param ToUid 接收方用户ID
+%% @param Limit 读取消息数量限制
+%% @returns list() 消息列表，每条消息包含完整信息
+-spec read_msg(any(), integer()) -> list().
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 
-
+%% @doc 读取服务端到客户端的消息（带时间戳参数）
+%%
+%% 从数据库中读取指定用户的未读消息，支持按时间戳过滤
+%%
+%% @param ToUid 接收方用户ID
+%% @param Limit 读取消息数量限制
+%% @param Ts 时间戳参数，undefined表示读取所有消息，整数或二进制表示指定时间之后的消息
+%% @returns list() 消息列表，每条消息包含完整信息
+-spec read_msg(any(), integer(), undefined | integer() | binary()) -> list().
 read_msg(ToUid, Limit, undefined) ->
     P = imboy_hasher:decoded_payload(),
     Column = <<"id, ", P/binary, ", from_id, to_id,
@@ -74,17 +106,21 @@ read_msg(ToUid, Limit, undefined) ->
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
     read_msg(Where, Vals, Column, Limit);
-read_msg(ToUid, Limit, Ts) when is_binary(Ts) ->
-    read_msg(ToUid, Limit, binary_to_integer(Ts));
 read_msg(ToUid, Limit, Ts) ->
     P = imboy_hasher:decoded_payload(),
     Column = <<"id, ", P/binary, ", from_id, to_id,
         created_at, server_ts, msg_id">>,
-    Where = <<"WHERE to_id = $1 AND created_at > $2">>,
+    Where = <<"WHERE to_id = $1 AND created_at >= $2">>,
     Vals = [ToUid, Ts],
     read_msg(Where, Vals, Column, Limit).
 
-
+%% @doc 删除指定的服务端到客户端的消息
+%%
+%% 根据消息ID从数据库中删除消息
+%%
+%% @param Id 消息ID
+%% @returns any() 数据库删除操作结果
+-spec delete_msg(any()) -> any().
 delete_msg(Id) ->
     msg_s2c_repo:delete_msg(Id).
 
@@ -93,13 +129,23 @@ delete_msg(Id) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-
+%% @doc 内部函数：根据查询条件过滤和读取消息
+%%
+%% 执行数据库查询并处理返回的消息数据，包括解码JSON格式的payload
+%%
+%% @param Where SQL查询条件
+%% @param Vals SQL查询参数列表
+%% @param Column 查询列名
+%% @param Limit 查询结果数量限制
+%% @returns list() 处理后的消息列表
+-spec read_msg(binary(), list(), binary(), integer()) -> list().
 read_msg(Where, Vals, Column, Limit) ->
     Res = msg_s2c_repo:read_msg(Where, Vals, Column, Limit),
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Column2, Rows} ->
-            [ lists:zipwith(fun(X, Y) -> {X, Y} end, Column2, tuple_to_list(Row)) || Row <- Rows ];
+            Rows2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end, Column2, tuple_to_list(Row)) || Row <- Rows ],
+            [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows2];
         _ ->
             []
     end.

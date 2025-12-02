@@ -32,7 +32,8 @@ get_routes() ->
 
        {"/conversation/online", conversation_handler, #{action => online}},
        {"/conversation/mine", conversation_handler, #{action => mine}},
-       {"/conversation/msgbox", conversation_handler, #{action => msgbox}},
+       {"/msg/offline", msg_handler, #{action => offline}},
+       {"/msg/offline_ack", msg_handler, #{action => offline_ack}},
 
        {"/uqrcode", user_handler, #{action => qrcode}},% 2024-05-10 过两个版本可以清除该路由
        {"/user/qrcode", user_handler, #{action => qrcode}},

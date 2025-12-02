@@ -46,7 +46,11 @@
          flush_process_dict/0]).
 
 
-%% @doc Start depcache instance based on site configuration
+%% @doc 启动基于站点配置的 depcache 实例
+%% 启动本地 depcache 服务，分布式缓存同步由独立的 gen_server 处理
+%% @param Args 配置参数列表，可包含 depcache_memory_max 等选项
+%% @returns {ok, Pid} 成功启动返回进程ID
+-spec start_link(list()) -> {ok, pid()}.
 start_link(Args) ->
     % ?DEBUG_LOG(Args),
     % 启动本地depcache服务
@@ -58,62 +62,94 @@ start_link(Args) ->
     % 分布式缓存同步由独立的gen_server处理，不在这里启动
     {ok, self()}.
 
-%% @doc Cache the result of the function for an hour.
-%% @param Fun a funciton for producing a value
-%% @returns cached value
+%% @doc 缓存函数执行结果一小时
+%% 如果缓存中已有结果则返回缓存值，否则执行函数并缓存结果
+%% @param Fun 无参数函数，用于产生要缓存的值
+%% @returns 缓存的值或函数执行结果
+-spec memo(fun(() -> any())) -> any().
 memo(Function) when is_function(Function, 0) ->
     depcache:memo(Function, ?DEPCACHE_SERVER).
 
 
-%% @doc If Fun is a function then cache for an hour given the key. If
-%%      Fun is a {M,F,A} tuple then derive the key from the tuple and
-%%      cache for `MaxAge' seconds.
-%%
-%% @param Fun a funciton for producing a value1
-%% @param MaxAge a caching time
-%% @param Key a cache item key
-%% @returns cached value
+%% @doc 根据参数类型缓存函数结果
+%% 如果 Fun 是函数，则以 Key 为键缓存一小时；如果 Fun 是 {M,F,A} 元组，
+%% 则从元组派生键并缓存 MaxAge 秒
+%% @param Function 函数或 {Module, Function, Args} 元组
+%% @param MaxAge 缓存时间（秒）
+%% @returns 缓存的值或函数执行结果
+-spec memo({module(), atom(), list()} | fun(() -> any()), non_neg_integer()) -> any().
 memo(Function, MaxAge) when is_tuple(Function) ->
     depcache:memo(Function, undefined, MaxAge, [], ?DEPCACHE_SERVER);
-%% @doc Cache the result of the function as Key for `MaxAge' seconds.
-%% @returns cached value
-%% @equiv memo(Fun, Key, MaxAge, [], Server)
+%% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒
+%% @param F 无参数函数
+%% @param Key 缓存项的键
+%% @returns 缓存的值或函数执行结果
+%% @equiv memo(F, Key, MaxAge, [], Server)
 memo(F, Key) when is_function(F, 0) ->
     depcache:memo(F, Key, ?HOUR, [], ?DEPCACHE_SERVER).
 
 
+%% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒
+%% @param F 无参数函数
+%% @param Key 缓存项的键
+%% @param MaxAge 缓存时间（秒）
+%% @returns 缓存的值或函数执行结果
+-spec memo(fun(() -> any()), any(), non_neg_integer()) -> any().
 memo(F, Key, MaxAge) ->
     depcache:memo(F, Key, MaxAge, [], ?DEPCACHE_SERVER).
 
 
-%% @doc Cache the result of the function as Key for `MaxAge' seconds, flush
-%%      the cached result if any of the dependencies is changed.
-%% @returns cached value
+%% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒，如果任何依赖项发生变化则刷新缓存
+%% @param F 无参数函数
+%% @param Key 缓存项的键
+%% @param MaxAge 缓存时间（秒）
+%% @param Dep 依赖项列表
+%% @returns 缓存的值或函数执行结果
+-spec memo(fun(() -> any()), any(), non_neg_integer(), list()) -> any().
 memo(F, Key, MaxAge, Dep) ->
     depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER).
 
 
-%% @spec set(Key, Data) -> void()
-%% @doc Add the key to the depcache, hold it for 3600 seconds and no dependencies
+%% @doc 添加键值对到缓存，保存3600秒，无依赖项
+%% @param Key 缓存键
+%% @param Data 要缓存的数据
+%% @returns ok
+-spec set(any(), any()) -> ok.
 set(Key, Data) ->
     set(Key, Data, ?HOUR, [], ?DEPCACHE_SERVER).
 
 
-%% @spec set(Key, Data, MaxAge) -> void()
-%% @doc Add the key to the depcache, hold it for MaxAge seconds and no dependencies
-% imboy_cache:set("test", 1, 3).
-% imboy_cache:get("test").
+%% @doc 添加键值对到缓存，保存 MaxAge 秒，无依赖项
+%% @param Key 缓存键
+%% @param Data 要缓存的数据
+%% @param MaxAge 缓存时间（秒）
+%% @returns ok
+%% 示例: imboy_cache:set("test", 1, 3), imboy_cache:get("test")
+-spec set(any(), any(), non_neg_integer()) -> ok.
 set(Key, Data, MaxAge) ->
     % ?DEBUG_LOG(["imboy_cache/set/3", Key, "; ", Data, "; ", MaxAge]),
     set(Key, Data, MaxAge, [], ?DEPCACHE_SERVER).
 
 
-%% @spec set(Key, Data, MaxAge, Depend) -> void()
-%% @doc Add the key to the depcache, hold it for MaxAge seconds and check the dependencies
+%% @doc 添加键值对到缓存，保存 MaxAge 秒，检查依赖项
+%% @param Key 缓存键
+%% @param Data 要缓存的数据
+%% @param MaxAge 缓存时间（秒）
+%% @param Depend 依赖项列表
+%% @returns ok
+-spec set(any(), any(), non_neg_integer(), list()) -> ok.
 set(Key, Data, MaxAge, Depend) ->
     set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER).
 
 %% @doc 设置缓存项，支持本地缓存和分布式缓存
+%% 首先设置本地缓存，然后检查是否需要广播到其他节点
+%% @param Key 缓存键
+%% @param Data 要缓存的数据
+%% @param MaxAge 缓存时间（秒）
+%% @param Depend 依赖项列表
+%% @param Server 缓存服务器标识
+%% @returns ok
+-spec set(any(), any(), non_neg_integer(), list(), atom()) -> ok.
 set(Key, Data, MaxAge, Depend, Server) ->
     % 首先设置本地缓存
     depcache:set(Key, Data, MaxAge, Depend, Server),
@@ -128,46 +164,60 @@ set(Key, Data, MaxAge, Depend, Server) ->
     ok.
 
 %% @doc 判断是否需要广播缓存操作
+%% @param Key 缓存键
+%% @returns true | false
+-spec should_broadcast(any()) -> boolean().
 should_broadcast(Key) ->
     application:get_env(imboy, dsync_enabled, false) andalso not is_local_cache_key(Key).
 
 %% @doc 检查是否为本地缓存键
+%% @param Key 缓存键
+%% @returns true | false
+-spec is_local_cache_key(any()) -> boolean().
 is_local_cache_key({local_cache, _}) -> true;
 is_local_cache_key(_) -> false.
 
 
-%% @spec get_wait(Key) -> {ok, Data} | undefined
-%% @doc Fetch the key from the cache, when the key does not exist then lock the entry and let
-%% the calling process insert the value. All other processes requesting the key will wait till
-%% the key is updated and receive the key's new value.
+%% @doc 从缓存获取键值，如果键不存在则锁定条目让调用进程插入值
+%% 其他请求该键的进程将等待直到键被更新并接收新值
+%% @param Key 缓存键
+%% @returns {ok, Data} | undefined
+-spec get_wait(any()) -> {ok, any()} | undefined.
 get_wait(Key) ->
     depcache:get_wait(Key, ?DEPCACHE_SERVER).
 
 
-%% @spec get(Key) -> {ok, Data} | undefined
-%% @doc Fetch the key from the cache, return the data or an undefined if not found (or not valid)
+%% @doc 从缓存获取键值，返回数据或未找到时返回 undefined
+%% @param Key 缓存键
+%% @returns {ok, Data} | undefined
+-spec get(any()) -> {ok, any()} | undefined.
 get(Key) ->
     % ?DEBUG_LOG(["imboy_cache/get/`", Key]),
     depcache:get(Key, ?DEPCACHE_SERVER).
 
 
-%% @spec get_subkey(Key, SubKey) -> {ok, Data} | undefined
-%% @doc Fetch the key from the cache, return the data or an undefined if not found (or not valid)
+%% @doc 从缓存中获取子键值
+%% @param Key 缓存键
+%% @param SubKey 子键
+%% @returns {ok, Data} | undefined
+-spec get_subkey(any(), any()) -> {ok, any()} | undefined.
 get_subkey(Key, SubKey) ->
     depcache:get_subkey(Key, SubKey, ?DEPCACHE_SERVER).
 
 
-%% @spec get(Key, SubKey) -> {ok, Data} | undefined
-%% @doc Fetch the key from the cache, return the data or an undefined if not found (or not valid)
+%% @doc 从缓存获取键值，支持子键
+%% @param Key 缓存键
+%% @param SubKey 子键
+%% @returns {ok, Data} | undefined
+-spec get(any(), any()) -> {ok, any()} | undefined.
 get(Key, SubKey) ->
     depcache:get(Key, SubKey, ?DEPCACHE_SERVER).
 
 
-%% @doc Flush all keys from the caches
-%% <br/>
-%% <b>See also:</b>
-%% [http://erlang.org/doc/man/gen_server.html#call-2 gen_server:call/2].
-%%
+%% @doc 清空所有缓存中的键
+%% 支持分布式缓存同步，如果启用了 dsync 则广播到其他节点
+%% @returns ok
+-spec flush() -> ok.
 flush() ->
     depcache:flush(?DEPCACHE_SERVER),
     % 检查是否启用分布式缓存
@@ -181,8 +231,11 @@ flush() ->
     ok.
 
 
-%% @spec flush(Key) -> void()
-%% @doc Flush the key and all keys depending on the key
+%% @doc 清空指定键及其所有依赖键
+%% 支持分布式缓存同步，如果启用了 dsync 则广播到其他节点
+%% @param Key 要清空的缓存键
+%% @returns ok
+-spec flush(any()) -> ok.
 flush(Key) ->
     depcache:flush(Key, ?DEPCACHE_SERVER),
     % 检查是否启用分布式缓存
@@ -196,35 +249,54 @@ flush(Key) ->
     ok.
 
 
-%% @doc Return the total memory size of all stored terms
+%% @doc 返回所有存储项的总内存大小
+%% @returns 内存大小（字节）
+-spec size() -> non_neg_integer().
 size() ->
     depcache:size(?DEPCACHE_SERVER).
 
 
+%% @doc 检查是否使用本地进程字典缓存
+%% @returns boolean()
+-spec in_process_server() -> boolean().
 in_process_server() ->
     depcache:in_process_server(?DEPCACHE_SERVER).
 
 
-%% @doc Check if we use a local process dict cache
+%% @doc 检查指定服务器是否使用本地进程字典缓存
+%% @param Server 服务器标识
+%% @returns boolean()
+-spec in_process_server(atom()) -> boolean().
 in_process_server(Server) ->
     depcache:in_process_server(Server).
 
 
-%% @doc Enable or disable the in-process caching using the process dictionary
+%% @doc 启用或禁用使用进程字典进行进程内缓存
+%% @param Flag true 启用 | false 禁用
+%% @returns ok
+-spec in_process(boolean()) -> ok.
 in_process(Flag) ->
     depcache:in_process(Flag).
 
 
-%% @doc Flush all items memoized in the process dictionary.
+%% @doc 清空进程字典中所有缓存项
+%% @returns ok
+-spec flush_process_dict() -> ok.
 flush_process_dict() ->
     depcache:flush_process_dict().
 
 
-% TODO
+%% @doc 记录缓存事件回调函数
+%% @param Args 事件参数
+%% @returns ok
+-spec record_depcache_event(any()) -> ok.
 record_depcache_event(Args) ->
     ?DEBUG_LOG(Args),
     ok.
 
 %% @doc 广播消息到所有节点
+%% @param Message 要广播的消息
+%% @returns ok
+-spec broadcast(any()) -> ok.
 broadcast(Message) ->
     imboy_cache_sync:broadcast(Message).

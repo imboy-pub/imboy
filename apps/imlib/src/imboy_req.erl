@@ -18,22 +18,47 @@
 %% API
 %% ===================================================================
 
+%% @doc 发送GET请求，使用默认请求头
+%% @param Url 请求URL
+%% @returns {ok, map()} | {error, any()}
+-spec get(binary() | list()) -> {ok, map()} | {error, any()}.
 get(Url) ->
     req(get, Url, #{}, ?ReqHeaders).
 
 
+%% @doc 发送GET请求，使用自定义请求头
+%% @param Url 请求URL
+%% @param Headers 请求头列表
+%% @returns {ok, map()} | {error, any()}
+-spec get(binary() | list(), list()) -> {ok, map()} | {error, any()}.
 get(Url, Headers) ->
     req(get, Url, #{}, Headers).
 
 
+%% @doc 发送POST请求，使用默认请求头
+%% @param Url 请求URL
+%% @param Params 请求参数
+%% @returns {ok, map()} | {error, any()}
+-spec post(binary() | list(), map() | list()) -> {ok, map()} | {error, any()}.
 post(Url, Params) ->
     req(post, Url, Params, ?ReqHeaders).
 
 
+%% @doc 发送POST请求，使用自定义请求头
+%% @param Url 请求URL
+%% @param Params 请求参数
+%% @param Headers 请求头列表
+%% @returns {ok, map()} | {error, any()}
+-spec post(binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()}.
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
 
 
+%% @doc 从请求中获取指定名称的Cookie值
+%% @param Key Cookie名称
+%% @param Req cowboy请求对象
+%% @returns Cookie值或false
+-spec cookie(binary(), cowboy_req:req()) -> binary() | false.
 cookie(Key, Req) ->
     Cookies = cowboy_req:parse_cookies(Req),
     case lists:keyfind(Key, 1, Cookies) of
@@ -43,6 +68,10 @@ cookie(Key, Req) ->
             false
     end.
 
+%% @doc 获取客户端IP地址（直接连接的IP）
+%% @param Req cowboy请求对象
+%% @returns IP地址字符串
+-spec peer_ip(cowboy_req:req()) -> binary().
 peer_ip(Req) ->
     {IP, _Port} = cowboy_req:peer(Req),
     % io:format("Client IP: ~p, Port: ~p~n", [IP, Port]),
@@ -50,8 +79,12 @@ peer_ip(Req) ->
     IPString = inet:ntoa(IP),
     IPString.
 
-%% 获取客户端IP地址
+%% @doc 获取客户端真实IP地址
 %% 支持代理和负载均衡器场景下的真实IP获取
+%% 优先检查 X-Forwarded-For 头部，如果没有则使用直接连接的IP
+%% @param Req cowboy请求对象
+%% @returns 客户端IP地址字符串
+-spec get_client_ip(cowboy_req:req()) -> binary().
 get_client_ip(Req) ->
     % 首先检查 X-Forwarded-For 头部
     case cowboy_req:header(<<"x-forwarded-for">>, Req, undefined) of
@@ -80,11 +113,18 @@ get_client_ip(Req) ->
 %% ===================================================================
 
 
-% https://stackoverflow.com/questions/19103694/simple-example-using-erlang-for-https-post
-% imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).
-% imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
-% imboy_req:get("http://127.0.0.1:9800/test/req_get").
--spec req(atom(), list() | binary(), list() | map(), list()) -> {ok, map()} | {error, any()}.
+%% @doc 内部HTTP请求处理函数
+%% 支持 GET 和 POST 请求，自动处理JSON编码和解码
+%% @param Method HTTP方法（get 或 post）
+%% @param Url 请求URL
+%% @param Params 请求参数
+%% @param Headers 请求头列表
+%% @returns {ok, map()} | {error, any()}
+%% 示例:
+%%   imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).
+%%   imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
+%%   imboy_req:get("http://127.0.0.1:9800/test/req_get").
+-spec req(atom(), binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()}.
 req(Method, Url, Params, Headers) ->
     application:ensure_started(ssl),
     application:ensure_started(inets),

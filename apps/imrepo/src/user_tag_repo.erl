@@ -2,6 +2,7 @@
 %%%
 % tag 相关操作都放到该模块，存储库模块
 % tag related operations are put in this module, repository module
+% 用户标签数据仓库层，提供用户标签信息的基础数据库操作
 %%%
 
 -export([tablename/0]).
@@ -14,10 +15,12 @@
 -include_lib("imlib/include/common.hrl").
 
 %% ===================================================================
-%% API
+%% API functions
 %% ===================================================================
 
-
+%% @doc 获取用户标签表的表名
+%% @return 返回用户标签表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"user_tag">>).
 

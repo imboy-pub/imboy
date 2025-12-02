@@ -1,6 +1,7 @@
 -module(msg_c2g_repo).
 %%%
 % msg_c2g_repo 是 msg_c2g repository 缩写
+% 用户到群组离线消息数据仓库层，提供C2G消息的基础数据库操作
 %%%
 
 -include_lib("imlib/include/chat.hrl").
@@ -13,10 +14,12 @@
 -export([delete_msg/2]).
 
 %% ===================================================================
-%% API
+%% API functions
 %% ===================================================================
 
-
+%% @doc 获取C2G消息表的表名
+%% @return 返回C2G消息表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"msg_c2g">>).
 
@@ -40,7 +43,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
               "', '", MsgId/binary, "');">>,
         % ?DEBUG_LOG(Sql),
         %% 使用统一封装的执行接口，避免直接依赖 epgsql
-        ok = imboy_db:execute(Conn, Sql, []),
+        _ = imboy_db:execute(Conn, Sql, []),
         % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
         % ?DEBUG_LOG(["Res", Res]), % [{ok,1}]
          % [{ok, 1, _}] = Res,
@@ -58,9 +61,9 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
         Tb2 = msg_c2g_timeline_repo:tablename(),
         Sql2 = <<"INSERT INTO ", Tb2/binary, " ", Column2/binary, " VALUES",
                Values/binary>>,
-        % ?DEBUG_LOG([Sql, Sql2]),
+        % ?DEBUG_LOG([ToUids, Sql, Sql2]),
         %% 使用统一封装的执行接口，避免直接依赖 epgsql
-        ok = imboy_db:execute(Conn, Sql2, []),
+        _ = imboy_db:execute(Conn, Sql2, []),
         ok
     end),
     ok.

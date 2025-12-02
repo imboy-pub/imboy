@@ -11,6 +11,7 @@
 %% ===================================================================
 
 
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -45,6 +46,7 @@ init(Req0, State0) ->
     {ok, Req1, State}.
 
 
+-spec search(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 search(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {Page, Size} = imboy_param:page(Req0),
@@ -84,6 +86,7 @@ search(Req0, State) ->
     imboy_response:success(Req0, Payload).
 
 %%修改密码
+-spec change_password(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 change_password(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     case user_logic:change_password(CurrentUid, Req0) of
@@ -93,6 +96,7 @@ change_password(Req0, State) ->
             imboy_response:error(Req0, Msg)
     end.
 
+-spec set_password(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 set_password(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     case user_logic:set_password(CurrentUid, Req0) of
@@ -103,6 +107,7 @@ set_password(Req0, State) ->
     end.
 
 %%注销申请
+-spec apply_logout(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 apply_logout(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     case user_logic:apply_logout(CurrentUid, Req0) of
@@ -114,6 +119,7 @@ apply_logout(Req0, State) ->
 
 
 %%撤销注销申请
+-spec cancel_logout(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 cancel_logout(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     case user_logic:cancel_logout(CurrentUid, Req0) of
@@ -124,6 +130,7 @@ cancel_logout(Req0, State) ->
     end.
 
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
+-spec credential(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 credential(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Payload = user_ds:webrtc_credential(CurrentUid),
@@ -131,6 +138,7 @@ credential(Req0, State) ->
 
 
 %% 扫描“我的二维码”
+-spec qrcode(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 qrcode(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     CurrentUid = maps:get(current_uid, State, undefined),
@@ -174,6 +182,7 @@ qrcode_transfer(_, _, _) ->
 
 
 %% 切换在线状态
+-spec change_state(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 change_state(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
@@ -185,6 +194,7 @@ change_state(Req0, State) ->
 
 
 %% 用户 批量修改设置功能
+-spec setting(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 setting(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
@@ -203,6 +213,7 @@ setting(Req0, State) ->
 
 
 %% 修改用户信息
+-spec update(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 update(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
@@ -223,6 +234,7 @@ update(Req0, State) ->
 
 
 % 用户网络公开信息
+-spec show(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 show(Req0, _State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
     Column = <<"id, nickname, avatar, account, sign">>,

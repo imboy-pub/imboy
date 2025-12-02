@@ -7,6 +7,15 @@
 -include_lib("imlib/include/chat.hrl").
 -include_lib("imlib/include/def_column.hrl").
 
+%% Types
+-type user_id() :: integer().
+-type user_id_hash() :: binary().
+-type device_type() :: binary().
+-type device_id() :: binary().
+-type email() :: binary().
+-type user_info() :: map() | list().
+-type result() :: {ok, binary()} | {error, binary()} | {error, {integer(), binary(), binary()}}.
+
 -export([online/4]).
 -export([offline/3]).
 
@@ -26,6 +35,13 @@
 %% API
 %% ===================================================================
 
+%% @doc 设置用户密码
+%% 为未设置密码的用户设置登录密码。用户密码为空时才能设置。
+%% 操作会记录用户日志，包含应用版本、设备ID和IP信息。
+%% @param Uid 用户ID
+%% @param Req0 HTTP请求对象
+%% @returns 操作结果：成功返回{ok, "success"}，失败返回错误信息
+-spec set_password(user_id(), any()) -> result().
 set_password(Uid, Req0) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
@@ -73,6 +89,13 @@ set_password(Uid, Req0) ->
             {error, "have_set"}
     end.
 
+%% @doc 修改用户密码
+%% 验证用户当前密码后，更新为新密码。需要提供当前密码和新密码。
+%% 操作会记录用户日志，包含应用版本、设备ID和IP信息。
+%% @param Uid 用户ID
+%% @param Req0 HTTP请求对象，包含当前密码和新密码
+%% @returns 操作结果：成功返回{ok, "success"}，失败返回错误信息
+-spec change_password(user_id(), any()) -> result().
 change_password(Uid, Req0) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
@@ -122,7 +145,13 @@ change_password(Uid, Req0) ->
             {error, Msg}
     end.
 
-%%注销申请
+%% @doc 申请注销账号
+%% 将用户状态设置为申请注销中（状态=2），记录注销申请日志。
+%% 注销申请后，用户将处于待注销状态，需要进一步处理。
+%% @param Uid 用户ID
+%% @param Req0 HTTP请求对象
+%% @returns 操作结果：成功返回{ok, "success"}
+-spec apply_logout(user_id(), any()) -> result().
 apply_logout(Uid, Req0) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
@@ -168,7 +197,13 @@ apply_logout(Uid, Req0) ->
     % }),
     {ok, "success"}.
 
-%%撤销注销申请
+%% @doc 撤销注销申请
+%% 将用户状态从申请注销中恢复为正常启用状态（状态=1）。
+%% 用户可以撤销注销申请，恢复正常使用。
+%% @param Uid 用户ID
+%% @param _Req0 HTTP请求对象（当前未使用）
+%% @returns 操作结果：成功返回{ok, "success"}
+-spec cancel_logout(user_id(), any()) -> result().
 cancel_logout(Uid, _Req0) ->
     Where = <<"id=", (ec_cnv:to_binary(Uid))/binary>>,
     imboy_db:update(
@@ -180,8 +215,15 @@ cancel_logout(Uid, _Req0) ->
         }),
     {ok, "success"}.
 
-%dtype 设备类型 web ios android macos windows等
--spec online(integer(), binary(), pid(), binary()) -> ok.
+%% @doc 用户上线
+%% 将用户标记为在线状态，并加入到在线用户管理中。
+%% 会触发用户上线相关的处理，如检查离线消息等。
+%%
+%% @param Uid 用户ID
+%% @param DType 设备类型（web、ios、android、macos、windows等）
+%% @param Pid 进程PID
+%% @param DID 设备ID
+-spec online(user_id(), device_type(), pid(), device_id()) -> ok.
 online(Uid, DType, Pid, DID) ->
     % ?DEBUG_LOG(["user_logic/online/4", Uid, Pid, DType, DID]),
     imboy_syn:join(Uid, DType, Pid, DID),
@@ -190,7 +232,13 @@ online(Uid, DType, Pid, DID) ->
     ok.
 
 
--spec offline(Uid :: integer(), Pid :: pid(), DID :: binary()) -> ok.
+%% @doc 用户下线
+%% 将用户从在线状态中移除，处理用户下线相关的清理工作。
+%% 会触发用户下线相关的处理，如检查离线消息等。
+%% @param Uid 用户ID
+%% @param Pid 进程PID
+%% @param DID 设备ID
+-spec offline(user_id(), pid(), device_id()) -> ok.
 offline(Uid, Pid, DID) ->
     imboy_syn:leave(Uid, Pid),
 
@@ -250,11 +298,22 @@ online_state(User) ->
     [{<<"status">>, Status}, {<<"last_seen_at">>, LastSeenAt} | User].
 
 
--spec find_by_id(binary()) -> list().
+%% @doc 根据用户ID查找用户信息
+%% 支持原始ID或hashid格式，返回默认列的用户信息。
+%% @param Id 用户ID（可以是原始数字ID或hashid）
+%% @returns 用户信息列表，包含默认列的数据
+-spec find_by_id(user_id_hash() | user_id()) -> user_info().
 find_by_id(Id) ->
     find_by_id(Id, ?DEF_USER_COLUMN).
 
 
+%% @doc 根据用户ID和指定列查找用户信息
+%% 支持原始ID或hashid格式，返回指定列的用户信息。
+%% 自动处理头像为空的情况，设置默认头像。
+%% @param Id 用户ID（可以是原始数字ID或hashid）
+%% @param Column 需要查询的列名
+%% @returns 用户信息，包含指定的列数据
+-spec find_by_id(user_id_hash() | user_id(), binary()) -> user_info().
 find_by_id(Id, Column) when is_binary(Id) ->
     find_by_id(imboy_hashids:decode(Id), Column);
 find_by_id(Id, Column) ->
@@ -353,7 +412,12 @@ update(_Uid, _Field, _Val) ->
 %% ===================================================================
 
 
-%% 检查 user avatar 是否为空，如果为空设置默认
+%% @doc 检查并设置默认头像
+%% 检查用户头像是否为空，如果为空则设置默认头像。
+%% 支持map和list两种数据结构格式。
+%% @param User 用户信息，可以是map或list格式
+%% @returns 处理后的用户信息，确保头像不为空
+-spec check_avatar(user_info()) -> user_info().
 check_avatar([]) ->
     [];
 check_avatar(User) when is_map(User) ->
@@ -375,9 +439,16 @@ check_avatar(User) ->
             User
     end.
 
-% user_logic:send_bind_email(108, <<"leeyisoft@icloud.com">>).
--spec send_bind_email(integer(), binary()) ->
-          ok | {error, {integer(), binary(), binary()}}.
+%% @doc 发送邮箱绑定确认邮件
+%% 为用户发送邮箱绑定确认邮件，包含确认链接。
+%% 链接有效期24小时，包含时间戳和HMAC签名验证。
+%%
+%% 使用示例：
+%% user_logic:send_bind_email(108, <<"leeyisoft@icloud.com">>).
+%% @param Uid 用户ID
+%% @param Email 待绑定的邮箱地址
+%% @returns 成功返回{ok, "success"}，失败返回错误信息
+-spec send_bind_email(user_id(), email()) -> result().
 send_bind_email(Uid, Email) ->
     ExpireAtS = imboy_dt:second() + 86400,
     ExpireAt = imboy_dt:to_rfc3339(ExpireAtS, second),

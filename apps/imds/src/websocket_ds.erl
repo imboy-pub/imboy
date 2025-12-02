@@ -11,8 +11,14 @@
 %% API
 %% ===================================================================
 
-
--spec check_subprotocols(list(), any()) -> {ok, any()} | {cowboy_websocket, any()}.
+%% @doc 检查WebSocket子协议
+%%
+%% 验证和选择WebSocket连接支持的子协议
+%%
+%% @param Subprotocols 子协议列表
+%% @param Req0 Cowboy请求对象
+%% @returns {ok, any()} | {cowboy_websocket, any()} 处理结果
+-spec check_subprotocols(list() | undefined, any()) -> {ok, any()} | {cowboy_websocket, any()}.
 check_subprotocols(undefined, Req0) ->
     % HTTP 400 - 请求无效
     Req = cowboy_req:reply(400, Req0),
@@ -26,8 +32,16 @@ check_subprotocols([H | _Tail], Req0) ->
     Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, H, Req0),
     {cowboy_websocket, Req}.
 
-
--spec auth(binary(), any(), map(), any()) -> any().
+%% @doc WebSocket认证处理
+%%
+%% 验证WebSocket连接的token，处理认证结果和错误情况
+%%
+%% @param Token 认证token
+%% @param Req Cowboy请求对象
+%% @param State 请求状态
+%% @param Opt 额外选项
+%% @returns any() 认证结果
+-spec auth(binary() | any(), any(), map(), any()) -> any().
 auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
@@ -64,6 +78,15 @@ auth(Auth, Req0, State0, _Opt) ->
 %% ===================================================================
 
 
+%% @doc WebSocket认证后的处理
+%%
+%% 认证成功后设置WebSocket连接的超时时间和用户信息
+%%
+%% @param Uid 用户ID
+%% @param Req Cowboy请求对象
+%% @param State 请求状态
+%% @param Opt 额外选项
+%% @returns {ok, any(), map()} | {cowboy_websocket, any(), map(), map()} WebSocket连接设置
 -spec auth_after(integer(), any(), map(), map()) -> {ok, any(), map()} | {cowboy_websocket, any(), map(), map()}.
 % auth_after(true, _Uid, Req0, State0, _Opt) ->
 %     % imboy_log:warning("DeviceID ~p is online", [State0]),
@@ -74,8 +97,14 @@ auth_after(Uid, Req, State, Opt) ->
     Timeout = idle_timeout(Uid),
     {cowboy_websocket, Req, State#{current_uid => Uid}, Opt#{idle_timeout := Timeout}}.
 
-
+%% @doc 设置用户WebSocket超时时间
+%%
+%% 根据用户设置WebSocket连接的空闲超时时间
+%%
+%% @param Uid 用户ID
+%% @returns integer() 超时时间（毫秒）
 % 设置用户websocket超时时间，默认60秒
 % Cowboy关闭连接空闲128秒 默认值为 60000
+-spec idle_timeout(integer()) -> integer().
 idle_timeout(_Uid) ->
     128000.

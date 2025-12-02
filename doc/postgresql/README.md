@@ -42,6 +42,19 @@ pg_dump -h 127.0.0.1 \
   --no-acl \                   # 跳过权限信息（可选）
   -f imboy_v1.sql              # 输出文件
 
+
+# 删除所有已知的客户端命令
+sed -e '/^\\unrestrict/d' \
+    -e '/^\\restrict/d' \
+    -e '/^\\connect/d' \
+    -e '/^\\encoding/d' \
+    -e '/^\\set/d' \
+    -e '/^\\echo/d' \
+    -e '/^\\i/d' \
+    -e '/^\\o/d' \
+    -e '/^\\q/d' \
+    imboy_v1_backup_20251208_160400.sql > imboy_v1.sql
+
 pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432 -n 'public'  -f imboy_v1.sql
 
 ```

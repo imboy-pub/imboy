@@ -16,10 +16,12 @@
 %% ===================================================================
 
 
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"msg_c2s">>).
 
 
+-spec write_msg(binary(), binary(), binary() | list(), binary() | integer(), list(), binary() | integer()) -> ok.
 write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid) when is_integer(FromId) ->
     FromId2 = integer_to_binary(FromId),
     write_msg(CreatedAt, Id, Payload, FromId2, ToUids, Gid);
@@ -39,7 +41,7 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
               "', '", MsgId/binary, "');">>,
         % ?DEBUG_LOG(Sql),
         %% 使用统一封装的执行接口，避免直接依赖 epgsql
-        ok = imboy_db:execute(Conn, Sql, []),
+        {ok, _} = imboy_db:execute(Conn, Sql, []),
         % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
         % ?DEBUG_LOG(["Res", Res]), % [{ok,1}]
          % [{ok, 1, _}] = Res,
@@ -59,13 +61,14 @@ write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid) ->
                Values/binary>>,
         % ?DEBUG_LOG([Sql, Sql2]),
         %% 使用统一封装的执行接口，避免直接依赖 epgsql
-        ok = imboy_db:execute(Conn, Sql2, []),
+        {ok, _} = imboy_db:execute(Conn, Sql2, []),
         ok
     end),
     ok.
 
 
 % msg_c2s_repo:list_by_ids(MsgIds, <<"payload">>).
+-spec list_by_ids(list(binary()), binary()) -> {ok, list(), list()} | {error, term()}.
 list_by_ids([], _Column) ->
     {ok, [], []};
 list_by_ids(Ids, Column) ->

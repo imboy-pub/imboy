@@ -152,7 +152,7 @@ publish(Uid, Msg) ->
 publish(Uid, Msg, Delay) when is_integer(Delay), Delay >= 0 ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     Members = list_by_uid(Uid),
-    ?DEBUG_LOG(["imboy_syn:publish/3", Uid, length(Members), Delay, Msg]),
+    % ?DEBUG_LOG(["imboy_syn:publish/3", Uid, length(Members), Delay, Msg]),
     do_publish(Members, Msg, Delay);
 publish(_Uid, _Msg, _Delay) -> 
     ?DEBUG_LOG(["imboy_syn:publish/3 invalid parameters", _Uid, _Msg, _Delay]),

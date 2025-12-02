@@ -11,7 +11,11 @@
 -export([list_by_uid/2, list_by_uid/3]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
+-export([delete_by_to_uid/1]).
+-export([delete_by_msg_id/1]).
 -export([delete_overflow_timeline/2]).
+-export([delete_by_msg_id_and_to_id/2]).
+-export([delete_by_msg_ids_and_to_id/2]).
 
 %% ===================================================================
 %% API
@@ -77,6 +81,58 @@ delete_overflow_timeline(ToUid, Limit) ->
             [ delete_timeline(ToUid, MsgId) || {MsgId} <- Rows ],
             {msg_ids, [ MsgId || {MsgId} <- Rows ]}
     end.
+
+% 删除用户的所有群消息时间线记录
+delete_by_to_uid(ToUid) ->
+    Tb = tablename(),
+    Where = <<"WHERE to_uid = $1">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
+    imboy_db:execute(Sql, [ToUid]).
+
+% 根据消息ID删除群消息时间线记录
+delete_by_msg_id(MsgId) ->
+    Tb = tablename(),
+    Where = <<"WHERE msg_id = $1">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
+    case imboy_db:execute(Sql, [MsgId]) of
+        {ok, _, Rows} ->
+            Count = length(Rows),
+            {ok, Count};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+% 根据消息ID和接收者ID删除特定系统消息
+delete_by_msg_id_and_to_id(MsgId, ToUid) ->
+    Tb = tablename(),
+    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
+    case imboy_db:execute(Sql, [MsgId, ToUid]) of
+        {ok, _, Rows} ->
+            Count = length(Rows),
+            {ok, Count};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+% 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
+    Tb = tablename(),
+    % 构建占位符字符串 ($1, $2, $3, ...)
+    Placeholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]),
+    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary, " RETURNING to_uid">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
+    case imboy_db:execute(Sql, MsgIds ++ [ToUid]) of
+        {ok, _, Rows} ->
+            Count = length(Rows),
+            {ok, Count};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+delete_by_msg_ids_and_to_id([], _ToUid) ->
+    {ok, 0}.
+
 
 %% ===================================================================
 %% Internal Function Definitions

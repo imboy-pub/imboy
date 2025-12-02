@@ -10,6 +10,7 @@
 %% ===================================================================
 
 
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -32,6 +33,7 @@ init(Req0, State0) ->
 
 %%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
 % Assets服务认证
+-spec assets(binary(), cowboy_req:req()) -> cowboy_req:req().
 assets(<<"POST">>, Req0) ->
     try
         PostVals = imboy_param:post(Req0),

@@ -9,8 +9,6 @@
 -export([c2g_edit/3]).
 -export([c2g_edit_ack/3]).
 
--export([check_msg/3]).
-
 -include_lib("imlib/include/chat.hrl").
 -include_lib("imlib/include/log.hrl").
 
@@ -26,6 +24,7 @@ c2g(MsgId, CurrentUid, Data) ->
     ToGID = imboy_hashids:decode(Gid),
     % TODO check is group member
     MemberUids = group_ds:member_uids(ToGID),
+
     % Uids.
     NowTs = imboy_dt:now(),
     NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
@@ -204,22 +203,6 @@ c2g_edit_ack(MsgId, CurrentUid, Data) ->
     ok.
 
 
-check_msg(Uid, Pid, _DID) ->
-    GMsgs = msg_c2g_ds:read_msg(Uid),
-    sent_offline_msg(Uid, Pid, GMsgs, 0),
-    ok.
-
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
-
-sent_offline_msg(_Uid, _Pid, [], _Index) ->
-    ok;
-sent_offline_msg(Uid, Pid, [Row | Tail], Index) ->
-    {<<"payload">>, Msg} = lists:keyfind(<<"payload">>, 1, Row),
-    ?DEBUG_LOG([Uid, Pid, Index, Msg]),
-    Delay = 100 + Index * 100,
-    erlang:start_timer(Delay, Pid, Msg),
-    sent_offline_msg(Uid, Pid, Tail, Index + 1).

@@ -18,6 +18,12 @@
 %% API
 %% ===================================================================
 
+%% @doc 初始化 REST 处理器
+%% 根据请求中的 action 参数分发到不同的处理函数
+%% @param Req0 Cowboy 请求对象
+%% @param State0 状态映射，包含 action 等信息
+%% @return {ok, Req, State} 更新后的请求和状态
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -40,6 +46,15 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 处理索引请求
+%% 当 ajax=1 时返回 JSON 数据，否则返回 HTML 页面
+%% @param Method HTTP 方法
+%% @param Ajax Ajax 标志，1 表示返回 JSON 数据
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
+-spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
 index(<<"GET">>, 1, Req0, _State) ->
     {Page, Size} = imboy_req:page_size(Req0),
     Where = <<"1=1">>,
@@ -59,6 +74,12 @@ index(<<"GET">>, _, Req0, State) ->
     }, Body, Req0).
 
 
+%% @doc 保存应用 DDL 配置
+%% 处理 POST 请求，保存新的 DDL 配置信息
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射，包含管理员用户 ID
+%% @return cowboy_req:req() 更新后的请求对象
+-spec save(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 save(<<"POST">>, Req0, State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
@@ -73,6 +94,12 @@ save(<<"POST">>, Req0, State) ->
     app_ddl_ds:save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl),
     imboy_response:success(Req0, PostVals, "success.").
 
+%% @doc 删除应用 DDL 配置
+%% 处理 DELETE 请求，删除指定的 DDL 配置
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
+-spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete(<<"DELETE">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),

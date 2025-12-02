@@ -154,6 +154,10 @@ datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
 % imboy_dt:rfc3339_to(Dt, microsecond).
 rfc3339_to(Dt, Unit) when is_binary(Dt) ->
     rfc3339_to(binary_to_list(Dt), Unit);
+rfc3339_to(Dt, _Unit) when Dt =:= []; Dt =:= <<>>; Dt =:= undefined ->
+    {error, empty_input};
+rfc3339_to(Dt, _Unit) when is_list(Dt), length(Dt) =:= 0 ->
+    {error, empty_input};
 rfc3339_to(Dt, Unit) ->
     % 直接使用 Erlang 的 calendar:rfc3339_to_system_time，它会自动处理时区
     calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}]).

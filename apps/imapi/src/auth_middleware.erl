@@ -3,11 +3,22 @@
 
 -include_lib("imlib/include/log.hrl").
 
+%% 中间件类型定义
+-type env() :: map().
+-type req() :: cowboy_req:req().
+
 -export([execute/2]).
 -export([remove_last_forward_slash/1]).
 
 
-%% 这个是回调函数
+%% @doc Cowboy中间件执行函数
+%% 处理请求的认证和授权验证
+%%
+%% @param Req Cowboy请求对象
+%% @param Env 环境变量映射
+%% @return 中间件执行结果
+%% @end
+-spec execute(req(), env()) -> {ok, req(), env()} | {stop, req()}.
 execute(Req, Env) ->
     Path = remove_last_forward_slash(cowboy_req:path(Req)),
     case Path of
@@ -55,6 +66,15 @@ execute(Req, Env) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 验证请求签名
+%% 验证客户端请求的签名是否有效
+%%
+%% @param Req Cowboy请求对象
+%% @param Env 环境变量映射
+%% @return 验证结果
+%% @end
+-spec verify_sign(req(), env()) -> {ok, req(), env()} | {stop, req()}.
 verify_sign(Req, Env) ->
     % app version 1.0.0
     Vsn = cowboy_req:header(<<"vsn">>, Req, <<"0.1.1">>),

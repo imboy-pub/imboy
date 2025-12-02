@@ -6,6 +6,10 @@
 
 -export([get_token/3]).
 
+-type token() :: binary().
+-type scene() :: binary() | string().
+-type resource_id() :: binary() | string() | integer().
+
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -18,9 +22,19 @@
 %% ===================================================================
 
 
-%%% 获取资源服务访问token
-% {imboy_dt:utc(second), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:utc(second)))}.
-% auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
+%% @doc 获取资源服务访问token
+%% 生成用于访问资源服务的认证令牌。
+%% 将上传密钥和资源标识符拼接后进行MD5哈希，取中间16位作为token。
+%%
+%% 使用示例：
+%% {imboy_dt:utc(second), auth_ds:get_token(assets, <<"dev">>, integer_to_list(imboy_dt:utc(second)))}.
+%% auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
+%%
+%% @param ResourceType 资源类型，通常为 'assets'
+%% @param Scene 场景标识（当前未使用）
+%% @param Num 资源标识符，可以是字符串或数字
+%% @returns 16字节的二进制token
+-spec get_token(atom(), scene(), resource_id()) -> token().
 get_token(assets, _Scene, Num) ->
     % TODO public key sign
     Key = config_ds:get(<<"upload_key">>),

@@ -134,16 +134,23 @@ convert_structured(V) when is_map(V); is_list(V) ->
 convert_structured(V) -> V.
 
 %% @doc 时间格式转换（RFC3339 -> 毫秒时间戳）
-convert_timestamp(Value) when is_binary(Value); is_list(Value) ->
+convert_timestamp(Value) when is_binary(Value) andalso byte_size(Value) > 0;
+                             is_list(Value) andalso length(Value) > 0 ->
     case imboy_dt:rfc3339_to(Value, millisecond) of
         {error, _} ->
             Value;
-        Num -> Num
+        Num when is_number(Num) ->
+            Num;
+        _ ->
+            Value
     end;
 convert_timestamp(Value) when is_tuple(Value) ->
     case imboy_dt:datetime_to(Value, millisecond) of
         {error, _} ->
             Value;
-        Num -> Num
+        Num when is_number(Num) ->
+            Num;
+        _ ->
+            Value
     end;
-convert_timestamp(Value) -> Value.  % 非时间字符串保持原样
+convert_timestamp(Value) -> Value.  % 非时间字符串、空值保持原样

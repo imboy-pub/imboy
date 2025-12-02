@@ -60,13 +60,13 @@ delete(Uid, Scene, Tag) ->
                                       DelSql = <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
                                       % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql ~p, ~p; ~n", [DelSql, [Uid, TagId]])),
                                       %% 使用封装的执行接口
-                                      ok = imboy_db:execute(Conn, DelSql, [Uid, TagId]),
+                                      {ok, _} = imboy_db:execute(Conn, DelSql, [Uid, TagId]),
 
                                        % 删除 public.user_tag
                                        TagTb = imboy_db:public_tablename(<<"user_tag">>),
                                        DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
                                        % imboy_log:info(io_lib:format("user_tag_logic:delete/3 DelSql2 ~p, p ~p; ~n", [DelSql2, TagId])),
-                                       ok = imboy_db:execute(Conn, DelSql2, [TagId]),
+                                       {ok, _} = imboy_db:execute(Conn, DelSql2, [TagId]),
 
                                        %
                                        UpTb =
@@ -79,7 +79,7 @@ delete(Uid, Scene, Tag) ->
                                        UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, '", Tag/binary,
                                                  ",', '') WHERE tag like '%", Tag/binary, ",%';">>,
                                        % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p; ~n", [UpSql])),
-                                       ok = imboy_db:execute(Conn, UpSql, []),
+                                       {ok, _} = imboy_db:execute(Conn, UpSql, []),
                                        % 清理缓存
                                        user_tag_relation_repo:flush_subtitle(TagId),
                                        % imboy_log:info(io_lib:format("user_tag_logic:delete/3 UpSql  ~p, Res ~p; ~n", [UpSql, Res])),
@@ -139,6 +139,7 @@ add(Uid, Scene, Tag) ->
     end.
 
 
+-spec change_scene_tag(any(), binary(), binary(), any(), list()) -> ok.
 change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
     % imboy_log:error(io_lib:format("user_tag_relation_repo:change_scene_tag/5 args:~p;~n", [[Conn, Scene, Uid2, ObjectId, Tag]])),
     {Table, Where} =
@@ -158,7 +159,7 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
     % imboy_log:error(io_lib:format("user_tag_relation_repo:change_scene_tag/5 sql:~s;~n", [Sql])),
     % epgsql:equery(Conn, Sql),
     %% 使用统一封装的执行接口，避免直接依赖 epgsql
-    ok = imboy_db:execute(Conn, Sql, []),
+    {ok, _} = imboy_db:execute(Conn, Sql, []),
     % imboy_log:info(io_lib:format("user_tag_relation_repo:change_scene_tag/5 execute ok;~n", [])),
     ok.
 
@@ -167,8 +168,8 @@ change_scene_tag(Conn, Scene, Uid2, ObjectId, Tag) when is_list(Tag) ->
 %% Internal Function Definitions
 %% ===================================================================-
 
-
 % 合并新旧tag，排重，不修改tag顺序
+-spec merge_tag(any(), list(), binary(), binary(), any()) -> binary().
 merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     Sql =
         <<"SELECT t.id, t.name FROM public.user_tag_relation ut INNER JOIN public.user_tag t ON t.id = ut.tag_id WHERE ut.scene = ",

@@ -20,6 +20,11 @@
 %% API
 %% ===================================================================
 
+%% @doc 保存或更新应用版本信息
+%% 根据 ID 存在与否决定是更新还是新建记录
+%% @param Data 包含版本信息的数据映射
+%% @return any() 数据库操作结果
+-spec save(map()) -> any().
 save(Data) ->
     % Where = imboy_db:assemble_where([
     %     ["status", "=", maps:get(status, Data)]
@@ -45,6 +50,10 @@ save(Data) ->
             app_version_repo:add(D2#{created_at => imboy_dt:now()})
     end.
 
+%% @doc 删除应用版本记录
+%% 根据 WHERE 条件删除对应的版本记录
+%% @param Where 删除条件的 SQL WHERE 子句
+%% @return ok 操作成功标识
 -spec delete(binary()) -> ok.
 delete(Where) ->
     Tb = app_version_repo:tablename(),
@@ -57,6 +66,11 @@ delete(Where) ->
 % adm_app_version_logic:vsn_sort(<<"0.2">>).
 % adm_app_version_logic:vsn_sort(<<"0.2.22">>).
 %  adm_app_version_logic:vsn_sort(<<"10.102.22">>).
+%% @doc 将版本号转换为数值用于排序
+%% 支持语义化版本号格式，转换为单一数值便于数据库排序
+%% @param Vsn 版本号字符串，如 "1.2.3"
+%% @return integer() 转换后的数值，用于排序比较
+-spec vsn_sort(binary()) -> integer().
 vsn_sort(Vsn) ->
     {Major2, Minor2, Patch2} = case ec_semver:parse(Vsn) of
         {{Major, Minor, Patch, _}, _} ->

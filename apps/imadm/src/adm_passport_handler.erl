@@ -17,7 +17,12 @@
 %% API
 %% ===================================================================
 
-
+%% @doc 初始化认证通行证处理器
+%% 根据请求中的 action 参数分发到不同的处理函数
+%% @param Req0 Cowboy 请求对象
+%% @param State0 状态映射，包含 action 等信息
+%% @return {ok, Req, State} 更新后的请求和状态
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -40,6 +45,12 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 生成并返回验证码图片
+%% 创建验证码图片并设置相关的 Cookie 信息
+%% @param Req Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
+-spec captcha(cowboy_req:req(), map()) -> cowboy_req:req().
 captcha(Req, _State) ->
     %CryptKey用于验证的时候用，需本地保存，CapCode为用户提交的数据
     %simple_captcha:check(CryptKey, CapCode)
@@ -52,6 +63,13 @@ captcha(Req, _State) ->
     }, BinPng, Req2).
 
 
+%% @doc 处理登录页面请求
+%% 返回包含 CSRF 令牌和 RSA 公钥的登录页面
+%% @param Method HTTP 方法（GET）
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
+-spec login(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 login(<<"GET">>, Req0, _State) ->
     Csrf = imboy_func:uid("csrf"),
     imboy_cache:set(Csrf, 1),
@@ -67,6 +85,12 @@ login(<<"GET">>, Req0, _State) ->
         , <<"Access-Control-Allow-Origin">> => <<"*">>
     }, Body, Req0);
 
+%% @doc 处理登录表单提交
+%% 验证用户名密码、验证码和 CSRF 令牌，完成用户认证
+%% @param Method HTTP 方法（POST）
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
 login(<<"POST">>, Req0, _State) ->
     % CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),

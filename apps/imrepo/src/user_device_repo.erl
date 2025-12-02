@@ -1,6 +1,7 @@
 -module(user_device_repo).
 %%%
 % user_device_repo 是 user_device repository 缩写
+% 用户设备数据仓库层，提供用户设备信息的基础数据库操作
 %%%
 
 -export([tablename/0]).
@@ -15,8 +16,12 @@
 -include_lib("imlib/include/log.hrl").
 
 %% ===================================================================
-%% API
+%% API functions
 %% ===================================================================
+
+%% @doc 获取用户设备表的表名
+%% @return 返回用户设备表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"user_device">>).
 

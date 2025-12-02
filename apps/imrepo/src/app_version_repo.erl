@@ -2,6 +2,7 @@
 %%%
 % app_version 相关操作都放到该模块，存储库模块
 % app_version related operations are put in this module, repository module
+% 应用版本数据仓库层，提供应用版本信息的基础数据库操作
 %%%
 
 -export ([tablename/0]).
@@ -17,12 +18,21 @@
 -include_lib("imlib/include/common.hrl").
 
 %% ===================================================================
-%% API
+%% API functions
 %% ===================================================================
 
+%% @doc 获取应用版本表的表名
+%% @return 返回应用版本表的完整表名
+-spec tablename() -> binary().
 tablename() ->
     imboy_db:public_tablename(<<"app_version">>).
 
+%% @doc 查询应用版本信息
+%% @param Where SQL WHERE子句条件
+%% @param Column 要查询的列名
+%% @return {ok, Columns, Rows} 查询成功返回列和行数据 | {error, Reason} 查询失败
+%% @details 按sort和updated_at降序排序
+-spec find(binary(), binary()) -> {ok, list(), list()} | {error, any()}.
 find(Where, Column) ->
     Tb = tablename(),
     OrderBy = <<"sort desc, updated_at desc">>,
