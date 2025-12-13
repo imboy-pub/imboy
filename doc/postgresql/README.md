@@ -53,9 +53,10 @@ sed -e '/^\\unrestrict/d' \
     -e '/^\\i/d' \
     -e '/^\\o/d' \
     -e '/^\\q/d' \
-    imboy_v1_backup_20251208_160400.sql > imboy_v1.sql
+     imboy_backup_20251213_204353.sql > imboy_v1.sql
 
 pg_dump -h 127.0.0.1 --inserts -d imboy_v1 -U imboy_user -p 5432 -n 'public'  -f imboy_v1.sql
+
 
 ```
 

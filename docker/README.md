@@ -94,7 +94,21 @@ max_retries=50; retry_count=0; until docker build --file "./docker/pg18_Dockerfi
 
 docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_141046.sql
 
+# 删除所有已知的客户端命令
+sed -e '/^\\unrestrict/d' \
+    -e '/^\\restrict/d' \
+    -e '/^\\connect/d' \
+    -e '/^\\encoding/d' \
+    -e '/^\\set/d' \
+    -e '/^\\echo/d' \
+    -e '/^\\i/d' \
+    -e '/^\\o/d' \
+    -e '/^\\q/d' \
+     imboy_backup_20251213_204353.sql > imboy_v1.sql
+
 docker exec -i dev_imboy_pg18 psql -U imboy_user -d imboy_dev < /data/backup/imboy_db/imboy_backup_20251126_161728.sql
+
+docker exec -i pro_imboy_pg18 psql -U imboy_user -d imboy_pro < imboy_v1.sql
 
 ```
 

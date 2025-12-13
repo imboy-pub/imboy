@@ -19,9 +19,9 @@ Strive to implement version management based on "Specification for Semantic vers
 There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL17
 
 ------
-* Erlang/OTP 27+
+* Erlang/OTP 28+
 
-* 数据库 PostgreSQL17+
+* 数据库 PostgreSQL18+
 
 * [more](./doc/deps_service.md)
 
@@ -31,9 +31,9 @@ erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "relea
 
 后端技术栈：
 
-语言: Erlang/OTP 27+
+语言: Erlang/OTP 28+
 Web框架: Cowboy (基于Erlang的HTTP服务器)
-数据库: PostgreSQL 17
+数据库: PostgreSQL 18
 UI框架: Element UI Plus + Nuxt4
 认证方式: Cookie-based (adm_user_id)
 依赖管理: Erlang.mk
@@ -191,6 +191,9 @@ chmod +x efmt
 
 
 # 发布  (Release)
+
+./script/deploy.sh xxx.xxx.xxx.xxx 0.7.1 0.6.5
+
 ```
 IMBOYENV=prod make rel
 IMBOYENV=test make rel
