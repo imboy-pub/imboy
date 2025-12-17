@@ -1,4 +1,4 @@
-#!/bin/bash
+g#!/bin/bash
 
 # 生成符合 relx 规范的 .appup 文件
 # 用法:

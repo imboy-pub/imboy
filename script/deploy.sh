@@ -46,7 +46,7 @@ PROJECT_DIR="/www/wwwroot/imboy-api"
 
 VM_ARGS_FILE="$PROJECT_DIR/config/vm.pro.args"
 SYS_CONFIG_FILE="$PROJECT_DIR/config/sys.pro.config"
-
+RELX_CONFIG_FILE="$PROJECT_DIR/relxpro.config";
 NGINX_CONF="/www/server/panel/vhost/nginx/pro.imboy.pub.conf"
 
 RELEASE_TARBALL="$PROJECT_DIR/_rel/imboy/imboy-$VSN.tar.gz"
@@ -60,6 +60,19 @@ fail() { echo -e "\033[31m✗ $1\033[0m"; exit 1; }
 ssh_exec() {
   ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$1"
 }
+
+# =====================================================
+# 0️⃣.5️⃣ 更新 relx release 版本号
+# =====================================================
+
+log "更新 relx 版本号 -> $VSN"
+
+ssh_exec "
+  sed -i '
+    s/{release, {[[:space:]]*imboy,[[:space:]]*\"[^\"]*\"}/{release, {imboy, \"${VSN}\"}/
+  ' $RELX_CONFIG_FILE
+"
+ok "relxpro.config 版本号已更新"
 
 # =====================================================
 # 1️⃣ Erlang 节点名

@@ -1,6 +1,15 @@
 # HEAD
 *
 
+# 0.7.2 refactor: 请求参数处理模块重构和数据库操作优化
+* 新增管理员用户数据仓库模块 `adm_user_repo.erl`，提供完整的CRUD操作
+* 重构请求参数处理：将 `imboy_req` 模块的参数获取功能迁移到专用的 `imboy_param` 模块
+* 优化 `imboy_db:pluck/2` 函数，增加对 `{ok, Value}` 返回格式的支持
+* 改进 `user_repo:list_by_ids/2` 函数，支持binary和integer混合类型的ID列表查询
+* 增强 `imboy_req` 模块，新增 `post_params/1` 函数支持多种POST数据格式解析
+* 更新相关handler模块，统一使用新的参数处理接口
+* 新增 script/deploy.sh 脚本
+
 # 0.7.1
 * 重构离线消息系统，新增专门的消息处理器模块 `msg_handler.erl`，清理冗余的离线消息处理代码，减少代码重复；
 * 新增统一的离线消息拉取接口 `/msg/offline` 和确认接口 `/msg/offline_ack`；

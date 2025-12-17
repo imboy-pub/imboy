@@ -6,6 +6,7 @@
 -export([cookie/2]).
 -export([get/1, get/2]).
 -export([post/2, post/3]).
+-export([post_params/1]).
 
 -include_lib("imlib/include/log.hrl").
 
@@ -53,6 +54,137 @@ post(Url, Params) ->
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
 
+
+%% @doc 从Cowboy请求中解析POST参数
+%% 支持application/x-www-form-urlencoded和multipart/form-data格式
+%% @param Req cowboy请求对象
+%% @returns POST参数列表
+-spec post_params(cowboy_req:req()) -> list().
+
+post_params(Req) ->
+    % 读取请求体
+    case cowboy_req:read_body(Req) of
+        {ok, Body, _Req2} when Body =/= <<>> ->
+            % 获取Content-Type头部
+            ContentType = cowboy_req:header(<<"content-type">>, Req, <<>>),
+            % 解析不同类型的POST数据
+            case parse_body_by_content_type(Body, ContentType) of
+                {ok, Params} ->
+                    Params;
+                {error, _Reason} ->
+                    % 解析失败时返回空列表
+                    []
+            end;
+        {ok, <<>>, _Req2} ->
+            % 空请求体
+            [];
+        {error, _Reason} ->
+            % 读取请求体失败
+            []
+    end.
+
+%% @doc 根据Content-Type解析请求体
+%% @param Body 请求体二进制数据
+%% @param ContentType Content-Type头部
+%% @returns {ok, Params} | {error, Reason}
+-spec parse_body_by_content_type(binary(), binary()) -> {ok, list()} | {error, atom()}.
+
+parse_body_by_content_type(Body, ContentType) ->
+    case binary:match(ContentType, <<"application/x-www-form-urlencoded">>) of
+        nomatch ->
+            case binary:match(ContentType, <<"multipart/form-data">>) of
+                nomatch ->
+                    % 尝试解析JSON格式
+                    case parse_json_body(Body) of
+                        {ok, Map} when is_map(Map) ->
+                            % 将map转换为list格式
+                            Params = maps:to_list(Map),
+                            % 将键值转换为binary格式
+                            FormattedParams = [{ec_cnv:to_binary(K), ec_cnv:to_binary(V)} || {K, V} <- Params],
+                            {ok, FormattedParams};
+                        {ok, List} when is_list(List) ->
+                            {ok, List};
+                        {error, _} ->
+                            % 如果JSON解析失败，尝试简单的键值对解析
+                            parse_key_value_pairs(Body)
+                    end;
+                _ ->
+                    % multipart/form-data暂时不支持，返回空列表
+                    {ok, []}
+            end;
+        _ ->
+            % application/x-www-form-urlencoded格式
+            parse_urlencoded_body(Body)
+    end.
+
+%% @doc 解析URL编码的请求体
+%% @param Body URL编码的请求体
+%% @returns {ok, Params} | {error, Reason}
+-spec parse_urlencoded_body(binary()) -> {ok, list()} | {error, atom()}.
+
+parse_urlencoded_body(Body) ->
+    try
+        % 使用uri_string解析URL编码数据
+        Decoded = uri_string:unquote(binary_to_list(Body)),
+        % 解码后按&分割参数
+        Pairs = string:tokens(Decoded, "&"),
+        Params = lists:foldl(fun(Pair, Acc) ->
+            case string:tokens(Pair, "=") of
+                [Key, Value] ->
+                    [{ec_cnv:to_binary(Key), ec_cnv:to_binary(Value)} | Acc];
+                [Key] ->
+                    [{ec_cnv:to_binary(Key), <<>>} | Acc];
+                _ ->
+                    Acc
+            end
+        end, [], Pairs),
+        {ok, Params}
+    catch
+        error:_ ->
+            {error, parse_failed}
+    end.
+
+%% @doc 解析简单键值对格式
+%% @param Body 键值对格式的请求体
+%% @returns {ok, Params} | {error, Reason}
+-spec parse_key_value_pairs(binary()) -> {ok, list()} | {error, atom()}.
+
+parse_key_value_pairs(Body) ->
+    try
+        Pairs = binary:split(Body, <<"&">>, [global]),
+        Params = lists:foldl(fun(Pair, Acc) ->
+            case binary:split(Pair, <<"=">>) of
+                [Key, Value] ->
+                    [{Key, Value} | Acc];
+                [Key] ->
+                    [{Key, <<>>} | Acc];
+                _ ->
+                    Acc
+            end
+        end, [], Pairs),
+        {ok, Params}
+    catch
+        _:_ ->
+            {error, parse_failed}
+    end.
+
+%% @doc 解析JSON请求体
+%% @param Body JSON格式的请求体
+%% @returns {ok, map()} | {ok, list()} | {error, Reason}
+-spec parse_json_body(binary()) -> {ok, term()} | {error, atom()}.
+
+parse_json_body(Body) ->
+    try
+        case jsone:decode(Body, [native_utf8]) of
+            Result when is_map(Result) orelse is_list(Result) ->
+                {ok, Result};
+            _ ->
+                {error, invalid_json}
+        end
+    catch
+        error:_ ->
+            {error, json_decode_failed}
+    end.
 
 %% @doc 从请求中获取指定名称的Cookie值
 %% @param Key Cookie名称

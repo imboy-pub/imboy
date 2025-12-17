@@ -47,7 +47,7 @@ init(Req0, State0) ->
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {Page, Size} = imboy_param:page(Req0),
-    Kind = imboy_param:int(kind, Req0, 0),
+    {ok, Kind} = imboy_param:int(kind, Req0, 0),
     #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     #{tag := Tag} = cowboy_req:match_qs([{tag, [], <<>>}], Req0),

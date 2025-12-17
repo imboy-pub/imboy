@@ -19,8 +19,8 @@
 %% 示例: {Page, Size} = imboy_param:page(Req0)
 -spec page(cowboy_req:req()) -> {non_neg_integer(), pos_integer()}.
 page(Req) ->
-    Page = int(page, Req, 1),
-    Size = int(size, Req, 20),
+    {ok, Page} = int(page, Req, 1),
+    {ok, Size} = int(size, Req, 20),
     pase_page_size(Page, Size).
 
 %% @doc 从请求中获取整数参数
@@ -77,7 +77,7 @@ post(Req) ->
             % Params
             jsone:decode(PostVals, [{object_format, proplist}]);
         _ ->
-            imboy_log:error(io_lib:format("imboy_req:post error: ContentType ~p; ~p ~n", [ContentType, Req])),
+            imboy_log:error(io_lib:format("imboy_param:post error: ContentType ~p; ~p ~n", [ContentType, Req])),
             []
     end.
 

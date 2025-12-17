@@ -88,6 +88,9 @@ pluck(Query, Default) ->
         {ok, _, [{Val}|_]} ->
             % imboy_log:info(io_lib:format("imboy_db:pluck/2 2 Val:~p ~n", [Val])),
             Val;
+        {ok, Val} ->
+            % 处理返回 {ok, Value} 格式的情况
+            Val;
         _ ->
             Default
       end.

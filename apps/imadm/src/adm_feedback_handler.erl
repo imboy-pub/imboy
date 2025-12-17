@@ -25,7 +25,7 @@ init(Req0, State0) ->
     Method = cowboy_req:method(Req0),
     Req1 = case Action of
         index ->
-            {ok, Ajax} = imboy_req:get_int(ajax, Req0, -2),
+            {ok, Ajax} = imboy_param:int(ajax, Req0, -2),
             % imboy_log:info(["AjaxAjaxAjaxAjaxAjax: ", Ajax, ";  Ajax"]),
             index(Method, Ajax, Req0, State);
         reply ->
@@ -40,7 +40,7 @@ init(Req0, State0) ->
 %% ===================================================================
 
 index(<<"GET">>, 1, Req0, _State) ->
-    {Page, Size} = imboy_req:page_size(Req0),
+    {Page, Size} = imboy_param:page(Req0),
     % Where = imboy_cnv:implode("", [<<"user_id=">>, CurrentUid]),
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = <<"status > -2">>,
@@ -68,7 +68,7 @@ reply(<<"POST">>, Req0, State) ->
     % replier_user_id
     PostVals = imboy_req:post_params(Req0),
     % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
-    % FeedbackId = imboy_req:get_int(<<"FeedbackId">>, Req0, 0),
+    % FeedbackId = imboy_param:int(<<"FeedbackId">>, Req0, 0),
     {ok, FeedbackId } = case string:to_integer(proplists:get_value(<<"feedback_id">>, PostVals)) of
         {error, _} ->
             {ok, 0};
