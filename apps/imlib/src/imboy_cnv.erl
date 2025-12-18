@@ -168,5 +168,13 @@ safe_to_binary(Term) ->
     catch
         error:function_clause ->
             % 直接将复杂结构转换为字符串表示，简洁实用
-            erlang:iolist_to_binary(io_lib:format("~p", [Term]))
+            erlang:iolist_to_binary(io_lib:format("~p", [Term]));
+        error:badarg ->
+            % 处理 iolist_to_binary 的 badarg 错误，使用兜底转换方案
+            erlang:list_to_binary(lists:flatten(io_lib:format("~p", [Term])));
+        Class:Reason:Stacktrace ->
+            % 兜底处理其他所有异常情况
+            error_logger:warning_msg("safe_to_binary unexpected error: ~p:~p~nStacktrace: ~p~nInput: ~p~n",
+                                   [Class, Reason, Stacktrace, Term]),
+            erlang:list_to_binary(lists:flatten(io_lib:format("~p", [Term])))
     end.

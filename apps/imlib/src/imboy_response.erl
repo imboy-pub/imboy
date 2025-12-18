@@ -143,11 +143,17 @@ reply_json(Code, Msg, Payload, Req) ->
 %% @returns cowboy_req:req() 更新后的请求对象
 -spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req(), list()) -> cowboy_req:req().
 reply_json(Code, Msg, Payload, Req, Options) ->
+    Msg2 = if
+         is_list(Msg) ->
+            unicode:characters_to_binary(Msg);
+         true ->
+            imboy_cnv:safe_to_binary(Msg)
+    end,
     % io:format("reply_json Payload ~p~n", [Payload]),
     %% 构造响应主体
     BasePayload = [
         {<<"code">>, Code},
-        {<<"msg">>, imboy_cnv:safe_to_binary(Msg)},
+        {<<"msg">>, Msg2},
         {<<"sv_ts">>, imboy_dt:millisecond()},
 %%        {<<"request_id">>, imboy_dt:millisecond()},
         {<<"payload">>, Payload}
