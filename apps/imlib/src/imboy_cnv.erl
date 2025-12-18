@@ -16,6 +16,7 @@
 -export([vsn_major/1]).
 -export([map_to_query/1]).
 -export([list_to_binary_string/1]).
+-export([safe_to_binary/1]).
 
 % imboy_cnv:convert_at_timestamps(List).
 -export([convert_at_timestamps/1]).
@@ -154,3 +155,18 @@ convert_timestamp(Value) when is_tuple(Value) ->
             Value
     end;
 convert_timestamp(Value) -> Value.  % 非时间字符串、空值保持原样
+
+%% @doc 安全地将任意类型转换为二进制，支持复杂的错误结构
+%% 优先使用 ec_cnv:to_binary 处理基本类型，遇到复杂结构时特殊处理
+%% @param Term 任意类型的数据
+%% @returns 二进制格式的错误消息
+-spec safe_to_binary(any()) -> binary().
+safe_to_binary(Term) ->
+    try
+        % 优先使用成熟的 ec_cnv:to_binary 处理基本类型
+        ec_cnv:to_binary(Term)
+    catch
+        error:function_clause ->
+            % 直接将复杂结构转换为字符串表示，简洁实用
+            erlang:iolist_to_binary(io_lib:format("~p", [Term]))
+    end.
