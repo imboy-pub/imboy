@@ -130,7 +130,7 @@ add(Uid, Scene, Tag) ->
             imboy_db:insert_into(<<"user_tag">>, #{
                 creator_user_id => Uid
                 , scene => Scene
-                , name => <<"'", Tag/binary, "'">>
+                , name => Tag
                 , referer_time => 0
                 , created_at => imboy_dt:now()
             });

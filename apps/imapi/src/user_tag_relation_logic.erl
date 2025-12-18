@@ -119,13 +119,13 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 -spec add(integer(), binary(), binary(), list()) -> ok.
 add(Uid, Scene, <<>>, [Tag]) ->
     imboy_log:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
-    Count = imboy_db:pluck(<<"user_tag">>, <<"scene = ", Scene/binary, " AND name = ", Tag/binary>>, <<"id">>, 0),
+    Count = imboy_db:pluck(<<"user_tag">>, <<"scene = ", Scene/binary, " AND name = '", Tag/binary, "'">>, <<"id">>, 0),
     case Count of
         0 ->
             imboy_db:insert_into(<<"user_tag">>, #{
                 creator_user_id => Uid
                 , scene => Scene
-                , name => <<"'", Tag/binary, "'">>
+                , name => Tag
                 , referer_time => 0
                 , created_at => imboy_dt:now()
             }),
