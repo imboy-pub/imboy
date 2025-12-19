@@ -33,6 +33,7 @@
 -export([with_transaction/2]).
 
 -export([public_tablename/1]).
+-export([build_in_clause/1]).
 
 
 -ifdef(EUNIT).
@@ -526,6 +527,30 @@ public_tablename(Tb) ->
         _ ->
             Tb
     end.
+
+%% @doc 构建SQL IN子句，直接拼接值
+%% @param Values 值列表，支持binary和integer类型
+%% @return IN子句字符串，如 <<"'msg1','msg2','msg3'">> 或 <<"'1','2','3'">>
+%% @example imboy_db:build_in_clause([<<"msg1">>, <<"msg2">>]). => <<"'msg1','msg2'">>
+%% @example imboy_db:build_in_clause([1, 2, 3]). => <<"'1','2','3'">>
+-spec build_in_clause(list()) -> binary().
+build_in_clause([]) ->
+    <<>>;
+build_in_clause(Values) when is_list(Values) ->
+    QuotedValues = [quote_sql_value(V) || V <- Values],
+    iolist_to_binary(lists:join(<<",">>, QuotedValues)).
+
+%% @doc 为SQL值添加引号
+%% @private
+-spec quote_sql_value(binary() | integer() | string()) -> binary().
+quote_sql_value(Value) when is_binary(Value) ->
+    <<"'", Value/binary, "'">>;
+quote_sql_value(Value) when is_integer(Value) ->
+    BinValue = integer_to_binary(Value),
+    <<"'", BinValue/binary, "'">>;
+quote_sql_value(Value) when is_list(Value) ->
+    BinValue = list_to_binary(Value),
+    <<"'", BinValue/binary, "'">>.
 
 
 

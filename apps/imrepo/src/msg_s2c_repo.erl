@@ -108,10 +108,10 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
 -spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
     Tb = tablename(),
-    Placeholders = build_placeholders(length(MsgIds)),
-    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary, " RETURNING id">>,
+    InClause = imboy_db:build_in_clause(MsgIds),
+    Where = <<"WHERE msg_id IN (", InClause/binary, ") AND to_id = $1 RETURNING id">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    case imboy_db:execute(Sql, MsgIds ++ [ToUid]) of
+    case imboy_db:execute(Sql, [ToUid]) of
         {ok, _, Rows} ->
             Count = length(Rows),
             {ok, Count};
@@ -125,9 +125,3 @@ delete_by_msg_ids_and_to_id([], _ToUid) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc 构建SQL占位符字符串
-%% @param Count 占位符数量
-%% @return 占位符字符串，如 <<"$1,$2,$3">>
--spec build_placeholders(pos_integer()) -> binary().
-build_placeholders(Count) ->
-    lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, Count)]).
