@@ -35,7 +35,8 @@ online(Req0, _State) ->
     {ok, Vsn} =  application:get_key(imboy, vsn),
     CountUser = imboy_syn:count_user(),
     Count = imboy_syn:count(),
-    Msg = io_lib:format("vsn ~s, 在线总人数: ~p, 在线设备数~p", [Vsn
+    Msg = io_lib:format("vsn ~s, node ~p, 在线总人数: ~p, 在线设备数~p", [Vsn
+        , node()
         , CountUser
         , Count]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
