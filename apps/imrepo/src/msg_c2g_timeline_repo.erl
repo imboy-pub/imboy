@@ -103,10 +103,10 @@ delete_by_msg_id(MsgId) ->
     end.
 
 
-% 根据消息ID和接收者ID删除特定系统消息
+% 根据消息ID和接收者ID删除特定群消息
 delete_by_msg_id_and_to_id(MsgId, ToUid) ->
     Tb = tablename(),
-    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
+    Where = <<"WHERE msg_id = $1 AND to_uid = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
     case imboy_db:execute(Sql, [MsgId, ToUid]) of
         {ok, _, Rows} ->
@@ -116,12 +116,15 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
             {error, Reason}
     end.
 
-% 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+%% @doc 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+%% @param MsgIds 消息ID列表
+%% @param ToUid 接收者用户ID
+%% @return {ok, Count} | {error, Reason}
+-spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
     Tb = tablename(),
-    % 构建占位符字符串 ($1, $2, $3, ...)
-    Placeholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]),
-    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary, " RETURNING to_uid">>,
+    Placeholders = build_placeholders(length(MsgIds)),
+    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_uid = $", (integer_to_binary(length(MsgIds) + 1))/binary, " RETURNING to_uid">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
     case imboy_db:execute(Sql, MsgIds ++ [ToUid]) of
         {ok, _, Rows} ->
@@ -137,3 +140,10 @@ delete_by_msg_ids_and_to_id([], _ToUid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 构建SQL占位符字符串
+%% @param Count 占位符数量
+%% @return 占位符字符串，如 <<"$1,$2,$3">>
+-spec build_placeholders(pos_integer()) -> binary().
+build_placeholders(Count) ->
+    lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, Count)]).

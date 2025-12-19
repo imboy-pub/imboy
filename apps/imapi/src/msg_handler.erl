@@ -225,31 +225,24 @@ offline_ack(Req0, State) ->
 
     % 获取请求参数
     PostVals = imboy_param:post(Req0),
-    Type0 = proplists:get_value(<<"type">>, PostVals, <<>>),
-    MsgIds0 = proplists:get_value(<<"msg_ids">>, PostVals, []),
+    Type = string:lowercase(proplists:get_value(<<"type">>, PostVals, <<>>)),
+    MsgIds = proplists:get_value(<<"msg_ids">>, PostVals, []),
 
-    % 参数验证
-    case validate_offline_ack_params(Type0, MsgIds0) of
-        {ok, Type, MsgIds} ->
-            ?INFO_LOG("Processing offline_ack for user: ~p, type: ~p, msg_count: ~p", [CurrentUid, Type, length(MsgIds)]),
+    ?INFO_LOG("Processing offline_ack for user: ~p, type: ~p, msg_count: ~p", [CurrentUid, Type, length(MsgIds)]),
 
-            % 处理离线消息确认
-            case process_offline_ack(CurrentUid, Type, MsgIds) of
-                {ok, ProcessedCount} ->
-                    Payload = #{
-                        <<"msg">> => <<"offline_messages_acknowledged">>,
-                        <<"type">> => Type,
-                        <<"processed_count">> => ProcessedCount,
-                        <<"msg_ids_count">> => length(MsgIds)
-                    },
-                    ?INFO_LOG("Offline ack processed successfully: ~p messages for user: ~p", [ProcessedCount, CurrentUid]),
-                    imboy_response:success(Req0, Payload);
-                {error, Reason} ->
-                    ?ERROR_LOG("Failed to process offline_ack for user: ~p, reason: ~p", [CurrentUid, Reason]),
-                    imboy_response:error(Req0, Reason)
-            end;
+    % 处理离线消息确认
+    case process_offline_ack(CurrentUid, Type, MsgIds) of
+        {ok, ProcessedCount} ->
+            Payload = #{
+                <<"msg">> => <<"offline_messages_acknowledged">>,
+                <<"type">> => Type,
+                <<"processed_count">> => ProcessedCount,
+                <<"msg_ids_count">> => length(MsgIds)
+            },
+            ?INFO_LOG("Offline ack processed successfully: ~p messages for user: ~p", [ProcessedCount, CurrentUid]),
+            imboy_response:success(Req0, Payload);
         {error, Reason} ->
-            ?ERROR_LOG("Invalid offline_ack params for user: ~p, reason: ~p", [CurrentUid, Reason]),
+            ?ERROR_LOG("Failed to process offline_ack for user: ~p, reason: ~p", [CurrentUid, Reason]),
             imboy_response:error(Req0, Reason)
     end.
 
@@ -257,128 +250,19 @@ offline_ack(Req0, State) ->
 %% 离线消息确认相关函数
 %% ===================================================================
 
-%% @doc 验证离线消息确认参数
-validate_offline_ack_params(Type, MsgIds) when is_binary(Type), is_list(MsgIds) ->
-    % 验证消息类型（支持大小写）
-    NormalizedType = string:lowercase(Type),
-    ValidTypes = [<<"c2c">>, <<"c2g">>, <<"s2c">>],
-    case lists:member(NormalizedType, ValidTypes) of
-        true ->
-            % 验证消息ID列表
-            case validate_msg_ids(MsgIds) of
-                {ok, ValidMsgIds} ->
-                    {ok, NormalizedType, ValidMsgIds};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
-        false ->
-            {error, <<"invalid_message_type">>}
-    end;
-validate_offline_ack_params(_, _) ->
-    {error, <<"invalid_params">>}.
-
-%% @doc 验证消息ID列表
-validate_msg_ids(MsgIds) ->
-    validate_msg_ids(MsgIds, []).
-
-validate_msg_ids([], Acc) ->
-    {ok, lists:reverse(Acc)};
-validate_msg_ids([MsgId | Rest], Acc) when is_binary(MsgId), byte_size(MsgId) > 0 ->
-    validate_msg_ids(Rest, [MsgId | Acc]);
-validate_msg_ids([MsgId | Rest], Acc) when is_list(MsgId) ->
-    % 如果是字符串格式，转换为二进制
-    case length(MsgId) > 0 of
-        true ->
-            validate_msg_ids(Rest, [list_to_binary(MsgId) | Acc]);
-        false ->
-            {error, <<"invalid_msg_id_format">>}
-    end;
-validate_msg_ids([_ | _], _Acc) ->
-    {error, <<"invalid_msg_id_format">>}.
-
 % 处理离线消息确认
-process_offline_ack(Uid, <<"c2c">>, MsgIds) ->
-    try
-        Count = delete_c2c_messages_by_ids(Uid, MsgIds),
-        {ok, Count}
-    catch
-        error:Reason ->
-            ?ERROR_LOG("Error processing C2C offline ack: ~p", [Reason]),
-            {error, <<"internal_server_error">>}
-    end;
-process_offline_ack(Uid, <<"c2g">>, MsgIds) ->
-    try
-        Count = delete_c2g_messages_by_ids(Uid, MsgIds),
-        {ok, Count}
-    catch
-        error:Reason ->
-            ?ERROR_LOG("Error processing C2G offline ack: ~p", [Reason]),
-            {error, <<"internal_server_error">>}
-    end;
-process_offline_ack(Uid, <<"s2c">>, MsgIds) ->
-    try
-        Count = delete_s2c_messages_by_ids(Uid, MsgIds),
-        {ok, Count}
-    catch
-        error:Reason ->
-            ?ERROR_LOG("Error processing S2C offline ack: ~p", [Reason]),
-            {error, <<"internal_server_error">>}
-    end;
-process_offline_ack(_, Type, _) ->
-    ?ERROR_LOG("Unsupported message type: ~p", [Type]),
-    {error, <<"unsupported_message_type">>}.
-
-% 根据消息ID列表删除C2C消息
-delete_c2c_messages_by_ids(Uid, MsgIds) when length(MsgIds) > 0 ->
-    ?INFO_LOG("Deleting C2C messages for user: ~p, count: ~p", [Uid, length(MsgIds)]),
-    case msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid) of
-        {ok, Count} when is_integer(Count) ->
-            ?INFO_LOG("Successfully deleted ~p C2C messages for user: ~p", [Count, Uid]),
-            Count;
-        {ok, _} ->
-            ?ERROR_LOG("Unexpected delete result for C2C messages, user: ~p", [Uid]),
-            0;
-        {error, Reason} ->
-            ?ERROR_LOG("Failed to delete C2C messages for user: ~p, reason: ~p", [Uid, Reason]),
-            0
-    end;
-delete_c2c_messages_by_ids(_Uid, []) ->
-    ?INFO_LOG("Empty message ID list for C2C delete operation"),
-    0.
-
-% 根据消息ID列表删除C2G消息
-delete_c2g_messages_by_ids(Uid, MsgIds) when length(MsgIds) > 0 ->
-    ?INFO_LOG("Deleting C2G messages for user: ~p, count: ~p", [Uid, length(MsgIds)]),
-    case msg_c2g_timeline_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid) of
-        {ok, Count} when is_integer(Count) ->
-            ?INFO_LOG("Successfully deleted ~p C2G messages for user: ~p", [Count, Uid]),
-            Count;
-        {ok, _} ->
-            ?ERROR_LOG("Unexpected delete result for C2G messages, user: ~p", [Uid]),
-            0;
-        {error, Reason} ->
-            ?ERROR_LOG("Failed to delete C2G messages for user: ~p, reason: ~p", [Uid, Reason]),
-            0
-    end;
-delete_c2g_messages_by_ids(_Uid, []) ->
-    ?INFO_LOG("Empty message ID list for C2G delete operation"),
-    0.
-
-% 根据消息ID列表删除S2C消息
-delete_s2c_messages_by_ids(Uid, MsgIds) when length(MsgIds) > 0 ->
-    ?INFO_LOG("Deleting S2C messages for user: ~p, count: ~p", [Uid, length(MsgIds)]),
-    case msg_s2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid) of
-        {ok, Count} when is_integer(Count) ->
-            ?INFO_LOG("Successfully deleted ~p S2C messages for user: ~p", [Count, Uid]),
-            Count;
-        {ok, _} ->
-            ?ERROR_LOG("Unexpected delete result for S2C messages, user: ~p", [Uid]),
-            0;
-        {error, Reason} ->
-            ?ERROR_LOG("Failed to delete S2C messages for user: ~p, reason: ~p", [Uid, Reason]),
-            0
-    end;
-delete_s2c_messages_by_ids(_Uid, []) ->
-    ?INFO_LOG("Empty message ID list for S2C delete operation"),
-    0.
+process_offline_ack(Uid, Type, MsgIds) ->
+    case Type of
+        <<"c2c">> ->
+            Count = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            {ok, Count};
+        <<"c2g">> ->
+            Count = msg_c2g_timeline_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            {ok, Count};
+        <<"s2c">> ->
+            Count = msg_s2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            {ok, Count};
+        _ ->
+            {error, <<"unsupported_message_type">>}
+    end.
 

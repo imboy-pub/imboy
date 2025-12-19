@@ -62,6 +62,10 @@ delete_msg(Id) ->
     delete_msg(Where, Id).
 
 
+delete_msg(Where, Val) when is_list(Val) ->
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
+    imboy_db:execute(Sql, Val);
 delete_msg(Where, Val) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
@@ -97,15 +101,33 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     delete_msg(Where, [MsgId, ToUid]).
 
-% 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+%% @doc 批量删除多个消息ID（使用 IN 语句的单个 SQL）
+%% @param MsgIds 消息ID列表
+%% @param ToUid 接收者用户ID
+%% @return {ok, Count} | {error, Reason}
+-spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
-    % 构建占位符字符串 ($1, $2, $3, ...)
-    Placeholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]),
-    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
-    delete_msg(Where, MsgIds ++ [ToUid]);
+    Tb = tablename(),
+    Placeholders = build_placeholders(length(MsgIds)),
+    Where = <<"WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary, " RETURNING id">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
+    case imboy_db:execute(Sql, MsgIds ++ [ToUid]) of
+        {ok, _, Rows} ->
+            Count = length(Rows),
+            {ok, Count};
+        {error, Reason} ->
+            {error, Reason}
+    end;
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 构建SQL占位符字符串
+%% @param Count 占位符数量
+%% @return 占位符字符串，如 <<"$1,$2,$3">>
+-spec build_placeholders(pos_integer()) -> binary().
+build_placeholders(Count) ->
+    lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, Count)]).
