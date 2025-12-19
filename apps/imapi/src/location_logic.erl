@@ -29,7 +29,7 @@ make_myself_visible(_Uid, _Lat, <<>>) ->
     {error, <<"longitude is empty">>};
 make_myself_visible(Uid, Lat, Lng) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
-    ?DEBUG_LOG([Uid, Lat, Lng]),
+    % ?DEBUG_LOG([Uid, Lat, Lng]),
     geo_people_nearby_repo:save(Uid, Lat, Lng),
     ok.
 

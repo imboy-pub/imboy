@@ -97,6 +97,6 @@ eq(Ciphertext, Ciphertext2) ->
         true ->
             {ok, []};
         _ ->
-            % error_password 为APP端的多语言吗
-            {error, "error_password"}
+            % errorPassword 为APP端的多语言吗
+            {error, "errorPassword"}
     end.

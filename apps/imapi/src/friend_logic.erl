@@ -147,8 +147,9 @@ move_to_category(CurrentUid, Uid, CategoryId) ->
     ok.
 
 
-information(CurrentUid, Uid) ->
-    ?DEBUG_LOG([CurrentUid, Uid]),
+information(_CurrentUid, _Uid) ->
+    % TODO
+    % ?DEBUG_LOG([CurrentUid, Uid]),
     Info = [],
     Info.
 

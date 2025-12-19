@@ -79,7 +79,7 @@ face2face_save(Code, Gid, Uid) ->
     end,
     GM = group_member_repo:find(Gid, Uid, <<"id">>),
     GMSize = maps:size(GM),
-    ?DEBUG_LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
+    % ?DEBUG_LOG(["group_logic/face2face_save", Code, Gid, Uid, G, GM]),
     case {GMSize, RowCode} of
         {_, <<>>} ->
             {error, <<"群ID不存在"/utf8>>};

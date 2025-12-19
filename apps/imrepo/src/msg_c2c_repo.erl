@@ -95,7 +95,7 @@ delete_msg(Id) ->
 delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    ?DEBUG_LOG(['delete_msg', Params, Sql]),
+    % ?DEBUG_LOG(['delete_msg', Params, Sql]),
     imboy_db:execute(Sql, Params).
 
 

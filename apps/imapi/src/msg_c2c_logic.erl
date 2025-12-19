@@ -24,7 +24,7 @@ c2c(MsgId, CurrentUid, Data) ->
     To = proplists:get_value(<<"to">>, Data),
     ToId = imboy_hashids:decode(To),
     % CurrentUid = imboy_hashids:decode(From),
-    ?DEBUG_LOG([CurrentUid, ToId, Data]),
+    % ?DEBUG_LOG([CurrentUid, ToId, Data]),
     % 判断当前用户是否是 ToId 用户的朋友
     IsFriend = friend_ds:is_friend(ToId, CurrentUid),
     % 判断当前用户是否在 ToId 的黑名单里面
@@ -89,7 +89,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
     ToId = imboy_hashids:decode(To),
     FromId = imboy_hashids:decode(From),
-    ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    % ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
     
     % 验证权限：只能撤销自己发送的消息
     case CurrentUid =:= FromId of
@@ -139,7 +139,7 @@ c2c_revoke_ack(MsgId, CurrentUid, Data) ->
     Payload = proplists:get_value(<<"payload">>, Data),
     OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
     ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-    
+    % TODO
     % 更新本地消息状态为已撤销
     % 这里可以添加数据库更新逻辑
     ok.

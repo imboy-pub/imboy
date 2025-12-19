@@ -150,6 +150,7 @@ assemble_msg(Type, From, To, Payload, MsgId) ->
 %% 是直接推送还是发送pull通知。超过阈值时发送pull通知。
 %% @param Uid 用户ID
 %% @returns ok
+% message_ds:check_and_notify_offline_msgs(1).
 -spec check_and_notify_offline_msgs(user_id()) -> ok.
 check_and_notify_offline_msgs(Uid) ->
     % 检查各类型离线消息数量

@@ -111,11 +111,11 @@ handle_cast({ws_online, Uid, _Pid, _DType, DID}, State) ->
     {noreply, State, hibernate};
 
 handle_cast({notice_friend, Uid, ToState}, State) ->
-    ?DEBUG_LOG([notice_friend, Uid, ToState]),
+    % ?DEBUG_LOG([notice_friend, Uid, ToState]),
     notice_friend(Uid, ToState),
     {noreply, State, hibernate};
-handle_cast({offline, Uid, _Pid, DID}, State) ->
-    ?DEBUG_LOG([offline, Uid, State, DID]),
+handle_cast({offline, Uid, _Pid, _DID}, State) ->
+    % ?DEBUG_LOG([offline, Uid, State, DID]),
     notice_friend(Uid, <<"offline">>),
     {noreply, State, hibernate};
 handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->

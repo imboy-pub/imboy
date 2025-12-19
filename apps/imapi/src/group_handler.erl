@@ -187,7 +187,7 @@ edit(Req0, State) ->
                <<"id = ", GidBin/binary>>,
                <<"count(*)">>,
                0),
-            ?DEBUG_LOG([Tb, GidBin, Count]),
+            % ?DEBUG_LOG([Tb, GidBin, Count]),
             case Count > 0 of
                 true ->
                     imboy_db:update(
