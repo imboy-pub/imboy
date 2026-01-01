@@ -1,5 +1,61 @@
 # HEAD
 *
+# 0.7.3 refactor: 单应用架构重构与4层代码分层
+## 架构重构
+* **Umbrella → 单应用迁移**：将 5 个子应用（imapi、imadm、imlib、imrepo、imds）合并为单一应用
+* **目录结构重组**：
+  - `src/api/` - API Handler 层（26 个 handler + middleware）
+  - `src/adm/` - 管理后台 Handler 层（7 个 handler + middleware）
+  - `src/logic/` - 业务逻辑编排层（24 个 logic 模块）
+  - `src/ds/` - 数据服务层（19 个领域服务模块）
+  - `src/repo/` - 数据访问层（29 个 repository 模块）
+  - `src/lib/` - 公共库（29 个工具模块）
+  - `include/` - 头文件（集中管理）
+  - `priv/` - 私有资源（静态文件、模板）
+
+## 4层架构分层
+* **Handler 层** (src/api/, src/adm/)：HTTP 请求处理，参数验证，响应封装（33 个模块）
+* **Logic 层** (src/logic/)：业务逻辑编排，跨领域操作（24 个 logic 模块）
+  - 所有业务逻辑模块集中管理，包括 API、ADM 和通用业务逻辑
+* **Domain Service 层** (src/ds/)：领域服务，缓存管理，轻量业务规则（19 个 ds 模块）
+* **Repository 层** (src/repo/)：纯数据访问，SQL 执行，无业务逻辑（29 个 repo 模块）
+
+## 数据库迁移
+* **imboy_db → imboy_pg**：数据库访问层全面迁移
+* **新增 imboy_pg_sql**：SQL 构建工具，参数化查询，防 SQL 注入
+* **优化 repo 层**：所有数据访问模块使用 imboy_pg，统一错误处理
+
+## 路由与配置
+* **单端口架构**：移除独立 ADM 端口（9806），统一使用单一 HTTP 端口
+* **路由整合**：API 和 Admin 路由由单一 Cowboy 监听器处理
+* **中间件统一**：auth_middleware 统一处理 API 和 ADM 认证
+
+## 测试框架
+* **EUnit 测试套件**：新增 127 个测试文件，覆盖各层
+* **测试辅助工具**：
+  - `include/eunit_setup.hrl` - 测试宏（TEST_SIMPLE, TEST_WITH_DB, WITH_MECK）
+  - `test/common/meck_helper.erl` - Mock 管理和验证
+  - `test/common/test_helper.erl` - 测试数据生成器
+  - `test/common/eunit_runner.erl` - 测试运行器
+  - `test/common/test_config.erl` - 测试配置管理
+* **测试目录结构**：test/{api,adm,ds,repo,lib,logic}/ 对应 src/ 目录
+
+## 部署优化
+* **部署脚本更新**：script/deploy.sh 适配单应用架构
+* **蓝绿部署简化**：单一端口切换（9800 ↔ 9801）
+
+## 文档完善
+* **新增文档**：
+  - `doc/database_access_llayer.md` - 数据库访问层设计
+  - `test/README.md` - 测试框架说明
+
+## 安全增强
+* **SQL 注入防护**：使用参数化查询，imboy_pg_sql 自动转义
+* **连接池管理**：pooler 集成，高效复用数据库连接
+
+## 代码质量
+* **移除冗余模块**：删除 imboy_db 等过时模块
+* **spec 注解**：完善关键函数的类型规范
 
 # 0.7.2 refactor: 请求参数处理模块重构和数据库操作优化
 * 新增管理员用户数据仓库模块 `adm_user_repo.erl`，提供完整的CRUD操作

@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 973ccc3
+ERLANG_MK_VERSION = f440744
 ERLANG_MK_WITHOUT = index
 
 # Make 3.81 and 3.82 are deprecated.
@@ -851,10 +851,11 @@ define dep_autopatch_rebar.erl
 				Write(io_lib:format("COMPILE_FIRST +=~s\n", [Names]))
 		end
 	end(),
-	Write("\n\nrebar_dep: preprocess pre-deps deps pre-app app\n"),
+	Write("\n\nrebar_dep: preprocess pre-deps deps pre-app app post-app\n"),
 	Write("\npreprocess::\n"),
 	Write("\npre-deps::\n"),
 	Write("\npre-app::\n"),
+	Write("\npost-app::\n"),
 	PatchHook = fun(Cmd) ->
 		Cmd2 = re:replace(Cmd, "^([g]?make)(.*)( -C.*)", "\\\\1\\\\3\\\\2", [{return, list}]),
 		case Cmd2 of
@@ -879,6 +880,24 @@ define dep_autopatch_rebar.erl
 					{Regex, compile, Cmd} ->
 						case rebar_utils:is_arch(Regex) of
 							true -> Write("\npre-app::\n\tCC=$$\(CC) " ++ PatchHook(Cmd) ++ "\n");
+							false -> ok
+						end;
+					_ -> ok
+				end || H <- Hooks]
+		end
+	end(),
+	fun() ->
+		case lists:keyfind(post_hooks, 1, Conf) of
+			false -> ok;
+			{_, Hooks} ->
+				[case H of
+					{compile, Cmd} ->
+						Write("\npost-app::\n\tCC=$$\(CC) " ++ PatchHook(Cmd) ++ "\n");
+					{{pc, compile}, Cmd} ->
+						Write("\npost-app::\n\tCC=$$\(CC) " ++ PatchHook(Cmd) ++ "\n");
+					{Regex, compile, Cmd} ->
+						case rebar_utils:is_arch(Regex) of
+							true -> Write("\npost-app::\n\tCC=$$\(CC) " ++ PatchHook(Cmd) ++ "\n");
 							false -> ok
 						end;
 					_ -> ok
@@ -1602,6 +1621,12 @@ endef
 
 ifeq ($(if $(NO_MAKEDEP),$(wildcard $(PROJECT).d),),)
 $(PROJECT).d:: $(ERL_FILES) $(EX_FILES) $(call core_find,include/,*.hrl) $(MAKEFILE_LIST)
+# Rebuild everything when the .d file does not exist.
+# We touch $@ to make sure the command doesn't fail in empty projects.
+# The file will be generated with content immediately after.
+	$(verbose) if ! test -e $@; then \
+		touch $@ $(ERL_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES); \
+	fi
 	$(makedep_verbose) $(call erlang,$(call makedep.erl,$@))
 endif
 

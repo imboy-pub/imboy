@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
-PROJECT_VERSION = 0.7.2
+PROJECT_VERSION = 0.7.3
 export PROJECT_VERSION
 
 # usage: make TARGET IMBOYENV=...
@@ -40,7 +40,6 @@ DEPS += uid
 
 # 运维诊断类型的库
 DEPS += telemetry lager observer_cli recon redbug
-DEPS += sync
 DEPS += simple_captcha
 DEPS += erlydtl
 # DEPS += eimp
@@ -55,14 +54,7 @@ DEPS += erlydtl
 
 #LOCAL_DEPS 本地依赖比较容易理解，就是otp内部项目的依赖
 LOCAL_DEPS = mnesia sasl ssl inets
-LOCAL_DEPS += imlib
-LOCAL_DEPS += imds
-LOCAL_DEPS += imrepo
-LOCAL_DEPS += imapi
-LOCAL_DEPS += imadm
-LOCAL_DEPS += imcron
-
-# LOCAL_DEPS += imsos
+LOCAL_DEPS += sync
 # LOCAL_DEPS += erlmedia
 
 
@@ -73,6 +65,7 @@ DEP_PLUGINS = cowboy
 
 # 专为测试用的TEST_DEPS,只有当测试的时候才会运行
 # TEST_DEPS = sync
+TEST_DEPS += sync meck
 
 SP = 4
 
@@ -82,8 +75,7 @@ EDOC_OPTS = {doclet, edown_doclet}
 
 # 生成文档的时候会被用到的依赖项
 # DOC_DEPS =
-# 用户执行make shell命令的时候会用到的依赖
-# SHELL_DEPS =
+
 
 include erlang.mk
 include include/tpl.mk

@@ -38,7 +38,7 @@ init([]) ->
     },
 
     % KVProps default is [{depcache_memory_max, 100}],
-    KVProps = config_ds:env(depcache),
+    KVProps = config_ds:env(depcache, [{depcache_memory_max, 100}]),
     IMBoyCache = #{
         id => imboy_cache
         ,  start => {imboy_cache, start_link, [KVProps]}

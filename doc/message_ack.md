@@ -68,3 +68,10 @@ token_ds:decrypt_token(<<"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2OTQwN
 
 1694052641264 - imboy_dt:millisecond().
 rtmp_proxy:run(1935, <<"rtmp://192.168.0.144/live_room">>).
+
+
+
+imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2c CASCADE">>, []),
+imboy_pg:execute(<<"TRUNCATE TABLE public.msg_s2c CASCADE">>, []),
+imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2g CASCADE">>, []),
+imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2g_timeline CASCADE">>, []).

@@ -1,0 +1,56 @@
+
+</html>
+<!-- https://github.com/layui/layui/tags -->
+<!-- 引入 layui.js -->
+<script src="/static/admin/layui/layui.js"></script>
+
+<script type="text/javascript">
+
+function sign_out() {
+    var exp = new Date()
+    document.cookie = "adm_user_id=''; expires=" + exp.toGMTString()+ "; path=/"
+    location.href = '/adm/passport/login/'
+}
+// base64转字符串
+function encode_base64(str) {
+    if (str == undefined || str == '') {
+        return '';
+    }
+    // 对字符串进行编码
+    var encode = encodeURI(str);
+    // 对编码的字符串转化base64
+    var base64 = btoa(encode);
+    return base64;
+}
+function decode_base64(str) {
+    // console.log("decode_base64 str", str)
+    if (str == undefined || str == '') {
+        return '';
+    }
+    // 对base64转编码
+    var decode = atob(str);
+    // 编码转字符串
+    var str = decodeURI(decode);
+    return str;
+}
+
+//JS
+layui.use(function(){
+    layui.laytpl.config({
+        open: '<%',
+        close: '%>'
+    });
+});
+
+// 全局ESC键监听，用于关闭弹窗
+document.addEventListener('keydown', function(event) {
+    // 检查是否按下了ESC键 (keyCode 27)
+    if (event.keyCode === 27) {
+        // 使用Layui的layer模块关闭所有弹窗
+        if (typeof layui !== 'undefined' && layui.layer) {
+            layui.layer.closeAll();
+        }
+    }
+});
+
+</script>

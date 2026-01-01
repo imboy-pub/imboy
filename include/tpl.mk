@@ -243,15 +243,15 @@ define tpl_imboy.repository
 %%% Get table name
 -spec tablename() -> binary().
 tablename() ->
-    imboy_db:public_tablename(<<"$(subst _repo,,$(notdir $(n)))">>).
+    imboy_pg_sql:public_tablename(<<"$(subst _repo,,$(notdir $(n)))">>).
 
 %%% Demo method with improved error handling
 -spec demo(Uid::integer(), Val1::binary(), Val2::binary()) ->
     {ok, list()} | {error, term()}.
 demo(Uid, Val1, Val2) when is_integer(Uid), is_binary(Val1), is_binary(Val2) ->
     Sql = <<"SELECT id, created_at FROM ", (tablename())/binary, " WHERE id = $1 AND status = $2">>,
-    case imboy_db:query(Sql, [Uid, Val1]) of
-        {ok, Columns, Rows} ->
+    case imboy_pg:query(Sql, [Uid, Val1]) of
+        {ok, Rows} ->
             ?LOG_DEBUG("Query successful: ~p rows returned", [length(Rows)]),
             {ok, Rows};
         {error, Reason} ->
@@ -266,8 +266,8 @@ demo(Uid, Val1, Val2) ->
 -spec create(Data::map(), Uid::integer()) -> {ok, integer()} | {error, term()}.
 create(Data, Uid) when is_map(Data), is_integer(Uid) ->
     Sql = <<"INSERT INTO ", (tablename())/binary, " (data, created_by, created_at) VALUES ($1, $2, NOW()) RETURNING id">>,
-    case imboy_db:query(Sql, [jsone:encode(Data), Uid]) of
-        {ok, _Columns, [{Id}]} ->
+    case imboy_pg:query(Sql, [jsone:encode(Data), Uid]) of
+        {ok, [#{<<"id">> := Id}]} ->
             ?LOG_INFO("Record created with id: ~p", [Id]),
             {ok, Id};
         {error, Reason} ->
@@ -282,10 +282,10 @@ create(Data, Uid) ->
 -spec find_by_id(Id::integer()) -> {ok, map()} | {error, not_found | term()}.
 find_by_id(Id) when is_integer(Id) ->
     Sql = <<"SELECT id, data, created_by, created_at FROM ", (tablename())/binary, " WHERE id = $1">>,
-    case imboy_db:query(Sql, [Id]) of
-        {ok, _Columns, []} ->
+    case imboy_pg:query(Sql, [Id]) of
+        {ok, []} ->
             {error, not_found};
-        {ok, _Columns, [{RecordId, Data, CreatedBy, CreatedAt}]} ->
+        {ok, [#{<<"id">> := RecordId, <<"data">> := Data, <<"created_by">> := CreatedBy, <<"created_at">> := CreatedAt}]} ->
             Record = #{
                 id => RecordId,
                 data => jsone:decode(Data),
@@ -305,7 +305,7 @@ find_by_id(Id) ->
 -spec update(Id::integer(), Data::map(), Uid::integer()) -> ok | {error, term()}.
 update(Id, Data, Uid) when is_integer(Id), is_map(Data), is_integer(Uid) ->
     Sql = <<"UPDATE ", (tablename())/binary, " SET data = $1, updated_by = $2, updated_at = NOW() WHERE id = $3">>,
-    case imboy_db:query(Sql, [jsone:encode(Data), Uid, Id]) of
+    case imboy_pg:query(Sql, [jsone:encode(Data), Uid, Id]) of
         {ok, 1} ->
             ?LOG_INFO("Record ~p updated successfully", [Id]),
             ok;
@@ -323,7 +323,7 @@ update(Id, Data, Uid) ->
 -spec delete(Id::integer()) -> ok | {error, term()}.
 delete(Id) when is_integer(Id) ->
     Sql = <<"DELETE FROM ", (tablename())/binary, " WHERE id = $1">>,
-    case imboy_db:query(Sql, [Id]) of
+    case imboy_pg:query(Sql, [Id]) of
         {ok, 1} ->
             ?LOG_INFO("Record ~p deleted successfully", [Id]),
             ok;

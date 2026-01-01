@@ -1,4 +1,6 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash(IMBOYENV=local make run)",
@@ -19,9 +21,20 @@
       "Bash(pnpm remove:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm dev:*)",
-      "Bash(gtimeout:*)"
+      "Bash(gtimeout:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "hooks": {},
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/ccline/ccline",
+    "padding": 0
+  },
+  "outputStyle": "engineer-professional",
+  "alwaysThinkingEnabled": true
 }

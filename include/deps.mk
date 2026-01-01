@@ -134,6 +134,7 @@ dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.7
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
 # 6months
 dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
+dep_meck = git https://github.com/eproxus/meck.git v1.0.0
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 # 6years
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
