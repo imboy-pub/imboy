@@ -201,18 +201,6 @@ ssh_exec "
   nginx -t
 "
 
-# 如果存在 ADM upstream 配置，也需要更新
-ssh_exec "
-  if grep -q 'upstream pro_imboy_adm' $NGINX_CONF; then
-    sed -i '
-      /upstream pro_imboy_adm {/,/}/ {
-        s/server 127.0.0.1:[0-9]\\+/server 127.0.0.1:${APP_PORT}/
-      }
-    ' $NGINX_CONF &&
-    nginx -t
-  fi
-"
-
 ok "Nginx 配置已切换"
 
 log "重载 Nginx"

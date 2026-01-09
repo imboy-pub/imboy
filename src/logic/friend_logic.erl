@@ -9,7 +9,7 @@
 -export([move_to_category/3]).
 -export([information/2]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
@@ -39,7 +39,7 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     MsgId = <<"af_", From/binary, "_", To/binary>>,
     % ?DEBUG_LOG([is_binary(Payload), Payload]),
     % 存储消息
-    msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
+    _ = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
     Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId),
     % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
@@ -47,7 +47,7 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ok.
 
 
--spec confirm_friend(integer(), binary(), binary(), list()) -> {ok, list()} | {error, binary(), binary()}.
+-spec confirm_friend(integer(), binary(), binary(), binary()) -> {ok, integer(), binary(), binary()} | {error, binary(), binary()}.
 confirm_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"from">>};
 confirm_friend(_, _, undefined, _) ->
@@ -58,46 +58,48 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     FromID = imboy_hashids:decode(From),
     ToID = imboy_hashids:decode(To),
     NowTs = imboy_dt:now(),
-    Payload2 = jsone:decode(Payload, [{object_format, proplist}]),
+    Payload2 = jsone:decode(Payload, [{object_format, map}]),
 
-    FromSetting = proplists:get_value(<<"from">>, Payload2),
+    FromSetting = maps:get(<<"from">>, Payload2, #{}),
     % Remark1 为 from 对 to 定义的 remark
-    Remark1 = proplists:get_value(<<"remark">>, FromSetting, <<>>),
+    Remark1 = maps:get(<<"remark">>, FromSetting, <<>>),
     % ToTag 为 from 对 to 定义的 tag
-    ToTag = proplists:get_value(<<"tag">>, FromSetting, <<>>),
-    Source = proplists:get_value(<<"source">>, FromSetting),
+    ToTag = maps:get(<<"tag">>, FromSetting, <<>>),
+    Source = maps:get(<<"source">>, FromSetting, <<>>),
     FromToIsFriend = friend_ds:is_friend(FromID, ToID),
     % 好友关系写入数据库
-    friend_repo:confirm_friend(FromToIsFriend, FromID, ToID, Remark1, [{<<"is_from">>, 1} | FromSetting], ToTag, NowTs),
+    friend_repo:confirm_friend(FromToIsFriend, FromID, ToID, Remark1, FromSetting#{<<"is_from">> => 1}, ToTag, NowTs),
 
-    ToSetting = proplists:get_value(<<"to">>, Payload2),
+    ToSetting = maps:get(<<"to">>, Payload2, #{}),
     ToFromIsFriend = friend_ds:is_friend(ToID, FromID),
     % Remark2 为 to 对 from 定义的 remark
-    Remark2 = proplists:get_value(<<"remark">>, ToSetting, <<>>),
+    Remark2 = maps:get(<<"remark">>, ToSetting, <<>>),
     % FromTag 为 to 对 from 定义的 tag
-    FromTag = proplists:get_value(<<"tag">>, ToSetting, <<>>),
+    FromTag = maps:get(<<"tag">>, ToSetting, <<>>),
     % 好友关系写入数据库
     friend_repo:confirm_friend(ToFromIsFriend,
                                ToID,
                                FromID,
                                Remark2,
-                               [{<<"source">>, Source} | ToSetting],
+                               ToSetting#{<<"source">> => Source},
                                FromTag,
                                NowTs),
 
     % 因为是 ToID 通过API确认的，所以只需要给FromID 发送消息
     MsgId = <<"afc_", From/binary, "_", To/binary>>,
-    MsgType = proplists:get_value(<<"msg_type">>, Payload2),
+    MsgType = maps:get(<<"msg_type">>, Payload2, <<>>),
     % Payload3 = confirm_friend_resp(ToID, Remark1),
-    Payload4 = [{<<"is_from">>, 1} | Payload2],
-    Payload5 = [{<<"source">>, Source} | Payload4],
-    Payload6 = [{<<"msg_type">>, MsgType} | Payload5],
+    Payload6 = Payload2#{
+        <<"is_from">> => 1,
+        <<"source">> => Source,
+        <<"msg_type">> => MsgType
+    },
 
     % 存储消息
-    msg_s2c_ds:write_msg(NowTs, MsgId, Payload6, CurrentUid, FromID, NowTs),
+    _ = msg_s2c_ds:write_msg(NowTs, MsgId, Payload6, CurrentUid, FromID, NowTs),
 
     % 这里的From To 需要对调，离线消息需要对调
-    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload, MsgId),
+    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload6, MsgId),
 
     % ?DEBUG_LOG(Msg),
     MsLi = [0, 1500, 1500, 3000, 5000, 7000],
@@ -108,14 +110,16 @@ confirm_friend(CurrentUid, From, To, Payload) ->
             ok;
         true ->
             ToTag2 = [ I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>> ],
-            user_tag_relation_logic:add(FromID, 2, ToID, ToTag2)
+            _ = user_tag_relation_logic:add(FromID, 2, ToID, ToTag2),
+            ok
     end,
     if
         FromTag == <<>> ->
             ok;
         true ->
             FromTag2 = [ I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>> ],
-            user_tag_relation_logic:add(ToID, 2, FromID, FromTag2)
+            _ = user_tag_relation_logic:add(ToID, 2, FromID, FromTag2),
+            ok
     end,
     % 为了简单，删除好友关系清理两个缓存
     imboy_cache:flush({is_friend, FromID, ToID}),
@@ -133,13 +137,13 @@ confirm_friend_resp(Uid, Remark) ->
     }.
 
 
--spec delete_friend(integer(), [binary() | integer()]) -> ok.
+-spec delete_friend(integer(), binary() | integer()) -> ok.
 delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
     Uid2 = imboy_hashids:decode(Uid),
     delete_friend(CurrentUid, Uid2);
 delete_friend(CurrentUid, Uid) ->
-    friend_repo:delete(CurrentUid, Uid),
-    user_tag_relation_repo:delete(<<"2">>, CurrentUid, Uid),
+    _ = friend_repo:delete(CurrentUid, Uid),
+    _ = user_tag_relation_repo:delete(<<"2">>, CurrentUid, Uid),
     % 为了简单，删除好友关系清理两个缓存
     imboy_cache:flush({is_friend, CurrentUid, Uid}),
     imboy_cache:flush({is_friend, Uid, CurrentUid}),
@@ -147,7 +151,7 @@ delete_friend(CurrentUid, Uid) ->
 
 
 move_to_category(CurrentUid, Uid, CategoryId) ->
-    friend_repo:move_to_category(CurrentUid, Uid, CategoryId),
+    _ = friend_repo:move_to_category(CurrentUid, Uid, CategoryId),
     ok.
 
 

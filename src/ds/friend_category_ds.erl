@@ -1,4 +1,5 @@
 -module(friend_category_ds).
+
 %%%
 % friend_category_ds 是 friend_category domain service 缩写
 %%%
@@ -48,17 +49,18 @@ add(Uid, Name) ->
 %% @param Uid 用户ID
 %% @returns list() 好友分类列表，包含默认分类
 %% friend_category_ds:find_by_uid(1).
--spec find_by_uid(integer()) -> list().
+-spec find_by_uid(integer()) -> [map()].
 find_by_uid(Uid) ->
     Field = <<"id, name">>,
     {ok, Rows} = friend_category_repo:list_by_uid(Uid, Field),
     % ?DEBUG_LOG({ok, Rows}),
-    Default = [{<<"id">>, 0}, {<<"groupname">>, <<"default">>}],
+    Default = #{<<"id">> => 0, <<"groupname">> => <<"default">>},
     case length(Rows) == 0 of
         true ->
             [Default];
         _ ->
-            [Default | [ [{<<"id">>, Id}, {<<"groupname">>, Name}] || #{<<"id">> := Id, <<"name">> := Name} <- Rows ]]
+            [Default | [#{<<"id">> => Id, <<"groupname">> => Name}
+                        || #{<<"id">> := Id, <<"name">> := Name} <- Rows]]
     end.
 
 %% @doc 重命名好友分类

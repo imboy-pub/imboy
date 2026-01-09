@@ -43,8 +43,8 @@ delete(Uid) ->
     imboy_pg:execute(Sql, [Uid]).
 
 
--spec people_nearby(binary(), binary(), binary(), binary(), binary()) ->
-          list().
+-spec people_nearby(binary(), binary(), integer(), binary(), integer()) ->
+          {ok, [map()]} | {error, term()}.
 people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
     % 使用安全的参数化查询，避免SQL注入
     Sql = <<"SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,

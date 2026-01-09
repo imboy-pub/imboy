@@ -48,7 +48,7 @@ is_member(Uid, Gid) ->
 %% @param Gid 群组ID
 %% @returns list() 成员用户ID列表
 % group_ds:member_uids(1).
--spec member_uids(integer()) -> list().
+-spec member_uids(integer()) -> [integer()].
 member_uids(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
     case imboy_cache:get(CacheKey) of
@@ -176,17 +176,16 @@ gid() ->
 %%
 %% @param Group 群组信息列表
 %% @returns list() 处理后的群组信息列表
--spec check_avatar(list()) -> list().
-check_avatar([]) ->
-    [];
-check_avatar(Group) ->
+-spec check_avatar(map()) -> map().
+check_avatar(Group) when is_map(Group) ->
     Default = <<"/static/image/group_default_avatar.jpeg">>,
-    case lists:keyfind(<<"avatar">>, 1, Group) of
-        {<<"avatar">>, <<>>} ->
-            lists:keyreplace(<<"avatar">>, 1, Group, {<<"avatar">>, Default});
-        {<<"avatar">>, _Aaatar} ->
-            Group
-    end.
+    Avatar = maps:get(<<"avatar">>, Group, <<>>),
+    case Avatar of
+        <<>> -> Group#{<<"avatar">> => Default};
+        _ -> Group
+    end;
+check_avatar(_) ->
+    #{}.
 
 %% ===================================================================
 %% Internal Function Definitions

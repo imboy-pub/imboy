@@ -17,6 +17,8 @@
 
 % Payload2 = imboy_hasher:encoded_val(Val),
 -spec encoded_val(list() | binary() | map()) -> binary().
+encoded_val(Val) when is_map(Val); is_list(Val) ->
+    encoded_val(jsone:encode(Val, [native_utf8]));
 encoded_val(Val) ->
     Key = config_ds:env(postgre_aes_key),
     Val1 = base64:encode(Val),

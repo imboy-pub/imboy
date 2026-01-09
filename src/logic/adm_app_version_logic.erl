@@ -12,9 +12,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -50,7 +50,7 @@ delete(Where) ->
     Tb = app_version_repo:tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
     % ?DEBUG_LOG([Sql]),
-    imboy_pg:execute(Sql, []),
+    _ = imboy_pg:execute(Sql, []),
     ok.
 
 

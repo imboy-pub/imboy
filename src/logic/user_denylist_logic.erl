@@ -1,4 +1,5 @@
 -module(user_denylist_logic).
+
 %%%
 % user_denylist 业务逻辑模块
 % user_denylist business logic module
@@ -13,7 +14,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -49,7 +50,7 @@ page(Uid, Page, Size) when Page > 0 ->
 -spec add(integer(), integer()) -> binary().
 add(Uid, DeniedUserId) ->
     Now = imboy_dt:now(),
-    user_denylist_repo:add(Uid, DeniedUserId, Now),
+    _ = user_denylist_repo:add(Uid, DeniedUserId, Now),
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:flush(Key),
     Now.
@@ -57,7 +58,7 @@ add(Uid, DeniedUserId) ->
 
 -spec remove(integer(), integer()) -> ok.
 remove(Uid, DeniedUserId) ->
-    user_denylist_repo:remove(Uid, DeniedUserId),
+    _ = user_denylist_repo:remove(Uid, DeniedUserId),
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:flush(Key),
     ok.

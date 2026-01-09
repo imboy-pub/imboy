@@ -1,6 +1,7 @@
 -module(imboy_type).
 
 -export([is_numeric/1]).
+-export([is_proplist/1]).
 
 -on_load(init/0).
 
@@ -28,6 +29,14 @@ is_numeric(Value) when is_list(Value) ->
     re:run(Value, Regex, [{capture, none}]) =:= match;
 is_numeric(_) ->
     false.
+
+
+%% @doc 检查变量是否为属性列表格式
+%% @param Var 要检查的变量
+%% @returns true 如果是属性列表，否则返回 false
+-spec is_proplist(any()) -> boolean().
+is_proplist(Var) ->
+    is_list(Var) andalso lists:all(fun({_, _}) -> true; (_) -> false end, Var).
 
 %%%%% test
 

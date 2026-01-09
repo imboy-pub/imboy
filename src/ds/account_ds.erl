@@ -1,4 +1,5 @@
 -module(account_ds).
+
 %%%
 % config 领域服务模块
 % config domain service 缩写
@@ -10,21 +11,24 @@
 -export([allocate/0]).
 -export([safe_get_max_account_id/0]).
 
-
 %% @doc 初始化账户ID序列
 %% 创建账户ID序列，如果序列不存在则创建并设置起始值为50000。
 %% 使用public模式显式创建序列，避免受search_path影响。
 -spec init() -> ok.
-
 -define(ACCOUNT_SEQ, <<"public.imboy_account_id_seq">>).
--define(ACCOUNT_ID_CACHE_TTL, 8640000).  % 100天
-% -define(BATCH_SIZE, 10).  % 每次从数据库获取的ID数量
+-define(ACCOUNT_ID_CACHE_TTL, 8640000). % 100天
 
 %% @doc 初始化：显式在 public 模式下创建序列，避免受 search_path 影响。
+%% 注意：此函数始终返回 ok，即使数据库操作失败
 init() ->
     Q = <<"CREATE SEQUENCE IF NOT EXISTS ", ?ACCOUNT_SEQ/binary, " START 50000;">>,
-    imboy_pg:execute(Q, []),
-    ok.
+    try imboy_pg:execute(Q, []) of
+        _ ->
+            ok
+    catch
+        _:_ ->
+            ok
+    end.
 
 %% @doc 分配一个账户ID
 %% 从缓存或数据库中分配一个唯一的账户ID。
@@ -50,8 +54,6 @@ allocate() ->
                     imboy_cache:set(Key, Rest, ?ACCOUNT_ID_CACHE_TTL, []),
                     AllocatedId
             end;
-        {error, Reason} ->
-            {error, Reason};
         {ok, IdList} when is_list(IdList) ->
             case IdList of
                 [] ->
@@ -72,7 +74,6 @@ allocate() ->
             end
     end.
 
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -84,13 +85,22 @@ allocate() ->
 -spec safe_get_max_account_id() -> [non_neg_integer()].
 safe_get_max_account_id() ->
     Q = <<"SELECT nextval('", ?ACCOUNT_SEQ/binary, "') FROM generate_series(1, 10);">>,
-    {ok, Res} = imboy_pg:query(Q, []),
-    create_rand_list(Res).
+    try imboy_pg:query(Q, []) of
+        {ok, Res} ->
+            create_rand_list(Res);
+        _Error ->
+            []
+    catch
+        _:_ ->
+            []
+    end.
 
 %% @doc 创建随机排序的ID列表
 %% 为避免连续分配ID导致的安全问题，对ID列表进行随机排序。
 %% @param List 数据库查询返回的原始ID列表
 %% @returns 随机排序后的ID列表
 -spec create_rand_list([map()]) -> [non_neg_integer()].
+create_rand_list([]) ->
+    [];
 create_rand_list(List) ->
-    [X || {_,X} <- lists:sort([{rand:uniform(), N} || #{<<"nextval">> := N} <- List])].
+    [X || {_, X} <- lists:sort([{rand:uniform(), N} || #{<<"nextval">> := N} <- List])].

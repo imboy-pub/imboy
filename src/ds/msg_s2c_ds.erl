@@ -18,19 +18,19 @@
 %%
 %% 向指定用户列表发送消息，支持实时发送和先存储再发送两种模式
 %%
-%% @param FromId 发送方用户ID
+%% @param FromId 发送方用户ID（整数、二进制或列表）
 %% @param MsgType 消息类型，可以是二进制或映射格式
 %% @param ToUids 接收消息的用户ID列表
 %% @param Save 发送模式，save表示先存储再发送，其他表示直接发送
 %% @returns ok 表示操作成功
--spec send(any(), [binary()|map()], list(), atom()) -> ok.
+-spec send(integer() | binary() | list(), binary() | map(), list(), atom()) -> ok.
 send(_, _, [], _) ->
     ok;
 % 给在线好友发送上线消息
 send(FromId, MsgType, [ToUid | Tail], Save) ->
     Payload0 = if
         is_binary(MsgType) ->
-            [{<<"msg_type">>, MsgType}];
+            #{<<"msg_type">> => MsgType};
         is_map(MsgType) ->
             MsgType
     end,
@@ -41,13 +41,13 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
        Payload0 ,
        MsgId),
     Msg = jsone:encode(Payload, [native_utf8]),
-    case Save of
+    _ = case Save of
         save ->
             CreatedAt = imboy_dt:now(),
-            write_msg(CreatedAt, MsgId, Payload, FromId, ToUid, CreatedAt),
+            _ = write_msg(CreatedAt, MsgId, Payload, FromId, ToUid, CreatedAt),
 
             MsLi = [0, 1_000_000, 1_000_000],
-            message_ds:send_next(ToUid, MsgId, Msg, MsLi),
+            _ = message_ds:send_next(ToUid, MsgId, Msg, MsLi),
             ok;
         _ ->
             imboy_syn:publish(ToUid, Msg)
@@ -65,16 +65,17 @@ send(FromId, MsgType, [ToUid | Tail], Save) ->
 %% @param To 接收方用户ID
 %% @param ServerTS 服务器时间戳
 %% @returns any() 数据库操作结果
--spec write_msg(binary(), binary(), binary() | list(), integer(), integer(), binary()) -> any().
-write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
+-spec write_msg(binary(), binary(), binary() | map() | list(), integer(), integer(), binary()) -> any().
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    case msg_s2c_repo:count_by_to_id(To) of
-        Count when Count >= ?SAVE_MSG_LIMIT ->
+    Count = msg_s2c_repo:count_by_to_id(To),
+    _ = case Count >= ?SAVE_MSG_LIMIT of
+        true ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            msg_s2c_repo:delete_overflow_msg(To, Limit);
-        _ ->
+            _ = imboy_async:async_retry(fun() -> msg_s2c_repo:delete_overflow_msg(To, Limit) end);
+        false ->
             ok
     end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS).
@@ -86,7 +87,7 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 %% @param ToUid 接收方用户ID
 %% @param Limit 读取消息数量限制
 %% @returns list() 消息列表，每条消息包含完整信息
--spec read_msg(any(), integer()) -> list().
+-spec read_msg(any(), integer()) -> [map()].
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 
@@ -98,7 +99,7 @@ read_msg(ToUid, Limit) ->
 %% @param Limit 读取消息数量限制
 %% @param Ts 时间戳参数，undefined表示读取所有消息，整数或二进制表示指定时间之后的消息
 %% @returns list() 消息列表，每条消息包含完整信息
--spec read_msg(any(), integer(), undefined | integer() | binary()) -> list().
+-spec read_msg(any(), integer(), undefined | integer() | binary()) -> [map()].
 read_msg(ToUid, Limit, undefined) ->
     P = imboy_hasher:decoded_payload(),
     Column = <<"id, ", P/binary, ", from_id, to_id,
@@ -139,27 +140,14 @@ delete_msg(Id) ->
 %% @param Vals SQL查询参数列表
 %% @param Column 查询列名
 %% @param Limit 查询结果数量限制
-%% @returns list() 处理后的消息列表（proplist 格式）
--spec read_msg(binary(), list(), binary(), integer()) -> list().
+%% @returns list() 处理后的消息列表（map 格式）
+-spec read_msg(binary(), list(), binary(), integer()) -> [map()].
 read_msg(Where, Vals, Column, Limit) ->
     Res = msg_s2c_repo:read_msg(Where, Vals, Column, Limit),
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            % 将 map 格式的数据库行转换为 proplist，供 message_ds:sent_offline_msg/3 使用
-            [maps_to_proplist(imboy_response:json_decode_field(Row, <<"payload">>)) || Row <- Rows];
+            [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
         _ ->
             []
     end.
-
-
-%% @doc 将 map 转换为 proplist
-%%
-%% 将数据库返回的 map 格式转换为 proplist 格式，供 message_ds:sent_offline_msg/3 使用
-%% 这样 is_map(Row) 会返回 false，走 C2C/S2C 分支而不是 C2G 分支
-%%
-%% @param Map 输入的 map
-%% @return proplist 格式的数据
--spec maps_to_proplist(map()) -> proplists:proplist().
-maps_to_proplist(Map) when is_map(Map) ->
-    maps:fold(fun(K, V, Acc) -> [{K, V} | Acc] end, [], Map).

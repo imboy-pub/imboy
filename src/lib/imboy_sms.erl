@@ -7,6 +7,8 @@
 -export([filter_mobile/1]).
 -export([send/3]).
 
+-spec jverification(binary()) -> {ok, binary()} | {error, binary()}.
+
 filter_mobile(<<"+86", Tail/binary>>) ->
     Tail;
 filter_mobile(Mobile) ->
@@ -36,7 +38,7 @@ send(Mobile, Content, <<"yjsms">>) ->
     % ?DEBUG_LOG([Data]),
     {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     % RespMap = imboy_req:post(URL, Data, Headers),
-    ?DEBUG_LOG([RespMap]),
+    ok = ?DEBUG_LOG([RespMap]),
     Code = maps:get(<<"code">>, RespMap),
     case Code of
         0 ->
@@ -76,7 +78,7 @@ send(Mobile, Code, <<"jsms">>) ->
     % ?DEBUG_LOG([Data]),
     % {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     RespMap = imboy_req:post(URL, Data, Headers),
-    ?DEBUG_LOG([RespMap]),
+    ok = ?DEBUG_LOG([RespMap]),
     RespMap.
 
 
@@ -97,12 +99,13 @@ jverification(Tk) ->
     },
     {ok, RespMap} = imboy_req:post(URL, Data, Headers),
     % RespMap = imboy_req:post(URL, Data, Headers),
-    ?DEBUG_LOG([RespMap]),
+    ok = ?DEBUG_LOG([RespMap]),
     case maps:get(<<"code">>, RespMap, undefined) of
         8000 ->
             Phone = maps:get(<<"phone">>, RespMap),
             PemBin = config_ds:get(<<"jverification_rsa_priv_key">>),
-            {ok, imboy_cipher:rsa_decrypt(Phone, PemBin)};
+            Mobile = imboy_cipher:rsa_decrypt(Phone, PemBin),
+            {ok, Mobile};
         _ ->
             {error, maps:get(<<"content">>, RespMap, <<"unknown">>)}
     end.

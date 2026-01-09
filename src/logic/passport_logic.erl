@@ -10,8 +10,18 @@
 -export([verify_user/2]).
 -export([quick_login/4]).
 
--include("include/log.hrl").
+
+-include("log.hrl").
 -include("def_column.hrl").
+
+%% @doc 快速登录（支持第三方服务）
+%% @param Service 登录服务类型（如 jverify）
+%% @param Operator 操作员
+%% @param Token 认证令牌
+%% @param PostVals 请求参数
+%% @returns {ok, Data} | {error, Msg}
+-spec quick_login(binary(), binary() | undefined, binary(), map()) ->
+    {ok, map()} | {error, binary() | map()}.
 
 
 quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
@@ -61,7 +71,7 @@ send_code(_, _) ->
 
 -spec do_login(binary(), binary(), binary()) -> {ok, any()} | {error, any()}.
 do_login(_Type, _Email, <<>>) ->
-    {error, "密码有误"};
+    {error, <<"密码有误"/utf8>>};
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
     User = user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN),
     % ?DEBUG_LOG([do_login, Mobile, Pwd, User]),
@@ -72,7 +82,7 @@ do_login(Type, Email, Pwd) when Type == <<"email">> ->
             User = user_repo:find_by_email(Email, ?LOGIN_COLUMN),
             verify_user(Pwd, User);
         false ->
-            {error, "Email格式有误."}
+            {error, <<"Email格式有误."/utf8>>}
     end;
 do_login(Type, Account, Pwd) when Type == <<"account">> ->
     User = case imboy_func:is_email(Account) of
@@ -84,8 +94,8 @@ do_login(Type, Account, Pwd) when Type == <<"account">> ->
     verify_user(Pwd, User).
 
 
--spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: list()) ->
-          {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
+-spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: map()) ->
+          {ok, map()} | {error, binary()}.
 do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     case imboy_func:is_email(Email) of
         true ->
@@ -97,7 +107,7 @@ do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
                     {error, Msg}
             end;
         false ->
-            {error, "Email格式有误.."}
+            {error, <<"Email格式有误.."/utf8>>}
     end;
 do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
     % 校验验证码
@@ -108,17 +118,17 @@ do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
             {error, Msg}
     end;
 do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
-    {error, "不支持的注册类型"}.
+    {error, <<"不支持的注册类型"/utf8>>}.
 
 
 -spec find_password(Type :: binary(),
                     EmailOrMobile :: binary(),
                     Pwd :: binary(),
                     Code :: binary(),
-                    PostVals :: list()) ->
-          {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
+                    PostVals :: map()) ->
+          {ok, map()} | {error, binary()}.
 find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
-    ?DEBUG_LOG(["Email ", Email, imboy_func:is_email(Email)]),
+    ok = ?DEBUG_LOG(["Email ", Email, imboy_func:is_email(Email)]),
     case imboy_func:is_email(Email) of
         true ->
             % 校验验证码
@@ -129,10 +139,10 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
                     {error, Msg}
             end;
         false ->
-            {error, "Email格式有误..."}
+            {error, <<"Email格式有误..."/utf8>>}
     end;
 find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
-    {error, "不支持的注册类型"}.
+    {error, <<"不支持的注册类型"/utf8>>}.
 
 
 %% ===================================================================
@@ -140,9 +150,9 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 %% ===================================================================
 
 
--spec send_email_code(binary()) -> {error, list()} | {ok, any()}.
+-spec send_email_code(binary() | undefined) -> {error, binary()} | {ok, binary()}.
 send_email_code(undefined) ->
-    {error, "Email必须"};
+    {error, <<"Email必须"/utf8>>};
 send_email_code(ToEmail) ->
     Now = imboy_dt:now(),
     NowP1M = imboy_dt:minus(Now, {1, minute}),
@@ -151,23 +161,22 @@ send_email_code(ToEmail) ->
         % #{<<"created_at">> := CreatedAt} when (Now - CreatedAt) < 60000 ->
         %  Now - 1m < CreatedAt
         #{<<"created_at">> := CreatedAt} when NowP1M < CreatedAt ->
-            {ok, "一分钟内重复请求不发送Email"};
+            {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            % ?DEBUG_LOG(Msg),
-            % {ok, Msg};
-            imboy_func:send_email(ToEmail, Msg);
+            _ = imboy_func:send_email(ToEmail, Msg),
+            {ok, <<"验证码已发送"/utf8>>};
         _ ->
             VerifyCode = imboy_func:num_random(6),
+            VerifyCodeBinary = integer_to_binary(VerifyCode),
             % 600000 = 600 * 1000 = 10分钟
-            verification_code_repo:save(ToEmail, VerifyCode, imboy_dt:add(Now, {10, minute}), Now),
-            Code2 = integer_to_binary(VerifyCode),
-            Msg = <<"Code is ", Code2/binary, " will expire in 10 minutes.">>,
-            % ?DEBUG_LOG(Msg),
-            % {ok, Msg}
-            imboy_func:send_email(ToEmail, Msg)
+            _ = verification_code_repo:save(ToEmail, VerifyCodeBinary, imboy_dt:add(Now, {10, minute}), Now),
+            Msg = <<"Code is ", VerifyCodeBinary/binary, " will expire in 10 minutes.">>,
+            _ = imboy_func:send_email(ToEmail, Msg),
+            {ok, <<"验证码已发送"/utf8>>}
     end.
 
+-spec send_sms_code(binary()) -> {ok, binary()}.
 send_sms_code(Mobile) ->
     Now = imboy_dt:now(),
     NowP2M = imboy_dt:minus(Now, {2, minute}),
@@ -175,90 +184,124 @@ send_sms_code(Mobile) ->
     case verification_code_repo:find_by_id(Mobile) of
         % 120000 = 120 * 1000 = 2分钟
         #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
-            {ok, "两分钟内重复请求不会重复发送"};
+            {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-            imboy_sms:send(Mobile, Content, <<"yjsms">>);
+            _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
+            {ok, <<"验证码已发送"/utf8>>};
         _ ->
             Code = imboy_func:num_random(6),
+            CodeBinary = ec_cnv:to_binary(Code),
             % 600000 = 600 * 1000 = 10分钟
-            verification_code_repo:save(Mobile, Code, imboy_dt:add(Now, {10, minute}), Now),
-            Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-            imboy_sms:send(Mobile, Content, <<"yjsms">>)
+            _ = verification_code_repo:save(Mobile, CodeBinary, imboy_dt:add(Now, {10, minute}), Now),
+            Content = <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
+            _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
+            {ok, <<"验证码已发送"/utf8>>}
     end.
 
 
 %% 校验验证码
--spec verify_code(binary(), binary()) -> {error, list()} | {ok, list()}.
+-spec verify_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
+verify_code(_Id, <<"666666">>) ->
+    % local 和 dev 环境的万能验证码
+    case os:getenv("IMBOYENV") of
+        "local" ->
+            {ok, <<"验证码有效（测试环境）"/utf8>>};
+        "dev" ->
+            {ok, <<"验证码有效（测试环境）"/utf8>>};
+        _ ->
+            % 生产环境或其他环境，验证码无效
+            {error, <<"验证码无效"/utf8>>}
+    end;
 verify_code(Id, Code) ->
     Now = imboy_dt:now(),
     case verification_code_repo:find_by_id(Id) of
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-            {ok, "验证码有效"};
+            {ok, <<"验证码有效"/utf8>>};
         _ ->
-            {error, "验证码无效"}
+            {error, <<"验证码无效"/utf8>>}
     end.
 
 
--spec do_signup_by_email(binary(), binary(), list()) ->
-          {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
+-spec do_signup_by_email(binary(), binary(), map()) ->
+          {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.
 do_signup_by_email(Email, Pwd, PostVals) ->
-    Tb = user_repo:tablename(),
-    Id = imboy_pg:pluck_value(Tb
-        , <<"id">>
-        , #{email => Email}
-        , #{}, 0),
-    case Id of
+    % 验证 nickname 不为空
+    Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
+    case byte_size(Nickname) of
         0 ->
-            Password = imboy_cipher:rsa_decrypt(Pwd),
-            Data = pick_data_for_insert(#{
-                <<"password">> => imboy_password:generate(Password)
-                , <<"email">> => Email
-                }, PostVals),
-            % {ok, _, [{Uid}]} = imboy_pg:insert(Tb, Data),
-            {ok, _, _} = imboy_pg:insert(Tb, Data, <<"RETURNING id">>),
-            % 注册成功
-            {ok, #{}};
+            {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            {error, "Email已经被占用了"}
+            Tb = user_repo:tablename(),
+            Id = imboy_pg:pluck_value(Tb
+                , <<"id">>
+                , #{email => Email}
+                , #{}, 0),
+            case Id of
+                0 ->
+                    Password = imboy_cipher:rsa_decrypt(Pwd),
+                    Data = pick_data_for_insert(#{
+                        <<"password">> => imboy_password:generate(Password)
+                        , <<"email">> => Email
+                        }, PostVals),
+                    case imboy_pg:insert(Tb, Data, <<"RETURNING id">>) of
+                        {ok, _, _} ->
+                            % 注册成功
+                            {ok, #{}};
+                        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                            % 唯一约束冲突，返回友好的错误信息
+                            {error, <<"账号已被占用"/utf8>>};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                _ ->
+                    {error, <<"Email已经被占用了"/utf8>>}
+            end
     end.
 
 
--spec do_signup_by_mobile(binary(), binary(), list()) ->
+-spec do_signup_by_mobile(binary(), binary(), map()) ->
           {ok, map()} | {error, any()}.
 do_signup_by_mobile(Mobile, Pwd, PostVals) ->
-    Tb = user_repo:tablename(),
-    Id = imboy_pg:pluck_value(Tb
-        , <<"id">>
-        , #{mobile => Mobile}
-        , #{}, 0),
-    case Id of
+    % 验证 nickname 不为空
+    Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
+    case byte_size(Nickname) of
         0 ->
-            Password = imboy_cipher:rsa_decrypt(Pwd),
-            Data = pick_data_for_insert(#{
-                <<"password">> => imboy_password:generate(Password)
-                , <<"mobile">> => Mobile
-                }, PostVals),
-            case imboy_pg:insert(Tb, Data, <<"RETURNING id">>) of
-                {ok, _, _} ->
-                    % 注册成功
-                    {ok, #{}};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            {error, "手机号已经被占用了"}
+            Tb = user_repo:tablename(),
+            Id = imboy_pg:pluck_value(Tb
+                , <<"id">>
+                , #{mobile => Mobile}
+                , #{}, 0),
+            case Id of
+                0 ->
+                    Password = imboy_cipher:rsa_decrypt(Pwd),
+                    Data = pick_data_for_insert(#{
+                        <<"password">> => imboy_password:generate(Password)
+                        , <<"mobile">> => Mobile
+                        }, PostVals),
+                    case imboy_pg:insert(Tb, Data, <<"RETURNING id">>) of
+                        {ok, _, _} ->
+                            % 注册成功
+                            {ok, #{}};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                _ ->
+                    {error, <<"手机号已经被占用了"/utf8>>}
+            end
     end.
 
 pick_data_for_insert(Data, PostVals) ->
     Uid0 = imboy_hashids:encode(0),
 
-    Source = proplists:get_value(<<"source">>, PostVals, <<>>),
-    Ip = proplists:get_value(<<"ip">>, PostVals, <<"{}">>),
-    Nickname = proplists:get_value(<<"nickname">>, PostVals, <<>>),
-    Avatar = proplists:get_value(<<"avatar">>, PostVals, <<>>),
-    Cosv = proplists:get_value(<<"cosv">>, PostVals, <<>>),
-    RefUid = proplists:get_value(<<"ref_uid">>, PostVals, Uid0),
+    Source = maps:get(<<"source">>, PostVals, <<>>),
+    Ip = maps:get(<<"ip">>, PostVals, <<"{}">>),
+    Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
+    Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
+    Cosv = maps:get(<<"cosv">>, PostVals, <<>>),
+    RefUid = maps:get(<<"ref_uid">>, PostVals, Uid0),
 
     [RefUid2, ParentRefUid2] = case bit_size(RefUid) > 5 of
         true ->
@@ -287,8 +330,8 @@ pick_data_for_insert(Data, PostVals) ->
         , <<"created_at">> => imboy_dt:now()
     }, Data).
 
--spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: list()) ->
-          {ok, Msg :: list()} | {error, Msg :: list()} | {error, Msg :: list(), Code :: integer()}.
+-spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: map()) ->
+          {ok, map()} | {error, Msg :: list()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
     Id = imboy_pg:pluck_value(user_repo:tablename()
         , <<"id">>
@@ -296,10 +339,10 @@ find_password_by_email(Email, Pwd, _PostVals) ->
         , #{}, 0),
     case Id of
         0 ->
-            {error, "Email不存在或已被删除"};
+            {error, <<"Email不存在或已被删除"/utf8>>};
         Id when is_integer(Id), Id > 0 ->
-            PwdPlaintext = imboy_cipher:rsa_decrypt(Pwd),
-            Pwd2 = imboy_password:generate(PwdPlaintext),
+            % 密码已经在 handler 层面处理了解密，这里直接使用
+            Pwd2 = imboy_password:generate(Pwd),
             case imboy_pg:update(user_repo:tablename()
                 , #{<<"password">> => Pwd2}
                 , <<"id = $1">>
@@ -307,8 +350,8 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             ) of
                 {ok, _} ->
                     {ok, #{}};
-                Res ->
-                    Res
+                {error, Reason} ->
+                    {error, Reason}
             end
     end.
 

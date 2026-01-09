@@ -1,16 +1,16 @@
 -module(conversation_handler).
+
 -behavior(cowboy_rest).
 
 -export([init/2]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -26,44 +26,38 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
-
 online(Req0, _State) ->
-    {ok, Vsn} =  application:get_key(imboy, vsn),
+    {ok, Vsn} = application:get_key(imboy, vsn),
     CountUser = imboy_syn:count_user(),
     Count = imboy_syn:count(),
-    Msg = io_lib:format("vsn ~s, node ~p, 在线总人数: ~p, 在线设备数~p", [Vsn
-        , node()
-        , CountUser
-        , Count]),
+    Msg = io_lib:format("vsn ~s, node ~p, 在线总人数: ~p, 在线设备数~p",
+                        [Vsn, node(), CountUser, Count]),
     Res = cowboy_req:match_qs([{type, [], undefined}], Req0),
     % ?DEBUG_LOG(Res),
-    List2 =
-        case maps:get(type, Res) of
-            <<"list">> ->
-                #{limit := Limit} = cowboy_req:match_qs([{limit, [], "10"}], Req0),
-                % ?DEBUG_LOG([limit, Limit]),
-                {Limit2, _} = string:to_integer(Limit),
-
-                % imboy_syn:list_by_limit(Limit);
-                List1 = imboy_syn:list_by_limit(Limit2),
-                Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
-                [ lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                Column,
-                                [Uid, Pid, DType, DID, imboy_dt:to_rfc3339(Nano), Ref, Node])
-                  || {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1 ];
-            _ ->
-                []
-        end,
+    List2 = case maps:get(type, Res) of
+        <<"list">> ->
+            #{limit := Limit} = cowboy_req:match_qs([{limit, [], "10"}], Req0),
+            % ?DEBUG_LOG([limit, Limit]),
+            {Limit2, _} = string:to_integer(Limit),
+            % imboy_syn:list_by_limit(Limit);
+            List1 = imboy_syn:list_by_limit(Limit2),
+            Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
+            [lists:zipwith(fun(X, Y) -> {X, Y} end,
+                           Column,
+                    [Uid, Pid, DType, DID, imboy_dt:to_rfc3339(Nano), Ref, Node])
+              || {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1 ];
+        _ ->
+            []
+    end,
     imboy_response:success(Req0, List2, Msg).
 
-
 mine(Req0, State) ->
-    #{last_server_ts := ServerTS} = cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
+    #{last_server_ts := ServerTS} =
+        cowboy_req:match_qs([{last_server_ts, [], undefined}], Req0),
     % ?DEBUG_LOG(ServerTS),
     CurrentUid = maps:get(current_uid, State),
     List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
@@ -71,6 +65,19 @@ mine(Req0, State) ->
     List2 = mine_transfer(List),
     imboy_response:success(Req0, List2).
 
-
 mine_transfer(List) ->
-    [ [{<<"id">>, proplists:get_value(<<"id">>, Msg)} | jsone:decode(proplists:get_value(<<"payload">>, Msg), [{object_format, proplist}])] || Msg <- List ].
+    [begin
+         DbId = maps:get(<<"id">>, Msg),
+         Payload0 = maps:get(<<"payload">>, Msg, #{}),
+         Payload =
+             case Payload0 of
+                 Bin when is_binary(Bin) ->
+                     jsone:decode(Bin, [{object_format, map}]);
+                 M when is_map(M) ->
+                     M;
+                 _ ->
+                     #{}
+             end,
+         Payload#{<<"id">> => DbId}
+     end
+     || Msg <- List].

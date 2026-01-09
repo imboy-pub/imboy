@@ -1,4 +1,5 @@
 -module(user_setting_ds).
+
 %%%
 % user_setting_ds 是 user_setting domain service 缩写
 %%%
@@ -9,14 +10,13 @@
 
 -include("log.hrl").
 
-
 %% @doc 搜索用户设置
 %%
 %% 根据账号信息搜索用户设置，目前为占位实现
 %%
 %% @param Account 用户账号
 %% @returns ok 占位返回值
--spec search(any()) -> ok.
+-spec search(binary() | integer()) -> ok.
 search(_Account) ->
     ok.
 
@@ -27,26 +27,24 @@ search(_Account) ->
 %% @param Uid 用户ID，可以是整数或base64编码的二进制
 %% @returns map() 用户设置信息映射
 % user_setting_ds:find_by_uid(1).
--spec find_by_uid(any()) -> map().
+-spec find_by_uid(binary() | integer()) -> map().
 find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(imboy_hashids:decode(Uid));
 find_by_uid(Uid) ->
     Column = <<"setting">>,
     S = case user_setting_repo:find_by_uid(Uid, Column) of
-        #{<<"setting">> := Setting} when Setting =/= <<>> ->
-            try jsone:decode(Setting, [{object_format, map}]) of
-                Res ->
-                    Res
-            catch
-                _:_ ->
-                    #{}
-            end;
-        _ ->
-            #{}
-    end,
-    S#{
-        <<"allow_search">> => fts_user_repo:allow_search(Uid)
-    }.
+            #{<<"setting">> := Setting} when Setting =/= <<>> ->
+                try jsone:decode(Setting, [{object_format, map}]) of
+                    Res ->
+                        Res
+                catch
+                    _:_ ->
+                        #{}
+                end;
+            _ ->
+                #{}
+        end,
+    S#{<<"allow_search">> => fts_user_repo:allow_search(Uid)}.
 
 %% @doc 检查用户是否隐藏在线状态
 %%
@@ -83,19 +81,16 @@ chat_state_hide(Uid) ->
 %% @param Val 设置值
 %% @returns ok 表示操作成功
 % user_setting_ds:save(1, <<"add_friend_type">>, [<<"qrcode">>, <<"visit_card">>, <<"people_nearby">>]).
--spec save(any(), binary(), any()) -> ok.
+-spec save(binary() | integer(), binary(), term()) -> ok.
 save(Uid, <<"add_friend_type">>, TypeLi) ->
     priv_save(Uid, <<"add_friend_type">>, TypeLi);
-
 %% 设置附近的人是否可见
 %% user_setting_ds:save(1, <<"people_nearby_visible">>, false).
 %% user_setting_ds:save(1, <<"people_nearby_visible">>, true).
 save(Uid, <<"people_nearby_visible">>, Visible) ->
     priv_save(Uid, <<"people_nearby_visible">>, Visible);
-
 save(Uid, <<"font_size">>, State) ->
     priv_save(Uid, <<"font_size">>, State);
-
 %% 设置聊天状态
 %% State: hide online offline
 %% user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
@@ -110,7 +105,7 @@ save(Uid, <<"chat_state">>, State) ->
 %% @param Key 设置项键名
 %% @param State 设置值
 %% @returns ok 表示操作成功
--spec priv_save(any(), binary(), any()) -> ok.
+-spec priv_save(binary() | integer(), binary(), term()) -> ok.
 priv_save(Uid, Key, State) ->
     Setting = user_setting_ds:find_by_uid(Uid),
     Setting2 = Setting#{Key => State},

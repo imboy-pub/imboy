@@ -58,5 +58,5 @@ update(Uid, Setting) when is_integer(Uid) ->
     %% 构建带ON CONFLICT的INSERT SQL
     {Sql, Params} = imboy_pg_sql:insert(tablename(), Data, <<>>),
     FullSql = [Sql, <<" ">>, OnConflict],
-    imboy_pg:execute(FullSql, Params),
+    _ = imboy_pg:execute(FullSql, Params),
     ok.

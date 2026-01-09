@@ -1,6 +1,6 @@
 -module(location_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -31,20 +31,24 @@ make_myself_visible_success_test_() ->
     end).
 
 make_myself_visible_empty_latitude_test_() ->
-    Uid = 12345,
-    Lat = <<>>,  % 空纬度
-    Lng = <<"116.4074">>,
-    
-    Result = location_logic:make_myself_visible(Uid, Lat, Lng),
-    ?assertEqual({error, <<"latitude is empty">>}, Result).
+    ?_test(begin
+        Uid = 12345,
+        Lat = <<>>,  % 空纬度
+        Lng = <<"116.4074">>,
+        
+        Result = location_logic:make_myself_visible(Uid, Lat, Lng),
+        ?assertEqual({error, <<"latitude is empty">>}, Result)
+    end).
 
 make_myself_visible_empty_longitude_test_() ->
-    Uid = 12345,
-    Lat = <<"39.9042">>,
-    Lng = <<>>,  % 空经度
-    
-    Result = location_logic:make_myself_visible(Uid, Lat, Lng),
-    ?assertEqual({error, <<"longitude is empty">>}, Result).
+    ?_test(begin
+        Uid = 12345,
+        Lat = <<"39.9042">>,
+        Lng = <<>>,  % 空经度
+        
+        Result = location_logic:make_myself_visible(Uid, Lat, Lng),
+        ?assertEqual({error, <<"longitude is empty">>}, Result)
+    end).
 
 %% ===================================================================
 %% make_myself_unvisible/1 测试
@@ -122,8 +126,9 @@ people_nearby_meters_test_() ->
             Radius = <<"2000">>,  % 2000米
             Unit = <<"m">>,
             Limit = <<"5">>,
+            CurrentUid = 12345,
             
-            Result = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
+            Result = location_logic:people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit),
             
             % 验证返回结果
             ?assertMatch([_|_], Result),
@@ -140,15 +145,24 @@ people_nearby_meters_test_() ->
 people_nearby_empty_result_test_() ->
     ?WITH_MECK(geo_people_nearby_repo, [
         {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, 0, []}  % 没有找到附近的人
+            {ok, []}  % 没有找到附近的人
         end}
     ], fun() ->
-        Lng = <<"116.4074">>,
-        Lat = <<"39.9042">>,
-        Radius = 100,
-        Unit = <<"m">>,
-        Limit = <<"10">>,
-        
-        Result = location_logic:people_nearby(Lng, Lat, Radius, Unit, Limit),
-        ?assertEqual([], Result)
+        ?WITH_MECK(imboy_hashids, [
+            {'replace_id', 1, fun(Row) -> Row end}
+        ], fun() ->
+            ?WITH_MECK(friend_ds, [
+                {'is_friend_fields', 3, fun(_FromUid, _ToUid, _Fields) -> {false, #{}} end}
+            ], fun() ->
+                Lng = <<"116.4074">>,
+                Lat = <<"39.9042">>,
+                Radius = 100,
+                Unit = <<"m">>,
+                Limit = <<"10">>,
+                CurrentUid = 12345,
+                
+                Result = location_logic:people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit),
+                ?assertEqual([], Result)
+            end)
+        end)
     end).

@@ -18,7 +18,7 @@ init([]) ->
     % },
 
     PgConf = config_ds:env(pg_conf),
-    pooler:new_pool(PgConf),
+    _ = pooler:new_pool(PgConf),
 
     % https://blog.csdn.net/Dylan_2018/article/details/110150142
     % child_spec() = #{id => child_id(),             % mandatory
@@ -62,10 +62,21 @@ init([]) ->
             []
     end,
     
+    % 消息写入队列监督树
+    MsgWriteQueueSup = #{
+        id => msg_store_sup
+        , start => {msg_store_sup, start_link, []}
+        , restart => permanent
+        , shutdown => 5000
+        , type => supervisor
+        , modules => [msg_store_sup]
+    },
+
     Specs = [
         IMBoyCache
         % , PgoChildSpec
         , UserServer
+        , MsgWriteQueueSup
     ] ++ CacheSyncSpec,
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},
     {ok, {Restart, Specs}}.

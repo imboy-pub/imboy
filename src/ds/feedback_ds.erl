@@ -14,7 +14,7 @@
 -endif.
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -24,7 +24,7 @@
 %%% add方法
 %%% 新增用户反馈
 -spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
-    {ok, list(), list()} | {error, any()}.
+    ok | {ok, non_neg_integer()}.
 % feedback_ds:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     FeedbackMd5 = imboy_hasher:md5(imboy_cnv:implode("", [
@@ -38,15 +38,16 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     if Count > 0 ->
             ok;
         true ->
-            feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5)
+            _ = feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5),
+            ok
     end.
 
--spec remove(integer(), binary()) -> ok.
+-spec remove(integer(), integer()) -> ok.
 remove(Uid, FeedbackId) ->
     % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"user_id = $1 AND id = $2">>,
-    imboy_pg:update(feedback_repo:tablename(), #{
+    _ = imboy_pg:update(feedback_repo:tablename(), #{
         <<"status">> => <<"-1">>,
         <<"updated_at">> => imboy_dt:now()
     }, Where, [Uid, FeedbackId]),
@@ -57,14 +58,14 @@ remove(Uid, FeedbackId) ->
 
 
 % feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => imboy_dt:now()})
--spec add_reply(any()) -> any().
+-spec add_reply(map()) -> ok.
 add_reply(Data) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data),
     Tb = feedback_reply_repo:tablename(),
-    {Sql, Params} = imboy_pg_sql:insert(Tb, Data),
-    imboy_pg:execute(Sql, Params),
+    {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<"">>),
+    _ = imboy_pg:execute(Sql, Params),
     % 使用安全的参数化查询，避免SQL注入
-    imboy_pg:update(feedback_repo:tablename(), #{
+    _ = imboy_pg:update(feedback_repo:tablename(), #{
         <<"status">> => <<"2">>,
         <<"reply_count">> => {raw, <<"reply_count + 1">>},
         <<"updated_at">> => imboy_dt:now()

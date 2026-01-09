@@ -1,4 +1,5 @@
 -module(imboy_dt).
+-dialyzer({nowarn_function, [add/2, minus/2]}).
 %%%
 % datetime 工具箱
 %%%
@@ -12,28 +13,48 @@
 -export([compare_rfc3339/3]).
 -export([now/0, now/1]).
 -export([to_rfc3339/1, to_rfc3339/2, to_rfc3339/3]).
--export([rfc3339_to/2, datetime_to/2]).
+-export([rfc3339_to/1, rfc3339_to/2, datetime_to/2]).
 -export([timezone_offset/1]).
 
+%% @doc Add time duration to a datetime value
+%% @param Dt Datetime value (timestamp or RFC3339 string)
+%% @param Duration {Num, Unit} where Unit is minute | second | millisecond
+%% @returns New datetime value as RFC3339 binary
+-spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, empty_input}.
 % imboy_dt:add(Dt, {10, minute}).
 % imboy_dt:add(Dt, {600, second}).
 add(Dt, {Num, minute}) ->
     add(Dt, {Num * 60, second});
 add(Dt, {Num, second}) ->
     add(Dt, {Num * 1000, millisecond});
-add(Dt, {Num, millisecond}) ->
-    S = rfc3339_to(Dt, microsecond),
-    Val = S + Num*1000,
-    to_rfc3339(Val, microsecond).
+add(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
+    Result = rfc3339_to(Dt, microsecond),
+    if
+        is_integer(Result) ->
+            Val = Result + Num*1000,
+            to_rfc3339(Val, microsecond);
+        true ->
+            {error, invalid_datetime}
+    end.
 
+%% @doc Subtract time duration from a datetime value
+%% @param Dt Datetime value (timestamp or RFC3339 string)
+%% @param Duration {Num, Unit} where Unit is minute | second | millisecond
+%% @returns New datetime value as RFC3339 binary
+-spec minus(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, term()}.
 minus(Dt, {Num, minute}) ->
     minus(Dt, {Num * 60, second});
 minus(Dt, {Num, second}) ->
     minus(Dt, {Num * 1000, millisecond});
-minus(Dt, {Num, millisecond}) ->
-    S = rfc3339_to(Dt, microsecond),
-    Val = S - Num*1000,
-    to_rfc3339(Val, microsecond).
+minus(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
+    Result = rfc3339_to(Dt, microsecond),
+    if
+        is_integer(Result) ->
+            Val = Result - Num*1000,
+            to_rfc3339(Val, microsecond);
+        true ->
+            {error, invalid_datetime}
+    end.
 
 % Dt = imboy_dt:now().
 % Dt2 = imboy_dt:add(Dt, {10, minute}).
@@ -157,8 +178,28 @@ to_rfc3339(Num, nanosecond) ->
 % imboy_dt:to_rfc3339(1707198019, second, "+08:00").
 % imboy_dt:to_rfc3339(imboy_dt:utc(second), second, "+08:00").
 % 使用标准 T 分隔符（RFC3339/ISO 8601 标准）
-to_rfc3339(Num, Unit, Offset) ->
-    list_to_binary(calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $T}, {offset, Offset}])).
+to_rfc3339(Num, Unit, Offset) when is_integer(Num) andalso Num >= 0 ->
+    % 值验证：拒绝超出合理范围的时间戳（防止数据库损坏值导致崩溃）
+    % 合理范围：1970-01-01 ~ 2100-01-01
+    MaxSeconds = 4102444800,  % 2100-01-01 00:00:00 UTC
+    MaxValue = case Unit of
+        second -> MaxSeconds;
+        millisecond -> MaxSeconds * 1000;
+        microsecond -> MaxSeconds * 1000000;
+        nanosecond -> MaxSeconds * 1000000000
+    end,
+    case Num =< MaxValue of
+        true ->
+            list_to_binary(calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $T}, {offset, Offset}]));
+        false ->
+            error_logger:warning_msg("Invalid timestamp value exceeds maximum: ~p ~p (max: ~p)~n",
+                                   [Num, Unit, MaxValue]),
+            % 返回 epoch 时间作为安全默认值
+            <<"1970-01-01T00:00:00Z">>
+    end;
+to_rfc3339(Num, _Unit, _Offset) ->
+    error_logger:warning_msg("Invalid timestamp value type or negative: ~p~n", [Num]),
+    <<"1970-01-01T00:00:00Z">>.
 
 
 % imboy_dt:datetime_to({{2024,10,29},{2,34,30.776}}, millisecond).
@@ -188,30 +229,62 @@ datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
         _:_ -> {error, "invalid datetime tuple"}
     end.
 
+rfc3339_to(Val) when is_integer(Val) ->
+    Val;
+rfc3339_to(Val) when is_tuple(Val) ->
+    imboy_dt:datetime_to(Val, millisecond);
+rfc3339_to(Val) when is_list(Val); is_binary(Val) ->
+    case imboy_type:is_numeric(Val) of
+        true ->
+            ec_cnv:to_integer(Val);
+        false ->
+            rfc3339_to(Val, millisecond)
+    end;
+rfc3339_to(Value) -> Value.  % 非时间字符串、空值保持原样
+
+
 % Dt = imboy_dt:now(),
 % imboy_dt:rfc3339_to(Dt, millisecond).
 % imboy_dt:rfc3339_to(Dt, microsecond).
-rfc3339_to(Dt, Unit) when is_binary(Dt) ->
+-spec rfc3339_to(binary() | list() | undefined, atom()) -> integer() | {error, empty_input}.
+rfc3339_to(Dt, Unit) when is_binary(Dt) andalso Dt =/= <<>> ->
     rfc3339_to(binary_to_list(Dt), Unit);
-rfc3339_to(Dt, _Unit) when Dt =:= []; Dt =:= <<>>; Dt =:= undefined ->
+rfc3339_to(Dt, _Unit) when Dt =:= []; Dt =:= undefined ->
     {error, empty_input};
 rfc3339_to(Dt, _Unit) when is_list(Dt), length(Dt) =:= 0 ->
     {error, empty_input};
-%%===================================================================
-%% @doc 解析 RFC3339 时间戳，兼容空格和 T 两种分隔符
-%% 支持的格式：
-%%   - "2024-02-12T05:25:43.435Z" (标准格式，T分隔)
-%%   - "2024-02-12 05:25:43.435+08:00" (向后兼容，空格分隔)
-%%===================================================================
-rfc3339_to(Dt, Unit) ->
+rfc3339_to(Dt, Unit) when is_list(Dt); is_binary(Dt) ->
     % 先尝试标准 T 分隔符，失败后尝试空格分隔符（向后兼容）
-    case calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $T}]) of
-        {error, _} ->
-            % T 分隔符失败，尝试空格分隔符
-            calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}]);
-        Result ->
-            Result
-    end.
+    try
+        Result = calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $T}]),
+        try
+            Result2 = calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}]),
+            if
+                is_integer(Result2) ->
+                    Result2;
+                true ->
+                    if
+                        is_integer(Result) ->
+                            Result;
+                        true ->
+                            {error, empty_input}
+                    end
+            end
+        catch
+            _:_ ->
+                if
+                    is_integer(Result) ->
+                        Result;
+                    true ->
+                        {error, empty_input}
+                end
+        end
+    catch
+        _:_ ->
+            {error, empty_input}
+    end;
+rfc3339_to(_Dt, _Unit) ->
+    {error, empty_input}.
 
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-1
 % https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-2

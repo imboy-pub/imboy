@@ -13,7 +13,7 @@
     list_member/2
 ]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 -define(DEF_COLUMN, <<"u.nickname,u.account,u.avatar,u.sign, gm.*">>).
 
@@ -23,12 +23,12 @@
 
 %% 获取群成员列表（最多 50000）
 % group_member_logic:list_member(31).
--spec list_member(integer()) -> list().
+-spec list_member(integer()) -> {ok, [map()]} | {error, term()}.
 list_member(Gid) when is_integer(Gid) ->
     list_member(Gid, []).
 
 %% 获取群成员列表，可指定用户ID列表
--spec list_member(integer(), list()) -> list().
+-spec list_member(integer(), list()) -> {ok, [map()]} | {error, term()}.
 list_member(Gid, []) ->
     TbA = group_member_repo:tablename(),
     TbB = user_repo:tablename(),
@@ -53,9 +53,10 @@ list_member(Gid, MemberUids) ->
 -spec join_group(binary(), integer(), integer(), map()) -> ok | {error, binary()}.
 join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
     % ?DEBUG_LOG(["join_group/4 Gid", Gid, "JoinMode", JoinMode, "Uid", Uid, "OptData", OptData]),
-    imboy_pg:with_tx(
+    _ = imboy_pg:with_tx(
         fun(Conn) -> join_group(Conn, JoinMode, Uid, Gid, OptData) end
-    ).
+    ),
+    ok.
 
 %% ===================================================================
 %% join_group/5
@@ -83,7 +84,7 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
                     GMTb = group_member_repo:tablename(),
                     %% 插入群成员
                     Now = imboy_dt:now(),
-                    imboy_pg:insert(Conn, GMTb, #{
+                    _ = imboy_pg:insert(Conn, GMTb, #{
                         group_id => Gid,
                         user_id => Uid,
                         role => Role,
@@ -99,7 +100,7 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
                     {ok, [#{<<"user_id_sum">> := UidSum0, <<"member_count">> := MemberCount}]} = imboy_pg:query(Conn, SqlSum, [Gid]),
                     UidSum = ec_cnv:to_integer(UidSum0),
                     %% 更新群组统计
-                    imboy_pg:update(Conn, group_repo:tablename(),
+                    _ = imboy_pg:update(Conn, group_repo:tablename(),
                         #{
                             member_count => ec_cnv:to_integer(MemberCount),
                             user_id_sum  => UidSum,
@@ -135,7 +136,7 @@ leave_tx(Uid, Gid, GM, CurrentUid) ->
     Now = imboy_dt:now(),
     Id = maps:get(<<"id">>, GM, 0),
     ToUidLi = group_ds:member_uids(Gid),
-    imboy_pg:with_tx(fun(Conn) ->
+    _ = imboy_pg:with_tx(fun(Conn) ->
         %% 删除成员
         Tb = group_member_repo:tablename(),
         Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
@@ -144,7 +145,7 @@ leave_tx(Uid, Gid, GM, CurrentUid) ->
         %% 写日志
         {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
         Type = if CurrentUid == Uid -> 200; true -> 202 end,
-        group_log_repo:add(Conn, #{
+        _ = group_log_repo:add(Conn, #{
             type => Type,
             option_uid => CurrentUid,
             group_id => Gid,
@@ -157,28 +158,32 @@ leave_tx(Uid, Gid, GM, CurrentUid) ->
         SqlSum = <<"SELECT COALESCE(SUM(user_id), 0) as user_id_sum, COUNT(*) as member_count ",
                    "FROM ", GMTb/binary,
                    " WHERE group_id = $1 AND status > -1">>,
-        {ok, [#{<<"user_id_sum">> := UidSum0, <<"member_count">> := MemberCount0}]} = imboy_pg:query(Conn, SqlSum, [Gid]),
-        UidSum = ec_cnv:to_integer(UidSum0),
-        %% 更新群组统计
-        {ok, _} = imboy_pg:update(Conn, group_repo:tablename(),
-            #{
-                user_id_sum => UidSum,
-                member_count => ec_cnv:to_integer(MemberCount0),
-                updated_at => Now
-            }, <<"id = $1">>, [Gid]),
+        case imboy_pg:query(Conn, SqlSum, [Gid]) of
+            {ok, [#{<<"user_id_sum">> := UidSum0, <<"member_count">> := MemberCount0}]} ->
+                UidSum = ec_cnv:to_integer(UidSum0),
+                %% 更新群组统计
+                {ok, _} = imboy_pg:update(Conn, group_repo:tablename(),
+                    #{
+                        user_id_sum => UidSum,
+                        member_count => ec_cnv:to_integer(MemberCount0),
+                        updated_at => Now
+                    }, <<"id = $1">>, [Gid]),
 
-        %% 通知其他成员
-        Payload = #{
-            <<"gid">>        => imboy_hashids:encode(Gid),
-            <<"user_id_sum">> => UidSum,
-            <<"leave_uid">>   => imboy_hashids:encode(Uid),
-            <<"msg_type">>    => <<"group_member_leave">>
-        },
-        msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
-        group_ds:leave(Uid, Gid),
-        ok
-    end, #{reraise => true}),
-    ?DEBUG_LOG(["leave_tx ok", Uid, Gid, CurrentUid]),
+                %% 通知其他成员
+                Payload = #{
+                    <<"gid">>        => imboy_hashids:encode(Gid),
+                    <<"user_id_sum">> => UidSum,
+                    <<"leave_uid">>   => imboy_hashids:encode(Uid),
+                    <<"msg_type">>    => <<"group_member_leave">>
+                },
+                _ = msg_s2c_ds:send(Uid, Payload, ToUidLi, save),
+                group_ds:leave(Uid, Gid),
+                ok;
+            _ ->
+                ok
+        end
+    end, [{reraise, true}]),
+    _ = ?DEBUG_LOG(["leave_tx ok", Uid, Gid, CurrentUid]),
     ok.
 
 %% ===================================================================
@@ -188,17 +193,15 @@ leave_tx(Uid, Gid, GM, CurrentUid) ->
 alias(Uid, Gid, Alias, Description) ->
     Now = imboy_dt:now(),
     Data = #{alias => Alias, description => Description, updated_at => Now},
-    imboy_pg:update(
+    _ = imboy_pg:update(
         group_member_repo:tablename(),
         Data,
         <<"group_id = $1 AND user_id = $2">>,
         [Gid, Uid]
     ),
     ToUidLi = group_ds:member_uids(Gid),
-    msg_s2c_ds:send(Uid, Data#{
-        <<"gid">> => imboy_hashids:encode(Gid),
-        <<"msg_type">> => <<"group_member_alias">>
-    }, ToUidLi, save),
+    _ = msg_s2c_ds:send(Uid, maps:put(<<"gid">>, imboy_hashids:encode(Gid),
+        maps:put(<<"msg_type">>, <<"group_member_alias">>, Data)), ToUidLi, save),
     ok.
 
 %% ===================================================================
@@ -208,8 +211,8 @@ alias(Uid, Gid, Alias, Description) ->
 %% 验证群组成员限制
 -spec validate_group_limit(undefined | integer(), undefined | integer()) -> ok | {error, binary()}.
 validate_group_limit(undefined, _Count) -> ok;
-validate_group_limit(0, _Count) -> {error, <<"群不存在或群ID有误">>};
-validate_group_limit(Max, Count) when is_integer(Max), Max =< Count -> {error, <<"群成员已满">>};
+validate_group_limit(0, _Count) -> {error, <<"群不存在或群ID有误"/utf8>>};
+validate_group_limit(Max, Count) when is_integer(Max), Max =< Count -> {error, <<"群成员已满"/utf8>>};
 validate_group_limit(_, _) -> ok.
 
 %% 发送加入通知
@@ -220,12 +223,12 @@ group_member_join_notice(Gid, Uid, Sum) ->
     Payload = #{
         <<"gid">>          => imboy_hashids:encode(Gid),
         <<"user_id_sum">>  => Sum,
-        <<"nickname">>     => maps:get(<<"nickname">>, User),
-        <<"avatar">>       => maps:get(<<"avatar">>, User),
-        <<"account">>      => maps:get(<<"account">>, User),
+        <<"nickname">>     => maps:get(<<"nickname">>, User, <<>>),
+        <<"avatar">>       => maps:get(<<"avatar">>, User, <<>>),
+        <<"account">>      => maps:get(<<"account">>, User, <<>>),
         <<"msg_type">>     => <<"group_member_join">>
     },
-    msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
+    _ = msg_s2c_ds:send(Uid, Payload, ToUidLi, nosave),
     ok.
 
 %% ===================================================================

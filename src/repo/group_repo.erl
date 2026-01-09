@@ -57,16 +57,15 @@ find_by_id(Gid, Column) ->
 %% @doc 根据群组ID列表批量查询群组信息
 %% @param Ids 群组ID列表
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
-%% @return {ok, Rows} 查询成功返回 proplist 列表 | {error, Reason} 查询失败
+%% @return {ok, Rows} 查询成功返回 map 列表 | {error, Reason} 查询失败
 %% @example group_repo:list_by_ids([1,2], <<"*">>).
--spec list_by_ids(list(integer() | binary()), binary()) -> {ok, list(list())} | {error, any()}.
+-spec list_by_ids(list(integer() | binary()), binary()) -> {ok, list(map())} | {error, any()}.
 list_by_ids(Ids, Column) when length(Ids) > 0 ->
     Tb = tablename(),
     {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{id => {in, Ids}}, #{}),
     case imboy_pg:query(Sql, Params) of
         {ok, Rows} ->
-            Proplists = [maps:to_list(Row) || Row <- Rows],
-            {ok, Proplists};
+            {ok, Rows};
         {error, Reason} ->
             {error, Reason}
     end;

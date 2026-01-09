@@ -6,10 +6,10 @@
 
 
 % imboy_dtl:template(login_dtl, [], imadm).
--spec template(atom(), list(), atom()) -> binary().
+-spec template(atom(), list(), atom()) -> {ok, list()}.
 template(Name, Vars, AppName) ->
     Path = imboy_cnv:implode("", [code:priv_dir(AppName), "/template/admin/", Name, ".html"]),
-    erlydtl:compile(binary_to_list(Path), Name),
+    _ = erlydtl:compile(binary_to_list(Path), Name),
     Name:render(Vars).
 
 

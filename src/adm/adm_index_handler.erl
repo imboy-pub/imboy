@@ -10,9 +10,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -61,7 +61,9 @@ index(<<"GET">>, Req0, State) ->
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"text/html; charset=utf-8">>
         , <<"Access-Control-Allow-Origin">> => <<"*">>
-    }, Body, Req0).
+    }, Body, Req0);
+index(_Method, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 
 %% @doc 处理欢迎页面请求
@@ -82,7 +84,9 @@ welcome(<<"GET">>, Req0, State) ->
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"text/html; charset=utf-8">>
         , <<"Access-Control-Allow-Origin">> => <<"*">>
-    }, Body, Req0).
+    }, Body, Req0);
+welcome(_Method, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% ===================================================================
 %% EUnit tests.

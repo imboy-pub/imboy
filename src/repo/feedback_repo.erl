@@ -33,7 +33,7 @@ tablename() ->
     ok | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach, FeedbackMd5)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) ->
-    imboy_pg:insert(tablename(), #{
+    _ = imboy_pg:insert(tablename(), #{
         <<"user_id">> => Uid,  % 用户ID (整型)
         <<"device_id">> => Did,  % 设备ID (字符串)
         <<"client_operating_system">> => COS,  % 客户端操作系统 (字符串)

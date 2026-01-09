@@ -10,9 +10,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 
 -define (LOGIN_COLUMN, <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).

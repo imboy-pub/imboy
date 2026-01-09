@@ -1,6 +1,6 @@
 -module(user_tag_relation_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc

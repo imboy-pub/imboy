@@ -4,6 +4,7 @@
 %%%
 -export([is_friend/2]).
 -export([is_friend/3]).
+-export([is_friend_fields/3]).
 -export([list_by_uid/1]).
 -export([page_by_uid/1, page_by_uid/3]).
 -export([page_by_cid/4]).
@@ -25,7 +26,7 @@
 %% @param Uid 用户ID
 %% @returns list() 好友用户ID列表
 % friend_ds:list_by_uid(1).
--spec list_by_uid(integer()) -> list().
+-spec list_by_uid(integer()) -> [map()].
 list_by_uid(Uid) ->
     Column = <<"to_user_id">>,
     case friend_repo:list_by_uid(Uid, Column) of
@@ -41,12 +42,12 @@ list_by_uid(Uid) ->
 %%
 %% @param FromUid 源用户ID
 %% @param ToUid 目标用户ID
-%% @returns {boolean(), any()} 好友关系状态和相关信息
+%% @returns boolean() 好友关系状态
 % friend_ds:is_friend(1, 3)
--spec is_friend(integer(), integer()) -> {boolean(), any()}.
+-spec is_friend(integer(), integer()) -> boolean().
 is_friend(FromUid, ToUid) ->
-    {Res, _} = friend_ds:is_friend(FromUid, ToUid, <<"remark">>),
-    Res.
+    {IsF, _} = friend_ds:is_friend(FromUid, ToUid, <<"remark">>),
+    IsF.
 
 %% @doc 检查好友关系并获取指定字段值
 %%
@@ -55,17 +56,41 @@ is_friend(FromUid, ToUid) ->
 %% @param FromUid 源用户ID
 %% @param ToUid 目标用户ID
 %% @param Field 要查询的字段名
-%% @returns boolean() 好友关系状态
+%% @returns {boolean(), binary()} 好友关系状态和字段值
 % friend_ds:is_friend(1, 3, <<"remark">>).
--spec is_friend(integer(), integer(), binary()) -> boolean().
+-spec is_friend(integer(), integer(), binary()) -> {boolean(), binary()}.
 is_friend(FromUid, ToUid, Field) ->
     Key = {is_friend2, FromUid, ToUid},
     Fun = fun() ->
                   case friend_repo:friend_field(FromUid, ToUid, Field) of
                       {ok, [#{Field := Val} |_]} ->
                           {true, Val};
-                      _ ->
+                      {error, _Reason} ->
                           {false, <<>>}
+                  end
+          end,
+    %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
+    % 缓存1天，
+    imboy_cache:memo(Fun, Key, 86400).
+
+%% @doc 检查好友关系并获取多个字段值
+%%
+%% 检查好友关系是否存在，并返回多个字段的信息，使用缓存提高性能
+%%
+%% @param FromUid 源用户ID
+%% @param ToUid 目标用户ID
+%% @param Fields 要查询的字段列表，如 [<<"remark">>, <<"created_at">>]
+%% @returns {boolean(), map()} 好友关系状态和字段值map
+% friend_ds:is_friend_fields(1, 3, [<<"remark">>, <<"created_at">>]).
+-spec is_friend_fields(integer(), integer(), [binary()]) -> {boolean(), map()}.
+is_friend_fields(FromUid, ToUid, Fields) ->
+    Key = {is_friend_fields, FromUid, ToUid, Fields},
+    Fun = fun() ->
+                  case friend_repo:friend_fields(FromUid, ToUid, Fields) of
+                      {ok, [Row |_]} when is_map(Row) ->
+                          {true, Row};
+                      {error, _Reason} ->
+                          {false, #{}}
                   end
           end,
     %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
@@ -79,7 +104,7 @@ is_friend(FromUid, ToUid, Field) ->
 %% @param Uid 用户ID
 %% @returns list() 好友信息列表
 % friend_ds:page_by_uid(1).
--spec page_by_uid(integer()) -> list().
+-spec page_by_uid(integer()) -> [map()].
 page_by_uid(Uid) ->
     page_by_uid(Uid, 1000, 0).
 
@@ -91,7 +116,7 @@ page_by_uid(Uid) ->
 %% @param Limit 每页数量限制
 %% @param Offset 偏移量
 %% @returns list() 好友信息列表
--spec page_by_uid(integer(), integer(), integer()) -> list().
+-spec page_by_uid(integer(), integer(), integer()) -> [map()].
 page_by_uid(Uid, Limit, Offset) ->
     Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 LIMIT $2 OFFSET $3">>,
     WhereArgs = [Uid, Limit, Offset],
@@ -107,7 +132,7 @@ page_by_uid(Uid, Limit, Offset) ->
 %% @param Offset 偏移量
 %% @returns list() 好友信息列表
 % friend_ds:page_by_cid(1, 1, 10, 0).
--spec page_by_cid(integer(), integer(), integer(), integer()) -> list().
+-spec page_by_cid(integer(), integer(), integer(), integer()) -> [map()].
 page_by_cid(Cid, Uid, Limit, Offset) ->
     Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.category_id = $2 LIMIT $3 OFFSET $4">>,
     WhereArgs = [Uid, Cid, Limit, Offset],
@@ -123,9 +148,9 @@ page_by_cid(Cid, Uid, Limit, Offset) ->
 %% @param Size 每页大小
 %% @param TagId 标签ID
 %% @param Kwd 搜索关键词
-%% @returns list() 分页结果
+%% @returns map() 分页结果 #{total => Total, page => Page, size => Size, list => Items}
 % friend_ds:page_by_tag(31, 1, 10, 15, <<>>).
--spec page_by_tag(integer(), integer(), integer(), integer(), binary()) -> list().
+-spec page_by_tag(integer(), integer(), integer(), integer(), binary()) -> map().
 page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
     TagName = imboy_pg:pluck_value(<<"public.user_tag">>, <<"name">>, #{id => TagId}, #{}, <<>>),
     case TagName of
@@ -161,15 +186,10 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                 end,
             case imboy_pg:page_with_total(BaseFrom, fields(Uid), WhereMap, OrderBy, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
-                    ColumnList = case Rows of
-                        [Row | _] -> maps:keys(Row);
-                        [] -> []
-                    end,
-                    TupleRows = [list_to_tuple([maps:get(K, Row, <<>>) || K <- ColumnList]) || Row <- Rows],
-                    Friends = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- TupleRows ],
-                    Items = [ user_logic:online_state(imboy_hashids:replace_id(User)) || User <- Friends ],
+                    Items = [ imboy_hashids:replace_id(user_logic:online_state(User)) || User <- Rows ],
                     #{total => Total, page => Page, size => Size, list => Items};
-                {error, _Reason} ->
+                {error, Reason} ->
+                    _ = imboy_log:error(Reason),
                     #{total => 0, page => Page, size => Size, list => []}
             end
     end.
@@ -184,7 +204,7 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
 %% @param WhereArgs 查询参数
 %% @param Fields 查询字段
 %% @returns list() 查询结果列表
--spec page(binary(), list(), binary()) -> list().
+-spec page(binary(), [term()], binary()) -> [map()] | [].
 page(Where, WhereArgs, Fields) ->
     UserTable = imboy_pg_sql:public_tablename(<<"user">>),
     UserDTable = imboy_pg_sql:public_tablename(<<"user_denylist">>),
@@ -199,15 +219,8 @@ page(Where, WhereArgs, Fields) ->
         {ok, []} ->
             [];
         {ok, Rows} when is_list(Rows) ->
-            % 转换新API的map格式为旧格式
-            ColumnList = case Rows of
-                [Row | _] -> maps:keys(Row);
-                [] -> []
-            end,
-            TupleRows = [list_to_tuple([maps:get(K, Row, <<>>) || K <- ColumnList]) || Row <- Rows],
-            Friends = [ lists:zipwith(fun(X, Y) -> {X, Y} end, ColumnList, tuple_to_list(Row)) || Row <- TupleRows ],
-            [ user_logic:online_state(imboy_hashids:replace_id(User)) || User <- Friends ];
-        _ ->
+            [ imboy_hashids:replace_id(user_logic:online_state(User)) || User <- Rows ];
+        {error, _Reason} ->
             []
     end.
 

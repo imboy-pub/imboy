@@ -22,22 +22,21 @@
 
 -export([is_online/2]).
 
+%% ACK 同步相关导出
+-export([broadcast_ack_cancel/3]).
+
 %% ===================================================================
 %% API
 %% ===================================================================
 init() ->
-    application:ensure_all_started(syn),
-    case syn:add_node_to_scopes([
+    _ = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([
         ?CHAT_SCOPE
         % , ?GROUP_SCOPE
         , ?ROOM_SCOPE
         , ?CACHE_SCOPE
-    ]) of
-        ok -> ok;
-        {error, Reason} ->
-            imboy_log:error(["syn:add_node_to_scopes error", Reason]),
-            {error, Reason}
-    end.
+    ]),
+    ok.
 
 -spec join(integer(), binary(), pid(), binary()) -> ok | {error, term()}.
 join(Uid, DType, Pid, DID) ->
@@ -92,7 +91,8 @@ count() ->
         _:_ -> 0
     end.
 
--spec list_by_limit(integer() | error) -> list().
+% [{{Uid, Pid}, {DType, DID}, Nano, Ref, Node}, ...]
+-spec list_by_limit(integer() | error) -> [{{integer(), pid()}, {binary(), binary()}, integer(), reference(), node()}].
 list_by_limit(error) -> [];
 list_by_limit(Limit) when is_integer(Limit), Limit > 0 ->
     try
@@ -109,7 +109,7 @@ list_by_limit(Limit) when is_integer(Limit), Limit > 0 ->
     end;
 list_by_limit(_) -> [].
 
--spec list_by_uid(integer()) -> list().
+-spec list_by_uid(integer()) -> [{pid(), {binary(), binary()}}].
 list_by_uid(Uid) ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     try
@@ -134,7 +134,7 @@ is_online(Uid, {did, DID}) ->
     end.
 
 % 用户在线设备ID列表
--spec online_dids(integer()) -> list().
+-spec online_dids(integer()) -> [binary()].
 online_dids(Uid) ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     try
@@ -165,7 +165,9 @@ publish(_Uid, _Msg, _Delay) ->
 -spec do_publish(list(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
 do_publish(Members, Message, 0) ->
     % ?DEBUG_LOG(["imboy_syn:do_publish/3 immediate", length(Members), Message]),
-    [ Pid ! Message || {Pid, _Meta} <- Members ],
+    % 使用 start_timer(0, ...) 确保立即投递和延迟投递的消息格式统一
+    % 消息会被包装为 {timeout, Ref, Message} 格式，与延迟投递一致
+    [ erlang:start_timer(0, Pid, Message) || {Pid, _Meta} <- Members ],
     {ok, length(Members)};
 do_publish(Members, Message, Delay) when Delay > 0 ->
     % ?DEBUG_LOG(["imboy_syn:do_publish/3 delayed", length(Members), Delay, Message]),
@@ -173,3 +175,56 @@ do_publish(Members, Message, Delay) when Delay > 0 ->
     % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
     [ erlang:start_timer(Delay, Pid, Message) || {Pid, _Meta} <- Members ],
     {ok, length(Members)}.
+
+
+%% ===================================================================
+%% ACK 同步功能（复用 ?CHAT_SCOPE）
+%% ===================================================================
+
+%% @doc 广播 ACK 取消消息到指定 UID 的所有设备
+%% 使用现有的 ?CHAT_SCOPE，无需额外注册
+%% 优势：
+%% 1. 零额外资源消耗（复用现有注册）
+%% 2. 极高性能（直接查询 UID，不扫描全表）
+%% 3. 代码简洁（单 Scope 设计）
+%% @param Uid 用户ID
+%% @param DID 设备ID（用于标识当前设备）
+%% @param MsgId 消息ID
+-spec broadcast_ack_cancel(pos_integer(), binary(), binary()) -> ok.
+broadcast_ack_cancel(Uid, DID, MsgId) ->
+    %% 构建 ACK 取消消息
+    Message = {ack_cancel, Uid, DID, MsgId, erlang:monotonic_time(millisecond)},
+
+    try
+        %% 【优化】直接查询该 UID 的所有设备进程（跨节点）
+        %% syn:members/?CHAT_SCOPE 会返回所有节点上该 UID 的进程
+        % [
+        %     {
+        %         <0.9568.0>,
+        %         {<<"macos">>,<<"03F17F1F-770F-5CBC-AADA-F3722CF4E90B">>}
+        %     }
+        % ]
+        Members = syn:members(?CHAT_SCOPE, Uid),
+
+        _ = ?DEBUG_LOG([ack_cancel_broadcast, MsgId, Uid, DID, length(Members)]),
+
+        %% 异步发送到所有相关进程（跨节点自动处理）
+        lists:foreach(fun({Pid, _Meta}) ->
+            Pid ! Message
+        end, Members),
+        _ = ?DEBUG_LOG([ack_cancel_broadcast_complete, MsgId, Uid, DID, length(Members)]),
+        ok
+    catch
+        _:Error ->
+            _ = ?ERROR_LOG([ack_cancel_broadcast_failed, MsgId, Uid, DID, Error]),
+            %% 降级：确保本地至少执行一次
+            local_ack_cancel(Uid, DID, MsgId),
+            ok
+    end.
+
+%% @doc 本地执行 ACK 取消（降级方案）
+-spec local_ack_cancel(pos_integer(), binary(), binary()) -> ok.
+local_ack_cancel(Uid, DID, MsgId) ->
+    %% 调用 websocket_logic:handle_ack_cancel
+    websocket_logic:handle_ack_cancel(Uid, DID, MsgId),
+    ok.

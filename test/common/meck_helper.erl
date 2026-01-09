@@ -1,10 +1,4 @@
 -module(meck_helper).
--compile({nowarn_unused_function, [mock_user_collect_repo/1]}).
--compile({nowarn_unused_function, [mock_imboy_uri/1]}).
--compile({nowarn_unused_function, [mock_imboy_dt/1]}).
--compile({nowarn_unused_function, [mock_group_member_repo/1]}).
--compile({nowarn_unused_function, [mock_group_repo/1]}).
--compile({nowarn_unused_function, [mock_websocket_ds/1]}).
 -include_lib("eunit/include/eunit.hrl").
 
 %%%===================================================================

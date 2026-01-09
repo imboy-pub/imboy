@@ -13,7 +13,7 @@
 -endif.
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -25,13 +25,8 @@
 sign_key(ClientOS, Vsn, Pkg) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
     %
     Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
-    case config_ds:get(Key) of
-        <<>> ->
-            % 兼容旧之前版本，一年后可以不兼容 2024-08-16
-            get_sign_key(ClientOS, Vsn, Pkg, <<"sign_key">>);
-        Val ->
-            Val
-    end.
+    ok = ?DEBUG_LOG([sign_key, Key]),
+    config_ds:get(Key, <<>>).
 
 set_sign_key(ClientOS, Vsn, Pkg, Val) when is_binary(ClientOS), is_binary(Vsn),is_binary(Pkg) ->
     Key = <<Pkg/binary, "_", ClientOS/binary, "_", Vsn/binary>>,
@@ -42,9 +37,8 @@ get_sign_key(ClientOS, Vsn, Pkg, Field) ->
     % 使用安全的参数化查询，避免SQL注入
     Where2 = <<"vsn = $1 AND package_name = $2 AND type = $3">>,
     % Defalut = config_ds:env(solidified_key),
-    case imboy_pg:query(<<"SELECT ", Field/binary, " FROM app_version WHERE ", Where2/binary>>, [Vsn, Pkg, ClientOS]) of
-        {ok, [Row]} -> {ok, maps:get(Field, Row, undefined)};
-        {ok, []} -> {ok, undefined};
+    case imboy_pg:one(<<"SELECT ", Field/binary, " FROM app_version WHERE ", Where2/binary>>, [Vsn, Pkg, ClientOS]) of
+        {ok, Row} -> {ok, maps:get(Field, Row, undefined)};
         {error, Reason} -> {error, Reason}
     end.
 

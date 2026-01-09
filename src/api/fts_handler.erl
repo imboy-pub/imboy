@@ -1,4 +1,5 @@
 -module(fts_handler).
+
 %%%
 % fts 控制器模块
 % fts controller module
@@ -8,18 +9,22 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
--include("include/log.hrl").
+
+-include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -35,11 +40,9 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 % 搜索“用户允许被搜索”的用户
 user_search(Req0, State) ->
@@ -49,7 +52,6 @@ user_search(Req0, State) ->
     Payload = fts_logic:user_search_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).
 
-
 % 最近新注册的并且允许被搜索到的朋友
 recently_user(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -58,12 +60,12 @@ recently_user(Req0, State) ->
     Payload = fts_logic:recently_user_page(CurrentUid, Page, Size, Keyword),
     imboy_response:success(Req0, Payload).
 
-
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

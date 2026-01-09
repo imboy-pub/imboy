@@ -1,7 +1,7 @@
 -module(auth_handler).
 -behavior(cowboy_rest).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 -export([init/2]).
 
@@ -37,11 +37,11 @@ init(Req0, State0) ->
 assets(<<"POST">>, Req0) ->
     try
         PostVals = imboy_param:post(Req0),
-        Scene = proplists:get_value(<<"s">>, PostVals),
+        Scene = maps:get(<<"s">>, PostVals, undefined),
         % AuthToken
-        AuthTk = proplists:get_value(<<"a">>, PostVals),
-        Val = proplists:get_value(<<"v">>, PostVals),
-        Path = proplists:get_value(<<"__path__">>, PostVals),
+        AuthTk = maps:get(<<"a">>, PostVals, undefined),
+        Val = maps:get(<<"v">>, PostVals, undefined),
+        Path = maps:get(<<"__path__">>, PostVals, undefined),
         {Scene, Path}
     of
         {<<"open">>, Path2} ->
@@ -68,5 +68,5 @@ assets(<<"POST">>, Req0) ->
     end;
 assets(<<"GET">>, Req0) ->
     % Body is <<"fail">>
-    Body = auth_logic:verify_for_assets(undefined, undefined, undefined, undefined),
+    Body = <<"fail">>,
     cowboy_req:reply(200, #{<<"content-type">> => <<"text/html">>}, unicode:characters_to_binary(Body, utf8), Req0).

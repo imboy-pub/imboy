@@ -1,6 +1,6 @@
 -module(imboy_cache_sync_tests_simple).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc

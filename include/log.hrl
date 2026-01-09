@@ -20,3 +20,5 @@
 -define(ERROR_LOG(Format, Args), imboy_log:internal_log(error, Format, Args, ?MODULE, ?LINE)).
 -define(INFO_LOG(Msg), imboy_log:internal_log(info, Msg, ?MODULE, ?LINE)).
 -define(INFO_LOG(Format, Args), imboy_log:internal_log(info, Format, Args, ?MODULE, ?LINE)).
+-define(WARN_LOG(Msg), imboy_log:internal_log(warning, Msg, ?MODULE, ?LINE)).
+-define(WARN_LOG(Format, Args), imboy_log:internal_log(warning, Format, Args, ?MODULE, ?LINE)).

@@ -51,7 +51,7 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
         Id > 0 ->
             ok;
         true ->
-            {Sql, Params} = imboy_pg_sql:insert(Tb, Data),
+            {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<>>),
             {ok, _} = imboy_pg:execute(Sql, Params),
             ok
     end.
@@ -63,21 +63,18 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
 %% @param MsgId 消息ID
 %% @param Data 消息数据映射
 %% @returns any() 数据库操作结果
--spec write_msg(binary(), map()) -> any().
+-spec write_msg(binary(), map()) -> ok | {error, any()}.
 write_msg(MsgId, Data) ->
     Tb = <<"msg_c2s">>,
     % 使用安全的参数化查询，避免SQL注入
-    Query = <<"SELECT count(*) AS count FROM ", Tb/binary, " WHERE msg_id = $1 ORDER BY created_at DESC LIMIT 1">>,
-    Count = case imboy_pg:query(Query, [MsgId]) of
-        {ok, [#{<<"count">> := Count2}]} -> Count2;
-        _ -> 0
-    end,
-    if
-        Count > 0 ->
-            ok;
-        true ->
-            {Sql, Params} = imboy_pg_sql:insert(Tb, Data),
-            imboy_pg:execute(Sql, Params),
+    case imboy_pg:query(<<"SELECT count(*) AS count FROM ", Tb/binary, " WHERE msg_id = $1 ORDER BY created_at DESC LIMIT 1">>, [MsgId]) of
+        {ok, [#{<<"count">> := 0}]} ->
+            {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<>>),
+            case imboy_pg:execute(Sql, Params) of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
             ok
     end.
 

@@ -20,6 +20,8 @@
     select/2,
     build_select/4,
     build_where_clause/1,
+    in/2,
+    in/3,
     page/6,
     value_or_empty/1,
     placeholders/1,
@@ -163,10 +165,14 @@ select(Table, WhereSql) ->
     ].
 
 %%--------------------------------------------------------------------
-%% @doc
-%% 构造动态 SELECT 查询，支持复杂的 WHERE 条件和选项
+%% @doc 构造动态 SELECT 查询，支持复杂的 WHERE 条件和选项
+%% @param Table 表名
+%% @param Fields 字段列表，可以是 binary() (如 <<"id,name">>) 或 [binary()] (如 [<<"id">>, <<"name">>])
+%% @param Where WHERE 条件 map
+%% @param Opts 选项 map (支持 limit, offset, order_by)
+%% @return {Sql, Params} SQL 语句和参数列表
 %%--------------------------------------------------------------------
--spec build_select(binary(), [binary()], map(), map()) ->
+-spec build_select(binary(), binary() | [binary()], map(), map()) ->
     {iodata(), [term()]}.
 build_select(Table, Fields, Where, Opts) ->
     % 构建字段列表
@@ -185,16 +191,18 @@ build_select(Table, Fields, Where, Opts) ->
             OrderByClauses = lists:map(fun({Field, Direction}) ->
                 FieldBin = case is_atom(Field) of
                     true -> atom_to_binary(Field, utf8);
-                    false -> Field
+                    false when is_binary(Field) -> Field;
+                    false -> ec_cnv:to_binary(Field)
                 end,
                 DirBin = case Direction of
                     asc -> <<"ASC">>;
                     desc -> <<"DESC">>;
-                    _ -> Direction
+                    _ when is_binary(Direction) -> Direction;
+                    _ -> ec_cnv:to_binary(Direction)
                 end,
                 <<FieldBin/binary, " ", DirBin/binary>>
             end, OrderBy),
-            <<" ORDER BY ", (lists:join(<<",">>, OrderByClauses))/binary>>
+            <<" ORDER BY ", (iolist_to_binary(lists:join(<<",">>, OrderByClauses)))/binary>>
     end,
 
     % 构建 LIMIT 和 OFFSET，以及对应的参数
@@ -220,7 +228,7 @@ build_select(Table, Fields, Where, Opts) ->
         WhereSql, OrderBySql, LimitSql, OffsetSql
     ],
 
-    {Sql, FinalParams}.
+    {iolist_to_binary(Sql), FinalParams}.
 
 %% ================== internal helpers ==================
 
@@ -233,13 +241,13 @@ build_condition_clause(Field, Value, ParamOffset) ->
             {<<FieldBin/binary, " ", RawSql/binary>>, []};
         {in, List} when is_list(List) ->
             ParamEnd = ParamOffset + length(List) - 1,
-            ParamPlaceholders = lists:join(<<",">>,
-                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)]),
+            ParamPlaceholders = iolist_to_binary(lists:join(<<",">>,
+                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)])),
             {<<FieldBin/binary, " IN (", ParamPlaceholders/binary, ")">>, List};
         {not_in, List} when is_list(List) ->
             ParamEnd = ParamOffset + length(List) - 1,
-            ParamPlaceholders = lists:join(<<",">>,
-                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)]),
+            ParamPlaceholders = iolist_to_binary(lists:join(<<",">>,
+                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)])),
             {<<FieldBin/binary, " NOT IN (", ParamPlaceholders/binary, ")">>, List};
         {op, Op, Val} ->
             {<<FieldBin/binary, " ", Op/binary, " $", (integer_to_binary(ParamOffset))/binary>>, [Val]};
@@ -355,12 +363,12 @@ build_where_clause(Where) ->
                             {in, List} when is_list(List) ->
                                 ParamStart = length(ParamsAcc) + 1,
                                 ParamEnd = ParamStart + length(List) - 1,
-                                ParamPlaceholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamStart, ParamEnd)]),
+                                ParamPlaceholders = iolist_to_binary(lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamStart, ParamEnd)])),
                                 {[<<FieldBin/binary, " IN (", ParamPlaceholders/binary, ")">> | ClausesAcc], ParamsAcc ++ List};
                             {not_in, List} when is_list(List) ->
                                 ParamStart = length(ParamsAcc) + 1,
                                 ParamEnd = ParamStart + length(List) - 1,
-                                ParamPlaceholders = lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamStart, ParamEnd)]),
+                                ParamPlaceholders = iolist_to_binary(lists:join(<<",">>, [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamStart, ParamEnd)])),
                                 {[<<FieldBin/binary, " NOT IN (", ParamPlaceholders/binary, ")">> | ClausesAcc], ParamsAcc ++ List};
                             {op, Op, Val} ->
                                 ParamNum = length(ParamsAcc) + 1,
@@ -404,6 +412,33 @@ build_where_clause(Where) ->
             % 有 <<"__raw">>> 键，直接使用原始 SQL 条件
             {<<" WHERE ", RawWhereSql/binary>>, []}
     end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% 构造 IN 子句
+%% 返回 {InClause, Params}，其中 InClause 是 "field IN ($1, $2, ...)" 格式
+%%--------------------------------------------------------------------
+-spec in(binary(), list()) -> {binary(), list()}.
+in(Field, Values) when is_list(Values), length(Values) > 0 ->
+    in(Field, Values, 1);
+in(_Field, []) ->
+    {<<>>, []}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% 构造 IN 子句，支持指定参数起始位置
+%% 返回 {InClause, Params}，其中 InClause 是 "field IN ($N, $N+1, ...)" 格式
+%% 例如: in(<<"msg_id">>, [<<"a">>, <<"b">>], 2) -> {<<"msg_id IN ($2, $3)">>, [<<"a">>, <<"b">>]}
+%%--------------------------------------------------------------------
+-spec in(binary(), list(), pos_integer()) -> {binary(), list()}.
+in(Field, Values, Offset) when is_list(Values), length(Values) > 0 ->
+    FieldBin = field_to_binary(Field),
+    NumValues = length(Values),
+    Placeholders = placeholders_with_offset(NumValues, Offset),
+    InClause = <<FieldBin/binary, " IN (", Placeholders/binary, ")">>,
+    {InClause, Values};
+in(_Field, [], _Offset) ->
+    {<<>>, []}.
 
 %%--------------------------------------------------------------------
 %% @doc

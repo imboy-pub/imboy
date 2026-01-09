@@ -4,6 +4,7 @@
 %%%
 -export([write_msg/6]).
 -export([revoke_offline_msg/6]).
+-export([edit_offline_msg/6]).
 -export([read_msg/1]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
@@ -21,24 +22,23 @@
 %% @param ToUids 接收消息的用户ID列表
 %% @param Gid 群组ID
 %% @returns any() 数据库操作结果
--spec write_msg(integer() | binary(), binary(), binary(), integer(), list(), integer()) -> any().
+-spec write_msg(integer() | binary(), binary(), binary(), integer(), list(), integer()) -> ok.
 % msg_c2g_ds:write_msg(1707686743435, <<"msg_id_1">>,  <<"{}">>,  1, [2,3,4], 1).
 % msg_c2g_ds:write_msg(1707686743435, <<"msg_id_1">>,  <<"{\"a\":1}">>,  1, [2,3,107], 7).
 write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid) ->
     CreatedAt = imboy_dt:to_rfc3339(CreatedAtRaw),
     % 使用安全的参数化查询，避免SQL注入
-    Count = imboy_pg:pluck_value(
+    case imboy_pg:pluck_value(
         msg_c2g_repo:tablename()
         , <<"count(*)">>
         , #{<<"msg_id">> => Id}
-        , #{}, 0),
-    % ?DEBUG_LOG([Count]),
-    case Count of
+        , #{}, 0) of
         0 ->
             msg_c2g_repo:write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid);
         _ ->
             ok
     end.
+
 
 %% @doc 撤回离线群组消息
 %%
@@ -51,12 +51,12 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid) ->
 %% @param MemberUids 群组成员用户ID列表
 %% @param Gid 群组ID
 %% @returns ok 表示操作成功
--spec revoke_offline_msg(binary(), binary(), integer(), binary(), integer(), list()) -> ok.
+-spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), list(), integer()) -> ok.
 revoke_offline_msg(Msg2, NowTs, MsgId, FromId, MemberUids, Gid) ->
     % 存储消息
     write_msg(NowTs, MsgId, Msg2, FromId, MemberUids, Gid),
     % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
-    imboy_pg:update(
+    _ = imboy_pg:update(
         msg_c2g_repo:tablename(),
         #{payload => {raw, imboy_hasher:encoded_val(Msg2)}},
         <<"msg_id = $1">>,
@@ -64,7 +64,34 @@ revoke_offline_msg(Msg2, NowTs, MsgId, FromId, MemberUids, Gid) ->
     ),
     % 已确认的消息需要重新确认
     % 使用安全的参数化查询，避免SQL注入
-    imboy_pg:update(
+    _ = imboy_pg:update(
+        msg_c2g_timeline_repo:tablename(),
+        #{client_ack => 0},
+        <<"msg_id = $1">>,
+        [MsgId]
+    ),
+    ok.
+
+%% @doc 编辑离线消息
+%% @param Payload 消息内容
+%% @param NowTs 时间戳
+%% @param MsgId 消息ID
+%% @param FromId 发送者ID
+%% @param MemberUids 成员ID列表
+%% @param Gid 群组ID
+%% @returns ok 表示操作成功
+-spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), list(), integer()) -> ok.
+edit_offline_msg(Payload, _NowTs, MsgId, FromId, _MemberUids, _Gid) ->
+    % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
+    _ = imboy_pg:update(
+        msg_c2g_repo:tablename(),
+        #{payload => {raw, imboy_hasher:encoded_val(Payload)}},
+        <<"msg_id = $1 AND from_id = $2">>,
+        [MsgId, FromId]
+    ),
+    % 已确认的消息需要重新确认
+    % 使用安全的参数化查询，避免SQL注入
+    _ = imboy_pg:update(
         msg_c2g_timeline_repo:tablename(),
         #{client_ack => 0},
         <<"msg_id = $1">>,
@@ -78,7 +105,7 @@ revoke_offline_msg(Msg2, NowTs, MsgId, FromId, MemberUids, Gid) ->
 %%
 %% @param ToUid 接收消息的用户ID
 %% @returns list() 离线消息列表
--spec read_msg(integer()) -> list().
+-spec read_msg(integer()) -> [map()].
 % msg_c2g_ds:read_msg(3).
 read_msg(ToUid) ->
     read_msg(ToUid, 1000, undefined).
@@ -91,57 +118,22 @@ read_msg(ToUid) ->
 %% @param Limit 读取消息数量限制
 %% @param LastMsgAt 最后消息时间戳，undefined表示读取所有未确认消息
 %% @returns list() 离线消息列表，按时间顺序排列
--spec read_msg(integer(), integer(), undefined | integer() | binary()) -> list().
+-spec read_msg(integer(), integer(), undefined | integer() | binary()) -> [map()].
 % msg_c2g_ds:read_msg(3, 1000, 1707686743435).
 read_msg(ToUid, Limit, undefined) ->
     % 获取用户未确认的消息
     Column = <<"msg_id, created_at">>,
     {ok, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
     MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
-    % 按创建时间排序获取消息内容
-    Column2 = imboy_hasher:decoded_payload(),
+    % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
+    P = imboy_hasher:decoded_payload(),
+    Column2 = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
     case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
         {ok, []} ->
             [];
         {ok, Rows2} ->
-            % 将消息内容和创建时间合并
-            % 注意：payload 中的 from/to 是 hashid，需要转换为 integer 供 sent_offline_msg 使用
-            MsgMap = lists:foldl(fun(#{<<"payload">> := Payload}, Acc) ->
-                % 从payload中解析msg_id
-                case jsone:decode(Payload, [{object_format, map}]) of
-                    MsgMap when is_map(MsgMap) ->
-                        case maps:get(<<"id">>, MsgMap, undefined) of
-                            MsgId when is_binary(MsgId) ->
-                                % 将 payload 中的 hashid from/to 转换为 integer
-                                MsgMap2 = case maps:get(<<"from">>, MsgMap, undefined) of
-                                    FromId when is_binary(FromId) ->
-                                        MsgMap#{<<"from">> => imboy_hashids:decode(FromId)};
-                                    _ ->
-                                        MsgMap
-                                end,
-                                MsgMap3 = case maps:get(<<"to">>, MsgMap2, undefined) of
-                                    ToId when is_binary(ToId) ->
-                                        MsgMap2#{<<"to">> => imboy_hashids:decode(ToId)};
-                                    _ ->
-                                        MsgMap2
-                                end,
-                                Acc#{MsgId => MsgMap3};
-                            _ ->
-                                Acc
-                        end;
-                    _ ->
-                        Acc
-                end
-            end, #{}, Rows2),
-            % 构建包含创建时间的消息列表
-            lists:foldl(fun(#{<<"msg_id">> := MsgId}, Acc) ->
-                case maps:get(MsgId, MsgMap, undefined) of
-                    undefined ->
-                        Acc;
-                    MsgContent ->
-                        [MsgContent | Acc]
-                end
-            end, [], Rows)
+            % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
+            [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows2]
     end;
 read_msg(ToUid, Limit, LastMsgAt) ->
     % 使用 imboy_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
@@ -156,49 +148,15 @@ read_msg(ToUid, Limit, LastMsgAt) ->
             [];
         {ok, Rows} ->
             MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
-            Column2 = imboy_hasher:decoded_payload(),
+            % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
+            P = imboy_hasher:decoded_payload(),
+            Column2 = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
             case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
                 {ok, []} ->
                     [];
                 {ok, Rows2} ->
-                    % 将消息内容和创建时间合并
-                    % 注意：payload 中的 from/to 是 hashid，需要转换为 integer 供 sent_offline_msg 使用
-                    MsgMap = lists:foldl(fun(#{<<"payload">> := Payload}, Acc) ->
-                        % 从payload中解析msg_id
-                        case jsone:decode(Payload, [{object_format, map}]) of
-                            MsgMap when is_map(MsgMap) ->
-                                case maps:get(<<"id">>, MsgMap, undefined) of
-                                    MsgId when is_binary(MsgId) ->
-                                        % 将 payload 中的 hashid from/to 转换为 integer
-                                        MsgMap2 = case maps:get(<<"from">>, MsgMap, undefined) of
-                                            FromId when is_binary(FromId) ->
-                                                MsgMap#{<<"from">> => imboy_hashids:decode(FromId)};
-                                            _ ->
-                                                MsgMap
-                                        end,
-                                        MsgMap3 = case maps:get(<<"to">>, MsgMap2, undefined) of
-                                            ToId when is_binary(ToId) ->
-                                                MsgMap2#{<<"to">> => imboy_hashids:decode(ToId)};
-                                            _ ->
-                                                MsgMap2
-                                        end,
-                                        Acc#{MsgId => MsgMap3};
-                                    _ ->
-                                        Acc
-                                end;
-                            _ ->
-                                Acc
-                        end
-                    end, #{}, Rows2),
-                    % 构建包含创建时间的消息列表
-                    lists:foldl(fun(#{<<"msg_id">> := MsgId}, Acc) ->
-                        case maps:get(MsgId, MsgMap, undefined) of
-                            undefined ->
-                                Acc;
-                            MsgContent ->
-                                [MsgContent | Acc]
-                        end
-                    end, [], Rows)
+                    % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
+                    [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows2]
             end
     end.
 

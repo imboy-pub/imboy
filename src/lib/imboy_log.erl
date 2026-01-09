@@ -19,6 +19,7 @@ internal_log(Level, Msg, Module, Line) ->
 internal_log(Level, Fmt, Args, Module, Line) ->
     safe_log(Level, Fmt, Args, Module, Line).
 
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -46,6 +47,7 @@ error(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
 error(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
                       ?LOG_LEVEL =:= notice; ?LOG_LEVEL =:= warning; ?LOG_LEVEL =:= error ->
     safe_log(error, Fmt, Args, ?MODULE, ?LINE).
+
 
 %% ===================================================================
 %% Internal Functions

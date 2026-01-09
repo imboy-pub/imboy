@@ -28,7 +28,7 @@
 -include_lib("imlib/include/log.hrl").
 
 start_link() ->
-    start_link({1, 0, {}}).
+    _ = start_link({1, 0, {}}).
 
 stop() ->
     gen_server:call(?MODULE, stop).
@@ -44,7 +44,7 @@ stop(Begin, End) ->
 sname(Id) ->
     BinId = list_to_binary(integer_to_list(Id)),
     M = <<"wsc2_", BinId/binary>>,
-    binary_to_atom(M, latin1).
+    _ = binary_to_atom(M, latin1).
 
 start_link({Id, Index, Ip}) ->
     gen_server:start_link({local, sname(Id)}, ?MODULE, {Id, Index, Ip}, []);

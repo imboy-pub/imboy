@@ -1,6 +1,6 @@
 -module(index_handler).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 -behavior(cowboy_rest).
 
@@ -10,8 +10,7 @@
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -27,7 +26,6 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 api_init(Req0) ->
     % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
     % Did = cowboy_req:header(<<"did">>, Req0, <<>>),
@@ -36,55 +34,47 @@ api_init(Req0) ->
     Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
     SignKeyVsn = cowboy_req:header(<<"sk">>, Req0, Vsn),
 
-    SolKey = config_ds:get(solidified_key),
-    SignKey = case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
-        undefined ->
-            SolKey;
-        <<>> ->
-            SolKey;
-        SK when is_binary(SK) ->
-            SK;
-        _ ->
-            SolKey
-    end,
-    Data = #{
-        <<"ws_url">> => config_ds:get("ws_url"),
-        <<"upload_url">> => config_ds:get("upload_url"),
-        <<"upload_key">> => config_ds:get("upload_key"),
-        <<"upload_scene">> => config_ds:get("upload_scene"),
-
-        <<"login_pwd_rsa_encrypt">> => config_ds:get("login_pwd_rsa_encrypt"),
-        <<"login_rsa_pub_key">> => config_ds:get("login_rsa_pub_key")
-     },
-    % imboy_response:success(Req0, Data, "success.").
+    SolKey = config_ds:get(<<"solidified_key">>),
+    SignKey =
+        case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
+            undefined ->
+                SolKey;
+            <<>> ->
+                SolKey;
+            SK when is_binary(SK) ->
+                SK;
+            _ ->
+                SolKey
+        end,
+    Data =
+        #{<<"ws_url">> => config_ds:get(<<"ws_url">>),
+          <<"upload_url">> => config_ds:get(<<"upload_url">>),
+          <<"upload_key">> => config_ds:get(<<"upload_key">>),
+          <<"upload_scene">> => config_ds:get(<<"upload_scene">>),
+          <<"login_pwd_rsa_encrypt">> => config_ds:get(<<"login_pwd_rsa_encrypt">>),
+          <<"login_rsa_pub_key">> => config_ds:get(<<"login_rsa_pub_key">>)},
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % imboy_response:success(Req0, Data, "success.").
-    IV = config_ds:get(solidified_key_iv),
+    IV = config_ds:get(<<"solidified_key_iv">>),
     Key = imboy_hasher:md5(SignKey),
     % ?DEBUG_LOG([key, Key, iv, IV]),
     Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     {ok, [Test]} = imboy_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []),
-    imboy_response:success(Req0, #{
-        test => Test,
-        res => Bin
-    }, "success.").
-
+    imboy_response:success(Req0, #{test => Test, res => Bin}, "success.").
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
-
-
 get_help(Req0) ->
-    Body = "
-        <meta charset=\"utf-8\"/>
-        <meta http-equiv=\"Content-Language\" content=\"zh-CN\">
-        <h1>API列表</h1>
-        <ol>
-            <li><a href=\"/init\" target=\"_blank\">/init  GET</a></li>
-            <li><a href=\"/conversation/online\" target=\"_blank\">
-                /conversation/online  GET</a></li>
-        </ol>
-    ",
-    cowboy_req:reply(200, #{<<"content-type">> => <<"text/html">>}, unicode:characters_to_binary(Body, utf8), Req0).
+    Body =
+        "\n        <meta charset=\"utf-8\"/>\n        <meta http-equiv=\"Cont"
+        "ent-Language\" content=\"zh-CN\">\n        <h1>API列表</h1>\n "
+        "       <ol>\n            <li><a href=\"/init\" target=\"_blank\">/in"
+        "it  GET</a></li>\n            <li><a href=\"/conversation/online\" "
+        "target=\"_blank\">\n                /conversation/online  GET</a></l"
+        "i>\n        </ol>\n    ",
+    cowboy_req:reply(200,
+                     #{<<"content-type">> => <<"text/html">>},
+                     unicode:characters_to_binary(Body, utf8),
+                     Req0).

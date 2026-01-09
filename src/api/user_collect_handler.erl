@@ -1,4 +1,5 @@
 -module(user_collect_handler).
+
 %%%
 % collect 控制器模块
 % collect controller module
@@ -8,18 +9,22 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
--include("include/log.hrl").
+
+-include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -39,11 +44,9 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -54,29 +57,35 @@ page(Req0, State) ->
     #{tag := Tag} = cowboy_req:match_qs([{tag, [], <<>>}], Req0),
 
     % Build WHERE clause
-    WhereParts = [
-        <<"user_id = ", (integer_to_binary(CurrentUid))/binary>>,
-        <<"status = 1">>,
-        case Kind of
-            0 -> <<>>;
-            _ -> <<"kind = ", (integer_to_binary(Kind))/binary>>
-        end,
-        case byte_size(Kwd) > 0 of
-            true ->
-                EscapedKwd = imboy_str:replace_single_quote(Kwd),
-                <<"(source like '%", EscapedKwd/binary, "%' or remark like '%", EscapedKwd/binary,
-                  "%' or info like '%", EscapedKwd/binary, "%')">>;
-            false ->
-                <<>>
-        end,
-        case byte_size(Tag) > 0 of
-            true ->
-                EscapedTag = imboy_str:replace_single_quote(Tag),
-                <<"tag like '%", EscapedTag/binary, ",%'">>;
-            false ->
-                <<>>
-        end
-    ],
+    WhereParts =
+        [<<"user_id = ", (integer_to_binary(CurrentUid))/binary>>,
+         <<"status = 1">>,
+         case Kind of
+             0 ->
+                 <<>>;
+             _ ->
+                 <<"kind = ", (integer_to_binary(Kind))/binary>>
+         end,
+         case byte_size(Kwd) > 0 of
+             true ->
+                 EscapedKwd = imboy_str:replace_single_quote(Kwd),
+                 <<"(source like '%",
+                   EscapedKwd/binary,
+                   "%' or remark like '%",
+                   EscapedKwd/binary,
+                   "%' or info like '%",
+                   EscapedKwd/binary,
+                   "%')">>;
+             false ->
+                 <<>>
+         end,
+         case byte_size(Tag) > 0 of
+             true ->
+                 EscapedTag = imboy_str:replace_single_quote(Tag),
+                 <<"tag like '%", EscapedTag/binary, ",%'">>;
+             false ->
+                 <<>>
+         end],
 
     % Filter out empty parts and join with ' AND '
     NonEmptyParts = [P || P <- WhereParts, byte_size(P) > 0],
@@ -84,10 +93,13 @@ page(Req0, State) ->
     WhereMap = #{<<"__raw">> => WhereSql},
 
     % Determine order
-    Order = case OrderBy of
-        <<"recent_use">> -> <<"updated_at desc, id desc">>;
-        _ -> <<"id desc">>
-    end,
+    Order =
+        case OrderBy of
+            <<"recent_use">> ->
+                <<"updated_at desc, id desc">>;
+            _ ->
+                <<"id desc">>
+        end,
 
     % Build column list
     Info = imboy_hasher:decoded_field(<<"info">>),
@@ -101,16 +113,15 @@ page(Req0, State) ->
     Payload2 = maps:put(list, List2, Payload),
     imboy_response:success(Req0, Payload2).
 
-
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
     % Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
-    Kind = proplists:get_value(<<"kind">>, PostVals, <<"">>),
-    KindId = proplists:get_value(<<"kind_id">>, PostVals, <<"">>),
-    Source = proplists:get_value(<<"source">>, PostVals, <<"">>),
-    Remark = proplists:get_value(<<"remark">>, PostVals, <<"">>),
-    Info = proplists:get_value(<<"info">>, PostVals, []),
+    Kind = maps:get(<<"kind">>, PostVals, <<"">>),
+    KindId = maps:get(<<"kind_id">>, PostVals, <<"">>),
+    Source = maps:get(<<"source">>, PostVals, <<"">>),
+    Remark = maps:get(<<"remark">>, PostVals, <<"">>),
+    Info = maps:get(<<"info">>, PostVals, #{}),
     case user_collect_logic:add(CurrentUid, Kind, KindId, Info, Source, Remark) of
         {ok, _Msg} ->
             imboy_response:success(Req0);
@@ -118,30 +129,28 @@ add(Req0, State) ->
             imboy_response:error(Req0, Msg)
     end.
 
-
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    KindId = proplists:get_value(<<"kind_id">>, PostVals, ""),
+    KindId = maps:get(<<"kind_id">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    user_collect_logic:remove(CurrentUid, KindId),
+    _ = user_collect_logic:remove(CurrentUid, KindId),
     imboy_response:success(Req0, #{}, "success.").
-
 
 change(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    Action = proplists:get_value(<<"action">>, PostVals, <<>>),
-    KindId = proplists:get_value(<<"kind_id">>, PostVals, <<>>),
+    Action = maps:get(<<"action">>, PostVals, <<>>),
+    KindId = maps:get(<<"kind_id">>, PostVals, <<>>),
     user_collect_logic:change(CurrentUid, Action, KindId, PostVals),
     imboy_response:success(Req0, #{}, "success.").
-
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

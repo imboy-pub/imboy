@@ -9,6 +9,7 @@
 dep_hex_core = git https://gitee.com/imboy-tripartite-deps/hex_core.git v0.11.0
 
 # https://erlang.mk/guide/deps.html
+# https://github.com/ninenines/ranch/tags
 # Ranch is a socket acceptor pool for TCP protocols.
 dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.2.0
 dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.16.0
@@ -20,7 +21,7 @@ dep_gun = git https://gitee.com/imboy-tripartite-deps/gun.git 2.2.0
 dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.3.0
 
 # jsone An Erlang library for encoding, decoding JSON data.
-# 4months
+# 4months  https://github.com/sile/jsone
 dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.9.0
 
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
@@ -28,7 +29,8 @@ dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.9.0
 dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git 2.0.0
 
 # jsx an erlang application for consuming, producing and manipulating json
-# 2years
+# 2years https://github.com/talentdeficit/jsx/tags
+# dep by jwerl
 dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
 
 # https://github.com/rabbitmq/ra
@@ -51,7 +53,7 @@ dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 
 
 # https://github.com/hnc-agency/shq.git
 # 进程间共享队列
-dep_shq = git https://gitee.com/imboy-tripartite-deps/shq.git master
+dep_shq = git https://gitee.com/imboy-tripartite-deps/shq.git main
 
 # https://github.com/hnc-agency/hnc-csv
 # hnc-csv - CSV Decoder/Encoder
@@ -64,11 +66,11 @@ dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
 
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 # https://github.com/erlware/erlware_commons.git
-dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.7.0
+dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.8.1
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
 # 被 qdate 依赖
 # https://github.com/choptastic/qdate_localtime.git
-dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.1
+dep_qdate_localtime = git https://gitee.com/imboy-tripartite-deps/qdate_localtime 1.2.2
 # qdate - Erlang Date and Timezone Library
 # https://github.com/choptastic/qdate
 #dep_qdate = git https://gitee.com/imboy-tripartite-deps/qdate master
@@ -90,9 +92,8 @@ dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
 dep_fuse = git https://gitee.com/imboy-tripartite-deps/fuse.git 2.5.0
 # Erlang 的简单持久队列
 # 3years https://github.com/fogfish/esq.git
-
 # dep_esq = git https://gitee.com/imboy-tripartite-deps/esq.git master
-dep_esq = hex 2.0.6
+dep_esq = hex 2.0.7
 
 # bbmustache 一个无逻辑的模板。 deps by relx
 # https://github.com/soranoba/bbmustache
@@ -130,17 +131,18 @@ dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
 dep_system_monitor = git https://gitee.com/imboy-tripartite-deps/system_monitor.git 2.2.6
 # erlang tracing debugger
 # 4months
-dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.7
+# https://github.com/massemanet/redbug.git
+dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.10
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
-# 6months
-dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 2.0.7
+# 6months https://github.com/proper-testing/proper.git
+dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git v1.5.0
 dep_meck = git https://github.com/eproxus/meck.git v1.0.0
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 # 6years
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
 
 # erlang fault tolerant service to generate unique identities
-# 12months https://github.com/fogfish/uid.git
+# 6months https://github.com/fogfish/uid.git
 dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
 # Django templates for Erlang
 # 8years
@@ -155,9 +157,9 @@ dep_pg_types = ln ../../pg_types
 # dep_pgo = ln ../../pgo
 
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
-#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.7.1
+dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.8.0
 # https://github.com/epgsql/epgsql.git
-dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
+#dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 # dep_epgsql = ln ../../epgsql
 
 dep_pure_migrations = git https://gitee.com/imboy-tripartite-deps/erlang-pure-migrations.git leeyi

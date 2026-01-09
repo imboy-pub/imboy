@@ -56,7 +56,45 @@ run_fast() ->
 %% 内部函数
 %% ===================================================================
 
+%% @doc 确保配置已加载（从已加载的配置文件中读取）
+%% @private
+ensure_config_loaded() ->
+    % 配置文件已通过 Makefile 的 -config 参数加载
+    % 这里检查必需的配置是否存在，不存在则报错
+
+    % 检查 pg_conf 是否已加载
+    case application:get_env(imboy, pg_conf) of
+        {ok, _PgConf} ->
+            ok; % 配置已从文件加载
+        undefined ->
+            error({missing_config, pg_conf,
+                "配置文件中未找到 pg_conf，请确保通过 -config 参数指定正确的配置文件\n"
+                "使用示例: make eunit CONFIG=config/sys"})
+    end,
+
+    % 确保其他必要配置存在
+    case application:get_env(imboy, http_port) of
+        {ok, _} -> ok;
+        undefined ->
+            error({missing_config, http_port,
+                "配置文件中未找到 http_port，请检查配置文件"})
+    end,
+    ok.
+
 start_applications() ->
+    % ⚠️ 重要：必须在启动应用之前设置配置
+    % 因为 imboy_sup:init/1 会在应用启动时被调用
+
+    % 设置测试环境（必须在启动应用之前）
+    application:set_env(imboy, sql_driver, pgsql),
+    application:set_env(imboy, env, test),
+
+    % 确保配置已加载（从通过 -config 参数加载的配置文件中读取）
+    ensure_config_loaded(),
+
+    % 测试环境特别设置：关闭分布式缓存同步
+    application:set_env(imboy, dsync_enabled, false),
+
     % 启动核心依赖
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
     lists:foreach(fun(App) ->
@@ -71,21 +109,26 @@ start_applications() ->
     case application:ensure_all_started(imboy) of
         {ok, _} -> ok;
         {error, {already_started, _}} -> ok;
-        _ -> ok
+        {error, Reason} ->
+            io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
+            ok
     end,
-
-    % 设置测试环境
-    application:set_env(imboy, sql_driver, pgsql),
-    application:set_env(imboy, env, test),
     ok.
 
 %% @doc 启动所有必要的应用
 %% @return {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}
--spec eunit_setup() -> {ok, any()} | {error, any()}.
+-spec eunit_setup() -> {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}.
 eunit_setup() ->
+    % ⚠️ 重要：必须在启动应用之前设置配置
     % 设置测试环境变量
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
+
+    % 确保配置已加载（从通过 -config 参数加载的配置文件中读取）
+    ensure_config_loaded(),
+
+    % 测试环境特别设置：关闭分布式缓存同步
+    application:set_env(imboy, dsync_enabled, false),
 
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
@@ -123,7 +166,7 @@ eunit_setup() ->
 
 %% @doc 清理资源
 %% @param _State setup 返回的状态
--spec eunit_cleanup(any()) -> {ok, any()} | {error, any()}.
+-spec eunit_cleanup(any()) -> ok.
 eunit_cleanup(_State) ->
     % 通常不需要停止应用
     % 让 EUnit 自然结束
@@ -139,13 +182,13 @@ eunit_try_db() ->
             {error, pooler_not_started};
         _Pid ->
             % pooler 已启动，尝试快速获取连接
-            try pooler:take_member() of
-                {ok, Pid} when is_pid(Pid) ->
+            try pooler:take_member(imboy_pg) of
+                ConnPid when is_pid(ConnPid) ->
                     % 成功获取连接，立即归还
-                    pooler:return_member(Pid, ok),
-                    {ok, Pid};
-                {error, Reason} ->
-                    {error, Reason}
+                    pooler:return_member(imboy_pg, ConnPid),
+                    {ok, ConnPid};
+                error_no_members ->
+                    {error, no_members}
             catch
                 _:_ ->
                     {error, no_connection}
@@ -154,18 +197,18 @@ eunit_try_db() ->
 
 %% @doc 启动应用并尝试连接数据库
 %% @return {ok, Conn} | {error, Reason}
--spec eunit_setup_with_db() -> ok.
+-spec eunit_setup_with_db() -> {ok, any()} | {error, any()}.
 eunit_setup_with_db() ->
     % 先启动应用
-    eunit_setup(),
+    _ = eunit_setup(),
     % 然后尝试连接数据库
     eunit_try_db().
 
 %% @doc 启动应用，如果数据库不可用则返回 skip
 %% @return ok | {skip, Reason}
--spec eunit_setup_db_or_skip() -> {ok, any()} | {error, any()}.
+-spec eunit_setup_db_or_skip() -> ok | {skip, binary(), binary(), any()}.
 eunit_setup_db_or_skip() ->
     case eunit_setup_with_db() of
         {ok, _Conn} -> ok;
-        {error, Reason} -> {skip, "Database connection not available", Reason}
+        {error, Reason} -> {skip, <<"Database connection not available">>, <<>>, Reason}
     end.

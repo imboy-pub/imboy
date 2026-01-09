@@ -1,4 +1,5 @@
 -module(fts_logic).
+
 %%%
 % fts 业务逻辑模块
 % fts business logic module
@@ -10,10 +11,10 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include("def_column.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -21,7 +22,7 @@
 
 
 %%% user_search_page 好有搜索全文索引
--spec user_search_page(integer(), integer(), integer(), binary()) -> ok.
+-spec user_search_page(integer(), integer(), integer(), binary()) -> map().
 user_search_page(_, Page, Size, <<>>) ->
     #{total => 0, page => Page, size => Size, list => []};
 user_search_page(Uid, Page, Size, Keyword) ->
@@ -34,11 +35,9 @@ user_search_page(Uid, Page, Size, Keyword) ->
             ColumnLi = [<<"uid">>, <<"nickname">>, <<"avatar">>, <<"gender">>, <<"signature">>, <<"created_at">>],
             Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
                                      [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                     case friend_ds:is_friend(Uid, Uid2) of
+                                     case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
                                          {B1, Remark} ->
-                                             [B1, Remark];
-                                         _ ->
-                                             [false, <<>>]
+                                             [B1, Remark]
                                      end ++ [imboy_hashids:encode(Uid2), maps:get(<<"nickname">>, Row, <<>>), maps:get(<<"avatar">>, Row, <<>>), maps:get(<<"gender">>, Row, 0), maps:get(<<"signature">>, Row, <<>>), maps:get(<<"created_at">>, Row, <<>>)])
                        || #{<<"uid">> := Uid2} = Row <- Items0, Uid2 /= Uid ],
             #{total => Total, page => Page, size => Size, list => Items2};
@@ -47,7 +46,7 @@ user_search_page(Uid, Page, Size, Keyword) ->
     end.
 
 
--spec recently_user_page(integer(), integer(), integer(), binary()) -> ok.
+-spec recently_user_page(integer(), integer(), integer(), binary()) -> map().
 recently_user_page(Uid, Page, Size, Keyword) ->
     Column = <<?DEF_USER_COLUMN/binary, ",created_at">>,
     % 使用参数化查询，如果Keyword为空则只查询allow_search条件
@@ -73,11 +72,9 @@ recently_user_page(Uid, Page, Size, Keyword) ->
             Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
             Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
                                      [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                     case friend_ds:is_friend(Uid, Uid2) of
+                                     case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
                                          {B1, Remark} ->
-                                             [B1, Remark];
-                                         _ ->
-                                             [false, <<>>]
+                                             [B1, Remark]
                                      end ++ [imboy_hashids:encode(Uid2) | Row])
                        || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
             #{total => Total, page => Page, size => Size, list => Items2};

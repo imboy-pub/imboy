@@ -1,0 +1,190 @@
+%%%
+% 错误码宏定义
+%
+% 设计原则：
+% - 0: 成功（API 响应成功标记）
+% - 4xx: 客户端错误（参数、认证、资源等）
+% - 5xx: 服务端错误（服务器问题）
+% - 9xx: 业务特定错误（IM 业务专用）
+%
+% 错误码语义参考 HTTP 状态码，便于理解。
+% 重要：所有中文字符串必须使用 /utf8 后缀
+%%%
+
+%% ===================================================================
+%% 成功 (0)
+%% ===================================================================
+
+-define(MSG_SUCCESS, <<"success."/utf8>>).
+-define(ERR_OK, 0).                      % 成功
+
+%% ===================================================================
+%% 4xx 客户端错误（参考 HTTP 4xx）
+%% ===================================================================
+
+%% 400 Bad Request - 请求参数错误
+-define(ERR_BAD_REQUEST, 400).                   % 请求参数错误
+-define(ERR_INVALID_PARAM, 400).                  % 参数错误
+-define(ERR_INVALID_FORMAT, 400).                 % 参数格式错误
+-define(ERR_PARAM_TOO_LONG, 400).                 % 参数过长
+%% 401 Unauthorized - 未认证
+-define(ERR_UNAUTHORIZED, 401).                   % 未认证
+-define(ERR_TOKEN_MISSING, 401).                  % Token 缺失
+-define(ERR_TOKEN_INVALID, 401).                  % Token 无效
+-define(ERR_TOKEN_EXPIRED, 401).                  % Token 已过期
+%% 402 Payment Required - 保留（付费功能）
+-define(ERR_PAYMENT_REQUIRED, 402).               % 需要付费
+%% 403 Forbidden - 已认证但无权限
+-define(ERR_FORBIDDEN, 403).                      % 无权限访问
+-define(ERR_ACCESS_DENIED, 403).                  % 拒绝访问
+%% 404 Not Found - 资源不存在
+-define(ERR_NOT_FOUND, 404).                      % 资源不存在
+-define(ERR_USER_NOT_FOUND, 404).                 % 用户不存在
+-define(ERR_FRIEND_NOT_FOUND, 404).               % 好友不存在
+-define(ERR_GROUP_NOT_FOUND, 404).                % 群组不存在
+-define(ERR_MESSAGE_NOT_FOUND, 404).              % 消息不存在
+%% 405 Method Not Allowed - 请求方法不允许
+-define(ERR_METHOD_NOT_ALLOWED, 405).             % 请求方法不允许
+%% 406 Not Acceptable - 内容格式不支持
+-define(ERR_NOT_ACCEPTABLE, 406).                 % 内容格式不支持
+%% 408 Request Timeout - 请求超时
+-define(ERR_REQUEST_TIMEOUT, 408).                % 请求超时
+%% 409 Conflict - 资源冲突
+-define(ERR_CONFLICT, 409).                       % 资源冲突
+-define(ERR_RESOURCE_EXISTS, 409).                % 资源已存在
+-define(ERR_ALREADY_FRIENDS, 409).                % 已经是好友
+-define(ERR_ALREADY_IN_GROUP, 409).               % 已在群组中
+%% 410 Gone - 资源已删除
+-define(ERR_GONE, 410).                           % 资源已删除
+%% 412 Precondition Failed - 前置条件失败
+-define(ERR_PRECONDITION_FAILED, 412).            % 前置条件失败
+%% 413 Payload Too Large - 请求体过大
+-define(ERR_PAYLOAD_TOO_LARGE, 413).              % 请求体过大
+-define(ERR_FILE_SIZE_EXCEEDED, 413).             % 文件大小超出限制
+%% 415 Unsupported Media Type - 不支持的媒体类型
+-define(ERR_UNSUPPORTED_MEDIA_TYPE, 415).         % 不支持的媒体类型
+-define(ERR_FILE_TYPE_INVALID, 415).              % 文件类型无效
+%% 422 Unprocessable Entity - 语义错误
+-define(ERR_UNPROCESSABLE_ENTITY, 422).           % 请求语义错误
+-define(ERR_MISSING_PARAM, 422).                  % 缺少必填参数
+-define(ERR_PARAM_INVALID, 422).                  % 参数值无效
+%% 423 Locked - 资源被锁定
+-define(ERR_LOCKED, 423).                         % 资源被锁定
+-define(ERR_ACCOUNT_LOCKED, 423).                 % 账号已锁定
+%% 429 Too Many Requests - 请求过于频繁
+-define(ERR_TOO_MANY_REQUESTS, 429).              % 请求过于频繁
+-define(ERR_OPERATION_TOO_FREQUENT, 429).         % 操作过于频繁
+
+%% ===================================================================
+%% 5xx 服务端错误（参考 HTTP 5xx）
+%% ===================================================================
+
+%% 500 Internal Server Error - 服务器内部错误
+-define(ERR_INTERNAL_SERVER_ERROR, 500).          % 服务器内部错误
+-define(ERR_SERVER_ERROR, 500).                   % 服务器错误
+-define(ERR_BUSINESS_FAILED, 500).                % 业务逻辑失败
+-define(ERR_OPERATION_FAILED, 500).               % 操作失败
+%% 501 Not Implemented - 功能未实现
+-define(ERR_NOT_IMPLEMENTED, 501).                % 功能未实现
+%% 502 Bad Gateway - 网关错误
+-define(ERR_BAD_GATEWAY, 502).                    % 网关错误
+%% 503 Service Unavailable - 服务不可用
+-define(ERR_SERVICE_UNAVAILABLE, 503).            % 服务不可用
+-define(ERR_NODE_OFFLINE, 503).                   % 节点离线
+-define(ERR_CLUSTER_ERROR, 503).                  % 集群错误
+%% 504 Gateway Timeout - 网关超时
+-define(ERR_GATEWAY_TIMEOUT, 504).                % 网关超时
+-define(ERR_TIMEOUT, 504).                        % 请求超时
+%% 507 Insufficient Storage - 存储空间不足
+-define(ERR_INSUFFICIENT_STORAGE, 507).           % 存储空间不足
+
+%% ===================================================================
+%% 9xx 业务特定错误（IM 业务专用）
+%% ===================================================================
+
+%% 认证相关（避开 HTTP 标准码）
+-define(ERR_TOKEN_REFRESH_NOT_ALLOWED, 901).      % 不支持刷新 Token
+-define(ERR_SIGNATURE_INVALID, 902).              % 签名验证失败
+-define(ERR_CSRF_TOKEN_ERROR, 903).               % CSRF Token 错误
+-define(ERR_VERIFICATION_CODE_ERROR, 904).        % 验证码错误
+-define(ERR_VERIFICATION_CODE_EXPIRED, 905).      % 验证码过期
+-define(ERR_PASSWORD_WRONG, 906).                 % 密码错误
+-define(ERR_ACCOUNT_DISABLED, 907).               % 账号已禁用
+-define(ERR_ACCOUNT_NOT_EXIST, 908).              % 账号不存在
+-define(ERR_ACCOUNT_ALREADY_EXISTS, 909).         % 账号已存在
+-define(ERR_LOGIN_ELSEWHERE, 910).                % 在其他设备登录
+%% 好友相关
+-define(ERR_NOT_FRIENDS, 920).                    % 不是好友
+-define(ERR_FRIEND_REQUEST_PENDING, 921).         % 好友请求待确认
+-define(ERR_FRIEND_REQUEST_REJECTED, 922).        % 好友请求被拒绝
+-define(ERR_FRIEND_EXISTS, 923).                  % 好友关系已存在
+%% 群组相关
+-define(ERR_NOT_GROUP_MEMBER, 930).               % 非群组成员
+-define(ERR_NOT_GROUP_ADMIN, 931).                % 非群管理员
+-define(ERR_NOT_GROUP_OWNER, 932).                % 非群主
+-define(ERR_GROUP_PERMISSION_DENIED, 933).        % 群组权限不足
+-define(ERR_GROUP_MEMBER_FULL, 934).              % 群成员已满
+-define(ERR_GROUP_CREATE_FAILED, 935).            % 创建群组失败
+%% 消息相关
+-define(ERR_USER_OFFLINE, 940).                   % 用户离线
+-define(ERR_MSG_SEND_FAILED, 941).                % 消息发送失败
+-define(ERR_MSG_NOT_FOUND, 942).                  % 消息不存在
+%% 文件相关
+-define(ERR_FILE_UPLOAD_FAILED, 950).             % 文件上传失败
+-define(ERR_FILE_DOWNLOAD_FAILED, 951).           % 文件下载失败
+
+%% ===================================================================
+%% 辅助函数
+%% ===================================================================
+
+%% 定义错误码到消息的映射表
+-define(ERROR_MSG_MAP, #{
+    0 => <<"成功"/utf8>>,
+    400 => <<"请求参数错误"/utf8>>,
+    401 => <<"未认证，请先登录"/utf8>>,
+    402 => <<"需要付费"/utf8>>,
+    403 => <<"无权限访问"/utf8>>,
+    404 => <<"资源不存在"/utf8>>,
+    405 => <<"方法不允许"/utf8>>,
+    406 => <<"内容格式不支持"/utf8>>,
+    408 => <<"请求超时"/utf8>>,
+    409 => <<"资源冲突"/utf8>>,
+    410 => <<"资源已删除"/utf8>>,
+    412 => <<"前置条件失败"/utf8>>,
+    413 => <<"请求体过大"/utf8>>,
+    415 => <<"不支持的媒体类型"/utf8>>,
+    422 => <<"请求语义错误"/utf8>>,
+    423 => <<"资源被锁定"/utf8>>,
+    429 => <<"请求过于频繁，请稍后重试"/utf8>>,
+    500 => <<"服务器内部错误"/utf8>>,
+    501 => <<"功能未实现"/utf8>>,
+    502 => <<"网关错误"/utf8>>,
+    503 => <<"服务不可用"/utf8>>,
+    504 => <<"网关超时"/utf8>>,
+    507 => <<"存储空间不足"/utf8>>,
+    901 => <<"不支持刷新 Token"/utf8>>,
+    902 => <<"签名验证失败"/utf8>>,
+    903 => <<"CSRF Token 错误"/utf8>>,
+    904 => <<"验证码错误"/utf8>>,
+    905 => <<"验证码已过期"/utf8>>,
+    906 => <<"密码错误"/utf8>>,
+    907 => <<"账号已禁用"/utf8>>,
+    908 => <<"账号不存在"/utf8>>,
+    909 => <<"账号已存在"/utf8>>,
+    910 => <<"您的账号已在其他设备登录"/utf8>>,
+    920 => <<"还不是好友"/utf8>>,
+    921 => <<"好友请求待确认"/utf8>>,
+    922 => <<"好友请求被拒绝"/utf8>>,
+    923 => <<"好友关系已存在"/utf8>>,
+    930 => <<"非群组成员"/utf8>>,
+    931 => <<"非群管理员"/utf8>>,
+    932 => <<"非群主"/utf8>>,
+    933 => <<"群组权限不足"/utf8>>,
+    934 => <<"群成员已满"/utf8>>,
+    935 => <<"创建群组失败"/utf8>>,
+    940 => <<"用户离线，消息已存储"/utf8>>,
+    941 => <<"消息发送失败"/utf8>>,
+    942 => <<"消息不存在"/utf8>>,
+    950 => <<"文件上传失败"/utf8>>,
+    951 => <<"文件下载失败"/utf8>>
+}).

@@ -11,15 +11,15 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 
 %% ===================================================================
 %% API
 %% ===================================================================
--spec remove(integer(), binary(), integer(), integer()) -> ok.
+-spec remove(integer(), integer(), integer(), integer()) -> ok.
 remove(Uid, Scene, ObjectId, TagId) when is_binary(TagId) ->
     remove(Uid, Scene, ObjectId, binary_to_integer(TagId));
 remove(Uid, Scene, ObjectId, TagId) ->
@@ -31,7 +31,7 @@ remove(Uid, Scene, ObjectId, TagId) ->
         {ok, #{<<"name">> := Name}} -> Name;
         _ -> <<>>
     end,
-    imboy_pg:with_tx(fun(Conn) ->
+    _ = imboy_pg:with_tx(fun(Conn) ->
               % 移除 public.user_tag_relation
               user_tag_relation_repo:remove_user_tag_relation(Conn,
                                                               Scene,
@@ -42,8 +42,8 @@ remove(Uid, Scene, ObjectId, TagId) ->
                                                         Scene,
                                                         Uid2,
                                                         ObjectId,
-                                                        TagName,
-                                                        <<>>),
+                                                        binary_to_list(TagName),
+                                                        []),
               ok
       end),
     % 清理缓存
@@ -52,7 +52,7 @@ remove(Uid, Scene, ObjectId, TagId) ->
 
 
 %% 用户标签_联系人标签设置标签
--spec set(integer(), integer(), list(), integer(), binary()) -> ok.
+-spec set(integer(), integer(), list(), integer(), binary()) -> ok | binary().
 set(Uid, Scene, ObjectIds, TagId, TagName) when is_binary(TagId) ->
     set(Uid, Scene, ObjectIds, binary_to_integer(TagId), TagName);
 set(Uid, Scene, ObjectIds, TagId, TagName) ->
@@ -81,7 +81,7 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 
             DelObjectId = OldObjectIds2 -- ObjectIds2,
 
-            imboy_pg:with_tx(fun(Conn) ->
+            _ = imboy_pg:with_tx(fun(Conn) ->
                   %
                   [ user_tag_relation_repo:remove_user_tag_relation(Conn,
                                                                     Scene,
@@ -90,7 +90,7 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
                                                                     I) || I <- DelObjectId ],
                   % imboy_log:info(io_lib:format("user_tag_relation_repo:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid, CreatedAt]])),
                   % 保存 public.user_tag
-                  user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                  _ = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 
                   % 插入 public.user_tag_relation
                   [ user_tag_relation_repo:save_user_tag_relation(Conn,
@@ -112,8 +112,8 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
                                                               Scene,
                                                               Uid,
                                                               I,
-                                                              TagName,
-                                                              <<>>) || I <- DelObjectId ],
+                                                              binary_to_list(TagName),
+                                                              []) || I <- DelObjectId ],
                   ok
           end),
             % 清理缓存
@@ -123,9 +123,9 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 
 
 %%% 添加标签
--spec add(integer(), integer(), binary(), list()) -> ok.
+-spec add(integer(), integer(), binary() | integer(), list()) -> ok | binary().
 add(Uid, Scene, <<>>, [Tag]) ->
-    imboy_log:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
+    ok = imboy_log:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
     % 使用安全的参数化查询，避免SQL注入
     Tb = imboy_pg_sql:public_tablename(<<"user_tag">>),
     Count = case imboy_pg:one(<<"SELECT id FROM ", Tb/binary, " WHERE scene = $1 AND name = $2">>, [Scene, Tag]) of
@@ -136,7 +136,7 @@ add(Uid, Scene, <<>>, [Tag]) ->
     end,
     case Count of
         0 ->
-            imboy_pg:insert(Tb, #{
+            _ = imboy_pg:insert(Tb, #{
                 creator_user_id => Uid,
                 scene => Scene,
                 name => Tag,
@@ -169,7 +169,7 @@ do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(Scene, Uid, integer_to_binary(ObjectId), Tag);
 
 do_add(Scene, Uid, ObjectId, []) ->
-    imboy_pg:with_tx(fun(Conn) ->
+    _ = imboy_pg:with_tx(fun(Conn) ->
         {Table, WhereSql, WhereParams} =
             case Scene of
                 1 ->
@@ -201,7 +201,7 @@ do_add(Scene, Uid, ObjectId, Tag) ->
     % imboy_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
     NowTs = imboy_dt:now(),
     CreatedAt = NowTs,
-    imboy_pg:with_tx(fun(Conn) ->
+    _ = imboy_pg:with_tx(fun(Conn) ->
         % 删除 public.user_tag_relation
         delete_object_tag(Conn, Scene, Uid, ObjectId),
 
@@ -221,14 +221,14 @@ do_add(Scene, Uid, ObjectId, Tag) ->
                                                       TagId,
                                                       ObjectId,
                                                       CreatedAt)
-        || {TagId, _Name} <- TagIdNewLi, TagId > 0 ],
+        || {TagId, _Name} <- TagIdNewLi ],
         % change_scene_tag(Conn, Scene, Uid, ObjectId, Tag),
         [ user_tag_logic:change_scene_tag(Conn,
                                         Scene,
                                         Uid,
                                         ObjectId,
                                         [{TagId, N}])
-        || {TagId, N} <- TagIdNewLi, TagId > 0 ],
+        || {TagId, N} <- TagIdNewLi ],
 
         % 清理缓存
         [ user_tag_relation_repo:flush_subtitle(TagId) || {TagId, _} <- TagIdNewLi ],

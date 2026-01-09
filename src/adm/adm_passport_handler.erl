@@ -10,8 +10,8 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
--include("include/common.hrl").
+-include("log.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -77,7 +77,7 @@ login(<<"GET">>, Req0, _State) ->
     {ok, Body} = imboy_dtl:template(login_dtl, [
          {system_name, "IMBoy Admin System"}
         , {csrf_token, Csrf}
-        , {public_key, re:replace(config_ds:get("login_rsa_pub_key"), "\\n", "", [global, {return, list}])}
+        , {public_key, re:replace(config_ds:get(<<"login_rsa_pub_key">>), "\\n", "", [global, {return, list}])}
     ], imboy),
 
     cowboy_req:reply(200, #{
@@ -96,15 +96,15 @@ login(<<"POST">>, Req0, _State) ->
     % Uid = imboy_hashids:encode(CurrentUid),
     CryptKey = imboy_req:cookie(<<"captcha_key">>, Req0),
     % ?DEBUG_LOG(['CryptKey ', CryptKey]),
-    PostVals = imboy_req:post_params(Req0),
-    Captcha = proplists:get_value(<<"captcha">>, PostVals, ""),
-    Csrf = proplists:get_value(<<"csrf_token">>, PostVals, ""),
+    PostVals = imboy_param:post(Req0),
+    Captcha = maps:get(<<"captcha">>, PostVals, ""),
+    Csrf = maps:get(<<"csrf_token">>, PostVals, ""),
     CsrfVal = imboy_cache:get(Csrf),
     % CryptKeyFromEts = simple_captcha_ets:find(Code),
     case {CsrfVal, simple_captcha:check(CryptKey, Captcha)} of
         {{ok, 1}, true} ->
-            Account = proplists:get_value(<<"account">>, PostVals),
-            Pwd = proplists:get_value(<<"pwd">>, PostVals),
+            Account = maps:get(<<"account">>, PostVals, undefined),
+            Pwd = maps:get(<<"pwd">>, PostVals, undefined),
             Password = imboy_cipher:rsa_decrypt(Pwd),
             % ?DEBUG_LOG([Account, 'pwd ', Password]),
             case adm_passport_logic:do_login(Account, Password) of
@@ -127,9 +127,7 @@ login(<<"POST">>, Req0, _State) ->
                     % ?DEBUG_LOG(["NextNextNextNextNextNext", Next]),
                     imboy_response:success(Req1, AdmUser#{next => Next}, "操作成功.");
                 {error, Msg} ->
-                    imboy_response:error(Req0, Msg);
-                {error, Msg, Code} ->
-                    imboy_response:error(Req0, Msg, Code)
+                    imboy_response:error(Req0, Msg)
             end;
         {{ok, 1}, _} ->
             imboy_response:error(Req0, "验证码有误");

@@ -75,8 +75,8 @@ with_conn(Fun) ->
 -spec with_conn(fun((epgsql:connection()) -> term()), pos_integer()) ->
           term() | {error, term()}.
 with_conn(Fun, Timeout) ->
-    Driver = config_ds:env(sql_driver),
-    with_conn(Driver, Fun, 3, Timeout).
+    % Driver = config_ds:env(sql_driver),
+    with_conn(pgsql, Fun, 3, Timeout).
 
 %% Fun    : (Conn -> Result)
 %% Retries: 最大重试次数
@@ -94,11 +94,11 @@ with_conn(Driver, Fun, Retries, Delay) ->
                     %% 业务主动失败：不重试
                     throw:{abort_tx, Reason} ->
                         %% 回滚事务，使得调用方返回二元组 {error, Reason};
-                        epgsql:squery(Conn, <<"ROLLBACK">>),
+                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
                         {error, Reason};
                     %% 其他 DB / 运行时异常
                     Class:Reason:Stacktrace ->
-                        ?ERROR_LOG(
+                        ok = ?ERROR_LOG(
                             "DB operation failed: ~p:~p stack=~p~n",
                             [Class, Reason, Stacktrace]
                         ),
@@ -112,9 +112,7 @@ with_conn(Driver, Fun, Retries, Delay) ->
                     with_conn(Driver, Fun, Retries - 1, Delay + 1000);
                 _ ->
                     Result
-            end;
-        Other ->
-            {error, {unexpected_conn, Other}}
+            end
     end.
 
 %%--------------------------------------------------------------------
@@ -126,12 +124,12 @@ with_conn(Driver, Fun, Retries, Delay) ->
 
 %% @doc 事务封装
 %% @deprecated 请使用 imboy_pg:with_tx/1,2 替代
--spec with_tx(fun((epgsql:connection()) -> term())) -> term() | {rollback, term()}.
+-spec with_tx(fun((epgsql:connection() | pid()) -> term())) -> term() | {rollback, term()}.
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
 
--spec with_tx(fun((epgsql:connection()) -> term()), epgsql:transaction_opts()) ->
+-spec with_tx(fun((epgsql:connection() | pid()) -> term()), epgsql:transaction_opts()) ->
           term() | {rollback, term()} | no_return().
 with_tx(F, Opts0) ->
     with_tx(F, Opts0, 3, 200). % 最大重试3次，初始延迟100毫秒
@@ -140,7 +138,7 @@ with_tx(F, Opts0) ->
 %% ===================================================================
 %% 事务封装
 %% ===================================================================
--spec with_tx(fun((pid()) -> term()), list(), non_neg_integer(), non_neg_integer()) -> term().
+-spec with_tx(fun((epgsql:connection() | pid()) -> term()), list(), non_neg_integer(), non_neg_integer()) -> term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
     with_conn(Driver,
@@ -164,7 +162,7 @@ execute(Sql, Params) ->
 -spec execute(epgsql:connection(), iodata(), [term()]) ->
     {ok, term()} | {ok, term(), term()} | {error, term()}.
 execute(Conn, Sql, Params) ->
-    ?DEBUG_LOG(io:format("sql: ~s\n", [Sql])),
+    _ = ?DEBUG_LOG(io:format("sql: ~s\n", [Sql])),
     % ?DEBUG_LOG(io:format("Params: ~p\n", [Params])),
     % Res = epgsql:parse(Conn, Sql),
     % ?DEBUG_LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
@@ -178,17 +176,15 @@ execute(Conn, Sql, Params) ->
                         Res2;
                     [] ->
                         {error, {epgsql, empty_batch_result}};
-                    Other ->
-                        {error, {epgsql, unexpected_batch_result, Other}}
+                    Other2 ->
+                        {error, {epgsql, unexpected_batch_result, Other2}}
                 end;
             {error, Reason} ->
-                {error, Reason};
-            Other ->
-                {error, {epgsql, unexpected_parse_result, Other}}
+                {error, Reason}
         end
     catch
         Class:CatchReason:Stacktrace ->
-            ?ERROR_LOG("DB execute failed: ~p:~p stack=~p~n", [Class, CatchReason, Stacktrace]),
+            _ = ?ERROR_LOG("DB execute failed: ~p:~p stack=~p~n", [Class, CatchReason, Stacktrace]),
             {error, {Class, CatchReason, Stacktrace}}
     end.
     % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}

@@ -38,13 +38,13 @@ build_query(Base, Path, Args) ->
 
 % imboy_uri:download("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375", "./temp_temp.png").
 download(Url, FilePath) ->
-    application:ensure_started(ssl),
-    application:ensure_started(inets),
+    _ = application:ensure_started(ssl),
+    _ = application:ensure_started(inets),
     case httpc:request(get, {Url, []}, [], []) of
         {ok, {{_, 200, _}, _Headers, Body}} ->
             {ok, File} = file:open(FilePath, [write, binary]),
-            file:write(File, Body),
-            file:close(File),
+            ok = file:write(File, Body),
+            ok = file:close(File),
             {ok, FilePath};
         {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
             {error, StatusCode};
@@ -70,8 +70,8 @@ download(Url, FilePath) ->
           {ok, binary()} | {error, list()}
               when URL :: binary(), FilePath :: binary(), Name :: binary(), MimeType :: binary(), RequestData :: list().
 upload(URL, FilePath, Name, MimeType, RequestData) ->
-    application:ensure_started(ssl),
-    application:ensure_started(inets),
+    _ = application:ensure_started(ssl),
+    _ = application:ensure_started(inets),
     Filename = filename:basename(FilePath),
     {ok, Data} = file:read_file(FilePath),
     Boundary = imboy_dt:microsecond(),
@@ -88,7 +88,7 @@ upload(URL, FilePath, Name, MimeType, RequestData) ->
     % ?DEBUG_LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
-            {ok, jsone:decode(Body)};
+            {ok, jsone:decode(Body, [{object_format, map}])};
         {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
             {error, StatusCode};
         {error, Reason} ->
@@ -125,7 +125,27 @@ get_params(Url) ->
     UrlMap = uri_string:parse(Url),
     Query = maps:get(query, UrlMap, ""),
     Query2 = uri_string:dissect_query(Query),
-    {UrlMap, maps:from_list(Query2)}.
+    {UrlMap, query_pairs_to_map(Query2)}.
+
+query_pairs_to_map(Pairs) when is_list(Pairs) ->
+    lists:foldl(
+        fun({K, V}, Acc) ->
+            Key = ec_cnv:to_binary(K),
+            Val = ec_cnv:to_binary(V),
+            case maps:get(Key, Acc, undefined) of
+                undefined ->
+                    maps:put(Key, Val, Acc);
+                Existing when is_list(Existing) ->
+                    maps:put(Key, Existing ++ [Val], Acc);
+                Existing ->
+                    maps:put(Key, [Existing, Val], Acc)
+            end
+        end,
+        #{},
+        Pairs
+    );
+query_pairs_to_map(_) ->
+    #{}.
 
 
 %% 根据指定参数名获取在URL中对应的值

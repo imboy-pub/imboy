@@ -38,20 +38,28 @@ list_to_binary_string(IntList) ->
     list_to_binary(JoinedString).
 
 % 如果是json类型的字符串，就decode，否则保持原数据类型
+json_maybe(B) when is_binary(B) ->
+    case B of
+        <<${, _/binary>> -> jsone:decode(B, [{object_format, map}]);
+        <<$[, _/binary>> -> jsone:decode(B, [{object_format, map}]);
+        _ -> B
+    end;
+json_maybe(S) when is_list(S) ->
+    B = iolist_to_binary(S),
+    case B of
+        <<${, _/binary>> -> jsone:decode(B, [{object_format, map}]);
+        <<$[, _/binary>> -> jsone:decode(B, [{object_format, map}]);
+        _ -> S
+    end;
 json_maybe(Val) ->
-    case jsx:is_json(Val) of
-        true ->
-            jsx:decode(Val);
-        false ->
-            Val
-    end.
+    Val.
 
 
 % 用字符串连接数组元素，类似 php 的 implode/2 方法
 % imboy_cnv:implode(",", [<<"a">>, "b"]).
 % imboy_cnv:implode("','", [<<"a">>, "b"]).
 % imboy_cnv:implode(",", [1,2,3.3]).   // <<"1,2,3.3">>
--spec implode([binary() | list() | float() | integer()], list()) -> binary().
+-spec implode(binary() | [binary() | list() | float() | integer()], list()) -> binary().
 implode(S, Li) when is_float(S) ->
     implode(io_lib:format("~p", [S]), Li);
 implode(S, Li) when is_integer(S) ->
@@ -113,7 +121,7 @@ process_item(Item) -> Item.
 process_key_value(Key, Value) ->
     K = ec_cnv:to_binary(Key),
     case imboy_str:endswith(<<"_at">>, K) or imboy_str:endswith(<<"_ts">>, K) of
-        true  -> convert_timestamp(Value);       % 时间字段转换
+        true  -> imboy_dt:rfc3339_to(Value);       % 时间字段转换
         false -> convert_structured(Value)      % 结构化数据处理
     end.
 
@@ -121,28 +129,6 @@ process_key_value(Key, Value) ->
 convert_structured(V) when is_map(V); is_list(V) ->
     convert_at_timestamps(V);
 convert_structured(V) -> V.
-
-%% @doc 时间格式转换（RFC3339 -> 毫秒时间戳）
-convert_timestamp(Value) when is_binary(Value) andalso byte_size(Value) > 0;
-                             is_list(Value) andalso length(Value) > 0 ->
-    case imboy_dt:rfc3339_to(Value, millisecond) of
-        {error, _} ->
-            Value;
-        Num when is_number(Num) ->
-            Num;
-        _ ->
-            Value
-    end;
-convert_timestamp(Value) when is_tuple(Value) ->
-    case imboy_dt:datetime_to(Value, millisecond) of
-        {error, _} ->
-            Value;
-        Num when is_number(Num) ->
-            Num;
-        _ ->
-            Value
-    end;
-convert_timestamp(Value) -> Value.  % 非时间字符串、空值保持原样
 
 %% @doc 安全地将任意类型转换为二进制，支持复杂的错误结构
 %% 优先使用 ec_cnv:to_binary 处理基本类型，遇到复杂结构时特殊处理

@@ -37,14 +37,9 @@ broadcast(Message) ->
 %% @doc 初始化服务器
 init([]) ->
     % 注册到syn
-    case syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{}) of
-        ok ->
-            ?DEBUG_LOG(["Distributed cache sync server started and registered to syn"]),
-            {ok, #state{}};
-        {error, Reason} ->
-            ?DEBUG_LOG(["Failed to register to syn:", Reason]),
-            {stop, {syn_register_failed, Reason}}
-    end.
+    ok = syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{}),
+    ok = ?DEBUG_LOG(["Distributed cache sync server started and registered to syn"]),
+    {ok, #state{}}.
 
 %% @doc 处理同步调用
 handle_call(_Request, _From, State) ->
@@ -64,7 +59,7 @@ handle_info(_Info, State) ->
 %% @doc 服务器终止处理
 terminate(_Reason, _State) ->
     % 从syn中离开
-    syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
+    _ = syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
     ok.
 
 %% @doc 代码更改处理

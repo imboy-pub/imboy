@@ -1,7 +1,7 @@
 -module(imboy_syn_tests_simple).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
--include("include/chat.hrl").
+-include("eunit_setup.hrl").
+-include("chat.hrl").
 
 %%%===================================================================
 %%% @doc

@@ -24,7 +24,7 @@ tablename() ->
 
 
 %%% 保存附近信息，不存在就新增，存在就递增应用次数
--spec save(integer(), binary(), binary(), list()) -> ok.
+-spec save(epgsql:connection() | pid(), binary(), binary(), list()) -> ok.
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
@@ -81,7 +81,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 构建带ON CONFLICT的INSERT SQL
     {Sql, Params} = imboy_pg_sql:insert(tablename(), NewAttach, <<>>),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
-    imboy_pg:execute(Conn, FullSql, Params),
+    _ = imboy_pg:execute(Conn, FullSql, Params),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
     % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息

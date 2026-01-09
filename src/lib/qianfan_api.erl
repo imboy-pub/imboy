@@ -45,7 +45,7 @@ create_chat(Uid, Content, History) ->
     },
     % ?DEBUG_LOG([Data]),
     {ok, RespMap} = imboy_req:post(URL, Data, [{"Authorization", Authorization} | Headers]),
-    ?DEBUG_LOG([RespMap]),
+    ok = ?DEBUG_LOG([RespMap]),
     RespMap.
 
 
@@ -83,7 +83,7 @@ signature(Method, URL, Headers) ->
     {CanonicalURI, CanonicalQueryString} = canonical_uri(URL),
     {CanonicalHeaders, SignedHeaders} = canonical_header(Headers),
 
-    ?DEBUG_LOG([CanonicalHeaders]),
+    ok = ?DEBUG_LOG([CanonicalHeaders]),
     % authStringPrefix代表认证字符串的前缀部分，即： bce-auth-v2/{accessKeyId}/{date}/{region}/{service}
     Date = ec_date:format("Ymd"),
     Service = "bot", % ?

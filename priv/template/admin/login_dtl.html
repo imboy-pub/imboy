@@ -55,7 +55,7 @@
                 <div class="item">
                     Account
                     <span class="icon icon-2"></span>
-                    <input type="tel" name="account" lay-verify="required|phone" autocomplete="off" class="layui-input" value="">
+                    <input type="text" name="account" lay-verify="required|account" autocomplete="off" class="layui-input" value="">
                 </div>
 
                 <div class="item">
@@ -91,17 +91,17 @@
 
 <!-- https://github.com/layui/layui/tags -->
 <!-- 引入 layui.js -->
-<script src="/static/layui/layui.js" charset="utf-8"></script>
+<script src="/static/admin/layui/layui.js" charset="utf-8"></script>
 
-<script src="/static/js/jsencrypt.js" charset="utf-8"></script>
-<script src="/static/js/md5.min.js" charset="utf-8"></script>
+<script src="/static/admin/js/jsencrypt.js" charset="utf-8"></script>
+<script src="/static/admin/js/md5.min.js" charset="utf-8"></script>
 <script type="text/javascript">
 var public_key = "{{public_key}}";
 public_key = public_key.substr(26, public_key.length - 24 - 26)
 // console.log('public_key ', public_key)
 //layui绑定扩展
 layui.config({
-    base: '/static/js/'
+    base: '/static/admin/js/'
 })
 layui.use(['jquery', 'layer', 'form'], function(){
     var layer = layui.layer ,form = layui.form;
@@ -132,12 +132,17 @@ layui.use(['jquery', 'layer', 'form'], function(){
             data: post_data,
             headers: {},
             success: function(res) {
-                // console.log("res: ", res)
+                console.log("res: ", res)
                 if (res && res.code==0) {
                     var exp = new Date()
                     document.cookie = "back_uri=''; expires=" + exp.toGMTString()+ "; path=/"
                     document.cookie = "captcha_key=''; expires=" + exp.toGMTString()+ "; path=/"
-                    location.href = res.payload.next ? res.payload.next : '/adm/'
+                    layer.closeAll()
+                    var nextUrl = res.payload && res.payload.next ? res.payload.next : '/adm/'
+                    console.log("跳转到: ", nextUrl)
+                    setTimeout(function() {
+                        location.href = nextUrl
+                    }, 100)
                 } else if(res && res.msg) {
                     layer.msg(res.msg)
                     $(":input[name='account']").focus()

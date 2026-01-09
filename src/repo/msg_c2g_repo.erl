@@ -50,7 +50,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid) ->
         %% ---------- 插入群离线消息 ----------
         %% 使用 imboy_pg:insert/4 在事务中插入，与其他 repo 保持一致的安全方式
         %% 注意：msg_c2g 表中 to_id 是群组 ID (Gid)，不是用户 ID
-        imboy_pg:insert(Conn, TbMsg, #{
+        _ = imboy_pg:insert(Conn, TbMsg, #{
             payload => {raw, imboy_hasher:encoded_val(Payload)},
             to_id => Gid,
             from_id => FromId,
@@ -63,7 +63,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid) ->
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
         {SqlTimeline, ParamsTimeline} =
             imboy_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
-        _ = imboy_pg:execute(Conn, SqlTimeline, ParamsTimeline),
+        {ok, _} = imboy_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
     end).
 

@@ -1,16 +1,16 @@
 -module(friend_category_handler).
+
 -behavior(cowboy_rest).
 
 -export([init/2]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -28,26 +28,24 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 add(Req0, State) ->
     %%
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    Name = proplists:get_value(<<"name">>, PostVals, <<"Unnamed">>),
+    Name = maps:get(<<"name">>, PostVals, <<"Unnamed">>),
     case friend_category_ds:add(CurrentUid, Name) of
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);
         {ok, LastInsertId} ->
-            Data = [{<<"id">>, LastInsertId}, {<<"name">>, Name}],
+            Data = #{<<"id">> => LastInsertId, <<"name">> => Name},
             imboy_response:success(Req0, Data, "success.")
     end.
-
 
 %% 删除好友分组
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    Id = proplists:get_value(<<"id">>, PostVals),
+    Id = maps:get(<<"id">>, PostVals, undefined),
     case friend_category_logic:delete(CurrentUid, Id) of
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);
@@ -55,14 +53,13 @@ delete(Req0, State) ->
             imboy_response:success(Req0, #{}, "success.")
     end.
 
-
 %% 重命名好友分组
 rename(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG([CurrentUid, PostVals]),
-    Id = proplists:get_value(<<"id">>, PostVals),
-    Name = proplists:get_value(<<"name">>, PostVals),
+    Id = maps:get(<<"id">>, PostVals, undefined),
+    Name = maps:get(<<"name">>, PostVals, undefined),
     case friend_category_ds:rename(CurrentUid, Id, Name) of
         {error, ErrorMsg} ->
             imboy_response:error(Req0, ErrorMsg);

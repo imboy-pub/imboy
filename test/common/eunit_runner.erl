@@ -23,77 +23,55 @@ run() ->
 %% @doc 运行指定模块的测试
 %% @param Modules 模块列表，如 [user_repo_tests, group_repo_tests]
 run(Modules) when is_list(Modules) ->
-    % 启动应用
-    start_applications(),
+    % 使用 eunit_setup 启动应用
+    State = eunit_setup(),
     try
         case Modules of
             [] -> eunit:test([], [verbose]);
             _ -> eunit:test(Modules, [verbose])
         end
     after
-        % 不需要停止应用
-        ok
+        eunit_cleanup(State)
     end.
 
 %% @doc 快速测试（只测试不需要数据库的模块）
 run_fast() ->
-    % 启动应用
-    start_applications(),
-    try
-        % 只测试 SQL 构造相关的模块
-        FastTestModules = [
-            imboy_pg_sql_tests
-        ],
-        eunit:test(FastTestModules, [verbose])
-    after
-        ok
-    end.
+    % 不启动应用，只测试纯函数模块
+    FastTestModules = [
+        imboy_pg_sql_tests
+    ],
+    eunit:test(FastTestModules, [verbose]).
 
 %% ===================================================================
 %% 内部函数
 %% ===================================================================
 
-start_applications() ->
-    application:set_env(imboy, sql_driver, pgsql),
-    application:set_env(imboy, env, test),
-
-    % 启动核心依赖
-    CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
-    lists:foreach(fun(App) ->
-        case application:ensure_all_started(App) of
-            {ok, _} -> ok;
-            {error, {already_started, _}} -> ok;
-            _ -> ok
-        end
-    end, CoreApps),
-
-    ensure_cache_started(),
-    ok.
-
-%% @doc 启动所有必要的应用
-%% @return {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}
+%% @doc 启动所有必要的应用（测试环境）
+%% @return {app_started, imboy} | {app_not_started, test_continues}
+%% 为测试环境设置必要的配置并启动应用
 eunit_setup() ->
     % 设置测试环境变量
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
 
-    % 加载配置文件
-    ConfigPath = filename:absname("config/sys.config"),
-    io:format("Loading config from: ~p~n", [ConfigPath]),
+    % 加载本地开发配置文件
+    ConfigPath = filename:absname("config/sys.local.config"),
     case file:consult(ConfigPath) of
-        {ok, ConfigList} ->
-            io:format("Config loaded: ~p items~n", [length(ConfigList)]),
-            [application:set_env(App, Env) || {App, Env} <- ConfigList];
-        {error, Reason} ->
-            io:format("Failed to load config: ~p~n", [Reason])
+        {ok, [ConfigList]} ->
+            % 加载所有应用的配置
+            lists:foreach(fun({App, Env}) when is_atom(App) andalso is_list(Env) ->
+                lists:foreach(fun({Key, Value}) ->
+                    application:set_env(App, Key, Value)
+                end, Env);
+               (_) ->
+                    ok
+            end, ConfigList);
+        {error, _Reason} ->
+            io:format("Warning: Failed to load config ~p~n", [ConfigPath])
     end,
 
-    % 验证配置是否加载成功
-    PgConf = application:get_env(imboy, pg_conf),
-    io:format("pg_conf: ~p~n", [PgConf]),
-
     % 启动核心依赖应用
-    CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
+    CoreApps = [crypto, asn1, public_key, ssl, inets, jsone, lager, depcache],
     lists:foreach(fun(App) ->
         case application:ensure_all_started(App) of
             {ok, _} -> ok;
@@ -102,35 +80,31 @@ eunit_setup() ->
         end
     end, CoreApps),
 
-    % 确保 depcache 已启动并初始化
-    case whereis(depcache) of
-        undefined ->
-            % 尝试启动 depcache
-            case application:ensure_all_started(depcache) of
-                ok -> ok;
-                {error, {already_started, depcache}} -> ok;
-                _ -> ok
-            end;
-        _ -> ok
-    end,
-
-    ensure_cache_started(),
-    {app_not_started, test_continues}.
-
-ensure_cache_started() ->
-    case whereis(imboy_cache) of
-        undefined ->
-            _ = imboy_cache:start_link([]),
-            ok;
-        _ ->
-            ok
+    % 启动 imboy 应用
+    case application:ensure_all_started(imboy) of
+        {ok, _} ->
+            {app_started, imboy};
+        {error, {already_started, imboy}} ->
+            {app_already_started, imboy};
+        {error, StartReason} ->
+            io:format("Warning: Failed to start imboy app: ~p~n", [StartReason]),
+            io:format("Tests that require app will be skipped~n"),
+            {app_not_started, test_continues}
     end.
 
 %% @doc 清理资源
-%% @param _State setup 返回的状态
+%% @param State setup 返回的状态
+eunit_cleanup({app_started, imboy}) ->
+    % 停止 imboy 应用
+    application:stop(imboy),
+    ok;
+eunit_cleanup({app_already_started, imboy}) ->
+    % 应用已经在运行，不需要停止
+    ok;
+eunit_cleanup({app_not_started, test_continues}) ->
+    % 应用没有启动，不需要清理
+    ok;
 eunit_cleanup(_State) ->
-    % 通常不需要停止应用
-    % 让 EUnit 自然结束
     ok.
 
 %% @doc 尝试建立数据库连接

@@ -9,6 +9,7 @@
 
 -export([write_msg/6]).
 -export([revoke_offline_msg/5]).
+-export([edit_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([delete_msg/1]).
@@ -29,18 +30,19 @@
 %% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
 %% @returns any() 数据库操作结果
 -spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer()) -> any().
-write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_list(Payload) ->
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = imboy_dt:to_rfc3339(CreatedAt),
     ServerTS2 = imboy_dt:to_rfc3339(ServerTS),
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    case msg_c2c_repo:count_by_to_id(To) of
-        Count when Count >= ?SAVE_MSG_LIMIT ->
+    Count = msg_c2c_repo:count_by_to_id(To),
+    _ = case Count >= ?SAVE_MSG_LIMIT of
+        true ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            msg_c2c_repo:delete_overflow_msg(To, Limit);
-        _ ->
+            _ = imboy_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
+        false ->
             ok
     end,
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2).
@@ -53,7 +55,7 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 %% @param ToUid 接收方用户ID
 %% @param Limit 读取消息数量限制
 %% @returns list() 消息列表，每条消息包含完整信息
--spec read_msg(any(), integer()) -> list().
+-spec read_msg(any(), integer()) -> [map()].
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 
@@ -66,7 +68,7 @@ read_msg(ToUid, Limit) ->
 %% @param Ts 时间戳参数，undefined表示读取所有消息，整数或二进制表示指定时间之后的消息
 %% @returns list() 消息列表，每条消息包含完整信息
 % msg_c2c_ds:read_msg(1, 10).
--spec read_msg(any(), integer(), undefined | integer() | binary()) -> list().
+-spec read_msg(any(), integer(), undefined | integer() | binary()) -> [map()].
 read_msg(ToUid, Limit, undefined) ->
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"to_id = $1">>,
@@ -88,7 +90,7 @@ read_msg(ToUid, Limit, Ts) ->
 %% @returns ok 表示操作成功
 -spec delete_msg(any()) -> ok.
 delete_msg(Id) ->
-    msg_c2c_repo:delete_msg(Id),
+    _ = msg_c2c_repo:delete_msg(Id),
     ok.
 
 
@@ -102,10 +104,10 @@ delete_msg(Id) ->
 %% @param FromId 发送方用户ID
 %% @param ToId 接收方用户ID
 %% @returns ok | {error, Reason}
--spec revoke_offline_msg(binary(), integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+-spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
-    msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
+    _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
     % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
     case imboy_pg:update(
         msg_c2c_repo:tablename(),
@@ -119,21 +121,26 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
             {error, Reason}
     end.
 
+%% @doc 编辑离线消息
+%% @returns ok | {error, Reason}
+-spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
+    % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
+    case imboy_pg:update(
+        msg_c2c_repo:tablename(),
+        #{payload => {raw, imboy_hasher:encoded_val(Payload)}},
+        <<"msg_id = $1 AND from_id = $2 AND to_id = $3">>,
+        [MsgId, FromId, ToId]
+    ) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            ?LOG_ERROR("Failed to edit msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
+            {error, Reason}
+    end.
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
-%% @doc 将 map 转换为 proplist
-%%
-%% 将数据库返回的 map 格式转换为 proplist 格式，供 message_ds:sent_offline_msg/3 使用
-%% 这样 is_map(Row) 会返回 false，走 C2C/S2C 分支而不是 C2G 分支
-%%
-%% @param Map 输入的 map
-%% @return proplist 格式的数据
--spec maps_to_proplist(map()) -> proplists:proplist().
-maps_to_proplist(Map) when is_map(Map) ->
-    maps:fold(fun(K, V, Acc) -> [{K, V} | Acc] end, [], Map).
-
 
 %% @doc 内部函数：根据查询条件过滤和读取消息
 %%
@@ -143,7 +150,7 @@ maps_to_proplist(Map) when is_map(Map) ->
 %% @param Limit 查询结果数量限制
 %% @param Params 查询参数列表
 %% @returns list() 处理后的消息列表
--spec read_msg_filter(binary(), integer(), list()) -> list().
+-spec read_msg_filter(binary(), integer(), list()) -> [map()].
 read_msg_filter(Where, Limit, Params) ->
     P = imboy_hasher:decoded_payload(),
     Column = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
@@ -151,9 +158,7 @@ read_msg_filter(Where, Limit, Params) ->
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            % 将 map 格式的数据库行转换为 proplist，供 message_ds:sent_offline_msg/3 使用
-            % proplist 格式让 is_map(Row) 返回 false，走 C2C/S2C 分支
-            [maps_to_proplist(imboy_response:json_decode_field(Row, <<"payload">>)) || Row <- Rows];
+            [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
         _ ->
             []
     end.

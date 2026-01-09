@@ -42,8 +42,8 @@ start(Begin, End) ->
     % code:add_path("../ebin"),
     Max = erlang:system_info(process_limit),
     io:format("Maxmium allowed process is ~p ~n", [Max]),
-    statistics(runtime),
-    statistics(wall_clock),
+    _ = statistics(runtime),
+    _ = statistics(wall_clock),
     for(Begin, End, fun(Begin1) ->
             receive
             after
@@ -119,7 +119,7 @@ ws_start(Id, Index) ->
     end,
     % erlang:garbage_collect(self()),
     timer:sleep(3000 + Index * 100),
-    ws_start(Id, Index + 1).
+    _ = ws_start(Id, Index + 1).
 
 loop(Socket, Id) ->
     receive
@@ -141,4 +141,4 @@ loop(Socket, Id) ->
         5000 ->
             gen_tcp:send(Socket, cow_ws:masked_frame(ping, ""))
     end,
-    loop(Socket, Id).
+    _ = loop(Socket, Id).

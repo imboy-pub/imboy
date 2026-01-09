@@ -86,7 +86,7 @@ delete_overflow_timeline(ToUid, Limit) ->
         {ok, []} ->
             ok;
         {ok, Rows} ->
-            [ delete_timeline(ToUid, MsgId) || #{<<"msg_id">> := MsgId} <- Rows ],
+            _ = [ delete_timeline(ToUid, MsgId) || #{<<"msg_id">> := MsgId} <- Rows ],
             {msg_ids, [ MsgId || #{<<"msg_id">> := MsgId} <- Rows ]}
     end.
 
@@ -133,10 +133,11 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
 -spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
     Tb = tablename(),
-    {InClause, InParams} = imboy_pg_sql:in(<<"msg_id">>, MsgIds),
-    WhereClause = <<"to_uid = $1 AND ", InClause/binary>>,
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", WhereClause/binary>>,
-    imboy_pg:execute(Sql, [ToUid | InParams]);
+    % 手动构建参数化占位符和参数
+    Placeholders = iolist_to_binary(lists:join(<<",">>,
+        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))])),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id IN (", Placeholders/binary, ") AND to_uid = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
+    imboy_pg:execute(Sql, MsgIds ++ [ToUid]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
 

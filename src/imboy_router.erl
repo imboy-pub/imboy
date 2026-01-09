@@ -27,7 +27,6 @@ get_routes() ->
         {"/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
         {"/ws", websocket_handler, #{}},
-        {"/stress_testing", stress_testing_ws_handler, #{}},
         {"/auth/assets", auth_handler, #{action => assets}},
         {"/test/req_get", test_handler, #{action => req_get}},
         {"/test/req_post", test_handler, #{action => req_post}},
@@ -128,12 +127,6 @@ get_routes() ->
 
         %
         {"/live_room/[:stream_id]", live_room_stream_handler, #{}},
-        {"/whip/publish/[:room_id]/[:stream_id]", whip_handler, #{action => publish}},
-        {"/whip/[:room_id]/[:stream_id]", whip_handler, #{action => check}},
-
-        {"/whip/unpublish/[:room_id]/[:stream_id]", whip_handler, #{action => unpublish}},
-        {"/whip/subscribe/[:room_id]/[:stream_id]", whip_handler, #{action => subscribe}},
-        {"/whip/unsubscribe/[:room_id]/[:stream_id]", whip_handler, #{action => unsubscribe}},
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 

@@ -37,6 +37,7 @@ init() ->
     ok.
 
 %% 统一类型处理接口
+% imboy_hashids:encode(67)
 -spec encode(integer() | binary() | list()) -> binary().
 encode(Id) when is_binary(Id) ->
     encode(binary_to_integer(Id));
@@ -61,14 +62,13 @@ decode(Id) ->
 replace_id(Li)->
     replace_id(Li, <<"id">>).
 
--spec replace_id(list() | map(), binary()) -> list() | map().
+-spec replace_id(list(), binary()) -> list(); (map(), binary()) -> map().
 replace_id(Li, K) when is_list(Li) ->
-    case proplists:get_value(K, Li) of
-        undefined ->
+    case lists:keytake(K, 1, Li) of
+        false ->
             Li;
-        _ ->
-            Id = proplists:get_value(K, Li),
-            [{K, imboy_hashids:encode(Id)} | proplists:delete(K, Li)]
+        {value, {K, Id}, Rest} ->
+            [{K, imboy_hashids:encode(Id)} | Rest]
     end;
 replace_id(M, K) when is_map(M) ->
     case maps:is_key(K, M) of
@@ -116,8 +116,7 @@ decode_hex(Encoded) ->
     try
         case hashids:decode(?CTX, Encoded) of
             [Num] -> Num;
-            List when is_list(List) -> List;
-            _     -> 0
+            List when is_list(List) -> List
         end
     catch
         _:_ -> 0

@@ -21,8 +21,8 @@
 
 %% @doc 发送GET请求，使用默认请求头
 %% @param Url 请求URL
-%% @returns {ok, map()} | {error, any()}
--spec get(binary() | list()) -> {ok, map()} | {error, any()}.
+%% @returns {ok, map()} | {error, any()} | {error, integer(), map()}
+-spec get(binary() | list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
 get(Url) ->
     req(get, Url, #{}, ?ReqHeaders).
 
@@ -30,8 +30,8 @@ get(Url) ->
 %% @doc 发送GET请求，使用自定义请求头
 %% @param Url 请求URL
 %% @param Headers 请求头列表
-%% @returns {ok, map()} | {error, any()}
--spec get(binary() | list(), list()) -> {ok, map()} | {error, any()}.
+%% @returns {ok, map()} | {error, any()} | {error, integer(), map()}
+-spec get(binary() | list(), list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
 get(Url, Headers) ->
     req(get, Url, #{}, Headers).
 
@@ -39,8 +39,8 @@ get(Url, Headers) ->
 %% @doc 发送POST请求，使用默认请求头
 %% @param Url 请求URL
 %% @param Params 请求参数
-%% @returns {ok, map()} | {error, any()}
--spec post(binary() | list(), map() | list()) -> {ok, map()} | {error, any()}.
+%% @returns {ok, map()} | {error, any()} | {error, integer(), map()}
+-spec post(binary() | list(), map() | list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
 post(Url, Params) ->
     req(post, Url, Params, ?ReqHeaders).
 
@@ -49,8 +49,8 @@ post(Url, Params) ->
 %% @param Url 请求URL
 %% @param Params 请求参数
 %% @param Headers 请求头列表
-%% @returns {ok, map()} | {error, any()}
--spec post(binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()}.
+%% @returns {ok, map()} | {error, any()} | {error, integer(), map()}
+-spec post(binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
 
@@ -58,8 +58,8 @@ post(Url, Params, Headers) ->
 %% @doc 从Cowboy请求中解析POST参数
 %% 支持application/x-www-form-urlencoded和multipart/form-data格式
 %% @param Req cowboy请求对象
-%% @returns POST参数列表
--spec post_params(cowboy_req:req()) -> list().
+%% @returns POST参数映射
+-spec post_params(cowboy_req:req()) -> map().
 
 post_params(Req) ->
     % 读取请求体
@@ -73,21 +73,18 @@ post_params(Req) ->
                     Params;
                 {error, _Reason} ->
                     % 解析失败时返回空列表
-                    []
+                    #{}
             end;
         {ok, <<>>, _Req2} ->
             % 空请求体
-            [];
-        {error, _Reason} ->
-            % 读取请求体失败
-            []
+            #{}
     end.
 
 %% @doc 根据Content-Type解析请求体
 %% @param Body 请求体二进制数据
 %% @param ContentType Content-Type头部
 %% @returns {ok, Params} | {error, Reason}
--spec parse_body_by_content_type(binary(), binary()) -> {ok, list()} | {error, atom()}.
+-spec parse_body_by_content_type(binary(), binary()) -> {ok, map()} | {error, atom()}.
 
 parse_body_by_content_type(Body, ContentType) ->
     case binary:match(ContentType, <<"application/x-www-form-urlencoded">>) of
@@ -95,22 +92,20 @@ parse_body_by_content_type(Body, ContentType) ->
             case binary:match(ContentType, <<"multipart/form-data">>) of
                 nomatch ->
                     % 尝试解析JSON格式
-                    case parse_json_body(Body) of
-                        {ok, Map} when is_map(Map) ->
-                            % 将map转换为list格式
-                            Params = maps:to_list(Map),
-                            % 将键值转换为binary格式
-                            FormattedParams = [{ec_cnv:to_binary(K), ec_cnv:to_binary(V)} || {K, V} <- Params],
-                            {ok, FormattedParams};
-                        {ok, List} when is_list(List) ->
-                            {ok, List};
-                        {error, _} ->
+                    try jsone:decode(Body, [{object_format, map}, native_utf8]) of
+                        Map when is_map(Map) ->
+                            {ok, Map};
+                        _ ->
+                            % 如果JSON解析失败，尝试简单的键值对解析
+                            parse_key_value_pairs(Body)
+                    catch
+                        _:_ ->
                             % 如果JSON解析失败，尝试简单的键值对解析
                             parse_key_value_pairs(Body)
                     end;
                 _ ->
-                    % multipart/form-data暂时不支持，返回空列表
-                    {ok, []}
+                    % multipart/form-data暂时不支持
+                    {ok, #{}}
             end;
         _ ->
             % application/x-www-form-urlencoded格式
@@ -120,7 +115,7 @@ parse_body_by_content_type(Body, ContentType) ->
 %% @doc 解析URL编码的请求体
 %% @param Body URL编码的请求体
 %% @returns {ok, Params} | {error, Reason}
--spec parse_urlencoded_body(binary()) -> {ok, list()} | {error, atom()}.
+-spec parse_urlencoded_body(binary()) -> {ok, map()} | {error, atom()}.
 
 parse_urlencoded_body(Body) ->
     try
@@ -131,13 +126,13 @@ parse_urlencoded_body(Body) ->
         Params = lists:foldl(fun(Pair, Acc) ->
             case string:tokens(Pair, "=") of
                 [Key, Value] ->
-                    [{ec_cnv:to_binary(Key), ec_cnv:to_binary(Value)} | Acc];
+                    add_value(ec_cnv:to_binary(Key), ec_cnv:to_binary(Value), Acc);
                 [Key] ->
-                    [{ec_cnv:to_binary(Key), <<>>} | Acc];
+                    add_value(ec_cnv:to_binary(Key), <<>>, Acc);
                 _ ->
                     Acc
             end
-        end, [], Pairs),
+        end, #{}, Pairs),
         {ok, Params}
     catch
         error:_ ->
@@ -146,45 +141,62 @@ parse_urlencoded_body(Body) ->
 
 %% @doc 解析简单键值对格式
 %% @param Body 键值对格式的请求体
-%% @returns {ok, Params} | {error, Reason}
--spec parse_key_value_pairs(binary()) -> {ok, list()} | {error, atom()}.
-
+%% 解析 URL-encoded form body，支持同 key 多值
+%% 示例：
+%%  <<"a=1&b=2&a=3">>
+%% 返回：
+%%  {ok, #{<<"a">> => [<<"1">>, <<"3">>], <<"b">> => <<"2">>}}
+%%
+-spec parse_key_value_pairs(binary()) -> {ok, map()} | {error, atom()}.
 parse_key_value_pairs(Body) ->
     try
+        %% 先按 & 切分出 key=value 对
         Pairs = binary:split(Body, <<"&">>, [global]),
-        Params = lists:foldl(fun(Pair, Acc) ->
+        %% 遍历每一对参数，累加到 Map
+        Map = lists:foldl(
+            fun(Pair, Acc) ->
+            %% 再按 = 分成 Key / Value
             case binary:split(Pair, <<"=">>) of
+                %% 标准 key=value
                 [Key, Value] ->
-                    [{Key, Value} | Acc];
+                    add_value(Key, Value, Acc);
+                %% 只有 key（等价 key=）
                 [Key] ->
-                    [{Key, <<>>} | Acc];
+                    add_value(Key, <<>>, Acc);
+                %% 其他异常情况忽略
                 _ ->
                     Acc
-            end
-        end, [], Pairs),
-        {ok, Params}
+                end
+            end,
+            #{},      %% 初始为空 map
+            Pairs
+        ),
+        {ok, Map}
     catch
         _:_ ->
             {error, parse_failed}
     end.
 
-%% @doc 解析JSON请求体
-%% @param Body JSON格式的请求体
-%% @returns {ok, map()} | {ok, list()} | {error, Reason}
--spec parse_json_body(binary()) -> {ok, term()} | {error, atom()}.
 
-parse_json_body(Body) ->
-    try
-        case jsone:decode(Body, [native_utf8]) of
-            Result when is_map(Result) orelse is_list(Result) ->
-                {ok, Result};
-            _ ->
-                {error, invalid_json}
-        end
-    catch
-        error:_ ->
-            {error, json_decode_failed}
+%% add_value/3
+%% 功能：
+%%  - 如果 key 第一次出现：直接放值
+%%  - 如果 key 已存在且之前已经是 list：直接 append
+%%  - 如果 key 已存在但之前是单值：转为 list 再加入
+%%
+add_value(Key, Value, Acc) ->
+    case maps:get(Key, Acc, undefined) of
+        %% 第一次出现该 Key
+        undefined ->
+            maps:put(Key, Value, Acc);
+        %% 已经是 list，继续累加
+        Existing when is_list(Existing) ->
+            maps:put(Key, Existing ++ [Value], Acc);
+        %% 第二次出现，把原来单值转成 list
+        Existing ->
+            maps:put(Key, [Existing, Value], Acc)
     end.
+
 
 %% @doc 从请求中获取指定名称的Cookie值
 %% @param Key Cookie名称
@@ -193,23 +205,18 @@ parse_json_body(Body) ->
 -spec cookie(binary(), cowboy_req:req()) -> binary() | false.
 cookie(Key, Req) ->
     Cookies = cowboy_req:parse_cookies(Req),
-    case lists:keyfind(Key, 1, Cookies) of
-        {_, Val} ->
-            Val;
-        false ->
-            false
-    end.
+    maps:get(Key, maps:from_list(Cookies), false).
 
 %% @doc 获取客户端IP地址（直接连接的IP）
 %% @param Req cowboy请求对象
 %% @returns IP地址字符串
--spec peer_ip(cowboy_req:req()) -> binary().
+-spec peer_ip(map()) -> binary().
 peer_ip(Req) ->
     {IP, _Port} = cowboy_req:peer(Req),
     % io:format("Client IP: ~p, Port: ~p~n", [IP, Port]),
     % 将IP转换为可读格式
     IPString = inet:ntoa(IP),
-    IPString.
+    list_to_binary(IPString).
 
 %% @doc 获取客户端真实IP地址
 %% 支持代理和负载均衡器场景下的真实IP获取
@@ -224,9 +231,7 @@ get_client_ip(Req) ->
             % 如果没有 X-Forwarded-For，使用直接连接的IP
             case cowboy_req:peer(Req) of
                 {Ip, _Port} when is_tuple(Ip) ->
-                    ec_cnv:to_binary(inet:ntoa(Ip));
-                _ ->
-                    <<"unknown">>
+                    ec_cnv:to_binary(inet:ntoa(Ip))
             end;
         XForwardedFor when is_binary(XForwardedFor) ->
             % 如果有 X-Forwarded-For，取第一个IP
@@ -235,9 +240,7 @@ get_client_ip(Req) ->
                     ec_cnv:to_binary(string:trim(FirstIp, trailing, "\s"));
                 _ ->
                     XForwardedFor
-            end;
-        _ ->
-            <<"unknown">>
+            end
     end.
 
 %% ===================================================================
@@ -256,30 +259,29 @@ get_client_ip(Req) ->
 %%   imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).
 %%   imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
 %%   imboy_req:get("http://127.0.0.1:9800/test/req_get").
--spec req(atom(), binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()}.
+-spec req(atom(), binary() | list(), map() | list(), list()) ->
+          {ok, map()} | {error, any()} | {error, integer(), map()}.
 req(Method, Url, Params, Headers) ->
-    application:ensure_started(ssl),
-    application:ensure_started(inets),
+    _ = application:ensure_started(ssl),
+    _ = application:ensure_started(inets),
     % 检查 content-type
-    ContentType = proplists:get_value("content-type", Headers, "application/json"),
+    ContentType = maps:get("content-type", maps:from_list(Headers), "application/json"),
     Request =
         case Method of
             post ->
                 Bin = jsone:encode(Params, [native_utf8]),
                 {Url, Headers, ContentType, Bin};
             get ->
-                {Url, Headers};
-            _ ->
                 {Url, Headers}
         end,
     Response = httpc:request(Method, Request, [], []),
-    ?DEBUG_LOG([response, Response]),
+    ok = ?DEBUG_LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _Headers, Body}} ->
-            {ok, jsone:decode(list_to_binary(Body))};
+            {ok, jsone:decode(list_to_binary(Body), [{object_format, map}])};
         % {ok, {{_, StatusCode, _}, _Headers, _Body}} ->
         {ok, {{_, StatusCode, _}, _Headers, Body}} ->
-            {error, StatusCode, jsone:decode(list_to_binary(Body))};
+            {error, StatusCode, jsone:decode(list_to_binary(Body), [{object_format, map}])};
         {error, Reason} ->
             {error, Reason}
     end.

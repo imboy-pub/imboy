@@ -13,7 +13,7 @@
 -endif.
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -49,32 +49,28 @@ save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
             app_ddl_repo:add(Data#{created_at => imboy_dt:now()})
     end.
 
-%% @doc 危险函数：直接拼接WHERE子句执行DELETE操作
-%% 警告：此函数存在SQL注入风险，仅建议在内部安全场景下使用
-%% 建议使用参数化查询的替代方案
--spec delete(binary()) -> ok.
-delete(Where) ->
+%% @doc 根据 ID 删除 DDL 记录（仅删除 status=0 的记录）
+%% 使用安全的参数化查询，避免SQL注入
+-spec delete(integer() | binary()) -> {ok, integer()} | {error, term()}.
+delete(Id) ->
     Tb = app_ddl_repo:tablename(),
-    % 警告：此处的SQL拼接存在注入风险，请确保Where参数来源可信
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-        imboy_pg:execute(Sql, []),
-    ok.
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 0 AND id = $1">>,
+    imboy_pg:execute(Sql, [ec_cnv:to_integer(Id)]).
 
-get_ddl(Where, OrderBy, Column) when is_list(Where) ->
-    % 将proplists转换为map格式，并构建WHERE子句
-    WhereMap = maps:from_list(Where),
-    get_ddl(WhereMap, OrderBy, Column);
 get_ddl(WhereMap, OrderBy, Column) ->
     Tb = app_ddl_repo:tablename(),
     % -- 类型 1 升、降级  3 全量安装
     % Where = <<"status=1 AND type = 1 AND new_vsn<=", NewVsn2/binary>>,
     {ok, #{list := Page}} = imboy_pg:page_with_total(Tb, Column, WhereMap, OrderBy, 1, 500),
-    Items = [ddl_to_list(proplists:get_value(<<"ddl">>, Item))  || Item <- Page],
+    Items = [ddl_to_list(get_ddl_field(Item))  || Item <- Page],
     lists:flatten(Items).
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
+
+get_ddl_field(Item) when is_map(Item) ->
+    maps:get(<<"ddl">>, Item, undefined).
 
 ddl_to_list(undefined) ->
     <<>>;

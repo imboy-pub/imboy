@@ -10,7 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include("chat.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 %% ===================================================================
@@ -19,7 +19,7 @@
 
 
 % for webrtc
--spec event(integer(), integer(), binary(), binary()) -> ok.
+-spec event(integer(), integer(), binary(), binary()) -> ok | {reply, binary()}.
 event(CurrentUid, ToUid, MsgId, Msg) ->
     % 判断当前用户是否是 ToUid 用户的朋友
     IsFriend = friend_ds:is_friend(ToUid, CurrentUid),
@@ -31,11 +31,11 @@ event(CurrentUid, ToUid, MsgId, Msg) ->
             message_ds:send_next(ToUid, MsgId, Msg, MsLi),
             ok;
         {_, InDenylist2} when InDenylist2 > 0 ->
-            Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
-            {reply, Msg};
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, imboy_hashids:encode(ToUid)),
+            {reply, jsone:encode(MsgMap, [native_utf8])};
         {false, _InDenylist} ->
-            Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, ToUid),
-            {reply, Msg}
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, imboy_hashids:encode(ToUid)),
+            {reply, jsone:encode(MsgMap, [native_utf8])}
     end.
 
 

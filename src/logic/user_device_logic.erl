@@ -12,9 +12,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -39,7 +39,7 @@ device_name(Uid, DID) ->
 change_name(Uid, DID, Name) ->
     Set = <<"device_name = $1">>,
     SetArgs = [Name],
-    user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
+    _ = user_device_repo:update_by_did(Uid, DID, Set, SetArgs),
 
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:flush(Key),
@@ -55,7 +55,7 @@ delete(Uid, DID) ->
 
 
 % user_device_logic:page(1, 1, 10).
--spec page(Uid :: integer(), Page :: integer(), Size :: integer()) -> list().
+-spec page(Uid :: integer(), Page :: integer(), Size :: integer()) -> map().
 page(Uid, Page, Size) when Page > 0 ->
     Offset = (Page - 1) * Size,
     Total = user_device_repo:count_by_uid(Uid),

@@ -31,7 +31,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid) ->
     imboy_pg:with_tx(fun(Conn) ->
         %% ---------- 插入机器人离线消息 ----------
         %% 使用 imboy_pg:insert/4 在事务中插入，与其他 repo 保持一致的安全方式
-        imboy_pg:insert(Conn, Tb, #{
+        _ = imboy_pg:insert(Conn, Tb, #{
             payload => {raw, imboy_hasher:encoded_val(Payload)},
             to_groupid => Gid,
             from_id => FromId,
@@ -57,12 +57,8 @@ list_by_ids([], _Column) ->
 list_by_ids(Ids, Column) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
-    {Placeholders, _} = imboy_pg_sql:in(<<"msg_id">>, Ids),
-    Where = <<" WHERE msg_id IN (", Placeholders/binary, ")">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary, " ORDER BY created_at ASC">>,
-    % 将Ids转换为参数列表
-    Params = [Id || Id <- Ids],
-    % ?DEBUG_LOG(Sql),
+    {InClause, Params} = imboy_pg_sql:in(<<"msg_id">>, Ids),
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", InClause/binary, " ORDER BY created_at ASC">>,
     imboy_pg:query(Sql, Params).
 
 

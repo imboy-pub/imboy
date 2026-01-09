@@ -1,16 +1,16 @@
 -module(group_member_handler).
+
 -behavior(cowboy_rest).
 
 -export([init/2]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -42,44 +42,49 @@ same_group(Req0, State) ->
     A1 = imboy_hashids:decode(A),
     B1 = imboy_hashids:decode(B),
 
-    {Count, Li4} = if
-        CurrentUid == A1; CurrentUid == B1 ->
-            Li = group_member_repo:list_same_group(A1, B1),
-            Column = <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, member_max, member_count, introduction, avatar, title, updated_at, created_at">>,
-            Li2 = group_repo:list_by_ids(Li, Column),
-            Li3 = [group_logic:group_transfer(M) || M <- Li2],
-            {length(Li), Li3};
-        true ->
-            {0, []}
-    end,
-    imboy_response:success(Req0, #{
-        <<"count">> => Count,
-        <<"list">> => Li4
-    }, "success.").
-
+    {Count, Li4} =
+        if CurrentUid == A1; CurrentUid == B1 ->
+               Li = group_member_repo:list_same_group(A1, B1),
+               Column =
+                   <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, "
+                     "member_max, member_count, introduction, avatar, title, updated_at, "
+                     "created_at">>,
+               Li2 = case group_repo:list_by_ids(Li, Column) of
+                         {ok, Rows} ->
+                             Rows;
+                         _ ->
+                             []
+                     end,
+               Li3 = [group_logic:group_transfer(M) || M <- Li2],
+               {length(Li), Li3};
+           true ->
+               {0, []}
+        end,
+    imboy_response:success(Req0, #{<<"count">> => Count, <<"list">> => Li4}, "success.").
 
 join(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
-    JoinMode = proplists:get_value(<<"join_mode">>, PostVals, <<>>),
-    Gid = proplists:get_value(<<"gid">>, PostVals, 0),
+    MemberUids = maps:get(<<"member_uids">>, PostVals, []),
+    JoinMode = maps:get(<<"join_mode">>, PostVals, <<>>),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
-    JoinMode2 = case JoinMode of
-        <<>> ->
-            UserTitle = user_ds:title(CurrentUid),
-            <<"invite_",  (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
-        _ ->
-            JoinMode
-    end,
+    JoinMode2 =
+        case JoinMode of
+            <<>> ->
+                UserTitle = user_ds:title(CurrentUid),
+                <<"invite_", (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
+            _ ->
+                JoinMode
+        end,
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
             imboy_response:error(Req0, "在处理中，请稍后重试");
         _ when Gid2 == 0 ->
             imboy_response:error(Req0, "group id 格式有误");
-        _ when is_list(MemberUids) == false  ->
+        _ when is_list(MemberUids) == false ->
             imboy_response:error(Req0, "member_uids 必须是list");
-        _ when MemberUids == []  ->
+        _ when MemberUids == [] ->
             imboy_response:error(Req0, "member_uids 不能为空");
         _ ->
             case group_repo:find_by_id(Gid2, <<"member_max,member_count">>) of
@@ -90,52 +95,66 @@ join(Req0, State) ->
                     Count = maps:get(<<"member_count">>, G, 0),
                     Len = length(MemberUids),
                     Diff = Max - Count,
-                    if
-                        Diff == 0 ->
-                            imboy_response:error(Req0, "群成员已满。");
-                        Len > Diff ->
-                            imboy_response:error(Req0, "还可以加入" + integer_to_list(Diff)+ "名群成员");
-                        true ->
-                    MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
-                    MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
-                    % ?DEBUG_LOG([MemberListRes]),
-                    case MemberListRes of
-                        {ok, []} ->
-                            imboy_pg:with_tx(fun(Conn) ->
-                                [group_member_logic:join_group(Conn, JoinMode2, Uid2, Gid2, #{}) || Uid2 <- MemberUids2]
-                            end),
-                            MemberListRes2 = group_member_logic:list_member(Gid2, MemberUids2),
-                            Sum = imboy_pg:pluck_value(group_repo:tablename(),
-                                <<"user_id_sum">>,
-                                #{id => Gid2},
-                                #{}, 0),
-                            imboy_response:success(Req0, #{
-                                <<"gid">> => Gid,
-                                <<"user_id_sum">> => Sum,
-                                <<"member_list">> => group_member_transfer:member_list(MemberListRes2)
-                            }, "success.");
-                        {ok, [_|_]} ->
-                            % 已经是成员，直接使用查询结果
-                            MemberList = case MemberListRes of {ok, L} -> L; _ -> [] end,
-                            Sum = imboy_pg:pluck_value(group_repo:tablename(),
-                                <<"user_id_sum">>,
-                                #{id => Gid2},
-                                #{}, 0),
-                            imboy_response:success(Req0, #{
-                                <<"gid">> => Gid,
-                                <<"user_id_sum">> => Sum,
-                                <<"member_list">> => group_member_transfer:member_list(MemberList)
-                            }, "success.")
+                    if Diff == 0 ->
+                           imboy_response:error(Req0, "群成员已满。");
+                       Len > Diff ->
+                           imboy_response:error(Req0,
+                                                imboy_cnv:implode("",
+                                                                  ["还可以加入",
+                                                                   integer_to_list(Diff),
+                                                                   "名群成员"]));
+                       true ->
+                           MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
+                           MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
+                           % ?DEBUG_LOG([MemberListRes]),
+                           case MemberListRes of
+                               {ok, []} ->
+                                   imboy_pg:with_tx(fun(Conn) ->
+                                                       [group_member_logic:join_group(Conn,
+                                                                                      JoinMode2,
+                                                                                      Uid2,
+                                                                                      Gid2,
+                                                                                      #{})
+                                                        || Uid2 <- MemberUids2]
+                                                    end),
+                                   {ok, MemberListRes2} =
+                                       group_member_logic:list_member(Gid2, MemberUids2),
+                                   Sum = imboy_pg:pluck_value(
+                                             group_repo:tablename(),
+                                             <<"user_id_sum">>,
+                                             #{id => Gid2},
+                                             #{},
+                                             0),
+                                   imboy_response:success(Req0,
+                                                            #{<<"gid">> => Gid,
+                                                            <<"user_id_sum">> => Sum,
+                                                            <<"member_list">> =>
+                                                                group_member_transfer:member_list(MemberListRes2)},
+                                                          "success.");
+                               {ok, MemberList} ->
+                                   % 已经是成员，直接使用查询结果
+                                   Sum = imboy_pg:pluck_value(
+                                             group_repo:tablename(),
+                                             <<"user_id_sum">>,
+                                             #{id => Gid2},
+                                             #{},
+                                             0),
+                                   imboy_response:success(Req0,
+                                                          #{<<"gid">> => Gid,
+                                                            <<"user_id_sum">> => Sum,
+                                                            <<"member_list">> =>
+                                                                group_member_transfer:member_list(MemberList)},
+                                                          "success.")
+                           end
                     end
-            end
             end
     end.
 
 leave(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    Gid = proplists:get_value(<<"gid">>, PostVals, 0),
-    MemberUids = proplists:get_value(<<"member_uids">>, PostVals, []),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    MemberUids = maps:get(<<"member_uids">>, PostVals, []),
     Gid2 = imboy_hashids:decode(Gid),
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
@@ -143,25 +162,25 @@ leave(Req0, State) ->
         _ when Gid2 == 0 ->
             imboy_response:error(Req0, "group id 格式有误");
         _ ->
-            [group_member_logic:leave(imboy_hashids:decode(Uid), Gid2, CurrentUid) || Uid <- MemberUids],
-            imboy_response:success(Req0, [
-                {<<"gid">>, Gid}
-            ], "success.")
+            [group_member_logic:leave(
+                 imboy_hashids:decode(Uid), Gid2, CurrentUid)
+             || Uid <- MemberUids],
+            imboy_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
 
 alias(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
-    Gid = proplists:get_value(<<"gid">>, PostVals, 0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
     Gid2 = imboy_hashids:decode(Gid),
     case Gid2 of
         0 ->
             imboy_response:error(Req0, "group id 必须");
         _ ->
-            Alias = proplists:get_value(<<"alias">>, PostVals, <<>>),
-            Description = proplists:get_value(<<"description">>, PostVals, <<>>),
+            Alias = maps:get(<<"alias">>, PostVals, <<>>),
+            Description = maps:get(<<"description">>, PostVals, <<>>),
             group_member_logic:alias(CurrentUid, Gid2, Alias, Description),
-            imboy_response:success(Req0, [{<<"gid">>, Gid}], "success.")
+            imboy_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
 
 page(Req0, State) ->
@@ -183,15 +202,26 @@ page(Req0, State) ->
             UTb = user_repo:tablename(),
             MTb = group_member_repo:tablename(),
             Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
-            Payload = case imboy_pg:page_with_total(Tb, Where, Page, Size) of
-                {ok, #{total := Total, list := Rows}} ->
-                    #{total => Total, page => Page, size => Size, list => Rows};
-                _ ->
-                    #{total => 0, page => Page, size => Size, list => []}
-            end,
+            Fields =
+                <<"u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
+                  "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
+                  "e, m.status, m.updated_at, m.created_at">>,
+            Payload =
+                case imboy_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size) of
+                    {ok, #{total := Total, list := Rows}} ->
+                        Rows2 = group_member_transfer:member_list(Rows),
+                        #{total => Total,
+                          page => Page,
+                          size => Size,
+                          list => Rows2};
+                    _ ->
+                        #{total => 0,
+                          page => Page,
+                          size => Size,
+                          list => []}
+                end,
             imboy_response:success(Req0, page_transfer(Payload))
     end.
-
 
 page_transfer(Payload) ->
     K = <<"list">>,

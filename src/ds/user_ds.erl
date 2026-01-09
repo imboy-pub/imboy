@@ -1,4 +1,5 @@
 -module(user_ds).
+
 %%%
 % user 领域服务模块
 % user domain service 缩写
@@ -10,26 +11,16 @@
 -export([auth_webrtc_credential/2]).
 
 -ifdef(EUNIT).
--include_lib("eunit/include/eunit.hrl").
--endif.
--include("log.hrl").
--include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
 
-%% Types
--type user_id() :: integer().
--type nickname() :: binary().
--type user_title() :: binary().
--type username() :: binary().
--type credential() :: binary().
--type webrtc_info() :: #{
-    ttl := non_neg_integer(),
-    turn_urls := binary(),
-    stun_urls := binary(),
-    username := username(),
-    credential := credential()
-}.
--type title_with_nickname() :: {user_title(), nickname()}.
+-include_lib("eunit/include/eunit.hrl").
+
+-endif.
+
+-include("log.hrl").
+
+-include_lib("kernel/include/logger.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -40,7 +31,7 @@
 %% 否则返回用户账号。
 %% @param Uid 用户ID
 %% @returns 用户显示名称（昵称优先，否则返回账号）
--spec title(user_id()) -> user_title().
+-spec title(pos_integer()) -> binary().
 title(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
@@ -57,16 +48,17 @@ title(Uid) ->
 %% @param Uid 用户ID
 %% @param Mode 模式参数，当前只支持2
 %% @returns {显示名称, 昵称}的元组
--spec title(user_id(), 2) -> title_with_nickname().
+-spec title(pos_integer(), 2) -> {binary(), binary()}.
 title(Uid, 2) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
-    Title = case {Account, Nickname} of
-        {_, <<>>} ->
-            Account;
-        _ ->
-            Nickname
-    end,
+    Title =
+        case {Account, Nickname} of
+            {_, <<>>} ->
+                Account;
+            _ ->
+                Nickname
+        end,
     {Title, Nickname}.
 
 %% @doc 生成WebRTC认证凭据
@@ -74,7 +66,7 @@ title(Uid, 2) ->
 %% 生成的凭据有效期为24小时，使用HMAC-SHA算法进行签名。
 %% @param Uid 用户ID
 %% @returns 包含WebRTC连接信息的map，包含ttl、服务器地址、用户名和凭据
--spec webrtc_credential(user_id()) -> webrtc_info().
+-spec webrtc_credential(pos_integer()) -> map().
 webrtc_credential(Uid) ->
     Secret = config_ds:get(<<"eturnal_secret">>),
     TurnUrls = config_ds:get(<<"turn_urls">>),
@@ -82,14 +74,14 @@ webrtc_credential(Uid) ->
     UidBin = imboy_hashids:encode(Uid),
     TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
     Username = <<TmBin/binary, ":", UidBin/binary>>,
-    Credential = base64:encode(crypto:mac(hmac, sha, Secret, Username)),
-    #{
-        <<"ttl">> => 86400,
-        <<"turn_urls">> => TurnUrls,
-        <<"stun_urls">> => StunUrls,
-        <<"username">> => Username,
-        <<"credential">> => Credential
-    }.
+    Credential =
+        base64:encode(
+            crypto:mac(hmac, sha, Secret, Username)),
+    #{<<"ttl">> => 86400,
+      <<"turn_urls">> => TurnUrls,
+      <<"stun_urls">> => StunUrls,
+      <<"username">> => Username,
+      <<"credential">> => Credential}.
 
 %% @doc 验证WebRTC凭据
 %% 验证用户提供的WebRTC凭据是否有效。
@@ -100,12 +92,13 @@ webrtc_credential(Uid) ->
 %% @param Username WebRTC用户名（格式：时间戳:编码的用户ID）
 %% @param Credential Base64编码的HMAC凭据
 %% @returns 验证结果：true表示凭据有效，false表示无效
--spec auth_webrtc_credential(username(), credential()) -> boolean().
+-spec auth_webrtc_credential(binary(), binary()) -> boolean().
 auth_webrtc_credential(Username, Credential) ->
     % Secret = config_ds:env(eturnal_secret),
     Secret = config_ds:get(<<"eturnal_secret">>),
-    Credential == base64:encode(crypto:mac(hmac, sha, Secret, Username)).
-
+    Credential
+    == base64:encode(
+           crypto:mac(hmac, sha, Secret, Username)).
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -118,6 +111,7 @@ auth_webrtc_credential(Username, Credential) ->
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

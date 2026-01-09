@@ -1,6 +1,6 @@
 -module(message_ds_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -43,15 +43,11 @@ send_next_requires_valid_params_test_() ->
     ?TEST_SIMPLE(fun() ->
         Uid = 1,
         MsgId = <<"msg123">>,
+        Msg = <<"{}">>,
         % 验证参数类型
         ?assert(is_integer(Uid)),
         ?assertMatch(<<_/binary>>, MsgId),
         % 验证消息ID不为空
         ?assert(byte_size(MsgId) > 0),
-        % 尝试调用函数（可能会失败，但可以验证参数格式正确）
-        case message_ds:send_next(Uid, MsgId) of
-            {ok, _} -> ok;
-            {error, Reason} -> 
-                ?assert(is_atom(Reason) orelse is_binary(Reason) orelse Reason =:= undefined)
-        end
+        ?assertEqual(ok, message_ds:send_next(Uid, MsgId, Msg, []))
     end).

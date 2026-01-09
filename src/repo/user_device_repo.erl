@@ -60,7 +60,7 @@ device_name(Uid, DID) ->
 
 
 % user_device_repo:login_count(1, <<"872619BD-8FCD-45AF-B255-406D70C4D9C9">>).
--spec login_count(Uid :: binary(), DID :: binary()) -> integer().
+-spec login_count(Uid :: integer(), DID :: binary()) -> integer().
 login_count(Uid, DID) ->
     % 使用安全的参数化查询，避免SQL注入
     case imboy_pg:pluck(tablename(), <<"login_count">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
@@ -73,12 +73,12 @@ login_count(Uid, DID) ->
 delete(Uid, DID) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
-    imboy_pg:execute(Sql, [Uid, DID]),
+    _ = imboy_pg:execute(Sql, [Uid, DID]),
     ok.
 
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
--spec save(binary(), integer(), binary(), list()) -> ok.
+-spec save(binary(), integer(), binary(), map()) -> ok.
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
@@ -108,11 +108,11 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 %% ===================================================================
 
 
--spec save(binary(), integer(), list(), binary(), integer()) -> ok.
+-spec save(binary(), integer(), map(), binary(), integer()) -> {ok, term()} | {error, term()}.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->
     % 更新登录次数，最近登录时间、IP
-    Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),
-    PublicKey = proplists:get_value(<<"public_key">>, PostVals, <<>>),
+    Ip = maps:get(<<"ip">>, PostVals, <<>>),
+    PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
     Tb = tablename(),
     Ip2 = case Ip of
         undefined ->
@@ -129,11 +129,11 @@ save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0
     }, <<"status = 1 AND user_id = $1 AND device_id = $2">>, [Uid, DID]);
 save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     % 第一次登陆记录设备信息
-    DeviceType = proplists:get_value(<<"cos">>, PostVals, <<>>),
-    DeviceVsn = proplists:get_value(<<"dvsn">>, PostVals, <<>>),
-    DeviceName = proplists:get_value(<<"dname">>, PostVals, <<>>),
-    PublicKey = proplists:get_value(<<"public_key">>, PostVals, <<>>),
-    Ip = proplists:get_value(<<"ip">>, PostVals, <<>>),
+    DeviceType = maps:get(<<"cos">>, PostVals, <<>>),
+    DeviceVsn = maps:get(<<"dvsn">>, PostVals, <<>>),
+    DeviceName = maps:get(<<"dname">>, PostVals, <<>>),
+    PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
+    Ip = maps:get(<<"ip">>, PostVals, <<>>),
 
     imboy_pg:insert(tablename(), #{
         %% 用户ID (字符串类型)

@@ -76,7 +76,7 @@ list_by_uid(Uid, Column, Limit) ->
     imboy_pg:query(Sql, Params).
 
 % group_member_repo:list_same_group(108, 25).
--spec list_same_group(integer(), integer()) -> list().
+-spec list_same_group(integer(), integer()) -> [integer()].
 list_same_group(0, _) ->
     [];
 list_same_group(_, 0) ->

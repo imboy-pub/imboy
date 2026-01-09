@@ -1,4 +1,5 @@
 -module(user_tag_relation_handler).
+
 %%%
 % user_tag_relation 控制器模块
 % user_tag_relation controller module
@@ -8,18 +9,23 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
--include("include/log.hrl").
+
+-include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -41,25 +47,23 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 % 用户标签_给特定对象打标签
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
-
     PostVals = imboy_param:post(Req0),
-    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
-    Tag = proplists:get_value(<<"tag">>, PostVals, []),
+    Scene = maps:get(<<"scene">>, PostVals, <<>>),
+    Tag = maps:get(<<"tag">>, PostVals, []),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
-    ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
+    ObjectId = maps:get(<<"objectId">>, PostVals, <<>>),
     % ?DEBUG_LOG(["CurrentUid add ", CurrentUid, "; Scene ", Scene, "; Tag: ", Tag, "; ObjectId: ", ObjectId]),
     % user_tag_relation_logic:add(1, 2, <<"2">>, [<<"a">>, <<"b">>]).
-    {Scene2, IsFriend} = case Scene of
+    {Scene2, IsFriend} =
+        case Scene of
             <<"collect">> ->
                 {1, false};
             <<"friend">> ->
@@ -67,34 +71,30 @@ add(Req0, State) ->
             _ ->
                 0
         end,
-    Tag2 = [ Name || Name <- Tag, string:length(Name) > 14 ],
-    ObjectId2 = if
-            Scene2 == 2, IsFriend == false ->
-                <<>>;
-            true ->
-                ObjectId
+    Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
+    ObjectId2 =
+        if Scene2 == 2, IsFriend == false ->
+               <<>>;
+           true ->
+               ObjectId
         end,
-    if
-        Scene2 == 0 ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        length(Tag2) > 0 ->
-            imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-        length(Tag) == 0, bit_size(ObjectId) == 0 ->
-            imboy_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
-        length(Tag) > 1, bit_size(ObjectId) == 0 ->
-            imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
-        true ->
-            % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
-            case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
-                ok ->
-                    imboy_response:success(Req0, #{}, "success.");
-                {Code, Err} ->
-                    imboy_response:error(Req0, Err, Code);
-                Err ->
-                    imboy_response:error(Req0, Err)
-            end
+    if Scene2 == 0 ->
+           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+       length(Tag2) > 0 ->
+           imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+       length(Tag) == 0, bit_size(ObjectId) == 0 ->
+           imboy_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
+       length(Tag) > 1, bit_size(ObjectId) == 0 ->
+           imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
+       true ->
+           % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
+           case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
+               ok ->
+                   imboy_response:success(Req0, #{}, "success.");
+               Err ->
+                   imboy_response:error(Req0, Err)
+           end
     end.
-
 
 % 用户标签_联系人标签设置标签
 %% 用户标签_联系人标签设置标签
@@ -102,18 +102,21 @@ set(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
     PostVals = imboy_param:post(Req0),
-    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
-    TagName = proplists:get_value(<<"tagName">>, PostVals, <<>>),
-    TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
+    Scene = maps:get(<<"scene">>, PostVals, <<>>),
+    TagName = maps:get(<<"tagName">>, PostVals, <<>>),
+    TagId = maps:get(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
-    ObjectIds = proplists:get_value(<<"objectIds">>, PostVals, []),
+    ObjectIds = maps:get(<<"objectIds">>, PostVals, []),
     % user_tag_relation_logic:add(1, 2, <<"2">>, [<<"a">>, <<"b">>]).
-
-    Scene2 = case Scene of
-        <<"collect">> -> 1;
-        <<"friend">>  -> 2;
-        _ -> 0
-    end,
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                1;
+            <<"friend">> ->
+                2;
+            _ ->
+                0
+        end,
 
     case {Scene2, string:length(TagName), ec_cnv:to_integer(TagId)} of
         {0, _, _} ->
@@ -126,33 +129,32 @@ set(Req0, State) ->
             case user_tag_relation_logic:set(CurrentUid, S2, ObjectIds, Id, TagName) of
                 ok ->
                     imboy_response:success(Req0, #{}, "success.");
-                {Code, Err} ->
-                    imboy_response:error(Req0, Err, Code);
                 Err ->
                     imboy_response:error(Req0, Err)
             end
     end.
 
-
 %% 用户标签_标签详情-标签联系人列表-移除标签里的联系人
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     % Uid = imboy_hashids:encode(CurrentUid),
-
     PostVals = imboy_param:post(Req0),
-    Scene = proplists:get_value(<<"scene">>, PostVals, <<>>),
-    TagId = proplists:get_value(<<"tagId">>, PostVals, 0),
+    Scene = maps:get(<<"scene">>, PostVals, <<>>),
+    TagId = maps:get(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
-    ObjectId = proplists:get_value(<<"objectId">>, PostVals, <<>>),
+    ObjectId = maps:get(<<"objectId">>, PostVals, <<>>),
     % user_tag_relation_logic:add(1, 2, <<"2">>, [<<"a">>, <<"b">>]).
     % INSERT INTO user_tag_relation (id, scene, user_id, tag_id, object_id, created_at) VALUES(43, 2, 109, 56, 108, 1688916074887);
     % aaa30,aaa1,你好你好你好你好你好你好你1,abc1,端订单1,
     % user_tag_relation_logic:remove(109, <<"2">>, 108, 56).
-
-    Scene2 = case Scene of
-            <<"collect">> -> 1;
-            <<"friend">>  -> 2;
-            _              -> 0
+    Scene2 =
+        case Scene of
+            <<"collect">> ->
+                1;
+            <<"friend">> ->
+                2;
+            _ ->
+                0
         end,
 
     case {Scene2, ObjectId, ec_cnv:to_integer(TagId)} of
@@ -163,21 +165,9 @@ remove(Req0, State) ->
         {_, _, Id} when Id < 1 ->
             imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         {S2, Obj, Id} ->
-            case user_tag_relation_logic:remove(
-                    CurrentUid,
-                    S2,
-                    imboy_hashids:decode(Obj),
-                    Id
-                 ) of
-                ok ->
-                    imboy_response:success(Req0, #{}, "success.");
-                {Code, Err} ->
-                    imboy_response:error(Req0, Err, Code);
-                Err ->
-                    imboy_response:error(Req0, Err)
-            end
+            user_tag_relation_logic:remove(CurrentUid, S2, imboy_hashids:decode(Obj), Id),
+            imboy_response:success(Req0, #{}, "success.")
     end.
-
 
 %% 用户标签_标签详情-标签联系人列表 / 标签收藏列表
 page(Scene, Req0, State) ->
@@ -187,26 +177,25 @@ page(Scene, Req0, State) ->
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     {ok, TagId} = imboy_param:int(tag_id, Req0, 0),
     % imboy_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
-    if
-        CurrentUid == 0 ->
-            imboy_response:error(Req0, <<"token无效"/utf8>>, 706);
-        TagId == 0 ->
-            imboy_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
-        Scene == <<"collect">> ->
-            imboy_response:success(Req0, #{});
-        Scene == <<"friend">> ->
-            Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
-            imboy_response:success(Req0, Payload);
-        true ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>)
+    if CurrentUid == 0 ->
+           imboy_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
+       TagId == 0 ->
+           imboy_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
+       Scene == <<"collect">> ->
+           imboy_response:success(Req0, #{});
+       Scene == <<"friend">> ->
+           Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
+           imboy_response:success(Req0, Payload);
+       true ->
+           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
-
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

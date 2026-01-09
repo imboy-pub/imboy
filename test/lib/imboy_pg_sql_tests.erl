@@ -1,8 +1,6 @@
 -module(imboy_pg_sql_tests).
--compile({nowarn_unused_function, [setup/0]}).
--compile({nowarn_unused_function, [cleanup/1]}).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc

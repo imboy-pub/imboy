@@ -4,9 +4,9 @@
 %%%
 -export([delete/2]).
 
--include("include/log.hrl").
+-include("log.hrl").
 
--spec delete(Uid :: any(), Id :: any()) -> ok | {error, any()}.
+-spec delete(integer(), integer()) -> {ok, 1} | {error, term()}.
 delete(Uid, Id) ->
     case friend_ds:set_category_id(Uid, Id, 0) of
         {error, ErrorMsg} ->

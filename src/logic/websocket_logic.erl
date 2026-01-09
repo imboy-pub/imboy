@@ -1,129 +1,71 @@
 -module(websocket_logic).
+
 %%%
-% websocket 业务逻辑模块
+% WebSocket 连接管理模块（ACK 定时器管理）
 %%%
 
--include("include/log.hrl").
-
-% -export ([subprotocol/1]).
+-include("log.hrl").
 
 -export([cancel_timer/3, handle_ack_cancel/3]).
-
--export([c2s/3]).
--export([c2s_client_ack/3]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-% cancel_timer(CurrentUid, DID, MsgId) ->
-%     Key = {CurrentUid, DID, MsgId},
-%     ?LOG(["CLIENT_ACK", Key]),
-%     % 缓存在 message_ds:send_next/5 中设置
-%     case imboy_cache:get(Key) of
-%         undefined ->
-%             ok;
-%         {ok, TimerRef} ->
-%             ?LOG(["CLIENT_ACK", Key, TimerRef]),
-%             erlang:cancel_timer(TimerRef),
-%             imboy_cache:flush(Key)
-%     end.
--spec cancel_timer(any(), any(), any()) -> ok.
+%% @doc 取消 ACK 重试定时器（跨节点广播）
+% 使用 syn 库实现高效的非阻塞跨节点广播
+-spec cancel_timer(pos_integer(), binary(), binary()) -> ok.
 cancel_timer(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
-    ?DEBUG_LOG(["CLIENT_ACK", Key]),
-    % 缓存在 message_ds:send_next/5 中设置
-    Nodes = [node() | nodes()],
-    % 广播到所有节点（含自己），每台机器都尝试撤销本地 timer
-    rpc:multicall(Nodes, ?MODULE, handle_ack_cancel, [CurrentUid, DID, MsgId]),
+    ok = ?DEBUG_LOG(["CANCEL_TIMER", Key]),
+
+    %% 【优化】使用 syn 广播替代 rpc:multicall
+    %% 优势：
+    %% 1. 非阻塞式广播，无需等待所有节点响应
+    %% 2. 自动处理节点故障，无需手动重试
+    %% 3. 性能更高，适合高频 ACK 场景
+    imboy_syn:broadcast_ack_cancel(CurrentUid, DID, MsgId),
+
+    %% 【重要】立即执行本地处理
+    %% 确保当前节点立即处理 ACK，不依赖 syn 的广播延迟
+    handle_ack_cancel(CurrentUid, DID, MsgId),
+
     ok.
 
-%% 实际执行 timer 撤销，只在本节点有效
--spec handle_ack_cancel(any(), any(), any()) -> ok.
+%% @doc 实际执行 timer 撤销（本地节点）
+-spec handle_ack_cancel(pos_integer(), binary(), binary()) -> ok.
 handle_ack_cancel(ToUid, DID, MsgId) ->
     TimerKey = {ToUid, DID, MsgId},
-    ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3", TimerKey]),
+
+    %% 【关键修复】先设置 ACK 标志，再取消定时器
+    %% 这样即使定时器消息已在队列中，投递前也会检查到 ACK
+    AckReceivedKey = {ack_received, ToUid, DID, MsgId},
+    imboy_cache:set(AckReceivedKey, true, 40000),  % 40秒 TTL（最大重试时间）
+
+    %% 【改进】打印ACK处理日志
+    io:format("📥 [ACK_CANCEL] Processing: MsgId=~s, Uid=~p, DID=~s~n",
+              [MsgId, ToUid, DID]),
+    io:format("✅ [ACK_CANCEL] ACK received flag set first: MsgId=~s~n", [MsgId]),
+
     case imboy_cache:get(TimerKey) of
-        undefined ->
-            ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3 timer not found", TimerKey]),
-            ok;
-        Ref ->
-            ?DEBUG_LOG(["websocket_logic:handle_ack_cancel/3 canceling timer", TimerKey, Ref]),
-            erlang:cancel_timer(Ref),
+        {ok, Ref} when is_reference(Ref) ->
+            io:format("✅ [ACK_CANCEL] Canceling timer: MsgId=~s, Ref=~p~n", [MsgId, Ref]),
+            case erlang:cancel_timer(Ref) of
+                false ->
+                    io:format("⚠️ [ACK_CANCEL] Timer already fired: MsgId=~s~n", [MsgId]);
+                Time ->
+                    io:format("✅ [ACK_CANCEL] Timer canceled, remaining time: ~pms~n", [Time])
+            end,
             imboy_cache:flush(TimerKey),
-            ?DEBUG_LOG([<<"ACK cancel_timer">>, TimerKey, Ref]),
+            ok;
+        undefined ->
+            io:format("⚠️ [ACK_CANCEL] Timer not found: MsgId=~s~n", [MsgId]),
+            ok;
+        {ok, Other} ->
+            io:format("⚠️ [ACK_CANCEL] Invalid cache value: MsgId=~s, Value=~p~n", [MsgId, Other]),
+            imboy_cache:flush(TimerKey),
             ok
     end.
-
-%% 单聊消息
--spec c2s(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
-c2s(MsgId, CurrentUid, Data) ->
-    To = proplists:get_value(<<"to">>, Data),
-    % CurrentUid = imboy_hashids:decode(From),
-    % ?DEBUG_LOG([CurrentUid, ToId, Data]),
-    % 判断当前用户是否是 ToId 用户的朋友
-    % 判断当前用户是否在 ToId 的黑名单里面
-    case cowboy_bstr:to_lower(To) of
-        <<"bot_qian_fan">> ->
-            % NowTs = imboy_dt:now(),
-
-            self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2S_SERVER_ACK">>}, {<<"server_ts">>, imboy_dt:millisecond()}]},
-
-            From = imboy_hashids:encode(CurrentUid),
-            Payload = proplists:get_value(<<"payload">>, Data),
-            Text = proplists:get_value(<<"text">>, Payload),
-            TopicId = proplists:get_value(<<"topic_id">>, Payload, 0),
-            TopicTitle = proplists:get_value(<<"topic_title">>, Payload, <<>>),
-            CreatedAtRaw = proplists:get_value(<<"created_at">>, Data),
-            CreatedAt = imboy_dt:to_rfc3339(CreatedAtRaw),
-
-            msg_c2s_ds:write_topic(<<"C2S">>, TopicId, CurrentUid, To, TopicTitle, CreatedAt),
-            RespMap = qianfan_api:create_chat(CurrentUid, Text, []),
-            Payload2 = [{<<"bot_response">>, RespMap} | Payload],
-            % 存储消息
-            % 消息状态： 10 服务端收到 11 投递给三方  12 收到三方结果 20 已投递客户端'
-            msg_c2s_ds:write_msg(MsgId, #{
-                status => 12,
-                topic_id => TopicId,
-                from_id => CurrentUid,
-                to_id => To,
-                msg_id => MsgId,
-                payload => imboy_str:replace_single_quote(jsone:encode(Payload2, [native_utf8])),
-                created_at => CreatedAt
-                }),
-
-            MsgId2 = <<"bot_response", MsgId/binary>>,
-            Msg = [{<<"id">>, MsgId2},
-                   {<<"type">>, <<"C2S">>},
-                   {<<"topic_id">>, TopicId},
-                   {<<"from">>, To}, % 这里交换from to
-                   {<<"to">>, From},
-                   {<<"payload">>, #{
-                        <<"msg_type">> => <<"text">>,
-                        <<"text">> => imboy_str:replace_single_quote(maps:get(<<"result">>, RespMap))
-                   }},
-                   {<<"created_at">>, CreatedAt}],
-            MsgJson = jsone:encode(Msg, [native_utf8]),
-            MsLi = [0, 5000, 7000, 11000],
-            message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi),
-            ok;
-        _ ->
-            % 不支持的c2s消息
-            Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
-            {reply, Msg}
-    end.
-
-
-%% 客户端确认C2s投递消息
--spec c2s_client_ack(binary(), integer(), binary()) -> ok.
-c2s_client_ack(_MsgId, _CurrentUid, _DID) ->
-    % Column = <<"id">>,
-    % Where = <<"WHERE msg_id = '", (ec_cnv:to_binary(MsgId))/binary,"' AND to_id = ", (ec_cnv:to_binary(CurrentUid))/binary>>,
-    % {ok, _CList, Rows} = msg_c2s_repo:read_msg(Where, Column, 1),
-    % [msg_c2s_repo:delete_msg(Id) || {Id} <- Rows],
-    ok.
-
-
 
 %% ===================================================================
 %% Internal Function Definitions

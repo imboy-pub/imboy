@@ -4,7 +4,7 @@
 % 管理员用户数据仓库层，提供管理员用户数据的基础数据库操作
 %%%
 
--include("include/log.hrl").
+-include("log.hrl").
 -include("def_column.hrl").
 
 -export([tablename/0]).

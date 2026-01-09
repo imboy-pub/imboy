@@ -142,7 +142,7 @@ delete_overflow_msg(ToUid, Limit) ->
         {ok, []} ->
             ok;
         {ok, Rows} ->
-            [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
+            _ = [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
             ok
     end.
 

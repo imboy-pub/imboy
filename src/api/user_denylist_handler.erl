@@ -1,4 +1,5 @@
 -module(user_denylist_handler).
+
 %%%
 % user_denylist 控制器模块
 % user_denylist controller module
@@ -8,17 +9,20 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -36,11 +40,9 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -48,37 +50,35 @@ page(Req0, State) ->
     Payload = user_denylist_logic:page(CurrentUid, Page, Size),
     imboy_response:success(Req0, Payload).
 
-
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
     PostVals = imboy_param:post(Req0),
-    DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
+    DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
 
     DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
     CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
     imboy_response:success(Req0,
-                           [{<<"user_id">>, imboy_hashids:encode(CurrentUid)},
-                            {<<"denied_user_id">>, DeniedUserId},
-                            {<<"created_at">>, CreatedAt}]).
-
+                           #{<<"user_id">> => imboy_hashids:encode(CurrentUid),
+                             <<"denied_user_id">> => DeniedUserId,
+                             <<"created_at">> => CreatedAt}).
 
 remove(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
     PostVals = imboy_param:post(Req0),
-    DeniedUserId = proplists:get_value(<<"denied_user_id">>, PostVals, ""),
+    DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
     DeniedUserId2 = imboy_hashids:decode(DeniedUserId),
 
     user_denylist_logic:remove(CurrentUid, DeniedUserId2),
     imboy_response:success(Req0).
-
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

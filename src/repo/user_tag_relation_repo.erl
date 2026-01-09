@@ -33,7 +33,7 @@ tablename() ->
     imboy_pg_sql:public_tablename(<<"user_tag_relation">>).
 
 
--spec delete(binary(), integer(), any()) -> any().
+-spec delete(binary(), integer() | binary(), any()) -> any().
 delete(Scene, Uid, ObjectId) when is_integer(Uid) ->
     delete(Scene, integer_to_binary(Uid), ObjectId);
 delete(Scene, Uid, ObjectId) when is_integer(ObjectId) ->
@@ -42,35 +42,35 @@ delete(Scene, Uid, ObjectId) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE scene = $1 AND user_id = $2 AND object_id = $3">>,
-    imboy_log:info(io_lib:format("user_tag_relation_repo:delete/3 Sql ~p, params: ~p ~n", [Sql, [Scene, Uid, ObjectId]])),
+    ok = imboy_log:info(io_lib:format("user_tag_relation_repo:delete/3 Sql ~p, params: ~p ~n", [Sql, [Scene, Uid, ObjectId]])),
     imboy_pg:execute(Sql, [Scene, Uid, ObjectId]).
 
 
--spec remove_user_tag_relation(any(), binary(), integer(), integer(), binary()) -> ok.
+-spec remove_user_tag_relation(any(), binary(), term(), integer(), binary()) -> ok.
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE scene = $1 AND user_id = $2 AND object_id = $3 AND tag_id = $4">>,
-    imboy_log:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 Sql ~p, params: ~p ~n",
+    ok = imboy_log:info(io_lib:format("user_tag_relation_repo:remove_user_tag_relation/5 Sql ~p, params: ~p ~n",
                                  [Sql, [Scene, Uid, ObjectId, TagId]])),
     %% 使用数据库封装接口执行，避免直接依赖驱动
     {ok, _} = imboy_pg:execute(Conn, Sql, [Scene, Uid, ObjectId, TagId]),
      ok.
 
 
--spec replace_object_tag(any(), binary(), integer(), any(), binary(), binary()) -> ok.
+-spec replace_object_tag(any(), binary(), term(), term(), [any()], [any()]) -> ok.
 replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) when is_integer(ObjectId) ->
     replace_object_tag(Conn, Scene, Uid, integer_to_binary(ObjectId), FromName, ToName);
 replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) ->
     % imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 args:~p;~n", [[Conn, Scene, Uid, ObjectId, FromName, ToName]])),
     % 使用安全的参数化查询，避免SQL注入
     {Table, Where, Params} =
-        case Scene of
-            <<"1">> ->
+        case ec_cnv:to_integer(Scene) of
+            1 ->
                 {imboy_pg_sql:public_tablename(<<"user_collect">>),
                  <<"user_id = $1 AND kind_id = $2">>,
                  [Uid, ObjectId]};
-            <<"2">> ->
+            2 ->
                 {imboy_pg_sql:public_tablename(<<"user_friend">>),
                  <<"from_user_id = $1 AND to_user_id = $2">>,
                  [Uid, ObjectId]}
@@ -78,11 +78,11 @@ replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) ->
     % 构造安全的replace函数调用
     Sql = <<"UPDATE ", Table/binary, " SET tag = replace(tag, $3, $4) WHERE ", Where/binary>>,
     AllParams = Params ++ [FromName ++ ",", ToName ++ ","],
-    imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 sql:~s;~n", [Sql])),
+    ok = imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 sql:~s;~n", [Sql])),
     Res = imboy_pg:execute(Conn, Sql, AllParams),
      % {ok, Stmt} = epgsql:parse(Conn, Sql),
      % Res = epgsql:execute_batch(Conn, [{Stmt, []}]),
-     imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 Res:~p;~n", [Res])),
+     ok = imboy_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 Res:~p;~n", [Res])),
      ok.
 
 
@@ -109,9 +109,15 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
     {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
     FullSql = [Sql, <<" ">>, OnConflict],
     case imboy_pg:execute(Conn, FullSql, Params) of
-        {ok, 1, [#{<<"id">> := Id}]} ->
-            % ?LOG_INFO("Tag created: id=~p name=~s", [Id, Tag]),
-            {Id, Tag};
+        {ok, 1, Result} when is_list(Result) ->
+            case Result of
+                [{Id}] when is_integer(Id) ->
+                    % ?LOG_INFO("Tag created: id=~p name=~s", [Id, Tag]),
+                    {Id, Tag};
+                _ ->
+                    % ?LOG_ERROR("Unexpected result: ~p", [Result]),
+                    {0, Tag}
+            end;
         {ok, _Unexpected} ->
             % ?LOG_ERROR("Unexpected response: ~p", [_Unexpected]),
             {0, Tag};
@@ -186,7 +192,7 @@ select_tag(Where, WhereArgs, Column) ->
 select_user_tag_relation(Where, WhereArgs, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    imboy_log:info(io_lib:format("user_tag_relation_repo:select_user_tag_relation/3 sql:~p, ~p;~n", [Sql, WhereArgs])),
+    ok = imboy_log:info(io_lib:format("user_tag_relation_repo:select_user_tag_relation/3 sql:~p, ~p;~n", [Sql, WhereArgs])),
     imboy_pg:query(Sql, WhereArgs).
 
 

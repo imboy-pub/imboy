@@ -55,7 +55,7 @@ page_for_uid(Uid, Limit, Offset) ->
     imboy_pg:query(Sql, [Uid, Uid, Limit, Offset]).
 
 
--spec add(integer(), integer(), integer()) -> {ok, integer()}.
+-spec add(integer(), integer(), binary()) -> {ok, integer()}.
 add(Uid, DeniedUserId, Now) ->
     {Sql, Params} = imboy_pg_sql:insert(tablename(), #{
         user_id => Uid,

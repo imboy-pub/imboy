@@ -9,16 +9,16 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
 %%% demo方法描述
--spec find(integer(), binary(), tuple()) -> ok.
+-spec find(integer(), binary(), tuple()) -> map().
 find(Uid, Column, Key) ->
     % Key = {adm_user, Column, Uid},
     Fun = fun() ->

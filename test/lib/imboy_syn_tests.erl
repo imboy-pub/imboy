@@ -1,7 +1,7 @@
 -module(imboy_syn_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
--include("include/chat.hrl").
+-include("eunit_setup.hrl").
+-include("chat.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -214,9 +214,9 @@ publish_immediate_test_() ->
             % 验证syn:members被正确调用
             ?assert(meck:called(syn, members, 2)),
             
-            % 验证消息被发送到当前进程
+            % 验证消息被发送到当前进程（立即投递也使用 start_timer，格式为 {timeout, Ref, Msg}）
             receive
-                Msg -> ?assertEqual(Message, Msg)
+                {timeout, _TimerRef, Msg} -> ?assertEqual(Message, Msg)
             after 100 ->
                 ?assert(false, "Message not received")
             end

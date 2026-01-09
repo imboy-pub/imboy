@@ -1,4 +1,5 @@
 -module(user_device_handler).
+
 %%%
 % user_device 控制器模块
 % user_device controller module
@@ -8,18 +9,22 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
--include("include/log.hrl").
+
+-include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
-
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -37,11 +42,9 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 page(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
@@ -49,31 +52,29 @@ page(Req0, State) ->
     Payload = user_device_logic:page(CurrentUid, Page, Size),
     imboy_response:success(Req0, Payload).
 
-
 change_name(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
-    DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
-    Name = proplists:get_value(<<"name">>, PostVals, <<"">>),
+    DID = maps:get(<<"did">>, PostVals, <<"">>),
+    Name = maps:get(<<"name">>, PostVals, <<"">>),
     user_device_logic:change_name(CurrentUid, DID, Name),
     imboy_response:success(Req0).
-
 
 delete(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = imboy_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
-    DID = proplists:get_value(<<"did">>, PostVals, <<"">>),
+    DID = maps:get(<<"did">>, PostVals, <<"">>),
     user_device_logic:delete(CurrentUid, DID),
     imboy_response:success(Req0).
-
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

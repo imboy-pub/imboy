@@ -107,9 +107,9 @@ list_by_ids(Uids, Column) when length(Uids) > 0 ->
 %% @details 该函数会更新用户作为from_user_id和to_user_id的所有好友关系记录
 update_friends_last_seen_at(Uid, Timestamp) ->
     % 更新我是from_user_id的记录
-    update_last_seen_at(<<"from_user_id">>, Uid, Timestamp),
+    _ = update_last_seen_at(<<"from_user_id">>, Uid, Timestamp),
     % 更新我是to_user_id的记录
-    update_last_seen_at(<<"to_user_id">>, Uid, Timestamp).
+    _ = update_last_seen_at(<<"to_user_id">>, Uid, Timestamp).
 
 
 

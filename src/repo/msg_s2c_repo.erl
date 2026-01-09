@@ -103,7 +103,7 @@ delete_overflow_msg(ToUid, Limit) ->
         {ok, []} ->
             ok;
         {ok, Rows} ->
-            [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
+            _ = [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
             ok
     end.
 
@@ -124,7 +124,7 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
 -spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
     Tb = tablename(),
-    {InClause, InParams} = imboy_pg_sql:in(<<"msg_id">>, MsgIds),
+    {InClause, InParams} = imboy_pg_sql:in(<<"msg_id">>, MsgIds, 2),
     WhereClause = <<"to_id = $1 AND ", InClause/binary>>,
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", WhereClause/binary>>,
     imboy_pg:execute(Sql, [ToUid | InParams]);

@@ -1,7 +1,7 @@
 -module(adm_auth_middleware).
 -behaviour(cowboy_middleware).
 
--include("include/log.hrl").
+-include("log.hrl").
 
 -export([execute/2]).
 -export([remove_last_forward_slash/1]).

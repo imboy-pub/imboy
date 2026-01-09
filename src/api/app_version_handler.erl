@@ -1,4 +1,5 @@
 -module(app_version_handler).
+
 %%%
 % app_version 控制器模块
 % app_version controller module
@@ -8,28 +9,34 @@
 -export([init/2]).
 
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
--include("include/log.hrl").
+
+-include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
--spec init(any(), any()) -> {ok, any(), any()}.
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        check ->
-            check(Method, Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            check ->
+                check(Method, Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 %% ===================================================================
@@ -47,15 +54,14 @@ check(<<"GET">>, Req0, _State) ->
     LastVsn = maps:get(<<"vsn">>, Res, <<"0.0.0">>),
     % ?DEBUG_LOG([LastVsn, Res, WhereMap]),
     %  updatable = [true | false]
-    imboy_response:success(Req0, Res#{
-        <<"updatable">> => ec_semver:lt(Vsn, LastVsn)
-    }).
+    imboy_response:success(Req0, Res#{<<"updatable">> => ec_semver:lt(Vsn, LastVsn)}).
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

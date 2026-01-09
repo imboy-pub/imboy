@@ -11,7 +11,7 @@
 -export([c2c_edit_ack/3]).
 
 -include("chat.hrl").
--include("include/log.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
@@ -19,52 +19,99 @@
 
 
 %% 单聊消息
--spec c2c(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
+-spec c2c(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
 c2c(MsgId, CurrentUid, Data) ->
-    To = proplists:get_value(<<"to">>, Data),
+    StartTime = erlang:monotonic_time(millisecond),
+    io:format("⏱️ [C2C_START] MsgId: ~s, Time: ~p~n", [MsgId, StartTime]),
+
+    To = maps:get(<<"to">>, Data),
     ToId = imboy_hashids:decode(To),
     % CurrentUid = imboy_hashids:decode(From),
     % ?DEBUG_LOG([CurrentUid, ToId, Data]),
+
+    io:format("⏱️ [C2C_1] Decode complete: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
+
     % 判断当前用户是否是 ToId 用户的朋友
     IsFriend = friend_ds:is_friend(ToId, CurrentUid),
+    io:format("⏱️ [C2C_2] Friend check complete: +~pms, IsFriend: ~p~n", [erlang:monotonic_time(millisecond) - StartTime, IsFriend]),
+
     % 判断当前用户是否在 ToId 的黑名单里面
     InDenylist = user_denylist_logic:in_denylist(ToId, CurrentUid),
+    io:format("⏱️ [C2C_3] Denylist check complete: +~pms, InDenylist: ~p~n", [erlang:monotonic_time(millisecond) - StartTime, InDenylist]),
+
     case {IsFriend, InDenylist} of
         {true, 0} ->
             NowTs = imboy_dt:now(),
             NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
             From = imboy_hashids:encode(CurrentUid),
-            Payload = proplists:get_value(<<"payload">>, Data),
-            CreatedAt = proplists:get_value(<<"created_at">>, Data),
-            CreatedAtMs = case imboy_type:is_numeric(CreatedAt) of
-                true ->
-                    CreatedAt;
-                false when is_binary(CreatedAt) orelse is_list(CreatedAt) ->
-                    imboy_dt:rfc3339_to(CreatedAt, millisecond);
-                false ->
-                    % 如果时间戳格式错误，让进程崩溃
-                    erlang:error({invalid_timestamp_format, CreatedAt})
-            end,
-            % 存储消息
-            msg_c2c_ds:write_msg(CreatedAt, MsgId, Payload, CurrentUid, ToId, NowTs),
-            %
-            self() ! {reply, [{<<"id">>, MsgId}, {<<"type">>, <<"C2C_SERVER_ACK">>}, {<<"server_ts">>, NowMS}]},
+            Payload = maps:get(<<"payload">>, Data),
+            CreatedAt = maps:get(<<"created_at">>, Data),
+            CreatedAtRfc = imboy_dt:to_rfc3339(CreatedAt),
+            io:format("⏱️ [C2C_4] Timestamps ready: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
 
-            Msg = [{<<"id">>, MsgId},
-                   {<<"type">>, <<"C2C">>},
-                   {<<"from">>, From},
-                   {<<"to">>, To},
-                   {<<"payload">>, Payload},
-                   {<<"created_at">>, CreatedAtMs},
-                   {<<"server_ts">>, NowMS}],
-            MsgJson = jsone:encode(Msg, [native_utf8]),
-            MsLi = [0, 5000, 7000, 11000],
-            message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
-            ok;
+            % 准备数据
+            PayloadJson = jsone:encode(Payload, [native_utf8]),
+
+            % 【关键修复】先备份到 staging 表（同步，确保消息安全）
+            io:format("⏱️ [C2C_5] Staging message: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
+            StageResult = msg_store_ds:stage(
+                <<"c2c">>, MsgId, PayloadJson, CurrentUid, ToId,
+                CreatedAtRfc, NowTs),
+
+            case StageResult of
+                ok ->
+                    % 备份成功，继续处理
+                    io:format("⏱️ [C2C_6] Stage success: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
+
+                    % 立即响应和投递
+                    self() ! {reply, #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2C_SERVER_ACK">>,
+                        <<"server_ts">> => NowMS
+                    }},
+                    io:format("⏱️ [C2C_7] Reply sent: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
+
+                    % 异步处理：入队 + 投递消息（带重试）
+                    imboy_async:async_retry(fun() ->
+                        % ① 先入队（异步，立即返回）
+                        msg_store_ds:enqueue(c2c, MsgId, #{
+                            payload => PayloadJson,
+                            from_id => CurrentUid,
+                            to_id => ToId,
+                            created_at => CreatedAtRfc,
+                            server_ts => NowTs
+                        }),
+
+                        % ② 后投递（快速返回，不阻塞）
+                        Msg = #{
+                            <<"id">> => MsgId,
+                            <<"type">> => <<"C2C">>,
+                            <<"from">> => From,
+                            <<"to">> => To,
+                            <<"payload">> => Payload,
+                            <<"created_at">> => CreatedAtRfc,
+                            <<"server_ts">> => NowMS
+                        },
+                        MsgJson = jsone:encode(Msg, [native_utf8]),
+                        MsLi = [0, 5000, 7000, 11000, 17000],
+                        io:format("⏱️ [C2C_9] send_next called: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
+                        message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
+
+                        io:format("⏱️ [C2C_END] Total time: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime])
+                    end, 3, 1000),
+                    ok;
+                error ->
+                    % 备份失败，记录错误并返回失败
+                    ok = ?ERROR_LOG("[C2C_STAGE_FAILED] MsgId=~s, FromUid=~p, ToUid=~p~n",
+                               [MsgId, CurrentUid, ToId]),
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+            end;
         {_, InDenylist2} when InDenylist2 > 0 ->
+            io:format("⏱️ [C2C_DENY] In denylist: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
             {reply, Msg};
         {false, _InDenylist} ->
+            io:format("⏱️ [C2C_NOT_FRIEND] Not friend: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
             Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, To),
             {reply, Msg}
     end.
@@ -77,17 +124,21 @@ c2c_client_ack(MsgId, CurrentUid, _DID) ->
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"msg_id = $1 AND to_id = $2">>,
     {ok, Rows} = msg_c2c_repo:read_msg(Where, Column, 1, [MsgId, CurrentUid]),
-    [msg_c2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
+    _ = [msg_c2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
+
+    % 【关键修复】标记 staging 表为已处理，清理备份记录
+    msg_store_ds:unstage(MsgId),
+
     ok.
 
 
 %% 客户端撤回消息 for c2c
--spec c2c_revoke(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
+-spec c2c_revoke(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
 c2c_revoke(MsgId, CurrentUid, Data) ->
-    To = proplists:get_value(<<"to">>, Data),
-    From = proplists:get_value(<<"from">>, Data),
-    Payload = proplists:get_value(<<"payload">>, Data),
-    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    Payload = maps:get(<<"payload">>, Data),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
     ToId = imboy_hashids:decode(To),
     FromId = imboy_hashids:decode(From),
     % ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
@@ -97,24 +148,24 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
         true ->
             NowTs = imboy_dt:now(),
             NowMS = imboy_dt:millisecond(),
-            
+
             % 构建撤销确认消息
-            RevokePayload = [
-                {<<"msg_type">>, <<"custom">>},
-                {<<"action">>, <<"message_revoke_ack">>},
-                {<<"content">>, <<>>},
-                {<<"original_msg_id">>, OriginalMsgId},
-                {<<"revoked_at">>, NowMS}
-            ],
-            
-            RevokeMsg = [
-                {<<"id">>, MsgId},
-                {<<"type">>, <<"C2C">>},
-                {<<"from">>, From},
-                {<<"to">>, To},
-                {<<"payload">>, RevokePayload},
-                {<<"server_ts">>, NowMS}
-            ],
+            RevokePayload = #{
+                <<"msg_type">> => <<"custom">>,
+                <<"action">> => <<"message_revoke_ack">>,
+                <<"content">> => <<>>,
+                <<"original_msg_id">> => OriginalMsgId,
+                <<"revoked_at">> => NowMS
+            },
+
+            RevokeMsg = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2C">>,
+                <<"from">> => From,
+                <<"to">> => To,
+                <<"payload">> => RevokePayload,
+                <<"server_ts">> => NowMS
+            },
             
             % 判断对方是否在线
             case user_logic:is_online(ToId) of
@@ -125,7 +176,10 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                     ok;
                 false ->  % 对端离线处理
                     RevokePayloadJson = jsone:encode(RevokePayload, [native_utf8]),
-                    msg_c2c_ds:revoke_offline_msg(RevokePayloadJson, NowTs, MsgId, FromId, ToId)
+                    case msg_c2c_ds:revoke_offline_msg(RevokePayloadJson, NowTs, MsgId, FromId, ToId) of
+                        ok -> ok;
+                        {error, _} -> ok
+                    end
             end,
             {reply, RevokeMsg};
         false ->
@@ -135,52 +189,52 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     end.
 
 %% 客户端撤回消息确认 for c2c
--spec c2c_revoke_ack(binary(), integer(), Data :: list()) -> ok.
+-spec c2c_revoke_ack(binary(), integer(), Data :: map()) -> ok.
 c2c_revoke_ack(MsgId, CurrentUid, Data) ->
-    Payload = proplists:get_value(<<"payload">>, Data),
-    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
-    ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
+    Payload = maps:get(<<"payload">>, Data),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
     % TODO
     % 更新本地消息状态为已撤销
     % 这里可以添加数据库更新逻辑
     ok.
 
 %% 客户端编辑消息 for c2c
--spec c2c_edit(binary(), integer(), Data :: list()) -> ok | {reply, Msg :: list()}.
+-spec c2c_edit(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
 c2c_edit(MsgId, CurrentUid, Data) ->
-    To = proplists:get_value(<<"to">>, Data),
-    From = proplists:get_value(<<"from">>, Data),
-    Payload = proplists:get_value(<<"payload">>, Data),
-    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
-    NewContent = proplists:get_value(<<"content">>, Payload),
-    MsgType = proplists:get_value(<<"msg_type">>, Payload),
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    Payload = maps:get(<<"payload">>, Data),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    NewContent = maps:get(<<"content">>, Payload),
+    MsgType = maps:get(<<"msg_type">>, Payload),
     ToId = imboy_hashids:decode(To),
     FromId = imboy_hashids:decode(From),
-    ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
     
     % 验证权限：只能编辑自己发送的消息
     case CurrentUid =:= FromId of
         true ->
             NowTs = imboy_dt:now(),
             NowMS = imboy_dt:millisecond(),
-            
+
             % 构建编辑确认消息
-            EditPayload = [
-                {<<"msg_type">>, MsgType},
-                {<<"action">>, <<"message_edit_ack">>},
-                {<<"content">>, NewContent},
-                {<<"original_msg_id">>, OriginalMsgId},
-                {<<"edited_at">>, NowMS}
-            ],
-            
-            EditMsg = [
-                {<<"id">>, MsgId},
-                {<<"type">>, <<"C2C">>},
-                {<<"from">>, From},
-                {<<"to">>, To},
-                {<<"payload">>, EditPayload},
-                {<<"server_ts">>, NowMS}
-            ],
+            EditPayload = #{
+                <<"msg_type">> => MsgType,
+                <<"action">> => <<"message_edit_ack">>,
+                <<"content">> => NewContent,
+                <<"original_msg_id">> => OriginalMsgId,
+                <<"edited_at">> => NowMS
+            },
+
+            EditMsg = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2C">>,
+                <<"from">> => From,
+                <<"to">> => To,
+                <<"payload">> => EditPayload,
+                <<"server_ts">> => NowMS
+            },
             
             % 判断对方是否在线
             case user_logic:is_online(ToId) of
@@ -191,7 +245,12 @@ c2c_edit(MsgId, CurrentUid, Data) ->
                     ok;
                 false ->  % 对端离线处理
                     EditPayloadJson = jsone:encode(EditPayload, [native_utf8]),
-                    msg_c2c_ds:edit_offline_msg(EditPayloadJson, NowTs, MsgId, FromId, ToId)
+                    case msg_c2c_ds:edit_offline_msg(EditPayloadJson, NowTs, MsgId, FromId, ToId) of
+                        ok ->
+                            ok;
+                        {error, _Reason} ->
+                            ok
+                    end
             end,
             {reply, EditMsg};
         false ->
@@ -201,13 +260,13 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     end.
 
 %% 客户端编辑消息确认 for c2c
--spec c2c_edit_ack(binary(), integer(), Data :: list()) -> ok.
+-spec c2c_edit_ack(binary(), integer(), Data :: map()) -> ok.
 c2c_edit_ack(MsgId, CurrentUid, Data) ->
-    Payload = proplists:get_value(<<"payload">>, Data),
-    OriginalMsgId = proplists:get_value(<<"original_msg_id">>, Payload),
-    NewContent = proplists:get_value(<<"content">>, Payload),
-    EditedAt = proplists:get_value(<<"edited_at">>, Payload),
-    ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
+    Payload = maps:get(<<"payload">>, Data),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    NewContent = maps:get(<<"content">>, Payload),
+    EditedAt = maps:get(<<"edited_at">>, Payload),
+    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
     
     % 更新本地消息内容
     % 这里可以添加数据库更新逻辑

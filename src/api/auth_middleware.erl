@@ -1,15 +1,15 @@
 -module(auth_middleware).
+
 -behaviour(cowboy_middleware).
-
--include("include/log.hrl").
-
-%% 中间件类型定义
--type env() :: map().
--type req() :: cowboy_req:req().
 
 -export([execute/2]).
 -export([remove_last_forward_slash/1]).
+-export([do_verify_sign/4]).
+-export([condition/5]).
+-export([do_authorization/3]).
 
+-include("log.hrl").
+-include("error_code.hrl").
 
 %% @doc Cowboy中间件执行函数
 %% 处理请求的认证和授权验证
@@ -18,7 +18,8 @@
 %% @param Env 环境变量映射
 %% @return 中间件执行结果
 %% @end
--spec execute(req(), env()) -> {ok, req(), env()} | {stop, req()}.
+-spec execute(cowboy_req:req(), map()) ->
+                 {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
     Path = remove_last_forward_slash(cowboy_req:path(Req)),
     case Path of
@@ -42,22 +43,23 @@ execute(Req, Env) ->
             OptionLi = imboy_router:option(),
             InOpenLi = lists:member(Path, OpenLi),
             InOptionLi = lists:member(Path, OptionLi),
-            Switch = ec_cnv:to_binary(config_ds:get(<<"api_auth_switch">>)),
+            Switch =
+                ec_cnv:to_binary(
+                    config_ds:get(<<"api_auth_switch">>)),
             Passport = string:sub_string(binary_to_list(Path), 1, 10),
             Res1 =
-                if
-                    Path == <<"/ws">>, Switch == <<"on">> ->
-                        verify_sign(Req, Env);
-                    Path == <<"/init">>, Switch == <<"on">> ->
-                        verify_sign(Req, Env);
-                    Path == <<"/refreshtoken">>, Switch == <<"on">> ->
-                        verify_sign(Req, Env);
-                    Passport == "/passport/", Switch == <<"on">> ->
-                        verify_sign(Req, Env);
-                    InOpenLi == false, Switch == <<"on">> ->
-                        verify_sign(Req, Env);
-                    true ->
-                        {ok, Req, Env}
+                if Path == <<"/ws">>, Switch == <<"on">> ->
+                       verify_sign(Req, Env);
+                   Path == <<"/init">>, Switch == <<"on">> ->
+                       verify_sign(Req, Env);
+                   Path == <<"/refreshtoken">>, Switch == <<"on">> ->
+                       verify_sign(Req, Env);
+                   Passport == "/passport/", Switch == <<"on">> ->
+                       verify_sign(Req, Env);
+                   InOpenLi == false, Switch == <<"on">> ->
+                       verify_sign(Req, Env);
+                   true ->
+                       {ok, Req, Env}
                 end,
             case Res1 of
                 {ok, Req, Env} ->
@@ -67,7 +69,6 @@ execute(Req, Env) ->
                     Res2
             end
     end.
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -80,7 +81,8 @@ execute(Req, Env) ->
 %% @param Env 环境变量映射
 %% @return 验证结果
 %% @end
--spec verify_sign(req(), env()) -> {ok, req(), env()} | {stop, req()}.
+-spec verify_sign(cowboy_req:req(), map()) ->
+                     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 verify_sign(Req, Env) ->
     % app version 1.0.0
     Vsn = cowboy_req:header(<<"vsn">>, Req, <<"0.1.1">>),
@@ -110,13 +112,11 @@ verify_sign(Req, Env) ->
     %  "Version 14.5 (Build 18E182)"
     %  '"Windows 10 Pro" 10.0 (Build 19043)'
     % _ClientOSVsn = cowboy_req:header(<<"cosv">>, Req),
-
     % 签名结果
     % sign =
     Sign = cowboy_req:header(<<"sign">>, Req),
     Method = cowboy_req:header(<<"method">>, Req),
     % [X, Y, _Z] = binary:split(Vsn, <<".">>, [global]),
-
     % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
     PlainText = iolist_to_binary([Did, "|", Vsn, "|", ClientOS, "|", Pkg]),
     SignKeyVsn = cowboy_req:header(<<"sk">>, Req, Vsn),
@@ -125,27 +125,24 @@ verify_sign(Req, Env) ->
         true ->
             {ok, Req, Env};
         false ->
-            Req1 = imboy_response:error(
-                     % 签名错误，需要下载最新版本APP
-                     Req,
-                     "Failed to verify the signature",
-                     707),
+            Req1 =
+                imboy_response:error(% 签名错误，需要下载最新版本APP
+                                     Req,
+                                     <<"签名验证失败，请更新客户端"/utf8>>,
+                                     ?ERR_SIGNATURE_INVALID),
             {stop, Req1}
     end.
-
 
 do_verify_sign(undefined, _, _, _Method) ->
     false;
 do_verify_sign(_Sign, _, undefined, _Method) ->
     false;
-
 do_verify_sign(Sign, PlainText, Key, <<"sha256">>) ->
     imboy_hasher:hmac_sha256(PlainText, Key) == Sign;
 do_verify_sign(Sign, PlainText, Key, <<"sha512">>) ->
     imboy_hasher:hmac_sha512(PlainText, Key) == Sign;
 do_verify_sign(_, _, _, _) ->
     false.
-
 
 condition(true, _, undefined, Req, Env) ->
     {ok, Req, Env};
@@ -158,25 +155,28 @@ condition(_, true, _, Req, Env) ->
 condition(_, _, Authorization, Req, Env) ->
     do_authorization(Authorization, Req, Env).
 
-
 do_authorization(undefined, Req, _Env) ->
     {stop, Req};
 do_authorization(Authorization, Req, Env) ->
     % ?DEBUG_LOG(['Authorization', Authorization]),
-    case token_ds:decrypt_token(Authorization) of
+    % 支持 Bearer 开头的 token，自动截断前缀
+    Token = case Authorization of
+        <<"Bearer ", Rest/binary>> -> Rest;
+        _ -> Authorization
+    end,
+    case token_ds:decrypt_token(Token) of
         {ok, Id, _ExpireDAt, <<"tk">>} when is_integer(Id) ->
             #{handler_opts := HandlerOpts} = Env,
             Env2 = Env#{handler_opts := HandlerOpts#{current_uid => Id}},
             {ok, Req, Env2};
         {ok, _Id, _ExpireDAt, <<"rtk">>} ->
-            Err = "Does not support refreshtoken",
-            Req1 = imboy_response:error(Req, Err, 1),
+            Req1 =
+                imboy_response:error(Req, <<"不支持刷新 Token"/utf8>>, ?ERR_TOKEN_REFRESH_NOT_ALLOWED),
             {stop, Req1};
         {error, Code, Msg, _Map} ->
             Req1 = imboy_response:error(Req, Msg, Code),
             {stop, Req1}
     end.
-
 
 %% Remove the last forward slash
 %% 删除最后一个正斜杠

@@ -1,7 +1,6 @@
 -module(websocket_ds_tests).
--compile({nowarn_unused_function, [mock_cowboy_req/0]}).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc

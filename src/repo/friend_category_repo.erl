@@ -44,9 +44,7 @@ add(Uid, Name) ->
         {ok, Id, _} ->
             {ok, Id};
         {error, Reason} ->
-            {error, Reason};
-        _ ->
-            {error, unknown}
+            {error, Reason}
     end.
 
 

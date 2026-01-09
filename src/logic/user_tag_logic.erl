@@ -14,9 +14,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -46,17 +46,17 @@ delete(Uid, Scene, Tag) ->
     TagId = imboy_pg:pluck_value(imboy_pg_sql:public_tablename(<<"user_tag">>),
         <<"id">>, #{creator_user_id => Uid, scene => Scene, name => Tag}, #{}, 0),
 
-    imboy_pg:with_tx(fun(_Conn) ->
+    _ = imboy_pg:with_tx(fun(Conn) ->
         % 删除 public.user_tag_relation
         UserTagTb = user_tag_relation_repo:tablename(),
         DelWhere = <<"scene = $1 AND user_id = $2 AND tag_id = $3">>,
         DelSql = <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
-        {ok, _} = imboy_pg:execute(DelSql, [Scene, Uid, TagId]),
+        {ok, _} = imboy_pg:execute(Conn, DelSql, [Scene, Uid, TagId]),
 
         % 删除 public.user_tag
         TagTb = imboy_pg_sql:public_tablename(<<"user_tag">>),
         DelSql2 = <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
-        {ok, _} = imboy_pg:execute(DelSql2, [TagId]),
+        {ok, _} = imboy_pg:execute(Conn, DelSql2, [TagId]),
 
         %
         UpTb =
@@ -69,7 +69,7 @@ delete(Uid, Scene, Tag) ->
         % 使用安全的参数化查询，避免SQL注入
         UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, $1, '') WHERE tag LIKE $2">>,
         TagPattern = <<Tag/binary, ",%">>,
-        {ok, _} = imboy_pg:execute(UpSql, [TagPattern, TagPattern]),
+        {ok, _} = imboy_pg:execute(Conn, UpSql, [TagPattern, TagPattern]),
         % 清理缓存
         user_tag_relation_repo:flush_subtitle(TagId),
         ok
@@ -77,7 +77,7 @@ delete(Uid, Scene, Tag) ->
     ok.
 
 
--spec change_name(integer(), integer(), integer(), integer(), binary()) -> ok.
+-spec change_name(integer(), integer(), integer(), integer(), binary()) -> ok | binary().
 change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
     <<TagName/binary, " 已存在"/utf8>>;
 change_name(0, Uid, Scene, TagId, TagName) ->
@@ -86,14 +86,15 @@ change_name(0, Uid, Scene, TagId, TagName) ->
     case imboy_pg:query(Sql, [Scene, Uid, TagId]) of
         {ok, Rows} ->
             % imboy_log:error(io_lib:format("user_tag_logic:change_name/4 ~s Rows: ~p; ~n", [Sql, Rows])),
-            imboy_pg:with_tx(fun(Conn) ->
+            _ = imboy_pg:with_tx(fun(Conn) ->
                 CreatedAt = imboy_dt:now(),
                 % 保存 public.user_tag
-                user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                _ = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 
                   [ change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [{TagId, TagName}]) || Row <- Rows ],
               ok
-            end);
+            end),
+            ok;
         _ ->
             ok
     end,
@@ -108,12 +109,12 @@ add(Uid, Scene, Tag) ->
     % imboy_log:info(io_lib:format("user_tag_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
     % 参数验证
     case {Scene, Tag} of
-        {0, _} -> error_invalid_scene;
-        {_, <<>>} -> error_invalid_tag;
-        _ -> ok
-    end,
-    % 将 Scene 从 binary 转换为 integer，因为数据库字段是 int 类型
-    add_internal(Uid, Scene, Tag).
+        {0, _} -> {error, <<"invalid_scene">>};
+        {_, <<>>} -> {error, <<"invalid_tag">>};
+        _ -> 
+            % 将 Scene 从 binary 转换为 integer，因为数据库字段是 int 类型
+            add_internal(Uid, Scene, Tag)
+    end.
 
 %% @doc 内部函数，假设 Scene 已经转换为 integer
 add_internal(Uid, Scene, Tag) ->

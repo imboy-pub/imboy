@@ -20,7 +20,7 @@ aes_encrypt(Bin, Key, IV) ->
     aes_encrypt(aes_256_cbc, Bin, Key, IV).
 
 
-% imboy_cipher:aes_decrypt(base64:decode(Va)l, config_ds:env(postgre_aes_key), <<>>).
+% imboy_cipher:aes_decrypt(imboy_cipher:aes_encrypt(<<"admin8889">>, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa").
 aes_decrypt(Bin, Key, IV) ->
     aes_decrypt(aes_256_cbc, Bin, Key, IV).
 
@@ -46,35 +46,44 @@ aes_decrypt(Type, Bin, Key, IV) ->
     Bin2 = crypto_update(StateDec, Bin1, size(Bin1), <<>>),
     binary:part(Bin2, {0, size(Bin2) - binary:last(Bin2)}).
 
--spec rsa_encrypt(CipherText :: binary(), PrivKey :: binary()) -> PlainText :: binary().
-
-
--spec rsa_decrypt(PlainText :: list(), PubKey :: binary()) -> CipherText :: binary().
+-spec rsa_encrypt(binary() | list()) -> binary() | {error, term()}.
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
-    PemBin = config_ds:get("login_rsa_pub_key"),
+    PemBin = config_ds:get(<<"login_rsa_pub_key">>),
+    true = is_binary(PemBin),
     rsa_encrypt(PlainText, PemBin);
-rsa_encrypt(PlainText) ->
+rsa_encrypt(PlainText) when is_list(PlainText) ->
     %%公钥加密
-    PemBin = config_ds:get("login_rsa_pub_key"),
+    PemBin = config_ds:get(<<"login_rsa_pub_key">>),
+    true = is_binary(PemBin),
     BinData = list_to_binary(PlainText),
     rsa_encrypt(BinData, PemBin).
 
 
+-spec rsa_encrypt(binary(), binary()) -> binary() | {error, term()}.
 rsa_encrypt(BinData, PemBin) ->
     %%公钥加密
-    PublicKey = get_rsa_key_str(PemBin),
-    Cipher = public_key:encrypt_public(BinData, PublicKey),
-    base64:encode(Cipher).
+    try
+        PublicKey = get_rsa_key_str(PemBin),
+        Cipher = public_key:encrypt_public(BinData, PublicKey),
+        base64:encode(Cipher)
+    catch
+        _:_ -> {error, encrypt_failed}
+    end.
 
 
--spec rsa_decrypt(CipherText :: binary()) -> any().
+-spec rsa_decrypt(binary() | list()) -> term().
 rsa_decrypt(CipherText) ->
     %%私钥解密
-    PemBin = config_ds:get("login_rsa_priv_key"),
-    rsa_decrypt(CipherText, PemBin).
+    case config_ds:get(<<"login_rsa_priv_key">>) of
+        PemBin when is_binary(PemBin) ->
+            rsa_decrypt(CipherText, PemBin);
+        Error ->
+            Error
+    end.
 
 
+-spec rsa_decrypt(binary(), binary()) -> term().
 rsa_decrypt(CipherText, PrivKey) ->
     %%私钥解密
     % 处理可能的URL编码和URL-safe Base64格式

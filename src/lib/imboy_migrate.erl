@@ -26,7 +26,7 @@
 migrate() ->
     Conf = config_ds:env(super_account),
     Path = get_scripts_path(),
-    imboy_log:info(Path),
+    ok = imboy_log:info(Path),
     {ok, Conn} = epgsql:connect(Conf),
     MigrationCall =
       pure_migrations:migrate(
@@ -49,18 +49,6 @@ migrate() ->
             % 新增：处理 COALESCE(MAX(version), -1) 查询，列名为 "coalesce"
             {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{null}]} -> -1;
             {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{N}]} ->
-              list_to_integer(binary_to_list(N));
-
-            {ok, [
-              {column, <<"version">>, _, _, _, _, _},
-              {column, <<"filename">>, _, _, _, _, _}], Data} ->
-                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
-            {ok, [{column, <<"max">>, _, _, _, _, _}], [{null}]} -> -1;
-            {ok, [{column, <<"max">>, _, _, _, _, _}], [{N}]} ->
-              list_to_integer(binary_to_list(N));
-            % 新增：处理 COALESCE(MAX(version), -1) 查询的简化格式
-            {ok, [{column, <<"coalesce">>, _, _, _, _, _}], [{null}]} -> -1;
-            {ok, [{column, <<"coalesce">>, _, _, _, _, _}], [{N}]} ->
               list_to_integer(binary_to_list(N));
             {ok, _, _} -> ok;
             {ok, _} -> ok;
@@ -141,7 +129,41 @@ set_max_id_seq() ->
 
 % 获取处理后的脚本绝对路径
 get_scripts_path() ->
-    config_ds:env(scripts_path).
+    % 从配置获取路径，支持 $PROJECT_DIR 占位符
+    RawPath = config_ds:env(scripts_path),
+    % 展开 $PROJECT_DIR 为实际路径
+    case is_list(RawPath) of
+        true ->
+            expand_project_dir(RawPath);
+        false when is_binary(RawPath) ->
+            expand_project_dir(binary_to_list(RawPath));
+        _ ->
+            % 如果配置无效，使用默认路径
+            filename:join(code:priv_dir(imboy), "migrations")
+    end.
+
+%% @doc 展开 $PROJECT_DIR 占位符为实际项目路径
+%% @param Path 包含 $PROJECT_DIR 的路径字符串
+%% @returns 展开后的绝对路径
+-spec expand_project_dir(string()) -> string().
+expand_project_dir(Path) ->
+    case string:split(Path, "$PROJECT_DIR") of
+        [_, ""] ->
+            % 只有 $PROJECT_DIR，替换为 priv_dir
+            code:priv_dir(imboy);
+        [_, Relative] ->
+            % $PROJECT_DIR/相对路径
+            % 去掉前导斜杠，避免 filename:join 将其视为绝对路径
+            Trimmed = case Relative of
+                [$/ | Rest] -> Rest;  % Unix 风格
+                [$\\ | Rest] -> Rest; % Windows 风格
+                _ -> Relative
+            end,
+            filename:join(code:priv_dir(imboy), Trimmed);
+        _ ->
+            % 没有 $PROJECT_DIR，直接返回
+            Path
+    end.
 
 priv_is_valid(List) ->
     lists:all(fun(E) ->

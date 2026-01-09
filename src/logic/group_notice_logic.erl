@@ -9,9 +9,9 @@
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
--include("include/log.hrl").
+-include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -20,7 +20,7 @@
 %%% demo方法描述
 -spec demo(Uid::integer(), Val1::binary(), Val2::binary()) -> ok.
 demo(Uid, Val1, Val2) ->
-    group_notice_repo:demo(Uid, Val1, Val2),
+    _ = group_notice_repo:demo(Uid, Val1, Val2),
     ok.
 
 %% ===================================================================

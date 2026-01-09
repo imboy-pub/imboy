@@ -1,4 +1,5 @@
 -module(auth_ds).
+
 %%%
 % auth 领域服务模块
 % auth domain service 缩写
@@ -6,21 +7,21 @@
 
 -export([get_token/3]).
 
--type token() :: binary().
--type scene() :: binary() | string().
--type resource_id() :: binary() | string() | integer().
-
 -ifdef(EUNIT).
+
 -include_lib("eunit/include/eunit.hrl").
+
 -endif.
+
 -include("log.hrl").
+
 -include_lib("kernel/include/logger.hrl").
--include("include/common.hrl").
+
+-include("common.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
-
 
 %% @doc 获取资源服务访问token
 %% 生成用于访问资源服务的认证令牌。
@@ -34,12 +35,13 @@
 %% @param Scene 场景标识（当前未使用）
 %% @param Num 资源标识符，可以是字符串或数字
 %% @returns 16字节的二进制token
--spec get_token(atom(), scene(), resource_id()) -> token().
+-spec get_token(atom(), binary() | string(), binary() | string() | integer()) -> binary().
 get_token(assets, _Scene, Num) ->
     % TODO public key sign
     Key = config_ds:get(<<"upload_key">>),
     Num2 = ec_cnv:to_binary(Num),
-    binary:part(imboy_hasher:md5(<<Key/binary, Num2/binary>>), {8, 16}).
+    binary:part(
+        imboy_hasher:md5(<<Key/binary, Num2/binary>>), {8, 16}).
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -52,6 +54,7 @@ get_token(assets, _Scene, Num) ->
 %% ===================================================================
 
 -ifdef(EUNIT).
+
 %addr_test_() ->
 %    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
 %     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),

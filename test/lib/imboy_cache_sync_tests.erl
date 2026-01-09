@@ -1,8 +1,8 @@
 -module(imboy_cache_sync_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
--include("include/cache.hrl").
--include("include/chat.hrl").
+-include("eunit_setup.hrl").
+-include("cache.hrl").
+-include("chat.hrl").
 
 %% 定义state记录（与源文件保持一致）
 -record(state, {}).

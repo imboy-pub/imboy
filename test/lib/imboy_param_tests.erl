@@ -1,16 +1,486 @@
 -module(imboy_param_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("include/eunit_setup.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc
 %%% imboy_param 模块的 EUnit 测试
 %%%
 %%% 目标：验证参数处理工具功能
-%%% 覆盖：参数解析、验证、默认值
+%%% 覆盖：参数解析、验证、默认值、分页参数、整数参数、GET/POST参数
 %%%===================================================================
 
-%% 由于 cowboy_req 依赖复杂，暂时跳过这些测试
-%% 这些测试需要完整的 cowboy 环境
+%% ===================================================================
+%% page/1 测试
+%% ===================================================================
+
+page_default_values_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(20, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_custom_values_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"3">>}, {<<"size">>, <<"50">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(3, Page),
+            ?assertEqual(50, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_zero_page_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"0">>}, {<<"size">>, <<"10">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(10, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_negative_page_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"-5">>}, {<<"size">>, <<"10">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(10, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_large_size_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"1">>}, {<<"size">>, <<"2000">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(1000, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_zero_size_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"1">>}, {<<"size">>, <<"0">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(20, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+page_with_invalid_values_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"abc">>}, {<<"size">>, <<"xyz">>}] end),
+            {Page, Size} = imboy_param:page(Req0),
+            ?assertEqual(1, Page),
+            ?assertEqual(20, Size),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% int/3 测试
+%% ===================================================================
+
+int_from_get_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"age">>, <<"25">>}] end),
+            {ok, Age} = imboy_param:int(age, Req0, 0),
+            ?assertEqual(25, Age),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_from_post_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"count\":42}">>, Req0} end),
+            {ok, Count} = imboy_param:int(count, Req0, 0),
+            ?assertEqual(42, Count),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_with_default_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            {ok, Value} = imboy_param:int(missing, Req0, 10),
+            ?assertEqual(10, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_with_binary_key_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"user_id">>, <<"123">>}] end),
+            {ok, UserId} = imboy_param:int(<<"user_id">>, Req0, 0),
+            ?assertEqual(123, UserId),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_with_string_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"number">>, <<"99">>}] end),
+            {ok, Number} = imboy_param:int(number, Req0, 0),
+            ?assertEqual(99, Number),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_with_invalid_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"invalid">>, <<"abc">>}] end),
+            {ok, Value} = imboy_param:int(invalid, Req0, -1),
+            ?assertEqual(-1, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+int_with_negative_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"balance">>, <<"-100">>}] end),
+            {ok, Balance} = imboy_param:int(balance, Req0, 0),
+            ?assertEqual(-100, Balance),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% get/3 测试
+%% ===================================================================
+
+get_with_existing_key_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"name">>, <<"Alice">>}] end),
+            Value = imboy_param:get(name, Req0, undefined),
+            ?assertEqual(<<"Alice">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+get_with_default_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            Value = imboy_param:get(missing, Req0, <<"default">>),
+            ?assertEqual(<<"default">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+get_with_atom_key_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"status">>, <<"active">>}] end),
+            Value = imboy_param:get(status, Req0, <<>>),
+            ?assertEqual(<<"active">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% post/3 测试
+%% ===================================================================
+
+post_from_json_body_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"email\":\"test@example.com\",\"password\":\"secret\"}">>, Req0} end),
+            Email = imboy_param:post(email, Req0, <<>>),
+            ?assertEqual(<<"test@example.com">>, Email),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+post_with_default_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"name\":\"Test\"}">>, Req0} end),
+            Value = imboy_param:post(missing, Req0, <<"default">>),
+            ?assertEqual(<<"default">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% param/3 测试
+%% ===================================================================
+
+param_from_get_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"token">>, <<"abc123">>}] end),
+            Value = imboy_param:param(token, Req0, <<>>),
+            ?assertEqual(<<"abc123">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+param_from_post_when_get_missing_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"action\":\"submit\"}">>, Req0} end),
+            Value = imboy_param:param(action, Req0, <<>>),
+            ?assertEqual(<<"submit">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+param_with_default_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            Value = imboy_param:param(missing, Req0, <<"not_found">>),
+            ?assertEqual(<<"not_found">>, Value),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% post/1 测试 (解析完整 POST 参数)
+%% ===================================================================
+
+post_json_body_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"username\":\"john\",\"age\":30,\"active\":true}">>, Req0} end),
+            Params = imboy_param:post(Req0),
+            ?assertEqual(<<"john">>, maps:get(<<"username">>, Params)),
+            ?assertEqual(30, maps:get(<<"age">>, Params)),
+            ?assertEqual(true, maps:get(<<"active">>, Params)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+post_urlencoded_body_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
+            meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) -> {ok, [{<<"name">>, <<"Alice">>}, {<<"city">>, <<"NYC">>}], Req0} end),
+            Params = imboy_param:post(Req0),
+            ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Params)),
+            ?assertEqual(<<"NYC">>, maps:get(<<"city">>, Params)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+post_empty_body_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<>>, Req0} end),
+            Params = imboy_param:post(Req0),
+            ?assertEqual(#{}, Params),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% 辅助函数测试
+%% ===================================================================
+
+urlencoded_to_map_simple_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Params = [{<<"a">>, <<"1">>}, {<<"b">>, <<"2">>}],
+        Result = imboy_param:urlencoded_to_map(Params),
+        ?assertEqual(2, map_size(Result)),
+        ?assertEqual(<<"1">>, maps:get(<<"a">>, Result)),
+        ?assertEqual(<<"2">>, maps:get(<<"b">>, Result))
+    end).
+
+urlencoded_to_map_duplicate_keys_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Params = [{<<"a">>, <<"1">>}, {<<"a">>, <<"2">>}, {<<"b">>, <<"3">>}],
+        Result = imboy_param:urlencoded_to_map(Params),
+        ?assertEqual([<<"1">>, <<"2">>], maps:get(<<"a">>, Result)),
+        ?assertEqual(<<"3">>, maps:get(<<"b">>, Result))
+    end).
+
+pase_page_size_normal_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Page, Size} = imboy_param:pase_page_size(2, 30),
+        ?assertEqual(2, Page),
+        ?assertEqual(30, Size)
+    end).
+
+pase_page_size_zero_page_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Page, Size} = imboy_param:pase_page_size(0, 20),
+        ?assertEqual(1, Page),
+        ?assertEqual(20, Size)
+    end).
+
+pase_page_size_negative_page_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Page, Size} = imboy_param:pase_page_size(-5, 20),
+        ?assertEqual(1, Page),
+        ?assertEqual(20, Size)
+    end).
+
+pase_page_size_zero_size_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Page, Size} = imboy_param:pase_page_size(1, 0),
+        ?assertEqual(1, Page),
+        ?assertEqual(20, Size)
+    end).
+
+pase_page_size_large_size_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Page, Size} = imboy_param:pase_page_size(1, 5000),
+        ?assertEqual(1, Page),
+        ?assertEqual(1000, Size)
+    end).
 
 

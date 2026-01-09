@@ -8,6 +8,7 @@
 -export([tablename/0]).
 -export([list_by_uid/2]).
 -export([friend_field/3]).
+-export([friend_fields/3]).
 -export([confirm_friend/7]).
 -export([delete/2]).
 -export([move_to_category/3]).
@@ -35,12 +36,12 @@ tablename() ->
 %% @param Tag 好友标签
 %% @param NowTs 当前时间戳
 %% @return ok
--spec confirm_friend(boolean(), integer(), integer(), binary(), binary(), binary(), binary()) -> ok.
+-spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), any()) -> ok.
 confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Tb = tablename(),
-    imboy_pg:insert(Tb, #{
+    _ = imboy_pg:insert(Tb, #{
         from_user_id => FromID,
         to_user_id => ToID,
         status => 1,
@@ -62,6 +63,19 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
 friend_field(FromID, ToID, Field) ->
     Tb = tablename(),
     {Sql, Params} = imboy_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    imboy_pg:query(Sql, Params).
+
+%% @doc 查询好友关系的多个字段
+%% @param FromID 发起好友关系的用户ID
+%% @param ToID 接收好友关系的用户ID
+%% @param Fields 要查询的字段列表，如 [<<"remark">>, <<"created_at">>]
+%% @return {ok, [map()]} 查询成功返回字段数据 | {error, any()} 查询失败
+-spec friend_fields(integer(), integer(), [binary()]) -> {ok, [map()]} | {error, any()}.
+friend_fields(FromID, ToID, Fields) ->
+    Tb = tablename(),
+    % 将字段列表转换为逗号分隔的字符串
+    FieldsStr = lists:join(<<",">>, Fields),
+    {Sql, Params} = imboy_pg_sql:build_select(Tb, FieldsStr, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
     imboy_pg:query(Sql, Params).
 
 
@@ -150,16 +164,32 @@ set_category_by_cid(Uid, CategoryId, NewCid) ->
 %% @return 过滤后的好友设置列表
 %% @details 对好友的一些权限控制配置进行标准化处理
 %% @private
--spec filter_friend_setting(list()) -> list().
-filter_friend_setting(Setting) ->
-    [
-     % 好友关系发起人 1 是 0 否
-     {<<"isfrom">>, proplists:get_value(<<"isfrom">>, Setting, 0)},
-     {<<"source">>, proplists:get_value(<<"source">>, Setting, "")},
-     % 客户端约定
-     % role 可能的值 all just_chat
-     {<<"role">>, proplists:get_value(<<"role">>, Setting, "all")},
-     %  不让他（她）看
-     {<<"donotlethimlook">>, proplists:get_value(<<"donotlethimlook">>, Setting, false)},
-     % 不看他（她）
-     {<<"donotlookhim">>, proplists:get_value(<<"donotlookhim">>, Setting, false)}].
+-spec filter_friend_setting(map() | binary() | undefined) -> map().
+filter_friend_setting(undefined) ->
+    filter_friend_setting(#{});
+filter_friend_setting(Setting) when is_binary(Setting) ->
+    case Setting of
+        <<>> ->
+            filter_friend_setting(#{});
+        _ ->
+            try jsone:decode(Setting, [{object_format, map}]) of
+                Map when is_map(Map) ->
+                    filter_friend_setting(Map);
+                [] ->
+                    filter_friend_setting(#{});
+                _ ->
+                    filter_friend_setting(#{})
+            catch
+                _:_ ->
+                    filter_friend_setting(#{})
+            end
+    end;
+filter_friend_setting(Setting) when is_map(Setting) ->
+    IsFrom = maps:get(<<"is_from">>, Setting, 0),
+    #{
+        <<"is_from">> => IsFrom,
+        <<"source">> => maps:get(<<"source">>, Setting, <<>>),
+        <<"role">> => maps:get(<<"role">>, Setting, <<"all">>),
+        <<"donotlethimlook">> => maps:get(<<"donotlethimlook">>, Setting, false),
+        <<"donotlookhim">> => maps:get(<<"donotlookhim">>, Setting, false)
+    }.
