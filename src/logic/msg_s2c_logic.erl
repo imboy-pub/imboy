@@ -137,18 +137,8 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
 
 %% 客户端确认S2C投递消息
 -spec s2c_client_ack(binary(), integer(), binary()) -> ok.
-s2c_client_ack(MsgId, CurrentUid, _DID) ->
-    Column = <<"id">>,
-    Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
-    Vals = [MsgId, CurrentUid],
-    {ok, Rows} = msg_s2c_repo:read_msg(Where, Vals, Column, 1),
-    _ = [msg_s2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
-    % [Id || #{<<"id">> := Id} <- Rows].
-
-    % 【关键修复】标记 staging 表为已处理，清理备份记录
-    msg_store_ds:unstage(MsgId),
-
-    ok.
+s2c_client_ack(MsgId, CurrentUid, DID) ->
+    msg_ack_logic:client_ack(<<"s2c">>, MsgId, CurrentUid, DID).
 
 %% ===================================================================
 %% Internal Function Definitions

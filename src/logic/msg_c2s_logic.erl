@@ -40,17 +40,8 @@ c2s(MsgId, CurrentUid, Data) ->
 
 %% @doc 客户端确认 C2S 投递消息
 -spec c2s_client_ack(binary(), integer(), binary()) -> ok.
-c2s_client_ack(MsgId, CurrentUid, _DID) ->
-    % C2S 消息的 ACK 确认：直接删除消息（使用完整的 WHERE 语句）
-    MsgIdBin = MsgId,
-    UidBin = integer_to_binary(CurrentUid),
-    Where = <<"msg_id = '", MsgIdBin/binary, "' AND from_id = ", UidBin/binary>>,
-    _ = msg_c2s_repo:delete_msg(Where),
-
-    % 【关键修复】标记 staging 表为已处理，清理备份记录
-    msg_store_ds:unstage(MsgId),
-
-    ok.
+c2s_client_ack(MsgId, CurrentUid, DID) ->
+    msg_ack_logic:client_ack(<<"c2s">>, MsgId, CurrentUid, DID).
 
 
 %% ===================================================================
@@ -171,5 +162,5 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
         <<"created_at">> => CreatedAt
     },
     MsgJson = jsone:encode(Msg, [native_utf8]),
-    MsLi = [0, 5000, 7000, 11000],
+    MsLi = imboy_retry_config:intervals(<<"c2s">>),
     message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi).

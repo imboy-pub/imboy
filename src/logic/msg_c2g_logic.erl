@@ -59,7 +59,7 @@ c2g(MsgId, CurrentUid, Data) ->
     case StageResult of
         ok ->
             % 备份成功，继续处理
-            MsLi = [0, 3500, 3500, 3000, 5000],
+            MsLi = imboy_retry_config:intervals(<<"c2g">>),
             % 立即响应
             self() ! {reply, #{
                 <<"id">> => MsgId,
@@ -90,13 +90,8 @@ c2g(MsgId, CurrentUid, Data) ->
 
 %% 客户端确认C2G投递消息
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
-c2g_client_ack(MsgId, Uid, _DID) ->
-    _ = msg_c2g_timeline_repo:client_ack(Uid, MsgId),
-
-    % 【关键修复】标记 staging 表为已处理，清理备份记录
-    msg_store_ds:unstage(MsgId),
-
-    ok.
+c2g_client_ack(MsgId, Uid, DID) ->
+    msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, DID).
 
 %% 客户端撤回消息 for c2g
 -spec c2g_revoke(binary(), integer(), map()) -> ok | {reply, map()}.
@@ -137,7 +132,7 @@ c2g_revoke(MsgId, CurrentUid, Data) ->
             },
 
             RevokeMsgJson = jsone:encode(RevokeMsg, [native_utf8]),
-            MsLi = [0, 3500, 3500, 3000, 5000],
+            MsLi = imboy_retry_config:intervals(<<"c2g">>),
             % 发送给群组其他成员
             [message_ds:send_next(Uid, MsgId, RevokeMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
 
@@ -207,7 +202,7 @@ c2g_edit(MsgId, CurrentUid, Data) ->
             },
 
             EditMsgJson = jsone:encode(EditMsg, [native_utf8]),
-            MsLi = [0, 3500, 3500, 3000, 5000],
+            MsLi = imboy_retry_config:intervals(<<"c2g">>),
             % 发送给群组其他成员
             [message_ds:send_next(Uid, MsgId, EditMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
 

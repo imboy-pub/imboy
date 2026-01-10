@@ -255,7 +255,7 @@ send_pull_offline_msg(Uid) ->
     Payload = #{<<"msg_type">> => <<"pull_offline_msg">>},
     Msg = assemble_msg(<<"S2C">>, <<>>, imboy_hashids:encode(Uid), Payload, MsgId),
     MsgJson = jsone:encode(Msg, [native_utf8]),
-    MsLi = [0, 30000, 30000],
+    MsLi = imboy_retry_config:intervals(<<"pull">>),
     send_next(Uid, MsgId, MsgJson, MsLi),
     % ?DEBUG_LOG(["send_pull_offline_msg", Uid, MsgId]),
     ok.
@@ -291,7 +291,7 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
               "~p -> To: ~s~n",
               [MsgId, FromId, maps:get(<<"from">>, Msg), ToId, maps:get(<<"to">>, Msg)]),
     MsgJson = jsone:encode(Msg, [native_utf8]),
-    MsLi = [0, 30000, 30000],
+    MsLi = imboy_retry_config:intervals(<<"pull">>),
     send_next(Uid, MsgId, MsgJson, MsLi),
     sent_offline_msg(Uid, Type, Tail).
 

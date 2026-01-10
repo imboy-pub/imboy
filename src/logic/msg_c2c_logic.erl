@@ -93,7 +93,7 @@ c2c(MsgId, CurrentUid, Data) ->
                             <<"server_ts">> => NowMS
                         },
                         MsgJson = jsone:encode(Msg, [native_utf8]),
-                        MsLi = [0, 5000, 7000, 11000, 17000],
+                        MsLi = imboy_retry_config:intervals(<<"c2c">>),
                         io:format("⏱️ [C2C_9] send_next called: +~pms~n", [erlang:monotonic_time(millisecond) - StartTime]),
                         message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
 
@@ -119,17 +119,8 @@ c2c(MsgId, CurrentUid, Data) ->
 
 %% 客户端确认C2C投递消息
 -spec c2c_client_ack(binary(), integer(), binary()) -> ok.
-c2c_client_ack(MsgId, CurrentUid, _DID) ->
-    Column = <<"id">>,
-    % 使用安全的参数化查询，避免SQL注入
-    Where = <<"msg_id = $1 AND to_id = $2">>,
-    {ok, Rows} = msg_c2c_repo:read_msg(Where, Column, 1, [MsgId, CurrentUid]),
-    _ = [msg_c2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
-
-    % 【关键修复】标记 staging 表为已处理，清理备份记录
-    msg_store_ds:unstage(MsgId),
-
-    ok.
+c2c_client_ack(MsgId, CurrentUid, DID) ->
+    msg_ack_logic:client_ack(<<"c2c">>, MsgId, CurrentUid, DID).
 
 
 %% 客户端撤回消息 for c2c
@@ -171,7 +162,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
             case user_logic:is_online(ToId) of
                 true ->
                     RevokeMsgJson = jsone:encode(RevokeMsg, [native_utf8]),
-                    MsLi = [0, 5000, 7000, 11000],
+                    MsLi = imboy_retry_config:intervals(<<"c2s">>),
                     message_ds:send_next(ToId, MsgId, RevokeMsgJson, MsLi),
                     ok;
                 false ->  % 对端离线处理
@@ -240,7 +231,7 @@ c2c_edit(MsgId, CurrentUid, Data) ->
             case user_logic:is_online(ToId) of
                 true ->
                     EditMsgJson = jsone:encode(EditMsg, [native_utf8]),
-                    MsLi = [0, 5000, 7000, 11000],
+                    MsLi = imboy_retry_config:intervals(<<"c2s">>),
                     message_ds:send_next(ToId, MsgId, EditMsgJson, MsLi),
                     ok;
                 false ->  % 对端离线处理

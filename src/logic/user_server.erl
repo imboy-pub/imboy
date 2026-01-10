@@ -115,7 +115,7 @@ handle_cast({online, Uid, _Pid, DID}, State) ->
           <<"dname">> => DName},
     Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, Uid, Payload, MsgId),
 
-    MsLi = [0, 5000, 10000],
+    MsLi = imboy_retry_config:intervals(<<"notice">>),
     Msg2 = jsone:encode(Msg, [native_utf8]),
     % 给自己的其他设备发生消息
     _ = message_ds:send_next(Uid, MsgId, Msg2, MsLi, [DID], true),

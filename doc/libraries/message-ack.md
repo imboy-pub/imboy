@@ -1,6 +1,7 @@
 # Imboy 消息确认机制/消息投递机制
 
-> **版本**: 0.7.3 | **更新时间**: 2026-01-09
+> **版本**: 0.7.3 | **更新时间**: 2026-01-10
+> **变更**: 统一 ACK 处理、配置化重试间隔
 
 ---
 
@@ -20,16 +21,43 @@
 
 | 时间 | 事件 |
 |------|------|
-| 0ms | 立即投递（先写入备份表，确保零丢失） |
+| **0ms** | **立即投递**（先写入备份表，确保零丢失） |
 | 5s | 第1次重试（未收到 ACK） |
 | 7s | 第2次重试 |
 | 11s | 第3次重试 |
 | 17s | 第4次重试（停止在线重试） |
 
 > **说明**：
-> - 消息在投递前已写入数据库（`msg_store:stage`）
+> - 消息在投递前已写入数据库（`msg_store_ds:stage`）
 > - 17秒后停止在线重试，消息仍在数据库中
 > - 用户上线后通过离线消息接口拉取
+
+### 1.3 重试间隔配置
+
+**配置位置**：`include/chat.hrl`
+
+```erlang
+% 单聊消息
+-define(MSG_RETRY_DELAYS_C2C, [0, 5000, 7000, 11000, 17000]).
+
+% 群聊消息
+-define(MSG_RETRY_DELAYS_C2G, [0, 3500, 7000, 11000, 17000]).
+
+% 系统消息
+-define(MSG_RETRY_DELAYS_C2S, [0, 5000, 7000, 11000]).
+
+% 离线消息 pull
+-define(MSG_RETRY_DELAYS_PULL, [0, 10000, 20000]).
+
+% 用户通知
+-define(MSG_RETRY_DELAYS_NOTICE, [0, 5000, 10000]).
+```
+
+**使用方式**：
+```erlang
+MsLi = imboy_retry_config:intervals(<<"c2c">>),
+message_ds:send_next(ToUid, MsgId, MsgJson, MsLi).
+```
 
 ---
 
@@ -59,7 +87,31 @@ CLIENT_ACK,C2C,msg_12345,device_id
 - ACK 以"设备 DID"为粒度：某个 DID 发送 CLIENT_ACK，只停止该 DID 的在线重试
 - 系统允许重复投递，客户端必须基于 msg_id 去重
 
-### 2.4 多设备 ACK 同步
+### 2.4 统一 ACK 处理
+
+**实现模块**：`src/logic/msg_ack_logic.erl`
+
+**处理流程**：
+```
+1. 客户端发送: CLIENT_ACK,C2C,msg_id,did
+
+2. websocket_handler 接收并转发到 msg_ack_logic
+
+3. msg_ack_logic:client_ack/4 统一处理:
+   ├─ C2C: 删除离线消息 + unstage
+   ├─ C2G: 标记 timeline + unstage
+   ├─ S2C: 删除离线消息 + unstage
+   └─ C2S: 删除消息（参数化查询） + unstage
+```
+
+**代码示例**：
+```erlang
+% 各 Logic 模块调用统一接口
+c2c_client_ack(MsgId, CurrentUid, DID) ->
+    msg_ack_logic:client_ack(<<"c2c">>, MsgId, CurrentUid, DID).
+```
+
+### 2.5 多设备 ACK 同步
 
 #### 核心机制
 
@@ -112,6 +164,7 @@ AckReceivedKey = {ack_received, Uid, DID, MsgId}.
 | **跨节点同步** | 使用 `syn:members(?CHAT_SCOPE, Uid)` + 进程消息 |
 | **防重机制** | `{ack_received, Uid, DID, MsgId}` 缓存标志（40秒） |
 | **故障隔离** | 单个设备故障不影响其他设备 |
+| **SQL 安全** | C2S 使用参数化查询，防止注入 |
 
 ---
 
@@ -127,7 +180,7 @@ AckReceivedKey = {ack_received, Uid, DID, MsgId}.
 正式表 (msg_c2c等)  ← 批量写入
 ```
 
-> **说明**：当前实现不使用 shq。写入链路以 staging 表为唯一事实源。
+> **说明**：写入链路以 staging 表为唯一事实源。
 
 ### 3.2 备份表结构
 
@@ -158,8 +211,8 @@ AckReceivedKey = {ack_received, Uid, DID, MsgId}.
 
 | 故障 | 恢复机制 |
 |------|----------|
-| 网络抖动 | 自动重试（5s、7s、11s、17s） |
-| 客户端掉线 | 重试4次（17秒）后停止在线投递；消息已在数据库，用户上线后通过离线消息接口拉取 |
+| 网络抖动 | 自动重试（0ms、5s、7s、11s、17s） |
+| 客户端掉线 | 重试5次（17秒）后停止在线投递；消息已在数据库，用户上线后通过离线消息接口拉取 |
 | 服务器重启 | 启动时从备份表恢复未处理消息 |
 | 数据库故障 | 自动重试，失败重新入队 |
 
@@ -177,9 +230,10 @@ AckReceivedKey = {ack_received, Uid, DID, MsgId}.
 ### 6.2 日志关键词
 
 ```
-📥 [CLIENT_ACK]   ← 收到确认
-✅ [ACK_CANCEL]   ← 取消重试定时器
-⏰ [TIMEOUT_CHECK] ← 超时检查
+📥 [CLIENT_ACK]         ← 收到确认
+📥 [UNIFIED_ACK]        ← 统一ACK处理
+✅ [ACK_CANCEL]         ← 取消重试定时器
+⏰ [TIMEOUT_CHECK]      ← 超时检查
 📥 [ACK_CANCEL_FROM_REMOTE] ← 收到远程 ACK 取消
 ```
 
@@ -187,7 +241,7 @@ AckReceivedKey = {ack_received, Uid, DID, MsgId}.
 
 ```erlang
 % 查看队列状态
-msg_store:status().
+msg_store_ds:status().
 
 % 查看备份表记录
 % SELECT * FROM msg_store_staging WHERE processed_at IS NULL;
@@ -197,6 +251,9 @@ imboy_pg:execute(<<"TRUNCATE TABLE public.msg_store_staging CASCADE">>, []).
 
 % 查看某个 UID 的所有设备
 syn:members(?CHAT_SCOPE, Uid).
+
+% 获取重试间隔配置
+imboy_retry_config:intervals(<<"c2c">>).
 ```
 
 ---
@@ -210,7 +267,7 @@ A: 不会。消息先写入 staging 表，启动时自动恢复未处理消息�
 A: 允许重复投递，但客户端必须按 msg_id 去重；服务端收到 ACK（按 DID）会停止该 DID 的重试。
 
 **Q: 用户离线怎么办？**
-A: 消息在投递前已写入数据库；在线投递重试4次（17秒）后停止；用户上线后通过离线消息接口拉取。
+A: 消息在投递前已写入数据库；在线投递重试5次（17秒）后停止；用户上线后通过离线消息接口拉取。
 
 **Q: 如何验证已送达？**
 A: 查看日志 `[CLIENT_ACK]` 和 `[ACK_CANCEL]`。
@@ -218,20 +275,38 @@ A: 查看日志 `[CLIENT_ACK]` 和 `[ACK_CANCEL]`。
 **Q: 队列堆积？**
 A: 检查数据库连接池、Worker状态、错误日志。
 
+**Q: 如何调整重试策略？**
+A: 修改 `include/chat.hrl` 中的 `MSG_RETRY_DELAYS_*` 宏定义。
+
 ---
 
 ## 八、相关文件
+
+### 核心模块
+
+| 文件 | 职责 |
+|------|------|
+| `src/logic/msg_ack_logic.erl` | **统一 ACK 处理**（新增） |
+| `src/lib/imboy_retry_config.erl` | **重试间隔配置**（新增） |
+| `include/chat.hrl` | 重试间隔宏定义 |
+
+### 投递相关
 
 | 文件 | 职责 |
 |------|------|
 | `src/api/websocket_handler.erl` | 处理 CLIENT_ACK |
 | `src/logic/msg_c2c_logic.erl` | 单聊消息发送 |
+| `src/logic/msg_c2g_logic.erl` | 群聊消息发送 |
+| `src/logic/msg_c2s_logic.erl` | C2S 消息处理 |
+| `src/logic/msg_s2c_logic.erl` | S2C 消息处理 |
 | `src/logic/websocket_logic.erl` | ACK 定时器管理 |
+| `src/logic/user_server.erl` | 用户通知 |
 | `src/ds/message_ds.erl` | 消息投递重试 |
 | `src/lib/imboy_syn.erl` | ACK 同步广播（syn 库） |
-| `src/lib/msg_store.erl` | 队列管理 |
-| `src/lib/msg_store_worker.erl` | 批量写入 |
+| `src/ds/msg_store_ds.erl` | 队列管理 |
+| `src/ds/msg_store_worker.erl` | 批量写入 |
 | `src/repo/msg_store_repo.erl` | 备份表操作 |
+| `src/repo/msg_c2s_repo.erl` | C2S 消息仓库（安全接口） |
 
 ---
 

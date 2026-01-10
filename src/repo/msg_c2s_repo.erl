@@ -10,6 +10,7 @@
 -export([write_msg/6]).
 -export([list_by_ids/2]).
 -export([delete_msg/1]).
+-export([delete_msg/2]).
 
 %% ===================================================================
 %% API
@@ -68,7 +69,14 @@ delete_msg(Id) ->
     delete_msg(Where, Id).
 
 
+delete_msg(Where, Val) when is_list(Val) ->
+    % 支持参数列表的安全版本（修复 SQL 注入风险）
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
+    imboy_pg:execute(Sql, Val);
+
 delete_msg(Where, Val) ->
+    % 兼容旧版本（单值）
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
     imboy_pg:execute(Sql, [Val]).
