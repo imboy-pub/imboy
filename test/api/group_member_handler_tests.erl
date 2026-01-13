@@ -16,7 +16,7 @@
 %% @doc 测试添加群成员功能
 add_member_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -24,7 +24,7 @@ add_member_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -34,7 +34,7 @@ add_member_test_() ->
                 {ok, #{added_count => 2}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -63,7 +63,7 @@ add_member_test_() ->
 %% @doc 测试移除群成员功能
 remove_member_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -71,7 +71,7 @@ remove_member_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(EncodedId) ->
                 case EncodedId of
                     <<"encoded_1001">> -> 1001;
@@ -84,7 +84,7 @@ remove_member_test_() ->
                 {ok, #{removed_count => 1}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -113,12 +113,12 @@ remove_member_test_() ->
 %% @doc 测试列出群成员功能
 list_members_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -148,7 +148,7 @@ list_members_test_() ->
                 MemberList
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -177,7 +177,7 @@ list_members_test_() ->
 %% @doc 测试转让群主功能
 transfer_owner_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -185,7 +185,7 @@ transfer_owner_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(EncodedId) ->
                 case EncodedId of
                     <<"encoded_1001">> -> 1001;
@@ -198,7 +198,7 @@ transfer_owner_test_() ->
                 {ok, #{transferred => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -227,7 +227,7 @@ transfer_owner_test_() ->
 %% @doc 测试添加群成员功能 - 无效群组ID
 add_member_invalid_group_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"invalid_id">>},
@@ -235,12 +235,12 @@ add_member_invalid_group_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 0  % 无效ID
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -269,14 +269,14 @@ add_member_invalid_group_test_() ->
 %% @doc 测试退出群组功能
 leave_group_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>}
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -286,7 +286,7 @@ leave_group_test_() ->
                 {ok, #{left => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

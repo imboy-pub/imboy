@@ -21,10 +21,10 @@
 tablename_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(TableName) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(TableName) ->
             ?assertEqual(<<"user_tag_relation">>, TableName),
             ?TEST_TABLE_NAME
         end),
@@ -35,10 +35,10 @@ tablename_test_() ->
             ?assertEqual(?TEST_TABLE_NAME, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg_sql, public_tablename, 1))
+            ?assert(meck:called(elib_pg_sql, public_tablename, 1))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql)
+            meck:unload(elib_pg_sql)
         end
     end).
 
@@ -46,16 +46,16 @@ tablename_test_() ->
 delete_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "DELETE FROM") > 0),
             ?assert(string:str(binary_to_list(Sql), binary_to_list(?TEST_TABLE_NAME)) > 0),
@@ -81,11 +81,11 @@ delete_test_() ->
             end,
 
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -93,16 +93,16 @@ delete_test_() ->
 delete_integer_uid_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
 
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
 
         % Mock数据库执行并验证参数转换
-        meck:expect(imboy_pg, execute, 2, fun(_Sql, _Params) ->
+        meck:expect(elib_pg, execute, 2, fun(_Sql, _Params) ->
             [_Scene, Uid, _ObjectId] = _Params,
             % 验证整数UID被转换为二进制
             ?assertMatch(<<_/binary>>, Uid),
@@ -120,8 +120,8 @@ delete_integer_uid_test_() ->
             end
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -129,16 +129,16 @@ delete_integer_uid_test_() ->
 remove_user_tag_relation_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "DELETE FROM") > 0),
             ?assert(string:str(binary_to_list(Sql), "WHERE scene =") > 0),
@@ -166,11 +166,11 @@ remove_user_tag_relation_test_() ->
             ?assertEqual(ok, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -178,11 +178,11 @@ remove_user_tag_relation_test_() ->
 replace_object_tag_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(TableName) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(TableName) ->
             case TableName of
                 <<"user_collect">> -> <<"public.user_collect">>;
                 <<"user_friend">> -> <<"public.user_friend">>
@@ -190,7 +190,7 @@ replace_object_tag_test_() ->
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "UPDATE") > 0),
             ?assert(string:str(binary_to_list(Sql), "SET tag = replace") > 0),
@@ -216,11 +216,11 @@ replace_object_tag_test_() ->
             ?assertEqual(ok, Result2),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -228,16 +228,16 @@ replace_object_tag_test_() ->
 save_tag_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             <<"public.user_tag">>
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "INSERT INTO") > 0),
             ?assert(string:str(binary_to_list(Sql), "public.user_tag") > 0),
@@ -250,18 +250,18 @@ save_tag_test_() ->
         try
             % 测试保存标签
             Conn = mock_connection(),
-            CreatedAt = imboy_dt:timestamp(),
+            CreatedAt = elib_dt:timestamp(),
             Result = user_tag_relation_repo:save_tag(
                 Conn, ?TEST_UID, ?TEST_SCENE, CreatedAt, <<"test_tag">>
             ),
             ?assertEqual(ok, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -269,16 +269,16 @@ save_tag_test_() ->
 update_tag_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             <<"public.user_tag">>
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "UPDATE") > 0),
             ?assert(string:str(binary_to_list(Sql), "public.user_tag") > 0),
@@ -292,18 +292,18 @@ update_tag_test_() ->
         try
             % 测试更新标签
             Conn = mock_connection(),
-            UpdatedAt = imboy_dt:timestamp(),
+            UpdatedAt = elib_dt:timestamp(),
             Result = user_tag_relation_repo:update_tag(
                 Conn, ?TEST_UID, ?TEST_SCENE, UpdatedAt, <<"updated_tag">>
             ),
             ?assertEqual(ok, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -311,16 +311,16 @@ update_tag_test_() ->
 save_user_tag_relation_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, nolink]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, nolink]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "INSERT INTO") > 0),
             ?assert(string:str(binary_to_list(Sql), binary_to_list(?TEST_TABLE_NAME)) > 0),
@@ -341,18 +341,18 @@ save_user_tag_relation_test_() ->
         try
             % 测试保存用户标签关系
             Conn = mock_connection(),
-            Timestamp = imboy_dt:timestamp(),
+            Timestamp = elib_dt:timestamp(),
             Result = user_tag_relation_repo:save_user_tag_relation(
                 Conn, ?TEST_UID, ?TEST_SCENE, ?TEST_OBJECT_ID, ?TEST_TAG_ID, Timestamp
             ),
             ?assertEqual(ok, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -360,16 +360,16 @@ save_user_tag_relation_test_() ->
 select_tag_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             <<"public.user_tag">>
         end),
         
         % Mock数据库查询
-        meck:expect(imboy_pg, query, 2, fun(Sql, _Params) ->
+        meck:expect(elib_pg, query, 2, fun(Sql, _Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "SELECT") > 0),
             ?assert(string:str(binary_to_list(Sql), "FROM") > 0),
@@ -390,11 +390,11 @@ select_tag_test_() ->
             end,
 
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, query, 2))
+            ?assert(meck:called(elib_pg, query, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -402,16 +402,16 @@ select_tag_test_() ->
 select_user_tag_relation_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
 
         % Mock数据库查询
-        meck:expect(imboy_pg, query, 2, fun(Sql, _Params) ->
+        meck:expect(elib_pg, query, 2, fun(Sql, _Params) ->
             % 验证SQL语句
             ?assert(string:str(binary_to_list(Sql), "SELECT") > 0),
             ?assert(string:str(binary_to_list(Sql), binary_to_list(?TEST_TABLE_NAME)) > 0),
@@ -432,11 +432,11 @@ select_user_tag_relation_test_() ->
             end,
 
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, query, 2))
+            ?assert(meck:called(elib_pg, query, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -444,10 +444,10 @@ select_user_tag_relation_test_() ->
 tag_subtitle_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
 
         % Mock数据库查询
-        meck:expect(imboy_pg, query, 2, fun(Sql, _Params) ->
+        meck:expect(elib_pg, query, 2, fun(Sql, _Params) ->
             % 验证SQL语句包含副标题查询
             ?assert(string:str(binary_to_list(Sql), "subtitle") > 0),
 
@@ -467,10 +467,10 @@ tag_subtitle_test_() ->
             end,
 
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, query, 2))
+            ?assert(meck:called(elib_pg, query, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg)
         end
     end).
 
@@ -478,10 +478,10 @@ tag_subtitle_test_() ->
 flush_subtitle_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock数据库执行
-        meck:expect(imboy_pg, execute, 2, fun(Sql, _Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, _Params) ->
             % 验证SQL语句包含刷新操作
             ?assert(string:str(binary_to_list(Sql), "UPDATE") > 0),
             ?assert(string:str(binary_to_list(Sql), "subtitle") > 0),
@@ -496,10 +496,10 @@ flush_subtitle_test_() ->
             ?assertEqual(ok, Result),
             
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg)
         end
     end).
 
@@ -507,16 +507,16 @@ flush_subtitle_test_() ->
 sql_injection_protection_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
-        meck:new(imboy_pg_sql, [passthrough, no_link]),
-        meck:new(imboy_pg, [passthrough, no_link]),
+        meck:new(elib_pg_sql, [passthrough, no_link]),
+        meck:new(elib_pg, [passthrough, no_link]),
         
         % Mock表名生成
-        meck:expect(imboy_pg_sql, public_tablename, fun(_) ->
+        meck:expect(elib_pg_sql, public_tablename, fun(_) ->
             ?TEST_TABLE_NAME
         end),
         
         % Mock数据库执行并验证参数化查询
-        meck:expect(imboy_pg, execute, 2, fun(Sql, Params) ->
+        meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
             % 验证使用参数化查询而不是字符串拼接
             ?assert(string:str(binary_to_list(Sql), "$1") > 0),
             ?assert(string:str(binary_to_list(Sql), "$2") > 0),
@@ -545,11 +545,11 @@ sql_injection_protection_test_() ->
             end,
 
             % 验证Mock调用
-            ?assert(meck:called(imboy_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute, 2))
         after
             % 清理Mock
-            meck:unload(imboy_pg_sql),
-            meck:unload(imboy_pg)
+            meck:unload(elib_pg_sql),
+            meck:unload(elib_pg)
         end
     end).
 

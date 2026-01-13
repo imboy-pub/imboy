@@ -6,7 +6,8 @@
 
 % -include("log.hrl").
 
-
+%% @doc 启动 application 回调
+-spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start(_Type, _Args) ->
     _ = inets:start(),
     _ = imboy_syn:init(),
@@ -64,6 +65,8 @@ start(_Type, _Args) ->
 %       ok
 %    end.
 
+%% @doc 停止 application 回调
+-spec stop(term()) -> ok.
 stop(_State) ->
     StartMode = config_ds:env(start_mode, http),
     case StartMode of
@@ -82,7 +85,7 @@ stop(_State) ->
 %% ===================================================================
 -spec start_quic(cowboy_router:dispatch_rules()) -> {ok, pid()} | {error, any()}.
 start_quic(_Dispatch) ->
-    {error, "调整中的功能"}.
+    {error, <<"调整中的功能"/utf8>>}.
     % PrivDir = code:priv_dir(imboy),
     % cowboy:start_quic(#{socket_opts => [
     %                                     % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},

@@ -127,13 +127,14 @@ batch_write_by_type_c2g_test_() ->
             {c2g, <<"msg1">>, #{payload => <<"test1">>, from_id => 123, to_id => 789, to_id_list => [1, 2, 3]}}
         ],
         ?assertEqual(c2g, MsgType),
-        ?assert(is_list(maps:get(to_id_list, hd(MsgList))))
+        {_Type, _MsgId, Data} = hd(MsgList),
+        ?assert(is_list(maps:get(to_id_list, Data)))
     end).
 
 batch_write_by_type_s2c_test_() ->
     ?TEST_SIMPLE(fun() ->
         MsgType = s2c,
-        MsgList = [
+        _MsgList = [
             {s2c, <<"msg1">>, #{payload => <<"test1">>, from_id => 999, to_id => 111}}
         ],
         ?assertEqual(s2c, MsgType)
@@ -153,7 +154,8 @@ batch_write_by_type_c2s_test_() ->
             }}
         ],
         ?assertEqual(c2s, MsgType),
-        ?assert(is_integer(maps:get(status, hd(MsgList))))
+        {_Type, _MsgId, Data} = hd(MsgList),
+        ?assert(is_integer(maps:get(status, Data)))
     end).
 
 batch_write_by_type_unknown_test_() ->

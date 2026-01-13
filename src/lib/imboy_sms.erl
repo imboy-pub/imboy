@@ -1,5 +1,8 @@
 -module(imboy_sms).
 
+%%% @doc 短信服务模块
+%%% 支持极光推送、云极短信等多种短信服务商
+
 -include("log.hrl").
 
 
@@ -7,23 +10,36 @@
 -export([filter_mobile/1]).
 -export([send/3]).
 
--spec jverification(binary()) -> {ok, binary()} | {error, binary()}.
 
+%% @doc 过滤手机号码前缀
+%% 移除 +86 国际区号前缀
+%% @param Mobile 手机号码
+%% @returns 去除 +86 前缀的手机号
+-spec filter_mobile(binary()) -> binary().
 filter_mobile(<<"+86", Tail/binary>>) ->
     Tail;
 filter_mobile(Mobile) ->
     Mobile.
 
+
+%% @doc 发送短信
+%% @param Mobile 手机号码
+%% @param Content 短信内容或验证码
+%% @param ServiceProvider 服务提供商（<<"yjsms">> 或 <<"jsms">>）
+%% @returns {ok, success} | {error, Reason} | map()
+%% @example
+%% imboy_sms:send(<<"13800138000">>, <<"123456">>, <<"jsms">>).
+-spec send(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()} | map().
 send(Mobile, Content, <<"yjsms">>) ->
     Username = config_ds:get(<<"yjsms_account">>),
     Password = config_ds:get(<<"yjsms_secret">>),
     URL = config_ds:get(<<"yjsms_url">>),
-    Ts = imboy_dt:millisecond(),
+    Ts = elib_dt:millisecond(),
     Headers = [
         {"Content-Type","application/json"}
     ],
     % MD5(userName + timestamp + MD5(password))
-    Sign = imboy_hasher:md5(<<Username/binary, (integer_to_binary(Ts))/binary, (imboy_hasher:md5(Password))/binary>>),
+    Sign = elib_hasher:md5(<<Username/binary, (integer_to_binary(Ts))/binary, (elib_hasher:md5(Password))/binary>>),
     Data = #{
         <<"userName">> => Username
         , <<"messageList">> => [
@@ -36,8 +52,8 @@ send(Mobile, Content, <<"yjsms">>) ->
         , <<"sign">> => Sign
     },
     % ?DEBUG_LOG([Data]),
-    {ok, RespMap} = imboy_req:post(URL, Data, Headers),
-    % RespMap = imboy_req:post(URL, Data, Headers),
+    {ok, RespMap} = elib_req:post(URL, Data, Headers),
+    % RespMap = elib_req:post(URL, Data, Headers),
     ok = ?DEBUG_LOG([RespMap]),
     Code = maps:get(<<"code">>, RespMap),
     case Code of
@@ -76,15 +92,20 @@ send(Mobile, Code, <<"jsms">>) ->
         , <<"sign_id">> => <<"28010">> % IMBoy
     },
     % ?DEBUG_LOG([Data]),
-    % {ok, RespMap} = imboy_req:post(URL, Data, Headers),
-    RespMap = imboy_req:post(URL, Data, Headers),
+    % {ok, RespMap} = elib_req:post(URL, Data, Headers),
+    RespMap = elib_req:post(URL, Data, Headers),
     ok = ?DEBUG_LOG([RespMap]),
     RespMap.
 
 
-% https://docs.jiguang.cn/jverification/server/rest_api/loginTokenVerify_api
-% 提交 loginToken，验证后返回加密的手机号码。
-% imboy_sms:jverification(LoginToken).
+%% @doc 极光验证登录 Token
+%% 提交 loginToken，验证后返回加密的手机号码
+%% @param Tk 登录 Token
+%% @returns {ok, Mobile} | {error, Reason}
+%% @example
+%% imboy_sms:jverification(LoginToken).
+%% @see https://docs.jiguang.cn/jverification/server/rest_api/loginTokenVerify_api
+-spec jverification(binary()) -> {ok, binary()} | {error, binary()}.
 jverification(Tk) ->
     Username = config_ds:get(<<"jpush_app_key">>),
     Password = config_ds:get(<<"jpush_master_secret">>),
@@ -97,14 +118,14 @@ jverification(Tk) ->
     Data = #{
         <<"loginToken">> => Tk
     },
-    {ok, RespMap} = imboy_req:post(URL, Data, Headers),
-    % RespMap = imboy_req:post(URL, Data, Headers),
+    {ok, RespMap} = elib_req:post(URL, Data, Headers),
+    % RespMap = elib_req:post(URL, Data, Headers),
     ok = ?DEBUG_LOG([RespMap]),
     case maps:get(<<"code">>, RespMap, undefined) of
         8000 ->
             Phone = maps:get(<<"phone">>, RespMap),
             PemBin = config_ds:get(<<"jverification_rsa_priv_key">>),
-            Mobile = imboy_cipher:rsa_decrypt(Phone, PemBin),
+            Mobile = elib_cipher:rsa_decrypt(Phone, PemBin),
             {ok, Mobile};
         _ ->
             {error, maps:get(<<"content">>, RespMap, <<"unknown">>)}

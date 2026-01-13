@@ -17,7 +17,7 @@
 %% @doc 测试压力测试 - 成功场景
 handle_stress_test_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"test_type">>, <<"connection_stress">>},
@@ -34,14 +34,14 @@ handle_stress_test_test_() ->
                     test_id => <<"test_123456">>,
                     test_type => <<"connection_stress">>,
                     status => running,
-                    started_at => imboy_dt:timestamp(),
+                    started_at => elib_dt:timestamp(),
                     client_count => 100,
                     duration => 60,
                     expected_messages => 60000
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -78,7 +78,7 @@ handle_stress_test_test_() ->
 %% @doc 测试压力测试 - 参数验证失败
 handle_stress_test_invalid_params_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"test_type">>, <<"connection_stress">>},
@@ -89,7 +89,7 @@ handle_stress_test_invalid_params_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,

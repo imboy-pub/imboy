@@ -198,10 +198,10 @@ Msg = <<"操作成功"/utf8>>,
 
 ```erlang
 % 使用宏定义
-imboy_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
 
 % 使用辅助函数
-imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```
 
 **详细规范**: [error-codes.md](./error-codes.md)

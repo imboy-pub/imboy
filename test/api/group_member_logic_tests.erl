@@ -59,7 +59,7 @@ join_group_accepts_role_in_optdata_test_() ->
         _Uid = 1,
         _Gid = 1,
         _OptData = #{max_members => 100, current_count => 0, role => 2},
-        % 这个测试会尝试插入数据，需要 mock imboy_pg
+        % 这个测试会尝试插入数据，需要 mock elib_pg
         ?assert(true)  % 占位测试，实际需要完整的 mock
     end).
 

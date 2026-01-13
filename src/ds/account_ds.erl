@@ -22,7 +22,7 @@
 %% 注意：此函数始终返回 ok，即使数据库操作失败
 init() ->
     Q = <<"CREATE SEQUENCE IF NOT EXISTS ", ?ACCOUNT_SEQ/binary, " START 50000;">>,
-    try imboy_pg:execute(Q, []) of
+    try elib_pg:execute(Q, []) of
         _ ->
             ok
     catch
@@ -85,7 +85,7 @@ allocate() ->
 -spec safe_get_max_account_id() -> [non_neg_integer()].
 safe_get_max_account_id() ->
     Q = <<"SELECT nextval('", ?ACCOUNT_SEQ/binary, "') FROM generate_series(1, 10);">>,
-    try imboy_pg:query(Q, []) of
+    try elib_pg:query(Q, []) of
         {ok, Res} ->
             create_rand_list(Res);
         _Error ->

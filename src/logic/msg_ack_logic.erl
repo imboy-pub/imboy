@@ -19,16 +19,16 @@
 %% @param DID 设备ID
 -spec client_ack(binary(), binary(), integer(), binary()) -> ok.
 client_ack(Type, MsgId, CurrentUid, _DID) ->
-    io:format("📥 [UNIFIED_ACK] Type=~p, MsgId=~s, Uid=~p~n", [Type, MsgId, CurrentUid]),
+    ok = ?DEBUG_LOG({unified_ack, Type, MsgId, CurrentUid}),
 
-    % 根据类型执行相应的 ACK 处理
+    % 根据类型执行相应的 ACK 处理 - 使用 DS 层接口
     case Type of
-        <<"c2c">> -> handle_c2c_ack(MsgId, CurrentUid);
-        <<"c2g">> -> handle_c2g_ack(MsgId, CurrentUid);
-        <<"s2c">> -> handle_s2c_ack(MsgId, CurrentUid);
-        <<"c2s">> -> handle_c2s_ack(MsgId, CurrentUid);
+        <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid);
+        <<"c2g">> -> msg_operation_ds:ack_c2g_timeline(MsgId, CurrentUid);
+        <<"s2c">> -> msg_operation_ds:ack_s2c_msg(MsgId, CurrentUid);
+        <<"c2s">> -> msg_operation_ds:ack_c2s_msg(MsgId, CurrentUid);
         _ ->
-            ok = ?ERROR_LOG([unknown_msg_type_for_ack, Type])
+            ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
     end,
 
     % 统一清理 staging 表
@@ -40,35 +40,3 @@ client_ack(Type, MsgId, CurrentUid, _DID) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @private
-%% @doc C2C 消息 ACK 处理
-handle_c2c_ack(MsgId, Uid) ->
-    Column = <<"id">>,
-    Where = <<"msg_id = $1 AND to_id = $2">>,
-    {ok, Rows} = msg_c2c_repo:read_msg(Where, Column, 1, [MsgId, Uid]),
-    _ = [msg_c2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
-    ok.
-
-%% @private
-%% @doc C2G 消息 ACK 处理
-%% 注意：C2G 不删除离线消息，只标记 timeline
-handle_c2g_ack(MsgId, Uid) ->
-    _ = msg_c2g_timeline_repo:client_ack(Uid, MsgId),
-    ok.
-
-%% @private
-%% @doc S2C 消息 ACK 处理
-handle_s2c_ack(MsgId, Uid) ->
-    Column = <<"id">>,
-    Where = <<"msg_id = $1 AND to_id = $2">>,
-    {ok, Rows} = msg_s2c_repo:read_msg(Where, Column, 1, [MsgId, Uid]),
-    _ = [msg_s2c_repo:delete_msg(Id) || #{<<"id">> := Id} <- Rows],
-    ok.
-
-%% @private
-%% @doc C2S 消息 ACK 处理
-%% 修复 SQL 注入：使用安全的参数化查询
-handle_c2s_ack(MsgId, Uid) ->
-    Where = <<"msg_id = $1 AND from_id = $2">>,
-    msg_c2s_repo:delete_msg(Where, [MsgId, Uid]),
-    ok.

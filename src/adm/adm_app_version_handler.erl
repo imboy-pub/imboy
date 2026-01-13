@@ -38,8 +38,8 @@ init(Req0, State0) ->
     Req1 =
         case Action of
             index ->
-                {ok, Ajax} = imboy_param:int(ajax, Req0, -2),
-                % imboy_log:info(["AjaxAjaxAjaxAjaxAjax: ", Ajax, ";  Ajax"]),
+                {ok, Ajax} = elib_param:int(ajax, Req0, -2),
+                % elib_log:info(["AjaxAjaxAjaxAjaxAjax: ", Ajax, ";  Ajax"]),
                 index(Method, Ajax, Req0, State);
             save ->
                 save(Method, Req0, State);
@@ -63,13 +63,13 @@ init(Req0, State0) ->
 %% @return cowboy_req:req() 更新后的请求对象
 -spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
 index(<<"GET">>, 1, Req0, _State) ->
-    {Page, Size} = imboy_param:page(Req0),
+    {Page, Size} = elib_param:page(Req0),
     Where = #{},
     Column = <<"*">>,
     Tb = app_version_repo:tablename(),
     OrderBy = <<"sort desc, updated_at desc">>,
-    {ok, P} = imboy_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size),
-    imboy_response:success(Req0, P);
+    {ok, P} = elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size),
+    elib_response:success(Req0, P);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} =
         imboy_dtl:template(app_version_index_dtl,
@@ -87,7 +87,7 @@ index(<<"GET">>, _, Req0, State) ->
 %% 处理 POST 请求，保存或更新应用版本配置
 -spec save(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 save(<<"POST">>, Req0, _State) ->
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
 
     RCode = maps:get(<<"region_code">>, PostVals, <<"cn">>),
     Type = maps:get(<<"type">>, PostVals, <<>>),
@@ -114,7 +114,7 @@ save(<<"POST">>, Req0, _State) ->
           force_update => ec_cnv:to_integer(ForceUpdate),
           status => ec_cnv:to_integer(Status)},
     _ = adm_app_version_logic:save(Data),
-    imboy_response:success(Req0, PostVals, <<"success."/utf8>>);
+    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
 save(_, Req0, _State) ->
     Req0.
 
@@ -122,12 +122,12 @@ save(_, Req0, _State) ->
 %% 处理 DELETE 请求，删除指定的应用版本配置
 -spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete(<<"DELETE">>, Req0, _State) ->
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     Id = maps:get(<<"id">>, PostVals, ""),
 
     Where = <<"status = 0 AND id = ", (ec_cnv:to_binary(Id))/binary>>,
     adm_app_version_logic:delete(Where),
-    imboy_response:success(Req0, PostVals, <<"success."/utf8>>);
+    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
 delete(_, Req0, _State) ->
     Req0.
 

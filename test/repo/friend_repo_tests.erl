@@ -6,7 +6,7 @@
 %%% @doc
 %%% friend_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%%===================================================================
 
 %% ===================================================================
@@ -26,14 +26,14 @@ tablename_public_prefix_test_() ->
 confirm_friend_already_confirmed_test_() ->
     ?TEST_WITH_DB(fun() ->
         % 已确认的好友关系应该直接返回 ok
-        Result = friend_repo:confirm_friend(true, 1, 2, <<"remark">>, <<"[]">>, <<"tag">>, imboy_dt:now()),
+        Result = friend_repo:confirm_friend(true, 1, 2, <<"remark">>, <<"[]">>, <<"tag">>, elib_dt:now()),
         ?assertEqual(ok, Result)
     end).
 
 confirm_friend_new_friend_test_() ->
     ?TEST_WITH_DB(fun() ->
         % 新好友关系应该插入数据库
-        Result = friend_repo:confirm_friend(false, 1, 2, <<"remark">>, <<"[]">>, <<"tag">>, imboy_dt:now()),
+        Result = friend_repo:confirm_friend(false, 1, 2, <<"remark">>, <<"[]">>, <<"tag">>, elib_dt:now()),
         ?assertEqual(ok, Result)
     end).
 
@@ -42,7 +42,7 @@ confirm_friend_new_friend_test_() ->
 %% ===================================================================
 
 friend_field_existing_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             SqlBin = iolist_to_binary(Sql),
             ?assert(re:run(SqlBin, <<"SELECT.*FROM.*user_friend">>) =/= nomatch),
@@ -75,7 +75,7 @@ friend_field_existing_test_() ->
     end).
 
 friend_field_non_existing_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含好友关系查询
             SqlBin = iolist_to_binary(Sql),
@@ -100,7 +100,7 @@ friend_field_non_existing_test_() ->
 %% ===================================================================
 
 list_by_uid_default_limit_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             SqlBin = iolist_to_binary(Sql),
             % 验证SQL查询包含好友关系查询

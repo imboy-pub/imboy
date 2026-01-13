@@ -4,10 +4,13 @@
 -export([start_link/0]).
 -export([init/1]).
 
-
+%% @doc 启动 supervisor
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+%% @doc 初始化 supervisor
+-spec init([]) -> {ok, {#{strategy := atom(), intensity := pos_integer(), period := pos_integer()}, [map()]}}.
 init([]) ->
     % application:ensure_all_started(pgo),
     % {PoolName, PoolConfig} = config_ds:env(pgo),

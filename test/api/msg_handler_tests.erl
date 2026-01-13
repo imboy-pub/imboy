@@ -16,7 +16,7 @@
 
 init_with_valid_request_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) -> 
                 #{<<"uid">> => 12345, <<"limit">> => 1000} 
             end}
@@ -43,7 +43,7 @@ init_with_valid_request_test_() ->
     end).
 
 init_with_missing_uid_test_() ->
-    ?WITH_MECK(imboy_param, [
+    ?WITH_MECK(elib_param, [
         {'post', 1, fun(_Req) -> 
             #{<<"limit">> => 1000} 
         end}
@@ -60,7 +60,7 @@ init_with_missing_uid_test_() ->
 
 offline_with_default_parameters_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'int', 3, fun(_Param, _Req, Default) -> {ok, Default} end}
         ]},
         {msg_handler, [
@@ -90,7 +90,7 @@ offline_with_default_parameters_test_() ->
 
 offline_with_custom_parameters_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'int', 3, fun(Param, _Req, _Default) -> 
                 case Param of
                     limit -> {ok, 500};

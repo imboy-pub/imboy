@@ -23,10 +23,12 @@
 %% ===================================================================
 
 %% @doc 启动分布式缓存同步服务器
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc 广播消息到所有节点
+-spec broadcast(term()) -> {ok, non_neg_integer()}.
 broadcast(Message) ->
     syn:publish(?CACHE_SCOPE, ?CACHE_GROUP_NAME, {cache_sync, Message}).
 
@@ -35,6 +37,7 @@ broadcast(Message) ->
 %% ===================================================================
 
 %% @doc 初始化服务器
+-spec init([]) -> {ok, #state{}}.
 init([]) ->
     % 注册到syn
     ok = syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{}),
@@ -42,14 +45,17 @@ init([]) ->
     {ok, #state{}}.
 
 %% @doc 处理同步调用
+-spec handle_call(term(), {pid(), term()}, #state{}) -> {reply, ok, #state{}}.
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 %% @doc 处理异步调用
+-spec handle_cast(term(), #state{}) -> {noreply, #state{}}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @doc 处理信息消息
+-spec handle_info(term(), #state{}) -> {noreply, #state{}}.
 handle_info({cache_sync, Message}, State) ->
     handle_sync_message(Message),
     {noreply, State};
@@ -57,12 +63,14 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 %% @doc 服务器终止处理
+-spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     % 从syn中离开
     _ = syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
     ok.
 
 %% @doc 代码更改处理
+-spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -71,6 +79,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ===================================================================
 
 %% @doc 处理同步消息
+-spec handle_sync_message(term()) -> ok.
 handle_sync_message({set, Key, Data, MaxAge, Depend}) ->
     % ?DEBUG_LOG({set, Key, Data, MaxAge, Depend}),
     % 在其他节点上设置缓存

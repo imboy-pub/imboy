@@ -22,46 +22,52 @@
 %% ===================================================================
 
 
+-spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"msg_c2g_timeline">>).
+    elib_pg_sql:public_tablename(<<"msg_c2g_timeline">>).
 
 
 % msg_c2g_timeline_repo:list_by_uid(2, <<"msg_id">>, 10).
+-spec list_by_uid(integer(), binary()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, Column) ->
     list_by_uid(Uid, Column, 10000000).
 
 
+-spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     % use index idx_c2g_timeline_ToUid_ClientAck
     Where = <<" WHERE to_uid = $1 AND client_ack = 0 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
-    imboy_pg:query(Sql, [Uid, Limit]).
+    elib_pg:query(Sql, [Uid, Limit]).
 
 % msg_c2g_timeline_repo:client_ack(109, <<"cor1aup1a20rgjtl5t8g">>).
+-spec client_ack(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 client_ack(ToUid, MsgId) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     % 使用安全的参数化查询，避免SQL注入
     Sql = <<"UPDATE ", Tb/binary, " SET client_ack = 1 WHERE to_uid = $1 AND msg_id = $2">>,
-    imboy_pg:execute(Sql, [ToUid, MsgId]).
+    elib_pg:execute(Sql, [ToUid, MsgId]).
 
 % msg_c2g_timeline_repo:delete_timeline(6).
+-spec delete_timeline(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_timeline(ToUid, MsgId) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     Where = <<" WHERE to_uid = $1 AND  msg_id = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    imboy_pg:execute(Sql, [ToUid, MsgId]).
+    elib_pg:execute(Sql, [ToUid, MsgId]).
 
 
 % msg_c2g_timeline_repo:check_msg(1).
+-spec check_msg(binary()) -> non_neg_integer().
 check_msg(MsgId) ->
     % use index uk_c2g_timeline_MsgId
     % 使用安全的参数化查询，避免SQL注入
     Tb = tablename(),
     Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE msg_id = $1">>,
-    case imboy_pg:query(Sql, [MsgId]) of
+    case elib_pg:query(Sql, [MsgId]) of
         {ok, [#{<<"count">> := Count}]} ->
             Count;
         _ ->
@@ -70,19 +76,21 @@ check_msg(MsgId) ->
 
 
 % msg_c2g_timeline_repo:count_by_to_id(1).
+-spec count_by_to_id(integer()) -> non_neg_integer().
 count_by_to_id(ToUid) ->
     % use index uk_c2g_timeline_ToUid_MsgId
     % 使用安全的参数化查询，避免SQL注入
-    imboy_pg:pluck_value(tablename(), <<"count(*)">>, #{to_uid => ToUid}, #{}, 0).
+    elib_pg:pluck_value(tablename(), <<"count(*)">>, #{to_uid => ToUid}, #{}, 0).
 
 % msg_c2g_timeline_repo:delete_overflow_timeline(1, 100).
+-spec delete_overflow_timeline(integer(), integer()) -> ok | {atom(), list(binary())}.
 delete_overflow_timeline(ToUid, Limit) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     Where = <<" WHERE to_uid = $1 ORDER BY created_at ASC LIMIT $2">>,
     Sql = <<"SELECT msg_id FROM ", Tb/binary, Where/binary>>,
     % ?DEBUG_LOG(Sql),
-    case imboy_pg:query(Sql, [ToUid, Limit]) of
+    case elib_pg:query(Sql, [ToUid, Limit]) of
         {ok, []} ->
             ok;
         {ok, Rows} ->
@@ -91,18 +99,20 @@ delete_overflow_timeline(ToUid, Limit) ->
     end.
 
 % 删除用户的所有群消息时间线记录
+-spec delete_by_to_uid(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_by_to_uid(ToUid) ->
     Tb = tablename(),
     Where = <<"WHERE to_uid = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    imboy_pg:execute(Sql, [ToUid]).
+    elib_pg:execute(Sql, [ToUid]).
 
 % 根据消息ID删除群消息时间线记录
+-spec delete_by_msg_id(binary()) -> {ok, 1} | {error, term()}.
 delete_by_msg_id(MsgId) ->
     Tb = tablename(),
     Where = <<"WHERE msg_id = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
-    case imboy_pg:execute(Sql, [MsgId]) of
+    case elib_pg:execute(Sql, [MsgId]) of
         {ok, _Count, _Rows} ->
             {ok, 1};
         {ok, _Count} ->
@@ -113,11 +123,12 @@ delete_by_msg_id(MsgId) ->
 
 
 % 根据消息ID和接收者ID删除特定群消息
+-spec delete_by_msg_id_and_to_id(binary(), integer()) -> {ok, 1} | {error, term()}.
 delete_by_msg_id_and_to_id(MsgId, ToUid) ->
     Tb = tablename(),
     Where = <<"WHERE msg_id = $1 AND to_uid = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
-    case imboy_pg:execute(Sql, [MsgId, ToUid]) of
+    case elib_pg:execute(Sql, [MsgId, ToUid]) of
         {ok, _Count, _Rows} ->
             {ok, 1};
         {ok, _Count} ->
@@ -137,7 +148,7 @@ delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) 
     Placeholders = iolist_to_binary(lists:join(<<",">>,
         [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))])),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id IN (", Placeholders/binary, ") AND to_uid = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
-    imboy_pg:execute(Sql, MsgIds ++ [ToUid]);
+    elib_pg:execute(Sql, MsgIds ++ [ToUid]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
 

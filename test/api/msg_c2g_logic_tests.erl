@@ -15,14 +15,14 @@
 %% ===================================================================
 
 c2g_send_to_group_success_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end},
         {'encode', 1, fun(456) -> <<"encoded_456">> end}
     ], fun() ->
         ?WITH_MECK(group_ds, [
             {'member_uids', 1, fun(_Gid) -> [456, 789, 101] end}
         ], fun() ->
-            ?WITH_MECK(imboy_dt, [
+            ?WITH_MECK(elib_dt, [
                 {'now', 0, fun() -> 1640995200 end},
                 {'rfc3339_to', 2, fun(_Timestamp, millisecond) -> 1640995200000 end}
             ], fun() ->
@@ -49,13 +49,13 @@ c2g_send_to_group_success_test_() ->
     end).
 
 c2g_send_to_empty_group_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(group_ds, [
             {'member_uids', 1, fun(_Gid) -> [] end}  % 空群组
         ], fun() ->
-            ?WITH_MECK(imboy_dt, [
+            ?WITH_MECK(elib_dt, [
                 {'now', 0, fun() -> 1640995200 end},
                 {'rfc3339_to', 2, fun(_Timestamp, millisecond) -> 1640995200000 end}
             ], fun() ->
@@ -74,7 +74,7 @@ c2g_send_to_empty_group_test_() ->
     end).
 
 c2g_send_with_invalid_timestamp_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(group_ds, [
@@ -127,7 +127,7 @@ c2g_client_ack_no_timeline_test_() ->
 %% ===================================================================
 
 c2g_revoke_success_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(group_ds, [
@@ -164,7 +164,7 @@ c2g_revoke_success_test_() ->
     end).
 
 c2g_revoke_nonexistent_group_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_999">>) -> 999 end}
     ], fun() ->
         ?WITH_MECK(group_ds, [

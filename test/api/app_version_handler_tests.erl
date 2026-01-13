@@ -32,7 +32,7 @@ handle_check_update_test_() ->
                 }
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -80,7 +80,7 @@ handle_check_no_update_test_() ->
                 }
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -133,7 +133,7 @@ handle_check_with_region_test_() ->
                 }
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -186,7 +186,7 @@ handle_check_different_platform_test_() ->
                 }
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

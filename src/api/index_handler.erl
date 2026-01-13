@@ -26,6 +26,13 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
+%% @doc API 初始化端点
+%% 返回API初始化配置信息，包括WebSocket URL、上传配置等
+%%
+%% @param Req0 Cowboy请求对象，包含版本和设备信息
+%% @return 返回包含配置信息的响应
+%% @end
+-spec api_init(cowboy_req:req()) -> cowboy_req:req().
 api_init(Req0) ->
     % 'sign': EncrypterService.sha512("$deviceId|$appVsn|$cos|$packageName", key)
     % Did = cowboy_req:header(<<"did">>, Req0, <<>>),
@@ -37,14 +44,10 @@ api_init(Req0) ->
     SolKey = config_ds:get(<<"solidified_key">>),
     SignKey =
         case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
-            undefined ->
-                SolKey;
             <<>> ->
                 SolKey;
             SK when is_binary(SK) ->
-                SK;
-            _ ->
-                SolKey
+                SK
         end,
     Data =
         #{<<"ws_url">> => config_ds:get(<<"ws_url">>),
@@ -54,18 +57,28 @@ api_init(Req0) ->
           <<"login_pwd_rsa_encrypt">> => config_ds:get(<<"login_pwd_rsa_encrypt">>),
           <<"login_rsa_pub_key">> => config_ds:get(<<"login_rsa_pub_key">>)},
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
-    % imboy_response:success(Req0, Data, "success.").
+    % elib_response:success(Req0, Data, "success.").
     IV = config_ds:get(<<"solidified_key_iv">>),
-    Key = imboy_hasher:md5(SignKey),
+    Key = elib_hasher:md5(SignKey),
     % ?DEBUG_LOG([key, Key, iv, IV]),
-    Bin = imboy_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
-    {ok, [Test]} = imboy_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []),
-    imboy_response:success(Req0, #{test => Test, res => Bin}, "success.").
+    Bin = elib_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
+    Test = case elib_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []) of
+        {ok, [Row]} -> Row;
+        _ -> #{}
+    end,
+    elib_response:success(Req0, #{test => Test, res => Bin}, "success.").
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 获取API帮助页面
+%% 返回HTML格式的API列表页面
+%%
+%% @param Req0 Cowboy请求对象
+%% @return 返回HTML响应
+%% @end
+-spec get_help(cowboy_req:req()) -> cowboy_req:req().
 get_help(Req0) ->
     Body =
         "\n        <meta charset=\"utf-8\"/>\n        <meta http-equiv=\"Cont"

@@ -81,7 +81,7 @@ rename(Uid, Id, Name) ->
     Tb = friend_category_repo:tablename(),
     Where = <<"owner_user_id = $1 AND id = $2">>,
     WhereArg = [Uid, ec_cnv:to_integer(Id)],
-    case imboy_pg:update(Tb, #{<<"name">> => Name}, Where, WhereArg) of
+    case elib_pg:update(Tb, #{<<"name">> => Name}, Where, WhereArg) of
         {ok, 1} ->
             {ok, 1};
         {ok, 0} ->

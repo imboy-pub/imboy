@@ -11,7 +11,7 @@
 %%%===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.msg_c2s">> end}
     ], fun() ->
         Result = msg_c2s_repo:tablename(),
@@ -19,7 +19,7 @@ tablename_returns_correct_table_test_() ->
     end).
 
 find_messages_by_uid_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含消息查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*msg_c2s">>) =/= nomatch),

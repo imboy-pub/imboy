@@ -9,60 +9,65 @@
            {nowarn_function, cancel_logout/2},
            {nowarn_function, qrcode/2},
            {nowarn_function, change_state/2},
-           {nowarn_function, show/2}]).
+           {nowarn_function, show/2},
+           {nowarn_function, handle_action/3}]).
 
 -export([init/2]).
+-export([handle_action/3]).
 
 -include("log.hrl").
--include("def_column.hrl").
+-include("common.hrl").
 -include("error_code.hrl").
 
 %% ===================================================================
 %% API
 %% ===================================================================
 
+%% @doc 初始化用户处理器
+%% 根据请求中的 action 参数调用相应的处理函数
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State0 状态映射，包含 action 和 current_uid 等信息
+%% @return {ok, Req1, State} 处理后的请求对象和状态
+%% @end
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
-    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 =
-        case Action of
-            change_state ->
-                change_state(Req0, State);
-            setting ->
-                setting(Req0, State);
-            update ->
-                update(Req0, State);
-            show ->
-                show(Req0, State);
-            qrcode ->
-                qrcode(Req0, State);
-            credential ->
-                credential(Req0, State);
-            change_password ->
-                change_password(Req0, State);
-            set_password ->
-                set_password(Req0, State);
-            apply_logout ->
-                apply_logout(Req0, State);
-            cancel_logout ->
-                cancel_logout(Req0, State);
-            search ->
-                search(Req0, State);
-            false ->
-                Req0
-        end,
+    Req1 = handle_action(Action, Req0, State),
     {ok, Req1, State}.
 
+%% @doc Action 分发处理
+%% 将不同的 action 分发到对应的处理函数
+-spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
+handle_action(change_state, Req, State) -> change_state(Req, State);
+handle_action(setting, Req, State) -> setting(Req, State);
+handle_action(update, Req, State) -> update(Req, State);
+handle_action(show, Req, State) -> show(Req, State);
+handle_action(qrcode, Req, State) -> qrcode(Req, State);
+handle_action(credential, Req, State) -> credential(Req, State);
+handle_action(change_password, Req, State) -> change_password(Req, State);
+handle_action(set_password, Req, State) -> set_password(Req, State);
+handle_action(apply_logout, Req, State) -> apply_logout(Req, State);
+handle_action(cancel_logout, Req, State) -> cancel_logout(Req, State);
+handle_action(search, Req, State) -> search(Req, State);
+handle_action(false, Req, _State) -> Req.
+
+%% @doc 搜索用户
+%% 根据关键词搜索用户（支持邮箱、手机号、账号）
+%%
+%% @param Req0 Cowboy请求对象，包含搜索关键词
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含搜索结果的响应
+%% @end
 -spec search(cowboy_req:req(), map()) -> cowboy_req:req().
 search(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    {Page, Size} = imboy_param:page(Req0),
-    #{keyword := Kwd} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
-    KwdBin = imboy_cnv:safe_to_binary(Kwd),
-    IsEmail = imboy_func:is_email(KwdBin),
-    IsMobile = imboy_func:is_mobile(KwdBin),
+    {Page, Size} = elib_param:page(Req0),
+    #{keyword := Kwd} = cowboy_req:match_qs([{keyword, [], <<>>}], Req0),
+    KwdBin = elib_cnv:safe_to_binary(Kwd),
+    IsEmail = elib_type:is_email(KwdBin),
+    IsMobile = elib_type:is_mobile(KwdBin),
     User =
         if IsEmail ->
                user_repo:find_by_email(KwdBin, ?DEF_USER_COLUMN);
@@ -92,57 +97,95 @@ search(Req0, State) ->
                #{total => 1,
                  page => Page,
                  size => Size,
-                 list => [imboy_hashids:replace_id(User2)]}
+                 list => [elib_hashids:replace_id(User2)]}
         end,
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
-%%修改密码
+%% @doc 修改密码
+%% 修改当前用户的登录密码
+%%
+%% @param Req0 Cowboy请求对象，包含旧密码和新密码
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
 -spec change_password(cowboy_req:req(), map()) -> cowboy_req:req().
 change_password(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     case user_logic:change_password(CurrentUid, Req0) of
         {ok, _Msg} ->
-            imboy_response:success(Req0);
+            elib_response:success(Req0);
         {error, Msg} ->
-            imboy_response:error(Req0, Msg)
+            elib_response:error(Req0, Msg)
     end.
 
+%% @doc 设置密码
+%% 为未设置密码的账号设置密码
+%%
+%% @param Req0 Cowboy请求对象，包含新密码
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
 -spec set_password(cowboy_req:req(), map()) -> cowboy_req:req().
 set_password(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     case user_logic:set_password(CurrentUid, Req0) of
         {ok, _Msg} ->
-            imboy_response:success(Req0);
+            elib_response:success(Req0);
         {error, Msg} ->
-            imboy_response:error(Req0, Msg)
+            elib_response:error(Req0, Msg)
     end.
 
-%%注销申请
+%% @doc 申请注销账号
+%% 提交账号注销申请
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
 -spec apply_logout(cowboy_req:req(), map()) -> cowboy_req:req().
 apply_logout(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     _ = user_logic:apply_logout(CurrentUid, Req0),
-    imboy_response:success(Req0).
+    elib_response:success(Req0).
 
-%%撤销注销申请
+%% @doc 撤销注销申请
+%% 取消账号注销申请
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
 -spec cancel_logout(cowboy_req:req(), map()) -> cowboy_req:req().
 cancel_logout(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     case user_logic:cancel_logout(CurrentUid, Req0) of
         {ok, _Msg} ->
-            imboy_response:success(Req0);
+            elib_response:success(Req0);
         {error, Msg} ->
-            imboy_response:error(Req0, Msg)
+            elib_response:error(Req0, Msg)
     end.
 
+%% @doc 获取WebRTC凭证
+%% 生成WebRTC连接所需的凭证
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含WebRTC凭证的响应
+%% @end
 % credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
 -spec credential(cowboy_req:req(), map()) -> cowboy_req:req().
 credential(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     Payload = user_ds:webrtc_credential(CurrentUid),
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
-%% 扫描“我的二维码”
+%% @doc 扫描用户二维码
+%% 通过扫描用户二维码获取用户信息
+%%
+%% @param Req0 Cowboy请求对象，包含用户ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含用户信息的响应
+%% @end
 -spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
 qrcode(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
@@ -152,15 +195,24 @@ qrcode(Req0, State) ->
             Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
             {ok, Req, State};
         _ ->
-            Uid2 = imboy_hashids:decode(Uid),
+            Uid2 = elib_hashids:decode(Uid),
             Column = <<"id,nickname,gender,avatar,sign,region,status">>,
             User = user_logic:find_by_id(Uid2, Column),
             Status = maps:get(<<"status">>, User, -2),
             % ?DEBUG_LOG([User, Status]),
             Payload = qrcode_transfer(CurrentUid, Status, User),
-            imboy_response:success(Req0, Payload)
+            elib_response:success(Req0, Payload)
     end.
 
+%% @doc 转换二维码信息
+%% 将用户信息转换为二维码扫描结果
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Status 用户状态
+%% @param User 用户信息
+%% @return 转换后的用户信息
+%% @end
+-spec qrcode_transfer(integer(), integer(), map()) -> map().
 qrcode_transfer(_, -2, #{}) ->
     #{<<"result">> => <<"user_not_exist">>, <<"msg">> => <<"用户不存在"/utf8>>};
 qrcode_transfer(CurrentUid, 1, User) ->
@@ -168,78 +220,97 @@ qrcode_transfer(CurrentUid, 1, User) ->
     User2 = maps:remove(<<"status">>, User),
     {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
     User2#{<<"type">> => <<"user">>,
-           <<"id">> => imboy_hashids:encode(Uid2),
+           <<"id">> => elib_hashids:encode(Uid2),
            <<"isfriend">> => Isfriend,
            <<"remark">> => Remark};
-% [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ imboy_hashids:replace_id(User2);
+% [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ elib_hashids:replace_id(User2);
 qrcode_transfer(_, _, _) ->
     % 状态: -1 删除  0 禁用  1 启用
     #{<<"result">> => <<"user_is_disabled_or_deleted">>, <<"msg">> => <<"用户被禁用或已删除"/utf8>>}.
 
-%% 切换在线状态
+%% @doc 切换在线状态
+%% 切换用户的在线状态（在线/隐身）
+%%
+%% @param Req0 Cowboy请求对象，包含新状态
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
 -spec change_state(cowboy_req:req(), map()) -> cowboy_req:req().
 change_state(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     ChatState = maps:get(<<"state">>, PostVals, <<"hide">>),
     user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
     % 切换在线状态 异步通知好友
     user_server:cast_notice_friend(CurrentUid, ChatState),
-    imboy_response:success(Req0, #{}, "success.").
+    elib_response:success(Req0, #{}, "success.").
 
-%% 用户 批量修改设置功能
+%% @doc 用户设置
+%% 批量修改用户设置
+%%
+%% @param Req0 Cowboy请求对象，包含设置列表
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
 -spec setting(cowboy_req:req(), map()) -> cowboy_req:req().
 setting(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Li = maps:get(<<"setting">>, PostVals, []),
     % ?DEBUG_LOG({CurrentUid, Li}),
     try [user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li] of
         _ ->
-            imboy_response:success(Req0, #{}, "success.")
+            elib_response:success(Req0, #{}, "success.")
     catch
         error:function_clause ->
-            imboy_response:error(Req0, <<"undefined setting key">>);
+            elib_response:error(Req0, <<"undefined setting key">>);
         error:Err1 ->
             ok = ?DEBUG_LOG([err1, Err1]),
-            imboy_response:error(Req0, <<"unknown"/utf8>>, ?ERR_OPERATION_FAILED)
+            elib_response:error(Req0, <<"unknown"/utf8>>, ?ERR_OPERATION_FAILED)
     end.
 
-%% 修改用户信息
+%% @doc 修改用户信息
+%% 修改用户的个人信息
+%%
+%% @param Req0 Cowboy请求对象，包含字段和值
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
 -spec update(cowboy_req:req(), map()) -> cowboy_req:req().
 update(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Field = maps:get(<<"field">>, PostVals, <<>>),
     Value = maps:get(<<"value">>, PostVals, <<>>),
 
     ok = ?DEBUG_LOG(["update ", Field, Value]),
     case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value)) of
         {error, {_, _, ErrorMsg}} ->
-            imboy_response:error(Req0, ErrorMsg);
-        ok ->
-            imboy_response:success(Req0, #{}, "success.")
+            elib_response:error(Req0, ErrorMsg);
+        {ok, _} ->
+            elib_response:success(Req0, #{}, "success.")
     end.
 
-% 用户网络公开信息
+%% @doc 获取用户公开信息
+%% 获取用户的网络公开信息
+%%
+%% @param Req0 Cowboy请求对象，包含用户ID
+%% @param _State 状态映射
+%% @return 返回包含用户信息的响应
+%% @end
 -spec show(cowboy_req:req(), map()) -> cowboy_req:req().
 show(Req0, _State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    % 验证 ID 参数不为空
+    % 【优化】使用统一的 ID 验证函数
     case Uid of
         undefined ->
-            imboy_response:error(Req0, <<"缺少ID参数"/utf8>>);
+            elib_response:error(Req0, <<"缺少ID参数"/utf8>>);
         _ ->
-            % 验证 ID 是否有效（解码后不为 0）
-            DecodedUid = imboy_hashids:decode(Uid),
-            case DecodedUid of
-                0 ->
-                    imboy_response:error(Req0, <<"无效的ID"/utf8>>);
-                _ ->
+            case imboy_error:validate_id(Req0, Uid) of
+                {error, Req} -> Req;
+                {ok, DecodedUid} ->
                     Column = <<"id, nickname, avatar, account, sign">>,
-                    User =
-                        user_logic:find_by_id(
-                            DecodedUid, Column),
-                    imboy_response:success(Req0, imboy_hashids:replace_id(User))
+                    User = user_logic:find_by_id(DecodedUid, Column),
+                    elib_response:success(Req0, elib_hashids:replace_id(User))
             end
     end.

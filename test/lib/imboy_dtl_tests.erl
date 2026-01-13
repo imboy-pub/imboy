@@ -46,13 +46,13 @@ template_with_vars_test_() ->
 imadm_param_with_valid_state_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(adm_user_logic, [unstick, passthrough]),
-        meck:new(imboy_cnv, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
         try
             State = #{adm_user_id => 123},
             meck:expect(adm_user_logic, find, fun(_Id, _Fields, _Key) ->
                 #{<<"id">> => 123, <<"nickname">> => <<"Test User">>}
             end),
-            meck:expect(imboy_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
+            meck:expect(elib_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
             
             Result = imboy_dtl:imadm_param(State),
             ?assert(is_list(Result)),
@@ -63,23 +63,23 @@ imadm_param_with_valid_state_test_() ->
             ?assertEqual("IMBoy Admin System", SystemName),
             
             ?assert(meck:validate(adm_user_logic)),
-            ?assert(meck:validate(imboy_cnv))
+            ?assert(meck:validate(elib_cnv))
         after
             meck:unload(adm_user_logic),
-            meck:unload(imboy_cnv)
+            meck:unload(elib_cnv)
         end
     end).
 
 imadm_param_without_adm_user_id_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(adm_user_logic, [unstick, passthrough]),
-        meck:new(imboy_cnv, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
         try
             State = #{},
             meck:expect(adm_user_logic, find, fun(_Id, _Fields, _Key) ->
                 #{<<"id">> => 0, <<"nickname">> => <<>>}
             end),
-            meck:expect(imboy_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
+            meck:expect(elib_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
             
             Result = imboy_dtl:imadm_param(State),
             ?assert(is_list(Result)),
@@ -90,33 +90,33 @@ imadm_param_without_adm_user_id_test_() ->
             ?assertEqual(<<>>, AdmNickname),
             
             ?assert(meck:validate(adm_user_logic)),
-            ?assert(meck:validate(imboy_cnv))
+            ?assert(meck:validate(elib_cnv))
         after
             meck:unload(adm_user_logic),
-            meck:unload(imboy_cnv)
+            meck:unload(elib_cnv)
         end
     end).
 
 imadm_param_with_zero_user_id_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(adm_user_logic, [unstick, passthrough]),
-        meck:new(imboy_cnv, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
         try
             State = #{adm_user_id => 0},
             meck:expect(adm_user_logic, find, fun(_Id, _Fields, _Key) ->
                 #{<<"id">> => 0, <<"nickname">> => <<>>}
             end),
-            meck:expect(imboy_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
+            meck:expect(elib_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
             
             Result = imboy_dtl:imadm_param(State),
             ?assert(is_list(Result)),
             ?assertEqual(2, length(Result)),
             
             ?assert(meck:validate(adm_user_logic)),
-            ?assert(meck:validate(imboy_cnv))
+            ?assert(meck:validate(elib_cnv))
         after
             meck:unload(adm_user_logic),
-            meck:unload(imboy_cnv)
+            meck:unload(elib_cnv)
         end
     end).
 
@@ -147,22 +147,22 @@ template_with_empty_name_test_() ->
 imadm_param_with_empty_state_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(adm_user_logic, [unstick, passthrough]),
-        meck:new(imboy_cnv, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
         try
             State = #{},
             meck:expect(adm_user_logic, find, fun(_Id, _Fields, _Key) ->
                 #{<<"id">> => 0, <<"nickname">> => <<>>}
             end),
-            meck:expect(imboy_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
+            meck:expect(elib_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
             
             Result = imboy_dtl:imadm_param(State),
             ?assert(is_list(Result)),
             
             ?assert(meck:validate(adm_user_logic)),
-            ?assert(meck:validate(imboy_cnv))
+            ?assert(meck:validate(elib_cnv))
         after
             meck:unload(adm_user_logic),
-            meck:unload(imboy_cnv)
+            meck:unload(elib_cnv)
         end
     end).
 
@@ -173,13 +173,13 @@ imadm_param_with_empty_state_test_() ->
 imadm_param_returns_proplist_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(adm_user_logic, [unstick, passthrough]),
-        meck:new(imboy_cnv, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
         try
             State = #{adm_user_id => 999},
             meck:expect(adm_user_logic, find, fun(_Id, _Fields, _Key) ->
                 #{<<"id">> => 999, <<"nickname">> => <<"Admin">>}
             end),
-            meck:expect(imboy_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
+            meck:expect(elib_cnv, implode, fun(_Sep, _Parts) -> <<"test_path">> end),
             
             Result = imboy_dtl:imadm_param(State),
             % 验证返回的是 proplist
@@ -193,9 +193,9 @@ imadm_param_returns_proplist_test_() ->
             end, Result),
             
             ?assert(meck:validate(adm_user_logic)),
-            ?assert(meck:validate(imboy_cnv))
+            ?assert(meck:validate(elib_cnv))
         after
             meck:unload(adm_user_logic),
-            meck:unload(imboy_cnv)
+            meck:unload(elib_cnv)
         end
     end).

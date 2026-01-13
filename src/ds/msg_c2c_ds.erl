@@ -8,10 +8,13 @@
 -include("log.hrl").
 
 -export([write_msg/6]).
+-export([write_msg/8]).
 -export([revoke_offline_msg/5]).
+-export([revoke_offline_msg/7]).
 -export([edit_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
+-export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 
 %% ===================================================================
@@ -28,24 +31,71 @@
 %% @param From 发送方用户ID
 %% @param To 接收方用户ID
 %% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
-%% @returns any() 数据库操作结果
--spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer()) -> any().
+%% @returns {ok, Count} | {error, Reason} 数据库操作结果
+-spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer()) -> {ok, non_neg_integer()} | {error, term()}.
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
-    CreatedAt2 = imboy_dt:to_rfc3339(CreatedAt),
-    ServerTS2 = imboy_dt:to_rfc3339(ServerTS),
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+
+    %% 从 Payload 中提取 msg_type 和 e2ee 字段
+    PayloadMap = try jsone:decode(Payload) of
+        Map when is_map(Map) -> Map;
+        _ -> #{}
+    catch
+        _:_ -> #{}
+    end,
+
+    MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
+    E2EE = case maps:get(<<"e2ee">>, PayloadMap, undefined) of
+        undefined -> <<>>;
+        E2EEMap when is_map(E2EEMap) -> jsone:encode(E2EEMap, [native_utf8]);
+        _ -> <<>>
+    end,
+
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     Count = msg_c2c_repo:count_by_to_id(To),
     _ = case Count >= ?SAVE_MSG_LIMIT of
         true ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            _ = imboy_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
+            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
         false ->
             ok
     end,
-    msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2).
+    msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
+
+%% @doc 存储点对点消息（v2.0 格式，支持 msg_type 和 e2ee）
+%%
+%% 将消息存储到数据库中，包含消息类型和端到端加密信息
+%%
+%% @param CreatedAt 消息创建时间戳（integer 毫秒或 binary RFC3339）
+%% @param Id 消息ID
+%% @param Payload 消息内容（JSON binary）
+%% @param From 发送方用户ID
+%% @param To 接收方用户ID
+%% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
+%% @param MsgType 消息类型（text, image, audio, video, file 等）
+%% @param E2EE 端到端加密信息（JSON binary，可选）
+%% @returns {ok, Count} | {error, Reason} 数据库操作结果
+-spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer(), binary(), binary() | null) -> {ok, non_neg_integer()} | {error, term()}.
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) when is_map(Payload); is_list(Payload) ->
+    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS, MsgType, E2EE);
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
+    % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
+    Count = msg_c2c_repo:count_by_to_id(To),
+    _ = case Count >= ?SAVE_MSG_LIMIT of
+        true ->
+            Limit = Count - ?SAVE_MSG_LIMIT + 1,
+            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
+        false ->
+            ok
+    end,
+    msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
 
 
 %% @doc 读取点对点消息
@@ -75,8 +125,8 @@ read_msg(ToUid, Limit, undefined) ->
     read_msg_filter(Where, Limit, [ToUid]);
 %
 read_msg(ToUid, Limit, Ts) ->
-    % 使用 imboy_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
-    FixedTs = imboy_dt:to_rfc3339(Ts),
+    % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
+    FixedTs = elib_dt:to_rfc3339(Ts),
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"to_id = $1 AND created_at >= $2">>,
     read_msg_filter(Where, Limit, [ToUid, FixedTs]).
@@ -94,6 +144,14 @@ delete_msg(Id) ->
     ok.
 
 
+%% @doc 根据消息ID查找单条消息（用于撤回权限验证）
+%% @param MsgId 消息唯一ID
+%% @return {ok, MsgMap} | {error, Reason}
+-spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
+find_msg_by_id(MsgId) ->
+    msg_c2c_repo:find_msg_by_id(MsgId).
+
+
 %% @doc 撤回离线消息
 %%
 %% 处理消息撤回操作，更新已存储的离线消息内容，并重新发送撤回通知
@@ -108,10 +166,39 @@ delete_msg(Id) ->
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
-    % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
-    case imboy_pg:update(
+    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
+    case elib_pg:update(
         msg_c2c_repo:tablename(),
-        #{payload => {raw, imboy_hasher:encoded_val(Payload)}},
+        #{<<"payload">> => Payload},
+        <<"msg_id = $1">>,
+        [MsgId]
+    ) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            ?LOG_ERROR("Failed to update msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 撤回离线消息（v2.0 格式，支持 msg_type 和 action）
+%%
+%% 处理消息撤回操作，支持显式传递 msg_type 和 action 参数
+%%
+%% @param Payload 撤回消息的新内容（不包含 msg_type/action）
+%% @param NowTs 当前时间戳
+%% @param MsgId 原消息ID
+%% @param FromId 发送方用户ID
+%% @param ToId 接收方用户ID
+%% @param MsgType 消息类型（custom, text 等）
+%% @param Action 操作类型（message_revoke_ack 等）
+%% @returns ok | {error, Reason}
+-spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer(), binary(), binary()) -> ok | {error, any()}.
+revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action) ->
+    % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
+    _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs, MsgType, Action),
+    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
+    case elib_pg:update(
+        msg_c2c_repo:tablename(),
+        #{<<"payload">> => Payload},
         <<"msg_id = $1">>,
         [MsgId]
     ) of
@@ -125,10 +212,10 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
 %% @returns ok | {error, Reason}
 -spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
 edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
-    % 使用 imboy_pg:update/4 + {raw, ...} 安全地更新 payload
-    case imboy_pg:update(
+    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
+    case elib_pg:update(
         msg_c2c_repo:tablename(),
-        #{payload => {raw, imboy_hasher:encoded_val(Payload)}},
+        #{payload => Payload},
         <<"msg_id = $1 AND from_id = $2 AND to_id = $3">>,
         [MsgId, FromId, ToId]
     ) of
@@ -152,13 +239,12 @@ edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
 %% @returns list() 处理后的消息列表
 -spec read_msg_filter(binary(), integer(), list()) -> [map()].
 read_msg_filter(Where, Limit, Params) ->
-    P = imboy_hasher:decoded_payload(),
-    Column = <<"id, ", P/binary, ", from_id, to_id, created_at, server_ts, msg_id">>,
+    Column = <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee">>,
     Res = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            [imboy_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
+            [elib_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
         _ ->
             []
     end.

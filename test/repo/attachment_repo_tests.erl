@@ -15,7 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.attachment">> end}
     ], fun() ->
         Result = attachment_repo:tablename(),
@@ -38,7 +38,7 @@ save_with_empty_attachments_test_() ->
     end).
 
 save_with_single_attachment_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Conn = mock_conn,
@@ -58,7 +58,7 @@ save_with_single_attachment_test_() ->
     end).
 
 save_with_multiple_attachments_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Conn = mock_conn,
@@ -88,7 +88,7 @@ save_with_multiple_attachments_test_() ->
     end).
 
 save_with_image_mime_type_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Conn = mock_conn,
@@ -108,7 +108,7 @@ save_with_image_mime_type_test_() ->
     end).
 
 save_with_non_image_mime_type_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Conn = mock_conn,

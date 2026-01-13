@@ -8,7 +8,7 @@
     - Logic 层（src/logic/）：业务逻辑编排，24 个模块
     - DS 层（src/ds/）：领域服务，19 个模块
     - Repo 层（src/repo/）：数据访问，29 个模块
-- 数据库访问重构：imboy_db 模块拆分为 imboy_pg 和 imboy_pg_sql，使用参数化查询防 SQL 注入
+- 数据库访问重构：imboy_db 模块拆分为 elib_pg 和 elib_pg_sql，使用参数化查询防 SQL 注入
 - 测试框架完善：新增 130 个 EUnit 测试文件，引入 meck_helper、test_helper、eunit_runner 等测试辅助工具
 - 单端口架构：移除 ADM 独立端口，统一使用单一 HTTP 端口
 - 路由和中间件统一：整合路由配置和认证中间件
@@ -17,17 +17,17 @@
 - 部署脚本适配：更新 Makefile 和 deploy.sh 脚本以适配单应用结构
 - 文档完善：新增 database_access_llayer.md、TESTING.md 等文档
 - 配置优化：修复 .gitignore 中的 dev 规则问题
-- 新增 imboy_async.erl - 异步任务执行工具
-- 新增 imboy_retry.erl - 同步重试机制
+- 新增 elib_async.erl - 异步任务执行工具
+- 新增 elib_retry.erl - 同步重试机制
 - 新增 msg_store.erl - 消息写入队列及监管树
 
 
 # 0.7.2 refactor: 请求参数处理模块重构和数据库操作优化
 * 新增管理员用户数据仓库模块 `adm_user_repo.erl`，提供完整的CRUD操作
-* 重构请求参数处理：将 `imboy_req` 模块的参数获取功能迁移到专用的 `imboy_param` 模块
+* 重构请求参数处理：将 `elib_req` 模块的参数获取功能迁移到专用的 `elib_param` 模块
 * 优化 `imboy_db:pluck/2` 函数，增加对 `{ok, Value}` 返回格式的支持
 * 改进 `user_repo:list_by_ids/2` 函数，支持binary和integer混合类型的ID列表查询
-* 增强 `imboy_req` 模块，新增 `post_params/1` 函数支持多种POST数据格式解析
+* 增强 `elib_req` 模块，新增 `post_params/1` 函数支持多种POST数据格式解析
 * 更新相关handler模块，统一使用新的参数处理接口
 * 新增 script/deploy.sh 脚本
 
@@ -53,7 +53,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 优化 imboy_db模块，改进事务处理机制，支持重试和连接池管理
 * 优化 依赖配置 include/deps.mk，更新 hex_core 和 gen_smtp 版本
 * 优化 message_ds 消息处理模块，imboy_syn 用户会话管理模块，增强调试日志
-* 优化 imboy_req 请求处理模块，新增 param/3 函数
+* 优化 elib_req 请求处理模块，新增 param/3 函数
 * 优化 websocket_handler 处理模块，移除 check_offline_msg 处理
 * 优化 用户数据访问模块 apps/imrepo/src/user_repo.erl，移除调试日志
 * 优化 erlang.mk 构建配置，更新版本号和项目配置
@@ -89,17 +89,17 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 
 # 0.6.1
 * 添加专门的 imboy_migrate 模块；
-* 添加 imboy_type 模块；
+* 添加 elib_type 模块；
 * 保证时间相关的字段写入数据库的时候总是 rfc3339格式；
 * 保证时间相关的字段响应到前端的总是 unix毫秒时间戳；
-* 优化 imboy_hashids 模块，提升效率
+* 优化 elib_hashids 模块，提升效率
 
 # 0.6.0
-* 调整 imboy_dt 模块，相关的utc时间戳，不需要扣除偏移量；
+* 调整 elib_dt 模块，相关的utc时间戳，不需要扣除偏移量；
 * 修改 jwt 单位问题，jwt添加 容忍 5 分钟时钟偏差；
 * 数据库升级到 pgsql17;
 * 数据库字段时间线相关的类型有bigint修改为timestamptz;
-* 新增 imboy_dt:add/2 imboy_dt:minus2 imboy_dt:compare_rfc3339/3
+* 新增 elib_dt:add/2 elib_dt:minus2 elib_dt:compare_rfc3339/3
 * 更新 layui 到 2.9.23;
 * 升级 ranch: 2.2.0 cowlib 2.14.0 cowoby: 2.13.0 jsone: 1.9.0 depcache: 2.0.0
 
@@ -334,9 +334,9 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 
 # 0.2.1
 * 备注收藏功能；
-* 新增 imboy_dt:now/1 imboy_dt:now/2 imboy_dt:to_rfc3339/2 方法；
+* 新增 elib_dt:now/1 elib_dt:now/2 elib_dt:to_rfc3339/2 方法；
 * 新增 config_ds:set/2 config_ds:save/2 方法；
-* 删除没有被使用过的 imboy_dt/utc_date/1 imboy_dt/to_rfc3339/1 方法；
+* 删除没有被使用过的 elib_dt/utc_date/1 elib_dt/to_rfc3339/1 方法；
 * 修复我的收藏添加标签报错问题；
 * 文档修改调整；
 * 格式化代码
@@ -361,7 +361,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 整理一些文档；
 
 # 0.1.11
-* 新增 imboy_hasher:hmac_sha512/2 方法，API验证同时支持 sha256 sha512 md5 等方法
+* 新增 elib_hasher:hmac_sha512/2 方法，API验证同时支持 sha256 sha512 md5 等方法
 * 新增错误码 707 ，表示：签名错误，需要下载最新版本APP；
 * 新增配置 api_auth_switch ，为原子 on 的时候开启API签名验证
 * 初始化配置、刷新token 和 WebSocket 链接这3个 API 必须做签名校验，其他 open 类型的API不用做签名校验；
@@ -372,7 +372,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 新增 message_ds:send_next/6 第4个参数的元素支持 fun/1
 
 # 0.1.9
-* 添加 imboy_hasher:encoded_val/1 imboy_hasher:decoded_payload/0 imboy_hasher:decoded_field/1 等方法，替换相关逻辑；
+* 添加 elib_hasher:encoded_val/1 elib_hasher:decoded_payload/0 elib_hasher:decoded_field/1 等方法，替换相关逻辑；
 * 修正 msg_type = apply_friend_confirm 的消息，结构错误导致APP端无法解析的问题；
 * 非好友情况下添加标签，只是先插入标签，标签和朋友关系在确认好友的时候绑定
 * 删除朋友关系的时候清理相关tag关系

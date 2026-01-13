@@ -11,34 +11,40 @@
 init(_Opts, _Conn) ->
     undefined.
 
-%% 声明处理的类型
--spec names() -> any().
+%% @doc 声明编解码器处理的 PostgreSQL 类型
+%% @returns 类型列表，本模块处理 timestamptz 类型
+-spec names() -> ['timestamptz'].
 names() ->
     ['timestamptz'].
 
--spec encode(any(), any(), any()) -> any().
+%% @doc 编码 timestamptz 类型的数据
+%% @param Bin RFC3339 格式的时间戳二进制字符串
+%% @param timestamptz 类型名称
+%% @param _CodecState 编解码器状态（未使用）
+%% @returns PostgreSQL 内部时间戳格式的二进制数据
+-spec encode(binary(), timestamptz, any()) -> binary().
 encode(Bin, timestamptz, _) when is_binary(Bin) ->
-    case imboy_dt:rfc3339_to(Bin, microsecond) of
+    case elib_dt:rfc3339_to(Bin, microsecond) of
         {error, _} ->
             error_logger:warning_msg("Invalid timestamptz value detected: ~p~n", [Bin]),
             <<0:64/big-signed-integer>>;
         LocalMicro when is_integer(LocalMicro) ->
             PgMicro = LocalMicro - 946684800000000,
             <<PgMicro:64/big-signed-integer>>
-    end;
-%% 编码逻辑（使用默认实现）
-encode(Data, TypeName, CodecState) ->
-    io:format("data ~p, type ~p, State: ~p, ~n", [Data, TypeName, CodecState]),
-    epgsql_codec_datetime:encode(Data, TypeName, CodecState).
+    end.
 
-%% 二进制解码逻辑
--spec decode(any(), any(), any()) -> any().
+%% @doc 解码 PostgreSQL timestamptz 类型为 RFC3339 格式
+%% @param Bin PostgreSQL 内部时间戳格式的二进制数据
+%% @param 'timestamptz' 类型名称
+%% @param _CodecState 编解码器状态（未使用）
+%% @returns RFC3339 格式的时间戳二进制字符串
+-spec decode(binary(), 'timestamptz', any()) -> binary().
 decode(Bin, 'timestamptz', _CodecState) ->
     MicroSecs = binary:decode_unsigned(Bin, big),
     % MS = MicroSecs + (?POSTGRESQL_GS_EPOCH * 1000000) - (?UNIX_EPOCH_GREGORIAN * 1000000),
     MS = MicroSecs + 946684800000000,
     try
-        imboy_dt:to_rfc3339(MS, microsecond)
+        elib_dt:to_rfc3339(MS, microsecond)
     catch
         _:_ ->
             % 检测到损坏的时间戳值，记录错误并返回安全默认值

@@ -4,8 +4,6 @@
 % group_notice business logic module
 %%%
 
--export ([demo/3]).
-
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -17,17 +15,9 @@
 %% API
 %% ===================================================================
 
-%%% demo方法描述
--spec demo(Uid::integer(), Val1::binary(), Val2::binary()) -> ok.
-demo(Uid, Val1, Val2) ->
-    _ = group_notice_repo:demo(Uid, Val1, Val2),
-    ok.
-
 %% ===================================================================
 %% Internal Function Definitions
-%% ===================================================================-
-
-%
+%% ===================================================================
 
 %% ===================================================================
 %% EUnit tests.

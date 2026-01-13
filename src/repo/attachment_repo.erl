@@ -4,7 +4,17 @@
 % attachment related operations are put in this module, repository module
 %%%
 
+%% @doc 获取附件表名
+%% @returns binary() 表名
 -export([tablename/0]).
+
+%% @doc 保存附件信息
+%% 保存附件信息，如果 MD5 已存在则更新引用次数
+%% @param Conn 数据库连接
+%% @param CreatedAt 创建时间
+%% @param Uid 用户ID
+%% @param Attach 附件信息列表
+%% @returns ok
 -export([save/4]).
 
 -ifdef(EUNIT).
@@ -19,12 +29,13 @@
 %% ===================================================================
 
 
+-spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"attachment">>).
+    elib_pg_sql:public_tablename(<<"attachment">>).
 
 
 %%% 保存附近信息，不存在就新增，存在就递增应用次数
--spec save(epgsql:connection() | pid(), binary(), binary(), list()) -> ok.
+-spec save(epgsql:connection() | pid(), binary(), integer() | binary(), [map()]) -> ok.
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
@@ -79,11 +90,11 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     },
 
     % 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = imboy_pg_sql:insert(tablename(), NewAttach, <<>>),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach, <<>>),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
-    _ = imboy_pg:execute(Conn, FullSql, Params),
+    _ = elib_pg:execute(Conn, FullSql, Params),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
-    % imboy_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
+    % elib_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
     % 递归保存附近信息
     save(Conn, CreatedAt, Uid, Tail),
     ok.

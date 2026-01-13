@@ -15,7 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.user_setting">> end}
     ], fun() ->
         Result = user_setting_repo:tablename(),
@@ -27,7 +27,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 find_settings_by_uid_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含用户设置查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*user_setting">>) =/= nomatch),
@@ -53,7 +53,7 @@ find_settings_by_uid_test_() ->
     end).
 
 get_setting_by_key_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含特定设置查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*user_setting">>) =/= nomatch),
@@ -79,7 +79,7 @@ get_setting_by_key_test_() ->
 %% ===================================================================
 
 update_setting_value_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(Sql, Params) ->
             % 验证SQL包含设置更新
             ?assert(binary:match(Sql, <<"INSERT.*INTO.*user_setting">>) =/= nomatch),

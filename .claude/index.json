@@ -2,7 +2,7 @@
   "project": "imboy",
   "version": "0.7.3",
   "description": "基于 Erlang/OTP 的高性能即时通讯系统",
-  "last_updated": "2026-01-09T00:00:00+08:00",
+  "last_updated": "2026-01-20T08:48:18+08:00",
   "architecture": "单应用 4 层架构 (Handler -> Logic -> DS -> Repo)",
   "tech_stack": {
     "language": "Erlang/OTP 28+",
@@ -23,7 +23,7 @@
       ],
       "doc": "CLAUDE.md",
       "has_doc": true,
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "api": {
       "path": "src/api/",
@@ -43,6 +43,7 @@
         "conversation_handler.erl",
         "auth_handler.erl",
         "auth_middleware.erl",
+        "auth_middleware_api_v1.erl",
         "index_handler.erl",
         "test_handler.erl",
         "app_version_handler.erl",
@@ -56,13 +57,14 @@
         "user_denylist_handler.erl",
         "user_device_handler.erl",
         "user_tag_handler.erl",
-        "user_tag_relation_handler.erl"
+        "user_tag_relation_handler.erl",
+        "e2ee_handler.erl"
       ],
       "test_count": 50,
       "coverage": 60,
       "has_doc": true,
       "doc": "src/api/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "adm": {
       "path": "src/adm/",
@@ -83,7 +85,7 @@
       "coverage": 50,
       "has_doc": true,
       "doc": "src/adm/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "logic": {
       "path": "src/logic/",
@@ -105,6 +107,8 @@
         "msg_c2g_logic.erl",
         "msg_c2s_logic.erl",
         "msg_s2c_logic.erl",
+        "msg_ack_logic.erl",
+        "message_router_logic.erl",
         "websocket_logic.erl",
         "webrtc_ws_logic.erl",
         "location_logic.erl",
@@ -114,6 +118,7 @@
         "user_device_logic.erl",
         "user_tag_logic.erl",
         "user_tag_relation_logic.erl",
+        "e2ee_logic.erl",
         "adm_user_logic.erl",
         "adm_passport_logic.erl",
         "adm_app_version_logic.erl"
@@ -122,14 +127,14 @@
       "coverage": 70,
       "has_doc": true,
       "doc": "src/logic/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "ds": {
       "path": "src/ds/",
       "type": "layer",
       "description": "数据服务层",
-      "count": 18,
-      "percentage": 13.4,
+      "count": 13,
+      "percentage": 9.7,
       "modules": [
         "user_ds.erl",
         "user_setting_ds.erl",
@@ -142,6 +147,9 @@
         "msg_c2g_ds.erl",
         "msg_c2s_ds.erl",
         "msg_s2c_ds.erl",
+        "msg_store_ds.erl",
+        "msg_store_sup.erl",
+        "msg_store_worker.erl",
         "websocket_ds.erl",
         "friend_ds.erl",
         "friend_category_ds.erl",
@@ -150,11 +158,11 @@
         "app_version_ds.erl",
         "app_ddl_ds.erl"
       ],
-      "test_count": 13,
+      "test_count": 10,
       "coverage": 50,
       "has_doc": true,
       "doc": "src/ds/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "repo": {
       "path": "src/repo/",
@@ -183,7 +191,7 @@
         "msg_c2g_timeline_repo.erl",
         "msg_c2s_repo.erl",
         "msg_s2c_repo.erl",
-        "msg_write_queue_repo.erl",
+        "msg_store_repo.erl",
         "verification_code_repo.erl",
         "feedback_repo.erl",
         "feedback_reply_repo.erl",
@@ -198,57 +206,57 @@
       "coverage": 80,
       "has_doc": true,
       "doc": "src/repo/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     },
     "lib": {
       "path": "src/lib/",
       "type": "layer",
       "description": "基础库函数",
-      "count": 32,
-      "percentage": 23.9,
+      "count": 29,
+      "percentage": 21.6,
       "modules": [
-        "imboy_pg.erl",
-        "imboy_pg_sql.erl",
+        "elib_pg.erl",
+        "elib_pg_sql.erl",
         "imboy_cache.erl",
         "imboy_cache_sync.erl",
         "imboy_syn.erl",
-        "imboy_cipher.erl",
-        "imboy_password.erl",
-        "imboy_hashids.erl",
-        "imboy_hasher.erl",
-        "imboy_req.erl",
-        "imboy_response.erl",
-        "imboy_dt.erl",
-        "imboy_str.erl",
-        "imboy_type.erl",
+        "elib_cipher.erl",
+        "elib_password.erl",
+        "elib_hashids.erl",
+        "elib_hasher.erl",
+        "elib_req.erl",
+        "elib_response.erl",
+        "elib_dt.erl",
+        "elib_str.erl",
+        "elib_type.erl",
         "imboy_kv.erl",
         "imboy_func.erl",
-        "imboy_log.erl",
-        "imboy_param.erl",
-        "imboy_uri.erl",
-        "imboy_cnv.erl",
+        "elib_log.erl",
+        "elib_param.erl",
+        "elib_uri.erl",
+        "elib_cnv.erl",
         "imboy_migrate.erl",
         "imboy_dtl.erl",
         "imboy_cluster.erl",
-        "imboy_async.erl",
-        "imboy_retry.erl",
+        "elib_async.erl",
+        "elib_retry.erl",
+        "elib_retry_config.erl",
         "imboy_sms.erl",
+        "imboy_error.erl",
+        "imboy_message_helper.erl",
         "qianfan_api.erl",
         "epgsql_codec_rfc3339_bin.erl",
-        "eunit_runner.erl",
-        "msg_write_queue.erl",
-        "msg_write_queue_sup.erl",
-        "msg_write_worker.erl"
+        "eunit_runner.erl"
       ],
       "test_count": 30,
       "coverage": 75,
       "has_doc": true,
       "doc": "src/lib/CLAUDE.md",
-      "updated": "2026-01-09T00:00:00+08:00"
+      "updated": "2026-01-20T08:48:18+08:00"
     }
   },
   "statistics": {
-    "total_source_files": 142,
+    "total_source_files": 134,
     "total_test_files": 140,
     "total_exported_functions": 450,
     "languages": {
@@ -272,10 +280,10 @@
   },
   "gaps": {
     "test_gaps": [
-      "group_member_transfer.erl 缺少测试文件",
+      "e2ee_handler.erl 缺少测试文件",
+      "msg_store_ds.erl 完整测试需要补充",
       "部分新建 Handler 的测试不完整",
       "DS 层的集成测试需要补充",
-      "msg_write_queue 相关模块的完整测试",
       "端到端测试缺失"
     ],
     "documentation_gaps": [
@@ -336,6 +344,8 @@
   ],
   "truncated": false,
   "next_steps": [
+    "补充 e2ee_handler 测试文件",
+    "完善 msg_store_ds 测试",
     "补充 WebSocket 集成测试",
     "完善消息投递流程测试",
     "添加分布式场景测试",
@@ -349,10 +359,13 @@
     "entry": "src/imboy_app.erl",
     "router": "src/imboy_router.erl",
     "supervisor": "src/imboy_sup.erl",
-    "database": "src/lib/imboy_pg.erl",
+    "database": "src/lib/elib_pg.erl",
     "cache": "src/lib/imboy_cache.erl",
-    "async": "src/lib/imboy_async.erl",
-    "retry": "src/lib/imboy_retry.erl",
+    "async": "src/lib/elib_async.erl",
+    "retry": "src/lib/elib_retry.erl",
+    "e2ee_handler": "src/api/e2ee_handler.erl",
+    "e2ee_logic": "src/logic/e2ee_logic.erl",
+    "message_router": "src/logic/message_router_logic.erl",
     "config": "config/sys.config",
     "makefile": "Makefile",
     "readme": "README.md",
@@ -375,6 +388,7 @@
     "sync": "doc/libraries/syn.md",
     "cache": "doc/libraries/cache.md",
     "websocket": "doc/api/websocket-api.md",
+    "websocket_v2": "doc/api/websocket-api-2.md",
     "rest_api": "doc/api/rest-api.md"
   },
   "skills": [
@@ -433,37 +447,43 @@
   ],
   "scan_summary": {
     "phase": "completed",
-    "scan_date": "2026-01-09",
+    "scan_date": "2026-01-20",
     "files_scanned": 282,
-    "source_files": 142,
+    "source_files": 134,
     "test_files": 140,
     "docs_generated": 7,
     "mermaid_diagram": true,
     "breadcrumbs_added": 7,
-    "timestamp": "2026-01-09T00:00:00+08:00",
+    "timestamp": "2026-01-20T08:48:18+08:00",
     "new_modules_since_last_scan": [
-      "imboy_async.erl",
-      "imboy_retry.erl",
-      "msg_write_queue.erl",
-      "msg_write_queue_sup.erl",
-      "msg_write_worker.erl",
-      "imboy_cluster.erl"
+      "e2ee_handler.erl",
+      "e2ee_logic.erl",
+      "message_router_logic.erl",
+      "msg_store_ds.erl",
+      "msg_store_sup.erl",
+      "msg_store_worker.erl",
+      "elib_retry_config.erl",
+      "websocket-api-2.md",
+      "websocket-api-2-migration-plan.md"
     ],
-    "scan_method": "phase_b_module_scan"
+    "scan_method": "phase_a_full_inventory + phase_b_module_scan"
   },
   "changelog": {
-    "2026-01-09": [
-      "完成全仓清点和模块扫描",
-      "更新索引文件，添加新模块统计",
-      "更新代码统计：142 个源文件，140 个测试文件",
+    "2026-01-20": [
+      "重新初始化 AI 上下文文档",
+      "新增 E2EE (端到端加密) 支持",
+      "新增消息路由器逻辑",
+      "更新代码统计：134 个源文件，140 个测试文件",
       "确认所有层级文档完整性",
       "验证 Mermaid 结构图和导航面包屑"
     ],
+    "2026-01-09": [
+      "完成全仓清点和模块扫描",
+      "更新索引文件，添加新模块统计"
+    ],
     "2026-01-07": [
       "增量更新 AI 上下文文档",
-      "更新代码统计：134 个源文件，140+ 个测试文件",
-      "优化覆盖率统计：整体 65%，各层详细分析",
-      "补充模块间依赖关系和调用链路"
+      "优化覆盖率统计：整体 65%，各层详细分析"
     ],
     "2026-01-06": [
       "强化数据库访问规范",
@@ -471,8 +491,7 @@
     ],
     "2026-01-05": [
       "增量更新文档索引",
-      "新增 imboy_async 和 imboy_retry 工具库文档",
-      "完善异步执行与重试机制说明"
+      "新增 elib_async 和 elib_retry 工具库文档"
     ],
     "2026-01-03": [
       "初始化 AI 上下文文档",

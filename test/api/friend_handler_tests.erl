@@ -17,7 +17,7 @@
 %% @doc 测试添加好友 - 成功场景
 handle_add_friend_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890},
@@ -32,11 +32,11 @@ handle_add_friend_test_() ->
                     from_uid => 12345,
                     to_uid => 67890,
                     status => pending,
-                    created_at => imboy_dt:timestamp()
+                    created_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -61,13 +61,13 @@ handle_add_friend_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(friend_logic, add_friend, 2),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试添加好友 - 目标用户不存在
 handle_add_friend_user_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 99999},
@@ -80,7 +80,7 @@ handle_add_friend_user_not_found_test_() ->
                 {error, user_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -107,7 +107,7 @@ handle_add_friend_user_not_found_test_() ->
 %% @doc 测试添加好友 - 已经是好友
 handle_add_friend_already_friends_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890},
@@ -120,7 +120,7 @@ handle_add_friend_already_friends_test_() ->
                 {error, already_friends}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 409,
@@ -151,7 +151,7 @@ handle_add_friend_already_friends_test_() ->
 %% @doc 测试删除好友 - 成功场景
 handle_delete_friend_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890}
@@ -164,11 +164,11 @@ handle_delete_friend_test_() ->
                     deleted_friend_id => 12345,
                     from_uid => 12345,
                     to_uid => 67890,
-                    deleted_at => imboy_dt:timestamp()
+                    deleted_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -198,7 +198,7 @@ handle_delete_friend_test_() ->
 %% @doc 测试删除好友 - 好友关系不存在
 handle_delete_friend_not_friends_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890}
@@ -210,7 +210,7 @@ handle_delete_friend_not_friends_test_() ->
                 {error, not_friends}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -249,19 +249,19 @@ handle_list_friends_test_() ->
                         friend_uid => 67890,
                         nickname => <<"Friend 1">>,
                         status => active,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     },
                     #{
                         friend_id => 12346,
                         friend_uid => 67891,
                         nickname => <<"Friend 2">>,
                         status => active,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     }
                 ]}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -303,7 +303,7 @@ handle_list_friends_empty_test_() ->
                 {ok, []}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

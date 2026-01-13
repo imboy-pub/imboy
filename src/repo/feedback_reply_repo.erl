@@ -4,6 +4,8 @@
 % feedback_reply related operations are put in this module, repository module
 %%%
 
+%% @doc 获取反馈回复表名
+%% @returns binary() 表名
 -export ([tablename/0]).
 
 
@@ -18,8 +20,9 @@
 %% API
 %% ===================================================================
 
+-spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"feedback_reply">>).
+    elib_pg_sql:public_tablename(<<"feedback_reply">>).
 
 
 %% ===================================================================

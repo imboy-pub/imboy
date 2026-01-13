@@ -15,7 +15,7 @@
 %% ===================================================================
 
 member_list_replaces_ids_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'replace_id', 2, fun(Map, _Field) ->
             Map2 = maps:put(<<"group_id">>, <<"encoded_group_123">>, Map),
             maps:put(<<"user_id">>, <<"encoded_user_456">>, Map2)
@@ -52,7 +52,7 @@ member_list_empty_list_test_() ->
     ?assertEqual([], Result).
 
 member_list_single_member_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'replace_id', 2, fun(Map, Field) ->
             case Field of
                 <<"group_id">> ->
@@ -77,7 +77,7 @@ member_list_single_member_test_() ->
     end).
 
 member_list_preserves_other_fields_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'replace_id', 2, fun(Map, Field) ->
             case Field of
                 <<"group_id">> ->

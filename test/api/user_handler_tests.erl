@@ -16,7 +16,7 @@
 %% @doc 测试用户搜索功能 - 通过邮箱搜索
 search_by_email_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}  % Page=1, Size=20
             end}
@@ -51,13 +51,13 @@ search_by_email_test_() ->
                 {false, <<>>}
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'replace_id', 1, fun(User) ->
                 _UserId = maps:get(<<"id">>, User),
                 User#{<<"id">> => <<"encoded_12345">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -96,7 +96,7 @@ search_by_email_test_() ->
 %% @doc 测试用户搜索功能 - 用户不存在
 search_user_not_found_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}
             end}
@@ -114,7 +114,7 @@ search_user_not_found_test_() ->
                 #{}  % 空结果表示用户不存在
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -149,7 +149,7 @@ change_password_test_() ->
                 {ok, #{<<"message">> => <<"密码修改成功">>}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, _Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -183,7 +183,7 @@ change_password_wrong_old_password_test_() ->
                 {error, <<"旧密码错误">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -220,7 +220,7 @@ credential_test_() ->
                 }
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -250,7 +250,7 @@ credential_test_() ->
 %% @doc 测试二维码扫描功能 - 用户存在且正常
 qrcode_user_exists_test_() ->
     ?WITH_MOCKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 12345
             end}
@@ -273,12 +273,12 @@ qrcode_user_exists_test_() ->
                 {true, <<"My Friend">>}
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'encode', 1, fun(_UserId) ->
                 <<"encoded_12345">>
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -310,7 +310,7 @@ qrcode_user_exists_test_() ->
 %% @doc 测试二维码扫描功能 - 用户不存在
 qrcode_user_not_exists_test_() ->
     ?WITH_MOCKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 99999
             end}
@@ -320,7 +320,7 @@ qrcode_user_not_exists_test_() ->
                 #{}  % 空结果表示用户不存在
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -350,7 +350,7 @@ qrcode_user_not_exists_test_() ->
 %% @doc 测试切换在线状态功能
 change_state_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"state">>, <<"online">>}
@@ -367,7 +367,7 @@ change_state_test_() ->
                 ok
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -396,7 +396,7 @@ change_state_test_() ->
 %% @doc 测试用户设置功能
 setting_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"theme">>, <<"dark">>},
@@ -410,7 +410,7 @@ setting_test_() ->
                 ok
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 2, fun(_Req, _Data) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

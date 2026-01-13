@@ -17,7 +17,7 @@
 %% @doc 测试全文搜索 - 成功场景
 handle_search_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"query">>, <<"hello world">>},
@@ -54,7 +54,7 @@ handle_search_test_() ->
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -94,13 +94,13 @@ handle_search_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(fts_logic, search, 5),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试全文搜索 - 空结果
 handle_search_empty_results_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"query">>, <<"nonexistent_query">>},
@@ -120,7 +120,7 @@ handle_search_empty_results_test_() ->
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -153,7 +153,7 @@ handle_search_empty_results_test_() ->
 %% @doc 测试全文搜索 - 查询参数缺失
 handle_search_missing_params_test_() ->
     ?WITH_MECKS([
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -181,7 +181,7 @@ handle_search_missing_params_test_() ->
 %% @doc 测试全文搜索 - 查询字符串过短
 handle_search_query_too_short_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"query">>, <<"hi">>},  % 查询字符串太短
@@ -191,7 +191,7 @@ handle_search_query_too_short_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,

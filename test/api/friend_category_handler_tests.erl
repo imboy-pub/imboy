@@ -17,7 +17,7 @@
 %% @doc 测试创建好友分类 - 成功场景
 handle_create_category_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"name">>, <<"工作">>},
@@ -35,11 +35,11 @@ handle_create_category_test_() ->
                     description => <<"工作相关的好友">>,
                     color => <<"#FF5722">>,
                     friend_count => 0,
-                    created_at => imboy_dt:timestamp()
+                    created_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -69,13 +69,13 @@ handle_create_category_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(friend_category_logic, create_category, 4),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试创建好友分类 - 分类名称已存在
 handle_create_category_name_exists_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"name">>, <<"工作">>},
@@ -89,7 +89,7 @@ handle_create_category_name_exists_test_() ->
                 {error, category_name_exists}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 409,
@@ -116,7 +116,7 @@ handle_create_category_name_exists_test_() ->
 %% @doc 测试创建好友分类 - 参数缺失
 handle_create_category_missing_params_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 % 缺少必要参数
                 [
@@ -124,7 +124,7 @@ handle_create_category_missing_params_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -155,7 +155,7 @@ handle_create_category_missing_params_test_() ->
 %% @doc 测试更新好友分类 - 成功场景
 handle_update_category_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"category_id">>, 12345},
@@ -174,11 +174,11 @@ handle_update_category_test_() ->
                     description => <<"更新后的工作相关好友">>,
                     color => <<"#2196F3">>,
                     friend_count => 5,
-                    updated_at => imboy_dt:timestamp()
+                    updated_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -208,7 +208,7 @@ handle_update_category_test_() ->
 %% @doc 测试更新好友分类 - 分类不存在
 handle_update_category_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"category_id">>, 99999},
@@ -221,7 +221,7 @@ handle_update_category_not_found_test_() ->
                 {error, category_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -252,7 +252,7 @@ handle_update_category_not_found_test_() ->
 %% @doc 测试删除好友分类 - 成功场景
 handle_delete_category_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"category_id">>, 12345}
@@ -264,11 +264,11 @@ handle_delete_category_test_() ->
                 {ok, #{
                     deleted_category_id => 12345,
                     moved_friends_count => 5,  % 移动到默认分类的好友数量
-                    deleted_at => imboy_dt:timestamp()
+                    deleted_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -298,7 +298,7 @@ handle_delete_category_test_() ->
 %% @doc 测试删除好友分类 - 分类不存在
 handle_delete_category_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"category_id">>, 99999}
@@ -310,7 +310,7 @@ handle_delete_category_not_found_test_() ->
                 {error, category_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -350,7 +350,7 @@ handle_list_categories_test_() ->
                         description => <<"工作相关的好友">>,
                         color => <<"#FF5722">>,
                         friend_count => 5,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     },
                     #{
                         category_id => 12346,
@@ -358,12 +358,12 @@ handle_list_categories_test_() ->
                         description => <<"生活中的好友">>,
                         color => <<"#4CAF50">>,
                         friend_count => 10,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     }
                 ]}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -405,7 +405,7 @@ handle_list_categories_empty_test_() ->
                 {ok, []}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

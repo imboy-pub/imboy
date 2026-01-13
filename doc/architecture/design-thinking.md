@@ -80,7 +80,7 @@ socket 数据粘包问题、拆包问题
 Uid = 513242,
 DID = <<"C5931370-BDCC-55FE-AB9C-8E2B39DC5018">>,
 MsgId = <<"please_refresh_token">>,
-ToUid = imboy_hashids:uid_encode(Uid),
+ToUid = elib_hashids:uid_encode(Uid),
 Msg = message_ds:assemble_msg(
     <<"S2C">>, <<>>, ToUid
     , [{<<"msg_type">>, MsgId}]

@@ -27,7 +27,7 @@ import_chinese_poetry:start().
 ```
 cat priv/migrations/*.sql > merged.sql
 
-docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_105048.sql
+docker exec -i elib_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_105048.sql
 
 ```
 
@@ -104,7 +104,7 @@ psql -h 127.0.0.1 -p 5432 -U imboy_user -d imboy_v1 -f imboy_v1_dev.sql
 
 mv imboy_v1.sql /var/lib/postgresql/data/
 
-/data/docker/imboy_pg15
+/data/docker/elib_pg15
 
 导入到本地数据库
 psql -h 127.0.0.1 -d imboy_v1 -U imboy_user -p 5432 -f imboy_v1.sql
@@ -156,7 +156,7 @@ pg_stat_statements.track=all
 ## pg_jieba
 在macos m1 上面做的 pg_jieba.so 等8个文件copy到CentOS8 里面的docker里面，没有使用；
 
-之后我在CentOS8上面弄了一个 imboy:pg15_dev ，从里面copy出 pg_jieba扩展，在 docker cp 到 imboy_pg15 才可用
+之后我在CentOS8上面弄了一个 imboy:pg15_dev ，从里面copy出 pg_jieba扩展，在 docker cp 到 elib_pg15 才可用
 
 详细步骤参考 ./docker/README.md
 
@@ -247,8 +247,8 @@ UPDATE public.adm_user SET created_at_ts = to_timestamp(created_at/1000.0);
 
 select created_at_ts from public.adm_user
 
-imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2c CASCADE">>, []),
-imboy_pg:execute(<<"TRUNCATE TABLE public.msg_s2c CASCADE">>, []),
-imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2g CASCADE">>, []),
-imboy_pg:execute(<<"TRUNCATE TABLE public.msg_c2g_timeline CASCADE">>, []).
+elib_pg:execute(<<"TRUNCATE TABLE public.msg_c2c CASCADE">>, []),
+elib_pg:execute(<<"TRUNCATE TABLE public.msg_s2c CASCADE">>, []),
+elib_pg:execute(<<"TRUNCATE TABLE public.msg_c2g CASCADE">>, []),
+elib_pg:execute(<<"TRUNCATE TABLE public.msg_c2g_timeline CASCADE">>, []).
 

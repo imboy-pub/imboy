@@ -5,10 +5,11 @@
 %%%
 
 -include("log.hrl").
--include("def_column.hrl").
+-include("common.hrl").
 
 -export([tablename/0]).
 -export ([save/1, update/2, delete/1]).
+-export([page/2, page/4]).
 
 -export([find_by_email/2,
          find_by_mobile/2,
@@ -26,7 +27,19 @@
 %% @return 返回用户表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"user">>).
+    elib_pg_sql:public_tablename(<<"user">>).
+
+%% @doc 分页查询用户
+-spec page(integer(), integer()) -> {ok, map()} | {error, any()}.
+page(Page, Size) ->
+    page(Page, Size, #{}, <<"created_at DESC">>).
+
+%% @doc 分页查询用户（带条件）
+-spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
+page(Page, Size, Where, OrderBy) ->
+    Tb = tablename(),
+    Column = <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,created_at">>,
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
 
 
 
@@ -39,8 +52,8 @@ tablename() ->
 -spec find_by_email(binary(), binary()) -> map().
 find_by_email(Email, Column) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{email => Email}, #{limit => 1}),
-    imboy_pg_sql:value_or_empty(imboy_pg:one(Sql, Params)).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{email => Email}, #{limit => 1}),
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
 
 
 %% @doc 根据手机号查找用户
@@ -52,8 +65,8 @@ find_by_email(Email, Column) ->
 -spec find_by_mobile(binary() | string(), binary()) -> map().
 find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{mobile => Mobile}, #{limit => 1}),
-    imboy_pg_sql:value_or_empty(imboy_pg:one(Sql, Params)).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{mobile => Mobile}, #{limit => 1}),
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
 
 
 %% @doc 根据用户账号查找用户
@@ -64,8 +77,8 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{account => Account}, #{limit => 1}),
-    imboy_pg_sql:value_or_empty(imboy_pg:one(Sql, Params)).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{account => Account}, #{limit => 1}),
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
 
 
 %% @doc 根据用户ID查找用户基本信息（使用默认列）
@@ -85,7 +98,7 @@ find_by_id(Uid) ->
 find_by_id(Uid, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
-    imboy_pg_sql:value_or_empty(imboy_pg:one(Sql, [Uid])).
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Uid])).
 
 
 %% @doc 根据用户ID列表批量查询用户信息
@@ -96,8 +109,8 @@ find_by_id(Uid, Column) ->
 -spec list_by_ids(list(pos_integer() | binary()), binary()) -> {ok, list(map())} | {error, term()}.
 list_by_ids(Uids, Column) when length(Uids) > 0 ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{id => {in, Uids}}, #{}),
-    imboy_pg:query(Sql, Params).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => {in, Uids}}, #{}),
+    elib_pg:query(Sql, Params).
 
 
 %% @doc 更新指定用户的所有好友关系中的最后在线时间
@@ -109,18 +122,19 @@ update_friends_last_seen_at(Uid, Timestamp) ->
     % 更新我是from_user_id的记录
     _ = update_last_seen_at(<<"from_user_id">>, Uid, Timestamp),
     % 更新我是to_user_id的记录
-    _ = update_last_seen_at(<<"to_user_id">>, Uid, Timestamp).
+    _ = update_last_seen_at(<<"to_user_id">>, Uid, Timestamp),
+    ok.
 
 
 
 %% @doc 保存新用户记录
 %% @param Data 包含用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, Count} 保存成功 | {error, Reason} 保存失败
-%% @example user_repo:save(#{mobile => <<"13692177080">>, password => imboy_password:generate(imboy_hasher:md5("admin888")), account => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => imboy_dt:now()}).
+%% @example user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(elib_hasher:md5("admin888")), account => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, non_neg_integer()} | {error, term()}.
 save(Data) ->
     Tb = tablename(),
-    imboy_pg:insert(Tb, Data).
+    elib_pg:insert(Tb, Data).
 
 %% @doc 更新用户信息
 %% @param Id 用户ID
@@ -130,7 +144,7 @@ save(Data) ->
 -spec update(pos_integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 update(Id, Data) ->
     Tb = tablename(),
-    imboy_pg:update(Tb, Data, <<"id = $1">>, [Id]).
+    elib_pg:update(Tb, Data, <<"id = $1">>, [Id]).
 
 %% @doc 删除用户（软删除）
 %% @param Id 用户ID
@@ -140,7 +154,7 @@ update(Id, Data) ->
 -spec delete(pos_integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete(Id) ->
     Tb = tablename(),
-    imboy_pg:update(Tb, #{status => -1}, <<"id = $1">>, [Id]).
+    elib_pg:update(Tb, #{status => -1}, <<"id = $1">>, [Id]).
 
 
 %% ===================================================================
@@ -156,4 +170,4 @@ update_last_seen_at(Field, Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",
             "WHERE ", Field/binary, " = $3 AND status = 1">>,
-    imboy_pg:execute(Sql, [Timestamp, imboy_dt:now(), Uid]).
+    elib_pg:execute(Sql, [Timestamp, elib_dt:now(), Uid]).

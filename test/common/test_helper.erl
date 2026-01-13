@@ -113,7 +113,7 @@ generate_user(Overrides) ->
         email => <<"test@example.com">>,
         password => <<"hashed_password">>,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 
@@ -129,7 +129,7 @@ generate_group(Overrides) ->
         description => <<"A test group for testing">>,
         creator_id => 12345,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 
@@ -146,7 +146,7 @@ generate_message(Overrides) ->
         content => <<"Hello, this is a test message">>,
         msg_type => 1,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 
@@ -206,21 +206,21 @@ cleanup_test_data(Conn) ->
     TestUsers = [12345, 67890],
     lists:foreach(fun(Uid) ->
         Sql = <<"DELETE FROM public.user WHERE id = $1">>,
-        imboy_pg:query(Sql, [Uid], Conn)
+        elib_pg:query(Sql, [Uid], Conn)
     end, TestUsers),
     
     % 清理测试群组数据
     TestGroups = [54321],
     lists:foreach(fun(Gid) ->
         Sql = <<"DELETE FROM public.group WHERE id = $1">>,
-        imboy_pg:query(Sql, [Gid], Conn)
+        elib_pg:query(Sql, [Gid], Conn)
     end, TestGroups),
     
     % 清理测试消息数据
     TestMsgs = [99999],
     lists:foreach(fun(MsgId) ->
         Sql = <<"DELETE FROM public.msg_c2c WHERE id = $1">>,
-        imboy_pg:query(Sql, [MsgId], Conn)
+        elib_pg:query(Sql, [MsgId], Conn)
     end, TestMsgs).
 
 %% ===================================================================

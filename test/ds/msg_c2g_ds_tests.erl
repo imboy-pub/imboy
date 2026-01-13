@@ -27,12 +27,12 @@ module_loaded_test_() ->
 
 write_msg_test_() ->
     ?TEST_WITH_DB(fun() ->
-        NowTs = imboy_dt:now(millisecond),
+        NowTs = elib_dt:now(millisecond),
         MsgId = <<"msg_c2g_123">>,
         FromUid = 1,
         GroupId = 100,
         Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Hello group">>},
-        PayloadMd5 = imboy_hasher:hash(maps:get(<<"content">>, Payload)),
+        PayloadMd5 = elib_hasher:hash(maps:get(<<"content">>, Payload)),
         Result = msg_c2g_ds:write_msg(NowTs, MsgId, FromUid, GroupId, Payload, PayloadMd5),
         ?assertEqual(ok, Result)
     end).

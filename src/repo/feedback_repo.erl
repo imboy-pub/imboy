@@ -25,7 +25,7 @@
 %% @return 返回用户反馈表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"feedback">>).
+    elib_pg_sql:public_tablename(<<"feedback">>).
 
 
 %%% 新增用户反馈
@@ -33,7 +33,7 @@ tablename() ->
     ok | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach, FeedbackMd5)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) ->
-    _ = imboy_pg:insert(tablename(), #{
+    _ = elib_pg:insert(tablename(), #{
         <<"user_id">> => Uid,  % 用户ID (整型)
         <<"device_id">> => Did,  % 设备ID (字符串)
         <<"client_operating_system">> => COS,  % 客户端操作系统 (字符串)
@@ -46,7 +46,7 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, Feed
         <<"attach">> => Attach,  % 附件信息 (JSON字符串)
         <<"feedback_md5">> => FeedbackMd5,  % MD5校验值 (字符串)
         <<"status">> => 1,  % 状态 (整型 1-有效)
-        <<"created_at">> => imboy_dt:now()  % 创建时间 (使用原生时间函数)
+        <<"created_at">> => elib_dt:now()  % 创建时间 (使用原生时间函数)
     }),
     ok.
 
@@ -55,7 +55,7 @@ delete(Uid, FeedbackId) ->
     Tb = tablename(),
     % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND id = $2">>,
-    case imboy_pg:execute(Sql, [Uid, FeedbackId]) of
+    case elib_pg:execute(Sql, [Uid, FeedbackId]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.

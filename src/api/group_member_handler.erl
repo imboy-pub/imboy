@@ -10,6 +10,13 @@
 %% API
 %% ===================================================================
 
+%% @doc 初始化群组成员处理器
+%% 根据请求中的 action 参数调用相应的处理函数
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State0 状态映射，包含 action 和 current_uid 等信息
+%% @return {ok, Req1, State} 处理后的请求对象和状态
+%% @end
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
@@ -34,13 +41,21 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
+%% @doc 查询共同群组
+%% 查询两个用户共同加入的群组列表
+%%
+%% @param Req0 Cowboy请求对象，包含两个用户ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含群组列表的响应
+%% @end
+-spec same_group(cowboy_req:req(), map()) -> cowboy_req:req().
 same_group(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     #{uid1 := A} = cowboy_req:match_qs([{uid1, [], <<>>}], Req0),
     #{uid2 := B} = cowboy_req:match_qs([{uid2, [], <<>>}], Req0),
 
-    A1 = imboy_hashids:decode(A),
-    B1 = imboy_hashids:decode(B),
+    A1 = elib_hashids:decode(A),
+    B1 = elib_hashids:decode(B),
 
     {Count, Li4} =
         if CurrentUid == A1; CurrentUid == B1 ->
@@ -60,15 +75,23 @@ same_group(Req0, State) ->
            true ->
                {0, []}
         end,
-    imboy_response:success(Req0, #{<<"count">> => Count, <<"list">> => Li4}, "success.").
+    elib_response:success(Req0, #{<<"count">> => Count, <<"list">> => Li4}, "success.").
 
+%% @doc 加入群组
+%% 将指定用户加入到群组中
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID和成员列表
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含成员列表的响应
+%% @end
+-spec join(cowboy_req:req(), map()) -> cowboy_req:req().
 join(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     MemberUids = maps:get(<<"member_uids">>, PostVals, []),
     JoinMode = maps:get(<<"join_mode">>, PostVals, <<>>),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = imboy_hashids:decode(Gid),
+    Gid2 = elib_hashids:decode(Gid),
     JoinMode2 =
         case JoinMode of
             <<>> ->
@@ -79,37 +102,37 @@ join(Req0, State) ->
         end,
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
-            imboy_response:error(Req0, "在处理中，请稍后重试");
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
         _ when Gid2 == 0 ->
-            imboy_response:error(Req0, "group id 格式有误");
+            elib_response:error(Req0, <<"group id 格式有误"/utf8>>);
         _ when is_list(MemberUids) == false ->
-            imboy_response:error(Req0, "member_uids 必须是list");
+            elib_response:error(Req0, <<"member_uids 必须是list"/utf8>>);
         _ when MemberUids == [] ->
-            imboy_response:error(Req0, "member_uids 不能为空");
+            elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
         _ ->
             case group_repo:find_by_id(Gid2, <<"member_max,member_count">>) of
                 {error, _Reason} ->
-                    imboy_response:error(Req0, "群组不存在");
+                    elib_response:error(Req0, <<"群组不存在"/utf8>>);
                 G ->
                     Max = maps:get(<<"member_max">>, G, 0),
                     Count = maps:get(<<"member_count">>, G, 0),
                     Len = length(MemberUids),
                     Diff = Max - Count,
                     if Diff == 0 ->
-                           imboy_response:error(Req0, "群成员已满。");
+                           elib_response:error(Req0, <<"群成员已满。"/utf8>>);
                        Len > Diff ->
-                           imboy_response:error(Req0,
-                                                imboy_cnv:implode("",
-                                                                  ["还可以加入",
-                                                                   integer_to_list(Diff),
-                                                                   "名群成员"]));
+                           elib_response:error(Req0,
+                                                elib_cnv:implode(<<>>,
+                                                                  [<<"还可以加入"/utf8>>,
+                                                                   ec_cnv:to_binary(Diff),
+                                                                   <<"名群成员"/utf8>>]));
                        true ->
-                           MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids],
+                           MemberUids2 = [elib_hashids:decode(Id) || Id <- MemberUids],
                            MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
                            % ?DEBUG_LOG([MemberListRes]),
                            case MemberListRes of
                                {ok, []} ->
-                                   imboy_pg:with_tx(fun(Conn) ->
+                                   elib_pg:with_tx(fun(Conn) ->
                                                        [group_member_logic:join_group(Conn,
                                                                                       JoinMode2,
                                                                                       Uid2,
@@ -119,13 +142,13 @@ join(Req0, State) ->
                                                     end),
                                    {ok, MemberListRes2} =
                                        group_member_logic:list_member(Gid2, MemberUids2),
-                                   Sum = imboy_pg:pluck_value(
+                                   Sum = elib_pg:pluck_value(
                                              group_repo:tablename(),
                                              <<"user_id_sum">>,
                                              #{id => Gid2},
                                              #{},
                                              0),
-                                   imboy_response:success(Req0,
+                                   elib_response:success(Req0,
                                                             #{<<"gid">> => Gid,
                                                             <<"user_id_sum">> => Sum,
                                                             <<"member_list">> =>
@@ -133,13 +156,13 @@ join(Req0, State) ->
                                                           "success.");
                                {ok, MemberList} ->
                                    % 已经是成员，直接使用查询结果
-                                   Sum = imboy_pg:pluck_value(
+                                   Sum = elib_pg:pluck_value(
                                              group_repo:tablename(),
                                              <<"user_id_sum">>,
                                              #{id => Gid2},
                                              #{},
                                              0),
-                                   imboy_response:success(Req0,
+                                   elib_response:success(Req0,
                                                           #{<<"gid">> => Gid,
                                                             <<"user_id_sum">> => Sum,
                                                             <<"member_list">> =>
@@ -150,55 +173,77 @@ join(Req0, State) ->
             end
     end.
 
+%% @doc 离开群组
+%% 将指定用户从群组中移除
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID和成员列表
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
+-spec leave(cowboy_req:req(), map()) -> cowboy_req:req().
 leave(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     MemberUids = maps:get(<<"member_uids">>, PostVals, []),
-    Gid2 = imboy_hashids:decode(Gid),
+    Gid2 = elib_hashids:decode(Gid),
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
-            imboy_response:error(Req0, "在处理中，请稍后重试");
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
         _ when Gid2 == 0 ->
-            imboy_response:error(Req0, "group id 格式有误");
+            elib_response:error(Req0, <<"group id 格式有误"/utf8>>);
         _ ->
             [group_member_logic:leave(
-                 imboy_hashids:decode(Uid), Gid2, CurrentUid)
+                 elib_hashids:decode(Uid), Gid2, CurrentUid)
              || Uid <- MemberUids],
-            imboy_response:success(Req0, #{<<"gid">> => Gid}, "success.")
+            elib_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
 
+%% @doc 设置群内昵称
+%% 设置用户在群组中的昵称和描述
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID、昵称和描述
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec alias(cowboy_req:req(), map()) -> cowboy_req:req().
 alias(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = imboy_hashids:decode(Gid),
+    Gid2 = elib_hashids:decode(Gid),
     case Gid2 of
         0 ->
-            imboy_response:error(Req0, "group id 必须");
+            elib_response:error(Req0, <<"group id 必须"/utf8>>);
         _ ->
             Alias = maps:get(<<"alias">>, PostVals, <<>>),
             Description = maps:get(<<"description">>, PostVals, <<>>),
             group_member_logic:alias(CurrentUid, Gid2, Alias, Description),
-            imboy_response:success(Req0, #{<<"gid">> => Gid}, "success.")
+            elib_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
 
+%% @doc 群组成员分页
+%% 获取群组成员列表（分页）
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID和分页参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含成员列表的响应
+%% @end
+-spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     #{gid := Gid} = cowboy_req:match_qs([{gid, [], undefined}], Req0),
-    Gid2 = imboy_hashids:decode(Gid),
+    Gid2 = elib_hashids:decode(Gid),
     GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
         0 ->
-            imboy_response:error(Req0, "group id 必须");
+            elib_response:error(Req0, <<"group id 必须"/utf8>>);
         _ when GMSize == 0 ->
-            imboy_response:error(Req0, "你不是群成员");
+            elib_response:error(Req0, <<"你不是群成员"/utf8>>);
         _ ->
-            {Page, Size} = imboy_param:page(Req0),
-
-            WhereSql = <<"m.group_id =", (ec_cnv:to_binary(Gid2))/binary>>,
-            Where = #{<<"__raw">> => WhereSql},
+            {Page, Size} = elib_param:page(Req0),
+            Where = #{<<"m.group_id">> => Gid2},
             UTb = user_repo:tablename(),
             MTb = group_member_repo:tablename(),
             Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
@@ -207,7 +252,7 @@ page(Req0, State) ->
                   "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
                   "e, m.status, m.updated_at, m.created_at">>,
             Payload =
-                case imboy_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size) of
+                case elib_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size) of
                     {ok, #{total := Total, list := Rows}} ->
                         Rows2 = group_member_transfer:member_list(Rows),
                         #{total => Total,
@@ -220,9 +265,16 @@ page(Req0, State) ->
                           size => Size,
                           list => []}
                 end,
-            imboy_response:success(Req0, page_transfer(Payload))
+            elib_response:success(Req0, page_transfer(Payload))
     end.
 
+%% @doc 转换群组成员分页数据
+%% 将群组成员数据进行编码转换
+%%
+%% @param Payload 原始分页数据
+%% @return 转换后的分页数据
+%% @end
+-spec page_transfer(map()) -> map().
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = maps:get(K, Payload, []),

@@ -15,11 +15,11 @@ handle_index_init_success_test_() ->
             cowboy_req,
             config_ds,
             app_version_ds,
-            imboy_hasher,
+            elib_hasher,
             jsone,
-            imboy_cipher,
-            imboy_pg,
-            imboy_response
+            elib_cipher,
+            elib_pg,
+            elib_response
         ],
         lists:foreach(fun(Mod) -> ok = meck:new(Mod, [unstick, non_strict]) end, Mods),
         SolKey = <<"sol_key">>,
@@ -46,11 +46,11 @@ handle_index_init_success_test_() ->
             (_) -> undefined
         end),
         meck:expect(app_version_ds, sign_key, fun(_DType, _SignKeyVsn, _Pkg) -> undefined end),
-        meck:expect(imboy_hasher, md5, fun(_SolKey) -> <<"md5_key">> end),
+        meck:expect(elib_hasher, md5, fun(_SolKey) -> <<"md5_key">> end),
         meck:expect(jsone, encode, fun(_Data) -> Encoded end),
-        meck:expect(imboy_cipher, aes_encrypt, fun(aes_256_cbc, _Encoded, _IV) -> Cipher end),
-        meck:expect(imboy_pg, query, fun(_Sql, _Args) -> QueryRes end),
-        meck:expect(imboy_response, success, fun(Req, Payload, Msg) -> {success, Req, Payload, Msg} end),
+        meck:expect(elib_cipher, aes_encrypt, fun(aes_256_cbc, _Encoded, _IV) -> Cipher end),
+        meck:expect(elib_pg, query, fun(_Sql, _Args) -> QueryRes end),
+        meck:expect(elib_response, success, fun(Req, Payload, Msg) -> {success, Req, Payload, Msg} end),
         try
             Req0 = #{},
             {ok, {success, Req0, Payload, "success."}, State} =

@@ -15,7 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.feedback">> end}
     ], fun() ->
         Result = feedback_repo:tablename(),
@@ -27,7 +27,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 find_feedback_by_id_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含反馈查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*feedback">>) =/= nomatch),
@@ -51,7 +51,7 @@ find_feedback_by_id_test_() ->
     end).
 
 list_feedbacks_by_uid_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含用户反馈列表查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*feedback">>) =/= nomatch),
@@ -85,7 +85,7 @@ list_feedbacks_by_uid_test_() ->
 %% ===================================================================
 
 create_feedback_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(Sql, Params) ->
             % 验证SQL包含反馈创建
             ?assert(binary:match(Sql, <<"INSERT.*INTO.*feedback">>) =/= nomatch),

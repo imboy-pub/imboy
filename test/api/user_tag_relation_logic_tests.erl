@@ -20,7 +20,7 @@ remove_tag_success_test_() ->
         {'replace_object_tag', 6, fun(_Conn, _Scene, _Uid, _ObjectId, _TagName, _NewTagId) -> ok end},
         {'flush_subtitle', 1, fun(_TagId) -> ok end}
     ], fun() ->
-        ?WITH_MECK(imboy_pg, [
+        ?WITH_MECK(elib_pg, [
             {'with_tx', 1, fun(TxFun) -> TxFun(mock_conn) end}
         ], fun() ->
             Uid = 12345,
@@ -39,7 +39,7 @@ remove_tag_with_integer_id_test_() ->
         {'replace_object_tag', 6, fun(_Conn, _Scene, _Uid, _ObjectId, _TagName, _NewTagId) -> ok end},
         {'flush_subtitle', 1, fun(_TagId) -> ok end}
     ], fun() ->
-        ?WITH_MECK(imboy_pg, [
+        ?WITH_MECK(elib_pg, [
             {'with_tx', 1, fun(TxFun) -> TxFun(mock_conn) end}
         ], fun() ->
             Uid = 12345,
@@ -62,7 +62,7 @@ add_tag_success_test_() ->
         {'replace_object_tag', 6, fun(_Conn, _Scene, _Uid, _ObjectId, _TagName, _TagId) -> ok end},
         {'flush_subtitle', 1, fun(_TagId) -> ok end}
     ], fun() ->
-        ?WITH_MECK(imboy_pg, [
+        ?WITH_MECK(elib_pg, [
             {'with_tx', 1, fun(TxFun) -> TxFun(mock_conn) end}
         ], fun() ->
             Uid = 12345,
@@ -87,7 +87,7 @@ set_tag_success_test_() ->
         {'replace_object_tag', 6, fun(_Conn, _Scene, _Uid, _ObjectId, _TagName, _TagId) -> ok end},
         {'flush_subtitle', 1, fun(_TagId) -> ok end}
     ], fun() ->
-        ?WITH_MECK(imboy_pg, [
+        ?WITH_MECK(elib_pg, [
             {'with_tx', 1, fun(TxFun) -> TxFun(mock_conn) end}
         ], fun() ->
             Uid = 12345,

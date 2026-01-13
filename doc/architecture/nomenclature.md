@@ -41,7 +41,7 @@ imboy/
 | **Logic** | `{功能}_logic.erl` | `user_logic.erl`, `friend_logic.erl` |
 | **DS** | `{实体}_ds.erl` | `user_ds.erl`, `auth_ds.erl` |
 | **Repo** | `{表名}_repo.erl` | `user_repo.erl`, `friend_repo.erl` |
-| **Lib** | `imboy_{功能}.erl` | `imboy_cache.erl`, `imboy_cipher.erl` |
+| **Lib** | `imboy_{功能}.erl` | `imboy_cache.erl`, `elib_cipher.erl` |
 
 ### 函数命名
 
@@ -175,15 +175,15 @@ POST /api/group/add           # 创建群组
 | 模块 | 功能 |
 |------|------|
 | `imboy_cache` | 缓存操作 |
-| `imboy_pg` | 数据库连接 |
-| `imboy_pg_sql` | SQL 构建 |
-| `imboy_cipher` | 加解密 |
-| `imboy_password` | 密码哈希 |
-| `imboy_hashids` | ID 混淆 |
-| `imboy_req` | HTTP 请求 |
-| `imboy_response` | 响应格式化 |
+| `elib_pg` | 数据库连接 |
+| `elib_pg_sql` | SQL 构建 |
+| `elib_cipher` | 加解密 |
+| `elib_password` | 密码哈希 |
+| `elib_hashids` | ID 混淆 |
+| `elib_req` | HTTP 请求 |
+| `elib_response` | 响应格式化 |
 | `imboy_syn` | 进程注册 |
-| `imboy_log` | 日志记录 |
+| `elib_log` | 日志记录 |
 
 ---
 

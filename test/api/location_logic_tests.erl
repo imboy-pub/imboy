@@ -81,7 +81,7 @@ people_nearby_kilometers_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(imboy_hashids, [
+        ?WITH_MECK(elib_hashids, [
             {'replace_id', 1, fun(UserData) ->
                 % 模拟ID替换
                 maps:put(<<"id">>, <<"encoded_1">>, maps:from_list(UserData))
@@ -116,7 +116,7 @@ people_nearby_meters_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(imboy_hashids, [
+        ?WITH_MECK(elib_hashids, [
             {'replace_id', 1, fun(UserData) ->
                 maps:put(<<"id">>, <<"encoded_3">>, maps:from_list(UserData))
             end}
@@ -148,7 +148,7 @@ people_nearby_empty_result_test_() ->
             {ok, []}  % 没有找到附近的人
         end}
     ], fun() ->
-        ?WITH_MECK(imboy_hashids, [
+        ?WITH_MECK(elib_hashids, [
             {'replace_id', 1, fun(Row) -> Row end}
         ], fun() ->
             ?WITH_MECK(friend_ds, [

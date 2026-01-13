@@ -12,6 +12,8 @@
 -export([update_by_did/4]).
 -export([count_by_uid/1,
          page/3]).
+-export([list_public_keys/1]).
+-export([list_public_keys_by_uids/1]).
 
 -include("log.hrl").
 
@@ -23,7 +25,7 @@
 %% @return 返回用户设备表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"user_device">>).
+    elib_pg_sql:public_tablename(<<"user_device">>).
 
 
 % user_device_repo:page(1, 10, 0).
@@ -36,13 +38,36 @@ page(Uid, Limit, Offset) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary,
             " ORDER BY last_active_at desc LIMIT $3 OFFSET $4">>,
     % ?DEBUG_LOG([Sql, Uid, Limit, Offset]),
-    imboy_pg:query(Sql, [1, Uid, Limit, Offset]).
+    elib_pg:query(Sql, [1, Uid, Limit, Offset]).
 
+-spec list_public_keys(integer()) -> {ok, list(map())} | {error, any()}.
+list_public_keys(Uid) ->
+    Tb = tablename(),
+    Column = <<"device_id, device_type, public_key, last_active_at">>,
+    Sql = <<"SELECT ", Column/binary,
+            " FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 AND public_key IS NOT NULL AND public_key <> ''",
+            " ORDER BY last_active_at desc">>,
+    elib_pg:query(Sql, [Uid]).
+
+-spec list_public_keys_by_uids([integer()]) -> {ok, list(map())} | {error, any()}.
+list_public_keys_by_uids([]) ->
+    {ok, []};
+list_public_keys_by_uids(Uids) when is_list(Uids) ->
+    Tb = tablename(),
+    Column = <<"user_id, device_id, device_type, public_key, last_active_at">>,
+    Sql = <<"SELECT ", Column/binary,
+            " FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = ANY($1)",
+            " AND public_key IS NOT NULL AND public_key <> ''",
+            " ORDER BY user_id asc, last_active_at desc">>,
+    elib_pg:query(Sql, [Uids]).
 
 % user_device_repo:count_by_uid(1).
+-spec count_by_uid(integer()) -> non_neg_integer().
 count_by_uid(Uid) ->
     % 使用安全的参数化查询，避免SQL注入
-    case imboy_pg:pluck(tablename(), <<"count(*) as count">>, #{status => 1, user_id => Uid}, #{}) of
+    case elib_pg:pluck(tablename(), <<"count(*) as count">>, #{status => 1, user_id => Uid}, #{}) of
         {ok, Count} when is_integer(Count) -> Count;
         _ -> 0
     end.
@@ -53,7 +78,7 @@ count_by_uid(Uid) ->
 -spec device_name(integer(), binary()) -> binary().
 device_name(Uid, DID) ->
     % 使用安全的参数化查询，避免SQL注入
-    case imboy_pg:pluck(tablename(), <<"device_name">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
+    case elib_pg:pluck(tablename(), <<"device_name">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
         {ok, DeviceName} when is_binary(DeviceName) -> DeviceName;
         _ -> <<>>
     end.
@@ -63,7 +88,7 @@ device_name(Uid, DID) ->
 -spec login_count(Uid :: integer(), DID :: binary()) -> integer().
 login_count(Uid, DID) ->
     % 使用安全的参数化查询，避免SQL注入
-    case imboy_pg:pluck(tablename(), <<"login_count">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
+    case elib_pg:pluck(tablename(), <<"login_count">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
         {ok, LoginCount} when is_integer(LoginCount) -> LoginCount;
         _ -> 0
     end.
@@ -73,7 +98,7 @@ login_count(Uid, DID) ->
 delete(Uid, DID) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
-    _ = imboy_pg:execute(Sql, [Uid, DID]),
+    _ = elib_pg:execute(Sql, [Uid, DID]),
     ok.
 
 
@@ -100,7 +125,7 @@ update_by_did(Uid, DID, Set, SetArgs) ->
     Sql = <<"UPDATE ", Tb/binary, " SET ", Set/binary, " WHERE status = 1 AND user_id = $", SetArgsLen2/binary,
             " AND device_id = $", SetArgsLen3/binary>>,
     SetArgs2 = SetArgs ++ [Uid, DID],
-    imboy_pg:execute(Sql, SetArgs2).
+    elib_pg:execute(Sql, SetArgs2).
 
 
 %% ===================================================================
@@ -121,7 +146,7 @@ save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0
             Ip
     end,
     % 使用安全的参数化查询，避免SQL注入
-    imboy_pg:update(Tb, #{
+    elib_pg:update(Tb, #{
         login_count => LoginCount + 1,
         last_login_ip => Ip2,
         last_login_at => Now,
@@ -135,7 +160,7 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
     Ip = maps:get(<<"ip">>, PostVals, <<>>),
 
-    imboy_pg:insert(tablename(), #{
+    elib_pg:insert(tablename(), #{
         %% 用户ID (字符串类型)
         <<"user_id">> => Uid,
         %% 设备类型 (字符串，如"ios"/"android")

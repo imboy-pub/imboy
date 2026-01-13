@@ -100,7 +100,7 @@ merge_tag_combines_tags_test_() ->
                     source_tag_id => 123,
                     target_tag_id => 456,
                     combined_tag_name => <<"Combined Tag">>,
-                    merged_at => imboy_dt:timestamp()
+                    merged_at => elib_dt:timestamp()
                 }}
             end}
         ]}

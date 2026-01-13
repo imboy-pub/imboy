@@ -46,28 +46,52 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 设备分页列表
+%% 获取用户的设备列表（分页）
+%%
+%% @param Req0 Cowboy请求对象，包含分页参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含设备列表的响应
+%% @end
+-spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_param:page(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
     Payload = user_device_logic:page(CurrentUid, Page, Size),
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
+%% @doc 修改设备名称
+%% 修改设备的显示名称
+%%
+%% @param Req0 Cowboy请求对象，包含设备ID和新名称
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
+-spec change_name(cowboy_req:req(), map()) -> cowboy_req:req().
 change_name(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     DID = maps:get(<<"did">>, PostVals, <<"">>),
     Name = maps:get(<<"name">>, PostVals, <<"">>),
     user_device_logic:change_name(CurrentUid, DID, Name),
-    imboy_response:success(Req0).
+    elib_response:success(Req0).
 
+%% @doc 删除设备
+%% 删除指定的设备
+%%
+%% @param Req0 Cowboy请求对象，包含设备ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
+-spec delete(cowboy_req:req(), map()) -> cowboy_req:req().
 delete(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     DID = maps:get(<<"did">>, PostVals, <<"">>),
     user_device_logic:delete(CurrentUid, DID),
-    imboy_response:success(Req0).
+    elib_response:success(Req0).
 
 %% ===================================================================
 %% EUnit tests.

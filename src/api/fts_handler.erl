@@ -44,21 +44,35 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-% 搜索“用户允许被搜索”的用户
+%% @doc 搜索用户
+%% 搜索允许被搜索的用户
+%%
+%% @param Req0 Cowboy请求对象，包含搜索关键词和分页参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含搜索结果的响应
+%% @end
+-spec user_search(cowboy_req:req(), map()) -> cowboy_req:req().
 user_search(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_param:page(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
     Payload = fts_logic:user_search_page(CurrentUid, Page, Size, Keyword),
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
-% 最近新注册的并且允许被搜索到的朋友
+%% @doc 最近新注册的用户
+%% 获取最近新注册的并且允许被搜索到的用户
+%%
+%% @param Req0 Cowboy请求对象，包含搜索关键词和分页参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含搜索结果的响应
+%% @end
+-spec recently_user(cowboy_req:req(), map()) -> cowboy_req:req().
 recently_user(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_param:page(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
     #{keyword := Keyword} = cowboy_req:match_qs([{keyword, [], <<"">>}], Req0),
     Payload = fts_logic:recently_user_page(CurrentUid, Page, Size, Keyword),
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
 %% ===================================================================
 %% EUnit tests.

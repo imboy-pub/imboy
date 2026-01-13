@@ -105,7 +105,7 @@ title_mode2_title_or_account_test_() ->
 %% ===================================================================
 
 webrtc_credential_valid_user_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode_hex', 1, fun(_Hex) -> {ok, 12345} end}
     ], fun() ->
         UserId = 12345,
@@ -123,7 +123,7 @@ webrtc_credential_valid_user_test_() ->
     end).
 
 webrtc_credential_invalid_user_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode_hex', 1, fun(_Hex) -> {error, invalid_hash} end}
     ], fun() ->
         UserId = 999999,
@@ -185,11 +185,11 @@ auth_webrtc_credential_different_secret_test_() ->
 
 integration_user_flow_test_() ->
     ?WITH_MECKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode_hex', 1, fun(_Hex) -> {ok, 12345} end},
             {'encode_hex', 1, fun(_Id) -> <<"encoded_hash">> end}
         ]},
-        {imboy_pg, [
+        {elib_pg, [
             {'query', 2, fun(_Sql, _Params) -> {ok, []} end},
             {'query', 3, fun(_Sql, _Params, _Conn) -> {ok, []} end}
         ]}

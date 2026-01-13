@@ -32,7 +32,7 @@ init_is_idempotent_test_() ->
 %% ===================================================================
 
 allocate_returns_valid_id_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 3, fun(Sql, _Params, _Conn) ->
             % 验证 SQL 语句正确性
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*account_id_seq">>) =/= nomatch),
@@ -47,7 +47,7 @@ allocate_returns_valid_id_test_() ->
         ?assertEqual(1001, Id),
         
         % 验证 Mock 被正确调用
-        meck_helper:verify_called(imboy_pg, query, 3)
+        meck_helper:verify_called(elib_pg, query, 3)
     end).
 
 allocate_unique_ids_test_() ->

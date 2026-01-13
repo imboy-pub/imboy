@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public."adm_user"
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL
 )
 
--- adm_user_repo:save(#{mobile => <<"13692177080">>, password => imboy_password:generate(imboy_hasher:md5("admin888")), account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>, created_at => imboy_dt:now()}).
+-- adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(elib_hasher:md5("admin888")), account => "13692177080A", "status" => 1, "role_id" => {1,3}, "nickname" => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
 TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.adm_user OWNER to imboy_user;
@@ -41,7 +41,7 @@ COMMENT ON COLUMN public.adm_user.email IS '会员注册Email';
 
 COMMENT ON COLUMN public.adm_user.nickname IS '用户昵称';
 
-COMMENT ON COLUMN public.adm_user.password IS '经过加盐的密码 imboy_password:generate(imboy_hasher:md5("admin888")).';
+COMMENT ON COLUMN public.adm_user.password IS '经过加盐的密码 elib_password:generate(elib_hasher:md5("admin888")).';
 COMMENT ON COLUMN public.adm_user.avatar IS '头像';
 COMMENT ON COLUMN public.adm_user.role_id IS '角色ID';
 COMMENT ON COLUMN public.adm_user.login_count IS '登陆次数';

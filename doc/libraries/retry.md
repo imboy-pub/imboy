@@ -1,4 +1,4 @@
-# imboy_retry 使用示例
+# elib_retry 使用示例
 
 ## 基本使用
 
@@ -13,7 +13,7 @@ end).
 % 使用重试后
 spawn(fun() ->
     try
-        case imboy_retry:with_retry(fun() ->
+        case elib_retry:with_retry(fun() ->
             message_ds:send_next(ToId, MsgId, MsgJson, MsLi)
         end, 3, 1000, exponential) of
             {ok, _} ->
@@ -34,7 +34,7 @@ end).
 ```erlang
 % 在 Logic 层使用
 get_user_with_retry(Uid) ->
-    case imboy_retry:with_retry(fun() ->
+    case elib_retry:with_retry(fun() ->
         user_repo:find_by_id(Uid)
     end, 3, 500) of
         {ok, User} when User =/= #{} ->
@@ -51,7 +51,7 @@ get_user_with_retry(Uid) ->
 ```erlang
 % 调用外部 API
 send_sms_with_retry(Phone, Message) ->
-    case imboy_retry:with_retry(fun() ->
+    case elib_retry:with_retry(fun() ->
         imboy_sms:send(Phone, Message)
     end, 3, 2000, linear) of
         {ok, Result} ->
@@ -66,7 +66,7 @@ send_sms_with_retry(Phone, Message) ->
 ```erlang
 % 操作可能在5秒内超时
 spawn(fun() ->
-    case imboy_retry:with_retry_and_timeout(fun() ->
+    case elib_retry:with_retry_and_timeout(fun() ->
         slow_operation()
     end, 5000, 3, 2000) of
         {ok, Result} ->
@@ -83,7 +83,7 @@ end).
 
 ```erlang
 % 每次重试间隔都是 1000ms
-imboy_retry:with_retry(Fun, 3, 1000, fixed).
+elib_retry:with_retry(Fun, 3, 1000, fixed).
 
 % 时间线：
 % 0ms    - 第1次尝试
@@ -96,7 +96,7 @@ imboy_retry:with_retry(Fun, 3, 1000, fixed).
 
 ```erlang
 % 每次重试间隔递增 1000ms
-imboy_retry:with_retry(Fun, 3, 1000, linear).
+elib_retry:with_retry(Fun, 3, 1000, linear).
 
 % 时间线：
 % 0ms    - 第1次尝试
@@ -109,7 +109,7 @@ imboy_retry:with_retry(Fun, 3, 1000, linear).
 
 ```erlang
 % 每次重试间隔翻倍
-imboy_retry:with_retry(Fun, 3, 1000, exponential).
+elib_retry:with_retry(Fun, 3, 1000, exponential).
 
 % 时间线：
 % 0ms    - 第1次尝试
@@ -124,13 +124,13 @@ imboy_retry:with_retry(Fun, 3, 1000, exponential).
 
 ```erlang
 % 网络 API - 重试次数多
-imboy_retry:with_retry(ApiFun, 5, 1000).
+elib_retry:with_retry(ApiFun, 5, 1000).
 
 % 数据库操作 - 重试次数少
-imboy_retry:with_retry(DbFun, 2, 500).
+elib_retry:with_retry(DbFun, 2, 500).
 
 % 关键操作 - 重试次数多且延迟长
-imboy_retry:with_retry(CriticalFun, 5, 2000, exponential).
+elib_retry:with_retry(CriticalFun, 5, 2000, exponential).
 ```
 
 ### 2. 记录详细日志
@@ -138,7 +138,7 @@ imboy_retry:with_retry(CriticalFun, 5, 2000, exponential).
 ```erlang
 spawn(fun() ->
     MsgId2 = MsgId,  % 捕获变量
-    case imboy_retry:with_retry(fun() ->
+    case elib_retry:with_retry(fun() ->
         message_ds:send_next(ToId, MsgId2, MsgJson, MsLi)
     end, 3, 1000) of
         {ok, _} ->
@@ -154,7 +154,7 @@ end).
 ```erlang
 % 异步重试
 spawn(fun() ->
-    imboy_retry:with_retry(fun() ->
+    elib_retry:with_retry(fun() ->
         % 可能失败的操作
         risky_operation()
     end, 3, 1000)
@@ -166,7 +166,7 @@ end).
 ```erlang
 spawn(fun() ->
     try
-        imboy_retry:with_retry(fun() ->
+        elib_retry:with_retry(fun() ->
             case do_something() of
                 {ok, Result} -> Result;
                 {error, temporary} -> erlang:error(temporary_error);
@@ -198,7 +198,7 @@ c2c(MsgId, CurrentUid, Data) ->
         MsgJson2 = MsgJson,
         MsLi2 = MsLi,
 
-        case imboy_retry:with_retry(fun() ->
+        case elib_retry:with_retry(fun() ->
             message_ds:send_next(ToId2, MsgId2, MsgJson2, MsLi2)
         end, 3, 1000, exponential) of
             {ok, _} ->
@@ -215,7 +215,7 @@ c2c(MsgId, CurrentUid, Data) ->
 ```erlang
 % 在 DS 层使用
 update_user_cache(Uid, Data) ->
-    imboy_retry:with_retry(fun() ->
+    elib_retry:with_retry(fun() ->
         imboy_cache:set({user, Uid}, Data, 3600)
     end, 2, 100).
 ```
@@ -225,8 +225,8 @@ update_user_cache(Uid, Data) ->
 ```erlang
 % 在 Repo 层使用
 save_with_retry(Table, Data) ->
-    case imboy_retry:with_retry(fun() ->
-        imboy_pg:query(Sql, [Data])
+    case elib_retry:with_retry(fun() ->
+        elib_pg:query(Sql, [Data])
     end, 3, 500, exponential) of
         {ok, _, _} = Result -> Result;
         {error, Reason} -> {error, Reason}
@@ -239,7 +239,7 @@ save_with_retry(Table, Data) ->
 % 运行测试
 erl -pa ebin -pa test/lib -include include
 
-> eunit:test(imboy_retry_tests, [verbose]).
+> eunit:test(elib_retry_tests, [verbose]).
 ```
 
 ## 性能考虑

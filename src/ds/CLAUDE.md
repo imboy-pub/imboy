@@ -1,285 +1,210 @@
+# DS 层文档 - 数据服务层
+
 [根目录](../CLAUDE.md) > **src/ds**
+
+> **最后更新**: 2026-01-20 08:48:18 CST
+> **模块数量**: 13 个
+> **职责**: 封装数据操作，调用 Repo 层访问数据库，提供缓存支持
 
 ---
 
-# DS 层 (src/ds/)
-
-> **最后更新**: 2026-01-09 13:30:00 CST
-> **模块数量**: 16 个 | **覆盖率**: 50%
-
 ## 模块职责
 
-DS 层 (Data Service) 是 Imboy 系统的 **数据服务层**，位于 Logic 和 Repo 之间，负责：
+DS 层是 Imboy 系统的数据服务层，负责：
+- 封装数据访问逻辑
+- 调用 Repo 层进行数据库操作
+- 提供缓存支持
+- 消息投递服务
+- 配置管理
+- WebSocket 状态管理
 
-1. **数据封装**: 封装数据操作，为 Logic 层提供清晰接口
-2. **缓存管理**: 决定何时读缓存、何时读数据库
-3. **数据组装**: 将多个 Repo 的数据组装为业务对象
-4. **跨实体操作**: 协调多个 Repo 的操作
+---
 
-## 模块列表
+## 入口与启动
 
-### 用户与认证
+DS 模块由 Logic 层调用：
 
-| 模块 | 说明 |
-|------|------|
-| `user_ds.erl` | 用户数据服务 |
-| `user_setting_ds.erl` | 用户设置数据服务 |
-| `auth_ds.erl` | 认证数据服务 |
-| `token_ds.erl` | Token 数据服务 |
-| `account_ds.erl` | 账号数据服务 |
+```erlang
+% Logic 调用 DS
+{ok, User} = user_ds:find_by_uid(Uid).
 
-### 系统配置
+% DS 调用 Repo
+{ok, User} = user_repo:find_by_uid(Uid).
+```
 
-| 模块 | 说明 |
-|------|------|
-| `config_ds.erl` | 配置数据服务 |
-
-### 消息与通信
-
-| 模块 | 说明 |
-|------|------|
-| `message_ds.erl` | 消息数据服务 |
-| `msg_c2c_ds.erl` | 单聊消息数据服务 |
-| `msg_c2g_ds.erl` | 群聊消息数据服务 |
-| `msg_c2s_ds.erl` | C2S 消息数据服务 |
-| `msg_s2c_ds.erl` | S2C 消息数据服务 |
-| `msg_store_ds.erl` | 消息存储服务（异步批量写入） |
-| `msg_store_sup.erl` | 消息存储监管树 |
-| `msg_store_worker.erl` | 消息批量写入工作进程 |
-| `websocket_ds.erl` | WebSocket 数据服务 |
-
-### 关系与功能
-
-| 模块 | 说明 |
-|------|------|
-| `friend_ds.erl` | 好友数据服务 |
-| `friend_category_ds.erl` | 好友分组数据服务 |
-| `group_ds.erl` | 群组数据服务 |
-| `feedback_ds.erl` | 反馈数据服务 |
-| `app_version_ds.erl` | 版本数据服务 |
-| `app_ddl_ds.erl` | DDL 数据服务 |
+---
 
 ## 对外接口
 
-### 用户数据服务 (`user_ds.erl`)
+### 用户相关 DS
 
-```erlang
-% 获取用户信息（带缓存）
-user(Uid) -> Map | undefined
+| DS | 说明 |
+|----|------|
+| `user_ds.erl` | 用户数据服务 |
+| `user_setting_ds.erl` | 用户设置 |
+| `account_ds.erl` | 账户服务 |
 
-% 更新用户信息
-update(Uid, Data) -> {ok, 1} | {error, Reason}
+### 认证相关 DS
 
-% 检查用户是否存在
-exists(Uid) -> true | false
-```
+| DS | 说明 |
+|----|------|
+| `auth_ds.erl` | 认证数据服务 |
+| `token_ds.erl` | Token 管理 |
 
-### 认证数据服务 (`auth_ds.erl`)
+### 好友相关 DS
 
-```erlang
-% 验证 Token
-verify_token(Token) -> {ok, Uid} | {error, Reason}
+| DS | 说明 |
+|----|------|
+| `friend_ds.erl` | 好友数据服务 |
+| `friend_category_ds.erl` | 好友分组 |
 
-% 生成 Token
-encrypt_token(Uid) -> {ok, Token}
+### 群组相关 DS
 
-% 刷新 Token
-refresh_token(RefreshToken) -> {ok, NewToken} | {error, Reason}
-```
+| DS | 说明 |
+|----|------|
+| `group_ds.erl` | 群组数据服务 |
 
-### 配置数据服务 (`config_ds.erl`)
+### 消息相关 DS
 
-```erlang
-% 获取配置
-env(Key) -> Value
-env(Key, Default) -> Value
+| DS | 说明 |
+|----|------|
+| `msg_c2c_ds.erl` | 单聊消息服务 |
+| `msg_c2g_ds.erl` | 群聊消息服务 |
+| `msg_c2s_ds.erl` | 客户端请求服务 |
+| `msg_s2c_ds.erl` | 系统消息服务 |
+| `message_ds.erl` | 消息投递服务 |
+| `msg_store_ds.erl` | 消息存储服务 |
+| `msg_store_worker.erl` | 批量写入 Worker |
 
-% 重新加载配置
-reload() -> ok
-local_reload() -> ok
-```
+### 其他 DS
 
-### 消息数据服务 (`message_ds.erl`)
+| DS | 说明 |
+|----|------|
+| `websocket_ds.erl` | WebSocket 状态管理 |
+| `config_ds.erl` | 配置管理 |
+| `feedback_ds.erl` | 反馈服务 |
+| `app_version_ds.erl` | 版本服务 |
+| `app_ddl_ds.erl` | DDL 配置 |
 
-```erlang
-% 发送消息（带重试）
-send_next(Uid, MsgId, Msg, RetryTimes, ExcludeDIDs, IsSync) -> ok
+---
 
-% 组装消息
-assemble_msg(Type, To, From, Payload, MsgId) -> Map
-```
+## 关键依赖与配置
 
-### WebSocket 数据服务 (`websocket_ds.erl`)
+### 依赖的 Repo 模块
 
-```erlang
-% 注册连接
-register(Uid, DeviceId, DeviceType, Pid) -> ok
+| DS | 依赖的 Repo |
+|----|-------------|
+| `user_ds` | `user_repo`, `user_setting_repo` |
+| `friend_ds` | `friend_repo`, `friend_category_repo` |
+| `group_ds` | `group_repo` |
+| `msg_c2c_ds` | `msg_c2c_repo` |
+| `auth_ds` | `user_repo` |
 
-% 注销连接
-unregister(Uid, DeviceId) -> ok
+### 依赖的 Lib 模块
 
-% 查找连接
-find(Uid, DeviceId) -> Pid | undefined
+- `imboy_cache.erl`: 缓存操作
+- `elib_pg.erl`: 数据库连接
+- `imboy_syn.erl`: 分布式进程注册
 
-% 所有连接
-list_by_uid(Uid) -> [{Pid, DeviceInfo}]
-```
-
-## 关键依赖
-
-### 上游调用
-- `src/logic/`: Logic 层调用 DS 层
-
-### 下层依赖
-- `src/repo/`: DS 层调用 Repo 层
-- `src/lib/imboy_cache.erl`: 缓存操作
-- `src/lib/imboy_syn.erl`: 进程注册
+---
 
 ## 数据模型
 
-### 用户数据结构
+### 消息存储服务
+
+`msg_store_ds.erl` 和 `msg_store_worker.erl` 实现消息批量写入：
 
 ```erlang
-#{id => Uid,
-  account => Account,
-  nickname => Nickname,
-  avatar => Avatar,
-  status => Status,
-  created_at => Timestamp}
+% 存储消息
+ok = msg_store_ds:store(Msg).
+
+% 批量写入
+{ok, _} = msg_store_worker:write_batch(Msgs).
 ```
 
-### Token 数据结构
+### 消息投递服务
+
+`message_ds.erl` 实现消息投递：
 
 ```erlang
-#{uid => Uid,
-  device_id => DeviceId,
-  expire_at => Timestamp,
-  refresh_token => RefreshToken}
+% 投递消息
+ok = message_ds:send_next(Uid, Msg).
 ```
 
-## 缓存策略
+---
 
-### 缓存键格式
+## 测试与质量
 
-```erlang
-% 用户信息
-{user, Uid}
-
-% 用户账号
-{user_account, Account}
-
-% Token
-{token, Token}
-
-% 配置
-{config, Key}
-```
-
-### 缓存更新策略
-
-```erlang
-% 读缓存
-case imboy_cache:get(Key) of
-    undefined ->
-        % 从数据库加载
-        Data = load_from_db(),
-        % 写入缓存
-        imboy_cache:set(Key, Data, TTL),
-        Data;
-    Cached ->
-        Cached
-end.
-
-% 更新时删除缓存
-update(Uid, Data) ->
-    user_repo:update(Uid, Data),
-    imboy_cache:flush({user, Uid}),
-    {ok, 1}.
-```
-
-## 核心流程
-
-### Token 验证流程
-
-```
-1. 客户端请求携带 Token
-2. auth_ds:verify_token(Token)
-3. 检查缓存
-   - 命中且有效 -> 返回 Uid
-   - 未命中 -> 从数据库验证 -> 更新缓存
-4. 检查设备是否在线
-5. 返回验证结果
-```
-
-### 消息投递流程
-
-```
-1. Logic 层调用 message_ds:send_next
-2. 查询用户在线状态（websocket_ds）
-3. 用户在线：
-   - 立即投递
-   - 设置定时器
-4. 用户离线：
-   - 存储离线消息
-5. 客户端确认：
-   - 取消定时器
-   - 删除离线消息
-```
-
-## 测试覆盖
-
-### 测试文件
+### 测试文件位置
 
 ```
 test/ds/
-├── user_ds_tests.erl
+├── account_ds_tests.erl
+├── app_version_ds_tests.erl
 ├── auth_ds_tests.erl
-├── config_ds_tests.erl
-├── message_ds_tests.erl
-└── ...
+├── feedback_ds_tests.erl
+├── friend_category_ds_tests.erl
+├── friend_ds_tests.erl
+├── msg_c2c_ds_tests.erl
+├── msg_c2g_ds_tests.erl
+├── msg_c2s_ds_tests.erl
+├── msg_s2c_ds_tests.erl
+└── user_setting_ds_tests.erl
 ```
 
-### 覆盖情况
+---
 
-- **覆盖率**: 约 50%
-- **已测试**: 基本 CRUD 操作
-- **待补充**: 缓存逻辑、边缘情况
+## 常见问题 (FAQ)
 
-## 常见问题
+### Q: 如何添加新的数据服务?
 
-### Q: DS 层和 Repo 层的区别?
+1. 在 `src/ds/` 创建新的 DS 文件
+2. 调用 Repo 层进行数据库操作
+3. 编写测试
 
-A:
-- **DS 层**: 封装数据操作，管理缓存，可调用多个 Repo
-- **Repo 层**: 直接操作数据库，一个 Repo 对应一张表
+### Q: 如何实现缓存?
 
-### Q: 何时使用缓存?
+使用 `imboy_cache:get/1,2` 和 `imboy_cache:set/3,4`。
 
-A:
-- **读取频繁**: 用户信息、群组信息
-- **计算密集**: 搜索结果、统计数据
-- **短期有效**: Token、验证码
+---
 
-### Q: 缓存更新策略?
+## 相关文件清单
 
-A:
-- **写穿透**: 先更新数据库，再删除缓存
-- **懒加载**: 缓存不存在时从数据库加载
-- **TTL**: 设置合理的过期时间
+### DS 文件 (13 个)
 
-## 相关文件
+```
+src/ds/
+├── account_ds.erl
+├── app_ddl_ds.erl
+├── app_version_ds.erl
+├── auth_ds.erl
+├── config_ds.erl
+├── feedback_ds.erl
+├── friend_category_ds.erl
+├── friend_ds.erl
+├── group_ds.erl
+├── message_ds.erl
+├── msg_c2c_ds.erl
+├── msg_c2s_ds.erl
+├── msg_s2c_ds.erl
+├── msg_store_ds.erl
+├── msg_store_sup.erl
+├── msg_store_worker.erl
+├── token_ds.erl
+├── user_ds.erl
+├── user_setting_ds.erl
+└── websocket_ds.erl
+```
 
-- `src/ds/`: 所有 DS 模块
-- `src/repo/`: 数据仓库层
-- `src/lib/imboy_cache.erl`: 缓存封装
-- `test/ds/`: 测试文件
+---
 
-## 变更记录
+## 变更记录 (Changelog)
 
-### 2026-01-07
-- 更新模块列表
-- 更新覆盖率统计
+### 2026-01-20
+- 新增 `msg_store_ds.erl` 消息存储服务
+- 新增 `msg_store_worker.erl` 批量写入 Worker
+- 完善 DS 层文档
 
-### 2026-01-03
-- 初始化 DS 层文档
-- 整理核心接口和流程
+---
+
+**文档维护**: 请在添加新的数据服务时同步更新此文档。

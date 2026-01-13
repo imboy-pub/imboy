@@ -44,33 +44,45 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-% imboy_req:get("http://127.0.0.1:9800/test/req_get?type=list&a=1").
-
+%% @doc 测试GET请求
+%% 用于测试API的GET请求端点
+%%
+%% @param Req0 Cowboy请求对象，包含查询参数
+%% @param _State 状态映射
+%% @return 返回包含测试数据的响应
+%% @end
+-spec req_get(cowboy_req:req(), map()) -> cowboy_req:req().
 req_get(Req0, _State) ->
-    % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
+    % CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
     #{type := Type} = cowboy_req:match_qs([{type, [], undefined}], Req0),
     #{a := A} = cowboy_req:match_qs([{a, [], 0}], Req0),
 
     % test_logic:demo(CurrentUid, Val1, Val2),
-    imboy_response:success(Req0,
+    elib_response:success(Req0,
                            #{<<"a">> => A,
-                             <<"config">> => imboy_cnv:implode("", [config_ds:env(test)]),
+                             <<"config">> => elib_cnv:implode("", [config_ds:env(test)]),
                              <<"type">> => Type,
                              <<"host">> => cowboy_req:header(<<"host">>, Req0),
                              <<"client">> => cowboy_req:header(<<"client">>, Req0),
                              <<"content-type">> => cowboy_req:header(<<"content-type">>, Req0)},
                            "success.").
 
-% imboy_req:post("http://127.0.0.1:9800/test/req_post", #{type => 1, b => 2}).
-% imboy_req:post("http://127.0.0.1:9800/test/req_post", [1,2,3]).
+%% @doc 测试POST请求
+%% 用于测试API的POST请求端点
+%%
+%% @param Req0 Cowboy请求对象，包含POST数据
+%% @param _State 状态映射
+%% @return 返回包含POST数据的响应
+%% @end
+-spec req_post(cowboy_req:req(), map()) -> cowboy_req:req().
 req_post(Req0, _State) ->
-    % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    PostVals = imboy_param:post(Req0),
+    % CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    PostVals = elib_param:post(Req0),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),
-    imboy_response:success(Req0, PostVals, "success.").
+    elib_response:success(Req0, PostVals, "success.").
 
 %% ===================================================================
 %% EUnit tests.

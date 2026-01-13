@@ -31,7 +31,7 @@ do_login_with_valid_mobile_test_() ->
                 #{<<"id">> => 12345, <<"password">> => <<"hashed_password">>, <<"status">> => 1}
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {verify, 2, fun(_Pwd, _HashedPwd) -> {error, "密码不匹配"} end}
         ]}
     ], fun() ->
@@ -58,7 +58,7 @@ do_login_with_valid_email_test_() ->
                 #{<<"id">> => 12345, <<"password">> => <<"hashed_password">>, <<"status">> => 1}
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {verify, 2, fun(_Pwd, _HashedPwd) -> {error, "密码不匹配"} end}
         ]}
     ], fun() ->
@@ -76,7 +76,7 @@ do_login_with_account_type_test_() ->
                 #{<<"id">> => 12345, <<"password">> => <<"hashed_password">>, <<"status">> => 1}
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {verify, 2, fun(_Pwd, _HashedPwd) -> {error, "密码不匹配"} end}
         ]}
     ], fun() ->
@@ -184,7 +184,7 @@ verify_user_with_empty_password_fails_test_() ->
     end).
 
 verify_user_with_valid_user_test_() ->
-    ?WITH_MOCK(imboy_password, [
+    ?WITH_MOCK(elib_password, [
         {verify, 2, fun(_Pwd, _HashedPwd) -> {ok, "verified"} end}
     ], fun() ->
         Pwd = <<"password">>,
@@ -202,7 +202,7 @@ verify_user_with_valid_user_test_() ->
     end).
 
 verify_user_with_invalid_password_test_() ->
-    ?WITH_MOCK(imboy_password, [
+    ?WITH_MOCK(elib_password, [
         {verify, 2, fun(_Pwd, _HashedPwd) -> {error, "密码不匹配"} end}
     ], fun() ->
         Pwd = <<"wrong_password">>,
@@ -212,7 +212,7 @@ verify_user_with_invalid_password_test_() ->
     end).
 
 verify_user_with_inactive_user_test_() ->
-    ?WITH_MOCK(imboy_password, [
+    ?WITH_MOCK(elib_password, [
         {verify, 2, fun(_Pwd, _HashedPwd) -> {ok, "verified"} end}
     ], fun() ->
         Pwd = <<"password">>,
@@ -276,7 +276,7 @@ quick_login_with_jverify_new_user_test_() ->
                 #{<<"id">> => 0}  % 用户不存在
             end}
         ]},
-        {imboy_pg, [
+        {elib_pg, [
             {insert, 3, fun(_Table, _Data, _Options) ->
                 {ok, 1, [{<<"67890">>}]}
             end}

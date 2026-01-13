@@ -15,7 +15,7 @@
 %% ===================================================================
 
 c2c_send_to_friend_success_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end},
         {'encode', 1, fun(456) -> <<"encoded_456">> end}
     ], fun() ->
@@ -25,7 +25,7 @@ c2c_send_to_friend_success_test_() ->
             ?WITH_MECK(user_denylist_logic, [
                 {'in_denylist', 2, fun(_ToId, _CurrentUid) -> 0 end}
             ], fun() ->
-                ?WITH_MECK(imboy_dt, [
+                ?WITH_MECK(elib_dt, [
                     {'now', 0, fun() -> 1640995200 end},
                     {'rfc3339_to', 2, fun(_Timestamp, millisecond) -> 1640995200000 end}
                 ], fun() ->
@@ -59,7 +59,7 @@ c2c_send_to_friend_success_test_() ->
     end).
 
 c2c_send_to_non_friend_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(friend_ds, [
@@ -79,7 +79,7 @@ c2c_send_to_non_friend_test_() ->
     end).
 
 c2c_send_to_blocked_user_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(friend_ds, [
@@ -143,7 +143,7 @@ c2c_client_ack_no_messages_test_() ->
 %% ===================================================================
 
 c2c_revoke_success_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
     ], fun() ->
         ?WITH_MECK(msg_c2c_repo, [
@@ -216,4 +216,136 @@ recall_message_with_invalid_msg_id_test_() ->
     ?TEST_WITH_APP(fun() ->
         MsgId = <<>>,
         ?assertMatch(<<_/binary>>, MsgId)
+    end).
+
+%% ===================================================================
+%% 消息编辑测试
+%% ===================================================================
+
+c2c_edit_success_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(msg_c2c_ds, [
+            {'edit_offline_msg', 5, fun(_MsgId, _NewPayload, _FromId, _ToId) -> ok end}
+        ], fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 456,
+            Data = [
+                {<<"payload">>, [{<<"content">>, <<"Updated Hello">>}]},
+                {<<"to">>, <<"encoded_123">>}
+            ],
+
+            Result = msg_c2c_logic:c2c_edit(MsgId, CurrentUid, Data),
+            ?assertEqual(ok, Result)
+        end)
+    end).
+
+c2c_edit_not_message_sender_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(msg_c2c_ds, [
+            {'edit_offline_msg', 5, fun(_MsgId, _NewPayload, _FromId, _ToId) -> {error, not_found} end}
+        ], fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 789,  % 不是发送者
+            Data = [
+                {<<"payload">>, [{<<"content">>, <<"Updated Hello">>}]},
+                {<<"to">>, <<"encoded_123">>}
+            ],
+
+            Result = msg_c2c_logic:c2c_edit(MsgId, CurrentUid, Data),
+            ?assertMatch({error, _}, Result)
+        end)
+    end).
+
+%% ===================================================================
+%% 消息撤回权限测试
+%% ===================================================================
+
+c2c_revoke_permission_denied_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {ok, #{<<"from_id">> => 999}}  % 不同的发送者
+            end}
+        ], fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 456,
+            Data = [
+                {<<"payload">>, [{<<"old_msg_id">>, <<"old_msg_456">>}]},
+                {<<"to">>, <<"encoded_123">>}
+            ],
+
+            Result = msg_c2c_logic:c2c_revoke(MsgId, CurrentUid, Data),
+            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
+        end)
+    end).
+
+c2c_revoke_msg_not_found_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {error, not_found}
+            end}
+        ], fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 456,
+            Data = [
+                {<<"payload">>, [{<<"old_msg_id">>, <<"old_msg_456">>}]},
+                {<<"to">>, <<"encoded_123">>}
+            ],
+
+            Result = msg_c2c_logic:c2c_revoke(MsgId, CurrentUid, Data),
+            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
+        end)
+    end).
+
+%% ===================================================================
+%% 边界条件测试
+%% ===================================================================
+
+c2c_send_with_empty_payload_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(friend_ds, [
+            {'is_friend', 2, fun(_ToId, _CurrentUid) -> true end}
+        ], fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 456,
+            Data = [
+                {<<"to">>, <<"encoded_123">>},
+                {<<"payload">>, []}  % 空负载
+            ],
+
+            Result = msg_c2c_logic:c2c(MsgId, CurrentUid, Data),
+            ?assertEqual(ok, Result)
+        end)
+    end).
+
+c2c_send_with_large_payload_test_() ->
+    ?WITH_MECK(elib_hashids, [
+        {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+    ], fun() ->
+        ?WITH_MECK(friend_ds, [
+            {'is_friend', 2, fun(_ToId, _CurrentUid) -> true end}
+        ], fun() ->
+            MsgId = <<"msg_large">>,
+            CurrentUid = 456,
+            LargeContent = lists:duplicate(<<"x">>, 10000),
+            Data = [
+                {<<"to">>, <<"encoded_123">>},
+                {<<"payload">>, [{<<"content">>, LargeContent}]},
+                {<<"created_at">>, 1640995200}
+            ],
+
+            Result = msg_c2c_logic:c2c(MsgId, CurrentUid, Data),
+            ?assertEqual(ok, Result)
+        end)
     end).

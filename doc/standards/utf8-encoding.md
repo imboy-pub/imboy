@@ -83,7 +83,7 @@ error_msg(_) -> <<"未知错误"/utf8>>.
 
 ```erlang
 % 在 Handler 中返回错误响应
-imboy_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
 ```
 
 ### 日志输出

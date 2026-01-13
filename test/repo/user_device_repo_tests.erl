@@ -6,7 +6,7 @@
 %%% @doc
 %%% user_device_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%%===================================================================
 
 %% ===================================================================
@@ -167,7 +167,7 @@ update_by_did_no_match_test_() ->
 
 save_new_device_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Now = imboy_dt:now(),
+        Now = elib_dt:now(),
         Uid = 999999,
         DID = <<"test_save_device">>,
         PostVals = [
@@ -183,7 +183,7 @@ save_new_device_test_() ->
 
 save_existing_device_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Now = imboy_dt:now(),
+        Now = elib_dt:now(),
         Uid = 1,
         DID = <<"test_existing_device">>,
         PostVals = [
@@ -196,7 +196,7 @@ save_existing_device_test_() ->
 
 save_empty_did_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Now = imboy_dt:now(),
+        Now = elib_dt:now(),
         Uid = 1,
         DID = <<>>,
         PostVals = [],

@@ -50,7 +50,7 @@ add_friend_with_undefined_created_at_returns_error_test_() ->
 
 add_friend_success_test_() ->
     ?WITH_MECKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode_hex', 1, fun(_Hex) -> {ok, 12345} end}
         ]},
         {friend_ds, [
@@ -108,7 +108,7 @@ confirm_friend_with_undefined_payload_returns_error_test_() ->
 
 confirm_friend_success_test_() ->
     ?WITH_MECKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode_hex', 1, fun(_Hex) -> {ok, 12345} end}
         ]},
         {friend_ds, [
@@ -132,7 +132,7 @@ confirm_friend_success_test_() ->
 
 delete_friend_with_binary_uid_test_() ->
     ?WITH_MECKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(<<"encoded_uid_2">>) -> 2 end}
         ]},
         {friend_repo, [

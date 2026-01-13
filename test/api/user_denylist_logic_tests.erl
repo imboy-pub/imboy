@@ -21,7 +21,7 @@ add_user_to_denylist_success_test_() ->
         ?WITH_MECK(imboy_cache, [
             {'flush', 1, fun(_Key) -> ok end}
         ], fun() ->
-            ?WITH_MECK(imboy_dt, [
+            ?WITH_MECK(elib_dt, [
                 {'now', 0, fun() -> 1640995200 end}
             ], fun() ->
                 Uid = 12345,
@@ -40,7 +40,7 @@ add_user_to_denylist_with_same_user_test_() ->
         ?WITH_MECK(imboy_cache, [
             {'flush', 1, fun(_Key) -> ok end}
         ], fun() ->
-            ?WITH_MECK(imboy_dt, [
+            ?WITH_MECK(elib_dt, [
                 {'now', 0, fun() -> 1640995200 end}
             ], fun() ->
                 Uid = 12345,
@@ -136,10 +136,10 @@ page_denylist_with_results_test_() ->
                 ]}
             end}
         ], fun() ->
-            ?WITH_MECK(imboy_hashids, [
+            ?WITH_MECK(elib_hashids, [
                 {'encode', 1, fun(Id) -> <<"encoded_", (integer_to_binary(Id))/binary>> end}
             ], fun() ->
-                ?WITH_MECK(imboy_response, [
+                ?WITH_MECK(elib_response, [
                     {'page_payload', 4, fun(_Total, _Page, _Size, Items) -> Items end}
                 ], fun() ->
                     Uid = 12345,
@@ -163,7 +163,7 @@ page_denylist_empty_results_test_() ->
                 {ok, [<<"id">>, <<"uid">>, <<"denied_uid">>, <<"created_at">>], []}
             end}
         ], fun() ->
-            ?WITH_MECK(imboy_response, [
+            ?WITH_MECK(elib_response, [
                 {'page_payload', 4, fun(_Total, _Page, _Size, Items) -> Items end}
             ], fun() ->
                 Uid = 12345,

@@ -50,28 +50,17 @@ check_subprotocols([H | _Tail], Req0) ->
 auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
-        % TODO check token expire
-        {ok, Uid, _ExpireDAt, _Type} ->
-            auth_after(Uid, Req, State, Opt);
-        {error, 705, _, Map} ->
-            Uid = maps:get(uid, Map),
-            DID = maps:get(did, State),
-            MsgId = <<"please_refresh_token">>,
-            ToUid = imboy_hashids:encode(Uid),
-            Msg = message_ds:assemble_msg(<<"S2C">>,
-                                          <<>>,
-                                          ToUid,
-                                          #{<<"msg_type">> => MsgId},
-                                          MsgId),
-            Msg2 = jsone:encode(Msg, [native_utf8]),
-            Fun = fun() ->
-                     Li = imboy_syn:list_by_uid(Uid),
-                     Reason = <<"token invalid, please login again.">>,
-                     [Pid ! {close, 4006, Reason} || {Pid, {_DType1, DID1}} <- Li, DID1 == DID]
-                  end,
-            % 只给当前设备发生消息
-            message_ds:send_next(Uid, MsgId, Msg2, [7000, 11000] ++ [Fun], [DID], true),
-            auth_after(Uid, Req, State, Opt);
+        % Token 有效且未过期（token_ds 已检查过期）
+        {ok, Uid, ExpireDAt, Type} ->
+            % 将过期时间传递给后续处理，便于提前刷新 Token
+            auth_after(Uid, Req, State#{token_expire_at => ExpireDAt, token_type => Type}, Opt);
+        {error, 705, _, _Map} ->
+            %% 【安全修复】过期 Token 应该拒绝连接，要求客户端重新登录
+            ok = ?WARN_LOG([token_expired_rejected]),
+            Req2 = cowboy_req:reply(4401, #{
+                <<"content-type">> => <<"application/json">>
+            }, <<"{}">>, Req),
+            {ok, Req2, State#{error => 705, msg => <<"token_expired">>}};
         {error, Code, Msg, _Map} ->
             {ok, Req, State#{error => Code, msg => Msg}}
     end;
@@ -98,7 +87,7 @@ auth(Auth, Req0, State0, _Opt) ->
                     {ok, cowboy_req:req(), map()} |
                     {cowboy_websocket, cowboy_req:req(), map(), map()}.
 % auth_after(true, _Uid, Req0, State0, _Opt) ->
-%     % imboy_log:warning("DeviceID ~p is online", [State0]),
+%     % elib_log:warning("DeviceID ~p is online", [State0]),
 %     % 429 Too Many Requests
 %     Req = cowboy_req:reply(429, Req0),
 %     {ok, Req, State0};

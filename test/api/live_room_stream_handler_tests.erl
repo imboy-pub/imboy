@@ -17,7 +17,7 @@
 %% @doc 测试开始直播流 - 成功场景
 handle_stream_start_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 12345},
@@ -35,12 +35,12 @@ handle_stream_start_test_() ->
                     stream_url => <<"rtmp://live.example.com/live/98765">>,
                     stream_key => <<"live_stream_key_123">>,
                     status => streaming,
-                    started_at => imboy_dt:timestamp(),
+                    started_at => elib_dt:timestamp(),
                     viewer_count => 0
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -71,13 +71,13 @@ handle_stream_start_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(live_room_logic, start_stream, 4),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试开始直播流 - 房间不存在
 handle_stream_start_room_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 99999},
@@ -90,7 +90,7 @@ handle_stream_start_room_not_found_test_() ->
                 {error, room_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -117,7 +117,7 @@ handle_stream_start_room_not_found_test_() ->
 %% @doc 测试开始直播流 - 流密钥无效
 handle_stream_start_invalid_key_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 12345},
@@ -130,7 +130,7 @@ handle_stream_start_invalid_key_test_() ->
                 {error, invalid_stream_key}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 401,
@@ -161,7 +161,7 @@ handle_stream_start_invalid_key_test_() ->
 %% @doc 测试停止直播流 - 成功场景
 handle_stream_stop_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 12345},
@@ -175,14 +175,14 @@ handle_stream_stop_test_() ->
                     stream_id => 98765,
                     room_id => 12345,
                     status => stopped,
-                    stopped_at => imboy_dt:timestamp(),
+                    stopped_at => elib_dt:timestamp(),
                     duration => 3600,  % 直播时长（秒）
                     peak_viewer_count => 150,
                     total_viewer_count => 500
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -218,7 +218,7 @@ handle_stream_stop_test_() ->
 %% @doc 测试停止直播流 - 流不存在
 handle_stream_stop_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 12345},
@@ -231,7 +231,7 @@ handle_stream_stop_not_found_test_() ->
                 {error, stream_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -258,7 +258,7 @@ handle_stream_stop_not_found_test_() ->
 %% @doc 测试停止直播流 - 权限不足
 handle_stream_stop_permission_denied_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"room_id">>, 12345},
@@ -271,7 +271,7 @@ handle_stream_stop_permission_denied_test_() ->
                 {error, permission_denied}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 403,
@@ -310,12 +310,12 @@ handle_get_stream_status_test_() ->
                     status => streaming,
                     title => <<"精彩直播">>,
                     viewer_count => 150,
-                    started_at => imboy_dt:timestamp(),
+                    started_at => elib_dt:timestamp(),
                     stream_url => <<"rtmp://live.example.com/live/98765">>
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

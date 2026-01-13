@@ -24,7 +24,12 @@
 %% API
 %% ===================================================================
 
--spec init(any(), any()) -> {ok, any(), any()}.
+%% @doc 初始化反馈管理处理器
+%% 根据请求中的 action 参数分发到不同的处理函数
+%% @param Req0 Cowboy 请求对象
+%% @param State0 状态映射，包含 action 等信息
+%% @return {ok, Req, State} 更新后的请求和状态
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
@@ -33,8 +38,8 @@ init(Req0, State0) ->
     Req1 =
         case Action of
             index ->
-                {ok, Ajax} = imboy_param:int(ajax, Req0, -2),
-                % imboy_log:info(["AjaxAjaxAjaxAjaxAjax: ", Ajax, ";  Ajax"]),
+                {ok, Ajax} = elib_param:int(ajax, Req0, -2),
+                % elib_log:info(["AjaxAjaxAjaxAjaxAjax: ", Ajax, ";  Ajax"]),
                 index(Method, Ajax, Req0, State);
             reply ->
                 reply(Method, Req0, State);
@@ -47,8 +52,10 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 处理反馈列表页面
+-spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
 index(<<"GET">>, 1, Req0, _State) ->
-    {Page, Size} = imboy_param:page(Req0),
+    {Page, Size} = elib_param:page(Req0),
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = #{status => {op, <<">">>, -2}},
     Column =
@@ -57,8 +64,8 @@ index(<<"GET">>, 1, Req0, _State) ->
           "body, attach, reply_count, status, updated_at, created_at, "
           "app_vsn">>,
     Tb = feedback_repo:tablename(),
-    {ok, P} = imboy_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
-    imboy_response:success(Req0, P);
+    {ok, P} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
+    elib_response:success(Req0, P);
 index(<<"GET">>, _, Req0, State) ->
     {ok, Body} =
         imboy_dtl:template(feedback_index_dtl,
@@ -72,16 +79,23 @@ index(<<"GET">>, _, Req0, State) ->
                      Body,
                      Req0).
 
+%% @doc 处理反馈回复
+%% 管理员回复用户反馈，记录回复内容和回复者信息
+%% @param Method HTTP 方法
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射，包含管理员 ID 等信息
+%% @return cowboy_req:req() 更新后的请求对象
+-spec reply(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 reply(<<"POST">>, Req0, State) ->
-    % Uid = imboy_hashids:encode(CurrentUid),
+    % Uid = elib_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
     Key = {adm_user_sample, AdmUserId},
     U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
     Nickname = maps:get(<<"nickname">>, U),
     % replier_user_id
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
-    % FeedbackId = imboy_param:int(<<"FeedbackId">>, Req0, 0),
+    % FeedbackId = elib_param:int(<<"FeedbackId">>, Req0, 0),
     {ok, FeedbackId} =
         case string:to_integer(
                  ec_cnv:to_list(
@@ -100,10 +114,10 @@ reply(<<"POST">>, Req0, State) ->
                                    <<"replier_user_id">> => AdmUserId,
                                    <<"replier_name">> => Nickname,
                                    <<"body">> => maps:get(<<"body">>, PostVals, ""),
-                                   <<"created_at">> => imboy_dt:now()}),
-           imboy_response:success(Req0, PostVals, "success.");
+                                   <<"created_at">> => elib_dt:now()}),
+           elib_response:success(Req0, PostVals, "success.");
        true ->
-           imboy_response:error(Req0)
+           elib_response:error(Req0)
     end.
 
 %% ===================================================================

@@ -154,14 +154,14 @@ config_ds:set(<<"password_salt">>, <<>>).
 config_ds:set(<<"login_pwd_rsa_encrypt">>, 1, <<"登录密码使用RSA算法加密"/utf8>>, <<"系统登录是否开启RSA加密 1 是； 0 否"/utf8>>).
 config_ds:set(<<"site_name">>, <<"IMBoy"/utf8>>, <<"前端站点名称"/utf8>>, <<>>).
 
-config_ds:set(<<"login_rsa_pub_key">>, <<"">>, <<"登录RSA算法加密公钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+config_ds:set(<<"login_rsa_pub_key">>, <<>>, <<"登录RSA算法加密公钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
 
-config_ds:set(<<"login_rsa_priv_key">>, <<"">>, <<"登录RSA算法加密私钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+config_ds:set(<<"login_rsa_priv_key">>, <<>>, <<"登录RSA算法加密私钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
 
 
 
 config_ds:set(<<"upload_url">>, <<"https://a.imboy.pub">>).
-config_ds:set(<<"upload_key">>, <<"">>).
+config_ds:set(<<"upload_key">>, <<>>).
 config_ds:set(<<"upload_scene">>, <<"dev">>).
 config_ds:set(<<"ws_url">>, <<"wss://dev.imboy.pub/ws/">>).
 # config_ds:set(<<"ws_url">>, <<"ws://192.168.31.110:9800/ws/">>).
@@ -172,8 +172,8 @@ config_ds:set(<<"eturnal_secret">>, "").
 config_ds:set(<<"turn_urls">>, [<<"turn:dev.imboy.pub:34780?transport=udp">>]).
 config_ds:set(<<"stun_urls">>, [<<"stun:dev.imboy.pub:34780">>]).
 
-config_ds:set(<<"solidified_key">>, <<"">>, <<"接口默认签名秘钥"/utf8>>, <<"如果没有自动获取到sign_key 就用这个值来签名"/utf8>>).
-config_ds:set(<<"solidified_key_iv">>, <<"">>, <<"秘钥IV"/utf8>>, <<"IV 必须都为128比特，也就是16字节"/utf8>>).
+config_ds:set(<<"solidified_key">>, <<>>, <<"接口默认签名秘钥"/utf8>>, <<"如果没有自动获取到sign_key 就用这个值来签名"/utf8>>).
+config_ds:set(<<"solidified_key_iv">>, <<>>, <<"秘钥IV"/utf8>>, <<"IV 必须都为128比特，也就是16字节"/utf8>>).
 
 config_ds:get(<<"upload_url">>).
 config_ds:get(<<"ws_url">>).
@@ -213,8 +213,8 @@ sudo apt-get install imagemagick
 
 ```
 
-cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/imboy_pg15 && chmod +x /data/docker/imboy_pg15
+cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/elib_pg15 && chmod +x /data/docker/elib_pg15
 
 [root@imboy ~]# crontab -e
-0 3 * * * /usr/bin/docker exec imboy_pg15 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
+0 3 * * * /usr/bin/docker exec elib_pg15 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
 ```

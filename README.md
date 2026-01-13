@@ -370,7 +370,6 @@ Appup Cookbook https://cloud.tencent.com/developer/section/1122611
 
 ## api 约定  (api convention)
 * [API参考](./doc/API定义.md)
-* [消息格式参考](./doc/消息类型.md)
 
 
 ## erlang 优化

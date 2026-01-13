@@ -30,7 +30,7 @@ find_by_uid_contains_allow_search_test_() ->
 
 find_by_uid_with_binary_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
-        UidBin = imboy_hashids:encode(1),
+        UidBin = elib_hashids:encode(1),
         Result = user_setting_ds:find_by_uid(UidBin),
         ?assert(is_map(Result))
     end).

@@ -1,6 +1,6 @@
 # HashID 编码/解码规范
 
-> **模块**: `imboy_hashids`
+> **模块**: `elib_hashids`
 > **目的**: 保护用户隐私，防止遍历攻击
 
 ---
@@ -18,8 +18,8 @@
 
 ### 设计目标
 
-1. **输入解码**：所有从客户端接收的 ID 字段必须使用 `imboy_hashids:decode/1` 解码
-2. **输出编码**：所有返回给客户端的 ID 字段必须使用 `imboy_hashids:encode/1` 编码
+1. **输入解码**：所有从客户端接收的 ID 字段必须使用 `elib_hashids:decode/1` 解码
+2. **输出编码**：所有返回给客户端的 ID 字段必须使用 `elib_hashids:encode/1` 编码
 3. **数据库使用原始 ID**：所有 Repo 层和 DS 层使用原始数字 ID，不存储 HashID
 
 ## 适用字段
@@ -45,11 +45,11 @@
 ```erlang
 % ✅ 正确：解码 Query String 参数
 #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req),
-Uid2 = imboy_hashids:decode(Uid),
+Uid2 = elib_hashids:decode(Uid),
 User = user_logic:find_by_id(Uid2, Column),
 
 % ✅ 正确：编码响应数据
-imboy_response:success(Req, imboy_hashids:replace_id(User)).
+elib_response:success(Req, elib_hashids:replace_id(User)).
 ```
 
 ### Logic 层（业务逻辑）
@@ -57,11 +57,11 @@ imboy_response:success(Req, imboy_hashids:replace_id(User)).
 ```erlang
 % ✅ 正确：解码 POST/WS 参数
 To = maps:get(<<"to">>, Data),
-ToId = imboy_hashids:decode(To),
+ToId = elib_hashids:decode(To),
 % 使用 ToId（原始数字 ID）进行业务逻辑
 
 % ✅ 正确：编码发送给客户端的消息
-From = imboy_hashids:encode(CurrentUid),
+From = elib_hashids:encode(CurrentUid),
 Msg = #{<<"from">> => From, <<"to">> => To, ...}.
 ```
 
@@ -79,45 +79,45 @@ friend_repo:is_friend(Uid, ToId),   % 都是数字
 
 ```erlang
 % 将 HashID 解码为原始数字 ID
-Uid2 = imboy_hashids:decode(Uid),
-Gid2 = imboy_hashids:decode(Gid).
+Uid2 = elib_hashids:decode(Uid),
+Gid2 = elib_hashids:decode(Gid).
 
 % 示例
-% imboy_hashids:decode(<<"XyZ9aBcDeF">>) => 12345
+% elib_hashids:decode(<<"XyZ9aBcDeF">>) => 12345
 ```
 
 ### 2. 编码单个 ID
 
 ```erlang
 % 将原始数字 ID 编码为 HashID
-From = imboy_hashids:encode(CurrentUid),
-Gid = imboy_hashids:encode(Gid).
+From = elib_hashids:encode(CurrentUid),
+Gid = elib_hashids:encode(Gid).
 
 % 示例
-% imboy_hashids:encode(12345) => <<"XyZ9aBcDeF">>
+% elib_hashids:encode(12345) => <<"XyZ9aBcDeF">>
 ```
 
 ### 3. 替换单个 ID 字段
 
 ```erlang
 % 替换指定字段的 ID
-User2 = imboy_hashids:replace_id(User, <<"id">>).
+User2 = elib_hashids:replace_id(User, <<"id">>).
 ```
 
 ### 4. 替换默认 "id" 字段
 
 ```erlang
 % 替换 Map 中默认的 "id" 字段
-User2 = imboy_hashids:replace_id(User).
+User2 = elib_hashids:replace_id(User).
 ```
 
 ### 5. 链式替换多个 ID 字段
 
 ```erlang
 % 链式替换多个 ID 字段
-GData3 = imboy_hashids:replace_id(
-    imboy_hashids:replace_id(
-        imboy_hashids:replace_id(G, <<"id">>),
+GData3 = elib_hashids:replace_id(
+    elib_hashids:replace_id(
+        elib_hashids:replace_id(G, <<"id">>),
     <<"owner_uid">>),
 <<"creator_uid">>).
 ```
@@ -126,14 +126,14 @@ GData3 = imboy_hashids:replace_id(
 
 ```erlang
 % 批量解码 ID 列表
-MemberUids2 = [imboy_hashids:decode(Id) || Id <- MemberUids].
+MemberUids2 = [elib_hashids:decode(Id) || Id <- MemberUids].
 ```
 
 ### 7. 批量编码列表
 
 ```erlang
 % 批量编码 ID 列表
-MemberUidsEncoded = [imboy_hashids:encode(Id) || Id <- MemberUids2].
+MemberUidsEncoded = [elib_hashids:encode(Id) || Id <- MemberUids2].
 ```
 
 ## 代码示例
@@ -144,13 +144,13 @@ MemberUidsEncoded = [imboy_hashids:encode(Id) || Id <- MemberUids2].
 % src/api/user_handler.erl
 get_user(Req0, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    Uid2 = imboy_hashids:decode(Uid),  % 必须解码
+    Uid2 = elib_hashids:decode(Uid),  % 必须解码
     User = user_logic:find_by_id(Uid2, Column),
     Payload = #{
-        <<"id">> => imboy_hashids:encode(Uid2),  % 必须编码
+        <<"id">> => elib_hashids:encode(Uid2),  % 必须编码
         <<"name">> => maps:get(<<"name">>, User)
     },
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 ```
 
 ### Logic 层示例
@@ -159,10 +159,10 @@ get_user(Req0, State) ->
 % src/logic/msg_c2c_logic.erl
 send_message(CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
-    ToId = imboy_hashids:decode(To),  % 必须解码
+    ToId = elib_hashids:decode(To),  % 必须解码
     % 使用 ToId 进行业务逻辑
     Msg = #{
-        <<"from">> => imboy_hashids:encode(CurrentUid),  % 必须编码
+        <<"from">> => elib_hashids:encode(CurrentUid),  % 必须编码
         <<"to">> => To,
         <<"payload">> => Payload
     },
@@ -180,25 +180,25 @@ process_message(Msg) ->
     ToId = maps:get(<<"to_id">>, Msg, undefined),
     Msg3 = maps:remove(<<"from_id">>, Msg),
     Msg4 = maps:remove(<<"to_id">>, Msg3),
-    Msg4#{<<"from">> => imboy_hashids:encode(FromId),
-         <<"to">> => imboy_hashids:encode(ToId)}.
+    Msg4#{<<"from">> => elib_hashids:encode(FromId),
+         <<"to">> => elib_hashids:encode(ToId)}.
 ```
 
 ## 错误处理
 
 ### 解码失败处理
 
-`imboy_hashids:decode/1` 在解码失败时返回 `0`，需要检查：
+`elib_hashids:decode/1` 在解码失败时返回 `0`，需要检查：
 
 ```erlang
-Uid2 = imboy_hashids:decode(Uid),
+Uid2 = elib_hashids:decode(Uid),
 case Uid2 of
     0 ->
-        imboy_response:error(Req, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
+        elib_response:error(Req, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
     _ ->
         % 继续处理
         User = user_logic:find_by_id(Uid2, Column),
-        imboy_response:success(Req, User)
+        elib_response:success(Req, User)
 end.
 ```
 
@@ -208,7 +208,7 @@ end.
 %% @doc 解码 ID，失败时返回错误
 -spec decode_id(binary()) -> {ok, integer()} | {error, term()}.
 decode_id(Id) ->
-    case imboy_hashids:decode(Id) of
+    case elib_hashids:decode(Id) of
         0 -> {error, invalid_id};
         DecodedId -> {ok, DecodedId}
     end.
@@ -216,7 +216,7 @@ decode_id(Id) ->
 %% @doc 解码 ID，失败时返回默认值
 -spec decode_id(binary(), integer()) -> integer().
 decode_id(Id, Default) ->
-    case imboy_hashids:decode(Id) of
+    case elib_hashids:decode(Id) of
         0 -> Default;
         DecodedId -> DecodedId
     end.
@@ -232,7 +232,7 @@ decode_id(Id, Default) ->
 % ✅ 推荐：立即解码
 handle_request(Req, State) ->
     #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req),
-    Uid2 = imboy_hashids:decode(Uid),  % 立即解码
+    Uid2 = elib_hashids:decode(Uid),  % 立即解码
     % 后续使用 Uid2
     process_with_uid(Uid2).
 
@@ -249,13 +249,13 @@ handle_request(Req, State) ->
 
 ```erlang
 % ✅ 推荐
-Uid2 = imboy_hashids:decode(Uid),
-ToId2 = imboy_hashids:decode(To),
-Gid2 = imboy_hashids:decode(Gid).
+Uid2 = elib_hashids:decode(Uid),
+ToId2 = elib_hashids:decode(To),
+Gid2 = elib_hashids:decode(Gid).
 
 % ❌ 不推荐（容易混淆）
-UidDecoded = imboy_hashids:decode(Uid),
-DecodedToId = imboy_hashids:decode(To).
+UidDecoded = elib_hashids:decode(Uid),
+DecodedToId = elib_hashids:decode(To).
 ```
 
 ### 3. 类型检查
@@ -265,11 +265,11 @@ DecodedToId = imboy_hashids:decode(To).
 ```erlang
 % ✅ 推荐
 encode_id(Id) when is_integer(Id) ->
-    imboy_hashids:encode(Id).
+    elib_hashids:encode(Id).
 
 % ✅ 推荐
 decode_id(Id) when is_binary(Id) ->
-    imboy_hashids:decode(Id).
+    elib_hashids:decode(Id).
 ```
 
 ### 4. 错误处理
@@ -278,14 +278,14 @@ decode_id(Id) when is_binary(Id) ->
 
 ```erlang
 % ✅ 推荐：始终检查解码结果
-Uid2 = imboy_hashids:decode(Uid),
+Uid2 = elib_hashids:decode(Uid),
 case Uid2 of
     0 -> handle_invalid_id();
     _ -> handle_valid_id(Uid2)
 end.
 
 % ❌ 不推荐：不检查解码结果
-Uid2 = imboy_hashids:decode(Uid),
+Uid2 = elib_hashids:decode(Uid),
 % 直接使用，可能导致错误
 process(Uid2).
 ```
@@ -297,11 +297,11 @@ process(Uid2).
 ```erlang
 % ✅ 推荐：数据库使用原始 ID
 insert_user(Uid) when is_integer(Uid) ->
-    imboy_pg:insert(<<"users">>, #{<<"id">> => Uid}).
+    elib_pg:insert(<<"users">>, #{<<"id">> => Uid}).
 
 % ❌ 不推荐：数据库存储 HashID
 insert_user(HashId) when is_binary(HashId) ->
-    imboy_pg:insert(<<"users">>, #{<<"id">> => HashId}).
+    elib_pg:insert(<<"users">>, #{<<"id">> => HashId}).
 ```
 
 ## 测试验证
@@ -322,21 +322,21 @@ insert_user(HashId) when is_binary(HashId) ->
 encode_decode_test() ->
     % 测试编码和解码
     OriginalId = 12345,
-    HashId = imboy_hashids:encode(OriginalId),
-    DecodedId = imboy_hashids:decode(HashId),
+    HashId = elib_hashids:encode(OriginalId),
+    DecodedId = elib_hashids:decode(HashId),
     ?assertEqual(OriginalId, DecodedId).
 
 batch_decode_test() ->
     % 测试批量解码
     Ids = [<<"XyZ9">>, <<"AbCd1">>, <<"EfGh2">>],
-    DecodedIds = [imboy_hashids:decode(Id) || Id <- Ids],
+    DecodedIds = [elib_hashids:decode(Id) || Id <- Ids],
     ?assertEqual(3, length(DecodedIds)),
     lists:foreach(fun(Id) -> ?assert(Id > 0) end, DecodedIds).
 
 invalid_id_test() ->
     % 测试无效 ID 解码
     InvalidId = <<"InvalidHashId">>,
-    DecodedId = imboy_hashids:decode(InvalidId),
+    DecodedId = elib_hashids:decode(InvalidId),
     ?assertEqual(0, DecodedId).
 ```
 
@@ -354,7 +354,7 @@ User = user_repo:find_by_id(Uid, Column).  % Uid 是 HashID，不是数字
 ```erlang
 % 正确：先解码再使用
 Uid = cowboy_req:binding(uid, Req),
-Uid2 = imboy_hashids:decode(Uid),
+Uid2 = elib_hashids:decode(Uid),
 User = user_repo:find_by_id(Uid2, Column).
 ```
 
@@ -364,29 +364,29 @@ User = user_repo:find_by_id(Uid2, Column).
 % 错误：直接返回原始 ID
 User = user_repo:find_by_id(Uid2, Column),
 Payload = #{<<"id">> => Uid2, ...}.  % Uid2 是数字，应该编码
-imboy_response:success(Req, Payload).
+elib_response:success(Req, Payload).
 ```
 
 **修复**：
 ```erlang
 % 正确：编码后再返回
 User = user_repo:find_by_id(Uid2, Column),
-Payload = #{<<"id">> => imboy_hashids:encode(Uid2), ...},
-imboy_response:success(Req, Payload).
+Payload = #{<<"id">> => elib_hashids:encode(Uid2), ...},
+elib_response:success(Req, Payload).
 ```
 
 ### ❌ 错误 3：数据库使用 HashID
 
 ```erlang
 % 错误：数据库存储 HashID
-HashId = imboy_hashids:encode(Uid),
-imboy_pg:insert(<<"users">>, #{<<"id">> => HashId}).  % 应该存储数字 ID
+HashId = elib_hashids:encode(Uid),
+elib_pg:insert(<<"users">>, #{<<"id">> => HashId}).  % 应该存储数字 ID
 ```
 
 **修复**：
 ```erlang
 % 正确：数据库存储原始 ID
-imboy_pg:insert(<<"users">>, #{<<"id">> => Uid}).
+elib_pg:insert(<<"users">>, #{<<"id">> => Uid}).
 ```
 
 ## 相关文档

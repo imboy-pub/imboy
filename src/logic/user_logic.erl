@@ -6,7 +6,7 @@
 
 -include("log.hrl").
 -include("chat.hrl").
--include("def_column.hrl").
+-include("common.hrl").
 
 %% 注意：优先使用 Erlang 原生类型，不新增自定义类型
 
@@ -14,6 +14,7 @@
 -export([offline/3]).
 -export([is_online/1, is_online/2]).
 -export([online_state/1]).
+-export([batch_online_state/1]).
 -export([mine_state/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
@@ -36,17 +37,17 @@
 %% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
 -spec set_password(integer(), map()) -> {ok, binary()} | {error, binary() | string()}.
 set_password(Uid, Req0) ->
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     NewPwd = maps:get(<<"new_pwd">>, PostVals, undefined),
-    User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
+    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
     OldPwd = maps:get(<<"password">>, User, not_find),
     case OldPwd of
         not_find ->
-            {error, "用户不存在"};
+            {error, <<"用户不存在"/utf8>>};
         <<>> ->
-            PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
-            Pwd2 = imboy_password:generate(PwdPlaintext),
-            do_update_password(Uid, Pwd2, Req0);
+            PwdPlaintext = elib_cipher:rsa_decrypt(NewPwd),
+            PwdHash = elib_password:generate(PwdPlaintext),
+            update_password_with_log(Uid, PwdHash, Req0, 110);
         _ ->
             {error, "have_set"}
     end.
@@ -57,19 +58,18 @@ set_password(Uid, Req0) ->
 %% @param Uid 用户ID
 %% @param Req0 HTTP请求对象，包含当前密码和新密码
 %% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
--spec change_password(pos_integer(), map()) -> term().
+-spec change_password(pos_integer(), map()) -> {ok, binary()} | {error, binary()}.
 change_password(Uid, Req0) ->
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     ExistingPwd = maps:get(<<"existing_pwd">>, PostVals, undefined),
     NewPwd = maps:get(<<"new_pwd">>, PostVals, undefined),
-    User = user_repo:find_by_id(Uid, ?LOGIN_COLUMN),
-    ExistingPwd2 = imboy_cipher:rsa_decrypt(ExistingPwd),
-    VerifyUser = passport_logic:verify_user(ExistingPwd2, User),
-    case VerifyUser of
+    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    ExistingPwd2 = elib_cipher:rsa_decrypt(ExistingPwd),
+    case passport_logic:verify_user(ExistingPwd2, User) of
         {ok, _} ->
-            PwdPlaintext = imboy_cipher:rsa_decrypt(NewPwd),
-            Pwd2 = imboy_password:generate(PwdPlaintext),
-            do_update_password(Uid, Pwd2, Req0);
+            PwdPlaintext = elib_cipher:rsa_decrypt(NewPwd),
+            PwdHash = elib_password:generate(PwdPlaintext),
+            update_password_with_log(Uid, PwdHash, Req0, 110);
         {error, Msg} ->
             {error, Msg}
     end.
@@ -80,47 +80,15 @@ change_password(Uid, Req0) ->
 %% @param Uid 用户ID
 %% @param Req0 HTTP请求对象
 %% @returns 操作结果：成功返回{ok, <<"success">>}
+-spec apply_logout(integer(), map()) -> {ok, binary() | string()}.
 apply_logout(Uid, Req0) ->
-    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
-    DID = cowboy_req:header(<<"did">>, Req0, undefined),
-    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, undefined),
-
-    % 通知用户所有朋友，该用户已经注销
-    % 清理注销用户相关数据
-    % 用户注销以后,用户的所有好友和群组关系需要解除
-    % https://blog.51cto.com/u_15069441/4323079
-    _ = imboy_pg:with_tx(fun(Conn) ->
-                            Now = imboy_dt:now(),
-                            % 事务中使用Conn参数
-                            {ok, _} =
-                                imboy_pg:update(Conn,
-                                                user_repo:tablename(),
-                                                #{% 状态: -1 删除  0 禁用  1 启用  2 申请注销中
-                                                  <<"status">> => 2},
-                                                <<"id = $1">>,
-                                                [Uid]),
-                            {ok, Body} =
-                                jsone_encode:encode(#{<<"app_vsn">> => AppVsn,
-                                                      <<"did">> => DID,
-                                                      <<"dtype">> => DType,
-                                                      <<"ip">> => Ip},
-                                                    [native_utf8]),
-                            _ = user_log_repo:add(Conn,
-                                                  #{% 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
-                                                    type => 102,
-                                                    uid => Uid,
-                                                    body => Body,
-                                                    created_at => Now}),
-                            ok
-                         end),
-
-    % user_server:cast_apply_logout(Uid, imboy_dt:now(), #{
-    %     <<"app_vsn">> => AppVsn,
-    %     <<"did">> => DID,
-    %     <<"dtype">> => DType,
-    %     <<"ip">> => Ip
-    % }),
+    _ = elib_pg:with_tx(fun(Conn) ->
+        %% 更新用户状态为申请注销中
+        {ok, _} = user_ds:update_status_in_tx(Conn, {Uid, 2}),
+        %% 记录注销申请日志
+        _ = user_log_ds:add_logout_apply_log(Conn, Uid, Req0),
+        ok
+    end),
     {ok, "success"}.
 
 %% @doc 撤销注销申请
@@ -131,18 +99,11 @@ apply_logout(Uid, Req0) ->
 %% @returns 操作结果：成功返回{ok, <<"success">>}
 -spec cancel_logout(integer(), any()) -> {ok, binary()} | {error, binary()}.
 cancel_logout(Uid, _Req0) ->
-    % 使用简化的 imboy_pg:update API
-    case imboy_pg:update(
-             user_repo:tablename(),
-             #{% 状态: -1 删除  0 禁用  1 启用  2 申请注销中
-               <<"status">> => 1},
-             <<"id = $1">>,
-             [Uid])
-    of
+    case user_ds:update_status(Uid, 1) of
         {ok, _} ->
             {ok, <<"success">>};
         {error, Reason} ->
-            {error, imboy_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 用户上线
@@ -218,6 +179,54 @@ online_state(User) when is_map(User) ->
         end,
     User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}.
 
+%% @doc 批量获取用户在线状态
+%%
+%% 对多个用户批量查询在线状态，避免在列表推导式中逐个调用。
+%% 注意：由于 imboy_syn 不提供批量查询接口，内部仍是逐个查询，
+%% 但此函数封装了批量处理逻辑，便于后续优化。
+%%
+%% @param Users 用户列表
+%% @returns 添加了 status 字段的用户列表
+%%
+%% @example
+%% > Users = [#{<<"id">> => 1, <<"name">> => <<"Alice">>}, ...].
+%% > user_logic:batch_online_state(Users).
+%% [#{<<"id">> => 1, <<"name">> => <<"Alice">>, <<"status">> => online}, ...]
+-spec batch_online_state([map()]) -> [map()].
+batch_online_state(Users) when is_list(Users) ->
+    % 提取所有 Uid 并查询在线状态
+    UidStatusMap = lists:foldl(fun(User, Acc) ->
+        Uid = maps:get(<<"id">>, User),
+        Status = check_online_status(Uid),
+        maps:put(Uid, Status, Acc)
+    end, #{}, Users),
+
+    % 合并在线状态到用户信息
+    lists:map(fun(User) ->
+        Uid = maps:get(<<"id">>, User),
+        LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
+        Status = maps:get(Uid, UidStatusMap, offline),
+        User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
+    end, Users).
+
+%% @private
+%% @doc 检查单个用户的在线状态
+%% @param Uid 用户ID
+%% @returns online | offline
+-spec check_online_status(integer()) -> online | offline.
+check_online_status(Uid) ->
+    case imboy_syn:count_user(Uid) of
+        0 ->
+            offline;
+        _Count ->
+            case user_setting_ds:chat_state_hide(Uid) of
+                true ->
+                    offline;
+                false ->
+                    online
+            end
+    end.
+
 %% @doc 根据用户ID查找用户信息
 %% 支持原始ID或hashid格式，返回默认列的用户信息。
 %% @param Id 用户ID（可以是原始数字ID或hashid）
@@ -234,19 +243,19 @@ find_by_id(Id) ->
 %% @returns 用户信息，包含指定的列数据
 -spec find_by_id(binary() | pos_integer(), binary()) -> map().
 find_by_id(Id, Column) when is_binary(Id) ->
-    find_by_id(imboy_hashids:decode(Id), Column);
+    find_by_id(elib_hashids:decode(Id), Column);
 find_by_id(Id, Column) ->
-    check_avatar(user_repo:find_by_id(Id, Column)).
+    check_avatar(user_ds:find_by_id(Id, Column)).
 
--spec find_by_ids([pos_integer()]) -> {ok, [map()]} | [].
+-spec find_by_ids([pos_integer()]) -> [map()].
 find_by_ids(Ids) ->
     find_by_ids(Ids, ?DEF_USER_COLUMN).
 
--spec find_by_ids([pos_integer()], binary()) -> {ok, [map()]} | [].
+-spec find_by_ids([pos_integer()], binary()) -> [map()].
 find_by_ids([], _) ->
     [];
 find_by_ids(Ids, Column) ->
-    case user_repo:list_by_ids(Ids, Column) of
+    case user_ds:list_by_ids(Ids, Column) of
         {ok, []} ->
             [];
         {ok, Rows} ->
@@ -256,12 +265,12 @@ find_by_ids(Ids, Column) ->
     end.
 
 -spec update(integer(), binary(), list() | binary()) ->
-                ok | {error, {integer(), binary(), binary()}} | {ok, binary()}.
+                ok | {ok, integer() | binary()} | {error, any()}.
 update(Uid, <<"email">>, Val) when is_binary(Val) ->
-    IsEmail = imboy_func:is_email([Val]),
+    IsEmail = elib_type:is_email([Val]),
     User =
         if IsEmail ->
-               user_repo:find_by_email(Val, <<"id">>);
+               user_ds:find_by_email(Val, <<"id">>);
            true ->
                #{}
         end,
@@ -274,24 +283,21 @@ update(Uid, <<"email">>, Val) when is_binary(Val) ->
             {error, {1, <<"">>, <<"Email 格式有误"/utf8>>}}
     end;
 update(Uid, <<"sign">>, Val) ->
-    do_update_field(user_repo:tablename(), Uid, <<"sign">>, Val);
+    user_ds:update_field(Uid, <<"sign">>, Val);
 update(Uid, <<"nickname">>, Val) ->
-    do_update_field(user_repo:tablename(), Uid, <<"nickname">>, Val);
+    user_ds:update_field(Uid, <<"nickname">>, Val);
 update(Uid, <<"avatar">>, Val) ->
-    do_update_field(user_repo:tablename(), Uid, <<"avatar">>, Val);
+    user_ds:update_field(Uid, <<"avatar">>, Val);
 update(Uid, <<"region">>, Val) ->
-    do_update_field(user_repo:tablename(), Uid, <<"region">>, Val);
+    user_ds:update_field(Uid, <<"region">>, Val);
 % 性别 1 男  2 女  3 保密
 update(Uid, <<"gender">>, Val) when Val =:= <<"1">>; Val =:= <<"2">>; Val =:= <<"3">> ->
-    do_update_field(user_repo:tablename(), Uid, <<"gender">>, binary_to_integer(Val));
+    user_ds:update_field(Uid, <<"gender">>, binary_to_integer(Val));
 update(_Uid, <<"gender">>, _Val) ->
     {error, {1, <<"">>, <<"性别值必须是 1、2 或 3"/utf8>>}};
 update(Uid, <<"allow_search">>, Val) when Val =:= <<"1">>; Val =:= <<"2">> ->
-    do_update_field(fts_user_repo:tablename(),
-                    Uid,
-                    <<"allow_search">>,
-                    binary_to_integer(Val),
-                    <<"user_id = $1">>);
+    %% allow_search 字段在 fts_user 表中，需要特殊处理
+    user_ds:update_allow_search(Uid, binary_to_integer(Val));
 update(_Uid, <<"allow_search">>, _Val) ->
     {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
 update(_Uid, _Field, _Val) ->
@@ -301,51 +307,16 @@ update(_Uid, _Field, _Val) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc 更新单个字段的辅助函数
+%% @doc 更新密码并记录日志的辅助函数
 %% @private
--spec do_update_field(binary(), integer(), binary(), binary() | integer()) -> ok | {error, term()}.
-do_update_field(Table, Uid, Field, Val) ->
-    do_update_field(Table, Uid, Field, Val, <<"id = $1">>).
-
--spec do_update_field(binary(), integer(), binary(), binary() | integer(), binary()) ->
-                         ok | {error, term()}.
-do_update_field(Table, Uid, Field, Val, WhereSql) ->
-    case imboy_pg:update(Table, #{Field => Val}, WhereSql, [Uid]) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 执行密码更新的辅助函数
-%% @private
-do_update_password(Uid, Pwd2, Req0) ->
-    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
-    DID = cowboy_req:header(<<"did">>, Req0, undefined),
-    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0),
-    _ = imboy_pg:with_tx(fun(Conn) ->
-                            Now = imboy_dt:now(),
-                            {ok, _} =
-                                imboy_pg:update(Conn,
-                                                user_repo:tablename(),
-                                                #{<<"password">> => Pwd2},
-                                                <<"id = $1">>,
-                                                [Uid]),
-                            {ok, Body} =
-                                jsone_encode:encode(#{<<"app_vsn">> => AppVsn,
-                                                      <<"did">> => DID,
-                                                      <<"dtype">> => DType,
-                                                      <<"ip">> => Ip},
-                                                    [native_utf8]),
-                            _ = user_log_repo:add(Conn,
-                                                  #{% 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
-                                                    type => 110,
-                                                    uid => Uid,
-                                                    body => Body,
-                                                    created_at => Now}),
-                            ok
-                         end),
+update_password_with_log(Uid, PwdHash, Req0, LogType) ->
+    _ = elib_pg:with_tx(fun(Conn) ->
+        %% 更新用户密码
+        {ok, _} = user_ds:update_password_in_tx(Conn, {Uid, PwdHash}),
+        %% 记录密码修改日志
+        _ = user_log_ds:add_password_change_log(Conn, Uid, Req0, LogType),
+        ok
+    end),
     {ok, "success"}.
 
 %% @doc 检查并设置默认头像
@@ -375,34 +346,34 @@ check_avatar(User) when is_map(User) ->
 %% @param Uid 用户ID
 %% @param Email 待绑定的邮箱地址
 %% @returns 成功返回{ok, "success"}，失败返回错误信息
--spec send_bind_email(integer(), binary()) -> term().
+-spec send_bind_email(integer(), binary()) -> {ok, binary()}.
 send_bind_email(Uid, Email) ->
-    ExpireAtS = imboy_dt:second() + 86400,
-    ExpireAt = imboy_dt:to_rfc3339(ExpireAtS, second),
+    ExpireAtS = elib_dt:second() + 86400,
+    ExpireAt = elib_dt:to_rfc3339(ExpireAtS, second),
     {Title, Nickname} = user_ds:title(Uid, 2),
 
     SolKey = config_ds:get(<<"solidified_key">>),
     Args =
         #{ts => ExpireAtS,
-          uin => imboy_hashids:encode(Uid),
+          uin => elib_hashids:encode(Uid),
           mail => Email},
 
-    Tk = imboy_hasher:hmac_sha512(
-             imboy_cnv:map_to_query(Args), SolKey),
-    Url = imboy_uri:build_query(
+    Tk = elib_hasher:hmac_sha512(
+             elib_cnv:map_to_query(Args), SolKey),
+    Url = elib_uri:build_query(
               config_ds:env(base_url), <<"/passport/bind_mail">>, Args#{tk => Tk}),
     Body =
         <<"Hi, ",
           Title/binary,
           "：<br/><br/>IMBoy正在尝试绑定邮件地址 "/utf8,
-          (imboy_cnv:safe_to_binary(Email))/binary,
+          (elib_cnv:safe_to_binary(Email))/binary,
           " 到你的账号（昵称："/utf8,
           Nickname/binary,
           " )。<br/><br/>如果这是你的操作，请 <a href=\""/utf8,
           Url/binary,
           "\" target=\"_blank\">点击确认</a> 完成邮箱绑定，截止之"/utf8,
           ExpireAt/binary,
-          "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：ht"
+          "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：ht"/utf8,
           "tps://www.imboy.pub/"/utf8>>,
-    _ = imboy_func:send_email(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
+    _ = elib_email:send(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
     {ok, <<"success">>}.

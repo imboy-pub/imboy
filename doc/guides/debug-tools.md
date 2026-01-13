@@ -30,8 +30,8 @@
 -include("log.hrl").
 
 ?DEBUG_LOG(["调试信息", Variable]),
-imboy_log:info("信息日志: ~p", [Data]),
-imboy_log:error("错误日志: ~p", [Error]).
+elib_log:info("信息日志: ~p", [Data]),
+elib_log:error("错误日志: ~p", [Error]).
 ```
 
 ### 2. Recon 生产诊断工具

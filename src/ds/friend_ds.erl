@@ -5,15 +5,20 @@
 -export([is_friend/2]).
 -export([is_friend/3]).
 -export([is_friend_fields/3]).
+-export([check_relationship/2]).  %% 新增：联合查询函数
 -export([list_by_uid/1]).
 -export([page_by_uid/1, page_by_uid/3]).
 -export([page_by_cid/4]).
 -export([page_by_tag/5]).
 -export([change_remark/3]).
 -export([set_category_id/3]).
+-export([confirm_friend/7]).
+-export([delete/2]).
+-export([move_to_category/3]).
+-export([invalidate_cache/2]).
 
 -include("log.hrl").
--include("def_column.hrl").
+-include("common.hrl").
 
 %% ===================================================================
 %% API
@@ -69,9 +74,8 @@ is_friend(FromUid, ToUid, Field) ->
                           {false, <<>>}
                   end
           end,
-    %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
-    % 缓存1天，
-    imboy_cache:memo(Fun, Key, 86400).
+    %% 【缓存一致性修复】缓存时间从 1 天缩短到 5 分钟（300 秒）
+    imboy_cache:memo(Fun, Key, 300).
 
 %% @doc 检查好友关系并获取多个字段值
 %%
@@ -93,9 +97,8 @@ is_friend_fields(FromUid, ToUid, Fields) ->
                           {false, #{}}
                   end
           end,
-    %  缓存key挺多，是针对用户ID的，缓存时间不宜过长
-    % 缓存1天，
-    imboy_cache:memo(Fun, Key, 86400).
+    %% 【缓存一致性修复】缓存时间从 1 天缩短到 5 分钟（300 秒）
+    imboy_cache:memo(Fun, Key, 300).
 
 %% @doc 分页获取用户好友列表
 %%
@@ -152,13 +155,13 @@ page_by_cid(Cid, Uid, Limit, Offset) ->
 % friend_ds:page_by_tag(31, 1, 10, 15, <<>>).
 -spec page_by_tag(integer(), integer(), integer(), integer(), binary()) -> map().
 page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
-    TagName = imboy_pg:pluck_value(<<"public.user_tag">>, <<"name">>, #{id => TagId}, #{}, <<>>),
+    TagName = elib_pg:pluck_value(<<"public.user_tag">>, <<"name">>, #{id => TagId}, #{}, <<>>),
     case TagName of
         <<>> ->
             #{total => 0, page => Page, size => Size, list => []};
         _ ->
-            UserTable = imboy_pg_sql:public_tablename(<<"user">>),
-            UserDTable = imboy_pg_sql:public_tablename(<<"user_denylist">>),
+            UserTable = elib_pg_sql:public_tablename(<<"user">>),
+            UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
             Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
             Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
             BaseFrom = <<(friend_repo:tablename())/binary, " as f ", Join1/binary, Join2/binary>>,
@@ -184,12 +187,13 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                           <<"f.from_user_id">> => Uid,
                           <<"f.tag">> => {op, <<"LIKE">>, TagNamePattern}}
                 end,
-            case imboy_pg:page_with_total(BaseFrom, fields(Uid), WhereMap, OrderBy, Page, Size) of
+            case elib_pg:page_with_total(BaseFrom, fields(Uid), WhereMap, OrderBy, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
-                    Items = [ imboy_hashids:replace_id(user_logic:online_state(User)) || User <- Rows ],
+                    % 【优化】使用批量在线状态查询，避免 N+1 查询问题
+                    Items = [ elib_hashids:replace_id(User) || User <- user_logic:batch_online_state(Rows) ],
                     #{total => Total, page => Page, size => Size, list => Items};
                 {error, Reason} ->
-                    _ = imboy_log:error(Reason),
+                    _ = elib_log:error(Reason),
                     #{total => 0, page => Page, size => Size, list => []}
             end
     end.
@@ -206,20 +210,21 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
 %% @returns list() 查询结果列表
 -spec page(binary(), [term()], binary()) -> [map()] | [].
 page(Where, WhereArgs, Fields) ->
-    UserTable = imboy_pg_sql:public_tablename(<<"user">>),
-    UserDTable = imboy_pg_sql:public_tablename(<<"user_denylist">>),
+    UserTable = elib_pg_sql:public_tablename(<<"user">>),
+    UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
     Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
     Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
     Tb = friend_repo:tablename(),
     Sql = <<"SELECT ", Fields/binary, " FROM ", Tb/binary, " as f ", Join1/binary, Join2/binary, Where/binary>>,
     % ?DEBUG_LOG([Sql, WhereArgs]),
-    case imboy_pg:query(Sql, WhereArgs) of
+    case elib_pg:query(Sql, WhereArgs) of
         {ok, Rows} when Fields == <<"count(*) count">> ->
             Rows;
         {ok, []} ->
             [];
         {ok, Rows} when is_list(Rows) ->
-            [ imboy_hashids:replace_id(user_logic:online_state(User)) || User <- Rows ];
+            % 【优化】使用批量在线状态查询，避免 N+1 查询问题
+            [ elib_hashids:replace_id(User) || User <- user_logic:batch_online_state(Rows) ];
         {error, _Reason} ->
             []
     end.
@@ -273,3 +278,116 @@ fields(Uid) ->
     C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.tag, f.category_id,f.created_at">>,
     <<"id,", F2/binary>> = ?DEF_USER_COLUMN,
     <<"u.id,", F2/binary, ",", C2/binary>>.
+
+
+%% ===================================================================
+%% 优化函数：联合查询
+%% ===================================================================
+
+%% @doc 联合查询好友关系和黑名单状态
+%%
+%% 一次性查询两个用户之间的关系状态（是否好友、是否在黑名单）
+%% 相比分别调用 is_friend/2 和 user_denylist_logic:in_denylist/2，这个函数只进行一次数据库查询
+%%
+%% @param FromUid 源用户ID
+%% @param ToUid 目标用户ID
+%% @returns {IsFriend :: boolean(), InDenylist :: integer()}
+%%          IsFriend: 是否是好友
+%%          InDenylist: 黑名单状态（0 表示不在黑名单，其他值表示在黑名单）
+%%
+%% @doc 朋友关系和黑名单联合查询
+-spec check_relationship(integer(), integer()) -> {boolean(), integer()}.
+check_relationship(FromUid, ToUid) ->
+    Key = {check_relationship, FromUid, ToUid},
+    Fun = fun() ->
+        % 使用 LEFT JOIN 同时查询好友关系和黑名单状态
+        UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
+        Sql = <<
+            "SELECT "
+            "EXISTS(SELECT 1 FROM ", (friend_repo:tablename())/binary, " "
+            "WHERE from_user_id = $1 AND to_user_id = $2 AND status = 1) as is_friend, "
+            "EXISTS(SELECT 1 FROM ", UserDTable/binary, " "
+            "WHERE user_id = $1 AND denied_user_id = $2) as in_denylist"
+        >>,
+        case elib_pg:query(Sql, [FromUid, ToUid]) of
+            {ok, [#{<<"is_friend">> := IsFriendBin, <<"in_denylist">> := InDenylistBin}]} ->
+                IsFriend = case IsFriendBin of
+                    <<"t">> -> true;
+                    _ -> false
+                end,
+                InDenylist = case InDenylistBin of
+                    <<"t">> -> 1;
+                    _ -> 0
+                end,
+                {IsFriend, InDenylist};
+            {ok, []} ->
+                {false, 0};
+            {error, _Reason} ->
+                {false, 0}
+        end
+    end,
+    % 缓存 1 天
+    imboy_cache:memo(Fun, Key, 86400).
+
+%% @doc 确认好友关系
+%% @param IsFriend 是否已经是好友
+%% @param FromID 源用户ID
+%% @param ToID 目标用户ID
+%% @param Remark 备注
+%% @param Setting 设置信息
+%% @param Tag 标签
+%% @param NowTs 时间戳
+%% @return ok
+-spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()) -> ok.
+confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs) ->
+    friend_repo:confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs).
+
+%% @doc 删除好友
+%% @param FromID 源用户ID
+%% @param ToID 目标用户ID
+%% @return ok | {error, Reason}
+-spec delete(integer(), integer()) -> ok | {error, any()}.
+delete(FromID, ToID) ->
+    Result = friend_repo:delete(FromID, ToID),
+    %% 【缓存一致性修复】删除后主动失效缓存
+    case Result of
+        ok -> invalidate_cache(FromID, ToID);
+        {error, _} -> Result
+    end.
+
+%% @doc 移动好友到分组
+%% @param FromUID 源用户ID
+%% @param ToUID 目标用户ID
+%% @param CategoryId 分类ID
+%% @return ok | {error, Reason}
+-spec move_to_category(integer(), integer(), integer()) -> ok | {error, any()}.
+move_to_category(FromUID, ToUID, CategoryId) ->
+    friend_repo:move_to_category(FromUID, ToUID, CategoryId).
+
+%% @doc 主动失效好友关系缓存
+%%
+%% 当好友关系变更时（添加、删除），主动清除相关缓存
+%% 避免长时间缓存导致的数据不一致问题
+%%
+%% @param FromUid 源用户ID
+%% @param ToUid 目标用户ID
+%% @return ok
+-spec invalidate_cache(integer(), integer()) -> ok.
+invalidate_cache(FromUid, ToUid) ->
+    %% 清除 is_friend2 缓存
+    imboy_cache:flush({is_friend2, FromUid, ToUid}),
+    imboy_cache:flush({is_friend2, ToUid, FromUid}),
+    %% 清除 is_friend_fields 缓存（使用通配符模式）
+    lists:foreach(fun(Key) ->
+        case imboy_cache:get(Key) of
+            {ok, _} -> imboy_cache:flush(Key);
+            _ -> ok
+        end
+    end, [
+        {is_friend_fields, FromUid, ToUid, '_'},
+        {is_friend_fields, ToUid, FromUid, '_'}
+    ]),
+    %% 清除 check_relationship 缓存
+    imboy_cache:flush({check_relationship, FromUid, ToUid}),
+    imboy_cache:flush({check_relationship, ToUid, FromUid}),
+    ok.

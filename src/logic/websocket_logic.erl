@@ -6,7 +6,20 @@
 
 -include("log.hrl").
 
--export([cancel_timer/3, handle_ack_cancel/3]).
+%% @doc 取消 ACK 重试定时器（跨节点广播）
+%% 使用 syn 库实现高效的非阻塞跨节点广播
+%% @param CurrentUid 当前用户ID
+%% @param DID 设备ID
+%% @param MsgId 消息ID
+%% @returns ok
+-export([cancel_timer/3]).
+
+%% @doc 实际执行 timer 撤销（本地节点）
+%% @param ToUid 目标用户ID
+%% @param DID 设备ID
+%% @param MsgId 消息ID
+%% @returns ok
+-export([handle_ack_cancel/3]).
 
 %% ===================================================================
 %% API
@@ -17,7 +30,7 @@
 -spec cancel_timer(pos_integer(), binary(), binary()) -> ok.
 cancel_timer(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
-    ok = ?DEBUG_LOG(["CANCEL_TIMER", Key]),
+    ok = ?DEBUG_LOG({cancel_timer, Key}),
 
     %% 【优化】使用 syn 广播替代 rpc:multicall
     %% 优势：
@@ -32,8 +45,8 @@ cancel_timer(CurrentUid, DID, MsgId) ->
 
     ok.
 
-%% @doc 实际执行 timer 撤销（本地节点）
 -spec handle_ack_cancel(pos_integer(), binary(), binary()) -> ok.
+%% @doc 实际执行 timer 撤销（本地节点）
 handle_ack_cancel(ToUid, DID, MsgId) ->
     TimerKey = {ToUid, DID, MsgId},
 
@@ -42,27 +55,24 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
     AckReceivedKey = {ack_received, ToUid, DID, MsgId},
     imboy_cache:set(AckReceivedKey, true, 40000),  % 40秒 TTL（最大重试时间）
 
-    %% 【改进】打印ACK处理日志
-    io:format("📥 [ACK_CANCEL] Processing: MsgId=~s, Uid=~p, DID=~s~n",
-              [MsgId, ToUid, DID]),
-    io:format("✅ [ACK_CANCEL] ACK received flag set first: MsgId=~s~n", [MsgId]),
+    ok = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
 
     case imboy_cache:get(TimerKey) of
         {ok, Ref} when is_reference(Ref) ->
-            io:format("✅ [ACK_CANCEL] Canceling timer: MsgId=~s, Ref=~p~n", [MsgId, Ref]),
+            ok = ?DEBUG_LOG({ack_cancel_canceling_timer, MsgId, Ref}),
             case erlang:cancel_timer(Ref) of
                 false ->
-                    io:format("⚠️ [ACK_CANCEL] Timer already fired: MsgId=~s~n", [MsgId]);
+                    ok = ?DEBUG_LOG({ack_cancel_timer_already_fired, MsgId});
                 Time ->
-                    io:format("✅ [ACK_CANCEL] Timer canceled, remaining time: ~pms~n", [Time])
+                    ok = ?DEBUG_LOG({ack_cancel_timer_canceled, MsgId, Time})
             end,
             imboy_cache:flush(TimerKey),
             ok;
         undefined ->
-            io:format("⚠️ [ACK_CANCEL] Timer not found: MsgId=~s~n", [MsgId]),
+            ok = ?DEBUG_LOG({ack_cancel_timer_not_found, MsgId}),
             ok;
         {ok, Other} ->
-            io:format("⚠️ [ACK_CANCEL] Invalid cache value: MsgId=~s, Value=~p~n", [MsgId, Other]),
+            ok = ?WARN_LOG({ack_cancel_invalid_cache_value, MsgId, Other}),
             imboy_cache:flush(TimerKey),
             ok
     end.

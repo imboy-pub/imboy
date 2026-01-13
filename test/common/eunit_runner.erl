@@ -38,7 +38,7 @@ run(Modules) when is_list(Modules) ->
 run_fast() ->
     % 不启动应用，只测试纯函数模块
     FastTestModules = [
-        imboy_pg_sql_tests
+        elib_pg_sql_tests
     ],
     eunit:test(FastTestModules, [verbose]).
 

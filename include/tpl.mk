@@ -91,16 +91,16 @@ demo_action(<<"GET">>, Req0, _State) ->
 demo_action(<<"POST">>, Req0, State) ->
     try
         CurrentUid = maps:get(current_uid, State, 0),
-        PostVals = imboy_req:post_params(Req0),
+        PostVals = elib_req:post_params(Req0),
         Val1 = proplists:get_value(<<"val1">>, PostVals, <<>>),
         Val2 = proplists:get_value(<<"val2">>, PostVals, <<>>),
         
         Result = $(subst _handler,,$(notdir $(n)))_logic:demo(CurrentUid, Val1, Val2),
-        imboy_response:success(Req0, Result, <<"Operation successful">>)
+        elib_response:success(Req0, Result, <<"Operation successful">>)
     catch
         Error:Reason:Stacktrace ->
             ?LOG_ERROR("Error in demo_action: ~p:~p~n~p", [Error, Reason, Stacktrace]),
-            imboy_response:error(Req0, 500, <<"Internal Server Error">>)
+            elib_response:error(Req0, 500, <<"Internal Server Error">>)
     end;
 
 demo_action(Method, Req0, _State) ->
@@ -243,14 +243,14 @@ define tpl_imboy.repository
 %%% Get table name
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"$(subst _repo,,$(notdir $(n)))">>).
+    elib_pg_sql:public_tablename(<<"$(subst _repo,,$(notdir $(n)))">>).
 
 %%% Demo method with improved error handling
 -spec demo(Uid::integer(), Val1::binary(), Val2::binary()) ->
     {ok, list()} | {error, term()}.
 demo(Uid, Val1, Val2) when is_integer(Uid), is_binary(Val1), is_binary(Val2) ->
     Sql = <<"SELECT id, created_at FROM ", (tablename())/binary, " WHERE id = $1 AND status = $2">>,
-    case imboy_pg:query(Sql, [Uid, Val1]) of
+    case elib_pg:query(Sql, [Uid, Val1]) of
         {ok, Rows} ->
             ?LOG_DEBUG("Query successful: ~p rows returned", [length(Rows)]),
             {ok, Rows};
@@ -266,7 +266,7 @@ demo(Uid, Val1, Val2) ->
 -spec create(Data::map(), Uid::integer()) -> {ok, integer()} | {error, term()}.
 create(Data, Uid) when is_map(Data), is_integer(Uid) ->
     Sql = <<"INSERT INTO ", (tablename())/binary, " (data, created_by, created_at) VALUES ($1, $2, NOW()) RETURNING id">>,
-    case imboy_pg:query(Sql, [jsone:encode(Data), Uid]) of
+    case elib_pg:query(Sql, [jsone:encode(Data), Uid]) of
         {ok, [#{<<"id">> := Id}]} ->
             ?LOG_INFO("Record created with id: ~p", [Id]),
             {ok, Id};
@@ -282,7 +282,7 @@ create(Data, Uid) ->
 -spec find_by_id(Id::integer()) -> {ok, map()} | {error, not_found | term()}.
 find_by_id(Id) when is_integer(Id) ->
     Sql = <<"SELECT id, data, created_by, created_at FROM ", (tablename())/binary, " WHERE id = $1">>,
-    case imboy_pg:query(Sql, [Id]) of
+    case elib_pg:query(Sql, [Id]) of
         {ok, []} ->
             {error, not_found};
         {ok, [#{<<"id">> := RecordId, <<"data">> := Data, <<"created_by">> := CreatedBy, <<"created_at">> := CreatedAt}]} ->
@@ -305,7 +305,7 @@ find_by_id(Id) ->
 -spec update(Id::integer(), Data::map(), Uid::integer()) -> ok | {error, term()}.
 update(Id, Data, Uid) when is_integer(Id), is_map(Data), is_integer(Uid) ->
     Sql = <<"UPDATE ", (tablename())/binary, " SET data = $1, updated_by = $2, updated_at = NOW() WHERE id = $3">>,
-    case imboy_pg:query(Sql, [jsone:encode(Data), Uid, Id]) of
+    case elib_pg:query(Sql, [jsone:encode(Data), Uid, Id]) of
         {ok, 1} ->
             ?LOG_INFO("Record ~p updated successfully", [Id]),
             ok;
@@ -323,7 +323,7 @@ update(Id, Data, Uid) ->
 -spec delete(Id::integer()) -> ok | {error, term()}.
 delete(Id) when is_integer(Id) ->
     Sql = <<"DELETE FROM ", (tablename())/binary, " WHERE id = $1">>,
-    case imboy_pg:query(Sql, [Id]) of
+    case elib_pg:query(Sql, [Id]) of
         {ok, 1} ->
             ?LOG_INFO("Record ~p deleted successfully", [Id]),
             ok;

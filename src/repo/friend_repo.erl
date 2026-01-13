@@ -24,7 +24,7 @@
 %% @example friend_repo:tablename().
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"user_friend">>).
+    elib_pg_sql:public_tablename(<<"user_friend">>).
 
 
 %% @doc 确认好友关系
@@ -41,7 +41,7 @@ confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Tb = tablename(),
-    _ = imboy_pg:insert(Tb, #{
+    _ = elib_pg:insert(Tb, #{
         from_user_id => FromID,
         to_user_id => ToID,
         status => 1,
@@ -62,8 +62,8 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
 -spec friend_field(integer(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
 friend_field(FromID, ToID, Field) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
-    imboy_pg:query(Sql, Params).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    elib_pg:query(Sql, Params).
 
 %% @doc 查询好友关系的多个字段
 %% @param FromID 发起好友关系的用户ID
@@ -75,8 +75,8 @@ friend_fields(FromID, ToID, Fields) ->
     Tb = tablename(),
     % 将字段列表转换为逗号分隔的字符串
     FieldsStr = lists:join(<<",">>, Fields),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, FieldsStr, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
-    imboy_pg:query(Sql, Params).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, FieldsStr, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    elib_pg:query(Sql, Params).
 
 
 %% @doc 查询指定用户的好友列表（使用默认限制10000）
@@ -95,8 +95,8 @@ list_by_uid(UID, Column) ->
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(UID, Column, Limit) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{from_user_id => UID, status => 1}, #{limit => Limit}),
-    imboy_pg:query(Sql, Params).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{from_user_id => UID, status => 1}, #{limit => Limit}),
+    elib_pg:query(Sql, Params).
 
 
 %% @doc 删除好友关系
@@ -105,13 +105,17 @@ list_by_uid(UID, Column, Limit) ->
 %% @return ok | {error, any()}
 -spec delete(integer(), integer()) -> ok | {error, any()}.
 delete(FromID, ToID) ->
+    %% 【原子性修复】使用事务确保双向删除的原子性
     Tb = tablename(),
-    Where = <<"from_user_id = $1 AND to_user_id = $2">>,
-    % ?DEBUG_LOG(io:format("~s  ~p ~p\n", [Sql, FromID, ToID])),
-    case imboy_pg:execute(<<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>, [FromID, ToID]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg:with_tx(fun(Conn) ->
+        % 删除正向关系
+        Where1 = <<"from_user_id = $1 AND to_user_id = $2">>,
+        {ok, _} = elib_pg:execute(Conn, <<"DELETE FROM ", Tb/binary, " WHERE ", Where1/binary>>, [FromID, ToID]),
+        % 删除反向关系
+        Where2 = <<"from_user_id = $1 AND to_user_id = $2">>,
+        {ok, _} = elib_pg:execute(Conn, <<"DELETE FROM ", Tb/binary, " WHERE ", Where2/binary>>, [ToID, FromID]),
+        ok
+    end).
 
 %% @doc 移动好友到指定分类
 %% @param FromUID 当前用户ID
@@ -124,7 +128,7 @@ move_to_category(FromUID, ToUID, CategoryID) ->
     Where = <<" WHERE status = 1 AND from_user_id = $2 AND to_user_id = $3">>,
     Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1", Where/binary>>,
     % ?DEBUG_LOG([Sql, CategoryID, FromUID, ToUID]),
-    case imboy_pg:execute(Sql, [CategoryID, FromUID, ToUID]) of
+    case elib_pg:execute(Sql, [CategoryID, FromUID, ToUID]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -137,10 +141,10 @@ move_to_category(FromUID, ToUID, CategoryID) ->
 -spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 change_remark(FromUid, ToUid, Remark) ->
     Tb = tablename(),
-    Dt = imboy_dt:now(),
+    Dt = elib_dt:now(),
     Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
-    imboy_pg:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).
+    elib_pg:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).
 
 %% @doc 批量按分类变更好友分类ID
 %% @param Uid 用户ID
@@ -152,7 +156,7 @@ set_category_by_cid(Uid, CategoryId, NewCid) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2
         WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
-    imboy_pg:execute(Sql, [NewCid, imboy_dt:now(), 1, Uid, CategoryId]).
+    elib_pg:execute(Sql, [NewCid, elib_dt:now(), 1, Uid, CategoryId]).
 
 
 %% ===================================================================

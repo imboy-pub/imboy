@@ -21,7 +21,7 @@ register_device_with_valid_params_test_() ->
         Uid = 1,
         DeviceType = <<"ios">>,
         DeviceToken = <<"token123">>,
-        CreatedAt = imboy_dt:now(),
+        CreatedAt = elib_dt:now(),
 
         Result = user_device_logic:register_device(Uid, DeviceType, DeviceToken, CreatedAt),
         % 假设 register_device 函数返回操作结果
@@ -71,7 +71,7 @@ list_devices_by_uid_test_() ->
         {imboy_syn, [
             {'online_dids', 1, fun(_Uid) -> [<<"dev1">>] end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'page_payload', 4, fun(_Total, _Page, _Size, _Items) -> 
                 #{<<"total">> => 5, <<"page">> => 1, <<"size">> => 10, <<"list">> => []}
             end}

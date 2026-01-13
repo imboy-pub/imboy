@@ -15,7 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.geo_people_nearby">> end}
     ], fun() ->
         Result = geo_people_nearby_repo:tablename(),
@@ -27,7 +27,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 find_nearby_people_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(Sql, Params) ->
             % 验证SQL查询包含地理位置查询
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*geo_people_nearby">>) =/= nomatch),
@@ -62,7 +62,7 @@ find_nearby_people_test_() ->
 %% ===================================================================
 
 update_location_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 3, fun(Sql, Params) ->
             % 验证SQL包含位置更新
             ?assert(binary:match(Sql, <<"INSERT.*INTO.*geo_people_nearby">>) =/= nomatch),

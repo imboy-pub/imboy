@@ -69,9 +69,9 @@ Q3: 每个模块里面的代码有哪些注意的erlang/otp的规范？
 
 
 
-我现在把 imboy_pg_sql:insert/2 调整为了 imboy_pg_sql:insert/3 ;然后弄好了 imboy_pg:insert/2 imboy_pg:insert/3
-   imboy_pg:insert/4 3个方法，给我检查所有有调用 imboy_pg:insert 放的地方，和所有透传 imboy_pg:insert 方法的地方（所谓透传，就是直接把imboy_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
+我现在把 elib_pg_sql:insert/2 调整为了 elib_pg_sql:insert/3 ;然后弄好了 elib_pg:insert/2 elib_pg:insert/3
+   elib_pg:insert/4 3个方法，给我检查所有有调用 elib_pg:insert 放的地方，和所有透传 elib_pg:insert 方法的地方（所谓透传，就是直接把elib_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
 
 
-我检查所有有调用 imboy_pg:xxx 放的地方，和所有透传 imboy_pg:xxx 方法的地方（所谓透传，就是直接把imboy_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
+我检查所有有调用 elib_pg:xxx 放的地方，和所有透传 elib_pg:xxx 方法的地方（所谓透传，就是直接把elib_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
 

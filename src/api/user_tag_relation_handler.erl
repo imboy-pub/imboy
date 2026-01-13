@@ -51,11 +51,18 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-% 用户标签_给特定对象打标签
+%% @doc 添加标签关联
+%% 给特定对象（用户或收藏）打标签
+%%
+%% @param Req0 Cowboy请求对象，包含对象ID和标签列表
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Tag = maps:get(<<"tag">>, PostVals, []),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
@@ -67,7 +74,7 @@ add(Req0, State) ->
             <<"collect">> ->
                 {1, false};
             <<"friend">> ->
-                {2, friend_ds:is_friend(CurrentUid, imboy_hashids:decode(ObjectId))};
+                {2, friend_ds:is_friend(CurrentUid, elib_hashids:decode(ObjectId))};
             _ ->
                 0
         end,
@@ -79,29 +86,35 @@ add(Req0, State) ->
                ObjectId
         end,
     if Scene2 == 0 ->
-           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
        length(Tag2) > 0 ->
-           imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+           elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
        length(Tag) == 0, bit_size(ObjectId) == 0 ->
-           imboy_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
+           elib_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
        length(Tag) > 1, bit_size(ObjectId) == 0 ->
-           imboy_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
+           elib_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
        true ->
            % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
            case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
                ok ->
-                   imboy_response:success(Req0, #{}, "success.");
+                   elib_response:success(Req0, #{}, "success.");
                Err ->
-                   imboy_response:error(Req0, Err)
+                   elib_response:error(Req0, Err)
            end
     end.
 
-% 用户标签_联系人标签设置标签
-%% 用户标签_联系人标签设置标签
+%% @doc 设置标签关联
+%% 批量设置对象的标签
+%%
+%% @param Req0 Cowboy请求对象，包含对象ID列表和标签信息
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec set(cowboy_req:req(), map()) -> cowboy_req:req().
 set(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
 
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagName = maps:get(<<"tagName">>, PostVals, <<>>),
     TagId = maps:get(<<"tagId">>, PostVals, 0),
@@ -120,25 +133,32 @@ set(Req0, State) ->
 
     case {Scene2, string:length(TagName), ec_cnv:to_integer(TagId)} of
         {0, _, _} ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         {_, Len, _} when Len > 14 ->
-            imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+            elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
         {_, _, Id} when Id < 1 ->
-            imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
+            elib_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         {S2, _, Id} ->
             case user_tag_relation_logic:set(CurrentUid, S2, ObjectIds, Id, TagName) of
                 ok ->
-                    imboy_response:success(Req0, #{}, "success.");
+                    elib_response:success(Req0, #{}, "success.");
                 Err ->
-                    imboy_response:error(Req0, Err)
+                    elib_response:error(Req0, Err)
             end
     end.
 
-%% 用户标签_标签详情-标签联系人列表-移除标签里的联系人
+%% @doc 移除标签关联
+%% 从标签中移除指定的对象
+%%
+%% @param Req0 Cowboy请求对象，包含对象ID和标签ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec remove(cowboy_req:req(), map()) -> cowboy_req:req().
 remove(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagId = maps:get(<<"tagId">>, PostVals, 0),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
@@ -159,35 +179,43 @@ remove(Req0, State) ->
 
     case {Scene2, ObjectId, ec_cnv:to_integer(TagId)} of
         {0, _, _} ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         {_, <<>>, _} ->
-            imboy_response:error(Req0, <<"ObjectId 不能同时为空"/utf8>>);
+            elib_response:error(Req0, <<"ObjectId 不能同时为空"/utf8>>);
         {_, _, Id} when Id < 1 ->
-            imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
+            elib_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         {S2, Obj, Id} ->
-            user_tag_relation_logic:remove(CurrentUid, S2, imboy_hashids:decode(Obj), Id),
-            imboy_response:success(Req0, #{}, "success.")
+            user_tag_relation_logic:remove(CurrentUid, integer_to_binary(S2), elib_hashids:decode(Obj), Id),
+            elib_response:success(Req0, #{}, "success.")
     end.
 
-%% 用户标签_标签详情-标签联系人列表 / 标签收藏列表
+%% @doc 标签关联分页列表
+%% 获取标签下的对象列表（分页）
+%%
+%% @param Scene 场景类型（collect或friend）
+%% @param Req0 Cowboy请求对象，包含分页参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含对象列表的响应
+%% @end
+-spec page(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 page(Scene, Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_param:page(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-    {ok, TagId} = imboy_param:int(tag_id, Req0, 0),
-    % imboy_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
+    {ok, TagId} = elib_param:int(tag_id, Req0, 0),
+    % elib_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
     if CurrentUid == 0 ->
-           imboy_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
+           elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
        TagId == 0 ->
-           imboy_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
+           elib_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
        Scene == <<"collect">> ->
-           imboy_response:success(Req0, #{});
+           elib_response:success(Req0, #{});
        Scene == <<"friend">> ->
            Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
-           imboy_response:success(Req0, Payload);
+           elib_response:success(Req0, Payload);
        true ->
-           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>)
+           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
 
 %% ===================================================================

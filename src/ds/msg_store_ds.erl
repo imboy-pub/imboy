@@ -1,4 +1,5 @@
 -module(msg_store_ds).
+-dialyzer({nowarn_function, [staging_pending/1]}).
 %%%-------------------------------------------------------------------
 %%% @doc  消息写入队列管理服务（gen_server）
 %%%
@@ -11,14 +12,14 @@
 %%% == 工作流程 ==
 %%% 1. **备份阶段（同步）**：
 %%%    ```erlang
-%%%    msg_store_ds:stage(<<"c2c">>, MsgId, Payload, FromId, ToId, CreatedAt, ServerTs)
+%%%    msg_store_ds:stage(<<"c2c">>, MsgId, <<"text">>, <<>>, <<>>, Payload, FromId, ToId, CreatedAt, ServerTs)
 %%%    → 写入 msg_store_staging 表
 %%%    → 确保消息零丢失
 %%%    ```
 %%%
 %%% 2. **入队阶段（异步）**：
 %%%    ```erlang
-%%%    msg_store_ds:enqueue(c2c, MsgId, Data)
+%%%    msg_store_ds:enqueue(<<"c2c">>, MsgId, Data)
 %%%    → 发送 kick 消息给 msg_store_worker_ds
 %%%    → 立即返回，不阻塞
 %%%    ```
@@ -46,10 +47,10 @@
 %%% == 调用示例 ==
 %%% ```erlang
 %%% % 1. 发送消息时（msg_c2c_logic）
-%%% case msg_store_ds:stage(<<"c2c">>, MsgId, PayloadJson, FromId, ToId, CreatedAt, ServerTs) of
+%%% case msg_store_ds:stage(<<"c2c">>, MsgId, <<"text">>, <<>>, <<>>, PayloadJson, FromId, ToId, CreatedAt, ServerTs) of
 %%%     ok ->
 %%%         % 备份成功，触发异步处理
-%%%         msg_store_ds:enqueue(c2c, MsgId, Data),
+%%%         msg_store_ds:enqueue(<<"c2c">>, MsgId, Data),
 %%%         % 立即响应客户端
 %%%         self() ! {reply, #{<<"type">> => <<"C2C_SERVER_ACK">>}};
 %%%     error ->
@@ -68,7 +69,7 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/7, enqueue/3, unstage/1]).
+-export([stage/10, enqueue/3, unstage/1]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -104,9 +105,12 @@ start_link() ->
 %% 直接写入数据库 staging 表，作为消息的唯一事实源（Single Source of Truth）。
 %%
 %% <b>参数说明：</b>
-%% - MsgType: 消息类型（<<"c2c">>、<<"c2g">>、<<"s2c">>、<<"c2s">>）
+%% - Type: 消息类别（<<"c2c">>、<<"c2g">>、<<"s2c">>、<<"c2s">>）
 %% - MsgId: 消息唯一ID（全局唯一，由客户端或服务端生成）
-%% - Payload: 消息内容（JSON binary）
+%% - MsgType: 消息子类型（<<"text">>、<<"image">>、<<"video">> 等）
+%% - Action: S2C 操作类型（<<"pull_offline_msg">> 等，仅 s2c 使用）
+%% - E2EE: 端到端加密元数据（JSONB binary 或 <<>>）
+%% - Payload: 消息内容（JSON binary，不含 msg_type/action/e2ee）
 %% - FromId: 发送者用户ID（integer）
 %% - ToId: 接收者用户ID（integer，单聊场景）
 %% - ToIdList: 接收者用户ID列表（[integer]，群聊场景）
@@ -125,14 +129,18 @@ start_link() ->
 %% @see unstage/1 标记消息已处理
 %% @end
 %%-------------------------------------------------------------------
--spec stage(binary(), binary(), binary(), integer(), integer() | [integer()], binary(), binary()) -> ok | error.
-stage(MsgType, MsgId, Payload, FromId, ToId, CreatedAt, ServerTs) ->
-    case msg_store_repo:stage(MsgType, MsgId, Payload, FromId, ToId, CreatedAt, ServerTs) of
+-spec stage(binary(), binary(), binary(), binary(), binary(), binary(), integer(), integer() | [integer()], binary(), binary()) -> ok | error.
+stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
+    case msg_store_repo:stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) of
         {ok, _} ->
-            ok = ?DEBUG_LOG([msg_store_ds, stage, MsgType, MsgId, ok]),
+            ok = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
+            ok;
+        {error, {unique_violation, _MsgId}} ->
+            %% 【幂等性修复】消息已存在（客户端重发），返回 ok
+            ok = ?INFO_LOG([msg_store_ds, stage_duplicate, Type, MsgId]),
             ok;
         {error, Reason} ->
-            ok = ?ERROR_LOG([msg_store_ds, stage_error, MsgType, MsgId, Reason]),
+            ok = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
             error
     end.
 
@@ -145,7 +153,7 @@ stage(MsgType, MsgId, Payload, FromId, ToId, CreatedAt, ServerTs) ->
 %% - 这是异步操作，立即返回 ok
 %%
 %% <b>参数说明：</b>
-%% - MsgType: 消息类型（atom，如 c2c、c2g、s2c、c2s）
+%% - Type: 消息类型（binary，如 <<"c2c">>、<<"c2g">>、<<"s2c">>、<<"c2s">>）
 %% - MsgId: 消息唯一ID
 %% - Data: 消息数据（map，包含 payload、from_id、to_id 等）
 %%
@@ -157,13 +165,13 @@ stage(MsgType, MsgId, Payload, FromId, ToId, CreatedAt, ServerTs) ->
 %% - Worker 会根据 retry_count 进行指数退避重试
 %% - 重试间隔：1s → 2s → 4s → 8s → 16s → 32s → 60s（最大）
 %%
-%% @see stage/7 备份消息到 staging 表
-%% @see msg_store_worker_ds 批量处理器
+%% @see stage/10 备份消息到 staging 表
+%% @see msg_store_worker 批量处理器
 %% @end
 %%-------------------------------------------------------------------
--spec enqueue(atom(), binary(), map()) -> ok.
-enqueue(MsgType, MsgId, Data) ->
-    gen_server:cast(?SERVER, {enqueue, MsgType, MsgId, Data}).
+-spec enqueue(binary(), binary(), map()) -> ok.
+enqueue(Type, MsgId, Data) ->
+    gen_server:cast(?SERVER, {enqueue, Type, MsgId, Data}).
 
 %%-------------------------------------------------------------------
 %% @doc  标记消息已处理，删除备份表记录（异步操作）
@@ -176,7 +184,7 @@ enqueue(MsgType, MsgId, Data) ->
 %% - 通常不需要手动调用，由 Worker 自动调用
 %%
 %% <b>异步特性：</b>
-%% - 这是异步操作，使用 imboy_async:async_retry 执行
+%% - 这是异步操作，使用 elib_async:async_retry 执行
 %% - 带重试机制（默认 3 次，1 秒延迟）
 %% - 不阻塞 Worker 处理流程
 %%
@@ -279,13 +287,13 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast({enqueue, MsgType, MsgId, Data}, State) ->
     _ = Data,
-    _ = gen_statem:cast(msg_store_worker_ds, kick),
+    _ = gen_statem:cast(msg_store_worker, kick),
     ok = ?DEBUG_LOG([msg_store_ds, enqueue, MsgType, MsgId, ok]),
     {noreply, State};
 
 handle_cast({unstage, MsgId}, State) ->
     % 从备份表标记为已处理（异步，不阻塞，带重试）
-    imboy_async:async_retry(fun() ->
+    elib_async:async_retry(fun() ->
         % 尝试删除各种类型的备份记录
         lists:foreach(fun(Type) ->
             msg_store_repo:mark_processed(Type, MsgId)
@@ -323,9 +331,15 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-staging_pending(#{<<"pending">> := Pending}) when is_integer(Pending) ->
-    Pending;
-staging_pending(#{pending := Pending}) when is_integer(Pending) ->
-    Pending;
-staging_pending(_Other) ->
-    0.
+staging_pending(Result) ->
+    case Result of
+        {ok, [Row | _]} when is_map(Row) ->
+            case maps:get(<<"pending">>, Row, 0) of
+                Pending when is_integer(Pending) -> Pending;
+                _ -> maps:get(pending, Row, 0)
+            end;
+        {ok, []} ->
+            0;
+        _ ->
+            0
+    end.

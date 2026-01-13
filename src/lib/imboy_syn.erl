@@ -28,6 +28,9 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+%% @doc 初始化 syn 模块，添加节点到 scopes
+-spec init() -> ok.
 init() ->
     _ = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([
@@ -143,6 +146,8 @@ online_dids(Uid) ->
         _:_ -> []
     end.
 
+%% @doc 发布消息到指定用户的所有设备
+-spec publish(integer(), term()) -> {ok, non_neg_integer()}.
 publish(Uid, Msg) ->
     publish(Uid, Msg, 0).
 

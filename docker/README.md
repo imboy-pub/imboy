@@ -92,7 +92,7 @@ max_retries=50; retry_count=0; until docker build --file "./docker/pg18_Dockerfi
 
 // 导入文件中注意不要有 -- SELECT pg_catalog.set_config('search_path', '', false);
 
-docker exec -i imboy_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_141046.sql
+docker exec -i elib_pg18 psql -U imboy_user -d imboy_v1 < /Users/leeyi/Downloads/imboy_backup_20251121_141046.sql
 
 # 删除所有已知的客户端命令
 sed -e '/^\\unrestrict/d' \
@@ -106,9 +106,9 @@ sed -e '/^\\unrestrict/d' \
     -e '/^\\q/d' \
      imboy_backup_20251213_204353.sql > imboy_v1.sql
 
-docker exec -i dev_imboy_pg18 psql -U imboy_user -d imboy_dev < /data/backup/imboy_db/imboy_backup_20251126_161728.sql
+docker exec -i dev_elib_pg18 psql -U imboy_user -d imboy_dev < /data/backup/imboy_db/imboy_backup_20251126_161728.sql
 
-docker exec -i pro_imboy_pg18 psql -U imboy_user -d imboy_pro < imboy_v1.sql
+docker exec -i pro_elib_pg18 psql -U imboy_user -d imboy_pro < imboy_v1.sql
 
 ```
 
@@ -182,7 +182,7 @@ docker run -d \
 // 统计api
 http://127.0.0.1:8080/stat
 
-imboy_uri:check_auth("http://c.imboy.pub/collect/image/chk7efp0poqbagho741g.HEIC?").
+elib_uri:check_auth("http://c.imboy.pub/collect/image/chk7efp0poqbagho741g.HEIC?").
 
 文件列表 dir : 要查看文件列表的目录名
 http://127.0.0.1:8080/list_dir

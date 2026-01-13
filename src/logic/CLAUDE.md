@@ -1,281 +1,238 @@
+# Logic 层文档 - 业务逻辑层
+
 [根目录](../CLAUDE.md) > **src/logic**
+
+> **最后更新**: 2026-01-20 08:48:18 CST
+> **模块数量**: 26 个
+> **职责**: 处理业务逻辑，调用 DS 层进行数据操作，实现核心业务功能
 
 ---
 
-# Logic 层 (src/logic/)
-
-> **最后更新**: 2026-01-07 10:05:54 CST
-> **模块数量**: 26 个 | **覆盖率**: 70%
-
 ## 模块职责
 
-Logic 层是 Imboy 系统的 **应用层 (Application Layer)**，负责：
+Logic 层是 Imboy 系统的业务逻辑层，负责：
+- 实现核心业务逻辑
+- 调用 DS 层进行数据操作
+- 处理消息投递与确认
+- 用户状态管理
+- 好友关系管理
+- 群组管理
+- 消息路由与分发
 
-1. **业务逻辑实现**: 核心业务规则和流程
-2. **事务协调**: 跨多个数据操作的事务管理
-3. **数据组装**: 将多个数据源组装为业务对象
-4. **缓存策略**: 决定何时读取/更新缓存
-5. **外部服务调用**: 调用第三方 API（如千帆 AI）
+---
 
-## 模块列表
+## 入口与启动
 
-### 用户与认证
+Logic 模块由 Handler 层或 DS 层调用：
 
-| 模块 | 说明 |
-|------|------|
-| `user_logic.erl` | 用户核心逻辑 |
-| `user_server.erl` | 用户账号 GenServer |
-| `auth_logic.erl` | 认证逻辑 |
-| `passport_logic.erl` | 注册登录逻辑 |
-| `user_device_logic.erl` | 设备管理逻辑 |
-| `user_collect_logic.erl` | 收藏逻辑 |
-| `user_denylist_logic.erl` | 黑名单逻辑 |
-| `user_tag_logic.erl` | 用户标签逻辑 |
-| `user_tag_relation_logic.erl` | 标签关联逻辑 |
+```erlang
+% Handler 调用 Logic
+{ok, Result} = user_logic:profile(Uid).
 
-### 好友与群组
+% Logic 调用 DS
+{ok, User} = user_ds:find_by_uid(Uid).
+```
 
-| 模块 | 说明 |
-|------|------|
-| `friend_logic.erl` | 好友核心逻辑 |
-| `friend_category_logic.erl` | 好友分组逻辑 |
-| `group_logic.erl` | 群组核心逻辑 |
-| `group_member_logic.erl` | 群成员逻辑 |
-| `group_notice_logic.erl` | 群公告逻辑 |
-
-### 消息处理
-
-| 模块 | 说明 |
-|------|------|
-| `msg_c2c_logic.erl` | 单聊消息逻辑 |
-| `msg_c2g_logic.erl` | 群聊消息逻辑 |
-| `msg_c2s_logic.erl` | 客户端到服务器消息 |
-| `msg_s2c_logic.erl` | 服务器到客户端消息 |
-
-### 连接与通信
-
-| 模块 | 说明 |
-|------|------|
-| `websocket_logic.erl` | WebSocket 业务逻辑 |
-| `webrtc_ws_logic.erl` | WebRTC WebSocket 逻辑 |
-
-### 功能扩展
-
-| 模块 | 说明 |
-|------|------|
-| `location_logic.erl` | 位置服务逻辑 |
-| `fts_logic.erl` | 全文搜索逻辑 |
-
-### 管理后台
-
-| 模块 | 说明 |
-|------|------|
-| `adm_user_logic.erl` | 后台用户管理 |
-| `adm_passport_logic.erl` | 后台认证逻辑 |
-| `adm_app_version_logic.erl` | 版本管理逻辑 |
+---
 
 ## 对外接口
 
-### 用户管理逻辑 (`user_logic.erl`)
+### 用户相关 Logic
 
-```erlang
-% 用户在线
-user_logic:online(Uid, DeviceId, DeviceType, Meta) -> ok
+| Logic | 说明 |
+|-------|------|
+| `user_logic.erl` | 用户信息管理 |
+| `user_server.erl` | 用户进程管理 |
+| `user_device_logic.erl` | 设备管理 |
+| `user_collect_logic.erl` | 收藏管理 |
+| `user_denylist_logic.erl` | 黑名单管理 |
+| `user_tag_logic.erl` | 用户标签 |
+| `user_tag_relation_logic.erl` | 标签关系 |
 
-% 用户离线
-user_logic:offline(Uid, DeviceId) -> ok
+### 认证相关 Logic
 
-% 更新用户资料
-user_logic:update(Uid, Data) -> {ok, Map} | {error, Reason}
+| Logic | 说明 |
+|-------|------|
+| `auth_logic.erl` | 认证逻辑 |
+| `passport_logic.erl` | 登录注册 |
 
-% 获取用户信息
-user_logic:info(Uid) -> Map
-```
+### 好友相关 Logic
 
-### 认证逻辑 (`auth_logic.erl`)
+| Logic | 说明 |
+|-------|------|
+| `friend_logic.erl` | 好友管理 |
+| `friend_category_logic.erl` | 好友分组 |
 
-```erlang
-% 验证 Token
-auth_logic:verify_token(Token) -> {ok, Uid} | {error, Reason}
+### 群组相关 Logic
 
-% 刷新 Token
-auth_logic:refresh_token(RefreshToken) -> {ok, NewToken} | {error, Reason}
+| Logic | 说明 |
+|-------|------|
+| `group_logic.erl` | 群组管理 |
+| `group_member_logic.erl` | 群成员管理 |
+| `group_notice_logic.erl` | 群公告 |
 
-% 检查权限
-auth_logic:check_permission(Uid, Resource) -> ok | {error, Reason}
-```
+### 消息相关 Logic
 
-### 好友逻辑 (`friend_logic.erl`)
+| Logic | 说明 |
+|-------|------|
+| `msg_c2c_logic.erl` | 单聊消息逻辑 |
+| `msg_c2g_logic.erl` | 群聊消息逻辑 |
+| `msg_c2s_logic.erl` | 客户端请求逻辑 |
+| `msg_s2c_logic.erl` | 系统消息逻辑 |
+| `msg_ack_logic.erl` | 消息确认逻辑 |
+| `message_router_logic.erl` | 消息路由器 |
 
-```erlang
-% 添加好友
-friend_logic:add(Uid, ToUid) -> ok | {error, Reason}
+### 其他 Logic
 
-% 删除好友
-friend_logic:delete(Uid, ToUid) -> ok
+| Logic | 说明 |
+|-------|------|
+| `websocket_logic.erl` | WebSocket 业务逻辑 |
+| `e2ee_logic.erl` | 端到端加密 |
+| `location_logic.erl` | 位置服务 |
+| `fts_logic.erl` | 全文搜索 |
 
-% 好友列表
-friend_logic:list(Uid, Page, Size) -> {ok, List}
-```
+### 管理后台 Logic
 
-### 群组逻辑 (`group_logic.erl`)
+| Logic | 说明 |
+|-------|------|
+| `adm_passport_logic.erl` | 管理员认证 |
+| `adm_app_version_logic.erl` | 版本管理 |
+| `adm_user_logic.erl` | 用户管理 |
 
-```erlang
-% 创建群组
-group_logic:add(Uid, Name, Members) -> {ok, GroupId}
+---
 
-% 解散群组
-group_logic:dissolve(GroupId, Uid) -> ok | {error, Reason}
+## 关键依赖与配置
 
-% 群组详情
-group_logic:detail(GroupId) -> Map
-```
+### 依赖的 DS 模块
 
-### 消息逻辑
+| Logic | 依赖的 DS |
+|-------|-----------|
+| `user_logic` | `user_ds`, `user_setting_ds` |
+| `friend_logic` | `friend_ds`, `friend_category_ds` |
+| `group_logic` | `group_ds` |
+| `msg_c2c_logic` | `msg_c2c_ds`, `message_ds` |
+| `auth_logic` | `auth_ds`, `token_ds` |
+| `websocket_logic` | `websocket_ds` |
 
-#### 单聊消息 (`msg_c2c_logic.erl`)
+### 依赖的 Lib 模块
 
-```erlang
-% 发送单聊消息
-msg_c2c_logic:send(FromUid, ToUid, Payload) -> {ok, MsgId}
+- `imboy_syn.erl`: 分布式进程注册
+- `imboy_cache.erl`: 缓存操作
+- `elib_async.erl`: 异步执行
+- `elib_hashids.erl`: ID 编码/解码
 
-% 消息历史
-msg_c2c_logic:history(Uid, ToUid, Page, Size) -> {ok, List}
-```
-
-#### 群聊消息 (`msg_c2g_logic.erl`)
-
-```erlang
-% 发送群聊消息
-msg_c2g_logic:send(FromUid, GroupId, Payload) -> {ok, MsgId}
-
-% 群消息历史
-msg_c2g_logic:history(GroupId, Page, Size) -> {ok, List}
-```
-
-#### WebSocket 逻辑 (`websocket_logic.erl`)
-
-```erlang
-% 处理 C2S 消息
-websocket_logic:c2s(MsgId, CurrentUid, Data) -> ok
-
-% 取消重试定时器
-websocket_logic:cancel_timer(CurrentUid, DID, MsgId) -> ok
-```
-
-## 关键依赖
-
-### 上游依赖
-- `src/ds/`: 数据服务层
-
-### 下游调用
-- `src/repo/`: 数据仓库层（通过 DS 层间接调用）
-- `src/lib/imboy_cache.erl`: 缓存操作
-
-## 核心流程
-
-### 用户上线流程
-
-```
-1. WebSocket 连接建立
-2. 验证 Token (auth_logic)
-3. 用户上线 (user_logic:online)
-4. 注册进程 (imboy_syn)
-5. 加载离线消息 (msg_handler)
-6. 发送 S2C 通知
-```
-
-### 消息发送流程
-
-```
-1. 客户端发送消息 (WebSocket)
-2. Handler 解析参数
-3. Logic 验证权限
-4. 存储消息 (DS -> Repo)
-5. 查询在线状态 (imboy_syn)
-6. 投递消息 (message_ds:send_next)
-7. 等待确认 (QoS 重试)
-```
+---
 
 ## 数据模型
 
-### 用户在线状态
+### 消息投递流程
 
-```erlang
-#{uid => Uid,
-  did => DeviceId,
-  dtype => DeviceType,
-  node => Node,
-  pid => Pid}
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Handler   │───►│    Logic    │───►│      DS     │
+└─────────────┘    └─────────────┘    └─────────────┘
+                          │                   │
+                          ▼                   ▼
+                    ┌─────────────┐    ┌─────────────┐
+                    │   Message   │    │    Repo     │
+                    │   Router    │    └─────────────┘
+                    └─────────────┘           │
+                          │                   ▼
+                          ▼            ┌─────────────┐
+                    ┌─────────────┐    │ PostgreSQL  │
+                    │   Client    │    └─────────────┘
+                    └─────────────┘
 ```
 
-### 消息结构
+---
 
-```erlang
-#{id => MsgId,
-  type => <<"C2C">> | <<"C2G">> | <<"S2C">>,
-  from => FromUid,
-  to => ToUid,
-  payload => Payload,
-  created_at => Timestamp}
-```
+## 测试与质量
 
-## 测试覆盖
-
-### 测试文件
+### 测试文件位置
 
 ```
 test/logic/
-├── user_logic_tests.erl
+└── user_logic_tests.erl
+
+test/api/
 ├── auth_logic_tests.erl
 ├── friend_logic_tests.erl
 ├── group_logic_tests.erl
+├── group_member_logic_tests.erl
+├── group_notice_logic_tests.erl
 ├── msg_c2c_logic_tests.erl
 ├── msg_c2g_logic_tests.erl
-└── ...
+├── msg_s2c_logic_tests.erl
+├── passport_logic_tests.erl
+├── user_collect_logic_tests.erl
+├── user_denylist_logic_tests.erl
+├── user_device_logic_tests.erl
+├── user_tag_logic_tests.erl
+├── user_tag_relation_logic_tests.erl
+└── websocket_logic_tests.erl
 ```
 
-### 覆盖情况
+---
 
-- **覆盖率**: 约 70%
-- **已测试**: 核心业务逻辑
-- **待补充**: 边缘情况、并发场景
+## 常见问题 (FAQ)
 
-## 常见问题
+### Q: 如何添加新的业务逻辑?
 
-### Q: Logic 层和 DS 层的区别?
+1. 在 `src/logic/` 创建新的 logic 文件
+2. 调用 DS 层进行数据操作
+3. 编写测试
 
-A:
-- **Logic 层**: 实现业务逻辑，可以调用多个 DS，协调事务
-- **DS 层**: 封装数据操作，通常对应一个实体，主要负责缓存
+### Q: 如何实现消息重试?
 
-### Q: 何时使用缓存?
+使用 `elib_retry:with_retry/1,2,3,4` 或消息自带的定时器机制。
 
-A:
-- **读多写少**: 用户资料、群组信息
-- **计算密集**: 搜索结果、统计信息
-- **短期缓存**: 验证码、Token 黑名单
+---
 
-### Q: 如何处理并发?
+## 相关文件清单
 
-A:
-- 使用 Erlang 进程隔离
-- 使用 `syn` 注册唯一进程
-- 数据库事务处理
+### Logic 文件 (26 个)
 
-## 相关文件
+```
+src/logic/
+├── adm_app_version_logic.erl
+├── adm_passport_logic.erl
+├── adm_user_logic.erl
+├── auth_logic.erl
+├── e2ee_logic.erl
+├── friend_category_logic.erl
+├── friend_logic.erl
+├── fts_logic.erl
+├── group_logic.erl
+├── group_member_logic.erl
+├── location_logic.erl
+├── message_router_logic.erl
+├── msg_ack_logic.erl
+├── msg_c2c_logic.erl
+├── msg_c2g_logic.erl
+├── msg_c2s_logic.erl
+├── msg_s2c_logic.erl
+├── passport_logic.erl
+├── user_collect_logic.erl
+├── user_denylist_logic.erl
+├── user_device_logic.erl
+├── user_logic.erl
+├── user_server.erl
+├── user_tag_logic.erl
+├── user_tag_relation_logic.erl
+├── webrtc_ws_logic.erl
+├── websocket_logic.erl
+└── group_notice_logic.erl
+```
 
-- `src/logic/user_server.erl`: 用户账号 GenServer
-- `src/ds/`: 数据服务层
-- `src/lib/imboy_syn.erl`: 分布式进程注册
-- `test/logic/`: 测试文件
+---
 
-## 变更记录
+## 变更记录 (Changelog)
 
-### 2026-01-07
-- 更新模块列表，补充完整模块信息
-- 更新覆盖率统计
+### 2026-01-20
+- 新增 `message_router_logic.erl` 消息路由器
+- 新增 `e2ee_logic.erl` 端到端加密
+- 完善 Logic 层文档
 
-### 2026-01-03
-- 初始化 Logic 层文档
-- 整理核心接口和流程
+---
+
+**文档维护**: 请在添加新的业务逻辑时同步更新此文档。

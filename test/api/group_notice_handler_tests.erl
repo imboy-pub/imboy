@@ -16,7 +16,7 @@
 %% @doc 测试创建群公告功能
 create_notice_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -25,7 +25,7 @@ create_notice_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -35,7 +35,7 @@ create_notice_test_() ->
                 {ok, #{notice_id => 2001, created => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -64,7 +64,7 @@ create_notice_test_() ->
 %% @doc 测试更新群公告功能
 update_notice_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -74,7 +74,7 @@ update_notice_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -84,7 +84,7 @@ update_notice_test_() ->
                 {ok, #{updated => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -113,7 +113,7 @@ update_notice_test_() ->
 %% @doc 测试删除群公告功能
 delete_notice_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -121,7 +121,7 @@ delete_notice_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -131,7 +131,7 @@ delete_notice_test_() ->
                 {ok, #{deleted => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -160,12 +160,12 @@ delete_notice_test_() ->
 %% @doc 测试列出群公告功能
 list_notices_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -194,7 +194,7 @@ list_notices_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -223,12 +223,12 @@ list_notices_test_() ->
 %% @doc 测试列出群公告功能 - 无效群组ID
 list_notices_invalid_group_test_() ->
     ?WITH_MOCKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 0  % 无效ID
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -257,7 +257,7 @@ list_notices_invalid_group_test_() ->
 %% @doc 测试创建群公告功能 - 权限不足
 create_notice_permission_denied_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -266,7 +266,7 @@ create_notice_permission_denied_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -276,7 +276,7 @@ create_notice_permission_denied_test_() ->
                 {error, permission_denied}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 403,

@@ -44,16 +44,15 @@ encrypt_token(ID) ->
                        {ok, integer(), integer(), binary()} |
                        {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
-    % io:format("Token: ~p, ~n", [Token]),
     Opts = #{exp_leeway => 300},  % 容忍 5 分钟时钟偏差
     JwtKey = config_ds:env(jwt_key, <<>>),
     try jwerl:verify(Token, hs256, JwtKey, #{}, Opts) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
-            ID = imboy_hashids:decode(Uid),
+            ID = elib_hashids:decode(Uid),
             ExpireDAt = maps:get(exp, Payload, <<>>),
             Sub = maps:get(sub, Payload, <<"tk">>),
-            Now = imboy_dt:utc(second),
+            Now = elib_dt:utc(second),
             if ExpireDAt > Now ->
                    {ok, ID, ExpireDAt, Sub};
                true ->
@@ -64,8 +63,9 @@ decrypt_token(Token) ->
             {error, 706, "Invalid token", #{err => JWT_ERR}}
     catch
         Class:Reason:Stacktrace ->
-            % 异常处理代码
-            io:format("Class: ~p, Reason: ~p, Stacktrace ~p~n", [Class, Reason, Stacktrace]),
+            % 记录 token 解析异常
+            ok = ?ERROR_LOG("Token decrypt failed: ~p:~p~nStacktrace: ~p",
+                          [Class, Reason, Stacktrace]),
             {error, 706, "Invalid token.", #{}}
     end.
 
@@ -89,6 +89,6 @@ encrypt_token(ID, Second, Sub) ->
           % , iat => Now % iat (Issued At)：签发时间
           sub => Sub,  % sub (subject)：主题
           exp => ExpireDAt,  % exp (expiration time)：过期时间
-          uid => imboy_hashids:encode(ID)},
+          uid => elib_hashids:encode(ID)},
     JwtKey = config_ds:env(jwt_key, <<>>),
     jwerl:sign(Data, hs256, JwtKey).

@@ -16,7 +16,7 @@
 %% @doc 测试用户注册功能
 signup_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -31,7 +31,7 @@ signup_test_() ->
                 {ok, #{<<"uid">> => 12345, <<"account">> => <<"test@example.com">>}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -57,7 +57,7 @@ signup_test_() ->
 %% @doc 测试用户注册功能 - 账号已存在
 signup_account_exists_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -72,7 +72,7 @@ signup_account_exists_test_() ->
                 {error, <<"账号已存在">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -98,7 +98,7 @@ signup_account_exists_test_() ->
 %% @doc 测试找回密码功能
 find_password_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -111,7 +111,7 @@ find_password_test_() ->
                 {ok, #{<<"message">> => <<"重置密码邮件已发送">>}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -137,7 +137,7 @@ find_password_test_() ->
 %% @doc 测试找回密码功能 - 账号不存在
 find_password_account_not_found_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -150,7 +150,7 @@ find_password_account_not_found_test_() ->
                 {error, <<"账号不存在">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -176,7 +176,7 @@ find_password_account_not_found_test_() ->
 %% @doc 测试登录功能
 login_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -196,7 +196,7 @@ login_test_() ->
                 #{<<"theme">> => <<"light">>, <<"language">> => <<"zh-CN">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -222,7 +222,7 @@ login_test_() ->
 %% @doc 测试登录功能 - 密码错误
 login_password_error_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"email">>},
@@ -237,7 +237,7 @@ login_password_error_test_() ->
                 {error, <<"密码错误">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 401,
@@ -276,12 +276,12 @@ refresh_token_test_() ->
                 <<"new_encrypted_token">>
             end}
         ]},
-        {imboy_pg, [
+        {elib_pg, [
             {'pluck', 4, fun(_Table, _Column, _Conditions, _Options) ->
                 {ok, 1}  % 用户状态正常
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -318,7 +318,7 @@ refresh_token_invalid_test_() ->
                 {error, invalid_token}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 401,

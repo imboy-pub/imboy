@@ -17,7 +17,7 @@
 %% @doc 测试更新位置 - 成功场景
 handle_update_location_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"latitude">>, 39.9042},
@@ -35,11 +35,11 @@ handle_update_location_test_() ->
                     longitude => 116.4074,
                     accuracy => 10.0,
                     address => <<"北京市朝阳区">>,
-                    updated_at => imboy_dt:timestamp()
+                    updated_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -64,13 +64,13 @@ handle_update_location_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(location_logic, update_location, 5),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试更新位置 - 坐标无效
 handle_update_location_invalid_coords_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"latitude">>, 91.0},  % 无效纬度
@@ -80,7 +80,7 @@ handle_update_location_invalid_coords_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -107,7 +107,7 @@ handle_update_location_invalid_coords_test_() ->
 %% @doc 测试更新位置 - 参数缺失
 handle_update_location_missing_params_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 % 缺少必要参数
                 [
@@ -115,7 +115,7 @@ handle_update_location_missing_params_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -146,7 +146,7 @@ handle_update_location_missing_params_test_() ->
 %% @doc 测试获取附近用户 - 成功场景
 handle_get_nearby_users_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"latitude">>, 39.9042},
@@ -163,18 +163,18 @@ handle_get_nearby_users_test_() ->
                         uid => 67890,
                         nickname => <<"Nearby User 1">>,
                         distance => 500.5,
-                        last_seen => imboy_dt:timestamp()
+                        last_seen => elib_dt:timestamp()
                     },
                     #{
                         uid => 67891,
                         nickname => <<"Nearby User 2">>,
                         distance => 800.2,
-                        last_seen => imboy_dt:timestamp()
+                        last_seen => elib_dt:timestamp()
                     }
                 ]}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -211,7 +211,7 @@ handle_get_nearby_users_test_() ->
 %% @doc 测试获取附近用户 - 无附近用户
 handle_get_nearby_users_empty_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"latitude">>, 39.9042},
@@ -226,7 +226,7 @@ handle_get_nearby_users_empty_test_() ->
                 {ok, []}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -253,7 +253,7 @@ handle_get_nearby_users_empty_test_() ->
 %% @doc 测试获取附近用户 - 参数无效
 handle_get_nearby_users_invalid_params_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'get', 1, fun(_Req) ->
                 [
                     {<<"latitude">>, 91.0},  % 无效纬度
@@ -263,7 +263,7 @@ handle_get_nearby_users_invalid_params_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,

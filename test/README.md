@@ -34,7 +34,7 @@ make eunit-clean
 % 简单测试（不需要应用）
 my_simple_test() ->
     ?TEST_SIMPLE(fun() ->
-        Result = imboy_pg_sql:public_tablename(<<"user">>),
+        Result = elib_pg_sql:public_tablename(<<"user">>),
         ?assertEqual(<<"public.user">>, Result)
     end).
 
@@ -122,5 +122,5 @@ my_test_() ->
 ## 📚 示例
 
 查看现有测试文件作为参考：
-- `test/apps/imlib/src/imboy_pg_sql_tests.erl` - SQL 构造测试
+- `test/apps/imlib/src/elib_pg_sql_tests.erl` - SQL 构造测试
 - `test/apps/imrepo/src/user_repo_tests.erl` - Repository 测试

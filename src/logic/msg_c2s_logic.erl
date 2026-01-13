@@ -58,16 +58,16 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 -spec c2s_to_external(binary(), integer(), binary(), map(), function()) ->
     ok | {reply, map()}.
 c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
-    From = imboy_hashids:encode(CurrentUid),
+    From = elib_hashids:encode(CurrentUid),
     Payload = maps:get(<<"payload">>, Data),
     Text = maps:get(<<"text">>, Payload),
     TopicId = maps:get(<<"topic_id">>, Payload, 0),
     TopicTitle = maps:get(<<"topic_title">>, Payload, <<>>),
     CreatedAtRaw = maps:get(<<"created_at">>, Data),
-    CreatedAt = imboy_dt:to_rfc3339(CreatedAtRaw),
+    CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
 
     % 异步存储主题（带重试）
-    imboy_async:async_retry(fun() ->
+    elib_async:async_retry(fun() ->
         msg_c2s_ds:write_topic(<<"C2S">>, TopicId, CurrentUid, To, TopicTitle, CreatedAt)
     end),
 
@@ -77,18 +77,19 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
     Payload0Bin = jsone:encode(Payload0, [native_utf8]),
 
     % 【关键修复】先备份到 staging 表（同步，检查返回值）
-    case msg_store_ds:stage(<<"c2s">>, MsgId, Payload0Bin, CurrentUid, 0,
-                              CreatedAt, CreatedAt) of
+    % v2.0: C2S 消息使用 text 类型，无 action 和 e2ee
+    case msg_store_ds:stage(<<"c2s">>, MsgId, <<"text">>, <<>>, <<>>, Payload0Bin,
+                              CurrentUid, 0, CreatedAt, CreatedAt) of
         ok ->
             % 备份成功，立即响应
             self() ! {reply, #{
                 <<"id">> => MsgId,
                 <<"type">> => <<"C2S_SERVER_ACK">>,
-                <<"server_ts">> => imboy_dt:millisecond()
+                <<"server_ts">> => elib_dt:millisecond()
             }},
 
             % ① 先入队（异步，非阻塞）
-            msg_store_ds:enqueue(c2s, MsgId, #{
+            msg_store_ds:enqueue(<<"c2s">>, MsgId, #{
                 payload => Payload0Bin,
                 from_id => CurrentUid,
                 to_id => 0,
@@ -99,7 +100,7 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
             }),
 
             % ② 异步调用外部 API + 投递响应（带重试）
-            imboy_async:async_retry(fun() ->
+            elib_async:async_retry(fun() ->
                 % 使用回调调用外部 API
                 RespMap = ApiCallback(CurrentUid, Text, []),
                 send_service_response(To, MsgId, CurrentUid, From, Payload0,
@@ -121,11 +122,26 @@ c2s_to_role_chat(MsgId, _CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     _RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
 
-    % TODO: 实现角色聊天逻辑
+    % AI 角色聊天功能需要以下组件：
+    % 1. ai_role_ds - 管理角色定义（system_prompt、人格等）
+    % 2. 千帆 AI API - qianfan_api.erl 模块已存在
+    % 3. 对话历史管理 - 维护角色对话上下文
+    %
+    % 实现步骤：
     % case ai_role_ds:get_role(_RoleId) of
     %     {ok, Role} ->
     %         SystemPrompt = maps:get(<<"system_prompt">>, Role),
-    %         ...
+    %         UserMessage = maps:get(<<"content">>, Payload),
+    %         % 调用千帆 AI API
+    %         case qianfan_api:chat(UserMessage, SystemPrompt) of
+    %             {ok, Response} ->
+    %                 % 发送 AI 响应给用户
+    %                 send_ai_response(MsgId, Response);
+    %             {error, Reason} ->
+    %                 {reply, error_message(MsgId, Reason)}
+    %         end;
+    %     {error, not_found} ->
+    %         {reply, error_message(MsgId, <<"role_not_found">>)}
     % end.
 
     Msg = message_ds:assemble_s2c(MsgId, <<"role_chat_not_implemented">>, <<"bot_role_chat">>),
@@ -147,20 +163,21 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
         <<"status">> => 12  % 状态：12 收到三方结果
     },
 
-    % 构建响应消息
+    % 构建响应消息（v2.0 格式）
     MsgId2 = <<"bot_response", MsgId/binary>>,
+    %% v2.0: msg_type 在顶层，不在 payload 中
     Msg = #{
         <<"id">> => MsgId2,
         <<"type">> => <<"C2S">>,
+        <<"msg_type">> => <<"text">>,
         <<"topic_id">> => TopicId,
         <<"from">> => To,
         <<"to">> => From,
         <<"payload">> => #{
-            <<"msg_type">> => <<"text">>,
-            <<"text">> => imboy_str:replace_single_quote(maps:get(<<"result">>, RespMap))
+            <<"text">> => elib_str:replace_single_quote(maps:get(<<"result">>, RespMap))
         },
         <<"created_at">> => CreatedAt
     },
     MsgJson = jsone:encode(Msg, [native_utf8]),
-    MsLi = imboy_retry_config:intervals(<<"c2s">>),
+    MsLi = elib_retry_config:intervals(<<"c2s">>),
     message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi).

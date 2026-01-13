@@ -9,7 +9,13 @@
 %% API
 %% ===================================================================
 
-
+%% @doc 初始化认证处理器
+%% 根据请求中的 action 参数调用相应的处理函数
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State0 状态映射，包含 action 参数
+%% @return {ok, Req1, State} 处理后的请求对象和状态
+%% @end
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
@@ -30,13 +36,17 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-
-%%% for https://sjqzhang.github.io/go-fastdfs/authentication.html#custom
-% Assets服务认证
+%% @doc Assets服务认证
+%% 用于go-fastdfs的自定义认证
+%%
+%% @param Method HTTP方法（POST或GET）
+%% @param Req0 Cowboy请求对象，包含认证参数
+%% @return 返回认证结果（ok或fail）
+%% @end
 -spec assets(binary(), cowboy_req:req()) -> cowboy_req:req().
 assets(<<"POST">>, Req0) ->
     try
-        PostVals = imboy_param:post(Req0),
+        PostVals = elib_param:post(Req0),
         Scene = maps:get(<<"s">>, PostVals, undefined),
         % AuthToken
         AuthTk = maps:get(<<"a">>, PostVals, undefined),

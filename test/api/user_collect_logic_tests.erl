@@ -18,7 +18,7 @@ add_text_collect_success_test_() ->
     ?WITH_MECK(user_collect_repo, [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end}
     ], fun() ->
-        ?WITH_MECK(imboy_pg, [
+        ?WITH_MECK(elib_pg, [
             {'with_tx', 1, fun(_TxFun) -> ok end}
         ], fun() ->
             Uid = 12345,
@@ -37,10 +37,10 @@ add_image_collect_success_test_() ->
     ?WITH_MECK(user_collect_repo, [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end}
     ], fun() ->
-        ?WITH_MECK(imboy_uri, [
+        ?WITH_MECK(elib_uri, [
             {'get_params', 1, fun(_Uri) -> {#{path => "/uploads/img.jpg"}, []} end}
         ], fun() ->
-            ?WITH_MECK(imboy_pg, [
+            ?WITH_MECK(elib_pg, [
                 {'with_tx', 1, fun(_TxFun) -> ok end}
             ], fun() ->
                 Uid = 12345,
@@ -81,7 +81,7 @@ add_collect_empty_source_test_() ->
     Kind = <<"1">>,
     KindId = <<"msg123">>,
     Info = [{<<"payload">>, [{<<"content">>, <<"Hello World">>}]}],
-    Source = <<"">>,  % 空来源
+    Source = <<>>,  % 空来源
     Remark = <<"重要消息">>,
     
     Result = user_collect_logic:add(Uid, Kind, KindId, Info, Source, Remark),
@@ -90,7 +90,7 @@ add_collect_empty_source_test_() ->
 add_collect_empty_kind_id_test_() ->
     Uid = 12345,
     Kind = <<"1">>,
-    KindId = <<"">>,  % 空资源ID
+    KindId = <<>>,  % 空资源ID
     Info = [{<<"payload">>, [{<<"content">>, <<"Hello World">>}]}],
     Source = <<"chat">>,
     Remark = <<"重要消息">>,
@@ -146,7 +146,7 @@ change_collect_remark_test_() ->
     end).
 
 change_collect_transpond_callback_test_() ->
-    ?WITH_MECK(imboy_dt, [
+    ?WITH_MECK(elib_dt, [
         {'now', 0, fun() -> 1640995200 end}
     ], fun() ->
         ?WITH_MECK(user_collect_repo, [

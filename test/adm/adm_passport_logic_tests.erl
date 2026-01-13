@@ -52,10 +52,10 @@ do_login_with_mobile_and_mock_test_() ->
                 }
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, valid} end}
         ]}
     ], fun() ->
@@ -90,10 +90,10 @@ do_login_with_account_and_mock_test_() ->
                 }
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, valid} end}
         ]}
     ], fun() ->
@@ -116,7 +116,7 @@ do_login_with_nonexistent_account_test_() ->
                 #{}
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) ->
                 {error, "密码验证失败"}
             end}
@@ -144,7 +144,7 @@ do_login_with_wrong_password_test_() ->
                 }
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) ->
                 {error, "密码错误"}
             end}
@@ -173,7 +173,7 @@ do_login_with_disabled_account_test_() ->
                 }
             end}
         ]},
-        {imboy_password, [
+        {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, valid} end}
         ]}
     ], fun() ->

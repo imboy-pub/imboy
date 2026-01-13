@@ -17,7 +17,7 @@
 %% @doc 测试设备注册 - 成功场景
 handle_register_device_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"device_id">>, <<"device_12345">>},
@@ -38,11 +38,11 @@ handle_register_device_test_() ->
                     push_token => <<"push_token_abc123">>,
                     os_version => <<"iOS 15.0">>,
                     status => active,
-                    registered_at => imboy_dt:timestamp()
+                    registered_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -77,7 +77,7 @@ handle_register_device_test_() ->
 %% @doc 测试设备注册 - 设备已存在
 handle_register_device_exists_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"device_id">>, <<"device_12345">>},
@@ -90,7 +90,7 @@ handle_register_device_exists_test_() ->
                 {error, device_already_exists}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 409,
@@ -121,7 +121,7 @@ handle_register_device_exists_test_() ->
 %% @doc 测试设备更新 - 成功场景
 handle_update_device_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"device_id">>, <<"device_12345">>},
@@ -137,11 +137,11 @@ handle_update_device_test_() ->
                     uid => 12345,
                     push_token => <<"new_push_token_456">>,
                     os_version => <<"iOS 15.1">>,
-                    updated_at => imboy_dt:timestamp()
+                    updated_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -176,7 +176,7 @@ handle_update_device_test_() ->
 %% @doc 测试设备更新 - 设备不存在
 handle_update_device_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"device_id">>, <<"device_99999">>},
@@ -189,7 +189,7 @@ handle_update_device_not_found_test_() ->
                 {error, device_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,

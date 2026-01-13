@@ -23,7 +23,7 @@ verify_for_assets_with_valid_token_test_() ->
     ], fun() ->
         Scene = <<"upload">>,
         Token = <<"valid_token_123">>,
-        Timestamp = imboy_dt:utc(second),
+        Timestamp = elib_dt:utc(second),
         Path = <<"/upload/file.jpg">>,
         
         Result = auth_logic:verify_for_assets(Scene, Token, Timestamp, Path),
@@ -39,7 +39,7 @@ verify_for_assets_with_invalid_token_test_() ->
     ], fun() ->
         Scene = <<"upload">>,
         Token = <<"invalid_token_789">>,
-        Timestamp = imboy_dt:utc(second),
+        Timestamp = elib_dt:utc(second),
         Path = <<"/upload/file.jpg">>,
         
         Result = auth_logic:verify_for_assets(Scene, Token, Timestamp, Path),
@@ -55,7 +55,7 @@ verify_for_assets_with_expired_timestamp_test_() ->
         Scene = <<"upload">>,
         Token = <<"valid_token_123">>,
         % 使用过期的时间戳（超过7200秒）
-        ExpiredTimestamp = imboy_dt:utc(second) - 8000,
+        ExpiredTimestamp = elib_dt:utc(second) - 8000,
         Path = <<"/upload/file.jpg">>,
         
         Result = auth_logic:verify_for_assets(Scene, Token, ExpiredTimestamp, Path),
@@ -125,7 +125,7 @@ verify_for_assets_boundary_timestamp_test_() ->
         Scene = <<"test">>,
         Token = <<"boundary_token">>,
         % 测试边界时间戳（7199秒，刚好在有效期内）
-        BoundaryTimestamp = imboy_dt:utc(second) - 7199,
+        BoundaryTimestamp = elib_dt:utc(second) - 7199,
         Path = <<"/test/path">>,
         
         Result = auth_logic:verify_for_assets(Scene, Token, BoundaryTimestamp, Path),
@@ -166,8 +166,8 @@ verify_for_assets_integration_test_() ->
         ]}
     ], fun() ->
         % 测试不同场景的验证
-        UploadResult = auth_logic:verify_for_assets(<<"upload">>, <<"upload_token_123">>, imboy_dt:utc(second), <<"/upload/test.jpg">>),
-        DownloadResult = auth_logic:verify_for_assets(<<"download">>, <<"download_token_456">>, imboy_dt:utc(second), <<"/download/test.jpg">>),
+        UploadResult = auth_logic:verify_for_assets(<<"upload">>, <<"upload_token_123">>, elib_dt:utc(second), <<"/upload/test.jpg">>),
+        DownloadResult = auth_logic:verify_for_assets(<<"download">>, <<"download_token_456">>, elib_dt:utc(second), <<"/download/test.jpg">>),
         
         ?assertEqual(<<"ok">>, UploadResult),
         ?assertEqual(<<"ok">>, DownloadResult)

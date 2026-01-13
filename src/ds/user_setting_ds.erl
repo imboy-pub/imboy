@@ -29,7 +29,7 @@ search(_Account) ->
 % user_setting_ds:find_by_uid(1).
 -spec find_by_uid(binary() | integer()) -> map().
 find_by_uid(Uid) when is_binary(Uid) ->
-    find_by_uid(imboy_hashids:decode(Uid));
+    find_by_uid(elib_hashids:decode(Uid));
 find_by_uid(Uid) ->
     Column = <<"setting">>,
     S = case user_setting_repo:find_by_uid(Uid, Column) of

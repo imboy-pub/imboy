@@ -6,7 +6,7 @@
 %%% @doc
 %%% user_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%% 覆盖：正常路径、空结果、异常路径
 %%%===================================================================
 
@@ -43,7 +43,7 @@ tablename_is_binary_test_() ->
 %% ===================================================================
 
 find_by_email_existing_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 3, fun(Sql, Params, _Conn) ->
             % 验证 SQL 语句正确性
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*user">>) =/= nomatch),
@@ -61,11 +61,11 @@ find_by_email_existing_test_() ->
         ?assert(maps:get(<<"id">>, Result) > 0),
         
         % 验证 Mock 被正确调用
-        meck_helper:verify_called(imboy_pg, query, 3)
+        meck_helper:verify_called(elib_pg, query, 3)
     end).
 
 find_by_email_not_existing_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 3, fun(Sql, Params, _Conn) ->
             % 验证 SQL 语句正确性
             ?assert(binary:match(Sql, <<"SELECT.*FROM.*user">>) =/= nomatch),
@@ -83,7 +83,7 @@ find_by_email_not_existing_test_() ->
         ?assertEqual(0, maps:size(Result)),
         
         % 验证 Mock 被正确调用
-        meck_helper:verify_called(imboy_pg, query, 3)
+        meck_helper:verify_called(elib_pg, query, 3)
     end).
 
 find_by_email_empty_email_test_() ->
@@ -291,7 +291,7 @@ save_insert_valid_data_test_() ->
             <<"password">> => <<"hashed_password">>,
             <<"mobile">> => <<"13800138000">>,
             <<"status">> => 1,
-            <<"created_at">> => imboy_dt:now()
+            <<"created_at">> => elib_dt:now()
         },
         Result = user_repo:save(Data),
         % 期望成功插入，返回 {ok, InsertedId} 或类似结构
@@ -354,7 +354,7 @@ update_non_existing_user_test_() ->
 update_with_timestamp_field_test_() ->
     ?TEST_WITH_DB(fun() ->
         Id = 1,
-        Data = #{<<"updated_at">> => imboy_dt:now()},
+        Data = #{<<"updated_at">> => elib_dt:now()},
         {ok, UpdatedCount} = user_repo:update(Id, Data),
         ?assert(is_integer(UpdatedCount)),
         ?assert(UpdatedCount > 0)
@@ -370,7 +370,7 @@ delete_existing_user_test_() ->
             <<"account">> => <<"delete_test_user">>,
             <<"password">> => <<"hash">>,
             <<"status">> => 1,
-            <<"created_at">> => imboy_dt:now()
+            <<"created_at">> => elib_dt:now()
         },
         case user_repo:save(TestData) of
             {ok, AffectedCount} when is_integer(AffectedCount) ->
@@ -408,7 +408,7 @@ delete_non_existing_user_test_() ->
 update_last_seen_at_by_from_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
         Uid = 1,
-        Timestamp = imboy_dt:now(),
+        Timestamp = elib_dt:now(),
         Result = user_repo:update_last_seen_at_by_from_uid(Uid, Timestamp),
         % 精确断言：验证更新操作返回结构
         case Result of
@@ -424,7 +424,7 @@ update_last_seen_at_by_from_uid_test_() ->
 update_last_seen_at_by_from_uid_zero_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
         Uid = 0,
-        Timestamp = imboy_dt:now(),
+        Timestamp = elib_dt:now(),
         Result = user_repo:update_last_seen_at_by_from_uid(Uid, Timestamp),
         % 精确断言：验证更新操作返回结构
         case Result of
@@ -444,7 +444,7 @@ update_last_seen_at_by_from_uid_zero_uid_test_() ->
 update_last_seen_at_by_to_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
         Uid = 1,
-        Timestamp = imboy_dt:now(),
+        Timestamp = elib_dt:now(),
         Result = user_repo:update_last_seen_at_by_to_uid(Uid, Timestamp),
         % 精确断言：验证更新操作返回结构
         case Result of
@@ -469,7 +469,7 @@ select_by_where_basic_test_() ->
         Offset = 0,
         OrderBy = <<"id DESC">>,
         Page = (Offset div Limit) + 1,
-        Result = imboy_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
+        Result = elib_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
         % 精确断言：验证查询结果结构
         case Result of
             {ok, #{list := List}} when is_list(List) ->
@@ -487,7 +487,7 @@ select_by_where_empty_result_test_() ->
         Offset = 0,
         OrderBy = <<"id DESC">>,
         Page = (Offset div Limit) + 1,
-        Result = imboy_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
+        Result = elib_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
         % 精确断言：验证查询结果结构
         case Result of
             {ok, #{list := List}} when is_list(List) ->
@@ -505,7 +505,7 @@ select_by_where_large_offset_test_() ->
         Offset = 100000,
         OrderBy = <<"id DESC">>,
         Page = (Offset div Limit) + 1,
-        Result = imboy_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
+        Result = elib_pg:page_with_total(user_repo:tablename(), Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit),
         % 精确断言：验证查询结果结构
         case Result of
             {ok, #{list := List}} when is_list(List) ->

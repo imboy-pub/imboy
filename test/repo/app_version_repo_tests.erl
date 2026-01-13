@@ -6,7 +6,7 @@
 %%% @doc
 %%% app_version_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%%===================================================================
 
 %% ===================================================================
@@ -62,7 +62,7 @@ add_valid_ios_app_test_() ->
             <<"download_url">> => <<"https://test.com/download">>,
             <<"description">> => <<"Test app">>,
             <<"force_update">> => 1,
-            <<"created_at">> => imboy_dt:now(),
+            <<"created_at">> => elib_dt:now(),
             <<"sign_key">> => <<"test_key">>
         },
         Result = app_version_repo:add(Data),
@@ -79,8 +79,8 @@ add_valid_android_app_test_() ->
             <<"download_url">> => <<"https://test.com/android.apk">>,
             <<"description">> => <<"Test android app">>,
             <<"force_update">> => 2,
-            <<"created_at">> => imboy_dt:now(),
-            <<"sign_key">> => <<"">>
+            <<"created_at">> => elib_dt:now(),
+            <<"sign_key">> => <<>>
         },
         Result = app_version_repo:add(Data),
         ?assertMatch({ok, InsertedId} when is_integer(InsertedId), Result)
@@ -91,7 +91,7 @@ add_minimal_data_test_() ->
         Data = #{
             <<"type">> => <<"ios">>,
             <<"vsn">> => <<"1.0">>,
-            <<"created_at">> => imboy_dt:now()
+            <<"created_at">> => elib_dt:now()
         },
         Result = app_version_repo:add(Data),
         case Result of

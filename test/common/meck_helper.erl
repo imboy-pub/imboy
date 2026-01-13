@@ -26,11 +26,11 @@
     verify_called_once/3,
     
     % Mock 模板
-    mock_imboy_param/1,
-    mock_imboy_response/1,
+    mock_elib_param/1,
+    mock_elib_response/1,
     mock_passport_logic/1,
     mock_user_repo/1,
-    mock_imboy_pg/1,
+    mock_elib_pg/1,
     
     % 测试数据生成
     test_user/0,
@@ -165,8 +165,8 @@ verify_called_once(Module, Function, Arity) ->
 %% 常用 Mock 模板
 %% ===================================================================
 
-%% @doc Mock imboy_param 模块
-mock_imboy_param(Overrides) ->
+%% @doc Mock elib_param 模块
+mock_elib_param(Overrides) ->
     DefaultParams = [
         {<<"account">>, <<"test@example.com">>},
         {<<"password">>, <<"password123">>},
@@ -179,10 +179,10 @@ mock_imboy_param(Overrides) ->
     Expectations = [
         {'post', 1, fun(_Req) -> Params end}
     ],
-    {ok, _} = setup_mock(imboy_param, Expectations).
+    {ok, _} = setup_mock(elib_param, Expectations).
 
-%% @doc Mock imboy_response 模块
-mock_imboy_response(Overrides) ->
+%% @doc Mock elib_response 模块
+mock_elib_response(Overrides) ->
     DefaultResponse = cowboy_req_h:new(#{
         response_status => 200,
         response_body => #{status => success}
@@ -195,7 +195,7 @@ mock_imboy_response(Overrides) ->
             Response#{response_status => 400, response_body => #{status => error}} 
         end}
     ],
-    {ok, _} = setup_mock(imboy_response, Expectations).
+    {ok, _} = setup_mock(elib_response, Expectations).
 
 %% @doc Mock passport_logic 模块
 mock_passport_logic(Overrides) ->
@@ -233,8 +233,8 @@ mock_user_repo(Overrides) ->
     ],
     {ok, _} = setup_mock(user_repo, Expectations).
 
-%% @doc Mock imboy_pg 模块
-mock_imboy_pg(Overrides) ->
+%% @doc Mock elib_pg 模块
+mock_elib_pg(Overrides) ->
     DefaultResult = {ok, [{1, <<"test">>}]},
     Result = maps:get(result, Overrides, DefaultResult),
     
@@ -247,7 +247,7 @@ mock_imboy_pg(Overrides) ->
         end},
         {'with_tx', 1, fun(_TxFun) -> ok end}
     ],
-    {ok, _} = setup_mock(imboy_pg, Expectations).
+    {ok, _} = setup_mock(elib_pg, Expectations).
 
 %% @doc Mock user_collect_repo 模块
 %% @private
@@ -263,20 +263,20 @@ mock_user_collect_repo(Overrides) ->
     ],
     {ok, _} = setup_mock(user_collect_repo, Expectations).
 
-%% @doc Mock imboy_uri 模块
+%% @doc Mock elib_uri 模块
 %% @private
-mock_imboy_uri(Overrides) ->
+mock_elib_uri(Overrides) ->
     DefaultParams = {#{path => "/uploads/img.jpg"}, []},
     Params = maps:get(params, Overrides, DefaultParams),
     
     Expectations = [
         {'get_params', 1, fun(_Uri) -> Params end}
     ],
-    {ok, _} = setup_mock(imboy_uri, Expectations).
+    {ok, _} = setup_mock(elib_uri, Expectations).
 
-%% @doc Mock imboy_dt 模块
+%% @doc Mock elib_dt 模块
 %% @private
-mock_imboy_dt(Overrides) ->
+mock_elib_dt(Overrides) ->
     DefaultTimestamp = 1640995200,
     Timestamp = maps:get(timestamp, Overrides, DefaultTimestamp),
     
@@ -284,7 +284,7 @@ mock_imboy_dt(Overrides) ->
         {'now', 0, fun() -> Timestamp end},
         {'timestamp', 0, fun() -> Timestamp end}
     ],
-    {ok, _} = setup_mock(imboy_dt, Expectations).
+    {ok, _} = setup_mock(elib_dt, Expectations).
 
 %% @doc Mock group_member_repo 模块
 %% @doc Mock group_member_repo 模块
@@ -352,7 +352,7 @@ test_user(Overrides) ->
         email => <<"test@example.com">>,
         password => <<"hashed_password">>,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 
@@ -368,7 +368,7 @@ test_group(Overrides) ->
         description => <<"A test group for testing">>,
         creator_id => 12345,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 
@@ -385,7 +385,7 @@ test_message(Overrides) ->
         content => <<"Hello, this is a test message">>,
         msg_type => 1,
         status => 1,
-        created_at => imboy_dt:timestamp()
+        created_at => elib_dt:timestamp()
     },
     maps:merge(Default, Overrides).
 

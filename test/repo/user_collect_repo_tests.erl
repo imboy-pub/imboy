@@ -15,7 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(imboy_pg_sql, [
+    ?WITH_MECK(elib_pg_sql, [
         {'public_tablename', 1, fun(_Table) -> <<"public.user_collect">> end}
     ], fun() ->
         Result = user_collect_repo:tablename(),
@@ -27,7 +27,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 count_by_uid_kind_id_with_existing_record_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
             {ok, [#{<<"count">> => 1}]}
         end}
@@ -40,7 +40,7 @@ count_by_uid_kind_id_with_existing_record_test_() ->
     end).
 
 count_by_uid_kind_id_no_existing_record_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
             {ok, [#{<<"count">> => 0}]}
         end}
@@ -53,7 +53,7 @@ count_by_uid_kind_id_no_existing_record_test_() ->
     end).
 
 count_by_uid_kind_id_query_error_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
             {error, database_error}
         end}
@@ -70,7 +70,7 @@ count_by_uid_kind_id_query_error_test_() ->
 %% ===================================================================
 
 delete_collect_success_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Uid = 12345,
@@ -81,7 +81,7 @@ delete_collect_success_test_() ->
     end).
 
 delete_collect_no_affected_rows_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
     ], fun() ->
         Uid = 12345,
@@ -92,7 +92,7 @@ delete_collect_no_affected_rows_test_() ->
     end).
 
 delete_collect_database_error_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'execute', 2, fun(_Sql, _Params) -> {error, database_error} end}
     ], fun() ->
         Uid = 12345,
@@ -112,7 +112,7 @@ delete_collect_database_error_test_() ->
 %% ===================================================================
 
 update_collect_success_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'update', 4, fun(_Table, _Data, _Where, _Params) -> {ok, 1} end}
     ], fun() ->
         Uid = 12345,
@@ -124,7 +124,7 @@ update_collect_success_test_() ->
     end).
 
 update_collect_with_multiple_fields_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'update', 4, fun(_Table, _Data, _Where, _Params) -> {ok, 1} end}
     ], fun() ->
         Uid = 12345,
@@ -139,7 +139,7 @@ update_collect_with_multiple_fields_test_() ->
     end).
 
 update_collect_no_affected_rows_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'update', 4, fun(_Table, _Data, _Where, _Params) -> {ok, 0} end}
     ], fun() ->
         Uid = 12345,

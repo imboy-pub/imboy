@@ -45,37 +45,52 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-% 让自己可见
+
+%% @doc 让自己可见
+%% 设置用户位置为可见状态
+%%
+%% @param Req0 Cowboy请求对象，包含经纬度信息
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec make_myself_visible(cowboy_req:req(), map()) -> cowboy_req:req().
 make_myself_visible(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Lat = maps:get(<<"latitude">>, PostVals, <<>>),
     Lng = maps:get(<<"longitude">>, PostVals, <<>>),
     % ?DEBUG_LOG([CurrentUid, Lat, Lng]),
     case location_logic:make_myself_visible(CurrentUid, Lat, Lng) of
         ok ->
-            imboy_response:success(Req0, #{}, "success.");
+            elib_response:success(Req0, #{}, "success.");
         {error, Msg} ->
-            imboy_response:error(Req0, Msg)
+            elib_response:error(Req0, Msg)
     end.
 
-% 让自己不可见
+%% @doc 让自己不可见
+%% 设置用户位置为不可见状态
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功响应
+%% @end
+-spec make_myself_unvisible(cowboy_req:req(), map()) -> cowboy_req:req().
 make_myself_unvisible(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     location_logic:make_myself_unvisible(CurrentUid),
-    imboy_response:success(Req0, #{}, "success.").
+    elib_response:success(Req0, #{}, "success.").
 
 % 附近的人
 -spec people_nearby(cowboy_req:req(), map()) -> cowboy_req:req().
 people_nearby(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
     #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
     #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
     % #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
     #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"m">>}], Req0),
     % #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
-    {ok, Radius} = imboy_param:int(radius, Req0, 500),
-    {ok, Limit} = imboy_param:int(limit, Req0, 100),
+    {ok, Radius} = elib_param:int(radius, Req0, 500),
+    {ok, Limit} = elib_param:int(limit, Req0, 100),
     % ?DEBUG_LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),
     % 直接传递 integer，location_logic:people_nearby 的签名支持 binary() | integer()
     List = location_logic:people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit),
@@ -85,7 +100,7 @@ people_nearby(Req0, State) ->
         <<"unit">> => <<"m">>,
         <<"list">> => List
     },
-    imboy_response:success(Req0, Payload).
+    elib_response:success(Req0, Payload).
 
 %% ===================================================================
 %% EUnit tests.

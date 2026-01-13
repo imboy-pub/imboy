@@ -8,7 +8,8 @@
 
 -export([tablename/0]).
 -export([read_msg/3, read_msg/4]).
--export([write_msg/6]).
+-export([find_msg_by_id/1]).
+-export([write_msg/8]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
@@ -25,7 +26,21 @@
 %% @return 返回C2C消息表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"msg_c2c">>).
+    elib_pg_sql:public_tablename(<<"msg_c2c">>).
+
+
+%% @doc 根据消息ID查找单条消息
+%% @param MsgId 消息唯一ID
+%% @return {ok, MsgMap} | {error, Reason}
+-spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
+find_msg_by_id(MsgId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT from_id, created_at FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    case elib_pg:query(Sql, [MsgId]) of
+        {ok, [Msg]} -> {ok, Msg};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
 
 
 %% @doc 读取C2C离线消息
@@ -41,7 +56,7 @@ read_msg(Where, Column, Limit) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE ", Where/binary, " ORDER BY id ASC LIMIT $1">>,
     % logger:error("msg_c2c_repo:read_msg/3 ~s~n", [Sql]),
-    imboy_pg:query(Sql, [Limit]).
+    elib_pg:query(Sql, [Limit]).
 
 %% @doc 读取C2C离线消息（带参数）
 %% @param Where SQL WHERE子句条件
@@ -63,7 +78,7 @@ read_msg(Where, Column, Limit, Params) ->
             " WHERE ", Where/binary, " ORDER BY id ASC LIMIT ",
             LimitPlaceholder/binary>>,
     % 将参数列表合并：先传递WHERE条件的参数，最后是LIMIT参数
-    imboy_pg:query(Sql, Params ++ [Limit]).
+    elib_pg:query(Sql, Params ++ [Limit]).
 
 
 %% @doc 写入C2C离线消息
@@ -73,19 +88,26 @@ read_msg(Where, Column, Limit, Params) ->
 %% @param FromId 发送者用户ID（integer，对应 bigint 列）
 %% @param ToId 接收者用户ID（integer，对应 bigint 列）
 %% @param ServerTS 服务器时间戳（RFC3339 binary）
+%% @param MsgType 消息类型（text, image, audio, video, file 等）
+%% @param E2EE 端到端加密信息（JSON binary，可选）
 %% @return {ok, Result} | {error, Reason}
-%% @example msg_c2c_repo:write_msg(imboy_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"msg_type\":\"text\"}">>, 1, 2, imboy_dt:now(microsecond)).
--spec write_msg(binary(), binary(), binary(), integer(), integer(), binary()) -> {ok, any()} | {error, any()}.
-write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS) ->
+%% @example msg_c2c_repo:write_msg(elib_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"text\":\"hello\"}">>, 1, 2, elib_dt:now(microsecond), <<"text">>, <<"{\"key\":\"...\"}">>).
+-spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary() | null) -> {ok, any()} | {error, any()}.
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，必须传入 integer
     Tb = tablename(),
-    imboy_pg:insert(Tb, #{
-        payload => {raw, imboy_hasher:encoded_val(Payload)},
+    elib_pg:insert(Tb, #{
+        payload => Payload,
         from_id => FromId,
         to_id => ToId,
         created_at => CreatedAt,
         server_ts => ServerTS,
-        msg_id => Id
+        msg_id => Id,
+        msg_type => MsgType,
+        e2ee => case E2EE of
+            <<>> -> null;
+            _ -> E2EE
+        end
     }).
 
 
@@ -110,7 +132,7 @@ delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
     % ?DEBUG_LOG(['delete_msg', Params, Sql]),
-    case imboy_pg:execute(Sql, Params) of
+    case elib_pg:execute(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {ok, Count, _} -> {ok, Count};
         {error, Reason} -> {error, Reason}
@@ -126,7 +148,7 @@ delete_msg(Where, Params) when is_list(Params) ->
 count_by_to_id(ToUid) ->
     % use index i_c2c_ToId
     % 使用安全的参数化查询，避免SQL注入
-    imboy_pg:pluck_value(tablename(), <<"count(*) as count">>, #{to_id => ToUid}, #{}, 0).
+    elib_pg:pluck_value(tablename(), <<"count(*) as count">>, #{to_id => ToUid}, #{}, 0).
 
 %% @doc 删除超出限制数量的C2C离线消息
 %% @param ToUid 接收者用户ID
@@ -138,7 +160,7 @@ delete_overflow_msg(ToUid, Limit) ->
     Tb = tablename(),
     Where = <<" WHERE to_id = $1 ORDER BY id ASC LIMIT $2">>,
     Sql = <<"SELECT id FROM ", Tb/binary, Where/binary>>,
-    case imboy_pg:query(Sql, [ToUid, Limit]) of
+    case elib_pg:query(Sql, [ToUid, Limit]) of
         {ok, []} ->
             ok;
         {ok, Rows} ->
@@ -174,11 +196,10 @@ delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) 
     Placeholders = iolist_to_binary(lists:join(<<",">>,
         [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))])),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id IN (", Placeholders/binary, ") AND to_id = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
-    imboy_pg:execute(Sql, MsgIds ++ [ToUid]);
+    elib_pg:execute(Sql, MsgIds ++ [ToUid]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-

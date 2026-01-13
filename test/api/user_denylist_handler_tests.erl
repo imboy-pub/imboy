@@ -17,7 +17,7 @@
 %% @doc 测试添加用户到黑名单 - 成功场景
 handle_add_to_denylist_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890},
@@ -27,10 +27,10 @@ handle_add_to_denylist_test_() ->
         ]},
         {user_denylist_logic, [
             {'add_to_denylist', 2, fun(_FromUid, _TargetUid) ->
-                {ok, #{target_uid => 67890, created_at => imboy_dt:timestamp()}}
+                {ok, #{target_uid => 67890, created_at => elib_dt:timestamp()}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -55,13 +55,13 @@ handle_add_to_denylist_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(user_denylist_logic, add_to_denylist, 2),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试添加用户到黑名单 - 目标用户不存在
 handle_add_to_denylist_user_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 99999},
@@ -74,7 +74,7 @@ handle_add_to_denylist_user_not_found_test_() ->
                 {error, user_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -101,7 +101,7 @@ handle_add_to_denylist_user_not_found_test_() ->
 %% @doc 测试添加用户到黑名单 - 参数缺失
 handle_add_to_denylist_missing_params_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 % 缺少 target_uid 参数
                 [
@@ -109,7 +109,7 @@ handle_add_to_denylist_missing_params_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -140,7 +140,7 @@ handle_add_to_denylist_missing_params_test_() ->
 %% @doc 测试从黑名单移除用户 - 成功场景
 handle_remove_from_denylist_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890}
@@ -149,10 +149,10 @@ handle_remove_from_denylist_test_() ->
         ]},
         {user_denylist_logic, [
             {'remove_from_denylist', 2, fun(_FromUid, _TargetUid) ->
-                {ok, #{target_uid => 67890, removed_at => imboy_dt:timestamp()}}
+                {ok, #{target_uid => 67890, removed_at => elib_dt:timestamp()}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -182,7 +182,7 @@ handle_remove_from_denylist_test_() ->
 %% @doc 测试从黑名单移除用户 - 用户不在黑名单中
 handle_remove_from_denylist_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"target_uid">>, 67890}
@@ -194,7 +194,7 @@ handle_remove_from_denylist_not_found_test_() ->
                 {error, not_in_denylist}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -228,12 +228,12 @@ handle_list_denylist_test_() ->
         {user_denylist_logic, [
             {'list_denylist', 1, fun(_FromUid) ->
                 {ok, [
-                    #{target_uid => 67890, reason => <<"spam">>, created_at => imboy_dt:timestamp()},
-                    #{target_uid => 67891, reason => <<"harassment">>, created_at => imboy_dt:timestamp()}
+                    #{target_uid => 67890, reason => <<"spam">>, created_at => elib_dt:timestamp()},
+                    #{target_uid => 67891, reason => <<"harassment">>, created_at => elib_dt:timestamp()}
                 ]}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -275,7 +275,7 @@ handle_list_denylist_empty_test_() ->
                 {ok, []}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

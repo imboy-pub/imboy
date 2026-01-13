@@ -123,3 +123,21 @@ DIALYZER_WARNINGS ?= 50
 # 使用命令:
 #   make dialyze_build_plt  - 首次构建 PLT
 #   make dialyze           - 运行 Dialyzer 分析
+
+# ===================================================================
+# Common Test 配置（erlang.mk 原生支持）
+# ===================================================================
+#
+# erlang.mk 原生支持 Common Test，只需：
+# 1. 在 test/ 目录下创建 *_SUITE.erl 文件
+# 2. 运行 make ct 或 make ct-suite_name
+#
+# 使用方式:
+#   make ct                          # 运行所有 Common Test suites
+#   make ct-msg_ack_logic            # 运行特定 suite
+#   make ct-msg_ack_logic t=c2c_ack  # 运行特定测试用例
+#   make tests                       # 运行所有测试（EUnit + CT）
+#
+# CT 配置选项:
+CT_OPTS ?=
+CT_LOGS_DIR ?= logs/ct

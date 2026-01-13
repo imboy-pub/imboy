@@ -6,7 +6,7 @@
 %%% @doc
 %%% app_ddl_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%%===================================================================
 
 %% ===================================================================
@@ -40,7 +40,7 @@ add_valid_data_test_() ->
             version => <<"1.0.0">>,
             ddl_sql => <<"CREATE TABLE test (id INT);">>,
             status => 1,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         ?ASSERT_OK(Result),
@@ -75,7 +75,7 @@ add_with_required_fields_test_() ->
         Data = #{
             app_key => <<"minimal_app">>,
             version => <<"1.0">>,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         ?ASSERT_OK(Result),
@@ -95,7 +95,7 @@ add_with_required_fields_test_() ->
 
 add_with_timestamp_field_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Now = imboy_dt:now(),
+        Now = elib_dt:now(),
         Data = #{
             app_key => <<"timestamp_test">>,
             version => <<"2.0">>,
@@ -119,7 +119,7 @@ add_with_large_ddl_sql_test_() ->
             app_key => <<"large_sql_app">>,
             version => <<"1.0">>,
             ddl_sql => LargeSQL,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         case Result of
@@ -137,7 +137,7 @@ add_with_status_zero_test_() ->
             app_key => <<"status_zero_app">>,
             version => <<"1.0">>,
             status => 0,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         case Result of
@@ -155,7 +155,7 @@ add_with_negative_status_test_() ->
             app_key => <<"negative_status_app">>,
             version => <<"1.0">>,
             status => -1,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         case Result of
@@ -176,7 +176,7 @@ add_with_nil_app_key_test_() ->
         Data = #{
             app_key => <<>>,
             version => <<"1.0">>,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         case Result of
@@ -192,7 +192,7 @@ add_with_nil_version_test_() ->
         Data = #{
             app_key => <<"no_version_app">>,
             version => <<>>,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
         case Result of

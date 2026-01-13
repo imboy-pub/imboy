@@ -29,7 +29,7 @@ online_default_test_() ->
                 320  % 在线设备数
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -74,12 +74,12 @@ online_list_test_() ->
                 ]
             end}
         ]},
-        {imboy_dt, [
+        {elib_dt, [
             {'to_rfc3339', 2, fun(_Nano, _Unit) ->
                 "2021-12-24T10:00:00Z"
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -129,7 +129,7 @@ mine_test_() ->
                 end
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -163,7 +163,7 @@ mine_no_messages_test_() ->
                 []  % 无新消息
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -209,7 +209,7 @@ mine_with_timestamp_test_() ->
                 [{<<"from_uid">>, 11111}, {<<"to_uid">>, 12345}, {<<"content">>, <<"New message">>}, {<<"msg_type">>, 1}, {<<"created_at">>, <<"2025-12-24T10:02:00Z">>}]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -258,12 +258,12 @@ online_with_limit_test_() ->
                 ]
             end}
         ]},
-        {imboy_dt, [
+        {elib_dt, [
             {'to_rfc3339', 2, fun(_Nano, _Unit) ->
                 "2021-12-24T10:00:00Z"
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

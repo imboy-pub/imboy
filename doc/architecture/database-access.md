@@ -10,38 +10,38 @@
 Imboy 使用 4 层架构，Repository 层（`src/repo/`）负责所有数据库操作。
 
 ### 核心模块
-- `imboy_pg` - 数据库连接和查询执行
-- `imboy_pg_sql` - SQL 构建工具（参数化查询，防注入）
+- `elib_pg` - 数据库连接、查询执行、事务封装（返回结果会规整为 map 列表/单个 map）
+- `elib_pg_sql` - SQL 构建工具（纯函数；构建结果为 `{Sql, Params}`，用于参数化查询、防注入）
 
 ---
 
 ## 🔴 强制要求
 
-### 所有数据库操作必须使用 `imboy_pg` 模块
+### 所有数据库操作必须使用 `elib_pg` 模块
 
 **原则**：
-- ✅ **必须**使用 `imboy_pg` 模块进行所有数据库操作
+- ✅ **必须**使用 `elib_pg` 模块进行所有数据库操作
 - ❌ **禁止**直接使用 `epgsql` 模块
-- ❌ **禁止**绕过 `imboy_pg` 的连接池管理
+- ❌ **禁止**绕过 `elib_pg` 的连接池管理
 
 **正确示例**：
 ```erlang
 % ✅ 查询操作
-{ok, Cols, Rows} = imboy_pg:query("SELECT * FROM users WHERE id = $1", [UserId])
+{ok, Rows} = elib_pg:query("SELECT * FROM users WHERE id = $1", [UserId])
 
 % ✅ 插入操作
-{ok, Count} = imboy_pg:insert(<<"users">>, #{<<"name">> => <<"Alice">>})
+{ok, Count} = elib_pg:insert(<<"users">>, #{<<"name">> => <<"Alice">>})
 
 % ✅ 更新操作
-{ok, Count} = imboy_pg:update(<<"users">>, #{<<"name">> => <<"Bob">>}, <<"id = $1">>, [UserId])
+{ok, Count} = elib_pg:update(<<"users">>, #{<<"name">> => <<"Bob">>}, <<"id = $1">>, [UserId])
 
 % ✅ 删除操作
-{ok, Count} = imboy_pg:delete(<<"users">>, <<"id = $1">>, [UserId])
+{ok, Count} = elib_pg:execute("DELETE FROM users WHERE id = $1", [UserId])
 
 % ✅ 事务操作
-imboy_pg:with_tx(fun(Conn) ->
-    {ok, _} = imboy_pg:insert(Conn, <<"users">>, UserData),
-    {ok, _} = imboy_pg:insert(Conn, <<"user_logs">>, LogData),
+elib_pg:with_tx(fun(Conn) ->
+    {ok, _} = elib_pg:insert(Conn, <<"users">>, UserData),
+    {ok, _} = elib_pg:insert(Conn, <<"user_logs">>, LogData),
     {ok, Result}
 end)
 ```
@@ -53,7 +53,7 @@ end)
 
 % ❌ 字符串拼接 SQL（禁止）
 Sql = "SELECT * FROM users WHERE id = " ++ integer_to_list(UserId),
-imboy_pg:query(Sql, [])
+elib_pg:query(Sql, [])
 
 % ❌ 绕过连接池（禁止）
 {ok, Conn} = pooler:take_connection(pool_name),
@@ -62,7 +62,7 @@ pooler:return_connection(pool_name, Conn)
 ```
 
 **原因**：
-1. **安全性**：`imboy_pg` 强制使用参数化查询，防止 SQL 注入
+1. **安全性**：`elib_pg` 强制使用参数化查询，防止 SQL 注入
 2. **统一性**：统一的接口便于维护、测试和优化
 3. **连接池管理**：自动获取和释放数据库连接
 4. **事务支持**：提供 `with_tx` 等高级事务封装
@@ -77,11 +77,10 @@ pooler:return_connection(pool_name, Conn)
 
 ### 1. SELECT 类 - 查询多行
 ```erlang
-% 返回：{ok, Columns, Rows}
-% Columns: [<<"id">>, <<"name">>]
-% Rows: [{1, <<"Alice">>}, {2, <<"Bob">>}]
+% 返回：{ok, Rows} | {error, Reason}
+% Rows: [#{<<"id">> := 1, <<"name">> := <<"Alice">>}, ...]
 
-user_repo:all() -> {ok, Columns, Rows}
+user_repo:all() -> {ok, Rows}
 ```
 
 ### 2. FIND 类 - 查询单行
@@ -96,7 +95,7 @@ user_repo:find_by_id(999) -> #{}
 
 ### 3. EXECUTE 类 - 执行操作（INSERT/UPDATE/DELETE）
 ```erlang
-% 返回：{ok, Affected} 或 {error, Reason}
+% 返回：{ok, Affected} | {ok, Affected, Returning} | {error, Reason}
 % Affected: 受影响行数（0, 1, 2...）
 
 user_repo:save(Data) -> {ok, 1}
@@ -111,10 +110,10 @@ user_repo:delete(1) -> {ok, 1}
 ### 1. 永远用参数化查询
 ```erlang
 % ✅ 正确 - 使用参数化
-imboy_pg:query("SELECT * FROM users WHERE id = $1", [UserId])
+elib_pg:query("SELECT * FROM users WHERE id = $1", [UserId])
 
 % ❌ 错误 - 拼接 SQL（SQL 注入风险）
-imboy_pg:query("SELECT * FROM users WHERE id = " ++ integer_to_list(UserId))
+elib_pg:query("SELECT * FROM users WHERE id = " ++ integer_to_list(UserId))
 ```
 
 ### 2. 区分"没找到"和"错误"
@@ -136,10 +135,10 @@ find_by_id(abc) -> {error, syntax_error}  % 这才是真正的错误
 %% @doc 获取所有用户
 all() ->
     Sql = "SELECT id, name, email FROM users ORDER BY id",
-    imboy_pg:query(Sql, []).
+    elib_pg:query(Sql, []).
 
 %% 返回
-% {ok, [<<"id">>, <<"name">>, <<"email">>], [{1, <<"Alice">>, <<"a@b.com">>}]}
+% {ok, [#{<<"id">> := 1, <<"name">> := <<"Alice">>, <<"email">> := <<"a@b.com">>}]}
 ```
 
 ### FIND 类
@@ -147,16 +146,12 @@ all() ->
 %% @doc 根据 ID 查找用户
 find_by_id(Id) ->
     Sql = "SELECT id, name, email FROM users WHERE id = $1",
-    case imboy_pg:query(Sql, [Id]) of
-        {ok, _Cols, [Row | _]} -> row_to_map(Row);
-        {ok, _Cols, []} -> #{};
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Id])).
 
 %% 返回
 % 找到：#{<<"id">> => 1, <<"name">> => <<"Alice">>}
 % 找不到：#{}
-% 错误：{error,Reason}
+% 错误：#{}
 ```
 
 ### EXECUTE 类
@@ -166,35 +161,39 @@ save(Data) ->
     Sql = "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
     Name = maps:get(<<"name">>, Data),
     Email = maps:get(<<"email">>, Data),
-    imboy_pg:query(Sql, [Name, Email]).
+    elib_pg:execute(Sql, [Name, Email]).
 
 %% @doc 更新用户
 update(Id, Data) ->
     Sql = "UPDATE users SET name = $1, email = $2 WHERE id = $3",
     Name = maps:get(<<"name">>, Data),
     Email = maps:get(<<"email">>, Data),
-    imboy_pg:query(Sql, [Name, Email, Id]).
+    elib_pg:execute(Sql, [Name, Email, Id]).
 
 %% @doc 删除用户
 delete(Id) ->
     Sql = "DELETE FROM users WHERE id = $1",
-    imboy_pg:query(Sql, [Id]).
+    elib_pg:execute(Sql, [Id]).
 ```
 
-### 动态条件（使用 imboy_pg_sql）
+### 动态条件（使用 elib_pg_sql）
 ```erlang
 %% @doc 条件查询
 page_by_account(Account, Page, Size) ->
-    Sql = imboy_pg_sql:select("users")
-        |> imboy_pg_sql:where(#{
-            <<"account">> => Account,
-            <<"status">> => 1
-        })
-        |> imboy_pg_sql:limit(Size)
-        |> imboy_pg_sql:offset((Page - 1) * Size)
-        |> imboy_pg_sql:order_by(<<"id DESC">>)
-        |> imboy_pg_sql:build(),
-    imboy_pg:query(Sql, []).
+    Tb = elib_pg_sql:public_tablename(<<"user">>),
+    Opts = #{
+        limit => Size,
+        offset => (Page - 1) * Size,
+        order_by => [{id, desc}]
+    },
+    {Sql, Params} =
+        elib_pg_sql:build_select(
+            Tb,
+            <<"id,account,nickname,status,created_at">>,
+            #{account => Account, status => 1},
+            Opts
+        ),
+    elib_pg:query(Sql, Params).
 ```
 
 ---
@@ -243,7 +242,7 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 | 类型 | 函数命名 | 返回值 | 示例 |
 |------|----------|--------|------|
-| SELECT | `all/0`, `list/0`, `page/3` | `{ok, Cols, Rows}` | `user_repo:all()` |
+| SELECT | `all/0`, `list/0`, `page/3` | `{ok, [map()]}` | `user_repo:all()` |
 | FIND | `find_by_id/1`, `find_by_xxx/1` | `Map` 或 `#{}` | `user_repo:find_by_id(1)` |
 | EXECUTE | `save/1`, `update/2`, `delete/1` | `{ok, Affected}` | `user_repo:save(Data)` |
 
@@ -262,6 +261,6 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 ## 📚 相关文件
 
-- `src/lib/imboy_pg.erl` - 数据库连接模块
-- `src/lib/imboy_pg_sql.erl` - SQL 构建工具
+- `src/lib/elib_pg.erl` - 数据库连接模块
+- `src/lib/elib_pg_sql.erl` - SQL 构建工具
 - `src/repo/*.erl` - 所有 Repository 实现

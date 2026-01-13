@@ -13,6 +13,39 @@
 -include("chat.hrl").
 -include("log.hrl").
 
+% 抑制 Dialyzer 类型推断警告 - elib_dt:rfc3339_to 的返回类型复杂
+-dialyzer({nowarn_function, [parse_timestamp_or_default/2, ensure_integer/1]}).
+
+%% ===================================================================
+%% Internal Functions
+%% ===================================================================
+
+%% @private
+%% @doc 解析时间戳或返回默认值
+%% 使用 try-catch 来处理所有可能的返回类型
+-spec parse_timestamp_or_default(binary() | list(), any()) -> integer().
+parse_timestamp_or_default(Val, Default) ->
+    try
+        Result = elib_dt:rfc3339_to(Val, millisecond),
+        case Result of
+            {error, _} -> ensure_integer(Default);
+            Val2 when is_integer(Val2) -> Val2;
+            _ -> ensure_integer(Default)
+        end
+    catch
+        _:_ -> ensure_integer(Default)
+    end.
+
+%% @private
+%% @doc 确保值是整数
+%% 使用条件表达式而不是 guard
+-spec ensure_integer(any()) -> integer().
+ensure_integer(Val) ->
+    case is_integer(Val) of
+        true -> Val;
+        false -> elib_dt:millisecond()
+    end.
+
 
 %% ===================================================================
 %% API
@@ -22,44 +55,59 @@
 -spec c2g(binary(), integer(), map()) -> ok | {reply, map()}.
 c2g(MsgId, CurrentUid, Data) ->
     Gid = maps:get(<<"to">>, Data),
-    ToGID = imboy_hashids:decode(Gid),
-    % TODO check is group member
-    MemberUids = group_ds:member_uids(ToGID),
+    ToGID = elib_hashids:decode(Gid),
 
-    % Uids.
-    NowTs = imboy_dt:now(),
-    NowMS = imboy_dt:rfc3339_to(NowTs, millisecond),
-    CreatedAt = maps:get(<<"created_at">>, Data),
-    CreatedAtMs = case imboy_type:is_numeric(CreatedAt) of
+    % 检查是否是群成员
+    case group_ds:is_member(CurrentUid, ToGID) of
         true ->
-            CreatedAt;
-        false when is_binary(CreatedAt) orelse is_list(CreatedAt) ->
-            imboy_dt:rfc3339_to(CreatedAt, millisecond);
+            MemberUids = group_ds:member_uids(ToGID),
+            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
         false ->
-            % 如果时间戳格式错误，让进程崩溃
-            erlang:error({invalid_timestamp_format, CreatedAt})
-    end,
+            _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
+            self() ! {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G_ERROR">>,
+                <<"error">> => <<"Not a group member"/utf8>>,
+                <<"code">> => 403
+            }},
+            ok
+    end.
+
+%% @private
+%% @doc 执行群聊消息发送（已通过权限检查）
+-spec do_send_c2g(binary(), integer(), map(), binary(), integer(), [integer()]) -> ok | {reply, map()}.
+do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
+    NowTs = elib_dt:now(),
+    NowMS = elib_dt:rfc3339_to(NowTs, millisecond),
+    CreatedAt = maps:get(<<"created_at">>, Data),
+    CreatedAtRfc = elib_dt:to_rfc3339(CreatedAt),
+
+    % v2.0: 从 Data 提取顶层字段
+    MsgType = maps:get(<<"msg_type">>, Data, <<>>),
+    Action = maps:get(<<"action">>, Data, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Data, <<>>),
+
+    Payload = maps:get(<<"payload">>, Data),
     Msg = #{
         <<"id">> => MsgId,
         <<"type">> => <<"C2G">>,
-        <<"from">> => imboy_hashids:encode(CurrentUid),
+        <<"from">> => elib_hashids:encode(CurrentUid),
         <<"to">> => Gid,
-        <<"payload">> => maps:get(<<"payload">>, Data),
-        <<"created_at">> => CreatedAtMs,
+        <<"payload">> => Payload,
+        <<"created_at">> => CreatedAtRfc,
         <<"server_ts">> => NowMS
     },
-    % ?DEBUG_LOG(Msg),
     Msg2 = jsone:encode(Msg, [native_utf8]),
-    CreatedAtRfc = imboy_dt:to_rfc3339(CreatedAt),
 
+    % v2.0: 直接传递 MsgType/Action/E2EE 参数
     StageResult = msg_store_ds:stage(
-        <<"c2g">>, MsgId, Msg2, CurrentUid, MemberUids,
-        CreatedAtRfc, CreatedAtRfc),
+        <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
+        CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc),
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     case StageResult of
         ok ->
             % 备份成功，继续处理
-            MsLi = imboy_retry_config:intervals(<<"c2g">>),
+            MsLi = elib_retry_config:intervals(<<"c2g">>),
             % 立即响应
             self() ! {reply, #{
                 <<"id">> => MsgId,
@@ -68,12 +116,12 @@ c2g(MsgId, CurrentUid, Data) ->
             }},
 
             % ① 先入队（异步，非阻塞）
-            msg_store_ds:enqueue(c2g, MsgId, #{
+            msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
                 payload => Msg2,
                 from_id => CurrentUid,
                 to_id => ToGID,
                 to_id_list => MemberUids,
-                created_at => CreatedAtMs,
+                created_at => CreatedAtRfc,
                 server_ts => NowMS
             }),
 
@@ -96,59 +144,18 @@ c2g_client_ack(MsgId, Uid, DID) ->
 %% 客户端撤回消息 for c2g
 -spec c2g_revoke(binary(), integer(), map()) -> ok | {reply, map()}.
 c2g_revoke(MsgId, CurrentUid, Data) ->
-    To = maps:get(<<"to">>, Data),
-    From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
-    ToGID = imboy_hashids:decode(To),
-    FromId = imboy_hashids:decode(From),
-    ok = ?DEBUG_LOG([From, To, ToGID, CurrentUid, Data]),
-
-    % 验证权限：只能撤销自己发送的消息，且必须是群成员
-    case {CurrentUid =:= FromId, group_ds:is_member(ToGID, CurrentUid)} of
-        {true, true} ->
-            NowTs = imboy_dt:now(),
-            NowMS = imboy_dt:millisecond(),
-
-            % 获取群成员列表
-            MemberUids = group_ds:member_uids(ToGID),
-
-            % 构建撤销确认消息
-            RevokePayload = #{
-                <<"msg_type">> => <<"custom">>,
-                <<"action">> => <<"message_revoke_ack">>,
-                <<"content">> => <<>>,
-                <<"original_msg_id">> => OriginalMsgId,
-                <<"revoked_at">> => NowMS
-            },
-
-            RevokeMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2G">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"payload">> => RevokePayload,
-                <<"server_ts">> => NowMS
-            },
-
-            RevokeMsgJson = jsone:encode(RevokeMsg, [native_utf8]),
-            MsLi = imboy_retry_config:intervals(<<"c2g">>),
-            % 发送给群组其他成员
-            [message_ds:send_next(Uid, MsgId, RevokeMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
-
-            % 存储离线消息
-            msg_c2g_ds:revoke_offline_msg(RevokeMsgJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID),
-
-            {reply, RevokeMsg};
-        {false, _} ->
-            % 权限不足，不是发送者
-            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
-            {reply, ErrorMsg};
-        {_, false} ->
-            % 不是群成员
-            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To),
-            {reply, ErrorMsg}
-    end.
+    %% v2.0: msg_type 和 action 提升到顶层
+    RevokePayload = #{
+        <<"content">> => <<>>,
+        <<"original_msg_id">> => OriginalMsgId
+    },
+    ActionMsgExtra = #{
+        <<"msg_type">> => <<"custom">>,
+        <<"action">> => <<"message_revoke_ack">>
+    },
+    handle_group_action(MsgId, CurrentUid, Data, RevokePayload, ActionMsgExtra, revoke).
 
 %% 客户端撤回消息确认 for c2g
 -spec c2g_revoke_ack(binary(), integer(), Data :: map()) -> ok.
@@ -164,61 +171,20 @@ c2g_revoke_ack(MsgId, CurrentUid, Data) ->
 %% 客户端编辑消息 for c2g
 -spec c2g_edit(binary(), integer(), map()) -> ok | {reply, map()}.
 c2g_edit(MsgId, CurrentUid, Data) ->
-    To = maps:get(<<"to">>, Data),
-    From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
     NewContent = maps:get(<<"content">>, Payload),
     MsgType = maps:get(<<"msg_type">>, Payload),
-    ToGID = imboy_hashids:decode(To),
-    FromId = imboy_hashids:decode(From),
-    ok = ?DEBUG_LOG([From, To, ToGID, CurrentUid, Data]),
-
-    % 验证权限：只能编辑自己发送的消息，且必须是群成员
-    case {CurrentUid =:= FromId, group_ds:is_member(ToGID, CurrentUid)} of
-        {true, true} ->
-            NowTs = imboy_dt:now(),
-            NowMS = imboy_dt:millisecond(),
-
-            % 获取群成员列表
-            MemberUids = group_ds:member_uids(ToGID),
-
-            % 构建编辑确认消息
-            EditPayload = #{
-                <<"msg_type">> => MsgType,
-                <<"action">> => <<"message_edit_ack">>,
-                <<"content">> => NewContent,
-                <<"original_msg_id">> => OriginalMsgId,
-                <<"edited_at">> => NowMS
-            },
-
-            EditMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2G">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"payload">> => EditPayload,
-                <<"server_ts">> => NowMS
-            },
-
-            EditMsgJson = jsone:encode(EditMsg, [native_utf8]),
-            MsLi = imboy_retry_config:intervals(<<"c2g">>),
-            % 发送给群组其他成员
-            [message_ds:send_next(Uid, MsgId, EditMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
-
-            % 存储离线消息
-            msg_c2g_ds:edit_offline_msg(EditMsgJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID),
-
-            {reply, EditMsg};
-        {false, _} ->
-            % 权限不足，不是发送者
-            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
-            {reply, ErrorMsg};
-        {_, false} ->
-            % 不是群成员
-            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To),
-            {reply, ErrorMsg}
-    end.
+    %% v2.0: msg_type 和 action 提升到顶层
+    EditPayload = #{
+        <<"content">> => NewContent,
+        <<"original_msg_id">> => OriginalMsgId
+    },
+    ActionMsgExtra = #{
+        <<"msg_type">> => MsgType,
+        <<"action">> => <<"message_edit_ack">>
+    },
+    handle_group_action(MsgId, CurrentUid, Data, EditPayload, ActionMsgExtra, edit).
 
 %% 客户端编辑消息确认 for c2g
 -spec c2g_edit_ack(binary(), integer(), Data :: map()) -> ok.
@@ -237,3 +203,62 @@ c2g_edit_ack(MsgId, CurrentUid, Data) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 统一的群组消息操作处理（撤回、编辑等）
+%% 验证权限、构建消息、发送给群成员
+%% @private
+%% v2.0: 支持 ActionMsgExtra 参数（包含 msg_type/action）
+-spec handle_group_action(binary(), integer(), map(), map(), map(), atom()) -> {reply, map()}.
+handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, ActionType) ->
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    ToGID = elib_hashids:decode(To),
+    FromId = elib_hashids:decode(From),
+    ok = ?DEBUG_LOG([From, To, ToGID, CurrentUid, Data]),
+
+    % 验证权限：只能操作自己发送的消息，且必须是群成员
+    case {CurrentUid =:= FromId, group_ds:is_member(ToGID, CurrentUid)} of
+        {true, true} ->
+            NowTs = elib_dt:now(),
+            NowMS = elib_dt:millisecond(),
+            MemberUids = group_ds:member_uids(ToGID),
+
+            % 构建操作消息（v2.0 格式）
+            %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
+            ActionMsg = maps:merge(#{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G">>,
+                <<"from">> => From,
+                <<"to">> => To,
+                <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
+                <<"server_ts">> => NowMS
+            }, ActionMsgExtra),
+
+            ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
+            MsLi = elib_retry_config:intervals(<<"c2g">>),
+
+            % 发送给群组其他成员
+            [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+
+            % v2.0: 存储离线消息时分离 payload、msg_type 和 action
+            MsgType = maps:get(<<"msg_type">>, ActionMsgExtra, <<"custom">>),
+            Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
+            E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, <<>>),
+            ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
+
+            % 根据操作类型调用相应的 v2.0 函数
+            case ActionType of
+                revoke ->
+                    msg_c2g_ds:revoke_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID, MsgType, Action, E2EE);
+                edit ->
+                    msg_c2g_ds:edit_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID)
+            end,
+
+            {reply, ActionMsg};
+        {false, _} ->
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+            {reply, ErrorMsg};
+        {_, false} ->
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To),
+            {reply, ErrorMsg}
+    end.

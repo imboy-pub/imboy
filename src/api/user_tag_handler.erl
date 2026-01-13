@@ -49,45 +49,59 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 标签分页列表
+%% 获取用户的标签列表（分页）
+%%
+%% @param Req0 Cowboy请求对象，包含分页和筛选参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回包含标签列表的响应
+%% @end
+-spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = imboy_param:page(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
 
     #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
     #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
     OrderBy = <<"id desc">>,
-    UidBin = integer_to_binary(CurrentUid),
-    {Scene2, Where} =
+    {Scene2, Where0} =
         case Scene of
             <<"collect">> ->
-                {1, <<"creator_user_id = ", UidBin/binary, " and scene = 1">>};
+                {1, #{creator_user_id => CurrentUid, scene => 1}};
             <<"friend">> ->
-                {2, <<"creator_user_id = ", UidBin/binary, " and scene = 2">>};
+                {2, #{creator_user_id => CurrentUid, scene => 2}};
             _ ->
-                {0, <<>>}
+                {0, #{}}
         end,
-    Where2 =
-        if byte_size(Kwd) > 0 ->
-               <<Where/binary, " and name like '%", Kwd/binary, "%'">>;
-           true ->
-               Where
+    WhereMap =
+        case byte_size(Kwd) > 0 of
+            true ->
+                Where0#{name => {op, <<"LIKE">>, <<"%", Kwd/binary, "%">>}};
+            false ->
+                Where0
         end,
 
     if CurrentUid == 0 ->
-           imboy_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
+           elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
        Scene2 /= 0 ->
-           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
        true ->
-           WhereMap = #{<<"__raw">> => Where2},
            Payload = user_tag_logic:page(Scene2, Page, Size, WhereMap, OrderBy),
-           imboy_response:success(Req0, Payload)
+           elib_response:success(Req0, Payload)
     end.
 
-%% 修改标签名称
+%% @doc 修改标签名称
+%% 修改标签的名称
+%%
+%% @param Req0 Cowboy请求对象，包含标签ID和新名称
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec change_name(cowboy_req:req(), map()) -> cowboy_req:req().
 change_name(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagName = maps:get(<<"tagName">>, PostVals, <<>>),
     TagId = maps:get(<<"tagId">>, PostVals, 0),
@@ -105,34 +119,41 @@ change_name(Req0, State) ->
 
     case {Scene2, string:length(TagName), TagId} of
         {0, _, _} ->
-            imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         {_, Len, _} when Len > 14 ->
-            imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+            elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
         {_, _, Id} when Id < 1 ->
-            imboy_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
+            elib_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         {S2, _, Id} ->
             Count =
-                imboy_pg:pluck_value(<<"public.user_tag">>,
+                elib_pg:pluck_value(<<"public.user_tag">>,
                                      <<"count(*)">>,
                                      #{<<"scene">> => S2,
                                        <<"creator_user_id">> => CurrentUid,
                                        <<"name">> => TagName,
-                                       <<"id">> => {neq, Id}},
+                                       <<"id">> => {op, <<"<>">>, Id}},
                                      #{},
                                      0),
             case user_tag_logic:change_name(Count, CurrentUid, S2, Id, TagName) of
                 ok ->
-                    imboy_response:success(Req0, #{}, "success.");
+                    elib_response:success(Req0, #{}, "success.");
                 Err ->
-                    imboy_response:error(Req0, Err)
+                    elib_response:error(Req0, Err)
             end
     end.
 
-%% 新建标签
+%% @doc 新建标签
+%% 创建一个新的标签
+%%
+%% @param Req0 Cowboy请求对象，包含标签名称和场景
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Tag = maps:get(<<"tag">>, PostVals, <<>>),
 
@@ -147,22 +168,29 @@ add(Req0, State) ->
         end,
     TagLen = string:length(Tag),
     if Scene2 == 0 ->
-           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
        TagLen > 14 ->
-           imboy_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+           elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
        true ->
            case user_tag_logic:add(CurrentUid, Scene2, Tag) of
                {ok, TagId} ->
-                   imboy_response:success(Req0, #{<<"tagId">> => TagId}, "success.");
+                   elib_response:success(Req0, #{<<"tagId">> => TagId}, "success.");
                {error, Err} ->
-                   imboy_response:error(Req0, Err)
+                   elib_response:error(Req0, Err)
            end
     end.
 
-% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新。
+%% @doc 删除标签
+%% 删除指定的标签（标签中的联系人不会被删除）
+%%
+%% @param Req0 Cowboy请求对象，包含标签名称和场景
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec delete(cowboy_req:req(), map()) -> cowboy_req:req().
 delete(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    PostVals = imboy_param:post(Req0),
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Tag = maps:get(<<"tag">>, PostVals, <<>>),
 
@@ -176,10 +204,10 @@ delete(Req0, State) ->
                 2
         end,
     if Scene2 == 0 ->
-           imboy_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
        true ->
            user_tag_logic:delete(CurrentUid, Scene2, Tag),
-           imboy_response:success(Req0, #{}, "success.")
+           elib_response:success(Req0, #{}, "success.")
     end.
 
 %% ===================================================================

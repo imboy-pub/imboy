@@ -4,6 +4,13 @@
 % webrtc_ws business logic module
 %%%
 
+%% @doc WebRTC 事件处理
+%% 处理 WebRTC 相关的 WebSocket 消息，检查好友关系和黑名单
+%% @param CurrentUid 当前用户ID
+%% @param ToUid 目标用户ID
+%% @param MsgId 消息ID
+%% @param Msg 消息内容（JSON 格式）
+%% @returns ok | {reply, binary()}
 -export([event/4]).
 
 -ifdef(EUNIT).
@@ -31,10 +38,10 @@ event(CurrentUid, ToUid, MsgId, Msg) ->
             message_ds:send_next(ToUid, MsgId, Msg, MsLi),
             ok;
         {_, InDenylist2} when InDenylist2 > 0 ->
-            MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, imboy_hashids:encode(ToUid)),
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, elib_hashids:encode(ToUid)),
             {reply, jsone:encode(MsgMap, [native_utf8])};
         {false, _InDenylist} ->
-            MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, imboy_hashids:encode(ToUid)),
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, elib_hashids:encode(ToUid)),
             {reply, jsone:encode(MsgMap, [native_utf8])}
     end.
 

@@ -14,23 +14,23 @@
 init() ->
     % 获取当前节点名称
     CurrentNode = node(),
-    ok = imboy_log:info("集群管理初始化，当前节点: ~p", [CurrentNode]),
-    
+    ok = elib_log:info(<<"集群管理初始化，当前节点: ~p"/utf8>>, [CurrentNode]),
+
     % 从配置中获取集群节点列表
     ClusterNodes = get_cluster_nodes_from_config(),
-    
+
     % 如果有配置集群节点，则尝试加入集群
     case ClusterNodes of
         [] ->
-            ok = imboy_log:info("未配置集群节点，以单节点模式运行");
+            ok = elib_log:info(<<"未配置集群节点，以单节点模式运行"/utf8>>);
         _ ->
-            ok = imboy_log:info("发现集群节点配置: ~p", [ClusterNodes]),
+            ok = elib_log:info(<<"发现集群节点配置: ~p"/utf8>>, [ClusterNodes]),
             % 尝试加入集群
             case join_cluster(ClusterNodes) of
                 ok ->
-                    ok = imboy_log:info("成功加入集群");
+                    ok = elib_log:info(<<"成功加入集群"/utf8>>);
                 {error, Reason} ->
-                    ok = imboy_log:error("加入集群失败: ~p", [Reason])
+                    ok = elib_log:error(<<"加入集群失败: ~p"/utf8>>, [Reason])
             end
     end,
     ok.
@@ -41,16 +41,16 @@ join_cluster([]) ->
     {error, empty_cluster_nodes};
 join_cluster(ClusterNodes) ->
     CurrentNode = node(),
-    ok = imboy_log:info("尝试加入集群，当前节点: ~p，目标节点: ~p", [CurrentNode, ClusterNodes]),
-    
+    ok = elib_log:info(<<"尝试加入集群，当前节点: ~p，目标节点: ~p"/utf8>>, [CurrentNode, ClusterNodes]),
+
     % 检查是否已经在集群中
     case lists:member(CurrentNode, ClusterNodes) of
         true ->
-            ok = imboy_log:info("当前节点已在集群配置中");
+            ok = elib_log:info(<<"当前节点已在集群配置中"/utf8>>);
         false ->
             ok
     end,
-    
+
     % 尝试连接到集群中的每个节点
     Results = lists:map(
         fun(TargetNode) ->
@@ -60,10 +60,10 @@ join_cluster(ClusterNodes) ->
                 _ ->
                     case net_kernel:connect_node(TargetNode) of
                         true ->
-                            ok = imboy_log:info("成功连接到节点: ~p", [TargetNode]),
+                            ok = elib_log:info(<<"成功连接到节点: ~p"/utf8>>, [TargetNode]),
                             {TargetNode, connected};
                         false ->
-                            ok = imboy_log:warning("无法连接到节点: ~p", [TargetNode]),
+                            ok = elib_log:warning(<<"无法连接到节点: ~p"/utf8>>, [TargetNode]),
                             {TargetNode, failed}
                     end
             end
@@ -77,7 +77,7 @@ join_cluster(ClusterNodes) ->
         [] ->
             {error, no_nodes_connected};
         _ ->
-            ok = imboy_log:info("成功连接到 ~p 个集群节点", [length(ConnectedNodes)]),
+            ok = elib_log:info(<<"成功连接到 ~p 个集群节点"/utf8>>, [length(ConnectedNodes)]),
             % 向集群广播当前节点信息
             broadcast_node_info(ConnectedNodes),
             ok
@@ -156,11 +156,11 @@ broadcast_node_info(Nodes) ->
             case rpc:call(TargetNode, imboy_cluster, handle_node_info, [NodeInfo]) of
                 ok ->
                     % 目标节点成功接收并处理节点信息
-                    ok = imboy_log:info("向节点 ~p 广播信息成功: ~p", [TargetNode, NodeInfo]);
+                    ok = elib_log:info(<<"向节点 ~p 广播信息成功: ~p"/utf8>>, [TargetNode, NodeInfo]);
                 {badrpc, Reason} ->
-                    ok = imboy_log:warning("向节点 ~p 广播信息失败: ~p", [TargetNode, Reason]);
+                    ok = elib_log:warning(<<"向节点 ~p 广播信息失败: ~p"/utf8>>, [TargetNode, Reason]);
                 {error, HandleReason} ->
-                    ok = imboy_log:warning("节点 ~p 处理信息失败: ~p", [TargetNode, HandleReason])
+                    ok = elib_log:warning(<<"节点 ~p 处理信息失败: ~p"/utf8>>, [TargetNode, HandleReason])
             end
         end,
         Nodes
@@ -174,7 +174,7 @@ handle_node_info(NodeInfo) ->
     case validate_node_info(NodeInfo) of
         {ok, ValidInfo} ->
             SourceNode = maps:get(node, ValidInfo),
-            ok = imboy_log:info("接收到节点 ~p 的信息: ~p", [SourceNode, ValidInfo]),
+            ok = elib_log:info(<<"接收到节点 ~p 的信息: ~p"/utf8>>, [SourceNode, ValidInfo]),
             
             % 更新本地节点信息缓存
             update_node_info_cache(ValidInfo),
@@ -184,7 +184,7 @@ handle_node_info(NodeInfo) ->
             
             ok;
         {error, Reason} ->
-            ok = imboy_log:warning("接收到无效的节点信息: ~p, 错误: ~p", [NodeInfo, Reason]),
+            ok = elib_log:warning(<<"接收到无效的节点信息: ~p, 错误: ~p"/utf8>>, [NodeInfo, Reason]),
             {error, Reason}
     end.
 
@@ -211,10 +211,10 @@ validate_node_info(NodeInfo) ->
 update_node_info_cache(NodeInfo) ->
     SourceNode = maps:get(node, NodeInfo),
     CacheKey = {cluster_node_info, SourceNode},
-    
+
     % 设置缓存，过期时间为5分钟
     CacheTTL = 300, % 5分钟
     imboy_cache:set(CacheKey, NodeInfo, CacheTTL),
-    
-    ok = imboy_log:debug("已更新节点 ~p 的信息缓存", [SourceNode]),
+
+    ok = elib_log:debug(<<"已更新节点 ~p 的信息缓存"/utf8>>, [SourceNode]),
     ok.

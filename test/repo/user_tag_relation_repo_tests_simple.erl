@@ -19,7 +19,7 @@
 
 %% 测试输入参数验证（改进原假测试）
 input_validation_test_() ->
-    ?WITH_MECK(imboy_pg, [
+    ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
             {ok, [{?TEST_UID, ?TEST_TAG_ID, ?TEST_SCENE, ?TEST_OBJECT_ID, 1640995200}]}
         end}
@@ -87,7 +87,7 @@ parameterized_query_test_() ->
         ?assertEqual(?TEST_OBJECT_ID, ObjectId),
         
         % 测试INSERT操作参数
-        Timestamp = imboy_dt:timestamp(),
+        Timestamp = elib_dt:timestamp(),
         InsertParams = [?TEST_UID, ?TEST_SCENE, ?TEST_OBJECT_ID, ?TEST_TAG_ID, Timestamp, Timestamp],
         ?assert(length(InsertParams) =:= 6),
         
@@ -115,7 +115,7 @@ data_type_conversion_test_() ->
         ?assertEqual(?TEST_UID, BinaryToInt),
         
         % 测试时间戳格式
-        Timestamp = imboy_dt:timestamp(),
+        Timestamp = elib_dt:timestamp(),
         ?assert(is_integer(Timestamp)),
         ?assert(Timestamp > 1000000000),
         
@@ -197,8 +197,8 @@ tag_data_format_test_() ->
             <<"name">> => <<"工作">>,
             <<"scene">> => ?TEST_SCENE,
             <<"creator_user_id">> => ?TEST_UID,
-            <<"created_at">> => imboy_dt:timestamp(),
-            <<"updated_at">> => imboy_dt:timestamp()
+            <<"created_at">> => elib_dt:timestamp(),
+            <<"updated_at">> => elib_dt:timestamp()
         },
         
         ?assert(is_map(TagData)),
@@ -216,8 +216,8 @@ relation_data_format_test_() ->
             <<"scene">> => ?TEST_SCENE,
             <<"object_id">> => ?TEST_OBJECT_ID,
             <<"tag_id">> => ?TEST_TAG_ID,
-            <<"created_at">> => imboy_dt:timestamp(),
-            <<"updated_at">> => imboy_dt:timestamp()
+            <<"created_at">> => elib_dt:timestamp(),
+            <<"updated_at">> => elib_dt:timestamp()
         },
         
         ?assert(is_map(RelationData)),

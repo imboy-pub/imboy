@@ -21,22 +21,22 @@
 
 ```erlang
 % 简单成功响应
-imboy_response:success(Req, Payload).
+elib_response:success(Req, Payload).
 
 % 带消息的成功响应
-imboy_response:success(Req, Payload, <<"创建成功"/utf8>>).
+elib_response:success(Req, Payload, <<"创建成功"/utf8>>).
 ```
 
 ### 错误响应
 
 ```erlang
 % 使用宏定义的错误码
-imboy_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
-imboy_response:error(Req, <<"Token 已过期"/utf8>>, ?ERR_TOKEN_EXPIRED).
-imboy_response:error(Req, <<"请先登录"/utf8>>, ?ERR_UNAUTHORIZED).
+elib_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, <<"Token 已过期"/utf8>>, ?ERR_TOKEN_EXPIRED).
+elib_response:error(Req, <<"请先登录"/utf8>>, ?ERR_UNAUTHORIZED).
 
 % 使用辅助函数获取错误消息
-imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```
 
 ## 错误码分类
@@ -113,19 +113,19 @@ imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```erlang
 % Token 缺失
 -define(ERR_TOKEN_MISSING, 401).
-imboy_response:error(Req, error_msg(?ERR_TOKEN_MISSING), ?ERR_TOKEN_MISSING).
+elib_response:error(Req, error_msg(?ERR_TOKEN_MISSING), ?ERR_TOKEN_MISSING).
 
 % Token 无效
 -define(ERR_TOKEN_INVALID, 401).
-imboy_response:error(Req, error_msg(?ERR_TOKEN_INVALID), ?ERR_TOKEN_INVALID).
+elib_response:error(Req, error_msg(?ERR_TOKEN_INVALID), ?ERR_TOKEN_INVALID).
 
 % Token 已过期
 -define(ERR_TOKEN_EXPIRED, 401).
-imboy_response:error(Req, error_msg(?ERR_TOKEN_EXPIRED), ?ERR_TOKEN_EXPIRED).
+elib_response:error(Req, error_msg(?ERR_TOKEN_EXPIRED), ?ERR_TOKEN_EXPIRED).
 
 % 在其他设备登录
 -define(ERR_LOGIN_ELSEWHERE, 910).
-imboy_response:error(Req, error_msg(?ERR_LOGIN_ELSEWHERE), ?ERR_LOGIN_ELSEWHERE).
+elib_response:error(Req, error_msg(?ERR_LOGIN_ELSEWHERE), ?ERR_LOGIN_ELSEWHERE).
 ```
 
 ### 资源相关
@@ -133,15 +133,15 @@ imboy_response:error(Req, error_msg(?ERR_LOGIN_ELSEWHERE), ?ERR_LOGIN_ELSEWHERE)
 ```erlang
 % 用户不存在
 -define(ERR_USER_NOT_FOUND, 404).
-imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 
 % 好友不存在
 -define(ERR_FRIEND_NOT_FOUND, 404).
-imboy_response:error(Req, error_msg(?ERR_FRIEND_NOT_FOUND), ?ERR_FRIEND_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_FRIEND_NOT_FOUND), ?ERR_FRIEND_NOT_FOUND).
 
 % 群组不存在
 -define(ERR_GROUP_NOT_FOUND, 404).
-imboy_response:error(Req, error_msg(?ERR_GROUP_NOT_FOUND), ?ERR_GROUP_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_GROUP_NOT_FOUND), ?ERR_GROUP_NOT_FOUND).
 ```
 
 ### IM 业务相关
@@ -149,19 +149,19 @@ imboy_response:error(Req, error_msg(?ERR_GROUP_NOT_FOUND), ?ERR_GROUP_NOT_FOUND)
 ```erlang
 % 不是好友
 -define(ERR_NOT_FRIENDS, 920).
-imboy_response:error(Req, error_msg(?ERR_NOT_FRIENDS), ?ERR_NOT_FRIENDS).
+elib_response:error(Req, error_msg(?ERR_NOT_FRIENDS), ?ERR_NOT_FRIENDS).
 
 % 非群组成员
 -define(ERR_NOT_GROUP_MEMBER, 930).
-imboy_response:error(Req, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER).
+elib_response:error(Req, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER).
 
 % 非群管理员
 -define(ERR_NOT_GROUP_ADMIN, 931).
-imboy_response:error(Req, error_msg(?ERR_NOT_GROUP_ADMIN), ?ERR_NOT_GROUP_ADMIN).
+elib_response:error(Req, error_msg(?ERR_NOT_GROUP_ADMIN), ?ERR_NOT_GROUP_ADMIN).
 
 % 用户离线
 -define(ERR_USER_OFFLINE, 940).
-imboy_response:error(Req, error_msg(?ERR_USER_OFFLINE), ?ERR_USER_OFFLINE).
+elib_response:error(Req, error_msg(?ERR_USER_OFFLINE), ?ERR_USER_OFFLINE).
 ```
 
 ## 辅助函数
@@ -211,13 +211,13 @@ error_msg(_) -> <<"未知错误"/utf8>>.
 
 ```erlang
 % ❌ 错误
-imboy_response:error(Req, "用户不存在", 404).
+elib_response:error(Req, "用户不存在", 404).
 ```
 
 **修复**：
 ```erlang
 % ✅ 正确
-imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```
 
 ### ❌ 禁止 2：使用魔法数字
@@ -272,7 +272,7 @@ end.
 ```erlang
 % ✅ 推荐
 {error, Code} = some_operation(),
-imboy_response:error(Req, error_msg(Code), Code).
+elib_response:error(Req, error_msg(Code), Code).
 ```
 
 ### 3. 统一错误处理
@@ -285,7 +285,7 @@ handle_error(Req, Error) ->
         {error, unauthorized} -> {?ERR_UNAUTHORIZED, error_msg(?ERR_UNAUTHORIZED)};
         {error, Reason} -> {?ERR_INTERNAL_SERVER_ERROR, <<"内部错误"/utf8>>}
     end,
-    imboy_response:error(Req, Msg, Code).
+    elib_response:error(Req, Msg, Code).
 ```
 
 ## 错误码设计原则

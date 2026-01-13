@@ -60,7 +60,7 @@
 %% @doc 创建一个简单的测试（不需要应用）
 %% 用法：
 %% TEST_SIMPLE(fun() ->
-%%     ?assertEqual(<<"public.user">>, imboy_pg_sql:public_tablename(<<"user">>))
+%%     ?assertEqual(<<"public.user">>, elib_pg_sql:public_tablename(<<"user">>))
 %% end).
 -define(TEST_SIMPLE(TestFun),
     ?_test((TestFun)())
@@ -74,7 +74,7 @@
 
 %% TEST_WITH_CONN(fun(Conn) ->
 
-%%     Result = imboy_pg:query(<<"SELECT 1">>, [], Conn),
+%%     Result = elib_pg:query(<<"SELECT 1">>, [], Conn),
 
 %%     ?assertMatch({ok, _}, Result)
 
@@ -208,7 +208,7 @@
 
 %% @doc 创建带多个 Mock 的测试（使用 meck_helper）
 %% 用法：
-%% WITH_MECKS([{imboy_param, [{'post', 1, fun() -> ... end}]},
+%% WITH_MECKS([{elib_param, [{'post', 1, fun() -> ... end}]},
 %%             {user_repo, [{'find', 1, fun() -> ... end}]}], fun() ->
 %%     % 测试代码
 %% end).

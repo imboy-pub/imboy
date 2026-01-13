@@ -35,12 +35,12 @@ write_msg_test_() ->
 
 write_topic_test_() ->
     ?TEST_WITH_DB(fun() ->
-        NowTs = imboy_dt:now(millisecond),
+        NowTs = elib_dt:now(millisecond),
         MsgId = <<"msg_topic_123">>,
         FromId = 1,
         ToId = 2,
         Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Topic message">>},
-        PayloadMd5 = imboy_hasher:hash(maps:get(<<"content">>, Payload)),
+        PayloadMd5 = elib_hasher:hash(maps:get(<<"content">>, Payload)),
         Result = msg_c2s_ds:write_topic(NowTs, MsgId, FromId, ToId, Payload, PayloadMd5),
         ?assertEqual(ok, Result)
     end).

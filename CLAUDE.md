@@ -1,12 +1,19 @@
 # Imboy - AI 上下文文档
 
-> **最后更新**: 2026-01-07 10:05:54 CST
+> **最后更新**: 2026-01-20 08:48:18 CST
 > **版本**: 0.7.3
 > **架构**: 单应用 4 层架构 (Handler -> Logic -> DS -> Repo)
 
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-01-20
+- 重新初始化 AI 上下文文档
+- 更新代码统计：134 个源文件，140+ 个测试文件
+- 新增 E2EE (端到端加密) 支持
+- 完善模块索引与 Mermaid 结构图
+- 更新消息路由器逻辑
 
 ### 2026-01-07
 - 增量更新 AI 上下文文档，完善模块索引
@@ -15,12 +22,12 @@
 - 补充模块间依赖关系和调用链路
 
 ### 2026-01-06
-- 强化数据库访问规范：明确要求所有数据库操作必须使用 `imboy_pg` 模块
+- 强化数据库访问规范：明确要求所有数据库操作必须使用 `elib_pg` 模块
 - 完善 ID 编码/解码规范分析文档
 
 ### 2026-01-05
 - 增量更新文档索引
-- 新增 `imboy_async.erl` 和 `imboy_retry.erl` 工具库文档
+- 新增 `elib_async.erl` 和 `elib_retry.erl` 工具库文档
 - 完善异步执行与重试机制说明
 
 ### 2026-01-03
@@ -38,8 +45,8 @@ Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18**
 - 高并发：单机支持 100 万+ TCP 连接（阿里云 8 核 16G 压测验证）
 - 分布式：支持多节点集群部署
 - 实时通讯：WebSocket + HTTP/RESTful 双协议
-- 安全性：JWT 认证、RSA 加密、HashID 混淆
-- 可扩展：基于 PostgreSQL 17+ 的关系型数据库，支持全文检索、地理位置、时序数据
+- 安全性：JWT 认证、RSA 加密、HashID 混淆、端到端加密 (E2EE)
+- 可扩展：基于 PostgreSQL 18+ 的关系型数据库，支持全文检索、地理位置、时序数据
 
 ### 技术栈
 | 层级 | 技术 |
@@ -99,8 +106,8 @@ Imboy 遵循 **DDD（领域驱动设计）** 思想，采用 **单应用 4 层�
 
         ┌──────────────────────────────────────┐
         │          Lib 层 (基础设施)            │
-        │  imboy_pg | imboy_cache | imboy_syn  │
-        │  imboy_async | imboy_retry (29 mod)  │
+        │  elib_pg | imboy_cache | imboy_syn  │
+        │  elib_async | elib_retry (29 mod)  │
         └──────────────────────────────────────┘
 ```
 
@@ -144,6 +151,7 @@ graph TD
     API --> API_FRIEND["friend_handler.erl<br/>好友管理"]
     API --> API_GROUP["group_handler.erl<br/>群组管理"]
     API --> API_AUTH["passport_handler.erl<br/>认证登录"]
+    API --> API_E2EE["e2ee_handler.erl<br/>端到端加密"]
 
     ADM --> ADM_PASS["adm_passport_handler.erl<br/>后台登录"]
     ADM --> ADM_FEEDBACK["adm_feedback_handler.erl<br/>反馈管理"]
@@ -154,25 +162,30 @@ graph TD
     LOGIC --> LOGIC_WS["websocket_logic.erl<br/>WS 业务逻辑"]
     LOGIC --> LOGIC_USER["user_logic.erl<br/>用户逻辑"]
     LOGIC --> LOGIC_AUTH["auth_logic.erl<br/>认证逻辑"]
+    LOGIC --> LOGIC_E2EE["e2ee_logic.erl<br/>E2EE 逻辑"]
+    LOGIC --> LOGIC_MSG_ROUTER["message_router_logic.erl<br/>消息路由器"]
 
     DS --> DS_USER["user_ds.erl<br/>用户数据服务"]
     DS --> DS_AUTH["auth_ds.erl<br/>认证数据服务"]
     DS --> DS_CONFIG["config_ds.erl<br/>配置数据服务"]
     DS --> DS_MSG["message_ds.erl<br/>消息数据服务"]
     DS --> DS_WS["websocket_ds.erl<br/>WebSocket DS"]
+    DS --> DS_MSG_STORE["msg_store_ds.erl<br/>消息存储服务"]
+    DS --> DS_MSG_WORKER["msg_store_worker.erl<br/>批量写入"]
 
     REPO --> REPO_USER["user_repo.erl<br/>用户仓库"]
     REPO --> REPO_MSG["msg_c2c_repo.erl<br/>消息仓库"]
     REPO --> REPO_GROUP["group_repo.erl<br/>群组仓库"]
     REPO --> REPO_FRIEND["friend_repo.erl<br/>好友仓库"]
+    REPO --> REPO_DEVICE["user_device_repo.erl<br/>设备仓库"]
 
-    LIB --> LIB_PG["imboy_pg.erl<br/>数据库连接"]
+    LIB --> LIB_PG["elib_pg.erl<br/>数据库连接"]
     LIB --> LIB_CACHE["imboy_cache.erl<br/>缓存封装"]
     LIB --> LIB_SYN["imboy_syn.erl<br/>分布式同步"]
-    LIB --> LIB_ASYNC["imboy_async.erl<br/>异步执行"]
-    LIB --> LIB_RETRY["imboy_retry.erl<br/>重试机制"]
-    LIB --> LIB_STORE["msg_store_ds.erl<br/>消息存储服务"]
-    LIB --> LIB_WORKER["msg_store_worker.erl<br/>批量写入"]
+    LIB --> LIB_ASYNC["elib_async.erl<br/>异步执行"]
+    LIB --> LIB_RETRY["elib_retry.erl<br/>重试机制"]
+    LIB --> LIB_HASHID["elib_hashids.erl<br/>ID 编码/解码"]
+    LIB --> LIB_CIPHER["elib_cipher.erl<br/>加密/解密"]
 
     click ROOT "./CLAUDE.md" "查看根目录文档"
     click API "./src/api/CLAUDE.md" "查看 API 层文档"
@@ -219,6 +232,7 @@ graph TD
 | 群组管理 | `group_handler` | `group_logic` | `group_ds` | `group_repo` |
 | 消息处理 | `msg_handler` | `msg_c2c_logic` | `message_ds` | `msg_c2c_repo` |
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
+| E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
 
 **详细索引**: [doc/modules/README.md](./doc/modules/README.md)
 
@@ -340,21 +354,21 @@ test/
 
 ### 规范文档
 
-- **UTF-8 编码**: [doc/standards/utf8_encoding.md](./doc/standards/utf8_encoding.md)
-- **错误码规范**: [doc/standards/error_codes.md](./doc/standards/error_codes.md)
+- **UTF-8 编码**: [doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
+- **错误码规范**: [doc/standards/error-codes.md](./doc/standards/error-codes.md)
 - **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **HashID 编码**: [doc/standards/hashid_encoding.md](./doc/standards/hashid_encoding.md)
-- **API 格式**: [doc/standards/api_format.md](./doc/standards/api_format.md)
+- **HashID 编码**: [doc/standards/hashid-encoding.md](./doc/standards/hashid-encoding.md)
+- **API 格式**: [doc/standards/api-format.md](./doc/standards/api-format.md)
 
 ### 快速参考
 
 | 规范 | 核心要点 | 文档 |
 |------|---------|------|
-| **UTF-8 编码** | 中文字符串使用 `/utf8` 后缀 | [utf8_encoding.md](./doc/standards/utf8_encoding.md) |
-| **错误码** | 使用宏定义，如 `?ERR_OK`, `?ERR_NOT_FOUND` | [error_codes.md](./doc/standards/error_codes.md) |
-| **数据库访问** | 所有数据库操作必须使用 `imboy_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **HashID** | 输入 decode，输出 encode，数据库使用原始 ID | [hashid_encoding.md](./doc/standards/hashid_encoding.md) |
-| **API 格式** | HTTP JSON 响应，WebSocket 消息格式 | [api_format.md](./doc/standards/api_format.md) |
+| **UTF-8 编码** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
+| **错误码** | 使用宏定义，如 `?ERR_OK`, `?ERR_NOT_FOUND` | [error-codes.md](./doc/standards/error-codes.md) |
+| **数据库访问** | 所有数据库操作必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
+| **HashID** | 输入 decode，输出 encode，数据库使用原始 ID | [hashid-encoding.md](./doc/standards/hashid-encoding.md) |
+| **API 格式** | HTTP JSON 响应，WebSocket 消息格式 | [api-format.md](./doc/standards/api-format.md) |
 
 ### 常用示例
 
@@ -371,16 +385,16 @@ test/
 ```erlang
 % 使用宏定义
 -include("error_code.hrl").
-imboy_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
+elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```
 
 #### HashID 编码
 ```erlang
 % 输入解码
-Uid2 = imboy_hashids:decode(Uid).
+Uid2 = elib_hashids:decode(Uid).
 
 % 输出编码
-From = imboy_hashids:encode(CurrentUid).
+From = elib_hashids:encode(CurrentUid).
 ```
 
 ### 代码生成建议
@@ -481,51 +495,58 @@ From = imboy_hashids:encode(CurrentUid).
 
 ### 异步执行与重试
 
-#### `imboy_async.erl` - 异步任务执行
+#### `elib_async.erl` - 异步任务执行
 
 ```erlang
 % 简单异步执行（无重试）
-imboy_async:async(Fun) -> pid()
+elib_async:async(Fun) -> pid()
 
 % 异步执行带超时
-imboy_async:async(Fun, TimeoutMs) -> pid()
+elib_async:async(Fun, TimeoutMs) -> pid()
 
 % 异步执行带重试（默认 3 次，1 秒延迟）
-imboy_async:async_retry(Fun) -> pid()
+elib_async:async_retry(Fun) -> pid()
 
 % 异步执行带重试（自定义次数）
-imboy_async:async_retry(Fun, RetryCount) -> pid()
+elib_async:async_retry(Fun, RetryCount) -> pid()
 
 % 异步执行带重试（完整参数）
-imboy_async:async_retry(Fun, RetryCount, DelayMs) -> pid()
+elib_async:async_retry(Fun, RetryCount, DelayMs) -> pid()
 
 % 异步执行带回调
-imboy_async:async_with_callback(Fun, CallbackPid) -> pid()
+elib_async:async_with_callback(Fun, CallbackPid) -> pid()
 ```
 
-#### `imboy_retry.erl` - 同步重试逻辑
+#### `elib_retry.erl` - 同步重试逻辑
 
 ```erlang
 % 默认重试（3次，1秒延迟，指数退避）
-imboy_retry:with_retry(Fun) -> {ok, Result} | {error, Reason}
+elib_retry:with_retry(Fun) -> {ok, Result} | {error, Reason}
 
 % 自定义重试次数
-imboy_retry:with_retry(Fun, RetryCount) -> {ok, Result} | {error, Reason}
+elib_retry:with_retry(Fun, RetryCount) -> {ok, Result} | {error, Reason}
 
 % 自定义重试次数和延迟
-imboy_retry:with_retry(Fun, RetryCount, DelayMs) -> {ok, Result} | {error, Reason}
+elib_retry:with_retry(Fun, RetryCount, DelayMs) -> {ok, Result} | {error, Reason}
 
 % 完整参数（退避策略：fixed | exponential | linear）
-imboy_retry:with_retry(Fun, RetryCount, DelayMs, BackoffType) -> {ok, Result} | {error, Reason}
+elib_retry:with_retry(Fun, RetryCount, DelayMs, BackoffType) -> {ok, Result} | {error, Reason}
 
 % 带超时的重试
-imboy_retry:with_retry_and_timeout(Fun, TimeoutMs, RetryCount) -> {ok, Result} | {error, Reason}
+elib_retry:with_retry_and_timeout(Fun, TimeoutMs, RetryCount) -> {ok, Result} | {error, Reason}
 ```
 
 **使用场景**:
-- `imboy_async`: 异步后台任务（如日志记录、统计更新）
-- `imboy_retry`: 同步操作重试（如数据库连接、网络请求）
+- `elib_async`: 异步后台任务（如日志记录、统计更新）
+- `elib_retry`: 同步操作重试（如数据库连接、网络请求）
 - `msg_store_ds` + `msg_store_worker`: 消息队列处理
+
+### 端到端加密 (E2EE)
+
+- 支持 RSA-OAEP-256 + AES-256-GCM 加密套件
+- 设备公钥管理：`user_device.public_key`
+- 消息加密：服务端不解密 `ciphertext`，仅做路由和存储
+- API: `/v1/e2ee/user_keys` 和 `/v1/e2ee/group_member_keys`
 
 ---
 
@@ -558,7 +579,7 @@ imboy_retry:with_retry_and_timeout(Fun, TimeoutMs, RetryCount) -> {ok, Result} |
 ### 缺口分析
 
 1. **测试缺口**:
-   - 部分新建 Handler 的测试（如 `group_member_transfer.erl`）
+   - 部分新建 Handler 的测试（如 `e2ee_handler`）
    - 一些复杂 Logic 的完整测试（如 `msg_store_ds`）
    - DS 层的集成测试
    - 端到端测试
@@ -600,11 +621,11 @@ A: 执行 `observer_cli:start()` 启动命令行监控。
 
 ### Q: 如何使用异步执行?
 
-A: 使用 `imboy_async:async/1,2,4,6` 或 `imboy_async:async_retry/1,2,3`，详见 [doc/libraries/async.md](./doc/libraries/async.md)。
+A: 使用 `elib_async:async/1,2,4,6` 或 `elib_async:async_retry/1,2,3`，详见 [doc/libraries/async.md](./doc/libraries/async.md)。
 
 ### Q: 如何使用重试机制?
 
-A: 使用 `imboy_retry:with_retry/1,2,3,4` 或 `imboy_retry:with_retry_and_timeout/3`，详见 [doc/libraries/retry.md](./doc/libraries/retry.md)。
+A: 使用 `elib_retry:with_retry/1,2,3,4` 或 `elib_retry:with_retry_and_timeout/3`，详见 [doc/libraries/retry.md](./doc/libraries/retry.md)。
 
 ### Q: 如何添加新模块?
 
@@ -636,7 +657,7 @@ A: 在节点 shell 中执行 `pooler:status()`。
 A:
 1. 使用在线工具: http://coolaf.com/tool/chattest
 2. 生成 Token: `io:format("~p~n", [token_ds:encrypt_token(Uid)])`
-3. 编码 UID: `imboy_hashids:uid_encode(Uid)`
+3. 编码 UID: `elib_hashids:uid_encode(Uid)`
 
 ### Q: 如何查看进程信息?
 
@@ -708,6 +729,7 @@ observer_cli:start()
 | 类型 | 路径 | 说明 |
 |------|------|------|
 | **错误码定义** | `include/error_code.hrl` | 所有错误码宏 |
+| **常量定义** | `include/imboy_const.hrl` | 全局常量 |
 | **配置文件** | `config/sys.config` | 主配置 |
 | **路由定义** | `src/imboy_router.erl` | HTTP 路由 |
 | **数据库迁移** | `priv/migrations/*.sql` | SQL 迁移 |
@@ -717,10 +739,10 @@ observer_cli:start()
 
 | 规范 | 要点 | 文档 |
 |------|------|------|
-| **UTF-8** | 中文字符串使用 `/utf8` 后缀 | [utf8_encoding.md](./doc/standards/utf8_encoding.md) |
-| **错误码** | 使用 `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏 | [error_codes.md](./doc/standards/error_codes.md) |
-| **数据库** | 必须使用 `imboy_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **HashID** | 输入 decode，输出 encode | [hashid_encoding.md](./doc/standards/hashid_encoding.md) |
+| **UTF-8** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
+| **错误码** | 使用 `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏 | [error-codes.md](./doc/standards/error-codes.md) |
+| **数据库** | 必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
+| **HashID** | 输入 decode，输出 encode | [hashid-encoding.md](./doc/standards/hashid-encoding.md) |
 
 ### 代码生成模板
 

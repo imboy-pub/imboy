@@ -23,7 +23,7 @@
 %% @return 返回应用DDL表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"app_ddl">>).
+    elib_pg_sql:public_tablename(<<"app_ddl">>).
 
 %% @doc 添加应用DDL记录
 %% @param Data 包含DDL信息的map
@@ -31,7 +31,7 @@ tablename() ->
 -spec add(map()) -> {ok, any()} | {error, any()}.
 add(Data) ->
     Tb = tablename(),
-    imboy_pg:insert(Tb, Data).
+    elib_pg:insert(Tb, Data).
 
 %% ===================================================================
 %% Internal Function Definitions

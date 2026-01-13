@@ -24,7 +24,8 @@
       "Bash(gtimeout:*)",
       "Bash(git:*)",
       "Bash(ls:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Skill(zcf:init-project)"
     ],
     "deny": [],
     "ask": []

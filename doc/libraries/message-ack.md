@@ -55,7 +55,7 @@
 
 **使用方式**：
 ```erlang
-MsLi = imboy_retry_config:intervals(<<"c2c">>),
+MsLi = elib_retry_config:intervals(<<"c2c">>),
 message_ds:send_next(ToUid, MsgId, MsgJson, MsLi).
 ```
 
@@ -247,13 +247,13 @@ msg_store_ds:status().
 % SELECT * FROM msg_store_staging WHERE processed_at IS NULL;
 
 % 清空测试数据
-imboy_pg:execute(<<"TRUNCATE TABLE public.msg_store_staging CASCADE">>, []).
+elib_pg:execute(<<"TRUNCATE TABLE public.msg_store_staging CASCADE">>, []).
 
 % 查看某个 UID 的所有设备
 syn:members(?CHAT_SCOPE, Uid).
 
 % 获取重试间隔配置
-imboy_retry_config:intervals(<<"c2c">>).
+elib_retry_config:intervals(<<"c2c">>).
 ```
 
 ---
@@ -287,7 +287,7 @@ A: 修改 `include/chat.hrl` 中的 `MSG_RETRY_DELAYS_*` 宏定义。
 | 文件 | 职责 |
 |------|------|
 | `src/logic/msg_ack_logic.erl` | **统一 ACK 处理**（新增） |
-| `src/lib/imboy_retry_config.erl` | **重试间隔配置**（新增） |
+| `src/lib/elib_retry_config.erl` | **重试间隔配置**（新增） |
 | `include/chat.hrl` | 重试间隔宏定义 |
 
 ### 投递相关

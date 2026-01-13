@@ -17,7 +17,7 @@
 %% @doc 测试创建用户标签 - 成功场景
 handle_create_tag_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"name">>, <<"重要联系人">>},
@@ -35,11 +35,11 @@ handle_create_tag_test_() ->
                     color => <<"#FF5722">>,
                     description => <<"重要的联系人标签">>,
                     user_count => 0,
-                    created_at => imboy_dt:timestamp()
+                    created_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -69,13 +69,13 @@ handle_create_tag_test_() ->
         
         % 验证 Mock 调用
         meck_helper:verify_called(user_tag_logic, create_tag, 4),
-        meck_helper:verify_called(imboy_response, success, 3)
+        meck_helper:verify_called(elib_response, success, 3)
     end).
 
 %% @doc 测试创建用户标签 - 标签名称已存在
 handle_create_tag_name_exists_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"name">>, <<"重要联系人">>},
@@ -88,7 +88,7 @@ handle_create_tag_name_exists_test_() ->
                 {error, tag_name_exists}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 409,
@@ -119,7 +119,7 @@ handle_create_tag_name_exists_test_() ->
 %% @doc 测试更新用户标签 - 成功场景
 handle_update_tag_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"tag_id">>, 12345},
@@ -138,11 +138,11 @@ handle_update_tag_test_() ->
                     color => <<"#2196F3">>,
                     description => <<"更新后的描述">>,
                     user_count => 5,
-                    updated_at => imboy_dt:timestamp()
+                    updated_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -172,7 +172,7 @@ handle_update_tag_test_() ->
 %% @doc 测试更新用户标签 - 标签不存在
 handle_update_tag_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"tag_id">>, 99999},
@@ -185,7 +185,7 @@ handle_update_tag_not_found_test_() ->
                 {error, tag_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -216,7 +216,7 @@ handle_update_tag_not_found_test_() ->
 %% @doc 测试删除用户标签 - 成功场景
 handle_delete_tag_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"tag_id">>, 12345}
@@ -228,11 +228,11 @@ handle_delete_tag_test_() ->
                 {ok, #{
                     deleted_tag_id => 12345,
                     affected_users => 5,  % 受影响的用户数量
-                    deleted_at => imboy_dt:timestamp()
+                    deleted_at => elib_dt:timestamp()
                 }}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -262,7 +262,7 @@ handle_delete_tag_test_() ->
 %% @doc 测试删除用户标签 - 标签不存在
 handle_delete_tag_not_found_test_() ->
     ?WITH_MECKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"tag_id">>, 99999}
@@ -274,7 +274,7 @@ handle_delete_tag_not_found_test_() ->
                 {error, tag_not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -313,19 +313,19 @@ handle_list_tags_test_() ->
                         name => <<"重要联系人">>,
                         color => <<"#FF5722">>,
                         user_count => 5,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     },
                     #{
                         tag_id => 12346,
                         name => <<"同事">>,
                         color => <<"#4CAF50">>,
                         user_count => 10,
-                        created_at => imboy_dt:timestamp()
+                        created_at => elib_dt:timestamp()
                     }
                 ]}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -367,7 +367,7 @@ handle_list_tags_empty_test_() ->
                 {ok, []}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,

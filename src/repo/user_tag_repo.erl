@@ -4,6 +4,8 @@
 % tag related operations are put in this module, repository module
 % 用户标签数据仓库层，提供用户标签信息的基础数据库操作
 %%%
+%% @doc 此模块仅提供表名定义，实际标签操作在 user_tag_relation_repo 中实现
+%%%
 
 -export([tablename/0]).
 
@@ -22,7 +24,7 @@
 %% @return 返回用户标签表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"user_tag">>).
+    elib_pg_sql:public_tablename(<<"user_tag">>).
 
 
 %% ===================================================================

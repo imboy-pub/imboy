@@ -9,6 +9,10 @@
 -export([find_by_id/2]).
 -export([list_by_ids/2]).
 -export([list_by_uid/2, list_by_uid/3]).
+-export([page/2, page/4]).
+-export([update/1]).
+-export([delete/1]).
+-export([count/0]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -24,17 +28,17 @@
 %% @return 返回群组表的完整表名
 -spec tablename() -> binary().
 tablename() ->
-    imboy_pg_sql:public_tablename(<<"group">>).
+    elib_pg_sql:public_tablename(<<"group">>).
 
 %% @doc 添加新群组
 %% @doc 添加群组（使用连接）
 %% @param Conn 数据库连接（未使用，保留用于API兼容性）
 %% @param Data 包含群组信息的map
 %% @return {ok, GroupId, #{}} | {error, Reason} (返回插入的群组ID)
--spec add(any(), map()) -> {ok, non_neg_integer(), map()} | {error, any()}.
+-spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    imboy_pg_sql:parse_result(imboy_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+    elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
 
 %% @doc 根据群组ID查找群组信息
 %% @param Gid 群组ID
@@ -47,8 +51,8 @@ find_by_id(Gid, Column) when is_list(Gid); is_binary(Gid) ->
 find_by_id(Gid, Column) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{id => Gid}, #{limit => 1}),
-    case imboy_pg:one(Sql, Params) of
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => Gid}, #{limit => 1}),
+    case elib_pg:one(Sql, Params) of
         {ok, Row} -> Row;
         {error, Reason} -> {error, Reason}
     end.
@@ -62,8 +66,8 @@ find_by_id(Gid, Column) ->
 -spec list_by_ids(list(integer() | binary()), binary()) -> {ok, list(map())} | {error, any()}.
 list_by_ids(Ids, Column) when length(Ids) > 0 ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{id => {in, Ids}}, #{}),
-    case imboy_pg:query(Sql, Params) of
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => {in, Ids}}, #{}),
+    case elib_pg:query(Sql, Params) of
         {ok, Rows} ->
             {ok, Rows};
         {error, Reason} ->
@@ -90,8 +94,44 @@ list_by_uid(Uid, Column) ->
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
-    {Sql, Params} = imboy_pg_sql:build_select(Tb, Column, #{owner_uid => Uid, status => 1}, #{limit => Limit}),
-    imboy_pg:query(Sql, Params).
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{owner_uid => Uid, status => 1}, #{limit => Limit}),
+    elib_pg:query(Sql, Params).
+
+%% @doc 分页查询群组
+-spec page(integer(), integer()) -> {ok, map()} | {error, any()}.
+page(Page, Size) ->
+    page(Page, Size, #{}, <<"created_at DESC">>).
+
+%% @doc 分页查询群组（带条件）
+-spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
+page(Page, Size, Where, OrderBy) ->
+    Tb = tablename(),
+    Column = <<"id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,status,created_at">>,
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+
+%% @doc 更新群组信息
+-spec update(map()) -> {ok, non_neg_integer()} | {error, any()}.
+update(Data) ->
+    Tb = tablename(),
+    Id = maps:get(<<"id">>, Data),
+    UpdateData = maps:without([<<"id">>], Data),
+    elib_pg:update(Tb, UpdateData, <<"id = $1">>, [Id]).
+
+%% @doc 删除群组（软删除，设置 status 为 0）
+-spec delete(integer()) -> {ok, non_neg_integer()} | {error, any()}.
+delete(Id) ->
+    Tb = tablename(),
+    elib_pg:update(Tb, #{status => 0}, <<"id = $1">>, [Id]).
+
+%% @doc 统计群组总数
+-spec count() -> {ok, non_neg_integer()} | {error, any()}.
+count() ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE status = 1">>,
+    case elib_pg:one(Sql, []) of
+        {ok, #{<<"count">> := Count}} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

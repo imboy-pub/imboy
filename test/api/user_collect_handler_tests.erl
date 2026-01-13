@@ -16,7 +16,7 @@
 %% @doc 测试添加收藏功能
 add_collect_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"message">>},
@@ -26,7 +26,7 @@ add_collect_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(EncodedId) ->
                 case EncodedId of
                     <<"encoded_msg_12345">> -> 12345
@@ -38,7 +38,7 @@ add_collect_test_() ->
                 {ok, #{collect_id => 3001, created => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -67,7 +67,7 @@ add_collect_test_() ->
 %% @doc 测试移除收藏功能
 remove_collect_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"collect_id">>, <<"3001">>}
@@ -79,7 +79,7 @@ remove_collect_test_() ->
                 {ok, #{removed => true}}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -108,7 +108,7 @@ remove_collect_test_() ->
 %% @doc 测试列出收藏功能
 list_collects_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}
             end}
@@ -135,7 +135,7 @@ list_collects_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -164,7 +164,7 @@ list_collects_test_() ->
 %% @doc 测试添加收藏功能 - 重复收藏
 add_collect_duplicate_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"message">>},
@@ -174,7 +174,7 @@ add_collect_duplicate_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 12345
             end}
@@ -184,7 +184,7 @@ add_collect_duplicate_test_() ->
                 {error, already_collected}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 409,
@@ -213,7 +213,7 @@ add_collect_duplicate_test_() ->
 %% @doc 测试移除收藏功能 - 收藏不存在
 remove_collect_not_found_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"collect_id">>, <<"9999">>}
@@ -225,7 +225,7 @@ remove_collect_not_found_test_() ->
                 {error, not_found}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 404,
@@ -254,7 +254,7 @@ remove_collect_not_found_test_() ->
 %% @doc 测试列出收藏功能 - 按类型过滤
 list_collects_by_type_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'page', 1, fun(_Req) ->
                 {1, 20}
             end}
@@ -275,7 +275,7 @@ list_collects_by_type_test_() ->
                 ]
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -304,7 +304,7 @@ list_collects_by_type_test_() ->
 %% @doc 测试添加收藏功能 - 无效类型
 add_collect_invalid_type_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"type">>, <<"invalid_type">>},
@@ -319,7 +319,7 @@ add_collect_invalid_type_test_() ->
                 {error, invalid_type}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,

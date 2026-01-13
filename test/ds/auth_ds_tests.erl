@@ -18,7 +18,7 @@ get_token_with_assets_resource_test_() ->
     ?WITH_MECK(config_ds, [
         {'get', 1, fun(_Key) -> <<"test_upload_key">> end}
     ], fun() ->
-        ?WITH_MECK(imboy_hasher, [
+        ?WITH_MECK(elib_hasher, [
             {'md5', 1, fun(_Input) -> <<"1234567890abcdef1234567890abcdef">> end}
         ], fun() ->
             ResourceType = assets,
@@ -36,7 +36,7 @@ get_token_with_string_resource_id_test_() ->
     ?WITH_MECK(config_ds, [
         {'get', 1, fun(_Key) -> <<"test_upload_key">> end}
     ], fun() ->
-        ?WITH_MECK(imboy_hasher, [
+        ?WITH_MECK(elib_hasher, [
             {'md5', 1, fun(_Input) -> <<"1234567890abcdef1234567890abcdef">> end}
         ], fun() ->
             ResourceType = assets,
@@ -58,7 +58,7 @@ get_token_different_upload_keys_test_() ->
             end
         end}
     ], fun() ->
-        ?WITH_MECK(imboy_hasher, [
+        ?WITH_MECK(elib_hasher, [
             {'md5', 1, fun(Input) ->
                 case Input of
                     <<"key1test123">> -> <<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">>;
@@ -81,7 +81,7 @@ get_token_with_empty_upload_key_test_() ->
     ?WITH_MECK(config_ds, [
         {'get', 1, fun(_Key) -> <<>> end}
     ], fun() ->
-        ?WITH_MECK(imboy_hasher, [
+        ?WITH_MECK(elib_hasher, [
             {'md5', 1, fun(_Input) -> <<"1234567890abcdef1234567890abcdef">> end}
         ], fun() ->
             ResourceType = assets,
@@ -99,7 +99,7 @@ get_token_consistency_test_() ->
     ?WITH_MECK(config_ds, [
         {'get', 1, fun(_Key) -> <<"consistent_key">> end}
     ], fun() ->
-        ?WITH_MECK(imboy_hasher, [
+        ?WITH_MECK(elib_hasher, [
             {'md5', 1, fun(_Input) -> <<"1234567890abcdef1234567890abcdef">> end}
         ], fun() ->
             ResourceType = assets,

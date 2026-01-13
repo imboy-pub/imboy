@@ -22,15 +22,15 @@
 
 % config_ds:env(test).
 % config_ds:env(lager, colors, undefined).
--spec env(atom() | binary()) -> term().
+-spec env(atom() | binary()) -> any().
 env(Attr) ->
     env(Attr, undefined).
 
--spec env(atom() | binary(), term()) -> term().
+-spec env(atom() | binary(), term()) -> any().
 env(Attr, Def) ->
     env(imboy, Attr, Def).
 
--spec env(atom(), atom() | binary() | [binary()], term()) -> term().
+-spec env(atom(), atom() | binary() | [binary()], term()) -> any().
 env(App, [Attr], Def) ->
     %% Single-element list case
     env(App, Attr, Def);
@@ -64,20 +64,20 @@ local_reload() ->
     From = code:root_dir() ++ "/../../config/sys." ++ IMBoyEnv ++ ".config",
     To = config_file(),
     % Res1 = file:delete(To),
-    % imboy_log:error("~p~n", [Res1]),
-    ok = imboy_log:info("~p~n", [#{from => From, to => To}]),
+    % elib_log:error("~p~n", [Res1]),
+    ok = elib_log:info("~p~n", [#{from => From, to => To}]),
     _ = file:copy(From, To, infinity),
     % Res2 = file:copy(From, To, infinity),
-    % imboy_log:error("copy file res: ~p~n", [Res2]),
+    % elib_log:error("copy file res: ~p~n", [Res2]),
     reload(To),
     ok.
 
 % config_ds:get(<<"site_name">>).
--spec get(binary()) -> term().
+-spec get(binary()) -> any().
 get(Key) ->
     get(Key, <<>>).
 
--spec get(binary(), term()) -> term().
+-spec get(binary(), term()) -> any().
 get(Key, Default) ->
     Key2 = ec_cnv:to_binary(Key),
     CacheKey = cache_key(Key2),
@@ -85,9 +85,9 @@ get(Key, Default) ->
         {ok, Val} ->
             Val;
         undefined ->
-            Val = imboy_hasher:decoded_field(<<"value">>),
+            Val = elib_hasher:decoded_field(<<"value">>),
             % 使用安全的参数化查询，避免SQL注入
-            case imboy_pg:pluck_value(<<"config">>, Val, #{key => Key2}, #{}, Default) of
+            case elib_pg:pluck_value(<<"config">>, Val, #{key => Key2}, #{}, Default) of
                 Default ->
                     Default;
                 B ->
@@ -117,17 +117,17 @@ set(Key, Val, Title, Remark) ->
 
 -spec save(binary(), map()) -> ok.
 save(Key, Data) ->
-    Now = imboy_dt:now(),
+    Now = elib_dt:now(),
     % 使用安全的参数化查询，避免SQL注入
     Field = <<"count(*) as count">>,
-    _ = case imboy_pg:pluck(<<"config">>, Field, #{key => Key}, #{}) of
+    _ = case elib_pg:pluck(<<"config">>, Field, #{key => Key}, #{}) of
             {ok, 0} ->
-                imboy_pg:insert(<<"config">>,
+                elib_pg:insert(<<"config">>,
                                 Data#{<<"key">> => Key,
                                       <<"updated_at">> => null,
                                       <<"created_at">> => Now});
             {ok, _Count} ->
-                imboy_pg:update(<<"config">>, Data#{<<"updated_at">> => Now}, <<"key = $1">>, [Key])
+                elib_pg:update(<<"config">>, Data#{<<"updated_at">> => Now}, <<"key = $1">>, [Key])
         end,
     _ = imboy_cache:flush(cache_key(Key)),
     _ = aes_encrypt(Key),
@@ -146,7 +146,7 @@ aes_encrypt(Key) when is_list(Key) ->
     aes_encrypt(list_to_binary(Key));
 aes_encrypt(Key) ->
     % 使用安全的参数化查询，避免SQL注入
-    Val = imboy_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>),
+    Val = elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>),
     do_aes_encrypt(Key, Val).
 
 %% ===================================================================
@@ -158,7 +158,7 @@ cache_key(K) ->
 
 reload(Path) ->
     {ok, Items} = file:consult(Path),
-    % imboy_log:error("~p~n", [Items]),
+    % elib_log:error("~p~n", [Items]),
     [_ = application:set_env(Conf) || Conf <- Items],
     ok.
 
@@ -169,17 +169,17 @@ config_file() ->
 
 do_aes_encrypt(Key, <<"aes_cbc_", _Val/binary>>) ->
     % 已经加密，直接返回
-    imboy_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
+    elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
 do_aes_encrypt(Key, Val) ->
     AesKey = config_ds:env(postgre_aes_key),
-    % 与 imboy_hasher:encoded_val 保持一致：先 base64 编码再加密
+    % 与 elib_hasher:encoded_val 保持一致：先 base64 编码再加密
     % encrypt() 需要 bytea 类型，所以需要 ::bytea 转换
     Sql = <<"UPDATE config SET value = 'aes_cbc_' || encode(encrypt(encode($1, "
             "'base64')::bytea, $2, 'aes-cbc/pad:pkcs'), 'base64') WHERE "
             "key = $3">>,
-    case imboy_pg:execute(Sql, [Val, AesKey, Key]) of
+    case elib_pg:execute(Sql, [Val, AesKey, Key]) of
         {ok, _} ->
-            imboy_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
+            elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
         {error, Reason} ->
             ?LOG_ERROR("Failed to encrypt config value for key ~p: ~p", [Key, Reason]),
             <<>>

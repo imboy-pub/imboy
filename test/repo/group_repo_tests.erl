@@ -6,7 +6,7 @@
 %%% @doc
 %%% group_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → imboy_pg 迁移的语义正确性
+%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
 %%%===================================================================
 
 %% ===================================================================
@@ -31,7 +31,7 @@ add_valid_group_test_() ->
             type => 1,
             join_limit => 1,
             user_id_sum => 1,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = group_repo:add(undefined, Data),
         case Result of
@@ -69,7 +69,7 @@ add_with_missing_required_field_test_() ->
         % 缺少 owner_uid
         Data = #{
             type => 1,
-            created_at => imboy_dt:now()
+            created_at => elib_dt:now()
         },
         Result = group_repo:add(undefined, Data),
         % 精确断言：验证错误原因

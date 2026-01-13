@@ -24,6 +24,13 @@
 %% API
 %% ===================================================================
 
+%% @doc 验证资源访问权限
+%% 验证附件资源的访问 Token 是否有效
+%% @param Scene 资源场景类型
+%% @param Tk 访问 Token
+%% @param V 时间戳值
+%% @param Path 资源路径
+%% @return binary() <<"ok">> 表示成功，<<"fail">> 表示失败
 -spec verify_for_assets(binary(), binary() | undefined, integer() | error, binary()) ->
                            binary().
 verify_for_assets(undefined, _Tk, _Name, _) ->
@@ -34,10 +41,10 @@ verify_for_assets(_Scene, _Tk, error, _) ->
     <<"fail">>;
 % verify_for_assets(Scene, Tk, Val, Path) when is_binary(Path) ->
 verify_for_assets(Scene, Tk, V, _Path) ->
-    Now = imboy_dt:utc(second),
+    Now = elib_dt:utc(second),
     % V = binary_to_integer(Val),
     Diff = 7200,
-    % imboy_log:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
+    % elib_log:info(io_lib:format("V:~p ~p ~n", [V, Now < (V + Diff) ])),
     if is_integer(V) andalso Now < V + Diff ->
            % V = binary_to_list(<<Path/binary, "?", Val/binary>>),
            % NewTk = auth_ds:get_token(assets, Scene, V),
@@ -47,6 +54,12 @@ verify_for_assets(Scene, Tk, V, _Path) ->
            <<"fail">>
     end.
 
+%% @doc 验证开放资源访问权限
+%% 验证公开访问资源的 Token 是否有效
+%% @param Path 资源路径
+%% @param Tk 访问 Token
+%% @param Val 时间戳值
+%% @return binary() <<"ok">> 表示成功，<<"fail">> 表示失败
 -spec verify_for_open(binary(), binary(), binary()) -> binary().
 verify_for_open(undefined, _Tk, _Val) ->
     <<"fail">>;
@@ -57,7 +70,7 @@ verify_for_open(_Path, _, undefined) ->
 verify_for_open(Path, Tk, Val) ->
     V = binary_to_list(<<Path/binary, "?", Val/binary>>),
     NewTk = auth_ds:get_token(assets, <<"open">>, V),
-    % imboy_log:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
+    % elib_log:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
     do_verify_for_assets(NewTk, Tk).
 
 %% ===================================================================
@@ -65,6 +78,8 @@ verify_for_open(Path, Tk, Val) ->
 %% ===================================================================-
 
 %%% 执行验证码
+%% @doc 验证资源访问 Token
+-spec do_verify_for_assets(binary(), binary()) -> binary().
 do_verify_for_assets(NewTk, T) when NewTk == T ->
     <<"ok">>;
 do_verify_for_assets(_, _) ->

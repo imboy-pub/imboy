@@ -69,12 +69,7 @@ start_link() ->
 %% @private
 init([]) ->
     % 确保数据库表存在（自动创建）
-    case msg_store_repo:ensure_table_exists() of
-        ok ->
-            ok;
-        {error, Reason} ->
-            ok = ?ERROR_LOG("Failed to ensure msg_store_staging table: ~p", [Reason])
-    end,
+    ok = msg_store_repo:ensure_table_exists(),
     ok = ?INFO_LOG("msg_store_worker started successfully"),
     {ok, idle, start_tick(#state{})}.
 
@@ -139,84 +134,79 @@ claim_and_process_batch() ->
     end.
 
 process_row(Row) ->
-    MsgTypeBin = maps:get(<<"msg_type">>, Row),
+    TypeBin = maps:get(<<"type">>, Row),
     MsgId = maps:get(<<"msg_id">>, Row),
     RetryCount = maps:get(<<"retry_count">>, Row, 0),
-    MsgTypeAtom = msg_type_atom(MsgTypeBin),
-    case do_write(MsgTypeAtom, Row) of
+    TypeAtom = msg_type_atom(TypeBin),
+    case do_write(TypeAtom, Row) of
         ok ->
             msg_store_ds:unstage(MsgId),
-            ok = ?DEBUG_LOG([msg_store_worker, write_success, MsgTypeAtom, MsgId]);
+            ok = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
         {error, Reason} ->
             BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
-            _ = msg_store_repo:mark_failed(MsgTypeBin, MsgId, ErrorMsg, BackoffSeconds),
-            ok = ?ERROR_LOG([msg_store_worker, write_error, MsgTypeAtom, MsgId, Reason])
+            _ = msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds),
+            ok = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
     end.
 
+%% v2.0: 使用 staging 表的独立字段，避免重复解析 payload
 do_write(c2c, Row) ->
     PayloadBin = maps:get(<<"payload">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
     ServerTs = maps:get(<<"server_ts">>, Row, 0),
-    case msg_c2c_ds:write_msg(CreatedAt, maps:get(<<"msg_id">>, Row), PayloadBin, FromId, ToId, ServerTs) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end;
+    MsgId = maps:get(<<"msg_id">>, Row),
+    MsgType = maps:get(<<"msg_type">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, <<>>),
+    msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE);
+
 do_write(c2g, Row) ->
     PayloadBin = maps:get(<<"payload">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
     ToIdList = maps:get(<<"to_id_list">>, Row, []),
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
-    PayloadMap = decode_payload(PayloadBin),
-    GidEnc = maps:get(<<"to">>, PayloadMap, undefined),
-    Gid = case GidEnc of
-        undefined -> 0;
-        _ -> imboy_hashids:decode(GidEnc)
-    end,
-    msg_c2g_ds:write_msg(CreatedAt, maps:get(<<"msg_id">>, Row), PayloadBin, FromId, ToIdList, Gid);
+    MsgId = maps:get(<<"msg_id">>, Row),
+    MsgType = maps:get(<<"msg_type">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, <<>>),
+    %% C2G 需要 Gid，从 payload 解析
+    PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
+    GidEnc = maps:get(<<"to">>, PayloadMap),
+    Gid = elib_hashids:decode(GidEnc),
+    msg_c2g_repo:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE);
+
 do_write(s2c, Row) ->
     PayloadBin = maps:get(<<"payload">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
-    CreatedAt = maps:get(<<"created_at">>, Row, imboy_dt:now()),
+    CreatedAt = maps:get(<<"created_at">>, Row, elib_dt:now()),
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
-    msg_s2c_ds:write_msg(CreatedAt, maps:get(<<"msg_id">>, Row), PayloadBin, FromId, ToId, ServerTs);
+    MsgId = maps:get(<<"msg_id">>, Row),
+    Action = maps:get(<<"action">>, Row, <<>>),
+    msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>);
+
 do_write(c2s, Row) ->
     PayloadBin = maps:get(<<"payload">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
-    PayloadMap = decode_payload(PayloadBin),
+    PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
     Status = maps:get(<<"status">>, PayloadMap, 12),
     TopicId = maps:get(<<"topic_id">>, PayloadMap, 0),
     ToIdStr = maps:get(<<"to_id_str">>, PayloadMap, <<>>),
+    MsgId = maps:get(<<"msg_id">>, Row),
     MsgData = #{
         status => Status,
         topic_id => TopicId,
         from_id => FromId,
         to_id => ToIdStr,
-        msg_id => maps:get(<<"msg_id">>, Row),
+        msg_id => MsgId,
         payload => PayloadBin,
         created_at => CreatedAt
     },
-    case msg_c2s_ds:write_msg(maps:get(<<"msg_id">>, Row), MsgData) of
-        ok -> ok;
-        {error, Reason} -> {error, Reason}
-    end;
+    msg_c2s_ds:write_msg(MsgId, MsgData);
+
 do_write(Unknown, Row) ->
     {error, {unknown_msg_type, Unknown, maps:get(<<"msg_id">>, Row)}}.
-
-decode_payload(PayloadBin) when is_binary(PayloadBin) ->
-    try jsone:decode(PayloadBin, [{object_format, map}]) of
-        Map -> Map
-    catch
-        _:_ -> #{}
-    end;
-decode_payload(Map) when is_map(Map) ->
-    Map;
-decode_payload(_Other) ->
-    #{}.
 
 msg_type_atom(<<"c2c">>) -> c2c;
 msg_type_atom(<<"c2g">>) -> c2g;

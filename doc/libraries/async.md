@@ -1,8 +1,8 @@
-# imboy_async 使用指南
+# elib_async 使用指南
 
 ## 概述
 
-`imboy_async` 是 Imboy 项目的异步执行模块，封装了 `spawn` 和重试逻辑，提供简洁的异步操作 API。
+`elib_async` 是 Imboy 项目的异步执行模块，封装了 `spawn` 和重试逻辑，提供简洁的异步操作 API。
 
 ---
 
@@ -12,12 +12,12 @@
 
 ```erlang
 % 无超时控制
-imboy_async:async(fun() ->
+elib_async:async(fun() ->
     io:format("Hello~n")
 end).
 
 % 带超时控制（5秒）
-imboy_async:async(fun() ->
+elib_async:async(fun() ->
     timer:sleep(10000),
     never_reached
 end, 5000).
@@ -33,17 +33,17 @@ end, 5000).
 
 ```erlang
 % 默认参数（3次重试，1秒延迟）
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     message_ds:send_next(ToId, MsgId, MsgJson, MsLi)
 end).
 
 % 自定义重试次数
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     user_repo:find_by_id(Uid)
 end, 5).
 
 % 自定义重试次数和延迟
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     external_api:call(Url)
 end, 3, 2000).
 ```
@@ -59,7 +59,7 @@ end, 3, 2000).
 
 ```erlang
 % 执行完成后将结果发送给 CallbackPid
-imboy_async:async_with_callback(fun() ->
+elib_async:async_with_callback(fun() ->
     user_repo:find_by_id(Uid)
 end, self()),
 
@@ -110,8 +110,8 @@ end).
 ### 改进代码 1：使用 `async_retry`（简洁）
 
 ```erlang
-%% ✅ 改进：使用 imboy_async:async_retry
-imboy_async:async_retry(fun() ->
+%% ✅ 改进：使用 elib_async:async_retry
+elib_async:async_retry(fun() ->
     % ① 入队
     msg_store:enqueue(c2c, MsgId, #{
         payload => PayloadJson,
@@ -144,7 +144,7 @@ end, 3, 1000).
 
 ```erlang
 %% ✅ 如果需要处理发送结果
-imboy_async:async_with_callback(fun() ->
+elib_async:async_with_callback(fun() ->
     Msg = #{...},
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = [0, 5000, 7000, 11000, 17000],
@@ -179,7 +179,7 @@ spawn(fun() ->
 end).
 
 %% ✅ 改进写法
-imboy_async:async(fun() ->
+elib_async:async(fun() ->
     timer:sleep(15000),
     case imboy_cache:get(AckTimeoutKey) of
         {ok, _} ->
@@ -197,8 +197,8 @@ end, 20000).  % 20秒超时
 
 | 原始写法 | 改进写法 | 优势 |
 |---------|---------|------|
-| `spawn(fun() -> ... end)` | `imboy_async:async(fun() -> ... end)` | 语义清晰 |
-| `spawn(fun() -> retry:with_retry(...) end)` | `imboy_async:async_retry(fun() -> ... end)` | 简洁 |
+| `spawn(fun() -> ... end)` | `elib_async:async(fun() -> ... end)` | 语义清晰 |
+| `spawn(fun() -> retry:with_retry(...) end)` | `elib_async:async_retry(fun() -> ... end)` | 简洁 |
 | 手动接收结果 | `async_with_callback/2` | 自动回调 |
 
 ---
@@ -209,7 +209,7 @@ end, 20000).  % 20秒超时
 
 ```erlang
 % 最简洁
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     message_ds:send_next(ToId, MsgId, MsgJson, MsLi)
 end).
 ```
@@ -218,7 +218,7 @@ end).
 
 ```erlang
 % 带日志
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     message_ds:send_next(ToId, MsgId, MsgJson, MsLi),
     io:format("✅ 消息发送成功")
 end).
@@ -228,7 +228,7 @@ end).
 
 ```erlang
 % 带回调处理结果
-imboy_async:async_with_callback(fun() ->
+elib_async:async_with_callback(fun() ->
     user_repo:find_by_id(Uid)
 end, self()),
 
@@ -242,11 +242,11 @@ end.
 
 ```erlang
 % 入队和投递分开
-imboy_async:async(fun() ->
+elib_async:async(fun() ->
     msg_store:enqueue(...)
 end),
 
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     message_ds:send_next(...)
 end, 3, 1000).
 ```
@@ -262,7 +262,7 @@ end, 3, 1000).
 ToId = 123,
 MsgId = <<"msg123">>,
 
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     % 可以使用外部变量
     message_ds:send_next(ToId, MsgId, MsgJson, MsLi)
 end).
@@ -272,13 +272,13 @@ end).
 
 ```erlang
 % ❌ 错误：async 立即返回 pid，不是结果
-Result = imboy_async:async_retry(fun() ->
+Result = elib_async:async_retry(fun() ->
     user_repo:find_by_id(Uid)
 end),
 % Result 是 pid()，不是用户数据！
 
 % ✅ 正确：使用回调
-imboy_async:async_with_callback(fun() ->
+elib_async:async_with_callback(fun() ->
     user_repo:find_by_id(Uid)
 end, self()),
 receive
@@ -290,12 +290,12 @@ end.
 
 ```erlang
 % async_retry 会自动记录错误日志
-imboy_async:async_retry(fun() ->
+elib_async:async_retry(fun() ->
     risky_operation()
 end).
 
 % 如果需要自定义错误处理，使用 async_with_callback
-imboy_async:async_with_callback(fun() ->
+elib_async:async_with_callback(fun() ->
     risky_operation()
 end, self()),
 receive
@@ -308,13 +308,13 @@ end.
 
 ## 🚀 迁移指南
 
-### 从原始 spawn 迁移到 imboy_async
+### 从原始 spawn 迁移到 elib_async
 
 | 原始代码 | 迁移后 |
 |---------|--------|
-| `spawn(fun() -> op() end)` | `imboy_async:async(fun() -> op() end)` |
-| `spawn(fun() -> retry:with_retry(fun() -> op() end, 3, 1000) end)` | `imboy_async:async_retry(fun() -> op() end, 3, 1000)` |
-| 手动接收结果 | `imboy_async:async_with_callback/2` |
+| `spawn(fun() -> op() end)` | `elib_async:async(fun() -> op() end)` |
+| `spawn(fun() -> retry:with_retry(fun() -> op() end, 3, 1000) end)` | `elib_async:async_retry(fun() -> op() end, 3, 1000)` |
+| 手动接收结果 | `elib_async:async_with_callback/2` |
 
 ---
 
@@ -329,6 +329,6 @@ end.
 
 ## 📚 相关模块
 
-- `imboy_retry` - 重试逻辑（内部使用）
+- `elib_retry` - 重试逻辑（内部使用）
 - `imboy_cache` - 缓存操作
 - `message_ds` - 消息数据服务

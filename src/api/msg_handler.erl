@@ -5,7 +5,9 @@
 -dialyzer([{nowarn_function, offline/2},
            {nowarn_function, get_c2c_msg_count/2},
            {nowarn_function, get_c2g_msg_count/2},
-           {nowarn_function, get_s2c_msg_count/2}]).
+           {nowarn_function, get_s2c_msg_count/2},
+           {nowarn_function, offline_ack/2},
+           {nowarn_function, process_offline_ack/3}]).
 
 -export([init/2]).
 
@@ -52,19 +54,19 @@ init(Req0, State0) ->
 %% @end
 -spec offline(cowboy_req:req(), map()) -> cowboy_req:req().
 offline(Req0, State) ->
-    {ok, Limit} = imboy_param:int(limit, Req0, 1000),
-    {ok, C2CLastMsgAtInt} = imboy_param:int(c2c_last_msg_at, Req0, 0),
-    {ok, C2GLastMsgAtInt} = imboy_param:int(c2g_last_msg_at, Req0, 0),
-    {ok, S2CLastMsgAtInt} = imboy_param:int(s2c_last_msg_at, Req0, 0),
+    {ok, Limit} = elib_param:int(limit, Req0, 1000),
+    {ok, C2CLastMsgAtInt} = elib_param:int(c2c_last_msg_at, Req0, 0),
+    {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
+    {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
 
-    C2CLastMsgAt = imboy_dt:to_rfc3339(C2CLastMsgAtInt, millisecond),
-    C2GLastMsgAt = imboy_dt:to_rfc3339(C2GLastMsgAtInt, millisecond),
-    S2CLastMsgAt = imboy_dt:to_rfc3339(S2CLastMsgAtInt, millisecond),
+    C2CLastMsgAt = elib_dt:to_rfc3339(C2CLastMsgAtInt, millisecond),
+    C2GLastMsgAt = elib_dt:to_rfc3339(C2GLastMsgAtInt, millisecond),
+    S2CLastMsgAt = elib_dt:to_rfc3339(S2CLastMsgAtInt, millisecond),
 
     % 安全获取 current_uid，不存在时返回未授权错误
     case maps:get(current_uid, State, undefined) of
         undefined ->
-            imboy_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             % 获取各种类型的总记录数用于判断是否还有更多数据
             CountC2CMsg = get_c2c_msg_count(CurrentUid, C2CLastMsgAt),
@@ -101,7 +103,7 @@ offline(Req0, State) ->
                             calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
                         <<"total">> => CountS2CMsg,
                         <<"list">> => ProcessedS2CMsgs}},
-            imboy_response:success(Req0, Payload)
+            elib_response:success(Req0, Payload)
     end.
 
 %% @doc 计算下一页的 last_msg_at 参数
@@ -143,7 +145,7 @@ get_c2c_msg_count(Uid, LastMsgAt) ->
     Sql = <<"SELECT count(*) as count FROM ",
             Tb/binary,
             " WHERE to_id = $1 AND created_at >= $2">>,
-    case imboy_pg:query(Sql, [Uid, LastMsgAt]) of
+    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
         {ok, [#{<<"count">> := Count}]} ->
             Count;
         _ ->
@@ -164,7 +166,7 @@ get_c2g_msg_count(Uid, LastMsgAt) ->
     Sql = <<"SELECT count(*) as count FROM ",
             Tb/binary,
             " WHERE to_id = $1 AND client_ack = 0 AND created_at >= $2">>,
-    case imboy_pg:query(Sql, [Uid, LastMsgAt]) of
+    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
         {ok, [#{<<"count">> := Count}]} ->
             Count;
         _ ->
@@ -185,7 +187,7 @@ get_s2c_msg_count(Uid, LastMsgAt) ->
     Sql = <<"SELECT count(*) as count FROM ",
             Tb/binary,
             " WHERE to_id = $1 AND created_at >= $2">>,
-    case imboy_pg:query(Sql, [Uid, LastMsgAt]) of
+    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
         {ok, [#{<<"count">> := Count}]} ->
             Count;
         _ ->
@@ -208,7 +210,7 @@ process_message(Msg) when is_map(Msg) ->
             undefined ->
                 Msg3;
             _ ->
-                Msg3#{<<"from">> => imboy_hashids:encode(FromId)}
+                Msg3#{<<"from">> => elib_hashids:encode(FromId)}
         end,
 
     case ToId of
@@ -216,19 +218,26 @@ process_message(Msg) when is_map(Msg) ->
             Msg4;
         ToList when is_list(ToList) ->
             % 对于群组消息，to_id 是一个列表
-            ToEncoded = [imboy_hashids:encode(ToUid) || ToUid <- ToList],
+            ToEncoded = [elib_hashids:encode(ToUid) || ToUid <- ToList],
             Msg4#{<<"to">> => ToEncoded};
         _ ->
             % 对于单个用户
-            Msg4#{<<"to">> => imboy_hashids:encode(ToId)}
+            Msg4#{<<"to">> => elib_hashids:encode(ToId)}
     end.
 
-% 处理离线消息确认
+%% @doc 处理离线消息确认
+%% 处理客户端确认已接收的离线消息
+%%
+%% @param Req0 Cowboy请求对象，包含消息类型和ID列表
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec offline_ack(cowboy_req:req(), map()) -> cowboy_req:req().
 offline_ack(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
+    CurrentUid = auth_ds:current_uid(State),
 
     % 获取请求参数
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     Type =
         string:lowercase(
             maps:get(<<"type">>, PostVals, <<>>)),
@@ -249,19 +258,27 @@ offline_ack(Req0, State) ->
             ok =
                 ?INFO_LOG("Offline ack processed successfully: ~p messages for user: ~p",
                           [ProcessedCount, CurrentUid]),
-            imboy_response:success(Req0, Payload);
+            elib_response:success(Req0, Payload);
         {error, Reason} ->
             ok =
                 ?ERROR_LOG("Failed to process offline_ack for user: ~p, reason: ~p",
                            [CurrentUid, Reason]),
-            imboy_response:error(Req0, Reason)
+            elib_response:error(Req0, Reason)
     end.
 
 %% ===================================================================
 %% 离线消息确认相关函数
 %% ===================================================================
 
-% 处理离线消息确认
+%% @doc 处理离线消息确认
+%% 根据消息类型删除对应的离线消息
+%%
+%% @param Uid 用户ID
+%% @param Type 消息类型（c2c/c2g/s2c）
+%% @param MsgIds 消息ID列表
+%% @return {ok, Count} 或 {error, Reason}
+%% @end
+-spec process_offline_ack(integer(), binary(), list()) -> {ok, integer()} | {error, binary()}.
 process_offline_ack(Uid, Type, MsgIds) ->
     case Type of
         <<"c2c">> ->

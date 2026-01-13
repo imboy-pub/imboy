@@ -24,6 +24,8 @@
 
 -module(imboy_cache).
 
+-dialyzer({nowarn_function, [cached_get/3, cached_get/4, cached_update/3, batch_get/1, batch_set/2, batch_flush/1]}).
+
 -include("cache.hrl").
 -include("log.hrl").
 -include("chat.hrl").
@@ -279,3 +281,127 @@ record_depcache_event(Args) ->
 -spec broadcast(any()) -> {ok, non_neg_integer()}.
 broadcast(Message) ->
     imboy_cache_sync:broadcast(Message).
+
+
+%% ===================================================================
+%% 标准缓存模式辅助函数
+%% ===================================================================
+
+%% @doc 带缓存的获取函数（懒加载模式）
+%%
+%% 如果缓存命中则返回缓存值，否则执行加载函数并缓存结果
+%% 适用于读多写少的场景，如用户信息、配置等
+%%
+%% @param Key 缓存键
+%% @param LoadFun 加载函数（当缓存未命中时执行）
+%% @param TTL 缓存过期时间（秒）
+%% @returns 加载的数据或缓存值
+%%
+%% @doc 带缓存的获取函数（懒加载模式）
+-spec cached_get(term(), fun(() -> term()), non_neg_integer()) -> term().
+cached_get(Key, LoadFun, TTL) ->
+    case imboy_cache:get(Key) of
+        undefined ->
+            Value = LoadFun(),
+            set(Key, Value, TTL),
+            Value;
+        {ok, Cached} ->
+            Cached
+    end.
+
+%% @doc 带缓存的获取函数（支持默认值）
+%%
+%% 如果缓存命中则返回缓存值，否则执行加载函数并缓存结果
+%% 如果加载失败则返回默认值
+%%
+%% @param Key 缓存键
+%% @param LoadFun 加载函数（返回 {ok, Value} | {error, Reason}）
+%% @param TTL 缓存过期时间（秒）
+%% @param Default 默认值
+%% @returns 加载的数据、缓存值或默认值
+%%
+%% @doc 带缓存的获取函数（支持默认值）
+-spec cached_get(term(), fun(() -> {ok, term()} | {error, any()}), non_neg_integer(), term()) -> term().
+cached_get(Key, LoadFun, TTL, Default) ->
+    case imboy_cache:get(Key) of
+        undefined ->
+            case LoadFun() of
+                {ok, Value} ->
+                    set(Key, Value, TTL),
+                    Value;
+                {error, _Reason} ->
+                    Default
+            end;
+        {ok, Cached} ->
+            Cached
+    end.
+
+%% @doc 更新缓存并刷新（写穿透模式）
+%%
+%% 先更新数据库，然后删除缓存，下次读取时重新加载
+%% 适用于需要保证数据一致性的场景
+%%
+%% @param Key 缓存键
+%% @param UpdateFun 更新函数（返回 {ok, UpdatedValue} | {error, Reason}）
+%% @param TTL 缓存过期时间（秒，用于更新后的缓存）
+%% @returns {ok, UpdatedValue} | {error, Reason}
+%%
+%% @doc 更新缓存并刷新（写穿透模式）
+-spec cached_update(term(), fun(() -> {ok, term()} | {error, any()}), non_neg_integer()) -> {ok, term()} | {error, any()}.
+cached_update(Key, UpdateFun, TTL) ->
+    case UpdateFun() of
+        {ok, UpdatedValue} ->
+            % 删除旧缓存，下次读取时重新加载
+            flush(Key),
+            % 可选：立即设置新缓存（如果希望立即缓存更新后的值）
+            set(Key, UpdatedValue, TTL),
+            {ok, UpdatedValue};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 批量获取缓存
+%%
+%% 对于多个键，一次性获取所有缓存，减少缓存访问次数
+%%
+%% @param Keys 缓存键列表
+%% @returns #{Key => Value} 键值映射
+%%
+%% @doc 批量获取缓存
+-spec batch_get([term()]) -> map().
+batch_get(Keys) when is_list(Keys) ->
+    maps:from_list([{Key, case imboy_cache:get(Key) of
+                                undefined -> undefined;
+                                {ok, Value} -> Value
+                            end} || Key <- Keys]).
+
+%% @doc 批量设置缓存
+%%
+%% 一次性设置多个缓存项，所有项使用相同的TTL
+%%
+%% @param KeyValueMap 键值映射 #{Key => Value}
+%% @param TTL 缓存过期时间（秒）
+%% @returns ok
+%%
+%% @doc 批量设置缓存
+-spec batch_set(map(), non_neg_integer()) -> ok.
+batch_set(KeyValueMap, TTL) when is_map(KeyValueMap) ->
+    maps:foreach(fun(Key, Value) ->
+        set(Key, Value, TTL)
+    end, KeyValueMap),
+    ok.
+
+%% @doc 批量刷新缓存
+%%
+%% 一次性删除多个缓存项
+%%
+%% @param Keys 缓存键列表
+%% @returns ok
+%%
+%% @doc 批量刷新缓存
+-spec batch_flush([term()]) -> ok.
+batch_flush(Keys) when is_list(Keys) ->
+    lists:foreach(fun(Key) ->
+        flush(Key)
+    end, Keys),
+    ok.

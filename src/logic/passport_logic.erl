@@ -1,4 +1,5 @@
 -module(passport_logic).
+-dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}]}).
 %%%
 % passport_logic 是 passport application logic 缩写
 %%%
@@ -12,7 +13,7 @@
 
 
 -include("log.hrl").
--include("def_column.hrl").
+-include("common.hrl").
 
 %% @doc 快速登录（支持第三方服务）
 %% @param Service 登录服务类型（如 jverify）
@@ -24,35 +25,40 @@
     {ok, map()} | {error, binary() | map()}.
 
 
+quick_login(<<>>, _, _, _) ->
+    {error, <<"未指定登录服务"/utf8>>};
 quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
     case imboy_sms:jverification(Token) of
         {error, Msg} ->
             {error, Msg};
         {ok, Mobile} ->
             Mobile2 = <<"+86", Mobile/binary>>,
-            User = user_repo:find_by_mobile(Mobile2, ?LOGIN_COLUMN),
+            User = user_ds:find_by_mobile(Mobile2, ?LOGIN_COLUMN),
             Uid = maps:get(<<"id">>, User, 0),
             case Uid of
                 0 ->
-                    Tb = user_repo:tablename(),
                     Data = pick_data_for_insert(#{
                         <<"source">> => <<"jverify">>
                         , <<"mobile">> => Mobile2
                         , <<"password">> => <<>>
                         }, PostVals),
-                    {ok, Uid2, _} = imboy_pg_sql:parse_result(imboy_pg:insert(Tb, Data, <<"RETURNING id">>)),
-                    User2 = user_repo:find_by_id(Uid2, ?LOGIN_COLUMN),
-                    {ok, login_resp(User2, #{<<"action">> => <<"need_set_password">>})};
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, Uid2} ->
+                            User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
+                            {ok, login_resp(User2, #{<<"action">> => <<"need_set_password">>})};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
                 _ ->
                     {ok, login_resp(User, #{})}
             end
     end;
 quick_login(_, _, _, _) ->
-    {error, <<"不支持的已经登录服务"/utf8>>}.
+    {error, <<"不支持的登录服务"/utf8>>}.
 
 
-% passport_logic:send_code(<<"">>, <<"sms">>).
-% passport_logic:send_code(<<"">>, <<"email">>).
+% passport_logic:send_code(<<>>, <<"sms">>).
+% passport_logic:send_code(<<>>, <<"email">>).
 send_code(Mobile, <<"sms">>) ->
     % Res = throttle:check(per_minute_once, Mobile),
     % ?DEBUG_LOG([per_minute_once, Res]),
@@ -69,27 +75,27 @@ send_code(_, _) ->
     {error, <<"暂未实现功能."/utf8>>}.
 
 
--spec do_login(binary(), binary(), binary()) -> {ok, any()} | {error, any()}.
+-spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.
 do_login(_Type, _Email, <<>>) ->
     {error, <<"密码有误"/utf8>>};
 do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
-    User = user_repo:find_by_mobile(Mobile, ?LOGIN_COLUMN),
+    User = user_ds:find_by_mobile(Mobile, ?LOGIN_COLUMN),
     % ?DEBUG_LOG([do_login, Mobile, Pwd, User]),
     verify_user(Pwd, User);
 do_login(Type, Email, Pwd) when Type == <<"email">> ->
-    case imboy_func:is_email(Email) of
+    case elib_type:is_email(Email) of
         true ->
-            User = user_repo:find_by_email(Email, ?LOGIN_COLUMN),
+            User = user_ds:find_by_email(Email, ?LOGIN_COLUMN),
             verify_user(Pwd, User);
         false ->
             {error, <<"Email格式有误."/utf8>>}
     end;
 do_login(Type, Account, Pwd) when Type == <<"account">> ->
-    User = case imboy_func:is_email(Account) of
+    User = case elib_type:is_email(Account) of
         true ->
-            user_repo:find_by_email(Account, ?LOGIN_COLUMN);
+            user_ds:find_by_email(Account, ?LOGIN_COLUMN);
         false ->
-            user_repo:find_by_account(Account, ?LOGIN_COLUMN)
+            user_ds:find_by_account(Account, ?LOGIN_COLUMN)
     end,
     verify_user(Pwd, User).
 
@@ -97,7 +103,7 @@ do_login(Type, Account, Pwd) when Type == <<"account">> ->
 -spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: map()) ->
           {ok, map()} | {error, binary()}.
 do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
-    case imboy_func:is_email(Email) of
+    case elib_type:is_email(Email) of
         true ->
             % 校验验证码
             case verify_code(Email, Code) of
@@ -128,8 +134,8 @@ do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
                     PostVals :: map()) ->
           {ok, map()} | {error, binary()}.
 find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
-    ok = ?DEBUG_LOG(["Email ", Email, imboy_func:is_email(Email)]),
-    case imboy_func:is_email(Email) of
+    ok = ?DEBUG_LOG(["Email ", Email, elib_type:is_email(Email)]),
+    case elib_type:is_email(Email) of
         true ->
             % 校验验证码
             case verify_code(Email, Code) of
@@ -154,9 +160,9 @@ find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
 send_email_code(undefined) ->
     {error, <<"Email必须"/utf8>>};
 send_email_code(ToEmail) ->
-    Now = imboy_dt:now(),
-    NowP1M = imboy_dt:minus(Now, {1, minute}),
-    case verification_code_repo:find_by_id(ToEmail) of
+    Now = elib_dt:now(),
+    NowP1M = elib_dt:minus(Now, {1, minute}),
+    case verification_code_ds:find_by_id(ToEmail) of
         % 60000 = 60 * 1000 = 1分钟
         % #{<<"created_at">> := CreatedAt} when (Now - CreatedAt) < 60000 ->
         %  Now - 1m < CreatedAt
@@ -164,24 +170,32 @@ send_email_code(ToEmail) ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            _ = imboy_func:send_email(ToEmail, Msg),
+            _ = elib_email:send(ToEmail, Msg),
             {ok, <<"验证码已发送"/utf8>>};
         _ ->
-            VerifyCode = imboy_func:num_random(6),
+            VerifyCode = elib_cipher:num_random(6),
             VerifyCodeBinary = integer_to_binary(VerifyCode),
             % 600000 = 600 * 1000 = 10分钟
-            _ = verification_code_repo:save(ToEmail, VerifyCodeBinary, imboy_dt:add(Now, {10, minute}), Now),
-            Msg = <<"Code is ", VerifyCodeBinary/binary, " will expire in 10 minutes.">>,
-            _ = imboy_func:send_email(ToEmail, Msg),
-            {ok, <<"验证码已发送"/utf8>>}
+            try elib_dt:add(Now, {10, minute}) of
+                ValidityAt when is_binary(ValidityAt) ->
+                    _ = verification_code_ds:save(ToEmail, VerifyCodeBinary, ValidityAt, Now),
+                    Msg = <<"Code is ", VerifyCodeBinary/binary, " will expire in 10 minutes.">>,
+                    _ = elib_email:send(ToEmail, Msg),
+                    {ok, <<"验证码已发送"/utf8>>};
+                _ ->
+                    {error, <<"invalid_datetime"/utf8>>}
+            catch
+                _:_ ->
+                    {error, <<"invalid_datetime"/utf8>>}
+            end
     end.
 
 -spec send_sms_code(binary()) -> {ok, binary()}.
 send_sms_code(Mobile) ->
-    Now = imboy_dt:now(),
-    NowP2M = imboy_dt:minus(Now, {2, minute}),
+    Now = elib_dt:now(),
+    NowP2M = elib_dt:minus(Now, {2, minute}),
 
-    case verification_code_repo:find_by_id(Mobile) of
+    case verification_code_ds:find_by_id(Mobile) of
         % 120000 = 120 * 1000 = 2分钟
         #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
@@ -190,13 +204,21 @@ send_sms_code(Mobile) ->
             _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
             {ok, <<"验证码已发送"/utf8>>};
         _ ->
-            Code = imboy_func:num_random(6),
+            Code = elib_cipher:num_random(6),
             CodeBinary = ec_cnv:to_binary(Code),
             % 600000 = 600 * 1000 = 10分钟
-            _ = verification_code_repo:save(Mobile, CodeBinary, imboy_dt:add(Now, {10, minute}), Now),
-            Content = <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-            _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
-            {ok, <<"验证码已发送"/utf8>>}
+            try elib_dt:add(Now, {10, minute}) of
+                ValidityAt when is_binary(ValidityAt) ->
+                    _ = verification_code_ds:save(Mobile, CodeBinary, ValidityAt, Now),
+                    Content = <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
+                    _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
+                    {ok, <<"验证码已发送"/utf8>>};
+                _ ->
+                    {error, <<"invalid_datetime"/utf8>>}
+            catch
+                _:_ ->
+                    {error, <<"invalid_datetime"/utf8>>}
+            end
     end.
 
 
@@ -214,8 +236,8 @@ verify_code(_Id, <<"666666">>) ->
             {error, <<"验证码无效"/utf8>>}
     end;
 verify_code(Id, Code) ->
-    Now = imboy_dt:now(),
-    case verification_code_repo:find_by_id(Id) of
+    Now = elib_dt:now(),
+    case verification_code_ds:find_by_id(Id) of
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             {ok, <<"验证码有效"/utf8>>};
         _ ->
@@ -232,20 +254,16 @@ do_signup_by_email(Email, Pwd, PostVals) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            Tb = user_repo:tablename(),
-            Id = imboy_pg:pluck_value(Tb
-                , <<"id">>
-                , #{email => Email}
-                , #{}, 0),
+            Id = user_ds:find_id_by_email(Email),
             case Id of
                 0 ->
-                    Password = imboy_cipher:rsa_decrypt(Pwd),
+                    Password = elib_cipher:rsa_decrypt(Pwd),
                     Data = pick_data_for_insert(#{
-                        <<"password">> => imboy_password:generate(Password)
+                        <<"password">> => elib_password:generate(Password)
                         , <<"email">> => Email
                         }, PostVals),
-                    case imboy_pg:insert(Tb, Data, <<"RETURNING id">>) of
-                        {ok, _, _} ->
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, _} ->
                             % 注册成功
                             {ok, #{}};
                         {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
@@ -261,7 +279,7 @@ do_signup_by_email(Email, Pwd, PostVals) ->
 
 
 -spec do_signup_by_mobile(binary(), binary(), map()) ->
-          {ok, map()} | {error, any()}.
+          {ok, map()} | {error, binary() | any()}.
 do_signup_by_mobile(Mobile, Pwd, PostVals) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
@@ -269,20 +287,16 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            Tb = user_repo:tablename(),
-            Id = imboy_pg:pluck_value(Tb
-                , <<"id">>
-                , #{mobile => Mobile}
-                , #{}, 0),
+            Id = user_ds:find_id_by_mobile(Mobile),
             case Id of
                 0 ->
-                    Password = imboy_cipher:rsa_decrypt(Pwd),
+                    Password = elib_cipher:rsa_decrypt(Pwd),
                     Data = pick_data_for_insert(#{
-                        <<"password">> => imboy_password:generate(Password)
+                        <<"password">> => elib_password:generate(Password)
                         , <<"mobile">> => Mobile
                         }, PostVals),
-                    case imboy_pg:insert(Tb, Data, <<"RETURNING id">>) of
-                        {ok, _, _} ->
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, _} ->
                             % 注册成功
                             {ok, #{}};
                         {error, Reason} ->
@@ -294,7 +308,7 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
     end.
 
 pick_data_for_insert(Data, PostVals) ->
-    Uid0 = imboy_hashids:encode(0),
+    Uid0 = elib_hashids:encode(0),
 
     Source = maps:get(<<"source">>, PostVals, <<>>),
     Ip = maps:get(<<"ip">>, PostVals, <<"{}">>),
@@ -305,8 +319,8 @@ pick_data_for_insert(Data, PostVals) ->
 
     [RefUid2, ParentRefUid2] = case bit_size(RefUid) > 5 of
         true ->
-            RefUid2_in = imboy_hashids:decode(RefUid),
-            P = user_repo:find_by_id(RefUid2_in, <<"ref_user_id">>),
+            RefUid2_in = elib_hashids:decode(RefUid),
+            P = user_ds:find_by_id(RefUid2_in, <<"ref_user_id">>),
             [RefUid2_in, maps:get(<<"ref_user_id">>, P, 0)];
         _ ->
             [0, 0]
@@ -327,27 +341,20 @@ pick_data_for_insert(Data, PostVals) ->
         , <<"reg_cosv">> => Cosv
         , <<"source">> => Source
         , <<"status">> => 1
-        , <<"created_at">> => imboy_dt:now()
+        , <<"created_at">> => elib_dt:now()
     }, Data).
 
 -spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: map()) ->
           {ok, map()} | {error, Msg :: list()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
-    Id = imboy_pg:pluck_value(user_repo:tablename()
-        , <<"id">>
-        , #{email => Email}
-        , #{}, 0),
+    Id = user_ds:find_id_by_email(Email),
     case Id of
         0 ->
             {error, <<"Email不存在或已被删除"/utf8>>};
         Id when is_integer(Id), Id > 0 ->
             % 密码已经在 handler 层面处理了解密，这里直接使用
-            Pwd2 = imboy_password:generate(Pwd),
-            case imboy_pg:update(user_repo:tablename()
-                , #{<<"password">> => Pwd2}
-                , <<"id = $1">>
-                , [Id]
-            ) of
+            Pwd2 = elib_password:generate(Pwd),
+            case user_ds:update_password(Id, Pwd2) of
                 {ok, _} ->
                     {ok, #{}};
                 {error, Reason} ->
@@ -358,18 +365,18 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 
 -spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
 verify_user(<<>>, _) ->
-    {error, "账号不存在"};
+    {error, <<"账号不存在"/utf8>>};
 verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
-    case imboy_password:verify(Pwd, Pwd2) of
+    case elib_password:verify(Pwd, Pwd2) of
         {ok, _} when Status == -2 ->
-            {error, "账号不存在"};
+            {error, <<"账号不存在"/utf8>>};
         {ok, _} when Status == -1 ->
-            {error, "账号不存在或者已删除"};
+            {error, <<"账号不存在或者已删除"/utf8>>};
         {ok, _} when Status == 0 ->
-            {error, "账号被禁用"};
+            {error, <<"账号被禁用"/utf8>>};
         {ok, _} when Status == 1; Status == 2 ->
             {ok, login_resp(User, #{})};
         {error, Msg} ->
@@ -379,7 +386,7 @@ verify_user(Pwd, User) ->
 login_resp(User, Resp) ->
     Id = maps:get(<<"id">>, User),
     maps:merge(#{
-       <<"uid">> => imboy_hashids:encode(Id),
+       <<"uid">> => elib_hashids:encode(Id),
        <<"token">> => token_ds:encrypt_token(Id),
        <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
        <<"email">> => maps:get(<<"email">>, User),

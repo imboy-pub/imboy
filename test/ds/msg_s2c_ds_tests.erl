@@ -27,7 +27,7 @@ module_loaded_test_() ->
 
 write_msg_test_() ->
     ?TEST_WITH_DB(fun() ->
-        NowTs = imboy_dt:now(millisecond),
+        NowTs = elib_dt:now(millisecond),
         MsgId = <<"msg_s2c_123">>,
         FromId = 0,  % 系统消息
         ToId = 1,

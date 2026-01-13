@@ -29,12 +29,12 @@
 write_topic(<<"C2S">>, _, _, _, <<>>, _) ->
     ok;
 write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
-    CreatedAt = imboy_dt:to_rfc3339(CreatedAtRaw),
+    CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
     % index type, user_id, title
     Tb = <<"msg_topic">>,
     % 使用安全的参数化查询，避免SQL注入
     Query = <<"SELECT id FROM ", Tb/binary, " WHERE type = $1 AND user_id = $2 AND title = $3 ORDER BY id DESC LIMIT 1">>,
-    Id = case imboy_pg:query(Query, [<<"C2S">>, Uid, Title]) of
+    Id = case elib_pg:query(Query, [<<"C2S">>, Uid, Title]) of
         {ok, [#{<<"id">> := Id2}]} when is_integer(Id2) -> Id2;
         _ -> undefined
     end,
@@ -51,8 +51,8 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
         Id > 0 ->
             ok;
         true ->
-            {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<>>),
-            {ok, _} = imboy_pg:execute(Sql, Params),
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
+            {ok, _} = elib_pg:execute(Sql, Params),
             ok
     end.
 
@@ -67,10 +67,10 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
 write_msg(MsgId, Data) ->
     Tb = <<"msg_c2s">>,
     % 使用安全的参数化查询，避免SQL注入
-    case imboy_pg:query(<<"SELECT count(*) AS count FROM ", Tb/binary, " WHERE msg_id = $1 ORDER BY created_at DESC LIMIT 1">>, [MsgId]) of
+    case elib_pg:query(<<"SELECT count(*) AS count FROM ", Tb/binary, " WHERE msg_id = $1 ORDER BY created_at DESC LIMIT 1">>, [MsgId]) of
         {ok, [#{<<"count">> := 0}]} ->
-            {Sql, Params} = imboy_pg_sql:insert(Tb, Data, <<>>),
-            case imboy_pg:execute(Sql, Params) of
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
+            case elib_pg:execute(Sql, Params) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end;

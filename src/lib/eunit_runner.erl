@@ -45,7 +45,7 @@ run_fast() ->
     try
         % 只测试 SQL 构造相关的模块
         FastTestModules = [
-            imboy_pg_sql_tests
+            elib_pg_sql_tests
         ],
         eunit:test(FastTestModules, [verbose])
     after
@@ -182,10 +182,10 @@ eunit_try_db() ->
             {error, pooler_not_started};
         _Pid ->
             % pooler 已启动，尝试快速获取连接
-            try pooler:take_member(imboy_pg) of
+            try pooler:take_member(elib_pg) of
                 ConnPid when is_pid(ConnPid) ->
                     % 成功获取连接，立即归还
-                    pooler:return_member(imboy_pg, ConnPid),
+                    pooler:return_member(elib_pg, ConnPid),
                     {ok, ConnPid};
                 error_no_members ->
                     {error, no_members}

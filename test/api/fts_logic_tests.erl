@@ -22,8 +22,8 @@ search_users_test_() ->
         % 设置Mock
         meck:new(fts_user_repo, [passthrough, nolink]),
         meck:new(friend_ds, [passthrough, nolink]),
-        meck:new(imboy_hashids, [passthrough, nolink]),
-        meck:new(imboy_response, [passthrough, nolink]),
+        meck:new(elib_hashids, [passthrough, nolink]),
+        meck:new(elib_response, [passthrough, nolink]),
         
         try
             % Mock搜索结果
@@ -38,7 +38,7 @@ search_users_test_() ->
                 {ok, MockColumnList, MockSearchResults} 
             end),
             meck:expect(friend_ds, is_friend, 2, fun(_Uid1, _Uid2) -> {true, <<"同事">>} end),
-            meck:expect(imboy_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
+            meck:expect(elib_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
             
             % 执行搜索
             Result = fts_logic:user_search_page(?TEST_UID, ?TEST_PAGE, ?TEST_SIZE, ?TEST_KEYWORD),
@@ -52,8 +52,8 @@ search_users_test_() ->
             % 清理Mock
             meck:unload(fts_user_repo),
             meck:unload(friend_ds),
-            meck:unload(imboy_hashids),
-            meck:unload(imboy_response)
+            meck:unload(elib_hashids),
+            meck:unload(elib_response)
         end
     end).
 
@@ -70,7 +70,7 @@ search_groups_test_() ->
         {friend_ds, [
             {'is_friend', 2, fun(_Uid1, _Uid2) -> {true, <<"friend">>} end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]}
     ], fun() ->
@@ -99,8 +99,8 @@ search_result_formatting_test_() ->
         % 设置Mock
         meck:new(fts_user_repo, [passthrough, nolink]),
         meck:new(friend_ds, [passthrough, nolink]),
-        meck:new(imboy_hashids, [passthrough, nolink]),
-        meck:new(imboy_response, [passthrough, nolink]),
+        meck:new(elib_hashids, [passthrough, nolink]),
+        meck:new(elib_response, [passthrough, nolink]),
         
         try
             MockColumnList = [<<"id">>, <<"nickname">>, <<"account">>],
@@ -113,7 +113,7 @@ search_result_formatting_test_() ->
                 {ok, MockColumnList, MockSearchResults} 
             end),
             meck:expect(friend_ds, is_friend, 2, fun(_Uid1, _Uid2) -> {false, <<>>} end),
-            meck:expect(imboy_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
+            meck:expect(elib_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
             
             % 执行搜索
             Result = fts_logic:user_search_page(?TEST_UID, ?TEST_PAGE, ?TEST_SIZE, ?TEST_KEYWORD),
@@ -122,7 +122,7 @@ search_result_formatting_test_() ->
         after
             meck:unload(fts_user_repo),
             meck:unload(friend_ds),
-            meck:unload(imboy_hashids)
+            meck:unload(elib_hashids)
         end
     end).
 
@@ -132,8 +132,8 @@ recently_user_search_test_() ->
         % 设置Mock
         meck:new(user_repo, [passthrough, nolink]),
         meck:new(friend_ds, [passthrough, nolink]),
-        meck:new(imboy_hashids, [passthrough, nolink]),
-        meck:new(imboy_pg, [passthrough, nolink]),
+        meck:new(elib_hashids, [passthrough, nolink]),
+        meck:new(elib_pg, [passthrough, nolink]),
         
         try
             MockColumnList = [<<"id">>, <<"nickname">>, <<"account">>, <<"created_at">>],
@@ -141,12 +141,12 @@ recently_user_search_test_() ->
                 {67890, <<"Alice">>, <<"alice@example.com">>, <<"2023-01-01">>}
             ],
             
-            meck:expect(imboy_pg, pluck_value, 5, fun(_Table, _Column, _Where, _Options, _Default) -> 1 end),
+            meck:expect(elib_pg, pluck_value, 5, fun(_Table, _Column, _Where, _Options, _Default) -> 1 end),
             meck:expect(user_repo, select_by_where, 6, fun(_Column, _Where, _Size, _Offset, _OrderBy) -> 
                 {ok, MockColumnList, MockUserResults} 
             end),
             meck:expect(friend_ds, is_friend, 2, fun(_Uid1, _Uid2) -> {true, <<"朋友">>} end),
-            meck:expect(imboy_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
+            meck:expect(elib_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
             
             % 执行最近用户搜索
             Result = fts_logic:recently_user_page(?TEST_UID, ?TEST_PAGE, ?TEST_SIZE, <<>>),
@@ -158,8 +158,8 @@ recently_user_search_test_() ->
         after
             meck:unload(user_repo),
             meck:unload(friend_ds),
-            meck:unload(imboy_hashids),
-            meck:unload(imboy_pg)
+            meck:unload(elib_hashids),
+            meck:unload(elib_pg)
         end
     end).
 
@@ -227,7 +227,7 @@ search_error_handling_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(fts_user_repo, [passthrough, nolink]),
-        meck:new(imboy_response, [passthrough, nolink]),
+        meck:new(elib_response, [passthrough, nolink]),
         
         try
             % Mock搜索失败
@@ -235,7 +235,7 @@ search_error_handling_test_() ->
             meck:expect(fts_user_repo, user_search_page, 3, fun(_Keyword, _Size, _Offset) -> 
                 {error, database_error} 
             end),
-            meck:expect(imboy_response, page_payload, 4, fun(Total, Page, Size, Items) ->
+            meck:expect(elib_response, page_payload, 4, fun(Total, Page, Size, Items) ->
                 ?assertEqual(0, Total),
                 ?assertEqual(?TEST_PAGE, Page),
                 ?assertEqual(?TEST_SIZE, Size),
@@ -247,7 +247,7 @@ search_error_handling_test_() ->
             ?assertEqual(ok, Result)
         after
             meck:unload(fts_user_repo),
-            meck:unload(imboy_response)
+            meck:unload(elib_response)
         end
     end).
 
@@ -257,8 +257,8 @@ search_result_filtering_test_() ->
         % 设置Mock
         meck:new(fts_user_repo, [passthrough, nolink]),
         meck:new(friend_ds, [passthrough, nolink]),
-        meck:new(imboy_hashids, [passthrough, nolink]),
-        meck:new(imboy_response, [passthrough, nolink]),
+        meck:new(elib_hashids, [passthrough, nolink]),
+        meck:new(elib_response, [passthrough, nolink]),
         
         try
             % Mock包含当前用户的搜索结果
@@ -273,8 +273,8 @@ search_result_filtering_test_() ->
                 {ok, MockColumnList, MockSearchResults} 
             end),
             meck:expect(friend_ds, is_friend, 2, fun(_Uid1, _Uid2) -> {false, <<>>} end),
-            meck:expect(imboy_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
-            meck:expect(imboy_response, page_payload, 4, fun(_Total, _Page, _Size, Items) ->
+            meck:expect(elib_hashids, encode, 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end),
+            meck:expect(elib_response, page_payload, 4, fun(_Total, _Page, _Size, Items) ->
                 % 验证当前用户被过滤掉
                 ?assert(length(Items) =:= 1),
                 [Item | _] = Items,
@@ -291,8 +291,8 @@ search_result_filtering_test_() ->
         after
             meck:unload(fts_user_repo),
             meck:unload(friend_ds),
-            meck:unload(imboy_hashids),
-            meck:unload(imboy_response)
+            meck:unload(elib_hashids),
+            meck:unload(elib_response)
         end
     end).
 
@@ -302,8 +302,8 @@ search_result_encoding_test_() ->
         % 设置Mock
         meck:new(fts_user_repo, [passthrough, nolink]),
         meck:new(friend_ds, [passthrough, nolink]),
-        meck:new(imboy_hashids, [passthrough, nolink]),
-        meck:new(imboy_response, [passthrough, nolink]),
+        meck:new(elib_hashids, [passthrough, nolink]),
+        meck:new(elib_response, [passthrough, nolink]),
         
         try
             MockColumnList = [<<"id">>, <<"nickname">>, <<"account">>],
@@ -316,10 +316,10 @@ search_result_encoding_test_() ->
                 {ok, MockColumnList, MockSearchResults} 
             end),
             meck:expect(friend_ds, is_friend, 2, fun(_Uid1, _Uid2) -> {false, <<>>} end),
-            meck:expect(imboy_hashids, encode, 1, fun(Uid) -> 
+            meck:expect(elib_hashids, encode, 1, fun(Uid) ->
                 <<"hash_", (integer_to_binary(Uid))/binary>> 
             end),
-            meck:expect(imboy_response, page_payload, 4, fun(_Total, _Page, _Size, Items) ->
+            meck:expect(elib_response, page_payload, 4, fun(_Total, _Page, _Size, Items) ->
                 % 验证编码结果
                 [Item | _] = Items,
                 ItemList = tuple_to_list(Item),
@@ -338,8 +338,8 @@ search_result_encoding_test_() ->
         after
             meck:unload(fts_user_repo),
             meck:unload(friend_ds),
-            meck:unload(imboy_hashids),
-            meck:unload(imboy_response)
+            meck:unload(elib_hashids),
+            meck:unload(elib_response)
         end
     end).
 

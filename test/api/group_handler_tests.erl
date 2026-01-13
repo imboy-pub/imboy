@@ -21,12 +21,12 @@ add_test_() ->
                 ok  % 未超过限制
             end}
         ]},
-        {imboy_pg, [
+        {elib_pg, [
             {'pluck', 4, fun(_Table, _Column, _Conditions, _Options) ->
                 {ok, 0}  % 用户当前群组数量为0
             end}
         ]},
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"member_uids">>, [67890, 11111]}
@@ -62,7 +62,7 @@ add_test_() ->
                 ]}
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'replace_id', 1, fun(Group) ->
                 _UserId = maps:get(<<"owner_uid">>, Group),
                 _CreatorId = maps:get(<<"creator_uid">>, Group),
@@ -81,7 +81,7 @@ add_test_() ->
                 MemberList
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -115,7 +115,7 @@ add_throttle_exceeded_test_() ->
                 {limit_exceeded, 1, 3}  % 超过限制
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 429,
@@ -144,7 +144,7 @@ add_throttle_exceeded_test_() ->
 %% @doc 测试编辑群组功能
 edit_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"encoded_1001">>},
@@ -154,12 +154,12 @@ edit_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
         ]},
-        {imboy_pg, [
+        {elib_pg, [
             {'pluck', 4, fun(_Table, _Column, _Conditions, _Options) ->
                 {ok, 1}  % 群组存在
             end},
@@ -167,7 +167,7 @@ edit_test_() ->
                 {ok, 1}  % 更新成功
             end}
         ]},
-        {imboy_dt, [
+        {elib_dt, [
             {'now', 0, fun() ->
                 <<"2025-12-24 10:30:00">>
             end}
@@ -192,7 +192,7 @@ edit_test_() ->
                 Group
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 3, fun(_Req, _Data, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -221,7 +221,7 @@ edit_test_() ->
 %% @doc 测试编辑群组功能 - 无效群组ID
 edit_invalid_group_test_() ->
     ?WITH_MOCKS([
-        {imboy_param, [
+        {elib_param, [
             {'post', 1, fun(_Req) ->
                 [
                     {<<"gid">>, <<"invalid_id">>},
@@ -229,12 +229,12 @@ edit_invalid_group_test_() ->
                 ]
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 0  % 无效ID
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -263,7 +263,7 @@ edit_invalid_group_test_() ->
 %% @doc 测试获取群组详情功能
 detail_test_() ->
     ?WITH_MOCKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 1001
             end}
@@ -289,7 +289,7 @@ detail_test_() ->
                 Group#{<<"encoded_id">> => <<"encoded_1001">>}
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -318,12 +318,12 @@ detail_test_() ->
 %% @doc 测试获取群组详情功能 - 无效群组ID
 detail_invalid_group_test_() ->
     ?WITH_MOCKS([
-        {imboy_hashids, [
+        {elib_hashids, [
             {'decode', 1, fun(_EncodedId) ->
                 0  % 无效ID
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 400,
@@ -362,7 +362,7 @@ face2face_test_() ->
                 {ok, 1002}  % 新建群组ID
             end}
         ]},
-        {imboy_hashids, [
+        {elib_hashids, [
             {'encode', 1, fun(_GroupId) ->
                 <<"encoded_1002">>
             end}
@@ -397,7 +397,7 @@ face2face_test_() ->
                 MemberList
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
                 cowboy_req_h:new(#{
                     response_status => 200,
@@ -431,7 +431,7 @@ face2face_throttle_exceeded_test_() ->
                 {limit_exceeded, 1, 3}  % 超过限制
             end}
         ]},
-        {imboy_response, [
+        {elib_response, [
             {'error', 2, fun(_Req, _Message) ->
                 cowboy_req_h:new(#{
                     response_status => 429,

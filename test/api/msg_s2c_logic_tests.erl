@@ -15,11 +15,11 @@
 %% ===================================================================
 
 s2c_c2c_delete_everyone_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_123">>) -> 123 end},
         {'encode', 1, fun(123) -> <<"encoded_123">> end}
     ], fun() ->
-        ?WITH_MECK(imboy_dt, [
+        ?WITH_MECK(elib_dt, [
             {'now', 0, fun() -> 1640995200 end}
         ], fun() ->
             ?WITH_MECK(msg_c2g_repo, [
@@ -56,7 +56,7 @@ s2c_c2c_delete_everyone_test_() ->
     end).
 
 s2c_c2g_delete_for_me_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'encode', 1, fun(123) -> <<"encoded_123">> end}
     ], fun() ->
         ?WITH_MECK(msg_c2g_timeline_repo, [
@@ -84,14 +84,14 @@ s2c_c2g_delete_for_me_test_() ->
     end).
 
 s2c_c2g_delete_everyone_test_() ->
-    ?WITH_MECK(imboy_hashids, [
+    ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"encoded_group_123">>) -> 456 end},
         {'encode', 1, fun(123) -> <<"encoded_123">> end}
     ], fun() ->
         ?WITH_MECK(group_ds, [
             {'member_uids', 1, fun(_Gid) -> [123, 789, 101] end}
         ], fun() ->
-            ?WITH_MECK(imboy_dt, [
+            ?WITH_MECK(elib_dt, [
                 {'now', 0, fun() -> 1640995200 end}
             ], fun() ->
                 ?WITH_MECK(msg_c2c_repo, [

@@ -24,6 +24,11 @@
 %% API
 %% ===================================================================
 
+%% @doc 初始化附件鉴权处理器
+%% 根据请求中的 action 参数分发到不同的处理函数
+%% @param Req0 Cowboy 请求对象
+%% @param State0 状态映射，包含 action 等信息
+%% @return {ok, Req, State} 更新后的请求和状态
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     % ?DEBUG_LOG(State),
@@ -43,12 +48,19 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 处理附件鉴权请求
+%% 验证附件 URI 的访问权限，检查是否需要认证
+%% @param Method HTTP 方法
+%% @param Req0 Cowboy 请求对象
+%% @param State 状态映射
+%% @return cowboy_req:req() 更新后的请求对象
+-spec auth(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 % 获取特定附近的反馈token参数
 auth(<<"POST">>, Req0, _State) ->
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     Uri = maps:get(<<"uri">>, PostVals, ""),
-    Result = [imboy_uri:check_auth(I) || I <- binary:split(Uri, <<",">>)],
-    imboy_response:success(Req0, #{<<"uri">> => Result}, "success.").
+    Result = [elib_uri:check_auth(I) || I <- binary:split(Uri, <<",">>)],
+    elib_response:success(Req0, #{<<"uri">> => Result}, "success.").
 
 %% ===================================================================
 %% EUnit tests.

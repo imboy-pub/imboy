@@ -71,7 +71,7 @@ captcha(Req, _State) ->
 %% @return cowboy_req:req() 更新后的请求对象
 -spec login(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 login(<<"GET">>, Req0, _State) ->
-    Csrf = imboy_func:uid("csrf"),
+    Csrf = elib_id:gen("csrf"),
     imboy_cache:set(Csrf, 1),
     % cowboy_req:set_resp_cookie("csrf_token", Csrf, Req0),
     {ok, Body} = imboy_dtl:template(login_dtl, [
@@ -92,11 +92,11 @@ login(<<"GET">>, Req0, _State) ->
 %% @param State 状态映射
 %% @return cowboy_req:req() 更新后的请求对象
 login(<<"POST">>, Req0, _State) ->
-    % CurrentUid = maps:get(current_uid, State),
-    % Uid = imboy_hashids:encode(CurrentUid),
-    CryptKey = imboy_req:cookie(<<"captcha_key">>, Req0),
+    % CurrentUid = auth_ds:current_uid(State),
+    % Uid = elib_hashids:encode(CurrentUid),
+    CryptKey = elib_req:cookie(<<"captcha_key">>, Req0),
     % ?DEBUG_LOG(['CryptKey ', CryptKey]),
-    PostVals = imboy_param:post(Req0),
+    PostVals = elib_param:post(Req0),
     Captcha = maps:get(<<"captcha">>, PostVals, ""),
     Csrf = maps:get(<<"csrf_token">>, PostVals, ""),
     CsrfVal = imboy_cache:get(Csrf),
@@ -105,7 +105,7 @@ login(<<"POST">>, Req0, _State) ->
         {{ok, 1}, true} ->
             Account = maps:get(<<"account">>, PostVals, undefined),
             Pwd = maps:get(<<"pwd">>, PostVals, undefined),
-            Password = imboy_cipher:rsa_decrypt(Pwd),
+            Password = elib_cipher:rsa_decrypt(Pwd),
             % ?DEBUG_LOG([Account, 'pwd ', Password]),
             case adm_passport_logic:do_login(Account, Password) of
                 {ok, AdmUser} ->
@@ -117,7 +117,7 @@ login(<<"POST">>, Req0, _State) ->
                         , AdmUserId
                         , Req0
                         , #{path => <<"/">>}),
-                    Next = case imboy_req:cookie(<<"back_uri">>, Req0) of
+                    Next = case elib_req:cookie(<<"back_uri">>, Req0) of
                         BackUri when is_binary(BackUri) ->
                             BackUri;
                         _ ->
@@ -125,14 +125,14 @@ login(<<"POST">>, Req0, _State) ->
                             <<"/adm/">>
                     end,
                     % ?DEBUG_LOG(["NextNextNextNextNextNext", Next]),
-                    imboy_response:success(Req1, AdmUser#{next => Next}, "操作成功.");
+                    elib_response:success(Req1, AdmUser#{next => Next}, "操作成功.");
                 {error, Msg} ->
-                    imboy_response:error(Req0, Msg)
+                    elib_response:error(Req0, Msg)
             end;
         {{ok, 1}, _} ->
-            imboy_response:error(Req0, "验证码有误");
+            elib_response:error(Req0, "验证码有误");
         {_, _} ->
-            imboy_response:error(Req0, "Csrf token error.")
+            elib_response:error(Req0, "Csrf token error.")
     end.
 
 %% ===================================================================

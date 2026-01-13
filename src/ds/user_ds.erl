@@ -10,6 +10,27 @@
 -export([title/2]).
 -export([auth_webrtc_credential/2]).
 
+%% 用户数据操作导出
+-export([find_by_id/2]).
+-export([find_by_mobile/2]).
+-export([find_by_email/2]).
+-export([find_by_account/2]).
+-export([list_by_ids/2]).
+-export([insert/2]).
+-export([update/2]).
+-export([update_field/3]).
+-export([update_status/2]).
+-export([update_friends_last_seen_at/2]).
+-export([delete_by_id/1]).
+-export([delete_all_related_data/1]).
+-export([insert_and_get_id/1]).
+-export([find_id_by_email/1]).
+-export([find_id_by_mobile/1]).
+-export([update_password/2]).
+-export([update_status_in_tx/2]).
+-export([update_password_in_tx/2]).
+-export([update_allow_search/2]).
+
 -ifdef(EUNIT).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -29,10 +50,12 @@
 %% @doc 获取用户显示名称
 %% 根据用户ID获取用户的显示名称。如果用户设置了昵称则返回昵称，
 %% 否则返回用户账号。
-%% @param Uid 用户ID
+%% @param Uid 用户ID（支持 HashID 或原始数字ID）
 %% @returns 用户显示名称（昵称优先，否则返回账号）
--spec title(pos_integer()) -> binary().
-title(Uid) ->
+-spec title(pos_integer() | binary()) -> binary().
+title(Uid) when is_binary(Uid) ->
+    title(elib_hashids:decode(Uid));
+title(Uid) when is_integer(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
     case {Account, Nickname} of
@@ -45,11 +68,13 @@ title(Uid) ->
 %% @doc 获取用户显示名称和昵称（模式2）
 %% 返回用户的显示名称和昵称的组合。显示名称的规则与title/1相同，
 %% 但额外返回昵称信息供调用方使用。
-%% @param Uid 用户ID
+%% @param Uid 用户ID（支持 HashID 或原始数字ID）
 %% @param Mode 模式参数，当前只支持2
 %% @returns {显示名称, 昵称}的元组
--spec title(pos_integer(), 2) -> {binary(), binary()}.
-title(Uid, 2) ->
+-spec title(pos_integer() | binary(), 2) -> {binary(), binary()}.
+title(Uid, 2) when is_binary(Uid) ->
+    title(elib_hashids:decode(Uid), 2);
+title(Uid, 2) when is_integer(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
     Title =
@@ -71,8 +96,8 @@ webrtc_credential(Uid) ->
     Secret = config_ds:get(<<"eturnal_secret">>),
     TurnUrls = config_ds:get(<<"turn_urls">>),
     StunUrls = config_ds:get(<<"stun_urls">>),
-    UidBin = imboy_hashids:encode(Uid),
-    TmBin = integer_to_binary(imboy_dt:utc(second) + 86400),
+    UidBin = elib_hashids:encode(Uid),
+    TmBin = integer_to_binary(elib_dt:utc(second) + 86400),
     Username = <<TmBin/binary, ":", UidBin/binary>>,
     Credential =
         base64:encode(
@@ -99,6 +124,196 @@ auth_webrtc_credential(Username, Credential) ->
     Credential
     == base64:encode(
            crypto:mac(hmac, sha, Secret, Username)).
+
+%% @doc 根据ID查找用户
+-spec find_by_id(integer(), binary()) -> map().
+find_by_id(Uid, Column) ->
+    user_repo:find_by_id(Uid, Column).
+
+%% @doc 根据手机号查找用户
+-spec find_by_mobile(binary() | string(), binary()) -> map().
+find_by_mobile(Mobile, Column) ->
+    user_repo:find_by_mobile(Mobile, Column).
+
+%% @doc 根据邮箱查找用户
+-spec find_by_email(binary(), binary()) -> map().
+find_by_email(Email, Column) ->
+    user_repo:find_by_email(Email, Column).
+
+%% @doc 根据账号查找用户
+-spec find_by_account(binary() | string(), binary()) -> map().
+find_by_account(Account, Column) ->
+    user_repo:find_by_account(Account, Column).
+
+%% @doc 批量查找用户
+-spec list_by_ids([integer()], binary()) -> {ok, list(map())} | {error, any()}.
+list_by_ids(Ids, Column) ->
+    user_repo:list_by_ids(Ids, Column).
+
+%% @doc 插入新用户
+-spec insert(map(), binary()) -> {ok, any()} | {error, any()}.
+insert(Data, Returning) ->
+    Tb = user_repo:tablename(),
+    elib_pg:insert(Tb, Data, Returning).
+
+%% @doc 更新用户信息
+%% @param Uid 用户ID
+%% @param Data 包含要更新字段的map
+%% @return {ok, Count} 更新成功 | {error, Reason} 更新失败
+%% @example user_ds:update(1, #{nickname => <<"新昵称"/utf8>>}).
+-spec update(integer(), map()) -> {ok, any()} | {error, any()}.
+update(Uid, Data) ->
+    user_repo:update(Uid, Data).
+
+%% @doc 更新用户单个字段
+%% @param Uid 用户ID
+%% @param Field 字段名
+%% @param Val 字段值
+%% @return {ok, integer()} | {error, any()}
+-spec update_field(integer(), binary(), binary() | integer()) -> {ok, integer()} | {error, any()}.
+update_field(Uid, Field, Val) when is_binary(Val) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Tb, #{Field => Val}, <<"id = $1">>, [Uid]);
+update_field(Uid, Field, Val) when is_integer(Val) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Tb, #{Field => Val}, <<"id = $1">>, [Uid]).
+
+%% @doc 更新用户状态
+%% @param Uid 用户ID
+%% @param Status 状态值 (-1: 删除, 0: 禁用, 1: 启用, 2: 申请注销中)
+%% @return {ok, integer()} | {error, any()}
+-spec update_status(integer(), integer()) -> {ok, integer()} | {error, any()}.
+update_status(Uid, Status) when Status >= -1, Status =< 2 ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Tb, #{<<"status">> => Status}, <<"id = $1">>, [Uid]).
+
+%% @doc 更新指定用户的所有好友关系中的最后在线时间
+%% @param Uid 用户ID
+%% @param Timestamp 要更新的时间戳（timestamptz格式）
+%% @return ok
+%% @details 该函数会更新用户作为from_user_id和to_user_id的所有好友关系记录
+-spec update_friends_last_seen_at(integer(), binary()) -> ok.
+update_friends_last_seen_at(Uid, Timestamp) ->
+    user_repo:update_friends_last_seen_at(Uid, Timestamp).
+
+%% @doc 删除用户（通过ID）
+%% @param Uid 用户ID
+%% @return {ok, Count} | {error, Reason}
+-spec delete_by_id(integer()) -> {ok, integer()} | {error, any()}.
+delete_by_id(Uid) ->
+    Tb = user_repo:tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
+    elib_pg:execute(Sql, [Uid]).
+
+%% @doc 删除用户相关的所有数据
+%% 该函数会删除用户的所有关联数据，包括好友关系、设备信息、群组成员等。
+%% 注意：此操作是破坏性的，通常只在用户注销账户时使用。
+%% @param Uid 用户ID
+%% @return ok
+-spec delete_all_related_data(integer()) -> ok.
+delete_all_related_data(Uid) ->
+    % 使用事务删除所有相关数据
+    elib_pg:with_tx(fun(Conn) ->
+        delete_all_related_data(Conn, Uid)
+    end).
+
+%% @doc 删除用户相关的所有数据（事务版本）
+%% @private
+-spec delete_all_related_data(pid(), integer()) -> ok.
+delete_all_related_data(Conn, Uid) ->
+    % 删除用户基本信息
+    delete_from_table(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
+    delete_from_table(Conn, user_collect_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, user_denylist_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, user_setting_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, user_tag_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, <<"fts_user">>, <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, geo_people_nearby_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    % 删除好友关系
+    delete_from_table(Conn, friend_repo:tablename(), <<"from_user_id = $1">>, [Uid]),
+    delete_from_table(Conn, friend_repo:tablename(), <<"to_user_id = $1">>, [Uid]),
+    delete_from_table(Conn, <<"user_friend_category">>, <<"owner_user_id = $1">>, [Uid]),
+    % 删除群组相关（作为群主）
+    delete_from_table(Conn, group_repo:tablename(), <<"owner_uid = $1">>, [Uid]),
+    delete_from_table(Conn, group_member_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    delete_from_table(Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok.
+
+%% @doc 从表中删除数据的辅助函数
+%% @private
+-spec delete_from_table(pid(), binary(), binary(), list()) -> ok.
+delete_from_table(Conn, Table, WhereSql, Params) ->
+    Sql = <<"DELETE FROM ", Table/binary, " WHERE ", WhereSql/binary>>,
+    _ = elib_pg:execute(Conn, Sql, Params),
+    ok.
+
+%% @doc 插入用户并返回ID
+%% @param Data 用户数据map
+%% @return {ok, Id} | {error, Reason}
+-spec insert_and_get_id(map()) -> {ok, integer()} | {error, any()}.
+insert_and_get_id(Data) ->
+    Tb = user_repo:tablename(),
+    case elib_pg:insert(Tb, Data, <<"RETURNING id">>) of
+        {ok, _, [{Id}]} when is_integer(Id) ->
+            {ok, Id};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 通过邮箱查找用户ID
+%% @param Email 邮箱地址
+%% @return 用户ID，不存在时返回0
+-spec find_id_by_email(binary()) -> integer().
+find_id_by_email(Email) ->
+    Tb = user_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"id">>, #{email => Email}, #{}, 0).
+
+%% @doc 通过手机号查找用户ID
+%% @param Mobile 手机号
+%% @return 用户ID，不存在时返回0
+-spec find_id_by_mobile(binary()) -> integer().
+find_id_by_mobile(Mobile) ->
+    Tb = user_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"id">>, #{mobile => Mobile}, #{}, 0).
+
+%% @doc 更新用户密码
+%% @param Uid 用户ID
+%% @param PasswordHash 密码哈希
+%% @return {ok, Count} | {error, Reason}
+-spec update_password(integer(), binary()) -> {ok, integer()} | {error, any()}.
+update_password(Uid, PasswordHash) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Tb, #{<<"password">> => PasswordHash}, <<"id = $1">>, [Uid]).
+
+%% @doc 更新用户状态（事务版本）
+%% @param Conn 数据库连接
+%% @param Uid 用户ID
+%% @param Status 状态值
+%% @return {ok, Count} | {error, Reason}
+-spec update_status_in_tx(pid(), {integer(), integer()}) -> {ok, integer()} | {error, any()}.
+update_status_in_tx(Conn, {Uid, Status}) when Status >= -1, Status =< 2 ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Conn, Tb, #{<<"status">> => Status}, <<"id = $1">>, [Uid]).
+
+%% @doc 更新用户密码（事务版本）
+%% @param Conn 数据库连接
+%% @param Params {Uid, PasswordHash}
+%% @return {ok, Count} | {error, Reason}
+-spec update_password_in_tx(pid(), {integer(), binary()}) -> {ok, integer()} | {error, any()}.
+update_password_in_tx(Conn, {Uid, PasswordHash}) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Conn, Tb, #{<<"password">> => PasswordHash}, <<"id = $1">>, [Uid]).
+
+%% @doc 更新用户允许搜索设置
+%% @param Uid 用户ID
+%% @param AllowSearch 是否允许搜索 (1=允许, 2=不允许)
+%% @return {ok, Count} | {error, Reason}
+-spec update_allow_search(integer(), integer()) -> {ok, integer()} | {error, any()}.
+update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
+    Tb = <<"fts_user">>,
+    elib_pg:update(Tb, #{<<"allow_search">> => AllowSearch}, <<"user_id = $1">>, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

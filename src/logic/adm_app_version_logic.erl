@@ -5,6 +5,7 @@
 %%%
 
 -export ([delete/1]).
+-export ([delete_by_id/1]).
 -export ([save/1]).
 
 -export([vsn_sort/1]).
@@ -23,36 +24,29 @@
 %% @doc 保存或更新应用版本信息
 %% 根据 ID 存在与否决定是更新还是新建记录
 %% @param Data 包含版本信息的数据映射
-%% @return any() 数据库操作结果
-% adm_app_version_logic:save()
--spec save(map()) -> any().
+%% @return {ok, Result} | {error, Reason}
+%% @example adm_app_version_logic:save(#{<<"id">> => 1, <<"vsn">> => <<"1.0.0">>}).
+-spec save(map()) -> {ok, any()} | {error, any()}.
 save(Data) ->
-    % ?DEBUG_LOG([count, Count, " Where ", Where]),
-    Id = ec_cnv:to_integer(maps:get(id, Data)),
-    if Id > 0 ->
-            imboy_pg:update(
-                app_version_repo:tablename()
-                , Data#{updated_at => imboy_dt:now()}
-                , <<"id = $1">>
-                , [Id]
-            );
-        true ->
-            D2 = maps:remove(id, Data),
-            app_version_repo:add(D2#{created_at => imboy_dt:now()})
-    end.
+    % 使用 DS 层接口
+    app_version_ds:save(Data).
 
 %% @doc 删除应用版本记录
 %% 根据 WHERE 条件删除对应的版本记录
 %% @param Where 删除条件的 SQL WHERE 子句
-%% @return ok 操作成功标识
+%% @return ok
 -spec delete(binary()) -> ok.
 delete(Where) ->
-    Tb = app_version_repo:tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    % ?DEBUG_LOG([Sql]),
-    _ = imboy_pg:execute(Sql, []),
-    ok.
+    % 使用 DS 层接口
+    app_version_ds:delete(Where).
 
+%% @doc 根据 ID 删除应用版本记录（安全版本，使用参数化查询）
+%% @param Id 要删除的版本记录 ID（原始数字 ID，非 HashID）
+%% @return {ok, Affected} | {error, Reason}
+-spec delete_by_id(integer()) -> {ok, non_neg_integer()} | {error, any()}.
+delete_by_id(Id) when is_integer(Id), Id > 0 ->
+    % 使用 DS 层接口
+    app_version_ds:delete_by_id(Id).
 
 % adm_app_version_logic:vsn_sort(<<"0.2">>).
 % adm_app_version_logic:vsn_sort(<<"0.2.22">>).
@@ -79,9 +73,7 @@ vsn_sort(Vsn) ->
 
 %% ===================================================================
 %% Internal Function Definitions
-%% ===================================================================-
-
-%
+%% ===================================================================
 
 %% ===================================================================
 %% EUnit tests.

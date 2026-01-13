@@ -40,9 +40,9 @@ send_yjsms_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_dt, [passthrough, no_link]),
-        meck:new(imboy_hasher, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_dt, [passthrough, no_link]),
+        meck:new(elib_hasher, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
         meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
@@ -50,14 +50,14 @@ send_yjsms_test_() ->
                                             (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
         
         % Mock时间戳
-        meck:expect(imboy_dt, millisecond, fun() -> 1640995200000 end),
+        meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
         
         % Mock MD5计算
-        meck:expect(imboy_hasher, md5, fun(<<"test_secret">>) -> <<"hashed_secret">>;
+        meck:expect(elib_hasher, md5, fun(<<"test_secret">>) -> <<"hashed_secret">>;
                                             (Data) -> <<"md5_", Data/binary>> end),
         
         % Mock HTTP请求
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"code">> => 0, <<"message">> => <<"success">>}}
         end),
         
@@ -67,13 +67,13 @@ send_yjsms_test_() ->
             ?assertMatch({ok, <<"success">>}, Result),
             
             % 验证HTTP请求被调用
-            ?assert(meck:called(imboy_req, post, 3))
+            ?assert(meck:called(elib_req, post, 3))
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_dt),
-            meck:unload(imboy_hasher),
-            meck:unload(imboy_req)
+            meck:unload(elib_dt),
+            meck:unload(elib_hasher),
+            meck:unload(elib_req)
         end
     end).
 
@@ -82,9 +82,9 @@ send_yjsms_failure_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_dt, [passthrough, no_link]),
-        meck:new(imboy_hasher, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_dt, [passthrough, no_link]),
+        meck:new(elib_hasher, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
         meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
@@ -92,13 +92,13 @@ send_yjsms_failure_test_() ->
                                             (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
         
         % Mock时间戳
-        meck:expect(imboy_dt, millisecond, fun() -> 1640995200000 end),
+        meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
         
         % Mock MD5计算
-        meck:expect(imboy_hasher, md5, fun(_) -> <<"hashed_secret">> end),
+        meck:expect(elib_hasher, md5, fun(_) -> <<"hashed_secret">> end),
         
         % Mock HTTP请求失败
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"code">> => 1, <<"message">> => <<"账号名为空">>}}
         end),
         
@@ -108,13 +108,13 @@ send_yjsms_failure_test_() ->
             ?assertMatch({error, <<"账号名为空"/utf8>>}, Result),
             
             % 验证HTTP请求被调用
-            ?assert(meck:called(imboy_req, post, 3))
+            ?assert(meck:called(elib_req, post, 3))
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_dt),
-            meck:unload(imboy_hasher),
-            meck:unload(imboy_req)
+            meck:unload(elib_dt),
+            meck:unload(elib_hasher),
+            meck:unload(elib_req)
         end
     end).
 
@@ -123,14 +123,14 @@ send_jsms_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
         meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
                                             (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
         
         % Mock HTTP请求
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"msg_id">> => <<"123456789">>, <<"send_id">> => <<"987654321">>}}
         end),
         
@@ -140,11 +140,11 @@ send_jsms_test_() ->
             ?assertMatch(#{<<"msg_id">> := <<"123456789">>, <<"send_id">> := <<"987654321">>}, Result),
             
             % 验证HTTP请求被调用
-            ?assert(meck:called(imboy_req, post, 3))
+            ?assert(meck:called(elib_req, post, 3))
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_req)
+            meck:unload(elib_req)
         end
     end).
 
@@ -153,14 +153,14 @@ jverification_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
         meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
                                             (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
         
         % Mock HTTP请求
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"phone">> => <<"13800138000">>, <<"code">> => 8001}}
         end),
         
@@ -170,11 +170,11 @@ jverification_test_() ->
             ?assertMatch({ok, #{<<"phone">> := <<"13800138000">>, <<"code">> := 8001}}, Result),
             
             % 验证HTTP请求被调用
-            ?assert(meck:called(imboy_req, post, 3))
+            ?assert(meck:called(elib_req, post, 3))
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_req)
+            meck:unload(elib_req)
         end
     end).
 
@@ -227,9 +227,9 @@ sms_data_formatting_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_dt, [passthrough, no_link]),
-        meck:new(imboy_hasher, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_dt, [passthrough, no_link]),
+        meck:new(elib_hasher, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
         meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
@@ -237,11 +237,11 @@ sms_data_formatting_test_() ->
                                             (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
         
         % Mock时间和哈希
-        meck:expect(imboy_dt, millisecond, fun() -> 1640995200000 end),
-        meck:expect(imboy_hasher, md5, fun(_) -> <<"hashed_secret">> end),
+        meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
+        meck:expect(elib_hasher, md5, fun(_) -> <<"hashed_secret">> end),
         
         % Mock HTTP请求并捕获数据
-        meck:expect(imboy_req, post, 3, fun(URL, Data, Headers) ->
+        meck:expect(elib_req, post, 3, fun(URL, Data, Headers) ->
             ?assertEqual(<<"https://test.sms.api">>, URL),
             ?assert(is_map(Data)),
             ?assertMatch([_|_], Headers),
@@ -271,9 +271,9 @@ sms_data_formatting_test_() ->
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_dt),
-            meck:unload(imboy_hasher),
-            meck:unload(imboy_req)
+            meck:unload(elib_dt),
+            meck:unload(elib_hasher),
+            meck:unload(elib_req)
         end
     end).
 
@@ -282,9 +282,9 @@ signature_generation_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_dt, [passthrough, no_link]),
-        meck:new(imboy_hasher, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_dt, [passthrough, no_link]),
+        meck:new(elib_hasher, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
         meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
@@ -292,10 +292,10 @@ signature_generation_test_() ->
                                             (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
         
         % Mock时间戳
-        meck:expect(imboy_dt, millisecond, fun() -> 1640995200000 end),
+        meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
         
         % Mock MD5并验证签名计算
-        meck:expect(imboy_hasher, md5, fun("test_secret") -> <<"hashed_secret">>;
+        meck:expect(elib_hasher, md5, fun("test_secret") -> <<"hashed_secret">>;
                                             (Data) -> 
                                                 % 验证签名数据格式
                                                 ExpectedPattern = <<"test_account1640995200000hashed_secret">>,
@@ -303,7 +303,7 @@ signature_generation_test_() ->
                                                 <<"final_signature">> end),
         
         % Mock HTTP请求
-        meck:expect(imboy_req, post, 3, fun(_URL, Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, Data, _Headers) ->
             % 验证签名
             Sign = maps:get(<<"sign">>, Data),
             ?assertEqual(<<"final_signature">>, Sign),
@@ -317,9 +317,9 @@ signature_generation_test_() ->
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_dt),
-            meck:unload(imboy_hasher),
-            meck:unload(imboy_req)
+            meck:unload(elib_dt),
+            meck:unload(elib_hasher),
+            meck:unload(elib_req)
         end
     end).
 
@@ -328,14 +328,14 @@ http_headers_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
         meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
                                             (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
         
         % Mock HTTP请求并验证头
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, Headers) ->
             ?assertMatch([_|_], Headers),
             
             % 验证Content-Type头
@@ -358,7 +358,7 @@ http_headers_test_() ->
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_req)
+            meck:unload(elib_req)
         end
     end).
 
@@ -367,20 +367,20 @@ error_handling_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 设置Mock
         meck:new(config_ds, [passthrough, no_link]),
-        meck:new(imboy_req, [passthrough, no_link]),
+        meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
         meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
                                             (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
         
         % Mock HTTP错误
-        meck:expect(imboy_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {error, timeout}
         end),
         
         try
             % 测试HTTP错误处理
-            % 注意：这里可能会抛出异常，取决于imboy_req:post的实现
+            % 注意：这里可能会抛出异常，取决于elib_req:post的实现
             Result = (catch imboy_sms:send(?TEST_MOBILE, ?TEST_CODE, <<"jsms">>)),
             case Result of
                 {'EXIT', _} -> ok;  % 预期的异常
@@ -390,6 +390,6 @@ error_handling_test_() ->
         after
             % 清理Mock
             meck:unload(config_ds),
-            meck:unload(imboy_req)
+            meck:unload(elib_req)
         end
     end).
