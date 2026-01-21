@@ -57,21 +57,18 @@ member_uids_empty_when_no_members_test_() ->
 
 check_avatar_returns_boolean_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % check_avatar 需要配置服务
         AvatarUrl = <<"https://example.com/avatar.jpg">>,
-        ?assertEqual(<<"https://example.com/avatar.jpg">>, AvatarUrl),
-        % 精确断言：验证URL格式和长度
-        ?assert(byte_size(AvatarUrl) >= 10),
-        ?assert(binary:match(AvatarUrl, <<"http">>) =/= nomatch),
-        ?assert(binary:match(AvatarUrl, <<".">>) =/= nomatch)
+        Result = group_ds:check_avatar(AvatarUrl),
+        % 验证返回值类型
+        ?assert(is_binary(Result) orelse is_boolean(Result))
     end).
 
 check_avatar_empty_url_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % check_avatar 需要配置服务
         AvatarUrl = <<>>,
-        ?assertEqual(<<>>, AvatarUrl),
-        ?assert(byte_size(AvatarUrl) =:= 0)
+        Result = group_ds:check_avatar(AvatarUrl),
+        % 验证空URL的处理
+        ?assert(is_binary(Result) orelse is_boolean(Result))
     end).
 
 %% ===================================================================
@@ -107,4 +104,81 @@ dissolve_removes_group_test_() ->
         Gid = 999999,
         Result = group_ds:dissolve(Gid),
         ?assertMatch({ok, UpdatedCount} when is_integer(UpdatedCount), Result)
+    end).
+
+%% ===================================================================
+%% 边界条件测试
+%% ===================================================================
+
+is_member_with_same_uid_and_gid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 1,
+        Gid = 1,
+        Result = group_ds:is_member(Uid, Gid),
+        ?assert(is_boolean(Result))
+    end).
+
+is_member_with_zero_gid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 1,
+        Gid = 0,
+        Result = group_ds:is_member(Uid, Gid),
+        ?assert(is_boolean(Result))
+    end).
+
+member_uids_with_zero_gid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Gid = 0,
+        Result = group_ds:member_uids(Gid),
+        ?assertEqual([], Result)
+    end).
+
+member_uids_with_negative_gid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Gid = -1,
+        Result = group_ds:member_uids(Gid),
+        ?assertEqual([], Result)
+    end).
+
+join_with_invalid_uid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 0,
+        Gid = 1,
+        Result = group_ds:join(Uid, Gid),
+        case Result of
+            {ok, _} -> ok;
+            {error, _} -> ok
+        end
+    end).
+
+leave_with_non_member_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 999999,
+        Gid = 999999,
+        Result = group_ds:leave(Uid, Gid),
+        case Result of
+            {ok, _} -> ok;
+            {error, _} -> ok
+        end
+    end).
+
+dissolve_with_nonexistent_group_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Gid = 0,
+        Result = group_ds:dissolve(Gid),
+        case Result of
+            {ok, _} -> ok;
+            {error, _} -> ok
+        end
+    end).
+
+%% ===================================================================
+%% UTF-8 编码测试
+%% ===================================================================
+
+check_avatar_with_unicode_url_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        AvatarUrl = <<"https://example.com/头像.jpg"/utf8>>,
+        Result = group_ds:check_avatar(AvatarUrl),
+        ?assert(is_binary(Result) orelse is_boolean(Result))
     end).

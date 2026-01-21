@@ -98,7 +98,7 @@ leave_internal(Conn, Uid, Gid, CurrentUid) ->
 %% ===================================================================
 %% alias 设置群成员昵称/别名
 %% ===================================================================
--spec alias(integer(), integer(), binary(), binary()) -> ok.
+-spec alias(integer(), integer(), binary(), binary()) -> ok | {error, term()}.
 alias(Uid, Gid, Alias, Description) ->
     % 使用 DS 层接口
     case group_member_ds:alias(Uid, Gid, Alias, Description) of

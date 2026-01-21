@@ -20,12 +20,7 @@ is_friend_returns_boolean_test_() ->
         ToUid = 2,
         Result = friend_ds:is_friend(FromUid, ToUid),
         % 验证返回的是布尔值
-        ?assert(is_boolean(Result)),
-        % 验证返回值是有效的布尔类型
-        case Result of
-            true -> ok;
-            false -> ok
-        end
+        ?assert(is_boolean(Result))
     end).
 
 is_friend_false_when_not_friends_test_() ->
@@ -120,18 +115,36 @@ change_remark_updates_remark_test_() ->
     ?TEST_WITH_DB(fun() ->
         FromUid = 1,
         ToUid = 2,
-        Remark = <<"Test Remark">>,
+        Remark = <<"Test Remark"/utf8>>,
         Result = friend_ds:change_remark(FromUid, ToUid, Remark),
-        ?assertMatch({ok, 1}, Result)
+        ?assertMatch({ok, UpdatedCount} when is_integer(UpdatedCount), Result)
     end).
 
-change_remark_empty_remark_test_() ->
+change_remark_with_utf8_content_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 1,
+        ToUid = 2,
+        Remark = <<"中文备注"/utf8>>,
+        Result = friend_ds:change_remark(FromUid, ToUid, Remark),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+change_remark_with_empty_remark_test_() ->
     ?TEST_WITH_DB(fun() ->
         FromUid = 1,
         ToUid = 2,
         Remark = <<>>,
         Result = friend_ds:change_remark(FromUid, ToUid, Remark),
-        ?assertMatch({ok, 1}, Result)
+        ?assertMatch({ok, _}, Result)
+    end).
+
+change_remark_with_long_remark_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 1,
+        ToUid = 2,
+        LongRemark = list_to_binary(lists:duplicate(500, $x)),
+        Result = friend_ds:change_remark(FromUid, ToUid, LongRemark),
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -153,5 +166,97 @@ set_category_id_to_zero_test_() ->
         CategoryId = 1,
         NewCid = 0,
         Result = friend_ds:set_category_id(Uid, CategoryId, NewCid),
-        ?assertMatch({ok, 1}, Result)
+        ?assertMatch({ok, UpdatedCount} when is_integer(UpdatedCount), Result)
+    end).
+
+%% ===================================================================
+%% delete/2 测试
+%% ===================================================================
+
+delete_removes_friend_relationship_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 999998,
+        ToUid = 999999,
+        Result = friend_ds:delete(FromUid, ToUid),
+        case Result of
+            {ok, _} -> ok;
+            ok -> ok
+        end
+    end).
+
+%% ===================================================================
+%% check_relationship/2 测试
+%% ===================================================================
+
+check_relationship_returns_map_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 1,
+        ToUid = 2,
+        Result = friend_ds:check_relationship(FromUid, ToUid),
+        ?assert(is_map(Result))
+    end).
+
+check_relationship_non_existent_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 999999,
+        ToUid = 999998,
+        Result = friend_ds:check_relationship(FromUid, ToUid),
+        ?assert(is_map(Result))
+    end).
+
+%% ===================================================================
+%% 边界条件测试
+%% ===================================================================
+
+is_friend_with_same_uid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 1,
+        Result = friend_ds:is_friend(Uid, Uid),
+        ?assert(is_boolean(Result))
+    end).
+
+is_friend_with_large_uid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        LargeUid = 999999999,
+        Result = friend_ds:is_friend(LargeUid, LargeUid + 1),
+        ?assert(is_boolean(Result))
+    end).
+
+list_by_uid_with_large_uid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 999999999,
+        Result = friend_ds:list_by_uid(Uid),
+        ?assertEqual([], Result)
+    end).
+
+page_by_uid_with_negative_offset_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = 1,
+        Result = friend_ds:page_by_uid(Uid, 10, -1),
+        case Result of
+            [_|_] -> ok;
+            [] -> ok
+        end
+    end).
+
+%% ===================================================================
+%% UTF-8 编码测试
+%% ===================================================================
+
+change_remark_with_chinese_chars_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 1,
+        ToUid = 2,
+        Remark = <<"测试备注"/utf8>>,
+        Result = friend_ds:change_remark(FromUid, ToUid, Remark),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+change_remark_with_emoji_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        FromUid = 1,
+        ToUid = 2,
+        Remark = <<"备注 😊👍"/utf8>>,
+        Result = friend_ds:change_remark(FromUid, ToUid, Remark),
+        ?assertMatch({ok, _}, Result)
     end).

@@ -29,7 +29,7 @@
 %%     risky_operation()
 %% end).
 %% ```
--spec with_retry(fun()) -> {ok, any()} | {error, any()}.
+-spec with_retry(fun(() -> T)) -> {ok, T} | {error, any()} when T :: term().
 with_retry(Fun) ->
     with_retry(Fun, 3, 1000, exponential).
 
@@ -39,7 +39,7 @@ with_retry(Fun) ->
 %% ```
 %% elib_retry:with_retry(Fun, 5).
 %% ```
--spec with_retry(fun(), non_neg_integer()) -> {ok, any()} | {error, any()}.
+-spec with_retry(fun(() -> T), non_neg_integer()) -> {ok, T} | {error, any()} when T :: term().
 with_retry(Fun, RetryCount) ->
     with_retry(Fun, RetryCount, 1000, exponential).
 
@@ -49,7 +49,7 @@ with_retry(Fun, RetryCount) ->
 %% ```
 %% elib_retry:with_retry(Fun, 3, 2000).
 %% ```
--spec with_retry(fun(), non_neg_integer(), non_neg_integer()) -> {ok, any()} | {error, any()}.
+-spec with_retry(fun(() -> T), non_neg_integer(), non_neg_integer()) -> {ok, T} | {error, any()} when T :: term().
 with_retry(Fun, RetryCount, DelayMs) ->
     with_retry(Fun, RetryCount, DelayMs, exponential).
 
@@ -64,8 +64,8 @@ with_retry(Fun, RetryCount, DelayMs) ->
 %% ```
 %% elib_retry:with_retry(Fun, 3, 1000, exponential).
 %% ```
--spec with_retry(fun(), non_neg_integer(), non_neg_integer(), fixed | exponential | linear) ->
-          {ok, any()} | {error, any()}.
+-spec with_retry(fun(() -> T), non_neg_integer(), non_neg_integer(), fixed | exponential | linear) ->
+          {ok, T} | {error, any()} when T :: term().
 with_retry(Fun, RetryCount, DelayMs, BackoffType) ->
     do_retry(Fun, RetryCount, DelayMs, BackoffType, 1).
 
@@ -77,8 +77,8 @@ with_retry(Fun, RetryCount, DelayMs, BackoffType) ->
 %% ```
 %% elib_retry:with_retry_and_timeout(Fun, 5000, 3).
 %% ```
--spec with_retry_and_timeout(fun(), non_neg_integer(), non_neg_integer()) ->
-          {ok, any()} | {error, any()}.
+-spec with_retry_and_timeout(fun(() -> T), non_neg_integer(), non_neg_integer()) ->
+          {ok, T} | {error, any()} when T :: term().
 with_retry_and_timeout(Fun, TimeoutMs, RetryCount) ->
     with_retry_and_timeout(Fun, TimeoutMs, RetryCount, 1000).
 
@@ -88,8 +88,8 @@ with_retry_and_timeout(Fun, TimeoutMs, RetryCount) ->
 %% ```
 %% elib_retry:with_retry_and_timeout(Fun, 5000, 3, 2000).
 %% ```
--spec with_retry_and_timeout(fun(), non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
-          {ok, any()} | {error, any()}.
+-spec with_retry_and_timeout(fun(() -> T), non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
+          {ok, T} | {error, any()} when T :: term().
 with_retry_and_timeout(Fun, TimeoutMs, RetryCount, DelayMs) ->
     do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, exponential, 1).
 

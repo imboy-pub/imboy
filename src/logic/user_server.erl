@@ -80,15 +80,6 @@ handle_cast({login_success, Uid, PostVals}, State) ->
 
     % 记录设备信息 END
     {noreply, State, hibernate};
-% 用户登录成功后的逻辑处理
-handle_cast({ws_online, Uid, _Pid, _DType, DID}, State) ->
-    % 更新 最近活跃时间
-    Set = <<"last_active_at = $1::timestamptz">>,
-    SetArgs = [elib_dt:now()],
-    _ = user_device_ds:update_by_did(Uid, DID, Set, SetArgs),
-    % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息
-    _ = message_ds:check_and_notify_offline_msgs(Uid),
-    {noreply, State, hibernate};
 handle_cast({notice_friend, Uid, ToState}, State) ->
     % ?DEBUG_LOG([notice_friend, Uid, ToState]),
     _ = notice_friend(Uid, ToState),
@@ -100,12 +91,19 @@ handle_cast({offline, Uid, _Pid, _DID}, State) ->
 handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
     _ = cancel(Uid, CreatedAt, Opt),
     {noreply, State, hibernate};
-handle_cast({online, Uid, _Pid, DID}, State) ->
-    % ?DEBUG_LOG([online, Uid, Pid, State, DID]),
+handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
+    Now = elib_dt:now(),
+
+    % 1. 更新设备活跃时间（合并原 ws_online 逻辑）
+    Set = <<"last_active_at = $1::timestamptz">>,
+    _ = user_device_ds:update_by_did(Uid, DID, Set, [Now]),
+
+    % 2. 检查离线消息（合并原 ws_online 逻辑）
+    _ = message_ds:check_and_notify_offline_msgs(Uid),
+
+    % 3. 在其他设备登录了（原 online 逻辑）
     DName = user_device_logic:device_name(Uid, DID),
-    % 在其他设备登录了
     MsgId = elib_id:gen("logged_another_device"),
-    %% v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"logged_another_device">>,
     Payload =
         #{<<"did">> => DID,
@@ -116,11 +114,10 @@ handle_cast({online, Uid, _Pid, DID}, State) ->
     Msg2 = jsone:encode(Msg, [native_utf8]),
     % 给自己的其他设备发生消息
     _ = message_ds:send_next(Uid, MsgId, Msg2, MsLi, [DID], true),
-    % end
-    % 检查上线通知好友
+
+    % 4. 检查上线通知好友（原 online 逻辑）
     case user_setting_ds:chat_state_hide(Uid) of
         false ->
-            % 上线通知好友
             notice_friend(Uid, <<"online">>),
             ok;
         true ->
@@ -165,8 +162,7 @@ cast_notice_friend(CurrentUid, ChatState) ->
 %% @returns ok
 -spec cast_online(pos_integer(), pid(), binary(), binary()) -> ok.
 cast_online(Uid, Pid, DID, DType) ->
-    gen_server:cast(?MODULE, {ws_online, Uid, Pid, DType, DID}),
-    gen_server:cast(?MODULE, {online, Uid, Pid, DID}),
+    gen_server:cast(?MODULE, {online, Uid, Pid, DType, DID}),
     ok.
 
 %% @doc 用户下线异步处理

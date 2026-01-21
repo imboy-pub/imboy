@@ -15,7 +15,7 @@
 %% ===================================================================
 
 add_user_to_denylist_success_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'add', 3, fun(_Uid, _DeniedUserId, _Now) -> ok end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -34,7 +34,7 @@ add_user_to_denylist_success_test_() ->
     end).
 
 add_user_to_denylist_with_same_user_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'add', 3, fun(_Uid, _DeniedUserId, _Now) -> ok end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -57,7 +57,7 @@ add_user_to_denylist_with_same_user_test_() ->
 %% ===================================================================
 
 remove_user_from_denylist_success_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'remove', 2, fun(_Uid, _DeniedUserId) -> ok end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -72,7 +72,7 @@ remove_user_from_denylist_success_test_() ->
     end).
 
 remove_nonexistent_user_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'remove', 2, fun(_Uid, _DeniedUserId) -> ok end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -91,7 +91,7 @@ remove_nonexistent_user_test_() ->
 %% ===================================================================
 
 check_user_in_denylist_true_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'in_denylist', 2, fun(_Uid, _DeniedUserId) -> 1 end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -106,7 +106,7 @@ check_user_in_denylist_true_test_() ->
     end).
 
 check_user_not_in_denylist_false_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'in_denylist', 2, fun(_Uid, _DeniedUserId) -> 0 end}
     ], fun() ->
         ?WITH_MECK(imboy_cache, [
@@ -125,10 +125,10 @@ check_user_not_in_denylist_false_test_() ->
 %% ===================================================================
 
 page_denylist_with_results_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'count_for_uid', 1, fun(_Uid) -> 5 end}
     ], fun() ->
-        ?WITH_MECK(user_denylist_repo, [
+        ?WITH_MECK(user_denylist_ds, [
             {'page_for_uid', 3, fun(_Uid, _Size, _Offset) ->
                 {ok, [<<"id">>, <<"uid">>, <<"denied_uid">>, <<"created_at">>], [
                     {1, 12345, 67890, 1640995200},
@@ -155,10 +155,10 @@ page_denylist_with_results_test_() ->
     end).
 
 page_denylist_empty_results_test_() ->
-    ?WITH_MECK(user_denylist_repo, [
+    ?WITH_MECK(user_denylist_ds, [
         {'count_for_uid', 1, fun(_Uid) -> 0 end}
     ], fun() ->
-        ?WITH_MECK(user_denylist_repo, [
+        ?WITH_MECK(user_denylist_ds, [
             {'page_for_uid', 3, fun(_Uid, _Size, _Offset) ->
                 {ok, [<<"id">>, <<"uid">>, <<"denied_uid">>, <<"created_at">>], []}
             end}

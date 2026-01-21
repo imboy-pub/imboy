@@ -332,6 +332,69 @@ async_long_timeout_test() ->
         ?assert(false, timeout)
     end.
 
+%% @doc 测试负数重试次数（应使用默认值）
+async_retry_negative_count_test() ->
+    % 负数重试次数应该被处理或使用默认值
+    CounterRef = make_ref(),
+    ets:new(CounterRef, [set, private, named_table]),
+
+    Pid = elib_async:async_retry(fun() ->
+        ets:insert(CounterRef, {executed, true})
+    end, -1, 10),
+    ?assert(is_pid(Pid)),
+
+    receive
+    after 500 -> ok  % 等待异步完成
+    end,
+
+    ?assertEqual([{executed, true}], ets:lookup(CounterRef, executed)),
+    ets:delete(CounterRef).
+
+%% @doc 测试零延迟重试
+async_retry_zero_delay_test() ->
+    Parent = self(),
+    CounterRef = make_ref(),
+    ets:new(CounterRef, [set, private, named_table]),
+
+    Fun = fun() ->
+        Current = case ets:lookup(CounterRef, count) of
+            [] -> 0;
+            [{count, N}] -> N
+        end,
+        ets:insert(CounterRef, {count, Current + 1}),
+
+        case Current of
+            0 -> error(first_fail);
+            _ -> success
+        end
+    end,
+
+    Pid = elib_async:async_retry(Fun, 3, 0),
+    ?assert(is_pid(Pid)),
+
+    receive
+    after 500 -> ok  % 等待异步完成
+    end,
+
+    ?assertEqual(2, ets:lookup_element(CounterRef, count, 2)),
+    ets:delete(CounterRef).
+
+%% @doc 测试非常大的超时值
+async_very_large_timeout_test() ->
+    Parent = self(),
+
+    Pid = elib_async:async(fun() ->
+        Parent ! {result, quick}
+    end, 999999999),  % 非常大的超时值
+
+    ?assert(is_pid(Pid)),
+
+    receive
+        {result, quick} -> ok
+    after 100 ->
+        ok  % 应该快速完成
+    end.
+
 %%%===================================================================
 %%% 并发测试
 %%%===================================================================

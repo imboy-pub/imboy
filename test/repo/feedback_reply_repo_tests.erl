@@ -7,44 +7,29 @@
 %%% feedback_reply_repo 模块的 EUnit 测试
 %%%
 %%% 目标：验证反馈回复数据访问层功能
-%%% 覆盖：回复查询、创建
+%%% 覆盖：表名获取
 %%%===================================================================
 
+%% ===================================================================
+%% tablename/0 测试
+%% ===================================================================
+
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECK(elib_pg_sql, [
+        {'public_tablename', 1, fun(_Table) -> <<"public.feedback_reply">> end}
+    ], fun() ->
         Result = feedback_reply_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.feedback_reply">>, Result)
     end).
 
-find_replies_by_feedback_id_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        FeedbackId = <<"feedback123">>,
-        % 测试函数调用不会崩溃
-        Result = feedback_reply_repo:find_by_feedback_id(FeedbackId),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Replies} ->
-                ?assert(is_list(Replies));
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
-    end).
-
-create_reply_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        FeedbackId = <<"feedback123">>,
-        Content = <<"Reply content">>,
-        AdminUid = 1,
-        % 测试函数调用不会崩溃
-        Result = feedback_reply_repo:create(FeedbackId, Content, AdminUid),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Reply} ->
-                ?assert(is_map(Reply));
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
-    end).
+%% ===================================================================
+%% 注意
+%% ===================================================================
+%% feedback_reply_repo 目前只导出了 tablename/0 函数
+%% 其他功能函数尚未实现，因此只需测试 tablename
+%%
+%% 当添加新功能时，请在此添加对应的测试：
+%% - add/4 或 save/4 - 添加回复
+%% - find_by_feedback_id/1 - 查询反馈的所有回复
+%% - delete/1 - 删除回复
+%%===================================================================

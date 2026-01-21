@@ -7,18 +7,9 @@
 
 -spec user_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 user_keys(CurrentUid, TargetUid) when is_integer(CurrentUid), is_integer(TargetUid) ->
-    case CurrentUid =:= TargetUid of
-        true ->
-            user_keys_payload(TargetUid);
-        false ->
-            {IsFriend, InDenylist} = friend_ds:check_relationship(TargetUid, CurrentUid),
-            case {IsFriend, InDenylist} of
-                {true, 0} ->
-                    user_keys_payload(TargetUid);
-                _ ->
-                    {error, <<"forbidden">>, 403}
-            end
-    end.
+    % 任何登录用户都可以获取其他用户的公钥（用于端到端加密）
+    % 公钥本身不包含敏感信息，可以公开获取
+    user_keys_payload(TargetUid).
 
 -spec group_member_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) ->

@@ -119,7 +119,7 @@ list_by_uid_default_limit_test_() ->
         UID = 1,
         Column = <<"id">>,
         Result = friend_repo:list_by_uid(UID, Column),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, FriendList} = Result,
         % 验证返回的好友列表
         ?assert(length(FriendList) >= 2),

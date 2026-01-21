@@ -48,15 +48,15 @@ md5(Str) ->
     iolist_to_binary([ io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig) ]).
 
 % elib_hasher:hmac_sha512("", "").
--spec hmac_sha512(binary(), any()) -> binary().
+-spec hmac_sha512(binary(), binary() | iolist()) -> binary().
 hmac_sha512(PlainText, Key) ->
     % Bin = crypto:macN(hmac, sha512, Key, PlainText, ?SHA_256_BLOCKSIZE),
     Bin = crypto:mac(hmac, sha512, Key, PlainText),
     base64:encode(Bin).
 
 
-% elib_hasher:hmac_sha512("", "").
--spec hmac_sha256(binary(), any()) -> binary().
+% elib_hasher:hmac_sha256("", "").
+-spec hmac_sha256(binary(), binary() | iolist()) -> binary().
 hmac_sha256(PlainText, Key) ->
     Bin = crypto:mac(hmac, sha256, Key, PlainText),
     base64:encode(Bin).

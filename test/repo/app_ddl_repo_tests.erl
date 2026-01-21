@@ -43,7 +43,7 @@ add_valid_data_test_() ->
             created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, InsertResult} = Result,
         % 验证返回的插入结果包含必要信息
         case InsertResult of
@@ -51,7 +51,7 @@ add_valid_data_test_() ->
                 ?assert(InsertId > 0);
             InsertMap when is_map(InsertMap) ->
                 #{<<"id">> := Id} = InsertMap,
-                ?ASSERT_MATCH(#{<<"app_key">> := <<"test_app">>, <<"version">> := <<"1.0.0">>}, InsertMap),
+                ?assertMatch(#{<<"app_key">> := <<"test_app">>, <<"version">> := <<"1.0.0">>}, InsertMap),
                 ?assert(Id > 0);
             _ ->
                 ?assert(false, "Expected positive integer or map with id field")
@@ -78,7 +78,7 @@ add_with_required_fields_test_() ->
             created_at => elib_dt:now()
         },
         Result = app_ddl_repo:add(Data),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, InsertResult} = Result,
         % 验证最小字段集合也能成功插入
         case InsertResult of
@@ -86,7 +86,7 @@ add_with_required_fields_test_() ->
                 ?assert(InsertId > 0);
             InsertMap when is_map(InsertMap) ->
                 #{<<"id">> := Id} = InsertMap,
-                ?ASSERT_MATCH(#{<<"app_key">> := <<"minimal_app">>, <<"version">> := <<"1.0">>}, InsertMap),
+                ?assertMatch(#{<<"app_key">> := <<"minimal_app">>, <<"version">> := <<"1.0">>}, InsertMap),
                 ?assert(Id > 0);
             _ ->
                 ?assert(false, "Expected positive integer or map with id field")
@@ -105,7 +105,7 @@ add_with_timestamp_field_test_() ->
         Result = app_ddl_repo:add(Data),
         case Result of
             {ok, Ddl} -> 
-                ?ASSERT_MATCH(#{<<"id">> := _, <<"app_key">> := <<"test_app">>, <<"version">> := <<"2.0">>}, Ddl);
+                ?assertMatch(#{<<"id">> := _, <<"app_key">> := <<"test_app">>, <<"version">> := <<"2.0">>}, Ddl);
             {error, Reason} -> 
                 ?assert(is_atom(Reason), "Expected atom error reason");
             _ -> ?assert(false, "Unexpected result type")
@@ -124,7 +124,7 @@ add_with_large_ddl_sql_test_() ->
         Result = app_ddl_repo:add(Data),
         case Result of
             {ok, Ddl} -> 
-                ?ASSERT_MATCH(#{<<"id">> := _, <<"app_key">> := <<"large_sql_app">>, <<"status">> := 0}, Ddl);
+                ?assertMatch(#{<<"id">> := _, <<"app_key">> := <<"large_sql_app">>, <<"status">> := 0}, Ddl);
             {error, Reason} -> 
                 ?assert(is_atom(Reason), "Expected atom error reason");
             _ -> ?assert(false, "Unexpected result type")
@@ -142,7 +142,7 @@ add_with_status_zero_test_() ->
         Result = app_ddl_repo:add(Data),
         case Result of
             {ok, Ddl} -> 
-                ?ASSERT_MATCH(#{<<"id">> := _, <<"app_key">> := <<"status_zero_app">>, <<"status">> := 0}, Ddl);
+                ?assertMatch(#{<<"id">> := _, <<"app_key">> := <<"status_zero_app">>, <<"status">> := 0}, Ddl);
             {error, Reason} -> 
                 ?assert(is_atom(Reason), "Expected atom error reason");
             _ -> ?assert(false, "Unexpected result type")
@@ -160,7 +160,7 @@ add_with_negative_status_test_() ->
         Result = app_ddl_repo:add(Data),
         case Result of
             {ok, Ddl} -> 
-                ?ASSERT_MATCH(#{<<"id">> := _, <<"app_key">> := <<"negative_status_app">>, <<"status">> := -1}, Ddl);
+                ?assertMatch(#{<<"id">> := _, <<"app_key">> := <<"negative_status_app">>, <<"status">> := -1}, Ddl);
             {error, Reason} -> 
                 ?assert(is_atom(Reason), "Expected atom error reason");
             _ -> ?assert(false, "Unexpected result type")

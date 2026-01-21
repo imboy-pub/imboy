@@ -70,12 +70,12 @@
 %% 统一的安全封装：带重试 + 异常捕获 + 连接回收
 %% ===================================================================
 %% @doc 简化版本的with_conn，使用默认重试参数
--spec with_conn(fun((epgsql:connection()) -> term())) ->
-          term() | {error, term()}.
+-spec with_conn(fun((epgsql:connection()) -> R)) ->
+          R | {error, term()} when R :: term().
 with_conn(Fun) ->
     with_conn(Fun, ?DEFAULT_TIMEOUT).
--spec with_conn(fun((epgsql:connection()) -> term()), pos_integer()) ->
-          term() | {error, term()}.
+-spec with_conn(fun((epgsql:connection()) -> R), pos_integer()) ->
+          R | {error, term()} when R :: term().
 with_conn(Fun, Timeout) ->
     % Driver = config_ds:env(sql_driver),
     with_conn(pgsql, Fun, 3, Timeout).
@@ -126,13 +126,13 @@ with_conn(Driver, Fun, Retries, Delay) ->
 
 %% @doc 事务封装
 %% @deprecated 请使用 elib_pg:with_tx/1,2 替代
--spec with_tx(fun((epgsql:connection() | pid()) -> term())) -> term() | {rollback, term()}.
+-spec with_tx(fun((epgsql:connection() | pid()) -> R)) -> R | {rollback, term()} when R :: term().
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
 
--spec with_tx(fun((epgsql:connection() | pid()) -> term()), epgsql:transaction_opts()) ->
-          term() | {rollback, term()} | no_return().
+-spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
+          R | {rollback, term()} | no_return() when R :: term().
 with_tx(F, Opts0) ->
     with_tx(F, Opts0, 3, 200). % 最大重试3次，初始延迟100毫秒
 
@@ -140,7 +140,7 @@ with_tx(F, Opts0) ->
 %% ===================================================================
 %% 事务封装
 %% ===================================================================
--spec with_tx(fun((epgsql:connection() | pid()) -> term()), list(), non_neg_integer(), non_neg_integer()) -> term().
+-spec with_tx(fun((epgsql:connection() | pid()) -> R), list(), non_neg_integer(), non_neg_integer()) -> R when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
     with_conn(Driver,
@@ -155,14 +155,14 @@ with_tx(F, Opts0, RetriesLeft, Delay) ->
 %% 执行无返回行的 SQL（INSERT / UPDATE / DELETE）
 %%--------------------------------------------------------------------
 -spec execute(iodata(), [term()]) ->
-    {ok, term()} | {ok, term(), term()} | {error, term()}.
+    {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
 execute(Sql, Params) ->
     with_conn(fun(C) ->
         execute(C, Sql, Params)
     end, ?DEFAULT_TIMEOUT).
 
 -spec execute(epgsql:connection(), iodata(), [term()]) ->
-    {ok, term()} | {ok, term(), term()} | {error, term()}.
+    {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
 execute(Conn, Sql, Params) ->
     _ = ?DEBUG_LOG(io:format("sql: ~s\n", [Sql])),
     % ?DEBUG_LOG(io:format("Params: ~p\n", [Params])),
@@ -228,8 +228,8 @@ query(C, Sql, Params) ->
 one(Sql, Params) ->
     one(Sql, Params, #{}).
 
--spec one(iodata(), [term()], term()) ->
-    {ok, map() | undefined} | {error, term()}.
+-spec one(iodata(), [term()], D) ->
+    {ok, map() | D} | {error, term()} when D :: term().
 one(Sql, Params, Default) ->
     case query(Sql, Params) of
         {ok, [Row | _Rest]} -> {ok, Row};
@@ -292,14 +292,14 @@ pluck(Table, Field, Where, Opts, Default) ->
 %% 便捷方法：直接返回值或默认值，忽略错误
 %% 适用于：配置获取、计数查询等容错性高的场景
 %%--------------------------------------------------------------------
--spec pluck_value(binary(), binary(), map(), term()) -> term().
+-spec pluck_value(binary(), binary(), map(), D) -> D when D :: term().
 pluck_value(Table, Field, Where, Default) ->
     pluck_value(Table, Field, Where, #{limit => 1}, Default).
 
 %% @doc
 %% 便捷方法：直接返回值或默认值，忽略错误
 %% 适用于：配置获取、计数查询等容错性高的场景
--spec pluck_value(binary(), binary(), map(), map(), term()) -> term().
+-spec pluck_value(binary(), binary(), map(), map(), D) -> D when D :: term().
 pluck_value(Table, Field, Where, Opts, Default) ->
     case pluck(Table, Field, Where, Opts, Default) of
         {ok, Value} -> Value;

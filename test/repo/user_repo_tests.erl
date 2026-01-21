@@ -57,7 +57,7 @@ find_by_email_existing_test_() ->
         Result = user_repo:find_by_email(Email, Column),
         
         % 验证返回结果结构
-        ?ASSERT_MATCH(#{<<"id">> := 12345}, Result),
+        ?assertMatch(#{<<"id">> := 12345}, Result),
         ?assert(maps:get(<<"id">>, Result) > 0),
         
         % 验证 Mock 被正确调用
@@ -79,7 +79,7 @@ find_by_email_not_existing_test_() ->
         Result = user_repo:find_by_email(Email, Column),
         
         % 验证返回空结果
-        ?ASSERT_EQUAL(#{}, Result),
+        ?assertEqual(#{}, Result),
         ?assertEqual(0, maps:size(Result)),
         
         % 验证 Mock 被正确调用

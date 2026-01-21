@@ -174,14 +174,16 @@ change(_Uid, _Action, _KindId, _PostVals) ->
 %% ===================================================================
 
 %% @doc 确保参数为 map 类型
--spec ensure_map(any()) -> map().
+%% @private
+-spec ensure_map(any()) -> map() | {}.
 ensure_map(Map) when is_map(Map) ->
     Map;
 ensure_map(_) ->
     #{}.
 
 %% @doc 获取附件信息
--spec get_info(integer(), binary(), binary(), map()) -> {map(), binary()} | {map(), ok}.
+%% @private
+-spec get_info(non_neg_integer(), binary(), binary(), map()) -> {map(), binary()} | {map(), ok}.
 get_info(0, MimeType, Key, Info) ->
     PayloadIn = maps:get(<<"payload">>, Info, #{}),
     Payload0 = if

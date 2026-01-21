@@ -385,25 +385,37 @@ HTTP/1.1 1000 (Normal Closure)
 
 ## 消息类型定义
 
+### 基础消息类型 (msg_type)
+
+| msg_type | 说明 | Payload 示例 | 消息UI |
+|----------|------|-------------|-------------------|
+| `text` | 文本消息 | `{"content": "Hello"}` | flyer_chat_text_message |
+| `textStream` | 文本流消息 | `{"content": "Hello"}` | flyer_chat_text_stream_message |
+| `image` | 图片消息 | `{"url": "...", "width": 1024, "height": 768, , "thumb": "..."}` | flyer_chat_image_message |
+| `imageMulti` | 多图片消息 | `{"url": "...", "width": 1024, "height": 768, , "thumb": "..."}` | flyer_chat_image_message or ImageMultiMessageBuilder |
+| `file` | 文件消息 | `{"url": "...", "name": "doc.pdf", "size": 102400}` | flyer_chat_file_message |
+| `location` | 位置消息 | `{"latitude": 39.9, "longitude": 116.4, "address": "..."}` | flyer_chat_location_message |
+| `audio` | 语音消息 | `{"url": "...", "duration": 30}` | flyer_chat_audio_message or AudioMessageBuilder |
+| `video` | 视频消息 | `{"url": "...", "duration": 60, "thumb": "..."}` | flyer_chat_video_message or VideoMessageBuilder|
+| `system` | 系统消息 | {} |  flyer_chat_system_message |
+| `quote` | 引用消息 | {} |  QuoteMessageBuilder |
+| `revoked` | 撤回消息 | {} |  RevokedMessageBuilder |
+| `visitCard` | 个人名片消息 | {} |  VisitCardMessageBuilder |
+| `webrtcAudio` | webrtc 音频消息 | {} |  WebRTCMessageBuilder or WebRTCAudioMessageBuilder |
+| `webrtcVideo` | webrtc 视频消息 | {} |  WebRTCMessageBuilder or WebRTCVideoMessageBuilder |
+| `unsupported` | 不支持的消息类型 | 自定义字段 |  UnsupportedMessageBuilder |
+
+优先使用flutter_chat_ui 库的 里面的 flyer_chat_xxx 消息builder， 没有的话使用 lib/component/chat 里面的 builder
+
 ### C2C - 单聊消息
 
-#### 基础消息类型 (msg_type)
-
-| msg_type | 说明 | Payload 示例 |
-|----------|------|-------------|
-| `text` | 文本消息 | `{"content": "Hello"}` |
-| `image` | 图片消息 | `{"url": "...", "width": 1024, "height": 768}` |
-| `voice` | 语音消息 | `{"url": "...", "duration": 30}` |
-| `video` | 视频消息 | `{"url": "...", "duration": 60, "thumb": "..."}` |
-| `file` | 文件消息 | `{"url": "...", "name": "doc.pdf", "size": 102400}` |
-| `location` | 位置消息 | `{"latitude": 39.9, "longitude": 116.4, "address": "..."}` |
-| `custom` | 自定义消息 | 自定义字段 |
+参考 基础消息类型 (msg_type)
 
 ### C2G - 群聊消息
 
 #### 基础消息类型
 
-与 C2C 相同，支持 `text`、`image`、`voice`、`video`、`file`、`location`、`custom`
+参考 基础消息类型 (msg_type)
 
 #### 群组特殊 S2C 消息
 

@@ -96,7 +96,7 @@ add_minimal_data_test_() ->
         Result = app_version_repo:add(Data),
         case Result of
             {ok, Version} -> 
-                ?ASSERT_MATCH(#{<<"id">> := _, <<"type">> := <<"ios">>, <<"vsn">> := <<"1.0">>}, Version);
+                ?assertMatch(#{<<"id">> := _, <<"type">> := <<"ios">>, <<"vsn">> := <<"1.0">>}, Version);
             {error, Reason} -> 
                 ?assert(is_atom(Reason), "Expected atom error reason")
         end

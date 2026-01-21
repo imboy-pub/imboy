@@ -194,7 +194,13 @@ get_s2c_msg_count(Uid, LastMsgAt) ->
             0
     end.
 
-% 处理单个消息：将 from_id 和 to_id 替换为编码后的 from 和 to
+%% @doc 处理单个消息
+%% 将 from_id 和 to_id 替换为编码后的 from 和 to
+%%
+%% @param Msg 原始消息映射
+%% @return 处理后的消息映射
+%% @end
+-spec process_message(map()) -> map().
 process_message(Msg) when is_map(Msg) ->
     % 对于 map 格式的消息（来自 c2g）
     FromId = maps:get(<<"from_id">>, Msg, undefined),

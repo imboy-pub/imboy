@@ -191,4 +191,79 @@ trunc_custom_string_suffix_test_() ->
 
 %% @doc 测试后缀超过最大长度
 trunc_suffix_exceeds_max_test_() ->
-    ?_test({skip, "函数行为需要确认"}).
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:trunc(<<"12345678">>, 3, <<"---LONG---">>),
+        % 当后缀长度超过最大长度时，应该只返回后缀
+        ?assertEqual(<<"---LONG--">>, Result)
+    end).
+
+%% ===================================================================
+%% 边界条件测试
+%% ===================================================================
+
+%% @doc 测试空字符串前缀匹配
+startswith_empty_string_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:startswith(<<"">>, <<"anything">>),
+        ?assertEqual(true, Result)
+    end).
+
+%% @doc 测试相同字符串前缀匹配
+startswith_same_string_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:startswith(<<"same">>, <<"same">>),
+        ?assertEqual(true, Result)
+    end).
+
+%% @doc 测试超长前缀
+startswith_very_long_prefix_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        LongPrefix = binary:copy(<<"a">>, 10000),
+        ShortString = <<"short">>,
+        Result = elib_str:startswith(LongPrefix, ShortString),
+        ?assertEqual(false, Result)
+    end).
+
+%% @doc 测试空字符串后缀匹配
+endswith_empty_string_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:endswith(<<"">>, <<"anything">>),
+        ?assertEqual(true, Result)
+    end).
+
+%% @doc 测试相同字符串后缀匹配
+endswith_same_string_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:endswith(<<"same">>, <<"same">>),
+        ?assertEqual(true, Result)
+    end).
+
+%% @doc 测试替换特殊正则字符
+replace_special_regex_chars_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:replace(<<"a.b.c">>, <<"\\.">>, <<"/">>),
+        ?assertEqual(<<"a/b/c">>, Result)
+    end).
+
+%% @doc 测试替换空模式
+replace_empty_pattern_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:replace(<<"abc">>, <<>>, <<"x">>),
+        % 空模式应该在每个位置插入替换文本
+        ?assertNotEqual(<<"abc">>, Result)
+    end).
+
+%% @doc 测试截断最大长度为0
+trunc_zero_max_length_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:trunc(<<"anything">>, 0),
+        % 最大长度为0时应该只返回后缀
+        ?assertEqual(<<"...">>, Result)
+    end).
+
+%% @doc 测试截断空字符串
+trunc_empty_string_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_str:trunc(<<>>, 10),
+        ?assertEqual(<<>>, Result)
+    end).

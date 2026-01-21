@@ -472,3 +472,145 @@ post_request_error_test_() ->
             meck:unload(httpc)
         end
     end).
+
+%% ===================================================================
+%% parse_body_by_content_type/2 测试
+%% ===================================================================
+
+parse_body_application_json_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            Body = <<"{\"name\":\"Test\",\"value\":123}">>,
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<"application/json">> end),
+            Params = elib_req:post_params(Req0),
+            ?assertEqual(<<"Test">>, maps:get(<<"name">>, Params)),
+            ?assertEqual(123, maps:get(<<"value">>, Params)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+parse_body_no_content_type_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            Body = <<"{\"test\":\"data\"}">>,
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<>> end),
+            Params = elib_req:post_params(Req0),
+            ?assertEqual(<<"data">>, maps:get(<<"test">>, Params)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+parse_body_text_plain_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            Body = <<"text/plain content">>,
+            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<"text/plain">> end),
+            Params = elib_req:post_params(Req0),
+            ?assert(is_map(Params))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% ===================================================================
+%% HTTP 状态码测试
+%% ===================================================================
+
+get_request_non_200_status_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(httpc, [unstick, passthrough]),
+        try
+            Url = <<"http://example.com/api/unauthorized">>,
+            ResponseBody = <<"{\"error\":\"Unauthorized\"}">>,
+            meck:expect(httpc, request, fun(get, _, _, _) ->
+                {ok, {{'HTTP/1.1', 401, 'Unauthorized'}, [], ResponseBody}}
+            end),
+            Result = elib_req:get(Url),
+            ?assertMatch({error, 401, #{<<"error">> := <<"Unauthorized">>}}, Result),
+            ?assert(meck:validate(httpc))
+        after
+            meck:unload(httpc)
+        end
+    end).
+
+post_request_non_200_status_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(httpc, [unstick, passthrough]),
+        try
+            Url = <<"http://example.com/api/error">>,
+            Params = #{test => <<"data">>},
+            ResponseBody = <<"{\"error\":\"Internal Server Error\"}">>,
+            meck:expect(httpc, request, fun(post, _, _, _) ->
+                {ok, {{'HTTP/1.1', 500, 'Internal Server Error'}, [], ResponseBody}}
+            end),
+            Result = elib_req:post(Url, Params),
+            ?assertMatch({error, 500, #{<<"error">> := <<"Internal Server Error">>}}, Result),
+            ?assert(meck:validate(httpc))
+        after
+            meck:unload(httpc)
+        end
+    end).
+
+%% ===================================================================
+%% 边界条件测试
+%% ===================================================================
+
+parse_urlencoded_body_unicode_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Body = <<"name=%E4%B8%AD%E6%96%87&city=%E5%8C%97%E4%BA%AC">>,
+        {ok, Params} = elib_req:parse_urlencoded_body(Body),
+        ?assertEqual(<<"中文"/utf8>>, maps:get(<<"name">>, Params)),
+        ?assertEqual(<<"北京"/utf8>>, maps:get(<<"city">>, Params))
+    end).
+
+parse_key_value_pairs_special_chars_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Body = <<"email=user%40example.com&desc=test%20item">>,
+        {ok, Params} = elib_req:parse_key_value_pairs(Body),
+        ?assertEqual(<<"user@example.com">>, maps:get(<<"email">>, Params)),
+        ?assertEqual(<<"test item">>, maps:get(<<"desc">>, Params))
+    end).
+
+add_value_accumulates_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Acc1 = #{},
+        Acc2 = elib_req:add_value(<<"a">>, <<"v1">>, Acc1),
+        ?assertEqual(#{<<"a">> => <<"v1">>}, Acc2),
+
+        Acc3 = elib_req:add_value(<<"a">>, <<"v2">>, Acc2),
+        ?assertEqual([<<"v1">>, <<"v2">>], maps:get(<<"a">>, Acc3)),
+
+        Acc4 = elib_req:add_value(<<"a">>, <<"v3">>, Acc3),
+        ?assertEqual([<<"v1">>, <<"v2">>, <<"v3">>], maps:get(<<"a">>, Acc4))
+    end).
+
+get_client_ip_multiple_proxies_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) ->
+                <<"1.1.1.1, 2.2.2.2, 3.3.3.3">>
+            end),
+            ?assertEqual(<<"1.1.1.1">>, elib_req:get_client_ip(Req0)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).

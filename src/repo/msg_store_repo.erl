@@ -20,6 +20,7 @@
 %% 删除操作
 -export([unstage/2]).
 -export([claim_pending/2]).
+-export([mark_processed/1]).
 -export([mark_processed/2]).
 -export([mark_failed/4]).
 -export([delete_processed/1]).
@@ -152,7 +153,20 @@ claim_pending(Limit, LeaseSeconds) ->
     end).
 
 
+%% @doc 标记消息已处理（不区分类型，一条 SQL 更新所有类型）
+%% 优化版本：移除 type 条件，避免对每种类型都执行一次 UPDATE
+%% @param MsgId 消息唯一ID
+%% @return {ok, Count} | {error, any()}
+-spec mark_processed(binary()) -> {ok, integer()} | {error, any()}.
+mark_processed(MsgId) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
+            " WHERE msg_id = $1">>,
+    elib_pg:execute(Sql, [MsgId]).
+
+
 %% @doc 标记消息已处理（不会删除记录，留给定时清理）
+%% @deprecated 使用 mark_processed/1 代替，避免重复执行
 -spec mark_processed(binary(), binary()) -> {ok, integer()} | {error, any()}.
 mark_processed(Type, MsgId) ->
     Tb = tablename(),

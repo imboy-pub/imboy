@@ -30,7 +30,7 @@ user_search_page_with_chinese_keyword_test_() ->
         end}
     ], fun() ->
         Result = fts_user_repo:user_search_page(<<"东区"/utf8>>, 10, 0),
-        ?ASSERT_OK(Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% 测试 SQL 注入攻击防护 - 单引号攻击
@@ -43,7 +43,7 @@ sql_injection_protection_single_quote_test_() ->
         % 尝试 SQL 注入攻击
         MaliciousKeyword = <<"john' OR '1'='1">>,
         Result = fts_user_repo:user_search_page(MaliciousKeyword, 10, 0),
-        ?ASSERT_OK(Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% 测试 SQL 注入攻击防护 - 分号攻击
@@ -56,7 +56,7 @@ sql_injection_protection_semicolon_test_() ->
         % 尝试 SQL 注入攻击
         MaliciousKeyword = <<"test; DROP TABLE users;--">>,
         Result = fts_user_repo:user_search_page(MaliciousKeyword, 10, 0),
-        ?ASSERT_OK(Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% 测试 SQL 注入攻击防护 - 注释符攻击
@@ -69,7 +69,7 @@ sql_injection_protection_comment_test_() ->
         % 尝试 SQL 注入攻击
         MaliciousKeyword = <<"test'--">>,
         Result = fts_user_repo:user_search_page(MaliciousKeyword, 10, 0),
-        ?ASSERT_OK(Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% 测试 count 函数同样安全

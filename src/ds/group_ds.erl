@@ -248,14 +248,14 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
 %% @param _Unit 单位（固定为米）
 %% @param Limit 返回数量限制
 %% @param Code 随机码
-%% @return {ok, list()} 附近群组列表
+%% @return {ok, list(map())} 附近群组列表
 -spec nearby_gid(binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number()) ->
-                    {ok, list()}.
+                    {ok, list(map())} | {error, term()}.
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     Now = elib_dt:now(),
     Sql = <<"select\n        id,\n        group_id,\n        ST_AsText(location) "
@@ -280,7 +280,7 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
 %% @param Lng 经度
 %% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
--spec face2face_create(pid(), integer(), binary(), float(), float()) -> {ok, integer()} | {error, term()}.
+-spec face2face_create(pid(), integer(), binary(), float(), float()) -> {ok, integer()} | {error, binary() | atom()}.
 face2face_create(Conn, Uid, Code, Lng, Lat) ->
     Now = elib_dt:now(),
     Gid = gid(),
@@ -310,7 +310,7 @@ face2face_create(Conn, Uid, Code, Lng, Lat) ->
 %% @param Gid 群组ID
 %% @param Uid 用户ID
 %% @return {ok, binary()} | {error, Reason}
--spec face2face_save(binary(), integer(), integer()) -> {ok, binary()} | {error, term()}.
+-spec face2face_save(binary(), integer(), integer()) -> {ok, binary()} | {error, binary() | atom()}.
 face2face_save(Code, Gid, Uid) ->
     elib_pg:with_tx(fun(Conn) ->
         % 读取随机码记录

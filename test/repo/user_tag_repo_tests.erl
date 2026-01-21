@@ -7,7 +7,7 @@
 %%% user_tag_repo 模块的 EUnit 测试
 %%%
 %%% 目标：验证用户标签数据访问层功能
-%%% 覆盖：标签查询、创建、删除
+%%% 覆盖：表名获取
 %%%===================================================================
 
 %% ===================================================================
@@ -15,25 +15,18 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECK(elib_pg_sql, [
+        {'public_tablename', 1, fun(_Table) -> <<"public.user_tag">> end}
+    ], fun() ->
         Result = user_tag_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.user_tag">>, Result)
     end).
 
 %% ===================================================================
-%% 标签查询测试
+%% 注意
 %% ===================================================================
-
-find_tags_by_uid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Result = user_tag_repo:find_by_uid(Uid),
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Tags} ->
-                ?assert(is_list(Tags));
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
-    end).
+%% user_tag_repo 目前只导出了 tablename/0 函数
+%% 实际的标签操作在 user_tag_relation_repo 中实现
+%%
+%% 此模块仅提供表名定义，无需额外测试
+%%===================================================================

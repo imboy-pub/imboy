@@ -118,6 +118,7 @@ list_by_ids(Uids, Column) when length(Uids) > 0 ->
 %% @param Timestamp 要更新的时间戳（timestamptz格式）
 %% @return ok
 %% @details 该函数会更新用户作为from_user_id和to_user_id的所有好友关系记录
+-spec update_friends_last_seen_at(pos_integer(), binary()) -> ok.
 update_friends_last_seen_at(Uid, Timestamp) ->
     % 更新我是from_user_id的记录
     _ = update_last_seen_at(<<"from_user_id">>, Uid, Timestamp),
@@ -166,6 +167,7 @@ delete(Id) ->
 %% @param Uid 用户ID
 %% @param Timestamp 要更新的时间戳
 %% @return {ok, Count} | {error, Reason}
+-spec update_last_seen_at(binary(), pos_integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 update_last_seen_at(Field, Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",

@@ -29,7 +29,7 @@ group_transfer(G) ->
 %% @param Lng 经度
 %% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
--spec face2face(integer(), binary(), binary(), binary()) -> {ok, integer()} | {error, term()}.
+-spec face2face(integer(), binary(), binary(), binary()) -> {ok, integer()} | {error, binary() | string()}.
 face2face(_, <<>>, _, _) ->
     {error, <<"Code 必须"/utf8>>};
 face2face(_, _, undefined, _) ->
@@ -124,14 +124,14 @@ dissolve(Uid, Gid, OwnerUid, G) ->
 %% @param Unit 单位（固定为米）
 %% @param Limit 返回数量限制
 %% @param Code 随机码
-%% @return {ok, list()} 附近群组列表
+%% @return {ok, [map()]} | {error, Reason} 附近群组列表
 -spec nearby_gid(binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number(),
                  binary() | string() | number()) ->
-                    {ok, list()}.
+                    {ok, [map()]} | {error, term()}.
 nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
     % 使用 DS 层接口
     group_ds:nearby_gid(Lng, Lat, Radius, Unit, Limit, Code).

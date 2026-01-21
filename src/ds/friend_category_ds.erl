@@ -72,7 +72,7 @@ find_by_uid(Uid) ->
 %% @param Name 新的分类名称
 %% @returns {ok, 1} | {error, any()} 操作结果
 % friend_category_ds:rename(Uid, Id, Name).
--spec rename(integer(), any(), binary()) -> {ok, 1} | {error, any()}.
+-spec rename(integer(), integer() | binary(), binary()) -> {ok, 1} | {error, any()}.
 rename(_Uid, Id, _Name) when Id =:= undefined; Id =:= <<"">>; Id =:= "" ->
     {error, "invalid_id: Id is required"};
 rename(_Uid, _Id, Name) when Name =:= undefined; Name =:= <<"">>; Name =:= "" ->
@@ -97,7 +97,7 @@ rename(Uid, Id, Name) ->
 %% @param Uid 用户ID
 %% @param Id 分类ID
 %% @returns {ok, 1} | {error, any()} 操作结果
--spec delete(any(), any()) -> {ok, 1} | {error, any()}.
+-spec delete(integer(), integer() | binary()) -> {ok, 1} | {error, any()}.
 delete(_Uid, Id) when Id =:= undefined; Id =:= <<"">>; Id =:= "" ->
     {error, {"invalid_id", "Id is required"}};
 delete(Uid, Id) ->

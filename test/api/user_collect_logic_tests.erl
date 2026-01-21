@@ -15,7 +15,7 @@
 %% ===================================================================
 
 add_text_collect_success_test_() ->
-    ?WITH_MECK(user_collect_repo, [
+    ?WITH_MECK(user_collect_ds, [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end}
     ], fun() ->
         ?WITH_MECK(elib_pg, [
@@ -34,7 +34,7 @@ add_text_collect_success_test_() ->
     end).
 
 add_image_collect_success_test_() ->
-    ?WITH_MECK(user_collect_repo, [
+    ?WITH_MECK(user_collect_ds, [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end}
     ], fun() ->
         ?WITH_MECK(elib_uri, [
@@ -62,7 +62,7 @@ add_image_collect_success_test_() ->
     end).
 
 add_collect_already_exists_test_() ->
-    ?WITH_MECK(user_collect_repo, [
+    ?WITH_MECK(user_collect_ds, [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 1 end}
     ], fun() ->
         Uid = 12345,
@@ -114,7 +114,7 @@ add_collect_unsupported_kind_test_() ->
 %% ===================================================================
 
 remove_collect_success_test_() ->
-    ?WITH_MECK(user_collect_repo, [
+    ?WITH_MECK(user_collect_ds, [
         {'delete', 2, fun(_Uid, _KindId) -> {ok, 1} end}
     ], fun() ->
         Uid = 12345,
@@ -129,10 +129,10 @@ remove_collect_success_test_() ->
 %% ===================================================================
 
 change_collect_remark_test_() ->
-    ?WITH_MECK(userboy_dt, [
+    ?WITH_MECK(elib_dt, [
         {'now', 0, fun() -> 1640995200 end}  % 固定时间戳
     ], fun() ->
-        ?WITH_MECK(user_collect_repo, [
+        ?WITH_MECK(user_collect_ds, [
             {'update', 3, fun(_Uid, _KindId, _Data) -> {ok, 1} end}
         ], fun() ->
             Uid = 12345,
@@ -149,7 +149,7 @@ change_collect_transpond_callback_test_() ->
     ?WITH_MECK(elib_dt, [
         {'now', 0, fun() -> 1640995200 end}
     ], fun() ->
-        ?WITH_MECK(user_collect_repo, [
+        ?WITH_MECK(user_collect_ds, [
             {'update', 3, fun(_Uid, _KindId, _Data) -> {ok, 1} end}
         ], fun() ->
             Uid = 12345,

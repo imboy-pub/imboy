@@ -424,13 +424,224 @@ setting_test_() ->
             method => <<"POST">>,
             qs => <<>>
         }),
-        
+
         % 调用 handler
         {ok, Req, _State} = user_handler:init(MockReq, #{
             action => setting,
             current_uid => 12345
         }),
-        
+
+        % 验证响应状态
+        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
+        ?assertEqual(200, StatusCode)
+    end).
+
+%% @doc 测试更新用户信息功能
+update_test_() ->
+    ?WITH_MOCKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                [
+                    {<<"nickname">>, <<"Updated Nickname">>},
+                    {<<"avatar">>, <<"https://example.com/new_avatar.jpg">>},
+                    {<<"gender">>, 1},
+                    {<<"sign">>, <<"Updated signature">>},
+                    {<<"region">>, <<"Beijing">>}
+                ]
+            end}
+        ]},
+        {user_logic, [
+            {'update', 2, fun(_UserId, _Data) ->
+                {ok, #{<<"id">> => 12345, <<"nickname">> => <<"Updated Nickname">>}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Data, _Message) ->
+                cowboy_req_h:new(#{
+                    response_status => 200,
+                    response_body => #{status => success}
+                })
+            end}
+        ]}
+    ], fun() ->
+        % 模拟一个 POST 请求
+        MockReq = cowboy_req_h:new(#{
+            method => <<"POST">>,
+            qs => <<>>
+        }),
+
+        % 调用 handler
+        {ok, Req, _State} = user_handler:init(MockReq, #{
+            action => update,
+            current_uid => 12345
+        }),
+
+        % 验证响应状态
+        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
+        ?assertEqual(200, StatusCode)
+    end).
+
+%% @doc 测试获取用户信息功能
+show_test_() ->
+    ?WITH_MOCKS([
+        {user_logic, [
+            {'info', 2, fun(_UserId, _Fields) ->
+                {ok, #{
+                    <<"id">> => 12345,
+                    <<"nickname">> => <<"Test User">>,
+                    <<"avatar">> => <<"https://example.com/avatar.jpg">>,
+                    <<"gender">> => 1,
+                    <<"sign">> => <<"Hello World">>,
+                    <<"region">> => <<"Beijing">>,
+                    <<"mobile">> => <<"+8613800138000">>,
+                    <<"email">> => <<"test@example.com">>
+                }}
+            end}
+        ]},
+        {elib_hashids, [
+            {'encode', 1, fun(_UserId) ->
+                <<"encoded_12345">>
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Data, _Message) ->
+                cowboy_req_h:new(#{
+                    response_status => 200,
+                    response_body => #{status => success}
+                })
+            end}
+        ]}
+    ], fun() ->
+        % 模拟一个 GET 请求
+        MockReq = cowboy_req_h:new(#{
+            method => <<"GET">>,
+            qs => <<>>
+        }),
+
+        % 调用 handler
+        {ok, Req, _State} = user_handler:init(MockReq, #{
+            action => show,
+            current_uid => 12345
+        }),
+
+        % 验证响应状态
+        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
+        ?assertEqual(200, StatusCode)
+    end).
+
+%% @doc 测试设置密码功能
+set_password_test_() ->
+    ?WITH_MOCKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                [
+                    {<<"password">>, <<"new_password123">>},
+                    {<<"rsa_encrypt">>, <<"0">>}
+                ]
+            end}
+        ]},
+        {user_logic, [
+            {'set_password', 2, fun(_UserId, _Password) ->
+                {ok, #{<<"message">> => <<"密码设置成功">>}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Data, _Message) ->
+                cowboy_req_h:new(#{
+                    response_status => 200,
+                    response_body => #{status => success}
+                })
+            end}
+        ]}
+    ], fun() ->
+        % 模拟一个 POST 请求
+        MockReq = cowboy_req_h:new(#{
+            method => <<"POST">>,
+            qs => <<>>
+        }),
+
+        % 调用 handler
+        {ok, Req, _State} = user_handler:init(MockReq, #{
+            action => set_password,
+            current_uid => 12345
+        }),
+
+        % 验证响应状态
+        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
+        ?assertEqual(200, StatusCode)
+    end).
+
+%% @doc 测试申请登出功能
+apply_logout_test_() ->
+    ?WITH_MOCKS([
+        {user_device_ds, [
+            {'get_device', 1, fun(_UserId) ->
+                {ok, [
+                    #{device_id => <<"device_1">>, is_online => true},
+                    #{device_id => <<"device_2">>, is_online => true}
+                ]}
+            end}
+        ]},
+        {user_logic, [
+            {'apply_logout', 2, fun(_UserId, _DeviceList) ->
+                {ok, #{<<"message">> => <<"登出申请已发送">>}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Data, _Message) ->
+                cowboy_req_h:new(#{
+                    response_status => 200,
+                    response_body => #{status => success}
+                })
+            end}
+        ]}
+    ], fun() ->
+        % 模拟一个 POST 请求
+        MockReq = cowboy_req_h:new(#{
+            method => <<"POST">>,
+            qs => <<>>
+        }),
+
+        % 调用 handler
+        {ok, Req, _State} = user_handler:init(MockReq, #{
+            action => apply_logout,
+            current_uid => 12345
+        }),
+
+        % 验证响应状态
+        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
+        ?assertEqual(200, StatusCode)
+    end).
+
+%% @doc 测试取消登出功能
+cancel_logout_test_() ->
+    ?WITH_MOCKS([
+        {user_logic, [
+            {'cancel_logout', 1, fun(_UserId) ->
+                {ok, #{<<"message">> => <<"已取消登出">>}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Data, _Message) ->
+                cowboy_req_h:new(#{
+                    response_status => 200,
+                    response_body => #{status => success}
+                })
+            end}
+        ]}
+    ], fun() ->
+        % 模拟一个 POST 请求
+        MockReq = cowboy_req_h:new(#{
+            method => <<"POST">>,
+            qs => <<>>
+        }),
+
+        % 调用 handler
+        {ok, Req, _State} = user_handler:init(MockReq, #{
+            action => cancel_logout,
+            current_uid => 12345
+        }),
+
         % 验证响应状态
         {StatusCode, _, _Body} = cowboy_req_h:response(Req),
         ?assertEqual(200, StatusCode)

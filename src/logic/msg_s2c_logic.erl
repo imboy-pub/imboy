@@ -97,6 +97,8 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 %% @param From 发送者（已编码）
 %% @param Uid 接收者用户ID（integer）
 %% @param Payload 消息内容
+%% @private
+-spec s2c_for_c2g(binary() | integer(), integer(), binary(), integer(), map()) -> ok.
 s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     % Uid 已经是 integer（来自 group_ds:member_uids），直接编码即可
     To = elib_hashids:encode(Uid),

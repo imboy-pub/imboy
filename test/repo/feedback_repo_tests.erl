@@ -7,7 +7,7 @@
 %%% feedback_repo 模块的 EUnit 测试
 %%%
 %%% 目标：验证用户反馈数据访问层功能
-%%% 覆盖：反馈查询、创建
+%%% 覆盖：反馈添加、删除
 %%%===================================================================
 
 %% ===================================================================
@@ -23,84 +23,132 @@ tablename_returns_correct_table_test_() ->
     end).
 
 %% ===================================================================
-%% 反馈查询测试
+%% add/11 测试
 %% ===================================================================
 
-find_feedback_by_id_test_() ->
+add_feedback_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(Sql, Params) ->
-            % 验证SQL查询包含反馈查询
-            ?assert(binary:match(Sql, <<"SELECT.*FROM.*feedback">>) =/= nomatch),
-            ?assert(binary:match(Sql, <<"WHERE.*id">>) =/= nomatch),
-            % 验证参数包含反馈ID
-            ?assert(length(Params) >= 1),
-            ?assert(lists:member(<<"feedback123">>, Params)),
-            % 返回模拟的反馈数据
-            {ok, [{<<"feedback123">>, 1, <<"App feedback">>, <<"bug">>, 1640995200}]}
-        end}
+        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
     ], fun() ->
-        Id = <<"feedback123">>,
-        Result = feedback_repo:find(Id),
-        ?ASSERT_OK(Result),
-        {ok, Feedback} = Result,
-        % 验证返回的反馈数据
-        ?assertEqual(<<"feedback123">>, element(1, Feedback)),
-        ?assertEqual(1, element(2, Feedback)),
-        ?assertEqual(<<"App feedback">>, element(3, Feedback)),
-        ?assertEqual(<<"bug">>, element(4, Feedback))
-    end).
-
-list_feedbacks_by_uid_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(Sql, Params) ->
-            % 验证SQL查询包含用户反馈列表查询
-            ?assert(binary:match(Sql, <<"SELECT.*FROM.*feedback">>) =/= nomatch),
-            ?assert(binary:match(Sql, <<"WHERE.*user_id">>) =/= nomatch),
-            ?assert(binary:match(Sql, <<"LIMIT">>) =/= nomatch),
-            % 验证参数包含用户ID和限制
-            ?assert(length(Params) >= 2),
-            ?assert(lists:member(1, Params)),
-            ?assert(lists:member(10, Params)),
-            % 返回模拟的反馈列表
-            {ok, [{<<"feedback1">>, 1, <<"Feedback 1">>, <<"bug">>, 1640995200},
-                  {<<"feedback2">>, 1, <<"Feedback 2">>, <<"feature">>, 1640995201}]}
-        end}
-    ], fun() ->
-        Uid = 1,
-        Limit = 10,
-        Result = feedback_repo:list_by_uid(Uid, Limit),
-        ?ASSERT_OK(Result),
-        {ok, FeedbackList} = Result,
-        % 验证返回的反馈列表
-        ?assert(length(FeedbackList) >= 2),
-        % 验证第一个反馈
-        [Feedback1, _Feedback2 | _] = FeedbackList,
-        ?assertEqual(<<"feedback1">>, element(1, Feedback1)),
-        ?assertEqual(1, element(2, Feedback1)),
-        ?assertEqual(<<"bug">>, element(4, Feedback1))
-    end).
-
-%% ===================================================================
-%% 反馈创建测试
-%% ===================================================================
-
-create_feedback_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(Sql, Params) ->
-            % 验证SQL包含反馈创建
-            ?assert(binary:match(Sql, <<"INSERT.*INTO.*feedback">>) =/= nomatch),
-            % 验证参数包含用户ID、内容和类型
-            ?assert(length(Params) >= 3),
-            ?assert(lists:member(1, Params)),
-            ?assert(lists:member(<<"App feedback">>, Params)),
-            ?assert(lists:member(<<"bug">>, Params)),
-            {ok, 1}
-        end}
-    ], fun() ->
-        Uid = 1,
-        Content = <<"App feedback">>,
+        Uid = 12345,
+        Did = <<"device123">>,
+        COS = <<"iOS">>,
+        COSV = <<"15.0">>,
+        AppVsn = <<"1.0.0">>,
         Type = <<"bug">>,
-        
-        Result = feedback_repo:create(Uid, Content, Type),
-        ?assertEqual({ok, 1}, Result)
+        Rating = 5,
+        ContactDetail = <<"user@example.com">>,
+        Body = <<"应用崩溃"/utf8>>,
+        Attach = <<"[{\"url\":\"https://example.com/screenshot.png\"}]">>,
+        FeedbackMd5 = <<"abc123def456">>,
+
+        Result = feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5),
+        ?assertEqual(ok, Result)
+    end).
+
+add_feedback_with_different_types_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
+    ], fun() ->
+        % 测试功能建议类型
+        Uid = 12345,
+        Did = <<"device123">>,
+        COS = <<"Android">>,
+        COSV = <<"11">>,
+        AppVsn = <<"1.0.0">>,
+        Type = <<"feature">>,
+        Rating = 4,
+        ContactDetail = <<"user@example.com">>,
+        Body = <<"希望添加新功能"/utf8>>,
+        Attach = <<"[]">>,
+        FeedbackMd5 = <<"xyz789">>,
+
+        Result = feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5),
+        ?assertEqual(ok, Result)
+    end).
+
+add_feedback_with_empty_attachments_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
+    ], fun() ->
+        Uid = 12345,
+        Did = <<"device123">>,
+        COS = <<"iOS">>,
+        COSV = <<"15.0">>,
+        AppVsn = <<"1.0.0">>,
+        Type = <<"other">>,
+        Rating = 3,
+        ContactDetail = <<"">>,
+        Body = <<"其他问题"/utf8>>,
+        Attach = <<"[]">>,
+        FeedbackMd5 = <<"empty123">>,
+
+        Result = feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5),
+        ?assertEqual(ok, Result)
+    end).
+
+%% ===================================================================
+%% delete/2 测试
+%% ===================================================================
+
+delete_feedback_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'execute', 3, fun(_Sql, _Params) -> {ok, 1} end}
+    ], fun() ->
+        Uid = 12345,
+        FeedbackId = <<"feedback123">>,
+
+        Result = feedback_repo:delete(Uid, FeedbackId),
+        ?assertEqual(ok, Result)
+    end).
+
+delete_feedback_error_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'execute', 3, fun(_Sql, _Params) -> {error, connection_failed} end}
+    ], fun() ->
+        Uid = 12345,
+        FeedbackId = <<"feedback123">>,
+
+        Result = feedback_repo:delete(Uid, FeedbackId),
+        ?assertEqual({error, connection_failed}, Result)
+    end).
+
+delete_feedback_not_found_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'execute', 3, fun(_Sql, _Params) -> {ok, 0} end}
+    ], fun() ->
+        Uid = 12345,
+        FeedbackId = <<"nonexistent">>,
+
+        Result = feedback_repo:delete(Uid, FeedbackId),
+        ?assertEqual(ok, Result)
+    end).
+
+%% ===================================================================
+%% 集成测试
+%% ===================================================================
+
+add_and_delete_feedback_flow_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end},
+        {'execute', 3, fun(_Sql, _Params) -> {ok, 1} end}
+    ], fun() ->
+        % 1. 添加反馈
+        Uid = 12345,
+        Did = <<"device123">>,
+        COS = <<"iOS">>,
+        COSV = <<"15.0">>,
+        AppVsn = <<"1.0.0">>,
+        Type = <<"bug">>,
+        Rating = 5,
+        ContactDetail = <<"user@example.com">>,
+        Body = <<"测试反馈"/utf8>>,
+        Attach = <<"[{\"url\":\"https://example.com/screenshot.png\"}]">>,
+        FeedbackMd5 = <<"abc123">>,
+
+        ?assertEqual(ok, feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5)),
+
+        % 2. 删除反馈
+        FeedbackId = <<"feedback123">>,
+        ?assertEqual(ok, feedback_repo:delete(Uid, FeedbackId))
     end).

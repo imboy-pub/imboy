@@ -448,7 +448,7 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
 %% @return 修改后的 payload（Map 或其他类型），包含 sender_did 和 sender_dtype 字段
 %%
 %% @end
--spec inject_sender_device(any(), map()) -> any().
+-spec inject_sender_device(map() | binary() | [binary()] | term(), map()) -> map() | binary() | [binary()] | term().
 inject_sender_device(Payload, State) when is_map(Payload) ->
     %% 从 State 中提取设备 ID 和设备类型
     DID = maps:get(did, State, <<>>),

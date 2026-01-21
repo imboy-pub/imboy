@@ -41,7 +41,7 @@ find_settings_by_uid_test_() ->
     ], fun() ->
         Uid = 1,
         Result = user_setting_repo:find_by_uid(Uid),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, Settings} = Result,
         % 验证返回的设置列表
         ?assert(length(Settings) >= 2),
@@ -69,7 +69,7 @@ get_setting_by_key_test_() ->
         Uid = 1,
         Key = <<"notification">>,
         Result = user_setting_repo:get(Uid, Key),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, SettingValue} = Result,
         ?assertEqual(<<"enabled">>, SettingValue)
     end).

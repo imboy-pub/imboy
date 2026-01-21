@@ -208,7 +208,7 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
 %% @param WhereArgs 查询参数
 %% @param Fields 查询字段
 %% @returns list() 查询结果列表
--spec page(binary(), [term()], binary()) -> [map()] | [].
+-spec page(binary(), list(), binary()) -> [map()].
 page(Where, WhereArgs, Fields) ->
     UserTable = elib_pg_sql:public_tablename(<<"user">>),
     UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),

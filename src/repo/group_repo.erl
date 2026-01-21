@@ -35,7 +35,7 @@ tablename() ->
 %% @param Conn 数据库连接（未使用，保留用于API兼容性）
 %% @param Data 包含群组信息的map
 %% @return {ok, GroupId, #{}} | {error, Reason} (返回插入的群组ID)
--spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
+-spec add(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
     elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).

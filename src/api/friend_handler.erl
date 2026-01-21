@@ -118,6 +118,14 @@ list(Req0, State) ->
     % ?DEBUG_LOG(Payload),
     elib_response:success(Req0, Payload).
 
+%% @doc 转换好友列表数据
+%% 将用户信息和好友列表进行编码转换
+%%
+%% @param User 用户信息映射
+%% @param Friends 好友列表
+%% @return 转换后的映射
+%% @end
+-spec list_transfer(map(), list()) -> map().
 list_transfer(User, Friends) ->
     #{<<"mine">> => elib_hashids:replace_id(User), <<"friend">> => Friends}.
 
@@ -164,6 +172,16 @@ information(Req0, State) ->
             elib_response:success(Req0, #{})
     end.
 
+%% @doc 转换好友或群组信息
+%% 将用户信息、类型和设置信息进行编码转换
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Type 类型（friend 或 group）
+%% @param User 用户信息映射
+%% @param UserSetting 用户设置信息
+%% @return 转换后的信息映射
+%% @end
+-spec information_transfer(integer(), binary(), map(), map()) -> map().
 information_transfer(CurrentUid, Type, User, UserSetting) ->
     User2 = elib_hashids:replace_id(User),
     User2#{<<"mine_uid">> => elib_hashids:encode(CurrentUid),

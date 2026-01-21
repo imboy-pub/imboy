@@ -36,7 +36,7 @@ find_messages_by_uid_test_() ->
         Uid = 1,
         Limit = 10,
         Result = msg_c2s_repo:find_by_uid(Uid, Limit),
-        ?ASSERT_OK(Result),
+        ?assertMatch({ok, _}, Result),
         {ok, Messages} = Result,
         % 验证返回的消息列表
         ?assert(length(Messages) >= 1),

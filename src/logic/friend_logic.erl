@@ -149,7 +149,6 @@ confirm_friend(CurrentUid, From, To, Payload) ->
 confirm_friend_resp(Uid, Remark) ->
     Column = <<"id,account,nickname,avatar,gender,sign,region,status">>,
     User = user_logic:find_by_id(Uid, Column),
-    % [{<<"remark">>, Remark} | elib_hashids:replace_id(User)].
     User#{
         <<"id">> => elib_hashids:encode(Uid),
         <<"remark">> => Remark
@@ -175,6 +174,9 @@ delete_friend(CurrentUid, Uid) ->
 
 %% @doc 移动好友到分组
 -spec move_to_category(integer(), binary() | integer(), integer()) -> ok.
+move_to_category(CurrentUid, Uid, CategoryId) when is_binary(Uid) ->
+    Uid2 = elib_hashids:decode(Uid),
+    move_to_category(CurrentUid, Uid2, CategoryId);
 move_to_category(CurrentUid, Uid, CategoryId) ->
     _ = friend_ds:move_to_category(CurrentUid, Uid, CategoryId),
     ok.
@@ -183,7 +185,7 @@ move_to_category(CurrentUid, Uid, CategoryId) ->
 %% @doc 获取好友详细信息
 %% @param CurrentUid 当前用户ID
 %% @param Uid 好友用户ID
-%% @return map() 好友详细信息
+%% @return map() 好友详细信息，包含 is_friend 字段
 -spec information(integer(), integer()) -> map().
 information(CurrentUid, Uid) ->
     % 使用 DS 层接口检查是否是好友关系

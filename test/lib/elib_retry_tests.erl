@@ -142,6 +142,73 @@ timeout_and_retry_test() ->
 
     ets:delete(AttemptsRef).
 
+%% @doc 测试零重试次数
+zero_retry_count_test() ->
+    Fun = fun() ->
+        erlang:error(should_not_retry)
+    end,
+    Result = elib_retry:with_retry(Fun, 0, 100),
+    ?assertEqual({error, max_retries_exceeded}, Result).
+
+%% @doc 测试零延迟重试
+zero_delay_retry_test() ->
+    AttemptsRef = make_ref(),
+    ets:new(AttemptsRef, [set, private, named_table]),
+
+    Fun = fun() ->
+        Current = case ets:lookup(AttemptsRef, count) of
+            [] -> 0;
+            [{count, N}] -> N
+        end,
+        ets:insert(AttemptsRef, {count, Current + 1}),
+
+        case Current of
+            2 -> success;
+            _ -> erlang:error(retry_me)
+        end
+    end,
+
+    Result = elib_retry:with_retry(Fun, 5, 0),
+    ?assertEqual({ok, success}, Result),
+
+    ets:delete(AttemptsRef).
+
+%% @doc 测试非常大的重试次数
+very_large_retry_count_test() ->
+    Fun = fun() ->
+        success_immediately
+    end,
+    % 第一次就成功，不应该重试
+    Result = elib_retry:with_retry(Fun, 1000000, 1000),
+    ?assertEqual({ok, success_immediately}, Result).
+
+%% @doc 测试超时为0的情况
+zero_timeout_test() ->
+    Fun = fun() ->
+        timer:sleep(10),  % 即使很短的延迟也应该超时
+        success
+    end,
+    Result = elib_retry:with_retry_and_timeout(Fun, 0, 1),
+    ?assertEqual({error, max_retries_exceeded}, Result).
+
+%% @doc 测试退避策略的正确性
+backoff_strategy_test_() ->
+    TestCases = [
+        {fixed, "固定延迟策略"},
+        {exponential, "指数退避策略"},
+        {linear, "线性退避策略"}
+    ],
+    lists:map(fun({BackoffType, Desc}) ->
+        {Desc, ?_test(begin
+            Fun = fun() ->
+                timer:sleep(5),
+                success
+            end,
+            Result = elib_retry:with_retry(Fun, 2, 10, BackoffType),
+            ?assertEqual({ok, success}, Result)
+        end)}
+    end, TestCases).
+
 %%%===================================================================
 %%% 集成测试
 %%%===================================================================

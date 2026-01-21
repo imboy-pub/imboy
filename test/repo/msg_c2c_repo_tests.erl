@@ -83,3 +83,226 @@ save_message_with_valid_data_test_() ->
         ),
         ?assert(maps:is_key(from_uid, Data))
     end).
+
+%% ===================================================================
+%% write_msg/8 测试
+%% ===================================================================
+
+write_msg_with_valid_data_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        MsgId = <<"test_msg_id_123">>,
+        Payload = <<"{\"text\":\"hello\"}">>,
+        FromId = 1,
+        ToId = 2,
+        ServerTS = <<"2024-01-01T00:00:01Z">>,
+        MsgType = <<"text">>,
+        E2EE = <<>>,
+        Result = msg_c2c_repo:write_msg(CreatedAt, MsgId, Payload, FromId, ToId, ServerTS, MsgType, E2EE),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, InsertId} ->
+                ?assert(is_integer(InsertId) andalso InsertId > 0);
+            _ ->
+                ok
+        end
+    end).
+
+write_msg_with_e2ee_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        MsgId = <<"test_msg_id_e2ee">>,
+        Payload = <<"{\"text\":\"encrypted\"}">>,
+        FromId = 1,
+        ToId = 2,
+        ServerTS = <<"2024-01-01T00:00:01Z">>,
+        MsgType = <<"text">>,
+        E2EE = <<"{\"key\":\"...\"}">>,
+        Result = msg_c2c_repo:write_msg(CreatedAt, MsgId, Payload, FromId, ToId, ServerTS, MsgType, E2EE),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+%% ===================================================================
+%% find_msg_by_id/1 测试
+%% ===================================================================
+
+find_msg_by_id_existing_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        % 先插入一条消息
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        MsgId = <<"test_msg_find_123">>,
+        Payload = <<"{\"text\":\"test\"}">>,
+        FromId = 1,
+        ToId = 2,
+        ServerTS = <<"2024-01-01T00:00:01Z">>,
+        MsgType = <<"text">>,
+        E2EE = <<>>,
+        {ok, _} = msg_c2c_repo:write_msg(CreatedAt, MsgId, Payload, FromId, ToId, ServerTS, MsgType, E2EE),
+
+        % 查找消息
+        Result = msg_c2c_repo:find_msg_by_id(MsgId),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, Msg} ->
+                ?assert(is_map(Msg)),
+                ?assert(maps:is_key(<<"from_id">>, Msg)),
+                ?assert(maps:is_key(<<"created_at">>, Msg));
+            _ ->
+                ok
+        end
+    end).
+
+find_msg_by_id_not_existing_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        MsgId = <<"nonexistent_msg_id">>,
+        Result = msg_c2c_repo:find_msg_by_id(MsgId),
+        ?assertEqual({error, not_found}, Result)
+    end).
+
+%% ===================================================================
+%% read_msg/3,4 测试
+%% ===================================================================
+
+read_msg_with_where_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Where = <<"to_id = $1">>,
+        Column = <<"id, msg_id, from_id, to_id">>,
+        Limit = 10,
+        Result = msg_c2c_repo:read_msg(Where, Column, Limit),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, Rows} ->
+                ?assert(is_list(Rows)),
+                ?assert(length(Rows) =< Limit);
+            _ ->
+                ok
+        end
+    end).
+
+read_msg_with_params_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Where = <<"to_id = $1 AND from_id = $2">>,
+        Column = <<"id, msg_id">>,
+        Limit = 5,
+        Params = [2, 1],
+        Result = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, Rows} ->
+                ?assert(is_list(Rows)),
+                ?assert(length(Rows) =< Limit);
+            _ ->
+                ok
+        end
+    end).
+
+%% ===================================================================
+%% delete_msg/1,2 测试
+%% ===================================================================
+
+delete_msg_by_integer_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        % 测试根据整数 ID 删除
+        Id = 999999,
+        Result = msg_c2c_repo:delete_msg(Id),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+delete_msg_by_binary_msgid_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        % 测试根据消息 ID 删除
+        MsgId = <<"test_msg_delete_123">>,
+        Result = msg_c2c_repo:delete_msg(MsgId),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+delete_msg_with_where_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Where = <<"WHERE to_id = $1">>,
+        Params = [999999],
+        Result = msg_c2c_repo:delete_msg(Where, Params),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+%% ===================================================================
+%% count_by_to_id/1 测试
+%% ===================================================================
+
+count_by_to_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ToUid = 1,
+        Count = msg_c2c_repo:count_by_to_id(ToUid),
+        ?assert(is_integer(Count)),
+        ?assert(Count >= 0)
+    end).
+
+count_by_to_id_non_existing_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ToUid = 999999,
+        Count = msg_c2c_repo:count_by_to_id(ToUid),
+        ?assert(is_integer(Count)),
+        ?assertEqual(0, Count)
+    end).
+
+%% ===================================================================
+%% delete_by_to_id/1 测试
+%% ===================================================================
+
+delete_by_to_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ToUid = 999999,
+        Result = msg_c2c_repo:delete_by_to_id(ToUid),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+%% ===================================================================
+%% delete_by_msg_id_and_to_id/2 测试
+%% ===================================================================
+
+delete_by_msg_id_and_to_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        MsgId = <<"test_msg_delete_joint">>,
+        ToUid = 1,
+        Result = msg_c2c_repo:delete_by_msg_id_and_to_id(MsgId, ToUid),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+%% ===================================================================
+%% delete_by_msg_ids_and_to_id/2 测试
+%% ===================================================================
+
+delete_by_msg_ids_and_to_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        MsgIds = [<<"msg1">>, <<"msg2">>, <<"msg3">>],
+        ToUid = 1,
+        Result = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, ToUid),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+delete_by_msg_ids_and_to_id_empty_list_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        MsgIds = [],
+        ToUid = 1,
+        Result = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, ToUid),
+        ?assertEqual({ok, 0}, Result)
+    end).
+
+%% ===================================================================
+%% delete_overflow_msg/2 测试
+%% ===================================================================
+
+delete_overflow_msg_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ToUid = 1,
+        Limit = 100,
+        Result = msg_c2c_repo:delete_overflow_msg(ToUid, Limit),
+        ?assertEqual(ok, Result)
+    end).
+
+delete_overflow_msg_zero_limit_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ToUid = 1,
+        Limit = 0,
+        Result = msg_c2c_repo:delete_overflow_msg(ToUid, Limit),
+        ?assertEqual(ok, Result)
+    end).

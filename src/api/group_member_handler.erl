@@ -218,8 +218,12 @@ alias(Req0, State) ->
         _ ->
             Alias = maps:get(<<"alias">>, PostVals, <<>>),
             Description = maps:get(<<"description">>, PostVals, <<>>),
-            group_member_logic:alias(CurrentUid, Gid2, Alias, Description),
-            elib_response:success(Req0, #{<<"gid">> => Gid}, "success.")
+            case group_member_logic:alias(CurrentUid, Gid2, Alias, Description) of
+                ok ->
+                    elib_response:success(Req0, #{<<"gid">> => Gid}, "success.");
+                {error, Reason} ->
+                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+            end
     end.
 
 %% @doc 群组成员分页

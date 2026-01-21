@@ -474,6 +474,13 @@ qrcode(Req0, State) ->
 %% EUnit tests.
 %% ===================================================================
 
+%% @doc 转换群组分页数据
+%% 将群组数据进行编码转换
+%%
+%% @param Payload 原始分页数据
+%% @return 转换后的分页数据
+%% @end
+-spec page_transfer(map()) -> map().
 page_transfer(Payload) ->
     K = <<"list">>,
     Li = maps:get(K, Payload, []),

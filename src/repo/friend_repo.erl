@@ -34,9 +34,9 @@ tablename() ->
 %% @param Remark 好友备注
 %% @param Setting 好友设置列表
 %% @param Tag 好友标签
-%% @param NowTs 当前时间戳
+%% @param NowTs 当前时间戳（timestamptz格式）
 %% @return ok
--spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), any()) -> ok.
+-spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()) -> ok.
 confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->

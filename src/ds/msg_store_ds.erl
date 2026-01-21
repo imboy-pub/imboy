@@ -293,11 +293,9 @@ handle_cast({enqueue, MsgType, MsgId, Data}, State) ->
 
 handle_cast({unstage, MsgId}, State) ->
     % 从备份表标记为已处理（异步，不阻塞，带重试）
+    % 优化：使用 mark_processed/1 移除 type 条件，一条 SQL 更新所有类型
     elib_async:async_retry(fun() ->
-        % 尝试删除各种类型的备份记录
-        lists:foreach(fun(Type) ->
-            msg_store_repo:mark_processed(Type, MsgId)
-        end, [<<"c2c">>, <<"c2g">>, <<"s2c">>, <<"c2s">>])
+        msg_store_repo:mark_processed(MsgId)
     end),
     {noreply, State};
 

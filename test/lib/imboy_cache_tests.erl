@@ -288,36 +288,38 @@ get_with_complex_default_test_() ->
 %% ===================================================================
 
 flush_all_cache_test_() ->
-    ?WITH_MECK(imboy_cache, [
-        {'flush_all', 0, fun() ->
+    ?WITH_MECK(depcache, [
+        {'flush_all', 1, fun(_Server) ->
             % 模拟清空所有缓存
             ok
         end},
-        {'size', 0, fun() ->
-            % 模拟返回缓存大小
+        {'set', 5, fun(_Key, _Value, _TTL, _Options, _Server) ->
+            ok
+        end},
+        {'get', 2, fun(_Key, _Server) ->
+            undefined
+        end},
+        {'size', 1, fun(_Server) ->
             0
         end}
     ], fun() ->
         % 先添加一些缓存数据
         imboy_cache:set(test_key1, test_value1),
         imboy_cache:set(test_key2, test_value2),
-        
+
         % 清空所有缓存
         Result = imboy_cache:flush_all(),
-        ?ASSERT_EQUAL(ok, Result),
-        
+        ?assertEqual(ok, Result),
+
         % 验证缓存已清空
         Size = imboy_cache:size(),
-        ?ASSERT_EQUAL(0, Size),
-        
+        ?assertEqual(0, Size),
+
         % 验证具体键值不存在
         Value1 = imboy_cache:get(test_key1),
         Value2 = imboy_cache:get(test_key2),
-        ?ASSERT_EQUAL(undefined, Value1),
-        ?ASSERT_EQUAL(undefined, Value2),
-        
-        % 验证 Mock 调用
-        meck_helper:verify_called(imboy_cache, flush_all, 0)
+        ?assertEqual(undefined, Value1),
+        ?assertEqual(undefined, Value2)
     end).
 
 %% ===================================================================

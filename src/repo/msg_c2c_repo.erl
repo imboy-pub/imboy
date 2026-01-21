@@ -92,7 +92,7 @@ read_msg(Where, Column, Limit, Params) ->
 %% @param E2EE 端到端加密信息（JSON binary，可选）
 %% @return {ok, Result} | {error, Reason}
 %% @example msg_c2c_repo:write_msg(elib_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"text\":\"hello\"}">>, 1, 2, elib_dt:now(microsecond), <<"text">>, <<"{\"key\":\"...\"}">>).
--spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary() | null) -> {ok, any()} | {error, any()}.
+-spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary() | null) -> {ok, non_neg_integer()} | {error, term()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，必须传入 integer
     Tb = tablename(),
@@ -171,7 +171,7 @@ delete_overflow_msg(ToUid, Limit) ->
 %% @doc 删除用户的所有C2C离线消息
 %% @param ToUid 接收者用户ID
 %% @return {ok, Count} | {error, Reason}
--spec delete_by_to_id(integer()) -> {ok, any()} | {error, any()}.
+-spec delete_by_to_id(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_by_to_id(ToUid) ->
     Where = <<"WHERE to_id = $1">>,
     delete_msg(Where, [ToUid]).
@@ -180,7 +180,7 @@ delete_by_to_id(ToUid) ->
 %% @param MsgId 消息唯一ID
 %% @param ToUid 接收者用户ID
 %% @return {ok, Count} | {error, Reason}
--spec delete_by_msg_id_and_to_id(binary(), integer()) -> {ok, any()} | {error, any()}.
+-spec delete_by_msg_id_and_to_id(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_by_msg_id_and_to_id(MsgId, ToUid) ->
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     delete_msg(Where, [MsgId, ToUid]).

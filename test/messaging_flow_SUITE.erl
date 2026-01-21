@@ -571,10 +571,10 @@ cleanup_all_test_data() ->
     end,
     Sql2 = <<"SELECT id FROM user WHERE mobile LIKE '13900%'">>,
     case elib_pg:query(Sql2, []) of
-        {ok, Rows} ->
+        {ok, Rows2} ->
             lists:foreach(fun(#{<<"id">> := Id}) ->
                 user_repo:delete(Id)
-            end, Rows);
+            end, Rows2);
         _ ->
             ok
     end.
