@@ -154,7 +154,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
 assemble_s2c(MsgId, Action, To) ->
     %% v2.0: S2C 消息使用 action 字段，直接使用 assemble_msg/8
     Payload = #{},
-    assemble_msg(<<"S2C">>, <<>>, To, Payload, MsgId, <<>>, Action, <<>>).
+    assemble_msg(<<"S2C">>, <<>>, To, Payload, MsgId, <<>>, Action, null).
 
 
 %%% 系统消息 end
@@ -179,7 +179,7 @@ assemble_s2c(MsgId, Action, To) ->
                    binary(),
                    binary(),
                    binary(),
-                   binary()) -> map().
+                   map() | null) -> map().
 assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE)
         when is_integer(From), From > 0 ->
     assemble_msg(Type, elib_hashids:encode(From), To, Payload, MsgId, MsgType, Action, E2EE);
@@ -219,7 +219,7 @@ assemble_msg(Type, From, To, Payload, MsgId) ->
     %% v2.0: 从 Payload 中提取 msg_type/action/e2ee 到顶层（向后兼容）
     MsgType = maps:get(<<"msg_type">>, Payload, <<>>),
     Action = maps:get(<<"action">>, Payload, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Payload, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Payload, null),
 
     %% 清理 Payload 中的顶层字段（避免重复）
     Payload2 = maps:without([<<"msg_type">>, <<"action">>, <<"e2ee">>], Payload),
@@ -270,7 +270,7 @@ encode_websocket_message(Msg) ->
     %% v2.0: msg_type、action、e2ee 都在顶层（不需要根据 type 过滤）
     MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
     Action = maps:get(<<"action">>, Msg, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Msg, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Msg, null),
 
     %% v2.0 格式：所有字段提升到顶层
     #{<<"id">> => maps:get(<<"id">>, Msg),
@@ -298,13 +298,14 @@ decode_websocket_message(Data) ->
     %% v2.0: msg_type、action、e2ee 都在顶层（不需要根据 type 过滤）
     MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
     Action = maps:get(<<"action">>, Msg, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Msg, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Msg, null), % map() | null
 
-    %% 转换为内部格式（统一字段名：from_id/to_id）
+    %% 保持客户端字段名：from/to（binary，hashids编码）
+    %% Logic 层会使用 elib_hashids:decode/1 将其转换为 integer
     #{<<"id">> => maps:get(<<"id">>, Msg),
       <<"type">> => Type,
-      <<"from_id">> => maps:get(<<"from">>, Msg),
-      <<"to_id">> => maps:get(<<"to">>, Msg),
+      <<"from">> => maps:get(<<"from">>, Msg),
+      <<"to">> => maps:get(<<"to">>, Msg),
       <<"msg_type">> => MsgType,
       <<"action">> => Action,
       <<"e2ee">> => E2EE,
@@ -404,7 +405,7 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
     Payload = maps:get(<<"payload">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     Action = maps:get(<<"action">>, Row, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
     CreatedAtRaw = maps:get(<<"created_at">>, Row, undefined),
     ServerTsRaw = maps:get(<<"server_ts">>, Row, undefined),
 

@@ -6,6 +6,7 @@
 -export([build_query/3]).
 -export([exclusion_param/2]).
 -export([get_params/1, get_params/2, get_params/3]).
+-export([query_pairs_to_map/1]).
 
 -export([download/2]).
 -export([upload/5]).

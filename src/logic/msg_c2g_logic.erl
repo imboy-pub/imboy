@@ -85,7 +85,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     % v2.0: 从 Data 提取顶层字段
     MsgType = maps:get(<<"msg_type">>, Data, <<>>),
     Action = maps:get(<<"action">>, Data, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Data, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Data, null), % map() | null
 
     Payload = maps:get(<<"payload">>, Data),
     Msg = #{
@@ -243,7 +243,7 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
             % v2.0: 存储离线消息时分离 payload、msg_type 和 action
             MsgType = maps:get(<<"msg_type">>, ActionMsgExtra, <<"custom">>),
             Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
-            E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, <<>>),
+            E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, null), % map() | null
             ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
 
             % 根据操作类型调用相应的 v2.0 函数

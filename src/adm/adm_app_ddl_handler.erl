@@ -8,15 +8,10 @@
 
 -export([init/2]).
 
--ifdef(EUNIT).
-
 -include_lib("eunit/include/eunit.hrl").
-
--endif.
 
 -include("log.hrl").
 
--include_lib("kernel/include/logger.hrl").
 
 -include("common.hrl").
 
@@ -46,7 +41,7 @@ init(Req0, State0) ->
             save ->
                 save(Method, Req0, State);
             delete ->
-                delete(Method, Req0);
+                delete_action(Method, Req0);
             false ->
                 Req0
         end,
@@ -108,8 +103,8 @@ save(_, Req0, _State) ->
 %% @param Method HTTP 方法
 %% @param Req0 Cowboy 请求对象
 %% @return cowboy_req:req() 更新后的请求对象
--spec delete(binary(), cowboy_req:req()) -> cowboy_req:req().
-delete(<<"DELETE">>, Req0) ->
+-spec delete_action(binary(), cowboy_req:req()) -> cowboy_req:req().
+delete_action(<<"DELETE">>, Req0) ->
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"id">>, PostVals, ""),
 
@@ -118,21 +113,8 @@ delete(<<"DELETE">>, Req0) ->
         {ok, _Count} ->
             elib_response:success(Req0, PostVals, <<"success."/utf8>>);
         {error, Reason} ->
-            ?LOG_ERROR("删除 DDL 失败: ~p", [Reason]),
+            ?DEBUG_LOG("删除 DDL 失败: ~p", [Reason]),
             elib_response:error(Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end;
-delete(_Method, Req0) ->
+delete_action(_Method, Req0) ->
     Req0.
-
-%% ===================================================================
-%% EUnit tests.
-%% ===================================================================
-
--ifdef(EUNIT).
-
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.

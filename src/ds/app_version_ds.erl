@@ -19,9 +19,7 @@
 -export([delete/1]).
 -export([delete_by_id/1]).
 
--ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
--endif.
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
@@ -98,10 +96,3 @@ delete_by_id(Id) when is_integer(Id), Id > 0 ->
 %% EUnit tests.
 %% ===================================================================
 
--ifdef(EUNIT).
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.

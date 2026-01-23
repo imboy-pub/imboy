@@ -10,6 +10,22 @@
 %%% 覆盖：必需参数验证、ID验证、ID列表验证、错误响应
 %%%===================================================================
 
+%% 创建 Cowboy 2.x 模拟请求对象
+%% Cowboy 2.x 使用 Map 作为请求对象，而不是 mock_request()
+mock_request() ->
+    #{
+        method => <<"GET">>,
+        version => 'HTTP/1.1',
+        scheme => <<"http">>,
+        host => <<"localhost">>,
+        port => 8080,
+        path => <<"/api/error">>,
+        qs => <<>>,
+        headers => #{},
+        peer => {{127,0,0,1}, 12345},
+        body_length => 0
+    }.
+
 %% ===================================================================
 %% validate_required/2 测试 - 简单验证
 %% ===================================================================
@@ -20,7 +36,7 @@ validate_required_with_valid_value_test_() ->
             #{account => <<"test_user">>}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_required(Req, account),
         ?assertMatch({ok, <<"test_user">>}, Result)
     end).
@@ -38,7 +54,7 @@ validate_required_with_missing_value_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_required(Req, account),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -56,7 +72,7 @@ validate_required_with_empty_binary_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_required(Req, account),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -67,7 +83,7 @@ validate_required_with_integer_zero_test_() ->
             #{page => 0}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_required(Req, page),
         ?assertMatch({ok, 0}, Result)
     end).
@@ -82,7 +98,7 @@ validate_required_with_custom_validator_test_() ->
             #{age => 25}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Validator = fun(Age) -> is_integer(Age) andalso Age >= 0 end,
         Result = imboy_error:validate_required(Req, age, Validator),
         ?assertMatch({ok, 25}, Result)
@@ -101,7 +117,7 @@ validate_required_custom_validator_fails_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Validator = fun(Age) -> is_integer(Age) andalso Age >= 0 end,
         Result = imboy_error:validate_required(Req, age, Validator),
         ?assertMatch({error, #{response_status := 400}}, Result)
@@ -113,7 +129,7 @@ validate_required_with_binary_validator_test_() ->
             #{email => <<"test@example.com">>}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Validator = fun(Email) ->
             case Email of
                 undefined -> false;
@@ -131,7 +147,7 @@ validate_required_with_list_validator_test_() ->
             #{ids => [1, 2, 3]}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Validator = fun(Ids) -> is_list(Ids) andalso length(Ids) > 0 end,
         Result = imboy_error:validate_required(Req, ids, Validator),
         ?assertMatch({ok, [1, 2, 3]}, Result)
@@ -147,7 +163,7 @@ validate_id_with_valid_hashid_test_() ->
             {'decode', 1, fun(<<"5abc123">>) -> 100 end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id(Req, <<"5abc123">>),
         ?assertMatch({ok, 100}, Result)
     end).
@@ -163,7 +179,7 @@ validate_id_with_invalid_hashid_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id(Req, <<"invalid_id">>),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -176,7 +192,7 @@ validate_id_with_non_binary_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id(Req, 123),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -192,7 +208,7 @@ validate_id_with_empty_binary_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id(Req, <<>>),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -205,7 +221,7 @@ validate_id_with_atom_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id(Req, 'invalid'),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -224,7 +240,7 @@ validate_id_list_with_valid_ids_test_() ->
             end
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, [<<"abc">>, <<"def">>, <<"ghi">>]),
         ?assertMatch({ok, [1, 2, 3]}, Result)
     end).
@@ -245,7 +261,7 @@ validate_id_list_with_one_invalid_id_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, [<<"valid">>, <<"invalid">>]),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
@@ -254,7 +270,7 @@ validate_id_list_with_empty_list_test_() ->
     ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(_Id) -> 0 end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, []),
         ?assertMatch({ok, []}, Result)
     end).
@@ -263,7 +279,7 @@ validate_id_list_with_single_valid_id_test_() ->
     ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(<<"single">>) -> 999 end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, [<<"single">>]),
         ?assertMatch({ok, [999]}, Result)
     end).
@@ -284,7 +300,7 @@ missing_param_with_atom_field_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:missing_param(Req, account),
         ?assertMatch(#{response_status := 400}, Result)
     end).
@@ -301,7 +317,7 @@ missing_param_with_binary_field_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:missing_param(Req, <<"字段"/utf8>>),
         ?assertMatch(#{response_status := 400}, Result)
     end).
@@ -318,7 +334,7 @@ missing_param_with_long_field_name_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:missing_param(Req, very_long_parameter_name),
         ?assertMatch(#{response_status := 400}, Result)
     end).
@@ -336,7 +352,7 @@ invalid_id_returns_error_response_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:invalid_id(Req, <<"invalid_hash_id">>),
         ?assertMatch(#{response_status := 400}, Result)
     end).
@@ -350,7 +366,7 @@ invalid_id_with_empty_id_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:invalid_id(Req, <<>>),
         ?assertMatch(#{response_status := 400}, Result)
     end).
@@ -371,7 +387,7 @@ not_found_with_user_resource_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:not_found(Req, <<"用户"/utf8>>, <<"123abc">>),
         ?assertMatch(#{response_status := 404}, Result)
     end).
@@ -388,7 +404,7 @@ not_found_with_group_resource_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:not_found(Req, <<"群组"/utf8>>, <<"group456">>),
         ?assertMatch(#{response_status := 404}, Result)
     end).
@@ -405,7 +421,7 @@ not_found_with_message_resource_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:not_found(Req, <<"消息"/utf8>>, <<"msg789">>),
         ?assertMatch(#{response_status := 404}, Result)
     end).
@@ -423,7 +439,7 @@ not_found_with_long_id_test_() ->
             {'safe_to_binary', 1, fun(Input) -> Input end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:not_found(Req, <<"资源"/utf8>>, <<"very_long_id_string_here">>),
         ?assertMatch(#{response_status := 404}, Result)
     end).
@@ -443,7 +459,7 @@ validate_multiple_params_successfully_test_() ->
             {'decode', 1, fun(<<"gid123">>) -> 100 end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         ?assertMatch({ok, <<"user">>}, imboy_error:validate_required(Req, account)),
         ?assertMatch({ok, 100}, imboy_error:validate_id(Req, <<"gid123">>))
     end).
@@ -461,7 +477,7 @@ validate_param_chain_fails_on_first_error_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Result = imboy_error:validate_required(Req, account),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).

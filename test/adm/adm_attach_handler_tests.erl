@@ -10,6 +10,22 @@
 %%% 覆盖：附件 URI 权限检查
 %%%===================================================================
 
+%% 创建 Cowboy 2.x 模拟请求对象
+%% Cowboy 2.x 使用 Map 作为请求对象，而不是 mock_request()
+mock_request() ->
+    #{
+        method => <<"GET">>,
+        version => 'HTTP/1.1',
+        scheme => <<"http">>,
+        host => <<"localhost">>,
+        port => 8080,
+        path => <<"/adm/attach">>,
+        qs => <<>>,
+        headers => #{},
+        peer => {{127,0,0,1}, 12345},
+        body_length => 0
+    }.
+
 %% ===================================================================
 %% init/2 测试
 %% ===================================================================
@@ -18,7 +34,7 @@ init_with_auth_action_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'method', 1, fun(_Req) -> <<"POST">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{action => auth},
         {ok, NewReq, NewState} = adm_attach_handler:init(Req, State),
         ?assert(is_map(NewState)),
@@ -29,7 +45,7 @@ init_with_false_action_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'method', 1, fun(_Req) -> <<"GET">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{action => false},
         {ok, NewReq, NewState} = adm_attach_handler:init(Req, State),
         ?assert(is_map(NewState))
@@ -53,7 +69,7 @@ auth_with_single_uri_test_() ->
             {'success', 3, fun(_Req, _Payload, _Msg) -> #{response_status => 200} end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -76,7 +92,7 @@ auth_with_multiple_uris_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -104,7 +120,7 @@ auth_with_mixed_permissions_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -127,7 +143,7 @@ auth_with_empty_uri_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -137,7 +153,7 @@ auth_with_non_post_method_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'new', 0, fun() -> #{method => <<"GET">>} end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"GET">>, Req, State),
         ?assert(is_map(Result))
@@ -168,7 +184,7 @@ auth_with_many_uris_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -191,7 +207,7 @@ auth_with_special_characters_in_uri_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -214,7 +230,7 @@ auth_with_chinese_uri_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)
@@ -242,7 +258,7 @@ auth_returns_map_with_uri_key_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         State = #{},
         Result = adm_attach_handler:auth(<<"POST">>, Req, State),
         ?assertMatch(#{response_status := 200}, Result)

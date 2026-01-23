@@ -25,3 +25,9 @@ start:
 # Example: make stop node=node1
 stop:
 	./script/stop_node.sh $(node)
+
+# Clean all .beam files recursively
+# Example: make clean-beam
+.PHONY: clean-beam
+clean-beam:
+	find . -type f -name "*.beam" -delete

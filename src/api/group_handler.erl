@@ -95,7 +95,7 @@ face2face(Req0, State) ->
                           <<"nickname">> => maps:get(<<"nickname">>, User),
                           <<"avatar">> => maps:get(<<"avatar">>, User),
                           <<"account">> => maps:get(<<"account">>, User)},
-                    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, no_save),
+                    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, no_save),
 
                     MemberListRes =
                         user_repo:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
@@ -254,7 +254,7 @@ process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
             %% v2.0: 使用 send/7 API
             Action = <<"group_edit">>,
             Payload = Data#{<<"gid">> => Gid},
-            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, save);
+            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save);
         false ->
             % 创建新群组
             M3 = group_random_code_repo:find_by_gid(Gid2, <<"user_id, created_at">>),

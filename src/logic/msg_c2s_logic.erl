@@ -78,7 +78,7 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
 
     % 【关键修复】先备份到 staging 表（同步，检查返回值）
     % v2.0: C2S 消息使用 text 类型，无 action 和 e2ee
-    case msg_store_ds:stage(<<"c2s">>, MsgId, <<"text">>, <<>>, <<>>, Payload0Bin,
+    case msg_store_ds:stage(<<"c2s">>, MsgId, <<"text">>, <<>>, #{}, Payload0Bin,
                               CurrentUid, 0, CreatedAt, CreatedAt) of
         ok ->
             % 备份成功，立即响应

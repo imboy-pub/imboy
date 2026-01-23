@@ -129,7 +129,7 @@ start_link() ->
 %% @see unstage/1 标记消息已处理
 %% @end
 %%-------------------------------------------------------------------
--spec stage(binary(), binary(), binary(), binary(), binary(), binary(), integer(), integer() | [integer()], binary(), binary()) -> ok | error.
+-spec stage(binary(), binary(), binary(), binary(), map(), binary(), integer(), integer() | [integer()], binary(), binary()) -> ok | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
     case msg_store_repo:stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) of
         {ok, _} ->

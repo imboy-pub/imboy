@@ -28,7 +28,7 @@
 %% @param Payload 消息负载内容
 %% @param Save 发送模式，save表示先存储再发送，其他表示直接发送
 %% @returns ok 表示操作成功
--spec send(integer() | binary() | list(), list(), binary(), binary(), binary(), map(), atom()) -> ok.
+-spec send(integer() | binary() | list(), list(), binary(), binary(), map() | null, map(), atom()) -> ok.
 send(_, [], _, _, _, _, _) ->
     ok;
 send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->

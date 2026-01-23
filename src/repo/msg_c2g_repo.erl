@@ -37,7 +37,7 @@ tablename() ->
         [integer()],          %% ToUids
         integer(),            %% Gid
         binary(),             %% MsgType
-        binary() | null       %% E2EE (可选)
+        map() | null       %% E2EE (可选)
       ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     %% ---------- 统一转换 CreatedAt ----------
@@ -64,7 +64,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
             e2ee => case E2EE of
                 <<>> -> null;
                 null -> null;
-                _ -> E2EE
+                _ -> jsone:encode(E2EE, [native_utf8])
             end
         }, <<>>),
 

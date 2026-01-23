@@ -31,11 +31,7 @@
 -export([update_password_in_tx/2]).
 -export([update_allow_search/2]).
 
--ifdef(EUNIT).
-
 -include_lib("eunit/include/eunit.hrl").
-
--endif.
 
 -include("log.hrl").
 
@@ -325,11 +321,3 @@ update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
 %% EUnit tests.
 %% ===================================================================
 
--ifdef(EUNIT).
-
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.

@@ -10,6 +10,22 @@
 %%% 覆盖：路径检查、Cookie 认证、重定向处理
 %%%===================================================================
 
+%% 创建 Cowboy 2.x 模拟请求对象
+%% Cowboy 2.x 使用 Map 作为请求对象，而不是 mock_request()
+mock_request() ->
+    #{
+        method => <<"GET">>,
+        version => 'HTTP/1.1',
+        scheme => <<"http">>,
+        host => <<"localhost">>,
+        port => 8080,
+        path => <<"/adm/dashboard">>,
+        qs => <<>>,
+        headers => #{},
+        peer => {{127,0,0,1}, 12345},
+        body_length => 0
+    }.
+
 %% ===================================================================
 %% execute/2 测试
 %% ===================================================================
@@ -18,7 +34,7 @@ execute_with_static_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/static/css/style.css">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -28,7 +44,7 @@ execute_with_passport_login_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/adm/passport/login">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -38,7 +54,7 @@ execute_with_passport_captcha_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/adm/passport/captcha">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -57,7 +73,7 @@ execute_with_valid_uid_cookie_get_test_() ->
             {'decode', 1, fun(_encoded) -> 100 end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}, has_sent_resp => false},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 100}}}, Result)
@@ -76,7 +92,7 @@ execute_with_valid_uid_cookie_post_test_() ->
             {'decode', 1, fun(_encoded) -> 200 end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}, has_sent_resp => false},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 200}}}, Result)
@@ -99,7 +115,7 @@ execute_without_uid_cookie_get_test_() ->
             {'cookie', 2, fun(_cookie_name, _Req) -> undefined end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({stop, #{response_status := 302}}, Result)
@@ -120,7 +136,7 @@ execute_without_uid_cookie_post_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({stop, #{response_status := 706}}, Result)
@@ -134,7 +150,7 @@ condition_with_binary_uid_test_() ->
     ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(_uid) -> 100 end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{test_key => test_value}},
         Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_123">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 100, test_key := test_value}}}, Result)
@@ -144,7 +160,7 @@ condition_without_has_sent_resp_in_env_test_() ->
     ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(_uid) -> 300 end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{existing => data}},
         Result = adm_auth_middleware:condition(<<"POST">>, <<"uid_abc">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 300, existing := data}}}, Result)
@@ -162,7 +178,7 @@ condition_get_without_uid_redirects_test_() ->
             end}
         ]}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:condition(<<"GET">>, undefined, Req, Env),
         ?assertMatch({stop, #{response_status := 302}}, Result)
@@ -174,7 +190,7 @@ condition_post_without_uid_returns_error_test_() ->
             #{response_status => 706}
         end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:condition(<<"POST">>, undefined, Req, Env),
         ?assertMatch({stop, #{response_status := 706}}, Result)
@@ -234,7 +250,7 @@ execute_with_deep_static_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/static/js/vendor/lib.js">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -244,7 +260,7 @@ execute_with_static_root_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/static/">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -254,7 +270,7 @@ execute_with_passport_do_login_path_test_() ->
     ?WITH_MECK(cowboy_req, [
         {'path', 1, fun(_Req) -> <<"/adm/passport/do_login">> end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{}},
         Result = adm_auth_middleware:execute(Req, Env),
         ?assertMatch({ok, _, _}, Result)
@@ -264,7 +280,7 @@ condition_preserves_existing_handler_opts_test_() ->
     ?WITH_MECK(elib_hashids, [
         {'decode', 1, fun(_uid) -> 999 end}
     ], fun() ->
-        Req = cowboy_req:new(),
+        Req = mock_request(),
         Env = #{handler_opts => #{key1 => val1, key2 => val2}},
         Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_xyz">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 999, key1 := val1, key2 := val2}}}, Result)

@@ -38,11 +38,7 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid) ->
     end,
 
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
-    E2EE = case maps:get(<<"e2ee">>, PayloadMap, undefined) of
-        undefined -> <<>>;
-        E2EEMap when is_map(E2EEMap) -> jsone:encode(E2EEMap, [native_utf8]);
-        _ -> <<>>
-    end,
+    E2EE = maps:get(<<"e2ee">>, PayloadMap, null), % map() | null
 
     % 使用安全的参数化查询，避免SQL注入
     case elib_pg:pluck_value(

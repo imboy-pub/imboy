@@ -298,27 +298,20 @@ fields(Uid) ->
 %% @doc 朋友关系和黑名单联合查询
 -spec check_relationship(integer(), integer()) -> {boolean(), integer()}.
 check_relationship(FromUid, ToUid) ->
-    Key = {check_relationship, FromUid, ToUid},
+    Key = {check_relationship2, FromUid, ToUid},
     Fun = fun() ->
         % 使用 LEFT JOIN 同时查询好友关系和黑名单状态
         UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
         Sql = <<
             "SELECT "
             "EXISTS(SELECT 1 FROM ", (friend_repo:tablename())/binary, " "
-            "WHERE from_user_id = $1 AND to_user_id = $2 AND status = 1) as is_friend, "
+            "WHERE ((from_user_id = $1 AND to_user_id = $2 AND status = 1) OR "
+            "(from_user_id = $2 AND to_user_id = $1 AND status = 1)) as is_friend, "
             "EXISTS(SELECT 1 FROM ", UserDTable/binary, " "
             "WHERE user_id = $1 AND denied_user_id = $2) as in_denylist"
         >>,
         case elib_pg:query(Sql, [FromUid, ToUid]) of
-            {ok, [#{<<"is_friend">> := IsFriendBin, <<"in_denylist">> := InDenylistBin}]} ->
-                IsFriend = case IsFriendBin of
-                    <<"t">> -> true;
-                    _ -> false
-                end,
-                InDenylist = case InDenylistBin of
-                    <<"t">> -> 1;
-                    _ -> 0
-                end,
+            {ok, [#{<<"is_friend">> := IsFriend, <<"in_denylist">> := InDenylist}]} ->
                 {IsFriend, InDenylist};
             {ok, []} ->
                 {false, 0};

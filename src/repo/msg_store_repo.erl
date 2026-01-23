@@ -45,13 +45,13 @@ tablename() ->
 %% @param MsgId 消息唯一ID
 %% @param MsgType 消息子类型 (text/image/video/etc)
 %% @param Action S2C 操作类型
-%% @param E2EE 端到端加密元数据 (JSONB binary 或 <<>>)
+%% @param E2EE 端到端加密元数据 (JSONB map 或 null)
 %% @param Payload 消息内容 (JSON binary)
 %% @param FromId 发送者用户ID
 %% @param ToId 接收者用户ID (单聊) 或 ToIdList (群聊)
 %% @param CreatedAt 消息创建时间 (RFC3339 binary)
 %% @param ServerTs 服务器时间戳 (RFC3339 binary)
--spec stage(binary(), binary(), binary(), binary(), binary(), binary(), integer(), integer() | [integer()], binary(), binary()) ->
+-spec stage(binary(), binary(), binary(), binary(), map(), binary(), integer(), integer() | [integer()], binary(), binary()) ->
           {ok, term()} | {ok, term(), term()} | {error, term()}.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) when is_integer(ToId) ->
     Tb = tablename(),
@@ -62,7 +62,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         action => Action,
         e2ee => case E2EE of
             <<>> -> null;
-            _ -> E2EE
+            _ -> jsone:encode(E2EE, [native_utf8])
         end,
         payload => Payload,
         from_id => FromId,
@@ -91,7 +91,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
              action => Action,
              e2ee => case E2EE of
                  <<>> -> null;
-                 _ -> E2EE
+                 _ -> jsone:encode(E2EE, [native_utf8])
              end,
              payload => Payload,
              from_id => FromId,
@@ -202,7 +202,7 @@ get_unstaged(Limit) ->
 delete_processed(Seconds) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary,
-            " WHERE processed_at IS NULL ",
+            " WHERE processed_at IS NOT NULL ",
             " AND processed_at < NOW() - INTERVAL '1 second' * $1">>,
     elib_pg:execute(Sql, [Seconds]).
 

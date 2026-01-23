@@ -89,26 +89,30 @@ read_msg(Where, Column, Limit, Params) ->
 %% @param ToId 接收者用户ID（integer，对应 bigint 列）
 %% @param ServerTS 服务器时间戳（RFC3339 binary）
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
-%% @param E2EE 端到端加密信息（JSON binary，可选）
+%% @param E2EE 端到端加密信息（JSON map，可选）
 %% @return {ok, Result} | {error, Reason}
 %% @example msg_c2c_repo:write_msg(elib_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"text\":\"hello\"}">>, 1, 2, elib_dt:now(microsecond), <<"text">>, <<"{\"key\":\"...\"}">>).
--spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary() | null) -> {ok, non_neg_integer()} | {error, term()}.
+-spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null) -> ok | {error, term()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，必须传入 integer
     Tb = tablename(),
-    elib_pg:insert(Tb, #{
-        payload => Payload,
-        from_id => FromId,
-        to_id => ToId,
-        created_at => CreatedAt,
-        server_ts => ServerTS,
-        msg_id => Id,
-        msg_type => MsgType,
-        e2ee => case E2EE of
-            <<>> -> null;
-            _ -> E2EE
-        end
-    }).
+    E2EEValue = case E2EE of
+        null -> null;
+        <<>> -> null;
+        _ -> jsone:encode(E2EE, [native_utf8])
+    end,
+    %% 使用 ON CONFLICT DO NOTHING 避免重试时的唯一约束冲突
+    %% 唯一约束: (msg_id, created_at)
+    Sql = [
+        <<"INSERT INTO ">>, Tb,
+        <<" (payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case elib_pg:query(Sql, [Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue]) of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 
 %% @doc 删除C2C离线消息（根据主键ID或消息ID）

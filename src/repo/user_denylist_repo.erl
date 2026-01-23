@@ -12,9 +12,7 @@
 -export([count_for_uid/1,
          page_for_uid/3]).
 
--ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
--endif.
 
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -123,10 +121,3 @@ in_denylist(Uid, DeniedUid) ->
 %% EUnit tests.
 %% ===================================================================
 
--ifdef(EUNIT).
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.

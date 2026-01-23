@@ -83,7 +83,7 @@ leave(Uid, Gid, CurrentUid) ->
                 <<"user_id_sum">> => UidSum,
                 <<"leave_uid">>   => elib_hashids:encode(Uid)
             },
-            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, save),
+            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
         _ ->
             ok
@@ -109,7 +109,7 @@ alias(Uid, Gid, Alias, Description) ->
             % v2.0: 使用 send/7 API
             Action = <<"group_member_alias">>,
             Payload = maps:put(<<"gid">>, elib_hashids:encode(Gid), Data),
-            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, save),
+            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
         {error, Reason} ->
             ?ERROR_LOG([<<"group_member_logic alias error">>, Reason]),
@@ -141,7 +141,7 @@ group_member_join_notice(Gid, Uid, Sum) ->
         <<"avatar">>       => maps:get(<<"avatar">>, User, <<>>),
         <<"account">>      => maps:get(<<"account">>, User, <<>>)
     },
-    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, nosave),
+    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, nosave),
     ok.
 
 %% ===================================================================

@@ -414,7 +414,7 @@ dissolve_group(Uid, Gid, _, G) ->
     % 发送通知
     Action = <<"group_dissolve">>,
     Payload = #{<<"gid">> => elib_hashids:encode(Gid)},
-    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, Payload, save),
+    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
     ok.
 
 %% @doc 根据创建者和用户ID总和查找群组

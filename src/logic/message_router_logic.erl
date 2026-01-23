@@ -34,10 +34,10 @@
 -spec route(binary(), integer(), map(), binary(), binary()) -> ok | {reply, map()}.
 route(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
     %% v2.0: action 在顶层
-    Action = maps:get(<<"action">>, Data, null),
+    Action = maps:get(<<"action">>, Data, <<>>),
 
     case Action of
-        null ->
+        <<>> ->
             %% 普通消息（无 action）
             route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg);
         _ ->

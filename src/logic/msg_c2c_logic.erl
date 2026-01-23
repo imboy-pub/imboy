@@ -14,7 +14,7 @@
 -include("log.hrl").
 
 %% 抑制 Dialyzer 警告 - 内部辅助函数
--dialyzer({nowarn_function, [prepare_c2c_data/2, stage_and_send_c2c/10]}).
+-dialyzer({nowarn_function, [c2c/3, prepare_c2c_data/2, stage_and_send_c2c/10]}).
 
 %% ===================================================================
 %% API
@@ -28,7 +28,7 @@ c2c(MsgId, CurrentUid, Data) ->
 
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
-
+    elib_log:info([CurrentUid, ToId, IsFriend, InDenylist]),
     case {IsFriend, InDenylist} of
         {true, 0} ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
@@ -38,6 +38,7 @@ c2c(MsgId, CurrentUid, Data) ->
             {reply, Msg};
         {false, _InDenylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, To),
+            % elib_log:info(Msg),
             {reply, Msg}
     end.
 
@@ -47,7 +48,7 @@ c2c(MsgId, CurrentUid, Data) ->
 
 %% @doc 准备单聊消息数据
 %% @private
--spec prepare_c2c_data(integer(), map()) -> {binary(), binary(), binary(), binary(), binary(), map()}.
+-spec prepare_c2c_data(integer(), map()) -> {binary(), binary(), binary(), binary(), map(), map()}.
 prepare_c2c_data(CurrentUid, Data) ->
     NowTs = elib_dt:now(),
     NowMS = elib_dt:rfc3339_to(NowTs, millisecond),
@@ -59,26 +60,25 @@ prepare_c2c_data(CurrentUid, Data) ->
     % v2.0: 从顶层提取字段
     MsgType = maps:get(<<"msg_type">>, Data, <<>>),
     Action = maps:get(<<"action">>, Data, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Data, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Data, null), % map() | null
 
-    PayloadJson = imboy_message_helper:encode_json(Payload),
     Timestamps = #{
         now_ts => NowTs,
         now_ms => NowMS,
         created_at_rfc => CreatedAtRfc
     },
-    {From, PayloadJson, MsgType, Action, E2EE, Timestamps}.
+    {From, Payload, MsgType, Action, E2EE, Timestamps}.
 
 %% @doc 备份并发送单聊消息
 %% @private
--spec stage_and_send_c2c(binary(), binary(), integer(), binary(), binary(), binary(), binary(), binary(), map(), integer()) ->
+-spec stage_and_send_c2c(binary(), binary(), integer(), binary(), binary(), binary(), binary(), map(), map(), integer()) ->
           ok | {reply, map()}.
-stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Timestamps, CurrentUid) ->
+stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid) ->
     #{now_ts := NowTs, now_ms := NowMS, created_at_rfc := CreatedAtRfc} = Timestamps,
 
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     StageResult = msg_store_ds:stage(
-        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
+        <<"c2c">>, MsgId, MsgType, Action, E2EE, Payload,
         CurrentUid, ToId, CreatedAtRfc, NowTs),
 
     case StageResult of
@@ -94,7 +94,7 @@ stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Ti
             elib_async:async_retry(fun() ->
                 % ① 先入队（异步，立即返回）
                 msg_store_ds:enqueue(<<"c2c">>, MsgId, #{
-                    payload => PayloadJson,
+                    payload => Payload,
                     from_id => CurrentUid,
                     to_id => ToId,
                     created_at => CreatedAtRfc,
@@ -102,7 +102,6 @@ stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Ti
                 }),
 
                 % ② 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
-                Payload = jsone:decode(PayloadJson, [native_utf8]),
                 Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE),
                 imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>)
             end, 3, 1000),
@@ -168,7 +167,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                         false ->  % 对端离线处理
                             RevokePayloadJson = imboy_message_helper:encode_json(RevokePayload),
                             % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
-                            case msg_c2c_ds:revoke_offline_msg(RevokePayloadJson, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>) of
+                            case msg_c2c_ds:revoke_offline_msg(RevokePayload, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>, null) of
                                 ok -> ok;
                                 {error, _} -> ok
                             end

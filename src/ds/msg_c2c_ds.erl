@@ -10,7 +10,7 @@
 -export([write_msg/6]).
 -export([write_msg/8]).
 -export([revoke_offline_msg/5]).
--export([revoke_offline_msg/7]).
+-export([revoke_offline_msg/8]).
 -export([edit_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
@@ -49,11 +49,7 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     end,
 
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
-    E2EE = case maps:get(<<"e2ee">>, PayloadMap, undefined) of
-        undefined -> <<>>;
-        E2EEMap when is_map(E2EEMap) -> jsone:encode(E2EEMap, [native_utf8]);
-        _ -> <<>>
-    end,
+    E2EE = maps:get(<<"e2ee">>, PayloadMap, null), % map() | null
 
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     Count = msg_c2c_repo:count_by_to_id(To),
@@ -77,9 +73,9 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 %% @param To 接收方用户ID
 %% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
-%% @param E2EE 端到端加密信息（JSON binary，可选）
+%% @param E2EE 端到端加密信息（JSON map，可选）
 %% @returns {ok, Count} | {error, Reason} 数据库操作结果
--spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer(), binary(), binary() | null) -> {ok, non_neg_integer()} | {error, term()}.
+-spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer(), binary(), map() | null) -> ok | {error, term()}.
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS, MsgType, E2EE);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
@@ -190,11 +186,15 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
 %% @param ToId 接收方用户ID
 %% @param MsgType 消息类型（custom, text 等）
 %% @param Action 操作类型（message_revoke_ack 等）
+%% @param E2EE 端到端加密信息
 %% @returns ok | {error, Reason}
--spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer(), binary(), binary()) -> ok | {error, any()}.
-revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action) ->
+-spec revoke_offline_msg(map(), binary() | integer(), binary(), integer(), integer(), binary(), binary(), map() | null) -> ok | {error, any()}.
+revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) ->
+    % 将 Action 包含在 Payload 中（因为 write_msg/8 不支持单独的 Action 参数）
+    PayloadWithAction = Payload#{<<"action">> => Action},
+    PayloadBin = imboy_message_helper:encode_json(PayloadWithAction),
     % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
-    _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs, MsgType, Action),
+    _ = msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
     case elib_pg:update(
         msg_c2c_repo:tablename(),

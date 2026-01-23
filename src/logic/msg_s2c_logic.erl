@@ -32,7 +32,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 按策略发送消息
     From = elib_hashids:encode(CurrentUid),
     Action = <<"C2C_DEL_EVERYONE">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
     % ?DEBUG_LOG(Msg),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     % 【改进】存储消息到队列（备份表 + shq 队列）
@@ -43,7 +43,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 
     % 写入备份表（同步，快速）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2C_DEL_EVERYONE">>, <<>>,
+    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2C_DEL_EVERYONE">>, #{},
                           PayloadJson, CurrentUid, To, CreatedAtRfc, CreatedAtRfc),
 
     % ① 先入队（异步，非阻塞）
@@ -65,7 +65,7 @@ s2c(<<"C2G_DEL_FOR_ME">>, MsgId, CurrentUid, Data) ->
     ok = msg_operation_ds:delete_c2g_timeline(CurrentUid, OldMsgId),
     % 给操作者回复消息
     Action = <<"C2G_DEL_FOR_ME">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
     {reply, Msg};
 s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
@@ -87,7 +87,7 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 
     % 给操作者回复消息
     Action = <<"C2G_DEL_EVERYONE">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
     {reply, Msg}.
 
 %% 1 存储s2c消息
@@ -106,7 +106,7 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     MsgId = elib_id:gen("s2c"),
     % 按策略发送消息
     Action = <<"C2G_DEL_EVERYONE">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
 
     % 【改进】存储消息到队列（备份表 + shq 队列）
@@ -117,7 +117,7 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
 
     % 写入备份表（同步，快速）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2G_DEL_EVERYONE">>, <<>>,
+    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2G_DEL_EVERYONE">>, #{},
                           PayloadJson, CurrentUid, Uid, CreatedAtRfc2, CreatedAtRfc2),
 
     % ① 先入队（异步，非阻塞）

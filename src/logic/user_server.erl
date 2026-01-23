@@ -108,7 +108,7 @@ handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
     Payload =
         #{<<"did">> => DID,
           <<"dname">> => DName},
-    Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, Uid, Payload, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, Uid, Payload, MsgId, <<>>, Action, null),
 
     MsLi = elib_retry_config:intervals(<<"notice">>),
     Msg2 = jsone:encode(Msg, [native_utf8]),
@@ -207,7 +207,7 @@ cancel(Uid, CreatedAt, Opt) ->
     % 通知好友
     ToUidLi = friend_ds:list_by_uid(Uid),
     Action = <<"user_cancel">>,
-    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, #{}, save),
+    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, #{}, save),
     ok.
 
 -spec notice_friend(integer(), binary()) -> ok.
@@ -215,5 +215,5 @@ notice_friend(Uid, Action) ->
     % 用户在线状态变更
     % Action: <<"online">> | <<"offline">> | <<"hide">>.
     ToUidLi = friend_ds:list_by_uid(Uid),
-    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, <<>>, #{}, no_save),
+    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, #{}, no_save),
     ok.

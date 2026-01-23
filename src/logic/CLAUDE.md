@@ -82,6 +82,93 @@ Logic 模块由 Handler 层或 DS 层调用：
 | `msg_ack_logic.erl` | 消息确认逻辑 |
 | `message_router_logic.erl` | 消息路由器 |
 
+---
+
+## WebSocket API v2.0 消息格式
+
+### C2C 消息格式（单聊）
+
+客户端发送的 WebSocket 消息必须包含以下字段：
+
+```erlang
+# WebSocket API v2.0 - C2C 消息格式
+#{
+  <<"id">> => MsgId,                    % binary: 消息ID
+  <<"type">> => <<"C2C">>,             % binary: 消息类型
+  <<"from">> => FromId,                % binary: 发送者ID (hashids编码)
+  <<"to">> => ToId,                    % binary: 接收者ID (hashids编码) ⚠️ 注意：不是 to_id
+  <<"msg_type">> => MsgType,           % binary: 消息类型 (text/image/file等)
+  <<"action">> => Action,              % binary: 动作类型 (可选)
+  <<"e2ee">> => E2EEMap,               % map: E2EE元数据 (可选, 加密消息时必须有)
+  <<"payload">> => Payload,            % binary|string: 消息内容 (加密时为密文base64)
+  <<"created_at">> => CreatedAt        % integer: 创建时间戳(毫秒)
+}
+```
+
+### 关键字段说明
+
+| 字段 | 类型 | 说明 | 示例 |
+|------|------|------|------|
+| `<<"to">>` | binary | 接收者ID (hashids编码) - **推荐使用** | `<<"gdwqa5">>` |
+| `<<"from">>` | binary | 发送者ID (hashids编码) - **推荐使用** | `<<"p25vd5">>` |
+| `<<"e2ee">>` | map | E2EE 元数据，必须是 **Map** 不是 JSON 字符串 | `#{<<"e2ee">> => true, ...}` |
+| `<<"payload">>` | binary|string | 消息内容（明文时为 JSON 字符串，加密时为 base64 密文） | 见下方示例 |
+
+> **注意**：`message_ds:decode_websocket_message/1` 已支持字段兼容性，同时接受 `to`/`from`（推荐）和 `to_id`/`from_id`（兼容）两种格式。
+
+### E2EE 加密消息格式
+
+当 `<<"msg_type">> = <<"e2ee">>` 时：
+
+```erlang
+# payload: base64(nonce).base64(ciphertext)
+# e2ee: E2EE 元数据 (Map，不是 JSON 字符串!)
+#{
+  <<"e2ee">> => true,
+  <<"e2ee_ver">> => 1,
+  <<"e2ee_suite">> => <<"RSA-OAEP-256+AES-256-GCM">>,
+  <<"nonce">> => Base64Nonce,
+  <<"keys">> => [
+    #{
+      <<"did">> => DeviceId,
+      <<"kid">> => KeyId,
+      <<"wrap_alg">> => <<"RSA-OAEP-256">>,
+      <<"ek">> => Base64EncryptedKey
+    }
+  ]
+}
+```
+
+### 常见错误
+
+#### 错误1: {badkey,<<"to">>}
+
+**原因**: 客户端发送了 `<<"to_id">>` 而不是 `<<"to">>`
+
+**解决方案**: 客户端使用 `to` 而不是 `to_id`
+
+```dart
+// ❌ 错误
+{ 'to_id': 'gdwqa5' }
+
+// ✅ 正确
+{ 'to': 'gdwqa5' }
+```
+
+#### 错误2: e2ee 字段是 JSON 字符串
+
+**原因**: 客户端将 e2ee Map 序列化为 JSON 字符串
+
+**解决方案**: 客户端直接发送 Map，让 WebSocket 库自动编码
+
+```dart
+// ❌ 错误
+'e2ee': json.encode(e2eeMap)  // 变成 JSON 字符串
+
+// ✅ 正确
+'e2ee': e2eeMap  // 直接发送 Map
+```
+
 ### 其他 Logic
 
 | Logic | 说明 |
@@ -227,6 +314,15 @@ src/logic/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-01-21
+- **修复 E2EE API 权限**：允许任何登录用户获取其他用户的公钥
+- **新增 WebSocket API v2.0 文档**：详细说明消息格式和常见错误
+- **修复 WebSocket 消息字段只支持 `to`/`from`字段名格式（数据库存储的是对应的int类型 to_id 和 from_id）
+- **字段类型说明**：
+  - `<<"to">>` 字段值类型为 **binary**（hashids编码的字符串，如 `<<"gdwqa5">>`）
+  - `<<"from">>` 字段值类型为 **binary**（hashids编码的字符串，如 `<<"p25vd5">>`）
+  - 服务端内部解码后的 `ToId`/`FromId` 变量类型为 **integer**（如 `12345`）
 
 ### 2026-01-20
 - 新增 `message_router_logic.erl` 消息路由器

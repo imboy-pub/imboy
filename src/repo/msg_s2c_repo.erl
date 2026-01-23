@@ -49,9 +49,9 @@ read_msg(Where, Vals, Column, Limit) ->
 %% @param ServerTS 服务器时间戳（RFC3339 binary）
 %% @param Action S2C消息指令（如 notify, revoke, edit 等）
 %% @param MsgType 消息类型（可选，默认为空）
-%% @param E2EE 端到端加密信息（JSON binary 或 null，S2C 消息通常为 null）
+%% @param E2EE 端到端加密信息（JSON map 或 null，S2C 消息通常为 null）
 %% @return {ok, Result} | {error, Reason}
--spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary(), binary() | null) -> {ok, any()} | {error, any()}.
+-spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary(), map() | null) -> {ok, any()} | {error, any()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，需要传入 integer
     elib_pg:insert(tablename(), #{
@@ -68,7 +68,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE)
         end,
         e2ee => case E2EE of
             <<>> -> null;
-            _ -> E2EE
+            _ -> jsone:encode(E2EE, [native_utf8])
         end
     }).
 

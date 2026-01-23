@@ -37,7 +37,7 @@ tablename() ->
 %% @param E2EE 端到端加密信息（JSON binary，可选）
 %% @return ok
 %% @details 注意：from_id 和 to_groupid 是 bigint 类型，必须传入 integer
--spec write_msg(binary() | integer(), binary(), binary() | list(), integer(), list(), integer(), binary(), binary() | null) -> ok.
+-spec write_msg(binary() | integer(), binary(), binary() | list(), integer(), list(), integer(), binary(), map() | null) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
     Tb = tablename(),
@@ -55,7 +55,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
             e2ee => case E2EE of
                 <<>> -> null;
                 null -> null;
-                _ -> E2EE
+                _ -> jsone:encode(E2EE, [native_utf8])
             end
         }, <<>>),
 

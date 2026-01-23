@@ -8,9 +8,7 @@
 -export([user_search_page/4]).
 -export([recently_user_page/4]).
 
--ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
--endif.
 -include("log.hrl").
 -include("common.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -120,10 +118,3 @@ recently_user_page(Uid, Page, Size, Keyword) ->
 %% EUnit tests.
 %% ===================================================================
 
--ifdef(EUNIT).
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.

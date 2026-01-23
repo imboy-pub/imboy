@@ -12,7 +12,6 @@
       "Bash(lsof:*)",
       "Bash(npm run dev:*)",
       "Bash(node:*)",
-      "Bash(NODE_OPTIONS=\"--no-warnings\" VITE_SKIP_OPTIMIZE_DEPS=true npm run dev)",
       "Bash(pkill:*)",
       "WebSearch",
       "Bash(pnpm add:*)",

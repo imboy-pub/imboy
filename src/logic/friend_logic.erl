@@ -51,7 +51,7 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     Payload2 = maps:without([<<"action">>], Payload),
     % 存储消息（v2.0: 使用 write_msg/8 API）
     _ = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload2, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload2, MsgId, <<>>, Action, null),
     % ?DEBUG_LOG(Msg),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
@@ -116,7 +116,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     _ = msg_s2c_ds:write_msg(NowTs, MsgId, Payload6, CurrentUid, FromID, NowTs, Action, <<>>),
 
     % 这里的From To 需要对调，离线消息需要对调
-    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload6, MsgId, <<>>, Action, <<>>),
+    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload6, MsgId, <<>>, Action, null),
 
     % ?DEBUG_LOG(Msg),
     MsLi = elib_retry_config:intervals(<<"s2c">>),

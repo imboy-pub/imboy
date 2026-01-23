@@ -158,7 +158,7 @@ do_write(c2c, Row) ->
     ServerTs = maps:get(<<"server_ts">>, Row, 0),
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
     msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE);
 
 do_write(c2g, Row) ->
@@ -168,7 +168,7 @@ do_write(c2g, Row) ->
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
     %% C2G 需要 Gid，从 payload 解析
     PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
     GidEnc = maps:get(<<"to">>, PayloadMap),

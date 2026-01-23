@@ -8,11 +8,7 @@
 
 -export([init/2]).
 
--ifdef(EUNIT).
-
 -include_lib("eunit/include/eunit.hrl").
-
--endif.
 
 -include("log.hrl").
 
@@ -135,11 +131,3 @@ delete(_, Req0, _State) ->
 %% EUnit tests.
 %% ===================================================================
 
--ifdef(EUNIT).
-
-%addr_test_() ->
-%    [?_assert(is_public_addr(?PUBLIC_IPV4ADDR)),
-%     ?_assert(is_public_addr(?PUBLIC_IPV6ADDR)),
-%     ?_test(my_if_addr(inet)),
-%     ?_test(my_if_addr(inet6))].
--endif.
