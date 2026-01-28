@@ -28,9 +28,9 @@ c2c(MsgId, CurrentUid, Data) ->
 
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
-    % elib_log:info([<<"msg_c2c_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
+    elib_log:info([<<"msg_c2c_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
     case {IsFriend, InDenylist} of
-        {true, 0} ->
+        {true, false} ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
             stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Timestamps, CurrentUid);
         {_, InDenylist2} when InDenylist2 > 0 ->
@@ -76,9 +76,15 @@ prepare_c2c_data(CurrentUid, Data) ->
 stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid) ->
     #{now_ts := NowTs, now_ms := NowMS, created_at_rfc := CreatedAtRfc} = Timestamps,
 
+    % 【修复】将 Payload map 编码成 JSON binary
+    PayloadJson = case Payload of
+        Map when is_map(Map) -> jsone:encode(Payload, [native_utf8]);
+        Bin when is_binary(Bin) -> Payload
+    end,
+
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     StageResult = msg_store_ds:stage(
-        <<"c2c">>, MsgId, MsgType, Action, E2EE, Payload,
+        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
         CurrentUid, ToId, CreatedAtRfc, NowTs),
 
     elib_log:info(["stage_and_send_c2c", StageResult]),

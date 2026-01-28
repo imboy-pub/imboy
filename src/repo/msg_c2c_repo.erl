@@ -99,7 +99,9 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     E2EEValue = case E2EE of
         null -> null;
         <<>> -> null;
-        _ -> jsone:encode(E2EE, [native_utf8])
+        Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
+        Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
+        _ -> null
     end,
     %% 使用 ON CONFLICT DO NOTHING 避免重试时的唯一约束冲突
     %% 唯一约束: (msg_id, created_at)

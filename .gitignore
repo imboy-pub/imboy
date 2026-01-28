@@ -62,3 +62,4 @@ docker-compose-pg17-dev.yml
 relxdev.config
 docker/imboy_pg18
 .cline
+/.reports/

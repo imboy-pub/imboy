@@ -291,12 +291,12 @@ fields(Uid) ->
 %%
 %% @param FromUid 源用户ID
 %% @param ToUid 目标用户ID
-%% @returns {IsFriend :: boolean(), InDenylist :: integer()}
+%% @returns {IsFriend :: boolean(), InDenylist :: boolean()}
 %%          IsFriend: 是否是好友
 %%          InDenylist: 黑名单状态（0 表示不在黑名单，其他值表示在黑名单）
 %%
 %% @doc 朋友关系和黑名单联合查询
--spec check_relationship(integer(), integer()) -> {boolean(), integer()}.
+-spec check_relationship(integer(), integer()) -> {boolean(), boolean()}.
 check_relationship(FromUid, ToUid) ->
     Key = {check_relationship3, FromUid, ToUid},
     Fun = fun() ->
@@ -315,9 +315,9 @@ check_relationship(FromUid, ToUid) ->
             {ok, [#{<<"is_friend">> := IsFriend, <<"in_denylist">> := InDenylist}]} ->
                 {IsFriend, InDenylist};
             {ok, []} ->
-                {false, 0};
+                {false, false};
             {error, _Reason} ->
-                {false, 0}
+                {false, false}
         end
     end,
     % 【缓存一致性修复】统一缓存时间为 5 分钟（300 秒），与 is_friend/3 保持一致

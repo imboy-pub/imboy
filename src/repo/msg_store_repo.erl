@@ -61,8 +61,11 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         msg_type => MsgType,
         action => Action,
         e2ee => case E2EE of
+            null -> null;
             <<>> -> null;
-            _ -> jsone:encode(E2EE, [native_utf8])
+            Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
+            Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（可能是双重编码的源头）
+            _ -> null
         end,
         payload => Payload,
         from_id => FromId,
@@ -90,8 +93,11 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
              msg_type => MsgType,
              action => Action,
              e2ee => case E2EE of
+                 null -> null;
                  <<>> -> null;
-                 _ -> jsone:encode(E2EE, [native_utf8])
+                 Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
+                 Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（可能是双重编码的源头）
+                 _ -> null
              end,
              payload => Payload,
              from_id => FromId,

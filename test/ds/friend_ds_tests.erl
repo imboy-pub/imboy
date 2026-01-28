@@ -192,16 +192,18 @@ check_relationship_returns_map_test_() ->
     ?TEST_WITH_DB(fun() ->
         FromUid = 1,
         ToUid = 2,
-        Result = friend_ds:check_relationship(FromUid, ToUid),
-        ?assert(is_map(Result))
+        {B1, B2} = friend_ds:check_relationship(FromUid, ToUid),
+        ?assert(is_boolean(B1)),
+        ?assert(is_boolean(B2))
     end).
 
 check_relationship_non_existent_test_() ->
     ?TEST_WITH_DB(fun() ->
         FromUid = 999999,
         ToUid = 999998,
-        Result = friend_ds:check_relationship(FromUid, ToUid),
-        ?assert(is_map(Result))
+        {B1, B2} = friend_ds:check_relationship(FromUid, ToUid),
+        ?assert(is_boolean(B1)),
+        ?assert(is_boolean(B2))
     end).
 
 %% ===================================================================

@@ -55,7 +55,9 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
             e2ee => case E2EE of
                 <<>> -> null;
                 null -> null;
-                _ -> jsone:encode(E2EE, [native_utf8])
+                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
+                Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
+                _ -> null
             end
         }, <<>>),
 
