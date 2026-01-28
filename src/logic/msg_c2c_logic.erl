@@ -28,7 +28,7 @@ c2c(MsgId, CurrentUid, Data) ->
 
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
-    elib_log:info([CurrentUid, ToId, IsFriend, InDenylist]),
+    % elib_log:info([<<"msg_c2c_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
     case {IsFriend, InDenylist} of
         {true, 0} ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
@@ -81,6 +81,7 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
         <<"c2c">>, MsgId, MsgType, Action, E2EE, Payload,
         CurrentUid, ToId, CreatedAtRfc, NowTs),
 
+    elib_log:info(["stage_and_send_c2c", StageResult]),
     case StageResult of
         ok ->
             % 立即响应和投递
@@ -165,7 +166,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                             imboy_message_helper:encode_and_send(ToId, MsgId, RevokeMsg, <<"c2s">>),
                             ok;
                         false ->  % 对端离线处理
-                            RevokePayloadJson = imboy_message_helper:encode_json(RevokePayload),
+
                             % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
                             case msg_c2c_ds:revoke_offline_msg(RevokePayload, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>, null) of
                                 ok -> ok;

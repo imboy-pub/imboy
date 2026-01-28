@@ -298,7 +298,7 @@ fields(Uid) ->
 %% @doc 朋友关系和黑名单联合查询
 -spec check_relationship(integer(), integer()) -> {boolean(), integer()}.
 check_relationship(FromUid, ToUid) ->
-    Key = {check_relationship2, FromUid, ToUid},
+    Key = {check_relationship3, FromUid, ToUid},
     Fun = fun() ->
         % 使用 LEFT JOIN 同时查询好友关系和黑名单状态
         UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
@@ -306,10 +306,11 @@ check_relationship(FromUid, ToUid) ->
             "SELECT "
             "EXISTS(SELECT 1 FROM ", (friend_repo:tablename())/binary, " "
             "WHERE ((from_user_id = $1 AND to_user_id = $2 AND status = 1) OR "
-            "(from_user_id = $2 AND to_user_id = $1 AND status = 1)) as is_friend, "
+            "(from_user_id = $2 AND to_user_id = $1 AND status = 1))) as is_friend, "
             "EXISTS(SELECT 1 FROM ", UserDTable/binary, " "
             "WHERE user_id = $1 AND denied_user_id = $2) as in_denylist"
         >>,
+        % elib_log:info([<<"check_relationship">>, Sql]),
         case elib_pg:query(Sql, [FromUid, ToUid]) of
             {ok, [#{<<"is_friend">> := IsFriend, <<"in_denylist">> := InDenylist}]} ->
                 {IsFriend, InDenylist};
@@ -319,8 +320,8 @@ check_relationship(FromUid, ToUid) ->
                 {false, 0}
         end
     end,
-    % 缓存 1 天
-    imboy_cache:memo(Fun, Key, 86400).
+    % 【缓存一致性修复】统一缓存时间为 5 分钟（300 秒），与 is_friend/3 保持一致
+    imboy_cache:memo(Fun, Key, 300).
 
 %% @doc 确认好友关系
 %% @param IsFriend 是否已经是好友

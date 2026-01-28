@@ -20,8 +20,10 @@ init([]) ->
     %     , shutdown => 1000
     % },
 
+    % 启动 pooler 应用和连接池
+    application:start(pooler),
     PgConf = config_ds:env(pg_conf),
-    _ = pooler:new_pool(PgConf),
+    pooler:new_pool(PgConf),
 
     % https://blog.csdn.net/Dylan_2018/article/details/110150142
     % child_spec() = #{id => child_id(),             % mandatory

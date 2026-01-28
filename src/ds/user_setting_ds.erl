@@ -5,6 +5,7 @@
 %%%
 -export([find_by_uid/1]).
 -export([chat_state_hide/1]).
+-export([batch_chat_state_hide/1]).
 -export([save/3]).
 -export([search/1]).
 
@@ -61,6 +62,48 @@ chat_state_hide(Uid) ->
             true;
         _ ->
             false
+    end.
+
+%% @doc 批量检查多个用户是否隐藏在线状态
+%%
+%% 【优化】批量查询用户聊天状态设置，避免 N+1 查询问题
+%% 使用单次 SQL 查询获取所有用户的设置，返回 Uid => IsHide 的映射
+%%
+%% @param Uids 用户ID列表
+%% @returns map() #{Uid => true/false} true表示隐藏状态，false表示显示状态
+%% user_setting_ds:batch_chat_state_hide([1, 2, 3]).
+-spec batch_chat_state_hide([integer()]) -> map().
+batch_chat_state_hide([]) ->
+    #{};
+batch_chat_state_hide(Uids) when is_list(Uids) ->
+    % 使用安全的参数化查询，一次查询获取所有用户设置
+    Tb = user_setting_repo:tablename(),
+    InClause = iolist_to_binary(lists:join(<<",">>,
+        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Uids))])),
+    Sql = <<"SELECT user_id, setting FROM ", Tb/binary,
+            " WHERE user_id IN (", InClause/binary, ")">>,
+
+    case elib_pg:query(Sql, Uids) of
+        {ok, Rows} ->
+            lists:foldl(fun(#{<<"user_id">> := Uid, <<"setting">> := SettingBin}, Acc) ->
+                IsHide = case SettingBin of
+                    <<>> -> false;
+                    _ ->
+                        try jsone:decode(SettingBin, [{object_format, map}]) of
+                            Setting ->
+                                case maps:get(<<"chat_state">>, Setting, false) of
+                                    <<"hide">> -> true;
+                                    _ -> false
+                                end
+                        catch
+                            _:_ -> false
+                        end
+                end,
+                maps:put(Uid, IsHide, Acc)
+            end, #{}, Rows);
+        {error, _Reason} ->
+            % 查询失败时返回空映射（所有用户默认不隐藏）
+            #{}
     end.
 
 %% @doc 保存用户设置

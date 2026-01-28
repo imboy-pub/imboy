@@ -19,6 +19,8 @@ get_routes() ->
 
         {"/app_version/check", app_version_handler, #{action => check}},
 
+        % 【新增】Prometheus 指标端点
+        {"/metrics", metrics_handler, #{}},
 
         {"/passport/quick_login", passport_handler, #{action => quick_login}},
         {"/passport/login", passport_handler, #{action => login}},
@@ -137,6 +139,9 @@ get_routes() ->
         {"/v1/init", index_handler, #{action => init}},
         {"/v1/refreshtoken", passport_handler, #{action => refreshtoken}},
         {"/v1/app_version/check", app_version_handler, #{action => check}},
+
+        % 【新增】Prometheus 指标端点
+        {"/v1/metrics", metrics_handler, #{}},
 
         {"/v1/passport/quick_login", passport_handler, #{action => quick_login}},
         {"/v1/passport/login", passport_handler, #{action => login}},
