@@ -9,6 +9,8 @@
 -export([c2c_revoke_ack/3]).
 -export([c2c_edit/3]).
 -export([c2c_edit_ack/3]).
+-export([c2c_read/3]).
+-export([c2c_read_ack/3]).
 
 -include("chat.hrl").
 -include("log.hrl").
@@ -28,7 +30,7 @@ c2c(MsgId, CurrentUid, Data) ->
 
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
-    elib_log:info([<<"msg_c2c_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
+    elib_log:info([<<"msg_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
     case {IsFriend, InDenylist} of
         {true, false} ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
@@ -274,9 +276,136 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
     NewContent = maps:get(<<"content">>, Payload),
     EditedAt = maps:get(<<"edited_at">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-    
+
     % 更新本地消息内容
     % 这里可以添加数据库更新逻辑
+    ok.
+
+
+%% ===================================================================
+%% 消息已读回执功能
+%% ===================================================================
+
+%% @doc 客户端发送消息已读回执
+%% 接收者阅读消息后，向发送者发送已读通知
+%% @param MsgId 消息ID
+%% @param CurrentUid 当前用户ID（接收者）
+%% @param Data 消息数据
+%% @return ok | {reply, Msg :: map()}
+-spec c2c_read(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
+c2c_read(MsgId, CurrentUid, Data) ->
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    ToId = elib_hashids:decode(To),  % 发送者ID
+    FromId = elib_hashids:decode(From),  % 接收者ID（自己）
+
+    % 检查是否是发给自己的消息（不能对自己发送已读回执）
+    case CurrentUid =:= FromId of
+        true when CurrentUid =:= ToId ->
+            % 发给自己的消息，不需要已读回执
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"invalid_operation">>, To),
+            {reply, ErrorMsg};
+        true ->
+            % 正常的已读回执
+            % 检查好友关系
+            {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
+            case {IsFriend, InDenylist} of
+                {true, false} ->
+                    handle_read_receipt(MsgId, To, ToId, From, FromId, CurrentUid, Data);
+                {_, InDenylist2} when InDenylist2 > 0 ->
+                    ErrorMsg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
+                    {reply, ErrorMsg};
+                {false, _} ->
+                    ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, To),
+                    {reply, ErrorMsg}
+            end;
+        false ->
+            % 权限错误：from 字段不匹配当前用户
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+            {reply, ErrorMsg}
+    end.
+
+
+%% @doc 处理已读回执的内部逻辑
+%% @private
+-spec handle_read_receipt(binary(), binary(), integer(), binary(), integer(), integer(), map()) ->
+          ok | {reply, map()}.
+handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
+    NowMs = elib_dt:millisecond(),
+    ReadAt = maps:get(<<"read_at">>, maps:get(<<"payload">>, Data, #{}), NowMs),
+
+    % 从 Data 中获取设备ID（通过 WebSocket 注入的 sender_did）
+    Payload = maps:get(<<"payload">>, Data, #{}),
+    ToDid = maps:get(<<"sender_did">>, Payload, <<>>),
+
+    % 保存已读记录到数据库
+    ReadAtRfc = elib_dt:to_rfc3339(ReadAt),
+    case msg_read_repo:save_read(MsgId, ToId, CurrentUid, ToDid, ReadAtRfc) of
+        ok ->
+            % 构建已读回执消息（v2.0 格式）
+            ReadPayload = #{
+                <<"read_at">> => ReadAt
+            },
+
+            ReadAckMsg = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2C">>,
+                <<"from">> => From,
+                <<"to">> => To,
+                <<"msg_type">> => <<"custom">>,
+                <<"action">> => <<"message_read_ack">>,
+                <<"payload">> => ReadPayload,
+                <<"server_ts">> => NowMs
+            },
+
+            % 构建发送给发送者的已读通知
+            ReadNotifyMsg = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2C">>,
+                <<"from">> => From,  % 发送者
+                <<"to">> => From,   % 发送给发送者
+                <<"msg_type">> => <<"custom">>,
+                <<"action">> => <<"message_read">>,
+                <<"payload">> => ReadPayload,
+                <<"server_ts">> => NowMs
+            },
+
+            % 判断发送者是否在线
+            case user_logic:is_online(ToId) of
+                true ->
+                    % 在线：直接发送已读通知
+                    imboy_message_helper:encode_and_send(ToId, MsgId, ReadNotifyMsg, <<"c2c">>),
+                    {reply, ReadAckMsg};
+                false ->
+                    % 离线：存储离线已读通知
+                    _ = jsone:encode(ReadNotifyMsg, [native_utf8]),
+                    case msg_c2c_ds:read_offline_msg(MsgId, ToId, CurrentUid, ReadAtRfc, <<"message_read">>) of
+                        ok -> ok;
+                        {error, _} -> ok
+                    end,
+                    {reply, ReadAckMsg}
+            end;
+        {error, Reason} ->
+            ok = ?ERROR_LOG("[C2C_READ_FAILED] MsgId=~s, FromUid=~p, ToUid=~p, Reason=~p~n",
+                       [MsgId, CurrentUid, ToId, Reason]),
+            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
+            {reply, ErrorMsg}
+    end.
+
+
+%% @doc 客户端确认已读回执
+%% 发送者确认收到已读回执
+%% @param MsgId 消息ID
+%% @param CurrentUid 当前用户ID（发送者）
+%% @param Data 消息数据
+%% @return ok
+-spec c2c_read_ack(binary(), integer(), Data :: map()) -> ok.
+c2c_read_ack(MsgId, CurrentUid, Data) ->
+    Payload = maps:get(<<"payload">>, Data),
+    ReadAt = maps:get(<<"read_at">>, Payload),
+    ok = ?DEBUG_LOG([<<"c2c_read_ack">>, MsgId, CurrentUid, ReadAt]),
+    % 已读回执确认
+    % 这里可以添加业务逻辑，如更新UI状态、同步到其他设备等
     ok.
 
 %% ===================================================================

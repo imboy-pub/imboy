@@ -6,6 +6,7 @@
 
 -export([send_code/2]).
 -export([do_login/3]).
+-export([do_login/5]).
 -export([do_signup/5]).
 -export([find_password/5]).
 -export([verify_user/2]).
@@ -76,28 +77,68 @@ send_code(_, _) ->
 
 
 -spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.
-do_login(_Type, _Email, <<>>) ->
+do_login(Type, Account, Pwd) ->
+    do_login(Type, Account, Pwd, <<>>, <<>>).
+
+%% @doc 账号密码登录（带设备信息）
+%% 检查设备冲突，如果同类型设备已登录则返回冲突信息
+-spec do_login(binary(), binary(), binary(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()} | {error, binary() | map()}.
+do_login(_Type, _Email, <<>>, _DType, _Did) ->
     {error, <<"密码有误"/utf8>>};
-do_login(Type, Mobile, Pwd) when Type == <<"mobile">> ->
+do_login(Type, Mobile, Pwd, DType, Did) when Type == <<"mobile">> ->
     User = user_ds:find_by_mobile(Mobile, ?LOGIN_COLUMN),
-    % ?DEBUG_LOG([do_login, Mobile, Pwd, User]),
-    verify_user(Pwd, User);
-do_login(Type, Email, Pwd) when Type == <<"email">> ->
+    do_login_verify(Pwd, User, DType, Did);
+do_login(Type, Email, Pwd, DType, Did) when Type == <<"email">> ->
     case elib_type:is_email(Email) of
         true ->
             User = user_ds:find_by_email(Email, ?LOGIN_COLUMN),
-            verify_user(Pwd, User);
+            do_login_verify(Pwd, User, DType, Did);
         false ->
             {error, <<"Email格式有误."/utf8>>}
     end;
-do_login(Type, Account, Pwd) when Type == <<"account">> ->
+do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
     User = case elib_type:is_email(Account) of
         true ->
             user_ds:find_by_email(Account, ?LOGIN_COLUMN);
         false ->
             user_ds:find_by_account(Account, ?LOGIN_COLUMN)
     end,
-    verify_user(Pwd, User).
+    do_login_verify(Pwd, User, DType, Did).
+
+
+%% @doc 登录验证（带设备冲突检查）
+%% 先认证用户，成功后检查设备冲突
+-spec do_login_verify(binary(), map(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()} | {error, term()}.
+do_login_verify(Pwd, User, DType, _Did) ->
+    case verify_user(Pwd, User) of
+        {ok, Data} ->
+            % 从 uid (hashids 编码) 解码得到整数 ID
+            UidHashed = maps:get(<<"uid">>, Data),
+            Uid = elib_hashids:decode(UidHashed),
+            % 检查设备类型是否有效
+            case user_device_logic:validate_device_type(DType) of
+                false when DType =/= <<>> ->
+                    % 无效的设备类型，但允许登录（兼容旧客户端）
+                    {ok, Data};
+                _ ->
+                    % 检查登录冲突
+                    case user_device_logic:check_login_conflict(Uid, DType) of
+                        {ok, no_conflict} ->
+                            % 无冲突，正常登录
+                            {ok, Data};
+                        {ok, conflict, ConflictInfo} ->
+                            % 有冲突，返回冲突信息
+                            {{error, conflict}, ConflictInfo};
+                        {error, _Reason} ->
+                            % 检查失败，允许登录
+                            {ok, Data}
+                    end
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 
 -spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: map()) ->

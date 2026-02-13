@@ -12,6 +12,7 @@
 -export([revoke_offline_msg/5]).
 -export([revoke_offline_msg/8]).
 -export([edit_offline_msg/5]).
+-export([read_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([find_msg_by_id/1]).
@@ -224,6 +225,32 @@ edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
             ?LOG_ERROR("Failed to edit msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
             {error, Reason}
     end.
+
+
+%% @doc 存储离线已读回执消息
+%%
+%% 当发送者离线时，将已读回执存储为离线消息
+%%
+%% @param MsgId 消息ID
+%% @param FromId 发送者用户ID（接收已读通知）
+%% @param ToId 接收者用户ID（发送已读回执）
+%% @param ReadAt 已读时间（RFC3339 binary）
+%% @param Action 操作类型（message_read）
+%% @returns ok | {error, Reason}
+-spec read_offline_msg(binary(), integer(), integer(), binary(), binary()) -> ok | {error, any()}.
+read_offline_msg(MsgId, FromId, ToId, ReadAt, Action) ->
+    % 构建已读通知 payload
+    % 将 Action 包含在 Payload 中
+    Payload = #{
+        <<"action">> => Action,
+        <<"read_at">> => elib_dt:rfc3339_to(ReadAt, millisecond)
+    },
+    PayloadBin = jsone:encode(Payload, [native_utf8]),
+
+    % 存储到 msg_c2c 表
+    % 使用 write_msg/8 显式传递参数
+    NowTs = elib_dt:now(),
+    msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, <<"custom">>, null).
 
 %% ===================================================================
 %% Internal Function Definitions

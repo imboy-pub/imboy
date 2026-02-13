@@ -76,14 +76,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     %% 【幂等性修复】捕获唯一约束错误
     case elib_pg:insert(Tb, Data) of
         {ok, _} = OkResult -> OkResult;
+        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
+            {error, {unique_violation, MsgId}};
         {error, {error, Reason}} ->
-            %% 检查是否为唯一约束错误（通过错误消息匹配）
-            case lists:flatten(Reason) of
-                [{23505, _}] ->
-                    {error, {unique_violation, MsgId}};
-                _ ->
-                    {error, Reason}
-            end
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason}
     end;
 
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, ServerTs) when is_list(ToIdList) ->
@@ -108,14 +107,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
     %% 【幂等性修复】捕获唯一约束错误
     case elib_pg:insert(Tb, Data) of
         {ok, _} = OkResult -> OkResult;
+        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
+            {error, {unique_violation, MsgId}};
         {error, {error, Reason}} ->
-            %% 检查是否为唯一约束错误（通过错误消息匹配）
-            case lists:flatten(Reason) of
-                [{23505, _}] ->
-                    {error, {unique_violation, MsgId}};
-                _ ->
-                    {error, Reason}
-            end
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 
@@ -271,6 +269,8 @@ ensure_table_exists() ->
             %% 创建索引
             create_indexes(Tb);
         {error, {error, Reason}} ->
+            {error, Reason};
+        {error, Reason} ->
             {error, Reason}
     end.
 

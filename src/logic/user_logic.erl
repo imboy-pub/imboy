@@ -148,8 +148,9 @@ is_online(Uid) when is_integer(Uid) ->
 % user_logic:is_online(1, <<"ios">>).
 -spec is_online(integer(), binary()) -> boolean().
 %% 检查用户是否在线
+%% 使用 user_device_logic 检查指定设备类型的在线状态
 is_online(Uid, DType) when is_integer(Uid) ->
-    imboy_syn:is_online(Uid, {dtype, DType}).
+    user_device_logic:is_online(Uid, {dtype, DType}).
 
 -spec mine_state(integer()) -> {binary(), hide | online}.
 mine_state(Uid) ->

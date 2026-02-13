@@ -70,12 +70,12 @@ friend_field(FromID, ToID, Field) ->
 %% @param ToID 接收好友关系的用户ID
 %% @param Fields 要查询的字段列表，如 [<<"remark">>, <<"created_at">>]
 %% @return {ok, [map()]} 查询成功返回字段数据 | {error, any()} 查询失败
+% friend_repo:friend_fields(4, 6, [<<"remark">>, <<"created_at">>]).
 -spec friend_fields(integer(), integer(), [binary()]) -> {ok, [map()]} | {error, any()}.
 friend_fields(FromID, ToID, Fields) ->
     Tb = tablename(),
-    % 将字段列表转换为逗号分隔的字符串
-    FieldsStr = lists:join(<<",">>, Fields),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, FieldsStr, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Fields, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    ?DEBUG_LOG([Sql, Params]),
     elib_pg:query(Sql, Params).
 
 

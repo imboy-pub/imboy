@@ -22,6 +22,10 @@
 -export([invalid_id/2]).
 -export([not_found/3]).
 
+%% 错误消息导出
+-export([error_msg/1]).
+
+-include("error_code.hrl").
 -include("log.hrl").
 
 %% ===================================================================
@@ -154,3 +158,22 @@ invalid_id(Req, _Id) ->
 not_found(Req, ResourceType, Id) ->
     Msg = <<ResourceType/binary, " 不存在: "/utf8, Id/binary>>,
     elib_response:error(Req, elib_cnv:safe_to_binary(Msg)).
+
+%% @doc 根据错误码获取错误消息
+%%
+%% 从 ERROR_MSG_MAP 中查找对应的错误消息。
+%% 如果未找到，返回默认错误消息。
+%%
+%% @param Code 错误码（整数）
+%% @returns 错误消息（binary）
+%%
+%% @example
+%% Msg = imboy_error:error_msg(?ERR_BAD_REQUEST).
+-spec error_msg(integer()) -> binary().
+error_msg(Code) when is_integer(Code) ->
+    case maps:get(Code, ?ERROR_MSG_MAP, undefined) of
+        undefined ->
+            <<"未知错误"/utf8>>;
+        Msg ->
+            Msg
+    end.

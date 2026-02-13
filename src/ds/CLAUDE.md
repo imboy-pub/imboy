@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/ds**
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **模块数量**: 13 个
+> **最后更新**: 2026-01-31 21:30:00 CST
+> **模块数量**: 15 个
 > **职责**: 封装数据操作，调用 Repo 层访问数据库，提供缓存支持
 
 ---
@@ -68,7 +68,7 @@ DS 模块由 Logic 层调用：
 
 | DS | 说明 |
 |----|------|
-| `msg_c2c_ds.erl` | 单聊消息服务 |
+| `msg_c2c_ds.erl` | 单聊消息服务（含已读回执） |
 | `msg_c2g_ds.erl` | 群聊消息服务 |
 | `msg_c2s_ds.erl` | 客户端请求服务 |
 | `msg_s2c_ds.erl` | 系统消息服务 |
@@ -85,6 +85,8 @@ DS 模块由 Logic 层调用：
 | `feedback_ds.erl` | 反馈服务 |
 | `app_version_ds.erl` | 版本服务 |
 | `app_ddl_ds.erl` | DDL 配置 |
+| `e2ee_social_ds.erl` | E2EE 社交恢复 |
+| `e2ee_transfer_ds.erl` | E2EE 设备传输 |
 
 ---
 
@@ -170,7 +172,7 @@ test/ds/
 
 ## 相关文件清单
 
-### DS 文件 (13 个)
+### DS 文件 (15 个)
 
 ```
 src/ds/
@@ -179,10 +181,13 @@ src/ds/
 ├── app_version_ds.erl
 ├── auth_ds.erl
 ├── config_ds.erl
+├── e2ee_social_ds.erl
+├── e2ee_transfer_ds.erl
 ├── feedback_ds.erl
 ├── friend_category_ds.erl
 ├── friend_ds.erl
 ├── group_ds.erl
+├── login_attempt_ds.erl
 ├── message_ds.erl
 ├── msg_c2c_ds.erl
 ├── msg_c2s_ds.erl
@@ -199,6 +204,11 @@ src/ds/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-01-31
+- 新增 `e2ee_social_ds.erl` E2EE 社交恢复数据服务
+- 新增 `e2ee_transfer_ds.erl` E2EE 设备传输数据服务
+- 完善 DS 层文档
 
 ### 2026-01-20
 - 新增 `msg_store_ds.erl` 消息存储服务

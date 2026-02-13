@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/lib**
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **模块数量**: 29 个
+> **最后更新**: 2026-02-01 04:35:00 CST
+> **模块数量**: 30 个
 > **职责**: 提供基础工具函数，封装数据库连接、缓存、加密等通用功能
 
 ---
@@ -63,6 +63,7 @@ Pid = elib_async:async(fun() -> ok end).
 | `elib_cipher.erl` | 加密与解密 |
 | `elib_hasher.erl` | 哈希计算 |
 | `elib_password.erl` | 密码哈希 |
+| `shamir_secret_sharing.erl` | Shamir 密钥分割算法 |
 
 ### ID 编码
 
@@ -249,7 +250,7 @@ test/lib/
 
 ## 相关文件清单
 
-### Lib 文件 (29 个)
+### Lib 文件 (30 个)
 
 ```
 src/lib/
@@ -279,6 +280,7 @@ src/lib/
 ├── elib_response.erl
 ├── elib_retry.erl
 ├── elib_retry_config.erl
+├── shamir_secret_sharing.erl
 ├── imboy_sms.erl
 ├── elib_str.erl
 ├── imboy_syn.erl
@@ -290,6 +292,10 @@ src/lib/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-02-01
+- 新增 `shamir_secret_sharing.erl` Shamir 密钥分割算法
+- 更新模块数量：29 → 30
 
 ### 2026-01-20
 - 新增 `elib_async.erl` 异步执行库

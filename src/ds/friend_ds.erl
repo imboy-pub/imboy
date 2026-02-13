@@ -70,6 +70,9 @@ is_friend(FromUid, ToUid, Field) ->
                   case friend_repo:friend_field(FromUid, ToUid, Field) of
                       {ok, [#{Field := Val} |_]} ->
                           {true, Val};
+                      {ok, _} ->
+                          % 没有好友记录
+                          {false, <<>>};
                       {error, _Reason} ->
                           {false, <<>>}
                   end
@@ -88,11 +91,14 @@ is_friend(FromUid, ToUid, Field) ->
 % friend_ds:is_friend_fields(1, 3, [<<"remark">>, <<"created_at">>]).
 -spec is_friend_fields(integer(), integer(), [binary()]) -> {boolean(), map()}.
 is_friend_fields(FromUid, ToUid, Fields) ->
-    Key = {is_friend_fields, FromUid, ToUid, Fields},
+    Key = {is_friend_fields2, FromUid, ToUid, Fields},
     Fun = fun() ->
                   case friend_repo:friend_fields(FromUid, ToUid, Fields) of
                       {ok, [Row |_]} when is_map(Row) ->
                           {true, Row};
+                      {ok, _} ->
+                          % 没有好友记录
+                          {false, #{}};
                       {error, _Reason} ->
                           {false, #{}}
                   end

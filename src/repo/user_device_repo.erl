@@ -14,6 +14,9 @@
          page/3]).
 -export([list_public_keys/1]).
 -export([list_public_keys_by_uids/1]).
+-export([get_public_by_uid/1, get_private_key/2, update_private_key/3]).
+
+%% 设备会话管理使用 imboy_syn，无需数据库扩展
 
 -include("log.hrl").
 
@@ -131,6 +134,53 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+
+%% @doc 获取用户的所有设备（包含公钥和私钥）
+%% @param Uid 用户ID
+%% @return {ok, [map()]} 设备列表
+-spec get_public_by_uid(integer()) -> {ok, [map()]} | {error, term()}.
+get_public_by_uid(Uid) ->
+    Tb = tablename(),
+    Column = <<"device_id, device_type, public_key, private_key, last_active_at">>,
+    Sql = <<"SELECT ", Column/binary,
+            " FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 "
+            " ORDER BY last_active_at desc">>,
+    elib_pg:query(Sql, [Uid]).
+
+%% @doc 获取用户指定设备的私钥
+%% @param Uid 用户ID
+%% @param DeviceId 设备ID
+%% @return {ok, PrivateKeyPem} | {error, Reason}
+-spec get_private_key(integer(), binary()) -> {ok, binary()} | {error, term()}.
+get_private_key(Uid, DeviceId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT private_key FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
+    case elib_pg:query(Sql, [Uid, DeviceId]) of
+        {ok, _, [{PrivateKey}]} when PrivateKey =/= undefined, PrivateKey =/= <<>> ->
+            {ok, PrivateKey};
+        {ok, _, [_]} ->
+            {error, private_key_not_found};
+        {ok, _, []} ->
+            {error, device_not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 更新用户设备的私钥
+%% @param Uid 用户ID
+%% @param DeviceId 设备ID
+%% @param PrivateKeyPem PEM 格式的私钥
+%% @return {ok, Count} | {error, Reason}
+-spec update_private_key(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+update_private_key(Uid, DeviceId, PrivateKeyPem) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET private_key = $1 "
+            " WHERE status = 1 AND user_id = $2 AND device_id = $3">>,
+    elib_pg:execute(Sql, [PrivateKeyPem, Uid, DeviceId]).
 
 
 -spec save(binary(), integer(), map(), binary(), integer()) -> {ok, term()} | {error, term()}.

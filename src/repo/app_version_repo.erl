@@ -9,7 +9,6 @@
 -export ([find/2]).
 -export ([add/1]).
 -export ([delete_by_id/1]).
--export ([demo/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -77,14 +76,6 @@ delete_by_id(Id) when is_integer(Id), Id > 0 ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
     elib_pg:execute(Sql, [Id]).
-
-%%% demo方法描述
--spec demo(integer(), binary(), binary()) ->
-    {ok, list(map())} | {error, any()}.
-demo(Uid, _Val1, _Val2) ->
-    Tb = tablename(),
-    Sql = <<"SELECT id FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

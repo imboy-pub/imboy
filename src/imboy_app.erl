@@ -29,7 +29,8 @@ start(_Type, _Args) ->
                 env => #{dispatch => Dispatch},
                 middlewares => [
                     cowboy_router % 必须是第一个元素
-                    , auth_middleware % 必须是第二个元素
+                    , cors_middleware % CORS 中间件，处理跨域请求
+                    , auth_middleware % 认证中间件
                     , cowboy_handler
                 ],
                 % metrics_callback => do_metrics_callback(),

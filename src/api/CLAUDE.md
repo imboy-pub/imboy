@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/api**
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **模块数量**: 27 个
+> **最后更新**: 2026-02-01 04:35:00 CST
+> **模块数量**: 29 个
 > **职责**: 处理 HTTP REST API 请求，参数验证，调用 Logic 层处理业务逻辑
 
 ---
@@ -93,6 +93,8 @@ get_routes() ->
 | `feedback_handler.erl` | `/feedback/*` | 用户反馈 |
 | `app_version_handler.erl` | `/app_version/*` | 版本检查 |
 | `e2ee_handler.erl` | `/v1/e2ee/*` | 端到端加密 |
+| `e2ee_transfer_handler.erl` | `/v1/e2ee/transfer/*` | E2EE 设备间传输 |
+| `e2ee_social_handler.erl` | `/v1/e2ee/social/*` | E2EE 社交恢复 |
 | `test_handler.erl` | `/test/*` | 测试接口 |
 
 ---
@@ -193,7 +195,7 @@ test/api/
 
 ## 相关文件清单
 
-### Handler 文件 (27 个)
+### Handler 文件 (29 个)
 
 ```
 src/api/
@@ -203,6 +205,8 @@ src/api/
 ├── auth_middleware_api_v1.erl
 ├── conversation_handler.erl
 ├── e2ee_handler.erl
+├── e2ee_social_handler.erl
+├── e2ee_transfer_handler.erl
 ├── feedback_handler.erl
 ├── friend_category_handler.erl
 ├── friend_handler.erl
@@ -270,6 +274,11 @@ test/api/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-02-01
+- 新增 `e2ee_transfer_handler.erl` E2EE 设备间传输 API
+- 新增 `e2ee_social_handler.erl` E2EE 社交恢复 API
+- 更新模块数量：27 → 29
 
 ### 2026-01-20
 - 新增 `e2ee_handler.erl` 端到端加密 API

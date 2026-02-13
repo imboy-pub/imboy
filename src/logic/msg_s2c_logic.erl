@@ -88,6 +88,86 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 给操作者回复消息
     Action = <<"C2G_DEL_EVERYONE">>,
     Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
+    {reply, Msg};
+
+%% ===================================================================
+%% E2EE 社交恢复 - 零信任架构
+%% ===================================================================
+
+%% @doc E2EE 社交恢复 - 存储分片（代理端）
+%% 零信任架构：服务端仅作为传输通道，将分片转发给代理
+%% 代理将分片存储在本地安全存储中
+s2c(<<"store_shard">>, MsgId, CurrentUid, Data) ->
+    Payload = maps:get(<<"payload">>, Data),
+    To = maps:get(<<"to">>, Data),
+
+    % 零信任架构：服务端不存储分片，直接转发给代理
+    % 代理将在本地安全存储中保存分片
+
+    From = elib_hashids:encode(CurrentUid),
+    Action = <<"store_shard">>,
+
+    % 构造转发消息
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
+
+    % 获取分片信息用于日志和审计
+    ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
+    KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
+    Uid = maps:get(<<"uid">>, Payload, 0),
+    ProxyUid = elib_hashids:decode(To),
+
+    % 记录分片传输日志（持久化到数据库）
+    e2ee_shard_validator:log_shard_transmission(
+        shard_sent,
+        ShardId,
+        #{
+            <<"uid">> => Uid,
+            <<"proxy_uid">> => ProxyUid,
+            <<"key_version">> => KeyVersion
+        }
+    ),
+
+    % 转发给代理
+    MsLi = elib_retry_config:intervals(<<"s2c">>),
+    message_ds:send_next(ProxyUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
+    % 给发送者回复确认
+    {reply, Msg};
+
+%% @doc E2EE 社交恢复 - 分片已存储确认
+%% 代理确认已存储分片
+s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
+    Payload = maps:get(<<"payload">>, Data),
+    To = maps:get(<<"to">>, Data),
+
+    From = elib_hashids:encode(CurrentUid),
+    Action = <<"shard_stored">>,
+
+    % 构造确认消息
+    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
+
+    % 获取分片信息用于日志和审计
+    ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
+    KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
+    Uid = maps:get(<<"uid">>, Payload, 0),
+    ProxyUid = CurrentUid,
+
+    % 记录分片存储日志（持久化到数据库）
+    e2ee_shard_validator:log_shard_transmission(
+        shard_stored,
+        ShardId,
+        #{
+            <<"uid">> => Uid,
+            <<"proxy_uid">> => ProxyUid,
+            <<"key_version">> => KeyVersion
+        }
+    ),
+
+    % 转发给原始发送者
+    ToUid = elib_hashids:decode(To),
+    MsLi = elib_retry_config:intervals(<<"s2c">>),
+    message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
     {reply, Msg}.
 
 %% 1 存储s2c消息

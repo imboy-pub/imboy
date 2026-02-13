@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/repo**
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **模块数量**: 32 个
+> **最后更新**: 2026-02-01 04:35:00 CST
+> **模块数量**: 35 个
 > **职责**: 封装数据库操作，使用 elib_pg 访问 PostgreSQL
 
 ---
@@ -75,6 +75,15 @@ Repo 模块由 DS 层调用：
 | `msg_c2s_repo.erl` | 客户端请求 |
 | `msg_s2c_repo.erl` | 系统消息 |
 | `msg_store_repo.erl` | 消息存储 |
+| `msg_read_repo.erl` | 消息已读回执 |
+
+### E2EE 相关 Repo
+
+| Repo | 说明 |
+|------|------|
+| `e2ee_transfer_repo.erl` | E2EE 设备间传输 |
+| `e2ee_social_repo.erl` | E2EE 社交恢复 |
+| `e2ee_local_backup_repo.erl` | E2EE 本地备份 |
 
 ### 其他 Repo
 
@@ -198,7 +207,7 @@ test/repo/
 
 ## 相关文件清单
 
-### Repo 文件 (32 个)
+### Repo 文件 (36 个)
 
 ```
 src/repo/
@@ -206,6 +215,9 @@ src/repo/
 ├── app_ddl_repo.erl
 ├── app_version_repo.erl
 ├── attachment_repo.erl
+├── e2ee_local_backup_repo.erl
+├── e2ee_social_repo.erl
+├── e2ee_transfer_repo.erl
 ├── feedback_reply_repo.erl
 ├── feedback_repo.erl
 ├── friend_category_repo.erl
@@ -223,6 +235,7 @@ src/repo/
 ├── msg_c2s_repo.erl
 ├── msg_s2c_repo.erl
 ├── msg_store_repo.erl
+├── msg_read_repo.erl
 ├── user_collect_repo.erl
 ├── user_denylist_repo.erl
 ├── user_device_repo.erl
@@ -237,6 +250,12 @@ src/repo/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-02-01
+- 新增 `e2ee_transfer_repo.erl` E2EE 设备间传输
+- 新增 `e2ee_social_repo.erl` E2EE 社交恢复
+- 新增 `e2ee_local_backup_repo.erl` E2EE 本地备份
+- 更新模块数量：32 → 35
 
 ### 2026-01-20
 - 完善 Repo 层文档

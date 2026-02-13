@@ -35,7 +35,7 @@
 %% depcache exports
 -export([memo/1, memo/2, memo/3, memo/4]).
 -export([set/2, set/3, set/4, get/1, get_wait/1, get/2, get_subkey/2]).
--export([flush/0, flush/1, size/0, record_depcache_event/1]).
+-export([flush/0, flush/1, delete/1, size/0, record_depcache_event/1]).
 -export([in_process_server/0, in_process_server/1, in_process/1, flush_process_dict/0]).
 
 %% @doc 启动基于站点配置的 depcache 实例
@@ -405,3 +405,12 @@ batch_flush(Keys) when is_list(Keys) ->
         flush(Key)
     end, Keys),
     ok.
+
+%% @doc 删除单个缓存键（flush 的别名）
+%% @param Key 要删除的缓存键
+%% @returns ok
+%%
+%% 此函数作为 flush/1 的别名提供，使代码更具语义性
+-spec delete(term()) -> ok.
+delete(Key) ->
+    flush(Key).

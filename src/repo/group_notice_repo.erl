@@ -6,7 +6,6 @@
 %%%
 
 -export ([tablename/0]).
--export ([demo/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -22,18 +21,6 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"group_notice">>).
-
-%% @doc 示例方法（演示用途）
-%% @param Uid 用户ID
-%% @param Val1 参数1（预留）
-%% @param Val2 参数2（预留）
-%% @return {ok, Rows} 查询成功返回列表 | {error, Reason} 查询失败
-%% @details 此方法仅作为示例，实际使用时应根据具体需求修改
--spec demo(integer(), binary(), binary()) ->
-    {ok, list(map())} | {error, any()}.
-demo(Uid, _Val1, _Val2) ->
-    Sql = <<"SELECT id FROM group_notice WHERE id = $1">>,
-    elib_pg:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -126,6 +126,10 @@ route_c2c_action(<<"message_edit">>, MsgId, CurrentUid, Data) ->
     msg_c2c_logic:c2c_edit(MsgId, CurrentUid, Data);
 route_c2c_action(<<"message_edit_ack">>, MsgId, CurrentUid, Data) ->
     msg_c2c_logic:c2c_edit_ack(MsgId, CurrentUid, Data);
+route_c2c_action(<<"message_read">>, MsgId, CurrentUid, Data) ->
+    msg_c2c_logic:c2c_read(MsgId, CurrentUid, Data);
+route_c2c_action(<<"message_read_ack">>, MsgId, CurrentUid, Data) ->
+    msg_c2c_logic:c2c_read_ack(MsgId, CurrentUid, Data);
 route_c2c_action(Action, MsgId, _CurrentUid, _Data) ->
     ok = ?WARN_LOG({unknown_c2c_action, Action, MsgId}),
     {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.

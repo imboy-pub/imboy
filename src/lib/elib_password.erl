@@ -41,19 +41,29 @@ generate(Plaintext, hmac_sha512) ->
 %% elib_password:verify(<<"admin888">>, Pwd).
 -spec verify(iodata(), iodata()) -> {ok, []} | {error, binary()}.
 verify(Plaintext, Ciphertext) ->
-    % ?DEBUG_LOG([Plaintext, base64:decode(Plaintext), Ciphertext, base64:decode(Ciphertext)]),
-    try Ciphertext2 = base64:decode(Ciphertext),
-        binary:split(Ciphertext2, <<$:>>, [global, trim])
-    of
-        [Salt, <<"hmac_sha512">>, Ciphertext3] ->
+    % 首先尝试解码为新的 hmac_sha512 格式
+    Decoded = try_decode_hmac_sha512(Ciphertext),
+    case Decoded of
+        {ok, Salt, Ciphertext3} ->
             verify(Plaintext, hmac_sha512, Salt, Ciphertext3);
-        _Msg ->
-            % ?DEBUG_LOG(Msg),
+        _ ->
+            % 回退到旧的 md5 格式
             verify(Plaintext, default_md5, config_ds:get(<<"password_salt">>), Ciphertext)
+    end.
+
+%% @private 尝试解码为 hmac_sha512 格式
+-spec try_decode_hmac_sha512(iodata()) -> {ok, binary(), binary()} | error.
+try_decode_hmac_sha512(Ciphertext) ->
+    try
+        Decoded = base64:decode(Ciphertext, #{padding => false}),
+        case binary:split(Decoded, <<$:>>, [global]) of
+            [Salt, <<"hmac_sha512">>, Ciphertext3] ->
+                {ok, Salt, Ciphertext3};
+            _ ->
+                error
+        end
     catch
-        _:_ ->
-            % ?DEBUG_LOG([default_md5, Plaintext, Ciphertext]),
-            verify(Plaintext, default_md5, config_ds:get(<<"password_salt">>), Ciphertext)
+        _:_:_ -> error
     end.
 
 -ifdef(TEST).

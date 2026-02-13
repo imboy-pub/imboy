@@ -13,6 +13,8 @@
 -export([assemble_msg/5, assemble_msg/8]).
 -export([encode_websocket_message/1]).
 -export([decode_websocket_message/1]).
+-export([validate_message/1]).
+-export([convert_v1_to_v2/1]).
 -export([send_next/4, send_next/6]).
 -export([check_and_notify_offline_msgs/1]).
 -export([get_offline_msg_threshold/0]).
@@ -520,3 +522,113 @@ inject_sender_device(Payload, _State) ->
 -spec get_offline_msg_threshold() -> non_neg_integer().
 get_offline_msg_threshold() ->
     application:get_env(imboy, offline_msg_threshold, 10).
+
+
+%% ===================================================================
+%% 消息验证功能 (v2.0)
+%% ===================================================================
+
+%% @doc 验证 v2.0 消息格式
+%% 验证消息是否包含必填字段，并根据消息类型验证特定字段。
+%%
+%% @param Msg 消息 map
+%% @returns {ok, ValidatedMsg} | {error, Reason}
+%%
+%% @example
+%% case message_ds:validate_message(Msg) of
+%%     {ok, Validated} -> process_message(Validated);
+%%     {error, Reason} -> handle_error(Reason)
+%% end
+-spec validate_message(map()) -> {ok, map()} | {error, binary()}.
+validate_message(Msg) when is_map(Msg) ->
+    % 验证必填字段
+    RequiredFields = [<<"id">>, <<"type">>, <<"from">>, <<"to">>],
+    case lists:all(fun(Field) -> maps:is_key(Field, Msg) end, RequiredFields) of
+        false ->
+            {error, <<"missing_required_fields">>};
+        true ->
+            Type = maps:get(<<"type">>, Msg),
+            validate_message_by_type(Type, Msg)
+    end;
+validate_message(_Msg) ->
+    {error, <<"invalid_message_format">>}.
+
+
+%% @private
+%% @doc 根据消息类型验证特定字段
+-spec validate_message_by_type(binary(), map()) -> {ok, map()} | {error, binary()}.
+validate_message_by_type(<<"S2C">>, Msg) ->
+    % S2C 消息：action 必须有
+    Action = maps:get(<<"action">>, Msg, <<>>),
+    case Action of
+        <<>> ->
+            {error, <<"s2c_message_missing_action">>};
+        _ ->
+            % S2C 消息不应该有 e2ee
+            case maps:get(<<"e2ee">>, Msg, null) of
+                null -> {ok, Msg};
+                _ -> {error, <<"s2c_message_not_support_e2ee">>}
+            end
+    end;
+validate_message_by_type(Type, Msg) when Type =:= <<"C2C">>; Type =:= <<"C2G">>; Type =:= <<"C2S">> ->
+    % 非 S2C 消息：msg_type 必须有
+    MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
+    case MsgType of
+        <<>> ->
+            {error, <<"non_s2c_message_missing_msg_type">>};
+        _ ->
+            {ok, Msg}
+    end;
+validate_message_by_type(_Type, _Msg) ->
+    % 未知消息类型，但包含基本字段
+    {error, <<"unknown_message_type">>}.
+
+
+%% @doc 将 v1.0 格式消息转换为 v2.0 格式
+%% 自动检测消息版本并转换。如果已经是 v2.0 格式则直接返回。
+%%
+%% v1.0 格式：
+%%   payload 包含 msg_type/action/e2ee
+%%
+%% v2.0 格式：
+%%   msg_type/action/e2ee 在顶层
+%%
+%% @param Msg 消息 map（v1.0 或 v2.0）
+%% @returns v2.0 格式的消息 map
+%%
+%% @example
+%% V1Msg = #{<<"type">> => <<"C2C">>, <<"payload">> => #{<<"msg_type">> => <<"text">>}},
+%% V2Msg = message_ds:convert_v1_to_v2(V1Msg).
+-spec convert_v1_to_v2(map()) -> map().
+convert_v1_to_v2(Msg) when is_map(Msg) ->
+    % 检测消息版本
+    Payload = maps:get(<<"payload">>, Msg, #{}),
+    HasTopLevelMsgType = maps:is_key(<<"msg_type">>, Msg),
+    HasTopLevelAction = maps:is_key(<<"action">>, Msg),
+
+    % 如果顶层已有 msg_type 或 action，说明是 v2.0 格式
+    case HasTopLevelMsgType orelse HasTopLevelAction of
+        true ->
+            Msg;
+        false when is_map(Payload) ->
+            % v1.0 格式：从 payload 提取字段到顶层
+            MsgType = maps:get(<<"msg_type">>, Payload, <<>>),
+            Action = maps:get(<<"action">>, Payload, <<>>),
+            E2EE = maps:get(<<"e2ee">>, Payload, null),
+
+            % 清理 payload 中的顶层字段
+            Payload2 = maps:without([<<"msg_type">>, <<"action">>, <<"e2ee">>], Payload),
+
+            % 构建 v2.0 格式消息
+            Msg#{
+                <<"msg_type">> => MsgType,
+                <<"action">> => Action,
+                <<"e2ee">> => E2EE,
+                <<"payload">> => Payload2
+            };
+        false ->
+            % payload 不是 map，无法转换，直接返回
+            Msg
+    end;
+convert_v1_to_v2(Msg) ->
+    Msg.

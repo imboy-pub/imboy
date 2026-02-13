@@ -134,6 +134,59 @@
 -define(ERR_FILE_DOWNLOAD_FAILED, 951).           % 文件下载失败
 
 %% ===================================================================
+%% E2EE 密钥恢复相关错误（5000-5099）
+%% ===================================================================
+
+%% 设备传输相关（5000-5019）
+-define(ERR_E2EE_TRANSFER_INVALID_SESSION, 5000).  % 无效的传输会话
+-define(ERR_E2EE_TRANSFER_SESSION_EXPIRED, 5001).  % 传输会话已过期
+-define(ERR_E2EE_TRANSFER_SESSION_NOT_FOUND, 5002). % 传输会话不存在
+-define(ERR_E2EE_TRANSFER_INVALID_DEVICE, 5003).  % 无效的设备
+-define(ERR_E2EE_TRANSFER_ALREADY_ACCEPTED, 5004). % 传输会话已被接受
+-define(ERR_E2EE_TRANSFER_CANNOT_CONFIRM, 5005).  % 无法确认传输会话
+-define(ERR_E2EE_TRANSFER_FROM_UID_NOT_MATCH, 5006). % 发送方用户 ID 不匹配
+-define(ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH, 5007). % 接收方用户 ID 不匹配
+
+%% 社交恢复相关（5020-5039）
+-define(ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND, 5020). % 可信联系人不存在
+-define(ERR_E2EE_SOCIAL_CONTACT_ALREADY_EXISTS, 5021). % 可信联系人已存在
+-define(ERR_E2EE_SOCIAL_CONTACT_IS_SELF, 5022).   % 不能添加自己为可信联系人
+-define(ERR_E2EE_SOCIAL_CONTACT_NOT_TRUSTED, 5023). % 该联系人不在可信列表中
+-define(ERR_E2EE_SOCIAL_NOT_ENOUGH_SHARES, 5024). % 密钥分片数量不足
+-define(ERR_E2EE_SOCIAL_SHARE_ALREADY_CREATED, 5025). % 密钥分片已创建
+-define(ERR_E2EE_SOCIAL_SHARE_NOT_FOUND, 5026).   % 密钥分片不存在
+-define(ERR_E2EE_SOCIAL_INVALID_THRESHOLD, 5027).  % 无效的恢复阈值
+-define(ERR_E2EE_SOCIAL_RECOVER_FAILED, 5028).    % 密钥恢复失败
+-define(ERR_E2EE_SOCIAL_TRUSTEE_LIMIT_EXCEEDED, 5029). % 受托人数量超过限制
+
+%% 本地备份相关（5040-5049）
+-define(ERR_E2EE_BACKUP_INVALID_PASSWORD, 5040).   % 备份密码错误
+-define(ERR_E2EE_BACKUP_FILE_CORRUPTED, 5041).     % 备份文件已损坏
+-define(ERR_E2EE_BACKUP_VERSION_MISMATCH, 5042).   % 备份版本不匹配
+-define(ERR_E2EE_BACKUP_CHECKSUM_MISMATCH, 5043). % 备份校验和不匹配
+-define(ERR_E2EE_BACKUP_FILE_TOO_LARGE, 5044).     % 备份文件过大
+-define(ERR_E2EE_BACKUP_INVALID_FORMAT, 5045).     % 备份文件格式无效
+
+%% 通用错误（5050-5099）
+-define(ERR_E2EE_INVALID_KEY_FORMAT, 5050).        % 无效的密钥格式
+-define(ERR_E2EE_KEY_DERIVATION_FAILED, 5051).     % 密钥派生失败
+-define(ERR_E2EE_ENCRYPTION_FAILED, 5052).         % 加密失败
+-define(ERR_E2EE_DECRYPTION_FAILED, 5053).         % 解密失败
+-define(ERR_E2EE_KEY_NOT_FOUND, 5054).              % 密钥不存在
+-define(ERR_E2EE_OPERATION_NOT_SUPPORTED, 5055).    % 不支持的操作
+-define(ERR_E2EE_BACKUP_PASSWORD_TOO_WEAK, 5056).  % 备份密码强度不足
+
+%% ===================================================================
+%% 设备会话管理相关错误（5100-5199）
+%% ===================================================================
+
+-define(ERR_DEVICE_SESSION_INVALID, 5100).         % 设备会话无效
+-define(ERR_DEVICE_SESSION_KICKED, 5101).          % 设备会话已被踢出
+-define(ERR_DEVICE_TYPE_CONFLICT, 5102).           % 同类型设备已登录
+-define(ERR_DEVICE_NOT_FOUND, 5103).               % 设备不存在
+-define(ERR_DEVICE_SESSION_EXPIRED, 5104).         % 设备会话已过期
+
+%% ===================================================================
 %% 辅助函数
 %% ===================================================================
 
@@ -186,5 +239,41 @@
     941 => <<"消息发送失败"/utf8>>,
     942 => <<"消息不存在"/utf8>>,
     950 => <<"文件上传失败"/utf8>>,
-    951 => <<"文件下载失败"/utf8>>
+    951 => <<"文件下载失败"/utf8>>,
+    5000 => <<"无效的传输会话"/utf8>>,
+    5001 => <<"传输会话已过期"/utf8>>,
+    5002 => <<"传输会话不存在"/utf8>>,
+    5003 => <<"无效的设备"/utf8>>,
+    5004 => <<"传输会话已被接受"/utf8>>,
+    5005 => <<"无法确认传输会话"/utf8>>,
+    5006 => <<"发送方用户 ID 不匹配"/utf8>>,
+    5007 => <<"接收方用户 ID 不匹配"/utf8>>,
+    5020 => <<"可信联系人不存在"/utf8>>,
+    5021 => <<"可信联系人已存在"/utf8>>,
+    5022 => <<"不能添加自己为可信联系人"/utf8>>,
+    5023 => <<"该联系人不在可信列表中"/utf8>>,
+    5024 => <<"密钥分片数量不足"/utf8>>,
+    5025 => <<"密钥分片已创建"/utf8>>,
+    5026 => <<"密钥分片不存在"/utf8>>,
+    5027 => <<"无效的恢复阈值"/utf8>>,
+    5028 => <<"密钥恢复失败"/utf8>>,
+    5029 => <<"受托人数量超过限制"/utf8>>,
+    5040 => <<"备份密码错误"/utf8>>,
+    5041 => <<"备份文件已损坏"/utf8>>,
+    5042 => <<"备份版本不匹配"/utf8>>,
+    5043 => <<"备份校验和不匹配"/utf8>>,
+    5044 => <<"备份文件过大"/utf8>>,
+    5045 => <<"备份文件格式无效"/utf8>>,
+    5050 => <<"无效的密钥格式"/utf8>>,
+    5051 => <<"密钥派生失败"/utf8>>,
+    5052 => <<"加密失败"/utf8>>,
+    5053 => <<"解密失败"/utf8>>,
+    5054 => <<"密钥不存在"/utf8>>,
+    5055 => <<"不支持的操作"/utf8>>,
+    5056 => <<"备份密码强度不足"/utf8>>,
+    5100 => <<"设备会话无效"/utf8>>,
+    5101 => <<"设备会话已被踢出，请重新登录"/utf8>>,
+    5102 => <<"同类型设备已登录，请确认是否踢出旧设备"/utf8>>,
+    5103 => <<"设备不存在"/utf8>>,
+    5104 => <<"设备会话已过期"/utf8>>
 }).

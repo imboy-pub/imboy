@@ -32,9 +32,17 @@ c2s(MsgId, CurrentUid, Data) ->
         %     c2s_to_external(MsgId, CurrentUid, <<"bot_claude">>, Data,
         %                    fun claude_api:create_chat/3);
         _ ->
-            % 不支持的 c2s 消息
-            Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
-            {reply, Msg}
+            % 检查是否为 E2EE 社交恢复消息
+            Payload = maps:get(<<"payload">>, Data, #{}),
+            MsgType = maps:get(<<"msg_type">>, Payload, <<>>),
+            case MsgType of
+                <<"e2ee_social_shard">> ->
+                    handle_e2ee_social_shard(MsgId, CurrentUid, Data);
+                _ ->
+                    % 不支持的 c2s 消息
+                    Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
+                    {reply, Msg}
+            end
     end.
 
 
@@ -181,3 +189,53 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"c2s">>),
     message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi).
+
+
+%% ===================================================================
+%% E2EE 社交恢复 - 零信任架构
+%% ===================================================================
+
+%% @doc 处理 E2EE 社交恢复分片消息
+%% 零信任架构：处理代理解密分片请求
+-spec handle_e2ee_social_shard(binary(), integer(), map()) -> {reply, map()}.
+handle_e2ee_social_shard(MsgId, CurrentUid, Data) ->
+    Payload = maps:get(<<"payload">>, Data, #{}),
+    Action = maps:get(<<"action">>, Payload, <<>>),
+
+    case Action of
+        <<"decrypt_shard">> ->
+            % 用户向代理请求解密分片
+            % 服务端仅作为传输通道，转发请求给代理
+            To = maps:get(<<"to">>, Data),
+            From = elib_hashids:encode(CurrentUid),
+
+            ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
+            KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
+            Uid = maps:get(<<"uid">>, Payload, CurrentUid),
+            ProxyUid = elib_hashids:decode(To),
+
+            % 记录分片解密请求日志（持久化到数据库）
+            e2ee_shard_validator:log_shard_transmission(
+                shard_decrypted,
+                ShardId,
+                #{
+                    <<"uid">> => Uid,
+                    <<"proxy_uid">> => ProxyUid,
+                    <<"key_version">> => KeyVersion
+                }
+            ),
+
+            % 构造转发消息
+            Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, <<>>, <<"decrypt_shard">>, null),
+
+            % 转发给代理
+            MsLi = elib_retry_config:intervals(<<"c2c">>),
+            message_ds:send_next(ProxyUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
+            % 给请求者回复确认
+            {reply, Msg};
+        _ ->
+            % 不支持的 E2EE 社交恢复操作
+            Msg = message_ds:assemble_s2c(MsgId, <<"e2ee_social_unsupported_action">>, Action),
+            {reply, Msg}
+    end.

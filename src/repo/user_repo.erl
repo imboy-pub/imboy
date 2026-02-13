@@ -18,6 +18,7 @@
 -export([list_by_ids/2]).
 
 -export([update_friends_last_seen_at/2]).
+-export([may_exist/1]).
 
 %% ===================================================================
 %% API functions
@@ -125,6 +126,21 @@ update_friends_last_seen_at(Uid, Timestamp) ->
     % 更新我是to_user_id的记录
     _ = update_last_seen_at(<<"to_user_id">>, Uid, Timestamp),
     ok.
+
+%% @doc 检查用户是否存在（轻量级检查）
+%% @param Uid 用户ID
+%% @return true | false
+%% @details 只查询 id 字段，避免加载不必要的字段
+-spec may_exist(pos_integer()) -> boolean().
+may_exist(Uid) when is_integer(Uid), Uid > 0 ->
+    Tb = tablename(),
+    Sql = <<"SELECT id FROM ", Tb/binary, " WHERE id = $1 AND status >= 0 LIMIT 1">>,
+    case elib_pg:query(Sql, [Uid]) of
+        {ok, _, [_]} -> true;
+        _ -> false
+    end;
+may_exist(_) ->
+    false.
 
 
 

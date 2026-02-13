@@ -1,77 +1,252 @@
+# Imboy AI 驱动测试框架
 
-## ##
-你现在是一位拥有 10 年经验的 Erlang/OTP 资深专家，精通 Cowboy 2.14.2 和 erlang.mk 框架和并发编程。我需要你帮我编写代码。请遵循以下原则：
+> **版本**: v1.0
+> **状态**: 设计阶段
+> **最后更新**: 2026-02-04
 
-代码必须符合 'Let it crash' 哲学，但要在关键位置进行防御性编程。
-优先使用 maps 而不是 proplists。
+---
 
+  /orchestrate feature "添加用户认证功能"
+  /orchestrate bugfix "修复聊天消息发送失败问题"
+  /orchestrate refactor "重构消息存储层"
+  /orchestrate security "审查E2EE加密实现"
+  /orchestrate custom "planner,tdd-guide,code-reviewer" "优化WebSocket连接管理"
 
-## eunit prompt
-你现在是一个严谨的 Erlang/OTP 测试工程师，熟悉 erlang.mk 与 EUnit。
+/everything-claude-code:orchestrate imboy 的前后端项目有没有比现在方案更好的能够“自动化的AI驱动的AI 分析并修复代码，意图解析器, 自愈合引擎, 知识库系统, 路径探索器, 模拟真人测试”测试框架
 
-背景约束（必须遵守）：
-- 项目使用 erlang.mk 构建
-- 测试通过 `make eunit` 执行
-- 单元测试放在项目根目录下的 test/ 目录中，每个应用在test/目录下做一个目录，例如 test/api
-
-你的任务（必须全部完成）：
-
-【一】测试范围界定
-1 检查test/*/* 的单页测试代码逻辑是否可运行
-2 make eunit 命名执行不报错
-
-【二】生成 EUnit 测试模块
-1. 测试模块名必须为：
-   <被测试模块名>_tests
-2. 使用 EUnit（-include_lib("eunit/include/eunit.hrl")）
+/everything-claude-code:orchestrate imboy 的前后端项目有没有比现在方案（/Users/leeyi/project/imboy.pub/imboyapp/integration_test/TESTING_GUIDE.md）更好的能够“自动化的AI驱动的AI 分析并修复代码，意图解析器, 自愈合引擎, 知识库系统, 路径探索器, 模拟真人测试”测试框架，期望全自动化和智能化
 
 
-【三】测试设计要求（非常重要）
-1. 每个测试用例必须：
-   - 明确表达测试意图（函数名即语义）
-   - 使用独立、可读的临时测试数据
-2. 测试应可重复执行（避免依赖固定 ID）
+## 📚 文档导航
 
-【四】与 erlang.mk 的强绑定要求
-1. 测试模块必须可以被：
-   ```bash
-   make eunit
+### 📖 核心文档
 
+| 文档 | 说明 | 适合人群 |
+|------|------|----------|
+| **[整体方案设计](./ai_test_framework_design.md)** | 完整的技术架构和模块设计 | 技术人员、架构师 |
+| **[落地执行计划](./ai_test_implementation_plan.md)** | 详细的实施步骤和时间计划 | 项目经理、开发团队 |
 
-## FAQ
+---
 
-你现在是一个严谨的 Erlang/OTP 测试工程师，熟悉 erlang.mk 与 EUnit。
+## 🎯 项目简介
 
-1: eunit 的语法规则我也不太理解，给我用中文意义介绍
-2: make eunit 的结果如何解读，给我介绍下
+Imboy AI 驱动测试框架是一个**智能化、自适应、可学习**的测试框架，通过 AI 技术实现：
 
-教教我如何为erlang.mk生成的扇形项目写单页测试:
+- 🤖 **AI 自动生成测试** - 从用户故事自动生成测试用例
+- 🔧 **自动愈合** - 测试失败后自动分析和修复
+- 🧠 **知识库系统** - 从历史测试中学习和积累
+- 🔍 **路径探索** - 自动发现边缘场景和隐藏缺陷
+- 👤 **真人模拟** - 模拟真实用户行为，发现用户体验问题
 
-Q1: <被测试模块名>_tests.erl 测试模块这样命名是否合理，是否有更好的方法，有什么erlang/otop的规范否？；
+---
 
-Q2: 生成的模块放在什么不了，有什么erlang/otp的规范？
+## 📊 项目指标
 
-Q3: 每个模块里面的代码有哪些注意的erlang/otp的规范？
+| 指标 | 现状 | 目标 | 提升 |
+|------|------|------|------|
+| 测试编写效率 | 手动编写 | AI 自动生成 | **+300%** |
+| 测试维护成本 | 人工修复 | 自动愈合 | **-70%** |
+| 测试覆盖率 | 65% | 85%+ | **+20%** |
+| Bug 发现率 | 基准 | AI 增强 | **+50%** |
 
-## 33
+---
 
-你现在是一个严谨的 Erlang/OTP 测试工程师，熟悉 erlang.mk 与 EUnit。
+## 🚀 快速开始
 
-背景约束（必须遵守）：
-- 项目使用 erlang.mk 构建
-- 测试通过 `make eunit` 执行
-- 单元测试放在项目根目录下的 test/ 目录中，每个应用在test/目录下做一个目录，例如 test/imapi
-- 不能够修改除开 test目录以为的代码和配置，如果确实需要的话，请和我确认修改
+### 环境准备
 
-你的任务（必须全部完成）：
-1 自行用 make eunit  命令验证结果，如果有bug，命令会卡死进程，需要立即修改bug；
-2 修复bug后再次重复上一步；
+```bash
+# 1. 添加依赖
+flutter pub add openai anthropic pinecone
 
+# 2. 配置环境变量
+# 编辑 .env.local_office 添加：
+# OPENAI_API_KEY=sk-your-key
+# PINECONE_API_KEY=your-key
 
+# 3. 运行示例测试
+flutter test integration_test/ai_generated_test.dart \
+  --dart-define=APP_ENV=local_office \
+  -d macos
+```
 
-我现在把 elib_pg_sql:insert/2 调整为了 elib_pg_sql:insert/3 ;然后弄好了 elib_pg:insert/2 elib_pg:insert/3
-   elib_pg:insert/4 3个方法，给我检查所有有调用 elib_pg:insert 放的地方，和所有透传 elib_pg:insert 方法的地方（所谓透传，就是直接把elib_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
+### 快速验证
 
+```dart
+// integration_test/ai_quick_test.dart
+import 'package:imboy/ai_test/intent/intent_parser.dart';
 
-我检查所有有调用 elib_pg:xxx 放的地方，和所有透传 elib_pg:xxx 方法的地方（所谓透传，就是直接把elib_pg:insert放的结果返回的方法 ）   接受参数的模式匹配问题，如果模式不匹配，根据当前业务场景调整相关逻辑
+void main() {
+  final parser = IntentParser();
 
+  // 从用户故事生成测试
+  final tests = await parser.parseFromUserStory('''
+    作为用户，我想要发送消息给好友
+  ''');
+
+  print('生成了 ${tests.length} 个测试用例');
+}
+```
+
+---
+
+## 📅 实施进度
+
+```
+2026 年 2 月 - 6 月 (20 周)
+
+阶段 0: 环境准备    ████████                        [第 1 周]
+阶段 1: 意图解析    ████████████████                 [第 2-3 周]
+阶段 2: 自愈合引擎  ██████████████████████           [第 4-5 周]
+阶段 3: 知识库      ████████████████████████████     [第 6-8 周]
+阶段 4: 路径探索    ██████████████████████████████   [第 9-11 周]
+阶段 5: 真人模拟    ████████████████████████████████ [第 12-14 周]
+阶段 6: 集成优化    ████████████████████████████████████████ [第 15-18 周]
+阶段 7: 验收交付    ████████████████████             [第 19-20 周]
+```
+
+---
+
+## 🏗️ 架构概览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    测试编排层                                   │
+│  测试计划生成 | 智能调度 | 资源管理 | 报告生成                   │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI 智能引擎层                                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
+│  │意图解析  │ │自愈合引擎│ │知识库系统│ │路径探索器│           │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
+│  ┌────────────────────────────────────────────┐                 │
+│  │           真人模拟引擎                      │                 │
+│  └────────────────────────────────────────────┘                 │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    执行层                                       │
+│  Flutter 测试引擎 | Erlang 后端测试 | 设备农场                   │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    数据层                                       │
+│  向量数据库 | PostgreSQL | 知识图谱                             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 模块说明
+
+### 1. AI 意图解析器
+将用户需求转换为测试用例
+
+```dart
+final parser = IntentParser();
+final tests = await parser.parseFromUserStory(userStory);
+```
+
+### 2. 自愈合引擎
+自动修复失败的测试
+
+```dart
+final engine = SelfHealingEngine();
+final result = await engine.heal(failure);
+```
+
+### 3. 知识库系统
+存储和检索测试经验
+
+```dart
+final kb = KnowledgeBase();
+await kb.storeExperience(experience);
+final results = await kb.retrieveExperiences(query);
+```
+
+### 4. 路径探索器
+自动发现测试场景
+
+```dart
+final explorer = PathExplorer();
+final graph = await explorer.buildUIGraph();
+final edgeCases = await explorer.discoverEdgeCases(graph);
+```
+
+### 5. 真人模拟引擎
+模拟真实用户行为
+
+```dart
+final simulator = HumanSimulator();
+final persona = await simulator.generatePersona('teenager');
+await simulator.simulateUserSession(persona);
+```
+
+---
+
+## 💰 成本估算
+
+| 阶段 | 开发成本 | API 成本/月 | 基础设施 | 总投入 |
+|------|---------|------------|---------|--------|
+| 环境准备 | - | $0 | $0 | $0 |
+| 意图解析 | ¥75,000 | $10-50 | $0 | ¥75-110k |
+| 自愈合 | ¥100,000 | $20-100 | $0 | ¥100-170k |
+| 知识库 | ¥150,000 | $20-100 | $0-70 | ¥150-270k |
+| 完整系统 | ¥575,000 | $50-200 | $70 | ¥582-850k |
+
+**省钱技巧：**
+- 使用 GPT-4o-mini（便宜 10 倍）
+- 使用本地 Ollama（免费）
+- 缓存常见请求
+
+---
+
+## 🎯 成功标准
+
+| 指标 | 基准值 | 目标值 | 验收标准 |
+|------|--------|--------|----------|
+| 测试生成效率 | 手动编写 | AI 自动生成 | 80% 用例可自动生成 |
+| 自愈合成功率 | N/A | > 70% | 70% 失败可自动修复 |
+| 测试覆盖率 | 65% | > 85% | 覆盖率提升 20% |
+| Bug 发现率 | 基准 | +50% | 发现更多缺陷 |
+| 测试维护成本 | 基准 | -50% | 维护时间减半 |
+
+---
+
+## 📞 联系方式
+
+| 角色 | 邮箱 | 职责 |
+|------|------|------|
+| 项目负责人 | - | 整体协调 |
+| 前端负责人 | - | Flutter 测试框架 |
+| 后端负责人 | - | Erlang 测试框架 |
+| AI 工程师 | - | 模型和提示词 |
+
+---
+
+## 📝 相关资源
+
+### 技术文档
+- [OpenAI API 文档](https://platform.openai.com/docs)
+- [Claude API 文档](https://docs.anthropic.com)
+- [Pinecone 文档](https://docs.pinecone.io)
+- [Flutter 测试文档](https://docs.flutter.dev/testing)
+
+### 项目文档
+- [Imboy 架构文档](../architecture/overview.md)
+- [Imboy 编码规范](../standards/)
+- [Imboy API 文档](../api/rest-api.md)
+
+---
+
+## 🔄 更新日志
+
+### v1.0 (2026-02-04)
+- ✅ 初始版本
+- ✅ 完成整体方案设计文档
+- ✅ 完成落地执行计划文档
+
+---
+
+**最后更新**: 2026-02-04

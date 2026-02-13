@@ -16,6 +16,12 @@
 -export([safe_rsa_decrypt/2]).
 -export([num_random/1]).
 
+%% 密钥备份相关功能
+-export([derive_master_password/2,
+         encrypt_private_key/2,
+         decrypt_private_key/2]).
+-export([encrypt_rsa_oaep/2, decrypt_rsa_oaep/2]).
+
 -define(SHA_256_BLOCKSIZE, 64).
 
 %% ===================================================================
@@ -247,3 +253,195 @@ num_random(Len) ->
         _ ->
             MinNum * Prefix + Num
     end.
+
+%% ===================================================================
+%% 密钥备份相关功能
+%% ===================================================================
+
+%% @doc 使用 PBKDF2-SHA256 从主密码派生加密密钥
+%% @param MasterPassword 用户主密码（二进制或列表）
+%% @param Salt 盐值（至少 16 字节）
+%% @returns {ok, DerivedKey} | {error, Reason}
+%%
+%% 使用 PBKDF2-SHA256 算法，100,000 次迭代
+%% 派生 32 字节密钥（用于 AES-256 加密）
+%%
+%% @example
+%% Salt = crypto:strong_rand_bytes(16),
+%% {ok, Key} = elib_cipher:derive_master_password(<<"MyPassword123">>, Salt).
+-spec derive_master_password(binary() | list(), binary()) -> {ok, binary()} | {error, term()}.
+derive_master_password(MasterPassword, Salt) when is_list(MasterPassword) ->
+    derive_master_password(list_to_binary(MasterPassword), Salt);
+derive_master_password(<<>>, _Salt) ->
+    {error, empty_password};
+derive_master_password(_MasterPassword, Salt) when byte_size(Salt) < 16 ->
+    {error, invalid_salt};
+derive_master_password(MasterPassword, Salt) when is_binary(MasterPassword), is_binary(Salt) ->
+    try
+        % PBKDF2-HMAC-SHA256，100,000 次迭代，派生 32 字节密钥
+        Iterations = 100000,
+        DerivedKey = crypto:pbkdf2_hmac(sha256, MasterPassword, Salt, Iterations, 32),
+        {ok, DerivedKey}
+    catch
+        _:_:_ ->
+            {error, derivation_failed}
+    end.
+
+
+%% @doc 使用 AES-256-GCM 加密私钥
+%% @param PrivateKey 要加密的私钥（PEM 格式或二进制）
+%% @param EncryptionKey 加密密钥（32 字节）
+%% @returns {ok, EncryptedData} | {error, Reason}
+%%
+%% 使用 AES-256-GCM 模式加密，每次加密使用随机 IV 和盐值
+%% 返回格式: base64(salt + iv + ciphertext + tag)
+%%
+%% @example
+%% Key = crypto:strong_rand_bytes(32),
+%% {ok, Encrypted} = elib_cipher:encrypt_private_key(PrivateKeyPEM, Key).
+-spec encrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
+encrypt_private_key(PrivateKey, EncryptionKey) when is_binary(PrivateKey), byte_size(EncryptionKey) =:= 32 ->
+    try
+        % 生成随机 IV (12 字节，GCM 推荐值)
+        IV = crypto:strong_rand_bytes(12),
+        % 生成随机盐值（用于密钥派生，增加安全性，也作为 AAD）
+        Salt = crypto:strong_rand_bytes(16),
+
+        % 使用 AES-256-GCM 加密（AEAD）
+        % 返回: {Ciphertext, Tag}
+        {Ciphertext, Tag} = crypto:crypto_one_time_aead(
+            aes_256_gcm,
+            EncryptionKey,
+            IV,
+            PrivateKey,
+            Salt,  % AAD (Additional Authenticated Data)
+            16,    % Tag 长度 (16 字节)
+            true   % encrypt flag
+        ),
+
+        % 组合: Salt(16) + IV(12) + Ciphertext + Tag(16)
+        Combined = <<Salt/binary, IV/binary, Ciphertext/binary, Tag/binary>>,
+
+        % Base64 编码
+        {ok, base64:encode(Combined)}
+    catch
+        _:_:_ ->
+            {error, encryption_failed}
+    end;
+encrypt_private_key(_PrivateKey, EncryptionKey) when byte_size(EncryptionKey) =/= 32 ->
+    {error, invalid_key_length};
+encrypt_private_key(_PrivateKey, _EncryptionKey) ->
+    {error, invalid_input}.
+
+
+%% @doc 使用 AES-256-GCM 解密私钥
+%% @param EncryptedData 加密的私钥数据（Base64 编码）
+%% @param EncryptionKey 解密密钥（32 字节）
+%% @returns {ok, PrivateKey} | {error, Reason}
+%%
+%% @example
+%% {ok, Decrypted} = elib_cipher:decrypt_private_key(EncryptedBase64, Key).
+-spec decrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
+decrypt_private_key(EncryptedData, EncryptionKey) when is_binary(EncryptedData), byte_size(EncryptionKey) =:= 32 ->
+    try
+        % Base64 解码
+        Combined = base64:decode(EncryptedData),
+
+        % 提取各部分
+        SaltSize = 16,
+        IVSize = 12,
+        TagSize = 16,
+        TotalHeaderSize = SaltSize + IVSize,
+
+        case byte_size(Combined) of
+            Size when Size > TotalHeaderSize + TagSize ->
+                <<Salt:SaltSize/binary, IV:IVSize/binary, Rest/binary>> = Combined,
+                CipherTextSize = byte_size(Rest) - TagSize,
+                <<CipherText:CipherTextSize/binary, Tag:TagSize/binary>> = Rest,
+
+                % 使用 AES-256-GCM 解密
+                case crypto:crypto_one_time_aead(
+                    aes_256_gcm,
+                    EncryptionKey,
+                    IV,
+                    CipherText,
+                    Salt,
+                    Tag,
+                    false  % decrypt flag
+                ) of
+                    error ->
+                        % 认证失败（错误的密钥或数据被篡改）
+                        {error, authentication_failed};
+                    Plaintext when is_binary(Plaintext) ->
+                        {ok, Plaintext}
+                end;
+            _ ->
+                {error, invalid_data_format}
+        end
+    catch
+        _:_ ->
+            {error, decryption_failed}
+    end;
+decrypt_private_key(_EncryptedData, EncryptionKey) when byte_size(EncryptionKey) =/= 32 ->
+    {error, invalid_key_length};
+decrypt_private_key(_EncryptedData, _EncryptionKey) ->
+    {error, invalid_input}.
+
+%% ===================================================================
+%% RSA-OAEP 加密/解密
+%% ===================================================================
+
+%% @doc RSA-OAEP 公钥加密
+%% @param PlainText 要加密的明文（二进制）
+%% @param PublicKeyPem PEM 格式的公钥
+%% @returns Base64 编码的加密数据
+%%
+%% 使用 RSA-OAEP-SHA256 填充模式进行加密
+%% @example
+%% PublicKeyPem = <<"-----BEGIN PUBLIC KEY...">>,
+%% {ok, Encrypted} = elib_cipher:encrypt_rsa_oaep(<<"secret">>, PublicKeyPem).
+-spec encrypt_rsa_oaep(binary(), binary()) -> {ok, binary()} | {error, term()}.
+encrypt_rsa_oaep(PlainText, PublicKeyPem) when is_binary(PlainText), is_binary(PublicKeyPem) ->
+    try
+        PublicKey = get_rsa_key_str(PublicKeyPem),
+        % 使用 RSA-OAEP-SHA256 填充
+        Encrypted = public_key:encrypt_public(
+            PlainText,
+            PublicKey,
+            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+        ),
+        {ok, base64:encode(Encrypted)}
+    catch
+        _:_:_ ->
+            {error, encryption_failed}
+    end;
+encrypt_rsa_oaep(_PlainText, _PublicKeyPem) ->
+    {error, invalid_input}.
+
+%% @doc RSA-OAEP 私钥解密
+%% @param CipherText Base64 编码的加密数据
+%% @param PrivateKeyPem PEM 格式的私钥
+%% @returns 解密后的明文
+%%
+%% 使用 RSA-OAEP-SHA256 填充模式进行解密
+%% @example
+%% PrivateKeyPem = <<"-----BEGIN PRIVATE KEY...">>,
+%% {ok, Decrypted} = elib_cipher:decrypt_rsa_oaep(EncryptedBase64, PrivateKeyPem).
+-spec decrypt_rsa_oaep(binary(), binary()) -> {ok, binary()} | {error, term()}.
+decrypt_rsa_oaep(CipherText, PrivateKeyPem) when is_binary(CipherText), is_binary(PrivateKeyPem) ->
+    try
+        Encrypted = base64:decode(CipherText),
+        PrivateKey = get_rsa_key_str(PrivateKeyPem),
+        % 使用 RSA-OAEP-SHA256 填充解密
+        Decrypted = public_key:decrypt_private(
+            Encrypted,
+            PrivateKey,
+            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+        ),
+        {ok, Decrypted}
+    catch
+        _:_:_ ->
+            {error, decryption_failed}
+    end;
+decrypt_rsa_oaep(_CipherText, _PrivateKeyPem) ->
+    {error, invalid_input}.

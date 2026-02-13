@@ -132,14 +132,24 @@ login(Req0) ->
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
-    Post2 = PostVals#{<<"ip">> => Ip},
-    case passport_logic:do_login(Type, Account, Pwd) of
+
+    % 提取设备信息
+    DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
+    Did = cowboy_req:header(<<"did">>, Req0, <<>>),
+    DName = cowboy_req:header(<<"dname">>, Req0, <<>>),
+
+    Post2 = PostVals#{<<"ip">> => Ip, <<"dtype">> => DType, <<"did">> => Did, <<"dname">> => DName},
+
+    case passport_logic:do_login(Type, Account, Pwd, DType, Did) of
         {ok, Data} ->
             Uid = maps:get(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
             Setting = user_setting_ds:find_by_uid(Uid),
             Data2 = Data#{<<"setting">> => Setting},
             elib_response:success(Req0, Data2, "success.");
+        {{error, conflict}, ConflictInfo} ->
+            % 返回设备冲突信息
+            elib_response:error(Req0, ConflictInfo, 5100);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

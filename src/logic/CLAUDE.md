@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/logic**
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **模块数量**: 26 个
+> **最后更新**: 2026-02-01 04:35:00 CST
+> **模块数量**: 28 个
 > **职责**: 处理业务逻辑，调用 DS 层进行数据操作，实现核心业务功能
 
 ---
@@ -75,12 +75,12 @@ Logic 模块由 Handler 层或 DS 层调用：
 
 | Logic | 说明 |
 |-------|------|
-| `msg_c2c_logic.erl` | 单聊消息逻辑 |
+| `msg_c2c_logic.erl` | 单聊消息逻辑（含已读回执） |
 | `msg_c2g_logic.erl` | 群聊消息逻辑 |
 | `msg_c2s_logic.erl` | 客户端请求逻辑 |
 | `msg_s2c_logic.erl` | 系统消息逻辑 |
 | `msg_ack_logic.erl` | 消息确认逻辑 |
-| `message_router_logic.erl` | 消息路由器 |
+| `message_router_logic.erl` | 消息路由器（含 message_read 分支） |
 
 ---
 
@@ -175,6 +175,8 @@ Logic 模块由 Handler 层或 DS 层调用：
 |-------|------|
 | `websocket_logic.erl` | WebSocket 业务逻辑 |
 | `e2ee_logic.erl` | 端到端加密 |
+| `e2ee_transfer_logic.erl` | E2EE 设备间传输 |
+| `e2ee_social_logic.erl` | E2EE 社交恢复 |
 | `location_logic.erl` | 位置服务 |
 | `fts_logic.erl` | 全文搜索 |
 
@@ -277,7 +279,7 @@ test/api/
 
 ## 相关文件清单
 
-### Logic 文件 (26 个)
+### Logic 文件 (28 个)
 
 ```
 src/logic/
@@ -286,6 +288,8 @@ src/logic/
 ├── adm_user_logic.erl
 ├── auth_logic.erl
 ├── e2ee_logic.erl
+├── e2ee_social_logic.erl
+├── e2ee_transfer_logic.erl
 ├── friend_category_logic.erl
 ├── friend_logic.erl
 ├── fts_logic.erl
@@ -314,6 +318,11 @@ src/logic/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-02-01
+- 新增 `e2ee_transfer_logic.erl` E2EE 设备间传输逻辑
+- 新增 `e2ee_social_logic.erl` E2EE 社交恢复逻辑
+- 更新模块数量：26 → 28
 
 ### 2026-01-21
 - **修复 E2EE API 权限**：允许任何登录用户获取其他用户的公钥

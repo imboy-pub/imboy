@@ -177,8 +177,30 @@ get_routes() ->
         {"/v1/user_device/change_name", user_device_handler, #{action => change_name}},
         {"/v1/user_device/delete", user_device_handler, #{action => delete}},
 
+        % 设备会话管理
+        {"/v1/user_device/sessions", user_device_handler, #{action => sessions}},
+        {"/v1/user_device/check_login", user_device_handler, #{action => check_login}},
+        {"/v1/user_device/kick", user_device_handler, #{action => kick}},
+        {"/v1/user_device/kick-others", user_device_handler, #{action => kick_others}},
+
         {"/v1/e2ee/user_keys", e2ee_handler, #{action => user_keys}},
         {"/v1/e2ee/group_member_keys", e2ee_handler, #{action => group_member_keys}},
+        {"/v1/e2ee/report_device_key", e2ee_handler, #{action => report_device_key}},
+
+        {"/v1/e2ee/transfer/create", e2ee_transfer_handler, #{action => create}},
+        {"/v1/e2ee/transfer/accept", e2ee_transfer_handler, #{action => accept}},
+        {"/v1/e2ee/transfer/confirm", e2ee_transfer_handler, #{action => confirm}},
+        {"/v1/e2ee/transfer/info", e2ee_transfer_handler, #{action => info}},
+        {"/v1/e2ee/transfer/pending", e2ee_transfer_handler, #{action => pending}},
+
+        {"/v1/e2ee/social/contacts", e2ee_social_handler, #{action => contacts}},
+        {"/v1/e2ee/social/contacts/add", e2ee_social_handler, #{action => add_contact}},
+        {"/v1/e2ee/social/contacts/remove", e2ee_social_handler, #{action => remove_contact}},
+        {"/v1/e2ee/social/create_shards", e2ee_social_handler, #{action => create_shards}},
+        {"/v1/e2ee/social/shards", e2ee_social_handler, #{action => get_shards}},
+        {"/v1/e2ee/social/recover", e2ee_social_handler, #{action => recover_key}},
+        {"/v1/e2ee/social/proxy_shards", e2ee_social_handler, #{action => get_proxy_shards}},
+        {"/v1/e2ee/social/decrypt_shard", e2ee_social_handler, #{action => decrypt_shard}},
 
         {"/v1/user_collect/page", user_collect_handler, #{action => page}},
         {"/v1/user_collect/add", user_collect_handler, #{action => add}},

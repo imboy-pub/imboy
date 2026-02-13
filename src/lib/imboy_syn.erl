@@ -17,10 +17,7 @@
 -export([count_user/0, count_user/1,
          count/0]).
 -export([list_by_uid/1,
-         list_by_limit/1,
-         online_dids/1]).
-
--export([is_online/2]).
+         list_by_limit/1]).
 
 %% ACK 同步相关导出
 -export([broadcast_ack_cancel/3]).
@@ -117,31 +114,6 @@ list_by_uid(Uid) ->
     % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
     try
         syn:members(?CHAT_SCOPE, Uid)
-    catch
-        _:_ -> []
-    end.
-
--spec is_online(integer(), tuple()) -> boolean().
-is_online(Uid, {dtype, DType}) ->
-    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    try
-        lists:any(fun({_P, {DType1, _DID}}) -> DType1 == DType end, list_by_uid(Uid))
-    catch
-        _:_ -> false
-    end;
-is_online(Uid, {did, DID}) ->
-    try
-        lists:any(fun({_P, {_DType1, DID1}}) -> DID1 == DID end, list_by_uid(Uid))
-    catch
-        _:_ -> false
-    end.
-
-% 用户在线设备ID列表
--spec online_dids(integer()) -> [binary()].
-online_dids(Uid) ->
-    % [{<0.2497.0>,{<<"macos">>,<<"did13">>}}]
-    try
-        [ DID1 || {_P, {_DType1, DID1}} <- list_by_uid(Uid) ]
     catch
         _:_ -> []
     end.

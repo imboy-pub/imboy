@@ -17,6 +17,8 @@
 -export([count_by_uid/1, page/3]).
 -export([list_public_keys/1]).
 -export([list_public_keys_by_uids/1]).
+-export([get_default_device/1]).
+-export([update_public_key/5]).
 
 %% ===================================================================
 %% API Functions
@@ -95,6 +97,37 @@ delete(Uid, DID) ->
 -spec update_by_did(integer(), binary(), binary(), list()) -> {ok, integer()} | {error, any()}.
 update_by_did(Uid, DID, Set, SetArgs) ->
     user_device_repo:update_by_did(Uid, DID, Set, SetArgs).
+
+%% @doc 获取用户的默认设备（最近活跃的设备）
+%% @param Uid 用户ID
+%% @return {ok, DeviceMap} | {error, Reason}
+-spec get_default_device(integer()) -> {ok, map()} | {error, term()}.
+get_default_device(Uid) ->
+    case user_device_repo:list_public_keys(Uid) of
+        {ok, [Device | _]} ->
+            {ok, Device};
+        {ok, []} ->
+            {error, no_device_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 更新设备的 E2EE 公钥和密钥ID
+%% 当用户重新生成密钥对时调用此函数更新数据库记录
+%% @param Uid 用户ID
+%% @param DeviceId 设备ID
+%% @param PublicKey PEM格式的公钥
+%% @param KeyId 密钥ID
+%% @param Now 当前时间戳
+%% @return {ok, UpdatedCount} | {error, Reason}
+-spec update_public_key(integer(), binary(), binary(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+update_public_key(Uid, DeviceId, PublicKey, KeyId, Now) ->
+    Tb = user_device_repo:tablename(),
+    % 同时更新 public_key, key_id, last_active_at
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET public_key = $1, key_id = $2, last_active_at = $3"
+            " WHERE status = 1 AND user_id = $4 AND device_id = $5">>,
+    elib_pg:execute(Sql, [PublicKey, KeyId, Now, Uid, DeviceId]).
 
 %% ===================================================================
 %% Internal Functions

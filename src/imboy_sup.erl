@@ -10,7 +10,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% @doc 初始化 supervisor
--spec init([]) -> {ok, {#{strategy := atom(), intensity := pos_integer(), period := pos_integer()}, [map()]}}.
+%% Note: Side effects in init/1 may cause issues, use ok to ignore return values
 init([]) ->
     % application:ensure_all_started(pgo),
     % {PoolName, PoolConfig} = config_ds:env(pgo),
@@ -21,9 +21,9 @@ init([]) ->
     % },
 
     % 启动 pooler 应用和连接池
-    application:start(pooler),
+    _ = application:start(pooler),
     PgConf = config_ds:env(pg_conf),
-    pooler:new_pool(PgConf),
+    _ = pooler:new_pool(PgConf),
 
     % https://blog.csdn.net/Dylan_2018/article/details/110150142
     % child_spec() = #{id => child_id(),             % mandatory

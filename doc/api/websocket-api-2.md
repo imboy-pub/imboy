@@ -1178,6 +1178,67 @@ final s2cMsg = V2MessageBuilder.buildS2CMessage(
 3. **更新数据库存储**
    - 调整消息表结构（如需要）
 
+#### 新增功能 (v2.0.1+)
+
+##### 消息验证功能
+
+后端新增 `message_ds:validate_message/1` 函数，用于验证 v2.0 消息格式：
+
+```erlang
+%% 验证消息格式
+case message_ds:validate_message(Msg) of
+    {ok, ValidatedMsg} ->
+        process_message(ValidatedMsg);
+    {error, Reason} ->
+        handle_error(Reason)
+end.
+```
+
+**验证规则**：
+- 必填字段：`id`、`type`、`from`、`to`
+- S2C 消息：必须有 `action` 字段，不支持 `e2ee`
+- 非 S2C 消息：必须有 `msg_type` 字段
+
+##### 版本转换功能
+
+后端新增 `message_ds:convert_v1_to_v2/1` 函数，自动将 v1.0 格式转换为 v2.0：
+
+```erlang
+%% 自动转换 v1.0 消息
+V2Msg = message_ds:convert_v1_to_v2(V1Msg).
+```
+
+**转换逻辑**：
+- 检测顶层是否有 `msg_type` 或 `action`
+- 如果没有，从 `payload` 中提取到顶层
+- 已是 v2.0 格式则直接返回
+
+##### 消息监控指标
+
+后端新增 `elib_metric:log_message_format/2` 函数，记录消息统计：
+
+```erlang
+%% 记录接收消息
+ok = elib_metric:log_message_format(<<"in">>, IncomingMsg).
+
+%% 记录发送消息
+ok = elib_metric:log_message_format(<<"out">>, OutgoingMsg).
+```
+
+**统计指标**：
+- 消息类型分布 (C2C/C2G/C2S/S2C)
+- 消息内容类型分布 (text/image/voice/etc.)
+- Action 分布 (S2C 消息)
+- E2EE 使用率
+- 消息方向 (in/out)
+
+**查询指标**：
+```erlang
+%% 获取所有指标
+Metrics = elib_metric:get_all_metrics().
+%% 返回: #{counters => #{...}, histograms => #{...}}
+```
+
 #### 兼容性说明
 
 v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。

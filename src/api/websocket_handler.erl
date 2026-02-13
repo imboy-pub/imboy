@@ -256,6 +256,18 @@ websocket_info({ack_cancel, Uid, DID, MsgId, Timestamp}, State) ->
     websocket_logic:handle_ack_cancel(Uid, DID, MsgId),
     {ok, State, hibernate};
 
+%% 处理设备踢出消息
+websocket_info({kick_device, ReasonMap}, State) ->
+    ok = ?INFO_LOG({device_kicked, ReasonMap}),
+    Reason = maps:get(<<"reason">>, ReasonMap, <<"设备被踢出"/utf8>>),
+    Msg = #{
+        <<"type">> => <<"S2C">>,
+        <<"action">> => <<"device_kicked">>,
+        <<"payload">> => ReasonMap,
+        <<"server_ts">> => elib_dt:millisecond()
+    },
+    {reply, {text, jsone:encode(Msg, [native_utf8])}, {close, 4000, Reason}, State};
+
 websocket_info(_Info, State) ->
     {ok, State}.
 

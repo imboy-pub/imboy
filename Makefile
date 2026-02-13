@@ -85,7 +85,8 @@ APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
 
 # Dialyzer 配置 - 在 erlang.mk 之后覆盖，确保生效
 # 注意：暂时移除 -Werror_handling，因为项目中有较多类型规范问题需要逐步修复
-DIALYZER_OPTS = -Wunmatched_returns --plt $(DIALYZER_PLT) -I $(CURDIR)/include
+DIALYZER_DIRS = -r ebin deps
+DIALYZER_OPTS = -Wunmatched_returns --plt $(DIALYZER_PLT) -I $(CURDIR)/include $(DIALYZER_DIRS)
 
 # Compile flags
 ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}' +nowarn_unused_function

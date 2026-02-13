@@ -24,7 +24,13 @@
       "Bash(git:*)",
       "Bash(ls:*)",
       "Bash(cd:*)",
-      "Skill(zcf:init-project)"
+      "Skill(zcf:init-project)",
+      "mcp__plugin_flutter_dart__list_devices",
+      "mcp__plugin_flutter_dart__launch_app",
+      "mcp__plugin_flutter_dart__list_running_apps",
+      "mcp__plugin_flutter_dart__connect_dart_tooling_daemon",
+      "mcp__plugin_flutter_dart__get_widget_tree",
+      "mcp__plugin_flutter_dart__flutter_driver"
     ],
     "deny": [],
     "ask": []

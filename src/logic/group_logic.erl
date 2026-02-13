@@ -82,7 +82,9 @@ add(_, Uid, Type, MemberUids) ->
     end,
     Now = elib_dt:now(),
     MemberUids3 = [elib_hashids:decode(Id) || Id <- MemberUids2, is_binary(Id)],
-    Sum = lists:sum(lists:usort([Uid | MemberUids3])),
+    % 【防御性编程】确保创建者不会被重复添加
+    MemberUids4 = lists:usort([U || U <- MemberUids3, U =/= Uid]),
+    Sum = lists:sum(lists:usort([Uid | MemberUids4])),
     % 使用 DS 层接口检查是否已存在相同群组
     GidOld = group_ds:find_by_creator_and_sum(Uid, Sum),
     case GidOld of
@@ -94,11 +96,13 @@ add(_, Uid, Type, MemberUids) ->
                 Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
                 %% 【原子性修复】批量添加成员并检查结果
                 Results = [group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
-                     || Uid2 <- MemberUids3, Uid2 /= Uid],
+                     || Uid2 <- MemberUids4],
                 %% 【原子性修复】检查是否所有成员都添加成功
-                case lists:all(fun(R) -> R =:= ok end, Results) of
-                    true -> {ok, Gid};
-                    false -> throw({error, member_add_failed})
+                % join_group 返回 {ok, UidSum} | {error, Reason}
+                ErrorResults = [R || R <- Results, element(1, R) =:= error],
+                case ErrorResults of
+                    [] -> {ok, Gid};
+                    _ -> throw({error, member_add_failed, ErrorResults})
                 end
             end);
         GidOld when GidOld > 0 ->

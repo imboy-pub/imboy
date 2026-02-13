@@ -86,16 +86,21 @@ face2face(Req0, State) ->
                 {ok, Gid} ->
                     Gid2 = elib_hashids:encode(Gid),
                     ToUidLi = group_ds:member_uids(Gid),
+                    % 修复：如果成员列表为空，至少包含创建者，确保通知能发送
+                    ToUidLi2 = case ToUidLi of
+                        [] -> [Uid];
+                        _ -> ToUidLi
+                    end,
                     User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
                     %% v2.0: 使用 send/7 API
                     Action = <<"group_member_join">>,
                     Payload =
                         #{<<"gid">> => Gid2,
-                          <<"user_id_sum">> => lists:sum(ToUidLi),
+                          <<"user_id_sum">> => lists:sum(ToUidLi2),
                           <<"nickname">> => maps:get(<<"nickname">>, User),
                           <<"avatar">> => maps:get(<<"avatar">>, User),
                           <<"account">> => maps:get(<<"account">>, User)},
-                    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, no_save),
+                    msg_s2c_ds:send(Uid, ToUidLi2, Action, <<>>, null, Payload, no_save),
 
                     MemberListRes =
                         user_repo:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
@@ -195,7 +200,10 @@ add(Req0, State) ->
                             end
                     end;
                 {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+                    elib_response:error(Req0, Msg);
+                {error, _, _} ->
+                    % 处理事务回滚的嵌套错误: {error, throw, Reason}
+                    elib_response:error(Req0, <<"添加群成员失败"/utf8>>)
             end
     end.
 
