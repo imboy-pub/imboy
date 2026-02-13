@@ -168,7 +168,31 @@ s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
-    {reply, Msg}.
+    {reply, Msg};
+
+%% ===================================================================
+%% E2EE 密钥变更确认
+%% ===================================================================
+
+%% @doc E2EE 密钥变更确认
+%% 好友确认已收到并更新密钥
+s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
+    Payload = maps:get(<<"payload">>, Data),
+    FromUid = elib_hashids:decode(maps:get(<<"uid">>, Payload, <<"0">>)),
+    KeyId = maps:get(<<"key_id">>, Payload, <<>>),
+
+    % 记录确认日志
+    ok = ?INFO_LOG([e2ee_key_changed_ack, #{
+        from_uid => FromUid,
+        acknowledged_by => CurrentUid,
+        key_id => KeyId
+    }]),
+
+    % 返回空回复（仅确认，无需转发）
+    {reply, #{
+        <<"status">> => <<"acknowledged">>,
+        <<"uid">> => elib_hashids:encode(FromUid)
+    }}.
 
 %% 1 存储s2c消息
 %% 2 按策略发送消息

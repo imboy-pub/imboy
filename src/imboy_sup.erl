@@ -77,11 +77,22 @@ init([]) ->
         , modules => [msg_store_sup]
     },
 
+    % E2EE 清理工作进程
+    E2eeCleanupWorker = #{
+        id => e2ee_cleanup_worker
+        , start => {e2ee_cleanup_worker, start_link, []}
+        , restart => permanent
+        , shutdown => 5000
+        , type => worker
+        , modules => [e2ee_cleanup_worker]
+    },
+
     Specs = [
         IMBoyCache
         % , PgoChildSpec
         , UserServer
         , MsgWriteQueueSup
+        , E2eeCleanupWorker
     ] ++ CacheSyncSpec,
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},
     {ok, {Restart, Specs}}.

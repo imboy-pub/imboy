@@ -5,6 +5,8 @@
 %%% 管理 E2EE 设备间传输会话的数据库操作
 %%%===================================================================
 
+-include("log.hrl").
+
 %%===================================================================
 %%% API Functions
 %%===================================================================
@@ -18,6 +20,8 @@
 -export([get_pending_sessions/1]).
 -export([is_valid_session/1]).
 -export([generate_session_id/0]).
+-export([cleanup_expired_sessions/0]).
+-export([get_stalled_sessions/0]).
 
 %%===================================================================
 %%% Query Functions
@@ -155,4 +159,39 @@ is_expired(Session) ->
             Now < ExpTime;
         _ ->
             true
+    end.
+
+%% @doc 清理过期的传输会话
+%% 删除所有已过期的 pending 和 accepted 状态的会话
+%% @returns {ok, DeletedCount} | {error, Reason}
+-spec cleanup_expired_sessions() -> {ok, non_neg_integer()} | {error, term()}.
+cleanup_expired_sessions() ->
+    Sql1 = <<"DELETE FROM e2ee_transfer_sessions "
+             "WHERE expires_at < NOW() "
+             "AND status IN ('pending', 'accepted') "
+             "RETURNING id">>,
+    case elib_pg:query(Sql1, []) of
+        {ok, _, Rows} ->
+            Count = length(Rows),
+            ok = ?INFO_LOG([e2ee_transfer_cleanup, deleted_sessions, Count]),
+            {ok, Count};
+        {error, Reason} ->
+            ok = ?ERROR_LOG([e2ee_transfer_cleanup, failed, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 获取停滞的会话（长时间处于 pending 状态）
+%% 用于监控和告警
+%% @returns {ok, [Session]} | {error, Reason}
+-spec get_stalled_sessions() -> {ok, [map()]} | {error, term()}.
+get_stalled_sessions() ->
+    Sql1 = <<"SELECT id, session_id, from_uid, to_uid, status, created_at "
+             "FROM e2ee_transfer_sessions "
+             "WHERE status = 'pending' "
+             "AND created_at < NOW() - INTERVAL '10 minutes' "
+             "ORDER BY created_at ASC "
+             "LIMIT 100">>,
+    case elib_pg:query(Sql1, []) of
+        {ok, _, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
     end.

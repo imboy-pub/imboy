@@ -103,8 +103,9 @@ notify_friends_key_changed(Uid, DeviceId, DeviceType, KeyId) ->
     },
 
     % 发送通知给所有好友
+    % 使用 save 确保离线好友也能收到密钥变更通知
     Action = <<"e2ee_device_key_changed">>,
-    _ = msg_s2c_ds:send(Uid, FriendUids, Action, <<>>, null, Payload, no_save),
+    _ = msg_s2c_ds:send(Uid, FriendUids, Action, <<>>, null, Payload, save),
 
     ok.
 
