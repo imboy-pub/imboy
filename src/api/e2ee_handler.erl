@@ -5,6 +5,7 @@
 -export([init/2]).
 
 -include("common.hrl").
+-include("error_code.hrl").
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
@@ -18,6 +19,12 @@ init(Req0, State0) ->
                 group_member_keys(Req0, State);
             report_device_key ->
                 report_device_key(Req0, State);
+            key_status ->
+                key_status(Req0, State);
+            pull_notifications ->
+                pull_notifications(Req0, State);
+            start_recovery ->
+                start_recovery(Req0, State);
             _ ->
                 elib_response:error(Req0, <<"not_found">>, 404)
         end,
@@ -108,4 +115,88 @@ validate_params(DeviceId, DeviceType, PublicKey, KeyId) ->
         {_, _, false, _} -> {error, <<"public_key_required">>};
         {_, _, _, false} -> {error, <<"key_id_required">>};
         {true, true, true, true} -> ok
+    end.
+
+%% ===================================================================
+%% 自动恢复相关 API
+%% ===================================================================
+
+%% @doc 检查密钥状态
+%% GET /v1/e2ee/key/status?device_id=xxx
+%% 返回当前设备的密钥状态和可用的恢复方式
+-spec key_status(cowboy_req:req(), map()) -> cowboy_req:req().
+key_status(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    DeviceId = elib_param:get(<<"device_id">>, Req0, <<>>),
+
+    case DeviceId of
+        <<>> ->
+            elib_response:error(Req0, <<"缺少 device_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            case e2ee_recovery_logic:check_key_status(CurrentUid, DeviceId) of
+                {ok, Status} ->
+                    elib_response:success(Req0, Status);
+                {error, Reason} ->
+                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+            end
+    end.
+
+%% @doc 拉取密钥变更通知
+%% GET /v1/e2ee/notifications/pull?since=timestamp&limit=50
+%% 支持增量拉取，返回好友的密钥变更记录
+-spec pull_notifications(cowboy_req:req(), map()) -> cowboy_req:req().
+pull_notifications(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    Since = elib_param:get(<<"since">>, Req0, <<"0">>),
+    Limit = elib_param:get(<<"limit">>, Req0, 50),
+
+    case e2ee_logic:pull_key_notifications(CurrentUid, Since, Limit) of
+        {ok, Notifications} ->
+            elib_response:success(Req0, #{
+                <<"notifications">> => Notifications,
+                <<"count">> => length(Notifications)
+            });
+        {error, Reason} ->
+            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+    end.
+
+%% @doc 启动自动恢复
+%% POST /v1/e2ee/recovery/start
+%% Body: {"device_id": "xxx", "method": "device_transfer"}
+%% 根据推荐方式自动启动恢复流程
+-spec start_recovery(cowboy_req:req(), map()) -> cowboy_req:req().
+start_recovery(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    {ok, Body, _} = cowboy_req:read_body(Req0),
+    Data = jsx:decode(Body, [return_maps]),
+
+    DeviceId = maps:get(<<"device_id">>, Data, <<>>),
+    Method = maps:get(<<"method">>, Data, <<>>),
+
+    case {DeviceId, Method} of
+        {<<>>, _} ->
+            elib_response:error(Req0, <<"缺少 device_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        {_, <<>>} ->
+            % 如果没有指定方法，自动选择最优方式
+            case e2ee_recovery_logic:get_recovery_options(CurrentUid) of
+                [] ->
+                    elib_response:error(Req0, <<"无可用恢复方式"/utf8>>, ?ERR_E2EE_RECOVERY_NO_OPTIONS);
+                Options ->
+                    BestMethod = e2ee_recovery_logic:recommend_method(Options),
+                    do_start_recovery(Req0, CurrentUid, DeviceId, BestMethod)
+            end;
+        {_, _} ->
+            do_start_recovery(Req0, CurrentUid, DeviceId, Method)
+    end.
+
+%% @doc 执行恢复
+-spec do_start_recovery(cowboy_req:req(), integer(), binary(), binary()) -> cowboy_req:req().
+do_start_recovery(Req0, Uid, DeviceId, Method) ->
+    case e2ee_recovery_logic:start_auto_recovery(Uid, DeviceId, Method) of
+        {ok, Result} ->
+            elib_response:success(Req0, Result);
+        {error, {Msg, Code}} ->
+            elib_response:error(Req0, Msg, Code);
+        {error, Reason} ->
+            elib_response:error(Req0, Reason, ?ERR_E2EE_RECOVERY_FAILED)
     end.

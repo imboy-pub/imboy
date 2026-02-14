@@ -146,6 +146,9 @@
 -define(ERR_E2EE_TRANSFER_CANNOT_CONFIRM, 5005).  % 无法确认传输会话
 -define(ERR_E2EE_TRANSFER_FROM_UID_NOT_MATCH, 5006). % 发送方用户 ID 不匹配
 -define(ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH, 5007). % 接收方用户 ID 不匹配
+-define(ERR_E2EE_TRANSFER_CONCURRENT, 5008).       % 存在并发传输
+-define(ERR_E2EE_TRANSFER_ALREADY_CANCELLED, 5009). % 会话已取消
+-define(ERR_E2EE_TRANSFER_STATUS_INVALID, 5010).   % 无效状态转换
 
 %% 社交恢复相关（5020-5039）
 -define(ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND, 5020). % 可信联系人不存在
@@ -175,6 +178,13 @@
 -define(ERR_E2EE_KEY_NOT_FOUND, 5054).              % 密钥不存在
 -define(ERR_E2EE_OPERATION_NOT_SUPPORTED, 5055).    % 不支持的操作
 -define(ERR_E2EE_BACKUP_PASSWORD_TOO_WEAK, 5056).  % 备份密码强度不足
+
+%% 自动恢复相关（5060-5079）
+-define(ERR_E2EE_RECOVERY_NO_OPTIONS, 5060).       % 无可用恢复方式
+-define(ERR_E2EE_RECOVERY_IN_PROGRESS, 5061).      % 恢复进行中
+-define(ERR_E2EE_RECOVERY_FAILED, 5062).           % 恢复失败
+-define(ERR_E2EE_RECOVERY_TIMEOUT, 5063).          % 恢复超时
+-define(ERR_E2EE_RECOVERY_KEY_MISMATCH, 5064).     % 密钥不匹配
 
 %% ===================================================================
 %% 设备会话管理相关错误（5100-5199）
@@ -248,6 +258,9 @@
     5005 => <<"无法确认传输会话"/utf8>>,
     5006 => <<"发送方用户 ID 不匹配"/utf8>>,
     5007 => <<"接收方用户 ID 不匹配"/utf8>>,
+    5008 => <<"存在进行中的传输会话"/utf8>>,
+    5009 => <<"传输会话已取消"/utf8>>,
+    5010 => <<"无效的会话状态转换"/utf8>>,
     5020 => <<"可信联系人不存在"/utf8>>,
     5021 => <<"可信联系人已存在"/utf8>>,
     5022 => <<"不能添加自己为可信联系人"/utf8>>,
@@ -271,6 +284,11 @@
     5054 => <<"密钥不存在"/utf8>>,
     5055 => <<"不支持的操作"/utf8>>,
     5056 => <<"备份密码强度不足"/utf8>>,
+    5060 => <<"无可用恢复方式"/utf8>>,
+    5061 => <<"恢复进行中，请稍后"/utf8>>,
+    5062 => <<"密钥恢复失败"/utf8>>,
+    5063 => <<"恢复操作超时"/utf8>>,
+    5064 => <<"密钥不匹配，请重新获取"/utf8>>,
     5100 => <<"设备会话无效"/utf8>>,
     5101 => <<"设备会话已被踢出，请重新登录"/utf8>>,
     5102 => <<"同类型设备已登录，请确认是否踢出旧设备"/utf8>>,

@@ -3,6 +3,7 @@
 -export([user_keys/2]).
 -export([group_member_keys/2]).
 -export([report_device_key/6]).
+-export([pull_key_notifications/3]).
 
 -include("log.hrl").
 
@@ -141,3 +142,63 @@ group_by_uid(Rows) ->
         end,
         lists:sort(maps:to_list(Map0))
     ).
+
+%% ===================================================================
+%% 通知拉取 API
+%% ===================================================================
+
+%% @doc 拉取密钥变更通知
+%% 作为 WebSocket 推送的备选方案，支持客户端主动拉取
+%% @param Uid 当前用户ID
+%% @param Since 起始时间戳（毫秒）
+%% @param Limit 返回数量限制
+%% @returns {ok, [Notification]}
+-spec pull_key_notifications(integer(), binary() | integer(), integer()) -> {ok, [map()]} | {error, term()}.
+pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
+    SinceTs = case is_binary(Since) of
+        true -> binary_to_integer(Since);
+        false -> Since
+    end,
+
+    % 获取好友列表
+    FriendUids = friend_ds:list_by_uid(Uid),
+
+    case FriendUids of
+        [] ->
+            {ok, []};
+        _ ->
+            % 从数据库查询好友的密钥变更记录
+            pull_key_changes_from_db(FriendUids, SinceTs, Limit)
+    end.
+
+%% @doc 从数据库拉取密钥变更
+-spec pull_key_changes_from_db([integer()], integer(), integer()) -> {ok, [map()]} | {error, term()}.
+pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
+    % 查询好友中最近更新了密钥的用户
+    SinceRfc = elib_dt:to_rfc3339(SinceTs),
+
+    % 使用 user_device 表查询密钥变更
+    Sql = <<"SELECT ud.user_id, ud.device_id, ud.device_type, ud.key_id, ud.updated_at ",
+            "FROM user_device ud ",
+            "WHERE ud.user_id = ANY($1) ",
+            "AND ud.key_id IS NOT NULL AND ud.key_id != '' ",
+            "AND ud.updated_at > $2 ",
+            "ORDER BY ud.updated_at DESC ",
+            "LIMIT $3">>,
+
+    case elib_pg:query(Sql, [FriendUids, SinceRfc, Limit]) of
+        {ok, _, Rows} ->
+            Notifications = lists:map(fun(Row) ->
+                #{
+                    <<"uid">> => elib_hashids:encode(maps:get(<<"user_id">>, Row)),
+                    <<"device_id">> => maps:get(<<"device_id">>, Row),
+                    <<"device_type">> => maps:get(<<"device_type">>, Row),
+                    <<"key_id">> => maps:get(<<"key_id">>, Row),
+                    <<"updated_at">> => maps:get(<<"updated_at">>, Row)
+                }
+            end, Rows),
+            {ok, Notifications};
+        {error, Reason} ->
+            ok = ?ERROR_LOG({pull_key_notifications_db_error, Reason}),
+            {error, Reason}
+    end.

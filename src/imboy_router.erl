@@ -186,6 +186,9 @@ get_routes() ->
         {"/v1/e2ee/user_keys", e2ee_handler, #{action => user_keys}},
         {"/v1/e2ee/group_member_keys", e2ee_handler, #{action => group_member_keys}},
         {"/v1/e2ee/report_device_key", e2ee_handler, #{action => report_device_key}},
+        {"/v1/e2ee/key/status", e2ee_handler, #{action => key_status}},
+        {"/v1/e2ee/notifications/pull", e2ee_handler, #{action => pull_notifications}},
+        {"/v1/e2ee/recovery/start", e2ee_handler, #{action => start_recovery}},
 
         {"/v1/e2ee/transfer/create", e2ee_transfer_handler, #{action => create}},
         {"/v1/e2ee/transfer/accept", e2ee_transfer_handler, #{action => accept}},
