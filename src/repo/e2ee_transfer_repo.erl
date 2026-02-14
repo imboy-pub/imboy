@@ -22,6 +22,8 @@
 -export([generate_session_id/0]).
 -export([cleanup_expired_sessions/0]).
 -export([get_stalled_sessions/0]).
+-export([has_pending_session/2]).
+-export([cancel_session/2]).
 
 %%===================================================================
 %%% Query Functions
@@ -193,5 +195,39 @@ get_stalled_sessions() ->
              "LIMIT 100">>,
     case elib_pg:query(Sql1, []) of
         {ok, _, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 检查用户是否有进行中的传输会话
+%% 用于并发保护，防止同时创建多个传输
+%% @param FromUid 发送方用户 ID
+%% @param ToUid 接收方用户 ID
+%% @returns true | false
+-spec has_pending_session(integer(), integer()) -> boolean().
+has_pending_session(FromUid, ToUid) ->
+    Sql1 = <<"SELECT COUNT(*) as cnt FROM e2ee_transfer_sessions "
+             "WHERE from_uid = $1 AND to_uid = $2 "
+             "AND status IN ('pending', 'accepted') "
+             "AND expires_at > NOW()">>,
+    case elib_pg:query(Sql1, [FromUid, ToUid]) of
+        {ok, _, [{0}]} -> false;
+        {ok, _, [{Count}]} when Count > 0 -> true;
+        _ -> false
+    end.
+
+%% @doc 取消传输会话
+%% @param SessionId 会话 ID
+%% @param FromUid 发送方用户 ID（用于权限验证）
+%% @returns ok | {error, Reason}
+-spec cancel_session(binary(), integer()) -> ok | {error, term()}.
+cancel_session(SessionId, FromUid) ->
+    Sql1 = <<"UPDATE e2ee_transfer_sessions "
+             "SET status = 'cancelled' "
+             "WHERE session_id = $1 AND from_uid = $2 "
+             "AND status = 'pending' "
+             "AND expires_at > NOW()">>,
+    case elib_pg:execute(Sql1, [SessionId, FromUid]) of
+        {ok, 0} -> {error, not_found_or_not_pending};
+        {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.

@@ -30,7 +30,7 @@
 %% @param Uid 用户ID
 %% @param DeviceId 设备ID
 %% @returns {ok, KeyStatus}
--spec check_key_status(integer(), binary()) -> {ok, map()}.
+-spec check_key_status(integer(), binary()) -> {ok, map()} | {error, term()}.
 check_key_status(Uid, DeviceId) when is_integer(Uid), is_binary(DeviceId) ->
     % 1. 检查设备是否有有效密钥
     HasValidKey = check_device_has_key(Uid, DeviceId),

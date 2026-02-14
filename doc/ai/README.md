@@ -250,3 +250,19 @@ await simulator.simulateUserSession(persona);
 ---
 
 **最后更新**: 2026-02-04
+
+
+
+/everything-claude-code:orchestrate 验证(自动开启APP验证)更新秘钥收费会通知好友重新获取秘钥（这通知获取的有效性，如果通讯消息丢失，还有无备选方案）
+
+新增三种密钥恢复方法：
+- 设备间传输 (e2ee_transfer): 安全地将私钥传输到新设备
+- 社交恢复 (e2ee_social): 使用 Shamir Secret Sharing 分片恢复
+- 本地备份 (e2ee_local_backup): 加密备份到本地存储
+
+新增模块：
+- Handler: e2ee_transfer_handler, e2ee_social_handler, cors_middleware
+- Logic: e2ee_transfer_logic, e2ee_social_logic, login_security_logic
+- DS: e2ee_transfer_ds, e2ee_social_ds, login_attempt_ds
+- Repo: e2ee_transfer_repo, e2ee_social_repo, e2ee_local_backup_repo, msg_read_repo
+- Lib: shamir_secret_sharing, elib_metric

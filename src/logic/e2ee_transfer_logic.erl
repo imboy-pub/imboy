@@ -5,12 +5,15 @@
 %%% 处理设备间传输的业务逻辑
 %%%===================================================================
 
+-include("error_code.hrl").
+
 %%===================================================================
 %%% API Functions Export
 %%===================================================================
 -export([create_transfer/5]).
 -export([accept_transfer/3]).
 -export([confirm_transfer/2]).
+-export([cancel_transfer/2]).
 -export([get_transfer_info/1]).
 -export([get_pending_transfers/1]).
 
@@ -31,41 +34,47 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
     % 1. 验证接收方用户是否存在
     case user_repo:may_exist(ToUid) of
         false ->
-            {error, <<"接收方用户不存在"/utf8>>};
+            {error, {<<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND}};
         true ->
-            try
-                % 2. 生成会话 ID
-                SessionId = e2ee_transfer_repo:generate_session_id(),
+            % 2. 并发保护：检查是否已有进行中的会话
+            case e2ee_transfer_repo:has_pending_session(FromUid, ToUid) of
+                true ->
+                    {error, {<<"已有进行中的传输会话，请先取消或等待完成"/utf8>>, ?ERR_E2EE_TRANSFER_CONCURRENT}};
+                false ->
+                    try
+                        % 3. 生成会话 ID
+                        SessionId = e2ee_transfer_repo:generate_session_id(),
 
-                % 3. 使用接收方公钥加密私钥
-                EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
+                        % 4. 使用接收方公钥加密私钥
+                        EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
 
-                % 4. 设置过期时间（5 分钟后）
-                ExpiresAt = calendar:universal_time() + 300,
-                ExpiresAtStr = calendar:system_time_to_rfc3339(ExpiresAt),
+                        % 5. 设置过期时间（5 分钟后）
+                        ExpiresAt = calendar:universal_time() + 300,
+                        ExpiresAtStr = calendar:system_time_to_rfc3339(ExpiresAt),
 
-                % 5. 创建会话记录
-                SessionMap = #{
-                    <<"session_id">> => SessionId,
-                    <<"from_uid">> => FromUid,
-                    <<"from_device_id">> => FromDeviceId,
-                    <<"to_uid">> => ToUid,
-                    <<"to_device_id">> => <<>>,
-                    <<"encrypted_key_bundle">> => EncryptedBundle,
-                    <<"expires_at">> => ExpiresAtStr,
-                    <<"status">> => <<"pending">>
-                },
+                        % 6. 创建会话记录
+                        SessionMap = #{
+                            <<"session_id">> => SessionId,
+                            <<"from_uid">> => FromUid,
+                            <<"from_device_id">> => FromDeviceId,
+                            <<"to_uid">> => ToUid,
+                            <<"to_device_id">> => <<>>,
+                            <<"encrypted_key_bundle">> => EncryptedBundle,
+                            <<"expires_at">> => ExpiresAtStr,
+                            <<"status">> => <<"pending">>
+                        },
 
-                case e2ee_transfer_repo:create(SessionMap) of
-                    {ok, _SessionId} ->
-                        {ok, SessionMap};
-                    {error, CreateReason} ->
-                        {error, CreateReason}
-                end
-            catch
-                error:Reason -> {error, Reason};
-                exit:Reason -> {error, Reason};
-                throw:Reason -> {error, Reason}
+                        case e2ee_transfer_repo:create(SessionMap) of
+                            {ok, _SessionId} ->
+                                {ok, SessionMap};
+                            {error, CreateReason} ->
+                                {error, CreateReason}
+                        end
+                    catch
+                        error:Reason -> {error, Reason};
+                        exit:Reason -> {error, Reason};
+                        throw:Reason -> {error, Reason}
+                    end
             end
     end.
 
@@ -80,25 +89,34 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
     % 1. 获取会话信息
     case e2ee_transfer_repo:get_by_session_id(SessionId) of
         {error, not_found} ->
-            {error, <<"会话不存在或已过期"/utf8>>};
+            {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
         {ok, Session} ->
             % 2. 验证接收方用户
             ToUidSession = maps:get(<<"to_uid">>, Session),
             case ToUidSession =:= ToUid of
                 false ->
-                    {error, <<"会话不属于该用户"/utf8>>};
+                    {error, {<<"会话不属于该用户"/utf8>>, ?ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH}};
                 true ->
-                    % 3. 更新状态为 accepted
-                    case e2ee_transfer_repo:update_status_and_device(
-                        SessionId, <<"accepted">>, ToDeviceId
-                    ) of
-                        ok ->
-                            {ok, Session#{
-                                <<"status">> => <<"accepted">>,
-                                <<"to_device_id">> => ToDeviceId
-                            }};
-                        {error, UpdateReason} ->
-                            {error, UpdateReason}
+                    % 3. 检查状态
+                    Status = maps:get(<<"status">>, Session),
+                    case Status of
+                        <<"pending">> ->
+                            % 4. 更新状态为 accepted
+                            case e2ee_transfer_repo:update_status_and_device(
+                                SessionId, <<"accepted">>, ToDeviceId
+                            ) of
+                                ok ->
+                                    {ok, Session#{
+                                        <<"status">> => <<"accepted">>,
+                                        <<"to_device_id">> => ToDeviceId
+                                    }};
+                                {error, UpdateReason} ->
+                                    {error, UpdateReason}
+                            end;
+                        <<"accepted">> ->
+                            {error, {<<"会话已被接受"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}};
+                        _ ->
+                            {error, {<<"会话状态无效"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}}
                     end
             end
     end.
@@ -112,25 +130,66 @@ confirm_transfer(SessionId, ToUid) ->
     % 1. 获取会话信息
     case e2ee_transfer_repo:get_by_session_id(SessionId) of
         {error, not_found} ->
-            {error, <<"会话不存在或已过期"/utf8>>};
+            {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
         {ok, Session} ->
             % 2. 验证接收方用户
             ToUidSession = maps:get(<<"to_uid">>, Session),
             case ToUidSession =:= ToUid of
                 false ->
-                    {error, <<"会话不属于该用户"/utf8>>};
+                    {error, {<<"会话不属于该用户"/utf8>>, ?ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH}};
                 true ->
                     % 3. 验证状态
                     Status = maps:get(<<"status">>, Session),
                     case Status =:= <<"accepted">> of
                         false ->
-                            {error, <<"会话状态错误"/utf8>>};
+                            {error, {<<"会话状态错误"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}};
                         true ->
                             % 4. 更新状态为 confirmed
                             case e2ee_transfer_repo:update_status(SessionId, <<"confirmed">>) of
                                 ok -> ok;
                                 {error, UpdateReason} -> {error, UpdateReason}
                             end
+                    end
+            end
+    end.
+
+%% @doc 取消传输会话
+%% 只有发送方可以取消 pending 状态的会话
+%% @param SessionId 会话 ID
+%% @param FromUid 发送方用户 ID（用于权限验证）
+%% @returns ok | {error, Reason}
+-spec cancel_transfer(binary(), integer()) -> ok | {error, term()}.
+cancel_transfer(SessionId, FromUid) ->
+    % 1. 获取会话信息验证权限
+    case e2ee_transfer_repo:get_by_session_id(SessionId) of
+        {error, not_found} ->
+            {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
+        {ok, Session} ->
+            % 2. 验证是否为发送方
+            SessionFromUid = maps:get(<<"from_uid">>, Session),
+            case SessionFromUid =:= FromUid of
+                false ->
+                    {error, {<<"无权限取消此会话"/utf8>>, ?ERR_FORBIDDEN}};
+                true ->
+                    % 3. 验证状态
+                    Status = maps:get(<<"status">>, Session),
+                    case Status of
+                        <<"pending">> ->
+                            % 4. 执行取消
+                            case e2ee_transfer_repo:cancel_session(SessionId, FromUid) of
+                                ok -> ok;
+                                {error, not_found_or_not_pending} ->
+                                    {error, {<<"会话已不可取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
+                                {error, Reason} -> {error, Reason}
+                            end;
+                        <<"cancelled">> ->
+                            {error, {<<"会话已取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
+                        <<"accepted">> ->
+                            {error, {<<"会话已被接受，无法取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}};
+                        <<"confirmed">> ->
+                            {error, {<<"会话已完成，无法取消"/utf8>>, ?ERR_E2EE_TRANSFER_CANNOT_CONFIRM}};
+                        _ ->
+                            {error, {<<"无效的会话状态"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}}
                     end
             end
     end.

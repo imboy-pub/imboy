@@ -8,6 +8,7 @@
 -export([create_transfer/2]).
 -export([accept_transfer/2]).
 -export([confirm_transfer/2]).
+-export([cancel_transfer/2]).
 -export([get_transfer_info/2]).
 -export([get_pending_transfers/2]).
 
@@ -32,6 +33,7 @@ init(Req0, State0) ->
 handle_action(create, Req, State) -> create_transfer(Req, State);
 handle_action(accept, Req, State) -> accept_transfer(Req, State);
 handle_action(confirm, Req, State) -> confirm_transfer(Req, State);
+handle_action(cancel, Req, State) -> cancel_transfer(Req, State);
 handle_action(info, Req, State) -> get_transfer_info(Req, State);
 handle_action(pending, Req, State) -> get_pending_transfers(Req, State);
 handle_action(false, Req, _State) -> Req.
@@ -81,6 +83,8 @@ create_transfer(Req0, State) ->
                                         <<"session_id">> => maps:get(<<"session_id">>, Session),
                                         <<"expires_at">> => maps:get(<<"expires_at">>, Session)
                                     });
+                                {error, {Msg, Code}} ->
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, _Reason} ->
                                     elib_response:error(Req0, <<"创建传输会话失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
                             end
@@ -116,6 +120,8 @@ accept_transfer(Req0, State) ->
                 <<"status">> => maps:get(<<"status">>, Session),
                 <<"expires_at">> => maps:get(<<"expires_at">>, Session)
             });
+        {error, {Msg, Code}} ->
+            elib_response:error(Req0, Msg, Code);
         {error, _Reason} ->
             elib_response:error(Req0, <<"接受传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end.
@@ -139,8 +145,35 @@ confirm_transfer(Req0, State) ->
     case e2ee_transfer_logic:confirm_transfer(SessionId, CurrentUid) of
         ok ->
             elib_response:success(Req0, #{<<"message">> => <<"传输成功"/utf8>>});
+        {error, {Msg, Code}} ->
+            elib_response:error(Req0, Msg, Code);
         {error, _Reason} ->
             elib_response:error(Req0, <<"确认传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+    end.
+
+%% @doc 取消传输会话
+%% POST /v1/e2ee/transfer/cancel
+%% Body: {"session_id": "uuid"}
+-spec cancel_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+cancel_transfer(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State, 0),
+    {ok, Body, _} = cowboy_req:read_body(Req0),
+    Data = jsx:decode(Body, [return_maps]),
+
+    % 验证参数
+    SessionId = case maps:get(<<"session_id">>, Data, <<>>) of
+        <<>> -> elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        Id -> Id
+    end,
+
+    % 取消传输
+    case e2ee_transfer_logic:cancel_transfer(SessionId, CurrentUid) of
+        ok ->
+            elib_response:success(Req0, #{<<"message">> => <<"已取消传输"/utf8>>});
+        {error, {Msg, Code}} ->
+            elib_response:error(Req0, Msg, Code);
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"取消传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end.
 
 %% @doc 查询传输会话信息

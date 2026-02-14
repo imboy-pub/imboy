@@ -193,6 +193,7 @@ get_routes() ->
         {"/v1/e2ee/transfer/create", e2ee_transfer_handler, #{action => create}},
         {"/v1/e2ee/transfer/accept", e2ee_transfer_handler, #{action => accept}},
         {"/v1/e2ee/transfer/confirm", e2ee_transfer_handler, #{action => confirm}},
+        {"/v1/e2ee/transfer/cancel", e2ee_transfer_handler, #{action => cancel}},
         {"/v1/e2ee/transfer/info", e2ee_transfer_handler, #{action => info}},
         {"/v1/e2ee/transfer/pending", e2ee_transfer_handler, #{action => pending}},
 
