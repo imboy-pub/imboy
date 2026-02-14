@@ -1,5 +1,13 @@
 -module(e2ee_social_handler).
--dialyzer({nowarn_function, [generate_key_version/0, get_proxy_private_key/1, get_sender_private_key/1]}).
+-dialyzer({nowarn_function, [
+    generate_key_version/0,
+    get_proxy_private_key/1,
+    get_sender_private_key/1,
+    create_shards/2,
+    get_shards/2,
+    decrypt_shard/2,
+    add_contact/2
+]}).
 
 -behavior(cowboy_handler).
 
