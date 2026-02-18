@@ -13,6 +13,7 @@
 -export([update/1]).
 -export([delete/1]).
 -export([count/0]).
+-export([update_owner_tx/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -130,6 +131,23 @@ count() ->
     Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE status = 1">>,
     case elib_pg:one(Sql, []) of
         {ok, #{<<"count">> := Count}} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 在事务中更新群主
+%% 更新指定群组的群主ID
+%% @param Conn 数据库连接
+%% @param Gid 群组ID
+%% @param NewOwnerUid 新群主ID
+%% @return ok | {error, Reason}
+-spec update_owner_tx(any(), integer(), integer()) -> ok | {error, any()}.
+update_owner_tx(Conn, Gid, NewOwnerUid) ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Sql = <<"UPDATE ", Tb/binary, " SET owner_uid = $1, updated_at = $2 WHERE id = $3">>,
+    case elib_pg:execute(Conn, Sql, [NewOwnerUid, Now, Gid]) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, "群组不存在"};
         {error, Reason} -> {error, Reason}
     end.
 

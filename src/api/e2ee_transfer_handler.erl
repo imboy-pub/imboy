@@ -1,5 +1,8 @@
 -module(e2ee_transfer_handler).
--dialyzer({nowarn_function, [get_sender_private_key/1, get_receiver_public_key/1]}).
+-dialyzer({nowarn_function, [
+    get_sender_private_key/1,
+    get_receiver_public_key/1
+]}).
 
 -behavior(cowboy_rest).
 
@@ -180,7 +183,8 @@ cancel_transfer(Req0, State) ->
 %% GET /v1/e2ee/transfer/info?session_id=xxx
 -spec get_transfer_info(cowboy_req:req(), map()) -> cowboy_req:req().
 get_transfer_info(Req0, _State) ->
-    #{session_id := SessionId} = cowboy_req:match_qs([{session_id, [], <<>>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    SessionId = proplists:get_value(<<"session_id">>, Qs, <<>>),
 
     case SessionId of
         <<>> ->

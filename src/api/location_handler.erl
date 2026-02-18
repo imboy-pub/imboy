@@ -80,11 +80,10 @@ make_myself_unvisible(Req0, State) ->
 -spec people_nearby(cowboy_req:req(), map()) -> cowboy_req:req().
 people_nearby(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
-    #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
-    % #{radius := Radius} = cowboy_req:match_qs([{radius, [], <<"500">>}], Req0),
-    #{unit := Unit} = cowboy_req:match_qs([{unit, [], <<"m">>}], Req0),
-    % #{limit := Limit} = cowboy_req:match_qs([{limit, [], <<"100">>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    Lng = proplists:get_value(<<"longitude">>, Qs, undefined),
+    Lat = proplists:get_value(<<"latitude">>, Qs, undefined),
+    Unit = proplists:get_value(<<"unit">>, Qs, <<"m">>),
     {ok, Radius} = elib_param:int(radius, Req0, 500),
     {ok, Limit} = elib_param:int(limit, Req0, 100),
     % ?DEBUG_LOG([people_nearby, handler, Lng, Lat, Radius, Unit, Limit]),

@@ -555,6 +555,78 @@ php -S localhost:8080
 
 ---
 
+## 🚀 WhatsApp Web 风格增强功能
+
+### Phase 1 - 已完成 ✅
+
+| 功能 | 前端 | 后端 | 状态 |
+|------|------|------|------|
+| QR 码扫码登录 | `lib/page/passport/web_login_page.dart` | `src/api/qr_login_handler.erl` | ✅ |
+| Web 登录页面 | WhatsApp Web 风格双栏布局 | - | ✅ |
+| 设备 ID 管理 | `lib/service/web_storage.dart` | - | ✅ |
+| 桌面通知服务 | `lib/service/web_notification_service.dart` | - | ✅ |
+| 文件拖拽上传 | `lib/component/web/drop_zone.dart` | - | ✅ |
+| 键盘快捷键 | `lib/component/web/keyboard_shortcuts.dart` | - | ✅ |
+
+### Phase 2 - 已完成 ✅
+
+| 功能 | 前端 | 后端 | 状态 |
+|------|------|------|------|
+| 暗色模式切换 | 已有 Riverpod 主题系统 | - | ✅ 使用现有实现 |
+| 消息搜索 | `lib/page/search/web_search_page.dart` | - | ✅ |
+| 响应式布局 | `lib/component/web/responsive_layout.dart` | - | ✅ |
+| Web 会话列表 | `lib/page/conversation/web_conversation_page.dart` | - | ✅ |
+| 多标签页同步 | `lib/service/web_tab_sync_service.dart` | - | ✅ |
+
+### Phase 3 - 已完成 ✅
+
+| 功能 | 前端 | 后端 | 状态 |
+|------|------|------|------|
+| PWA 离线支持 | `lib/service/pwa_service.dart` + `web/manifest.json` | - | ✅ |
+| 多标签页同步 | `lib/service/web_tab_sync_service.dart` | - | ✅ |
+| 视频通话 | `lib/service/webrtc_service.dart` | - | ✅ |
+| 屏幕共享 | `lib/service/webrtc_service.dart` | - | ✅ |
+
+---
+
+## 📁 新增文件清单
+
+### 前端文件
+
+```
+lib/
+├── page/passport/
+│   └── web_login_page.dart          # Web 专用登录页面（QR码登录）
+├── page/conversation/
+│   └── web_conversation_page.dart   # Web 会话列表页面
+├── page/search/
+│   └── web_search_page.dart         # Web 全局搜索页面
+├── service/
+│   ├── web_storage.dart             # Web 存储服务（更新）
+│   ├── web_notification_service.dart # 桌面通知服务
+│   ├── web_tab_sync_service.dart    # 多标签页同步服务
+│   └── pwa_service.dart             # PWA 离线支持服务
+└── component/web/
+    ├── drop_zone.dart               # 文件拖拽组件
+    ├── keyboard_shortcuts.dart      # 键盘快捷键
+    └── responsive_layout.dart       # 响应式布局组件
+
+web/
+└── manifest.json                    # PWA 清单（更新）
+```
+
+### 后端文件
+
+```
+src/
+├── api/
+│   └── qr_login_handler.erl         # QR 码登录 API
+└── include/
+    └── error_code.hrl               # 新增 QR 登录错误码（5200-5205）
+```
+
+---
+
 ## 🚨 常见问题处理
 
 ### 问题 1：编译错误 "Target of URI doesn't exist"
@@ -672,7 +744,7 @@ lib/page/chat/widget/chat_input.dart        # 聊天输入
 
 ---
 
-**文档版本**: v1.0
-**最后更新**: 2026-02-04
+**文档版本**: v1.1
+**最后更新**: 2026-02-14
 **适用项目**: ImBoy App
 **目标平台**: Web 浏览器（Chrome、Edge、Firefox、Safari）

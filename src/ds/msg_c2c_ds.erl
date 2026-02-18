@@ -9,6 +9,7 @@
 
 -export([write_msg/6]).
 -export([write_msg/8]).
+-export([write_msg_with_reply/11]).
 -export([revoke_offline_msg/5]).
 -export([revoke_offline_msg/8]).
 -export([edit_offline_msg/5]).
@@ -275,3 +276,43 @@ read_msg_filter(Where, Limit, Params) ->
         _ ->
             []
     end.
+
+%% ===================================================================
+%% 引用回复功能
+%% ===================================================================
+
+%% @doc 存储带引用回复信息的点对点消息
+%%
+%% 将消息及其引用信息存储到数据库中
+%%
+%% @param CreatedAt 消息创建时间戳（integer 毫秒或 binary RFC3339）
+%% @param Id 消息ID
+%% @param Payload 消息内容（JSON binary）
+%% @param From 发送方用户ID
+%% @param To 接收方用户ID
+%% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
+%% @param MsgType 消息类型（text, image, audio, video, file 等）
+%% @param E2EE 端到端加密信息（JSON map，可选）
+%% @param ReplyToMsgId 被引用回复的消息ID
+%% @param ReplyToFromId 被引用消息的发送者ID
+%% @param ReplySnippet 被引用消息的摘要
+%% @returns ok | {error, Reason} 数据库操作结果
+-spec write_msg_with_reply(binary() | integer(), binary(), binary(), integer(), integer(),
+                           binary() | integer(), binary(), map() | null, binary(), integer(), binary()) ->
+    ok | {error, term()}.
+write_msg_with_reply(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE,
+                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
+    % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
+    Count = msg_c2c_repo:count_by_to_id(To),
+    _ = case Count >= ?SAVE_MSG_LIMIT of
+        true ->
+            Limit = Count - ?SAVE_MSG_LIMIT + 1,
+            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
+        false ->
+            ok
+    end,
+    msg_c2c_repo:write_msg_with_reply(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE,
+                                      ReplyToMsgId, ReplyToFromId, ReplySnippet).

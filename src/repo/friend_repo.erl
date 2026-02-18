@@ -7,6 +7,7 @@
 
 -export([tablename/0]).
 -export([list_by_uid/2]).
+-export([count_by_uid/1]).
 -export([friend_field/3]).
 -export([friend_fields/3]).
 -export([confirm_friend/7]).
@@ -97,6 +98,19 @@ list_by_uid(UID, Column, Limit) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{from_user_id => UID, status => 1}, #{limit => Limit}),
     elib_pg:query(Sql, Params).
+
+
+%% @doc 统计用户的好友数量
+%% @param UID 用户ID
+%% @return non_neg_integer() 好友数量
+-spec count_by_uid(integer()) -> non_neg_integer().
+count_by_uid(UID) ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE from_user_id = $1 AND status = 1">>,
+    case elib_pg:one(Sql, [UID]) of
+        {ok, #{count := Count}} -> Count;
+        _ -> 0
+    end.
 
 
 %% @doc 删除好友关系

@@ -34,6 +34,10 @@ init(Req0, State0) ->
                 page(Req0, State);
             same_group ->
                 same_group(Req0, State);
+            mute ->
+                mute(Req0, State);
+            role ->
+                role(Req0, State);
             % alias -> % 设置群内昵称
             %     alias(Req0, State);
             false ->
@@ -51,8 +55,9 @@ init(Req0, State0) ->
 -spec same_group(cowboy_req:req(), map()) -> cowboy_req:req().
 same_group(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    #{uid1 := A} = cowboy_req:match_qs([{uid1, [], <<>>}], Req0),
-    #{uid2 := B} = cowboy_req:match_qs([{uid2, [], <<>>}], Req0),
+    Qs0 = cowboy_req:parse_qs(Req0),
+    A = proplists:get_value(<<"uid1">>, Qs0, <<>>),
+    B = proplists:get_value(<<"uid2">>, Qs0, <<>>),
 
     A1 = elib_hashids:decode(A),
     B1 = elib_hashids:decode(B),
@@ -236,7 +241,8 @@ alias(Req0, State) ->
 -spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    #{gid := Gid} = cowboy_req:match_qs([{gid, [], undefined}], Req0),
+    Qs1 = cowboy_req:parse_qs(Req0),
+    Gid = proplists:get_value(<<"gid">>, Qs1, undefined),
     Gid2 = elib_hashids:decode(Gid),
     GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
@@ -270,6 +276,78 @@ page(Req0, State) ->
                           list => []}
                 end,
             elib_response:success(Req0, page_transfer(Payload))
+    end.
+
+%% @doc 群成员禁言
+%% 禁言指定群成员
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID、用户ID和禁言时长
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec mute(cowboy_req:req(), map()) -> cowboy_req:req().
+mute(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    UserId = maps:get(<<"user_id">>, PostVals, 0),
+    Duration = maps:get(<<"duration">>, PostVals, 0),
+
+    Gid2 = elib_hashids:decode(Gid),
+    UserId2 = elib_hashids:decode(UserId),
+
+    case throttle:check(three_second_once, {group_member_mute, CurrentUid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ when Gid2 == 0 ->
+            elib_response:error(Req0, <<"群组ID格式有误"/utf8>>);
+        _ when UserId2 == 0 ->
+            elib_response:error(Req0, <<"用户ID格式有误"/utf8>>);
+        _ when Duration =< 0 ->
+            elib_response:error(Req0, <<"禁言时长必须大于0"/utf8>>);
+        _ ->
+            case group_member_logic:mute(CurrentUid, Gid2, UserId2, Duration) of
+                ok ->
+                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                {error, Reason} ->
+                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+            end
+    end.
+
+%% @doc 更新群成员角色
+%% 更新指定群成员的角色
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID、用户ID和角色
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec role(cowboy_req:req(), map()) -> cowboy_req:req().
+role(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    UserId = maps:get(<<"user_id">>, PostVals, 0),
+    Role = maps:get(<<"role">>, PostVals, 0),
+
+    Gid2 = elib_hashids:decode(Gid),
+    UserId2 = elib_hashids:decode(UserId),
+
+    case throttle:check(three_second_once, {group_member_role, CurrentUid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ when Gid2 == 0 ->
+            elib_response:error(Req0, <<"群组ID格式有误"/utf8>>);
+        _ when UserId2 == 0 ->
+            elib_response:error(Req0, <<"用户ID格式有误"/utf8>>);
+        _ when Role < 1 orelse Role > 3 ->
+            elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>);
+        _ ->
+            case group_member_logic:update_role(CurrentUid, Gid2, UserId2, Role) of
+                ok ->
+                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                {error, Reason} ->
+                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+            end
     end.
 
 %% @doc 转换群组成员分页数据

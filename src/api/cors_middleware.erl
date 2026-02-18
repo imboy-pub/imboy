@@ -36,7 +36,11 @@ execute(Req0, Env) ->
 
     Req3 = cowboy_req:set_resp_header(
         <<"access-control-allow-headers">>,
-        <<"content-type, authorization, accept, origin, x-requested-with, *">>,
+        <<"Content-Type, Authorization, Accept, Origin, X-Requested-With, "
+          "cos, vsn, pkg, did, tz_offset, method, sk, sign, token, x-refresh-token, "
+          "imboy-refreshtoken, "
+          "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
+          "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy">>,
         Req2
     ),
 

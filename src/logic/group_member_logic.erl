@@ -9,11 +9,20 @@
     join_group/5,          % 事务内部核心逻辑
     leave/3,
     alias/4,
+    update_role/4,         % 更新群成员角色
+    mute/4,               % 群成员禁言
+    check_mute/2,         % 检查禁言状态
     list_member/1,
-    list_member/2
+    list_member/2,
+    % 新增权限验证函数
+    has_admin_permission/2,        % 检查是否有管理权限
+    has_senior_admin_permission/2, % 检查是否有高级管理权限
+    is_owner_or_vice_owner/2,      % 检查是否是群主或副群主
+    role_name/1              % 获取角色名称
 ]).
 
 -include("log.hrl").
+-include("group_role.hrl").
 
 %% ===================================================================
 %% 公共方法
@@ -116,6 +125,146 @@ alias(Uid, Gid, Alias, Description) ->
             {error, Reason}
     end.
 
+%% @doc 更新群成员角色
+%% 更新指定群成员的角色
+%%
+%% @param CurrentUid 当前操作用户ID
+%% @param Gid 群组ID
+%% @param UserId 要更新的用户ID
+%% @param Role 新的角色值（1-普通成员，2-管理员，3-群主）
+%% @return ok | {error, binary()}
+%% @end
+-spec update_role(integer(), integer(), integer(), integer()) -> ok | {error, binary()}.
+update_role(CurrentUid, Gid, UserId, Role) ->
+    % 验证操作权限
+    case validate_role_permission(CurrentUid, Gid) of
+        {error, Reason} -> {error, Reason};
+        ok ->
+            % 获取当前时间
+            Now = elib_dt:now(),
+            % 使用事务执行角色更新操作
+            case elib_pg:with_tx(fun(Conn) -> update_role_internal(Conn, CurrentUid, Gid, UserId, Role, Now) end) of
+                {ok, _} ->
+                    % 发送角色变更通知
+                    role_change_notice(CurrentUid, Gid, UserId, Role),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% @doc 群成员禁言
+%% 禁言指定群成员
+%%
+%% @param CurrentUid 当前操作用户ID
+%% @param Gid 群组ID
+%% @param UserId 要禁言的用户ID
+%% @param Duration 禁言时长（秒）
+%% @return ok | {error, binary()}
+%% @end
+-spec mute(integer(), integer(), integer(), integer()) -> ok | {error, binary()}.
+mute(CurrentUid, Gid, UserId, Duration) ->
+    % 验证操作权限
+    case validate_mute_permission(CurrentUid, Gid) of
+        {error, Reason} -> {error, Reason};
+        ok ->
+            % 获取当前时间
+            Now = elib_dt:now(),
+            % 计算禁言到期时间
+            MuteUntil = Now + Duration * 1000,
+            % 使用事务执行禁言操作
+            case elib_pg:with_tx(fun(Conn) -> mute_internal(Conn, Gid, UserId, MuteUntil) end) of
+                {ok, _} ->
+                    % 发送禁言通知
+                    mute_notice(CurrentUid, Gid, UserId, MuteUntil),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% @doc 检查用户是否被禁言
+%%
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @return true | false
+%% @end
+-spec check_mute(integer(), integer()) -> boolean().
+check_mute(Gid, UserId) ->
+    case group_member_ds:get_member_info(Gid, UserId, <<"mute_until">>) of
+        {ok, MemberInfo} ->
+            MuteUntil = maps:get(<<"mute_until">>, MemberInfo, null),
+            case MuteUntil of
+                null -> false;
+                _ ->
+                    % 如果未到期则返回 true
+                    MuteUntil >= elib_dt:now()
+            end;
+        {error, _} ->
+            false
+    end.
+
+%% @doc 内部禁言操作（事务内）
+-spec mute_internal(pid(), integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.
+mute_internal(Conn, Gid, UserId, MuteUntil) ->
+    % 使用 DS 层接口执行禁言
+    group_member_ds:update_mute(Conn, Gid, UserId, MuteUntil).
+
+%% @doc 验证禁言权限
+-spec validate_mute_permission(integer(), integer()) -> ok | {error, binary()}.
+validate_mute_permission(CurrentUid, Gid) ->
+    % 检查当前用户是否是群管理员或群主
+    case group_member_ds:get_member_info(Gid, CurrentUid, <<"role">>) of
+        {ok, MemberInfo} ->
+            Role = maps:get(<<"role">>, MemberInfo, 0),
+            case Role >= ?ROLE_ADMIN andalso Role =< ?ROLE_VICE_OWNER of
+                true -> ok;
+                false -> {error, <<"你没有权限禁言群成员"/utf8>>}
+            end;
+        {error, _} ->
+            {error, <<"你不是群成员"/utf8>>}
+    end.
+
+%% @doc 发送禁言通知
+-spec mute_notice(integer(), integer(), integer(), integer()) -> ok.
+mute_notice(AdminUid, Gid, _UserId, MuteUntil) ->
+    % 获取群成员列表
+    ToUidLi = group_ds:member_uids(Gid),
+    Admin = user_ds:find_by_id(AdminUid, <<"nickname">>),
+    Now = elib_dt:now(),
+
+    % 计算剩余时间（转换为秒）
+    RemainingSec = round((MuteUntil - Now) / 1000),
+    DurationText = format_duration(RemainingSec),
+
+    % 构建通知数据
+    Payload = #{
+        <<"gid">> => elib_hashids:encode(Gid),
+        <<"mute_until">> => MuteUntil,
+        <<"remaining_seconds">> => RemainingSec,
+        <<"duration_text">> => DurationText,
+        <<"admin_nickname">> => maps:get(<<"nickname">>, Admin, <<>>)
+    },
+
+    % 发送禁言通知
+    Action = <<"group_member_mute">>,
+    _ = msg_s2c_ds:send(AdminUid, ToUidLi, Action, <<>>, null, Payload, save),
+    ok.
+
+%% @doc 格式化禁言时长文本
+-spec format_duration(integer()) -> binary().
+format_duration(Seconds) when Seconds > 86400 ->
+    Days = Seconds div 86400,
+    elib_cnv:to_binary(Days) ++ <<"天"/utf8>>;
+format_duration(Seconds) when Seconds > 3600 ->
+    Hours = Seconds div 3600,
+    elib_cnv:to_binary(Hours) ++ <<"小时"/utf8>>;
+format_duration(Seconds) when Seconds > 60 ->
+    Minutes = Seconds div 60,
+    elib_cnv:to_binary(Minutes) ++ <<"分钟"/utf8>>;
+format_duration(Seconds) ->
+    elib_cnv:to_binary(Seconds) ++ <<"秒"/utf8>>.
+
 %% ===================================================================
 %% Internal
 %% ===================================================================
@@ -157,3 +306,107 @@ join_group_test_() ->
         end)
     ].
 -endif.
+
+%% @doc 内部角色更新操作（事务内）
+-spec update_role_internal(pid(), integer(), integer(), integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.
+update_role_internal(Conn, _CurrentUid, Gid, UserId, Role, Now) ->
+    % 使用 DS 层接口执行角色更新
+    group_member_ds:update_role(Conn, Gid, UserId, Role, Now).
+
+%% @doc 验证角色更新权限
+-spec validate_role_permission(integer(), integer()) -> ok | {error, binary()}.
+validate_role_permission(CurrentUid, Gid) ->
+    % 检查当前用户是否是群管理员或群主
+    case group_member_ds:get_member_info(Gid, CurrentUid, <<"role">>) of
+        {ok, MemberInfo} ->
+            Role = maps:get(<<"role">>, MemberInfo, 0),
+            case Role >= ?ROLE_ADMIN andalso Role =< ?ROLE_VICE_OWNER of
+                true -> ok;
+                false -> {error, <<"你没有权限修改群成员角色"/utf8>>}
+            end;
+        {error, _} ->
+            {error, <<"你不是群成员"/utf8>>}
+    end.
+
+%% @doc 发送角色变更通知
+-spec role_change_notice(integer(), integer(), integer(), integer()) -> ok.
+role_change_notice(AdminUid, Gid, UserId, Role) ->
+    % 获取群成员列表
+    ToUidLi = group_ds:member_uids(Gid),
+    Admin = user_ds:find_by_id(AdminUid, <<"nickname">>),
+    User = user_ds:find_by_id(UserId, <<"nickname">>),
+    Now = elib_dt:now(),
+
+    % 获取角色文本
+    RoleText = group_member_logic:role_name(Role),
+
+    % 构建通知数据
+    Payload = #{
+        <<"gid">> => elib_hashids:encode(Gid),
+        <<"user_id">> => elib_hashids:encode(UserId),
+        <<"role">> => Role,
+        <<"role_text">> => RoleText,
+        <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),
+        <<"admin_nickname">> => maps:get(<<"nickname">>, Admin, <<>>),
+        <<"updated_at">> => Now
+    },
+
+    % 发送角色变更通知
+    Action = <<"group_member_role">>,
+    _ = msg_s2c_ds:send(AdminUid, ToUidLi, Action, <<>>, null, Payload, save),
+    ok.
+
+%% ===================================================================
+%% 权限验证函数（增强功能）
+%% ===================================================================
+
+%% @doc 检查用户是否有管理权限（群主、副群主、管理员）
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return true | false
+-spec has_admin_permission(integer(), integer()) -> boolean().
+has_admin_permission(Gid, Uid) ->
+    case group_member_ds:get_member_info(Gid, Uid, <<"role">>) of
+        {ok, MemberInfo} ->
+            Role = maps:get(<<"role">>, MemberInfo, 0),
+            Role >= ?ROLE_ADMIN andalso Role =< ?ROLE_VICE_OWNER;
+        {error, _} ->
+            false
+    end.
+
+%% @doc 检查用户是否有高级管理权限（群主、副群主）
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return true | false
+-spec has_senior_admin_permission(integer(), integer()) -> boolean().
+has_senior_admin_permission(Gid, Uid) ->
+    case group_member_ds:get_member_info(Gid, Uid, <<"role">>) of
+        {ok, MemberInfo} ->
+            Role = maps:get(<<"role">>, MemberInfo, 0),
+            Role =:= ?ROLE_OWNER orelse Role =:= ?ROLE_VICE_OWNER;
+        {error, _} ->
+            false
+    end.
+
+%% @doc 检查用户是否是群主或副群主
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return true | false
+-spec is_owner_or_vice_owner(integer(), integer()) -> boolean().
+is_owner_or_vice_owner(Gid, Uid) ->
+    case group_member_ds:get_member_info(Gid, Uid, <<"role">>) of
+        {ok, MemberInfo} ->
+            Role = maps:get(<<"role">>, MemberInfo, 0),
+            Role =:= ?ROLE_OWNER orelse Role =:= ?ROLE_VICE_OWNER;
+        {error, _} ->
+            false
+    end.
+
+%% @doc 获取角色名称
+%% @param Role 角色值
+%% @return binary() 角色名称
+-spec role_name(integer()) -> binary().
+role_name(Role) when Role >= ?ROLE_MEMBER andalso Role =< ?ROLE_VICE_OWNER ->
+    maps:get(Role, ?ROLE_NAMES, <<"未知角色"/utf8>>);
+role_name(_) ->
+    <<"未知角色"/utf8>>.

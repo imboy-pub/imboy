@@ -5,6 +5,8 @@
 
 -export([int/3]).
 
+-export([binary/3]).
+
 -export([get/3]).
 
 -export([post/1, post/3]).
@@ -81,6 +83,34 @@ int(Key, Req, Def) ->
                             {ok, Val2}
                     end
             end
+    end.
+
+
+%% @doc 从请求中获取二进制参数
+%% 优先从POST参数获取，如果没有则从GET参数获取
+%% @param Key 参数名
+%% @param Req cowboy请求对象
+%% @param Def 默认值
+%% @returns {ok, Value} 二进制值
+%% 示例: {ok, Name} = elib_param:binary(name, Req0, <<"">>)
+-spec binary(atom() | binary() | list(), cowboy_req:req(), binary()) -> {ok, binary()}.
+
+binary(Key, Req, Def) ->
+    Method = cowboy_req:method(Req),
+    if
+        Method == <<"POST">> ->
+            PostVals = post(Req),
+            KeyBin = ec_cnv:to_binary(Key),
+            case maps:get(KeyBin, PostVals, undefined) of
+                undefined ->
+                    {ok, Def};
+                Val ->
+                    {ok, ec_cnv:to_binary(Val)}
+            end;
+        true ->
+            KeyBin = ec_cnv:to_binary(Key),
+            Val = maps:get(KeyBin, qs_map(Req), Def),
+            {ok, ec_cnv:to_binary(Val)}
     end.
 
 

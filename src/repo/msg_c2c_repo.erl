@@ -10,6 +10,7 @@
 -export([read_msg/3, read_msg/4]).
 -export([find_msg_by_id/1]).
 -export([write_msg/8]).
+-export([write_msg_with_reply/11]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
@@ -17,6 +18,8 @@
 -export([delete_by_msg_id_and_to_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([delete_overflow_msg/2]).
+-export([update_pinned/3]).
+-export([find_by_reply_to_msg_id/1]).
 
 %% ===================================================================
 %% API functions
@@ -29,13 +32,14 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2c">>).
 
 
-%% @doc 根据消息ID查找单条消息
+%% @doc 根据消息ID查找单条消息（包含引用信息）
 %% @param MsgId 消息唯一ID
 %% @return {ok, MsgMap} | {error, Reason}
 -spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
 find_msg_by_id(MsgId) ->
     Tb = tablename(),
-    Sql = <<"SELECT from_id, created_at FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    Sql = <<"SELECT from_id, created_at, payload, reply_to_msg_id, reply_to_from_id, reply_snippet "
+            "FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
     case elib_pg:query(Sql, [MsgId]) of
         {ok, [Msg]} -> {ok, Msg};
         {ok, []} -> {error, not_found};
@@ -209,3 +213,70 @@ delete_by_msg_ids_and_to_id([], _ToUid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 更新消息置顶状态
+%% @param MsgId 消息ID
+%% @param ToUid 接收者用户ID
+%% @param Pinned 置顶状态 (true/false)
+%% @return {ok, AffectedRows} | {error, Reason}
+-spec update_pinned(binary(), integer(), boolean()) -> {ok, non_neg_integer()} | {error, term()}.
+update_pinned(MsgId, ToUid, Pinned) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+           " SET pinned = $1, updated_at = CURRENT_TIMESTAMP "
+           " WHERE msg_id = $2 AND to_id = $3">>,
+    case elib_pg:execute(Sql, [Pinned, MsgId, ToUid]) of
+        {ok, AffectedRows} ->
+            {ok, AffectedRows};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 写入带引用回复信息的C2C离线消息
+%% @param CreatedAt 消息创建时间（RFC3339 binary）
+%% @param Id 消息唯一ID
+%% @param Payload 消息载荷（JSON binary）
+%% @param FromId 发送者用户ID（integer，对应 bigint 列）
+%% @param ToId 接收者用户ID（integer，对应 bigint 列）
+%% @param ServerTS 服务器时间戳（RFC3339 binary）
+%% @param MsgType 消息类型（text, image, audio, video, file 等）
+%% @param E2EE 端到端加密信息（JSON map，可选）
+%% @param ReplyToMsgId 被引用回复的消息ID
+%% @param ReplyToFromId 被引用消息的发送者ID
+%% @param ReplySnippet 被引用消息的摘要
+%% @return ok | {error, Reason}
+-spec write_msg_with_reply(binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null,
+                           binary(), integer(), binary()) -> ok | {error, term()}.
+write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
+                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
+    Tb = tablename(),
+    E2EEValue = case E2EE of
+        null -> null;
+        <<>> -> null;
+        Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+        Bin when is_binary(Bin) -> Bin;
+        _ -> null
+    end,
+    Sql = [
+        <<"INSERT INTO ">>, Tb,
+        <<" (payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, ">>,
+        <<"reply_to_msg_id, reply_to_from_id, reply_snippet)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case elib_pg:query(Sql, [Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType,
+                             E2EEValue, ReplyToMsgId, ReplyToFromId, ReplySnippet]) of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 根据被引用消息ID查找所有回复消息
+%% @param ReplyToMsgId 被引用的消息ID
+%% @return {ok, list(map())} | {error, Reason}
+-spec find_by_reply_to_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
+find_by_reply_to_msg_id(ReplyToMsgId) ->
+    Tb = tablename(),
+    Column = <<"id, msg_id, from_id, to_id, reply_to_msg_id, reply_to_from_id, reply_snippet, payload, created_at">>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE reply_to_msg_id = $1 ORDER BY created_at ASC">>,
+    elib_pg:query(Sql, [ReplyToMsgId]).

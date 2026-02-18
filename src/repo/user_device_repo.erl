@@ -106,7 +106,7 @@ delete(Uid, DID) ->
 
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
--spec save(binary(), integer(), binary(), map()) -> ok.
+-spec save(binary(), integer(), binary(), map()) -> {ok, term()} | {error, term()}.
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
@@ -114,7 +114,7 @@ save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     save(Now, Uid, PostVals, DID, LoginCount);
 save(_Now, _Uid, _DID, _PostVals) ->
     % 无设备ID登录，无需记录设备信息
-    ok.
+    {ok, 0}.
 
 
 % user_device_repo:update_by_did(1, <<"3f039a2b4724a5b7">>, <<"device_name = $1">>, [<<"CLT-AL00 1">>]).

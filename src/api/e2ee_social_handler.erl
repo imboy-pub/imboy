@@ -81,7 +81,8 @@ create_shards(Req0, State) ->
             % 获取当前用户的私钥
             case get_sender_private_key(CurrentUid) of
                 {error, _Reason} ->
-                    elib_response:error(Req0, <<"私钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
+                    % 安全：不暴露具体错误原因
+                    elib_response:error(Req0, <<"密钥操作失败，请检查密钥状态"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
                 {ok, {PrivateKeyPem, _DeviceId}} ->
                     % 生成密钥版本号
                     KeyVersion = generate_key_version(),
@@ -108,7 +109,8 @@ create_shards(Req0, State) ->
 -spec get_shards(cowboy_req:req(), map()) -> cowboy_req:req().
 get_shards(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    #{key_version := KeyVersion} = cowboy_req:match_qs([{key_version, [], <<"latest">>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    KeyVersion = proplists:get_value(<<"key_version">>, Qs, <<"latest">>),
 
     case e2ee_social_logic:get_user_shards(CurrentUid, KeyVersion) of
         {ok, Shards} ->
@@ -158,9 +160,7 @@ get_proxy_shards(Req0, State) ->
 
     case e2ee_social_logic:get_proxy_shards(CurrentUid) of
         {ok, Shards} ->
-            elib_response:success(Req0, #{<<"shards">> => Shards});
-        {error, Reason} ->
-            elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+            elib_response:success(Req0, #{<<"shards">> => Shards})
     end.
 
 %% @doc 解密分片（代理调用）
@@ -279,10 +279,11 @@ add_contact(Req0, State) ->
 
     % 解码 contact_uid
     ContactUidEnc = maps:get(<<"contact_uid">>, Data, <<>>),
-    case elib_hashids:decode(ContactUidEnc) of
-        invalid ->
+    ContactUid = elib_hashids:decode(ContactUidEnc),
+    case ContactUid of
+        0 ->
             elib_response:error(Req0, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
-        ContactUid ->
+        _ ->
             Nickname = maps:get(<<"nickname">>, Data, <<>>),
 
             case e2ee_social_ds:add_trusted_contact(CurrentUid, ContactUid, Nickname) of
@@ -308,10 +309,11 @@ remove_contact(Req0, State) ->
 
     % 解码 contact_uid
     ContactUidEnc = maps:get(<<"contact_uid">>, Data, <<>>),
-    case elib_hashids:decode(ContactUidEnc) of
-        invalid ->
+    ContactUid = elib_hashids:decode(ContactUidEnc),
+    case ContactUid of
+        0 ->
             elib_response:error(Req0, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
-        ContactUid ->
+        _ ->
             case e2ee_social_ds:remove_trusted_contact(CurrentUid, ContactUid) of
                 ok ->
                     elib_response:success(Req0, #{<<"message">> => <<"移除可信联系人成功"/utf8>>});
@@ -320,14 +322,18 @@ remove_contact(Req0, State) ->
             end
     end.
 
-%% @doc 格式化错误消息
+%% @doc 格式化错误消息（安全：不暴露内部细节）
 -spec format_error(term()) -> binary().
+format_error({Msg, _Code}) when is_binary(Msg) ->
+    % 标准错误格式 {Message, ErrorCode}
+    Msg;
 format_error(Reason) when is_binary(Reason) ->
     Reason;
 format_error(Reason) when is_list(Reason) ->
     iolist_to_binary(Reason);
-format_error(Reason) ->
-    iolist_to_binary(io_lib:format("~p", [Reason])).
+format_error(_Reason) ->
+    % 安全：不暴露内部错误细节
+    <<"操作失败，请稍后重试"/utf8>>.
 
 %% @doc 获取代理用户的私钥
 %% 用于解密为用户存储的分片

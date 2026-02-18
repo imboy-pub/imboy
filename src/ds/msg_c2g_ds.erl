@@ -4,10 +4,12 @@
 %%%
 -export([write_msg/6]).
 -export([write_msg/8]).
+-export([write_msg_with_reply/11]).
 -export([revoke_offline_msg/9]).
 -export([edit_offline_msg/6]).
 -export([read_msg/1]).
 -export([read_msg/3]).
+-export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 
 -include("log.hrl").
@@ -204,6 +206,14 @@ read_msg(ToUid, Limit, LastMsgAt) ->
             end
     end.
 
+%% @doc 根据消息ID查找群聊消息（用于撤回权限验证和时间限制检查）
+%% @param MsgId 消息唯一ID
+%% @return {ok, MsgMap} | {error, Reason}
+-spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
+find_msg_by_id(MsgId) ->
+    msg_c2g_repo:find_msg_by_id(MsgId).
+
+
 %% @doc 删除群组消息
 %%
 %% 根据消息ID从群组消息表中删除消息
@@ -213,3 +223,31 @@ read_msg(ToUid, Limit, LastMsgAt) ->
 -spec delete_msg(any()) -> any().
 delete_msg(Id) ->
     msg_c2g_repo:delete_msg(Id).
+
+%% ===================================================================
+%% 引用回复功能
+%% ===================================================================
+
+%% @doc 存储带引用回复信息的群组消息
+%%
+%% 将群组消息及其引用信息存储到数据库中
+%%
+%% @param CreatedAt 消息创建时间戳（integer 毫秒或 binary RFC3339）
+%% @param Id 消息ID
+%% @param Payload 消息内容（JSON binary）
+%% @param FromId 发送方用户ID
+%% @param ToUids 接收消息的用户ID列表
+%% @param Gid 群组ID
+%% @param MsgType 消息类型（text, image, audio, video, file 等）
+%% @param E2EE 端到端加密信息（JSON map，可选）
+%% @param ReplyToMsgId 被引用回复的消息ID
+%% @param ReplyToFromId 被引用消息的发送者ID
+%% @param ReplySnippet 被引用消息的摘要
+%% @returns ok | {error, Reason} 数据库操作结果
+-spec write_msg_with_reply(binary() | integer(), binary(), binary(), integer(), [integer()],
+                           integer(), binary(), map() | null, binary(), integer(), binary()) ->
+    ok | {error, term()}.
+write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
+    msg_c2g_repo:write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+                                      ReplyToMsgId, ReplyToFromId, ReplySnippet).

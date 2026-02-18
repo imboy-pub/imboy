@@ -309,3 +309,241 @@ list_member_with_large_gid_test_() ->
         Result = group_member_logic:list_member(Gid),
         ?assertEqual({ok, []}, Result)
     end).
+
+%% ===================================================================
+%% 角色权限验证测试（增强功能）
+%% ===================================================================
+
+%% 测试 has_admin_permission/2 - 群主有管理权限
+has_admin_permission_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 4}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 100,
+        Result = group_member_logic:has_admin_permission(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 has_admin_permission/2 - 副群主有管理权限
+has_admin_permission_vice_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 5}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 101,
+        Result = group_member_logic:has_admin_permission(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 has_admin_permission/2 - 管理员有管理权限
+has_admin_permission_admin_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 3}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 102,
+        Result = group_member_logic:has_admin_permission(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 has_admin_permission/2 - 普通成员无管理权限
+has_admin_permission_member_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 1}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 103,
+        Result = group_member_logic:has_admin_permission(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试 has_admin_permission/2 - 非成员返回 false
+has_admin_permission_non_member_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {error, not_found}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 999,
+        Result = group_member_logic:has_admin_permission(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试 has_senior_admin_permission/2 - 群主有高级管理权限
+has_senior_admin_permission_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 4}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 100,
+        Result = group_member_logic:has_senior_admin_permission(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 has_senior_admin_permission/2 - 副群主有高级管理权限
+has_senior_admin_permission_vice_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 5}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 101,
+        Result = group_member_logic:has_senior_admin_permission(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 has_senior_admin_permission/2 - 管理员无高级管理权限
+has_senior_admin_permission_admin_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 3}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 102,
+        Result = group_member_logic:has_senior_admin_permission(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试 has_senior_admin_permission/2 - 普通成员无高级管理权限
+has_senior_admin_permission_member_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 1}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 103,
+        Result = group_member_logic:has_senior_admin_permission(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试 is_owner_or_vice_owner/2 - 群主
+is_owner_or_vice_owner_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 4}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 100,
+        Result = group_member_logic:is_owner_or_vice_owner(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 is_owner_or_vice_owner/2 - 副群主
+is_owner_or_vice_owner_vice_owner_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 5}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 101,
+        Result = group_member_logic:is_owner_or_vice_owner(Gid, Uid),
+        ?assertEqual(true, Result)
+    end).
+
+%% 测试 is_owner_or_vice_owner/2 - 管理员返回 false
+is_owner_or_vice_owner_admin_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {ok, #{<<"role">> => 3}}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 102,
+        Result = group_member_logic:is_owner_or_vice_owner(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试 is_owner_or_vice_owner/2 - 非成员返回 false
+is_owner_or_vice_owner_non_member_test_() ->
+    ?WITH_MECK(group_member_ds, [
+        {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+            {error, not_found}
+        end}
+    ], fun() ->
+        Gid = 1,
+        Uid = 999,
+        Result = group_member_logic:is_owner_or_vice_owner(Gid, Uid),
+        ?assertEqual(false, Result)
+    end).
+
+%% 测试角色名称获取
+role_name_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(<<"普通成员"/utf8>>, group_member_logic:role_name(1)),
+        ?assertEqual(<<"嘉宾"/utf8>>, group_member_logic:role_name(2)),
+        ?assertEqual(<<"管理员"/utf8>>, group_member_logic:role_name(3)),
+        ?assertEqual(<<"群主"/utf8>>, group_member_logic:role_name(4)),
+        ?assertEqual(<<"副群主"/utf8>>, group_member_logic:role_name(5)),
+        ?assertEqual(<<"未知角色"/utf8>>, group_member_logic:role_name(99))
+    end).
+
+%% 测试 update_role 添加副群主
+update_role_to_vice_owner_test_() ->
+    ?WITH_MECKS([
+        {group_member_ds, [
+            {'get_member_info', 3, fun(_Gid, _Uid, _Column) ->
+                {ok, #{<<"role">> => 4}}  % 当前用户是群主
+            end},
+            {'update_role', 5, fun(_Conn, _Gid, _Uid, _Role, _Now) -> ok end}
+        ]},
+        {elib_pg, [
+            {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]}
+    ], fun() ->
+        CurrentUid = 100,
+        Gid = 1,
+        UserId = 101,
+        Role = 5,  % 副群主
+        Result = group_member_logic:update_role(CurrentUid, Gid, UserId, Role),
+        ?assertEqual(ok, Result)
+    end).
+
+%% 测试副群主不能转让群
+vice_owner_cannot_transfer_test_() ->
+    ?WITH_MECKS([
+        {group_repo, [
+            {'find_by_id', 2, fun(_Gid, _Column) ->
+                #{<<"id">> => 1, <<"owner_uid">> => 100}
+            end}
+        ]}
+    ], fun() ->
+        ViceOwnerUid = 101,  % 副群主
+        Gid = 1,
+        NewOwnerUid = 102,
+        Result = group_logic:transfer(ViceOwnerUid, Gid, NewOwnerUid),
+        ?assertMatch({error, _}, Result)
+    end).
+
+%% 测试副群主不能解散群
+vice_owner_cannot_dissolve_test_() ->
+    ?WITH_MECKS([
+        {group_ds, [
+            {'dissolve_group', 4, fun(_Uid, _Gid, _OwnerUid, _G) ->
+                {error, <<"只有群主可以解散群组"/utf8>>}
+            end}
+        ]}
+    ], fun() ->
+        ViceOwnerUid = 101,  % 副群主
+        Gid = 1,
+        OwnerUid = 100,
+        G = #{},
+        Result = group_logic:dissolve(ViceOwnerUid, Gid, OwnerUid, G),
+        ?assertMatch({error, _}, Result)
+    end).

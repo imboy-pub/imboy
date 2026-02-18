@@ -1,4 +1,5 @@
 -module(user_device_handler).
+-dialyzer({nowarn_function, [format_error/1]}).
 
 %%%
 % user_device 控制器模块

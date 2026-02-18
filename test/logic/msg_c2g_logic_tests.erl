@@ -272,3 +272,145 @@ c2g_with_empty_msg_id_test_() ->
         Result = msg_c2g_logic:c2g(MsgId, FromUid, Data, To, OriginalMsg),
         ?assertEqual(ok, Result)
     end).
+
+%% ===================================================================
+%% 引用回复功能测试
+%% ===================================================================
+
+c2g_with_reply_to_msg_succeeds_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 1 end},
+            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(_Uid, _Gid) -> true end},
+            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
+        ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {ok, #{
+                    <<"from_id">> => 200,
+                    <<"payload">> => <<"{\"content\":\"原始群消息内容\"}"/utf8>>
+                }}
+            end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
+                               _FromUid, _ToUids, _CreatedAtRfc, _NowTs) -> ok end}
+        ]},
+        {message_ds, [
+            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_123">>,
+        FromUid = 100,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"这是群聊回复内容"/utf8>>},
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<"reply">>,
+            <<"e2ee">> => null,
+            <<"created_at">> => 1737513600000,
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"original_msg_456">>,
+                <<"from_id">> => <<"200">>
+            }
+        },
+
+        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
+        ?assertEqual(ok, Result)
+    end).
+
+c2g_with_reply_to_nonexistent_msg_fails_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 1 end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(_Uid, _Gid) -> true end},
+            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
+        ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {error, not_found}
+            end}
+        ]},
+        {message_ds, [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
+            end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_123">>,
+        FromUid = 100,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"这是群聊回复内容"/utf8>>},
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<"reply">>,
+            <<"e2ee">> => null,
+            <<"created_at">> => 1737513600000,
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"nonexistent_msg">>,
+                <<"from_id">> => <<"200">>
+            }
+        },
+
+        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
+        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
+    end).
+
+c2g_with_nested_reply_succeeds_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 1 end},
+            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(_Uid, _Gid) -> true end},
+            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
+        ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {ok, #{
+                    <<"from_id">> => 300,
+                    <<"payload">> => <<"{\"content\":\"第二条群消息内容\"}"/utf8>>
+                }}
+            end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
+                               _FromUid, _ToUids, _CreatedAtRfc, _NowTs) -> ok end}
+        ]},
+        {message_ds, [
+            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_789">>,
+        FromUid = 100,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"回复的回复内容"/utf8>>},
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<"reply">>,
+            <<"e2ee">> => null,
+            <<"created_at">> => 1737513600000,
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"second_msg_456">>,
+                <<"from_id">> => <<"300">>
+            }
+        },
+
+        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
+        ?assertEqual(ok, Result)
+    end).

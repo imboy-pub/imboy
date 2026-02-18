@@ -9,12 +9,17 @@
 -export([c2g_revoke_ack/3]).
 -export([c2g_edit/3]).
 -export([c2g_edit_ack/3]).
+-export([read_stats/2]).
+-export([extract_reply_info/1]).
 
 -include("chat.hrl").
 -include("log.hrl").
+-include("error_code.hrl").
 
 % 抑制 Dialyzer 类型推断警告 - elib_dt:rfc3339_to 的返回类型复杂
 -dialyzer({nowarn_function, [parse_timestamp_or_default/2, ensure_integer/1]}).
+
+-define(REVOKE_TIMEOUT_MS, 120000). % 2分钟
 
 %% ===================================================================
 %% Internal Functions
@@ -57,20 +62,57 @@ c2g(MsgId, CurrentUid, Data) ->
     Gid = maps:get(<<"to">>, Data),
     ToGID = elib_hashids:decode(Gid),
 
-    % 检查是否是群成员
-    case group_ds:is_member(CurrentUid, ToGID) of
+    % 检查是否被禁言
+    case group_member_logic:check_mute(ToGID, CurrentUid) of
         true ->
-            MemberUids = group_ds:member_uids(ToGID),
-            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
-        false ->
-            _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
+            _ = ?WARN_LOG("用户 ~p 在群组 ~p 中被禁言，无法发送消息", [CurrentUid, ToGID]),
             self() ! {reply, #{
                 <<"id">> => MsgId,
                 <<"type">> => <<"C2G_ERROR">>,
-                <<"error">> => <<"Not a group member"/utf8>>,
+                <<"error">> => <<"You are muted in this group"/utf8>>,
                 <<"code">> => 403
             }},
-            ok
+            ok;
+        false ->
+            % 检查是否是群成员
+            case group_ds:is_member(CurrentUid, ToGID) of
+                true ->
+                    % 解析 mentions 字段
+                    Payload = maps:get(<<"payload">>, Data, #{}),
+                    Mentions = maps:get(<<"mentions">>, Payload, []),
+                    HasMentionAll = lists:member(<<"all">>, Mentions),
+
+                    % @所有人需要管理员权限
+                    case HasMentionAll of
+                        true ->
+                            case group_member_ds:check_admin(CurrentUid, ToGID) of
+                                true ->
+                                    MemberUids = group_ds:member_uids(ToGID),
+                                    do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
+                                false ->
+                                    _ = ?WARN_LOG("用户 ~p 尝试使用 @所有人功能但没有管理员权限", [CurrentUid]),
+                                    self() ! {reply, #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2G_ERROR">>,
+                                        <<"error">> => <<"Permission denied: @all mentions require admin role"/utf8>>,
+                                        <<"code">> => 403
+                                    }},
+                                    ok
+                            end;
+                        false ->
+                            MemberUids = group_ds:member_uids(ToGID),
+                            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids)
+                    end;
+                false ->
+                    _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
+                    self() ! {reply, #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2G_ERROR">>,
+                        <<"error">> => <<"Not a group member"/utf8>>,
+                        <<"code">> => 403
+                    }},
+                    ok
+            end
     end.
 
 %% @private
@@ -99,10 +141,30 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     },
     Msg2 = jsone:encode(Msg, [native_utf8]),
 
-    % v2.0: 直接传递 MsgType/Action/E2EE 参数
-    StageResult = msg_store_ds:stage(
-        <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
-        CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc),
+    % 提取引用回复信息
+    {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
+
+    % 检查是否有引用信息
+    StageResult = case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
+        {<<>>, 0, <<>>} ->
+            % 没有引用信息，使用常规方式
+            msg_store_ds:stage(
+                <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
+                CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc);
+        _ ->
+            % 有引用信息，需要先验证被引用的消息是否存在
+            case msg_c2g_repo:find_msg_by_id(ReplyToMsgId) of
+                {ok, _OriginalMsg} ->
+                    msg_store_ds:stage(
+                        <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
+                        CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc);
+                {error, not_found} ->
+                    % 被引用的消息不存在，返回错误
+                    self() ! {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, Gid)},
+                    error
+            end
+    end,
+
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     case StageResult of
         ok ->
@@ -125,15 +187,33 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
                 server_ts => NowMS
             }),
 
-            % ② 后投递消息（给每个群成员）
+            % ② 如果有引用信息，存储到数据库
+            case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
+                {<<>>, 0, <<>>} ->
+                    % 没有引用信息，使用常规处理
+                    ok;
+                _ ->
+                    % 有引用信息，存储到数据库
+                    msg_c2g_ds:write_msg_with_reply(
+                        NowTs, MsgId, Msg2, CurrentUid, MemberUids, ToGID,
+                        MsgType, E2EE, ReplyToMsgId, ReplyToFromId, ReplySnippet)
+            end,
+
+            % ③ 后投递消息（给每个群成员）
             [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+
+            % ④ 创建@提及记录（如果有）
+            Payload = maps:get(<<"payload">>, Data, #{}),
+            Mentions = maps:get(<<"mentions">>, Payload, []),
+            case Mentions of
+                [] -> ok;
+                _ -> mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
+            end,
 
             ok;
         error ->
-            % 备份失败，返回错误
-            ok = ?ERROR_LOG("[C2G_STAGE_FAILED] MsgId=~s, FromUid=~p, Gid=~s~n",
-                       [MsgId, CurrentUid, Gid]),
-            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, Gid)}
+            % 已经在上面处理了错误响应
+            ok
     end.
 
 %% 客户端确认C2G投递消息
@@ -219,46 +299,180 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
     % 验证权限：只能操作自己发送的消息，且必须是群成员
     case {CurrentUid =:= FromId, group_ds:is_member(ToGID, CurrentUid)} of
         {true, true} ->
-            NowTs = elib_dt:now(),
-            NowMS = elib_dt:millisecond(),
-            MemberUids = group_ds:member_uids(ToGID),
-
-            % 构建操作消息（v2.0 格式）
-            %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
-            ActionMsg = maps:merge(#{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2G">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
-                <<"server_ts">> => NowMS
-            }, ActionMsgExtra),
-
-            ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
-            MsLi = elib_retry_config:intervals(<<"c2g">>),
-
-            % 发送给群组其他成员
-            [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
-
-            % v2.0: 存储离线消息时分离 payload、msg_type 和 action
-            MsgType = maps:get(<<"msg_type">>, ActionMsgExtra, <<"custom">>),
-            Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
-            E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, null), % map() | null
-            ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
-
-            % 根据操作类型调用相应的 v2.0 函数
-            case ActionType of
-                revoke ->
-                    msg_c2g_ds:revoke_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID, MsgType, Action, E2EE);
-                edit ->
-                    msg_c2g_ds:edit_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID)
+            %% 【新增】检查消息是否存在并验证时间限制
+            OriginalMsgId = case ActionType of
+                revoke -> maps:get(<<"original_msg_id">>, maps:get(<<"payload">>, Data));
+                edit -> maps:get(<<"original_msg_id">>, maps:get(<<"payload">>, Data))
             end,
 
-            {reply, ActionMsg};
+            case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
+                {ok, MsgData} ->
+                    %% 检查消息的发送者是否为当前用户
+                    case MsgData of
+                        #{<<"from_id">> := FromId} ->
+                            CreatedAt = maps:get(<<"created_at">>, MsgData),
+                            NowMS = elib_dt:millisecond(),
+
+                            % 检查是否超过撤回时间限制（2分钟）
+                            case NowMS - CreatedAt > ?REVOKE_TIMEOUT_MS of
+                                true ->
+                                    % 超过撤回时间限制
+                                    ErrorMsg = #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2G">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"msg_type">> => <<"custom">>,
+                                        <<"action">> => <<"message_revoke_error">>,
+                                        <<"payload">> => #{
+                                            <<"content">> => <<>>,
+                                            <<"original_msg_id">> => OriginalMsgId,
+                                            <<"error">> => <<"超过撤回时间限制(2分钟)"/utf8>>,
+                                            <<"code">> => ?ERR_REVOKE_TIMEOUT
+                                        },
+                                        <<"server_ts">> => NowMS
+                                    },
+                                    {reply, ErrorMsg};
+                                false ->
+                                    % 未超过时间限制，继续原有逻辑
+                                    NowTs = elib_dt:now(),
+                                    MemberUids = group_ds:member_uids(ToGID),
+
+                                    % 构建操作消息（v2.0 格式）
+                                    %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
+                                    ActionMsg = maps:merge(#{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2G">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
+                                        <<"server_ts">> => NowMS
+                                    }, ActionMsgExtra),
+
+                                    ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
+                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
+
+                                    % 发送给群组其他成员
+                                    [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+
+                                    % v2.0: 存储离线消息时分离 payload、msg_type 和 action
+                                    MsgType = maps:get(<<"msg_type">>, ActionMsgExtra, <<"custom">>),
+                                    Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
+                                    E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, null), % map() | null
+                                    ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
+
+                                    % 根据操作类型调用相应的 v2.0 函数
+                                    case ActionType of
+                                        revoke ->
+                                            msg_c2g_ds:revoke_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID, MsgType, Action, E2EE);
+                                        edit ->
+                                            msg_c2g_ds:edit_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID)
+                                    end,
+
+                                    {reply, ActionMsg}
+                            end;
+                        #{<<"from_id">> := _OtherId} ->
+                            %% 消息不属于当前用户
+                            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+                            {reply, ErrorMsg}
+                    end;
+                _ ->
+                    %% 消息不存在或格式错误
+                    ErrorMsg = message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To),
+                    {reply, ErrorMsg}
+            end;
         {false, _} ->
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
             {reply, ErrorMsg};
         {_, false} ->
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To),
             {reply, ErrorMsg}
+    end.
+
+%% @doc 获取群消息已读统计
+%% 检查用户是否有权限访问该群消息，并返回已读和总人数
+%%
+%% @param MsgId 消息ID
+%% @param CurrentUid 当前用户ID
+%% @return {ok, ReadCount, TotalCount} | {error, Reason}
+%% @end
+-spec read_stats(binary(), integer()) -> {ok, integer(), integer()} | {error, atom()}.
+read_stats(MsgId, CurrentUid) ->
+    % 首先从 msg_c2g_timeline 表获取群组ID
+    case msg_c2g_timeline_repo:find_by_msg_id(MsgId) of
+        {ok, []} ->
+            % 消息不存在
+            {error, not_found};
+        {ok, [#{<<"to_gid">> := Gid}]} ->
+            % 检查用户是否是群成员
+            case group_ds:is_member(CurrentUid, Gid) of
+                true ->
+                    % 获取群消息总成员数
+                    TotalCount = length(group_ds:member_uids(Gid)),
+
+                    % 获取已读人数
+                    ReadCount = msg_c2g_repo:count_read(MsgId),
+
+                    {ok, ReadCount, TotalCount};
+                false ->
+                    % 不是群成员，无权限访问
+                    {error, permission_denied}
+            end;
+        {error, Reason} ->
+            % 查询错误
+            {error, Reason}
+    end.
+
+%% ===================================================================
+%% Internal Function Definitions
+%% ===================================================================
+
+%% @doc 从消息数据中提取引用回复信息
+%% @param Data 消息数据
+%% @return {ReplyToMsgId, ReplyToFromId, ReplySnippet}
+-spec extract_reply_info(map()) -> {binary(), integer(), binary()}.
+extract_reply_info(Data) ->
+    case maps:get(<<"reply_to">>, Data, undefined) of
+        undefined ->
+            {<<>>, 0, <<>>};
+        ReplyTo when is_map(ReplyTo) ->
+            ReplyToMsgId = maps:get(<<"msg_id">>, ReplyTo, <<>>),
+            ReplyToFromIdBin = maps:get(<<"from_id">>, ReplyTo, <<>>),
+            ReplyToFromId = elib_hashids:decode(ReplyToFromIdBin),
+
+            % 从被引用的消息中提取摘要
+            ReplySnippet = case ReplyToMsgId of
+                <<>> -> <<>>;
+                _ ->
+                    case msg_c2g_repo:find_msg_by_id(ReplyToMsgId) of
+                        {ok, OriginalMsg} ->
+                            Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
+                            % 尝试解析 JSON 并提取 content 字段
+                            try jsone:decode(Payload) of
+                                PayloadMap when is_map(PayloadMap) ->
+                                    Content = maps:get(<<"content">>, PayloadMap, <<>>),
+                                    % 截取前50个字符作为摘要
+                                    Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
+                                    case byte_size(Content) > 50 of
+                                        true -> <<Snippet/binary, "..."/utf8>>;
+                                        false -> Snippet
+                                    end;
+                                _ ->
+                                    <<>>
+                            catch
+                                _:_ ->
+                                    % 如果解析失败，截取原始 payload 的前50个字符
+                                    Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
+                                    case byte_size(Payload) > 50 of
+                                        true -> <<Snippet/binary, "..."/utf8>>;
+                                        false -> Snippet
+                                    end
+                            end;
+                        _ ->
+                            <<>>
+                    end
+            end,
+            {ReplyToMsgId, ReplyToFromId, ReplySnippet};
+        _ ->
+            {<<>>, 0, <<>>}
     end.

@@ -51,8 +51,9 @@ init(Req0, State0) ->
 req_get(Req0, _State) ->
     % CurrentUid = auth_ds:current_uid(State),
     % Uid = elib_hashids:encode(CurrentUid),
-    #{type := Type} = cowboy_req:match_qs([{type, [], undefined}], Req0),
-    #{a := A} = cowboy_req:match_qs([{a, [], 0}], Req0),
+    Qs3 = cowboy_req:parse_qs(Req0),
+    Type = proplists:get_value(<<"type">>, Qs3, undefined),
+    A = proplists:get_value(<<"a">>, Qs3, 0),
 
     % test_logic:demo(CurrentUid, Val1, Val2),
     elib_response:success(Req0,

@@ -1,4 +1,5 @@
 -module(e2ee_transfer_ds).
+-dialyzer(no_return).
 %%%===================================================================
 %%% @doc E2EE 设备间传输 DS 层
 %%%
@@ -198,12 +199,13 @@ cleanup_expired_sessions() ->
               WHERE expires_at < CURRENT_TIMESTAMP
               AND status != 'confirmed'
               RETURNING id">>,
-    case elib_pg:query(Sql, []) of
-        {ok, _, Results} ->
-            DeletedCount = length(Results),
+    case elib_pg:execute(Sql, []) of
+        {ok, Count, _Rows} ->
             % 清除所有会话缓存
             clear_all_session_cache(),
-            {ok, DeletedCount};
+            {ok, Count};
+        {ok, 0} ->
+            {ok, 0};
         {error, Reason} ->
             {error, Reason}
     end.

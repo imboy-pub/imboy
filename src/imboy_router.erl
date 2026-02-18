@@ -36,6 +36,11 @@ get_routes() ->
 
         {"/conversation/online", conversation_handler, #{action => online}},
         {"/conversation/mine", conversation_handler, #{action => mine}},
+        {"/conversation/pin", conversation_handler, #{action => pin_conversation}},
+        {"/conversation/unpin", conversation_handler, #{action => unpin_conversation}},
+        {"/conversation/pinned", conversation_handler, #{action => pinned_list}},
+        {"/conversation/delete", conversation_handler, #{action => delete_conversation}},
+        {"/conversation/restore", conversation_handler, #{action => restore_conversation}},
         {"/msg/offline", msg_handler, #{action => offline}},
         {"/msg/offline_ack", msg_handler, #{action => offline_ack}},
 
@@ -127,6 +132,26 @@ get_routes() ->
         {"/group_notice/page", group_notice_handler, #{action => page}},
         {"/group_notice/publish", group_notice_handler, #{action => publish}},
         {"/group_notice/latest", group_notice_handler, #{action => latest}},
+        % @提及功能
+        {"/mention/list", mention_handler, #{action => list}},
+        {"/mention/unread", mention_handler, #{action => unread}},
+        {"/mention/mark_read", mention_handler, #{action => mark_read}},
+        {"/mention/suggest", mention_handler, #{action => suggest}},
+        % 群相册
+        {"/group_album/create", group_album_handler, #{action => create_album}},
+        {"/group_album/list", group_album_handler, #{action => list_albums}},
+        {"/group_album/rename", group_album_handler, #{action => rename_album}},
+        {"/group_album/delete", group_album_handler, #{action => delete_album}},
+        {"/group_album/photo/upload", group_album_handler, #{action => upload_photo}},
+        {"/group_album/photo/batch", group_album_handler, #{action => batch_upload}},
+        {"/group_album/photo/list", group_album_handler, #{action => list_photos}},
+        {"/group_album/photo/detail", group_album_handler, #{action => photo_detail}},
+        {"/group_album/photo/delete", group_album_handler, #{action => delete_photo}},
+        {"/group_album/photo/like", group_album_handler, #{action => like_photo}},
+        {"/group_album/photo/unlike", group_album_handler, #{action => unlike_photo}},
+        {"/group_album/photo/comment", group_album_handler, #{action => add_comment}},
+        {"/group_album/photo/comments", group_album_handler, #{action => list_comments}},
+        {"/group_album/cover/update", group_album_handler, #{action => update_cover}},
         % end v0 为了兼容版本，在下一个版本下面的路由可以删除 2026-01-12
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
@@ -150,6 +175,13 @@ get_routes() ->
         {"/v1/passport/findpassword", passport_handler, #{action => find_password}},
         {"/v1/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
+        % QR 码登录（WhatsApp Web 风格）
+        {"/v1/passport/qr_login/create", qr_login_handler, #{action => create}},
+        {"/v1/passport/qr_login/status", qr_login_handler, #{action => status}},
+        {"/v1/passport/qr_login/scan", qr_login_handler, #{action => scan}},
+        {"/v1/passport/qr_login/confirm", qr_login_handler, #{action => confirm}},
+        {"/v1/passport/qr_login/cancel", qr_login_handler, #{action => cancel}},
+
         {"/v1/ws", websocket_handler, #{}},
         {"/v1/auth/assets", auth_handler, #{action => assets}},
         {"/v1/test/req_get", test_handler, #{action => req_get}},
@@ -157,8 +189,19 @@ get_routes() ->
 
         {"/v1/conversation/online", conversation_handler, #{action => online}},
         {"/v1/conversation/mine", conversation_handler, #{action => mine}},
+        {"/v1/conversation/pin", conversation_handler, #{action => pin_conversation}},
+        {"/v1/conversation/unpin", conversation_handler, #{action => unpin_conversation}},
+        {"/v1/conversation/pinned", conversation_handler, #{action => pinned_list}},
+        {"/v1/conversation/delete", conversation_handler, #{action => delete_conversation}},
+        {"/v1/conversation/restore", conversation_handler, #{action => restore_conversation}},
         {"/v1/msg/offline", msg_handler, #{action => offline}},
         {"/v1/msg/offline_ack", msg_handler, #{action => offline_ack}},
+        {"/v1/msg/read_stats", msg_handler, #{action => read_stats}},
+        {"/v1/msg/pin", msg_handler, #{action => pin}},
+        {"/v1/msg/forward", msg_handler, #{action => forward}},
+        {"/v1/msg/reaction/add", msg_handler, #{action => reaction_add}},
+        {"/v1/msg/reaction/remove", msg_handler, #{action => reaction_remove}},
+        {"/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
 
         {"/v1/uqrcode", user_handler, #{action => qrcode}},% 2024-05-10 过两个版本可以清除该路由
         {"/v1/user/qrcode", user_handler, #{action => qrcode}},
@@ -253,6 +296,8 @@ get_routes() ->
         {"/v1/fts/user_search", fts_handler, #{action => user_search}},
         % 最近新注册的并且允许被搜索到的朋友
         {"/v1/fts/recently_user", fts_handler, #{action => recently_user}},
+        % 消息全文搜索
+        {"/v1/fts/msg", fts_handler, #{action => msg}},
 
         {"/v1/group/remark", group_handler, #{action => remark}},
         {"/v1/group/qrcode", group_handler, #{action => qrcode}},
@@ -265,18 +310,136 @@ get_routes() ->
         {"/v1/group/page", group_handler, #{action => page}},
         {"/v1/group/msg_page", group_handler, #{action => msg_page}},
 
+        % 群组分类管理
+        {"/v1/group/category/create", group_category_handler, #{action => create}},
+        {"/v1/group/category/list", group_category_handler, #{action => list}},
+        {"/v1/group/category/rename", group_category_handler, #{action => rename}},
+        {"/v1/group/category/delete", group_category_handler, #{action => delete}},
+        {"/v1/group/category/move_group", group_category_handler, #{action => move_group}},
+        {"/v1/group/category/sort", group_category_handler, #{action => sort}},
+
         {"/v1/group_member/join", group_member_handler, #{action => join}},
         {"/v1/group_member/leave", group_member_handler, #{action => leave}},
         {"/v1/group_member/page", group_member_handler, #{action => page}},
         {"/v1/group_member/alias", group_member_handler, #{action => alias}},
         {"/v1/group_member/same_group", group_member_handler, #{action => same_group}},
+        {"/v1/group_member/mute", group_member_handler, #{action => mute}},
+        {"/v1/group_member/role", group_member_handler, #{action => role}},
+        {"/v1/group/transfer", group_handler, #{action => transfer}},
+        % 群组标签
+        {"/v1/group/tag/add", group_tag_handler, #{action => add}},
+        {"/v1/group/tag/remove", group_tag_handler, #{action => remove}},
+        {"/v1/group/tag/list", group_tag_handler, #{action => list}},
+        {"/v1/group/tag/search", group_tag_handler, #{action => search}},
+        {"/v1/group/tag/hot", group_tag_handler, #{action => hot}},
         % 群组公告
         {"/v1/group_notice/add", group_notice_handler, #{action => add}},
         {"/v1/group_notice/edit", group_notice_handler, #{action => edit}},
         {"/v1/group_notice/delete", group_notice_handler, #{action => delete}},
         {"/v1/group_notice/page", group_notice_handler, #{action => page}},
         {"/v1/group_notice/publish", group_notice_handler, #{action => publish}},
-        {"/v1/group_notice/latest", group_notice_handler, #{action => latest}}
+        {"/v1/group_notice/latest", group_notice_handler, #{action => latest}},
+        {"/v1/group/notice/list", group_notice_handler, #{action => list}},
+        {"/v1/group/notice/detail", group_notice_handler, #{action => detail}},
+        {"/v1/group/notice/pin", group_notice_handler, #{action => pin}},
+        {"/v1/group/notice/unpin", group_notice_handler, #{action => unpin}},
+        {"/v1/group/notice/mark_read", group_notice_handler, #{action => mark_read}},
+        % 群投票 API
+        {"/v1/group/vote/create", group_vote_handler, #{action => create}},
+        {"/v1/group/vote/list", group_vote_handler, #{action => list}},
+        {"/v1/group/vote/detail", group_vote_handler, #{action => detail}},
+        {"/v1/group/vote/cast", group_vote_handler, #{action => cast}},
+        {"/v1/group/vote/update", group_vote_handler, #{action => update}},
+        {"/v1/group/vote/cancel", group_vote_handler, #{action => cancel}},
+        {"/v1/group/vote/close", group_vote_handler, #{action => close}},
+        {"/v1/group/vote/my_vote", group_vote_handler, #{action => my_vote}},
+        % 群组日程 API
+        {"/v1/group_schedule/create", group_schedule_handler, #{action => create}},
+        {"/v1/group_schedule/update", group_schedule_handler, #{action => update}},
+        {"/v1/group_schedule/cancel", group_schedule_handler, #{action => cancel}},
+        {"/v1/group_schedule/detail", group_schedule_handler, #{action => detail}},
+        {"/v1/group_schedule/list", group_schedule_handler, #{action => list}},
+        {"/v1/group_schedule/my_list", group_schedule_handler, #{action => my_list}},
+        {"/v1/group_schedule/confirm", group_schedule_handler, #{action => confirm}},
+        % @提及功能 API
+        {"/v1/mention/list", mention_handler, #{action => list}},
+        {"/v1/mention/unread", mention_handler, #{action => unread}},
+        {"/v1/mention/mark_read", mention_handler, #{action => mark_read}},
+        {"/v1/mention/suggest", mention_handler, #{action => suggest}},
+        % 群相册 API
+        {"/v1/group_album/create", group_album_handler, #{action => create_album}},
+        {"/v1/group_album/list", group_album_handler, #{action => list_albums}},
+        {"/v1/group_album/rename", group_album_handler, #{action => rename_album}},
+        {"/v1/group_album/delete", group_album_handler, #{action => delete_album}},
+        {"/v1/group_album/photo/upload", group_album_handler, #{action => upload_photo}},
+        {"/v1/group_album/photo/batch", group_album_handler, #{action => batch_upload}},
+        {"/v1/group_album/photo/list", group_album_handler, #{action => list_photos}},
+        {"/v1/group_album/photo/detail", group_album_handler, #{action => photo_detail}},
+        {"/v1/group_album/photo/delete", group_album_handler, #{action => delete_photo}},
+        {"/v1/group_album/photo/like", group_album_handler, #{action => like_photo}},
+        {"/v1/group_album/photo/unlike", group_album_handler, #{action => unlike_photo}},
+        {"/v1/group_album/photo/comment", group_album_handler, #{action => add_comment}},
+        {"/v1/group_album/photo/comments", group_album_handler, #{action => list_comments}},
+        {"/v1/group_album/cover/update", group_album_handler, #{action => update_cover}},
+
+        % 频道功能 API
+        {"/v1/channel/create", channel_handler, #{action => create}},
+        {"/v1/channel/:channel_id", channel_handler, #{action => show}},
+        {"/v1/channel/by_custom_id/:custom_id", channel_handler, #{action => by_custom_id}},
+        {"/v1/channel/:channel_id/update", channel_handler, #{action => update}},
+        {"/v1/channel/:channel_id/delete", channel_handler, #{action => delete}},
+        {"/v1/channel/:channel_id/subscribe", channel_handler, #{action => subscribe}},
+        {"/v1/channel/:channel_id/unsubscribe", channel_handler, #{action => unsubscribe}},
+        {"/v1/channels/subscribed", channel_handler, #{action => subscribed}},
+        {"/v1/channels/managed", channel_handler, #{action => managed}},
+        {"/v1/channel/:channel_id/message", channel_handler, #{action => publish_message}},
+        {"/v1/channel/:channel_id/messages", channel_handler, #{action => messages}},
+        {"/v1/channel/:channel_id/read", channel_handler, #{action => mark_read}},
+        {"/v1/channels/search", channel_handler, #{action => search}},
+        {"/v1/channels/discover", channel_handler, #{action => discover}},
+        {"/v1/channel/:channel_id/admin", channel_handler, #{action => add_admin}},
+        {"/v1/channel/:channel_id/admin/:user_id", channel_handler, #{action => remove_admin}},
+        % 频道统计 API
+        {"/v1/channel/:channel_id/stats", channel_handler, #{action => stats}},
+        {"/v1/channel/:channel_id/stats/daily", channel_handler, #{action => stats_daily}},
+        {"/v1/channel/:channel_id/message/:message_id/view", channel_handler, #{action => record_view}},
+        {"/v1/channel/:channel_id/message/:message_id/reaction", channel_handler, #{action => add_reaction}},
+        {"/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type", channel_handler, #{action => remove_reaction}},
+        % 消息管理 API
+        {"/v1/channel/:channel_id/message/:message_id/pin", channel_handler, #{action => pin_message}},
+        {"/v1/channel/:channel_id/message/:message_id/delete", channel_handler, #{action => delete_message}},
+        % 订阅者管理 API
+        {"/v1/channel/:channel_id/subscribers", channel_handler, #{action => subscribers}},
+        % 邀请相关 API（私有频道）
+        {"/v1/channel/:channel_id/invitation", channel_handler, #{action => create_invitation}},
+        {"/v1/channel/invitation/accept", channel_handler, #{action => accept_invitation}},
+        {"/v1/channel/invitation/reject", channel_handler, #{action => reject_invitation}},
+        {"/v1/channel/invitations/my", channel_handler, #{action => my_invitations}},
+        {"/v1/channel/invitations/sent", channel_handler, #{action => sent_invitations}},
+        % 订单相关 API（付费频道）
+        {"/v1/channel/:channel_id/order", channel_handler, #{action => create_order}},
+        {"/v1/channel/order/pay", channel_handler, #{action => pay_order}},
+        {"/v1/channel/orders/my", channel_handler, #{action => my_orders}},
+        {"/v1/channel/order/:order_no", channel_handler, #{action => get_order}},
+
+        % 群文件管理 API
+        {"/v1/group/file/upload", group_file_handler, #{action => upload}},
+        {"/v1/group/file/download", group_file_handler, #{action => download}},
+        {"/v1/group/file/list", group_file_handler, #{action => list}},
+        {"/v1/group/file/delete", group_file_handler, #{action => delete}},
+        {"/v1/group/file/search", group_file_handler, #{action => search}},
+        {"/v1/group/file/categories", group_file_handler, #{action => categories}},
+
+        % 群作业管理 API
+        {"/v1/group/task/create", group_task_handler, #{action => create}},
+        {"/v1/group/task/update", group_task_handler, #{action => update}},
+        {"/v1/group/task/assign", group_task_handler, #{action => assign}},
+        {"/v1/group/task/submit", group_task_handler, #{action => submit}},
+        {"/v1/group/task/review", group_task_handler, #{action => review}},
+        {"/v1/group/task/list", group_task_handler, #{action => list}},
+        {"/v1/group/task/detail", group_task_handler, #{action => detail}},
+        {"/v1/group/task/my", group_task_handler, #{action => my_tasks}},
+        {"/v1/group/task/pending", group_task_handler, #{action => pending_review}}
     ],
 
     % Admin routes (原 imadm)
@@ -296,6 +459,29 @@ get_routes() ->
         {"/adm/passport/login", adm_passport_handler, #{action => login}},
         {"/adm/passport/captcha", adm_passport_handler, #{action => captcha}},
         {"/adm/passport/do_login", adm_passport_handler, #{action => do_login}},
+        % 用户管理 API
+        {"/adm/user/list", adm_user_handler, #{action => list}},
+        {"/adm/user/detail", adm_user_handler, #{action => detail}},
+        {"/adm/user/ban", adm_user_handler, #{action => ban}},
+        {"/adm/user/unban", adm_user_handler, #{action => unban}},
+        {"/adm/user/search", adm_user_handler, #{action => search}},
+        % 群组管理 API
+        {"/adm/group/list", adm_group_handler, #{action => list}},
+        {"/adm/group/detail", adm_group_handler, #{action => detail}},
+        {"/adm/group/dissolve", adm_group_handler, #{action => dissolve}},
+        {"/adm/group/search", adm_group_handler, #{action => search}},
+        {"/adm/group/members", adm_group_handler, #{action => members}},
+        % 频道管理 API
+        {"/adm/channel/list", adm_channel_handler, #{action => list}},
+        {"/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
+        {"/adm/channel/search", adm_channel_handler, #{action => search}},
+        {"/adm/channel/delete", adm_channel_handler, #{action => delete}},
+        % 统计 API
+        {"/adm/stats/overview", adm_stats_handler, #{action => overview}},
+        {"/adm/stats/user", adm_stats_handler, #{action => user}},
+        {"/adm/stats/message", adm_stats_handler, #{action => message}},
+        {"/adm/stats/group", adm_stats_handler, #{action => group}},
+        {"/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
         {"/static/admin/[...]", cowboy_static, {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],
     [{Host, MainRoutes ++ ApiV1Routes ++ AdmRoutes}].
@@ -360,6 +546,11 @@ open() ->
      <<"/v1/passport/getcode">>,
      <<"/v1/passport/findpassword">>,
      <<"/v1/passport/bind_mail">>,
+     <<"/v1/passport/qr_login/create">>,
+     <<"/v1/passport/qr_login/status">>,
+     <<"/v1/passport/qr_login/scan">>,
+     <<"/v1/passport/qr_login/confirm">>,
+     <<"/v1/passport/qr_login/cancel">>,
      <<"/v1/auth/assets">>,
 
      <<"/">>].

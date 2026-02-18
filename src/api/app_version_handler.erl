@@ -58,8 +58,9 @@ init(Req0, State0) ->
 check(<<"GET">>, Req0, _State) ->
     Cos = cowboy_req:header(<<"cos">>, Req0, <<"web">>),
     % elib_log:info(Cos),
-    #{vsn := Vsn} = cowboy_req:match_qs([{vsn, [], <<>>}], Req0),
-    #{region_code := RegionCode} = cowboy_req:match_qs([{region_code, [], <<>>}], Req0),
+    Qs0 = cowboy_req:parse_qs(Req0),
+    Vsn = proplists:get_value(<<"vsn">>, Qs0, <<>>),
+    RegionCode = proplists:get_value(<<"region_code">>, Qs0, <<>>),
 
     Res = app_version_repo:find(Cos, RegionCode),
     % ?DEBUG_LOG([Res]),

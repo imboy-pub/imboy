@@ -11,12 +11,16 @@
 -export([c2c_edit_ack/3]).
 -export([c2c_read/3]).
 -export([c2c_read_ack/3]).
+-export([extract_reply_info/1]).
 
 -include("chat.hrl").
 -include("log.hrl").
+-include("error_code.hrl").
+
+-define(REVOKE_TIMEOUT_MS, 120000). % 2分钟
 
 %% 抑制 Dialyzer 警告 - 内部辅助函数
--dialyzer({nowarn_function, [c2c/3, prepare_c2c_data/2, stage_and_send_c2c/10]}).
+-dialyzer({nowarn_function, [c2c/3, prepare_c2c_data/2, stage_and_send_c2c/11]}).
 
 %% ===================================================================
 %% API
@@ -34,7 +38,7 @@ c2c(MsgId, CurrentUid, Data) ->
     case {IsFriend, InDenylist} of
         {true, false} ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
-            stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Timestamps, CurrentUid);
+            stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Timestamps, CurrentUid, Data);
         {_, InDenylist2} when InDenylist2 > 0 ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
             {reply, Msg};
@@ -73,9 +77,9 @@ prepare_c2c_data(CurrentUid, Data) ->
 
 %% @doc 备份并发送单聊消息
 %% @private
--spec stage_and_send_c2c(binary(), binary(), integer(), binary(), binary(), binary(), binary(), map(), map(), integer()) ->
+-spec stage_and_send_c2c(binary(), binary(), integer(), binary(), binary(), binary(), binary(), map(), map(), integer(), map()) ->
           ok | {reply, map()}.
-stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid) ->
+stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid, Data) ->
     #{now_ts := NowTs, now_ms := NowMS, created_at_rfc := CreatedAtRfc} = Timestamps,
 
     % 【修复】将 Payload map 编码成 JSON binary
@@ -84,10 +88,29 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
         Bin when is_binary(Bin) -> Payload
     end,
 
+    % 提取引用回复信息
+    {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
+
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
-    StageResult = msg_store_ds:stage(
-        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
-        CurrentUid, ToId, CreatedAtRfc, NowTs),
+    StageResult = case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
+        {<<>>, <<>>, <<>>} ->
+            % 没有引用信息，使用常规方式
+            msg_store_ds:stage(
+                <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
+                CurrentUid, ToId, CreatedAtRfc, NowTs);
+        _ ->
+            % 有引用信息，需要先验证被引用的消息是否存在
+            case msg_c2c_repo:find_msg_by_id(ReplyToMsgId) of
+                {ok, _OriginalMsg} ->
+                    msg_store_ds:stage(
+                        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
+                        CurrentUid, ToId, CreatedAtRfc, NowTs);
+                {error, not_found} ->
+                    % 被引用的消息不存在，返回错误
+                    self() ! {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)},
+                    error
+            end
+    end,
 
     elib_log:info(["stage_and_send_c2c", StageResult]),
     case StageResult of
@@ -102,24 +125,35 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
             % 异步处理：入队 + 投递消息（带重试）
             elib_async:async_retry(fun() ->
                 % ① 先入队（异步，立即返回）
-                msg_store_ds:enqueue(<<"c2c">>, MsgId, #{
+                EnqueueData = #{
                     payload => Payload,
                     from_id => CurrentUid,
                     to_id => ToId,
                     created_at => CreatedAtRfc,
                     server_ts => NowTs
-                }),
+                },
+                msg_store_ds:enqueue(<<"c2c">>, MsgId, EnqueueData),
 
-                % ② 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
+                % ② 如果有引用信息，使用 write_msg_with_reply 存储
+                case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
+                    {<<>>, <<>>, <<>>} ->
+                        % 没有引用信息，使用常规入队
+                        ok;
+                    _ ->
+                        % 有引用信息，存储到数据库
+                        msg_c2c_ds:write_msg_with_reply(
+                            NowTs, MsgId, PayloadJson, CurrentUid, ToId, CreatedAtRfc,
+                            MsgType, E2EE, ReplyToMsgId, ReplyToFromId, ReplySnippet)
+                end,
+
+                % ③ 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
                 Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE),
                 imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>)
             end, 3, 1000),
             ok;
         error ->
-            % 备份失败，记录错误并返回失败
-            ok = ?ERROR_LOG("[C2C_STAGE_FAILED] MsgId=~s, FromUid=~p, ToUid=~p~n",
-                       [MsgId, CurrentUid, ToId]),
-            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+            % 已经在上面处理了错误响应
+            ok
     end.
 
 
@@ -145,49 +179,77 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
         true ->
             %% 【新增】检查消息是否存在
             case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
-                {ok, #{<<"from_id">> := FromId}} ->
-                    NowMs = elib_dt:millisecond(),
-                    NowTs = elib_dt:now(),
+                {ok, MsgData} ->
+                    %% 【新增】检查消息撤回时间限制
+                    case MsgData of
+                        #{<<"from_id">> := FromId} ->
+                            CreatedAt = maps:get(<<"created_at">>, MsgData),
+                            NowMs = elib_dt:millisecond(),
 
-                    % 构建撤销确认消息（v2.0 格式）
-                    %% msg_type 和 action 在顶层，不在 payload 中
-                    RevokePayload = #{
-                        <<"content">> => <<>>,
-                        <<"original_msg_id">> => OriginalMsgId,
-                        <<"revoked_at">> => NowMs
-                    },
+                            % 检查是否超过撤回时间限制（2分钟）
+                            case NowMs - CreatedAt > ?REVOKE_TIMEOUT_MS of
+                                true ->
+                                    % 超过撤回时间限制
+                                    ErrorMsg = #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2C">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"msg_type">> => <<"custom">>,
+                                        <<"action">> => <<"message_revoke_error">>,
+                                        <<"payload">> => #{
+                                            <<"content">> => <<>>,
+                                            <<"original_msg_id">> => OriginalMsgId,
+                                            <<"error">> => <<"超过撤回时间限制(2分钟)"/utf8>>,
+                                            <<"code">> => ?ERR_REVOKE_TIMEOUT
+                                        },
+                                        <<"server_ts">> => NowMs
+                                    },
+                                    {reply, ErrorMsg};
+                                false ->
+                                    % 未超过时间限制，继续原有逻辑
+                                    NowTs = elib_dt:now(),
 
-                    RevokeMsg = #{
-                        <<"id">> => MsgId,
-                        <<"type">> => <<"C2C">>,
-                        <<"from">> => From,
-                        <<"to">> => To,
-                        <<"msg_type">> => <<"custom">>,
-                        <<"action">> => <<"message_revoke_ack">>,
-                        <<"payload">> => RevokePayload,
-                        <<"server_ts">> => NowMs
-                    },
+                                    % 构建撤销确认消息（v2.0 格式）
+                                    %% msg_type 和 action 在顶层，不在 payload 中
+                                    RevokePayload = #{
+                                        <<"content">> => <<>>,
+                                        <<"original_msg_id">> => OriginalMsgId,
+                                        <<"revoked_at">> => NowMs
+                                    },
 
-                    % 判断对方是否在线
-                    case user_logic:is_online(ToId) of
-                        true ->
-                            imboy_message_helper:encode_and_send(ToId, MsgId, RevokeMsg, <<"c2s">>),
-                            ok;
-                        false ->  % 对端离线处理
+                                    RevokeMsg = #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2C">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"msg_type">> => <<"custom">>,
+                                        <<"action">> => <<"message_revoke_ack">>,
+                                        <<"payload">> => RevokePayload,
+                                        <<"server_ts">> => NowMs
+                                    },
 
-                            % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
-                            case msg_c2c_ds:revoke_offline_msg(RevokePayload, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>, null) of
-                                ok -> ok;
-                                {error, _} -> ok
-                            end
-                    end,
-                    {reply, RevokeMsg};
-                {ok, _} ->
-                    %% 消息不属于当前用户
-                    ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
-                    {reply, ErrorMsg};
-                {error, not_found} ->
-                    %% 消息不存在
+                                    % 判断对方是否在线
+                                    case user_logic:is_online(ToId) of
+                                        true ->
+                                            imboy_message_helper:encode_and_send(ToId, MsgId, RevokeMsg, <<"c2s">>),
+                                            ok;
+                                        false ->  % 对端离线处理
+                                            % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
+                                            case msg_c2c_ds:revoke_offline_msg(RevokePayload, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>, null) of
+                                                ok -> ok;
+                                                {error, _} -> ok
+                                            end
+                                    end,
+                                    {reply, RevokeMsg}
+                            end;
+                        #{<<"from_id">> := _OtherId} ->
+                            %% 消息不属于当前用户
+                            ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
+                            {reply, ErrorMsg}
+                    end;
+                _ ->
+                    %% 消息不存在或格式错误
                     ErrorMsg = message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To),
                     {reply, ErrorMsg}
             end;
@@ -196,7 +258,6 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
             {reply, ErrorMsg}
     end.
-
 %% 客户端撤回消息确认 for c2c
 -spec c2c_revoke_ack(binary(), integer(), Data :: map()) -> ok.
 c2c_revoke_ack(MsgId, CurrentUid, Data) ->
@@ -411,3 +472,53 @@ c2c_read_ack(MsgId, CurrentUid, Data) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 从消息数据中提取引用回复信息
+%% @param Data 消息数据
+%% @return {ReplyToMsgId, ReplyToFromId, ReplySnippet}
+-spec extract_reply_info(map()) -> {binary(), integer(), binary()}.
+extract_reply_info(Data) ->
+    case maps:get(<<"reply_to">>, Data, undefined) of
+        undefined ->
+            {<<>>, 0, <<>>};
+        ReplyTo when is_map(ReplyTo) ->
+            ReplyToMsgId = maps:get(<<"msg_id">>, ReplyTo, <<>>),
+            ReplyToFromIdBin = maps:get(<<"from_id">>, ReplyTo, <<>>),
+            ReplyToFromId = elib_hashids:decode(ReplyToFromIdBin),
+
+            % 从被引用的消息中提取摘要
+            ReplySnippet = case ReplyToMsgId of
+                <<>> -> <<>>;
+                _ ->
+                    case msg_c2c_repo:find_msg_by_id(ReplyToMsgId) of
+                        {ok, OriginalMsg} ->
+                            Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
+                            % 尝试解析 JSON 并提取 content 字段
+                            try jsone:decode(Payload) of
+                                PayloadMap when is_map(PayloadMap) ->
+                                    Content = maps:get(<<"content">>, PayloadMap, <<>>),
+                                    % 截取前50个字符作为摘要
+                                    Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
+                                    case byte_size(Content) > 50 of
+                                        true -> <<Snippet/binary, "..."/utf8>>;
+                                        false -> Snippet
+                                    end;
+                                _ ->
+                                    <<>>
+                            catch
+                                _:_ ->
+                                    % 如果解析失败，截取原始 payload 的前50个字符
+                                    Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
+                                    case byte_size(Payload) > 50 of
+                                        true -> <<Snippet/binary, "..."/utf8>>;
+                                        false -> Snippet
+                                    end
+                            end;
+                        _ ->
+                            <<>>
+                    end
+            end,
+            {ReplyToMsgId, ReplyToFromId, ReplySnippet};
+        _ ->
+            {<<>>, 0, <<>>}
+    end.

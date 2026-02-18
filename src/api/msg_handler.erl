@@ -7,12 +7,17 @@
            {nowarn_function, get_c2g_msg_count/2},
            {nowarn_function, get_s2c_msg_count/2},
            {nowarn_function, offline_ack/2},
-           {nowarn_function, process_offline_ack/3}]).
-
+           {nowarn_function, process_offline_ack/3},
+           {nowarn_function, forward/2},
+           {nowarn_function, reaction_add/2},
+           {nowarn_function, reaction_remove/2},
+           {nowarn_function, reaction_list/2}]).
+           
 -export([init/2]).
 
 -include("log.hrl").
 -include("error_code.hrl").
+-include("chat.hrl").
 
 %% ===================================================================
 %% API
@@ -36,6 +41,18 @@ init(Req0, State0) ->
                 offline(Req0, State);
             offline_ack ->
                 offline_ack(Req0, State);
+            read_stats ->
+                read_stats(Req0, State);
+            pin ->
+                pin(Req0, State);
+            forward ->
+                forward(Req0, State);
+            reaction_add ->
+                reaction_add(Req0, State);
+            reaction_remove ->
+                reaction_remove(Req0, State);
+            reaction_list ->
+                reaction_list(Req0, State);
             false ->
                 Req0
         end,
@@ -298,4 +315,281 @@ process_offline_ack(Uid, Type, MsgIds) ->
             {ok, Count};
         _ ->
             {error, <<"unsupported_message_type">>}
+    end.
+
+%% @doc 处理群消息已读统计请求
+%% 获取指定群消息的已读人数和总人数
+%%
+%% @param Req0 Cowboy请求对象，包含 msg_id 参数
+%% @param State 状态映射，包含 current_uid
+%% @return 返回已读统计信息
+%% @end
+-spec read_stats(cowboy_req:req(), map()) -> cowboy_req:req().
+read_stats(Req0, State) ->
+    % 获取查询参数
+    MsgId = cowboy_req:qs_val(<<"msg_id">>, Req0, undefined),
+
+    case MsgId of
+        undefined ->
+            % 参数错误
+            elib_response:error(Req0, <<"缺少 msg_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            % 安全获取 current_uid
+            case maps:get(current_uid, State, undefined) of
+                undefined ->
+                    elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+                CurrentUid ->
+                    % 调用逻辑层处理
+                    case msg_c2g_logic:read_stats(MsgId, CurrentUid) of
+                        {ok, ReadCount, TotalCount} ->
+                            Payload = #{
+                                <<"read_count">> => ReadCount,
+                                <<"total_count">> => TotalCount
+                            },
+                            elib_response:success(Req0, Payload);
+                        {error, not_found} ->
+                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
+                        {error, permission_denied} ->
+                            elib_response:error(Req0, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED);
+                        {error, Reason} ->
+                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
+    end.
+
+%% @doc 处理消息置顶请求
+%% 设置消息的置顶状态
+%%
+%% @param Req0 Cowboy请求对象，包含消息ID和置顶状态
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec pin(cowboy_req:req(), map()) -> cowboy_req:req().
+pin(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            % 获取请求参数
+            {ok, Body} = elib_req:body(Req0, []),
+            MsgId = maps:get(<<"msg_id">>, Body, undefined),
+            Pinned = maps:get(<<"pinned">>, Body, undefined),
+
+            % 参数验证
+            case {MsgId, Pinned} of
+                {undefined, _} ->
+                    elib_response:error(Req0, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, undefined} ->
+                    elib_response:error(Req0, <<"缺少置顶状态参数"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                  % 调用逻辑层处理置顶操作
+                    case Pinned of
+                        true ->
+                            case msg_pinned_logic:pin(MsgId, CurrentUid) of
+                                ok ->
+                                    Payload = #{
+                                        <<"msg_id">> => MsgId,
+                                        <<"pinned">> => true
+                                    },
+                                    elib_response:success(Req0, Payload, <<"置顶成功"/utf8>>);
+                                {error, not_found} ->
+                                    elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
+                                {error, Reason} ->
+                                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                            end;
+                        false ->
+                            case msg_pinned_logic:unpin(MsgId, CurrentUid) of
+                                ok ->
+                                    Payload = #{
+                                        <<"msg_id">> => MsgId,
+                                        <<"pinned">> => false
+                                    },
+                                    elib_response:success(Req0, Payload, <<"取消置顶成功"/utf8>>);
+                                {error, not_found} ->
+                                    elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
+                                {error, Reason} ->
+                                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                            end
+                    end
+            end
+    end.
+
+%% @doc 处理消息转发请求
+%% 转发一条或多条消息到指定会话
+%%
+%% @param Req0 Cowboy请求对象，包含消息ID列表和目标会话信息
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec forward(cowboy_req:req(), map()) -> cowboy_req:req().
+forward(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            % 获取请求参数
+            {ok, Body} = elib_req:body(Req0, []),
+            MsgIds = maps:get(<<"msg_ids">>, Body, []),
+            To = maps:get(<<"to">>, Body, undefined),
+            ToType = maps:get(<<"to_type">>, Body, undefined),
+
+            % 参数验证
+            case {MsgIds, To, ToType} of
+                {[], _, _} ->
+                    elib_response:error(Req0, <<"缺少消息ID列表参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, undefined, _} ->
+                    elib_response:error(Req0, <<"缺少目标会话ID参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, _, undefined} ->
+                    elib_response:error(Req0, <<"缺少目标类型参数"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    % 解码目标ID
+                    ToId = elib_hashids:decode(To),
+
+                    % 调用逻辑层处理转发
+                    case msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType) of
+                        {ok, ForwardMsgIds} ->
+                            Payload = #{
+                                <<"msg">> => <<"messages_forwarded">>,
+                                <<"forward_msg_ids">> => ForwardMsgIds,
+                                <<"forward_count">> => length(ForwardMsgIds)
+                            },
+                            elib_response:success(Req0, Payload, <<"转发成功"/utf8>>);
+                        {error, {invalid_param, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                        {error, {not_friends, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_NOT_FRIENDS);
+                        {error, {not_group_member, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_NOT_GROUP_MEMBER);
+                        {error, {in_denylist, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_FORBIDDEN);
+                        {error, {permission_denied, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_ACCESS_DENIED);
+                        {error, {msg_not_found, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_MESSAGE_NOT_FOUND);
+                        {error, Reason} ->
+                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
+    end.
+
+%% @doc 处理添加表情回应请求
+%% 添加表情到指定消息
+%%
+%% @param Req0 Cowboy请求对象，包含消息ID和emoji
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec reaction_add(cowboy_req:req(), map()) -> cowboy_req:req().
+reaction_add(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            % 获取请求参数
+            {ok, Body} = elib_req:body(Req0, []),
+            MsgId = maps:get(<<"msg_id">>, Body, undefined),
+            MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
+            Emoji = maps:get(<<"emoji">>, Body, undefined),
+
+            % 参数验证
+            case {MsgId, Emoji} of
+                {undefined, _} ->
+                    elib_response:error(Req0, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, undefined} ->
+                    elib_response:error(Req0, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, <<>>} ->
+                    elib_response:error(Req0, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    % 调用逻辑层处理
+                    case msg_reaction_logic:add(MsgId, MsgType, CurrentUid, Emoji) of
+                        {ok, Result} ->
+                            Payload = #{
+                                <<"msg_id">> => MsgId,
+                                <<"emoji">> => Emoji,
+                                <<"user_id">> => maps:get(<<"user_id">>, Result),
+                                <<"created_at">> => maps:get(<<"created_at">>, Result)
+                            },
+                            elib_response:success(Req0, Payload, <<"添加表情成功"/utf8>>);
+                        {error, {invalid_param, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                        {error, msg_not_found} ->
+                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND);
+                        {error, permission_denied} ->
+                            elib_response:error(Req0, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED);
+                        {error, not_group_member} ->
+                            elib_response:error(Req0, <<"不是群成员"/utf8>>, ?ERR_NOT_GROUP_MEMBER);
+                        {error, Reason} ->
+                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
+    end.
+
+%% @doc 处理移除表情回应请求
+%% 从指定消息移除表情
+%%
+%% @param Req0 Cowboy请求对象，包含消息ID和emoji
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec reaction_remove(cowboy_req:req(), map()) -> cowboy_req:req().
+reaction_remove(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            % 获取请求参数
+            {ok, Body} = elib_req:body(Req0, []),
+            MsgId = maps:get(<<"msg_id">>, Body, undefined),
+            MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
+            Emoji = maps:get(<<"emoji">>, Body, undefined),
+
+            % 参数验证
+            case {MsgId, Emoji} of
+                {undefined, _} ->
+                    elib_response:error(Req0, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, undefined} ->
+                    elib_response:error(Req0, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, <<>>} ->
+                    elib_response:error(Req0, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    % 调用逻辑层处理
+                    case msg_reaction_logic:remove(MsgId, MsgType, CurrentUid, Emoji) of
+                        ok ->
+                            Payload = #{
+                                <<"msg_id">> => MsgId,
+                                <<"emoji">> => Emoji
+                            },
+                            elib_response:success(Req0, Payload, <<"移除表情成功"/utf8>>);
+                        {error, msg_not_found} ->
+                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND);
+                        {error, Reason} ->
+                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
+    end.
+
+%% @doc 处理查询表情列表请求
+%% 查询指定消息的所有表情
+%%
+%% @param Req0 Cowboy请求对象，包含消息ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回处理结果响应
+%% @end
+-spec reaction_list(cowboy_req:req(), map()) -> cowboy_req:req().
+reaction_list(Req0, _State) ->
+    % 获取查询参数
+    MsgId = cowboy_req:qs_val(<<"msg_id">>, Req0, undefined),
+    MsgType = cowboy_req:qs_val(<<"msg_type">>, Req0, <<"c2c">>),
+
+    case MsgId of
+        undefined ->
+            elib_response:error(Req0, <<"缺少 msg_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            % 调用逻辑层处理
+            case msg_reaction_logic:list(MsgId, MsgType) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result);
+                {error, Reason} ->
+                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+            end
     end.

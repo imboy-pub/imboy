@@ -71,6 +71,7 @@
 %% 423 Locked - 资源被锁定
 -define(ERR_LOCKED, 423).                         % 资源被锁定
 -define(ERR_ACCOUNT_LOCKED, 423).                 % 账号已锁定
+-define(ERR_REVOKE_TIMEOUT, 409).                 % 消息撤回超时
 %% 429 Too Many Requests - 请求过于频繁
 -define(ERR_TOO_MANY_REQUESTS, 429).              % 请求过于频繁
 -define(ERR_OPERATION_TOO_FREQUENT, 429).         % 操作过于频繁
@@ -132,6 +133,24 @@
 %% 文件相关
 -define(ERR_FILE_UPLOAD_FAILED, 950).             % 文件上传失败
 -define(ERR_FILE_DOWNLOAD_FAILED, 951).           % 文件下载失败
+-define(ERR_FILE_NOT_FOUND, 952).                 % 文件不存在
+-define(ERR_FILE_TYPE_NOT_ALLOWED, 953).          % 不允许的文件类型
+-define(ERR_FILE_DELETE_FAILED, 955).             % 文件删除失败
+-define(ERR_FILE_STORAGE_FULL, 956).              % 群文件存储空间已满
+
+%% ===================================================================
+%% 相册相关错误（960-969）
+%% ===================================================================
+
+-define(ERR_ALBUM_NOT_FOUND, 960).                % 相册不存在
+-define(ERR_ALBUM_NAME_INVALID, 961).             % 相册名称无效
+-define(ERR_ALBUM_ALREADY_EXISTS, 962).           % 相册已存在
+-define(ERR_PHOTO_NOT_FOUND, 963).                % 图片不存在
+-define(ERR_PHOTO_UPLOAD_FAILED, 964).            % 图片上传失败
+-define(ERR_PHOTO_TYPE_INVALID, 965).             % 图片类型无效
+-define(ERR_PHOTO_SIZE_EXCEEDED, 966).            % 图片大小超出限制
+-define(ERR_ALBUM_PERMISSION_DENIED, 967).        % 相册权限不足
+-define(ERR_PHOTO_ALREADY_LIKED, 968).            % 已点赞该图片
 
 %% ===================================================================
 %% E2EE 密钥恢复相关错误（5000-5099）
@@ -197,6 +216,29 @@
 -define(ERR_DEVICE_SESSION_EXPIRED, 5104).         % 设备会话已过期
 
 %% ===================================================================
+%% 群作业相关错误（5300-5399）
+%% ===================================================================
+
+-define(ERR_TASK_NOT_FOUND, 5300).                 % 作业不存在
+-define(ERR_TASK_TITLE_REQUIRED, 5301).            % 作业标题必填
+-define(ERR_TASK_ALREADY_SUBMITTED, 5302).         % 作业已提交
+-define(ERR_TASK_ASSIGNMENT_NOT_FOUND, 5303).      % 作业分配不存在
+-define(ERR_TASK_ALREADY_REVIEWED, 5304).          % 作业已批改
+-define(ERR_TASK_DEADLINE_PASSED, 5305).           % 作业已过期
+-define(ERR_TASK_PERMISSION_DENIED, 5306).         % 作业权限不足
+
+%% ===================================================================
+%% QR 码登录相关错误（5200-5219）
+%% ===================================================================
+
+-define(ERR_INVALID_QR_TOKEN, 5200).               % 无效的二维码
+-define(ERR_QR_LOGIN_EXPIRED, 5201).               % 二维码已过期
+-define(ERR_QR_LOGIN_CANCELLED, 5202).             % 登录已取消
+-define(ERR_QR_LOGIN_ALREADY_USED, 5203).          % 二维码已使用
+-define(ERR_QR_LOGIN_NOT_SCANNED, 5204).           % 二维码未被扫描
+-define(ERR_QR_LOGIN_DEVICE_LIMIT, 5205).          % 设备数量达到上限
+
+%% ===================================================================
 %% 辅助函数
 %% ===================================================================
 
@@ -250,6 +292,20 @@
     942 => <<"消息不存在"/utf8>>,
     950 => <<"文件上传失败"/utf8>>,
     951 => <<"文件下载失败"/utf8>>,
+    952 => <<"文件不存在"/utf8>>,
+    953 => <<"不允许的文件类型"/utf8>>,
+    954 => <<"文件大小超出限制"/utf8>>,
+    955 => <<"文件删除失败"/utf8>>,
+    956 => <<"群文件存储空间已满"/utf8>>,
+    960 => <<"相册不存在"/utf8>>,
+    961 => <<"相册名称无效"/utf8>>,
+    962 => <<"相册已存在"/utf8>>,
+    963 => <<"图片不存在"/utf8>>,
+    964 => <<"图片上传失败"/utf8>>,
+    965 => <<"图片类型无效"/utf8>>,
+    966 => <<"图片大小超出限制"/utf8>>,
+    967 => <<"相册权限不足"/utf8>>,
+    968 => <<"已点赞该图片"/utf8>>,
     5000 => <<"无效的传输会话"/utf8>>,
     5001 => <<"传输会话已过期"/utf8>>,
     5002 => <<"传输会话不存在"/utf8>>,
@@ -293,5 +349,12 @@
     5101 => <<"设备会话已被踢出，请重新登录"/utf8>>,
     5102 => <<"同类型设备已登录，请确认是否踢出旧设备"/utf8>>,
     5103 => <<"设备不存在"/utf8>>,
-    5104 => <<"设备会话已过期"/utf8>>
+    5104 => <<"设备会话已过期"/utf8>>,
+    5300 => <<"作业不存在"/utf8>>,
+    5301 => <<"作业标题必填"/utf8>>,
+    5302 => <<"作业已提交，无法修改"/utf8>>,
+    5303 => <<"作业分配不存在"/utf8>>,
+    5304 => <<"作业已批改，无法修改"/utf8>>,
+    5305 => <<"作业已过期，无法提交"/utf8>>,
+    5306 => <<"无权限操作此作业"/utf8>>
 }).

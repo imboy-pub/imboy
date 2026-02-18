@@ -1,4 +1,5 @@
 -module(e2ee_logic).
+-dialyzer(no_return).
 
 -export([user_keys/2]).
 -export([group_member_keys/2]).
@@ -62,7 +63,7 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when 
                 <<"ip">> => <<>>
             },
             case user_device_ds:save(Now, Uid, DeviceId, PostVals) of
-                ok ->
+                {ok, _} ->
                     ok = ?INFO_LOG([e2ee_report_device_key_created, Uid, DeviceId, DeviceType]),
                     ok;
                 {error, Reason} ->

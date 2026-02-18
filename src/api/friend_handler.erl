@@ -156,9 +156,11 @@ move(Req0, State) ->
 -spec information(cowboy_req:req(), map()) -> cowboy_req:req().
 information(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    case cowboy_req:match_qs([{type, [], undefined}], Req0) of
-        #{type := <<"friend">>} ->
+    Qs = cowboy_req:parse_qs(Req0),
+    Uid = proplists:get_value(<<"id">>, Qs, undefined),
+    Type = proplists:get_value(<<"type">>, Qs, undefined),
+    case Type of
+        <<"friend">> ->
             Column = <<"id, nickname, account,gender, experience, avatar, sign">>,
             User = user_logic:find_by_id(Uid, Column),
             % ?DEBUG_LOG(User),
@@ -166,7 +168,7 @@ information(Req0, State) ->
             % ?DEBUG_LOG([UserSetting, Uid]),
             Payload = information_transfer(CurrentUid, <<"friend">>, User, UserSetting),
             elib_response:success(Req0, Payload);
-        #{type := <<"group">>} ->
+        <<"group">> ->
             elib_response:success(Req0, #{});
         _ ->
             elib_response:success(Req0, #{})

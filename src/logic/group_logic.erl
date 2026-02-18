@@ -11,9 +11,14 @@
 -export([face2face_save/3]).
 -export([add/4]).
 -export([dissolve/4]).
+-export([transfer/3]).
+-export([transfer/4]).           % 增强的转让函数，支持保留管理员身份
+-export([do_transfer/5]).
+-export([do_transfer/6]).        % 增强的转让函数内部实现
 -export([nearby_gid/6]).
 
 -include("log.hrl").
+-include("group_role.hrl").
 
 %% @doc 转换群组数据中的 ID 字段为 HashID 格式
 %% @param G 群组数据映射
@@ -120,6 +125,79 @@ add(_, Uid, Type, MemberUids) ->
 dissolve(Uid, Gid, OwnerUid, G) ->
     group_ds:dissolve_group(Uid, Gid, OwnerUid, G).
 
+%% @doc 群转让
+%% 将群组转让给指定的新群主
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @param NewOwnerUid 新群主ID
+%% @return ok | {error, Reason}
+-spec transfer(integer(), integer(), integer()) -> ok | {error, binary()}.
+transfer(CurrentUid, Gid, NewOwnerUid) ->
+    case group_repo:find_by_id(Gid, <<"*">>) of
+        {error, _Reason} ->
+            {error, "群组不存在"};
+        G ->
+            OwnerUid = maps:get(<<"owner_uid">>, G, 0),
+            case do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, G) of
+                ok -> ok;
+                {error, Msg} -> {error, Msg}
+            end
+    end.
+
+%% @doc 执行群转让
+%% 验证权限并更新群组所有权
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @param NewOwnerUid 新群主ID
+%% @param OwnerUid 原群主ID
+%% @param G 群组信息
+%% @return ok | {error, Reason}
+-spec do_transfer(integer(), integer(), integer(), integer(), map()) -> ok | {error, binary()}.
+do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
+    % 验证当前用户是群主
+    case CurrentUid of
+        OwnerUid ->
+            % 验证新群主是群成员
+            case group_member_repo:find(Gid, NewOwnerUid, <<"id">>) of
+                #{id := _} ->
+                    % 使用事务更新群主和双方角色
+                    elib_pg:with_tx(fun(Conn) ->
+                        case group_repo:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                            ok ->
+                                case group_member_repo:update_role(Conn, Gid, OwnerUid, <<"normal">>) of
+                                    ok ->
+                                        case group_member_repo:update_role(Conn, Gid, NewOwnerUid, <<"owner">>) of
+                                            ok ->
+                                                % 记录群转让日志
+                                                Now = elib_dt:now(),
+                                                LogData = #{
+                                                    <<"type">> => 9,  % 群转让操作类型
+                                                    <<"option_uid">> => CurrentUid,
+                                                    <<"group_id">> => Gid,
+                                                    <<"body">> => jsone:encode(#{<<"from_owner_uid">> => OwnerUid,
+                                                                                <<"to_owner_uid">> => NewOwnerUid,
+                                                                                <<"changed_by">> => CurrentUid,
+                                                                                <<"remark">> => <<"群转让"/utf8>>}),
+                                                    <<"created_at">> => Now
+                                                },
+                                                _ = group_log_repo:add(Conn, LogData),
+                                                ok;
+                                            {error, Reason} -> {error, Reason}
+                                        end;
+                                    {error, Reason} -> {error, Reason}
+                                end;
+                            {error, Reason} -> {error, Reason}
+                        end
+                    end);
+                _ ->
+                    {error, "新群主必须是群成员"}
+            end;
+        _ ->
+            {error, "只有群主可以转让群组"}
+    end.
+
 %% @doc 查询附近的群组
 %% 基于地理位置查询附近的群组
 %% @param Lng 经度
@@ -139,6 +217,88 @@ dissolve(Uid, Gid, OwnerUid, G) ->
 nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
     % 使用 DS 层接口
     group_ds:nearby_gid(Lng, Lat, Radius, Unit, Limit, Code).
+
+%% @doc 群转让（增强版，支持保留管理员身份）
+%% 将群组转让给指定的新群主，可选择是否保留原群主的管理员身份
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @param NewOwnerUid 新群主ID
+%% @param KeepAsAdmin 是否保留原群主为管理员（true=保留为副群主，false=变为普通成员）
+%% @return ok | {error, Reason}
+-spec transfer(integer(), integer(), integer(), boolean()) -> ok | {error, binary()}.
+transfer(CurrentUid, Gid, NewOwnerUid, KeepAsAdmin) when is_boolean(KeepAsAdmin) ->
+    case group_repo:find_by_id(Gid, <<"*">>) of
+        {error, _Reason} ->
+            {error, "群组不存在"};
+        G ->
+            OwnerUid = maps:get(<<"owner_uid">>, G, 0),
+            case do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, G) of
+                ok -> ok;
+                {error, Msg} -> {error, Msg}
+            end
+    end.
+
+%% @doc 执行群转让（增强版）
+%% 验证权限并更新群组所有权，支持保留原群主身份
+%%
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @param NewOwnerUid 新群主ID
+%% @param OwnerUid 原群主ID
+%% @param KeepAsAdmin 是否保留原群主为管理员
+%% @param G 群组信息
+%% @return ok | {error, Reason}
+-spec do_transfer(integer(), integer(), integer(), integer(), boolean(), map()) -> ok | {error, binary()}.
+do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
+    % 验证当前用户是群主
+    case CurrentUid of
+        OwnerUid ->
+            % 验证新群主是群成员
+            case group_member_repo:find(Gid, NewOwnerUid, <<"id, role">>) of
+                #{<<"id">> := _} ->
+                    % 使用事务更新群主和双方角色
+                    elib_pg:with_tx(fun(Conn) ->
+                        case group_repo:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                            ok ->
+                                % 更新原群主角色
+                                OldOwnerRole = case KeepAsAdmin of
+                                    true  -> ?ROLE_VICE_OWNER;  % 保留为副群主
+                                    false -> ?ROLE_MEMBER       % 变为普通成员
+                                end,
+                                case group_member_repo:update_role(Conn, Gid, OwnerUid, OldOwnerRole) of
+                                    ok ->
+                                        % 更新新群主角色
+                                        case group_member_repo:update_role(Conn, Gid, NewOwnerUid, ?ROLE_OWNER) of
+                                            ok ->
+                                                % 记录群转让日志
+                                                Now = elib_dt:now(),
+                                                LogData = #{
+                                                    <<"type">> => 9,  % 群转让操作类型
+                                                    <<"option_uid">> => CurrentUid,
+                                                    <<"group_id">> => Gid,
+                                                    <<"body">> => jsone:encode(#{<<"from_owner_uid">> => OwnerUid,
+                                                                                        <<"to_owner_uid">> => NewOwnerUid,
+                                                                                        <<"changed_by">> => CurrentUid,
+                                                                                        <<"keep_as_admin">> => KeepAsAdmin,
+                                                                                        <<"remark">> => <<"群转让"/utf8>>}),
+                                                    <<"created_at">> => Now
+                                                },
+                                                _ = group_log_repo:add(Conn, LogData),
+                                                ok;
+                                            {error, Reason} -> {error, Reason}
+                                        end;
+                                    {error, Reason} -> {error, Reason}
+                                end;
+                            {error, Reason} -> {error, Reason}
+                        end
+                    end);
+                _ ->
+                    {error, "新群主必须是群成员"}
+            end;
+        _ ->
+            {error, "只有群主可以转让群组"}
+    end.
 
 %% ===================================================================
 %% EUnit tests.

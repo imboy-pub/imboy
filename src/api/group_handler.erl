@@ -36,8 +36,10 @@ handle_action(add, Req, State) -> add(Req, State);
 handle_action(edit, Req, State) -> edit(Req, State);
 handle_action(dissolve, Req, State) -> dissolve(Req, State);
 handle_action(detail, Req, State) -> detail(Req, State);
+handle_action(transfer, Req, State) -> transfer(Req, State);
 handle_action(page, Req, State) ->
-    #{attr := Attr} = cowboy_req:match_qs([{attr, [], undefined}], Req),
+    Qs0 = cowboy_req:parse_qs(Req),
+    Attr = proplists:get_value(<<"attr">>, Qs0, undefined),
     page(Req, State, Attr);
 handle_action(msg_page, Req, State) -> msg_page(Req, State);
 handle_action(qrcode, Req, State) -> qrcode(Req, State);
@@ -52,7 +54,8 @@ handle_action(false, Req, _State) -> Req.
 %% @end
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
 detail(Req0, _State) ->
-    #{gid := Gid} = cowboy_req:match_qs([{gid, [], <<>>}], Req0),
+    Qs1 = cowboy_req:parse_qs(Req0),
+    Gid = proplists:get_value(<<"gid">>, Qs1, <<>>),
     % 【优化】使用统一的 ID 验证函数
     case imboy_error:validate_id(Req0, Gid) of
         {error, Req} -> Req;
@@ -74,9 +77,10 @@ detail(Req0, _State) ->
 %% @end
 -spec face2face(cowboy_req:req(), map()) -> cowboy_req:req().
 face2face(Req0, State) ->
-    #{longitude := Lng} = cowboy_req:match_qs([{longitude, [], undefined}], Req0),
-    #{latitude := Lat} = cowboy_req:match_qs([{latitude, [], undefined}], Req0),
-    #{code := Code} = cowboy_req:match_qs([{code, [], <<>>}], Req0),
+    Qs2 = cowboy_req:parse_qs(Req0),
+    Lng = proplists:get_value(<<"longitude">>, Qs2, undefined),
+    Lat = proplists:get_value(<<"latitude">>, Qs2, undefined),
+    Code = proplists:get_value(<<"code">>, Qs2, <<>>),
     Uid = maps:get(current_uid, State),
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
@@ -200,10 +204,7 @@ add(Req0, State) ->
                             end
                     end;
                 {error, Msg} ->
-                    elib_response:error(Req0, Msg);
-                {error, _, _} ->
-                    % 处理事务回滚的嵌套错误: {error, throw, Reason}
-                    elib_response:error(Req0, <<"添加群成员失败"/utf8>>)
+                    elib_response:error(Req0, Msg)
             end
     end.
 
@@ -376,7 +377,8 @@ page(Req0, State, <<"join">>) ->
 -spec msg_page(cowboy_req:req(), map()) -> cowboy_req:req().
 msg_page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    #{gid := Gid} = cowboy_req:match_qs([{gid, [], undefined}], Req0),
+    Qs3 = cowboy_req:parse_qs(Req0),
+    Gid = proplists:get_value(<<"gid">>, Qs3, undefined),
     Gid2 = elib_hashids:decode(Gid),
     GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
@@ -413,6 +415,38 @@ msg_page(Req0, State) ->
             elib_response:success(Req0, msg_page_transfer(Payload))
     end.
 
+%% @doc 群转让
+%% 将群组转让给指定的新群主
+%%
+%% @param Req0 Cowboy请求对象，包含群组ID和新群主ID
+%% @param State 状态映射，包含 current_uid
+%% @return 返回成功或错误响应
+%% @end
+-spec transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+transfer(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    Gid2 = elib_hashids:decode(Gid),
+    NewOwnerUid = maps:get(<<"new_owner_uid">>, PostVals, 0),
+    NewOwnerUid2 = elib_hashids:decode(NewOwnerUid),
+
+    case throttle:check(per_hour_once, {group_transfer, Gid2}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, "在处理中，请稍后重试");
+        _ when Gid2 == 0 ->
+            elib_response:error(Req0, "group id 必须");
+        _ when NewOwnerUid2 == 0 ->
+            elib_response:error(Req0, "新群主 id 必须");
+        _ when Gid2 > 0, NewOwnerUid2 > 0 ->
+            case group_logic:transfer(CurrentUid, Gid2, NewOwnerUid2) of
+                ok ->
+                    elib_response:success(Req0, #{<<"gid">> => Gid}, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
 %% @doc 扫描群二维码
 %% 通过扫描群二维码加入群组
 %%
@@ -422,9 +456,10 @@ msg_page(Req0, State) ->
 %% @end
 -spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
 qrcode(Req0, State) ->
-    #{id := Gid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
-    #{exp := ExpiredAt} = cowboy_req:match_qs([{exp, [], undefined}], Req0),
-    #{tk := Tk} = cowboy_req:match_qs([{tk, [], undefined}], Req0),
+    Qs4 = cowboy_req:parse_qs(Req0),
+    Gid = proplists:get_value(<<"id">>, Qs4, undefined),
+    ExpiredAt = proplists:get_value(<<"exp">>, Qs4, undefined),
+    Tk = proplists:get_value(<<"tk">>, Qs4, undefined),
 
     Key = config_ds:get(<<"solidified_key">>),
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),

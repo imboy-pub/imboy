@@ -56,10 +56,11 @@ init(Req0, State0) ->
 %% @end
 -spec bind_mail(cowboy_req:req()) -> cowboy_req:req().
 bind_mail(Req0) ->
-    #{ts := Ts} = cowboy_req:match_qs([{ts, [], <<>>}], Req0),
-    #{tk := Tk} = cowboy_req:match_qs([{tk, [], <<>>}], Req0),
-    #{uin := Uid} = cowboy_req:match_qs([{uin, [], <<>>}], Req0),
-    #{mail := Mail} = cowboy_req:match_qs([{mail, [], <<>>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    Ts = proplists:get_value(<<"ts">>, Qs, <<>>),
+    Tk = proplists:get_value(<<"tk">>, Qs, <<>>),
+    Uid = proplists:get_value(<<"uin">>, Qs, <<>>),
+    Mail = proplists:get_value(<<"mail">>, Qs, <<>>),
 
     % 验证参数
     case validate_bind_mail_params(Ts, Tk, Uid, Mail) of

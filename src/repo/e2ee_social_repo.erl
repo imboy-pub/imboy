@@ -41,9 +41,10 @@ create(Params) ->
              "encrypted_shard, proxy_uid, shard_id, status) "
              "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active') "
              "RETURNING id">>,
-    case elib_pg:query(Sql1, [Uid, KeyVersion, ShardIndex, TotalShards, Threshold,
+    % 使用 elib_pg:execute 处理 INSERT RETURNING
+    case elib_pg:execute(Sql1, [Uid, KeyVersion, ShardIndex, TotalShards, Threshold,
                              EncryptedShard, ProxyUid, ShardId]) of
-        {ok, _, [{Id}]} -> {ok, Id};
+        {ok, 1, [{Id}]} -> {ok, Id};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -53,13 +54,10 @@ get_user_shards(Uid, KeyVersion) ->
     Sql1 = <<"SELECT id, uid, key_version, shard_index, total_shards, threshold, ",
              "encrypted_shard, proxy_uid, shard_id, status, created_at, used_at ",
              "FROM e2ee_social_shards ",
-             "WHERE uid = $1 AND key_version = $2 "
+             "WHERE uid = $1 AND key_version = $2 ",
              "ORDER BY shard_index">>,
     case elib_pg:query(Sql1, [Uid, KeyVersion]) of
-        {ok, _, Rows} ->
-            {ok, lists:map(fun(Row) ->
-                Row
-            end, Rows)};
+        {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -69,13 +67,10 @@ get_proxy_shards(ProxyUid) ->
     Sql1 = <<"SELECT id, uid, key_version, shard_index, total_shards, threshold, ",
              "encrypted_shard, shard_id, status, created_at, used_at ",
              "FROM e2ee_social_shards ",
-             "WHERE proxy_uid = $1 AND status = 'active' "
+             "WHERE proxy_uid = $1 AND status = 'active' ",
              "ORDER BY created_at DESC">>,
     case elib_pg:query(Sql1, [ProxyUid]) of
-        {ok, _, Rows} ->
-            {ok, lists:map(fun(Row) ->
-                Row
-            end, Rows)};
+        {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -83,7 +78,7 @@ get_proxy_shards(ProxyUid) ->
 -spec mark_shard_used(integer()) -> ok | {error, term()}.
 mark_shard_used(ShardId) ->
     Sql1 = <<"UPDATE e2ee_social_shards ",
-             "SET status = 'used', used_at = NOW() "
+             "SET status = 'used', used_at = NOW() ",
              "WHERE id = $1">>,
     case elib_pg:execute(Sql1, [ShardId]) of
         {ok, _} -> ok;
@@ -94,7 +89,7 @@ mark_shard_used(ShardId) ->
 -spec delete_restored_shards(integer(), binary()) -> ok | {error, term()}.
 delete_restored_shards(Uid, KeyVersion) ->
     Sql1 = <<"DELETE FROM e2ee_social_shards ",
-             "WHERE uid = $1 AND key_version = $2 "
+             "WHERE uid = $1 AND key_version = $2 ",
              "AND status = 'used'">>,
     case elib_pg:execute(Sql1, [Uid, KeyVersion]) of
         {ok, _} -> ok;
@@ -106,15 +101,15 @@ delete_restored_shards(Uid, KeyVersion) ->
 can_recover(Uid, KeyVersion) ->
     Sql1 = <<"SELECT COUNT(*) as count, threshold, total_shards ",
              "FROM e2ee_social_shards ",
-             "WHERE uid = $1 AND key_version = $2 AND status = 'active' "
+             "WHERE uid = $1 AND key_version = $2 AND status = 'active' ",
              "GROUP BY threshold, total_shards">>,
     case elib_pg:query(Sql1, [Uid, KeyVersion]) of
-        {ok, _, [Row]} ->
+        {ok, [Row | _]} ->
             Count = maps:get(<<"count">>, Row),
             Threshold = maps:get(<<"threshold">>, Row),
             TotalShards = maps:get(<<"total_shards">>, Row),
             {ok, Count >= Threshold andalso TotalShards >= Threshold};
-        {ok, _, []} ->
+        {ok, []} ->
             {ok, false};
         {error, Reason} ->
             {error, Reason}
@@ -135,12 +130,11 @@ generate_shard_id() ->
 find_shard_by_id(ShardId) ->
     Sql1 = <<"SELECT id, uid, key_version, shard_index, total_shards, threshold, ",
              "encrypted_shard, proxy_uid, shard_id, status, created_at, used_at ",
-             "FROM e2ee_social_shards "
+             "FROM e2ee_social_shards ",
              "WHERE shard_id = $1">>,
     case elib_pg:query(Sql1, [ShardId]) of
-        {ok, _, []} -> {error, not_found};
-        {ok, _, [Row]} ->
-            {ok, Row};
+        {ok, []} -> {error, not_found};
+        {ok, [Row | _]} -> {ok, Row};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -151,21 +145,22 @@ add_contact(Params) ->
     ContactUid = maps:get(<<"contact_uid">>, Params),
     Nickname = maps:get(<<"contact_nickname">>, Params, <<>>),
 
-    Sql1 = <<"INSERT INTO e2ee_trusted_contacts "
-             "(uid, contact_uid, nickname) "
-             "VALUES ($1, $2, $3) "
-             "ON CONFLICT (uid, contact_uid) "
-             "DO UPDATE SET nickname = $3 "
+    Sql1 = <<"INSERT INTO e2ee_trusted_contacts ",
+             "(uid, contact_uid, nickname) ",
+             "VALUES ($1, $2, $3) ",
+             "ON CONFLICT (uid, contact_uid) ",
+             "DO UPDATE SET nickname = $3 ",
              "RETURNING id">>,
-    case elib_pg:query(Sql1, [Uid, ContactUid, Nickname]) of
-        {ok, _, [{Id}]} -> {ok, Id};
+    % 使用 elib_pg:execute 处理 INSERT RETURNING
+    case elib_pg:execute(Sql1, [Uid, ContactUid, Nickname]) of
+        {ok, 1, [{Id}]} -> {ok, Id};
         {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 移除可信联系人
 -spec remove_contact(integer(), integer()) -> ok | {error, term()}.
 remove_contact(Uid, ContactUid) ->
-    Sql1 = <<"DELETE FROM e2ee_trusted_contacts "
+    Sql1 = <<"DELETE FROM e2ee_trusted_contacts ",
              "WHERE uid = $1 AND contact_uid = $2">>,
     case elib_pg:execute(Sql1, [Uid, ContactUid]) of
         {ok, _} -> ok;
@@ -175,14 +170,11 @@ remove_contact(Uid, ContactUid) ->
 %% @doc 列出可信联系人
 -spec list_contacts(integer()) -> {ok, list(map())} | {error, term()}.
 list_contacts(Uid) ->
-    Sql1 = <<"SELECT id, uid, contact_uid, nickname, created_at "
-             "FROM e2ee_trusted_contacts "
-             "WHERE uid = $1 "
+    Sql1 = <<"SELECT id, uid, contact_uid, contact_nickname, created_at ",
+             "FROM e2ee_trusted_contacts ",
+             "WHERE uid = $1 ",
              "ORDER BY created_at DESC">>,
     case elib_pg:query(Sql1, [Uid]) of
-        {ok, _, Rows} ->
-            {ok, lists:map(fun(Row) ->
-                Row
-            end, Rows)};
+        {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.

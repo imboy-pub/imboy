@@ -67,6 +67,9 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
                         case e2ee_transfer_repo:create(SessionMap) of
                             {ok, _SessionId} ->
                                 {ok, SessionMap};
+                            {error, unique_violation} ->
+                                % 数据库级唯一约束违规（并发创建）
+                                {error, {<<"已有进行中的传输会话，请稍后重试"/utf8>>, ?ERR_E2EE_TRANSFER_CONCURRENT}};
                             {error, CreateReason} ->
                                 {error, CreateReason}
                         end

@@ -168,3 +168,100 @@ delete_msg_with_complex_where_test_() ->
         Result = msg_c2g_repo:delete_msg(Where, Params),
         ?assertMatch({ok, _}, Result)
     end).
+
+%% ===================================================================
+%% 引用回复功能测试
+%% ===================================================================
+
+write_msg_with_reply_info_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        MsgId = <<"test_msg_c2g_reply_123">>,
+        Payload = <<"{\"text\":\"hello\"}">>,
+        FromId = 1,
+        ToUids = [2, 3, 4],
+        Gid = 7,
+        MsgType = <<"text">>,
+        E2EE = <<>>,
+        ReplyToMsgId = <<"original_msg_456">>,
+        ReplyToFromId = 2,
+        ReplySnippet = <<"原始群消息内容摘要"/utf8>>,
+
+        Result = msg_c2g_repo:write_msg_with_reply(
+            CreatedAt, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+            ReplyToMsgId, ReplyToFromId, ReplySnippet
+        ),
+        ?assertMatch(ok, Result)
+    end).
+
+find_msg_with_reply_info_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        % 先插入一条带引用信息的群消息
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        MsgId = <<"test_msg_c2g_find_reply_123">>,
+        Payload = <<"{\"text\":\"test\"}">>,
+        FromId = 1,
+        ToUids = [2, 3, 4],
+        Gid = 7,
+        MsgType = <<"text">>,
+        E2EE = <<>>,
+        ReplyToMsgId = <<"original_msg_456">>,
+        ReplyToFromId = 2,
+        ReplySnippet = <<"原始群消息内容摘要"/utf8>>,
+
+        ok = msg_c2g_repo:write_msg_with_reply(
+            CreatedAt, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+            ReplyToMsgId, ReplyToFromId, ReplySnippet
+        ),
+
+        % 查找消息（包含引用信息）
+        Result = msg_c2g_repo:find_msg_by_id(MsgId),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, Msg} ->
+                ?assert(is_map(Msg)),
+                ?assert(maps:is_key(<<"from_id">>, Msg)),
+                ?assert(maps:is_key(<<"reply_to_msg_id">>, Msg)),
+                ?assertMatch(ReplyToMsgId, maps:get(<<"reply_to_msg_id">>, Msg)),
+                ?assertMatch(ReplyToFromId, maps:get(<<"reply_to_from_id">>, Msg));
+            _ ->
+                ok
+        end
+    end).
+
+find_msgs_by_reply_to_msg_id_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        % 先插入一条带引用信息的群消息
+        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+        OriginalMsgId = <<"original_msg_c2g_789">>,
+        MsgId1 = <<"test_msg_c2g_reply1_123">>,
+        MsgId2 = <<"test_msg_c2g_reply2_124">>,
+        Payload = <<"{\"text\":\"reply\"}">>,
+        FromId = 1,
+        ToUids = [2, 3, 4],
+        Gid = 7,
+        MsgType = <<"text">>,
+        E2EE = <<>>,
+        ReplySnippet = <<"原始群消息"/utf8>>,
+
+        ok = msg_c2g_repo:write_msg_with_reply(
+            CreatedAt, MsgId1, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+            OriginalMsgId, FromId, ReplySnippet
+        ),
+
+        ok = msg_c2g_repo:write_msg_with_reply(
+            CreatedAt, MsgId2, Payload, FromId, ToUids, Gid, MsgType, E2EE,
+            OriginalMsgId, FromId, ReplySnippet
+        ),
+
+        % 查找所有引用该消息的回复
+        Result = msg_c2g_repo:find_by_reply_to_msg_id(OriginalMsgId),
+        ?assertMatch({ok, _}, Result),
+        case Result of
+            {ok, Msgs} ->
+                ?assert(is_list(Msgs)),
+                ?assert(length(Msgs) >= 2);
+            _ ->
+                ok
+        end
+    end).

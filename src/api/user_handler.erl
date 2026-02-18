@@ -64,7 +64,8 @@ handle_action(false, Req, _State) -> Req.
 search(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {Page, Size} = elib_param:page(Req0),
-    #{keyword := Kwd} = cowboy_req:match_qs([{keyword, [], <<>>}], Req0),
+    Qs0 = cowboy_req:parse_qs(Req0),
+    Kwd = proplists:get_value(<<"keyword">>, Qs0, <<>>),
     KwdBin = elib_cnv:safe_to_binary(Kwd),
     IsEmail = elib_type:is_email(KwdBin),
     IsMobile = elib_type:is_mobile(KwdBin),
@@ -188,7 +189,8 @@ credential(Req0, State) ->
 %% @end
 -spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
 qrcode(Req0, State) ->
-    #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    Qs1 = cowboy_req:parse_qs(Req0),
+    Uid = proplists:get_value(<<"id">>, Qs1, undefined),
     CurrentUid = maps:get(current_uid, State, undefined),
     case CurrentUid of
         undefined ->
@@ -300,7 +302,8 @@ update(Req0, State) ->
 %% @end
 -spec show(cowboy_req:req(), map()) -> cowboy_req:req().
 show(Req0, _State) ->
-    #{id := Uid} = cowboy_req:match_qs([{id, [], undefined}], Req0),
+    Qs2 = cowboy_req:parse_qs(Req0),
+    Uid = proplists:get_value(<<"id">>, Qs2, undefined),
     % 【优化】使用统一的 ID 验证函数
     case Uid of
         undefined ->

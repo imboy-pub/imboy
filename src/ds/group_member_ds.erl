@@ -11,8 +11,12 @@
 -export([join_group/5]).
 -export([leave/4]).
 -export([alias/4]).
+-export([update_role/4]).
+-export([update_mute/4]).
+-export([get_member_info/3]).
 -export([update_statistics/2]).
 -export([find_by_gid_and_uid/3]).
+-export([check_admin/2]).
 
 %% ===================================================================
 %% API functions
@@ -179,6 +183,77 @@ update_statistics(Conn, Gid) ->
 -spec find_by_gid_and_uid(integer(), integer(), binary()) -> map().
 find_by_gid_and_uid(Gid, Uid, Column) ->
     group_member_repo:find(Gid, Uid, Column).
+
+%% @doc 检查用户是否为群管理员
+%% @param Uid 用户ID
+%% @param Gid 群组ID
+%% @return boolean() true=是管理员，false=不是管理员
+-spec check_admin(integer(), integer()) -> boolean().
+check_admin(Uid, Gid) ->
+    case group_member_repo:find(Gid, Uid, <<"role">>) of
+        #{<<"role">> := Role} when Role >= 3 -> true;
+        _ -> false
+    end.
+
+%% @doc 更新群成员禁言状态
+%% @param Conn 数据库连接
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param MuteUntil 禁言到期时间戳（null 表示取消禁言）
+%% @return ok | {error, Reason}
+-spec update_mute(pid() | undefined, integer(), integer(), integer() | null) -> ok | {error, any()}.
+update_mute(Conn, Gid, UserId, MuteUntil) ->
+    GMTb = group_member_repo:tablename(),
+    Now = elib_dt:now(),
+    Data = #{mute_until => MuteUntil, updated_at => Now},
+
+    case elib_pg:update(Conn, GMTb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 获取群成员信息
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param Column 要查询的列名，可以是单个列名或列名列表
+%% @return {ok, MemberInfo} | {error, Reason}
+-spec get_member_info(integer(), integer(), binary() | list()) -> {ok, map()} | {error, any()}.
+get_member_info(Gid, UserId, Column) ->
+    MemberInfo = group_member_repo:find(Gid, UserId, Column),
+    case maps:size(MemberInfo) of
+        0 -> {error, not_found};
+        _ -> {ok, MemberInfo}
+    end.
+
+%% @doc 更新群成员角色
+%% @param Conn 数据库连接（可选）
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param Role 角色值（1-普通成员，2-管理员，3-群主）
+%% @param UpdatedAt 更新时间
+%% @return ok | {error, Reason}
+-spec update_role(pid() | undefined, integer(), integer(), integer()) -> ok | {error, any()}.
+update_role(undefined, Gid, UserId, Role) ->
+    elib_pg:with_tx(fun(Conn) -> update_role(Conn, Gid, UserId, Role, elib_dt:now()) end);
+update_role(Conn, Gid, UserId, Role) ->
+    Now = elib_dt:now(),
+    update_role(Conn, Gid, UserId, Role, Now).
+
+%% @doc 更新群成员角色（带时间参数）
+%% @param Conn 数据库连接
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param Role 角色值（1-普通成员，2-管理员，3-群主）
+%% @param UpdatedAt 更新时间
+%% @return ok | {error, Reason}
+-spec update_role(pid(), integer(), integer(), integer(), integer()) -> ok | {error, any()}.
+update_role(Conn, Gid, UserId, Role, UpdatedAt) ->
+    GMTb = group_member_repo:tablename(),
+    Data = #{role => Role, updated_at => UpdatedAt},
+    case elib_pg:update(Conn, GMTb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

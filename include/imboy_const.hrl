@@ -131,8 +131,14 @@
 -define(RSA_ENCRYPT_NO, <<"0">>).
 
 %% @doc Token 有效期（秒）
+%% 注意：TOKEN_VALID 和 REFRESHTOKEN_VALID 已在 common.hrl 中定义
+%% 这里定义的是不同值，使用 -ifndef 防止重定义
+-ifndef(TOKEN_VALID).
 -define(TOKEN_VALID, 86400).           % 访问令牌：1 天
+-endif.
+-ifndef(REFRESHTOKEN_VALID).
 -define(REFRESHTOKEN_VALID, 2592000).  % 刷新令牌：30 天
+-endif.
 
 %% @doc Token 时钟偏差容错（秒）
 -define(TOKEN_LEEWAY, 300).  % 5 分钟

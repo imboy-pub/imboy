@@ -56,9 +56,10 @@ page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
     {ok, Kind} = elib_param:int(kind, Req0, 0),
-    #{order := OrderBy} = cowboy_req:match_qs([{order, [], <<>>}], Req0),
-    #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-    #{tag := Tag} = cowboy_req:match_qs([{tag, [], <<>>}], Req0),
+    Qs4 = cowboy_req:parse_qs(Req0),
+    OrderBy = proplists:get_value(<<"order">>, Qs4, <<>>),
+    Kwd = proplists:get_value(<<"kwd">>, Qs4, <<>>),
+    Tag = proplists:get_value(<<"tag">>, Qs4, <<>>),
 
     Where0 = #{user_id => CurrentUid, status => 1},
     Where1 =

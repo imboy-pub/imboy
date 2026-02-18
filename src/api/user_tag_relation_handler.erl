@@ -198,7 +198,8 @@ page(Scene, Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
 
-    #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    Kwd = proplists:get_value(<<"kwd">>, Qs, <<>>),
     {ok, TagId} = elib_param:int(tag_id, Req0, 0),
     % elib_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
     if CurrentUid == 0 ->

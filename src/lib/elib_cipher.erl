@@ -110,12 +110,22 @@ rsa_encrypt(PlainText) when is_list(PlainText) ->
 %% @param BinData 要加密的二进制数据
 %% @param PemBin PEM 格式的公钥
 %% @returns Base64 编码的加密数据或错误信息
+%%
+%% 🔒 安全升级：使用 RSA-OAEP-SHA256 填充
+%% - 从 PKCS#1 v1.5 升级到 RSA-OAEP-SHA256
+%% - 与前端 Dart/JS 加密方案保持一致
+%% - 抗 Bleichenbacher 攻击
 -spec rsa_encrypt(binary(), binary()) -> binary() | {error, term()}.
 rsa_encrypt(BinData, PemBin) ->
     %%公钥加密
     try
         PublicKey = get_rsa_key_str(PemBin),
-        Cipher = public_key:encrypt_public(BinData, PublicKey),
+        % 🔒 使用 RSA-OAEP-SHA256 填充（与前端一致）
+        Cipher = public_key:encrypt_public(
+            BinData,
+            PublicKey,
+            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+        ),
         base64:encode(Cipher)
     catch
         _:_ -> {error, encrypt_failed}
@@ -147,34 +157,237 @@ rsa_decrypt(CipherText) ->
 %% - URL-safe Base64 格式（- 替换为 +，_ 替换为 /）
 %% - 自动添加 Base64 填充
 %% - URL 编码处理
+%% - **OAEP v2.0/v2.1 兼容**：自动检测并处理两种格式
+%%
+%% 🔒 安全升级：使用 RSA-OAEP-SHA256 填充
+%% - 从 PKCS#1 v1.5 升级到 RSA-OAEP-SHA256
+%% - 支持 pointycastle (OAEP v2.0) 和 Erlang public_key (OAEP v2.1)
 -spec rsa_decrypt(binary(), binary()) -> binary().
 rsa_decrypt(CipherText, PrivKey) ->
     %%私钥解密
     % 处理可能的URL编码和URL-safe Base64格式
+    DecodedText = decode_base64_text(CipherText),
+    BinData = base64:decode(DecodedText),
+    PrivateKey = get_rsa_key_str(PrivKey),
+
+    io:format("OAEP 解密: Base64 密文长度=~p, 二进制长度=~p~n",
+              [byte_size(DecodedText), byte_size(BinData)]),
+
+    % 🔧 修复：先进行裸 RSA 解密
+    % pointycastle (OAEP v2.0): EM = maskedSeed || maskedDB (256 字节)
+    % Erlang public_key (OAEP v2.1): EM = 0x00 || maskedSeed || maskedDB (256 字节)
+    RawEM = public_key:decrypt_private(
+        BinData,
+        PrivateKey,
+        [{rsa_padding, rsa_no_padding}]
+    ),
+
+    % RSA 解密可能返回比模数短的字节数（如果有前导零被去除）
+    KeySize = 256,  % 2048 位 RSA
+    RawEMLen = byte_size(RawEM),
+
+    % 打印原始 EM 的前 10 字节用于调试
+    First10Bytes = case RawEMLen >= 10 of
+        true -> binary:part(RawEM, 0, 10);
+        false -> RawEM
+    end,
+    io:format("OAEP 解密: RawEM 长度=~p, 前10字节=~p~n", [RawEMLen, First10Bytes]),
+
+    % 🔧 关键修复：根据第一个字节判断 OAEP 版本
+    % - 第一个字节非 0：OAEP v2.0 (pointycastle)，直接解码
+    % - 第一个字节是 0：可能是 v2.0（maskedSeed 恰好以 0 开头）或 v2.1
+    <<FirstByte:8, RestEM/binary>> = RawEM,
+    io:format("OAEP 解密: 第一个字节=~p~n", [FirstByte]),
+
+    case FirstByte of
+        0 ->
+            % 第一个字节是 0，需要判断是 v2.0 还是 v2.1
+            % 尝试 v2.0（pointycastle 可能产生以 0 开头的 maskedSeed）
+            io:format("OAEP 解密: 第一个字节=0，尝试两种格式~n", []),
+            try
+                io:format("OAEP 尝试 v2.0: 使用完整 256 字节~n", []),
+                % 对于 v2.0，使用完整的 256 字节
+                decode_oaep_common(RawEM)
+            catch
+                Type:Error:_Stack ->
+                    io:format("OAEP v2.0 失败: ~p:~p~n", [Type, Error]),
+                    % v2.0 失败，尝试 v2.1（跳过第一个 0x00 字节）
+                    io:format("OAEP 尝试 v2.1: 跳过第一个字节~n", []),
+                    case RawEMLen of
+                        KeySize ->
+                            decode_oaep_common(RestEM);
+                        _ ->
+                            % 如果长度不足，先补齐再跳过第一个字节
+                            PadLen = KeySize - RawEMLen,
+                            PaddedEM = <<0:PadLen/unit:8, RawEM/binary>>,
+                            <<0:8, FinalRest/binary>> = PaddedEM,
+                            decode_oaep_common(FinalRest)
+                    end
+            end;
+        _ ->
+            % 第一个字节非 0，一定是 OAEP v2.0 (pointycastle)
+            io:format("OAEP v2.0: 第一个字节=~p (非0)，使用 pointycastle 格式~n", [FirstByte]),
+            decode_oaep_common(RawEM)
+    end.
+
+
+%% @private 解码 Base64 文本（处理 URL 编码和 URL-safe 格式）
+-spec decode_base64_text(binary()) -> binary().
+decode_base64_text(CipherText) ->
     % 首先进行URL解码（如果包含%编码）
     DecodedText = case binary:match(CipherText, <<"%">>) of
-        nomatch ->
-            CipherText;
-        _ ->
-            % 包含URL编码，先解码
-            list_to_binary(uri_string:unquote(binary_to_list(CipherText)))
+        nomatch -> CipherText;
+        _ -> list_to_binary(uri_string:unquote(binary_to_list(CipherText)))
     end,
-    % 确保Base64填充正确（missing_padding错误）
-    % 计算需要的填充
+    % 确保Base64填充正确
     PaddingSize = (4 - (byte_size(DecodedText) rem 4)) rem 4,
     PaddedText = case PaddingSize of
         0 -> DecodedText;
         _ -> <<DecodedText/binary, (binary:copy(<<"=">>, PaddingSize))/binary>>
     end,
-    % 将URL-safe Base64转换为标准Base64（处理可能存在的-case）
-    StandardBase64 = binary:replace(
+    % 将URL-safe Base64转换为标准Base64
+    binary:replace(
         binary:replace(PaddedText, <<"-">>, <<"+">>, [global]),
         <<"_">>, <<"/">>, [global]
+    ).
+
+
+%% @private 使用 OAEP v2.1 (RFC 8017) 解密
+-spec rsa_decrypt_oaep_v21(binary(), term()) -> {ok, binary()} | {error, term()}.
+rsa_decrypt_oaep_v21(BinData, PrivateKey) ->
+    try
+        io:format("OAEP v2.1: 尝试标准 OAEP 解密, 数据长度=~p~n", [byte_size(BinData)]),
+        Result = public_key:decrypt_private(
+            BinData,
+            PrivateKey,
+            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+        ),
+        io:format("OAEP v2.1: 解密成功, 结果长度=~p, 前20字节=~p~n",
+                  [byte_size(Result), binary:part(Result, 0, min(20, byte_size(Result)))]),
+        {ok, Result}
+    catch
+        _:_:_ ->
+            {error, oaep_v21_failed}
+    end.
+
+
+%% @private 使用 OAEP v2.0/v2.1 解密 - pointycastle 兼容
+%%
+%% 自动检测 OAEP 版本：
+%% - v2.0: EM = maskedSeed || maskedDB
+%% - v2.1: EM = 0x00 || maskedSeed || maskedDB (需要跳过第一个字节)
+%%
+-spec rsa_decrypt_oaep_v20(binary(), term()) -> binary().
+rsa_decrypt_oaep_v20(BinData, PrivateKey) ->
+    io:format("OAEP v2.0 fallback: 尝试手动 OAEP 解密~n", []),
+    % 使用裸 RSA 解密（不处理填充）
+    RawEM = public_key:decrypt_private(
+        BinData,
+        PrivateKey,
+        [{rsa_padding, rsa_no_padding}]
     ),
-    BinData = base64:decode(StandardBase64),
-    PrivateKey = get_rsa_key_str(PrivKey),
-    Result = public_key:decrypt_private(BinData, PrivateKey),
-    Result.
+
+    io:format("OAEP v2.0 fallback: RawEM 长度=~p, 第一个字节=~p~n",
+              [byte_size(RawEM), binary:part(RawEM, 0, 1)]),
+
+    % RSA 解密可能返回比模数短的字节数（如果有前导零）
+    KeySize = 256,  % 2048 位 RSA
+    EM = case byte_size(RawEM) of
+        KeySize -> RawEM;
+        Shorter when Shorter < KeySize ->
+            PadLen = KeySize - Shorter,
+            <<0:PadLen/unit:8, RawEM/binary>>
+    end,
+
+    % 检测 OAEP 版本：如果第一个字节是 0x00，使用 v2.1 格式
+    <<FirstByte:8, _/binary>> = EM,
+    io:format("OAEP v2.0 fallback: EM 第一个字节=~p~n", [FirstByte]),
+    case FirstByte of
+        0 -> decode_oaep_v21_format(EM);
+        _ -> decode_oaep_v20_format(EM)
+    end.
+
+
+%% @private 解码 OAEP v2.1 格式 (EM = 0x00 || maskedSeed || maskedDB)
+-spec decode_oaep_v21_format(binary()) -> binary().
+decode_oaep_v21_format(EM) ->
+    <<0:8, RestEM/binary>> = EM,
+    decode_oaep_common(RestEM).
+
+
+%% @private 解码 OAEP v2.0 格式 (EM = maskedSeed || maskedDB)
+-spec decode_oaep_v20_format(binary()) -> binary().
+decode_oaep_v20_format(EM) ->
+    decode_oaep_common(EM).
+
+
+%% @private 通用的 OAEP 解码逻辑
+-spec decode_oaep_common(binary()) -> binary().
+decode_oaep_common(EM) ->
+    HashLen = 32,  % SHA-256
+
+    case byte_size(EM) of
+        Size when Size < 2 * HashLen + 1 ->
+            throw({error, invalid_em_length});
+        _ ->
+            % 提取 maskedSeed 和 maskedDB
+            <<MaskedSeed:HashLen/binary, MaskedDB/binary>> = EM,
+
+            % 计算 seedMask = MGF(maskedDB, hLen)
+            SeedMask = mgf1(MaskedDB, HashLen, sha256),
+
+            % 计算 seed = maskedSeed XOR seedMask
+            Seed = xor_bytes(MaskedSeed, SeedMask),
+
+            % 计算 dbMask = MGF(seed, emLen - hLen)
+            DBMask = mgf1(Seed, byte_size(MaskedDB), sha256),
+
+            % 计算 DB = maskedDB XOR dbMask
+            DB = xor_bytes(MaskedDB, DBMask),
+
+            % 解析 DB = pHash || PS || 0x01 || M
+            <<_PHash:HashLen/binary, Rest/binary>> = DB,
+
+            % 找到 0x01 分隔符并提取消息
+            extract_message(Rest, 0)
+    end.
+
+
+%% @private MGF1 (Mask Generation Function 1)
+-spec mgf1(binary(), non_neg_integer(), atom()) -> binary().
+mgf1(Seed, MaskLen, HashAlg) ->
+    mgf1_loop(Seed, MaskLen, HashAlg, 0, <<>>).
+
+
+%% @private MGF1 循环
+-spec mgf1_loop(binary(), non_neg_integer(), atom(), non_neg_integer(), binary()) -> binary().
+mgf1_loop(_Seed, MaskLen, _HashAlg, _Counter, Acc) when byte_size(Acc) >= MaskLen ->
+    <<Result:MaskLen/binary, _/binary>> = Acc,
+    Result;
+mgf1_loop(Seed, MaskLen, HashAlg, Counter, Acc) ->
+    % C = I2OSP(Counter, 4)
+    C = <<Counter:32/big-unsigned-integer>>,
+    % T = T || Hash(Seed || C)
+    Hash = crypto:hash(HashAlg, <<Seed/binary, C/binary>>),
+    mgf1_loop(Seed, MaskLen, HashAlg, Counter + 1, <<Acc/binary, Hash/binary>>).
+
+
+%% @private 字节异或
+-spec xor_bytes(binary(), binary()) -> binary().
+xor_bytes(A, B) ->
+    list_to_binary([X bxor Y || {X, Y} <- lists:zip(binary_to_list(A), binary_to_list(B))]).
+
+
+%% @private 提取消息（跳过 PS 和 0x01 分隔符）
+-spec extract_message(binary(), non_neg_integer()) -> binary().
+extract_message(<<>>, _Pos) ->
+    throw({error, invalid_padding});
+extract_message(<<0, Rest/binary>>, Pos) ->
+    extract_message(Rest, Pos + 1);
+extract_message(<<1, Rest/binary>>, _Pos) ->
+    Rest;
+extract_message(_, _Pos) ->
+    throw({error, invalid_padding}).
 
 
 %% ===================================================================

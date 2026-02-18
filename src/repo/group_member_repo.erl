@@ -7,9 +7,13 @@
 -export ([add/1]).
 -export ([add/2]).
 -export ([find/3]).
+-export ([update_role/4]).
+-export ([update_mute/4]).
 -export ([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
+-export([page_by_gid/4]).
+-export([count_by_uid/1]).
 -export([list_by_uid/2, list_by_uid/3]).
 
 -ifdef(EUNIT).
@@ -88,6 +92,57 @@ list_by_gid(Gid, Column, Limit) ->
     elib_pg:query(Sql, [Gid, Limit]).
 
 
+%% @doc 分页查询群组成员列表
+%% @param Gid 群组ID
+%% @param Page 页码（从1开始）
+%% @param Size 每页大小
+%% @param Column 要查询的列名，支持多个列用逗号分隔
+%% @return {ok, #{items => Rows, page => Page, size => Size, total => Total, total_page => TotalPage}}
+-spec page_by_gid(integer(), integer(), integer(), binary()) -> {ok, map()} | {error, any()}.
+page_by_gid(Gid, Page, Size, Column) ->
+    Tb = tablename(),
+    % 计算偏移量
+    Offset = (Page - 1) * Size,
+    % 查询总数
+    CountSql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
+    Total = case elib_pg:one(CountSql, [Gid]) of
+        {ok, #{count := C}} -> C;
+        _ -> 0
+    end,
+    % 查询数据
+    DataSql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+        " WHERE group_id = $1 AND status = 1 ORDER BY role DESC, joined_at ASC LIMIT $2 OFFSET $3">>,
+    case elib_pg:query(DataSql, [Gid, Size, Offset]) of
+        {ok, Items} ->
+            TotalPage = case Total > 0 of
+                true -> ((Total - 1) div Size) + 1;
+                false -> 0
+            end,
+            {ok, #{
+                items => Items,
+                page => Page,
+                size => Size,
+                total => Total,
+                total_page => TotalPage
+            }};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+%% @doc 统计用户加入的群组数量
+%% @param Uid 用户ID
+%% @return non_neg_integer() 群组数量
+-spec count_by_uid(integer()) -> non_neg_integer().
+count_by_uid(Uid) ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE user_id = $1 AND status = 1">>,
+    case elib_pg:one(Sql, [Uid]) of
+        {ok, #{count := Count}} -> Count;
+        _ -> 0
+    end.
+
+
 %% @doc 查询用户加入的群组列表（使用默认限制10000）
 %% @param Uid 用户ID
 %% @param Column 要查询的列名，支持多个列用逗号分隔
@@ -108,6 +163,23 @@ list_by_uid(Uid, Column, Limit) ->
     % use index i_Uid_Status
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{user_id => Uid, status => 1}, #{limit => Limit}),
     elib_pg:query(Sql, Params).
+
+%% @doc 更新群成员禁言状态
+%% @param Conn 数据库连接（可选）
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param MuteUntil 禁言到期时间戳（null 表示取消禁言）
+%% @return {ok, Count} | {error, Reason}
+-spec update_mute(pid() | undefined, integer(), integer(), integer() | null) -> {ok, integer()} | {error, term()}.
+update_mute(Conn, Gid, UserId, MuteUntil) ->
+    Tb = tablename(),
+    Data = #{mute_until => MuteUntil, updated_at => elib_dt:now()},
+    case Conn of
+        undefined ->
+            elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]);
+        _ ->
+            elib_pg:update(Conn, Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId])
+    end.
 
 %% @doc 查询两个用户共同加入的群组ID列表
 %% @param Uid1 用户1的ID
@@ -142,6 +214,23 @@ list_same_group(Uid1, Uid2) ->
     end.
     % T2 = elib_dt:microsecond(),
     % {T2-T1, Res}.
+
+%% @doc 更新群成员角色
+%% @param Conn 数据库连接（可选）
+%% @param Gid 群组ID
+%% @param UserId 用户ID
+%% @param Role 角色值（1-普通成员，2-管理员，3-群主）
+%% @return {ok, Count} | {error, Reason}
+-spec update_role(pid() | undefined, integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
+update_role(undefined, Gid, UserId, Role) ->
+    Tb = tablename(),
+    Data = #{role => Role, updated_at => elib_dt:now()},
+    elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]);
+update_role(Conn, _Gid, _UserId, Role) ->
+    Tb = tablename(),
+    Data = #{role => Role, updated_at => elib_dt:now()},
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>),
+    elib_pg:execute(Conn, Sql, Params).
 
 
 %% ===================================================================

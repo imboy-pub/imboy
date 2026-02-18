@@ -57,8 +57,9 @@ page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
 
-    #{kwd := Kwd} = cowboy_req:match_qs([{kwd, [], <<>>}], Req0),
-    #{scene := Scene} = cowboy_req:match_qs([{scene, [], <<>>}], Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    Kwd = proplists:get_value(<<"kwd">>, Qs, <<>>),
+    Scene = proplists:get_value(<<"scene">>, Qs, <<>>),
     OrderBy = <<"id desc">>,
     {Scene2, Where0} =
         case Scene of

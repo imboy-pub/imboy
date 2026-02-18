@@ -78,6 +78,13 @@ CREATE INDEX IF NOT EXISTS idx_e2ee_transfer_sessions_expires_at
 CREATE INDEX IF NOT EXISTS idx_e2ee_transfer_sessions_to_uid_status_expires
     ON e2ee_transfer_sessions(to_uid, status, expires_at);
 
+-- 并发保护唯一索引：防止同一对用户之间同时存在多个活跃传输会话
+-- 部分唯一索引只在 status 为 'pending' 或 'accepted' 时生效
+-- 注意：不包含 expires_at 条件，因为 NOW() 不是 IMMUTABLE 函数
+CREATE UNIQUE INDEX IF NOT EXISTS idx_e2ee_transfer_sessions_unique_active
+    ON e2ee_transfer_sessions(from_uid, to_uid)
+    WHERE status IN ('pending', 'accepted');
+
 -- 注释
 COMMENT ON TABLE e2ee_transfer_sessions IS 'E2EE 设备间传输会话表 - 管理设备间私钥传输会话';
 COMMENT ON COLUMN e2ee_transfer_sessions.id IS '主键';
@@ -257,6 +264,11 @@ CREATE INDEX IF NOT EXISTS idx_e2ee_social_shards_user_active
 -- 复合索引：代理的活跃分片
 CREATE INDEX IF NOT EXISTS idx_e2ee_social_shards_proxy_active
     ON e2ee_social_shards(proxy_uid, status)
+    WHERE status = 'active';
+
+-- 并发保护唯一索引：防止同一用户同时创建多个活跃的分片集
+CREATE UNIQUE INDEX IF NOT EXISTS idx_e2ee_social_shards_unique_active
+    ON e2ee_social_shards(uid, key_version)
     WHERE status = 'active';
 
 -- 注释

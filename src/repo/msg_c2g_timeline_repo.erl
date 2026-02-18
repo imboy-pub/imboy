@@ -16,6 +16,7 @@
 -export([delete_overflow_timeline/2]).
 -export([delete_by_msg_id_and_to_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
+-export([find_by_msg_id/1]).
 
 %% ===================================================================
 %% API
@@ -151,6 +152,21 @@ delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) 
     elib_pg:execute(Sql, MsgIds ++ [ToUid]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
+
+
+%% @doc 根据消息ID查询群消息时间线
+%% 返回指定消息的群组ID
+%% @param MsgId 消息ID
+%% @return {ok, list(map())} | {error, Reason}
+%% @end
+-spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, any()}.
+find_by_msg_id(MsgId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT to_gid FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    case elib_pg:query(Sql, [MsgId]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
 
 
 %% ===================================================================

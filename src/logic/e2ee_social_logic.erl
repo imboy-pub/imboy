@@ -1,4 +1,5 @@
 -module(e2ee_social_logic).
+-dialyzer(no_return).
 %%%===================================================================
 %%% @doc E2EE 社交恢复 Logic 层
 %%%
@@ -10,6 +11,12 @@
 %%% API Functions Export
 %%===================================================================
 -include("log.hrl").
+-include("error_code.hrl").
+
+%% 安全限制常量
+-define(MAX_SHARDS, 5).        % 最大分片数（防止 DOS）
+-define(MIN_THRESHOLD, 2).     % 最小阈值
+-define(MAX_THRESHOLD, 3).     % 最大阈值（实际需要的分片数）
 
 %% API 导出
 -export([create_shards/6]).
@@ -38,15 +45,41 @@
 ) -> {ok, list(map())} | {error, term()}.
 create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) ->
     try
-        % 1. 验证参数
-        case TotalShards < Threshold orelse Threshold < 2 of
-            true -> throw({error, <<"分片数必须大于阈值"/utf8>>});
+        % 1. 验证参数（安全加固）
+        % 验证阈值下限
+        case Threshold < ?MIN_THRESHOLD of
+            true -> throw({error, {<<"阈值至少需要 2"/utf8>>, ?ERR_BAD_REQUEST}});
             false -> ok
         end,
 
-        case length(Proxies) < TotalShards of
-            true -> throw({error, <<"代理数量不足"/utf8>>});
+        % 验证阈值上限
+        case Threshold > ?MAX_THRESHOLD of
+            true -> throw({error, {<<"阈值不能超过 3"/utf8>>, ?ERR_BAD_REQUEST}});
             false -> ok
+        end,
+
+        % 验证总分片数上限（防止 DOS 攻击）
+        case TotalShards > ?MAX_SHARDS of
+            true -> throw({error, {<<"分片数不能超过 5"/utf8>>, ?ERR_BAD_REQUEST}});
+            false -> ok
+        end,
+
+        % 验证分片数必须大于等于阈值
+        case TotalShards < Threshold of
+            true -> throw({error, {<<"分片数必须大于等于阈值"/utf8>>, ?ERR_BAD_REQUEST}});
+            false -> ok
+        end,
+
+        % 验证代理数量
+        case length(Proxies) < TotalShards of
+            true -> throw({error, {<<"代理数量不足"/utf8>>, ?ERR_BAD_REQUEST}});
+            false -> ok
+        end,
+
+        % 验证私钥非空
+        case PrivateKeyPem of
+            <<>> -> throw({error, {<<"私钥不能为空"/utf8>>, ?ERR_BAD_REQUEST}});
+            _ -> ok
         end,
 
         % 2. 使用 Shamir Secret Sharing 分割私钥
@@ -80,10 +113,13 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
 
         {ok, ShardRecords}
     catch
-        {error, Reason} ->
-            {error, Reason};
-        _:Reason:Stack ->
-            {error, {Reason, Stack}}
+        {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
+            {error, {Msg, Code}};
+        {error, Reason} when is_binary(Reason) ->
+            {error, {Reason, ?ERR_INTERNAL_SERVER_ERROR}};
+        _:Reason:_Stack ->
+            ?ERROR_LOG([e2ee_social_logic, create_shards_failed, Reason]),
+            {error, {<<"创建分片失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}}
     end.
 
 %% @doc 获取用户的所有恢复分片
@@ -112,8 +148,8 @@ get_proxy_shards(_ProxyUid) ->
 recover_key(_Uid, DecryptedShards) ->
     try
         % 1. 验证分片数量
-        case length(DecryptedShards) < 2 of
-            true -> throw({error, <<"分片数量不足，至少需要 2 个分片"/utf8>>});
+        case length(DecryptedShards) < ?MIN_THRESHOLD of
+            true -> throw({error, {<<"分片数量不足，至少需要 2 个分片"/utf8>>, ?ERR_BAD_REQUEST}});
             false -> ok
         end,
 
@@ -122,10 +158,13 @@ recover_key(_Uid, DecryptedShards) ->
 
         {ok, PrivateKeyPem}
     catch
-        {error, Reason} ->
-            {error, Reason};
-        _:Reason:Stack ->
-            {error, {Reason, Stack}}
+        {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
+            {error, {Msg, Code}};
+        {error, Reason} when is_binary(Reason) ->
+            {error, {Reason, ?ERR_INTERNAL_SERVER_ERROR}};
+        _:Reason:_Stack ->
+            ?ERROR_LOG([e2ee_social_logic, recover_key_failed, Reason]),
+            {error, {<<"密钥恢复失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}}
     end.
 
 %% @doc 检查是否可以恢复
