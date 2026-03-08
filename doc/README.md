@@ -1,6 +1,6 @@
 # Imboy 文档中心（精简版）
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-03-09  
 > Scope: 长期文档索引、阶段性文档入口与归档规则  
 > Related docs: `README.md`, `doc/changelog.md`
 
@@ -103,16 +103,28 @@
 - `doc/ai/*`
 - `doc/analysis/*`
 
-### 2. 环境绑定部署样例
+### 2. 已被长期文档吸收的专项说明
+
+- `doc/database/*`
+- `doc/testing/*`
+- `doc/references/*`
+- `doc/modules/README.md`
+- `doc/libraries/cache.md`
+- `doc/libraries/message-ack.md`
+- `doc/libraries/retry.md`
+- `doc/libraries/syn.md`
+
+### 3. 环境绑定部署样例
 
 - 绑定具体域名、机器 IP、证书路径、面板路径的 `nginx` / 对象存储 / 文件存储配置
-- 这类文件应保存在运维仓、交付项目目录或部署平台，不放在通用产品仓中
+- 例如：环境专属 `nginx` 配置、对象存储 / 文件存储样例
+- 这类文件应保存在运维仓、交付项目目录或部署平台，不放在通用产品仓库
 
-### 3. 历史宣传类材料
+### 4. 历史宣传类材料
 
 - 旧压测截图、旧环境基准记录、已失效外链文档
 
-### 4. 阶段结束后的执行计划
+### 5. 阶段结束后的执行计划
 
 - 已完成、已失效、已被长期文档吸收结论的季度计划、专项推进表、执行日报/周报
 
