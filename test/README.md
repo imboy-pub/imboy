@@ -18,6 +18,7 @@ test/
 ├── adm/                           # 后台 Handler / Middleware / Logic 测试
 ├── api/                           # App 侧 HTTP / WebSocket Handler 测试
 ├── common/                        # 测试辅助模块
+├── doc/                           # 历史压测图文资料与现场记录
 ├── ds/                            # DS 层测试
 ├── integration/                   # 端到端 / 集成场景测试（EUnit 风格）
 ├── lib/                           # 公共库测试
@@ -37,6 +38,14 @@ test/
 - `msg_delivery_SUITE.erl`
 - `user_auth_flow_SUITE.erl`
 - `websocket_connection_flow_SUITE.erl`
+
+## 历史资料
+
+仓库保留了少量历史压测图文资料，便于容量评估、问题回溯和测试方法复用：
+
+- `test/doc/test1.md`：100 万级 WebSocket 在线连接压测记录，含服务端 / 客户端监控截图
+
+说明：`test/doc/` 下资料属于历史归档，不直接作为 2026 年对外交付 SLA 或容量承诺口径。
 
 ## 推荐入口
 
