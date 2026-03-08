@@ -1,11 +1,11 @@
 # imboy
 
-基于 [cowboy](https://github.com/ninenines/cowboy)(Small, fast, modern HTTP server for Erlang/OTP) 的即时聊天后端服务，使用 "阿里云8核16G ecs.sn1ne.2xlarge主机（100万PPS）"压测，保持100万+TCP，90分钟以上，详细测试件[测试文档](test/doc/test1.md)
+基于 [cowboy](https://github.com/ninenines/cowboy)(Small, fast, modern HTTP server for Erlang/OTP) 的即时聊天后端服务，当前性能与稳定性验证以 `test/performance`、`test/stress`、CI 门禁与发布前专项回归为准。
 
 因为我是中国人，所以选择了[木兰宽松许可证, 第2版](https://gitee.com/imboy-pub/imboy-flutter/blob/main/LICENSE)
 
 
-一些功能的设计思考权衡过程，请参考[文档](./doc/design_thinking.md)
+核心架构说明请参考 `./doc/architecture/overview.md` 与 `./doc/architecture/database-access.md`。
 
 ## Version
 力求基于“语义化版本控制的规范”([语义化版本 2.0.0](https://semver.org/lang/zh-CN/))实施版本管理.
@@ -14,16 +14,16 @@ Strive to implement version management based on "Specification for Semantic vers
 
 ## 环境依赖  (Environment depends on)
 
-数据结构(./doc/postgresql/)开发中有变动，以第一个发布版为准；目前改成基于 PostgreSQL17 开发
+数据结构以 `priv/migrations/*.sql` 为准，当前基于 PostgreSQL 18 开发。
 
-There are changes in the data structure (./doc/postgresql/vsn0.1) under development. It is currently based on PostgreSQL17
+Schema is defined by `priv/migrations/*.sql`, and the backend currently targets PostgreSQL 18.
 
 ------
 * Erlang/OTP 28+
 
 * 数据库 PostgreSQL18+
 
-* [more](./doc/deps_service.md)
+* [more](./doc/operations/dependencies.md)
 
 ```
 erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell
@@ -34,9 +34,37 @@ erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "relea
 语言: Erlang/OTP 28+
 Web框架: Cowboy (基于Erlang的HTTP服务器)
 数据库: PostgreSQL 18
-UI框架: Element UI Plus + Nuxt4
+管理后台: 独立仓库 `imboy-admin-frontend` (React + Vite)
 认证方式: Cookie-based (adm_user_id)
 依赖管理: Erlang.mk
+
+## 工程化基线
+
+### CI
+
+- GitHub Actions: `.github/workflows/backend-ci.yml`
+- 三端门禁（手动触发）: `.github/workflows/three-end-upgrade-gate.yml`（输入 app/admin 仓库参数后执行 `S3A->S6`，含 `S4`；私有跨仓可配置 `THREE_END_REPO_TOKEN` secret）
+- 三端门禁统一脚本: `script/upgrade/ci_gate.sh`（本地与 CI 复用同一执行入口）
+- 三端门禁摘要脚本: `script/upgrade/publish_gate_summary.sh`（CI 与本地复用同一摘要逻辑）
+- 默认门禁:
+  - `make compile`
+  - `make eunit`
+  - `make ct`
+  - `make dialyze`
+  - `make lint-migrations`
+  - `make report-migration-duplicates`（用于迁移前缀历史债清理）
+
+### 依赖可复现策略
+
+- `rebar.config` 中不使用 `master` 漂移分支，统一固定到 tag 或 commit。
+- `rebar.lock` 需要纳入版本管理，保证团队和 CI 依赖解析一致。
+
+### 配置与密钥
+
+- 示例配置见 `config/sys.config.example`。
+- 生产环境启动会校验 `jwt_key` 与 `postgre_aes_key`，缺失将启动失败。
+- 不要在仓库中提交真实密钥与数据库密码。
+- 本地单节点开发时建议将 `cluster_nodes` 设为空列表，避免启动日志出现 `no_nodes_connected` 噪音。
 
 
 ## erlang 的shell 访问远程节
@@ -168,7 +196,10 @@ make new-app in=webchat
 
 ## test
 
-./doc/test.md
+```bash
+make eunit
+make ct
+```
 
 ## 分析工具  (Analysis tool)
 * [Dialyzer](https://erlang.mk/guide/dialyzer.html)
@@ -369,12 +400,12 @@ Appup Cookbook https://cloud.tencent.com/developer/section/1122611
 ```
 
 ## api 约定  (api convention)
-* [API参考](./doc/API定义.md)
+* [API参考](./doc/api/rest-api.md)
 
 
 ## erlang 优化
 
-./doc/erlang优化.md
+性能与稳定性优化以 CI 基线（`make dialyze`、测试门禁）和发布前压测结果为准。
 
 
 ## cowboy Live update

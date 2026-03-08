@@ -1,9 +1,8 @@
 # 错误码使用规范
 
-> **定义文件**: `include/error_code.hrl`
-> **目的**: 统一错误码定义和使用
-
----
+> Last Updated: 2026-03-08  
+> Source of truth: `include/error_code.hrl`  
+> Related docs: `doc/standards/api-format.md`, `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`
 
 ## 概述
 

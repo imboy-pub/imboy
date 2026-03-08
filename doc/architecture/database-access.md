@@ -1,9 +1,9 @@
 # Imboy 数据库访问层规范
 
-> **版本**: 0.7.3
-> **最后更新**: 2026-01-06
-
----
+> Last Updated: 2026-03-08  
+> Status: 长期架构文档  
+> Source of truth: `src/repo/`, `src/ds/`, `src/lib/elib_pg.erl`, `src/lib/elib_pg_sql.erl`  
+> Related docs: `doc/architecture/overview.md`, `doc/standards/migration_naming.md`
 
 ## 📋 概述
 

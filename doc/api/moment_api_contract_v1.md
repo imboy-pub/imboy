@@ -1,0 +1,207 @@
+# ImBoy Moment API Contract (v1)
+
+> Last Updated: 2026-03-08  
+> Source of truth: `src/imboy_router.erl` + `src/api/moment_handler.erl`  
+> Related docs: `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`, `doc/api/envelope.schema.json`
+
+## 1. Scope
+
+This document defines the first stable contract for Moment (朋友圈) across:
+
+1. Server: `imboy`
+2. App: `imboyapp`
+3. Admin: `imboy-admin-frontend`
+
+## 2. Global Rules
+
+### 2.1 Envelope
+
+All responses must follow the canonical envelope:
+
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "sv_ts": 1771481621000,
+  "payload": {}
+}
+```
+
+### 2.2 ID & HashID Rules
+
+1. Client inputs use HashID at API boundary.
+2. API decodes before DB operations.
+3. API outputs encode IDs back to HashID.
+4. DB stores raw integer IDs.
+
+### 2.3 Parameter Resolution (Hard Rule)
+
+For endpoints with path bindings:
+
+1. Path param has highest priority.
+2. Body/query fallback is compatibility-only behavior.
+
+### 2.4 Content Access Rule (Visibility)
+
+Moment post visibility enum:
+
+1. `0` public: all authenticated users.
+2. `1` friends-only: only confirmed friends.
+3. `2` private: author only.
+4. `3` include-list: only users in ACL allowlist.
+5. `4` exclude-list: all friends except users in ACL blocklist.
+
+Additional hard constraints:
+
+1. Block/denylist relationship always wins over visibility.
+2. Deleted/disabled posts are never readable by normal users.
+3. Admin may access hidden content only via admin APIs.
+
+## 3. Data Schemas
+
+### 3.1 Moment Post (payload)
+
+```json
+{
+  "id": "moment_hashid",
+  "author_uid": "user_hashid",
+  "content": "text content",
+  "visibility": 1,
+  "allow_comment": true,
+  "media": [
+    {
+      "type": "image",
+      "url": "https://...",
+      "width": 1080,
+      "height": 1440,
+      "size": 235012
+    },
+    {
+      "type": "video",
+      "url": "https://...",
+      "cover_url": "https://...",
+      "duration_ms": 15300,
+      "width": 1080,
+      "height": 1920,
+      "size": 2940123
+    }
+  ],
+  "stats": {
+    "like_count": 3,
+    "comment_count": 7
+  },
+  "created_at": "2026-02-26T09:00:00Z",
+  "updated_at": "2026-02-26T09:00:00Z"
+}
+```
+
+### 3.2 ACL Entry
+
+```json
+{
+  "uid": "user_hashid",
+  "acl_type": "allow|deny"
+}
+```
+
+### 3.3 Comment
+
+```json
+{
+  "id": "comment_hashid",
+  "moment_id": "moment_hashid",
+  "user_id": "user_hashid",
+  "reply_to_uid": "user_hashid",
+  "content": "comment text",
+  "created_at": "2026-02-26T09:01:00Z"
+}
+```
+
+## 4. Core API Matrix
+
+| Action | Method | Path | Query | Body | Payload (success) |
+|---|---|---|---|---|---|
+| Create moment | `POST` | `/v1/moment/create` | - | `content`, `media[]`, `visibility`, `allow_comment`, `allow_uids?`, `deny_uids?` | Moment object |
+| Get moment detail | `GET` | `/v1/moment/:moment_id` | - | - | Moment object |
+| Delete moment | `POST` | `/v1/moment/:moment_id/delete` | - | - | `{}` |
+| Feed list | `GET` | `/v1/moments/feed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| User moments | `GET` | `/v1/moments/user/:uid` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+
+## 5. Interaction API Matrix
+
+| Action | Method | Path | Query | Body | Payload (success) |
+|---|---|---|---|---|---|
+| Like moment | `POST` | `/v1/moment/:moment_id/like` | - | - | `{}` |
+| Unlike moment | `POST` | `/v1/moment/:moment_id/unlike` | - | - | `{}` |
+| Add comment | `POST` | `/v1/moment/:moment_id/comment` | - | `content`, `reply_to_uid?` | Comment object |
+| List comments | `GET` | `/v1/moment/:moment_id/comments` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| Delete comment | `POST` | `/v1/moment/:moment_id/comment/:comment_id/delete` | - | - | `{}` |
+
+## 6. Admin API Matrix
+
+| Action | Method | Path | Query | Body | Payload (success) |
+|---|---|---|---|---|---|
+| List moments | `GET` | `/adm/moment/list` | `keyword?`, `uid?`, `status?`, `page`, `size` | - | `{list, total}` |
+| Moment detail | `GET` | `/adm/moment/detail/:moment_id` | - | - | Moment object |
+| Delete moment | `POST` | `/adm/moment/delete` | - | `moment_id`, `reason` | `{}` |
+| List reports | `GET` | `/adm/moment/report/list` | `status?`, `page`, `size` | - | `{list, total}` |
+| Resolve report | `POST` | `/adm/moment/report/resolve` | - | `report_id`, `result`, `note?` | `{}` |
+
+## 7. Notification (S2C Action) Matrix
+
+| Action | Trigger | Save Mode | Payload |
+|---|---|---|---|
+| `moment_new` | Author posts new moment | `save` | `moment_id`, `author_uid` |
+| `moment_like` | User likes moment | `no_save` | `moment_id`, `from_uid` |
+| `moment_comment` | User comments | `save` | `moment_id`, `comment_id`, `from_uid` |
+| `moment_deleted` | Author/admin deletes | `save` | `moment_id`, `deleted_by` |
+
+Rules:
+
+1. Push delivery is best-effort and must not break DB transactions.
+2. Feed pull API remains source of truth for cold-start resync.
+
+## 8. Validation Rules
+
+1. `content` max length: `5000`.
+2. `media` max item count: `9`.
+3. Single image/video max size and mime policy is server-configurable.
+4. `comment` max length: `500`.
+5. `limit` default `20`, max `100`.
+
+## 9. Error Semantics
+
+Typical business messages:
+
+1. `动态不存在`
+2. `无权限查看该动态`
+3. `无权限删除该动态`
+4. `评论已关闭`
+5. `可见性参数无效`
+6. `媒体资源格式无效`
+7. `举报记录不存在`
+
+## 10. Consistency Rules
+
+1. Like/unlike must be idempotent.
+2. Delete moment must hide post from feed and detail consistently.
+3. Comment count/like count must be eventually consistent with source tables.
+4. ACL update and timeline fanout must be transactional or compensatable.
+
+## 11. Change Policy
+
+Any Moment contract change must update all:
+
+1. `src/imboy_router.erl` routes.
+2. `src/api/moment_handler.erl` parameter parsing and validation.
+3. App API client and tests.
+4. Admin API client/pages and tests.
+5. This document.
+
+
+## 12. Related Docs
+
+- `doc/api/rest-api.md`
+- `doc/api/websocket-api-2.md`
+- `doc/api/envelope.schema.json`
+- `doc/operations/security.md`

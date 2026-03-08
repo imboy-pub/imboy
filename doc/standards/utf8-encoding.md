@@ -1,9 +1,8 @@
 # UTF-8 字符串编码规范
 
-> **适用范围**: Erlang 代码
-> **目的**: 确保中文字符串的正确 Unicode 处理
-
----
+> Last Updated: 2026-03-08  
+> Scope: Erlang 代码中的 UTF-8 字符串与中文文本处理  
+> Related docs: `doc/standards/api-format.md`, `doc/standards/error-codes.md`
 
 ## 规则说明
 

@@ -1,86 +1,264 @@
+# Imboy 安全基线（2026 交付版）
 
-一些数据安全相关的说明
+> Last Updated: 2026-03-08  
+> Status: 长期运维与交付文档  
+> Related docs: `doc/guides/deployment.md`, `doc/guides/customer-acceptance-checklist.md`, `config/sys.config.example`
 
-* 公钥加密私钥解密是密送，保证消息即使公开也只有私钥持有者能读懂；
-* 私钥加密、公钥解密是签名，保证消息来源是私钥持有者。
+## 1. 文档定位
 
+本文档用于定义 `Imboy` 当前版本在交付、部署、联调、上线时应满足的最小安全基线。
 
-## 配置与数据安全
-* 服务端配置模块 value 字段 使用 pgcrypto 组件aes算法存储数据
-* 服务端聊天信息 payload 字段 使用 pgcrypto 组件aes算法存储数据
-* 服务端收藏信息 info 字段 使用 pgcrypto 组件aes算法存储数据
-* 服务端响应公钥api 使用 aes算法加密
-* 服务端基于jwt实现用户安全认证
+它描述的是：
 
-* 用户聊天信息在客户端确认收到信息后删除
-* 使用系统环境变量 IMBOYENV 加载相关配置，sys.local.config vm.local.args 等配置不加入软件git仓储
-* 服务端和客户端通过约定 solidified_key 交互安全数据
-* 客户端通过请求 /init 获取经过 aes cbc 加密的rsa公钥
-* 客户端登录密码使用 rsa 公钥加密提交数据
-* 客户端获取所有的用户ID都是经过 hashids 算法加密的6位+字符串
-*
+- 当前仓库已经实现或已经具备交付条件的安全控制；
+- 生产环境必须落实的配置要求；
+- 对外沟通时可以承诺、以及不能误承诺的安全边界。
 
-* 系统中的附近信息（上传的图片、视频、语音、文件等数据）都是需要经过服务授权才能够访问的（授权码有效期可配置）
+它不等同于：
 
-## RSA公钥、私钥生成
+- 等保、ISO、SOC2 等外部认证文件；
+- 完整的渗透测试报告；
+- 针对某个行业客户的专属安全条款。
 
-```
-openssl genrsa -des3 -out test_rsa_private_key.pem
-# 去除掉密钥文件保护密码
-openssl rsa -in test_rsa_private_key.pem -out test_rsa_private_key.pem
-# 分离出公钥
-openssl rsa -in test_rsa_private_key.pem -pubout -out test_rsa_public_key.pem
-```
+## 2. 适用范围
 
-## 使用 OpenSSL 工具来生成自签名的 HTTPS 证书
+当前基线覆盖以下范围：
 
-自制证书在浏览器中通常会被标记为不受信任
+1. 后端公共 API 与 WebSocket 接口；
+2. 管理后台认证与权限入口；
+3. 配置密钥、令牌、部分敏感字段加密存储；
+4. 登录初始化、上传配置、媒体访问授权；
+5. 隐私政策、账号注销与审计链路；
+6. 可选 `E2EE` 模块的基础密钥能力。
 
-```
-brew install openssl
-```
+## 3. 当前已实现的安全控制
 
+### 3.1 运行时密钥与配置校验
 
-生成私钥文件（key.pem）
-```
+当前后端在严格环境（`pro` / `prod` / `production`）启动时，会强制校验以下关键密钥非空：
 
-openssl genrsa -out ./priv/ssl/server.key 2048
-```
+- `jwt_key`
+- `postgre_aes_key`
 
-生成自签名中间证书（chain.crt）
-```
-openssl req -new -sha256 -key ./priv/ssl/server.key -out ./priv/ssl/chain.csr
-openssl x509 -req -in ./priv/ssl/chain.csr -signkey ./priv/ssl/server.key -out ./priv/ssl/chain.crt -days 365
+这意味着生产环境如果缺少关键密钥，服务应直接启动失败，而不是带着默认空值运行。
 
-    Signature ok
-    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy.pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
-    Getting Private key
-```
+当前建议同时满足：
 
+- `jwt_key` 使用 32 字节及以上随机密钥；
+- `postgre_aes_key` 使用 32 字节及以上随机密钥；
+- `hashids_salt` 必须替换示例值，且每个正式环境独立；
+- `config/sys.config.example` 中的 `CHANGE_ME_*` 仅作示例，不能直接用于任何正式环境。
 
-生成公共证书（ public.crt）：
-```
-openssl req -new -sha256 -key ./priv/ssl/server.key -out ./priv/ssl/public.csr
-openssl x509 -req -in ./priv/ssl/public.csr -CA ./priv/ssl/chain.crt -CAkey ./priv/ssl/server.key -CAcreateserial -out ./priv/ssl/public.crt -days 365
-    Signature ok
-    subject=C = CN, ST = Guangdong, L = Shenzhen, O = imboy.pub, OU = imboy, CN = imboy, emailAddress = leeyisoft@qq.com
-    Getting CA Private Key
+### 3.2 认证、会话与后台入口保护
 
-```
-已经生成了一个自制的 HTTPS 证书，其中 key.pem 是私钥文件，cert.pem 是自签名证书文件。
-自制证书在浏览器中通常会被标记为不受信任
+当前公共端认证基于 JWT：
 
-## 内容安全
+- Access Token / Refresh Token 由服务端签发；
+- 使用 `HS256` 签名；
+- Token 校验容忍 5 分钟时钟偏差，降低多端与服务器轻微时钟漂移带来的误判。
 
-调用华为云提供的 API，可自由设置过滤内容类型，分别为：politics（涉政）、porn（涉黄）、ad（广告）、abuse（辱骂）、contraband（违禁品）、flood（灌水）
+当前后台认证具备以下特性：
 
-原理：根据图片或者图片链接，华为云 API 返回三个维度对应的比例，分别是正常比例、色情比例、性感比例，返回值里的参数 suggestion 结果为 block，则判定为色情图片；性感图片的返回值里的参数 suggestion 结果为 pass，在三个维度的比例中性感比例最大，则认为该图片是性感图片。对于正常与色情比例接近的会返回 review，需要人工确认。
+- 后台 Cookie 签名优先使用 `jwt_key`；
+- 未授权 API 返回统一 `401` JSON 响应；
+- 页面型后台入口与 API 型后台入口采用不同未授权处理方式；
+- 后台功能矩阵接口要求具备 `settings:view` 权限，不是所有后台账号都可读取。
 
+交付口径上应明确：
 
-### 内容安全 相关介绍
-* IM敏感词算法原理和实现  https://blog.csdn.net/xmcy001122/article/details/118000803
-* 华为云与鉴黄师不得不说的那些事 https://www.infoq.cn/article/x-a6mhtxe3shsc3qecey
-* https://gitee.com/humingzhang/wordfilter
-* Serverless 实战：3 分钟实现文本敏感词过滤 https://www.infoq.cn/article/d0jzjh0lpttjqhj32vg1
-    * 什么是 AC 自动机？简单来说，AC 自动机就是字典树+kmp 算法+失配指针，一个常见的例子就是给出 n 个单词，再给出一段包含 m 个字符的文章，让你找出有多少个单词在文章里出现过。
-* https://github.com/toolgood/ToolGood.Words
+- 后台账号必须按角色分配，不允许长期共享超级账号；
+- 后台权限是安全边界的一部分，不能只靠前端隐藏菜单；
+- 对外不得宣称“知道接口地址也访问不了”是唯一保护，必须以后端鉴权为准。
+
+### 3.3 敏感字段保护与数据库侧加密
+
+当前仓库已具备基于 `postgre_aes_key` 的数据库侧字段加密能力，主要用于降低敏感字段明文暴露风险。
+
+当前已落地或明确支持的方向包括：
+
+- `config` 表中的部分配置值；
+- 消息相关表的 `payload` 字段；
+- 收藏、标签等场景中的 `info` 字段；
+- 其他通过统一加密助手接入的兼容字段。
+
+这里要明确三个边界：
+
+1. 这是“字段级加密存储”能力，不等于整库加密；
+2. 这是服务端托管密钥的兼容方案，不等于端到端加密；
+3. 当前实现以兼容现有数据结构为目标，不应对外宣称为“零知识架构”。
+
+### 3.4 ID 暴露收敛与接口层输出控制
+
+当前 API 层对外暴露的很多业务 ID 已通过 `hashids` 做编码处理，用于减少直接暴露自增整数 ID 的风险。
+
+但必须明确：
+
+- `hashids` 的作用是降低直接枚举风险和改善接口暴露形态；
+- `hashids` 不是权限控制；
+- 任何资源是否可读、可写、可删除，仍必须以后端鉴权与业务校验为准。
+
+### 3.5 登录初始化与传输过程保护
+
+当前客户端启动会通过 `GET /v1/init` 获取初始化数据，返回内容包含：
+
+- `ws_url`
+- `upload_url`
+- `upload_key`
+- `upload_scene`
+- `login_pwd_rsa_encrypt`
+- `login_rsa_pub_key`
+
+这份初始化数据当前会通过 `solidified_key` 派生后的对称密钥做包装返回。
+
+登录链路当前支持密码字段的 RSA 解密兼容逻辑，适配客户端启用 `login_pwd_rsa_encrypt` 的场景。
+
+交付时要明确以下边界：
+
+1. 登录口令的 RSA 包装属于附加保护，不可替代 HTTPS；
+2. 任何公网交付环境都必须使用受信任 TLS 证书；
+3. 自签名证书只允许用于本地或封闭测试环境，不应进入正式交付说明。
+
+### 3.6 节流、滥用防护与接口收敛
+
+当前系统已对多个高频或可滥用入口做节流控制，例如：
+
+- Refresh Token 刷新；
+- WebSocket 初始化/握手；
+- 部分群管理操作；
+- 发送验证码等高频动作。
+
+此外，当前系统的功能开关也可用于减少未售卖模块的暴露面：
+
+- 未交付模块应在后端显式关闭；
+- 关闭后公共接口应返回统一错误，而不是只隐藏前端入口；
+- 后台、App、后端必须围绕同一份功能矩阵收敛暴露面。
+
+### 3.7 隐私政策、账号删除与审计链路
+
+当前仓库已经具备面向商店审核和客户交付所需的基础公开页面与接口：
+
+- `GET /privacy-policy`
+- `GET /account-deletion`
+- `POST /v1/user/apply_logout`
+- `POST /v1/user/cancel_logout`
+
+同时，账号注销申请已接入后端日志记录与后台可审计链路。
+
+交付时应保证：
+
+- 隐私政策页面可公网访问；
+- 账号删除说明页面可公网访问；
+- 用户可在 App 内发起注销申请，而不是仅停留在说明页；
+- 后台可以查询、追踪、导出注销申请记录。
+
+### 3.8 可选 E2EE 能力的安全边界
+
+当前仓库已具备设备公钥管理、RSA OAEP 加解密、分片加密等基础能力，并支持通过功能开关控制 `e2ee` 模块是否启用。
+
+对外沟通必须注意：
+
+- 只有在对应模块启用、客户端完成配套接入、联调和回归通过后，才能宣称启用了 `E2EE` 能力；
+- 默认基础版交付不应笼统宣称“所有消息都默认端到端加密”；
+- `E2EE` 相关能力应单独做接口契约、恢复流程和密钥轮转验证。
+
+## 4. 生产交付硬要求
+
+### 4.1 密钥与配置
+
+生产环境至少满足：
+
+- 不使用任何 `CHANGE_ME_*` 示例值；
+- `jwt_key`、`postgre_aes_key`、`hashids_salt` 按环境独立；
+- 密钥不提交到 Git 仓库；
+- 配置文件、运维平台、CI Secret 之间职责清晰，避免多人本地复制正式密钥。
+
+### 4.2 HTTPS 与网络边界
+
+公网交付至少满足：
+
+- 用户访问域名走 HTTPS；
+- 管理后台走 HTTPS；
+- WebSocket 使用 `wss` 或由反向代理安全转发；
+- 不使用自签名证书作为正式交付证书。
+
+数据库、缓存、对象存储等内网依赖应至少满足以下其一：
+
+- 位于私网 / 专线环境；
+- 或启用链路加密；
+- 或通过可信网关隔离，而不是直接暴露公网可访问端口。
+
+### 4.3 媒体与文件访问
+
+上传、附件、图片、语音、视频等资源交付时应遵循：
+
+- 上传地址与上传密钥由受控配置下发；
+- 文件访问默认走授权链路或有效期控制；
+- 不再把绑定某个域名、某台机器、某套面板路径的存储样例直接放进通用产品仓库；
+- 真正的对象存储 / 文件存储配置应留在交付环境或独立运维仓维护。
+
+### 4.4 后台最小权限原则
+
+管理后台至少满足：
+
+- 账号按角色授权；
+- 配置查看、用户审计、运营数据导出等能力按需开放；
+- 运营账号与技术账号分离；
+- 不共享长期有效的超级管理员 Cookie 或浏览器会话。
+
+### 4.5 功能暴露面控制
+
+生产环境不要依赖缺省值判断安全状态，应做到：
+
+- `features` 显式配置所有已登记模块；
+- 未售卖、未验收、未过审模块明确设为 `false`；
+- App、后台、后端统一按功能矩阵显隐和拦截；
+- 对外演示环境与正式交付环境分别配置，避免把试验模块误带到生产。
+
+## 5. 上线前安全核对清单
+
+发布或客户验收前，至少逐项确认：
+
+- [ ] `jwt_key`、`postgre_aes_key`、`hashids_salt` 已替换为正式值；
+- [ ] 生产环境启动不会因缺密钥降级运行；
+- [ ] `/privacy-policy` 与 `/account-deletion` 可公网访问；
+- [ ] `/v1/user/apply_logout`、`/v1/user/cancel_logout` 联调通过；
+- [ ] 后台可以查询注销申请审计记录；
+- [ ] `GET /v1/app/features` 与 `GET /adm/admin/config/features` 返回符合本次交付范围；
+- [ ] WebSocket、Refresh Token、验证码等高频入口已做节流校验；
+- [ ] 未售卖模块的后端接口不是“可直调可用”；
+- [ ] 公网域名使用受信任证书，不使用自签名证书；
+- [ ] 日志、截图、导出文件中不泄露密钥、明文口令、真实生产数据库密码。
+
+## 6. 对外沟通时不要误承诺的内容
+
+以下说法不应直接对外使用：
+
+- “用了 `hashids`，所以数据就是加密的”；
+- “密码有 RSA 包装，所以不需要 HTTPS”；
+- “数据库字段加密了，所以后台人员完全看不到敏感数据”；
+- “支持 `E2EE` 代码，就等于所有版本默认已经端到端加密”；
+- “接了第三方内容安全接口，就等于平台内容安全零风险”。
+
+更稳妥的说法应是：
+
+- 当前版本具备基础认证、字段级加密存储、后台鉴权、节流与注销审计能力；
+- 如需更高等级安全交付，可追加 `E2EE`、独立密钥管理、专属运维隔离、审计加固和专项安全测试。
+
+## 7. 推荐后续加固项
+
+如果后续要做更高等级交付，建议按优先级推进：
+
+1. 为正式环境建立密钥轮换和密钥保管流程；
+2. 对管理后台增加更细粒度审计与告警；
+3. 对上传与下载链路补齐更明确的授权、过期和留痕机制；
+4. 对 `E2EE`、恢复流程、代理分片等能力做独立安全评审；
+5. 在发版前引入固定化安全回归清单，而不是只做功能回归。
+
+## 8. 相关文档
+
+- `config/sys.config.example`
+- `doc/guides/deployment.md`
+- `doc/guides/customer-acceptance-checklist.md`
+- `doc/api/rest-api.md`
+- `priv/static/legal/privacy_policy.html`
+- `priv/static/legal/account_deletion.html`

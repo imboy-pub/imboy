@@ -1,220 +1,143 @@
+# Imboy 部署与功能开关联调清单
 
-# 重新部署流程
+> Last Updated: 2026-03-08  
+> Status: 长期交付与部署文档  
+> Related docs: `doc/guides/customer-acceptance-checklist.md`, `doc/guides/module-feature-flag-config-draft.md`, `doc/operations/dependencies.md`
 
-共有1-10个注意事项：
+## 功能开关部署与联调执行清单（2026-03-08）
 
-pro.imboy.pub
-i.imboy.puub
-turn.imboy.pub
+说明：仓库不再保留绑定具体域名、机器 IP、证书路径的 `nginx` / 文件存储样例配置；此类模板应在交付环境或独立运维仓按环境维护。
 
-* 使用 docker容器启动 eturnal 服务，会非常占用内存，直接源码安装或者用依赖包在宿主机安装很省内存；
-* 按下面流程配置好各个依赖后，通过 docker-compose-pro.yml 管理 postgresql17 服务
+适用场景：
 
-```
-cd imboy
-docker-compose -f docker-compose-pro.yml up -d
-```
+- 面向客户交付基础版 / 专业版 / 行业扩展版；
+- 需要通过 `features` 控制二期模块实际生效范围；
+- App 与管理后台都要围绕同一份后端功能矩阵做入口控制与关闭态兜底。
 
+### 一、部署前准备
 
-1. 安装erlang
+发布前至少确认以下事项：
 
-./doc/erlang_install.md
+1. 已明确本次交付版本的售卖范围：
+   - 基础版：建议关闭 `location`、`moment`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task`；
+   - 专业版：按合同显式打开 `channel` 及其必要子能力；
+   - 行业扩展版：按项目范围逐项开启二期模块。
+2. 运维已准备实际部署使用的 `sys.config`，不要依赖“缺省开启”作为正式交付配置；
+3. App、后台、实施方都已确认功能关闭时的预期表现：
+   - App 隐藏入口；
+   - 后台隐藏菜单或页面入口；
+   - 后端统一返回 `5190 / 功能未启用`；
+   - 不出现点进后白屏、404、死链接。
 
-【有道云笔记】CentOS 源码安装 Erlang.md
-https://note.youdao.com/s/7hvcSteY
+### 二、配置落地
 
+后端配置以 `config/sys.config.example` 中的 `features` 配置块为模板。
 
-2. 安装 docker
-```
-mkdir -p /data /data/imboy
-docker network create imboy-network
-```
+建议执行顺序：
 
-3. 安装 postgresql
+1. 在目标环境 `sys.config` 中显式写出全部已登记功能；
+2. 对未售卖模块写 `enabled => false`，不要省略；
+3. 对 `channel_discover`、`channel_invitation`、`channel_order`，先确认 `channel` 是否已开启；
+4. 配置变更后重启服务，并确认新配置已被进程读取。
 
-```
-cd /www/wwwroot/imboy-api
+推荐最小核对项：
 
-docker build --file "./docker/pg18_Dockerfile" -t imboy/pg18:3.6.1-1 .
+- `core` 是否为 `true`；
+- `channel=false` 时，三个 `channel_*` 子能力是否也对外表现为 `false`；
+- 没有误把二期模块留在“缺省开启”状态。
 
-// 解决升级 timescaledb 后加载报错的问题
-psql -U imboy_user -d imboy_v1
-DROP EXTENSION IF EXISTS timescaledb CASCADE;
-CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
-```
+### 三、接口联调
 
-注意设置pgsql 内网访问
+当前以两个只读接口作为三端统一事实源：
 
-设置只允许内网访问，docker网关地址为 172.19.0.1
-```
-# - Connection Settings -
+- 公共端：`GET /v1/app/features`
+- 后台端：`GET /adm/admin/config/features`
 
-listen_addresses = 'localhost, 172.19.0.0/16'
-                    # comma-separated list of addresses;
-                    # defaults to 'localhost'; use '*' for all
-                    # (change requires restart)
-#port = 5432                # (change requires restart)
-```
+联调步骤：
 
-4. sjqzhang/go-fastdfs
+1. 部署后先请求 `GET /v1/app/features`，确认返回 `payload` 与目标售卖版本一致；
+2. 使用具备 `settings:view` 权限的后台账号请求 `GET /adm/admin/config/features`，确认返回值与 App 侧一致；
+3. 使用不具备 `settings:view` 权限的后台账号验证应返回无权限结果；
+4. 对一个已关闭模块做反向验证：
+   - 入口隐藏；
+   - 手工直调业务接口返回 `5190`；
+   - 业务页面没有出现部分元素仍可操作的情况。
 
-```
-cd /data/imboy/
+建议联调命令示例：
 
-docker rm -f imboy_fastdfs && docker run -d \
-    --network=imboy-network \
-    --name imboy_fastdfs  \
-    --memory 800M \
-    --memory-swap 2g \
-    -v /data/docker/img_fastdfs_data:/data \
-    -p 8080:8080 \
-    -e GO_FASTDFS_DIR=/data \
-    sjqzhang/go-fastdfs
+```bash
+curl -sS https://<domain>/v1/app/features
+curl -sS -H 'authorization: Bearer <token>' https://<domain>/adm/admin/config/features
 ```
 
-修改配置如下：
-/data/docker/img_fastdfs_data/conf/cfg.json
-```
-    "support_group_manage": false,
-    "download_domain": "124.222.102.13:8080",
-    "scenes": ["dev", "pro"],
-    "show_dir": false,
-    "file_sum_arithmetic": "sha1",
-    "admin_ips": ["127.0.0.1"],
-    "auth_url": "https://dev.imboy.pub/auth/assets",
-    "enable_download_auth": true,
-    "default_download": false,
-```
+如需一次性做公共端 / 后台端 / 低权限拒绝 / 期望值核对，可直接执行：
 
-6. ghcr.io/processone/eturnal:latest
-
-https://eturnal.net/doc/container.html
-```
-ghcr.io/processone/eturnal:latest
-mkdir -p /data/docker/eturnal && cd /data/docker/eturnal
-wget https://raw.githubusercontent.com/processone/eturnal/master/config/eturnal.yml
-
-docker rm -f imboy_eturnal &&  docker run -d --rm \
-    --name imboy_eturnal \
-    --network=imboy-network \
-    --read-only \
-    --cap-drop=ALL \
-    --security-opt no-new-privileges \
-    --memory 800M \
-    --memory-swap 2g \
-    -p 3478:3478 \
-    -p 3478:3478/udp \
-    -p 50000-50500:50000-50500/udp \
-    -e ETURNAL_RELAY_MIN_PORT=50000 \
-    -e ETURNAL_RELAY_MAX_PORT=50500 \
-    -v /data/docker/eturnal/eturnal.yml:/etc/eturnal.yml:ro \
-    docker.io/eturnal/eturnal:latest
-
-docker exec imboy_eturnal eturnalctl info
-docker exec imboy_eturnal eturnalctl credentials
-
+```bash
+bash ./script/run_feature_flag_smoke.sh \
+  --base-url https://<domain> \
+  --admin-header 'authorization: Bearer <admin_token>' \
+  --forbidden-header 'authorization: Bearer <limited_token>' \
+  --expect core=true \
+  --expect channel=true \
+  --expect moment=false \
+  --expect group_task=false
 ```
 
+该脚本会完成四类检查：
 
-测试 eturnal 安装是否成功
-```
-brew install stuntman
-ll /usr/local/Cellar/stuntman/1.2.16/bin/stunclient
+1. `GET /v1/app/features` 是否返回成功；
+2. `GET /adm/admin/config/features` 是否返回成功且与公共端 `payload` 一致；
+3. 低权限后台账号是否被正确拒绝；
+4. 关键模块开关是否符合本次交付预期。
 
-stunclient dev.imboy.pub 3478
-stunclient -u 1710902602 -p jx9u3FeQ6YGcISGwOq7lkyyuGpU= dev.imboy.pub 3478
+如果你更习惯 `make`，也可以直接执行：
 
-nc -zv 124.222.102.13 3478
-Connection to 124.222.102.13 port 3478 [tcp/nat-stun-port] succeeded!
-
-
-telnet 124.222.102.13 3478
-Trying 124.222.102.13...
-Connected to 124.222.102.13.
-Escape character is '^]'.
+```bash
+make feature-smoke \
+  FEATURE_SMOKE_BASE_URL=https://<domain> \
+  FEATURE_SMOKE_ADMIN_HEADER='authorization: Bearer <admin_token>' \
+  FEATURE_SMOKE_FORBIDDEN_HEADER='authorization: Bearer <limited_token>' \
+  FEATURE_SMOKE_EXPECTS='core=true channel=true moment=false group_task=false'
 ```
 
+### 四、三端验收口径
 
-STUN_URL=stun:124.222.102.13:3478
-TURN_URL=turn:124.222.102.13:3478?transport=udp
+App 侧至少验收：
 
-7. 数据库初始化配置
+1. 首页 / 个人页 / 群详情 / 频道入口是否按开关显隐；
+2. 已缓存旧入口时，进入关闭模块是否提示“功能未启用”；
+3. 启动阶段拉到的功能矩阵是否可覆盖本地旧缓存。
 
-./project/imboy.pub/doc/keystore/imboy_init_config_dev.md
-./project/imboy.pub/doc/keystore/imboy_init_config_pro.md
+后台侧至少验收：
 
-```
+1. 菜单、列表页、详情页、操作按钮是否与功能矩阵一致；
+2. 无 `settings:view` 权限账号不能读取后台功能矩阵；
+3. `moment`、`group_vote`、`group_schedule`、`group_task`、频道邀请/订单相关页面关闭后不再暴露。
 
-config_ds:set(<<"api_auth_switch">>, on). % on | off
+后端侧至少验收：
 
-config_ds:set(<<"jwt_key">>, <<>>).
-config_ds:set(<<"password_salt">>, <<>>).
+1. `moment`、`location`、`group_vote`、`group_schedule`、`group_task` 的公共接口拦截生效；
+2. `channel_discover`、`channel_invitation`、`channel_order` 是按 action 级别拦截，而不是整条频道能力全关；
+3. 后台管理接口与公共接口的拦截口径一致。
 
+### 五、发布与回滚
 
-config_ds:set(<<"login_pwd_rsa_encrypt">>, 1, <<"登录密码使用RSA算法加密"/utf8>>, <<"系统登录是否开启RSA加密 1 是； 0 否"/utf8>>).
-config_ds:set(<<"site_name">>, <<"IMBoy"/utf8>>, <<"前端站点名称"/utf8>>, <<>>).
+建议发布顺序：
 
-config_ds:set(<<"login_rsa_pub_key">>, <<>>, <<"登录RSA算法加密公钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+1. 先发后端配置与接口；
+2. 再发 App / 后台入口显隐；
+3. 最后做客户验收与截图留档。
 
-config_ds:set(<<"login_rsa_priv_key">>, <<>>, <<"登录RSA算法加密私钥"/utf8>>, <<"pem文件内容，换行用\n"/utf8>>).
+若出现配置错误，优先按以下顺序回滚：
 
+1. 回滚 `sys.config` 中的 `features` 配置块；
+2. 重启服务并重新核对 `GET /v1/app/features`；
+3. 必要时临时恢复入口显隐配置，但不要跳过后端校验。
 
+### 六、常见风险
 
-config_ds:set(<<"upload_url">>, <<"https://a.imboy.pub">>).
-config_ds:set(<<"upload_key">>, <<>>).
-config_ds:set(<<"upload_scene">>, <<"dev">>).
-config_ds:set(<<"ws_url">>, <<"wss://dev.imboy.pub/ws/">>).
-# config_ds:set(<<"ws_url">>, <<"ws://192.168.31.110:9800/ws/">>).
-# config_ds:set(<<"ws_url">>, <<"ws://172.20.10.3:9800/ws/">>).
-config_ds:set(<<"ws_url">>, <<"ws://api.imboy.local/ws/">>).
-
-config_ds:set(<<"eturnal_secret">>, "").
-config_ds:set(<<"turn_urls">>, [<<"turn:dev.imboy.pub:34780?transport=udp">>]).
-config_ds:set(<<"stun_urls">>, [<<"stun:dev.imboy.pub:34780">>]).
-
-config_ds:set(<<"solidified_key">>, <<>>, <<"接口默认签名秘钥"/utf8>>, <<"如果没有自动获取到sign_key 就用这个值来签名"/utf8>>).
-config_ds:set(<<"solidified_key_iv">>, <<>>, <<"秘钥IV"/utf8>>, <<"IV 必须都为128比特，也就是16字节"/utf8>>).
-
-config_ds:get(<<"upload_url">>).
-config_ds:get(<<"ws_url">>).
-config_ds:get(<<"turn_urls">>).
-
-```
-
-
-8. nginx 配置
-
-./nginx_dev.imboy.pub.conf
-```
-
-cp -Rf /www/wwwroot/imboy-api/priv/static /www/wwwroot/dev.imboy.pub/
-
-cp -Rf /www/wwwroot/imboy-api/priv/static /www/wwwroot/pro.imboy.pub/
-
-    # 解决静态资源404问题
-    location ~ .*\.(js|css|ttf|woff|woff2)?$
-    {
-        expires      12h;
-        error_log /dev/null;
-        access_log /dev/null;
-    }
-```
-
-9. adm
-Captcha
-
-https://www.cnblogs.com/ziyouchutuwenwu/p/4424499.html
-sudo apt-get install imagemagick
-
-10. 定时备份数据
-
-
-在宿主机上面：
-
-```
-
-cp -rf /www/wwwroot/imboy-api/doc/postgresql/cron_backup_pgsql.sh /data/docker/elib_pg15 && chmod +x /data/docker/elib_pg15
-
-[root@imboy ~]# crontab -e
-0 3 * * * /usr/bin/docker exec elib_pg15 /bin/sh /var/lib/postgresql/data/cron_backup_pgsql.sh
-```
+1. `features` 未显式配置，导致新登记功能被“缺省开启”；
+2. 只做了前端隐藏，没有做后端接口拦截；
+3. 只验了 App，没有验后台权限差异；
+4. 子能力开关打开了，但父能力 `channel=false`，导致实施方误判为配置失效；
+5. 客户验收时只看 UI，没有做接口级验证。

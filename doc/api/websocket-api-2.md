@@ -1,12 +1,11 @@
 # ImBoy WebSocket API 规范 v2.0
 
-> **版本**: 2.0.0
-> **协议**: WebSocket (RFC 6455)
-> **编码**: UTF-8
-> **消息格式**: JSON
-> **变更说明**: 重构消息结构，将 msg_type/action/e2ee 提升到顶层字段
+> Last Updated: 2026-03-08  
+> Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl`  
+> Related docs: `doc/api/rest-api.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/operations/security.md`
 
 ---
+
 
 ## 目录
 
@@ -445,6 +444,8 @@ HTTP/1.1 1000 (Normal Closure)
 | `permission_denied` | 权限不足 | 显示权限不足提示 |
 | `device_force_offline` | 被强制下线 | 显示强制下线提示 |
 | `app_upgrade` | 应用升级通知 | 显示升级对话框 |
+| `invalid_message` | 客户端消息校验失败 | 记录日志并提示重发 |
+| `invalid_json` | 客户端消息 JSON 非法 | 记录日志并提示检查客户端版本 |
 
 ### C2S - 客户端请求
 
@@ -522,9 +523,12 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 ## 错误处理
 
-### 错误响应格式
+### 通用约定
 
-#### 顶层错误消息
+- 通用业务错误码、envelope 语义与字段口径以 `doc/standards/error-codes.md`、`doc/api/rest-api.md` 为准。
+- 本节仅补充 WebSocket 场景下的连接期 / 消息期错误表现与客户端处理建议。
+
+### 顶层错误消息
 
 ```json
 {
@@ -537,7 +541,13 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 }
 ```
 
-#### S2C 错误消息
+适用场景：
+
+- 握手认证失败；
+- Token 缺失、无效或已过期；
+- 请求在进入业务处理前就被拒绝。
+
+### S2C 错误消息
 
 ```json
 {
@@ -553,105 +563,54 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 }
 ```
 
-### 错误码定义
+适用场景：
 
-| code | 说明 | payload 要求 |
-|------|------|-------------|
-| 0 | 业务成功 | 可为空，根据业务需求结构不限不同 |
-| 1 | 无需弹窗错误 | 可为空，记录日志后忽略 |
-| 2 | 带 title 弹窗 | 必须包含 `title`, `content` |
-| 3 | 无 title 弹窗 | 必须包含 `content` |
-| 401 | 认证失败 | Token 无效或缺失 |
-| 403 | 权限不足 | 无权限执行操作 |
-| 404 | 资源不存在 | 用户/群组不存在 |
-| 500 | 服务器错误 | 内部错误 |
+- 连接已建立，但业务消息被服务端拒绝；
+- 服务端希望通过统一 `S2C.action` 通知客户端调整 UI 或触发补偿逻辑。
+
+### WebSocket 场景补充约定
+
+| 场景 | 表现 | 客户端处理建议 |
+|------|------|----------------|
+| Token 无效 / 缺失 | 顶层 `401` 或 `please_refresh_token` | 刷新 Token，必要时重连 |
+| 黑名单 / 权限拒绝 | `S2C.action` 如 `in_denylist`、`permission_denied` | 给出提示，不做本地伪成功 |
+| 客户端消息校验失败 | `invalid_message` | 记录日志并提示重发 |
+| 客户端 JSON 非法 | `invalid_json` | 记录日志并提示检查客户端版本 |
+| 资源不存在 | 顶层 `404` 或业务型 `S2C.action` | 提示目标已失效并刷新会话状态 |
+| 服务端内部错误 | 顶层 `500` | 指数退避重试，避免立即洪泛重发 |
 
 ---
 
 ## 安全规范
 
+WebSocket 的通用安全基线以 `doc/operations/security.md` 为准；本节只保留协议特有约束。
+
 ### 认证
 
-#### Token 类型
+- 连接建立前必须携带有效登录态；
+- 认证凭证失效后，客户端应优先刷新 Token，而不是盲目无限重连；
+- `Device Token` / `did` 只能辅助识别设备，不替代用户认证。
 
-- **JWT Token**: 用于用户认证
-- **Refresh Token**: 用于刷新访问令牌
-- **Device Token**: 用于设备唯一标识
+### 传输安全
 
-### 加密
+- 生产环境强制使用 `wss://`；
+- 开发环境如使用 `ws://`，必须在内网或受控测试环境下进行；
+- 任何“口令 RSA 包装”或“初始化数据加密”都不能替代 TLS。
 
-#### 传输层加密
+### E2EE 约束
 
-- **生产环境**: 强制使用 `wss://` (WebSocket over TLS)
-- **开发环境**: 可使用 `ws://`，但需明示风险
+- `E2EE` 为可选能力，不是所有版本默认开启；
+- 字段结构以本文“消息格式规范 / E2EE 字段结构”和前文消息示例为准；
+- 服务端负责鉴权、路由、存储与转发，不应将可解密明文作为默认承诺；
+- 多设备场景下应按设备分发 wrapped key，而不是复用单份接收密钥。
 
-#### 内容加密 (E2EE)
+### HashID 与资源标识
 
-对于敏感消息，可启用端到端加密（E2EE）：
-
-- **密钥模型**: 发送方为每条消息生成一次性对称密钥
-- **服务端职责**: 仅做鉴权、路由、存储与转发；不解密 `ciphertext`
-- **多设备支持**: 每个接收设备一份独立的 wrapped key
-- **e2ee**: 只存储元数据，ciphertext 存储在 payload
-
-E2EE 消息示例（C2C 文本）：
-
-```json
-{
-  "id": "c2c.x9j8.5ia0V5.Kr3aUs.F",
-  "type": "C2C",
-  "from": "XyZ9aBcDeF",
-  "to": "GhI8jKlMnO",
-  "msg_type": "text",
-  "action": "",
-  "e2ee": {
-    "e2ee": true,
-    "e2ee_ver": 1,
-    "e2ee_suite": "RSA-OAEP-256+AES-256-GCM",
-    "nonce": "b64_nonce_12bytes",
-    "keys": [
-      {
-        "did": "deviceA",
-        "kid": "k1",
-        "wrap_alg": "RSA-OAEP-256",
-        "ek": "b64_wrapped_aes_key"
-      },
-      {
-        "did": "deviceB",
-        "kid": "k3",
-        "wrap_alg": "RSA-OAEP-256",
-        "ek": "b64_wrapped_aes_key"
-      }
-    ]
-  },
-  "payload": "base64_ciphertext_with_tag",
-  "server_ts": 1736141700000
-}
-```
-
-### HashID 混淆
-
-#### 目的
-
-- 防止遍历攻击
-- 保护用户隐私
-- 隐藏真实 ID
-
-#### 编码示例
-
-```erlang
-% 原始 ID
-UserId = 12345
-
-% 编码为 HashID
-HashId = elib_hashids:encode(UserId)  % "XyZ9aBcDeF"
-
-% 解码为原始 ID
-DecodedId = elib_hashids:decode(HashId)  % 12345
-```
+- `HashID` 只用于降低直接枚举风险，不是权限控制；
+- 实际资源访问权限以后端鉴权和业务校验为准；
+- 编码规则统一参考 `doc/standards/hashid-encoding.md`。
 
 ---
-
 ## 扩展指南
 
 ### 添加新消息类型
@@ -1261,10 +1220,12 @@ v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。
 
 ### 相关文档
 
-- **v1.0 API**: [websocket-api.md](./websocket-api.md)
-- **数据库迁移**: [websocket-api-2-database-migration.md](./websocket-api-2-database-migration.md)
-- **代码迁移计划**: [websocket-api-2-migration-plan.md](./websocket-api-2-migration-plan.md)
-- **主文档**: [CLAUDE.md](../CLAUDE.md)
+- `doc/api/rest-api.md`
+- `doc/standards/error-codes.md`
+- `doc/standards/hashid-encoding.md`
+- `doc/operations/security.md`
+- `doc/api/e2ee_server_persisted_shard_contract_v1.md`
+- `CLAUDE.md`
 
 ---
 

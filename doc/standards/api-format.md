@@ -1,10 +1,9 @@
 # API 格式规范
 
-> **协议**: HTTP/REST + WebSocket
-> **编码**: UTF-8
-> **消息格式**: JSON
+> Last Updated: 2026-03-08  
+> Scope: HTTP/REST 与 WebSocket 的通用消息格式约定  
+> Related docs: `doc/api/rest-api.md`, `doc/api/envelope.schema.json`, `doc/api/websocket-api-2.md`
 
----
 
 ## HTTP API 响应格式
 

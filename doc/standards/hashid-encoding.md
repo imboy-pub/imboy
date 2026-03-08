@@ -1,9 +1,8 @@
 # HashID 编码/解码规范
 
-> **模块**: `elib_hashids`
-> **目的**: 保护用户隐私，防止遍历攻击
-
----
+> Last Updated: 2026-03-08  
+> Source of truth: `src/lib/elib_hashids.erl`  
+> Related docs: `doc/api/rest-api.md`, `doc/api/channel_api_contract_v1.md`, `doc/api/moment_api_contract_v1.md`
 
 ## 核心原则
 

@@ -1,5 +1,9 @@
+# Imboy 架构总览
 
-# 框架详述
+> Last Updated: 2026-03-08  
+> Status: 长期架构文档  
+> Related docs: `doc/architecture/database-access.md`, `doc/standards/api-format.md`, `doc/README.md`
+
 参考 [【DDD】领域驱动设计实践 —— 框架实现](https://www.cnblogs.com/daoqidelv/p/7499662.html)，有细节调整
 ## User Interface层
 门面层，对外以各种协议提供服务，该层需要明确定义支持的服务协议、契约等。包含：

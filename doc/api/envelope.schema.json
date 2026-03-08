@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imboy.pub/schemas/api/envelope.schema.json",
+  "title": "ImBoy API Envelope",
+  "description": "Canonical response envelope shared by backend, Flutter app, and admin frontend.",
+  "type": "object",
+  "required": [
+    "code",
+    "msg",
+    "sv_ts",
+    "payload"
+  ],
+  "properties": {
+    "code": {
+      "type": "integer",
+      "description": "Business code. 0 means success; non-zero means business failure."
+    },
+    "msg": {
+      "type": "string",
+      "description": "Human-readable message for diagnostics and UX hints."
+    },
+    "sv_ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server timestamp in milliseconds."
+    },
+    "payload": {
+      "description": "Canonical business payload. Shape depends on endpoint.",
+      "oneOf": [
+        { "type": "object" },
+        { "type": "array" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "code": 0,
+      "msg": "ok",
+      "sv_ts": 1771481621000,
+      "payload": {
+        "id": 1
+      }
+    },
+    {
+      "code": 4008,
+      "msg": "token expired",
+      "sv_ts": 1771481621000,
+      "payload": null
+    }
+  ]
+}

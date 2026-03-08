@@ -1,0 +1,86 @@
+[
+    {imboy, [
+        {env, <<"dev">>},
+        {http_port, 9800},
+        {host, '_'},
+        {start_mode, http},
+        {base_url, <<"https://dev.imboy.pub">>},
+        {cluster_nodes, []},
+        {channel_revoke_window_seconds, 120},
+
+        %% Feature flags consumed by:
+        %% - GET /v1/app/features (public read-only feature matrix for App bootstrap)
+        %% - GET /adm/admin/config/features (admin read-only feature matrix, requires settings:view)
+        %% - both endpoints return a flat boolean payload of effective feature states
+        %% Compatibility defaults in code:
+        %% - missing `features` block => all known features are treated as enabled
+        %% - missing feature item or missing `enabled` => treated as enabled
+        %% - `channel_discover`, `channel_invitation`, `channel_order` depend on `channel`
+        %% Recommendation: explicitly configure every shipped feature in production.
+        {features, #{
+            core => #{enabled => true},
+            e2ee => #{enabled => false},
+            channel => #{enabled => false},
+            location => #{enabled => false},
+            moment => #{enabled => false},
+            channel_discover => #{enabled => false},
+            channel_invitation => #{enabled => false},
+            channel_order => #{enabled => false},
+            group_vote => #{enabled => false},
+            group_schedule => #{enabled => false},
+            group_task => #{enabled => false}
+        }},
+
+        %% REQUIRED in production:
+        %% - jwt_key: binary, 32+ bytes
+        %% - postgre_aes_key: binary, 32+ bytes
+        {jwt_key, <<"CHANGE_ME_WITH_32_BYTES_SECRET">>},
+        {postgre_aes_key, <<"CHANGE_ME_WITH_32_BYTES_SECRET">>},
+        {hashids_salt, "CHANGE_ME_HASHIDS_SALT"},
+
+        {sql_driver, pgsql},
+        {pg_conf, #{
+            name => pgsql,
+            max_count => 80,
+            init_count => 5,
+            start_mfa => {epgsql, connect, [
+                #{
+                    host => "localhost",
+                    username => "imboy_user",
+                    password => "CHANGE_ME_DB_PASSWORD",
+                    database => "imboy_v1",
+                    port => 5432,
+                    ssl => false,
+                    timeout => 4000,
+                    codecs => [{epgsql_codec_rfc3339_bin, []}]
+                }
+            ]}
+        }},
+        {super_account, #{
+            host => "localhost",
+            username => "imboy_user",
+            password => "CHANGE_ME_DB_PASSWORD",
+            database => "imboy_v1",
+            port => 5432,
+            ssl => false,
+            timeout => 4000
+        }},
+
+        %% Default resolves to priv/migrations when config is invalid.
+        {scripts_path, "$PROJECT_DIR/migrations"},
+        {auto_load_configs, true},
+        {config_files, [
+            {debug_config, "config/debug.config"},
+            {cron_config, "config/cron.config"}
+        ]}
+    ]},
+
+    {throttle, [
+        {rates, [
+            {refreshtoken, 11, per_minute},
+            {refreshtoken, 5, per_second},
+            {throttle_ws, 22, per_minute},
+            {throttle_ws, 10, per_second}
+        ]}
+    ]}
+].

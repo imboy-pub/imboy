@@ -100,14 +100,17 @@ EUNIT_OPTS ?= verbose
 EUNIT_OPTS += {timeout, 30}
 
 # EUnit 测试配置
-# 设置超时避免卡住
-# 支持通过 CONFIG 参数指定配置文件，默认使用 sys.local.config
+# 支持通过 EUNIT_CONFIG 参数指定配置文件，默认使用 config/sys.config
+# 注意：erl 的 -config 参数既支持无后缀名，也支持 *.config，下面统一做兼容处理
 # 使用示例:
-#   make eunit                           # 使用默认 config/sys.local.config
-#   make eunit CONFIG=sys.local.config   # 使用指定的配置文件
-#   make eunit CONFIG=sys.dev.config     # 使用 dev 配置
+#   make eunit                                        # 使用默认 config/sys.config
+#   make eunit EUNIT_CONFIG=config/sys.local.config   # 使用 local 配置
+#   make eunit EUNIT_CONFIG=config/sys.dev.config     # 使用 dev 配置
 EUNIT_CONFIG ?= config/sys.config
-EUNIT_ERL_OPTS += -config $(EUNIT_CONFIG)
+EUNIT_CONFIG_BASE = $(patsubst %.config,%,$(EUNIT_CONFIG))
+EUNIT_ERL_OPTS += -config $(EUNIT_CONFIG_BASE)
+# eunit_runner 在 setup 阶段会读取 application:get_env，需要预先 load 应用
+EUNIT_ERL_OPTS += -eval 'application:load(imboy)'
 # 在测试环境中设置 env 标记
 EUNIT_ERL_OPTS += -eval 'application:set_env(imboy, env, test)'
 
@@ -142,3 +145,31 @@ DIALYZER_WARNINGS ?= 50
 # CT 配置选项:
 CT_OPTS ?=
 CT_LOGS_DIR ?= logs/ct
+
+FEATURE_SMOKE_BASE_URL ?=
+FEATURE_SMOKE_PUBLIC_PATH ?= /v1/app/features
+FEATURE_SMOKE_ADMIN_PATH ?= /adm/admin/config/features
+FEATURE_SMOKE_ADMIN_HEADER ?=
+FEATURE_SMOKE_FORBIDDEN_HEADER ?=
+FEATURE_SMOKE_EXPECTS ?=
+FEATURE_SMOKE_TIMEOUT ?= 15
+FEATURE_SMOKE_INSECURE ?= 0
+FEATURE_SMOKE_SHOW_BODY ?= 0
+
+.PHONY: feature-smoke
+feature-smoke:
+	@if [ -z "$(strip $(FEATURE_SMOKE_BASE_URL))" ]; then \
+		echo "FEATURE_SMOKE_BASE_URL is required."; \
+		echo "Example:"; \
+		echo "  make feature-smoke FEATURE_SMOKE_BASE_URL=https://dev.imboy.pub FEATURE_SMOKE_EXPECTS='core=true moment=false'"; \
+		exit 1; \
+	fi
+	@set -e; \
+		cmd="bash ./script/run_feature_flag_smoke.sh --base-url '$(FEATURE_SMOKE_BASE_URL)' --public-path '$(FEATURE_SMOKE_PUBLIC_PATH)' --admin-path '$(FEATURE_SMOKE_ADMIN_PATH)' --timeout '$(FEATURE_SMOKE_TIMEOUT)'"; \
+		if [ "$(FEATURE_SMOKE_INSECURE)" = "1" ]; then cmd="$$cmd --insecure"; fi; \
+		if [ "$(FEATURE_SMOKE_SHOW_BODY)" = "1" ]; then cmd="$$cmd --show-body"; fi; \
+		if [ -n "$(strip $(FEATURE_SMOKE_ADMIN_HEADER))" ]; then cmd="$$cmd --admin-header '$(FEATURE_SMOKE_ADMIN_HEADER)'"; fi; \
+		if [ -n "$(strip $(FEATURE_SMOKE_FORBIDDEN_HEADER))" ]; then cmd="$$cmd --forbidden-header '$(FEATURE_SMOKE_FORBIDDEN_HEADER)'"; fi; \
+		for item in $(FEATURE_SMOKE_EXPECTS); do cmd="$$cmd --expect $$item"; done; \
+		echo "$$cmd"; \
+		eval "$$cmd"
