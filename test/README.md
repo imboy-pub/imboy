@@ -26,6 +26,7 @@ test/
 ├── performance/                   # 性能相关测试模块
 ├── repo/                          # Repo 层测试
 ├── *_SUITE.erl                    # Common Test suites
+├── test_quality_improvement_tasklist.md  # 历史测试质量专项记录
 └── README.md                      # 本文档
 ```
 
@@ -41,11 +42,12 @@ test/
 
 ## 历史资料
 
-仓库保留了少量历史压测图文资料，便于容量评估、问题回溯和测试方法复用：
+仓库保留了少量历史资料，便于容量评估、问题回溯和测试方法复用：
 
 - `test/doc/test1.md`：100 万级 WebSocket 在线连接压测记录，含服务端 / 客户端监控截图
+- `test/test_quality_improvement_tasklist.md`：早期测试质量专项记录，适合作为治理背景材料，不作为当前实时统计口径
 
-说明：`test/doc/` 下资料属于历史归档，不直接作为 2026 年对外交付 SLA 或容量承诺口径。
+说明：历史资料属于归档保留内容，不直接作为 2026 年对外交付 SLA、容量承诺或当前门禁覆盖率口径。
 
 ## 推荐入口
 
