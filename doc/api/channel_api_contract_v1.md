@@ -1,7 +1,10 @@
 # ImBoy Channel API Contract (v1)
 
 > Last Updated: 2026-03-08  
+> Status: Long-lived protocol contract  
+> Scope: Channel public and admin contract across server, app, and admin frontend  
 > Source of truth: `src/imboy_router.erl` + `src/api/channel_handler.erl`  
+> Note: `v1` refers to the contract version, not the application release version.  
 > Related docs: `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`, `doc/api/envelope.schema.json`
 
 ## 1. Scope

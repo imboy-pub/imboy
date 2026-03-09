@@ -1,7 +1,10 @@
 # E2EE Social Recovery Server-Persisted Shard Contract (v1)
 
 > Last Updated: 2026-03-08  
+> Status: Long-lived protocol contract  
+> Scope: Social recovery shard persistence and retrieval contract  
 > Source of truth: `src/imboy_router.erl` + `src/api/e2ee_social_handler.erl` + `src/logic/e2ee_social_logic.erl`  
+> Note: `v1` refers to the contract version, not the application release version.  
 > Related docs: `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`, `doc/operations/security.md`
 
 ## 1. Scope

@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期运维文档  
+> Scope: 交付、开发、部署阶段涉及的基础服务与外围组件说明  
+> Note: 实际交付环境以项目部署清单为准；本文档用于说明默认依赖边界，不直接等同于环境实施单。  
 > Related docs: `doc/guides/deployment.md`, `doc/architecture/database-access.md`, `doc/operations/security.md`
 
 ## 1. 文档目的

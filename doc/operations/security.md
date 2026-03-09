@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期运维与交付文档  
+> Scope: 交付、部署、联调、上线阶段的最小安全基线  
+> Source of truth: `config/sys.config.example`, `src/api/auth_middleware.erl`, `src/adm/adm_auth_middleware.erl`, `src/lib/elib_cipher.erl`, `priv/static/legal/`  
 > Related docs: `doc/guides/deployment.md`, `doc/guides/customer-acceptance-checklist.md`, `config/sys.config.example`
 
 ## 1. 文档定位

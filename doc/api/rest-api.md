@@ -1,6 +1,8 @@
 # Imboy REST API（通用入口与基础契约）
 
 > Last Updated: 2026-03-08  
+> Status: 长期协议契约文档  
+> Scope: 通用 REST 入口、兼容性接口与基础 envelope 约定  
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
 > Related docs: `doc/api/channel_api_contract_v1.md`, `doc/api/moment_api_contract_v1.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/api/websocket-api-2.md`
 

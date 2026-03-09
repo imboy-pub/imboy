@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期交付文档  
+> Scope: 一期主包、高配能力与关闭态模块的标准验收清单  
+> Note: 本文档用于交付与验收留痕，不替代合同范围或变更确认单。  
 > Related docs: `doc/guides/deployment.md`, `doc/guides/three-end-phase1-function-matrix.md`, `doc/guides/product-edition-comparison.md`
 
 ## 1. 文档目的
