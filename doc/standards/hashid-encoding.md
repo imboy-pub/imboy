@@ -1,6 +1,8 @@
 # HashID 编码/解码规范
 
 > Last Updated: 2026-03-08  
+> Status: 长期接口规范文档  
+> Scope: 用户、群组及相关资源 ID 的 HashID 编码 / 解码约束  
 > Source of truth: `src/lib/elib_hashids.erl`  
 > Related docs: `doc/api/rest-api.md`, `doc/api/channel_api_contract_v1.md`, `doc/api/moment_api_contract_v1.md`
 

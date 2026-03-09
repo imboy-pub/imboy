@@ -1,6 +1,7 @@
 # UTF-8 字符串编码规范
 
 > Last Updated: 2026-03-08  
+> Status: 长期编码规范文档  
 > Scope: Erlang 代码中的 UTF-8 字符串与中文文本处理  
 > Related docs: `doc/standards/api-format.md`, `doc/standards/error-codes.md`
 

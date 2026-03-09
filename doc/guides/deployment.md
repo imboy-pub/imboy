@@ -2,11 +2,13 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期交付与部署文档  
+> Scope: 功能开关驱动的部署准备、配置落地、联调、验收与回滚清单  
+> Note: 仓库不再保留绑定具体域名、机器 IP、证书路径的 `nginx` / 文件存储样例配置；此类模板应在交付环境或独立运维仓按环境维护。  
 > Related docs: `doc/guides/customer-acceptance-checklist.md`, `doc/guides/module-feature-flag-config-draft.md`, `doc/operations/dependencies.md`
 
-## 功能开关部署与联调执行清单（2026-03-08）
+## 1. 文档定位
 
-说明：仓库不再保留绑定具体域名、机器 IP、证书路径的 `nginx` / 文件存储样例配置；此类模板应在交付环境或独立运维仓按环境维护。
+本文档用于统一 `Imboy` 在功能开关模式下的部署准备、配置发布、接口联调、三端验收与回滚口径。
 
 适用场景：
 
@@ -14,7 +16,7 @@
 - 需要通过 `features` 控制二期模块实际生效范围；
 - App 与管理后台都要围绕同一份后端功能矩阵做入口控制与关闭态兜底。
 
-### 一、部署前准备
+## 2. 部署前准备
 
 发布前至少确认以下事项：
 
@@ -29,7 +31,7 @@
    - 后端统一返回 `5190 / 功能未启用`；
    - 不出现点进后白屏、404、死链接。
 
-### 二、配置落地
+## 3. 配置落地
 
 后端配置以 `config/sys.config.example` 中的 `features` 配置块为模板。
 
@@ -46,7 +48,7 @@
 - `channel=false` 时，三个 `channel_*` 子能力是否也对外表现为 `false`；
 - 没有误把二期模块留在“缺省开启”状态。
 
-### 三、接口联调
+## 4. 接口联调
 
 当前以两个只读接口作为三端统一事实源：
 
@@ -100,7 +102,7 @@ make feature-smoke \
   FEATURE_SMOKE_EXPECTS='core=true channel=true moment=false group_task=false'
 ```
 
-### 四、三端验收口径
+## 5. 三端验收口径
 
 App 侧至少验收：
 
@@ -120,7 +122,7 @@ App 侧至少验收：
 2. `channel_discover`、`channel_invitation`、`channel_order` 是按 action 级别拦截，而不是整条频道能力全关；
 3. 后台管理接口与公共接口的拦截口径一致。
 
-### 五、发布与回滚
+## 6. 发布与回滚
 
 建议发布顺序：
 
@@ -134,7 +136,7 @@ App 侧至少验收：
 2. 重启服务并重新核对 `GET /v1/app/features`；
 3. 必要时临时恢复入口显隐配置，但不要跳过后端校验。
 
-### 六、常见风险
+## 7. 常见风险
 
 1. `features` 未显式配置，导致新登记功能被“缺省开启”；
 2. 只做了前端隐藏，没有做后端接口拦截；

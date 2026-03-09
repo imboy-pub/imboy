@@ -2,6 +2,7 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期产品基线文档  
+> Scope: 三端能力在一期主包、高配能力与二期模块之间的划分矩阵  
 > Related docs: `doc/guides/product-target-boundary.md`, `doc/guides/phase2-modularization-strategy.md`, `doc/guides/customer-acceptance-checklist.md`
 
 ## 1. 文档目的

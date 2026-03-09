@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期销售模板文档  
+> Scope: 版本、模块、实施、维护与定制开发的标准报价模板  
+> Note: 本文档是模板，不直接等同于合同或最终成交价。  
 > Related docs: `doc/guides/product-edition-comparison.md`, `doc/guides/product-target-boundary.md`
 
 ## 1. 使用说明

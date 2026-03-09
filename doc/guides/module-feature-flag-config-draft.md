@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-03-08  
 > Status: 长期设计草案  
+> Scope: 三端统一模块开关的命名、配置结构、接口读取与兼容策略  
+> Source of truth: `config/sys.config.example`, `src/lib/imboy_feature.erl`, `src/api/app_feature_handler.erl`, `src/adm/adm_admin_handler.erl`  
 > Related docs: `doc/guides/phase2-modularization-strategy.md`, `doc/guides/deployment.md`, `doc/api/rest-api.md`
 
 ## 1. 文档目的

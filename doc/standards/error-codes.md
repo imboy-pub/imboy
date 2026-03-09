@@ -1,6 +1,8 @@
 # 错误码使用规范
 
 > Last Updated: 2026-03-08  
+> Status: 长期接口规范文档  
+> Scope: 错误码定义、引用方式与响应使用约定  
 > Source of truth: `include/error_code.hrl`  
 > Related docs: `doc/standards/api-format.md`, `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`
 
