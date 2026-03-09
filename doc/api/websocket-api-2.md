@@ -1,11 +1,11 @@
 # ImBoy WebSocket API 规范 v2.0
 
 > Last Updated: 2026-03-08  
+> Status: 长期协议契约文档  
+> Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl`  
+> Note: 本文中的 `v2.0` 指协议结构版本，不等同于应用发布版本号。  
 > Related docs: `doc/api/rest-api.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/operations/security.md`
-
----
-
 
 ## 目录
 

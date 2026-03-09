@@ -1,89 +1,149 @@
 # Imboy 架构总览
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-03-09  
 > Status: 长期架构文档  
+> Scope: 当前仓库的分层职责、调用链路与设计边界  
+> Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
 > Related docs: `doc/architecture/database-access.md`, `doc/standards/api-format.md`, `doc/README.md`
 
-参考 [【DDD】领域驱动设计实践 —— 框架实现](https://www.cnblogs.com/daoqidelv/p/7499662.html)，有细节调整
-## User Interface层
-门面层，对外以各种协议提供服务，该层需要明确定义支持的服务协议、契约等。包含：
+## 1. 文档目的
 
-### api/dto
-包括request和response两部分，通过它定义入参和出参的契约，在dto层可以使用基础设施层的validation组件完成入参格式校验；
+本文档用于描述 `Imboy` 当前仓库的真实分层方式，以及各层在代码中的职责边界。
 
-### api/handler
-支持不同访问协议的控制器实现，比如：http/restful风格、tcp/二进制流协议、mq消息/json对象等等。
+当前项目保留了领域驱动设计和分层架构的思想，但**并不是**严格照搬传统 Java / Spring 式的 `controller -> service -> domain -> repository` 模板。对本仓库而言，更准确的理解方式是：
 
-handler使用基础设施层公共组件完成许多通用的工作：
+**Router / Middleware -> Handler -> Logic -> DS -> Repo -> PostgreSQL / 外部依赖**
 
-* 调用checklogin完成登录态/权限校验；
-* 调用logging组件完成日志记录；
-* 调用message-resource组件完成错误信息转义，支持I18N；
+目标不是把概念讲得更复杂，而是让以下问题有统一答案：
 
-## application层
-### service
-应用服务层，组合domain层的领域对象和基础设施层的公共组件，根据业务需要包装出多变的服务，以适应多变的业务服务需求。
+1. HTTP / WebSocket 请求应该在哪一层落地；
+2. 业务规则应该放在哪一层；
+3. SQL 和持久化应该由谁负责；
+4. 哪些公共能力应该沉淀到 `lib/`，而不是散落在业务模块里。
 
-应用服务层主要访问domain领域对象，完成服务逻辑的包装。
+## 2. 当前分层模型
 
-应用服务层也会访问基础设施层的公共组件，如rabbitmq，完成领域消息的生产等。
+| 层级 | 主要目录 / 模块 | 主要职责 | 不应承担的职责 |
+|---|---|---|---|
+| 路由与中间件 | `src/imboy_router.erl`、各类 `*_middleware.erl` | 路由分发、鉴权、跨域、请求上下文预处理 | 不写业务规则，不直接做数据落库 |
+| Handler | `src/api/`、`src/adm/` | 协议适配、参数读取、响应封装、调用下层 | 不承载复杂业务编排，不直接拼 SQL |
+| Logic | `src/logic/` | 业务流程编排、权限与状态流转、跨模块协调 | 不处理 HTTP 细节，不直接暴露协议层对象 |
+| DS | `src/ds/` | 领域数据服务、缓存/消息/组合读写、通用数据侧能力 | 不直接处理页面或接口语义 |
+| Repo | `src/repo/` | SQL、持久化、查询与数据映射 | 不写协议判断，不承载业务叙事 |
+| Lib | `src/lib/` | 通用工具、响应包装、时间/加密/数据库公共能力 | 不写具体业务功能分支 |
 
-### assembler
-组装器，负责将多个domain领域对象组装为需要的dto对象，比如查询帖子列表，需要从Post（帖子）领域对象中获取帖子的详情，还需要从User（用户）领域对象中获取用户的基本信息。
+## 3. 典型请求流转
 
-组装器中不应当有业务逻辑在里面，主要负责格式转换、字段映射等职责。
+以一个典型 HTTP API 为例，请求流转通常如下：
 
-## domain层
-业务领域层，是我们最应当关心的一层，也是最多变的一层，需要保证这一层是高内聚的。确保所有的业务逻辑都留在这一层，而不会遗漏到其他层。按照ddd（domain driven design）理论，主要有如下概念构成：
+1. `Router` 根据路径把请求分发到对应 `Handler`；
+2. `Middleware` 完成登录态、权限、跨域、上下文等通用处理；
+3. `Handler` 读取参数、校验基本格式、调用 `Logic`；
+4. `Logic` 组织业务流程，并视情况调用 `DS` / `Repo` / `lib`；
+5. `DS` 负责组合数据读写、缓存、消息投递或领域侧辅助能力；
+6. `Repo` 负责最终 SQL 和数据库访问；
+7. 结果回到 `Handler`，再由 `elib_response` 等公共模块统一输出响应。
 
-### domain entity
-领域实体。有唯一标识，可变的业务实体对象，它有着自己的生命周期。比如社区这一业务领域中，‘帖子’就是一个业务实体，它需要有一个唯一性业务标识表征，同时他的状态和内容可以不断发生变化。
+WebSocket 路径本质也遵循同样思路：连接与协议入口在 `Handler` / `Middleware` 层，业务编排在 `Logic`，数据落点在 `DS` / `Repo`。
 
-### domain value object
-领域值对象。可以没有唯一性业务标识，且一旦定义，他是不可变的，它通常是短暂的。这和java中的值对象（基本类型和String类型）类似。比如社区业务领域中，‘帖子的置顶信息’可以理解为是一个值对象，不需要为这一值对象定义独立的业务唯一性标识，直接使用‘帖子id‘便可表征，同时，它只有’置顶状态‘和’置顶位置‘，一旦其中一个属性需要发生变化，则重建值对象并赋值给’帖子‘实体的引用，不会对领域带来任何负面影响。
+## 4. 各层职责说明
 
-### domain factory
-领域对象工厂。用于复杂领域对象的创建/重建。重建是指通过respostory加载持久化对象后，重建领域对象。
+### 4.1 Router 与 Middleware
 
-### domain service
-领域服务。区别于应用服务，他属于业务领域层。
+这一层负责“把请求送到正确的位置”，并在业务逻辑开始之前完成通用前置处理，例如：
 
-可以认为，如果某种行为无法归类给任何实体/值对象，则就为这些行为建立相应的领域服务即可。比如：转账服务（transferService），需要操作借方/贷方两个账户实体。
+- 路由匹配；
+- 公共鉴权；
+- CORS；
+- 请求上下文注入；
+- 后台与 App 侧不同入口的门禁差异化处理。
 
-传统意义上的util static方法中，涉及到业务逻辑的部分，都可以考虑归入domain service。
+这一层的目标是让下层尽量在稳定上下文中运行，而不是承担业务决策。
 
-### domain event
-领域事件。领域中产生的一些消息事件，通过事件通知/订阅的方式，可以在性能和解耦层面得到好处。
+### 4.2 Handler
 
-### repository
-仓库。我们将仓库的接口定义归类在domain层，因为他和domain entity联系紧密。仓库用户和基础实施的持久化层交互，完成领域对应的增删改查操作。
+`Handler` 是协议适配层，主要解决“怎么接”和“怎么回”的问题：
 
-仓库的实际实现根据不同的存储介质而不同，可以是redis、oracle、mongodb等。
+- 接收 HTTP / WebSocket 请求；
+- 解析 path、query、body、header；
+- 做基础参数校验和格式转换；
+- 调用 `Logic`；
+- 把业务结果转换为统一响应包。
 
-鉴于现在社区服务的存储介质有三套：oracle、redis、mongodb，且各个存储介质的字段属性名不一致，因此需要使用translator来做翻译，将持久化层的对象翻译为统一的领域对象。
+`Handler` 可以做轻量分支，但不应沉淀复杂业务规则，也不应直接承担数据库访问。
 
-### translator
-翻译器。将持久化层的对象翻译为统一的领域对象。
+### 4.3 Logic
 
-翻译器中不应当有业务逻辑在里面，主要负责格式转换、字段映射等职责。
+`Logic` 是当前项目最核心的业务编排层，主要解决“应该怎么做”的问题：
 
-## infrastructure层
-基础设施层提供公共功能组件，供controller、service、domain层调用。
+- 组织主业务流程；
+- 协调多个 `DS` / `Repo` / `lib` 模块；
+- 落实权限、状态流转、门禁、幂等、补偿等规则；
+- 维持接口语义和业务语义的一致性。
 
-### repository impl
-对domain层repository接口的实现，对应每种存储介质有其特定实现，如oracle的mapper，mongodb的dao等等。repository impl会调用mybatis、mongo client、redis client完成实际的存储层操作。
+如果一个能力属于“消息怎么发”“群成员怎么变更”“功能关闭时应该返回什么”，通常都应优先落在 `Logic`。
 
-### checkLogin
-权限校验器，判定客户端是否有访问该资源的权限。提供给User Interface层的Controller调用。
+### 4.4 DS
 
-### exception
-异常分类及定义，同时提供公共的异常处理逻辑，具体由ExceptionHandler实现。
+`DS` 可以理解为领域数据服务层，主要服务于“数据相关但不等于单表 SQL”的场景，例如：
 
-### transport
-transport完成和第三方服务的交互，可以有多种协议形式的实现，如http+json、tcp+自定义协议等，配套使用的还有Resolver解析器，用于对第三方服务的请求和响应进行适配，提供一个防腐层（AnticorruptionLayer，DDD原书P255）的作用。
+- 对缓存、消息、配置、辅助数据做统一封装；
+- 对多个 `Repo` 结果做组合；
+- 提供上层可复用的数据服务能力；
+- 屏蔽某些底层读写细节，让 `Logic` 不必知道所有存储细节。
 
-### transcation
-提供事务管理，交给Spring管理。
+它不是协议层，也不是页面层；它更接近“围绕领域数据的一层服务抽象”。
 
-### logging
-日志模块，记录trace日志，使用log4j完成。
+### 4.5 Repo
+
+`Repo` 是持久化边界，职责应该尽量稳定而清晰：
+
+- 编写 SQL；
+- 调用 `elib_pg` / `elib_pg_sql`；
+- 返回稳定的数据结构；
+- 不掺入协议层、展示层和过强的业务语义。
+
+如果某段逻辑的本质是“查什么、写什么、怎么按条件过滤”，应优先考虑放到 `Repo`。
+
+### 4.6 Lib 与通用基础设施
+
+`src/lib/` 中沉淀的是跨模块复用的公共能力，例如：
+
+- 数据库访问公共封装：`elib_pg`、`elib_pg_sql`；
+- 响应封装：`elib_response`；
+- 请求辅助：`elib_req`；
+- 时间、编码、加密、HashID、集群等基础能力。
+
+公共库应尽量保持可复用、低耦合，不直接绑定某个业务模块的页面或交互语义。
+
+## 5. 设计边界
+
+为避免分层失真，建议长期坚持以下边界：
+
+1. `Handler` 不直接拼 SQL、不直接落库；
+2. `Logic` 不直接处理 HTTP 细节和响应包格式；
+3. `Repo` 不承担业务主流程编排；
+4. `DS` 不承担页面级或协议级判断；
+5. 可复用基础能力优先沉淀到 `lib/`，不要复制到多个业务模块；
+6. 需要跨层复用的规则，应优先抽象成稳定接口，而不是在多处拷贝实现。
+
+## 6. 历史术语映射
+
+仓库中早期文档曾引用较强的 DDD / 分层术语。为了避免误解，可按下表理解：
+
+| 历史术语 | 当前仓库中的更贴切落点 |
+|---|---|
+| User Interface 层 | `Router` / `Middleware` / `Handler` |
+| application service | `Logic` |
+| domain service | 以 `Logic` 为主，部分可复用数据能力落在 `DS` |
+| repository | `Repo` |
+| infrastructure | `lib/`、数据库驱动、缓存、集群、日志等公共能力 |
+
+这些映射用于帮助理解历史文档，不代表项目必须严格回到旧术语体系。
+
+## 7. 相关文档
+
+- `doc/architecture/database-access.md`
+- `doc/standards/api-format.md`
+- `doc/standards/error-codes.md`
+- `doc/operations/dependencies.md`

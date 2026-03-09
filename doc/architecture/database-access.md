@@ -1,23 +1,31 @@
 # Imboy 数据库访问层规范
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-03-09  
 > Status: 长期架构文档  
+> Scope: `src/repo/`、`src/ds/` 与 `elib_pg` / `elib_pg_sql` 的数据库访问约束  
 > Source of truth: `src/repo/`, `src/ds/`, `src/lib/elib_pg.erl`, `src/lib/elib_pg_sql.erl`  
 > Related docs: `doc/architecture/overview.md`, `doc/standards/migration_naming.md`
 
-## 📋 概述
+## 1. 文档定位
 
-Imboy 使用 4 层架构，Repository 层（`src/repo/`）负责所有数据库操作。
+本文档说明在当前 `Handler -> Logic -> DS -> Repo` 架构下，数据库访问应如何落到 `Repo` / `DS` 与公共库。
 
-### 核心模块
-- `elib_pg` - 数据库连接、查询执行、事务封装（返回结果会规整为 map 列表/单个 map）
-- `elib_pg_sql` - SQL 构建工具（纯函数；构建结果为 `{Sql, Params}`，用于参数化查询、防注入）
+核心目标：
 
----
+1. 数据访问入口统一；
+2. SQL 参数化约束统一；
+3. 返回值语义统一；
+4. 安全与可维护性优先。
 
-## 🔴 强制要求
+## 2. 核心模块
+
+- `elib_pg`：数据库连接、查询执行、事务封装，返回结果会规整为 map 列表或单个 map；
+- `elib_pg_sql`：SQL 构建工具，输出 `{Sql, Params}`，用于参数化查询与动态条件拼装。
+
+## 3. 强制要求
 
 ### 所有数据库操作必须使用 `elib_pg` 模块
+
 
 **原则**：
 - ✅ **必须**使用 `elib_pg` 模块进行所有数据库操作
@@ -71,9 +79,7 @@ pooler:return_connection(pool_name, Conn)
 
 ---
 
----
-
-## 🎯 三类函数
+## 4. 三类函数
 
 ### 1. SELECT 类 - 查询多行
 ```erlang
@@ -105,7 +111,7 @@ user_repo:delete(1) -> {ok, 1}
 
 ---
 
-## ⚠️ 重要规则
+## 5. 重要规则
 
 ### 1. 永远用参数化查询
 ```erlang
@@ -128,7 +134,7 @@ find_by_id(abc) -> {error, syntax_error}  % 这才是真正的错误
 
 ---
 
-## 📝 代码示例
+## 6. 代码示例
 
 ### SELECT 类
 ```erlang
@@ -198,7 +204,7 @@ page_by_account(Account, Page, Size) ->
 
 ---
 
-## 🔒 安全规则
+## 7. 安全规则
 
 ### 必须参数化的情况
 - 用户输入
@@ -222,7 +228,7 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 ---
 
-## 📦 错误处理
+## 8. 错误处理
 
 ### 真正的错误（返回 {error, Reason}）
 - 连接失败
@@ -238,7 +244,7 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 ---
 
-## 🎓 快速参考
+## 9. 快速参考
 
 | 类型 | 函数命名 | 返回值 | 示例 |
 |------|----------|--------|------|
@@ -248,7 +254,7 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 ---
 
-## ✅ 检查清单
+## 10. 检查清单
 
 写完 repo 函数后，问自己：
 
@@ -259,7 +265,7 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 ---
 
-## 📚 相关文件
+## 11. 相关文件
 
 - `src/lib/elib_pg.erl` - 数据库连接模块
 - `src/lib/elib_pg_sql.erl` - SQL 构建工具
