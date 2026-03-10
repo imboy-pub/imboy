@@ -15,6 +15,11 @@
 - 所有 E2EE 测试通过（40/40）
 - 新增 E2EE 设备间传输、社交恢复、本地备份三种密钥恢复方法
 
+### 2026-02-21
+- 管理后台分页规范统一：所有 admin 列表页分页 UI 与 `/users` 页面保持一致
+- 新增规则：分页组件必须支持「每页条数」切换（`onPageSizeChange`），默认 `size = 10`
+- 搜索、筛选、每页条数变化时必须重置到第一页（`page = 1`）
+
 ### 2026-01-20
 - 重新初始化 AI 上下文文档
 - 更新代码统计：134 个源文件，140+ 个测试文件
@@ -47,6 +52,17 @@
 ## 项目愿景
 
 Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18** 的高性能即时通讯（IM）系统。
+
+## Admin 前端分页规则
+
+适用范围：`imboy-admin-frontend` 所有使用分页的管理列表页面（如用户、群组、频道、反馈、消息、注销申请、审计日志等）。
+
+统一要求：
+- 分页 UI 必须对齐 `/users` 页面交互与视觉效果。
+- 统一使用 `DataTablePagination` 组件，不允许自定义另一套分页样式。
+- 必须传入 `onPageSizeChange`，启用「每页条数」切换能力。
+- 默认分页大小统一为 `size: 10`（除非有明确业务例外并在代码注释中说明）。
+- 搜索条件变化、筛选变化、每页条数变化时，必须将 `page` 重置为 `1`。
 
 ### 核心特性
 - 高并发：单机支持 100 万+ TCP 连接（阿里云 8 核 16G 压测验证）
@@ -246,7 +262,7 @@ graph TD
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
 | E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
 
-**详细索引**: [doc/modules/README.md](./doc/modules/README.md)
+详细索引以各层目录内 `CLAUDE.md` 为准（`src/api/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`）。
 
 ---
 
@@ -452,18 +468,14 @@ From = elib_hashids:encode(CurrentUid).
 
 1. 在 `src/logic/msg_xxx_logic.erl` 添加处理逻辑
 2. 在 `src/api/websocket_handler.erl` 添加消息分发
-3. 更新 `doc/api/websocket-api.md` 文档（完整规范）
+3. 更新 `doc/api/websocket-api-2.md` 文档（完整规范）
 
 ### 上下文文件
 
 - **DDD 架构**: [doc/architecture/overview.md](./doc/architecture/overview.md)
-- **术语约定**: [doc/architecture/nomenclature.md](./doc/architecture/nomenclature.md)
 - **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **设计思考**: [doc/architecture/design-thinking.md](./doc/architecture/design-thinking.md)
-- **WebSocket API**: [doc/api/websocket-api.md](./doc/api/websocket-api.md) - 完整的 WebSocket API 规范
-- **异步执行**: [doc/libraries/async.md](./doc/libraries/async.md)
-- **重试示例**: [doc/libraries/retry.md](./doc/libraries/retry.md)
-- **类型规范**: [doc/standards/type-specification.md](./doc/standards/type-specification.md)
+- **WebSocket API**: [doc/api/websocket-api-2.md](./doc/api/websocket-api-2.md) - 完整的 WebSocket API 规范
+- **类型规范**: [doc/standards/api-format.md](./doc/standards/api-format.md)
 
 ### 安全注意事项
 
@@ -633,11 +645,11 @@ A: 执行 `observer_cli:start()` 启动命令行监控。
 
 ### Q: 如何使用异步执行?
 
-A: 使用 `elib_async:async/1,2,4,6` 或 `elib_async:async_retry/1,2,3`，详见 [doc/libraries/async.md](./doc/libraries/async.md)。
+A: 使用 `elib_async:async/1,2`、`elib_async:async_retry/1,2,3,4`、`elib_async:async_with_timeout/2` 或 `elib_async:async_with_callback/2`。
 
 ### Q: 如何使用重试机制?
 
-A: 使用 `elib_retry:with_retry/1,2,3,4` 或 `elib_retry:with_retry_and_timeout/3`，详见 [doc/libraries/retry.md](./doc/libraries/retry.md)。
+A: 使用 `elib_retry:with_retry/1,2,3,4` 或 `elib_retry:with_retry_and_timeout/3`。
 
 ### Q: 如何添加新模块?
 
@@ -696,7 +708,6 @@ registered().
 - **Erlang 文档**: https://www.erlang.org/doc/
 - **Cowboy 文档**: https://ninenines.eu/docs/en/cowboy/2.10/guide/
 - **PostgreSQL 文档**: https://www.postgresql.org/docs/
-- **设计思考**: [doc/architecture/design-thinking.md](./doc/architecture/design-thinking.md)
 
 ---
 

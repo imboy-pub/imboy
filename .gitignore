@@ -1,3 +1,4 @@
+.DS_Store
 *.beam
 _rel
 *.log
@@ -26,7 +27,8 @@ erl_crash.dump
 rebar3.crashdump
 Mnesia.nonode@nohost
 elvis
-rebar.lock
+# Track lock file to ensure reproducible dependency resolution across environments.
+# rebar.lock
 docker/pg_jieba
 docker/timescaledb
 priv/ssl
@@ -63,3 +65,14 @@ relxdev.config
 docker/imboy_pg18
 .cline
 /.reports/
+.parallel_exec_state/
+.task_state/
+artifacts/upgrade/
+artifacts/mobile_regression
+log
+artifacts
+
+# Local analysis artifacts
+all_exports.txt
+export_analysis.txt
+temp_exports.txt
