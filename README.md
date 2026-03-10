@@ -52,8 +52,7 @@ Web框架: Cowboy (基于Erlang的HTTP服务器)
   - `make eunit`
   - `make ct`
   - `make dialyze`
-  - `make lint-migrations`
-  - `make report-migration-duplicates`（用于迁移前缀历史债清理）
+  - 迁移文件提交前，按 `doc/standards/migration_naming.md` 中的命令做前缀与命名自检
 
 ### 依赖可复现策略
 

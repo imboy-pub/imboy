@@ -47,14 +47,22 @@ find priv/migrations -maxdepth 1 -type f -name '*.sql' -exec basename {} \; \
 
 ## 4. 提交前自检
 
-执行重复前缀检测：
+优先执行以下两条本地命令：
 
 ```bash
-scripts/check_migration_prefix_duplicates.sh
+find priv/migrations -maxdepth 1 -type f -name '*.sql' -exec basename {} \; \
+  | sed -E 's/^([0-9]{8})_.*/\1/' \
+  | sort \
+  | uniq -d
 ```
 
-约定：
+若输出非空，表示存在重复前缀，必须先修复。
 
-1. 返回码 `0`：无重复前缀。
-2. 返回码 `1`：存在重复前缀，必须修复后再提交。
-3. 返回码 `2`：迁移目录不存在或参数错误。
+```bash
+find priv/migrations -maxdepth 1 -type f -name '*.sql' -exec basename {} \; \
+  | rg -n -v '^[0-9]{8}_[a-z0-9_]+\.sql$'
+```
+
+若输出非空，表示存在不符合 8 位前缀或 `snake_case` 规则的文件名，必须先修复。
+
+说明：当前仓库仍保留少量历史命名例外（如 `00000042_imboy_v0.4.0.sql`）；该类历史文件不作为新增命名模板，新增迁移仍必须严格遵守本规范。
