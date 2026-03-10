@@ -116,7 +116,7 @@ make new t=gen_server n=account_server
 
 make distclean
 
-// 我添加的模板 以imboy开头
+# 自定义模板（以 `imboy` 开头）
 make new t=imboy.rest_handler n=demo_handler
 make new t=imboy.logic n=demo_logic
 make new t=imboy.repository n=demo_repo
@@ -141,7 +141,7 @@ IMBOYENV=local make run HTTP_PORT=9800
 
 make run
 
-// on Mac
+# on macOS
 IMBOYENV=pro make run
 IMBOYENV=test make run
 IMBOYENV=dev make run
@@ -149,14 +149,14 @@ IMBOYENV=local make run
 
 make rel IMBOYENV=local
 
-// on CentOS8 OR macOS
+# on CentOS 8 or macOS
 export IMBOYENV='local' && make run
 
 observer_cli:start().
 
 make new t=gen_server n=server_demo
 
-// 重新加载 sys.config 配置
+# 重新加载 sys.config 配置
 config_ds:local_reload()
 
 Routes = imboy_router:get_routes(),
@@ -171,7 +171,7 @@ make dialyze
 
 ```
 
-// 当前工程统一通过 Makefile / erlang.mk 管理依赖与构建
+# 当前工程统一通过 Makefile / erlang.mk 管理依赖与构建
 make rel
 
 make help
@@ -183,7 +183,7 @@ make help
 erl> help().
     lm()       -- load all modified modules
 
-// 更新 erlang.mk
+# 更新 erlang.mk
 make erlang-mk
 
 ```
@@ -245,7 +245,7 @@ _rel/imboy.run
 
 ```
 cp ./_rel/imboy/imboy-1.0.0.tar.gz
-// or
+# or
 scp ./_rel/imboy/imboy-1.0.0.tar.gz root@192.168.2.207:/usr/local/imboy/
 
 

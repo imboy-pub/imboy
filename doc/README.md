@@ -55,7 +55,7 @@
 - `guides/product-edition-comparison.md`
 - `guides/customer-acceptance-checklist.md`
 - `guides/quotation-template.md`
-- `guides/module-feature-flag-config-draft.md`
+- `guides/module-feature-flag-config.md`
 
 ### 3. API 与三端契约
 

@@ -4,7 +4,7 @@
 > Status: 长期交付与部署文档  
 > Scope: 功能开关驱动的部署准备、配置落地、联调、验收与回滚清单  
 > Note: 仓库不再保留绑定具体域名、机器 IP、证书路径的 `nginx` / 文件存储样例配置；此类模板应在交付环境或独立运维仓按环境维护。  
-> Related docs: `doc/guides/customer-acceptance-checklist.md`, `doc/guides/module-feature-flag-config-draft.md`, `doc/operations/dependencies.md`
+> Related docs: `doc/guides/customer-acceptance-checklist.md`, `doc/guides/module-feature-flag-config.md`, `doc/operations/dependencies.md`
 
 ## 1. 文档定位
 

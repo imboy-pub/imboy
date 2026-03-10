@@ -1,14 +1,14 @@
-# Imboy 模块开关配置草案（三端统一）
+# Imboy 模块开关配置（三端统一）
 
-> Last Updated: 2026-03-08  
-> Status: 长期设计草案  
+> Last Updated: 2026-03-10  
+> Status: 长期基线文档  
 > Scope: 三端统一模块开关的命名、配置结构、接口读取与兼容策略  
 > Source of truth: `config/sys.config.example`, `src/lib/imboy_feature.erl`, `src/api/app_feature_handler.erl`, `src/adm/adm_admin_handler.erl`  
 > Related docs: `doc/guides/phase2-modularization-strategy.md`, `doc/guides/deployment.md`, `doc/api/rest-api.md`
 
 ## 1. 文档目的
 
-本文档定义 `Imboy` 的模块开关配置草案，用于后端、App 和管理后台三端统一地控制功能显隐与授权。
+本文档定义 `Imboy` 的模块开关配置基线，用于后端、App 和管理后台三端统一地控制功能显隐与授权。
 
 目标：
 
@@ -280,7 +280,7 @@ App 建议增加统一 `FeatureRegistry`，负责：
 3. RBAC 与 Feature 共同决定是否可见、是否可操作；
 4. 模块关闭时，菜单和操作按钮都不展示。
 
-### 8.1 菜单配置草案
+### 8.1 菜单配置示例
 
 建议在菜单配置中增加：
 

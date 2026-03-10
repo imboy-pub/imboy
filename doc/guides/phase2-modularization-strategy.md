@@ -3,7 +3,7 @@
 > Last Updated: 2026-03-08  
 > Status: 长期产品设计文档  
 > Scope: 二期模块边界、默认关闭策略、三端开关与交付拆分方法  
-> Related docs: `doc/guides/three-end-phase1-function-matrix.md`, `doc/guides/module-feature-flag-config-draft.md`
+> Related docs: `doc/guides/three-end-phase1-function-matrix.md`, `doc/guides/module-feature-flag-config.md`
 
 ## 1. 文档目的
 
