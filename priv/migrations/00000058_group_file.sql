@@ -20,19 +20,19 @@ CREATE TABLE IF NOT EXISTS group_file (
 );
 
 -- 索引：按群组查询文件（按时间倒序）
-CREATE INDEX idx_group_file_group ON group_file(group_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_group_file_group ON group_file(group_id, created_at DESC);
 
 -- 索引：按上传者查询
-CREATE INDEX idx_group_file_uploader ON group_file(uploader_id);
+CREATE INDEX IF NOT EXISTS idx_group_file_uploader ON group_file(uploader_id);
 
 -- 索引：按分类查询
-CREATE INDEX idx_group_file_category ON group_file(group_id, file_category);
+CREATE INDEX IF NOT EXISTS idx_group_file_category ON group_file(group_id, file_category);
 
 -- 索引：按文件名搜索
-CREATE INDEX idx_group_file_name ON group_file(group_id, file_name);
+CREATE INDEX IF NOT EXISTS idx_group_file_name ON group_file(group_id, file_name);
 
 -- 索引：按文件ID查询
-CREATE INDEX idx_group_file_file_id ON group_file(file_id);
+CREATE INDEX IF NOT EXISTS idx_group_file_file_id ON group_file(file_id);
 
 COMMENT ON TABLE group_file IS '群文件共享表';
 COMMENT ON COLUMN group_file.file_category IS '文件分类: document/image/video/audio/other';

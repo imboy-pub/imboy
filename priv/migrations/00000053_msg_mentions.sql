@@ -16,8 +16,9 @@ COMMENT ON COLUMN public.msg_c2g.mentions IS '@提及信息，JSON数组格式�
 -- 3. 创建 GIN 索引用于 JSONB 查询优化
 CREATE INDEX IF NOT EXISTS i_msg_c2g_mentions ON public.msg_c2g USING GIN (mentions);
 
--- 4. 创建部分索引用于查询被特定用户@的消息
-CREATE INDEX IF NOT EXISTS i_msg_c2g_mentions_uid ON public.msg_c2g USING GIN (mentions) jsonb_path_query_array(mentions, '$[*] ? (@ == $uid)');
+-- 4. 说明：
+-- 这里不创建“按 uid 变量绑定”的表达式索引，PostgreSQL 不支持带运行时变量
+-- 的索引定义语法。保留通用 GIN 索引即可覆盖 mentions 包含类查询。
 
 -- 5. 创建@消息记录表（可选，用于优化查询性能）
 CREATE TABLE IF NOT EXISTS public.msg_mention
