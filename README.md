@@ -56,8 +56,9 @@ Web框架: Cowboy (基于Erlang的HTTP服务器)
 
 ### 依赖可复现策略
 
-- `rebar.config` 中不使用 `master` 漂移分支，统一固定到 tag 或 commit。
-- `rebar.lock` 需要纳入版本管理，保证团队和 CI 依赖解析一致。
+- 当前工程以 `Makefile` + `include/deps.mk` 作为依赖定义入口，不再以 `rebar.config` 作为主依赖入口。
+- 新增或升级依赖时，优先固定到 tag、commit 或明确版本号，避免继续扩大 `master` / `main` 漂移分支。
+- CI 缓存命中应随 `Makefile` 与 `include/deps.mk` 变化而变化，保证构建结果可复现。
 
 ### 配置与密钥
 
@@ -170,9 +171,7 @@ make dialyze
 
 ```
 
-// 小心！这将构建该文件，即使它之前已经存在。
-make rebar.config
-
+// 当前工程统一通过 Makefile / erlang.mk 管理依赖与构建
 make rel
 
 make help
