@@ -80,3 +80,6 @@ temp_exports.txt
 # Local AI/tool artifacts
 .claude/
 .trae/
+
+# Local Codex temp artifacts
+.tmp_codex/
