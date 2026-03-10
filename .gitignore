@@ -76,3 +76,8 @@ artifacts
 all_exports.txt
 export_analysis.txt
 temp_exports.txt
+
+# Local AI planning artifacts
+.claude/index.json
+.claude/settings.local.json
+.claude/plan/

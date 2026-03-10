@@ -43,9 +43,10 @@ Web框架: Cowboy (基于Erlang的HTTP服务器)
 ### CI
 
 - GitHub Actions: `.github/workflows/backend-ci.yml`
-- 三端门禁（手动触发）: `.github/workflows/three-end-upgrade-gate.yml`（输入 app/admin 仓库参数后执行 `S3A->S6`，含 `S4`；私有跨仓可配置 `THREE_END_REPO_TOKEN` secret）
-- 三端门禁统一脚本: `script/upgrade/ci_gate.sh`（本地与 CI 复用同一执行入口）
-- 三端门禁摘要脚本: `script/upgrade/publish_gate_summary.sh`（CI 与本地复用同一摘要逻辑）
+- 升级/交付脚本入口:
+  - `script/upgrade/run_feature_100.sh`：阶段化执行 `P0~P6`，其中 `P6` 覆盖 compile / unit / integration / dialyze / migration / contract / perf / security / release 门禁。
+  - `script/upgrade/run_business_100_acceptance.sh`：后台与交付链路验收脚本，输出 `artifacts/feature100/business100/reports/*.md`。
+  - `script/upgrade/generate_ack_threshold_runtime_probe_trend.sh`：生成 ACK runtime probe 趋势报告。
 - 默认门禁:
   - `make compile`
   - `make eunit`
