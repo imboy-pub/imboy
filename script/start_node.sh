@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # 用法: ./script/start_node.sh <nodename> [cookie] [port] [exclude_apps] [daemon]
 # 例如: ./script/start_node.sh node1 imboycookie 9801
 # 例如: ./script/start_node.sh node2 imboycookie 9802 "imadm,imcron"

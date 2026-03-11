@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # 用法: ./script/stop_node.sh <nodename>
 # 例如: ./script/stop_node.sh node2
 
