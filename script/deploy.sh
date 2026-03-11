@@ -37,6 +37,11 @@ if [ $# -ne 3 ]; then
   echo "用法: $0 [-v|--verbose|-s|--silent] <SERVER_HOST> <VSN> <NODE_NAME>"
   echo "示例: $0 -v <server_host> <version> <node_name>"
   echo "示例: bash ./script/deploy.sh -v 10.0.0.10 1.0.0 001"
+  echo "可选环境变量:"
+  echo "  IMBOY_DEPLOY_USER          SSH 用户，默认 root"
+  echo "  IMBOY_DEPLOY_PORT          SSH 端口，默认 32"
+  echo "  IMBOY_DEPLOY_PROJECT_DIR   远端项目目录，默认 /www/wwwroot/imboy-api"
+  echo "  IMBOY_DEPLOY_NGINX_CONF    远端 nginx 配置路径"
   exit 1
 fi
 
