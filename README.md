@@ -364,18 +364,18 @@ imboy_syn:publish(1, <<"hello from node2">>).
 make erlang-mk
 ```
 
-## imboy.appup
+## `imboy.appup`
 
-Appup Cookbook https://cloud.tencent.com/developer/section/1122611
+参考：
 
-```
-{"0.2.0",
-    所有版本"0.1.*"升级到版本"0.2.0",重启应用
-   [{"0.2\\.[0-9]+", [{restart_application, imboy_app}
-             ]}],
-    版本"0.2.0"降级到所有版本"0.1.*",重启应用
-   [{"0.1\\.[0-9]+", [{restart_application, imboy_app}
-             ]}]
+- https://cloud.tencent.com/developer/section/1122611
+
+以下示例仅说明 `appup` 结构；升级版本号与回滚版本范围应按当前发布计划填写：
+
+```erlang
+{"<new_vsn>",
+   [{"<old_vsn_regex>", [{restart_application, imboy_app}]}],
+   [{"<rollback_vsn_regex>", [{restart_application, imboy_app}]}]
 }.
 ```
 
