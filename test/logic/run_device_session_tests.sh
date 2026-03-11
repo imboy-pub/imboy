@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # 设备会话管理功能测试脚本
 
@@ -6,7 +6,8 @@ echo "=== 设备会话管理功能测试 ==="
 echo ""
 
 # 设置项目根目录
-PROJECT_ROOT="/Users/leeyi/project/imboy.pub/imboy"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
 # 编译新模块

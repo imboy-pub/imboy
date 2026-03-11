@@ -35,8 +35,8 @@ done
 # ---------------- 参数 ----------------
 if [ $# -ne 3 ]; then
   echo "用法: $0 [-v|--verbose|-s|--silent] <SERVER_HOST> <VSN> <NODE_NAME>"
-  echo "示例: $0 -v 192.168.1.100 0.7.3 001"
-  echo "bash ./script/deploy.sh -v 192.168.1.110 0.7.3 001"
+  echo "示例: $0 -v <server_host> <version> <node_name>"
+  echo "示例: bash ./script/deploy.sh -v 10.0.0.10 1.0.0 001"
   exit 1
 fi
 
@@ -44,11 +44,11 @@ SERVER_HOST="$1"
 VSN="$2"
 NODE_NAME="$3"
 
-SERVER_USER=root
-SERVER_PORT=32
+SERVER_USER="${IMBOY_DEPLOY_USER:-root}"
+SERVER_PORT="${IMBOY_DEPLOY_PORT:-32}"
 
-PROJECT_DIR="/www/wwwroot/imboy-api"
-NGINX_CONF="/www/server/panel/vhost/nginx/pro.imboy.pub.conf"
+PROJECT_DIR="${IMBOY_DEPLOY_PROJECT_DIR:-/www/wwwroot/imboy-api}"
+NGINX_CONF="${IMBOY_DEPLOY_NGINX_CONF:-/www/server/panel/vhost/nginx/pro.imboy.pub.conf}"
 
 # ---------------- 端口 ----------------
 BLUE_PORT=9800
