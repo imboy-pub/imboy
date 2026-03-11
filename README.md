@@ -227,18 +227,22 @@ chmod +x efmt
 ```
 
 
-# 发布  (Release)
+## 发布（Release）
 
-./script/deploy.sh xxx.xxx.xxx.xxx 0.7.1 0.6.5
+说明：以下命令用于说明 `rel/relup` 产物的构建与部署方式；其中主机地址、目录和版本号需替换成你的实际环境。
 
-```
+可使用部署脚本按目标环境执行发布，例如：
+
+```bash
+./script/deploy.sh <host> <new_version> <old_version>
+
 IMBOYENV=prod make rel
 IMBOYENV=test make rel
 IMBOYENV=dev make rel -j8
 IMBOYENV=local make rel
 
 IMBOYENV=local make relup
-cp _rel/imboy/imboy-0.6.3.tar.gz /usr/local/imboy/releases/0.6.3/
+cp _rel/imboy/imboy-<version>.tar.gz /usr/local/imboy/releases/<version>/
 
 % 生成自解压存档
 % 自解压脚本目前仅支持以console模式启动发布
@@ -248,17 +252,17 @@ _rel/imboy.run
 
 ```
 
-复制代码到特定的目录  (Copy code to a specific directory)
+复制产物到目标目录（Copy release artifact to target directory）
 
 ```
-cp ./_rel/imboy/imboy-1.0.0.tar.gz
+cp ./_rel/imboy/imboy-1.0.0.tar.gz /path/to/deploy/dir/
 # or
-scp ./_rel/imboy/imboy-1.0.0.tar.gz root@192.168.2.207:/usr/local/imboy/
+scp ./_rel/imboy/imboy-1.0.0.tar.gz user@your-host:/path/to/deploy/dir/
 
 
 ```
 
-去启动服务  (To start the service)
+启动服务（Start the service）
 
 ```
 
@@ -282,60 +286,30 @@ bin/imboy restart
 bin/imboy stop
 ```
 
-## 更新发布  (updates)
+## 升级发布（Upgrade）
 
-link https://erlang.mk/guide/relx.html
-```
+参考：
+
+- https://erlang.mk/guide/relx.html
+
+常见升级步骤：
+
+```bash
 IMBOYENV=prod make relup
-```
-
-For the purpose of this section, assume the initial release version was 1, and the new version is 2. The name of the release will be example.
-
-Once all this is done, you can build the tarball for the release upgrade:
-```
-$ make relup
-```
-This will create an archive at the root directory of the release, $RELX_OUTPUT_DIR/example/example-2.tar.gz.
-
-Move the archive to the correct location on the running node. From the release’s root directory:
-```
-$ mkdir releases/2/
-$ mv path/to/example-2.tar.gz releases/2/
-```
-
-Finally, upgrade the release:
-
-https://erlang.mk/guide/relx.html
-
-
-```
-make clean
-git checkout afb81f8 && make clean && IMBOYENV=local make rel
-git checkout -f dev
-vim relxlocal.config
-IMBOYENV=local make rel
-make clean
-IMBOYENV=local make relup
-
-vsn=0.2.11 ./appup.sh
-
- ./bin/imboy pid
-2147601
-
+mkdir -p releases/<new_version>/
+mv path/to/imboy-<new_version>.tar.gz releases/<new_version>/
 ./bin/imboy versions
-    Installed versions:
-    * 0.2.6 permanent
-    * 0.2.5 old
+./bin/imboy upgrade <new_version>
 ```
-Your release was upgraded!
 
-重复升级到
+回滚或清理旧版本时，可参考：
+
+```bash
+./bin/imboy downgrade <old_version>
+./bin/imboy uninstall <old_version>
 ```
-/usr/local/imboy/bin/imboy downgrade 0.2.7
-IMBOYENV=local make relup
-/usr/local/imboy/bin/imboy uninstall 0.2.8
-vsn=0.2.8 ./appup.sh
-```
+
+如需维护 `appup` 生成脚本或历史版本兼容策略，建议单独放到发布流程文档或交付脚本中，不再在根 `README.md` 保留具体历史版本示例。
 
 ## 分布式启动
 * 启动/停止
@@ -405,11 +379,11 @@ Appup Cookbook https://cloud.tencent.com/developer/section/1122611
 }.
 ```
 
-## api 约定  (api convention)
+## API 约定（API Convention）
 * [API参考](./doc/api/rest-api.md)
 
 
-## erlang 优化
+## Erlang 优化
 
 性能与稳定性优化以 CI 基线（`make dialyze`、测试门禁）和发布前压测结果为准。
 
@@ -421,8 +395,8 @@ Dispatch = cowboy_router:compile(Routes),
 cowboy:set_env(imboy_listener, dispatch, Dispatch).
 ```
 
-## reload sys.config
-```
+## 重新加载 `sys.config`
+```erlang
 config_ds:reload().
 config_ds:local_reload()
 
@@ -430,14 +404,14 @@ erl -config config/sys.dev.config -eval 'application:which_applications(), halt(
 
 ```
 
-## websocket 在线工具调试
+## WebSocket 在线工具调试
 
 为了简化代码取消WS了在线调试（如有必要，以后可以看情况添加一个h5页面做调试工具）
 
 http://coolaf.com/tool/chattest
 io:format("~p~n", [token_ds:encrypt_token(4)]).
 
-```
+```text
 (imboy@127.0.0.1)10>  hashids_translator:uid_encode(4).
 <<"8ybk5b">>
 (imboy@127.0.0.1)11> hashids_translator:uid_encode(1).
@@ -446,43 +420,26 @@ io:format("~p~n", [token_ds:encrypt_token(4)]).
 ```
 
 ## Email
-```
+```erlang
 gen_smtp_client:send({"sender@gmail.com", ["receiver@gmail.com"], "Subject: testing"},
    [{relay, "smtp.gmail.com"}, {ssl, true}, {username, "sender@gmail.com"},
       {password, "senderpassword"}]).
 
 ```
-telnet 81.68.209.56 34780
+## Eturnal / TURN 参考
 
+说明：`eturnal`、`coturn` 一类音视频基础设施通常带有强环境绑定配置，当前仓库不再保留具体 IP、绝对路径或面板路径示例。
 
-## eturnal
+可参考以下公开检测页面进行联调：
 
-https://icetest.atec-systems.com/
+- https://icetest.atec-systems.com/
+- https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
 
-https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
+如需维护 STUN/TURN 部署脚本，建议放在交付环境、运维仓或基础设施仓中。
 
-```
+## 其他
 
-cp /data/docker/eturnal/eturnal.yml /etc/
-
-eturnalctl daemon
-
-
-cd /www/wwwroot/eturnal/
-
-_build/product/rel/eturnal/bin/eturnal console
-
-_build/product/rel/eturnal/bin/eturnal daemon
-
-/www/wwwroot/eturnal/_build/product/rel/eturnal/bin/eturnal daemon
-
-tail -f /www/wwwroot/eturnal/_build/product/rel/eturnal/log/eturnal.log
-```
-
-
-## other
-
+```bash
 docker-compose -f docker-compose.yml up
 docker-compose -f docker-compose-pro.yml up
-
-rm -rf  /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so && ln -s /opt/homebrew/Cellar/erlang@25/25.3.2.7/lib/erlang/lib/wx-2.2.2/priv/wxe_driver.so /Users/leeyi/workspace/imboy/imboy/_rel/imboy/lib/wx-2.2.2/priv/wxe_driver.so
+```
