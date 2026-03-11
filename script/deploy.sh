@@ -42,6 +42,8 @@ if [ $# -ne 3 ]; then
   echo "  IMBOY_DEPLOY_PORT          SSH 端口，默认 32"
   echo "  IMBOY_DEPLOY_PROJECT_DIR   远端项目目录，默认 /www/wwwroot/imboy-api"
   echo "  IMBOY_DEPLOY_NGINX_CONF    远端 nginx 配置路径"
+  echo "  IMBOY_DEPLOY_BLUE_PORT     蓝环境端口，默认 9800"
+  echo "  IMBOY_DEPLOY_GREEN_PORT    绿环境端口，默认 9801"
   exit 1
 fi
 
@@ -56,8 +58,8 @@ PROJECT_DIR="${IMBOY_DEPLOY_PROJECT_DIR:-/www/wwwroot/imboy-api}"
 NGINX_CONF="${IMBOY_DEPLOY_NGINX_CONF:-/www/server/panel/vhost/nginx/pro.imboy.pub.conf}"
 
 # ---------------- 端口 ----------------
-BLUE_PORT=9800
-GREEN_PORT=9801
+BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
+GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
 
 # ---------------- 日志 ----------------
 log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $1\033[0m"; }

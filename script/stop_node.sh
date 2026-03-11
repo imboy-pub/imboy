@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 # 用法: ./script/stop_node.sh <nodename>
 # 例如: ./script/stop_node.sh node2
 
-NODE="$1"
+NODE="${1:-}"
 NODE_HOST="${IMBOY_NODE_HOST:-127.0.0.1}"
 
 if [ -z "$NODE" ]; then
   echo "用法: $0 <nodename>"
+  echo "环境变量: IMBOY_NODE_HOST（默认 127.0.0.1）"
   exit 1
 fi
 

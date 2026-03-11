@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BASE_URL=""
-PUBLIC_PATH="/v1/app/features"
-ADMIN_PATH="/adm/admin/config/features"
-TIMEOUT=15
+BASE_URL="${IMBOY_FEATURE_BASE_URL:-}"
+PUBLIC_PATH="${IMBOY_FEATURE_PUBLIC_PATH:-/v1/app/features}"
+ADMIN_PATH="${IMBOY_FEATURE_ADMIN_PATH:-/adm/admin/config/features}"
+TIMEOUT="${IMBOY_FEATURE_TIMEOUT:-15}"
 INSECURE=0
 SHOW_BODY=0
 EXPECTS=()
@@ -15,7 +15,7 @@ usage() {
   cat <<'USAGE'
 用法:
   bash ./script/run_feature_flag_smoke.sh \
-    --base-url https://dev.imboy.pub \
+    --base-url https://<base_url> \
     --admin-header 'authorization: Bearer <admin_token>' \
     --forbidden-header 'authorization: Bearer <limited_token>' \
     --expect core=true \
@@ -29,21 +29,21 @@ usage() {
   5. 校验功能开关结果是否符合预期（可重复 --expect）
 
 参数:
-  --base-url <url>             必填，域名或环境地址
-  --public-path <path>         可选，默认 /v1/app/features
-  --admin-path <path>          可选，默认 /adm/admin/config/features
+  --base-url <url>             必填；也可通过 IMBOY_FEATURE_BASE_URL 提供
+  --public-path <path>         可选；也可通过 IMBOY_FEATURE_PUBLIC_PATH 覆盖
+  --admin-path <path>          可选；也可通过 IMBOY_FEATURE_ADMIN_PATH 覆盖
   --admin-header <header>      可选，后台高权限请求头，可重复传入
   --forbidden-header <header>  可选，后台低权限请求头，可重复传入
   --expect <key=value>         可选，例如 moment=false，可重复传入
-  --timeout <seconds>          可选，默认 15
+  --timeout <seconds>          可选；也可通过 IMBOY_FEATURE_TIMEOUT 覆盖，默认 15
   -k, --insecure               可选，跳过 TLS 证书校验
   --show-body                  可选，打印接口原始响应
   -h, --help                   查看帮助
 
 示例:
   bash ./script/run_feature_flag_smoke.sh \
-    --base-url https://dev.imboy.pub \
-    --admin-header 'authorization: Bearer admin-token' \
+    --base-url https://<base_url> \
+    --admin-header 'authorization: Bearer <admin_token>' \
     --forbidden-header 'authorization: Bearer limited-token' \
     --expect core=true \
     --expect channel=true \
@@ -105,7 +105,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$BASE_URL" ]] || fail "缺少 --base-url"
+[[ -n "$BASE_URL" ]] || fail "缺少 --base-url，且 IMBOY_FEATURE_BASE_URL 未设置"
 [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || fail "--timeout 必须是正整数"
 
 BASE_URL="${BASE_URL%/}"

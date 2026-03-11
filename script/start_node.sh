@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 # 用法: ./script/start_node.sh <nodename> [cookie] [port] [exclude_apps] [daemon]
 # 例如: ./script/start_node.sh node1 imboycookie 9801
 # 例如: ./script/start_node.sh node2 imboycookie 9802 "imadm,imcron"
 # 例如: ./script/start_node.sh node3 imboycookie 9803 "imadm" daemon
 
-NODE="$1"
+NODE="${1:-}"
 COOKIE="${2:-imboycookie}"
 PORT="${3:-9800}"
-EXCLUDE_APPS="$4"
-DAEMON="$5"
+EXCLUDE_APPS="${4:-}"
+DAEMON="${5:-}"
 NODE_HOST="${IMBOY_NODE_HOST:-127.0.0.1}"
 DIST_INTERFACE="${IMBOY_DIST_INTERFACE:-{127,0,0,1}}"
 
-[ -z "$NODE" ] && { echo "Usage: $0 <nodename> [cookie] [port] [exclude_apps] [daemon]"; exit 1; }
+[ -z "$NODE" ] && {
+  echo "Usage: $0 <nodename> [cookie] [port] [exclude_apps] [daemon]"
+  echo "Environment:"
+  echo "  IMBOY_NODE_HOST       节点 host，默认 127.0.0.1"
+  echo "  IMBOY_DIST_INTERFACE  分布式监听地址，默认 {127,0,0,1}"
+  exit 1
+}
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -20,7 +27,9 @@ export IMBOYENV="${IMBOYENV:-local}"
 export HTTP_PORT="$PORT"
 
 REL_BIN="_rel/imboy/bin/imboy"
+[ -x "$REL_BIN" ] || { echo "未找到 release 脚本: $REL_BIN，请先执行 make rel"; exit 2; }
 REL_RELEASE_DIR=$(find _rel/imboy/releases -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+[ -n "$REL_RELEASE_DIR" ] || { echo "未找到 release 版本目录，请先执行 make rel"; exit 2; }
 VM_ARGS_FILE="$REL_RELEASE_DIR/vm.args"
 
 # 准备vm.args
