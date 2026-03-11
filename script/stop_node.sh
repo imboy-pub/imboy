@@ -3,6 +3,7 @@
 # 例如: ./script/stop_node.sh node2
 
 NODE="$1"
+NODE_HOST="${IMBOY_NODE_HOST:-127.0.0.1}"
 
 if [ -z "$NODE" ]; then
   echo "用法: $0 <nodename>"
@@ -18,12 +19,12 @@ if [ ! -x "$REL_BIN" ]; then
   exit 2
 fi
 
-echo "尝试停止节点 ${NODE}@127.0.0.1 ..."
+echo "尝试停止节点 ${NODE}@${NODE_HOST} ..."
 
 "$REL_BIN" rpc init stop
 
 if [ $? -eq 0 ]; then
-  echo "✅ 节点 ${NODE}@127.0.0.1 已成功关闭"
+  echo "✅ 节点 ${NODE}@${NODE_HOST} 已成功关闭"
 else
   echo "❌ 停止失败，请确认节点是否在线、cookie 是否正确"
 fi

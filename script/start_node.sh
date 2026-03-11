@@ -9,6 +9,8 @@ COOKIE="${2:-imboycookie}"
 PORT="${3:-9800}"
 EXCLUDE_APPS="$4"
 DAEMON="$5"
+NODE_HOST="${IMBOY_NODE_HOST:-127.0.0.1}"
+DIST_INTERFACE="${IMBOY_DIST_INTERFACE:-{127,0,0,1}}"
 
 [ -z "$NODE" ] && { echo "Usage: $0 <nodename> [cookie] [port] [exclude_apps] [daemon]"; exit 1; }
 
@@ -23,10 +25,10 @@ VM_ARGS_FILE="$REL_RELEASE_DIR/vm.args"
 
 # 准备vm.args
 cat > "$VM_ARGS_FILE" <<EOF
--name ${NODE}@127.0.0.1
+-name ${NODE}@${NODE_HOST}
 -setcookie ${COOKIE}
 -heart
--kernel inet_dist_use_interface '{127,0,0,1}'
+-kernel inet_dist_use_interface ${DIST_INTERFACE}
 +K true
 +A 1024
 +P 20480
