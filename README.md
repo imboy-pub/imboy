@@ -68,44 +68,51 @@ Web框架: Cowboy (基于Erlang的HTTP服务器)
 - 本地单节点开发时建议将 `cluster_nodes` 设为空列表，避免启动日志出现 `no_nodes_connected` 噪音。
 
 
-## erlang 的shell 访问远程节
-```
+## Erlang 远程 Shell 与节点调试
+
+常用方式：
+
+```bash
 _rel/imboy/bin/imboy remote_console
+```
 
+需要手动连节点时，可参考以下命令：
 
+```erlang
 net_adm:ping('imboy@api.docker.imboy.pub').
 net_kernel:connect_node('imboy@api.docker.imboy.pub').
 
 net_adm:ping('node1@127.0.0.1').
 
 erl -name debug@127.0.0.1
-auth:set_cookie('imboy'),net_adm:ping('imboy@127.0.0.1').
+auth:set_cookie('imboy'), net_adm:ping('imboy@127.0.0.1').
 net_adm:names().
 {ok,[{"imboy",55042},{"debug",60595}]}
+```
 
-按 Ctrl+G 出现user switch command
-然后输入
+如果进入 Erlang shell 后需要切换远程节点：
 
-r 'imboy@127.0.0.1'
-r 'node2@127.0.0.1'
+1. 按 `Ctrl+G` 进入 user switch command；
+2. 输入 `r 'imboy@127.0.0.1'` 或其他目标节点；
+3. 输入 `j` 查看当前可切换节点列表；
+4. 输入 `c <编号>` 切换到对应节点。
 
-按回车
+示例输出：
 
-在按 J 机器显示节点:
+```text
  --> j
    1  {shell,start,[init]}
    2* {'imboy@127.0.0.1',shell,start,[]}
+```
 
-在 * 的就是默认的可连接节点，其中的1 行，就是你现在的master节点
+说明：带 `*` 的节点是当前默认连接节点。
 
-按 c 就能连接
+如需图形化查看节点，也可使用 `erldash`：
 
-你如果要连接到第三节点的话，直接 输入 c 6 回车就行了。
-
+```bash
 curl -L https://github.com/sile/erldash/releases/download/0.1.1/erldash-0.1.1.x86_64-unknown-linux-musl -o erldash
 chmod +x erldash
 ./erldash imboy@127.0.0.1 -c imboy
-
 ```
 
 ## [Using templates](https://erlang.mk/guide/getting_started.html)
@@ -178,7 +185,7 @@ make help
   rel           Build a release for this project, if applicable
 ```
 
-在另一个shelll里面执行
+在另一个 shell 里执行
 ```
 erl> help().
     lm()       -- load all modified modules
@@ -193,22 +200,22 @@ make erlang-mk
 make new-app in=webchat
 ```
 
-## test
+## Test
 
 ```bash
 make eunit
 make ct
 ```
 
-## 分析工具  (Analysis tool)
+## 分析工具（Analysis Tools）
 * [Dialyzer](https://erlang.mk/guide/dialyzer.html)
 * [Look Glass](https://github.com/rabbitmq/looking_glass)
 
 ```
 make dialyze
 
-代码格式工具
-get from https://github.com/sile/efmt/releases
+代码格式工具：
+从 https://github.com/sile/efmt/releases 获取 `efmt` 可执行文件。
 
 VERSION=0.14.1
 curl -L https://github.com/sile/efmt/releases/download/${VERSION}/efmt-${VERSION}.x86_64-unknown-linux-musl -o efmt
