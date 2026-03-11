@@ -79,8 +79,8 @@ _rel/imboy/bin/imboy remote_console
 需要手动连节点时，可参考以下命令：
 
 ```erlang
-net_adm:ping('imboy@api.docker.imboy.pub').
-net_kernel:connect_node('imboy@api.docker.imboy.pub').
+net_adm:ping('imboy@<remote_host>').
+net_kernel:connect_node('imboy@<remote_host>').
 
 net_adm:ping('node1@127.0.0.1').
 
@@ -419,11 +419,14 @@ io:format("~p~n", [token_ds:encrypt_token(4)]).
 {"id":"text5","type":"C2C","from":"8ybk5b","to":"kybqdp","payload":{"msg_type":"text","text":"text5"},"created_at":1650118822382,"server_ts":1650118823376}
 ```
 
-## Email
+## Email 示例
+
+说明：示例中的发件地址、SMTP 主机和密码都应替换为你的实际配置，避免把真实凭据写进仓库。
+
 ```erlang
-gen_smtp_client:send({"sender@gmail.com", ["receiver@gmail.com"], "Subject: testing"},
-   [{relay, "smtp.gmail.com"}, {ssl, true}, {username, "sender@gmail.com"},
-      {password, "senderpassword"}]).
+gen_smtp_client:send({"sender@example.com", ["receiver@example.com"], "Subject: testing"},
+   [{relay, "smtp.example.com"}, {ssl, true}, {username, "sender@example.com"},
+      {password, "<smtp_password>"}]).
 
 ```
 ## Eturnal / TURN 参考
