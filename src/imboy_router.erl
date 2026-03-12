@@ -156,6 +156,8 @@ get_routes() ->
 
         %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 
+        {"/privacy-policy", cowboy_static, {priv_file, imboy, "static/legal/privacy_policy.html"}},
+        {"/account-deletion", cowboy_static, {priv_file, imboy, "static/legal/account_deletion.html"}},
         {"/static/[...]", cowboy_static, {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
     ],
 
@@ -569,6 +571,8 @@ option() ->
 open() ->
     [
      <<"/help">>,
+     <<"/privacy-policy">>,
+     <<"/account-deletion">>,
      % /ws 有自己的auth
      <<"/ws">>,
      <<"/test/req_get">>,
