@@ -22,17 +22,20 @@
 %% @return {ok, Req, State} 更新后的请求和状态
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
-    % ?DEBUG_LOG(State),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 = case Action of
                captcha ->
                    captcha(Req0, State);
+               meta ->
+                   meta(Method, Req0, State);
                login ->
                    login(Method, Req0, State);
-               % demo_action ->
-               %     demo_action(Req0, State);
+               do_login ->
+                   login(Method, Req0, State);
+               logout ->
+                   logout(Method, Req0, State);
                false ->
                    Req0
            end,
@@ -50,90 +53,177 @@ init(Req0, State0) ->
 %% @return cowboy_req:req() 更新后的请求对象
 -spec captcha(cowboy_req:req(), map()) -> cowboy_req:req().
 captcha(Req, _State) ->
-    %CryptKey用于验证的时候用，需本地保存，CapCode为用户提交的数据
-    %simple_captcha:check(CryptKey, CapCode)
-    {CryptKey, BinPng} =  simple_captcha:create(),
-
-    Req2 = cowboy_req:set_resp_cookie(<<"captcha_key">>, CryptKey, Req),
+    {CryptKey, BinPng} = simple_captcha:create(),
+    Req2 = cowboy_req:set_resp_cookie(
+        <<"captcha_key">>,
+        CryptKey,
+        Req,
+        #{
+            path => <<"/adm/passport">>,
+            http_only => true,
+            same_site => lax,
+            secure => cookie_secure()
+        }
+    ),
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"image/png; charset=utf-8">>
-        , <<"Access-Control-Allow-Origin">> => <<"*">>
     }, BinPng, Req2).
-
 
 %% @doc 处理登录页面请求
 %% 返回包含 CSRF 令牌和 RSA 公钥的登录页面
-%% @param Method HTTP 方法（GET）
-%% @param Req0 Cowboy 请求对象
-%% @param State 状态映射
-%% @return cowboy_req:req() 更新后的请求对象
 -spec login(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 login(<<"GET">>, Req0, _State) ->
-    Csrf = elib_id:gen("csrf"),
-    imboy_cache:set(Csrf, 1),
-    % cowboy_req:set_resp_cookie("csrf_token", Csrf, Req0),
-    {ok, Body} = imboy_dtl:template(login_dtl, [
-         {system_name, "IMBoy Admin System"}
-        , {csrf_token, Csrf}
-        , {public_key, re:replace(config_ds:get(<<"login_rsa_pub_key">>), "\\n", "", [global, {return, list}])}
-    ], imboy),
-
+    Meta = build_login_meta(),
+    Data = [
+        {system_name, binary_to_list(maps:get(<<"system_name">>, Meta, <<"IMBoy Admin System">>))},
+        {csrf_token, maps:get(<<"csrf_token">>, Meta, <<>>)},
+        {public_key, binary_to_list(maps:get(<<"public_key">>, Meta, <<>>))}
+    ],
+    {ok, Body} = imboy_dtl:template(login_dtl, Data, imboy),
     cowboy_req:reply(200, #{
         <<"content-type">> => <<"text/html; charset=utf-8">>
-        , <<"Access-Control-Allow-Origin">> => <<"*">>
     }, Body, Req0);
 
 %% @doc 处理登录表单提交
 %% 验证用户名密码、验证码和 CSRF 令牌，完成用户认证
-%% @param Method HTTP 方法（POST）
-%% @param Req0 Cowboy 请求对象
-%% @param State 状态映射
-%% @return cowboy_req:req() 更新后的请求对象
 login(<<"POST">>, Req0, _State) ->
-    % CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     CryptKey = elib_req:cookie(<<"captcha_key">>, Req0),
-    % ?DEBUG_LOG(['CryptKey ', CryptKey]),
     PostVals = elib_param:post(Req0),
     Captcha = maps:get(<<"captcha">>, PostVals, ""),
     Csrf = maps:get(<<"csrf_token">>, PostVals, ""),
-    CsrfVal = imboy_cache:get(Csrf),
-    % CryptKeyFromEts = simple_captcha_ets:find(Code),
-    case {CsrfVal, simple_captcha:check(CryptKey, Captcha)} of
-        {{ok, 1}, true} ->
-            Account = maps:get(<<"account">>, PostVals, undefined),
-            Pwd = maps:get(<<"pwd">>, PostVals, undefined),
-            Password = elib_cipher:rsa_decrypt(Pwd),
-            % ?DEBUG_LOG([Account, 'pwd ', Password]),
-            case adm_passport_logic:do_login(Account, Password) of
-                {ok, AdmUser} ->
-                    imboy_cache:flush(Csrf),
-                    #{<<"id">> := AdmUserId} = AdmUser,
-                    % ?DEBUG_LOG(['AdmUserId ', AdmUserId]),
-
-                    Req1 = cowboy_req:set_resp_cookie(<<"adm_user_id">>
-                        , AdmUserId
-                        , Req0
-                        , #{path => <<"/">>}),
-                    Next = case elib_req:cookie(<<"back_uri">>, Req0) of
-                        BackUri when is_binary(BackUri) ->
-                            BackUri;
-                        _ ->
-                            % 必须是binnary
-                            <<"/adm/">>
-                    end,
-                    % ?DEBUG_LOG(["NextNextNextNextNextNext", Next]),
-                    elib_response:success(Req1, AdmUser#{next => Next}, "操作成功.");
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+    case imboy_cache:get(Csrf) of
+        {ok, 1} ->
+            case safe_captcha_check(CryptKey, Captcha) of
+                true ->
+                    Account = maps:get(<<"account">>, PostVals, undefined),
+                    Pwd = maps:get(<<"pwd">>, PostVals, undefined),
+                    case decrypt_password(Pwd) of
+                        <<>> ->
+                            elib_response:error(Req0, <<"密码有误"/utf8>>);
+                        Password ->
+                            case adm_passport_logic:do_login(Account, Password) of
+                                {ok, AdmUser} ->
+                                    imboy_cache:flush(Csrf),
+                                    #{<<"id">> := AdmUserId} = AdmUser,
+                                    Req1 = cowboy_req:set_resp_cookie(
+                                        <<"adm_user_id">>,
+                                        AdmUserId,
+                                        Req0,
+                                        #{
+                                            path => <<"/adm">>,
+                                            http_only => true,
+                                            same_site => lax,
+                                            secure => cookie_secure()
+                                        }
+                                    ),
+                                    AdmUserSig = adm_auth_middleware:sign_admin_cookie(AdmUserId),
+                                    Req2 = cowboy_req:set_resp_cookie(
+                                        <<"adm_user_sig">>,
+                                        AdmUserSig,
+                                        Req1,
+                                        #{
+                                            path => <<"/adm">>,
+                                            http_only => true,
+                                            same_site => lax,
+                                            secure => cookie_secure()
+                                        }
+                                    ),
+                                    Next = case elib_req:cookie(<<"back_uri">>, Req0) of
+                                        BackUri when is_binary(BackUri) ->
+                                            BackUri;
+                                        _ ->
+                                            <<"/adm/">>
+                                    end,
+                                    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/adm">>),
+                                    RespData = maps:put(<<"next">>, Next, AdmUser),
+                                    elib_response:success(Req3, RespData, "操作成功.");
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg)
+                            end
+                    end;
+                false ->
+                    elib_response:error(Req0, "验证码有误")
             end;
-        {{ok, 1}, _} ->
-            elib_response:error(Req0, "验证码有误");
-        {_, _} ->
+        _ ->
             elib_response:error(Req0, "Csrf token error.")
+    end;
+login(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 解密登录密码，失败时返回空二进制，避免请求进程崩溃
+-spec decrypt_password(term()) -> binary().
+decrypt_password(Pwd) ->
+    try elib_cipher:rsa_decrypt(Pwd) of
+        Password when is_binary(Password) -> Password;
+        _ -> <<>>
+    catch
+        _:_ -> <<>>
     end.
+
+-spec safe_captcha_check(term(), term()) -> boolean().
+safe_captcha_check(CryptKey, Captcha) ->
+    try simple_captcha:check(CryptKey, Captcha) of
+        true -> true;
+        _ -> false
+    catch
+        _:_ -> false
+    end.
+
+%% @doc 管理后台登录元数据
+-spec meta(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+meta(<<"GET">>, Req0, _State) ->
+    elib_response:success(Req0, build_login_meta());
+meta(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 处理退出登录
+%% 清理管理后台认证相关 Cookie，并返回成功响应
+-spec logout(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+logout(<<"POST">>, Req0, _State) ->
+    Req1 = clear_cookie(<<"adm_user_id">>, Req0, <<"/adm">>),
+    Req2 = clear_cookie(<<"adm_user_sig">>, Req1, <<"/adm">>),
+    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/adm">>),
+    elib_response:success(Req3, #{}, <<"退出成功"/utf8>>);
+logout(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec clear_cookie(binary(), cowboy_req:req(), binary()) -> cowboy_req:req().
+clear_cookie(Name, Req, Path) ->
+    cowboy_req:set_resp_cookie(
+        Name,
+        <<>>,
+        Req,
+        #{
+            path => Path,
+            max_age => 0,
+            http_only => true,
+            same_site => lax,
+            secure => cookie_secure()
+        }
+    ).
+
+%% @doc 判断是否需要为 Cookie 设置 secure 属性
+-spec cookie_secure() -> boolean().
+cookie_secure() ->
+    StartMode = config_ds:env(start_mode, http),
+    StartMode =:= tls orelse StartMode =:= http_tls.
+
+-spec build_login_meta() -> map().
+build_login_meta() ->
+    Csrf = elib_id:gen("csrf"),
+    imboy_cache:set(Csrf, 1),
+    PublicKey = re:replace(
+        config_ds:get(<<"login_rsa_pub_key">>),
+        "\\n",
+        "",
+        [global, {return, binary}]
+    ),
+    #{
+        <<"system_name">> => <<"IMBoy Admin System">>,
+        <<"csrf_token">> => Csrf,
+        <<"public_key">> => PublicKey
+    }.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

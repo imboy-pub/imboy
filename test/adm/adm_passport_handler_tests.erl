@@ -34,12 +34,13 @@ captcha_generates_image_test_() ->
             end}
         ]},
         {cowboy_req, [
-            {'set_resp_cookie', 3, fun(_Name, _Value, Req) ->
+            {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) ->
                 Req#{has_captcha_cookie => true}
             end},
-            {'reply', 4, fun(_Status, _Headers, Body, Req) ->
+            {'reply', 4, fun(Status, Headers, Body, Req) ->
                 Req#{
-                    response_status => 200,
+                    response_status => Status,
+                    response_headers => Headers,
                     response_body => Body
                 }
             end}
@@ -53,9 +54,8 @@ captcha_generates_image_test_() ->
 
         {StatusCode, Headers, _Body} = cowboy_req_h:response(Req),
         ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_EQUAL(<<"image/png; charset=utf-8">>, maps:get(<<"content-type">>, Headers)),
-        ?ASSERT_EQUAL(<<"*">>, maps:get(<<"Access-Control-Allow-Origin">>, Headers)),
-        ?assert(maps:has_key(<<"captcha_key">>, Req) orelse maps:get(has_captcha_cookie, Req, false))
+        ?ASSERT_EQUAL(<<"image/png; charset=utf-8">>, maps:get(<<"content-type">>, Headers, undefined)),
+        ?assert(maps:is_key(<<"captcha_key">>, Req) orelse maps:get(has_captcha_cookie, Req, false))
     end).
 
 %% ===================================================================
@@ -92,9 +92,10 @@ login_page_returns_html_with_csrf_test_() ->
             end}
         ]},
         {cowboy_req, [
-            {'reply', 4, fun(_Status, _Headers, Body, Req) ->
+            {'reply', 4, fun(Status, Headers, Body, Req) ->
                 Req#{
-                    response_status => 200,
+                    response_status => Status,
+                    response_headers => Headers,
                     response_body => Body
                 }
             end}
@@ -108,8 +109,7 @@ login_page_returns_html_with_csrf_test_() ->
 
         {StatusCode, Headers, Body} = cowboy_req_h:response(Req),
         ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_EQUAL(<<"text/html; charset=utf-8">>, maps:get(<<"content-type">>, Headers)),
-        ?ASSERT_EQUAL(<<"*">>, maps:get(<<"Access-Control-Allow-Origin">>, Headers)),
+        ?ASSERT_EQUAL(<<"text/html; charset=utf-8">>, maps:get(<<"content-type">>, Headers, undefined)),
         ?assert(binary:match(Body, <<"IMBoy Admin System">>) =/= nomatch),
         ?assert(binary:match(Body, <<"csrf_token_abc123">>) =/= nomatch)
     end).
@@ -118,15 +118,52 @@ login_page_returns_html_with_csrf_test_() ->
 %% 登录提交测试 (POST) - 成功场景
 %% ===================================================================
 
+%% @doc 测试登录元数据接口返回 JSON payload
+login_meta_returns_payload_test_() ->
+    ?WITH_MECKS([
+        {elib_id, [
+            {'gen', 1, fun(_Prefix) ->
+                <<"csrf_meta_123">>
+            end}
+        ]},
+        {imboy_cache, [
+            {'set', 2, fun(_Key, _Value) ->
+                ok
+            end}
+        ]},
+        {config_ds, [
+            {'get', 1, fun(_Key) ->
+                <<"-----BEGIN PUBLIC KEY-----\nABCDEF\n-----END PUBLIC KEY-----">>
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Data) ->
+                Req#{
+                    response_status => 200,
+                    response_data => Data
+                }
+            end}
+        ]}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{
+            method => <<"GET">>
+        }),
+
+        {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => meta}),
+
+        ResponseData = maps:get(response_data, Req, #{}),
+        ?ASSERT_EQUAL(<<"csrf_meta_123">>, maps:get(<<"csrf_token">>, ResponseData)),
+        ?assert(maps:is_key(<<"public_key">>, ResponseData)),
+        ?ASSERT_EQUAL(<<"IMBoy Admin System">>, maps:get(<<"system_name">>, ResponseData))
+    end).
+
 %% @doc 测试登录提交 - 验证码和CSRF验证成功，登录成功
 login_post_success_with_valid_credentials_test_() ->
     ?WITH_MECKS([
         {elib_req, [
-            {'cookie', 2, fun(<<"captcha_key">>, _Req) ->
-                <<"valid_crypt_key">>
-            end},
-            {'cookie', 2, fun(<<"back_uri">>, _Req) ->
-                <<"/adm/dashboard">>
+            {'cookie', 2, fun
+                (<<"captcha_key">>, _Req) -> <<"valid_crypt_key">>;
+                (<<"back_uri">>, _Req) -> <<"/adm/dashboard">>
             end}
         ]},
         {elib_param, [
@@ -197,6 +234,7 @@ login_post_success_with_valid_credentials_test_() ->
         ResponseData = maps:get(response_data, Req, #{}),
         ?assert(maps:is_key(<<"id">>, ResponseData)),
         ?assert(maps:is_key(<<"next">>, ResponseData)),
+        ?ASSERT_EQUAL(<<"admin_id_123">>, maps:get(<<"id">>, ResponseData)),
         ?ASSERT_EQUAL(<<"/adm/dashboard">>, maps:get(<<"next">>, ResponseData))
     end).
 
@@ -305,6 +343,47 @@ login_post_fails_with_invalid_captcha_test_() ->
         ]},
         {simple_captcha, [
             {'check', 2, fun(_, _) -> false end}
+        ]},
+        {elib_response, [
+            {'error', 2, fun(Req, _Msg) ->
+                Req#{response_status => 400}
+            end}
+        ]}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{
+            method => <<"POST">>
+        }),
+
+        {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => login}),
+
+        {StatusCode, _, _} = cowboy_req_h:response(Req),
+        ?ASSERT_EQUAL(400, StatusCode)
+    end).
+
+%% @doc 测试登录提交 - 密码解密异常不会导致请求进程崩溃
+login_post_fails_with_invalid_encrypted_password_test_() ->
+    ?WITH_MECKS([
+        {elib_req, [
+            {'cookie', 2, fun(_, _) -> <<"crypt_key">> end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"account">> => <<"admin">>,
+                    <<"pwd">> => <<"broken_cipher_text">>,
+                    <<"captcha">> => <<"1234">>,
+                    <<"csrf_token">> => <<"valid_csrf">>
+                }
+            end}
+        ]},
+        {imboy_cache, [
+            {'get', 1, fun(_) -> {ok, 1} end}
+        ]},
+        {simple_captcha, [
+            {'check', 2, fun(_, _) -> true end}
+        ]},
+        {elib_cipher, [
+            {'rsa_decrypt', 1, fun(_) -> throw({error, invalid_padding}) end}
         ]},
         {elib_response, [
             {'error', 2, fun(Req, _Msg) ->
@@ -623,9 +702,6 @@ complete_login_flow_test_() ->
             end}
         ]},
         {cowboy_req, [
-            {'set_resp_cookie', 3, fun(_, _, Req) ->
-                Req#{captcha_cookie_set => true}
-            end},
             {'reply', 4, fun(Status, Headers, Body, Req) ->
                 Req#{
                     response_status => Status,
@@ -685,7 +761,7 @@ complete_login_flow_test_() ->
         ]},
         {elib_response, [
             {'success', 3, fun(Req, Data, _) ->
-                Req#{response_data => Data}
+                Req#{response_status => 200, response_data => Data}
             end}
         ]}
     ], fun() ->
@@ -710,4 +786,51 @@ complete_login_flow_test_() ->
         ResponseData = maps:get(response_data, Req3, #{}),
         ?assert(maps:is_key(<<"id">>, ResponseData)),
         ?assert(maps:is_key(<<"next">>, ResponseData))
+    end).
+
+%% ===================================================================
+%% 退出登录测试 (POST)
+%% ===================================================================
+
+%% @doc 测试退出登录 - 清理鉴权 Cookie 并返回成功
+logout_post_clears_auth_cookies_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'set_resp_cookie', 4, fun(Name, Value, Req, Opts) ->
+                ?assertEqual(<<>>, Value),
+                ?assertEqual(0, maps:get(max_age, Opts)),
+                ?assertEqual(<<"/adm">>, maps:get(path, Opts)),
+                Cleared = maps:get(cleared_cookies, Req, []),
+                Req#{cleared_cookies => [Name | Cleared]}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(Req, Data, _Msg) ->
+                Req#{
+                    response_status => 200,
+                    response_data => Data
+                }
+            end}
+        ]}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+        {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => logout}),
+
+        ?ASSERT_EQUAL(200, maps:get(response_status, Req)),
+        ClearedCookies = maps:get(cleared_cookies, Req, []),
+        ?assert(lists:member(<<"adm_user_id">>, ClearedCookies)),
+        ?assert(lists:member(<<"adm_user_sig">>, ClearedCookies)),
+        ?assert(lists:member(<<"back_uri">>, ClearedCookies))
+    end).
+
+%% @doc 测试退出登录 - 非 POST 方法返回 405
+logout_non_post_method_returns_405_test_() ->
+    ?WITH_MECK(cowboy_req, [
+        {'reply', 4, fun(Status, _Headers, _Body, Req) ->
+            Req#{response_status => Status}
+        end}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
+        {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => logout}),
+        ?ASSERT_EQUAL(405, maps:get(response_status, Req))
     end).
