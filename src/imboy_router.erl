@@ -470,6 +470,13 @@ get_routes() ->
         {"/adm/admin/create", adm_admin_handler, #{action => create}},
         {"/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
         {"/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
+        {"/adm/role/list", adm_role_handler, #{action => list}},
+        {"/adm/roles/list", adm_role_handler, #{action => list}},
+        {"/adm/role/create", adm_role_handler, #{action => create}},
+        {"/adm/roles/create", adm_role_handler, #{action => create}},
+        {"/adm/role/permissions/save", adm_role_handler, #{action => permissions_save}},
+        {"/adm/role/permission/update", adm_role_handler, #{action => permissions_save}},
+        {"/adm/roles/permissions/save", adm_role_handler, #{action => permissions_save}},
         {"/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
         {"/adm/app_ddl/save", adm_app_ddl_handler, #{action => save}},
         {"/adm/app_ddl/delete", adm_app_ddl_handler, #{action => delete}},
@@ -477,21 +484,29 @@ get_routes() ->
         {"/adm/app_version/save", adm_app_version_handler, #{action => save}},
         {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
         {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
+        {"/adm/passport/meta", adm_passport_handler, #{action => meta}},
         {"/adm/passport/login", adm_passport_handler, #{action => login}},
         {"/adm/passport/captcha", adm_passport_handler, #{action => captcha}},
         {"/adm/passport/do_login", adm_passport_handler, #{action => do_login}},
+        {"/adm/passport/logout", adm_passport_handler, #{action => logout}},
         % 用户管理 API
         {"/adm/user/list", adm_user_handler, #{action => list}},
         {"/adm/user/detail", adm_user_handler, #{action => detail}},
         {"/adm/user/ban", adm_user_handler, #{action => ban}},
         {"/adm/user/unban", adm_user_handler, #{action => unban}},
         {"/adm/user/search", adm_user_handler, #{action => search}},
+        {"/adm/user/logout_apply/list", adm_logout_apply_handler, #{action => list}},
+        {"/adm/user/logout_apply/export", adm_logout_apply_handler, #{action => export}},
         % 群组管理 API
         {"/adm/group/list", adm_group_handler, #{action => list}},
         {"/adm/group/detail", adm_group_handler, #{action => detail}},
         {"/adm/group/dissolve", adm_group_handler, #{action => dissolve}},
         {"/adm/group/search", adm_group_handler, #{action => search}},
         {"/adm/group/members", adm_group_handler, #{action => members}},
+        % 消息管理 API
+        {"/adm/message/list", adm_message_handler, #{action => list}},
+        {"/adm/message/detail", adm_message_handler, #{action => detail}},
+        {"/adm/message/export", adm_message_handler, #{action => export}},
         % 频道管理 API
         {"/adm/channel/list", adm_channel_handler, #{action => list}},
         {"/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
@@ -540,12 +555,10 @@ option() ->
         <<"/uqrcode">>
         , <<"/feedback/add">> % 没有登录也可以提交反馈建议
         , <<"/app_version/check">>
-        , <<"/app_ddl/get">>
 
         , <<"/v1/uqrcode">>
         , <<"/v1/feedback/add">> % 没有登录也可以提交反馈建议
         , <<"/v1/app_version/check">>
-        , <<"/v1/app_ddl/get">>
     ].
 
 
@@ -564,7 +577,6 @@ open() ->
      <<"/init">>,
      <<"/user/show">>,
      <<"/refreshtoken">>,
-     <<"/stress_testing">>,
      <<"/passport/login">>,
      <<"/passport/quick_login">>,
      <<"/passport/signup">>,
@@ -581,7 +593,6 @@ open() ->
      <<"/v1/app/features">>,
      <<"/v1/user/show">>,
      <<"/v1/refreshtoken">>,
-     <<"/v1/stress_testing">>,
      <<"/v1/passport/login">>,
      <<"/v1/passport/quick_login">>,
      <<"/v1/passport/signup">>,
