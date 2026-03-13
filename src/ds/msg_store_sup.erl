@@ -30,6 +30,7 @@ start_link() ->
 %% ==================== Callbacks ====================
 
 %% @private
+-spec init(term()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
 init([]) ->
     SupFlags = #{
         strategy => one_for_one,

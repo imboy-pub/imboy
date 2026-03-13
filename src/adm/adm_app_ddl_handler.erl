@@ -51,33 +51,22 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc 处理索引请求
-%% 当 ajax=1 时返回 JSON 数据，否则返回 HTML 页面
+%% @doc 处理索引请求（纯 JSON）
 %% @param Method HTTP 方法
 %% @param Ajax Ajax 标志，1 表示返回 JSON 数据
 %% @param Req0 Cowboy 请求对象
 %% @param State 状态映射
 %% @return cowboy_req:req() 更新后的请求对象
 -spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
-index(<<"GET">>, 1, Req0, _State) ->
+index(<<"GET">>, _Ajax, Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
     Where = #{},
     Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
     Tb = app_ddl_repo:tablename(),
     {ok, Payload} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
     elib_response:success(Req0, Payload);
-index(<<"GET">>, _, Req0, State) ->
-    {ok, Body} =
-        imboy_dtl:template(app_ddl_index_dtl,
-                           [{attach_token, ""}] ++ imboy_dtl:imadm_param(State),
-                           imboy),
-
-    % {ok, Body} = file:read_file(iolist_to_binary([code:priv_dir(imadm), "/template/adm_index_dtl.html"])),
-    cowboy_req:reply(200,
-                     #{<<"content-type">> => <<"text/html; charset=utf-8">>,
-                       <<"Access-Control-Allow-Origin">> => <<"*">>},
-                     Body,
-                     Req0).
+index(_Method, _Ajax, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 保存应用 DDL 配置
 %% 处理 POST 请求，保存新的 DDL 配置信息

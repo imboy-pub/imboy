@@ -97,7 +97,7 @@ list_by_gid(Gid, Column, Limit) ->
 %% @param Page 页码（从1开始）
 %% @param Size 每页大小
 %% @param Column 要查询的列名，支持多个列用逗号分隔
-%% @return {ok, #{items => Rows, page => Page, size => Size, total => Total, total_page => TotalPage}}
+%% @return {ok, #{list => Rows, page => Page, size => Size, total => Total, total_page => TotalPage}}
 -spec page_by_gid(integer(), integer(), integer(), binary()) -> {ok, map()} | {error, any()}.
 page_by_gid(Gid, Page, Size, Column) ->
     Tb = tablename(),
@@ -106,7 +106,7 @@ page_by_gid(Gid, Page, Size, Column) ->
     % 查询总数
     CountSql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
     Total = case elib_pg:one(CountSql, [Gid]) of
-        {ok, #{count := C}} -> C;
+        {ok, #{<<"count">> := C}} -> C;
         _ -> 0
     end,
     % 查询数据
@@ -119,7 +119,7 @@ page_by_gid(Gid, Page, Size, Column) ->
                 false -> 0
             end,
             {ok, #{
-                items => Items,
+                list => Items,
                 page => Page,
                 size => Size,
                 total => Total,
@@ -138,7 +138,7 @@ count_by_uid(Uid) ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE user_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [Uid]) of
-        {ok, #{count := Count}} -> Count;
+        {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
     end.
 

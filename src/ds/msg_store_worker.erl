@@ -51,6 +51,11 @@
     tick_timer = undefined     % 定时器引用
 }).
 
+%% ==================== Types ====================
+
+-type state() :: #state{}.
+-type state_name() :: idle | draining.
+
 %% ==================== API Functions ====================
 
 %%-------------------------------------------------------------------
@@ -67,15 +72,20 @@ start_link() ->
 %% ==================== Callbacks ====================
 
 %% @private
+-spec init(term()) -> {ok, state_name(), state()}.
 init([]) ->
-    % 确保数据库表存在（自动创建）
-    ok = msg_store_repo:ensure_table_exists(),
+    % 表结构由 msg_store_ds 在监督树启动时统一初始化，worker 不重复执行 DDL
     ok = ?INFO_LOG("msg_store_worker started successfully"),
     {ok, idle, start_tick(#state{})}.
 
+-spec callback_mode() -> state_functions.
 callback_mode() ->
     state_functions.
 
+%% @private
+-spec idle(gen_statem:event_type(), term(), state()) ->
+    {next_state, state_name(), state(), [gen_statem:transition_action()]} |
+    {keep_state, state()}.
 idle({cast, kick}, _Content, State) ->
     {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
 idle(info, tick, State) ->
@@ -83,6 +93,10 @@ idle(info, tick, State) ->
 idle(_EventType, _Event, State) ->
     {keep_state, State}.
 
+%% @private
+-spec draining(gen_statem:event_type(), term(), state()) ->
+    {next_state, state_name(), state(), [gen_statem:transition_action()]} |
+    {keep_state, state()}.
 draining(internal, drain, State) ->
     case claim_and_process_batch() of
         {ok, 0} ->
@@ -102,11 +116,15 @@ draining(info, tick, State) ->
 draining(_EventType, _Event, State) ->
     {keep_state, State}.
 
+%% @private
+-spec terminate(term(), state_name(), state()) -> ok.
 terminate(_Reason, _StateName, State) ->
     _ = cancel_tick(State),
     ok = ?INFO_LOG("msg_store_worker terminated"),
     ok.
 
+%% @private
+-spec code_change(term(), state_name(), state(), term()) -> {ok, state_name(), state()}.
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 

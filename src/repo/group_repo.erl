@@ -6,6 +6,7 @@
 
 -export([tablename/0]).
 -export ([add/2]).
+-export([create/1, find_by_gid/1]).
 -export([find_by_id/2]).
 -export([list_by_ids/2]).
 -export([list_by_uid/2, list_by_uid/3]).
@@ -40,6 +41,27 @@ tablename() ->
 add(Conn, Data) ->
     Tb = tablename(),
     elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+
+%% @doc 兼容旧接口：创建群组
+-spec create(map()) -> ok | {error, term()}.
+create(Data0) ->
+    Data = normalize_legacy_create_data(Data0),
+    case elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end) of
+        {ok, _Gid, _Row} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 兼容旧接口：按 gid 查询群组
+-spec find_by_gid(integer() | binary()) -> {ok, map()} | {error, term()}.
+find_by_gid(Gid) ->
+    case find_by_id(Gid, <<"*">>) of
+        #{} = Row when map_size(Row) > 0 ->
+            {ok, Row};
+        #{} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 根据群组ID查找群组信息
 %% @param Gid 群组ID
@@ -154,3 +176,29 @@ update_owner_tx(Conn, Gid, NewOwnerUid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+-spec normalize_legacy_create_data(map()) -> map().
+normalize_legacy_create_data(Data0) ->
+    Gid = pick_value(Data0, [id, <<"id">>, gid, <<"gid">>], 0),
+    OwnerUid = pick_value(Data0, [owner_uid, <<"owner_uid">>], 0),
+    Name = pick_value(Data0, [title, <<"title">>, name, <<"name">>], <<"">>),
+    #{
+        id => ec_cnv:to_integer(Gid),
+        owner_uid => ec_cnv:to_integer(OwnerUid),
+        creator_uid => ec_cnv:to_integer(OwnerUid),
+        title => ec_cnv:to_binary(Name),
+        status => 1,
+        created_at => elib_dt:now(),
+        updated_at => elib_dt:now()
+    }.
+
+-spec pick_value(map(), [atom() | binary()], term()) -> term().
+pick_value(_Map, [], Default) ->
+    Default;
+pick_value(Map, [Key | Rest], Default) ->
+    case maps:find(Key, Map) of
+        {ok, Value} ->
+            Value;
+        error ->
+            pick_value(Map, Rest, Default)
+    end.

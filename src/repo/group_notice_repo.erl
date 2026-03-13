@@ -128,6 +128,10 @@ count_by_group_id(GroupId) when is_integer(GroupId), GroupId > 0 ->
     case elib_pg:query(Sql, [GroupId]) of
         {ok, [[{<<"count">>, Count}]]} ->
             {ok, Count};
+        {ok, [{#{<<"count">> := Count}}]} ->
+            {ok, Count};
+        {ok, [#{<<"count">> := Count}]} ->
+            {ok, Count};
         {error, Reason} ->
             {error, Reason}
     end;

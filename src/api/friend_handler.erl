@@ -141,7 +141,7 @@ move(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Uid = maps:get(<<"uid">>, PostVals, undefined),
-    CategoryId = maps:get(<<"category_id">>, PostVals, 0),
+    CategoryId = ec_cnv:to_integer(maps:get(<<"category_id">>, PostVals, 0)),
 
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
     elib_response:success(Req0, #{}).

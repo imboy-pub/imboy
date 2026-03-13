@@ -8,6 +8,9 @@
 -include("common.hrl").
 
 -export([list_member/2]).
+-export([list_members/1]).
+-export([list_members_with_info/1]).
+-export([add_member/2]).
 -export([join_group/5]).
 -export([leave/4]).
 -export([alias/4]).
@@ -21,6 +24,28 @@
 %% ===================================================================
 %% API functions
 %% ===================================================================
+
+%% @doc 兼容旧测试接口：获取群成员列表
+-spec list_members(integer()) -> {ok, list(map())} | {error, any()}.
+list_members(Gid) ->
+    list_member(Gid, []).
+
+%% @doc 兼容旧测试接口：获取群成员列表（包含用户信息）
+-spec list_members_with_info(integer()) -> {ok, list(map())} | {error, any()}.
+list_members_with_info(Gid) ->
+    list_member(Gid, []).
+
+%% @doc 兼容旧测试接口：添加群成员（事务内复用 join_group）
+-spec add_member(integer(), integer()) -> ok | {error, any()}.
+add_member(Gid, Uid) ->
+    case elib_pg:with_tx(fun(Conn) ->
+        join_group(Conn, <<"invite">>, Uid, Gid, #{role => 1})
+    end) of
+        {ok, _UidSum} ->
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 获取群成员列表（包含用户信息）
 %% @param Gid 群组ID

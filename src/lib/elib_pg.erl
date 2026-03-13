@@ -213,6 +213,8 @@ query(C, Sql, Params) ->
     case epgsql:equery(C, iolist_to_binary(Sql), Params) of
         {ok, Cols, Rows} ->
             {ok, rows_to_maps(Cols, Rows)};
+        {ok, _Count, Cols, Rows} ->
+            {ok, rows_to_maps(Cols, Rows)};
         Error ->
             Error
     end.

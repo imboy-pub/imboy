@@ -62,6 +62,9 @@ join_cluster(ClusterNodes) ->
                         true ->
                             ok = elib_log:info(<<"成功连接到节点: ~p"/utf8>>, [TargetNode]),
                             {TargetNode, connected};
+                        ignored ->
+                            ok = elib_log:warning(<<"当前节点未启用分布式，跳过连接节点: ~p"/utf8>>, [TargetNode]),
+                            {TargetNode, failed};
                         false ->
                             ok = elib_log:warning(<<"无法连接到节点: ~p"/utf8>>, [TargetNode]),
                             {TargetNode, failed}
