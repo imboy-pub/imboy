@@ -291,7 +291,7 @@ mute(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     UserId = maps:get(<<"user_id">>, PostVals, 0),
-    Duration = maps:get(<<"duration">>, PostVals, 0),
+    Duration = ec_cnv:to_integer(maps:get(<<"duration">>, PostVals, 0)),
 
     Gid2 = elib_hashids:decode(Gid),
     UserId2 = elib_hashids:decode(UserId),
@@ -327,7 +327,7 @@ role(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     UserId = maps:get(<<"user_id">>, PostVals, 0),
-    Role = maps:get(<<"role">>, PostVals, 0),
+    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 0)),
 
     Gid2 = elib_hashids:decode(Gid),
     UserId2 = elib_hashids:decode(UserId),
@@ -358,7 +358,19 @@ role(Req0, State) ->
 %% @end
 -spec page_transfer(map()) -> map().
 page_transfer(Payload) ->
-    K = <<"list">>,
-    Li = maps:get(K, Payload, []),
+    Key = payload_list_key(Payload),
+    Li = maps:get(Key, Payload, []),
     Li2 = group_member_transfer:member_list(Li),
-    Payload#{K => Li2}.
+    Payload#{Key => Li2}.
+
+-spec payload_list_key(map()) -> list | binary().
+payload_list_key(Payload) ->
+    case maps:is_key(list, Payload) of
+        true ->
+            list;
+        false ->
+            case maps:is_key(<<"list">>, Payload) of
+                true -> <<"list">>;
+                false -> list
+            end
+    end.

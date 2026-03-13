@@ -2,312 +2,120 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% group_member_handler 模块的 EUnit 测试
-%%%
-%%% 目标：验证群组成员处理器功能
-%%%===================================================================
+action_contract_contains_current_actions_test() ->
+    Source = read_group_member_handler_source(),
+    lists:foreach(fun(Action) ->
+        Pattern = <<Action/binary, " ->">>,
+        ?assert(binary:match(Source, Pattern) =/= nomatch)
+    end, [
+        <<"join">>,
+        <<"leave">>,
+        <<"alias">>,
+        <<"page">>,
+        <<"same_group">>,
+        <<"mute">>,
+        <<"role">>
+    ]).
 
-%% ===================================================================
-%% Handler 功能测试
-%% ===================================================================
+action_contract_excludes_legacy_actions_test() ->
+    Source = read_group_member_handler_source(),
+    ?assertEqual(nomatch, binary:match(Source, <<"add ->">>)),
+    ?assertEqual(nomatch, binary:match(Source, <<"remove ->">>)),
+    ?assertEqual(nomatch, binary:match(Source, <<"list ->">>)),
+    ?assertEqual(nomatch, binary:match(Source, <<"transfer_owner ->">>)).
 
-%% @doc 测试添加群成员功能
-add_member_test_() ->
-    ?WITH_MOCKS([
+mute_accepts_string_duration_test_() ->
+    ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                [
-                    {<<"gid">>, <<"encoded_1001">>},
-                    {<<"member_uids">>, [67890, 11111]}
-                ]
+                #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"duration">> => <<"60">>}
             end}
         ]},
         {elib_hashids, [
-            {'decode', 1, fun(_EncodedId) ->
-                1001
+            {'decode', 1, fun
+                (<<"g_101">>) -> 101;
+                (<<"u_202">>) -> 202
             end}
+        ]},
+        {throttle, [
+            {'check', 2, fun(three_second_once, {group_member_mute, 12345}) -> ok end}
         ]},
         {group_member_logic, [
-            {'add', 3, fun(_GroupId, _UserId, _MemberUids) ->
-                {ok, #{added_count => 2}}
-            end}
+            {'mute', 4, fun(12345, 101, 202, 60) -> ok end}
         ]},
         {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
+            {'success', 3, fun(_Req, Payload, _Msg) -> #{response_status => 200, payload => Payload} end}
         ]}
     ], fun() ->
-        % 模拟一个 POST 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"POST">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => add,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        {ok, Req, _State} = group_member_handler:init(#{}, #{action => mute, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, Req)),
+        ?assertEqual(<<"g_101">>, maps:get(<<"gid">>, maps:get(payload, Req)))
     end).
 
-%% @doc 测试移除群成员功能
-remove_member_test_() ->
-    ?WITH_MOCKS([
+role_accepts_string_role_test_() ->
+    ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                [
-                    {<<"gid">>, <<"encoded_1001">>},
-                    {<<"member_uid">>, <<"encoded_67890">>}
-                ]
+                #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"role">> => <<"3">>}
             end}
         ]},
         {elib_hashids, [
-            {'decode', 1, fun(EncodedId) ->
-                case EncodedId of
-                    <<"encoded_1001">> -> 1001;
-                    <<"encoded_67890">> -> 67890
-                end
+            {'decode', 1, fun
+                (<<"g_101">>) -> 101;
+                (<<"u_202">>) -> 202
             end}
         ]},
+        {throttle, [
+            {'check', 2, fun(three_second_once, {group_member_role, 12345}) -> ok end}
+        ]},
         {group_member_logic, [
-            {'remove', 3, fun(_GroupId, _UserId, _MemberUid) ->
-                {ok, #{removed_count => 1}}
-            end}
+            {'update_role', 4, fun(12345, 101, 202, 3) -> ok end}
         ]},
         {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
+            {'success', 3, fun(_Req, Payload, _Msg) -> #{response_status => 200, payload => Payload} end}
         ]}
     ], fun() ->
-        % 模拟一个 POST 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"POST">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => remove,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        {ok, Req, _State} = group_member_handler:init(#{}, #{action => role, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, Req)),
+        ?assertEqual(<<"u_202">>, maps:get(<<"user_id">>, maps:get(payload, Req)))
     end).
 
-%% @doc 测试列出群成员功能
-list_members_test_() ->
-    ?WITH_MOCKS([
-        {elib_param, [
-            {'page', 1, fun(_Req) ->
-                {1, 20}
-            end}
+page_preserves_atom_list_payload_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"g_101">>}] end}
         ]},
         {elib_hashids, [
-            {'decode', 1, fun(_EncodedId) ->
-                1001
-            end}
+            {'decode', 1, fun(<<"g_101">>) -> 101 end}
         ]},
-        {group_member_logic, [
-            {'list_member', 2, fun(_GroupId, _Page) ->
-                [
-                    #{
-                        user_id => 12345,
-                        nickname => <<"Owner">>,
-                        avatar => <<"avatar1.jpg">>,
-                        role => owner,
-                        joined_at => <<"2025-12-24 10:00:00">>
-                    },
-                    #{
-                        user_id => 67890,
-                        nickname => <<"Member1">>,
-                        avatar => <<"avatar2.jpg">>,
-                        role => member,
-                        joined_at => <<"2025-12-24 10:01:00">>
-                    }
-                ]
+        {group_member_repo, [
+            {'find', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end},
+            {'tablename', 0, fun() -> <<"public.group_member">> end}
+        ]},
+        {user_repo, [
+            {'tablename', 0, fun() -> <<"public.user">> end}
+        ]},
+        {elib_param, [
+            {'page', 1, fun(req0) -> {1, 20} end}
+        ]},
+        {elib_pg, [
+            {'page_with_total', 6, fun(_Tb, _Fields, _Where, _Order, _Page, _Size) ->
+                {ok, #{total => 1, list => [#{<<"user_id">> => 202}]}}
             end}
         ]},
         {group_member_transfer, [
-            {'member_list', 1, fun(MemberList) ->
-                MemberList
-            end}
+            {'member_list', 1, fun(List) -> List end}
         ]},
         {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
+            {'success', 2, fun(_Req, Payload) -> #{response_status => 200, payload => Payload} end}
         ]}
     ], fun() ->
-        % 模拟一个 GET 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"gid=encoded_1001&page=1">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => list,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        {ok, Req, _State} = group_member_handler:init(req0, #{action => page, current_uid => 12345}),
+        Payload = maps:get(payload, Req),
+        [Item] = maps:get(list, Payload),
+        ?assertEqual(202, maps:get(<<"user_id">>, Item))
     end).
 
-%% @doc 测试转让群主功能
-transfer_owner_test_() ->
-    ?WITH_MOCKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                [
-                    {<<"gid">>, <<"encoded_1001">>},
-                    {<<"new_owner_uid">>, <<"encoded_67890">>}
-                ]
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(EncodedId) ->
-                case EncodedId of
-                    <<"encoded_1001">> -> 1001;
-                    <<"encoded_67890">> -> 67890
-                end
-            end}
-        ]},
-        {group_member_logic, [
-            {'transfer_owner', 3, fun(_GroupId, _UserId, _NewOwnerId) ->
-                {ok, #{transferred => true}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 POST 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"POST">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => transfer_owner,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
-    end).
-
-%% @doc 测试添加群成员功能 - 无效群组ID
-add_member_invalid_group_test_() ->
-    ?WITH_MOCKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                [
-                    {<<"gid">>, <<"invalid_id">>},
-                    {<<"member_uids">>, [67890]}
-                ]
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_EncodedId) ->
-                0  % 无效ID
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 400,
-                    response_body => #{status => error}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 POST 请求（无效群组ID）
-        MockReq = cowboy_req_h:new(#{
-            method => <<"POST">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => add,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(400, StatusCode)
-    end).
-
-%% @doc 测试退出群组功能
-leave_group_test_() ->
-    ?WITH_MOCKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                [
-                    {<<"gid">>, <<"encoded_1001">>}
-                ]
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_EncodedId) ->
-                1001
-            end}
-        ]},
-        {group_member_logic, [
-            {'leave', 2, fun(_GroupId, _UserId) ->
-                {ok, #{left => true}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 POST 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"POST">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = group_member_handler:init(MockReq, #{
-            action => leave,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
-    end).
+read_group_member_handler_source() ->
+    {ok, Bin} = file:read_file("src/api/group_member_handler.erl"),
+    Bin.

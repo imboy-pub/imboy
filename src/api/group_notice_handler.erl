@@ -85,7 +85,7 @@ add(<<"POST">>, Req0, State) ->
     Gid2 = elib_hashids:decode(Gid),
     Title = maps:get(<<"title">>, PostVals, ""),
     Body = maps:get(<<"body">>, PostVals, ""),
-    Status = maps:get(<<"status">>, PostVals, 0),
+    Status = ec_cnv:to_integer(maps:get(<<"status">>, PostVals, 0)),
     ExpiredAt = maps:get(<<"expired_at">>, PostVals, <<>>),
     ExpiredAt2 = elib_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = elib_dt:now(),
@@ -93,6 +93,8 @@ add(<<"POST">>, Req0, State) ->
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, error_msg(?ERR_TOO_MANY_REQUESTS), ?ERR_TOO_MANY_REQUESTS);
         _ when Gid2 == 0 ->
+            elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
+        _ when Status < 0; Status > 2 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ when is_integer(ExpiredAt2) == false ->
             elib_response:error(Req0,
@@ -133,7 +135,7 @@ edit(<<"POST">>, Req0, State) ->
     Id2 = elib_hashids:decode(Id),
 
     % 状态 0 待发布  1 已发布 2 取消发布
-    Status = maps:get(<<"status">>, PostVals, 0),
+    Status = ec_cnv:to_integer(maps:get(<<"status">>, PostVals, 0)),
     Title = maps:get(<<"title">>, PostVals, ""),
     Body = maps:get(<<"body">>, PostVals, ""),
     ExpiredAt = maps:get(<<"expired_at">>, PostVals, <<>>),
@@ -143,6 +145,8 @@ edit(<<"POST">>, Req0, State) ->
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, error_msg(?ERR_TOO_MANY_REQUESTS), ?ERR_TOO_MANY_REQUESTS);
         _ when Gid2 == 0; Id2 == 0 ->
+            elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
+        _ when Status < 0; Status > 2 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
             Data =
@@ -231,7 +235,7 @@ delete(<<"POST">>, Req0, State) ->
             end
     end.
 
-%% @doc 群公告分页列表（旧接口，保持兼容）
+%% @doc 群公告分页列表
 %% 获取群组的公告列表（分页）
 %%
 %% @param Method HTTP方法（GET）

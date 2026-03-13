@@ -318,7 +318,7 @@ dissolve(Req0, State) ->
 %% @param State 状态映射，包含 current_uid
 %% @return 返回包含群组列表的响应
 %% @end
--spec page(cowboy_req:req(), map(), binary()) -> cowboy_req:req().
+-spec page(cowboy_req:req(), map(), term()) -> cowboy_req:req().
 page(Req0, State, <<"owner">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
@@ -347,13 +347,20 @@ page(Req0, State, <<"join">>) ->
 
     Where =
         #{<<"g.status">> => 1,
-          <<"m.is_join">> => 1,
-          <<"m.user_id">> => CurrentUid},
+          <<"m.status">> => 1,
+          <<"m.user_id">> => CurrentUid,
+          <<"g.owner_uid">> => {op, <<"!=">>, CurrentUid}},
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
     Payload =
-        case elib_pg:page_with_total(Tb, Where, Page, Size) of
+        case elib_pg:page_with_total(Tb,
+                                     <<"g.*">>,
+                                     Where,
+                                     <<"g.id desc">>,
+                                     Page,
+                                     Size)
+        of
             {ok, #{total := Total, list := Rows}} ->
                 #{total => Total,
                   page => Page,
@@ -365,7 +372,45 @@ page(Req0, State, <<"join">>) ->
                   size => Size,
                   list => []}
         end,
-    elib_response:success(Req0, page_transfer(Payload)).
+    elib_response:success(Req0, page_transfer(Payload));
+%% 我管理的群（群主/副群主/管理员）
+page(Req0, State, <<"manager">>) ->
+    CurrentUid = auth_ds:current_uid(State),
+    {Page, Size} = elib_param:page(Req0),
+
+    Where =
+        #{<<"g.status">> => 1,
+          <<"__or">> =>
+              [#{<<"g.owner_uid">> => CurrentUid},
+               #{<<"m.status">> => 1,
+                 <<"m.user_id">> => CurrentUid,
+                 <<"m.role">> => {op, <<">=">>, 3}}]},
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
+    Payload =
+        case elib_pg:page_with_total(Tb,
+                                     <<"g.*">>,
+                                     Where,
+                                     <<"g.id desc">>,
+                                     Page,
+                                     Size)
+        of
+            {ok, #{total := Total, list := Rows}} ->
+                #{total => Total,
+                  page => Page,
+                  size => Size,
+                  list => Rows};
+            _ ->
+                #{total => 0,
+                  page => Page,
+                  size => Size,
+                  list => []}
+        end,
+    elib_response:success(Req0, page_transfer(Payload));
+%% 兜底：未传 attr 或传入未知 attr 时，默认返回 owner 视图
+page(Req0, State, _Attr) ->
+    page(Req0, State, <<"owner">>).
 
 %% @doc 群组消息分页
 %% 获取群组的消息列表（分页）
@@ -525,10 +570,10 @@ qrcode(Req0, State) ->
 %% @end
 -spec page_transfer(map()) -> map().
 page_transfer(Payload) ->
-    K = <<"list">>,
-    Li = maps:get(K, Payload, []),
+    Key = payload_list_key(Payload),
+    Li = maps:get(Key, Payload, []),
     Li2 = [group_logic:group_transfer(M) || M <- Li],
-    Payload#{K => Li2}.
+    Payload#{Key => Li2}.
 
 %% @doc 转换群组消息分页数据
 %% 将群组消息数据进行编码转换
@@ -538,7 +583,19 @@ page_transfer(Payload) ->
 %% @end
 -spec msg_page_transfer(map()) -> map().
 msg_page_transfer(Payload) ->
-    K = <<"list">>,
-    Li = maps:get(K, Payload, []),
+    Key = payload_list_key(Payload),
+    Li = maps:get(Key, Payload, []),
     Li2 = [group_logic:group_transfer(M) || M <- Li],
-    Payload#{K => Li2}.
+    Payload#{Key => Li2}.
+
+-spec payload_list_key(map()) -> list | binary().
+payload_list_key(Payload) ->
+    case maps:is_key(list, Payload) of
+        true ->
+            list;
+        false ->
+            case maps:is_key(<<"list">>, Payload) of
+                true -> <<"list">>;
+                false -> list
+            end
+    end.
