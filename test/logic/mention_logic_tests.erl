@@ -17,7 +17,7 @@
 create_mentions_with_empty_list_test_() ->
     ?WITH_MECKS([
         {mention_ds, [
-            {'save_mentions', 5, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
+            {'save_mentions', 4, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_1">>,
@@ -31,7 +31,7 @@ create_mentions_with_empty_list_test_() ->
 create_mentions_with_users_test_() ->
     ?WITH_MECKS([
         {mention_ds, [
-            {'save_mentions', 5, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
+            {'save_mentions', 4, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_2">>,
@@ -62,7 +62,7 @@ create_mentions_with_all_by_admin_test_() ->
             {'check_admin', 2, fun(_Uid, _Gid) -> true end}
         ]},
         {mention_ds, [
-            {'save_mentions', 5, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
+            {'save_mentions', 4, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_4">>,
@@ -130,6 +130,30 @@ mark_as_read_success_test_() ->
         ?assertEqual(ok, Result)
     end).
 
+mark_as_read_by_mention_id_success_test_() ->
+    ?WITH_MECK(mention_ds, [
+        {'mark_as_read_by_mention_id', 2, fun(_MentionId, _Uid) -> {ok, <<"msg1">>} end}
+    ], fun() ->
+        Result = mention_logic:mark_as_read_by_mention_id(99, 200),
+        ?assertEqual({ok, <<"msg1">>}, Result)
+    end).
+
+mark_all_as_read_success_test_() ->
+    ?WITH_MECK(mention_ds, [
+        {'mark_all_as_read', 1, fun(_Uid) -> ok end}
+    ], fun() ->
+        Result = mention_logic:mark_all_as_read(200),
+        ?assertEqual(ok, Result)
+    end).
+
+mark_group_as_read_success_test_() ->
+    ?WITH_MECK(mention_ds, [
+        {'mark_group_as_read', 2, fun(_Gid, _Uid) -> ok end}
+    ], fun() ->
+        Result = mention_logic:mark_group_as_read(200, 100),
+        ?assertEqual(ok, Result)
+    end).
+
 %% ===================================================================
 %% count_unread/1 测试
 %% ===================================================================
@@ -140,6 +164,14 @@ count_unread_returns_count_test_() ->
     ], fun() ->
         Count = mention_logic:count_unread(200),
         ?assertEqual(5, Count)
+    end).
+
+count_group_unread_returns_count_test_() ->
+    ?WITH_MECK(mention_ds, [
+        {'count_unread_in_group', 2, fun(_Uid, _Gid) -> 3 end}
+    ], fun() ->
+        Count = mention_logic:count_group_unread(200, 100),
+        ?assertEqual(3, Count)
     end).
 
 %% ===================================================================
@@ -210,7 +242,7 @@ get_member_suggestions_requires_membership_test_() ->
 create_mentions_with_invalid_mentions_test_() ->
     ?WITH_MECKS([
         {mention_ds, [
-            {'save_mentions', 5, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
+            {'save_mentions', 4, fun(_MsgId, _Gid, _Mentions, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_5">>,

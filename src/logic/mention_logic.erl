@@ -10,7 +10,11 @@
 -export([list_mentions/3]).
 -export([list_group_mentions/4]).
 -export([mark_as_read/2]).
+-export([mark_as_read_by_mention_id/2]).
+-export([mark_all_as_read/1]).
+-export([mark_group_as_read/2]).
 -export([count_unread/1]).
+-export([count_group_unread/2]).
 -export([get_member_suggestions/3]).
 
 %% ===================================================================
@@ -72,12 +76,43 @@ list_group_mentions(Gid, Uid, IsRead, Options) ->
 mark_as_read(MsgId, Uid) ->
     mention_ds:mark_as_read(MsgId, Uid).
 
+%% @doc 根据 mention 记录ID标记@消息为已读
+%% @param MentionId mention记录ID
+%% @param Uid 被@的用户ID
+%% @return {ok, MsgId} | {error, Reason}
+-spec mark_as_read_by_mention_id(integer(), integer()) -> {ok, binary()} | {error, term()}.
+mark_as_read_by_mention_id(MentionId, Uid) ->
+    mention_ds:mark_as_read_by_mention_id(MentionId, Uid).
+
+%% @doc 标记用户所有@消息为已读
+%% @param Uid 用户ID
+%% @return ok | {error, Reason}
+-spec mark_all_as_read(integer()) -> ok | {error, term()}.
+mark_all_as_read(Uid) ->
+    mention_ds:mark_all_as_read(Uid).
+
+%% @doc 标记用户在指定群组中的@消息为已读
+%% @param Uid 用户ID
+%% @param Gid 群组ID
+%% @return ok | {error, Reason}
+-spec mark_group_as_read(integer(), integer()) -> ok | {error, term()}.
+mark_group_as_read(Uid, Gid) ->
+    mention_ds:mark_group_as_read(Gid, Uid).
+
 %% @doc 统计用户未读的@消息数量
 %% @param Uid 用户ID
 %% @return 未读数量
 -spec count_unread(integer()) -> non_neg_integer().
 count_unread(Uid) ->
     mention_ds:count_unread(Uid).
+
+%% @doc 统计用户在指定群组中的未读@消息数量
+%% @param Uid 用户ID
+%% @param Gid 群组ID
+%% @return 未读数量
+-spec count_group_unread(integer(), integer()) -> non_neg_integer().
+count_group_unread(Uid, Gid) ->
+    mention_ds:count_unread_in_group(Uid, Gid).
 
 %% @doc 获取群组成员建议列表（用于@输入）
 %% @param Gid 群组ID
@@ -116,12 +151,12 @@ get_member_suggestions(Gid, Uid, Keyword) ->
 filter_users_by_keyword(Users, <<>>) ->
     Users;
 filter_users_by_keyword(Users, Keyword) ->
-    KeywordLower = elib_string:to_lower(Keyword),
+    KeywordLower = cowboy_bstr:to_lower(Keyword),
     lists:filter(fun(User) ->
         Nickname = maps:get(<<"nickname">>, User, <<>>),
         Account = maps:get(<<"account">>, User, <<>>),
-        NicknameLower = elib_string:to_lower(Nickname),
-        AccountLower = elib_string:to_lower(Account),
+        NicknameLower = cowboy_bstr:to_lower(Nickname),
+        AccountLower = cowboy_bstr:to_lower(Account),
         % 检查昵称或账号是否包含关键字
         binary:match(NicknameLower, KeywordLower) =/= nomatch orelse
         binary:match(AccountLower, KeywordLower) =/= nomatch

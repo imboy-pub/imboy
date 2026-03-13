@@ -9,6 +9,7 @@
 
 -export([tablename/0]).
 -export ([save/1, update/2, delete/1]).
+-export([create/1, find_by_uid/1]).
 -export([page/2, page/4]).
 
 -export([find_by_email/2,
@@ -39,8 +40,30 @@ page(Page, Size) ->
 -spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
 page(Page, Size, Where, OrderBy) ->
     Tb = tablename(),
-    Column = <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,created_at">>,
+    Column = <<"id,account,nickname,COALESCE(NULLIF(mobile, ''), account) AS mobile,"
+               "email,avatar,gender,region,sign,status,created_at">>,
     elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+
+%% @doc 兼容旧接口：创建用户
+-spec create(map()) -> ok | {error, term()}.
+create(Data0) ->
+    Data = normalize_legacy_create_data(Data0),
+    case save(Data) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 兼容旧接口：按 uid 查询用户
+-spec find_by_uid(integer() | binary()) -> {ok, map()} | {error, term()}.
+find_by_uid(Uid) ->
+    case find_by_id(ec_cnv:to_integer(Uid), <<"*">>) of
+        #{} = Row when map_size(Row) > 0 ->
+            {ok, Row};
+        #{} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 
 
@@ -189,3 +212,42 @@ update_last_seen_at(Field, Uid, Timestamp) ->
     Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",
             "WHERE ", Field/binary, " = $3 AND status = 1">>,
     elib_pg:execute(Sql, [Timestamp, elib_dt:now(), Uid]).
+
+%% @doc 兼容旧测试数据结构（uid/name 等）并补齐非空字段默认值
+-spec normalize_legacy_create_data(map()) -> map().
+normalize_legacy_create_data(Data0) ->
+    Id = pick_value(Data0, [id, <<"id">>, uid, <<"uid">>], 0),
+    Nickname = pick_value(Data0, [nickname, <<"nickname">>], <<"">>),
+    Account = pick_value(Data0, [account, <<"account">>], Nickname),
+    Password = pick_value(Data0, [password, <<"password">>], <<"password123">>),
+    Mobile = pick_value(Data0, [mobile, <<"mobile">>], <<>>),
+    Email = pick_value(Data0, [email, <<"email">>], <<>>),
+    Region = pick_value(Data0, [region, <<"region">>], <<>>),
+    Avatar = pick_value(Data0, [avatar, <<"avatar">>], <<>>),
+    Sign = pick_value(Data0, [sign, <<"sign">>], <<>>),
+    #{
+        id => ec_cnv:to_integer(Id),
+        nickname => ec_cnv:to_binary(Nickname),
+        account => ec_cnv:to_binary(Account),
+        password => ec_cnv:to_binary(Password),
+        mobile => ec_cnv:to_binary(Mobile),
+        email => ec_cnv:to_binary(Email),
+        region => ec_cnv:to_binary(Region),
+        avatar => ec_cnv:to_binary(Avatar),
+        sign => ec_cnv:to_binary(Sign),
+        status => 1,
+        created_at => elib_dt:now(),
+        reg_ip => <<"127.0.0.1">>,
+        reg_cosv => <<"perf-test">>
+    }.
+
+-spec pick_value(map(), [atom() | binary()], term()) -> term().
+pick_value(_Map, [], Default) ->
+    Default;
+pick_value(Map, [Key | Rest], Default) ->
+    case maps:find(Key, Map) of
+        {ok, Value} ->
+            Value;
+        error ->
+            pick_value(Map, Rest, Default)
+    end.

@@ -11,7 +11,11 @@
 -export([list_by_group_and_uid/3]).
 -export([list_by_group_and_uid/4]).
 -export([mark_as_read/2]).
+-export([mark_as_read_by_mention_id/2]).
+-export([mark_all_as_read/1]).
+-export([mark_group_as_read/2]).
 -export([count_unread/1]).
+-export([count_unread_in_group/2]).
 -export([delete_by_msg_id/1]).
 
 %% ===================================================================
@@ -133,12 +137,51 @@ list_by_group_and_uid(Gid, Uid, IsRead, Options) ->
 mark_as_read(MsgId, Uid) ->
     mention_repo:mark_as_read(MsgId, Uid).
 
+%% @doc 根据 mention 记录ID标记@消息为已读
+%% @param MentionId mention记录ID
+%% @param Uid 被@的用户ID
+%% @return {ok, MsgId} | {error, Reason}
+-spec mark_as_read_by_mention_id(integer(), integer()) -> {ok, binary()} | {error, term()}.
+mark_as_read_by_mention_id(MentionId, Uid) ->
+    case mention_repo:find_msg_id_by_mention_id(MentionId, Uid) of
+        {ok, MsgId} ->
+            case mention_repo:mark_as_read(MsgId, Uid) of
+                ok -> {ok, MsgId};
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 标记用户所有@消息为已读
+%% @param Uid 用户ID
+%% @return ok | {error, term()}
+-spec mark_all_as_read(integer()) -> ok | {error, term()}.
+mark_all_as_read(Uid) ->
+    mention_repo:mark_all_as_read(Uid).
+
+%% @doc 标记用户在指定群中的@消息为已读
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return ok | {error, term()}
+-spec mark_group_as_read(integer(), integer()) -> ok | {error, term()}.
+mark_group_as_read(Gid, Uid) ->
+    mention_repo:mark_group_as_read(Gid, Uid).
+
 %% @doc 统计用户未读的@消息数量
 %% @param Uid 用户ID
 %% @return 未读数量
 -spec count_unread(integer()) -> non_neg_integer().
 count_unread(Uid) ->
     mention_repo:count_unread(Uid).
+
+%% @doc 统计用户在指定群组中的未读@消息数量
+%% @param Uid 用户ID
+%% @param Gid 群组ID
+%% @return 未读数量
+-spec count_unread_in_group(integer(), integer()) -> non_neg_integer().
+count_unread_in_group(Uid, Gid) ->
+    mention_repo:count_unread_in_group(Uid, Gid).
 
 %% @doc 根据消息ID删除所有@提及记录
 %% @param MsgId 消息ID

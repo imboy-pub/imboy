@@ -50,17 +50,22 @@ handle_action(false, Req, _State) -> Req.
 -spec list_mentions(cowboy_req:req(), map()) -> cowboy_req:req().
 list_mentions(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    {Page, Size} = elib_param:page(Req0),
-
-    % 获取 is_read 参数
+    PostVals = safe_post(Req0),
     Qs = cowboy_req:parse_qs(Req0),
-    IsRead = case proplists:get_value(<<"is_read">>, Qs, undefined) of
-        <<"true">> -> true;
-        <<"false">> -> false;
-        _ -> undefined
+    {Page, Size} = resolve_page_size(Req0, PostVals),
+    IsReadRaw = get_param([<<"is_read">>], PostVals, Qs, undefined),
+    IsRead = normalize_is_read(IsReadRaw),
+    GidRaw = get_param([<<"gid">>, <<"group_id">>], PostVals, Qs, undefined),
+    Options = #{page => Page, size => Size},
+    MentionRes = case decode_optional_gid(GidRaw) of
+        undefined ->
+            mention_logic:list_mentions(CurrentUid, IsRead, Options);
+        {ok, Gid2} ->
+            mention_logic:list_group_mentions(Gid2, CurrentUid, IsRead, Options);
+        invalid ->
+            {error, invalid_gid}
     end,
-
-    case mention_logic:list_mentions(CurrentUid, IsRead, #{page => Page, size => Size}) of
+    case MentionRes of
         {ok, Mentions} ->
             % 编码ID并返回
             EncodedMentions = encode_mention_ids(Mentions),
@@ -68,9 +73,12 @@ list_mentions(Req0, State) ->
                 total => length(EncodedMentions),
                 page => Page,
                 size => Size,
-                list => EncodedMentions
+                list => EncodedMentions,
+                items => EncodedMentions
             },
             elib_response:success(Req0, ResponseData);
+        {error, invalid_gid} ->
+            elib_response:error(Req0, "群组ID格式有误", ?ERR_BAD_REQUEST);
         {error, _Reason} ->
             elib_response:error(Req0, "获取@消息列表失败")
     end.
@@ -84,8 +92,19 @@ list_mentions(Req0, State) ->
 -spec unread(cowboy_req:req(), map()) -> cowboy_req:req().
 unread(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    Count = mention_logic:count_unread(CurrentUid),
-    elib_response:success(Req0, #{<<"count">> => Count}).
+    PostVals = safe_post(Req0),
+    Qs = cowboy_req:parse_qs(Req0),
+    GidRaw = get_param([<<"gid">>, <<"group_id">>], PostVals, Qs, undefined),
+    case decode_optional_gid(GidRaw) of
+        undefined ->
+            Count = mention_logic:count_unread(CurrentUid),
+            elib_response:success(Req0, #{<<"count">> => Count});
+        {ok, Gid2} ->
+            Count = mention_logic:count_group_unread(CurrentUid, Gid2),
+            elib_response:success(Req0, #{<<"count">> => Count});
+        invalid ->
+            elib_response:error(Req0, "群组ID格式有误", ?ERR_BAD_REQUEST)
+    end.
 
 %% @doc 标记@消息为已读
 %%
@@ -96,18 +115,35 @@ unread(Req0, State) ->
 -spec mark_read(cowboy_req:req(), map()) -> cowboy_req:req().
 mark_read(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    PostVals = elib_param:post(Req0),
-    MsgId = maps:get(<<"msg_id">>, PostVals, <<>>),
-
-    case MsgId of
-        <<>> ->
-            elib_response:error(Req0, "消息ID必须提供");
+    PostVals = safe_post(Req0),
+    case normalize_bool(maps:get(<<"all">>, PostVals, undefined)) of
+        true ->
+            mark_read_all(Req0, PostVals, CurrentUid);
         _ ->
-            case mention_logic:mark_as_read(MsgId, CurrentUid) of
-                ok ->
-                    elib_response:success(Req0, #{<<"msg_id">> => MsgId});
-                {error, _Reason} ->
-                    elib_response:error(Req0, "获取@消息列表失败")
+            MsgId = normalize_msg_id(maps:get(<<"msg_id">>, PostVals, <<>>)),
+            MentionId = normalize_positive_int(maps:get(<<"mention_id">>, PostVals, 0), 0),
+            case {MsgId, MentionId > 0} of
+                {<<>>, false} ->
+                    elib_response:error(Req0, "消息ID必须提供");
+                {MsgId2, _} when MsgId2 =/= <<>> ->
+                    case mention_logic:mark_as_read(MsgId2, CurrentUid) of
+                        ok ->
+                            elib_response:success(Req0, #{<<"msg_id">> => MsgId2});
+                        {error, _Reason} ->
+                            elib_response:error(Req0, "获取@消息列表失败")
+                    end;
+                {<<>>, true} ->
+                    case mention_logic:mark_as_read_by_mention_id(MentionId, CurrentUid) of
+                        {ok, MsgId2} ->
+                            elib_response:success(Req0, #{
+                                <<"mention_id">> => MentionId,
+                                <<"msg_id">> => MsgId2
+                            });
+                        {error, not_found} ->
+                            elib_response:error(Req0, "消息ID必须提供");
+                        {error, _Reason} ->
+                            elib_response:error(Req0, "获取@消息列表失败")
+                    end
             end
     end.
 
@@ -120,18 +156,22 @@ mark_read(Req0, State) ->
 -spec suggest(cowboy_req:req(), map()) -> cowboy_req:req().
 suggest(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
+    PostVals = safe_post(Req0),
     Qs = cowboy_req:parse_qs(Req0),
-    Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
-    Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
-
-    case Gid of
-        <<>> ->
+    GidRaw = get_param([<<"gid">>, <<"group_id">>], PostVals, Qs, <<>>),
+    Keyword = get_param([<<"keyword">>], PostVals, Qs, <<>>),
+    case decode_optional_gid(GidRaw) of
+        undefined ->
             elib_response:error(Req0, "群组ID必须提供", ?ERR_BAD_REQUEST);
-        _ ->
-            Gid2 = elib_hashids:decode(Gid),
+        invalid ->
+            elib_response:error(Req0, "群组ID必须提供", ?ERR_BAD_REQUEST);
+        {ok, Gid2} ->
             case mention_logic:get_member_suggestions(Gid2, CurrentUid, Keyword) of
                 {ok, Members} ->
-                    elib_response:success(Req0, #{<<"members">> => Members});
+                    elib_response:success(Req0, #{
+                        <<"members">> => Members,
+                        <<"items">> => Members
+                    });
                 {error, not_group_member} ->
                     elib_response:error(Req0, "你不是群组成员", ?ERR_GROUP_PERMISSION_DENIED);
                 {error, _Reason} ->
@@ -148,12 +188,240 @@ suggest(Req0, State) ->
 -spec encode_mention_ids(list(map())) -> list(map).
 encode_mention_ids(Mentions) ->
     lists:map(fun(Mention) ->
-        MsgId = maps:get(<<"msg_id">>, Mention),
-        Gid = maps:get(<<"group_id">>, Mention),
+        MsgId = maps:get(<<"msg_id">>, Mention, <<>>),
+        Gid = maps:get(<<"group_id">>, Mention, 0),
+        IsReadRaw = maps:get(<<"is_read">>, Mention, false),
+        IsRead = case IsReadRaw of
+            true -> 1;
+            1 -> 1;
+            <<"1">> -> 1;
+            _ -> 0
+        end,
+        CreatedAt = normalize_created_at(maps:get(<<"created_at">>, Mention, 0)),
+        MentionId = normalize_positive_int(maps:get(<<"id">>, Mention, 0), 0),
         Mention#{
+            <<"id">> => MentionId,
             <<"msg_id">> => MsgId,  % msg_id 已经是字符串，不需要编码
-            <<"group_id">> => elib_hashids:encode(Gid),
+            <<"group_id">> => maybe_encode_id(Gid),
             <<"from_uid">> => elib_hashids:encode(maps:get(<<"from_uid">>, Mention, 0)),
-            <<"mentioned_uid">> => elib_hashids:encode(maps:get(<<"mentioned_uid">>, Mention, 0))
+            <<"mentioned_uid">> => elib_hashids:encode(maps:get(<<"mentioned_uid">>, Mention, 0)),
+            <<"is_read">> => IsRead,
+            <<"is_read_bool">> => IsReadRaw,
+            <<"created_at">> => CreatedAt
         }
     end, Mentions).
+
+%% @private
+-spec mark_read_all(cowboy_req:req(), map(), integer()) -> cowboy_req:req().
+mark_read_all(Req0, PostVals, CurrentUid) ->
+    case decode_optional_gid(maps:get(<<"group_id">>, PostVals, maps:get(<<"gid">>, PostVals, undefined))) of
+        undefined ->
+            case mention_logic:mark_all_as_read(CurrentUid) of
+                ok ->
+                    elib_response:success(Req0, #{<<"all">> => true});
+                {error, _Reason} ->
+                    elib_response:error(Req0, "获取@消息列表失败")
+            end;
+        {ok, Gid2} ->
+            case mention_logic:mark_group_as_read(CurrentUid, Gid2) of
+                ok ->
+                    elib_response:success(Req0, #{
+                        <<"all">> => true,
+                        <<"group_id">> => elib_hashids:encode(Gid2)
+                    });
+                {error, _Reason} ->
+                    elib_response:error(Req0, "获取@消息列表失败")
+            end;
+        invalid ->
+            elib_response:error(Req0, "群组ID格式有误", ?ERR_BAD_REQUEST)
+    end.
+
+%% @private
+-spec safe_post(cowboy_req:req()) -> map().
+safe_post(Req0) ->
+    try elib_param:post(Req0) of
+        PostVals when is_map(PostVals) ->
+            PostVals;
+        PostVals when is_list(PostVals) ->
+            maps:from_list(PostVals);
+        _ ->
+            #{}
+    catch
+        _:_ ->
+            #{}
+    end.
+
+%% @private
+-spec resolve_page_size(cowboy_req:req(), map()) -> {integer(), integer()}.
+resolve_page_size(Req0, PostVals) ->
+    {Page0, Size0} = elib_param:page(Req0),
+    Page = normalize_positive_int(maps:get(<<"page">>, PostVals, Page0), Page0),
+    Size = normalize_positive_int(maps:get(<<"size">>, PostVals, Size0), Size0),
+    {Page, Size}.
+
+%% @private
+-spec get_param([binary()], map(), [{binary(), binary()}], term()) -> term().
+get_param(Keys, PostVals, Qs, Default) ->
+    case find_in_post(Keys, PostVals) of
+        undefined ->
+            case find_in_qs(Keys, Qs) of
+                undefined -> Default;
+                V -> V
+            end;
+        V ->
+            V
+    end.
+
+%% @private
+-spec find_in_post([binary()], map()) -> term().
+find_in_post([], _PostVals) ->
+    undefined;
+find_in_post([Key | Rest], PostVals) ->
+    case maps:find(Key, PostVals) of
+        {ok, Value} ->
+            Value;
+        error ->
+            find_in_post(Rest, PostVals)
+    end.
+
+%% @private
+-spec find_in_qs([binary()], [{binary(), binary()}]) -> term().
+find_in_qs([], _Qs) ->
+    undefined;
+find_in_qs([Key | Rest], Qs) ->
+    case proplists:get_value(Key, Qs, undefined) of
+        undefined ->
+            find_in_qs(Rest, Qs);
+        Value ->
+            Value
+    end.
+
+%% @private
+-spec normalize_is_read(term()) -> true | false | undefined.
+normalize_is_read(Value) ->
+    normalize_bool(Value).
+
+%% @private
+-spec normalize_bool(term()) -> true | false | undefined.
+normalize_bool(Value) ->
+    case Value of
+        true -> true;
+        false -> false;
+        1 -> true;
+        0 -> false;
+        <<"1">> -> true;
+        <<"0">> -> false;
+        <<"true">> -> true;
+        <<"false">> -> false;
+        <<"TRUE">> -> true;
+        <<"FALSE">> -> false;
+        _ -> undefined
+    end.
+
+%% @private
+-spec decode_optional_gid(term()) -> undefined | {ok, integer()} | invalid.
+decode_optional_gid(undefined) ->
+    undefined;
+decode_optional_gid(<<>>) ->
+    undefined;
+decode_optional_gid(Value) ->
+    case decode_gid(Value) of
+        Gid when is_integer(Gid), Gid > 0 ->
+            {ok, Gid};
+        _ ->
+            invalid
+    end.
+
+%% @private
+-spec decode_gid(term()) -> integer().
+decode_gid(Gid) when is_integer(Gid), Gid > 0 ->
+    Gid;
+decode_gid(Gid) when is_binary(Gid) ->
+    case elib_hashids:decode(Gid) of
+        Decoded when is_integer(Decoded), Decoded > 0 ->
+            Decoded;
+        _ ->
+            normalize_positive_int(Gid, 0)
+    end;
+decode_gid(Gid) when is_list(Gid) ->
+    decode_gid(unicode:characters_to_binary(Gid));
+decode_gid(_) ->
+    0.
+
+%% @private
+-spec normalize_positive_int(term(), integer()) -> integer().
+normalize_positive_int(Value, Default) ->
+    Int = to_integer(Value),
+    case Int > 0 of
+        true -> Int;
+        false -> Default
+    end.
+
+%% @private
+-spec normalize_msg_id(term()) -> binary().
+normalize_msg_id(undefined) ->
+    <<>>;
+normalize_msg_id(<<>>) ->
+    <<>>;
+normalize_msg_id(Value) when is_binary(Value) ->
+    Value;
+normalize_msg_id(Value) when is_list(Value) ->
+    unicode:characters_to_binary(Value);
+normalize_msg_id(Value) when is_integer(Value), Value > 0 ->
+    integer_to_binary(Value);
+normalize_msg_id(_) ->
+    <<>>.
+
+%% @private
+-spec to_integer(term()) -> integer().
+to_integer(Value) when is_integer(Value) ->
+    Value;
+to_integer(Value) when is_binary(Value) ->
+    try binary_to_integer(Value) of
+        Int -> Int
+    catch
+        _:_ -> 0
+    end;
+to_integer(Value) when is_list(Value) ->
+    try list_to_integer(Value) of
+        Int -> Int
+    catch
+        _:_ -> 0
+    end;
+to_integer(_) ->
+    0.
+
+%% @private
+-spec maybe_encode_id(integer()) -> binary() | integer().
+maybe_encode_id(Id) when is_integer(Id), Id > 0 ->
+    elib_hashids:encode(Id);
+maybe_encode_id(Id) ->
+    Id.
+
+%% @private
+-spec normalize_created_at(term()) -> term().
+normalize_created_at(Ts) when is_integer(Ts), Ts > 1000000000000 ->
+    Ts div 1000;
+normalize_created_at(Ts) when is_integer(Ts) ->
+    Ts;
+normalize_created_at(Ts) when is_binary(Ts) ->
+    case normalize_positive_int(Ts, 0) of
+        0 ->
+            try elib_dt:rfc3339_to(Ts) of
+                ParsedTs when is_integer(ParsedTs) ->
+                    ParsedTs;
+                _ ->
+                    Ts
+            catch
+                _:_ ->
+                    Ts
+            end;
+        Num when Num > 1000000000000 ->
+            Num div 1000;
+        Num ->
+            Num
+    end;
+normalize_created_at(Ts) when is_list(Ts) ->
+    normalize_created_at(unicode:characters_to_binary(Ts));
+normalize_created_at(Ts) ->
+    Ts.

@@ -44,9 +44,21 @@ find_by_group_and_uid_signature_test() ->
 mark_as_read_signature_test() ->
     ?assert(erlang:function_exported(mention_repo, mark_as_read, 2)).
 
+%% @doc 测试 mark_all_as_read 函数签名
+mark_all_as_read_signature_test() ->
+    ?assert(erlang:function_exported(mention_repo, mark_all_as_read, 1)).
+
+%% @doc 测试 mark_group_as_read 函数签名
+mark_group_as_read_signature_test() ->
+    ?assert(erlang:function_exported(mention_repo, mark_group_as_read, 2)).
+
 %% @doc 测试 count_unread 函数签名
 count_unread_signature_test() ->
     ?assert(erlang:function_exported(mention_repo, count_unread, 1)).
+
+%% @doc 测试 count_unread_in_group 函数签名
+count_unread_in_group_signature_test() ->
+    ?assert(erlang:function_exported(mention_repo, count_unread_in_group, 2)).
 
 %% @doc 测试 delete_by_msg_id 函数签名
 delete_by_msg_id_signature_test() ->
@@ -64,13 +76,13 @@ delete_by_uid_signature_test() ->
 count_unread_returns_integer_test_() ->
     ?TEST_WITH_DB(fun() ->
         Result = mention_repo:count_unread(999999),
-        ?assertMatch({ok, _}, Result)
+        ?assert(is_integer(Result))
     end).
 
 %% @doc 测试 find_by_uid 返回列表
 find_by_uid_returns_list_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Result = mention_repo:find_by_uid(999999, #{}),
+        Result = mention_repo:find_by_uid(999999, undefined),
         ?assertMatch({ok, _}, Result)
     end).
 

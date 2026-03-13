@@ -80,7 +80,7 @@ page(Req0, State) ->
 
     if CurrentUid == 0 ->
            elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
-       Scene2 /= 0 ->
+       Scene2 == 0 ->
            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
        true ->
            Payload = user_tag_logic:page(Scene2, Page, Size, WhereMap, OrderBy),
@@ -101,7 +101,7 @@ change_name(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagName = maps:get(<<"tagName">>, PostVals, <<>>),
-    TagId = maps:get(<<"tagId">>, PostVals, 0),
+    TagId = ec_cnv:to_integer(maps:get(<<"tagId">>, PostVals, 0)),
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     % user_tag_logic:add(1, <<"friend">>, <<"2">>, [<<"a">>, <<"b">>]).
     Scene2 =
@@ -198,7 +198,7 @@ delete(Req0, State) ->
             <<"friend">> ->
                 2;
             _ ->
-                2
+                0
         end,
     if Scene2 == 0 ->
            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
@@ -210,4 +210,3 @@ delete(Req0, State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

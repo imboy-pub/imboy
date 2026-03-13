@@ -72,7 +72,7 @@ add(Req0, State) ->
             <<"friend">> ->
                 {2, friend_ds:is_friend(CurrentUid, elib_hashids:decode(ObjectId))};
             _ ->
-                0
+                {0, false}
         end,
     Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
     ObjectId2 =
@@ -180,9 +180,17 @@ remove(Req0, State) ->
             elib_response:error(Req0, <<"ObjectId 不能同时为空"/utf8>>);
         {_, _, Id} when Id < 1 ->
             elib_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
-        {S2, Obj, Id} ->
-            user_tag_relation_logic:remove(CurrentUid, integer_to_binary(S2), elib_hashids:decode(Obj), Id),
-            elib_response:success(Req0, #{}, "success.")
+        {1, Obj, Id} ->
+            user_tag_relation_logic:remove(CurrentUid, <<"1">>, Obj, Id),
+            elib_response:success(Req0, #{}, "success.");
+        {2, Obj, Id} ->
+            ToUid = elib_hashids:decode(Obj),
+            if ToUid > 0 ->
+                   user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
+                   elib_response:success(Req0, #{}, "success.");
+               true ->
+                   elib_response:error(Req0, <<"ObjectId 格式有误"/utf8>>)
+            end
     end.
 
 %% @doc 标签关联分页列表
@@ -207,7 +215,8 @@ page(Scene, Req0, State) ->
        TagId == 0 ->
            elib_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
        Scene == <<"collect">> ->
-           elib_response:success(Req0, #{});
+           Payload = collect_page(CurrentUid, Page, Size, TagId, Kwd),
+           elib_response:success(Req0, Payload);
        Scene == <<"friend">> ->
            Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
            elib_response:success(Req0, Payload);
@@ -215,7 +224,56 @@ page(Scene, Req0, State) ->
            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
 
+-spec collect_page(integer(), integer(), integer(), integer(), binary()) -> map().
+collect_page(CurrentUid, Page, Size, TagId, Kwd) ->
+    TagName =
+        elib_pg:pluck_value(
+            <<"public.user_tag">>,
+            <<"name">>,
+            #{id => TagId, creator_user_id => CurrentUid, scene => 1},
+            #{},
+            <<>>
+        ),
+    case TagName of
+        <<>> ->
+            #{total => 0, page => Page, size => Size, list => []};
+        _ ->
+            collect_page_by_tag(CurrentUid, Page, Size, TagName, Kwd)
+    end.
+
+-spec collect_page_by_tag(integer(), integer(), integer(), binary(), binary()) -> map().
+collect_page_by_tag(CurrentUid, Page, Size, TagName, Kwd) ->
+    TagPattern = <<"%", TagName/binary, ",%">>,
+    BaseWhere = #{
+        user_id => CurrentUid,
+        status => 1,
+        tag => {op, <<"LIKE">>, TagPattern}
+    },
+    WhereMap =
+        case byte_size(Kwd) > 0 of
+            true ->
+                Like = <<"%", Kwd/binary, "%">>,
+                BaseWhere#{
+                    <<"__or">> => [
+                        #{source => {op, <<"LIKE">>, Like}},
+                        #{remark => {op, <<"LIKE">>, Like}},
+                        #{info => {op, <<"LIKE">>, Like}}
+                    ]
+                };
+            false ->
+                BaseWhere
+        end,
+    Info = elib_hasher:decoded_field(<<"info">>),
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+    Tb = user_collect_repo:tablename(),
+    case elib_pg:page_with_total(Tb, Column, WhereMap, <<"id desc">>, Page, Size) of
+        {ok, Payload} ->
+            List = maps:get(list, Payload, []),
+            Payload#{list => elib_response:json_decode_list_field(List, <<"info">>)};
+        {error, _Reason} ->
+            #{total => 0, page => Page, size => Size, list => []}
+    end.
+
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

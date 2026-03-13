@@ -9,10 +9,14 @@
 -export([tablename/0]).
 -export([insert/4]).
 -export([find_by_msg_id/1]).
+-export([find_msg_id_by_mention_id/2]).
 -export([find_by_uid/2]).
 -export([find_by_group_and_uid/3]).
 -export([mark_as_read/2]).
+-export([mark_all_as_read/1]).
+-export([mark_group_as_read/2]).
 -export([count_unread/1]).
+-export([count_unread_in_group/2]).
 -export([delete_by_msg_id/1]).
 -export([delete_by_uid/1]).
 
@@ -55,9 +59,26 @@ insert(MsgId, Gid, MentionedUid, FromUid) ->
 -spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
 find_by_msg_id(MsgId) ->
     Tb = tablename(),
-    Column = <<"msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE msg_id = $1">>,
     elib_pg:query(Sql, [MsgId]).
+
+%% @doc 根据 mention 记录ID查找消息ID（用于兼容客户端传 mention_id 标记已读）
+%% @param MentionId mention 记录ID
+%% @param Uid 当前用户ID（mentioned_uid）
+%% @return {ok, MsgId} | {error, not_found | Reason}
+-spec find_msg_id_by_mention_id(integer(), integer()) -> {ok, binary()} | {error, term()}.
+find_msg_id_by_mention_id(MentionId, Uid) when MentionId > 0 ->
+    Tb = tablename(),
+    Sql = <<"SELECT msg_id FROM ", Tb/binary, " WHERE id = $1 AND mentioned_uid = $2">>,
+    case elib_pg:one(Sql, [MentionId, Uid]) of
+        {ok, #{<<"msg_id">> := MsgId}} ->
+            {ok, MsgId};
+        _ ->
+            {error, not_found}
+    end;
+find_msg_id_by_mention_id(_, _) ->
+    {error, invalid_params}.
 
 %% @doc 查询用户的所有@提及（支持已读/未读过滤）
 %% @param Uid 用户ID
@@ -66,13 +87,13 @@ find_by_msg_id(MsgId) ->
 -spec find_by_uid(integer(), boolean() | undefined) -> {ok, list(map())} | {error, term()}.
 find_by_uid(Uid, undefined) ->
     Tb = tablename(),
-    Column = <<"msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE mentioned_uid = $1 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Uid]);
 find_by_uid(Uid, IsRead) ->
     Tb = tablename(),
-    Column = <<"msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Uid, IsRead]).
@@ -85,13 +106,13 @@ find_by_uid(Uid, IsRead) ->
 -spec find_by_group_and_uid(integer(), integer(), boolean() | undefined) -> {ok, list(map())} | {error, term()}.
 find_by_group_and_uid(Gid, Uid, undefined) ->
     Tb = tablename(),
-    Column = <<"msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE group_id = $1 AND mentioned_uid = $2 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid]);
 find_by_group_and_uid(Gid, Uid, IsRead) ->
     Tb = tablename(),
-    Column = <<"msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead]).
@@ -109,6 +130,31 @@ mark_as_read(MsgId, Uid) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc 标记用户所有@消息为已读
+%% @param Uid 被@的用户ID
+%% @return ok | {error, Reason}
+-spec mark_all_as_read(integer()) -> ok | {error, term()}.
+mark_all_as_read(Uid) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET is_read = true WHERE mentioned_uid = $1 AND is_read = false">>,
+    case elib_pg:execute(Sql, [Uid]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 标记用户在指定群组中的@消息为已读
+%% @param Gid 群组ID
+%% @param Uid 被@的用户ID
+%% @return ok | {error, Reason}
+-spec mark_group_as_read(integer(), integer()) -> ok | {error, term()}.
+mark_group_as_read(Gid, Uid) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET is_read = true WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = false">>,
+    case elib_pg:execute(Sql, [Gid, Uid]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% @doc 统计用户未读的@消息数量
 %% @param Uid 用户ID
 %% @return 未读数量
@@ -117,6 +163,20 @@ count_unread(Uid) ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE mentioned_uid = $1 AND is_read = false">>,
     case elib_pg:one(Sql, [Uid]) of
+        {ok, #{<<"count">> := Count}} -> Count;
+        _ -> 0
+    end.
+
+%% @doc 统计用户在指定群组中的未读@消息数量
+%% @param Uid 用户ID
+%% @param Gid 群组ID
+%% @return 未读数量
+-spec count_unread_in_group(integer(), integer()) -> non_neg_integer().
+count_unread_in_group(Uid, Gid) ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
+            " WHERE mentioned_uid = $1 AND group_id = $2 AND is_read = false">>,
+    case elib_pg:one(Sql, [Uid, Gid]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
     end.
