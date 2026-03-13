@@ -7,6 +7,7 @@
 -export([create_album/4]).
 -export([upload_photo/5]).
 -export([batch_upload_photos/3]).
+-export([delete_album/2]).
 -export([delete_photo/2]).
 -export([like_photo/2]).
 -export([unlike_photo/2]).
@@ -113,6 +114,29 @@ batch_upload_photos(Gid, CurrentUid, Photos) ->
             {error, Reason}
     end.
 
+%% @doc 删除相册
+%% @param AlbumId 相册ID（业务ID）
+%% @param CurrentUid 当前用户ID
+%% @return ok | {error, Reason}
+-spec delete_album(binary(), integer()) -> ok | {error, term()}.
+delete_album(AlbumId, CurrentUid) ->
+    case group_album_repo:find_album_by_album_id(AlbumId) of
+        #{<<"id">> := Id, <<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
+            case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
+                ok ->
+                    case group_album_repo:delete_album(Id) of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        _ ->
+            {error, <<"相册不存在"/utf8>>}
+    end.
+
 %% @doc 删除图片
 %% @param PhotoId 图片ID（主键）
 %% @param CurrentUid 当前用户ID
@@ -201,4 +225,16 @@ rename_album(AlbumId, NewName) ->
             end;
         _ ->
             {error, <<"相册不存在"/utf8>>}
+    end.
+
+%% @doc 检查相册删除权限
+-spec check_album_delete_permission(integer(), integer(), integer()) -> ok | {error, binary()}.
+check_album_delete_permission(CurrentUid, CreatorId, _Gid) when CurrentUid =:= CreatorId ->
+    ok;
+check_album_delete_permission(CurrentUid, _CreatorId, Gid) ->
+    case group_member_repo:find(Gid, CurrentUid, <<"role">>) of
+        #{<<"role">> := Role} when Role >= 3 ->
+            ok;
+        _ ->
+            {error, <<"相册权限不足"/utf8>>}
     end.

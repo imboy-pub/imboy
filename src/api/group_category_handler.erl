@@ -81,7 +81,7 @@ list(Req0, State) ->
 rename(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    CategoryId = elib_hashids:decode(maps:get(<<"id">>, PostVals, 0)),
+    CategoryId = normalize_hashid_or_int(maps:get(<<"id">>, PostVals, 0)),
     NewName = maps:get(<<"category_name">>, PostVals, <<>>),
 
     case group_category_logic:rename(CurrentUid, CategoryId, NewName) of
@@ -102,7 +102,7 @@ rename(Req0, State) ->
 delete(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    CategoryId = elib_hashids:decode(maps:get(<<"id">>, PostVals, 0)),
+    CategoryId = normalize_hashid_or_int(maps:get(<<"id">>, PostVals, 0)),
 
     case group_category_logic:delete(CurrentUid, CategoryId) of
         {error, ErrorMsg} when is_binary(ErrorMsg) ->
@@ -121,8 +121,8 @@ delete(Req0, State) ->
 move_group(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    Gid = elib_hashids:decode(maps:get(<<"gid">>, PostVals, 0)),
-    CategoryId = elib_hashids:decode(maps:get(<<"category_id">>, PostVals, 0)),
+    Gid = normalize_hashid_or_int(maps:get(<<"gid">>, PostVals, 0)),
+    CategoryId = normalize_hashid_or_int(maps:get(<<"category_id">>, PostVals, 0)),
 
     case group_category_logic:move_group(CurrentUid, Gid, CategoryId) of
         {error, ErrorMsg} when is_binary(ErrorMsg) ->
@@ -147,7 +147,7 @@ sort(Req0, State) ->
     %% 格式: [{id, sort_order}, ...]
     SortOrders2 = case SortOrders of
         List when is_list(List) ->
-            [{elib_hashids:decode(maps:get(<<"id">>, Item, 0)),
+            [{normalize_hashid_or_int(maps:get(<<"id">>, Item, 0)),
               maps:get(<<"sort_order">>, Item, 0)}
              || Item <- List];
         _ ->
@@ -164,3 +164,27 @@ sort(Req0, State) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 兼容 ID 参数:
+%% - int
+%% - 数字字符串
+%% - hashid
+-spec normalize_hashid_or_int(term()) -> integer().
+normalize_hashid_or_int(Value) when is_integer(Value), Value >= 0 ->
+    Value;
+normalize_hashid_or_int(Value) when is_list(Value) ->
+    normalize_hashid_or_int(ec_cnv:to_binary(Value));
+normalize_hashid_or_int(Value) when is_binary(Value) ->
+    case Value of
+        <<>> ->
+            0;
+        _ ->
+            case elib_type:is_numeric(Value) of
+                true ->
+                    ec_cnv:to_integer(Value);
+                false ->
+                    elib_hashids:decode(Value)
+            end
+    end;
+normalize_hashid_or_int(_Value) ->
+    0.

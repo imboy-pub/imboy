@@ -88,10 +88,9 @@ list(Gid, CurrentUid, Page, Size, Options) ->
     % 2. 调用DS层查询文件列表
     case group_file_ds:list_files(Gid2, CurrentUid, Page, Size, Options) of
         {ok, Files} ->
-            % 3. 编码用户ID
+            % 3. 编码ID字段
             Files2 = lists:map(fun(File) ->
-                UploaderId = maps:get(<<"uploader_id">>, File, 0),
-                File#{<<"uploader_id">> => elib_hashids:encode(UploaderId)}
+                elib_hashids:replace_fields(File, [<<"group_id">>, <<"uploader_id">>])
             end, Files),
 
             % 4. 查询总数
@@ -121,7 +120,16 @@ search(Gid, Keyword, Page, Size) ->
     Gid2 = elib_hashids:decode(Gid),
 
     % 2. 调用DS层搜索文件
-    group_file_ds:search_files(Gid2, Keyword, Page, Size).
+    case group_file_ds:search_files(Gid2, Keyword, Page, Size) of
+        {ok, Files} ->
+            % 3. 编码ID字段
+            Files2 = lists:map(fun(File) ->
+                elib_hashids:replace_fields(File, [<<"group_id">>, <<"uploader_id">>])
+            end, Files),
+            {ok, Files2};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 获取群文件分类统计
 %% @param Gid 群组ID（HashID编码）

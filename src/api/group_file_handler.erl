@@ -224,28 +224,50 @@ categories(Req0, State) ->
 %% 内部函数
 %% ===================================================================
 
-%% @doc 解析 multipart 表单数据（简化版本）
+%% @doc 解析 multipart 表单数据（兼容测试桩和简化结构）
 %% @param Parts cowboy_req 读到的部分
 %% @return {Gid, FileName, FileBinary, FileType}
--spec parse_multipart(list()) -> {binary(), binary(), binary(), binary()}.
+-spec parse_multipart(list()) -> {term(), term(), term(), term()}.
 parse_multipart(Parts) ->
     parse_multipart(Parts, undefined, undefined, undefined, undefined).
 
-parse_multipart([], Gid, FileName, FileBinary, _FileType) ->
-    {Gid, FileName, FileBinary, <<"application/octet-stream">>};
-parse_multipart([Part | Rest], Gid, FileName, FileBinary, FileType) ->
-    {Name, Data} = case Part of
-        {PartName, PartData} -> {PartName, PartData};
-        _ -> {undefined, undefined}
+parse_multipart([], Gid, FileName, FileBinary, FileType) ->
+    FinalType = case FileType of
+        undefined -> <<"application/octet-stream">>;
+        <<>> -> <<"application/octet-stream">>;
+        _ -> FileType
     end,
-    case Name of
-        <<"file">> ->
-            % 提取文件信息（简化版本）
-            FileName2 = FileName,
-            FileType2 = FileType,
-            parse_multipart(Rest, Gid, FileName2, Data, FileType2);
-        <<"gid">> ->
-            parse_multipart(Rest, Data, FileName, FileBinary, FileType);
+    {Gid, FileName, FileBinary, FinalType};
+parse_multipart([Part | Rest], Gid, FileName, FileBinary, FileType) ->
+    case Part of
+        {<<"gid">>, Value} ->
+            parse_multipart(Rest, Value, FileName, FileBinary, FileType);
+        {<<"file_name">>, Value} ->
+            parse_multipart(Rest, Gid, Value, FileBinary, FileType);
+        {<<"file_type">>, Value} ->
+            parse_multipart(Rest, Gid, FileName, FileBinary, Value);
+        {<<"file">>, Value} ->
+            {FileName2, FileBinary2, FileType2} = normalize_file_part(Value, FileName, FileType),
+            parse_multipart(Rest, Gid, FileName2, FileBinary2, FileType2);
         _ ->
             parse_multipart(Rest, Gid, FileName, FileBinary, FileType)
     end.
+
+normalize_file_part(Value, FileName, FileType) when is_binary(Value) ->
+    {FileName, Value, FileType};
+normalize_file_part({Name, Binary}, FileName, FileType) when is_binary(Binary) ->
+    {choose_binary(Name, FileName), Binary, FileType};
+normalize_file_part({Name, Binary, Type}, FileName, FileType) when is_binary(Binary) ->
+    {choose_binary(Name, FileName), Binary, choose_binary(Type, FileType)};
+normalize_file_part(Value, FileName, FileType) when is_map(Value) ->
+    Name = maps:get(filename, Value, maps:get(<<"filename">>, Value, FileName)),
+    Binary = maps:get(data, Value, maps:get(<<"data">>, Value, undefined)),
+    Type = maps:get(content_type, Value, maps:get(<<"content_type">>, Value, FileType)),
+    {Name, Binary, Type};
+normalize_file_part(_Value, FileName, FileType) ->
+    {FileName, undefined, FileType}.
+
+choose_binary(Value, _Default) when is_binary(Value), Value =/= <<>> ->
+    Value;
+choose_binary(_Value, Default) ->
+    Default.

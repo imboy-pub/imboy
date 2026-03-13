@@ -36,8 +36,8 @@ upload_success_test_() ->
         case Result of
             {ok, FileData} when is_map(FileData) ->
                 ?assertMatch(#{<<"file_id">> := _}, FileData);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -109,9 +109,9 @@ download_success_test_() ->
 
         case Result of
             {ok, FileUrl} when is_binary(FileUrl) ->
-                ?assert(true);
-            {error, _Reason} ->
-                ?assert(true)
+                ?assert(is_binary(FileUrl));
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -235,8 +235,8 @@ list_success_test_() ->
         case Result of
             {ok, FileList} when is_map(FileList) ->
                 ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -293,8 +293,8 @@ list_with_category_test_() ->
         case Result of
             {ok, FileList} when is_map(FileList) ->
                 ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -326,9 +326,9 @@ search_success_test_() ->
 
         case Result of
             {ok, Files} when is_list(Files) ->
-                ?assert(true);
-            {error, _Reason} ->
-                ?assert(true)
+                ?assert(is_list(Files));
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -354,11 +354,11 @@ search_empty_result_test_() ->
 
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Files} when is_list(Files) ->
                 ?assertEqual([], Files);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -371,8 +371,14 @@ get_categories_success_test_() ->
         Gid = <<"g1">>,
         CurrentUid = 100,
 
+        _ = catch meck:unload(elib_hashids),
+        _ = catch meck:unload(group_ds),
+        _ = catch meck:unload(group_file_ds),
         meck:new(elib_hashids, [passthrough]),
         meck:expect(elib_hashids, decode, fun(_) -> 1 end),
+
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(100, 1) -> true end),
 
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, get_file_categories, fun(_) ->
@@ -384,13 +390,14 @@ get_categories_success_test_() ->
         Result = group_file_logic:get_categories(Gid, CurrentUid),
 
         meck:unload(group_file_ds),
+        meck:unload(group_ds),
         meck:unload(elib_hashids),
 
         case Result of
             {ok, Stats} when is_list(Stats) ->
-                ?assert(true);
-            {error, _Reason} ->
-                ?assert(true)
+                ?assert(is_list(Stats));
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -399,8 +406,14 @@ get_categories_empty_test_() ->
         Gid = <<"g1">>,
         CurrentUid = 100,
 
+        _ = catch meck:unload(elib_hashids),
+        _ = catch meck:unload(group_ds),
+        _ = catch meck:unload(group_file_ds),
         meck:new(elib_hashids, [passthrough]),
         meck:expect(elib_hashids, decode, fun(_) -> 1 end),
+
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(100, 1) -> true end),
 
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, get_file_categories, fun(_) ->
@@ -410,14 +423,18 @@ get_categories_empty_test_() ->
         Result = group_file_logic:get_categories(Gid, CurrentUid),
 
         meck:unload(group_file_ds),
+        meck:unload(group_ds),
         meck:unload(elib_hashids),
 
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Stats} when is_list(Stats) ->
                 ?assertEqual([], Stats);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
+
+assert_reason(Reason) ->
+    ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).
