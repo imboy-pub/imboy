@@ -69,7 +69,7 @@ remove(Uid, FeedbackId) ->
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"user_id = $1 AND id = $2">>,
     _ = elib_pg:update(feedback_repo:tablename(), #{
-        <<"status">> => <<"-1">>,
+        <<"status">> => -1,
         <<"updated_at">> => elib_dt:now()
     }, Where, [Uid, FeedbackId]),
     % feedback_repo:delete(Uid, FeedbackId),
@@ -87,7 +87,7 @@ add_reply(Data) ->
     _ = elib_pg:execute(Sql, Params),
     % 使用安全的参数化查询，避免SQL注入
     _ = elib_pg:update(feedback_repo:tablename(), #{
-        <<"status">> => <<"2">>,
+        <<"status">> => 2,
         <<"reply_count">> => {raw, <<"reply_count + 1">>},
         <<"updated_at">> => elib_dt:now()
     }, <<"id = $1">>, [FeedbackId]),
@@ -102,4 +102,3 @@ add_reply(Data) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

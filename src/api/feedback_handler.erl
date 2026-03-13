@@ -95,7 +95,8 @@ page_reply(Req0, _State) ->
                   "er_id, replier_name, body, status, updated_at, created_at">>,
             Tb = feedback_reply_repo:tablename(),
             {ok, Payload} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
-            elib_response:success(Req0, Payload)
+            Payload2 = normalize_reply_payload(Payload),
+            elib_response:success(Req0, Payload2)
     end.
 
 %% @doc 添加用户反馈
@@ -164,6 +165,21 @@ remove(Req0, State) ->
     end.
 
 %% ===================================================================
-%% EUnit tests.
+%% 数据规范化函数（ID编码）
 %% ===================================================================
 
+%% @doc 规范化回复分页数据（编码ID字段）
+-spec normalize_reply_payload(map()) -> map().
+normalize_reply_payload(Payload) ->
+    List = maps:get(list, Payload, maps:get(items, Payload, [])),
+    List2 = [normalize_reply(Item) || Item <- List],
+    maps:remove(items, Payload#{list => List2}).
+
+%% @doc 规范化单条回复数据（编码ID字段）
+-spec normalize_reply(map()) -> map().
+normalize_reply(Reply) ->
+    elib_hashids:replace_fields(Reply, [<<"feedback_reply_id">>, <<"feedback_id">>, <<"replier_user_id">>]).
+
+%% ===================================================================
+%% EUnit tests.
+%% ===================================================================
