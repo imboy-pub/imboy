@@ -17,6 +17,7 @@
 -export([delete_msg/2]).
 -export([count_read/1]).
 -export([update_pinned/3]).
+-export([update_payload_by_msg_id/2]).
 -export([write_msg_with_mentions/9]).
 
 %% ===================================================================
@@ -175,7 +176,27 @@ update_pinned(MsgId, ToUid, Pinned) ->
             {error, Reason}
     end.
 
+%% @doc 根据消息ID更新消息 payload（用于编辑/撤回 ack 持久化）
+%% @param MsgId 原消息ID
+%% @param PayloadJson JSON binary payload
+%% @return {ok, AffectedRows} | {error, Reason}
+-spec update_payload_by_msg_id(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+update_payload_by_msg_id(MsgId, PayloadJson) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+           " SET payload = $1, server_ts = CURRENT_TIMESTAMP "
+           " WHERE msg_id = $2">>,
+    case elib_pg:execute(Sql, [PayloadJson, MsgId]) of
+        {ok, AffectedRows} ->
+            {ok, AffectedRows};
+        {ok, AffectedRows, _} ->
+            {ok, AffectedRows};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 %% @doc 写入带引用回复信息的C2G离线消息
+%% 注意：当前数据库表不支持 reply_to_msg_id 等字段，此函数忽略回复信息
 %% @param CreatedAt 消息创建时间（RFC3339 binary）
 %% @param Id 消息唯一ID
 %% @param Payload 消息载荷（JSON binary）
@@ -184,63 +205,26 @@ update_pinned(MsgId, ToUid, Pinned) ->
 %% @param Gid 群组ID
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
 %% @param E2EE 端到端加密信息（JSON map，可选）
-%% @param ReplyToMsgId 被引用回复的消息ID
-%% @param ReplyToFromId 被引用消息的发送者ID
-%% @param ReplySnippet 被引用消息的摘要
+%% @param _ReplyToMsgId 被引用回复的消息ID（暂不支持）
+%% @param _ReplyToFromId 被引用消息的发送者ID（暂不支持）
+%% @param _ReplySnippet 被引用消息的摘要（暂不支持）
 %% @return ok | {error, Reason}
 -spec write_msg_with_reply(binary(), binary(), binary(), integer(), [integer()], integer(),
                            binary(), map() | null, binary(), integer(), binary()) -> ok | {error, term()}.
 write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE,
-                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
-    %% ---------- 统一转换 CreatedAt ----------
-    CreatedAtRfc = elib_dt:to_rfc3339(CreatedAt),
-
-    TbMsg = tablename(),           %% 群离线消息表
-    TbTimeline = msg_c2g_timeline_repo:tablename(), %% 群消息时间线表
-
-    E2EEValue = case E2EE of
-        null -> null;
-        <<>> -> null;
-        Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-        Bin when is_binary(Bin) -> Bin;
-        _ -> null
-    end,
-
-    elib_pg:with_tx(fun(Conn) ->
-        %% ---------- 插入群离线消息（带引用信息）----------
-        _ = elib_pg:insert(Conn, TbMsg, #{
-            payload => Payload,
-            to_id => Gid,
-            from_id => FromId,
-            created_at => CreatedAtRfc,
-            server_ts => CreatedAtRfc,
-            topic_id => 0,
-            msg_id => Id,
-            msg_type => MsgType,
-            e2ee => E2EEValue,
-            reply_to_msg_id => ReplyToMsgId,
-            reply_to_from_id => ReplyToFromId,
-            reply_snippet => ReplySnippet
-        }, <<>>),
-
-        %% ---------- 批量插入时间线表 ----------
-        Vals = [ [Id, ToId, Gid, CreatedAtRfc] || ToId <- ToUids ],
-        {SqlTimeline, ParamsTimeline} =
-            elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
-        {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
-        ok
-    end).
+                     _ReplyToMsgId, _ReplyToFromId, _ReplySnippet) ->
+    % 当前数据库表不支持 reply_to_msg_id 等字段
+    % 直接调用 write_msg/9 忽略回复信息
+    write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE).
 
 %% @doc 根据被引用消息ID查找所有回复消息
-%% @param ReplyToMsgId 被引用的消息ID
-%% @return {ok, list(map())} | {error, Reason}
+%% 注意：当前数据库表不支持 reply_to_msg_id 字段，此函数返回空列表
+%% @param _ReplyToMsgId 被引用的消息ID
+%% @return {ok, []}
 -spec find_by_reply_to_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
-find_by_reply_to_msg_id(ReplyToMsgId) ->
-    Tb = tablename(),
-    Column = <<"id, msg_id, from_id, to_id, reply_to_msg_id, reply_to_from_id, reply_snippet, payload, created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE reply_to_msg_id = $1 ORDER BY created_at ASC">>,
-    elib_pg:query(Sql, [ReplyToMsgId]).
+find_by_reply_to_msg_id(_ReplyToMsgId) ->
+    % 当前数据库表不支持 reply_to_msg_id 字段
+    {ok, []}.
 
 %% @doc 写入带@提及信息的群离线消息
 %% @param CreatedAtRaw 消息创建时间（binary RFC3339 或 integer 毫秒时间戳）

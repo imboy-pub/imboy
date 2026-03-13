@@ -83,6 +83,8 @@ get_unread_count(FromUid, ToUid) ->
     >>,
     case elib_pg:query(Sql, [FromUid, ToUid]) of
         {ok, [{#{<<"count">> := Count}}]} -> {ok, Count};
+        {ok, [#{<<"count">> := Count}]} -> {ok, Count};
+        {ok, [[{<<"count">>, Count}]]} -> {ok, Count};
         {ok, []} -> {ok, 0};
         {error, Reason} -> {error, Reason}
     end.

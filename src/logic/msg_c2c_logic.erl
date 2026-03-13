@@ -93,7 +93,7 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
 
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     StageResult = case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
-        {<<>>, <<>>, <<>>} ->
+        {<<>>, 0, <<>>} ->
             % 没有引用信息，使用常规方式
             msg_store_ds:stage(
                 <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
@@ -108,7 +108,20 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
                 {error, not_found} ->
                     % 被引用的消息不存在，返回错误
                     self() ! {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)},
-                    error
+                    error;
+                {error, Reason} ->
+                    % 兼容旧库结构：回复校验查询失败时降级为“跳过严格校验”，避免消息发送流程崩溃
+                    ok = ?ERROR_LOG("[C2C_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
+                               [MsgId, ReplyToMsgId, Reason]),
+                    msg_store_ds:stage(
+                        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
+                        CurrentUid, ToId, CreatedAtRfc, NowTs);
+                Other ->
+                    ok = ?ERROR_LOG("[C2C_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
+                               [MsgId, ReplyToMsgId, Other]),
+                    msg_store_ds:stage(
+                        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
+                        CurrentUid, ToId, CreatedAtRfc, NowTs)
             end
     end,
 
@@ -136,7 +149,7 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
 
                 % ② 如果有引用信息，使用 write_msg_with_reply 存储
                 case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
-                    {<<>>, <<>>, <<>>} ->
+                    {<<>>, 0, <<>>} ->
                         % 没有引用信息，使用常规入队
                         ok;
                     _ ->
@@ -264,10 +277,13 @@ c2c_revoke_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-    % 撤回确认已处理
-    % 撤回消息的存储和通知在 c2c_revoke 中已完成
-    % 此处仅为接收方确认收到撤回通知
-    % 如需追踪撤回状态，可在消息中添加 is_revoked 字段
+    AckPayload = Payload#{
+        <<"action">> => <<"message_revoke_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
+    persist_action_payload(OriginalMsgId, AckPayload),
     ok.
 
 %% 客户端编辑消息 for c2c
@@ -337,9 +353,13 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
     NewContent = maps:get(<<"content">>, Payload),
     EditedAt = maps:get(<<"edited_at">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-
-    % 更新本地消息内容
-    % 这里可以添加数据库更新逻辑
+    AckPayload = Payload#{
+        <<"action">> => <<"message_edit_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
+    persist_action_payload(OriginalMsgId, AckPayload),
     ok.
 
 
@@ -465,8 +485,7 @@ c2c_read_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     ReadAt = maps:get(<<"read_at">>, Payload),
     ok = ?DEBUG_LOG([<<"c2c_read_ack">>, MsgId, CurrentUid, ReadAt]),
-    % 已读回执确认
-    % 这里可以添加业务逻辑，如更新UI状态、同步到其他设备等
+    % 已读状态已在 c2c_read/3 中持久化，这里只做回执送达确认，不重复写库。
     ok.
 
 %% ===================================================================
@@ -521,4 +540,19 @@ extract_reply_info(Data) ->
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
+    end.
+
+%% @doc 持久化 action ack payload 到原消息记录
+%% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
+-spec persist_action_payload(binary(), map()) -> ok.
+persist_action_payload(<<>>, _Payload) ->
+    ok;
+persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
+    PayloadJson = imboy_message_helper:encode_json(Payload),
+    case msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
+            ok
     end.

@@ -48,7 +48,10 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
         case Save of
             save ->
                 CreatedAt = elib_dt:now(),
-                _ = write_msg(CreatedAt, MsgId, EncodedMsg, FromId, ToUid, CreatedAt, Action, MsgType, null),
+                % 只存储实际的 payload 数据，而不是整个消息对象
+                % 避免 API 返回时出现 payload 嵌套问题
+                PayloadJson = jsone:encode(Payload, [native_utf8]),
+                _ = write_msg(CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null),
                 MsLi = [0, 1_000_000, 1_000_000],
                 _ = message_ds:send_next(ToUid, MsgId, EncodedMsg, MsLi),
                 ok;
@@ -176,7 +179,7 @@ read_msg(ToUid, Limit) ->
 -spec read_msg(any(), integer(), undefined | integer() | binary()) -> [map()].
 read_msg(ToUid, Limit, undefined) ->
     Column = <<"id, payload, from_id, to_id,
-        created_at, server_ts, msg_id, msg_type, e2ee">>,
+        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
     read_msg(Where, Vals, Column, Limit);
@@ -184,7 +187,7 @@ read_msg(ToUid, Limit, Ts) ->
     % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
     FixedTs = elib_dt:to_rfc3339(Ts),
     Column = <<"id, payload, from_id, to_id,
-        created_at, server_ts, msg_id, msg_type, e2ee">>,
+        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
     Where = <<"WHERE to_id = $1 AND created_at >= $2">>,
     Vals = [ToUid, FixedTs],
     read_msg(Where, Vals, Column, Limit).
@@ -220,7 +223,41 @@ read_msg(Where, Vals, Column, Limit) ->
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            [elib_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
+            [process_s2c_row(Row) || Row <- Rows];
         _ ->
             []
+    end.
+
+%% @doc 处理 S2C 消息行数据
+%%
+%% 1. 解码 payload 字段
+%% 2. 用 msg_id 替换 id 字段（前端期望 id 是消息 ID，而不是数据库自增 ID）
+%% 3. 处理旧数据的嵌套 payload 格式
+%%
+%% @param Row 数据库返回的行数据
+%% @returns map() 处理后的消息数据
+-spec process_s2c_row(map()) -> map().
+process_s2c_row(Row) ->
+    % 解码 payload 字段
+    Row1 = elib_response:json_decode_field(Row, <<"payload">>),
+    Payload = maps:get(<<"payload">>, Row1, #{}),
+
+    % 用 msg_id 替换 id 字段
+    MsgId = maps:get(<<"msg_id">>, Row1, <<>>),
+    Row2 = Row1#{<<"id">> => MsgId},
+
+    % 移除 msg_id 字段（已经替换到 id）
+    Row3 = maps:remove(<<"msg_id">>, Row2),
+
+    % 处理旧数据的嵌套 payload 格式
+    % 旧数据: payload 是完整消息对象，包含嵌套的 payload 子字段
+    % 新数据: payload 只包含实际数据
+    case is_map(Payload) andalso maps:is_key(<<"payload">>, Payload) of
+        true ->
+            % 旧数据格式：提取嵌套的 payload
+            ActualPayload = maps:get(<<"payload">>, Payload, #{}),
+            Row3#{<<"payload">> => ActualPayload};
+        false ->
+            % 新数据格式：直接使用
+            Row3
     end.

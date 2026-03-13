@@ -161,7 +161,20 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
                 {error, not_found} ->
                     % 被引用的消息不存在，返回错误
                     self() ! {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, Gid)},
-                    error
+                    error;
+                {error, Reason} ->
+                    % 兼容旧库结构：引用消息校验失败时降级处理，避免发送流程崩溃
+                    ok = ?ERROR_LOG("[C2G_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
+                               [MsgId, ReplyToMsgId, Reason]),
+                    msg_store_ds:stage(
+                        <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
+                        CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc);
+                Other ->
+                    ok = ?ERROR_LOG("[C2G_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
+                               [MsgId, ReplyToMsgId, Other]),
+                    msg_store_ds:stage(
+                        <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
+                        CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc)
             end
     end,
 
@@ -243,9 +256,13 @@ c2g_revoke_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-
-    % 更新本地消息状态为已撤销
-    % 这里可以添加数据库更新逻辑
+    AckPayload = Payload#{
+        <<"action">> => <<"message_revoke_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
+    persist_action_payload(OriginalMsgId, AckPayload),
     ok.
 
 %% 客户端编辑消息 for c2g
@@ -274,9 +291,13 @@ c2g_edit_ack(MsgId, CurrentUid, Data) ->
     NewContent = maps:get(<<"content">>, Payload),
     EditedAt = maps:get(<<"edited_at">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-
-    % 更新本地消息内容
-    % 这里可以添加数据库更新逻辑
+    AckPayload = Payload#{
+        <<"action">> => <<"message_edit_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
+    persist_action_payload(OriginalMsgId, AckPayload),
     ok.
 
 
@@ -297,7 +318,7 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
     ok = ?DEBUG_LOG([From, To, ToGID, CurrentUid, Data]),
 
     % 验证权限：只能操作自己发送的消息，且必须是群成员
-    case {CurrentUid =:= FromId, group_ds:is_member(ToGID, CurrentUid)} of
+    case {CurrentUid =:= FromId, group_ds:is_member(CurrentUid, ToGID)} of
         {true, true} ->
             %% 【新增】检查消息是否存在并验证时间限制
             OriginalMsgId = case ActionType of
@@ -475,4 +496,19 @@ extract_reply_info(Data) ->
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
+    end.
+
+%% @doc 持久化 action ack payload 到原消息记录
+%% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
+-spec persist_action_payload(binary(), map()) -> ok.
+persist_action_payload(<<>>, _Payload) ->
+    ok;
+persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
+    PayloadJson = imboy_message_helper:encode_json(Payload),
+    case msg_c2g_repo:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
+            ok
     end.

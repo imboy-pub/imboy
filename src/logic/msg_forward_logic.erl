@@ -59,7 +59,7 @@ do_forward(MsgIds, CurrentUid, ToId, ToType) ->
     % 验证目标权限
     case validate_target_permission(CurrentUid, ToId, ToType) of
         ok ->
-            forward_messages(MsgIds, CurrentUid, ToId, ToType, []);
+            forward_messages(MsgIds, CurrentUid, ToId, ToType, [], undefined);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -71,8 +71,8 @@ validate_target_permission(CurrentUid, ToId, <<"c2c">>) ->
     % 检查是否是好友
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
     case {IsFriend, InDenylist} of
-        {true, 0} -> ok;
-        {_, InDenylist2} when InDenylist2 > 0 ->
+        {true, false} -> ok;
+        {_, true} ->
             {error, {in_denylist, <<"对方在黑名单中"/utf8>>}};
         {false, _} ->
             {error, {not_friends, <<"还不是好友"/utf8>>}}
@@ -87,16 +87,19 @@ validate_target_permission(CurrentUid, ToId, <<"c2g">>) ->
 
 
 %% @doc 转发消息列表
--spec forward_messages([binary()], integer(), integer(), binary(), [binary()]) -> {ok, [binary()]} | {error, term()}.
-forward_messages([], _CurrentUid, _ToId, _ToType, Acc) ->
+-spec forward_messages([binary()], integer(), integer(), binary(), [binary()], term()) ->
+    {ok, [binary()]} | {error, term()}.
+forward_messages([], _CurrentUid, _ToId, _ToType, [], LastError) when LastError =/= undefined ->
+    {error, LastError};
+forward_messages([], _CurrentUid, _ToId, _ToType, Acc, _LastError) ->
     {ok, lists:reverse(Acc)};
-forward_messages([MsgId | Rest], CurrentUid, ToId, ToType, Acc) ->
+forward_messages([MsgId | Rest], CurrentUid, ToId, ToType, Acc, LastError) ->
     case forward_single_message(MsgId, CurrentUid, ToId, ToType) of
         {ok, ForwardMsgId} ->
-            forward_messages(Rest, CurrentUid, ToId, ToType, [ForwardMsgId | Acc]);
-        {error, _Reason} ->
-            % 继续转发下一条消息，记录失败
-            forward_messages(Rest, CurrentUid, ToId, ToType, Acc)
+            forward_messages(Rest, CurrentUid, ToId, ToType, [ForwardMsgId | Acc], LastError);
+        {error, Reason} ->
+            % 继续转发下一条消息，记录最后一个错误原因
+            forward_messages(Rest, CurrentUid, ToId, ToType, Acc, Reason)
     end.
 
 
@@ -156,9 +159,12 @@ validate_forward_permission(Msg, CurrentUid) ->
         {_, CurrentUid, _} ->
             % 用户是消息接收者（单聊）
             ok;
-        {_, _, CurrentUid} ->
-            % 用户是群聊成员
-            ok;
+        {_, _, GroupId} when is_integer(GroupId), GroupId > 0 ->
+            % 群聊消息需校验当前用户是否为群成员
+            case group_ds:is_member(CurrentUid, GroupId) of
+                true -> ok;
+                false -> {error, {permission_denied, <<"无权限转发该消息"/utf8>>}}
+            end;
         _ ->
             {error, {permission_denied, <<"无权限转发该消息"/utf8>>}}
     end.
@@ -171,55 +177,71 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     ForwardMsgId = imboy_hashid:uid(),
     NowMs = elib_dt:millisecond(),
 
-    % 构建转发消息数据
-    _MsgType = maps:get(<<"msg_type">>, OriginalMsg, <<"text">>),
+    % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
+    To = elib_hashids:encode(ToId),
+    ForwardData = #{
+        <<"to">> => To,
+        <<"payload">> => #{
+            <<"original_msg_id">> => OriginalMsgId,
+            <<"original_type">> => OriginalType
+        },
+        <<"msg_type">> => <<"forward">>,
+        <<"action">> => <<"forward">>,
+        <<"e2ee">> => <<>>,
+        <<"created_at">> => NowMs
+    },
+    OriginalFromId = maps:get(<<"from_id">>, OriginalMsg, 0),
+    OriginalToId = resolve_original_to_id(OriginalMsg),
 
     % 根据目标类型发送消息
     case ToType of
         <<"c2c">> ->
-            ForwardData = #{
-                <<"payload">> => #{
-                    <<"original_msg_id">> => OriginalMsgId,
-                    <<"original_type">> => OriginalType
-                },
-                <<"msg_type">> => <<"forward">>,
-                <<"action">> => <<"forward">>,
-                <<"e2ee">> => <<>>,
-                <<"created_at">> => NowMs
-            },
-            case msg_c2c_logic:c2c(ForwardMsgId, CurrentUid, ForwardData) of
+            case send_forward_message(<<"c2c">>, ForwardMsgId, CurrentUid, ForwardData) of
                 ok ->
                     % 保存转发记录
-                    OriginalFromId = maps:get(<<"from_id">>, OriginalMsg),
-                    OriginalToId = maps:get(<<"to_id">>, OriginalMsg, maps:get(<<"to_gid">>, OriginalMsg)),
                     ok = msg_forward_ds:save_forward_record(
                         OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
                         ForwardMsgId, CurrentUid, ToId, ToType),
                     {ok, ForwardMsgId};
-                {reply, _Msg} ->
-                    {ok, ForwardMsgId}
+                {error, Reason} ->
+                    {error, Reason}
             end;
         <<"c2g">> ->
-            ForwardData = #{
-                <<"payload">> => #{
-                    <<"original_msg_id">> => OriginalMsgId,
-                    <<"original_type">> => OriginalType
-                },
-                <<"msg_type">> => <<"forward">>,
-                <<"action">> => <<"forward">>,
-                <<"e2ee">> => <<>>,
-                <<"created_at">> => NowMs
-            },
-            case msg_c2g_logic:c2g(ForwardMsgId, CurrentUid, ForwardData) of
+            case send_forward_message(<<"c2g">>, ForwardMsgId, CurrentUid, ForwardData) of
                 ok ->
                     % 保存转发记录
-                    OriginalFromId = maps:get(<<"from_id">>, OriginalMsg),
-                    OriginalToId = maps:get(<<"to_id">>, OriginalMsg, maps:get(<<"to_gid">>, OriginalMsg)),
                     ok = msg_forward_ds:save_forward_record(
                         OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
                         ForwardMsgId, CurrentUid, ToId, ToType),
                     {ok, ForwardMsgId};
-                {reply, _Msg} ->
-                    {ok, ForwardMsgId}
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+
+%% @doc 发送转发消息并归一化返回值
+-spec send_forward_message(binary(), binary(), integer(), map()) -> ok | {error, term()}.
+send_forward_message(<<"c2c">>, MsgId, CurrentUid, ForwardData) ->
+    case msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData) of
+        ok -> ok;
+        {reply, ReplyMsg} -> {error, {forward_rejected, ReplyMsg}}
+    end;
+send_forward_message(<<"c2g">>, MsgId, CurrentUid, ForwardData) ->
+    case msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData) of
+        ok -> ok;
+        {reply, ReplyMsg} -> {error, {forward_rejected, ReplyMsg}}
+    end.
+
+
+%% @doc 获取原消息接收方ID
+-spec resolve_original_to_id(map()) -> integer().
+resolve_original_to_id(OriginalMsg) ->
+    case maps:find(<<"to_id">>, OriginalMsg) of
+        {ok, ToId} when is_integer(ToId) -> ToId;
+        _ ->
+            case maps:find(<<"to_gid">>, OriginalMsg) of
+                {ok, ToGid} when is_integer(ToGid) -> ToGid;
+                _ -> 0
             end
     end.
