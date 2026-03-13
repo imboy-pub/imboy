@@ -15,6 +15,7 @@
 %% ===================================================================
 
 create_schedule_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, insert, fun(_Data) ->
         {ok, 1001, #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>}}
@@ -25,8 +26,10 @@ create_schedule_success_test() ->
     meck:expect(group_schedule_repo, insert_remind, fun(_Data) ->
         {ok, 3001, #{<<"id">> => 3001}}
     end),
+    _ = catch meck:unload(elib_dt),
     meck:new(elib_dt, [passthrough, no_link]),
     meck:expect(elib_dt, now, fun() -> 1640995200000 end),
+    meck:expect(elib_dt, timestamp, fun() -> 1640995200000 end),
 
     Result = group_schedule_logic:create_schedule(
         123,        % GroupId
@@ -40,17 +43,26 @@ create_schedule_success_test() ->
         [789, 790]  % ParticipantIds
     ),
 
-    ?assertMatch({ok, #{schedule_id := <<"sched_123">>}}, Result),
+    ?assertMatch({ok, #{schedule_id := <<"sched_", _/binary>>}}, Result),
     meck:unload(elib_dt),
     meck:unload(group_schedule_repo).
 
 create_schedule_without_participants_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, insert, fun(_Data) ->
         {ok, 1001, #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>}}
     end),
+    meck:expect(group_schedule_repo, insert_participant, fun(_Data) ->
+        {ok, 2001, #{<<"id">> => 2001}}
+    end),
+    meck:expect(group_schedule_repo, insert_remind, fun(_Data) ->
+        {ok, 3001, #{<<"id">> => 3001}}
+    end),
+    _ = catch meck:unload(elib_dt),
     meck:new(elib_dt, [passthrough, no_link]),
     meck:expect(elib_dt, now, fun() -> 1640995200000 end),
+    meck:expect(elib_dt, timestamp, fun() -> 1640995200 end),
 
     Result = group_schedule_logic:create_schedule(
         123,        % GroupId
@@ -69,10 +81,15 @@ create_schedule_without_participants_test() ->
     meck:unload(group_schedule_repo).
 
 create_schedule_with_invalid_time_range_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, insert, fun(_Data) ->
         {error, {invalid_time_range, start_at, end_at}}
     end),
+    _ = catch meck:unload(elib_dt),
+    meck:new(elib_dt, [passthrough, no_link]),
+    meck:expect(elib_dt, now, fun() -> 1640995200000 end),
+    meck:expect(elib_dt, timestamp, fun() -> 1640995200000 end),
 
     Result = group_schedule_logic:create_schedule(
         123,        % GroupId
@@ -87,6 +104,7 @@ create_schedule_with_invalid_time_range_test() ->
     ),
 
     ?assertMatch({error, {invalid_time_range, _, _}}, Result),
+    meck:unload(elib_dt),
     meck:unload(group_schedule_repo).
 
 %% ===================================================================
@@ -94,9 +112,10 @@ create_schedule_with_invalid_time_range_test() ->
 %% ===================================================================
 
 update_schedule_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456}
+        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456, <<"status">> => 1}
     end),
     meck:expect(group_schedule_repo, update, fun(_Id, _Data) ->
         {ok, 1}
@@ -116,9 +135,10 @@ update_schedule_success_test() ->
     meck:unload(group_schedule_repo).
 
 update_schedule_unauthorized_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 789}
+        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 789, <<"status">> => 1}
     end),
 
     Result = group_schedule_logic:update_schedule(
@@ -135,6 +155,7 @@ update_schedule_unauthorized_test() ->
     meck:unload(group_schedule_repo).
 
 update_schedule_not_found_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         {error, not_found}
@@ -158,9 +179,10 @@ update_schedule_not_found_test() ->
 %% ===================================================================
 
 cancel_schedule_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456, status => 1}
+        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456, <<"status">> => 1}
     end),
     meck:expect(group_schedule_repo, update_status, fun(_Id, _Status) ->
         {ok, 1}
@@ -172,9 +194,10 @@ cancel_schedule_success_test() ->
     meck:unload(group_schedule_repo).
 
 cancel_schedule_already_cancelled_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456, status => 4}
+        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 456, <<"status">> => 4}
     end),
 
     Result = group_schedule_logic:cancel_schedule(<<"sched_123">>, 456),
@@ -183,9 +206,10 @@ cancel_schedule_already_cancelled_test() ->
     meck:unload(group_schedule_repo).
 
 cancel_schedule_unauthorized_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 789, status => 1}
+        #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"creator_id">> => 789, <<"status">> => 1}
     end),
 
     Result = group_schedule_logic:cancel_schedule(<<"sched_123">>, 456),
@@ -198,6 +222,7 @@ cancel_schedule_unauthorized_test() ->
 %% ===================================================================
 
 confirm_participation_accept_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, status => 1}
@@ -212,6 +237,7 @@ confirm_participation_accept_test() ->
     meck:unload(group_schedule_repo).
 
 confirm_participation_decline_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, status => 1}
@@ -226,6 +252,7 @@ confirm_participation_decline_test() ->
     meck:unload(group_schedule_repo).
 
 confirm_participation_schedule_not_found_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         {error, not_found}
@@ -241,6 +268,7 @@ confirm_participation_schedule_not_found_test() ->
 %% ===================================================================
 
 get_schedule_detail_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>, <<"title">> => <<"会议"/utf8>>}
@@ -258,6 +286,7 @@ get_schedule_detail_success_test() ->
     meck:unload(group_schedule_repo).
 
 get_schedule_detail_not_found_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
         {error, not_found}
@@ -273,12 +302,13 @@ get_schedule_detail_not_found_test() ->
 %% ===================================================================
 
 list_group_schedules_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
-    meck:expect(group_schedule_repo, list_by_group_id, fun(_GroupId, _Page, _Size) ->
+    meck:expect(group_schedule_repo, list_by_group_id, fun(_GroupId, undefined, undefined, _Page, _Size) ->
         {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
                #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}]}
     end),
-    meck:expect(group_schedule_repo, count_by_group_id, fun(_GroupId) ->
+    meck:expect(group_schedule_repo, count_by_group_id, fun(_GroupId, undefined, undefined) ->
         {ok, 10}
     end),
 
@@ -287,13 +317,35 @@ list_group_schedules_success_test() ->
     ?assertMatch({ok, #{list := [_, _], total := 10}}, Result),
     meck:unload(group_schedule_repo).
 
+list_group_schedules_with_time_filter_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:expect(group_schedule_repo, list_by_group_id, fun(123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>, 1, 20) ->
+        {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>}]}
+    end),
+    meck:expect(group_schedule_repo, count_by_group_id, fun(123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>) ->
+        {ok, 1}
+    end),
+
+    Result = group_schedule_logic:list_group_schedules(
+        123,
+        <<"2026-02-22T00:00:00Z">>,
+        <<"2026-02-23T00:00:00Z">>,
+        1,
+        20
+    ),
+
+    ?assertMatch({ok, #{list := [_], total := 1}}, Result),
+    meck:unload(group_schedule_repo).
+
 %% ===================================================================
 %% list_my_schedules/3 测试 - 查询我的日程
 %% ===================================================================
 
 list_my_schedules_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
-    meck:expect(group_schedule_repo, list_by_user_id, fun(_UserId, _Page, _Size) ->
+    meck:expect(group_schedule_repo, list_by_user_id, fun(_UserId, undefined, undefined, _Page, _Size) ->
         {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
                #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}]}
     end),
@@ -303,11 +355,30 @@ list_my_schedules_success_test() ->
     ?assertMatch({ok, [_, _]}, Result),
     meck:unload(group_schedule_repo).
 
+list_my_schedules_with_time_filter_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:expect(group_schedule_repo, list_by_user_id, fun(456, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>, 1, 20) ->
+        {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>}]}
+    end),
+
+    Result = group_schedule_logic:list_my_schedules(
+        456,
+        <<"2026-02-22T00:00:00Z">>,
+        <<"2026-02-23T00:00:00Z">>,
+        1,
+        20
+    ),
+
+    ?assertMatch({ok, [_]}, Result),
+    meck:unload(group_schedule_repo).
+
 %% ===================================================================
 %% process_reminders/0 测试 - 处理提醒
 %% ===================================================================
 
 process_reminders_success_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
         {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_123">>, <<"user_id">> => 789}]}
@@ -315,6 +386,10 @@ process_reminders_success_test() ->
     meck:expect(group_schedule_repo, update_remind_sent, fun(_Id) ->
         {ok, 1}
     end),
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
+        #{<<"title">> => <<"会议提醒"/utf8>>, <<"start_at">> => <<"2026-02-20T10:00:00Z">>}
+    end),
+    _ = catch meck:unload(msg_s2c_ds),
     meck:new(msg_s2c_ds, [passthrough, no_link]),
     meck:expect(msg_s2c_ds, send, fun(_From, _To, _Action, _MsgId, _Body, _Payload, _Save) ->
         ok
@@ -327,6 +402,7 @@ process_reminders_success_test() ->
     meck:unload(group_schedule_repo).
 
 process_reminders_empty_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
         {ok, []}
@@ -342,10 +418,15 @@ process_reminders_empty_test() ->
 %% ===================================================================
 
 create_schedule_with_empty_title_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, insert, fun(_Data) ->
         {error, {missing_field, title}}
     end),
+    _ = catch meck:unload(elib_dt),
+    meck:new(elib_dt, [passthrough, no_link]),
+    meck:expect(elib_dt, now, fun() -> 1640995200000 end),
+    meck:expect(elib_dt, timestamp, fun() -> 1640995200000 end),
 
     Result = group_schedule_logic:create_schedule(
         123, 456, <<>>, <<>>, <<>>,
@@ -355,9 +436,11 @@ create_schedule_with_empty_title_test() ->
     ),
 
     ?assertMatch({error, {missing_field, title}}, Result),
+    meck:unload(elib_dt),
     meck:unload(group_schedule_repo).
 
 create_schedule_with_too_many_participants_test() ->
+    _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),
     meck:expect(group_schedule_repo, insert, fun(_Data) ->
         {ok, 1001, #{<<"id">> => 1001, <<"schedule_id">> => <<"sched_123">>}}

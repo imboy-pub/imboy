@@ -1,26 +1,27 @@
 -module(elib_dt).
--dialyzer({nowarn_function, [add/2, minus/2]}).
+-dialyzer({nowarn_function, [add/2, minus/2, rfc3339_to/1, rfc3339_to/2]}).
 %%%
 % datetime 工具箱
 %%%
 
 -export([microsecond/0,
          millisecond/0,
-         second/0]).
+         second/0,
+         timestamp/0]).
 -export([utc/1]).
 
 -export([add/2, minus/2]).
 -export([compare_rfc3339/3]).
 -export([now/0, now/1]).
 -export([to_rfc3339/1, to_rfc3339/2, to_rfc3339/3]).
--export([rfc3339_to/1, rfc3339_to/2, datetime_to/2]).
--export([timezone_offset/1]).
+-export([rfc3339_to/1, rfc3339_to/2]).
+%% datetime_to/2 是内部函数，不导出
 
 %% @doc Add time duration to a datetime value
 %% @param Dt Datetime value (timestamp or RFC3339 string)
 %% @param Duration {Num, Unit} where Unit is minute | second | millisecond
 %% @returns New datetime value as RFC3339 binary
--spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, empty_input}.
+-spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, invalid_datetime}.
 % elib_dt:add(Dt, {10, minute}).
 % elib_dt:add(Dt, {600, second}).
 add(Dt, {Num, minute}) ->
@@ -41,7 +42,7 @@ add(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
 %% @param Dt Datetime value (timestamp or RFC3339 string)
 %% @param Duration {Num, Unit} where Unit is minute | second | millisecond
 %% @returns New datetime value as RFC3339 binary
--spec minus(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, term()}.
+-spec minus(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, invalid_datetime}.
 minus(Dt, {Num, minute}) ->
     minus(Dt, {Num * 60, second});
 minus(Dt, {Num, second}) ->
@@ -85,24 +86,15 @@ utc(millisecond) ->
 utc(second) ->
     erlang:system_time(second).
 
-%% 获取系统当前时区 （单位：秒）
-%% elib_dt:timezone_offset(second).
--spec timezone_offset(second) -> integer().
-timezone_offset(second) ->
-    %% 获取当前的UTC时间
-    UtcTime = calendar:universal_time(),
-    %% 将UTC时间转换为本地时间
-    LocalTime = calendar:local_time(),
-    %% 计算时差（单位为秒）
-    {Day,  T1} = calendar:time_difference(UtcTime, LocalTime),
-    TimeDiffSeconds = calendar:time_to_seconds(T1) + Day * 86400,
-    % TimeZoneOffset = -TimeDiffSeconds * 1000, % 计算与UTC相对于东西经180度的时区偏移量（单位：毫秒）
-    TimeDiffSeconds.
-
 %% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
 -spec second() -> integer().
 second() ->
     erlang:system_time(second).
+
+%% 兼容旧接口，返回毫秒级 Unix 时间戳。
+-spec timestamp() -> integer().
+timestamp() ->
+    millisecond().
 
 %% 返回毫秒
 %% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
@@ -246,7 +238,7 @@ datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
 rfc3339_to(Val) when is_integer(Val) ->
     Val;
 rfc3339_to(Val) when is_tuple(Val) ->
-    elib_dt:datetime_to(Val, millisecond);
+    datetime_to(Val, millisecond);
 rfc3339_to(Val) when is_list(Val); is_binary(Val) ->
     case elib_type:is_numeric(Val) of
         true ->

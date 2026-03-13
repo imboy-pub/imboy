@@ -1,371 +1,371 @@
 -module(group_schedule_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
+-include("eunit_setup.hrl").
+-include("error_code.hrl").
 
 %%%===================================================================
 %%% @doc
-%%% group_schedule_handler 模块的 EUnit 测试
-%%%
-%%% 目标：验证群组日程 API 处理器功能
-%%% 覆盖：创建、修改、取消、查询日程、参与确认
+%%% group_schedule_handler 参数校验与错误码回归测试
 %%%===================================================================
 
-%% 导入 cowboy_req_h 用于测试
-
-%% ===================================================================
-%% create/2 测试 - 创建日程
-%% ===================================================================
-
-create_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, create_schedule, fun(_GroupId, _CreatorId, _Title, _Desc, _Loc, _Start, _End, _Remind, _Participants) ->
-        {ok, #{schedule_id => <<"sched_123">>}}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"group_id">> => <<"M123">>,
-          <<"title">> => <<"团队会议"/utf8>>,
-          <<"description">> => <<"讨论项目"/utf8>>,
-          <<"location">> => <<"会议室A"/utf8>>,
-          <<"start_at">> => <<"2026-02-20T10:00:00Z">>,
-          <<"end_at">> => <<"2026-02-20T11:00:00Z">>,
-          <<"remind_before">> => 15,
-          <<"participant_ids">> => [<<"M456">>, <<"M789">>]}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:create(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-create_missing_required_field_test() ->
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"title">> => <<"会议"/utf8>>}
-        % 缺少 group_id
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:create(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param).
-
-create_invalid_time_range_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, create_schedule, fun(_GroupId, _CreatorId, _Title, _Desc, _Loc, _Start, _End, _Remind, _Participants) ->
-        {error, {invalid_time_range, start_at, end_at}}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"group_id">> => <<"M123">>,
-          <<"title">> => <<"会议"/utf8>>,
-          <<"start_at">> => <<"2026-02-20T11:00:00Z">>,
-          <<"end_at">> => <<"2026-02-20T10:00:00Z">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:create(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% update/2 测试 - 修改日程
-%% ===================================================================
-
-update_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, update_schedule, fun(_ScheduleId, _CreatorId, _Title, _Desc, _Loc, _Start, _End) ->
-        ok
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>,
-          <<"title">> => <<"更新后的会议"/utf8>>,
-          <<"description">> => <<"新描述"/utf8>>,
-          <<"location">> => <<"会议室B"/utf8>>,
-          <<"start_at">> => <<"2026-02-20T10:30:00Z">>,
-          <<"end_at">> => <<"2026-02-20T11:30:00Z">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:update(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-update_unauthorized_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, update_schedule, fun(_ScheduleId, _CreatorId, _Title, _Desc, _Loc, _Start, _End) ->
-        {error, unauthorized}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>,
-          <<"title">> => <<"更新后的会议"/utf8>>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:update(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% cancel/2 测试 - 取消日程
-%% ===================================================================
-
-cancel_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, cancel_schedule, fun(_ScheduleId, _CreatorId) ->
-        ok
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:cancel(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-cancel_already_cancelled_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, cancel_schedule, fun(_ScheduleId, _CreatorId) ->
-        {error, already_cancelled}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:cancel(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% detail/2 测试 - 查询日程详情
-%% ===================================================================
-
-detail_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, get_schedule_detail, fun(_ScheduleId) ->
-        {ok, #{
-            schedule => #{schedule_id => <<"sched_123">>, title => <<"会议"/utf8>>},
-            participants => [#{user_id => 456, status => 1}],
-            participant_count => 1
-        }}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, query, fun(_Req) ->
-        #{schedule_id => <<"sched_123">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"GET">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:detail(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-detail_not_found_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, get_schedule_detail, fun(_ScheduleId) ->
-        {error, schedule_not_found}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, query, fun(_Req) ->
-        #{schedule_id => <<"sched_not_exist">>}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"GET">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:detail(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% list/2 测试 - 查询群组日程列表
-%% ===================================================================
-
-list_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, list_group_schedules, fun(_GroupId, _Page, _Size) ->
-        {ok, #{
-            list => [#{schedule_id => <<"sched_123">>, title => <<"会议1"/utf8>>}],
-            total => 10,
-            page => 1,
-            size => 20
-        }}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, query, fun(_Req) ->
-        #{group_id => <<"M123">>, page => 1, size => 20}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"GET">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:list(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% my_list/2 测试 - 查询我的日程
-%% ===================================================================
-
-my_list_success_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, list_my_schedules, fun(_UserId, _Page, _Size) ->
-        {ok, [#{schedule_id => <<"sched_123">>, title => <<"会议1"/utf8>>}]}
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, page, fun(_Req) ->
-        {1, 20}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"GET">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:my_list(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% confirm/2 测试 - 确认参与
-%% ===================================================================
-
-confirm_accept_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, confirm_participation, fun(_ScheduleId, _UserId, _Accept) ->
-        ok
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>, <<"accept">> => true}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:confirm(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-confirm_decline_test() ->
-    meck:new(group_schedule_logic, [passthrough, no_link]),
-    meck:expect(group_schedule_logic, confirm_participation, fun(_ScheduleId, _UserId, _Accept) ->
-        ok
-    end),
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        #{<<"schedule_id">> => <<"sched_123">>, <<"accept">> => false}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, success, fun(_Req, _Data, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:confirm(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param),
-    meck:unload(group_schedule_logic).
-
-%% ===================================================================
-%% 边界条件测试
-%% ===================================================================
-
-create_with_too_long_title_test() ->
-    meck:new(elib_param, [passthrough, no_link]),
-    meck:expect(elib_param, post, fun(_Req) ->
-        LongTitle = binary:copy(<<"测"/utf8>>, 100),
-        #{<<"group_id">> => <<"M123">>,
-          <<"title">> => LongTitle}
-    end),
-    meck:new(elib_response, [passthrough, no_link]),
-    meck:expect(elib_response, error, fun(_Req, _Msg) -> cowboy_req_h:new() end),
-
-    Req = cowboy_req_h:new(#{method => <<"POST">>}),
-    State = #{current_uid => 123},
-
-    Result = group_schedule_handler:create(Req, State),
-
-    ?assert(cowboy_req_h:is_valid(Result)),
-    meck:unload(elib_response),
-    meck:unload(elib_param).
+init_create_missing_group_id_returns_bad_request_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"title">> => <<"周会"/utf8>>,
+                    <<"start_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"end_at">> => <<"2026-02-22T11:00:00Z">>
+                }
+            end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
+        ?assertEqual(req_error, Req1),
+        ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
+    end).
+
+init_create_invalid_time_range_returns_bad_request_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"group_id">> => <<"gid_9">>,
+                    <<"title">> => <<"周会"/utf8>>,
+                    <<"start_at">> => <<"2026-02-22T11:00:00Z">>,
+                    <<"end_at">> => <<"2026-02-22T10:00:00Z">>
+                }
+            end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(_Any) -> 9 end}
+        ]},
+        {group_schedule_logic, [
+            {'create_schedule', 9, fun(_GroupId, _Uid, _Title, _Desc, _Loc, _StartAt, _EndAt, _Remind, _Participants) ->
+                {error, {invalid_time_range, start_at, end_at}}
+            end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
+        ?assertEqual(req_error, Req1),
+        ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
+    end).
+
+init_create_epoch_time_compatible_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"group_id">> => <<"gid_9">>,
+                    <<"title">> => <<"周会"/utf8>>,
+                    <<"start_at">> => 1700000000,
+                    <<"end_at">> => 1700003600
+                }
+            end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(_Any) -> 9 end}
+        ]},
+        {group_schedule_logic, [
+            {'create_schedule', 9, fun(9, 300, _Title, _Desc, _Loc, StartAt, EndAt, _Remind, _Participants) ->
+                ?assert(is_binary(StartAt)),
+                ?assert(is_binary(EndAt)),
+                {ok, #{schedule_id => <<"sched_9">>}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Payload, _Msg) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_update_unauthorized_returns_forbidden_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"schedule_id">> => <<"sch_1">>,
+                    <<"title">> => <<"更新会议"/utf8>>,
+                    <<"start_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"end_at">> => <<"2026-02-22T11:00:00Z">>
+                }
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'update_schedule', 7, fun(_ScheduleId, _Uid, _Title, _Desc, _Loc, _StartAt, _EndAt) ->
+                {error, unauthorized}
+            end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => update, current_uid => 300}),
+        ?assertEqual(req_error, Req1),
+        ?assertEqual(?ERR_FORBIDDEN, receive_resp_code())
+    end).
+
+init_update_numeric_schedule_id_compatible_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"schedule_id">> => 77,
+                    <<"title">> => <<"更新会议"/utf8>>,
+                    <<"start_at">> => 1700000000,
+                    <<"end_at">> => 1700003600
+                }
+            end}
+        ]},
+        {group_schedule_repo, [
+            {'find_by_id', 2, fun(77, <<"schedule_id">>) ->
+                #{<<"schedule_id">> => <<"sched_77">>}
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'update_schedule', 7, fun(<<"sched_77">>, 300, _Title, _Desc, _Loc, StartAt, EndAt) ->
+                ?assert(is_binary(StartAt)),
+                ?assert(is_binary(EndAt)),
+                ok
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Payload, _Msg) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => update, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_cancel_numeric_schedule_id_compatible_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"schedule_id">> => 88
+                }
+            end}
+        ]},
+        {group_schedule_repo, [
+            {'find_by_id', 2, fun(88, <<"schedule_id">>) ->
+                #{<<"schedule_id">> => <<"sched_88">>}
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'cancel_schedule', 2, fun(<<"sched_88">>, 300) ->
+                ok
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Payload, _Msg) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => cancel, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_confirm_participant_not_found_returns_forbidden_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"schedule_id">> => <<"sch_2">>,
+                    <<"accept">> => true
+                }
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'confirm_participation', 3, fun(_ScheduleId, _Uid, _Accept) ->
+                {error, participant_not_found}
+            end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => confirm, current_uid => 300}),
+        ?assertEqual(req_error, Req1),
+        ?assertEqual(?ERR_FORBIDDEN, receive_resp_code())
+    end).
+
+init_confirm_numeric_schedule_id_compatible_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"schedule_id">> => 99,
+                    <<"accept">> => <<"0">>
+                }
+            end}
+        ]},
+        {group_schedule_repo, [
+            {'find_by_id', 2, fun(99, <<"schedule_id">>) ->
+                #{<<"schedule_id">> => <<"sched_99">>}
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'confirm_participation', 3, fun(<<"sched_99">>, 300, false) ->
+                ok
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, _Payload, _Msg) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => confirm, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_detail_missing_schedule_id_returns_bad_request_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) -> [] end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => detail, current_uid => 300}),
+        ?assertEqual(req_error, Req1),
+        ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
+    end).
+
+init_detail_hashid_schedule_id_compatible_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"hash_66">>}] end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(<<"hash_66">>) -> 66 end}
+        ]},
+        {group_schedule_repo, [
+            {'find_by_id', 2, fun(66, <<"schedule_id">>) ->
+                #{<<"schedule_id">> => <<"sched_66">>}
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'get_schedule_detail', 1, fun(<<"sched_66">>) ->
+                {ok, #{schedule => #{<<"schedule_id">> => <<"sched_66">>}}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, _Payload) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => detail, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_list_with_time_range_query_compatible_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) ->
+                [
+                    {<<"group_id">>, <<"gid_9">>},
+                    {<<"start_at">>, <<"1700000000">>},
+                    {<<"end_at">>, <<"1700003600">>},
+                    {<<"page">>, <<"1">>},
+                    {<<"size">>, <<"20">>}
+                ]
+            end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(<<"gid_9">>) -> 9 end}
+        ]},
+        {elib_param, [
+            {'int', 3, fun
+                (page, _Qs, 1) -> 1;
+                (size, _Qs, 20) -> 20
+            end}
+        ]},
+        {group_schedule_logic, [
+            {'list_group_schedules', 5, fun(9, StartAt, EndAt, 1, 20) ->
+                ?assert(is_binary(StartAt)),
+                ?assert(is_binary(EndAt)),
+                {ok, #{list => [], total => 0, page => 1, size => 20}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, _Payload) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => list, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+init_my_list_with_time_range_query_compatible_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) ->
+                [
+                    {<<"start_at">>, <<"1700000000">>},
+                    {<<"end_at">>, <<"1700003600">>},
+                    {<<"page">>, <<"1">>},
+                    {<<"size">>, <<"20">>}
+                ]
+            end}
+        ]},
+        {elib_param, [
+            {'page', 1, fun(_Req) -> {1, 20} end}
+        ]},
+        {group_schedule_logic, [
+            {'list_my_schedules', 5, fun(300, StartAt, EndAt, 1, 20) ->
+                ?assert(is_binary(StartAt)),
+                ?assert(is_binary(EndAt)),
+                {ok, []}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, _Payload) ->
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => my_list, current_uid => 300}),
+        ?assertEqual(req_ok, Req1)
+    end).
+
+req_mock() ->
+    #{mock_req => true}.
+
+receive_resp_code() ->
+    receive
+        {resp_code, Code} -> Code
+    after 1000 ->
+        timeout
+    end.

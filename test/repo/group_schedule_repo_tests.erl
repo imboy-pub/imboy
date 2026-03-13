@@ -15,6 +15,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:tablename(),
     ?assertEqual(<<"public.group_schedule">>, Result).
 
@@ -23,11 +24,13 @@ tablename_returns_correct_table_test() ->
 %% ===================================================================
 
 insert_success_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     meck:new(elib_pg_sql, [passthrough, no_link]),
     meck:expect(elib_pg_sql, public_tablename, fun(_Table) -> <<"public.group_schedule">> end),
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
-        {ok, 1001, #{<<"id">> => 1001}}
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
+        {ok, [], [#{<<"id">> => 1001}]}
     end),
     Data = #{
         group_id => 123,
@@ -47,10 +50,12 @@ insert_success_test() ->
     meck:unload(elib_pg_sql).
 
 insert_with_missing_required_field_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     meck:new(elib_pg_sql, [passthrough, no_link]),
     meck:expect(elib_pg_sql, public_tablename, fun(_Table) -> <<"public.group_schedule">> end),
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
         {error, {missing_field, group_id}}
     end),
     Data = #{title => <<"日程标题"/utf8>>},
@@ -64,6 +69,7 @@ insert_with_missing_required_field_test() ->
 %% ===================================================================
 
 update_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, update, fun(_Table, _Data, _Where, _Params) ->
         {ok, 1}
@@ -74,6 +80,7 @@ update_success_test() ->
     meck:unload(elib_pg).
 
 update_not_found_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, update, fun(_Table, _Data, _Where, _Params) ->
         {ok, 0}
@@ -88,6 +95,7 @@ update_not_found_test() ->
 %% ===================================================================
 
 find_by_id_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
         {ok, #{<<"id">> => 1001,
@@ -99,6 +107,7 @@ find_by_id_success_test() ->
     meck:unload(elib_pg).
 
 find_by_id_not_found_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
         {error, not_found}
@@ -112,6 +121,7 @@ find_by_id_not_found_test() ->
 %% ===================================================================
 
 find_by_schedule_id_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
         {ok, #{<<"id">> => 1001,
@@ -123,6 +133,7 @@ find_by_schedule_id_success_test() ->
     meck:unload(elib_pg).
 
 find_by_schedule_id_not_found_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
         {error, not_found}
@@ -136,6 +147,7 @@ find_by_schedule_id_not_found_test() ->
 %% ===================================================================
 
 list_by_group_id_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
         {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
@@ -146,6 +158,7 @@ list_by_group_id_success_test() ->
     meck:unload(elib_pg).
 
 list_by_group_id_empty_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
         {ok, []}
@@ -154,13 +167,37 @@ list_by_group_id_empty_test() ->
     ?assertEqual({ok, []}, Result),
     meck:unload(elib_pg).
 
+list_by_group_id_with_time_filter_test() ->
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"end_at >= $2">>)),
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"start_at <= $3">>)),
+        {ok, []}
+    end),
+    Result = group_schedule_repo:list_by_group_id(
+        123,
+        <<"2026-02-22T00:00:00Z">>,
+        <<"2026-02-23T00:00:00Z">>,
+        1,
+        20
+    ),
+    ?assertEqual({ok, []}, Result),
+    meck:unload(elib_pg).
+
 %% ===================================================================
 %% list_by_user_id/4 测试 - 查询用户参与的日程
 %% ===================================================================
 
 list_by_user_id_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) ->
+    meck:expect(elib_pg, query, fun(Sql, [456]) ->
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"INNER JOIN">>)),
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE p.user_id = $1">>)),
+        {JoinPos, _} = binary:match(Sql, <<"INNER JOIN">>),
+        {WherePos, _} = binary:match(Sql, <<"WHERE p.user_id = $1">>),
+        ?assert(JoinPos < WherePos),
         {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
                #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}]}
     end),
@@ -168,11 +205,30 @@ list_by_user_id_success_test() ->
     ?assertMatch({ok, [_, _]}, Result),
     meck:unload(elib_pg).
 
+list_by_user_id_with_time_filter_test() ->
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(Sql, [456, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"gs.end_at >= $2">>)),
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"gs.start_at <= $3">>)),
+        {ok, []}
+    end),
+    Result = group_schedule_repo:list_by_user_id(
+        456,
+        <<"2026-02-22T00:00:00Z">>,
+        <<"2026-02-23T00:00:00Z">>,
+        1,
+        20
+    ),
+    ?assertEqual({ok, []}, Result),
+    meck:unload(elib_pg).
+
 %% ===================================================================
 %% update_status/2 测试 - 更新日程状态
 %% ===================================================================
 
 update_status_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, update, fun(_Table, _Data, _Where, _Params) ->
         {ok, 1}
@@ -181,18 +237,36 @@ update_status_success_test() ->
     ?assertEqual({ok, 1}, Result),
     meck:unload(elib_pg).
 
+count_by_group_id_with_time_filter_test() ->
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, one, fun(Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"end_at >= $2">>)),
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"start_at <= $3">>)),
+        {ok, #{<<"count">> => 2}}
+    end),
+    Result = group_schedule_repo:count_by_group_id(
+        123,
+        <<"2026-02-22T00:00:00Z">>,
+        <<"2026-02-23T00:00:00Z">>
+    ),
+    ?assertEqual({ok, 2}, Result),
+    meck:unload(elib_pg).
+
 %% ===================================================================
 %% Participant 表测试
 %% ===================================================================
 
 participant_tablename_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:participant_tablename(),
     ?assertEqual(<<"public.group_schedule_participant">>, Result).
 
 insert_participant_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
-        {ok, 2001, #{<<"id">> => 2001}}
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
+        {ok, [], [#{<<"id">> => 2001}]}
     end),
     Data = #{
         schedule_id => <<"sched_123">>,
@@ -204,6 +278,7 @@ insert_participant_success_test() ->
     meck:unload(elib_pg).
 
 update_participant_status_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, update, fun(_Table, _Data, _Where, _Params) ->
         {ok, 1}
@@ -213,6 +288,7 @@ update_participant_status_test() ->
     meck:unload(elib_pg).
 
 list_participants_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
         {ok, [#{<<"user_id">> => 789, <<"status">> => 1},
@@ -227,13 +303,15 @@ list_participants_success_test() ->
 %% ===================================================================
 
 remind_tablename_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:remind_tablename(),
     ?assertEqual(<<"public.group_schedule_remind">>, Result).
 
 insert_remind_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
-        {ok, 3001, #{<<"id">> => 3001}}
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
+        {ok, [], [#{<<"id">> => 3001}]}
     end),
     Data = #{
         schedule_id => <<"sched_123">>,
@@ -246,6 +324,7 @@ insert_remind_success_test() ->
     meck:unload(elib_pg).
 
 list_pending_reminds_success_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
         {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_123">>}]}
@@ -255,6 +334,7 @@ list_pending_reminds_success_test() ->
     meck:unload(elib_pg).
 
 update_remind_sent_test() ->
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, update, fun(_Table, _Data, _Where, _Params) ->
         {ok, 1}
@@ -268,10 +348,12 @@ update_remind_sent_test() ->
 %% ===================================================================
 
 insert_with_empty_title_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     meck:new(elib_pg_sql, [passthrough, no_link]),
     meck:expect(elib_pg_sql, public_tablename, fun(_Table) -> <<"public.group_schedule">> end),
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
         {error, {invalid_field, title}}
     end),
     Data = #{
@@ -279,15 +361,17 @@ insert_with_empty_title_test() ->
         title => <<>>
     },
     Result = group_schedule_repo:insert(Data),
-    ?assertMatch({error, {invalid_field, _}}, Result),
+    ?assertMatch({error, {missing_field, title}}, Result),
     meck:unload(elib_pg),
     meck:unload(elib_pg_sql).
 
 insert_with_invalid_time_range_test() ->
+    _ = catch meck:unload(elib_pg_sql),
     meck:new(elib_pg_sql, [passthrough, no_link]),
     meck:expect(elib_pg_sql, public_tablename, fun(_Table) -> <<"public.group_schedule">> end),
+    _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Conn, _Table, _Data, _Returning) ->
+    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
         {error, {invalid_time_range, start_at, end_at}}
     end),
     Data = #{

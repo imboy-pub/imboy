@@ -13,7 +13,9 @@
 -export([cancel_schedule/2]).
 -export([get_schedule_detail/1]).
 -export([list_group_schedules/3]).
+-export([list_group_schedules/5]).
 -export([list_my_schedules/3]).
+-export([list_my_schedules/5]).
 
 %% 参与人管理
 -export([confirm_participation/3]).
@@ -191,9 +193,15 @@ get_schedule_detail(ScheduleId) ->
 -spec list_group_schedules(integer(), integer(), integer()) ->
     {ok, map()} | {error, term()}.
 list_group_schedules(GroupId, Page, Size) ->
-    case group_schedule_repo:list_by_group_id(GroupId, Page, Size) of
+    list_group_schedules(GroupId, undefined, undefined, Page, Size).
+
+%% @doc 查询群组日程列表（支持时间窗口）
+-spec list_group_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+    {ok, map()} | {error, term()}.
+list_group_schedules(GroupId, StartAt, EndAt, Page, Size) ->
+    case group_schedule_repo:list_by_group_id(GroupId, StartAt, EndAt, Page, Size) of
         {ok, List} ->
-            {ok, Count} = group_schedule_repo:count_by_group_id(GroupId),
+            {ok, Count} = group_schedule_repo:count_by_group_id(GroupId, StartAt, EndAt),
             {ok, #{
                 list => [schedule_transfer(S) || S <- List],
                 total => Count,
@@ -208,7 +216,13 @@ list_group_schedules(GroupId, Page, Size) ->
 -spec list_my_schedules(integer(), integer(), integer()) ->
     {ok, list(map())} | {error, term()}.
 list_my_schedules(UserId, Page, Size) ->
-    case group_schedule_repo:list_by_user_id(UserId, Page, Size) of
+    list_my_schedules(UserId, undefined, undefined, Page, Size).
+
+%% @doc 查询我的日程列表（支持时间窗口）
+-spec list_my_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
+list_my_schedules(UserId, StartAt, EndAt, Page, Size) ->
+    case group_schedule_repo:list_by_user_id(UserId, StartAt, EndAt, Page, Size) of
         {ok, List} ->
             {ok, [schedule_transfer(S) || S <- List]};
         {error, Reason} ->
@@ -293,12 +307,12 @@ schedule_reminders(ScheduleId, StartAt, RemindBefore, UserIds) ->
         0 ->
             ok;
         _ ->
-            Now = elib_dt:now(),
+            NowTs = elib_dt:rfc3339_to(elib_dt:now()),
             StartTs = elib_dt:rfc3339_to(StartAt),
             RemindTs = StartTs - (RemindBefore * 60 * 1000),
 
             % 只为未来的日程创建提醒
-            case RemindTs > Now of
+            case is_integer(NowTs) andalso RemindTs > NowTs of
                 true ->
                     RemindAt = elib_dt:to_rfc3339(RemindTs),
                     create_remind_records(ScheduleId, UserIds, RemindAt);
