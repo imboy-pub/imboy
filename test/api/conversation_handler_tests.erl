@@ -1,287 +1,197 @@
 -module(conversation_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("error_code.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% conversation_handler 模块的 EUnit 测试
-%%%
-%%% 目标：验证会话处理器功能
-%%%===================================================================
+req_mock() -> req.
 
-%% ===================================================================
-%% Handler 功能测试
-%% ===================================================================
+ensure_imboy_loaded() ->
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok;
+        {error, {already_loaded, _}} -> ok;
+        _ -> ok
+    end.
 
-%% @doc 测试在线状态查询功能 - 默认格式
-online_default_test_() ->
-    ?WITH_MOCKS([
-        {application, [
-            {'get_key', 2, fun(_App, _Key) ->
-                {ok, <<"0.7.2">>}
-            end}
+online_list_action_success_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) -> [{<<"type">>, <<"list">>}, {<<"limit">>, <<"3">>}] end}
         ]},
         {imboy_syn, [
-            {'count_user', 0, fun() ->
-                150  % 在线用户数
-            end},
-            {'count', 0, fun() ->
-                320  % 在线设备数
-            end}
-        ]},
-        {elib_response, [
-            {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 GET 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<>>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{action => online}),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
-    end).
-
-%% @doc 测试在线状态查询功能 - 列表格式
-online_list_test_() ->
-    ?WITH_MOCKS([
-        {application, [
-            {'get_key', 2, fun(_App, _Key) ->
-                {ok, <<"0.7.2">>}
-            end}
-        ]},
-        {imboy_syn, [
-            {'count_user', 0, fun() ->
-                150
-            end},
-            {'count', 0, fun() ->
-                320
-            end},
-            {'list_by_limit', 1, fun(_Limit) ->
+            {'count_user', 0, fun() -> 12 end},
+            {'count', 0, fun() -> 20 end},
+            {'list_by_limit', 1, fun(3) ->
                 [
-                    {{12345, self()}, {device_type, device_id_123}, 1640329200000000000, ref1, node@host},
-                    {{67890, self()}, {device_type, device_id_456}, 1640329300000000000, ref2, node@host}
+                    {{1001, self()}, {ios, <<"did_1">>}, 1700000000, ref1, node()},
+                    {{1002, self()}, {android, <<"did_2">>}, 1700000001, ref2, node()}
                 ]
             end}
         ]},
         {elib_dt, [
-            {'to_rfc3339', 2, fun(_Nano, _Unit) ->
-                "2021-12-24T10:00:00Z"
-            end}
+            {'to_rfc3339', 1, fun(_Nano) -> <<"2026-02-24T00:00:00Z">> end}
         ]},
         {elib_response, [
-            {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
+            {'success', 3, fun(_Req, Data, _Msg) ->
+                self() ! {resp_data, Data},
+                req_ok
             end}
         ]}
     ], fun() ->
-        % 模拟一个 GET 请求（列表格式）
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"type=list&limit=5">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{action => online}),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        ensure_imboy_loaded(),
+        {ok, Req, State} = conversation_handler:init(req_mock(), #{action => online, current_uid => 100}),
+        ?assertEqual(req_ok, Req),
+        ?assertEqual(#{current_uid => 100}, State),
+        Data = receive
+            {resp_data, D} -> D
+        after 1000 ->
+            timeout
+        end,
+        ?assertNotEqual(timeout, Data),
+        ?assertEqual(2, length(Data))
     end).
 
-%% @doc 测试我的消息功能
-mine_test_() ->
-    ?WITH_MOCKS([
+mine_action_returns_server_authoritative_conversation_list_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) -> [{<<"last_server_ts">>, <<"1700000000">>}] end}
+        ]},
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 100 end}
+        ]},
         {msg_c2c_ds, [
-            {'read_msg', 3, fun(_UserId, _Limit, _LastServerTS) ->
+            {'read_msg', 3, fun(100, 1000, <<"1700000000">>) ->
                 [
-                    [
-                        {<<"id">>, 1001},
-                        {<<"payload">>, <<"{\"from_uid\":12345,\"to_uid\":67890,\"content\":\"Hello\",\"msg_type\":1,\"created_at\":\"2025-12-24T10:00:00Z\"}">>}
-                    ],
-                    [
-                        {<<"id">>, 1002},
-                        {<<"payload">>, <<"{\"from_uid\":67890,\"to_uid\":12345,\"content\":\"Hi there\",\"msg_type\":1,\"created_at\":\"2025-12-24T10:01:00Z\"}">>}
-                    ]
+                    #{
+                        <<"from_id">> => 2001,
+                        <<"payload">> => <<"{\"content\":\"hello\"}">>,
+                        <<"msg_id">> => <<"m-c2c-1">>,
+                        <<"server_ts">> => 1700000000123
+                    }
                 ]
             end}
         ]},
-        {jsone, [
-            {'decode', 2, fun(Json, _Options) ->
-                case Json of
-                    <<"{\"from_uid\":12345,\"to_uid\":67890,\"content\":\"Hello\",\"msg_type\":1,\"created_at\":\"2025-12-24T10:00:00Z\"}">> ->
-                        [{<<"from_uid">>, 12345}, {<<"to_uid">>, 67890}, {<<"content">>, <<"Hello">>}, {<<"msg_type">>, 1}, {<<"created_at">>, <<"2025-12-24T10:00:00Z">>}];
-                    <<"{\"from_uid\":67890,\"to_uid\":12345,\"content\":\"Hi there\",\"msg_type\":1,\"created_at\":\"2025-12-24T10:01:00Z\"}">> ->
-                        [{<<"from_uid">>, 67890}, {<<"to_uid">>, 12345}, {<<"content">>, <<"Hi there">>}, {<<"msg_type">>, 1}, {<<"created_at">>, <<"2025-12-24T10:01:00Z">>}]
-                end
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 GET 请求
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"last_server_ts=1640329200">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{
-            action => mine,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
-    end).
-
-%% @doc 测试我的消息功能 - 无新消息
-mine_no_messages_test_() ->
-    ?WITH_MOCKS([
-        {msg_c2c_ds, [
-            {'read_msg', 3, fun(_UserId, _Limit, _LastServerTS) ->
-                []  % 无新消息
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟一个 GET 请求（无新消息）
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"last_server_ts=1640329200">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{
-            action => mine,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
-    end).
-
-%% @doc 测试我的消息功能 - 指定时间戳
-mine_with_timestamp_test_() ->
-    ?WITH_MOCKS([
-        {msg_c2c_ds, [
-            {'read_msg', 3, fun(_UserId, _Limit, LastServerTS) ->
-                % 验证传递的时间戳参数
-                ?assertEqual(<<"1640329200">>, LastServerTS),
+        {msg_c2g_ds, [
+            {'read_msg', 3, fun(100, 1000, <<"1700000000">>) ->
                 [
-                    [
-                        {<<"id">>, 1003},
-                        {<<"payload">>, <<"{\"from_uid\":11111,\"to_uid\":12345,\"content\":\"New message\",\"msg_type\":1,\"created_at\":\"2025-12-24T10:02:00Z\"}">>}
-                    ]
+                    #{
+                        <<"to_id">> => 3001,
+                        <<"payload">> => <<"{\"content\":\"group-hi\"}">>,
+                        <<"msg_id">> => <<"m-c2g-1">>,
+                        <<"server_ts">> => 1700000000222
+                    }
                 ]
             end}
         ]},
-        {jsone, [
-            {'decode', 2, fun(_Json, _Options) ->
-                [{<<"from_uid">>, 11111}, {<<"to_uid">>, 12345}, {<<"content">>, <<"New message">>}, {<<"msg_type">>, 1}, {<<"created_at">>, <<"2025-12-24T10:02:00Z">>}]
+        {conversation_delete_ds, [
+            {'get_deleted_conversations', 1, fun(100) -> {ok, []} end}
+        ]},
+        {conversation_pin_logic, [
+            {'is_pinned', 3, fun(100, _ConversationId, _Type) -> false end}
+        ]},
+        {elib_hashids, [
+            {'encode', 1, fun
+                (2001) -> <<"gdwqa5">>;
+                (3001) -> <<"grp001">>;
+                (Any) -> erlang:integer_to_binary(Any)
             end}
         ]},
         {elib_response, [
-            {'success', 3, fun(_Req, _Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
+            {'success', 2, fun(_Req, Data) ->
+                self() ! {resp_data, Data},
+                req_ok
             end}
         ]}
     ], fun() ->
-        % 模拟一个 GET 请求（指定时间戳）
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"last_server_ts=1640329200">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{
-            action => mine,
-            current_uid => 12345
-        }),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        {ok, Req, _State} = conversation_handler:init(req_mock(), #{action => mine, current_uid => 100}),
+        ?assertEqual(req_ok, Req),
+        Data = receive
+            {resp_data, D} -> D
+        after 1000 ->
+            timeout
+        end,
+        ?assertNotEqual(timeout, Data),
+        ?assertEqual(2, length(Data)),
+        [FirstItem | _] = Data,
+        ?assertEqual(<<"grp001">>, maps:get(<<"conversation_id">>, FirstItem)),
+        ?assertEqual(<<"c2g">>, maps:get(<<"conversation_type">>, FirstItem)),
+        LastMsg = maps:get(<<"last_msg">>, FirstItem),
+        ?assertEqual(<<"group-hi">>, maps:get(<<"content">>, LastMsg))
     end).
 
-%% @doc 测试在线状态查询功能 - 限制数量
-online_with_limit_test_() ->
-    ?WITH_MOCKS([
-        {application, [
-            {'get_key', 2, fun(_App, _Key) ->
-                {ok, <<"0.7.2">>}
+delete_conversation_success_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'read_body', 1, fun(_Req) ->
+                {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
             end}
         ]},
-        {imboy_syn, [
-            {'count_user', 0, fun() ->
-                150
-            end},
-            {'count', 0, fun() ->
-                320
-            end},
-            {'list_by_limit', 1, fun(Limit) ->
-                % 验证限制数量参数
-                ?assertEqual(3, Limit),
-                [
-                    {{12345, self()}, {device_type, device_id_123}, 1640329200000000000, ref1, node@host}
-                ]
-            end}
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 100 end}
         ]},
-        {elib_dt, [
-            {'to_rfc3339', 2, fun(_Nano, _Unit) ->
-                "2021-12-24T10:00:00Z"
-            end}
+        {conversation_logic, [
+            {'delete', 3, fun(100, <<"c1">>, <<"c2c">>) -> ok end}
         ]},
         {elib_response, [
-            {'success', 4, fun(_Req, _Data, _Message, _Headers) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success}
-                })
+            {'success', 2, fun(_Req, _Data) -> req_ok end}
+        ]}
+    ], fun() ->
+        {ok, Req, _State} = conversation_handler:init(req_mock(), #{action => delete_conversation, current_uid => 100}),
+        ?assertEqual(req_ok, Req)
+    end).
+
+delete_conversation_error_maps_operation_failed_code_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'read_body', 1, fun(_Req) ->
+                {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
+            end}
+        ]},
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 100 end}
+        ]},
+        {conversation_logic, [
+            {'delete', 3, fun(100, <<"c1">>, <<"c2c">>) -> {error, <<"failed">>} end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(_Req, _Msg, Code) ->
+                self() ! {resp_code, Code},
+                req_error
             end}
         ]}
     ], fun() ->
-        % 模拟一个 GET 请求（限制数量）
-        MockReq = cowboy_req_h:new(#{
-            method => <<"GET">>,
-            qs => <<"type=list&limit=3">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = conversation_handler:init(MockReq, #{action => online}),
-        
-        % 验证响应状态
-        {StatusCode, _, _Body} = cowboy_req_h:response(Req),
-        ?assertEqual(200, StatusCode)
+        {ok, Req, _State} = conversation_handler:init(req_mock(), #{action => delete_conversation, current_uid => 100}),
+        ?assertEqual(req_error, Req),
+        Code = receive
+            {resp_code, C} -> C
+        after 1000 ->
+            timeout
+        end,
+        ?assertEqual(?ERR_OPERATION_FAILED, Code)
+    end).
+
+pin_and_restore_actions_success_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'read_body', 1, fun(_Req) ->
+                {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
+            end}
+        ]},
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 100 end}
+        ]},
+        {conversation_pin_logic, [
+            {'pin', 3, fun(100, <<"c1">>, <<"c2c">>) -> ok end}
+        ]},
+        {conversation_logic, [
+            {'restore', 3, fun(100, <<"c1">>, <<"c2c">>) -> ok end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, _Data) -> req_ok end}
+        ]}
+    ], fun() ->
+        {ok, PinReq, _S1} = conversation_handler:init(req_mock(), #{action => pin_conversation, current_uid => 100}),
+        ?assertEqual(req_ok, PinReq),
+        {ok, RestoreReq, _S2} = conversation_handler:init(req_mock(), #{action => restore_conversation, current_uid => 100}),
+        ?assertEqual(req_ok, RestoreReq)
     end).

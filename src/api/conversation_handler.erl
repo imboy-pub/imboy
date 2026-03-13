@@ -94,38 +94,17 @@ online(Req0, _State) ->
 mine(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     ServerTS = proplists:get_value(<<"last_server_ts">>, Qs, undefined),
-    % ?DEBUG_LOG(ServerTS),
     CurrentUid = auth_ds:current_uid(State),
-    List = msg_c2c_ds:read_msg(CurrentUid, 1000, ServerTS),
-    % 过滤已删除的会话
-    List2 = conversation_logic:filter_deleted_conversations(CurrentUid, List),
-    % ?DEBUG_LOG(["mine_list", List2]),
-    List3 = mine_transfer(List2),
-    elib_response:success(Req0, List3).
-
-%% @doc 转换会话消息列表
-%% 将会话消息数据进行格式转换
-%%
-%% @param List 原始消息列表
-%% @return 转换后的消息列表
-%% @end
--spec mine_transfer(list(map())) -> list(map()).
-mine_transfer(List) ->
-    [begin
-         DbId = maps:get(<<"id">>, Msg),
-         Payload0 = maps:get(<<"payload">>, Msg, #{}),
-         Payload =
-             case Payload0 of
-                 Bin when is_binary(Bin) ->
-                     jsone:decode(Bin, [{object_format, map}]);
-                 M when is_map(M) ->
-                     M;
-                 _ ->
-                     #{}
-             end,
-         Payload#{<<"id">> => DbId}
-     end
-     || Msg <- List].
+    case conversation_logic:list(CurrentUid, #{
+        limit => 1000,
+        last_server_ts => ServerTS
+    }) of
+        {ok, List} ->
+            elib_response:success(Req0, List);
+        {error, Reason} ->
+            ?ERROR_LOG([conversation_mine_failed, CurrentUid, Reason]),
+            elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+    end.
 
 %% @doc 置顶会话
 %% 置顶指定的会话（单聊或群聊）
@@ -244,4 +223,3 @@ restore_conversation(Req0, State) ->
 
     ok = conversation_logic:restore(CurrentUid, ConversationId, Type),
     elib_response:success(Req0, #{<<"restored">> => true}).
-
