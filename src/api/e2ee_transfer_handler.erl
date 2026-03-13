@@ -54,42 +54,43 @@ create_transfer(Req0, State) ->
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
 
-    % 验证参数
-    ToUid = case maps:get(<<"to_uid">>, Data, undefined) of
-        undefined ->
+    case normalize_to_uid(maps:get(<<"to_uid">>, Data, undefined)) of
+        {error, missing} ->
             elib_response:error(Req0, <<"缺少 to_uid 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        Uid ->
-            Uid
-    end,
-
-    % 验证接收方用户是否存在
-    case user_repo:may_exist(ToUid) of
-        false ->
-            elib_response:error(Req0, <<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND);
-        true ->
-            % 获取发送方设备 ID 和私钥
-            case get_sender_private_key(CurrentUid) of
-                {error, _Reason} ->
-                    elib_response:error(Req0, <<"私钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
-                {ok, {PrivateKeyPem, DeviceId}} ->
-                    % 获取接收方公钥
-                    case get_receiver_public_key(ToUid) of
+        {error, invalid} ->
+            elib_response:error(Req0, <<"to_uid 参数无效"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, ToUid} when ToUid =:= CurrentUid ->
+            elib_response:error(Req0, <<"不能给自己创建传输会话"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, ToUid} ->
+            % 验证接收方用户是否存在
+            case user_repo:may_exist(ToUid) of
+                false ->
+                    elib_response:error(Req0, <<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND);
+                true ->
+                    % 获取发送方设备 ID 和私钥
+                    case get_sender_private_key(CurrentUid) of
                         {error, _Reason} ->
-                            elib_response:error(Req0, <<"接收方公钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
-                        {ok, PublicKeyPem} ->
-                            % 创建传输会话
-                            case e2ee_transfer_logic:create_transfer(
-                                CurrentUid, DeviceId, ToUid, PrivateKeyPem, PublicKeyPem
-                            ) of
-                                {ok, Session} ->
-                                    elib_response:success(Req0, #{
-                                        <<"session_id">> => maps:get(<<"session_id">>, Session),
-                                        <<"expires_at">> => maps:get(<<"expires_at">>, Session)
-                                    });
-                                {error, {Msg, Code}} ->
-                                    elib_response:error(Req0, Msg, Code);
+                            elib_response:error(Req0, <<"私钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
+                        {ok, {PrivateKeyPem, DeviceId}} ->
+                            % 获取接收方公钥
+                            case get_receiver_public_key(ToUid) of
                                 {error, _Reason} ->
-                                    elib_response:error(Req0, <<"创建传输会话失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                                    elib_response:error(Req0, <<"接收方公钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
+                                {ok, PublicKeyPem} ->
+                                    % 创建传输会话
+                                    case e2ee_transfer_logic:create_transfer(
+                                        CurrentUid, DeviceId, ToUid, PrivateKeyPem, PublicKeyPem
+                                    ) of
+                                        {ok, Session} ->
+                                            elib_response:success(Req0, #{
+                                                <<"session_id">> => maps:get(<<"session_id">>, Session),
+                                                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
+                                            });
+                                        {error, {Msg, Code}} ->
+                                            elib_response:error(Req0, Msg, Code);
+                                        {error, _Reason} ->
+                                            elib_response:error(Req0, <<"创建传输会话失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                                    end
                             end
                     end
             end
@@ -261,4 +262,42 @@ get_receiver_public_key(ToUid) ->
             end;
         _ ->
             {error, device_not_found}
+    end.
+
+-spec normalize_to_uid(term()) -> {ok, integer()} | {error, missing | invalid}.
+normalize_to_uid(undefined) ->
+    {error, missing};
+normalize_to_uid(ToUid) when is_integer(ToUid), ToUid > 0 ->
+    {ok, ToUid};
+normalize_to_uid(ToUid) when is_binary(ToUid); is_list(ToUid) ->
+    ToUidBin = ec_cnv:to_binary(ToUid),
+    case ToUidBin of
+        <<>> ->
+            {error, invalid};
+        _ ->
+            case catch elib_hashids:decode(ToUidBin) of
+                Uid when is_integer(Uid), Uid > 0 ->
+                    {ok, Uid};
+                _ ->
+                    case safe_positive_integer(ToUidBin) of
+                        {ok, Uid} ->
+                            {ok, Uid};
+                        error ->
+                            {error, invalid}
+                    end
+            end
+    end;
+normalize_to_uid(_) ->
+    {error, invalid}.
+
+-spec safe_positive_integer(binary()) -> {ok, integer()} | error.
+safe_positive_integer(Value) when is_binary(Value) ->
+    try
+        Parsed = binary_to_integer(Value),
+        case Parsed > 0 of
+            true -> {ok, Parsed};
+            false -> error
+        end
+    catch
+        _:_ -> error
     end.

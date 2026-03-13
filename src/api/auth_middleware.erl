@@ -28,7 +28,7 @@ execute(Req, Env) ->
             % Admin 路由委托给 adm_auth_middleware
             adm_auth_middleware:execute(Req, Env);
         <<"/v1/", _Tail/binary>> ->
-            % Admin 路由委托给 auth_middleware_api_v1
+            % API v1 路由委托给 auth_middleware_api_v1
             auth_middleware_api_v1:execute(Req, Env);
         <<"/webrtc/", _Tail/binary>> ->
             {ok, Req, Env};
@@ -40,17 +40,8 @@ execute(Req, Env) ->
             Switch =
                 ec_cnv:to_binary(
                     config_ds:get(<<"api_auth_switch">>)),
-            Passport = string:sub_string(binary_to_list(Path), 1, 10),
             Res1 =
-                if Path == <<"/ws">>, Switch == <<"on">> ->
-                       auth_ds:verify_sign(Req, Env);
-                   Path == <<"/init">>, Switch == <<"on">> ->
-                       auth_ds:verify_sign(Req, Env);
-                   Path == <<"/refreshtoken">>, Switch == <<"on">> ->
-                       auth_ds:verify_sign(Req, Env);
-                   Passport == "/passport/", Switch == <<"on">> ->
-                       auth_ds:verify_sign(Req, Env);
-                   InOpenLi == false, Switch == <<"on">> ->
+                if InOpenLi == false, Switch == <<"on">> ->
                        auth_ds:verify_sign(Req, Env);
                    true ->
                        {ok, Req, Env}

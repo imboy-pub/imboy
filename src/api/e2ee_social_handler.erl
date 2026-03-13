@@ -21,6 +21,8 @@
 -export([contacts/2]).
 -export([add_contact/2]).
 -export([remove_contact/2]).
+-export([extract_encrypted_shard/1]).
+-export([map_decrypt_shard_error/1]).
 
 -include("log.hrl").
 -include("common.hrl").
@@ -72,7 +74,7 @@ create_shards(Req0, State) ->
     Proxies = maps:get(<<"proxies">>, Data, []),
 
     % 验证参数
-    case {TotalShards < Threshold orelse Threshold < 2, length(Proxies) < TotalShards} of
+    case {TotalShards =< Threshold orelse Threshold < 2, length(Proxies) < TotalShards} of
         {true, _} ->
             elib_response:error(Req0, <<"参数错误：分片数必须大于阈值"/utf8>>, ?ERR_BAD_REQUEST);
         {_, true} ->
@@ -160,7 +162,9 @@ get_proxy_shards(Req0, State) ->
 
     case e2ee_social_logic:get_proxy_shards(CurrentUid) of
         {ok, Shards} ->
-            elib_response:success(Req0, #{<<"shards">> => Shards})
+            elib_response:success(Req0, #{<<"shards">> => Shards});
+        {error, Reason} ->
+            elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
     end.
 
 %% @doc 解密分片（代理调用）
@@ -182,25 +186,29 @@ decrypt_shard(Req0, State) ->
             % 验证当前用户是分片的代理
             case e2ee_social_ds:get_proxy_shard(ShardId, CurrentUid) of
                 {ok, Shard} ->
-                    EncryptedData = maps:get(<<"encrypted_data">>, Shard, <<>>),
-                    case get_proxy_private_key(CurrentUid) of
-                        {ok, PrivateKeyPem} ->
-                            % 使用代理的私钥解密分片
-                            case elib_cipher:decrypt_rsa_oaep(EncryptedData, PrivateKeyPem) of
-                                {ok, DecryptedShard} ->
-                                    elib_response:success(Req0, #{<<"decrypted_shard">> => DecryptedShard});
+                    case extract_encrypted_shard(Shard) of
+                        {ok, EncryptedShard} ->
+                            case get_proxy_private_key(CurrentUid) of
+                                {ok, PrivateKeyPem} ->
+                                    % 使用代理的私钥解密分片
+                                    case elib_cipher:decrypt_rsa_oaep(EncryptedShard, PrivateKeyPem) of
+                                        {ok, DecryptedShard} ->
+                                            elib_response:success(Req0, #{<<"decrypted_shard">> => DecryptedShard});
+                                        {error, Reason} ->
+                                            {Msg, Code} = map_decrypt_shard_error(Reason),
+                                            elib_response:error(Req0, Msg, Code)
+                                    end;
                                 {error, Reason} ->
-                                    elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                                    {Msg, Code} = map_decrypt_shard_error(Reason),
+                                    elib_response:error(Req0, Msg, Code)
                             end;
                         {error, Reason} ->
-                            elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                            {Msg, Code} = map_decrypt_shard_error(Reason),
+                            elib_response:error(Req0, Msg, Code)
                     end;
-                {error, not_proxy} ->
-                    elib_response:error(Req0, <<"无权解密此分片"/utf8>>, ?ERR_FORBIDDEN);
-                {error, shard_not_found} ->
-                    elib_response:error(Req0, <<"分片不存在"/utf8>>, ?ERR_NOT_FOUND);
                 {error, Reason} ->
-                    elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                    {Msg, Code} = map_decrypt_shard_error(Reason),
+                    elib_response:error(Req0, Msg, Code)
             end
     end.
 
@@ -351,3 +359,43 @@ get_proxy_private_key(Uid) ->
         _ ->
             {error, device_not_found}
     end.
+
+%% @doc 提取可解密分片数据
+%% 优先读取 encrypted_shard，兼容旧字段 encrypted_data
+-spec extract_encrypted_shard(map()) -> {ok, binary()} | {error, term()}.
+extract_encrypted_shard(Shard) when is_map(Shard) ->
+    case maps:get(
+        <<"encrypted_shard">>,
+        Shard,
+        maps:get(<<"encrypted_data">>, Shard, <<>>)
+    ) of
+        Encrypted when is_binary(Encrypted), Encrypted =/= <<>> ->
+            {ok, Encrypted};
+        _ ->
+            {error, shard_data_missing}
+    end;
+extract_encrypted_shard(_) ->
+    {error, shard_data_missing}.
+
+%% @doc decrypt_shard 错误契约映射（集中维护）
+-spec map_decrypt_shard_error(term()) -> {binary(), integer()}.
+map_decrypt_shard_error(not_proxy) ->
+    {<<"无权解密此分片"/utf8>>, ?ERR_FORBIDDEN};
+map_decrypt_shard_error(shard_not_active) ->
+    {<<"分片不可用"/utf8>>, ?ERR_BAD_REQUEST};
+map_decrypt_shard_error(shard_not_found) ->
+    {<<"分片不存在"/utf8>>, ?ERR_NOT_FOUND};
+map_decrypt_shard_error(not_found) ->
+    {<<"分片不存在"/utf8>>, ?ERR_NOT_FOUND};
+map_decrypt_shard_error(shard_data_missing) ->
+    {<<"分片数据缺失"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR};
+map_decrypt_shard_error(private_key_not_found) ->
+    {error_msg(?ERR_E2EE_KEY_NOT_FOUND), ?ERR_E2EE_KEY_NOT_FOUND};
+map_decrypt_shard_error(device_not_found) ->
+    {error_msg(?ERR_E2EE_KEY_NOT_FOUND), ?ERR_E2EE_KEY_NOT_FOUND};
+map_decrypt_shard_error(decryption_failed) ->
+    {error_msg(?ERR_E2EE_DECRYPTION_FAILED), ?ERR_E2EE_DECRYPTION_FAILED};
+map_decrypt_shard_error({Msg, Code}) when is_binary(Msg), is_integer(Code) ->
+    {Msg, Code};
+map_decrypt_shard_error(Reason) ->
+    {format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR}.

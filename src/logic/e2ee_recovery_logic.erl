@@ -163,16 +163,13 @@ check_device_transfer_available(Uid) ->
 check_social_recovery_available(Uid) ->
     try
         % 检查是否有可信联系人
-        case e2ee_social_ds:list_contacts(Uid) of
+        case e2ee_social_ds:list_trusted_contacts(Uid) of
             {ok, []} ->
                 {ok, false, #{}};
             {ok, Contacts} ->
-                % 检查是否有足够的活跃分片
-                ActiveCount = length(lists:filter(fun(C) ->
-                    maps:get(<<"status">>, C, <<"inactive">>) =:= <<"active">>
-                end, Contacts)),
-
-                CanRecover = ActiveCount >= 2,  % 至少需要 2 个活跃联系人
+                % 可信联系人由服务端维护，默认视作可参与恢复
+                ActiveCount = length(Contacts),
+                CanRecover = ActiveCount >= 2,  % 至少需要 2 个可信联系人
                 {ok, CanRecover, #{
                     <<"contact_count">> => length(Contacts),
                     <<"active_count">> => ActiveCount
@@ -226,13 +223,11 @@ start_device_transfer_recovery(Uid, _DeviceId) ->
 -spec start_social_recovery(integer(), binary()) ->
     {ok, map()} | {error, term()}.
 start_social_recovery(Uid, _DeviceId) ->
-    case e2ee_social_ds:list_contacts(Uid) of
+    case e2ee_social_ds:list_trusted_contacts(Uid) of
         {ok, []} ->
             {error, {<<"无可信联系人"/utf8>>, ?ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND}};
         {ok, Contacts} ->
-            ActiveContacts = lists:filter(fun(C) ->
-                maps:get(<<"status">>, C, <<"inactive">>) =:= <<"active">>
-            end, Contacts),
+            ActiveContacts = Contacts,
 
             case length(ActiveContacts) >= 2 of
                 true ->

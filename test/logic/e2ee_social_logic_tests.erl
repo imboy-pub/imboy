@@ -124,6 +124,83 @@ invalid_parameters_insufficient_proxies_test_() ->
         ?assert(true)
     end).
 
+create_shards_accepts_map_proxy_contract_test_() ->
+    ?WITH_MECKS([
+        {e2ee_social_repo, [
+            {'create', 1, fun(_ShardRecord) ->
+                {ok, erlang:unique_integer([positive])}
+            end}
+        ]},
+        {elib_cipher, [
+            {'encrypt_rsa_oaep', 2, fun(ShardPayload, ProxyPublicKey) when is_binary(ShardPayload),
+                    is_binary(ProxyPublicKey) ->
+                {ok, <<"encrypted-shard">>}
+            end}
+        ]},
+        {e2ee_shard_validator, [
+            {'log_shard_transmission', 3, fun(_Action, _ShardId, _Meta) ->
+                ok
+            end}
+        ]}
+    ], fun() ->
+        PrivateKey = crypto:strong_rand_bytes(32),
+        Proxies = [
+            #{<<"proxy_uid">> => 1001, <<"encrypted_public_key">> => <<"pub-key-1">>},
+            #{<<"proxy_uid">> => 1002, <<"encrypted_public_key">> => <<"pub-key-2">>},
+            #{<<"proxy_uid">> => 1003, <<"encrypted_public_key">> => <<"pub-key-3">>}
+        ],
+
+        {ok, Shards} = e2ee_social_logic:create_shards(
+            9999, <<"key-v1">>, 3, 2, PrivateKey, Proxies
+        ),
+
+        ?assertEqual(3, length(Shards)),
+        ?assertEqual(
+            [1001, 1002, 1003],
+            [maps:get(<<"proxy_uid">>, Shard) || Shard <- Shards]
+        ),
+        lists:foreach(fun(Shard) ->
+            ?assertEqual(<<"encrypted-shard">>, maps:get(<<"encrypted_shard">>, Shard))
+        end, Shards)
+    end).
+
+create_shards_accepts_tuple_proxy_contract_test_() ->
+    ?WITH_MECKS([
+        {e2ee_social_repo, [
+            {'create', 1, fun(_ShardRecord) ->
+                {ok, erlang:unique_integer([positive])}
+            end}
+        ]},
+        {elib_cipher, [
+            {'encrypt_rsa_oaep', 2, fun(ShardPayload, ProxyPublicKey) when is_binary(ShardPayload),
+                    is_binary(ProxyPublicKey) ->
+                {ok, <<"encrypted-shard">>}
+            end}
+        ]},
+        {e2ee_shard_validator, [
+            {'log_shard_transmission', 3, fun(_Action, _ShardId, _Meta) ->
+                ok
+            end}
+        ]}
+    ], fun() ->
+        PrivateKey = crypto:strong_rand_bytes(32),
+        Proxies = [
+            {2001, <<"legacy-pub-key-1">>},
+            {2002, <<"legacy-pub-key-2">>},
+            {2003, <<"legacy-pub-key-3">>}
+        ],
+
+        {ok, Shards} = e2ee_social_logic:create_shards(
+            9999, <<"key-v1">>, 3, 2, PrivateKey, Proxies
+        ),
+
+        ?assertEqual(3, length(Shards)),
+        ?assertEqual(
+            [2001, 2002, 2003],
+            [maps:get(<<"proxy_uid">>, Shard) || Shard <- Shards]
+        )
+    end).
+
 %% ===================================================================
 %% Shamir 边界条件测试
 %% ===================================================================

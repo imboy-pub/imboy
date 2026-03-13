@@ -76,19 +76,9 @@ handle_request(Req0, State) ->
 handle_create(Req) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
     Data = jsx:decode(Body, [return_maps]),
-    % 兼容 proplist 和 map 两种返回格式
-    DeviceId = case is_map(Data) of
-        true -> maps:get(<<"device_id">>, Data, <<>>);
-        false -> proplists:get_value(<<"device_id">>, Data, <<>>)
-    end,
-    DeviceName = case is_map(Data) of
-        true -> maps:get(<<"device_name">>, Data, <<"Web Browser">>);
-        false -> proplists:get_value(<<"device_name">>, Data, <<"Web Browser">>)
-    end,
-    Platform = case is_map(Data) of
-        true -> maps:get(<<"platform">>, Data, <<"web">>);
-        false -> proplists:get_value(<<"platform">>, Data, <<"web">>)
-    end,
+    DeviceId = maps:get(<<"device_id">>, Data, <<>>),
+    DeviceName = maps:get(<<"device_name">>, Data, <<"Web Browser">>),
+    Platform = maps:get(<<"platform">>, Data, <<"web">>),
 
     case DeviceId of
         <<>> ->
@@ -179,21 +169,49 @@ handle_scan(Req, State) ->
                         undefined ->
                             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
                         Session ->
-                            % 检查是否过期
-                            ExpiresAt = maps:get(<<"expires_at">>, Session),
-                            case erlang:system_time(millisecond) > ExpiresAt of
-                                true ->
-                                    delete_session(SessionToken),
-                                    elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
-                                false ->
-                                    % 更新状态为已扫描
-                                    UpdatedSession = Session#{
-                                        <<"status">> => <<"scanned">>,
-                                        <<"scanned_by">> => Uid,
-                                        <<"scanned_at">> => erlang:system_time(millisecond)
-                                    },
-                                    cache_session(SessionToken, UpdatedSession),
-                                    elib_response:success(Req, #{<<"status">> => <<"scanned">>})
+                            Status = maps:get(<<"status">>, Session, <<"waiting">>),
+                            case Status of
+                                <<"confirmed">> ->
+                                    elib_response:error(
+                                        Req,
+                                        <<"二维码已确认，请刷新"/utf8>>,
+                                        ?ERR_QR_LOGIN_ALREADY_USED);
+                                <<"cancelled">> ->
+                                    elib_response:error(
+                                        Req,
+                                        <<"登录已取消，请刷新"/utf8>>,
+                                        ?ERR_QR_LOGIN_CANCELLED);
+                                _ ->
+                                    ExpiresAt = maps:get(<<"expires_at">>, Session, 0),
+                                    case erlang:system_time(millisecond) > ExpiresAt of
+                                        true ->
+                                            delete_session(SessionToken),
+                                            elib_response:error(
+                                                Req,
+                                                <<"二维码已过期，请刷新"/utf8>>,
+                                                ?ERR_QR_LOGIN_EXPIRED);
+                                        false ->
+                                            ScannedBy = maps:get(<<"scanned_by">>, Session, 0),
+                                            case Status =:= <<"scanned">> andalso
+                                                ScannedBy =/= 0 andalso
+                                                ScannedBy =/= Uid of
+                                                true ->
+                                                    elib_response:error(
+                                                        Req,
+                                                        <<"无权限操作"/utf8>>,
+                                                        ?ERR_FORBIDDEN);
+                                                false ->
+                                                    UpdatedSession = Session#{
+                                                        <<"status">> => <<"scanned">>,
+                                                        <<"scanned_by">> => Uid,
+                                                        <<"scanned_at">> => erlang:system_time(millisecond)
+                                                    },
+                                                    cache_session(SessionToken, UpdatedSession),
+                                                    elib_response:success(
+                                                        Req,
+                                                        #{<<"status">> => <<"scanned">>})
+                                            end
+                                    end
                             end
                     end
             end
@@ -221,30 +239,68 @@ handle_confirm(Req, State) ->
                         undefined ->
                             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
                         Session ->
-                            % 验证扫码者
-                            ScannedBy = maps:get(<<"scanned_by">>, Session, 0),
-                            case ScannedBy =:= Uid of
-                                false ->
-                                    elib_response:error(Req, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN);
+                            ExpiresAt = maps:get(<<"expires_at">>, Session, 0),
+                            case erlang:system_time(millisecond) > ExpiresAt of
                                 true ->
-                                    % 生成登录 Token
-                                    LoginToken = generate_login_token(Uid),
+                                    delete_session(SessionToken),
+                                    elib_response:error(
+                                        Req,
+                                        <<"二维码已过期，请刷新"/utf8>>,
+                                        ?ERR_QR_LOGIN_EXPIRED);
+                                false ->
+                                    Status = maps:get(<<"status">>, Session, <<"waiting">>),
+                                    case Status of
+                                        <<"waiting">> ->
+                                            elib_response:error(
+                                                Req,
+                                                <<"二维码尚未扫码"/utf8>>,
+                                                ?ERR_QR_LOGIN_NOT_SCANNED);
+                                        <<"cancelled">> ->
+                                            elib_response:error(
+                                                Req,
+                                                <<"登录已取消，请刷新"/utf8>>,
+                                                ?ERR_QR_LOGIN_CANCELLED);
+                                        <<"confirmed">> ->
+                                            elib_response:error(
+                                                Req,
+                                                <<"二维码已确认，请刷新"/utf8>>,
+                                                ?ERR_QR_LOGIN_ALREADY_USED);
+                                        <<"scanned">> ->
+                                            ScannedBy = maps:get(<<"scanned_by">>, Session, 0),
+                                            case ScannedBy of
+                                                0 ->
+                                                    elib_response:error(
+                                                        Req,
+                                                        <<"二维码尚未扫码"/utf8>>,
+                                                        ?ERR_QR_LOGIN_NOT_SCANNED);
+                                                Uid ->
+                                                    LoginToken = generate_login_token(Uid),
+                                                    UpdatedSession = Session#{
+                                                        <<"status">> => <<"confirmed">>,
+                                                        <<"login_token">> => LoginToken,
+                                                        <<"confirmed_at">> => erlang:system_time(millisecond)
+                                                    },
+                                                    cache_session(SessionToken, UpdatedSession),
 
-                                    % 更新状态
-                                    UpdatedSession = Session#{
-                                        <<"status">> => <<"confirmed">>,
-                                        <<"login_token">> => LoginToken,
-                                        <<"confirmed_at">> => erlang:system_time(millisecond)
-                                    },
-                                    cache_session(SessionToken, UpdatedSession),
-
-                                    % 记录设备登录
-                                    DeviceId = maps:get(<<"device_id">>, Session),
-                                    DeviceName = maps:get(<<"device_name">>, Session),
-                                    Platform = maps:get(<<"platform">>, Session),
-                                    log_device_login(Uid, DeviceId, DeviceName, Platform),
-
-                                    elib_response:success(Req, #{<<"status">> => <<"confirmed">>})
+                                                    DeviceId = maps:get(<<"device_id">>, Session),
+                                                    DeviceName = maps:get(<<"device_name">>, Session),
+                                                    Platform = maps:get(<<"platform">>, Session),
+                                                    log_device_login(Uid, DeviceId, DeviceName, Platform),
+                                                    elib_response:success(
+                                                        Req,
+                                                        #{<<"status">> => <<"confirmed">>});
+                                                _ ->
+                                                    elib_response:error(
+                                                        Req,
+                                                        <<"无权限操作"/utf8>>,
+                                                        ?ERR_FORBIDDEN)
+                                            end;
+                                        _ ->
+                                            elib_response:error(
+                                                Req,
+                                                <<"参数错误"/utf8>>,
+                                                ?ERR_BAD_REQUEST)
+                                    end
                             end
                     end
             end

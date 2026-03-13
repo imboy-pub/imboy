@@ -3,8 +3,7 @@
 %%%===================================================================
 %%% @doc E2EE 社交恢复 Logic 层
 %%%
-%%% 零信任架构：服务端不存储分片，分片通过 WebSocket 直接发送给代理
-%%% 代理将分片存储在本地设备，服务端仅作为传输通道
+%%% 服务端持久化加密分片：服务端仅保存加密态分片，明文分片始终不落库
 %%%===================================================================
 
 %%===================================================================
@@ -31,17 +30,16 @@
 %% @param TotalShards 总分片数
 %% @param Threshold 恢复阈值
 %% @param PrivateKeyPem 私钥 PEM 格式
-%% @param Proxies 代理用户 ID 列表 [{proxy_uid, encrypted_public_key}]
+%% @param Proxies 代理列表（兼容 map/tuple）
 %% @returns {ok, Shards} | {error, Reason}
-%% @doc 零信任架构：服务端不存储分片，只返回加密后的分片给客户端
-%%       客户端需要通过 WebSocket 将分片发送给对应的代理
+%% @doc 服务端生成并持久化加密分片，返回分片元数据给客户端
 -spec create_shards(
     integer(),
     binary(),
     integer(),
     integer(),
     binary(),
-    list(map())
+    list(map() | {term(), term()})
 ) -> {ok, list(map())} | {error, term()}.
 create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) ->
     try
@@ -65,8 +63,8 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
         end,
 
         % 验证分片数必须大于等于阈值
-        case TotalShards < Threshold of
-            true -> throw({error, {<<"分片数必须大于等于阈值"/utf8>>, ?ERR_BAD_REQUEST}});
+        case TotalShards =< Threshold of
+            true -> throw({error, {<<"分片数必须大于阈值"/utf8>>, ?ERR_BAD_REQUEST}});
             false -> ok
         end,
 
@@ -90,7 +88,15 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
             Uid, KeyVersion, Shards, Proxies, TotalShards, Threshold
         ),
 
-        % 4. 记录分片创建日志（零信任架构审计）
+        % 4. 服务端持久化分片记录（仅加密态）
+        PersistedShardRecords = case persist_shards(ShardRecords) of
+            {ok, Records} ->
+                Records;
+            {error, PersistReason} ->
+                throw({error, PersistReason})
+        end,
+
+        % 5. 记录分片创建日志
         lists:foreach(fun(ShardRecord) ->
             ShardId = maps:get(<<"shard_id">>, ShardRecord),
             ProxyUid = maps:get(<<"proxy_uid">>, ShardRecord),
@@ -106,12 +112,9 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
                     <<"threshold">> => Threshold
                 }
             )
-        end, ShardRecords),
+        end, PersistedShardRecords),
 
-        % 注意：服务端不存储分片，只返回给客户端
-        % 客户端需要通过 WebSocket 将分片发送给对应的代理
-
-        {ok, ShardRecords}
+        {ok, PersistedShardRecords}
     catch
         {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
             {error, {Msg, Code}};
@@ -122,22 +125,15 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
             {error, {<<"创建分片失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}}
     end.
 
-%% @doc 获取用户的所有恢复分片
-%% @doc 零信任架构：从代理设备获取分片信息，服务端不存储
+%% @doc 获取用户的所有恢复分片（服务端持久化）
 -spec get_user_shards(integer(), binary()) -> {ok, list(map())} | {error, term()}.
-get_user_shards(_Uid, _KeyVersion) ->
-    % 零信任架构：分片存储在代理设备，服务端无法直接获取
-    % 这里返回空列表，实际分片需要通过 WebSocket 从代理获取
-    {ok, []}.
+get_user_shards(Uid, KeyVersion) ->
+    e2ee_social_ds:get_user_shards(Uid, KeyVersion).
 
-%% @doc 获取用户作为代理的所有分片
-%% @doc 零信任架构：代理的分片存储在本地设备，不在服务端
-%% @deprecated 代理应从本地 Secure Storage 读取分片
+%% @doc 获取用户作为代理的所有分片（服务端持久化）
 -spec get_proxy_shards(integer()) -> {ok, list(map())} | {error, term()}.
-get_proxy_shards(_ProxyUid) ->
-    % 零信任架构：代理的分片存储在本地设备
-    % 返回空列表，实际分片应从本地 Secure Storage 读取
-    {ok, []}.
+get_proxy_shards(ProxyUid) ->
+    e2ee_social_ds:get_proxy_shards(ProxyUid).
 
 %% @doc 恢复密钥
 %% @param Uid 用户 ID
@@ -167,33 +163,28 @@ recover_key(_Uid, DecryptedShards) ->
             {error, {<<"密钥恢复失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}}
     end.
 
-%% @doc 检查是否可以恢复
-%% @doc 零信任架构：客户端自行检查是否有足够的代理愿意协助
-%% @deprecated 客户端应自行联系代理确认是否可恢复
--spec can_recover(_Uid, _KeyVersion) -> {ok, boolean()}.
-can_recover(_, _) ->
-    % 零信任架构：服务端无法知道代理是否有分片
-    % 返回 false，让客户端自行联系代理确认
-    {ok, false}.
+%% @doc 检查是否可以恢复（基于服务端持久化分片）
+-spec can_recover(integer(), binary()) -> {ok, boolean()} | {error, term()}.
+can_recover(Uid, KeyVersion) ->
+    e2ee_social_ds:can_recover(Uid, KeyVersion).
 
 %%===================================================================
 %%% Internal Functions
 %%%===================================================================
 
 %% @doc 加密分片用于代理存储
-%% @doc 零信任架构：不存储到数据库，返回给客户端由其通过 WebSocket 发送
 %% @param Uid 用户 ID
 %% @param KeyVersion 密钥版本号
 %% @param Shards 分片列表
-%% @param Proxies 代理列表 [{proxy_uid, encrypted_public_key}]
+%% @param Proxies 代理列表（兼容 map/tuple）
 %% @param TotalShards 总分片数
 %% @param Threshold 恢复阈值
 %% @returns {ok, list(map())} 加密后的分片列表
 -spec encrypt_shards_for_proxies(
     integer(),
     binary(),
-    list(binary()),
-    list(map()),
+    list(binary() | map()),
+    list(map() | {term(), term()}),
     integer(),
     integer()
 ) -> {ok, list(map())}.
@@ -201,15 +192,16 @@ encrypt_shards_for_proxies(Uid, KeyVersion, Shards, Proxies, TotalShards, Thresh
     % 为每个分片分配代理并加密
     EncryptedShardList = lists:map(fun({ShardJson, Index}) ->
         ShardIndex = Index - 1,
-        {ProxyUid, EncryptedPublicKey} = lists:nth(Index, Proxies),
+        Proxy = lists:nth(Index, Proxies),
+        {ProxyUid, EncryptedPublicKey} = normalize_proxy(Proxy),
+        ShardPayload = encode_shard_payload(ShardJson),
 
         % 使用代理的公钥加密分片
-        EncryptedShard = encrypt_shard_for_proxy(ShardJson, EncryptedPublicKey),
+        EncryptedShard = encrypt_shard_for_proxy(ShardPayload, EncryptedPublicKey),
 
         % 生成分片 ID（用于后续恢复时识别）
         ShardId = generate_shard_id(),
 
-        % 返回分片信息，不存储到数据库
         #{
             <<"uid">> => Uid,
             <<"key_version">> => KeyVersion,
@@ -219,18 +211,59 @@ encrypt_shards_for_proxies(Uid, KeyVersion, Shards, Proxies, TotalShards, Thresh
             <<"encrypted_shard">> => EncryptedShard,
             <<"proxy_uid">> => ProxyUid,
             <<"shard_id">> => ShardId,
-            <<"status">> => <<"pending">>  % 等待发送给代理
+            <<"status">> => <<"active">>
         }
     end, lists:zip(Shards, lists:seq(1, length(Shards)))),
     {ok, EncryptedShardList}.
 
+%% @doc 兼容代理参数协议（map 和 tuple）
+-spec normalize_proxy(map() | {term(), term()}) -> {term(), binary()} | no_return().
+normalize_proxy({ProxyUid, EncryptedPublicKey}) when is_binary(EncryptedPublicKey) ->
+    {ProxyUid, EncryptedPublicKey};
+normalize_proxy(#{<<"proxy_uid">> := ProxyUid, <<"encrypted_public_key">> := EncryptedPublicKey})
+when is_binary(EncryptedPublicKey) ->
+    {ProxyUid, EncryptedPublicKey};
+normalize_proxy(#{proxy_uid := ProxyUid, encrypted_public_key := EncryptedPublicKey})
+when is_binary(EncryptedPublicKey) ->
+    {ProxyUid, EncryptedPublicKey};
+normalize_proxy(_) ->
+    throw({error, {<<"代理参数格式错误"/utf8>>, ?ERR_BAD_REQUEST}}).
+
+%% @doc 将分片统一编码为二进制，满足 RSA-OAEP 入参要求
+-spec encode_shard_payload(binary() | map()) -> binary() | no_return().
+encode_shard_payload(Shard) when is_binary(Shard) ->
+    Shard;
+encode_shard_payload(Shard) when is_map(Shard) ->
+    jsx:encode(Shard);
+encode_shard_payload(_) ->
+    throw({error, {<<"分片数据格式错误"/utf8>>, ?ERR_BAD_REQUEST}}).
+
 %% @doc 加密分片用于代理存储
--spec encrypt_shard_for_proxy(binary(), binary()) -> binary() | {error, term()}.
+-spec encrypt_shard_for_proxy(binary(), binary()) -> binary() | no_return().
 encrypt_shard_for_proxy(Shard, ProxyPublicKeyPem) ->
     % 使用 elib_cipher 中的 RSA-OAEP 加密
     case elib_cipher:encrypt_rsa_oaep(Shard, ProxyPublicKeyPem) of
         {ok, Encrypted} -> Encrypted;
-        {error, Reason} -> {error, Reason}
+        {error, Reason} ->
+            throw({error, {elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}})
+    end.
+
+%% @doc 持久化分片记录
+-spec persist_shards(list(map())) -> {ok, list(map())} | {error, term()}.
+persist_shards(ShardRecords) ->
+    try
+        PersistedReversed = lists:foldl(fun(ShardRecord, Acc) ->
+            case e2ee_social_repo:create(ShardRecord) of
+                {ok, Id} ->
+                    [ShardRecord#{<<"id">> => Id, <<"status">> => <<"active">>} | Acc];
+                {error, Reason} ->
+                    throw({error, {elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}})
+            end
+        end, [], ShardRecords),
+        {ok, lists:reverse(PersistedReversed)}
+    catch
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 生成分片 ID

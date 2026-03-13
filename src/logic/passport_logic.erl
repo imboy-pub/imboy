@@ -73,7 +73,7 @@ send_code(Mobile, <<"sms">>) ->
 send_code(EMail, <<"email">>) ->
     send_email_code(EMail);
 send_code(_, _) ->
-    {error, <<"暂未实现功能."/utf8>>}.
+    {error, <<"验证码类型不支持，仅支持 sms 或 email"/utf8>>}.
 
 
 -spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.

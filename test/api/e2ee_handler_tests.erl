@@ -10,6 +10,16 @@
 %%% 覆盖：用户公钥获取、群成员公钥获取、参数验证
 %%%===================================================================
 
+invoke_action(Action, Req0, State0) ->
+    {ok, Req1, _State} = e2ee_handler:init(Req0, maps:put(action, Action, State0)),
+    Req1.
+
+invoke_user_keys(Req0, State0) ->
+    invoke_action(user_keys, Req0, State0).
+
+invoke_group_member_keys(Req0, State0) ->
+    invoke_action(group_member_keys, Req0, State0).
+
 %% ===================================================================
 %% init/2 测试
 %% ===================================================================
@@ -106,7 +116,7 @@ user_keys_with_valid_uid_returns_success_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_ok, Result)
     end).
 
@@ -128,7 +138,7 @@ user_keys_with_invalid_uid_returns_400_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_400, Result)
     end).
 
@@ -155,7 +165,7 @@ user_keys_with_forbidden_returns_403_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_403, Result)
     end).
 
@@ -182,7 +192,7 @@ user_keys_with_internal_error_returns_500_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_500, Result)
     end).
 
@@ -218,7 +228,7 @@ group_member_keys_with_valid_gid_returns_success_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_ok, Result)
     end).
 
@@ -240,7 +250,7 @@ group_member_keys_with_invalid_gid_returns_400_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_400, Result)
     end).
 
@@ -267,7 +277,7 @@ group_member_keys_with_non_member_returns_403_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_403, Result)
     end).
 
@@ -294,7 +304,7 @@ group_member_keys_with_database_error_returns_500_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_500, Result)
     end).
 
@@ -325,7 +335,7 @@ user_keys_with_same_user_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_ok, Result)
     end).
 
@@ -352,7 +362,7 @@ group_member_keys_with_empty_group_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_ok, Result)
     end).
 
@@ -374,7 +384,7 @@ user_keys_with_zero_uid_returns_400_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_400, Result)
     end).
 
@@ -396,7 +406,7 @@ user_keys_with_negative_uid_returns_400_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:user_keys(Req0, State),
+        Result = invoke_user_keys(Req0, State),
         ?assertEqual(cowboy_req_400, Result)
     end).
 
@@ -418,6 +428,6 @@ group_member_keys_with_zero_gid_returns_400_test_() ->
         Req0 = cowboy_req_ok,
         State = #{},
 
-        Result = e2ee_handler:group_member_keys(Req0, State),
+        Result = invoke_group_member_keys(Req0, State),
         ?assertEqual(cowboy_req_400, Result)
     end).
