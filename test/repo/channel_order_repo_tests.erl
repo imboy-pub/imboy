@@ -103,7 +103,8 @@ order_expiry_test_() ->
     ?TEST_SIMPLE(fun() ->
         % 默认30分钟过期
         ThirtyMinutesMs = 30 * 60 * 1000,
-        Now = elib_dt:now(),
+        % 使用固定毫秒时间戳，避免依赖运行环境中 elib_dt:now/0 的返回格式
+        Now = 1700000000000,
         ExpiresAt = Now + ThirtyMinutesMs,
 
         % 验证过期时间计算
@@ -162,6 +163,50 @@ payment_no_format_test_() ->
 
         % 验证长度
         ?assert(byte_size(PaymentNo) > 10)
+    end).
+
+%% ===================================================================
+%% pay/2 行为测试（P0-2 补充）
+%% ===================================================================
+
+pay_updates_order_status_without_subscription_side_effect_test_() ->
+    ?WITH_MECKS([
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(Sql, Params) ->
+                SqlBin = iolist_to_binary(Sql),
+                ?assert(re:run(SqlBin, <<"UPDATE channel_order">>) =/= nomatch),
+                ?assertEqual(nomatch, re:run(SqlBin, <<"channel_subscription">>)),
+                ?assertEqual(6, length(Params)),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        Result = channel_order_repo:pay(
+            <<"ORD_PAY_OK">>,
+            #{payment_no => <<"PAY123">>, payment_method => <<"mock">>}
+        ),
+        ?assertEqual(ok, Result),
+        ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
+    end).
+
+pay_returns_not_found_or_expired_when_no_pending_order_updated_test_() ->
+    ?WITH_MECKS([
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+        ]}
+    ], fun() ->
+        Result = channel_order_repo:pay(
+            <<"ORD_PAY_MISS">>,
+            #{payment_no => <<"PAY456">>, payment_method => <<"mock">>}
+        ),
+        ?assertEqual({error, not_found_or_expired}, Result),
+        ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
     end).
 
 %% ===================================================================

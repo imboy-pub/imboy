@@ -1,152 +1,162 @@
 -module(channel_invitation_repo_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
--include("error_code.hrl").
 
 %%%===================================================================
-%%% @doc 频道邀请 Repo 层测试
-%%%
-%%% 测试目标：
-%%% - 验证邀请创建逻辑
-%%% - 验证邀请码生成
-%%% - 验证邀请状态管理
-%%% - 验证邀请过期处理
+%%% @doc channel_invitation_repo 的 repo 层单元测试（基于 mock，无数据库依赖）
 %%%===================================================================
 
-%% ===================================================================
-%% 准备工作测试
-%% ===================================================================
-
-setup_test_() ->
+tablename_returns_channel_invitation_table_test_() ->
     ?TEST_SIMPLE(fun() ->
-        case application:get_env(imboy, env) of
-            test -> ?assert(true);
-            _ -> ?assert(true)
-        end
+        ?assertEqual(<<"channel_invitation">>, channel_invitation_repo:tablename())
     end).
 
-%% ===================================================================
-%% 邀请码生成测试
-%% ===================================================================
-
-invitation_code_format_test_() ->
+generate_invitation_code_is_alnum_and_fixed_length_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % 生成多个邀请码验证格式
-        Codes = [generate_test_invitation_code() || _ <- lists:seq(1, 10)],
-
-        % 验证所有邀请码长度为 8
+        Codes = [channel_invitation_repo:generate_invitation_code() || _ <- lists:seq(1, 100)],
         lists:foreach(fun(Code) ->
-            ?assertEqual(8, byte_size(Code))
-        end, Codes),
-
-        % 验证邀请码都是大写字母或数字
-        lists:foreach(fun(Code) ->
-            ?assert(validate_invitation_code_format(Code))
-        end, Codes),
-
-        % 验证邀请码唯一性
-        ?assertEqual(length(Codes), length(lists:usort(Codes)))
+            ?assertEqual(8, byte_size(Code)),
+            ?assertMatch({match, _}, re:run(Code, <<"^[A-Z0-9]{8}$">>))
+        end, Codes)
     end).
 
-%% ===================================================================
-%% 邀请数据验证测试
-%% ===================================================================
+generate_invitation_code_supports_last_charset_position_test_() ->
+    CharsetSize = byte_size(<<"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">>),
+    ?WITH_MECKS([
+        {rand, [
+            {'uniform', 1, fun(Arg) ->
+                ?assertEqual(CharsetSize, Arg),
+                CharsetSize
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(<<"99999999">>, channel_invitation_repo:generate_invitation_code()),
+        ?assertEqual(8, meck:num_calls(rand, uniform, 1))
+    end).
 
-validate_invitation_data_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        ChannelId = 10001,
-        InviterUid = 1001,
-        InviteeUid = 1002,
-        Message = <<"欢迎加入我们的频道"/utf8>>,
-
-        % 创建有效的邀请数据
-        InvitationData = #{
-            channel_id => ChannelId,
-            inviter_uid => InviterUid,
-            invitee_uid => InviteeUid,
-            message => Message
+create_uses_default_pending_status_and_expiry_test_() ->
+    ?WITH_MECKS([
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(Sql, Params) ->
+                SqlBin = iolist_to_binary(Sql),
+                ?assert(re:run(SqlBin, <<"INSERT INTO channel_invitation">>) =/= nomatch),
+                ?assertEqual(
+                    [11, 1001, 2002, <<"INVITE01">>, <<"hello">>, 0,
+                     1700604800000, 1700000000000],
+                    Params
+                ),
+                {ok, 1, [{901}]}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            channel_id => 11,
+            inviter_uid => 1001,
+            invitee_uid => 2002,
+            invitation_code => <<"INVITE01">>,
+            message => <<"hello">>
         },
-
-        % 验证必填字段
-        ?assertEqual(ChannelId, maps:get(channel_id, InvitationData)),
-        ?assertEqual(InviterUid, maps:get(inviter_uid, InvitationData)),
-        ?assertEqual(InviteeUid, maps:get(invitee_uid, InvitationData)),
-        ?assertEqual(Message, maps:get(message, InvitationData))
+        ?assertEqual({ok, 901}, channel_invitation_repo:create(Data))
     end).
 
-%% ===================================================================
-%% 邀请状态测试
-%% ===================================================================
-
-invitation_status_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        % 状态定义
-        StatusPending = 0,
-        StatusAccepted = 1,
-        StatusRejected = 2,
-        StatusExpired = 3,
-        StatusCancelled = 4,
-
-        % 验证状态值
-        ?assertEqual(0, StatusPending),
-        ?assertEqual(1, StatusAccepted),
-        ?assertEqual(2, StatusRejected),
-        ?assertEqual(3, StatusExpired),
-        ?assertEqual(4, StatusCancelled)
+create_maps_unique_violation_to_already_invited_test_() ->
+    ?WITH_MECKS([
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) ->
+                {error, {pgsql_error, #{code => <<"23505">>}}}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{channel_id => 11, inviter_uid => 1001, invitee_uid => 2002},
+        ?assertEqual({error, already_invited}, channel_invitation_repo:create(Data))
     end).
 
-%% ===================================================================
-%% 邀请过期时间测试
-%% ===================================================================
+find_pending_by_channel_and_invitee_returns_row_test_() ->
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(Sql, [11, 2002]) ->
+                SqlBin = iolist_to_binary(Sql),
+                ?assert(re:run(SqlBin, <<"WHERE channel_id = \\$1 AND invitee_uid = \\$2">>) =/= nomatch),
+                ?assert(re:run(SqlBin, <<"status = 0">>) =/= nomatch),
+                ?assert(re:run(SqlBin, <<"expires_at > NOW">>) =/= nomatch),
+                ?assert(re:run(SqlBin, <<"ORDER BY created_at DESC LIMIT 1">>) =/= nomatch),
+                Row = #{<<"id">> => 777, <<"status">> => 0, <<"invitee_uid">> => 2002},
+                {ok, [Row]}
+            end}
+        ]}
+    ], fun() ->
+        ?assertMatch(
+            {ok, #{<<"id">> := 777, <<"status">> := 0}},
+            channel_invitation_repo:find_pending_by_channel_and_invitee(11, 2002)
+        )
+    end).
+
+find_pending_by_channel_and_invitee_returns_not_found_when_empty_test_() ->
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(_Sql, [11, 2002]) ->
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, not_found},
+            channel_invitation_repo:find_pending_by_channel_and_invitee(11, 2002)
+        )
+    end).
+
+find_pending_by_channel_and_invitee_propagates_db_error_test_() ->
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(_Sql, [11, 2002]) ->
+                {error, db_down}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, db_down},
+            channel_invitation_repo:find_pending_by_channel_and_invitee(11, 2002)
+        )
+    end).
+
+accept_returns_not_found_or_expired_when_no_row_updated_test_() ->
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 2, fun(Sql, [1, 777, 2002]) ->
+                SqlBin = iolist_to_binary(Sql),
+                ?assert(re:run(SqlBin, <<"status = 0 AND expires_at > NOW">>) =/= nomatch),
+                {ok, 0}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, not_found_or_expired},
+            channel_invitation_repo:accept(777, 2002)
+        )
+    end).
+
+accept_returns_ok_when_row_updated_test_() ->
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, [1, 777, 2002]) ->
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, channel_invitation_repo:accept(777, 2002))
+    end).
 
 invitation_expiry_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % 默认7天过期
         SevenDaysMs = 7 * 24 * 60 * 60 * 1000,
-        Now = elib_dt:now(),
+        Now = 1700000000000,
         ExpiresAt = Now + SevenDaysMs,
-
-        % 验证过期时间计算
         ?assert(ExpiresAt > Now),
         ?assertEqual(SevenDaysMs, ExpiresAt - Now)
     end).
-
-%% ===================================================================
-%% 邀请消息长度验证测试
-%% ===================================================================
-
-invitation_message_length_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        % 邀请消息最多 500 字符
-        MaxLength = 500,
-        ValidMessage = <<"欢迎加入频道"/utf8>>,
-        LongMessage = binary:copy(<<"a">>, 501),
-
-        ?assert(byte_size(ValidMessage) =< MaxLength),
-        ?assert(byte_size(LongMessage) > MaxLength)
-    end).
-
-%% ===================================================================
-%% 辅助函数
-%% ===================================================================
-
-%% @doc 生成测试用邀请码
-generate_test_invitation_code() ->
-    Chars = <<"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">>,
-    generate_code_chars(8, Chars, <<>>).
-
-generate_code_chars(0, _Chars, Acc) -> Acc;
-generate_code_chars(N, Chars, Acc) ->
-    Pos = rand:uniform(byte_size(Chars)),
-    <<_:Pos/binary, Char:1/binary, _/binary>> = Chars,
-    generate_code_chars(N - 1, Chars, <<Acc/binary, Char/binary>>).
-
-%% @doc 验证邀请码格式
-validate_invitation_code_format(Code) ->
-    case byte_size(Code) of
-        8 ->
-            ValidChars = <<"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">>,
-            binary:matches(Code, ValidChars) =/= [];
-        _ ->
-            false
-    end.

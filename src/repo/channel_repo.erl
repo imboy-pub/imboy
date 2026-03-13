@@ -10,11 +10,13 @@
 -export([find_by_id/2]).
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
+-export([list_by_ids_since/2]).
 -export([list_subscribed/2]).
 -export([list_managed/1]).
 -export([update/2]).
 -export([delete/1]).
 -export([increment_subscribers/2]).
+-export([increment_subscribers/3]).
 -export([search/3]).
 -export([list_discover/2]).
 % 统计相关
@@ -97,6 +99,23 @@ list_by_ids(Ids, Column) when length(Ids) > 0 ->
 list_by_ids([], _Column) ->
     {ok, []}.
 
+%% @doc 查询指定 ID 列表中 updated_at > Since 的频道（增量同步）
+-spec list_by_ids_since(list(integer()), integer() | binary()) -> {ok, list(map())} | {error, any()}.
+list_by_ids_since(Ids, Since) when length(Ids) > 0 ->
+    Tb = tablename(),
+    Placeholders = iolist_to_binary(lists:join(<<",">>,
+        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))])),
+    NextIdx = length(Ids) + 1,
+    SinceTs = normalize_since_param(Since),
+    Sql = <<"SELECT * FROM ", Tb/binary,
+            " WHERE id IN (", Placeholders/binary, ")"
+            " AND updated_at > $", (integer_to_binary(NextIdx))/binary,
+            " AND status = 1"
+            " ORDER BY updated_at DESC">>,
+    elib_pg:query(Sql, Ids ++ [SinceTs]);
+list_by_ids_since([], _Since) ->
+    {ok, []}.
+
 %% @doc 查询用户订阅的频道列表
 %% @param Uid 用户ID
 %% @param Column 要查询的列名
@@ -162,6 +181,17 @@ increment_subscribers(ChannelId, Delta) ->
             "updated_at = CURRENT_TIMESTAMP "
             "WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Sql, [DeltaAbs, ChannelId]).
+
+-spec increment_subscribers(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+increment_subscribers(Conn, ChannelId, Delta) ->
+    Tb = tablename(),
+    Op = if Delta > 0 -> <<"+">>; true -> <<"-">> end,
+    DeltaAbs = abs(Delta),
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET subscriber_count = subscriber_count ", Op/binary, " $1, "
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = $2 AND status = 1">>,
+    elib_pg:execute(Conn, Sql, [DeltaAbs, ChannelId]).
 
 %% @doc 搜索频道
 %% @param Keyword 搜索关键词
@@ -248,3 +278,16 @@ get_daily_stats(ChannelId, Days) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+-spec normalize_since_param(integer() | binary() | term()) -> binary().
+normalize_since_param(Since) when is_integer(Since), Since >= 0 ->
+    elib_dt:to_rfc3339(Since, millisecond);
+normalize_since_param(SinceBin) when is_binary(SinceBin), SinceBin =/= <<>> ->
+    case elib_type:is_numeric(SinceBin) of
+        true ->
+            elib_dt:to_rfc3339(binary_to_integer(SinceBin), millisecond);
+        false ->
+            SinceBin
+    end;
+normalize_since_param(_) ->
+    <<"1970-01-01T00:00:00Z">>.

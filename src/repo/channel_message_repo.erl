@@ -12,6 +12,7 @@
 -export([list_pinned/1]).
 -export([update/2]).
 -export([delete/1]).
+-export([revoke/3]).
 -export([increment_view_count/1]).
 -export([delete_by_channel/1]).
 
@@ -94,6 +95,18 @@ update(MessageId, Data) ->
 delete(MessageId) ->
     Tb = tablename(),
     elib_pg:update(Tb, #{status => -1}, <<"id = $1">>, [MessageId]).
+
+%% @doc 撤回消息（幂等）
+%% @param MessageId 消息ID
+%% @param RevokedBy 撤回人ID
+%% @param RevokedAt 撤回时间（RFC3339）
+-spec revoke(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
+revoke(MessageId, RevokedBy, RevokedAt) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET revoked = true, revoked_by = $2, revoked_at = $3, updated_at = $3 "
+            "WHERE id = $1 AND status = 1 AND revoked = false">>,
+    elib_pg:execute(Sql, [MessageId, RevokedBy, RevokedAt]).
 
 %% @doc 增加阅读量
 -spec increment_view_count(integer()) -> {ok, non_neg_integer()} | {error, any()}.

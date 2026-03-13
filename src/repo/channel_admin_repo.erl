@@ -13,6 +13,7 @@
 -export([delete/2]).
 -export([is_admin/2]).
 -export([get_role/2]).
+-export([update_role/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -87,6 +88,12 @@ is_admin(ChannelId, Uid) ->
 get_role(ChannelId, Uid) ->
     Admin = find(ChannelId, Uid),
     maps:get(<<"role">>, Admin, 0).
+
+%% @doc 更新管理员角色
+-spec update_role(integer(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+update_role(ChannelId, Uid, Role) ->
+    Tb = tablename(),
+    elib_pg:update(Tb, #{role => Role}, <<"channel_id = $1 AND user_id = $2">>, [ChannelId, Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -38,23 +38,30 @@
     {ok, can_subscribe} | {ok, need_invitation} | {ok, need_purchase} | {error, term()}.
 check_subscription_permission(ChannelId, Uid) ->
     case channel_repo:find_by_id(ChannelId, <<"id,type">>) of
-        {error, _} ->
+        {error, not_found} ->
             {error, <<"频道不存在"/utf8>>};
+        {error, Reason} ->
+            {error, normalize_error(Reason)};
         Channel ->
-            Type = maps:get(<<"type">>, Channel, 0),
-            case Type of
-                1 -> % 私有频道
-                    case is_invited(ChannelId, Uid) of
-                        true -> {ok, can_subscribe};
-                        false -> {ok, need_invitation}
-                    end;
-                2 -> % 付费频道
-                    case has_purchased(ChannelId, Uid) of
-                        true -> {ok, can_subscribe};
-                        false -> {ok, need_purchase}
-                    end;
-                _ -> % 公开频道
-                    {ok, can_subscribe}
+            case channel_ds:is_subscribed(ChannelId, Uid) of
+                true ->
+                    {ok, can_subscribe};
+                false ->
+                    Type = maps:get(<<"type">>, Channel, 0),
+                    case Type of
+                        1 -> % 私有频道
+                            case is_invited(ChannelId, Uid) of
+                                true -> {ok, can_subscribe};
+                                false -> {ok, need_invitation}
+                            end;
+                        2 -> % 付费频道
+                            case has_purchased(ChannelId, Uid) of
+                                true -> {ok, can_subscribe};
+                                false -> {ok, need_purchase}
+                            end;
+                        _ -> % 公开频道
+                            {ok, can_subscribe}
+                    end
             end
     end.
 
@@ -65,16 +72,21 @@ check_subscription_permission(ChannelId, Uid) ->
 %% @returns ok | {error, Reason}
 -spec subscribe_private(integer(), integer(), integer() | undefined) -> ok | {error, term()}.
 subscribe_private(ChannelId, Uid, InvitationId) ->
-    % 检查是否被邀请
-    case is_invited(ChannelId, Uid) of
+    case channel_ds:is_subscribed(ChannelId, Uid) of
         true ->
-            % 接受邀请（会自动创建订阅关系）
-            case accept_invitation_internal(ChannelId, Uid, InvitationId) of
-                ok -> ok;
-                {error, Reason} -> {error, Reason}
-            end;
+            ok;
         false ->
-            {error, <<"私有频道需要邀请才能订阅"/utf8>>}
+            % 检查是否被邀请
+            case is_invited(ChannelId, Uid) of
+                true ->
+                    % 接受邀请（会自动创建订阅关系）
+                    case accept_invitation_internal(ChannelId, Uid, InvitationId) of
+                        ok -> ok;
+                        {error, Reason} -> {error, Reason}
+                    end;
+                false ->
+                    {error, <<"私有频道需要邀请才能订阅"/utf8>>}
+            end
     end.
 
 %% @doc 订阅付费频道
@@ -98,19 +110,13 @@ subscribe_paid(ChannelId, Uid, OrderNo) ->
                 Status =/= 1 ->
                     {error, <<"订单未支付"/utf8>>};
                 true ->
-                    % 创建订阅关系（pay/2 已经处理了，这里再确认一下）
-                    case channel_subscription_repo:is_subscribed(ChannelId, Uid) of
-                        true -> ok;
-                        false ->
-                            Sql = <<"INSERT INTO channel_subscription (channel_id, user_id, subscribed_at, status) ",
-                                    "VALUES ($1, $2, NOW(), 1) ",
-                                    "ON CONFLICT (channel_id, user_id) DO UPDATE SET status = 1, subscribed_at = NOW()">>,
-                            elib_pg:execute(Sql, [ChannelId, Uid]),
-                            ok
-                    end
+                    % 统一走 channel_ds 订阅语义：状态变更才计数，且刷新缓存
+                    channel_ds:subscribe(ChannelId, Uid)
             end;
-        {error, _} ->
-            {error, <<"订单不存在"/utf8>>}
+        {error, not_found} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
     end.
 
 %% @doc 检查用户是否被邀请
@@ -148,7 +154,12 @@ create_invitation(ChannelId, InviterUid, InviteeUid) ->
                 inviter_uid => InviterUid,
                 invitee_uid => InviteeUid
             },
-            channel_invitation_repo:create(Data);
+            case channel_invitation_repo:create(Data) of
+                {ok, InvitationId} ->
+                    {ok, InvitationId};
+                {error, Reason} ->
+                    {error, normalize_error(Reason)}
+            end;
         false ->
             {error, <<"您不是频道订阅者，无法邀请他人"/utf8>>}
     end.
@@ -166,14 +177,21 @@ accept_invitation(InvitationId, Uid) ->
                 true ->
                     accept_invitation_internal(ChannelId, Uid, InvitationId)
             end;
-        {error, _} ->
-            {error, <<"邀请不存在"/utf8>>}
+        {error, not_found} ->
+            {error, <<"邀请不存在"/utf8>>};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
     end.
 
 %% @doc 拒绝邀请
 -spec reject_invitation(integer(), integer()) -> ok | {error, term()}.
 reject_invitation(InvitationId, Uid) ->
-    channel_invitation_repo:reject(InvitationId, Uid).
+    case channel_invitation_repo:reject(InvitationId, Uid) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
+    end.
 
 %% @doc 创建订单
 %% @param ChannelId 频道ID
@@ -198,15 +216,24 @@ create_order(ChannelId, Uid, Opts) ->
                         currency => Currency
                     },
                     channel_order_repo:create_order(Data);
-                {error, _} ->
-                    {error, <<"频道价格未配置"/utf8>>}
+                {error, not_found} ->
+                    {error, <<"频道价格未配置"/utf8>>};
+                {error, Reason} ->
+                    {error, normalize_error(Reason)}
             end
     end.
 
 %% @doc 支付订单（模拟支付）
 -spec pay_order(binary(), map()) -> ok | {error, term()}.
 pay_order(OrderNo, PaymentData) ->
-    channel_order_repo:pay(OrderNo, PaymentData).
+    case channel_order_repo:find_by_order_no(OrderNo) of
+        {ok, Order} ->
+            handle_paid_subscription(OrderNo, PaymentData, Order);
+        {error, not_found} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
+    end.
 
 %%===================================================================
 %%% Internal Functions
@@ -215,30 +242,103 @@ pay_order(OrderNo, PaymentData) ->
 %% @doc 内部接受邀请函数
 accept_invitation_internal(ChannelId, Uid, InvitationId) ->
     % 先获取邀请信息
-    case channel_invitation_repo:find_by_channel_and_invitee(ChannelId, Uid) of
+    case channel_invitation_repo:find_pending_by_channel_and_invitee(ChannelId, Uid) of
         {ok, Invitation} ->
             InvId = maps:get(<<"id">>, Invitation),
-            case channel_invitation_repo:accept(InvId, Uid) of
-                ok ->
-                    % 触发器会自动创建订阅关系，这里确保一下
-                    case channel_subscription_repo:is_subscribed(ChannelId, Uid) of
-                        true -> ok;
-                        false ->
-                            % 手动创建订阅关系
-                            Sql = <<"INSERT INTO channel_subscription (channel_id, user_id, subscribed_at, status) ",
-                                    "VALUES ($1, $2, NOW(), 1) ",
-                                    "ON CONFLICT (channel_id, user_id) DO UPDATE SET status = 1, subscribed_at = NOW()">>,
-                            elib_pg:execute(Sql, [ChannelId, Uid]),
-                            ok
+            accept_and_subscribe(ChannelId, Uid, InvId);
+        {error, not_found} when is_integer(InvitationId) ->
+            % 尝试使用指定的邀请ID
+            case channel_invitation_repo:find_by_id(InvitationId) of
+                {ok, InvitationById} ->
+                    InviteChannelId = maps:get(<<"channel_id">>, InvitationById, 0),
+                    InviteeUid = maps:get(<<"invitee_uid">>, InvitationById, 0),
+                    if
+                        InviteChannelId =/= ChannelId ->
+                            {error, <<"邀请频道不匹配"/utf8>>};
+                        InviteeUid =/= Uid ->
+                            {error, <<"无权接受此邀请"/utf8>>};
+                        true ->
+                            accept_and_subscribe(ChannelId, Uid, InvitationId)
                     end;
                 {error, Reason} ->
-                    {error, Reason}
+                    {error, normalize_error(Reason)}
             end;
-        {error, _} when is_integer(InvitationId) ->
-            % 尝试使用指定的邀请ID
-            channel_invitation_repo:accept(InvitationId, Uid);
         {error, Reason} ->
-            {error, Reason}
+            {error, normalize_error(Reason)}
+    end.
+
+accept_and_subscribe(ChannelId, Uid, InvitationId) ->
+    case channel_invitation_repo:accept(InvitationId, Uid) of
+        ok ->
+            channel_ds:subscribe(ChannelId, Uid);
+        {error, not_found_or_expired} ->
+            maybe_accept_already_done(ChannelId, Uid, InvitationId);
+        {error, not_found} ->
+            maybe_accept_already_done(ChannelId, Uid, InvitationId);
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
+    end.
+
+maybe_accept_already_done(ChannelId, Uid, InvitationId) ->
+    case channel_invitation_repo:find_by_id(InvitationId) of
+        {ok, Invitation} ->
+            InviteChannelId = maps:get(<<"channel_id">>, Invitation, 0),
+            InviteeUid = maps:get(<<"invitee_uid">>, Invitation, 0),
+            Status = maps:get(<<"status">>, Invitation, -1),
+            if
+                InviteChannelId =/= ChannelId ->
+                    {error, <<"邀请频道不匹配"/utf8>>};
+                InviteeUid =/= Uid ->
+                    {error, <<"无权接受此邀请"/utf8>>};
+                Status =:= 1 ->
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok -> {error, already_accepted};
+                        {error, Reason} -> {error, normalize_error(Reason)}
+                    end;
+                true ->
+                    {error, not_found_or_expired}
+            end;
+        {error, _} ->
+            {error, not_found_or_expired}
+    end.
+
+handle_paid_subscription(OrderNo, PaymentData, Order) ->
+    ChannelId = maps:get(<<"channel_id">>, Order),
+    Uid = maps:get(<<"user_id">>, Order),
+    case maps:get(<<"status">>, Order, 0) of
+        1 ->
+            case channel_ds:subscribe(ChannelId, Uid) of
+                ok -> {error, already_paid};
+                {error, Reason} -> {error, normalize_error(Reason)}
+            end;
+        _ ->
+            case channel_order_repo:pay(OrderNo, PaymentData) of
+                ok ->
+                    channel_ds:subscribe(ChannelId, Uid);
+                {error, not_found_or_expired} ->
+                    % 支付竞态下再次确认最终状态，已支付则补偿激活订阅
+                    maybe_subscribe_paid_order(OrderNo);
+                {error, Reason} ->
+                    {error, normalize_error(Reason)}
+            end
+    end.
+
+maybe_subscribe_paid_order(OrderNo) ->
+    case channel_order_repo:find_by_order_no(OrderNo) of
+        {ok, Order} ->
+            case maps:get(<<"status">>, Order, 0) of
+                1 ->
+                    ChannelId = maps:get(<<"channel_id">>, Order),
+                    Uid = maps:get(<<"user_id">>, Order),
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok -> {error, already_paid};
+                        {error, Reason} -> {error, normalize_error(Reason)}
+                    end;
+                _ ->
+                    {error, not_found_or_expired}
+            end;
+        {error, _Reason} ->
+            {error, not_found_or_expired}
     end.
 
 %% @doc 获取频道价格
@@ -248,5 +348,19 @@ get_channel_price(ChannelId) ->
     case elib_pg:query(Sql, [ChannelId]) of
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
-        {error, Reason} -> {error, Reason}
+        {error, Reason} -> {error, normalize_error(Reason)}
     end.
+
+-spec normalize_error(term()) -> term().
+normalize_error(Reason) when is_binary(Reason) ->
+    Reason;
+normalize_error(not_found) ->
+    not_found;
+normalize_error(not_found_or_expired) ->
+    not_found_or_expired;
+normalize_error(already_accepted) ->
+    already_accepted;
+normalize_error(already_paid) ->
+    already_paid;
+normalize_error(Reason) ->
+    elib_cnv:safe_to_binary(Reason).

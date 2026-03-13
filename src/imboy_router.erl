@@ -395,12 +395,15 @@ get_routes() ->
         {"/v1/channel/:channel_id/unsubscribe", channel_handler, #{action => unsubscribe}},
         {"/v1/channels/subscribed", channel_handler, #{action => subscribed}},
         {"/v1/channels/managed", channel_handler, #{action => managed}},
+        {"/v1/channels/unread/summary", channel_handler, #{action => unread_summary}},
         {"/v1/channel/:channel_id/message", channel_handler, #{action => publish_message}},
         {"/v1/channel/:channel_id/messages", channel_handler, #{action => messages}},
         {"/v1/channel/:channel_id/read", channel_handler, #{action => mark_read}},
         {"/v1/channels/search", channel_handler, #{action => search}},
         {"/v1/channels/discover", channel_handler, #{action => discover}},
         {"/v1/channel/:channel_id/admin", channel_handler, #{action => add_admin}},
+        {"/v1/channel/:channel_id/admins", channel_handler, #{action => admins}},
+        {"/v1/channel/:channel_id/admin/:user_id/role", channel_handler, #{action => update_admin_role}},
         {"/v1/channel/:channel_id/admin/:user_id", channel_handler, #{action => remove_admin}},
         % 频道统计 API
         {"/v1/channel/:channel_id/stats", channel_handler, #{action => stats}},
@@ -411,8 +414,10 @@ get_routes() ->
         % 消息管理 API
         {"/v1/channel/:channel_id/message/:message_id/pin", channel_handler, #{action => pin_message}},
         {"/v1/channel/:channel_id/message/:message_id/delete", channel_handler, #{action => delete_message}},
+        {"/v1/channel/:channel_id/message/:message_id/revoke", channel_handler, #{action => revoke_message}},
         % 订阅者管理 API
         {"/v1/channel/:channel_id/subscribers", channel_handler, #{action => subscribers}},
+        {"/v1/channel/:channel_id/subscriber/:user_id", channel_handler, #{action => remove_subscriber}},
         % 邀请相关 API（私有频道）
         {"/v1/channel/:channel_id/invitation", channel_handler, #{action => create_invitation}},
         {"/v1/channel/invitation/accept", channel_handler, #{action => accept_invitation}},
@@ -424,6 +429,7 @@ get_routes() ->
         {"/v1/channel/order/pay", channel_handler, #{action => pay_order}},
         {"/v1/channel/orders/my", channel_handler, #{action => my_orders}},
         {"/v1/channel/order/:order_no", channel_handler, #{action => get_order}},
+        {"/v1/channels/sync", channel_handler, #{action => sync}},
 
         % 群文件管理 API
         {"/v1/group/file/upload", group_file_handler, #{action => upload}},
@@ -512,6 +518,17 @@ get_routes() ->
         % 频道管理 API
         {"/adm/channel/list", adm_channel_handler, #{action => list}},
         {"/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
+        {"/adm/channel/:channel_id/messages", adm_channel_handler, #{action => messages}},
+        {"/adm/channel/:channel_id/subscribers", adm_channel_handler, #{action => subscribers}},
+        {"/adm/channel/:channel_id/subscriber/:user_id", adm_channel_handler, #{action => remove_subscriber}},
+        {"/adm/channel/:channel_id/admins", adm_channel_handler, #{action => admins}},
+        {"/adm/channel/:channel_id/admin/:user_id/role", adm_channel_handler, #{action => update_admin_role}},
+        {"/adm/channel/:channel_id/admin/:user_id", adm_channel_handler, #{action => remove_admin}},
+        {"/adm/channel/:channel_id/invitations", adm_channel_handler, #{action => invitations}},
+        {"/adm/channel/:channel_id/orders", adm_channel_handler, #{action => orders}},
+        {"/adm/channel/:channel_id/stats", adm_channel_handler, #{action => stats}},
+        {"/adm/channel/:channel_id/message/:message_id/pin", adm_channel_handler, #{action => pin_message}},
+        {"/adm/channel/:channel_id/message/:message_id/delete", adm_channel_handler, #{action => delete_message}},
         {"/adm/channel/search", adm_channel_handler, #{action => search}},
         {"/adm/channel/delete", adm_channel_handler, #{action => delete}},
         % Moment 与举报治理 API

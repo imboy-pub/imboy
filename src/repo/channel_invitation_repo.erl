@@ -16,6 +16,7 @@
 -export([create/1]).
 -export([find_by_id/1]).
 -export([find_by_channel_and_invitee/2]).
+-export([find_pending_by_channel_and_invitee/2]).
 -export([find_by_code/1]).
 -export([accept/2]).
 -export([reject/2]).
@@ -99,6 +100,21 @@ find_by_channel_and_invitee(ChannelId, InviteeUid) ->
             "status, message, expires_at, accepted_at, created_at, updated_at ",
             "FROM channel_invitation ",
             "WHERE channel_id = $1 AND invitee_uid = $2 ",
+            "ORDER BY created_at DESC LIMIT 1">>,
+    case elib_pg:query(Sql, [ChannelId, InviteeUid]) of
+        {ok, []} -> {error, not_found};
+        {ok, [Row | _]} -> {ok, Row};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 根据频道和被邀请人查找待处理邀请（仅 pending 且未过期）
+-spec find_pending_by_channel_and_invitee(integer(), integer()) -> {ok, map()} | {error, not_found}.
+find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
+    Sql = <<"SELECT id, channel_id, inviter_uid, invitee_uid, invitation_code, ",
+            "status, message, expires_at, accepted_at, created_at, updated_at ",
+            "FROM channel_invitation ",
+            "WHERE channel_id = $1 AND invitee_uid = $2 ",
+            "AND status = 0 AND expires_at > NOW() ",
             "ORDER BY created_at DESC LIMIT 1">>,
     case elib_pg:query(Sql, [ChannelId, InviteeUid]) of
         {ok, []} -> {error, not_found};
@@ -244,7 +260,8 @@ generate_invitation_code() ->
 
 generate_code_chars(0, _Chars, Acc) -> Acc;
 generate_code_chars(N, Chars, Acc) ->
-    Pos = rand:uniform(byte_size(Chars)),
+    % rand:uniform/1 returns 1..Len; convert to zero-based binary offset
+    Pos = rand:uniform(byte_size(Chars)) - 1,
     <<_:Pos/binary, Char:1/binary, _/binary>> = Chars,
     generate_code_chars(N - 1, Chars, <<Acc/binary, Char/binary>>).
 

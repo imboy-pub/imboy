@@ -145,10 +145,7 @@ pay(OrderNo, PaymentData) ->
         ?STATUS_PAID, PaymentNo, PaymentMethod, SubscriptionStart, SubscriptionEnd, OrderNo
     ]) of
         {ok, 0} -> {error, not_found_or_expired};
-        {ok, _} ->
-            % 支付成功后创建订阅关系
-            create_subscription_on_payment(OrderNo),
-            ok;
+        {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
@@ -259,18 +256,3 @@ generate_order_no() ->
 -spec default_expire_time() -> integer().
 default_expire_time() ->
     elib_dt:now() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).
-
-%% @doc 支付成功后创建订阅关系
-create_subscription_on_payment(OrderNo) ->
-    case find_by_order_no(OrderNo) of
-        {ok, Order} ->
-            ChannelId = maps:get(<<"channel_id">>, Order),
-            UserId = maps:get(<<"user_id">>, Order),
-            % 插入订阅关系
-            Sql = <<"INSERT INTO channel_subscription (channel_id, user_id, subscribed_at, status) ",
-                    "VALUES ($1, $2, NOW(), 1) ",
-                    "ON CONFLICT (channel_id, user_id) DO UPDATE SET status = 1, subscribed_at = NOW()">>,
-            elib_pg:execute(Sql, [ChannelId, UserId]);
-        _ ->
-            ok
-    end.

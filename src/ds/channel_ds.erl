@@ -39,7 +39,7 @@ get_channel(ChannelId) ->
             Channel;
         undefined ->
             case channel_repo:find_by_id(ChannelId, <<"*">>) of
-                {error, Reason} -> {error, Reason};
+                {error, Reason} -> {error, normalize_error(Reason)};
                 Channel ->
                     imboy_cache:set(CacheKey, Channel, ?HOUR),
                     Channel
@@ -63,7 +63,7 @@ create_channel(Uid, Name, Type, Opts) ->
     },
     Data2 = add_optional_fields(Data, Opts),
 
-    elib_pg:with_tx(fun(Conn) ->
+    case elib_pg:with_tx(fun(Conn) ->
         % 创建频道
         case channel_repo:add(Conn, Data2) of
             {ok, ChannelId, _} ->
@@ -81,7 +81,12 @@ create_channel(Uid, Name, Type, Opts) ->
             {error, Reason} ->
                 throw({abort_tx, Reason})
         end
-    end).
+    end) of
+        {error, Reason} ->
+            {error, normalize_error(Reason)};
+        Result ->
+            Result
+    end.
 
 %% @doc 添加可选字段
 add_optional_fields(Data, Opts) ->
@@ -117,46 +122,78 @@ subscriber_uids(ChannelId) ->
             end
     end.
 
-%% @doc 订阅频道
+%% @doc 订阅频道（使用事务保证原子性，P0-2 修复）
 -spec subscribe(integer(), integer()) -> ok | {error, any()}.
 subscribe(ChannelId, Uid) ->
-    % 检查是否已订阅
-    case is_subscribed(ChannelId, Uid) of
-        true ->
+    StartMs = elib_dt:millisecond(),
+    % 使用事务保证订阅和计数更新的原子性
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
+            {ok, true} ->
+                % 仅在真实状态变更时增加计数
+                case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
+                    {ok, _} -> changed;
+                    {error, Reason} -> throw({abort_tx, Reason})
+                end;
+            {ok, false} ->
+                % 幂等订阅：原本已订阅
+                noop;
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end),
+    case Result of
+        changed ->
+            % 清除订阅者缓存
+            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"changed">>, StartMs),
             ok;
-        false ->
-            Now = elib_dt:now(),
-            Data = #{
-                channel_id => ChannelId,
-                user_id => Uid,
-                subscribed_at => Now,
-                status => 1
-            },
-            case channel_subscription_repo:add(Data) of
-                {ok, _} ->
-                    % 更新订阅者数量
-                    _ = channel_repo:increment_subscribers(ChannelId, 1),
-                    % 清除订阅者缓存
-                    imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-                    ok;
-                {error, Reason} ->
-                    {error, Reason}
-            end
+        noop ->
+            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"noop">>, StartMs),
+            ok;
+        {error, Reason} ->
+            log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"error">>, StartMs),
+            {error, normalize_error(Reason)}
     end.
 
-%% @doc 取消订阅频道
+%% @doc 取消订阅频道（添加幂等检查，P0-2 修复）
 -spec unsubscribe(integer(), integer()) -> ok | {error, any()}.
 unsubscribe(ChannelId, Uid) ->
-    case channel_subscription_repo:delete(ChannelId, Uid) of
-        {ok, _} ->
-            % 更新订阅者数量
-            _ = channel_repo:increment_subscribers(ChannelId, -1),
+    StartMs = elib_dt:millisecond(),
+    % 使用事务保证删除和计数更新的原子性
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case channel_subscription_repo:delete(Conn, ChannelId, Uid) of
+            {ok, Affected} when Affected > 0 ->
+                % 只有实际发生状态变更才更新计数
+                case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
+                    {ok, _} -> changed;
+                    {error, Reason} -> throw({abort_tx, Reason})
+                end;
+            {ok, 0} ->
+                % 幂等取消：原本已取消或不存在
+                noop;
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end),
+    case Result of
+        changed ->
             % 清除缓存
             imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
             imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"changed">>, StartMs),
+            ok;
+        noop ->
+            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"noop">>, StartMs),
             ok;
         {error, Reason} ->
-            {error, Reason}
+            log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"error">>, StartMs),
+            {error, normalize_error(Reason)}
     end.
 
 %% @doc 发布频道消息
@@ -188,23 +225,42 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
     case channel_message_repo:add(Data) of
         {ok, MessageId, _} ->
             % 增加所有订阅者的未读计数
-            increment_all_unread(ChannelId),
+            increment_all_unread(ChannelId, AuthorId),
             {ok, MessageId};
         {error, Reason} ->
-            {error, Reason}
+            {error, normalize_error(Reason)}
     end.
 
 %% @doc 增加所有订阅者的未读计数
--spec increment_all_unread(integer()) -> ok.
-increment_all_unread(ChannelId) ->
+-spec increment_all_unread(integer(), integer()) -> ok.
+increment_all_unread(ChannelId, AuthorId) ->
     % 使用批量更新SQL提高性能
     Tb = channel_subscription_repo:tablename(),
     Sql = <<"UPDATE ", Tb/binary,
             " SET unread_count = unread_count + 1 "
-            "WHERE channel_id = $1 AND status = 1">>,
-    _ = elib_pg:execute(Sql, [ChannelId]),
+            "WHERE channel_id = $1 AND status = 1 AND user_id <> $2">>,
+    _ = elib_pg:execute(Sql, [ChannelId, AuthorId]),
     ok.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+-spec log_subscription_action(integer(), integer(), binary(), binary(), integer()) -> ok.
+log_subscription_action(Uid, ChannelId, Action, Result, StartMs) ->
+    CostMs = erlang:max(0, elib_dt:millisecond() - StartMs),
+    ?INFO_LOG([
+        channel_subscription_action,
+        {uid, Uid},
+        {channel_id, ChannelId},
+        {action, Action},
+        {result, Result},
+        {cost_ms, CostMs}
+    ]),
+    ok.
+
+-spec normalize_error(term()) -> binary().
+normalize_error(Reason) when is_binary(Reason) ->
+    Reason;
+normalize_error(Reason) ->
+    elib_cnv:safe_to_binary(Reason).

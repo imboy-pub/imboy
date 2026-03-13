@@ -51,21 +51,33 @@
 %% @param Module 要 Mock 的模块名
 %% @param Expectations 期望函数列表，格式为 [{Function, Arity, Fun}]
 setup_mock(Module, Expectations) ->
-    % 首先尝试使用 passthrough，如果失败则回退到完全 mock
-    case setup_mock(Module, [passthrough, no_link, unstick], Expectations) of
-        {error, {{abstract_code_not_found, _}, _}} ->
-            % 模块使用了 parse_transform（如 lager_transform），无法使用 passthrough
-            % 回退到完全 mock（不使用 passthrough）
-            setup_mock(Module, [no_link, unstick], Expectations);
-        Result ->
-            Result
-    end.
+    % 依次尝试多种策略，优先使用 passthrough+unstick 兼容旧测试。
+    % 若模块在当前 code path 下短暂不可加载（如 {error,nofile}），
+    % 则自动回退到不依赖 unstick 的纯 mock 策略。
+    setup_mock_with_fallback(
+        Module,
+        Expectations,
+        [
+            [passthrough, no_link, unstick],
+            [no_link, unstick],
+            [passthrough, no_link],
+            [no_link]
+        ],
+        []
+    ).
 
 %% @doc 为单个模块设置 Mock（带选项）
 %% @param Module 要 Mock 的模块名
 %% @param Options meck 选项，如 [passthrough, unstick, no_link]
 %% @param Expectations 期望函数列表
 setup_mock(Module, Options, Expectations) ->
+    setup_mock(Module, Options, Expectations, 3).
+
+setup_mock(_Module, _Options, _Expectations, Retries) when Retries =< 0 ->
+    {error, too_many_retries};
+setup_mock(Module, Options, Expectations, Retries) ->
+    % 先尝试清理旧 mock，避免同模块重复 mock 卡住。
+    cleanup_mock(Module),
     try
         meck:new(Module, Options),
         lists:foreach(fun({Func, Arity, Fun}) ->
@@ -74,28 +86,36 @@ setup_mock(Module, Options, Expectations) ->
         {ok, Module}
     catch
         error:{already_started, _} ->
-            cleanup_mock(Module),
-            setup_mock(Module, Options, Expectations);
+            timer:sleep(10),
+            setup_mock(Module, Options, Expectations, Retries - 1);
         _:Error:StackTrace ->
             % 捕获并返回详细错误
             {error, {Error, StackTrace}}
     end.
 
+setup_mock_with_fallback(_Module, _Expectations, [], Errors) ->
+    {error, {mock_setup_failed, lists:reverse(Errors)}};
+setup_mock_with_fallback(Module, Expectations, [Options | Rest], Errors) ->
+    case setup_mock(Module, Options, Expectations) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, Reason} ->
+            setup_mock_with_fallback(
+                Module,
+                Expectations,
+                Rest,
+                [{Options, Reason} | Errors]
+            )
+    end.
+
 %% @doc 清理单个 Mock
 cleanup_mock(Module) ->
-    try
-        case meck:is_loaded(Module) of
-            true -> 
-                meck:unload(Module),
-                ok;
-            false -> 
-                ok
-        end
-    catch
-        _:undef -> 
-            % meck 可能未加载，忽略错误
-            ok
-    end.
+    % 当前 meck 版本不保证提供 is_loaded/1，直接尝试 unload 并忽略未 mock 错误。
+    _ = catch meck:unload(Module),
+    % 某些场景 unload 后模块会变为未加载状态，下一次含 unstick 的 mock
+    % 可能在 ensure_loaded 处报 {error,nofile}；尽力恢复原模块加载状态。
+    _ = catch code:ensure_loaded(Module),
+    ok.
 
 %% @doc 批量清理 Mock
 cleanup_mocks(Modules) when is_list(Modules) ->

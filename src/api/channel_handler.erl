@@ -41,6 +41,7 @@ handle_action(subscribe, Req, State) -> subscribe(Req, State);
 handle_action(unsubscribe, Req, State) -> unsubscribe(Req, State);
 handle_action(subscribed, Req, State) -> subscribed(Req, State);
 handle_action(managed, Req, State) -> managed(Req, State);
+handle_action(unread_summary, Req, State) -> unread_summary(Req, State);
 handle_action(publish_message, Req, State) -> publish_message(Req, State);
 handle_action(messages, Req, State) -> messages(Req, State);
 handle_action(mark_read, Req, State) -> mark_read(Req, State);
@@ -57,8 +58,15 @@ handle_action(stats_daily, Req, State) -> stats_daily(Req, State);
 % 消息管理
 handle_action(pin_message, Req, State) -> pin_message(Req, State);
 handle_action(delete_message, Req, State) -> delete_message(Req, State);
+handle_action(revoke_message, Req, State) -> revoke_message(Req, State);
 % 订阅者管理
 handle_action(subscribers, Req, State) -> subscribers(Req, State);
+handle_action(remove_subscriber, Req, State) -> remove_subscriber(Req, State);
+% 管理员列表与角色更新
+handle_action(admins, Req, State) -> admins(Req, State);
+handle_action(update_admin_role, Req, State) -> update_admin_role(Req, State);
+% 频道增量同步
+handle_action(sync, Req, State) -> sync(Req, State);
 % 邀请相关（私有频道）
 handle_action(create_invitation, Req, State) -> create_invitation(Req, State);
 handle_action(accept_invitation, Req, State) -> accept_invitation(Req, State);
@@ -91,7 +99,7 @@ create(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Name = maps:get(<<"name">>, PostVals, <<>>),
-    Type = maps:get(<<"type">>, PostVals, 0),
+    Type = ec_cnv:to_integer(maps:get(<<"type">>, PostVals, 0)),
     Description = maps:get(<<"description">>, PostVals, <<>>),
     Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
     CustomId = maps:get(<<"custom_id">>, PostVals, undefined),
@@ -100,6 +108,8 @@ create(Req0, State) ->
     case Name of
         <<>> ->
             elib_response:error(Req0, <<"频道名称不能为空"/utf8>>);
+        _ when Type < 0; Type > 2 ->
+            elib_response:error(Req0, <<"频道类型无效"/utf8>>);
         _ ->
             Opts = #{
                 description => Description,
@@ -135,13 +145,14 @@ show(Req0, State) ->
 
 %% @doc 通过自定义ID获取频道
 -spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().
-by_custom_id(Req0, _State) ->
+by_custom_id(Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
     % 从路径参数获取 custom_id
     case cowboy_req:binding(custom_id, Req0) of
         undefined ->
             elib_response:error(Req0, <<"自定义ID不能为空"/utf8>>);
         CustomId ->
-            case channel_logic:get_channel_by_custom_id(CustomId) of
+            case channel_logic:get_channel_by_custom_id(CustomId, Uid) of
                 {ok, Channel} ->
                     elib_response:success(Req0, Channel);
                 {error, Msg} ->
@@ -154,7 +165,7 @@ by_custom_id(Req0, _State) ->
 update(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
     Data = maps:without([<<"channel_id">>], PostVals),
 
     case ChannelId of
@@ -174,7 +185,7 @@ update(Req0, State) ->
 delete(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -193,7 +204,7 @@ delete(Req0, State) ->
 subscribe(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -212,7 +223,7 @@ subscribe(Req0, State) ->
 unsubscribe(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -232,28 +243,47 @@ subscribed(Req0, State) ->
     Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
-    Cursor = case CursorBin of <<>> -> undefined; _ -> binary_to_integer(CursorBin) end,
-    Limit = case proplists:get_value(<<"limit">>, Qs) of
-        undefined -> 50;
-        LimitBin -> binary_to_integer(LimitBin)
+    Cursor = case CursorBin of
+        <<>> -> undefined;
+        _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
     end,
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
 
-    {ok, Channels} = channel_logic:get_subscribed_channels(Uid),
-    elib_response:success(Req0, #{list => Channels, cursor => Cursor, limit => Limit}).
+    case channel_logic:get_subscribed_channels(Uid) of
+        {ok, Channels} ->
+            elib_response:success(Req0, #{list => Channels, cursor => Cursor, limit => Limit});
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
 
 %% @doc 获取用户管理的频道列表
 -spec managed(cowboy_req:req(), map()) -> cowboy_req:req().
 managed(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    {ok, Channels} = channel_logic:get_managed_channels(Uid),
-    elib_response:success(Req0, #{list => Channels}).
+    case channel_logic:get_managed_channels(Uid) of
+        {ok, Channels} ->
+            elib_response:success(Req0, #{list => Channels});
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
+
+%% @doc 获取频道未读聚合
+-spec unread_summary(cowboy_req:req(), map()) -> cowboy_req:req().
+unread_summary(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    case channel_logic:get_unread_summary(Uid) of
+        {ok, Summary} ->
+            elib_response:success(Req0, Summary);
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
 
 %% @doc 发布频道消息
 -spec publish_message(cowboy_req:req(), map()) -> cowboy_req:req().
 publish_message(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
     Content = maps:get(<<"content">>, PostVals, <<>>),
     MsgType = maps:get(<<"msg_type">>, PostVals, <<"text">>),
     Payload = maps:get(<<"payload">>, PostVals, #{}),
@@ -274,7 +304,8 @@ publish_message(Req0, State) ->
 
 %% @doc 获取频道消息列表
 -spec messages(cowboy_req:req(), map()) -> cowboy_req:req().
-messages(Req0, _State) ->
+messages(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     % 从路径参数获取 channel_id
     case cowboy_req:binding(channel_id, Req0) of
         undefined ->
@@ -282,15 +313,17 @@ messages(Req0, _State) ->
         ChannelId ->
             Qs = cowboy_req:parse_qs(Req0),
             CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
-            Limit = case proplists:get_value(<<"limit">>, Qs) of
-                undefined -> 20;
-                LimitBin -> binary_to_integer(LimitBin)
+            Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
+            Cursor = case CursorBin of
+                <<>> -> 0;
+                _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
             end,
-
-            Cursor = case CursorBin of <<>> -> 0; _ -> binary_to_integer(CursorBin) end,
-
-            {ok, Messages} = channel_logic:get_messages(ChannelId, Cursor, Limit),
-            elib_response:success(Req0, #{list => Messages})
+            case channel_logic:get_messages(Uid, ChannelId, Cursor, Limit) of
+                {ok, Messages} ->
+                    elib_response:success(Req0, #{list => Messages});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
     end.
 
 %% @doc 标记消息已读
@@ -298,15 +331,19 @@ messages(Req0, _State) ->
 mark_read(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
     MessageId = maps:get(<<"message_id">>, PostVals, <<>>),
 
     case ChannelId of
         <<>> ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         _ ->
-            ok = channel_logic:mark_as_read(Uid, ChannelId, MessageId),
-            elib_response:success(Req0, #{})
+            case channel_logic:mark_as_read(Uid, ChannelId, MessageId) of
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
     end.
 
 %% @doc 搜索频道
@@ -314,45 +351,51 @@ mark_read(Req0, State) ->
 search(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
     Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
-    Limit = case proplists:get_value(<<"limit">>, Qs) of
-        undefined -> 20;
-        LimitBin -> binary_to_integer(LimitBin)
-    end,
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
 
     case Keyword of
         <<>> ->
             elib_response:success(Req0, #{list => []});
         _ ->
-            {ok, Channels} = channel_logic:search_channels(Keyword, Limit),
-            elib_response:success(Req0, #{list => Channels})
+            case channel_logic:search_channels(Keyword, Limit) of
+                {ok, Channels} ->
+                    elib_response:success(Req0, #{list => Channels});
+                {error, Msg} ->
+                    elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+            end
     end.
 
 %% @doc 发现频道（推荐）
 -spec discover(cowboy_req:req(), map()) -> cowboy_req:req().
 discover(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
-    Limit = case proplists:get_value(<<"limit">>, Qs) of
-        undefined -> 20;
-        LimitBin -> binary_to_integer(LimitBin)
-    end,
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
     _Category = proplists:get_value(<<"category">>, Qs, undefined),
 
     % 返回公开的、订阅数最多的频道
-    {ok, Channels} = channel_logic:get_discover_channels(Limit),
-    elib_response:success(Req0, #{list => Channels}).
+    case channel_logic:get_discover_channels(Limit) of
+        {ok, Channels} ->
+            elib_response:success(Req0, #{list => Channels});
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
 
 %% @doc 添加频道管理员
 -spec add_admin(cowboy_req:req(), map()) -> cowboy_req:req().
 add_admin(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    NewAdminUid = elib_hashids:decode(maps:get(<<"user_id">>, PostVals, <<>>)),
-    Role = maps:get(<<"role">>, PostVals, 1),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    NewAdminUid = decode_positive_id(maps:get(<<"user_id">>, PostVals, <<>>)),
+    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 1)),
 
     case ChannelId of
         <<>> ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ when Role < 1; Role > 3 ->
+            elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>);
+        _ when NewAdminUid =:= 0 ->
+            elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
         _ ->
             case channel_logic:add_admin(Uid, ChannelId, NewAdminUid, Role) of
                 ok ->
@@ -365,21 +408,33 @@ add_admin(Req0, State) ->
 %% @doc 移除频道管理员
 -spec remove_admin(cowboy_req:req(), map()) -> cowboy_req:req().
 remove_admin(Req0, State) ->
-    Uid = maps:get(current_uid, State),
-    PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    AdminUid = elib_hashids:decode(maps:get(<<"user_id">>, PostVals, <<>>)),
+    Method = cowboy_req:method(Req0),
+    case Method of
+        <<"PUT">> ->
+            % 兼容旧客户端: /admin/:user_id 使用 PUT 更新角色
+            update_admin_role(Req0, State);
+        <<"DELETE">> ->
+            Uid = maps:get(current_uid, State),
+            PostVals = elib_param:post(Req0),
+            ChannelId = resolve_channel_id(Req0, PostVals),
+            AdminUidBin = resolve_user_id_bin(Req0, PostVals),
+            AdminUid = decode_positive_id(AdminUidBin),
 
-    case ChannelId of
-        <<>> ->
-            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+            case ChannelId of
+                <<>> ->
+                    elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+                _ when AdminUid =:= 0 ->
+                    elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
+                _ ->
+                    case channel_logic:remove_admin(Uid, ChannelId, AdminUid) of
+                        ok ->
+                            elib_response:success(Req0, #{});
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
+            end;
         _ ->
-            case channel_logic:remove_admin(Uid, ChannelId, AdminUid) of
-                ok ->
-                    elib_response:success(Req0, #{});
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
-            end
+            elib_response:error(Req0, <<"请求方法不支持"/utf8>>)
     end.
 
 %% ===================================================================
@@ -407,8 +462,8 @@ stats(Req0, _State) ->
 record_view(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    MessageId = maps:get(<<"message_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    MessageId = resolve_message_id(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -429,8 +484,8 @@ record_view(Req0, State) ->
 add_reaction(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    MessageId = maps:get(<<"message_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    MessageId = resolve_message_id(Req0, PostVals),
     ReactionType = maps:get(<<"reaction_type">>, PostVals, <<"like">>),
 
     case ChannelId of
@@ -452,9 +507,9 @@ add_reaction(Req0, State) ->
 remove_reaction(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    MessageId = maps:get(<<"message_id">>, PostVals, <<>>),
-    ReactionType = maps:get(<<"reaction_type">>, PostVals, <<"like">>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    MessageId = resolve_message_id(Req0, PostVals),
+    ReactionType = resolve_reaction_type(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -479,10 +534,7 @@ stats_daily(Req0, _State) ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
             Qs = cowboy_req:parse_qs(Req0),
-            Days = case proplists:get_value(<<"days">>, Qs) of
-                undefined -> 7;
-                DaysBin -> binary_to_integer(DaysBin)
-            end,
+            Days = parse_qs_int(proplists:get_value(<<"days">>, Qs), 7, 1, 365),
 
             case channel_logic:get_daily_stats(ChannelId, Days) of
                 {ok, Stats} ->
@@ -533,6 +585,27 @@ delete_message(Req0, State) ->
             end
     end.
 
+%% @doc 撤回消息
+-spec revoke_message(cowboy_req:req(), map()) -> cowboy_req:req().
+revoke_message(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    MessageId = resolve_message_id(Req0, PostVals),
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ when MessageId =:= <<>> ->
+            elib_response:error(Req0, <<"消息ID不能为空"/utf8>>);
+        _ ->
+            case channel_logic:revoke_message(Uid, ChannelId, MessageId) of
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
 %% ===================================================================
 %% 订阅者管理 API
 %% ===================================================================
@@ -547,12 +620,12 @@ subscribers(Req0, _State) ->
         ChannelId ->
             Qs = cowboy_req:parse_qs(Req0),
             CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
-            Limit = case proplists:get_value(<<"limit">>, Qs) of
-                undefined -> 50;
-                LimitBin -> binary_to_integer(LimitBin)
-            end,
+            Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
 
-            Cursor = case CursorBin of <<>> -> 0; _ -> binary_to_integer(CursorBin) end,
+            Cursor = case CursorBin of
+                <<>> -> 0;
+                _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
+            end,
 
             case channel_logic:get_subscribers(ChannelId, Cursor, Limit) of
                 {ok, Subscribers} ->
@@ -575,8 +648,8 @@ subscribers(Req0, _State) ->
 create_invitation(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
-    InviteeUid = elib_hashids:decode(maps:get(<<"invitee_uid">>, PostVals, <<>>)),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    InviteeUid = decode_positive_id(maps:get(<<"invitee_uid">>, PostVals, <<>>)),
 
     case ChannelId of
         <<>> ->
@@ -597,7 +670,7 @@ create_invitation(Req0, State) ->
 accept_invitation(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    InvitationId = elib_hashids:decode(maps:get(<<"invitation_id">>, PostVals, <<>>)),
+    InvitationId = decode_positive_id(maps:get(<<"invitation_id">>, PostVals, <<>>)),
 
     case InvitationId of
         0 ->
@@ -616,7 +689,7 @@ accept_invitation(Req0, State) ->
 reject_invitation(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    InvitationId = elib_hashids:decode(maps:get(<<"invitation_id">>, PostVals, <<>>)),
+    InvitationId = decode_positive_id(maps:get(<<"invitation_id">>, PostVals, <<>>)),
 
     case InvitationId of
         0 ->
@@ -634,15 +707,23 @@ reject_invitation(Req0, State) ->
 -spec my_invitations(cowboy_req:req(), map()) -> cowboy_req:req().
 my_invitations(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    {ok, Invitations} = channel_logic:get_my_invitations(Uid),
-    elib_response:success(Req0, #{list => Invitations}).
+    case channel_logic:get_my_invitations(Uid) of
+        {ok, Invitations} ->
+            elib_response:success(Req0, #{list => Invitations});
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
 
 %% @doc 获取我发出的邀请列表
 -spec sent_invitations(cowboy_req:req(), map()) -> cowboy_req:req().
 sent_invitations(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    {ok, Invitations} = channel_logic:get_sent_invitations(Uid),
-    elib_response:success(Req0, #{list => Invitations}).
+    case channel_logic:get_sent_invitations(Uid) of
+        {ok, Invitations} ->
+            elib_response:success(Req0, #{list => Invitations});
+        {error, Msg} ->
+            elib_response:error(Req0, normalize_error_binary(Msg, <<"查询失败"/utf8>>))
+    end.
 
 %% ===================================================================
 %% 订单相关 API（付费频道）
@@ -653,7 +734,7 @@ sent_invitations(Req0, State) ->
 create_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"channel_id">>, PostVals, <<>>),
+    ChannelId = resolve_channel_id(Req0, PostVals),
 
     case ChannelId of
         <<>> ->
@@ -672,7 +753,7 @@ create_order(Req0, State) ->
 pay_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    OrderNo = maps:get(<<"order_no">>, PostVals, <<>>),
+    OrderNo = normalize_non_empty_binary(maps:get(<<"order_no">>, PostVals, <<>>)),
 
     case OrderNo of
         <<>> ->
@@ -690,22 +771,238 @@ pay_order(Req0, State) ->
 -spec my_orders(cowboy_req:req(), map()) -> cowboy_req:req().
 my_orders(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    {ok, Orders} = channel_logic:get_my_orders(Uid),
-    elib_response:success(Req0, #{list => Orders}).
+    case channel_logic:get_my_orders(Uid) of
+        {ok, Orders} ->
+            elib_response:success(Req0, #{list => Orders});
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
 
 %% @doc 获取订单详情
 -spec get_order(cowboy_req:req(), map()) -> cowboy_req:req().
 get_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
     % 从路径参数获取 order_no
-    case cowboy_req:binding(order_no, Req0) of
-        undefined ->
+    OrderNo = normalize_non_empty_binary(cowboy_req:binding(order_no, Req0)),
+    case OrderNo of
+        <<>> ->
             elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
-        OrderNo ->
+        _ ->
             case channel_logic:get_order(Uid, OrderNo) of
                 {ok, Order} ->
                     elib_response:success(Req0, Order);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
+    end.
+
+%% ===================================================================
+%% 管理员列表与角色更新 API
+%% ===================================================================
+
+%% @doc 获取频道管理员列表
+-spec admins(cowboy_req:req(), map()) -> cowboy_req:req().
+admins(Req0, _State) ->
+    case cowboy_req:binding(channel_id, Req0) of
+        undefined ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        ChannelId ->
+            case channel_logic:get_admins(ChannelId) of
+                {ok, Admins} ->
+                    elib_response:success(Req0, #{list => Admins});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 更新管理员角色
+-spec update_admin_role(cowboy_req:req(), map()) -> cowboy_req:req().
+update_admin_role(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 1)),
+    case Role < 1 orelse Role > 3 of
+        true ->
+            elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>);
+        false ->
+            ChannelId = resolve_channel_id(Req0, PostVals),
+            UserIdBin = resolve_user_id_bin(Req0, PostVals),
+            case ChannelId of
+                <<>> ->
+                    elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+                _ ->
+                    case UserIdBin of
+                        <<>> ->
+                            elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
+                        _ ->
+                            TargetUid = decode_positive_id(UserIdBin),
+                            case TargetUid of
+                                0 ->
+                                    elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
+                                _ ->
+                                    case channel_logic:update_admin_role(Uid, ChannelId, TargetUid, Role) of
+                                        ok ->
+                                            elib_response:success(Req0, #{});
+                                        {error, Msg} ->
+                                            elib_response:error(Req0, Msg)
+                                    end
+                            end
+                    end
+            end
+    end.
+
+%% @doc 统一解析频道 ID：路径参数优先，body 兼容回退
+-spec resolve_channel_id(cowboy_req:req(), map()) -> binary().
+resolve_channel_id(Req0, PostVals) ->
+    case binding_or_empty(channel_id, Req0) of
+        <<>> -> maps:get(<<"channel_id">>, PostVals, <<>>);
+        ChannelId -> ChannelId
+    end.
+
+%% @doc 统一解析消息 ID：路径参数优先，body 兼容回退
+-spec resolve_message_id(cowboy_req:req(), map()) -> binary().
+resolve_message_id(Req0, PostVals) ->
+    case binding_or_empty(message_id, Req0) of
+        <<>> -> maps:get(<<"message_id">>, PostVals, <<>>);
+        MessageId -> MessageId
+    end.
+
+%% @doc 统一解析用户 ID（HashID 文本）：路径参数优先，body 兼容回退
+-spec resolve_user_id_bin(cowboy_req:req(), map()) -> binary().
+resolve_user_id_bin(Req0, PostVals) ->
+    case binding_or_empty(user_id, Req0) of
+        <<>> -> maps:get(<<"user_id">>, PostVals, <<>>);
+        UserIdBin -> UserIdBin
+    end.
+
+%% @doc 统一解析反应类型：路径参数优先，body 兼容回退
+-spec resolve_reaction_type(cowboy_req:req(), map()) -> binary().
+resolve_reaction_type(Req0, PostVals) ->
+    case binding_or_empty(reaction_type, Req0) of
+        <<>> -> maps:get(<<"reaction_type">>, PostVals, <<"like">>);
+        ReactionType -> ReactionType
+    end.
+
+-spec binding_or_empty(atom(), cowboy_req:req()) -> binary().
+binding_or_empty(Key, Req0) ->
+    case cowboy_req:binding(Key, Req0) of
+        undefined -> <<>>;
+        Val -> Val
+    end.
+
+%% ===================================================================
+%% 移除订阅者 API
+%% ===================================================================
+
+%% @doc 移除频道订阅者（管理员及以上权限）
+-spec remove_subscriber(cowboy_req:req(), map()) -> cowboy_req:req().
+remove_subscriber(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    case cowboy_req:binding(channel_id, Req0) of
+        undefined ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        ChannelId ->
+            case cowboy_req:binding(user_id, Req0) of
+                undefined ->
+                    elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
+                UserIdBin ->
+                    TargetUid = decode_positive_id(UserIdBin),
+                    case TargetUid of
+                        0 ->
+                            elib_response:error(Req0, <<"用户ID不能为空"/utf8>>);
+                        _ ->
+                            case channel_logic:remove_subscriber(Uid, ChannelId, TargetUid) of
+                                ok ->
+                                    elib_response:success(Req0, #{});
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg)
+                            end
+                    end
+            end
+    end.
+
+%% ===================================================================
+%% 频道增量同步 API
+%% ===================================================================
+
+%% @doc 频道增量同步
+-spec sync(cowboy_req:req(), map()) -> cowboy_req:req().
+sync(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    Qs = cowboy_req:parse_qs(Req0),
+    Since = parse_qs_int(proplists:get_value(<<"since">>, Qs), 0, 0, 16#7fffffff),
+    case channel_logic:sync_channels(Uid, Since) of
+        {ok, Data} ->
+            elib_response:success(Req0, Data);
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+-spec parse_qs_int(term(), integer(), integer(), integer()) -> integer().
+parse_qs_int(undefined, Default, _Min, _Max) ->
+    Default;
+parse_qs_int(Value, Default, Min, Max) ->
+    case safe_to_integer(Value) of
+        {ok, Int} when Int < Min ->
+            Min;
+        {ok, Int} when Int > Max ->
+            Max;
+        {ok, Int} ->
+            Int;
+        error ->
+            Default
+    end.
+
+-spec safe_to_integer(term()) -> {ok, integer()} | error.
+safe_to_integer(Value) when is_integer(Value) ->
+    {ok, Value};
+safe_to_integer(Value) when is_binary(Value) ->
+    try
+        {ok, binary_to_integer(Value)}
+    catch
+        _:_ -> error
+    end;
+safe_to_integer(Value) when is_list(Value) ->
+    try
+        {ok, list_to_integer(Value)}
+    catch
+        _:_ -> error
+    end;
+safe_to_integer(_) ->
+    error.
+
+-spec decode_positive_id(term()) -> integer().
+decode_positive_id(Value) ->
+    case catch elib_hashids:decode(Value) of
+        Id when is_integer(Id), Id > 0 ->
+            Id;
+        _ ->
+            0
+    end.
+
+-spec normalize_non_empty_binary(term()) -> binary().
+normalize_non_empty_binary(undefined) ->
+    <<>>;
+normalize_non_empty_binary(Value) when is_binary(Value) ->
+    list_to_binary(string:trim(binary_to_list(Value)));
+normalize_non_empty_binary(Value) when is_list(Value) ->
+    list_to_binary(string:trim(Value));
+normalize_non_empty_binary(Value) when is_integer(Value) ->
+    integer_to_binary(Value);
+normalize_non_empty_binary(_) ->
+    <<>>.
+
+-spec normalize_error_binary(term(), binary()) -> binary().
+normalize_error_binary(Msg, Default) ->
+    Bin0 = case Msg of
+        Value when is_binary(Value); is_list(Value); is_integer(Value) ->
+            normalize_non_empty_binary(Value);
+        _ ->
+            elib_cnv:safe_to_binary(Msg)
+    end,
+    case normalize_non_empty_binary(Bin0) of
+        <<>> ->
+            Default;
+        Bin ->
+            Bin
     end.
