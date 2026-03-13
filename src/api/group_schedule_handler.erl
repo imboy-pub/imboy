@@ -31,23 +31,28 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
-        case Action of
-            create ->
-                create(Req0, State);
-            update ->
-                update(Req0, State);
-            cancel ->
-                cancel(Req0, State);
-            detail ->
-                detail(Req0, State);
-            list ->
-                list(Req0, State);
-            my_list ->
-                my_list(Req0, State);
-            confirm ->
-                confirm(Req0, State);
-            _ ->
-                Req0
+        case imboy_feature:ensure_enabled(Req0, group_schedule) of
+            ok ->
+                case Action of
+                    create ->
+                        create(Req0, State);
+                    update ->
+                        update(Req0, State);
+                    cancel ->
+                        cancel(Req0, State);
+                    detail ->
+                        detail(Req0, State);
+                    list ->
+                        list(Req0, State);
+                    my_list ->
+                        my_list(Req0, State);
+                    confirm ->
+                        confirm(Req0, State);
+                    _ ->
+                        Req0
+                end;
+            {error, RespReq} ->
+                RespReq
         end,
     {ok, Req1, State}.
 

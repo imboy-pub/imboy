@@ -16,7 +16,18 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = handle_action(Action, Req0, State),
+    Req1 =
+        case required_feature(Action) of
+            undefined ->
+                handle_action(Action, Req0, State);
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        handle_action(Action, Req0, State);
+                    {error, RespReq} ->
+                        RespReq
+                end
+        end,
     {ok, Req1, State}.
 
 %% @doc Action 分发处理
@@ -60,6 +71,19 @@ handle_action(pay_order, Req, State) -> pay_order(Req, State);
 handle_action(my_orders, Req, State) -> my_orders(Req, State);
 handle_action(get_order, Req, State) -> get_order(Req, State);
 handle_action(false, Req, _State) -> Req.
+
+-spec required_feature(atom() | false) -> atom() | undefined.
+required_feature(discover) -> channel_discover;
+required_feature(create_invitation) -> channel_invitation;
+required_feature(accept_invitation) -> channel_invitation;
+required_feature(reject_invitation) -> channel_invitation;
+required_feature(my_invitations) -> channel_invitation;
+required_feature(sent_invitations) -> channel_invitation;
+required_feature(create_order) -> channel_order;
+required_feature(pay_order) -> channel_order;
+required_feature(my_orders) -> channel_order;
+required_feature(get_order) -> channel_order;
+required_feature(_) -> undefined.
 
 %% @doc 创建频道
 -spec create(cowboy_req:req(), map()) -> cowboy_req:req().

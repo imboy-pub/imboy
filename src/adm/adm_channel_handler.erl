@@ -24,18 +24,39 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case Action of
-            list -> list(Method, Req0);
-            detail -> detail(Method, Req0);
-            search -> search(Method, Req0);
-            delete -> delete_action(Method, Req0);
-            false -> Req0
+        case required_feature(Action) of
+            undefined ->
+                case Action of
+                    list -> list(Method, Req0);
+                    detail -> detail(Method, Req0);
+                    search -> search(Method, Req0);
+                    delete -> delete_action(Method, Req0);
+                    _ -> Req0
+                end;
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        case Action of
+                            list -> list(Method, Req0);
+                            detail -> detail(Method, Req0);
+                            search -> search(Method, Req0);
+                            delete -> delete_action(Method, Req0);
+                            _ -> Req0
+                        end;
+                    {error, RespReq} ->
+                        RespReq
+                end
         end,
     {ok, Req1, State}.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+-spec required_feature(atom() | false) -> atom() | undefined.
+required_feature(invitations) -> channel_invitation;
+required_feature(orders) -> channel_order;
+required_feature(_) -> undefined.
 
 %% @doc 获取频道列表
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().

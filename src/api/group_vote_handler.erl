@@ -22,7 +22,13 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = handle_action(Action, Req0, State),
+    Req1 =
+        case imboy_feature:ensure_enabled(Req0, group_vote) of
+            ok ->
+                handle_action(Action, Req0, State);
+            {error, RespReq} ->
+                RespReq
+        end,
     {ok, Req1, State}.
 
 %% @doc Action 分发处理
