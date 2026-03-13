@@ -789,13 +789,18 @@ success_sets_response_headers_test_() ->
                 ?assert(maps:is_key(<<"msg">>, Map)),
                 ?assert(maps:is_key(<<"sv_ts">>, Map)),
                 ?assert(maps:is_key(<<"payload">>, Map)),
+                ?assertEqual(false, maps:is_key(<<"data">>, Map)),
                 Map
             end),
             meck:expect(cowboy_req, reply, fun(_Status, Headers, _Body, Req) ->
+                HeadersMap = case Headers of
+                    Map when is_map(Map) -> Map;
+                    List when is_list(List) -> maps:from_list(List)
+                end,
                 ?assertMatch(#{<<"content-type">> := <<"application/json; charset=utf-8">>},
-                             maps:from_list(Headers)),
+                             HeadersMap),
                 ?assertMatch(#{<<"Referrer-Policy">> := <<"strict-origin-when-cross-origin">>},
-                             maps:from_list(Headers)),
+                             HeadersMap),
                 Req
             end),
 
@@ -830,6 +835,8 @@ error_with_options_test_() ->
             meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
             meck:expect(jsone, encode, fun(Map, _Opts) ->
                 ?assert(maps:is_key(<<"debug">>, Map)),
+                ?assertEqual(#{}, maps:get(<<"payload">>, Map)),
+                ?assertEqual(false, maps:is_key(<<"data">>, Map)),
                 Map
             end),
             meck:expect(cowboy_req, reply, fun(_Status, _Headers, _Body, Req) -> Req end),
@@ -861,6 +868,7 @@ success_with_options_test_() ->
             meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
             meck:expect(jsone, encode, fun(Map, _Opts) ->
                 ?assertEqual(100, maps:get(<<"count">>, Map)),
+                ?assertEqual(false, maps:is_key(<<"data">>, Map)),
                 Map
             end),
             meck:expect(cowboy_req, reply, fun(_Status, _Headers, _Body, Req) -> Req end),
@@ -890,11 +898,54 @@ reply_json_options_not_map_test_() ->
             meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
             meck:expect(jsone, encode, fun(Map, _Opts) ->
                 ?assertMatch(#{<<"code">> := 0}, Map),
+                ?assertEqual(false, maps:is_key(<<"data">>, Map)),
                 Map
             end),
             meck:expect(cowboy_req, reply, fun(_Status, _Headers, _Body, Req) -> Req end),
 
             Result = elib_response:success(Req0, #{}, <<"ok">>, Options),
+
+            ?assertEqual(#{}, Result)
+        after
+            meck:unload(cowboy_req),
+            meck:unload(elib_cnv),
+            meck:unload(jsone),
+            meck:unload(elib_dt)
+        end
+    end).
+
+options_cannot_override_core_envelope_fields_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        meck:new(elib_cnv, [unstick, passthrough]),
+        meck:new(jsone, [unstick, passthrough]),
+        meck:new(elib_dt, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            Payload = #{<<"id">> => 1},
+            Msg = <<"ok">>,
+            Options = #{
+                <<"code">> => 999,
+                <<"msg">> => <<"override">>,
+                <<"sv_ts">> => 1,
+                <<"payload">> => #{<<"id">> => 999},
+                <<"extra">> => <<"keep">>
+            },
+
+            meck:expect(elib_cnv, convert_at_timestamps, fun(P) -> P end),
+            meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
+            meck:expect(jsone, encode, fun(Map, _Opts) ->
+                ?assertEqual(0, maps:get(<<"code">>, Map)),
+                ?assertEqual(<<"ok">>, maps:get(<<"msg">>, Map)),
+                ?assertEqual(1640995200000, maps:get(<<"sv_ts">>, Map)),
+                ?assertEqual(Payload, maps:get(<<"payload">>, Map)),
+                ?assertEqual(false, maps:is_key(<<"data">>, Map)),
+                ?assertEqual(<<"keep">>, maps:get(<<"extra">>, Map)),
+                Map
+            end),
+            meck:expect(cowboy_req, reply, fun(_Status, _Headers, _Body, Req) -> Req end),
+
+            Result = elib_response:success(Req0, Payload, Msg, Options),
 
             ?assertEqual(#{}, Result)
         after

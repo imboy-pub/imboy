@@ -173,7 +173,12 @@ reply_json(Code, Msg, Payload, Req, Options) ->
         _ ->
             #{}
     end,
-    JsonBody = jsone:encode(maps:merge(BasePayload, OptionsMap), [native_utf8]),
+    %% 固化 envelope 核心字段，避免外部 options 覆盖协议字段
+    ExtraOptions = maps:without(
+        [<<"code">>, <<"msg">>, <<"sv_ts">>, <<"payload">>],
+        OptionsMap
+    ),
+    JsonBody = jsone:encode(maps:merge(BasePayload, ExtraOptions), [native_utf8]),
 
     %% 发送响应
     cowboy_req:reply(200,
@@ -230,7 +235,7 @@ preview_binary(Bin, MaxLen) ->
 %% @returns cowboy_req:req() 更新后的请求对象
 -spec handle_logic_result(cowboy_req:req(), {ok, map()} | {error, binary() | list()}) -> cowboy_req:req().
 handle_logic_result(Req, {ok, Data}) ->
-    success(Req, Data);
+    ?MODULE:success(Req, Data);
 handle_logic_result(Req, {error, Msg}) ->
     elib_response:error(Req, Msg).
 
@@ -245,7 +250,7 @@ handle_logic_result(Req, {error, Msg}) ->
                                function(), map()) -> cowboy_req:req().
 handle_logic_result_with(Req, {ok, Data}, EnrichFun, Options) ->
     EnrichedData = EnrichFun(Data),
-    success(Req, EnrichedData, "success.", Options);
+    ?MODULE:success(Req, EnrichedData, <<"success.">>, Options);
 handle_logic_result_with(Req, {error, Msg}, _EnrichFun, _Options) ->
     elib_response:error(Req, Msg).
 

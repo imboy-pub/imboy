@@ -91,7 +91,7 @@ peer_ip_ipv6_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, peer, fun(_Req0) -> {{8193, 3512, 0, 0, 0, 0, 0, 1}, 443} end),
-            ?assertEqual(<<"2001:dc8::1">>, elib_req:peer_ip(Req0)),
+            ?assertEqual(<<"2001:db8::1">>, elib_req:peer_ip(Req0)),
             ?assert(meck:validate(cowboy_req))
         after
             meck:unload(cowboy_req)
@@ -144,6 +144,92 @@ cookie_empty_cookies_test_() ->
 %% ===================================================================
 %% post_params/1 测试
 %% ===================================================================
+
+body_json_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = req0,
+            meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"{\"name\":\"Alice\",\"age\":25}">>, req1} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/json">> end),
+            {ok, Body, Req1} = elib_req:body(Req0, []),
+            ?assertEqual(req1, Req1),
+            ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Body)),
+            ?assertEqual(25, maps:get(<<"age">>, Body)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+body_urlencoded_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = req0,
+            meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"a=1&b=2">>, req1} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/x-www-form-urlencoded">> end),
+            {ok, Body, Req1} = elib_req:body(Req0, []),
+            ?assertEqual(req1, Req1),
+            ?assertEqual(<<"1">>, maps:get(<<"a">>, Body)),
+            ?assertEqual(<<"2">>, maps:get(<<"b">>, Body)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+body_chunked_more_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = req0,
+            meck:expect(cowboy_req, read_body, fun
+                (req0) -> {more, <<"x=1&">>, req1};
+                (req1) -> {ok, <<"y=2">>, req2}
+            end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req2, <<>>) -> <<"application/x-www-form-urlencoded">> end),
+            {ok, Body, Req2} = elib_req:body(Req0, []),
+            ?assertEqual(req2, Req2),
+            ?assertEqual(<<"1">>, maps:get(<<"x">>, Body)),
+            ?assertEqual(<<"2">>, maps:get(<<"y">>, Body)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+body_empty_returns_empty_map_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = req0,
+            meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<>>, req1} end),
+            {ok, Body, Req1} = elib_req:body(Req0, []),
+            ?assertEqual(req1, Req1),
+            ?assertEqual(#{}, Body),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+body_invalid_json_falls_back_to_key_value_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = req0,
+            meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"a=1&b=2">>, req1} end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/json">> end),
+            {ok, Body, Req1} = elib_req:body(Req0, []),
+            ?assertEqual(req1, Req1),
+            ?assertEqual(<<"1">>, maps:get(<<"a">>, Body)),
+            ?assertEqual(<<"2">>, maps:get(<<"b">>, Body)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
 
 post_params_urlencoded_test_() ->
     ?TEST_WITH_APP(fun() ->

@@ -371,7 +371,7 @@ pin(Req0, State) ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             % 获取请求参数
-            {ok, Body} = elib_req:body(Req0, []),
+            {ok, Body, _Req1} = elib_req:body(Req0, []),
             MsgId = maps:get(<<"msg_id">>, Body, undefined),
             Pinned = maps:get(<<"pinned">>, Body, undefined),
 
@@ -428,7 +428,7 @@ forward(Req0, State) ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             % 获取请求参数
-            {ok, Body} = elib_req:body(Req0, []),
+            {ok, Body, _Req1} = elib_req:body(Req0, []),
             MsgIds = maps:get(<<"msg_ids">>, Body, []),
             To = maps:get(<<"to">>, Body, undefined),
             ToType = maps:get(<<"to_type">>, Body, undefined),
@@ -486,7 +486,7 @@ reaction_add(Req0, State) ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             % 获取请求参数
-            {ok, Body} = elib_req:body(Req0, []),
+            {ok, Body, _Req1} = elib_req:body(Req0, []),
             MsgId = maps:get(<<"msg_id">>, Body, undefined),
             MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
             Emoji = maps:get(<<"emoji">>, Body, undefined),
@@ -538,7 +538,7 @@ reaction_remove(Req0, State) ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             % 获取请求参数
-            {ok, Body} = elib_req:body(Req0, []),
+            {ok, Body, _Req1} = elib_req:body(Req0, []),
             MsgId = maps:get(<<"msg_id">>, Body, undefined),
             MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
             Emoji = maps:get(<<"emoji">>, Body, undefined),
