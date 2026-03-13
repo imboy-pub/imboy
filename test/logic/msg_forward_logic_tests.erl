@@ -28,7 +28,7 @@ forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
@@ -43,6 +43,60 @@ forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
         ?assertMatch({ok, [_]}, Result)
     end).
 
+forward_c2c_payload_contains_to_field_test_() ->
+    ?WITH_MECKS([
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+            end}
+        ]},
+        {msg_c2c_logic, [
+            {'c2c', 3, fun(_MsgId, _FromUid, Data) ->
+                ?assertEqual(true, maps:is_key(<<"to">>, Data)),
+                ok
+            end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+        ]},
+        {msg_forward_repo, [
+            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        MsgIds = [<<"msg_123">>],
+        FromUid = 123,
+        ToId = 789,
+        ToType = <<"c2c">>,
+
+        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+        ?assertMatch({ok, [_]}, Result)
+    end).
+
+forward_c2c_reply_rejected_returns_error_test_() ->
+    ?WITH_MECKS([
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+            end}
+        ]},
+        {msg_c2c_logic, [
+            {'c2c', 3, fun(_MsgId, _FromUid, _Data) ->
+                {reply, #{<<"type">> => <<"C2C_ERROR">>}}
+            end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+        ]}
+    ], fun() ->
+        MsgIds = [<<"msg_123">>],
+        FromUid = 123,
+        ToId = 789,
+        ToType = <<"c2c">>,
+
+        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+        ?assertMatch({error, {forward_rejected, _}}, Result)
+    end).
+
 forward_c2c_to_c2c_with_non_friend_fails_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [
@@ -54,7 +108,7 @@ forward_c2c_to_c2c_with_non_friend_fails_test_() ->
             end}
         ]},
         {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {false, 0} end}
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {false, false} end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -84,7 +138,7 @@ forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
             {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {group_ds, [
-            {'is_member', 2, fun(_Gid, _Uid) -> true end}
+            {'is_member', 2, fun(_Uid, _Gid) -> true end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
@@ -110,7 +164,7 @@ forward_c2c_to_c2g_with_non_group_member_fails_test_() ->
             end}
         ]},
         {group_ds, [
-            {'is_member', 2, fun(_Gid, _Uid) -> false end}
+            {'is_member', 2, fun(_Uid, _Gid) -> false end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -140,7 +194,7 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
@@ -153,6 +207,33 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
 
         Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
         ?assertMatch({ok, [_]}, Result)
+    end).
+
+forward_c2g_to_c2c_without_group_membership_fails_test_() ->
+    ?WITH_MECKS([
+        {msg_c2g_timeline_repo, [
+            {'find_by_msg_id', 1, fun(_MsgId) ->
+                {ok, [#{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
+            end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(Uid, Gid) ->
+                ?assertEqual(123, Uid),
+                ?assertEqual(1001, Gid),
+                false
+            end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+        ]}
+    ], fun() ->
+        MsgIds = [<<"msg_123">>],
+        FromUid = 123,
+        ToId = 789,
+        ToType = <<"c2c">>,
+
+        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+        ?assertMatch({error, {permission_denied, _}}, Result)
     end).
 
 %% ===================================================================
@@ -173,7 +254,7 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
             {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {group_ds, [
-            {'is_member', 2, fun(_Gid, _Uid) -> true end}
+            {'is_member', 2, fun(_Uid, _Gid) -> true end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
@@ -206,7 +287,7 @@ forward_batch_messages_succeeds_test_() ->
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
@@ -314,7 +395,7 @@ forward_partial_success_test_() ->
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
         {msg_forward_repo, [
             {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}

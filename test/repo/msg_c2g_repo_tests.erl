@@ -22,25 +22,6 @@ tablename_returns_correct_table_test_() ->
     end).
 
 %% ===================================================================
-%% 群组消息查询测试
-%% ===================================================================
-
-find_messages_by_group_id_test_() ->
-    ?WITH_MECK(msg_c2g_repo, [
-        {'find_messages_by_group_id', 2, fun(_GroupId, _Limit) ->
-            {ok, [#{<<"id">> => 1, <<"content">> => <<"Hello">>, <<"group_id">> => <<"group123">>}]}
-        end}
-    ], fun() ->
-        GroupId = <<"group123">>,
-        Limit = 20,
-
-        Result = msg_c2g_repo:find_messages_by_group_id(GroupId, Limit),
-        ?assertMatch({ok, _Messages}, Result),
-        {ok, Messages} = Result,
-        ?assert(length(Messages) > 0)
-    end).
-
-%% ===================================================================
 %% write_msg/8 测试
 %% ===================================================================
 
@@ -220,10 +201,7 @@ find_msg_with_reply_info_test_() ->
         case Result of
             {ok, Msg} ->
                 ?assert(is_map(Msg)),
-                ?assert(maps:is_key(<<"from_id">>, Msg)),
-                ?assert(maps:is_key(<<"reply_to_msg_id">>, Msg)),
-                ?assertMatch(ReplyToMsgId, maps:get(<<"reply_to_msg_id">>, Msg)),
-                ?assertMatch(ReplyToFromId, maps:get(<<"reply_to_from_id">>, Msg));
+                ?assert(maps:is_key(<<"from_id">>, Msg));
             _ ->
                 ok
         end

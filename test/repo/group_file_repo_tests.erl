@@ -108,8 +108,8 @@ list_by_group_with_results_test_() ->
         case Result of
             {ok, Files} when is_list(Files) ->
                 ?assert(is_list(Files));
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -123,8 +123,8 @@ list_by_group_with_category_filter_test_() ->
         case Result of
             {ok, Files} when is_list(Files) ->
                 ?assert(is_list(Files));
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -136,11 +136,11 @@ list_by_group_empty_group_test_() ->
         Result = group_file_repo:list_by_group(Gid, Page, Size, #{}),
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Files} when is_list(Files) ->
                 ?assertEqual([], Files);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -158,8 +158,8 @@ search_by_name_with_results_test_() ->
         case Result of
             {ok, Files} when is_list(Files) ->
                 ?assert(is_list(Files));
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -172,11 +172,11 @@ search_by_name_no_results_test_() ->
         Result = group_file_repo:search_by_name(Gid, Keyword, Page, Size),
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Files} when is_list(Files) ->
                 ?assertEqual([], Files);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -194,8 +194,8 @@ list_by_category_with_results_test_() ->
         case Result of
             {ok, Files} when is_list(Files) ->
                 ?assert(is_list(Files));
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -208,11 +208,11 @@ list_by_category_invalid_category_test_() ->
         Result = group_file_repo:list_by_category(Gid, Category, Page, Size),
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Files} when is_list(Files) ->
                 ?assertEqual([], Files);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -226,11 +226,11 @@ soft_delete_existing_file_test_() ->
         Result = group_file_repo:soft_delete(FileId),
         case Result of
             {ok, 1} ->
-                ?assert(true);
+                ok;
             {ok, Count} when is_integer(Count) ->
                 ?assert(Count >= 0);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -240,11 +240,11 @@ soft_delete_not_existing_file_test_() ->
         Result = group_file_repo:soft_delete(FileId),
         case Result of
             {ok, 0} ->
-                ?assert(true);
+                ok;
             {ok, Count} when is_integer(Count) ->
                 ?assertEqual(0, Count);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -258,11 +258,11 @@ increment_download_existing_file_test_() ->
         Result = group_file_repo:increment_download(FileId),
         case Result of
             {ok, 1} ->
-                ?assert(true);
+                ok;
             {ok, Count} when is_integer(Count) ->
                 ?assert(Count >= 0);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -272,11 +272,11 @@ increment_download_not_existing_file_test_() ->
         Result = group_file_repo:increment_download(FileId),
         case Result of
             {ok, 0} ->
-                ?assert(true);
+                ok;
             {ok, Count} when is_integer(Count) ->
                 ?assertEqual(0, Count);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -291,8 +291,8 @@ count_by_group_with_files_test_() ->
         case Result of
             {ok, Count} when is_integer(Count) ->
                 ?assert(Count >= 0);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -302,11 +302,11 @@ count_by_group_empty_group_test_() ->
         Result = group_file_repo:count_by_group(Gid),
         case Result of
             {ok, 0} ->
-                ?assert(true);
+                ok;
             {ok, Count} when is_integer(Count) ->
                 ?assertEqual(0, Count);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -321,8 +321,8 @@ sum_size_by_group_with_files_test_() ->
         case Result of
             {ok, TotalSize} when is_integer(TotalSize) ->
                 ?assert(TotalSize >= 0);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -332,11 +332,11 @@ sum_size_by_group_empty_group_test_() ->
         Result = group_file_repo:sum_size_by_group(Gid),
         case Result of
             {ok, 0} ->
-                ?assert(true);
+                ok;
             {ok, TotalSize} when is_integer(TotalSize) ->
                 ?assertEqual(0, TotalSize);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -351,8 +351,8 @@ category_stats_with_files_test_() ->
         case Result of
             {ok, Stats} when is_list(Stats) ->
                 ?assert(is_list(Stats));
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
 
@@ -362,10 +362,13 @@ category_stats_empty_group_test_() ->
         Result = group_file_repo:category_stats(Gid),
         case Result of
             {ok, []} ->
-                ?assert(true);
+                ok;
             {ok, Stats} when is_list(Stats) ->
                 ?assertEqual([], Stats);
-            {error, _Reason} ->
-                ?assert(true)
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end.
+
+assert_reason(Reason) ->
+    ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).

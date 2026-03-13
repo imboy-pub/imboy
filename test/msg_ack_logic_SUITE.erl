@@ -42,14 +42,57 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    % 设置测试环境
-    application:set_env(imboy, env, test),
+    % 设置测试环境并启动必要应用（含 lager/pooler 等依赖）
     ct:log("开始 msg_ack_logic 测试套件"),
-    Config.
+    {ok, OldCwd} = file:get_cwd(),
+    ProjectRoot = project_root_dir(OldCwd),
+    case file:set_cwd(ProjectRoot) of
+        ok ->
+            SetupState = eunit_runner:eunit_setup(),
+            [{setup_state, SetupState}, {old_cwd, OldCwd} | Config];
+        {error, Reason} ->
+            {skip, io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
+    end.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    case lists:keyfind(setup_state, 1, Config) of
+        {setup_state, SetupState} ->
+            eunit_runner:eunit_cleanup(SetupState);
+        false ->
+            ok
+    end,
+    case lists:keyfind(old_cwd, 1, Config) of
+        {old_cwd, OldCwd} ->
+            _ = file:set_cwd(OldCwd),
+            ok;
+        false ->
+            ok
+    end,
     ct:log("结束 msg_ack_logic 测试套件"),
     ok.
+
+project_root_dir() ->
+    project_root_dir(".").
+
+project_root_dir(StartDir) ->
+    find_project_root(filename:absname(StartDir), 10).
+
+find_project_root(Dir, 0) ->
+    Dir;
+find_project_root(Dir, N) ->
+    ConfigPath = filename:join([Dir, "config", "sys.local.config"]),
+    case filelib:is_regular(ConfigPath) of
+        true ->
+            Dir;
+        false ->
+            Parent = filename:dirname(Dir),
+            case Parent =:= Dir of
+                true ->
+                    Dir;
+                false ->
+                    find_project_root(Parent, N - 1)
+            end
+    end.
 
 init_per_testcase(_TestCase, Config) ->
     % 每个测试用例前的初始化
@@ -72,10 +115,10 @@ c2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_c2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)
-            VALUES ($1, $2, $3, $4, NOW())">>,
+    Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())">>,
     Payload = <<"{\"content\":\"test message\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, <<"text">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -86,7 +129,8 @@ c2c_ack_deletes_offline_msg(_Config) ->
 
     % 验证消息被删除
     Sql2 = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1 AND to_id = $2">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+    {ok, Rows} = elib_pg:query(Sql2, [MsgId, Uid]),
+    Count = extract_count(Rows),
     ?assertEqual(0, Count),
 
     % 清理测试数据
@@ -149,10 +193,10 @@ s2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_s2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, payload, created_at)
-            VALUES ($1, $2, $3, $4, NOW())">>,
+    Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, action, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
     Payload = <<"{\"msg_type\":\"system\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -163,7 +207,8 @@ s2c_ack_deletes_offline_msg(_Config) ->
 
     % 验证消息被删除
     Sql2 = <<"SELECT COUNT(*) FROM msg_s2c WHERE msg_id = $1 AND to_id = $2">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+    {ok, Rows} = elib_pg:query(Sql2, [MsgId, Uid]),
+    Count = extract_count(Rows),
     ?assertEqual(0, Count),
 
     % 清理测试数据
@@ -182,10 +227,10 @@ c2s_ack_uses_parameterized_query(_Config) ->
     MsgId = <<"test_c2s_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2s (from_id, topic_id, msg_id, payload, created_at)
-            VALUES ($1, $2, $3, $4, NOW())">>,
+    Sql = <<"INSERT INTO msg_c2s (from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
     Payload = <<"{\"text\":\"hello\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [Uid, 123, MsgId, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [Uid, 123, 123, MsgId, <<"text">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -196,7 +241,8 @@ c2s_ack_uses_parameterized_query(_Config) ->
 
     % 验证消息被删除
     Sql2 = <<"SELECT COUNT(*) FROM msg_c2s WHERE msg_id = $1 AND from_id = $2">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+    {ok, Rows} = elib_pg:query(Sql2, [MsgId, Uid]),
+    Count = extract_count(Rows),
     ?assertEqual(0, Count),
 
     % 清理测试数据
@@ -223,3 +269,10 @@ unknown_msg_type_handles_gracefully(_Config) ->
 
     % 应该正常完成
     {comment, "未知消息类型优雅处理"}.
+
+extract_count([#{<<"count">> := Count}]) when is_integer(Count) ->
+    Count;
+extract_count([{Count}]) when is_integer(Count) ->
+    Count;
+extract_count(_) ->
+    0.

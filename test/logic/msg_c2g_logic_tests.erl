@@ -2,415 +2,477 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% msg_c2g_logic 模块的 EUnit 测试
-%%%
-%%% 目标：验证群聊消息业务逻辑功能
-%%% 覆盖：发送群聊消息、消息路由、边界条件
-%%%===================================================================
-
-%% ===================================================================
-%% send/1 测试
-%% ===================================================================
-
-send_message_success_test_() ->
+c2g_success_sends_server_ack_and_dispatch_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_123">>} end}
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 100 end},
+            {'encode', 1, fun(1001) -> <<"from_user">> end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(100, 1001) -> false end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 100) -> true end},
+            {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]},
+        {elib_retry_config, [
+            {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
         ]},
         {message_ds, [
-            {'send_next', 2, fun(_Uid, _Msg) -> ok end}
+            {'send_next', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {mention_logic, [
+            {'create_mentions', 4, fun(_, _, _, _) -> ok end}
         ]}
     ], fun() ->
-        Data = #{<<"from_id">> => 100, <<"group_id">> => 1, <<"body">> => <<"消息"/utf8>>},
-        Result = msg_c2g_logic:send(Data),
-        ?assertMatch({ok, _}, Result)
+        MsgId = <<"msg_c2g_ok_001">>,
+        CurrentUid = 1001,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"hello group">>, <<"mentions">> => []},
+            <<"created_at">> => 1708768700000,
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<>>,
+            <<"e2ee">> => null
+        },
+
+        ok = msg_c2g_logic:c2g(MsgId, CurrentUid, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
+        ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+        ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+        ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4))
     end).
 
-send_message_with_payload_test_() ->
+c2g_muted_user_gets_error_reply_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_456">>} end}
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 100 end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(100, 1001) -> true end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2g_muted_001">>,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"hello">>},
+            <<"created_at">> => 1708768700000
+        },
+
+        ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(403, maps:get(<<"code">>, Reply))
+    end).
+
+c2g_non_member_gets_error_reply_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 100 end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(100, 1001) -> false end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 100) -> false end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2g_non_member_001">>,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"hello">>},
+            <<"created_at">> => 1708768700000
+        },
+
+        ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(403, maps:get(<<"code">>, Reply))
+    end).
+
+c2g_mention_all_requires_admin_role_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 100 end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(100, 1001) -> false end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 100) -> true end}
+        ]},
+        {group_member_ds, [
+            {'check_admin', 2, fun(1001, 100) -> false end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2g_all_001">>,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"hello">>, <<"mentions">> => [<<"all">>]},
+            <<"created_at">> => 1708768700000
+        },
+
+        ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(403, maps:get(<<"code">>, Reply))
+    end).
+
+c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 100;
+                             (<<"from_user">>) -> 777
+                         end},
+            {'encode', 1, fun(1001) -> <<"from_user">> end}
+        ]},
+        {group_member_logic, [
+            {'check_mute', 2, fun(100, 1001) -> false end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 100) -> true end},
+            {'member_uids', 1, fun(100) -> [1001, 1002] end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+        ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(<<"missing_group_reply_msg">>) -> {error, not_found} end}
         ]},
         {message_ds, [
-            {'send_next', 2, fun(_Uid, _Msg) -> ok end}
+            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"group_1">>) ->
+                #{<<"id">> => MsgId, <<"type">> => <<"MSG_NOT_FOUND">>}
+            end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2g_reply_missing_001">>,
+        Data = #{
+            <<"to">> => <<"group_1">>,
+            <<"payload">> => #{<<"content">> => <<"reply">>, <<"mentions">> => []},
+            <<"created_at">> => 1708768700000,
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"missing_group_reply_msg">>,
+                <<"from_id">> => <<"from_user">>
+            }
+        },
+
+        ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+    end).
+
+c2g_client_ack_delegates_to_ack_logic_test_() ->
+    ?WITH_MECKS([
+        {msg_ack_logic, [
+            {'client_ack', 4, fun(<<"c2g">>, <<"msg_ack_001">>, 1001, <<"did_1">>) -> ok end}
+        ]}
+    ], fun() ->
+        ok = msg_c2g_logic:c2g_client_ack(<<"msg_ack_001">>, 1001, <<"did_1">>),
+        ?assertEqual(1, meck:num_calls(msg_ack_logic, client_ack, 4))
+    end).
+
+c2g_revoke_ack_persists_action_payload_test_() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000090000 end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_revoke_ack\"}">> end}
+        ]},
+        {msg_c2g_repo, [
+            {'update_payload_by_msg_id', 2, fun(<<"orig_c2g_revoke_003">>, PayloadJson) ->
+                ?assert(is_binary(PayloadJson)),
+                {ok, 1}
+            end}
         ]}
     ], fun() ->
         Data = #{
-            <<"from_id">> => 100,
-            <<"group_id">> => 1,
-            <<"body">> => #{<<"content">> => <<"你好"/utf8>>, <<"type">> => <<"text">>}
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2g_revoke_003">>
+            }
         },
-        Result = msg_c2g_logic:send(Data),
-        ?assertMatch({ok, _}, Result)
+
+        Result = msg_c2g_logic:c2g_revoke_ack(<<"c2g_revoke_ack_003">>, 1001, Data),
+        ?assertEqual(ok, Result),
+        ?assertEqual(1, meck:num_calls(msg_c2g_repo, update_payload_by_msg_id, 2))
     end).
 
-send_message_with_empty_body_test_() ->
+c2g_edit_ack_persists_action_payload_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_789">>} end}
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
         ]},
-        {message_ds, [
-            {'send_next', 2, fun(_Uid, _Msg) -> ok end}
-        ]}
-    ], fun() ->
-        Data = #{<<"from_id">> => 100, <<"group_id">> => 1, <<"body">> => <<>>},
-        Result = msg_c2g_logic:send(Data),
-        ?assertMatch({ok, _}, Result)
-    end).
-
-send_message_with_large_group_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_large">>} end}
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000095000 end}
         ]},
-        {message_ds, [
-            {'send_next', 2, fun(_Uid, _Msg) -> ok end}
-        ]}
-    ], fun() ->
-        Data = #{<<"from_id">> => 100, <<"group_id">> => 99999, <<"body">> => <<"大群消息"/utf8>>},
-        Result = msg_c2g_logic:send(Data),
-        ?assertMatch({ok, _}, Result)
-    end).
-
-%% ===================================================================
-%% c2g/5 测试
-%% ===================================================================
-
-c2g_sends_to_group_members_test_() ->
-    ?WITH_MECKS([
-        {group_ds, [
-            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
-        ]},
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_c2g">>} end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_Uid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 100,
-        Data = #{<<"payload">> => #{<<"content">> => <<"群消息"/utf8>>}, <<"to">> => <<"group_1">>},
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data, <<"group_1">>, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-c2g_with_offline_members_stores_message_test_() ->
-    ?WITH_MECKS([
-        {group_ds, [
-            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
-        ]},
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_offline">>} end}
-        ]},
-        {msg_store_ds, [
-            {'store', 1, fun(_Msg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_456">>,
-        FromUid = 100,
-        Data = #{<<"payload">> => #{<<"content">> => <<"离线消息"/utf8>>}, <<"to">> => <<"group_2">>},
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data, <<"group_2">>, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% c2g_revoke/4 测试
-%% ===================================================================
-
-c2g_revoke_success_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'revoke', 3, fun(_MsgId, _Uid, _Data) -> {ok, updated} end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_revoke">>,
-        FromUid = 100,
-        Data = #{<<"old_msg_id">> => <<"old_msg_123">>, <<"to">> => <<"group_1">>},
-        To = <<"group_1">>,
-
-        Result = msg_c2g_logic:c2g_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
-
-c2g_revoke_with_nonexistent_msg_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'revoke', 3, fun(_MsgId, _Uid, _Data) -> {error, not_found} end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_revoke_fail">>,
-        FromUid = 100,
-        Data = #{<<"old_msg_id">> => <<"non_existent">>, <<"to">> => <<"group_1">>},
-        To = <<"group_1">>,
-
-        Result = msg_c2g_logic:c2g_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
-    end).
-
-%% ===================================================================
-%% c2g_edit/4 测试
-%% ===================================================================
-
-c2g_edit_success_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'edit', 3, fun(_MsgId, _Uid, _Data) -> {ok, updated} end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_edit">>,
-        FromUid = 100,
-        Data = #{<<"content">> => <<"编辑后的内容"/utf8>>, <<"to">> => <<"group_1">>},
-        To = <<"group_1">>,
-
-        Result = msg_c2g_logic:c2g_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
-
-c2g_edit_with_invalid_msg_id_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'edit', 3, fun(_MsgId, _Uid, _Data) -> {error, not_found} end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_edit_fail">>,
-        FromUid = 100,
-        Data = #{<<"content">> => <<"编辑内容"/utf8>>, <<"to">> => <<"group_1">>},
-        To = <<"group_1">>,
-
-        Result = msg_c2g_logic:c2g_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
-    end).
-
-%% ===================================================================
-%% c2g_client_ack/3 测试
-%% ===================================================================
-
-c2g_client_ack_success_test_() ->
-    ?WITH_MECK(msg_c2g_timeline_repo, [
-        {'client_ack', 1, fun(_Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        Uid = 100,
-        Ack = 1,
-
-        Result = msg_c2g_logic:c2g_client_ack(MsgId, Uid, Ack),
-        ?assertEqual(ok, Result)
-    end).
-
-c2g_client_ack_with_zero_ack_test_() ->
-    ?WITH_MECK(msg_c2g_timeline_repo, [
-        {'client_ack', 1, fun(_Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_456">>,
-        Uid = 100,
-        Ack = 0,
-
-        Result = msg_c2g_logic:c2g_client_ack(MsgId, Uid, Ack),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% 边界条件测试
-%% ===================================================================
-
-send_message_with_missing_fields_test_() ->
-    ?WITH_MECKS([
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_partial">>} end}
-        ]},
-        {message_ds, [
-            {'send_next', 2, fun(_Uid, _Msg) -> ok end}
-        ]}
-    ], fun() ->
-        % 缺少 body 字段
-        Data = #{<<"from_id">> => 100, <<"group_id">> => 1},
-        Result = msg_c2g_logic:send(Data),
-        ?assertMatch({ok, _}, Result)
-    end).
-
-c2g_with_empty_msg_id_test_() ->
-    ?WITH_MECKS([
-        {group_ds, [
-            {'member_uids', 1, fun(_Gid) -> [100] end}
-        ]},
-        {msg_c2g_ds, [
-            {'save', 1, fun(_Data) -> {ok, <<"msg_id_empty">>} end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_Uid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<>>,
-        FromUid = 100,
-        Data = #{<<"payload">> => <<>>},
-        To = <<"group_1">>,
-        OriginalMsg = <<>>,
-
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% 引用回复功能测试
-%% ===================================================================
-
-c2g_with_reply_to_msg_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 1 end},
-            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
-        ]},
-        {group_member_logic, [
-            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
+        {imboy_message_helper, [
+            {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_edit_ack\"}">> end}
         ]},
         {msg_c2g_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
+            {'update_payload_by_msg_id', 2, fun(<<"orig_c2g_edit_003">>, PayloadJson) ->
+                ?assert(is_binary(PayloadJson)),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2g_edit_003">>,
+                <<"content">> => <<"edited-content">>,
+                <<"edited_at">> => 1700000095000
+            }
+        },
+
+        Result = msg_c2g_logic:c2g_edit_ack(<<"c2g_edit_ack_003">>, 1001, Data),
+        ?assertEqual(ok, Result),
+        ?assertEqual(1, meck:num_calls(msg_c2g_repo, update_payload_by_msg_id, 2))
+    end).
+
+read_stats_success_returns_read_and_total_counts_test_() ->
+    ?WITH_MECKS([
+        {msg_c2g_timeline_repo, [
+            {'find_by_msg_id', 1, fun(<<"msg_stats_001">>) -> {ok, [#{<<"to_gid">> => 88}]} end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 88) -> true end},
+            {'member_uids', 1, fun(88) -> [1001, 1002, 1003, 1004] end}
+        ]},
+        {msg_c2g_repo, [
+            {'count_read', 1, fun(<<"msg_stats_001">>) -> 2 end}
+        ]}
+    ], fun() ->
+        ?assertEqual({ok, 2, 4}, msg_c2g_logic:read_stats(<<"msg_stats_001">>, 1001))
+    end).
+
+read_stats_permission_denied_for_non_member_test_() ->
+    ?WITH_MECKS([
+        {msg_c2g_timeline_repo, [
+            {'find_by_msg_id', 1, fun(<<"msg_stats_002">>) -> {ok, [#{<<"to_gid">> => 99}]} end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 99) -> false end}
+        ]}
+    ], fun() ->
+        ?assertEqual({error, permission_denied}, msg_c2g_logic:read_stats(<<"msg_stats_002">>, 1001))
+    end).
+
+extract_reply_info_without_reply_to_returns_empty_tuple_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual({<<>>, 0, <<>>}, msg_c2g_logic:extract_reply_info(#{}))
+    end).
+
+extract_reply_info_with_json_payload_extracts_content_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"from_user">>) -> 321 end}
+        ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(<<"origin_group_msg_001">>) ->
+                {ok, #{<<"payload">> => <<"{\"content\":\"hello group reply\"}">>}}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"origin_group_msg_001">>,
+                <<"from_id">> => <<"from_user">>
+            }
+        },
+
+        {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2g_logic:extract_reply_info(Data),
+        ?assertEqual(<<"origin_group_msg_001">>, ReplyToMsgId),
+        ?assertEqual(321, ReplyToFromId),
+        ?assertEqual(<<"hello group reply">>, ReplySnippet)
+    end).
+
+c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(<<"group_1">>) -> 88;
+                             (<<"from_user">>) -> 1001
+                         end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(1001, 88) -> true end},
+            {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
+        ]},
+        {msg_c2g_ds, [
+            {'find_msg_by_id', 1, fun(<<"orig_c2g_revoke_001">>) ->
                 {ok, #{
-                    <<"from_id">> => 200,
-                    <<"payload">> => <<"{\"content\":\"原始群消息内容\"}"/utf8>>
+                    <<"from_id">> => 1001,
+                    <<"created_at">> => 1700000000000
                 }}
-            end}
+            end},
+            {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> ok end}
         ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUids, _CreatedAtRfc, _NowTs) -> ok end}
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000060000 end},
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+        ]},
+        {elib_retry_config, [
+            {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
         ]},
         {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
+            {'send_next', 4, fun(_, _, _, _) -> ok end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 100,
         Data = #{
             <<"to">> => <<"group_1">>,
-            <<"payload">> => #{<<"content">> => <<"这是群聊回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"original_msg_456">>,
-                <<"from_id">> => <<"200">>
-            }
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2g_revoke_001">>}
         },
 
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
+        {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"c2g_revoke_001">>, 1001, Data),
+        ReplyPayload = maps:get(<<"payload">>, Reply),
+        ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(<<"custom">>, maps:get(<<"msg_type">>, Reply)),
+        ?assert(maps:is_key(<<"revoked_at">>, ReplyPayload)),
+        ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+        ?assertEqual(1, meck:num_calls(msg_c2g_ds, revoke_offline_msg, 9))
     end).
 
-c2g_with_reply_to_nonexistent_msg_fails_test_() ->
+c2g_revoke_permission_denied_when_operator_not_sender_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
         {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 1 end}
+            {'decode', 1, fun(<<"group_1">>) -> 88;
+                             (<<"from_user">>) -> 2002
+                         end}
         ]},
         {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
-        ]},
-        {group_member_logic, [
-            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
-        ]},
-        {msg_c2g_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
+            {'is_member', 2, fun(1001, 88) -> true end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
+            {'assemble_s2c', 3, fun(<<"c2g_revoke_denied_001">>, <<"permission_denied">>, <<"group_1">>) ->
+                #{<<"id">> => <<"c2g_revoke_denied_001">>, <<"error">> => <<"permission_denied">>}
             end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 100,
         Data = #{
             <<"to">> => <<"group_1">>,
-            <<"payload">> => #{<<"content">> => <<"这是群聊回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"nonexistent_msg">>,
-                <<"from_id">> => <<"200">>
-            }
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2g_revoke_002">>}
         },
 
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
+        {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"c2g_revoke_denied_001">>, 1001, Data),
+        ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply))
     end).
 
-c2g_with_nested_reply_succeeds_test_() ->
+c2g_edit_success_broadcasts_and_persists_offline_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
         {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 1 end},
-            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
+            {'decode', 1, fun(<<"group_1">>) -> 88;
+                             (<<"from_user">>) -> 1001
+                         end}
         ]},
         {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [100, 200, 300] end}
+            {'is_member', 2, fun(1001, 88) -> true end},
+            {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
         ]},
-        {group_member_logic, [
-            {'check_mute', 2, fun(_Gid, _Uid) -> false end}
-        ]},
-        {msg_c2g_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
+        {msg_c2g_ds, [
+            {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_001">>) ->
                 {ok, #{
-                    <<"from_id">> => 300,
-                    <<"payload">> => <<"{\"content\":\"第二条群消息内容\"}"/utf8>>
+                    <<"from_id">> => 1001,
+                    <<"created_at">> => 1700000000000
                 }}
-            end}
+            end},
+            {'edit_offline_msg', 6, fun(_, _, _, _, _, _) -> ok end}
         ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUids, _CreatedAtRfc, _NowTs) -> ok end}
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000065000 end},
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+        ]},
+        {elib_retry_config, [
+            {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
         ]},
         {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs) -> ok end}
+            {'send_next', 4, fun(_, _, _, _) -> ok end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_789">>,
-        FromUid = 100,
         Data = #{
             <<"to">> => <<"group_1">>,
-            <<"payload">> => #{<<"content">> => <<"回复的回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"second_msg_456">>,
-                <<"from_id">> => <<"300">>
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2g_edit_001">>,
+                <<"content">> => <<"new content">>,
+                <<"msg_type">> => <<"text">>
             }
         },
 
-        Result = msg_c2g_logic:c2g(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
+        {reply, Reply} = msg_c2g_logic:c2g_edit(<<"c2g_edit_001">>, 1001, Data),
+        ReplyPayload = maps:get(<<"payload">>, Reply),
+        ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Reply)),
+        ?assertEqual(<<"new content">>, maps:get(<<"content">>, ReplyPayload)),
+        ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+        ?assertEqual(1, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
     end).

@@ -75,9 +75,9 @@ list_albums_test_() ->
         Result = group_album_repo:list_albums(Gid, Page, Size),
         case Result of
             {ok, #{<<"list">> := List, <<"total">> := Total}} when is_list(List), is_integer(Total) ->
-                ?assert(true);
+                ?assert(Total >= 0);
             {ok, List} when is_list(List) ->
-                ?assert(true);
+                ?assert(is_list(List));
             _ ->
                 ?assert(false, "Expected list result")
         end
@@ -150,9 +150,9 @@ list_photos_test_() ->
         Result = group_album_repo:list_photos(AlbumId, Page, Size, <<"*">>),
         case Result of
             {ok, #{<<"list">> := List, <<"total">> := Total}} when is_list(List), is_integer(Total) ->
-                ?assert(true);
+                ?assert(Total >= 0);
             {ok, List} when is_list(List) ->
-                ?assert(true);
+                ?assert(is_list(List));
             _ ->
                 ?assert(false, "Expected list result")
         end
@@ -181,7 +181,7 @@ like_photo_test_() ->
         % 点赞测试
         Result = group_album_repo:like_photo(PhotoId, UserId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Like should succeed")
         end
     end).
@@ -210,7 +210,7 @@ unlike_photo_test_() ->
         % 取消点赞测试
         Result = group_album_repo:unlike_photo(PhotoId, UserId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Unlike should succeed")
         end
     end).
@@ -273,7 +273,7 @@ add_comment_test_() ->
         % 添加评论测试
         Result = group_album_repo:add_comment(PhotoId, UserId, Content),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Add comment should succeed")
         end
     end).
@@ -304,7 +304,7 @@ list_comments_test_() ->
         Result = group_album_repo:list_comments(PhotoId, 10),
         case Result of
             {ok, List} when is_list(List) ->
-                ?assert(true);
+                ?assert(is_list(List));
             _ ->
                 ?assert(false, "Expected list result")
         end
@@ -327,7 +327,7 @@ update_album_test_() ->
         UpdateData = #{id => InsertId, album_name => <<"新相册名"/utf8>>},
         Result = group_album_repo:update_album(UpdateData),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Update should succeed")
         end
     end).
@@ -348,7 +348,7 @@ delete_album_test_() ->
         % 删除相册
         Result = group_album_repo:delete_album(InsertId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Delete should succeed")
         end
     end).
@@ -374,7 +374,7 @@ delete_photo_test_() ->
         % 删除图片
         Result = group_album_repo:delete_photo(InsertId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Delete should succeed")
         end
     end).
@@ -395,7 +395,7 @@ increment_photo_count_test_() ->
         % 增加照片计数
         Result = group_album_repo:increment_photo_count(InsertId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Increment should succeed")
         end
     end).
@@ -416,7 +416,7 @@ decrement_photo_count_test_() ->
         % 减少照片计数
         Result = group_album_repo:decrement_photo_count(InsertId),
         case Result of
-            {ok, _} -> ?assert(true);
+            {ok, _} -> ok;
             {error, _} -> ?assert(false, "Decrement should succeed")
         end
     end).

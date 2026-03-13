@@ -2,944 +2,414 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% msg_c2c_logic 模块的 EUnit 测试
-%%%
-%%% 目标：验证单聊消息业务逻辑功能
-%%% 覆盖：消息发送、ACK、撤回、编辑、边界条件
-%%%===================================================================
-
-%% ===================================================================
-%% c2c/3 测试
-%% ===================================================================
-
-c2c_with_valid_data_succeeds_test_() ->
+c2c_success_sends_server_ack_and_dispatch_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
+            {'decode', 1, fun(<<"to_user">>) -> 456 end},
+            {'encode', 1, fun(123) -> <<"from_user">> end}
         ]},
         {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
+            {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_with_non_friend_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> false end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"not_friend">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
-
-c2c_with_offline_user_stores_message_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> false end}
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
         ]},
         {msg_store_ds, [
-            {'store', 1, fun(_Msg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% c2c_client_ack/3 测试
-%% ===================================================================
-
-c2c_client_ack_with_valid_ack_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 123 end}
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
         ]},
-        {msg_c2c_ds, [
-            {'client_ack', 3, fun(_MsgId, _Uid, _Ack) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Ack = 1,
-
-        Result = msg_c2c_logic:c2c_client_ack(MsgId, FromUid, Ack),
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_client_ack_with_zero_ack_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 123 end}
-        ]},
-        {msg_c2c_ds, [
-            {'client_ack', 3, fun(_MsgId, _Uid, _Ack) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Ack = 0,
-
-        Result = msg_c2c_logic:c2c_client_ack(MsgId, FromUid, Ack),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% c2c_revoke/3 测试
-%% ===================================================================
-
-c2c_revoke_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {msg_c2c_ds, [
-            {'revoke', 3, fun(_MsgId, _Uid, _Data) -> {ok, updated} end}
+        {elib_async, [
+            {'async_retry', 3, fun(Fun, 3, 1000) -> Fun(), ok end}
         ]},
         {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
+            {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"old_msg_id">> => <<"old_msg_456">>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
-
-c2c_revoke_with_non_friend_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> false end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"not_friend">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"old_msg_id">> => <<"old_msg_456">>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"not_friend">>}}, Result)
-    end).
-
-c2c_revoke_with_invalid_old_msg_id_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {msg_c2c_ds, [
-            {'revoke', 3, fun(_MsgId, _Uid, _Data) -> {error, not_found} end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"old_msg_id">> => <<"non_existent_msg">>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
-    end).
-
-%% ===================================================================
-%% c2c_revoke_ack/3 测试
-%% ===================================================================
-
-c2c_revoke_ack_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 123 end}
-        ]},
-        {msg_c2c_ds, [
-            {'revoke_ack', 3, fun(_MsgId, _Uid, _Data) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"msg_id">> => <<"msg_456">>},
-
-        Result = msg_c2c_logic:c2c_revoke_ack(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% c2c_edit/3 测试
-%% ===================================================================
-
-c2c_edit_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {msg_c2c_ds, [
-            {'edit', 3, fun(_MsgId, _Uid, _Data) -> {ok, updated} end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"content">> => <<"updated content"/utf8>>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
-
-c2c_edit_with_non_friend_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> false end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"not_friend">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"content">> => <<"updated content"/utf8>>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"not_friend">>}}, Result)
-    end).
-
-c2c_edit_with_invalid_msg_id_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {msg_c2c_ds, [
-            {'edit', 3, fun(_MsgId, _Uid, _Data) -> {error, not_found} end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"content">> => <<"updated content"/utf8>>},
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
-    end).
-
-%% ===================================================================
-%% c2c_edit_ack/3 测试
-%% ===================================================================
-
-c2c_edit_ack_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 123 end}
-        ]},
-        {msg_c2c_ds, [
-            {'edit_ack', 3, fun(_MsgId, _Uid, _Data) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"msg_id">> => <<"msg_456">>},
-
-        Result = msg_c2c_logic:c2c_edit_ack(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% 边界条件测试
-%% ===================================================================
-
-c2c_with_empty_msg_id_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        MsgId = <<>>,
-        FromUid = 123,
-        Data = #{<<"payload">> => <<>>},
-        To = <<"to_user">>,
-        OriginalMsg = <<>>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        % 空消息应该被处理
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_with_empty_payload_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'is_friend', 2, fun(_FromUid, _ToUid) -> true end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => <<>>},
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_with_self_message_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 123 end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => #{<<"content">> => <<"self message"/utf8>>}},
-        To = <<"to_user">>,  % 编码后的自己 ID
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        % 发给自己的消息应该被处理
-        ?assertEqual(ok, Result)
-    end).
-
-%% ===================================================================
-%% 黑名单测试
-%% ===================================================================
-
-c2c_with_user_in_denylist_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 1} end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"in_denylist">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"in_denylist">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 消息 staging 失败测试
-%% ===================================================================
-
-c2c_with_stage_failure_returns_error_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> error end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"internal_error">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"payload">> => #{<<"content">> => <<"hello"/utf8>>},
-            <<"created_at">> => 1737513600000
-        },
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"internal_error">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 撤回消息权限测试
-%% ===================================================================
-
-c2c_revoke_with_permission_denied_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 789 end}
-        ]},
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123}}  % 消息属于用户123，当前用户是789
-            end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"permission_denied">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 789,  % 不是消息发送者
+        MsgId = <<"msg_c2c_ok_001">>,
+        CurrentUid = 123,
         Data = #{
             <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{<<"original_msg_id">> => <<"old_msg_456">>}
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"permission_denied">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 编辑消息权限测试
-%% ===================================================================
-
-c2c_edit_with_permission_denied_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 789 end}
-        ]},
-        {user_logic, [
-            {'is_online', 1, fun(_ToUid) -> true end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"permission_denied">>}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 789,  % 与 from_id 不匹配
-        Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{
-                <<"original_msg_id">> => <<"old_msg_456">>,
-                <<"content">> => <<"edited content"/utf8>>,
-                <<"msg_type">> => <<"text">>
-            }
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"permission_denied">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 撤回消息 - 离线用户测试
-%% ===================================================================
-
-c2c_revoke_with_offline_user_stores_message_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123}}
-            end},
-            {'revoke_offline_msg', 8, fun(_PayloadJson, _NowTs, _MsgId, _FromId, _ToId, _MsgType, _Action) -> ok end}
-        ]},
-        {user_logic, [
-            {'is_online', 1, fun(_ToUid) -> false end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{<<"original_msg_id">> => <<"old_msg_456">>}
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 编辑消息 - 离线用户测试
-%% ===================================================================
-
-c2c_edit_with_offline_user_stores_message_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {user_logic, [
-            {'is_online', 1, fun(_ToUid) -> false end}
-        ]},
-        {msg_c2c_ds, [
-            {'edit_offline_msg', 5, fun(_PayloadJson, _NowTs, _MsgId, _FromId, _ToId) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{
-                <<"original_msg_id">> => <<"old_msg_456">>,
-                <<"content">> => <<"edited content"/utf8>>,
-                <<"msg_type">> => <<"text">>
-            }
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 编辑消息 - 离线存储失败测试
-%% ===================================================================
-
-c2c_edit_with_offline_storage_error_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {user_logic, [
-            {'is_online', 1, fun(_ToUid) -> false end}
-        ]},
-        {msg_c2c_ds, [
-            {'edit_offline_msg', 5, fun(_PayloadJson, _NowTs, _MsgId, _FromId, _ToId) ->
-                {error, database_error}
-            end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{
-                <<"original_msg_id">> => <<"old_msg_456">>,
-                <<"content">> => <<"edited content"/utf8>>,
-                <<"msg_type">> => <<"text">>
-            }
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c_edit(MsgId, FromUid, Data, To),
-        % 即使离线存储失败，也应该返回成功（已响应）
-        ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result)
-    end).
-
-%% ===================================================================
-%% 消息类型和字段测试 (v2.0 格式)
-%% ===================================================================
-
-c2c_with_msg_type_and_action_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> ok end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"payload">> => #{<<"content">> => <<"hello"/utf8>>},
+            <<"payload">> => #{<<"content">> => <<"hello">>},
+            <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"chat">>,
-            <<"e2ee">> => <<>>,
-            <<"created_at">> => 1737513600000
-        },
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_with_e2ee_metadata_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> ok end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"payload">> => <<"encrypted_content_base64">>,
-            <<"msg_type">> => <<"e2ee">>,
             <<"action">> => <<>>,
-            <<"e2ee">> => <<"e2ee_metadata">>,
-            <<"created_at">> => 1737513600000
+            <<"e2ee">> => null
         },
-        To = <<"to_user">>,
-        OriginalMsg = <<"{}">>,
 
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data, To, OriginalMsg),
-        ?assertEqual(ok, Result)
+        ok = msg_c2c_logic:c2c(MsgId, CurrentUid, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
+        ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+        ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
     end).
 
-%% ===================================================================
-%% 撤回消息 - 消息不属于任何用户测试
-%% ===================================================================
-
-c2c_revoke_with_msg_owner_mismatch_fails_test_() ->
+c2c_not_friend_returns_reply_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [
             {'decode', 1, fun(<<"to_user">>) -> 456 end}
         ]},
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 999}}  % 消息属于999，不是当前用户123
-            end}
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {false, 0} end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"permission_denied">>}
+            {'assemble_s2c', 3, fun(MsgId, <<"not_a_friend">>, <<"to_user">>) ->
+                #{<<"id">> => MsgId, <<"error">> => <<"not_a_friend">>}
             end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
-            <<"payload">> => #{<<"original_msg_id">> => <<"old_msg_456">>}
-        },
-        To = <<"to_user">>,
+        MsgId = <<"msg_c2c_not_friend_001">>,
+        Data = #{<<"to">> => <<"to_user">>},
 
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        ?assertMatch({reply, #{<<"code">> := <<"permission_denied">>}}, Result)
+        Result = msg_c2c_logic:c2c(MsgId, 123, Data),
+        ?assertMatch({reply, _}, Result),
+        {reply, Msg} = Result,
+        ?assertEqual(<<"not_a_friend">>, maps:get(<<"error">>, Msg))
     end).
 
-%% ===================================================================
-%% 撤回消息 - 离线存储失败测试
-%% ===================================================================
-
-c2c_revoke_with_offline_storage_error_test_() ->
+c2c_in_denylist_returns_reply_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [
             {'decode', 1, fun(<<"to_user">>) -> 456 end}
         ]},
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123}}
-            end},
-            {'revoke_offline_msg', 8, fun(_PayloadJson, _NowTs, _MsgId, _FromId, _ToId, _MsgType, _Action) ->
-                {error, database_error}
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {true, 2} end}
+        ]},
+        {message_ds, [
+            {'assemble_s2c', 3, fun(MsgId, <<"in_denylist">>, <<"to_user">>) ->
+                #{<<"id">> => MsgId, <<"error">> => <<"in_denylist">>}
             end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2c_deny_001">>,
+        Data = #{<<"to">> => <<"to_user">>},
+
+        Result = msg_c2c_logic:c2c(MsgId, 123, Data),
+        ?assertMatch({reply, _}, Result),
+        {reply, Msg} = Result,
+        ?assertEqual(<<"in_denylist">>, maps:get(<<"error">>, Msg))
+    end).
+
+c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 999
+                         end},
+            {'encode', 1, fun(123) -> <<"from_user">> end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+        ]},
+        {msg_c2c_repo, [
+            {'find_msg_by_id', 1, fun(<<"missing_reply_msg">>) -> {error, not_found} end}
+        ]},
+        {message_ds, [
+            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"to_user">>) ->
+                #{<<"id">> => MsgId, <<"type">> => <<"MSG_NOT_FOUND">>}
+            end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2c_reply_missing_001">>,
+        Data = #{
+            <<"to">> => <<"to_user">>,
+            <<"payload">> => #{<<"content">> => <<"reply">>},
+            <<"created_at">> => 1708768700000,
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"missing_reply_msg">>,
+                <<"from_id">> => <<"from_user">>
+            }
+        },
+
+        ok = msg_c2c_logic:c2c(MsgId, 123, Data),
+
+        Reply = receive
+            {reply, Msg} -> Msg
+        after 1000 ->
+            timeout
+        end,
+
+        ?assertNotEqual(timeout, Reply),
+        ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+    end).
+
+c2c_client_ack_delegates_to_ack_logic_test_() ->
+    ?WITH_MECKS([
+        {msg_ack_logic, [
+            {'client_ack', 4, fun(<<"c2c">>, <<"msg_ack_001">>, 123, <<"did_1">>) -> ok end}
+        ]}
+    ], fun() ->
+        ok = msg_c2c_logic:c2c_client_ack(<<"msg_ack_001">>, 123, <<"did_1">>),
+        ?assertEqual(1, meck:num_calls(msg_ack_logic, client_ack, 4))
+    end).
+
+extract_reply_info_without_reply_to_returns_empty_tuple_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual({<<>>, 0, <<>>}, msg_c2c_logic:extract_reply_info(#{}))
+    end).
+
+extract_reply_info_with_json_payload_extracts_content_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"from_user">>) -> 456 end}
+        ]},
+        {msg_c2c_repo, [
+            {'find_msg_by_id', 1, fun(<<"origin_msg_001">>) ->
+                {ok, #{<<"payload">> => <<"{\"content\":\"hello reply\"}">>}}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"origin_msg_001">>,
+                <<"from_id">> => <<"from_user">>
+            }
+        },
+
+        {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2c_logic:extract_reply_info(Data),
+        ?assertEqual(<<"origin_msg_001">>, ReplyToMsgId),
+        ?assertEqual(456, ReplyToFromId),
+        ?assertEqual(<<"hello reply">>, ReplySnippet)
+    end).
+
+extract_reply_info_with_non_json_payload_falls_back_to_raw_snippet_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"from_user">>) -> 456 end}
+        ]},
+        {msg_c2c_repo, [
+            {'find_msg_by_id', 1, fun(<<"origin_msg_002">>) ->
+                {ok, #{<<"payload">> => <<"plain payload text">>}}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"reply_to">> => #{
+                <<"msg_id">> => <<"origin_msg_002">>,
+                <<"from_id">> => <<"from_user">>
+            }
+        },
+
+        {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2c_logic:extract_reply_info(Data),
+        ?assertEqual(<<"origin_msg_002">>, ReplyToMsgId),
+        ?assertEqual(456, ReplyToFromId),
+        ?assertEqual(<<"plain payload text">>, ReplySnippet)
+    end).
+
+c2c_revoke_success_online_sends_revoke_ack_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 123
+                         end}
+        ]},
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(<<"orig_c2c_revoke_001">>) ->
+                {ok, #{
+                    <<"from_id">> => 123,
+                    <<"created_at">> => 1700000000000
+                }}
+            end},
+            {'revoke_offline_msg', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000060000 end},
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
         ]},
         {user_logic, [
-            {'is_online', 1, fun(_ToUid) -> false end}
+            {'is_online', 1, fun(456) -> true end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_and_send', 4, fun(456, <<"c2c_revoke_001">>, _Msg, <<"c2s">>) -> ok end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
         Data = #{
             <<"to">> => <<"to_user">>,
             <<"from">> => <<"from_user">>,
-            <<"payload">> => #{<<"original_msg_id">> => <<"old_msg_456">>}
+            <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2c_revoke_001">>}
         },
-        To = <<"to_user">>,
 
-        Result = msg_c2c_logic:c2c_revoke(MsgId, FromUid, Data, To),
-        % 即使离线存储失败，也应该返回成功
-        ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result)
+        {reply, Reply} = msg_c2c_logic:c2c_revoke(<<"c2c_revoke_001">>, 123, Data),
+        ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(<<"custom">>, maps:get(<<"msg_type">>, Reply)),
+        ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
+        ?assertEqual(0, meck:num_calls(msg_c2c_ds, revoke_offline_msg, 8))
     end).
 
-%% ===================================================================
-%% 引用回复功能测试
-%% ===================================================================
-
-c2c_with_reply_to_msg_succeeds_test_() ->
+c2c_revoke_permission_denied_when_operator_not_sender_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end},
-            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {msg_c2c_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{
-                    <<"from_id">> => 123,
-                    <<"payload">> => <<"{\"content\":\"原始消息内容\"}"/utf8>>
-                }}
-            end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> ok end}
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 789
+                         end}
         ]},
         {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
-        Data = #{
-            <<"payload">> => #{<<"content">> => <<"这是回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"original_msg_456">>,
-                <<"from_id">> => <<"original_from_user">>
-            }
-        },
-        To = <<"to_user">>,
-
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
-    end).
-
-c2c_with_reply_to_nonexistent_msg_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {msg_c2c_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
-        ]},
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"msg_not_found">>}
+            {'assemble_s2c', 3, fun(<<"c2c_revoke_denied_001">>, <<"permission_denied">>, <<"to_user">>) ->
+                #{<<"id">> => <<"c2c_revoke_denied_001">>, <<"error">> => <<"permission_denied">>}
             end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
         Data = #{
-            <<"payload">> => #{<<"content">> => <<"这是回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"nonexistent_msg">>,
-                <<"from_id">> => <<"original_from_user">>
-            }
+            <<"to">> => <<"to_user">>,
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2c_revoke_002">>}
         },
-        To = <<"to_user">>,
 
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data),
-        ?assertMatch({reply, #{<<"code">> := <<"msg_not_found">>}}, Result)
+        {reply, Reply} = msg_c2c_logic:c2c_revoke(<<"c2c_revoke_denied_001">>, 123, Data),
+        ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply))
     end).
 
-c2c_with_nested_reply_succeeds_test_() ->
+c2c_edit_success_online_sends_edit_ack_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
         {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end},
-            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 123
+                         end}
         ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+            {'millisecond', 0, fun() -> 1700000065000 end}
         ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
+        {user_logic, [
+            {'is_online', 1, fun(456) -> true end}
         ]},
-        {msg_c2c_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{
-                    <<"from_id">> => 789,
-                    <<"payload">> => <<"{\"content\":\"第二条消息内容\"}"/utf8>>
-                }}
-            end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> ok end}
-        ]},
-        {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
+        {imboy_message_helper, [
+            {'encode_and_send', 4, fun(456, <<"c2c_edit_001">>, _Msg, <<"c2s">>) -> ok end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_789">>,
-        FromUid = 123,
         Data = #{
-            <<"payload">> => #{<<"content">> => <<"回复的回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"second_msg_456">>,
-                <<"from_id">> => <<"789">>
+            <<"to">> => <<"to_user">>,
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2c_edit_001">>,
+                <<"content">> => <<"edited content">>,
+                <<"msg_type">> => <<"text">>
             }
         },
-        To = <<"to_user">>,
 
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
+        {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_001">>, 123, Data),
+        ReplyPayload = maps:get(<<"payload">>, Reply),
+        ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Reply)),
+        ?assertEqual(<<"edited content">>, maps:get(<<"content">>, ReplyPayload)),
+        ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
     end).
 
-c2c_with_long_content_snippet_truncated_test_() ->
+c2c_edit_permission_denied_when_operator_not_sender_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
         {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end},
-            {'encode', 1, fun(Id) when is_integer(Id) -> integer_to_binary(Id) end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, 0} end}
-        ]},
-        {user_device_ds, [
-            {'is_online', 2, fun(_ToUid, _ExcludeDIDs) -> true end}
-        ]},
-        {msg_c2c_repo, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{
-                    <<"from_id">> => 123,
-                    <<"payload">> => <<"{\"content\":\"这是一段非常非常非常非常非常非常非常非常非常非常长的消息内容，应该被截断\"}"/utf8>>
-                }}
-            end}
-        ]},
-        {msg_store_ds, [
-            {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, _PayloadJson,
-                               _FromUid, _ToUid, _CreatedAtRfc, _NowTs) -> ok end}
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 789
+                         end}
         ]},
         {message_ds, [
-            {'send_next', 5, fun(_ToUid, _MsgId, _Msg, _MsLi, _ExcludeDIDs, _IsFromSelf) -> ok end}
+            {'assemble_s2c', 3, fun(<<"c2c_edit_denied_001">>, <<"permission_denied">>, <<"to_user">>) ->
+                #{<<"id">> => <<"c2c_edit_denied_001">>, <<"error">> => <<"permission_denied">>}
+            end}
         ]}
     ], fun() ->
-        MsgId = <<"msg_123">>,
-        FromUid = 123,
         Data = #{
-            <<"payload">> => #{<<"content">> => <<"回复内容"/utf8>>},
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"e2ee">> => null,
-            <<"created_at">> => 1737513600000,
-            <<"reply_to">> => #{
-                <<"msg_id">> => <<"long_msg_456">>,
-                <<"from_id">> => <<"original_from_user">>
+            <<"to">> => <<"to_user">>,
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2c_edit_002">>,
+                <<"content">> => <<"edited content">>,
+                <<"msg_type">> => <<"text">>
             }
         },
-        To = <<"to_user">>,
 
-        Result = msg_c2c_logic:c2c(MsgId, FromUid, Data),
-        ?assertEqual(ok, Result)
+        {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_denied_001">>, 123, Data),
+        ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply))
+    end).
+
+c2c_revoke_ack_persists_action_payload_test_() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000090000 end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_revoke_ack\"}">> end}
+        ]},
+        {msg_c2c_repo, [
+            {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_revoke_003">>, PayloadJson) ->
+                ?assert(is_binary(PayloadJson)),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2c_revoke_003">>
+            }
+        },
+
+        Result = msg_c2c_logic:c2c_revoke_ack(<<"c2c_revoke_ack_003">>, 123, Data),
+        ?assertEqual(ok, Result),
+        ?assertEqual(1, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+    end).
+
+c2c_edit_ack_persists_action_payload_test_() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000095000 end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_edit_ack\"}">> end}
+        ]},
+        {msg_c2c_repo, [
+            {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_edit_003">>, PayloadJson) ->
+                ?assert(is_binary(PayloadJson)),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        Data = #{
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2c_edit_003">>,
+                <<"content">> => <<"edited-content">>,
+                <<"edited_at">> => 1700000095000
+            }
+        },
+
+        Result = msg_c2c_logic:c2c_edit_ack(<<"c2c_edit_ack_003">>, 123, Data),
+        ?assertEqual(ok, Result),
+        ?assertEqual(1, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
     end).

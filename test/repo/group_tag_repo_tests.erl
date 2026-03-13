@@ -39,8 +39,7 @@ add_valid_tag_test_() ->
                 ?assert(InsertId > 0, "Expected positive insert ID"),
                 ?assertMatch(#{}, Details);
             {ok, ResultMap} when is_map(ResultMap) ->
-                ?assertMatch(#{<<"id">> := _Id}, ResultMap),
-                ?assert(true);
+                ?assertMatch(#{<<"id">> := _Id}, ResultMap);
             {error, Reason} ->
                 ?assert(is_atom(Reason) orelse is_binary(Reason),
                        "Expected atom or binary error reason");
@@ -56,7 +55,7 @@ add_empty_map_test_() ->
         Result = group_tag_repo:add(undefined, Data),
         case Result of
             {error, Reason} when is_atom(Reason); is_binary(Reason) ->
-                ?assert(true);
+                assert_reason(Reason);
             _ ->
                 ?assert(false, "Expected {error, Reason}")
         end
@@ -73,7 +72,7 @@ add_with_missing_required_field_test_() ->
         Result = group_tag_repo:add(undefined, Data),
         case Result of
             {error, Reason} when is_atom(Reason); is_binary(Reason) ->
-                ?assert(true);
+                assert_reason(Reason);
             _ ->
                 ?assert(false, "Expected {error, Reason}")
         end
@@ -91,8 +90,8 @@ find_by_id_existing_test_() ->
         Result = group_tag_repo:find_by_id(Id, Column),
         % 可能不存在，所以只验证返回格式
         case Result of
-            #{<<"id">> := _, <<"group_id">> := _} -> ?assert(true);
-            {error, _} -> ?assert(true)
+            #{<<"id">> := _, <<"group_id">> := _} -> ok;
+            {error, Reason} -> assert_reason(Reason)
         end
     end).
 
@@ -110,8 +109,8 @@ find_by_id_all_columns_test_() ->
         Column = <<"*">>,
         Result = group_tag_repo:find_by_id(Id, Column),
         case Result of
-            #{<<"id">> := _} -> ?assert(true);
-            {error, _} -> ?assert(true)
+            #{<<"id">> := _} -> ok;
+            {error, Reason} -> assert_reason(Reason)
         end
     end).
 
@@ -223,7 +222,7 @@ count_returns_total_test_() ->
     ?TEST_WITH_DB(fun() ->
         Result = group_tag_repo:count(),
         case Result of
-            {ok, Count} when is_integer(Count) -> ?assert(true);
+            {ok, Count} when is_integer(Count) -> ?assert(Count >= 0);
             _ -> ?assert(false, "Expected {ok, Count}")
         end
     end).
@@ -237,7 +236,7 @@ count_by_group_existing_test_() ->
         GroupId = 1,
         Result = group_tag_repo:count_by_group(GroupId),
         case Result of
-            {ok, Count} when is_integer(Count) -> ?assert(true);
+            {ok, Count} when is_integer(Count) -> ?assert(Count >= 0);
             _ -> ?assert(false, "Expected {ok, Count}")
         end
     end).
@@ -287,8 +286,14 @@ add_with_empty_tag_name_test_() ->
         Result = group_tag_repo:add(undefined, Data),
         % 数据库应该拒绝空标签名
         case Result of
-            {error, _} -> ?assert(true);
-            _ -> ?assert(true)  % 或者数据库允许
+            {error, Reason} ->
+                assert_reason(Reason);
+            {ok, _, _} ->
+                ok;
+            {ok, _} ->
+                ok;
+            _ ->
+                ?assert(false, "Unexpected add result")
         end
     end).
 
@@ -303,9 +308,9 @@ add_with_long_tag_name_test_() ->
         },
         Result = group_tag_repo:add(undefined, Data),
         case Result of
-            {ok, _, _} -> ?assert(true);
-            {ok, _} -> ?assert(true);
-            {error, _} -> ?assert(true)
+            {ok, _, _} -> ok;
+            {ok, _} -> ok;
+            {error, Reason} -> assert_reason(Reason)
         end
     end).
 
@@ -319,9 +324,9 @@ add_with_utf8_tag_name_test_() ->
         },
         Result = group_tag_repo:add(undefined, Data),
         case Result of
-            {ok, _, _} -> ?assert(true);
-            {ok, _} -> ?assert(true);
-            {error, _} -> ?assert(true)
+            {ok, _, _} -> ok;
+            {ok, _} -> ok;
+            {error, Reason} -> assert_reason(Reason)
         end
     end).
 
@@ -335,9 +340,9 @@ add_with_special_chars_tag_name_test_() ->
         },
         Result = group_tag_repo:add(undefined, Data),
         case Result of
-            {ok, _, _} -> ?assert(true);
-            {ok, _} -> ?assert(true);
-            {error, _} -> ?assert(true)
+            {ok, _, _} -> ok;
+            {ok, _} -> ok;
+            {error, Reason} -> assert_reason(Reason)
         end
     end).
 
@@ -354,9 +359,9 @@ list_by_group_with_negative_id_test_() ->
         Result = group_tag_repo:list_by_group(-1, <<"id">>),
         % 可能返回空列表或错误
         case Result of
-            {ok, []} -> ?assert(true);
-            {error, _} -> ?assert(true);
-            _ -> ?assert(true)
+            {ok, []} -> ok;
+            {error, Reason} -> assert_reason(Reason);
+            _ -> ?assert(false, "Expected {ok, []} or {error, Reason}")
         end
     end).
 
@@ -400,8 +405,8 @@ complete_tag_lifecycle_test_() ->
                 % 6. 验证已删除
                 ExistsAfter = group_tag_repo:exists(GroupId, TagName),
                 ?assertEqual(false, ExistsAfter);
-            _ ->
-                ?assert(true)  % 如果添加失败，跳过后续测试
+            {error, Reason} ->
+                assert_reason(Reason)
         end
     end).
 
@@ -439,7 +444,7 @@ hot_tags_ranking_test_() ->
             {ok, TagList} when is_list(TagList) ->
                 % 验证返回格式
                 case TagList of
-                    [] -> ?assert(true);
+                    [] -> ?assertEqual([], TagList);
                     [First | _] ->
                         ?assertMatch(#{<<"tag_name">> := _, <<"count">> := _}, First)
                 end;
@@ -447,3 +452,6 @@ hot_tags_ranking_test_() ->
                 ?assert(false, "Expected {ok, TagList}")
         end
     end).
+
+assert_reason(Reason) ->
+    ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).
