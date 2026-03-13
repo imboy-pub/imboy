@@ -108,7 +108,7 @@ count_by_uid(UID) ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE from_user_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [UID]) of
-        {ok, #{count := Count}} -> Count;
+        {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
     end.
 

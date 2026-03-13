@@ -149,22 +149,24 @@ rsa_encrypt_with_binary_input_test_() ->
         meck:new(config_ds, [passthrough, no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
-            % Mock 配置获取公钥
-            TestPubKey = <<"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA test\n-----END PUBLIC KEY-----">>,
+            TestPubKey = <<"-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----">>,
             meck:expect(config_ds, get, fun(<<"login_rsa_pub_key">>) -> TestPubKey end),
-
-            % Mock RSA 加密
-            meck:expect(public_key, encrypt_public, fun(_Data, _Key) ->
-                <<"encrypted_base64_data">>
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
+            meck:expect(public_key, encrypt_public, fun(<<"test password">>, mock_public_key, Opts) ->
+                ?assertEqual([
+                    {rsa_padding, rsa_pkcs1_oaep_padding},
+                    {rsa_oaep_md, sha256},
+                    {rsa_mgf1_md, sha256}
+                ], Opts),
+                <<"encrypted_payload">>
             end),
 
-            PlainText = <<"test password">>,
-            Result = elib_cipher:rsa_encrypt(PlainText),
+            Result = elib_cipher:rsa_encrypt(<<"test password">>),
 
-            % 验证返回 Base64 编码的数据
-            ?assertMatch(<<_/binary>>, Result),
+            ?assertEqual(base64:encode(<<"encrypted_payload">>), Result),
             ?assert(meck:called(config_ds, get, 1)),
-            ?assert(meck:called(public_key, encrypt_public, 2))
+            ?assert(meck:called(public_key, encrypt_public, 3))
         after
             meck:unload(config_ds),
             meck:unload(public_key)
@@ -178,11 +180,12 @@ rsa_encrypt_with_list_input_test_() ->
         try
             TestPubKey = <<"-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----">>,
             meck:expect(config_ds, get, fun(<<"login_rsa_pub_key">>) -> TestPubKey end),
-            meck:expect(public_key, encrypt_public, fun(_Data, _Key) -> <<"encrypted">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
+            meck:expect(public_key, encrypt_public, fun(<<"password">>, mock_public_key, _Opts) -> <<"encrypted">> end),
 
-            % 测试列表输入
             Result = elib_cipher:rsa_encrypt("password"),
-            ?assertMatch(<<_/binary>>, Result)
+            ?assertEqual(base64:encode(<<"encrypted">>), Result)
         after
             meck:unload(config_ds),
             meck:unload(public_key)
@@ -194,12 +197,13 @@ rsa_encrypt_with_custom_key_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"-----BEGIN PUBLIC KEY-----\ntest key\n-----END PUBLIC KEY-----">>,
-            meck:expect(public_key, encrypt_public, fun(_Data, _Key) -> <<"custom_encrypted">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
+            meck:expect(public_key, encrypt_public, fun(<<"data">>, mock_public_key, _Opts) -> <<"custom_encrypted">> end),
 
-            BinData = <<"data">>,
-            Result = elib_cipher:rsa_encrypt(BinData, CustomKey),
+            Result = elib_cipher:rsa_encrypt(<<"data">>, CustomKey),
 
-            ?assertMatch(<<_/binary>>, Result)
+            ?assertEqual(base64:encode(<<"custom_encrypted">>), Result)
         after
             meck:unload(public_key)
         end
@@ -210,14 +214,13 @@ rsa_encrypt_error_handling_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"invalid key">>,
-            % Mock 加密抛出异常
-            meck:expect(public_key, encrypt_public, fun(_Data, _Key) ->
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
+            meck:expect(public_key, encrypt_public, fun(_Data, _Key, _Opts) ->
                 error(badarg)
             end),
-            meck:expect(public_key, pem_decode, fun(_Key) -> [] end),
 
-            BinData = <<"data">>,
-            Result = elib_cipher:rsa_encrypt(BinData, CustomKey),
+            Result = elib_cipher:rsa_encrypt(<<"data">>, CustomKey),
 
             ?assertMatch({error, encrypt_failed}, Result)
         after
@@ -232,7 +235,16 @@ rsa_decrypt_with_config_key_test_() ->
         try
             TestPrivKey = <<"-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> TestPrivKey end),
-            meck:expect(public_key, decrypt_private, fun(_Data, _Key) -> <<"decrypted_password">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<"encrypted">>, mock_private_key, Opts) ->
+                ?assertEqual([
+                    {rsa_padding, rsa_pkcs1_oaep_padding},
+                    {rsa_oaep_md, sha256},
+                    {rsa_mgf1_md, sha256}
+                ], Opts),
+                <<"decrypted_password">>
+            end),
 
             CipherText = base64:encode(<<"encrypted">>),
             Result = elib_cipher:rsa_decrypt(CipherText),
@@ -248,11 +260,9 @@ rsa_decrypt_missing_config_key_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(config_ds, [passthrough, no_link]),
         try
-            % Mock 配置未设置私钥
             meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> {error, not_found} end),
 
-            CipherText = <<"encrypted">>,
-            Result = elib_cipher:rsa_decrypt(CipherText),
+            Result = elib_cipher:rsa_decrypt(<<"encrypted">>),
 
             ?assertMatch({error, not_found}, Result)
         after
@@ -265,10 +275,11 @@ rsa_decrypt_with_custom_key_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(public_key, decrypt_private, fun(_Data, _Key) -> <<"custom_decrypted">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<"data">>, mock_private_key, _Opts) -> <<"custom_decrypted">> end),
 
-            CipherText = base64:encode(<<"data">>),
-            Result = elib_cipher:rsa_decrypt(CipherText, CustomKey),
+            Result = elib_cipher:rsa_decrypt(base64:encode(<<"data">>), CustomKey),
 
             ?assertEqual(<<"custom_decrypted">>, Result)
         after
@@ -281,11 +292,11 @@ rsa_decrypt_url_safe_base64_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(public_key, decrypt_private, fun(_Data, _Key) -> <<"url_safe_decrypted">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"url_safe_decrypted">> end),
 
-            % 测试 URL-safe Base64 格式
-            UrlSafeCipher = <<"abc-def_xyz">>,
-            Result = elib_cipher:rsa_decrypt(UrlSafeCipher, CustomKey),
+            Result = elib_cipher:rsa_decrypt(<<"-_8">>, CustomKey),
 
             ?assertEqual(<<"url_safe_decrypted">>, Result)
         after
@@ -298,13 +309,30 @@ rsa_decrypt_url_encoded_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(public_key, decrypt_private, fun(_Data, _Key) -> <<"url_decoded_decrypted">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"url_decoded_decrypted">> end),
 
-            % 测试 URL 编码
-            UrlEncodedCipher = <<"abc%2Fdef">>,
-            Result = elib_cipher:rsa_decrypt(UrlEncodedCipher, CustomKey),
+            Result = elib_cipher:rsa_decrypt(<<"%2B%2F8%3D">>, CustomKey),
 
             ?assertEqual(<<"url_decoded_decrypted">>, Result)
+        after
+            meck:unload(public_key)
+        end
+    end).
+
+rsa_decrypt_space_replaced_plus_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(public_key, [passthrough, no_link]),
+        try
+            CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"space_fixed">> end),
+
+            Result = elib_cipher:rsa_decrypt(<<" /8=">>, CustomKey),
+
+            ?assertEqual(<<"space_fixed">>, Result)
         after
             meck:unload(public_key)
         end
@@ -315,11 +343,11 @@ rsa_decrypt_missing_padding_test_() ->
         meck:new(public_key, [passthrough, no_link]),
         try
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(public_key, decrypt_private, fun(_Data, _Key) -> <<"padding_added">> end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<"hello">>, mock_private_key, _Opts) -> <<"padding_added">> end),
 
-            % 测试缺失 Base64 填充
-            NoPaddingCipher = <<"abc">>,
-            Result = elib_cipher:rsa_decrypt(NoPaddingCipher, CustomKey),
+            Result = elib_cipher:rsa_decrypt(<<"aGVsbG8">>, CustomKey),
 
             ?assertEqual(<<"padding_added">>, Result)
         after
@@ -333,73 +361,65 @@ rsa_decrypt_missing_padding_test_() ->
 
 safe_rsa_decrypt_version_1_success_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(elib_cipher, [passthrough, no_link]),
+        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(public_key, [passthrough, no_link]),
         try
-            Password = <<"encrypted_password">>,
-            Decrypted = <<"decrypted_value">>,
+            PrivateKeyPem = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
+            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> PrivateKeyPem end),
+            meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
+            meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
+            meck:expect(public_key, decrypt_private, fun(<<"encrypted">>, mock_private_key, _Opts) ->
+                <<"decrypted_value">>
+            end),
 
-            meck:expect(elib_cipher, rsa_decrypt, fun(_Password) -> Decrypted end),
+            Result = elib_cipher:safe_rsa_decrypt(base64:encode(<<"encrypted">>), <<"1">>),
 
-            Result = elib_cipher:safe_rsa_decrypt(Password, <<"1">>),
-
-            ?assertEqual(Decrypted, Result)
+            ?assertEqual(<<"decrypted_value">>, Result)
         after
-            meck:unload(elib_cipher)
+            meck:unload(config_ds),
+            meck:unload(public_key)
         end
     end).
 
 safe_rsa_decrypt_version_1_error_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(elib_cipher, [passthrough, no_link]),
+        meck:new(config_ds, [passthrough, no_link]),
         try
-            Password = <<"invalid_encrypted">>,
+            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> {error, not_found} end),
 
-            meck:expect(elib_cipher, rsa_decrypt, fun(_Password) ->
-                error(decrypt_failed)
-            end),
+            Result = elib_cipher:safe_rsa_decrypt(<<"invalid_encrypted">>, <<"1">>),
 
-            Result = elib_cipher:safe_rsa_decrypt(Password, <<"1">>),
-
-            % 解密失败应返回空二进制
             ?assertEqual(<<>>, Result)
         after
-            meck:unload(elib_cipher)
+            meck:unload(config_ds)
         end
     end).
 
 safe_rsa_decrypt_version_1_throw_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(elib_cipher, [passthrough, no_link]),
+        meck:new(config_ds, [passthrough, no_link]),
         try
-            Password = <<"bad_encrypted">>,
+            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> error(bad_config) end),
 
-            meck:expect(elib_cipher, rsa_decrypt, fun(_Password) ->
-                throw({error, bad_key})
-            end),
-
-            Result = elib_cipher:safe_rsa_decrypt(Password, <<"1">>),
+            Result = elib_cipher:safe_rsa_decrypt(<<"bad_encrypted">>, <<"1">>),
 
             ?assertEqual(<<>>, Result)
         after
-            meck:unload(elib_cipher)
+            meck:unload(config_ds)
         end
     end).
 
 safe_rsa_decrypt_version_1_non_binary_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(elib_cipher, [passthrough, no_link]),
+        meck:new(config_ds, [passthrough, no_link]),
         try
-            Password = <<"encrypted">>,
+            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> undefined end),
 
-            meck:expect(elib_cipher, rsa_decrypt, fun(_Password) ->
-                {error, invalid}
-            end),
-
-            Result = elib_cipher:safe_rsa_decrypt(Password, <<"1">>),
+            Result = elib_cipher:safe_rsa_decrypt(<<"encrypted">>, <<"1">>),
 
             ?assertEqual(<<>>, Result)
         after
-            meck:unload(elib_cipher)
+            meck:unload(config_ds)
         end
     end).
 

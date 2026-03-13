@@ -19,14 +19,8 @@ encrypt_token_returns_binary_test_() ->
         Uid = 12345,
         % 测试函数调用不会崩溃
         Result = token_ds:encrypt_token(Uid),
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Token} ->
-                ?assertMatch(<<_/binary>>, Token),
-                ?assert(byte_size(Token) > 0);
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        ?assertMatch(<<_/binary>>, Result),
+        ?assert(byte_size(Result) > 0)
     end).
 
 encrypt_token_non_empty_test_() ->
@@ -34,14 +28,8 @@ encrypt_token_non_empty_test_() ->
         Uid = 12345,
         % 测试函数调用不会崩溃
         Result = token_ds:encrypt_token(Uid),
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Token} ->
-                ?assertMatch(<<_/binary>>, Token),
-                ?assertNotEqual(<<>>, Token);
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        ?assertMatch(<<_/binary>>, Result),
+        ?assertNotEqual(<<>>, Result)
     end).
 
 encrypt_token_different_for_different_uids_test_() ->
@@ -49,16 +37,11 @@ encrypt_token_different_for_different_uids_test_() ->
         Uid1 = 12345,
         Uid2 = 67890,
         % 测试函数调用不会崩溃
-        Result1 = token_ds:encrypt_token(Uid1),
-        Result2 = token_ds:encrypt_token(Uid2),
-        ?assert(is_tuple(Result1)),
-        ?assert(is_tuple(Result2)),
-        case {Result1, Result2} of
-            {{ok, Token1}, {ok, Token2}} ->
-                ?assertNotEqual(Token1, Token2);
-            _ ->
-                ok  % 允许错误情况
-        end
+        Token1 = token_ds:encrypt_token(Uid1),
+        Token2 = token_ds:encrypt_token(Uid2),
+        ?assertMatch(<<_/binary>>, Token1),
+        ?assertMatch(<<_/binary>>, Token2),
+        ?assertNotEqual(Token1, Token2)
     end).
 
 %% ===================================================================

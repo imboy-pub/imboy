@@ -124,7 +124,9 @@ rsa_encrypt(BinData, PemBin) ->
         Cipher = public_key:encrypt_public(
             BinData,
             PublicKey,
-            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+            [{rsa_padding, rsa_pkcs1_oaep_padding},
+             {rsa_oaep_md, sha256},
+             {rsa_mgf1_md, sha256}]
         ),
         base64:encode(Cipher)
     catch
@@ -169,6 +171,18 @@ rsa_decrypt(CipherText, PrivKey) ->
     DecodedText = decode_base64_text(CipherText),
     BinData = base64:decode(DecodedText),
     PrivateKey = get_rsa_key_str(PrivKey),
+
+    % 优先使用 Erlang 标准 OAEP-SHA256 解密（兼容 WebCrypto / SubtleCrypto）
+    case rsa_decrypt_oaep_v21(BinData, PrivateKey) of
+        {ok, Result} ->
+            Result;
+        {error, _} ->
+            rsa_decrypt_oaep_compat(BinData, PrivateKey, DecodedText)
+    end.
+
+%% @private OAEP v2.0/v2.1 兼容解密（历史兼容路径）
+-spec rsa_decrypt_oaep_compat(binary(), term(), binary()) -> binary().
+rsa_decrypt_oaep_compat(BinData, PrivateKey, DecodedText) ->
 
     io:format("OAEP 解密: Base64 密文长度=~p, 二进制长度=~p~n",
               [byte_size(DecodedText), byte_size(BinData)]),
@@ -235,10 +249,12 @@ rsa_decrypt(CipherText, PrivKey) ->
 -spec decode_base64_text(binary()) -> binary().
 decode_base64_text(CipherText) ->
     % 首先进行URL解码（如果包含%编码）
-    DecodedText = case binary:match(CipherText, <<"%">>) of
+    DecodedText0 = case binary:match(CipherText, <<"%">>) of
         nomatch -> CipherText;
         _ -> list_to_binary(uri_string:unquote(binary_to_list(CipherText)))
     end,
+    % 某些 form-urlencoded 请求会把 '+' 还原为空格，需转回标准 Base64
+    DecodedText = binary:replace(DecodedText0, <<" ">>, <<"+">>, [global]),
     % 确保Base64填充正确
     PaddingSize = (4 - (byte_size(DecodedText) rem 4)) rem 4,
     PaddedText = case PaddingSize of
@@ -260,13 +276,17 @@ rsa_decrypt_oaep_v21(BinData, PrivateKey) ->
         Result = public_key:decrypt_private(
             BinData,
             PrivateKey,
-            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+            [{rsa_padding, rsa_pkcs1_oaep_padding},
+             {rsa_oaep_md, sha256},
+             {rsa_mgf1_md, sha256}]
         ),
         io:format("OAEP v2.1: 解密成功, 结果长度=~p, 前20字节=~p~n",
                   [byte_size(Result), binary:part(Result, 0, min(20, byte_size(Result)))]),
         {ok, Result}
     catch
-        _:_:_ ->
+        Class:Reason:Stacktrace ->
+            _ = ?WARN_LOG("OAEP v2.1 decrypt failed: ~p:~p~nStacktrace: ~p",
+                          [Class, Reason, Stacktrace]),
             {error, oaep_v21_failed}
     end.
 
@@ -621,7 +641,9 @@ encrypt_rsa_oaep(PlainText, PublicKeyPem) when is_binary(PlainText), is_binary(P
         Encrypted = public_key:encrypt_public(
             PlainText,
             PublicKey,
-            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+            [{rsa_padding, rsa_pkcs1_oaep_padding},
+             {rsa_oaep_md, sha256},
+             {rsa_mgf1_md, sha256}]
         ),
         {ok, base64:encode(Encrypted)}
     catch
@@ -649,7 +671,9 @@ decrypt_rsa_oaep(CipherText, PrivateKeyPem) when is_binary(CipherText), is_binar
         Decrypted = public_key:decrypt_private(
             Encrypted,
             PrivateKey,
-            [{rsa_padding, rsa_oaep}, {oaep_hash, sha256}]
+            [{rsa_padding, rsa_pkcs1_oaep_padding},
+             {rsa_oaep_md, sha256},
+             {rsa_mgf1_md, sha256}]
         ),
         {ok, Decrypted}
     catch

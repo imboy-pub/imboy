@@ -12,6 +12,8 @@
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
 
+-define(ADM_LOGIN_COLUMN, <<"id,account,mobile,password,email,nickname,avatar,role_id,status">>).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -29,9 +31,9 @@ do_login(_Email, <<>>) ->
 do_login(Mobile, Pwd) ->
     User = case elib_type:is_mobile(Mobile) of
         true ->
-            adm_user_ds:find_by_mobile(Mobile, ?LOGIN_COLUMN);
+            adm_user_ds:find_by_mobile(Mobile, ?ADM_LOGIN_COLUMN);
         false ->
-            adm_user_ds:find_by_account(Mobile, ?LOGIN_COLUMN)
+            adm_user_ds:find_by_account(Mobile, ?ADM_LOGIN_COLUMN)
     end,
     verify_user(Pwd, User).
 
@@ -63,7 +65,7 @@ verify_user(Pwd, User) ->
                <<"nickname">> => maps:get(<<"nickname">>, User),
                <<"avatar">> => maps:get(<<"avatar">>, User),
                <<"account">> => maps:get(<<"account">>, User),
-               <<"role_id">> => maps:get(<<"role_id">>, User)
+               <<"role_id">> => maps:get(<<"role_id">>, User, 0)
               }};
         {error, Msg} ->
             {error, Msg}
@@ -73,4 +75,3 @@ verify_user(Pwd, User) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

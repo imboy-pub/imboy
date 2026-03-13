@@ -92,7 +92,7 @@ friend_field_non_existing_test_() ->
         ToID = 888888,
         Field = <<"id">>,
         Result = friend_repo:friend_field(FromID, ToID, Field),
-        ?assertEqual({ok, undefined}, Result)
+        ?assertEqual({ok, []}, Result)
     end).
 
 %% ===================================================================
@@ -147,6 +147,31 @@ list_by_uid_zero_limit_test_() ->
         Limit = 0,
         Result = friend_repo:list_by_uid(UID, Column, Limit),
         ?assertMatch({ok, []}, Result)
+    end).
+
+%% ===================================================================
+%% count_by_uid/1 测试
+%% ===================================================================
+
+count_by_uid_returns_binary_count_key_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(Sql, Params) ->
+            SqlBin = iolist_to_binary(Sql),
+            ?assert(binary:match(SqlBin, <<"SELECT COUNT(*) as count">>) =/= nomatch),
+            ?assertEqual([1001], Params),
+            {ok, #{<<"count">> => 12}}
+        end}
+    ], fun() ->
+        ?assertEqual(12, friend_repo:count_by_uid(1001))
+    end).
+
+count_by_uid_error_returns_zero_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(_Sql, _Params) ->
+            {error, timeout}
+        end}
+    ], fun() ->
+        ?assertEqual(0, friend_repo:count_by_uid(1002))
     end).
 
 %% ===================================================================
