@@ -17,15 +17,24 @@
 execute(Req0, Env) ->
     Method = cowboy_req:method(Req0),
     Origin = cowboy_req:header(<<"origin">>, Req0),
+    AllowedOrigins = allowed_origins(),
+    IsAllowedOrigin = is_origin_allowed(Origin, AllowedOrigins),
 
     % 设置 CORS 响应头
-    Req1 = case Origin of
-        undefined ->
+    Req1 = case {Origin, IsAllowedOrigin} of
+        {undefined, _} ->
             % 没有 Origin 头，可能是同源请求或非浏览器请求
             Req0;
-        _ ->
-            % 允许任何来源（生产环境建议设置具体域名）
-            cowboy_req:set_resp_header(<<"access-control-allow-origin">>, Origin, Req0)
+        {_Origin, true} ->
+            % 只允许白名单中的来源
+            ReqA = cowboy_req:set_resp_header(
+                <<"access-control-allow-origin">>,
+                Origin,
+                Req0
+            ),
+            cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, ReqA);
+        {_Origin, false} ->
+            Req0
     end,
 
     Req2 = cowboy_req:set_resp_header(
@@ -56,14 +65,27 @@ execute(Req0, Env) ->
         Req4
     ),
 
-    Req6 = cowboy_req:set_resp_header(
-        <<"access-control-allow-credentials">>,
-        <<"true">>,
-        Req5
-    ),
+    Req6 = case IsAllowedOrigin of
+        true ->
+            cowboy_req:set_resp_header(
+                <<"access-control-allow-credentials">>,
+                <<"true">>,
+                Req5
+            );
+        false ->
+            Req5
+    end,
 
     % 处理 OPTIONS 预检请求
     case Method of
+        <<"OPTIONS">> when Origin =/= undefined, IsAllowedOrigin =:= false ->
+            ReqDenied = cowboy_req:reply(
+                403,
+                #{<<"content-type">> => <<"application/json; charset=utf-8">>},
+                <<"{\"msg\":\"CORS origin not allowed\"}">>,
+                Req6
+            ),
+            {stop, ReqDenied};
         <<"OPTIONS">> ->
             % 预检请求直接返回 204 No Content
             ReqFinal = cowboy_req:reply(204, Req6),
@@ -71,4 +93,47 @@ execute(Req0, Env) ->
         _ ->
             % 其他请求继续处理
             {ok, Req6, Env}
+    end.
+
+%% @doc 获取允许的 CORS 来源列表
+-spec allowed_origins() -> [binary()].
+allowed_origins() ->
+    case config_ds:env(cors_allowed_origins, undefined) of
+        undefined ->
+            BaseUrl = ec_cnv:to_binary(config_ds:env(base_url, <<>>)),
+            case BaseUrl of
+                <<>> -> [];
+                _ -> [BaseUrl]
+            end;
+        Origins when is_list(Origins) ->
+            [ec_cnv:to_binary(O) || O <- Origins];
+        Origin ->
+            [ec_cnv:to_binary(Origin)]
+    end.
+
+%% @doc 判断来源是否在白名单中
+-spec is_origin_allowed(binary() | undefined, [binary()]) -> boolean().
+is_origin_allowed(undefined, _AllowedOrigins) ->
+    false;
+is_origin_allowed(Origin, AllowedOrigins) ->
+    % 首先检查精确匹配
+    case lists:member(Origin, AllowedOrigins) of
+        true -> true;
+        false ->
+            % 检查是否允许 localhost 任意端口（开发环境）
+            AllowLocalhost = config_ds:env(cors_allow_localhost, false),
+            case AllowLocalhost of
+                true -> is_localhost_origin(Origin);
+                false -> false
+            end
+    end.
+
+%% @doc 判断是否为 localhost 来源（支持任意端口）
+-spec is_localhost_origin(binary()) -> boolean().
+is_localhost_origin(Origin) ->
+    OriginStr = ec_cnv:to_list(Origin),
+    % 匹配 http://localhost:端口 或 https://localhost:端口
+    case re:run(OriginStr, "^https?://localhost(:[0-9]+)?$", [{capture, none}]) of
+        match -> true;
+        _ -> false
     end.

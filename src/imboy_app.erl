@@ -10,6 +10,7 @@
 -spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start(_Type, _Args) ->
     _ = inets:start(),
+    ok = validate_runtime_config(),
     _ = imboy_syn:init(),
     % 初始化集群管理
     _ = imboy_cluster:init(),
@@ -112,3 +113,65 @@ start_clear(ProtoOpts, Port) ->
     cowboy:start_clear(imboy_listener,
                        [{port, Port}],
                        ProtoOpts).
+
+-spec validate_runtime_config() -> ok.
+validate_runtime_config() ->
+    case is_strict_env(runtime_env()) of
+        true ->
+            ok = ensure_required_secret(jwt_key),
+            ok = ensure_required_secret(postgre_aes_key),
+            ok;
+        false ->
+            ok
+    end.
+
+-spec ensure_required_secret(atom()) -> ok.
+ensure_required_secret(Key) ->
+    case normalize_secret(config_ds:env(Key, <<>>)) of
+        <<>> ->
+            erlang:error({missing_required_config, Key});
+        _ ->
+            ok
+    end.
+
+-spec runtime_env() -> binary().
+runtime_env() ->
+    AppEnv = config_ds:env(env, undefined),
+    case normalize_env(AppEnv) of
+        <<>> ->
+            normalize_env(os:getenv("IMBOYENV"));
+        Env ->
+            Env
+    end.
+
+-spec is_strict_env(binary()) -> boolean().
+is_strict_env(Env) ->
+    lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
+
+-spec normalize_env(term()) -> binary().
+normalize_env(undefined) ->
+    <<>>;
+normalize_env(false) ->
+    <<>>;
+normalize_env(Value) when is_binary(Value) ->
+    Value;
+normalize_env(Value) when is_atom(Value) ->
+    atom_to_binary(Value, utf8);
+normalize_env(Value) when is_list(Value) ->
+    unicode:characters_to_binary(Value);
+normalize_env(_) ->
+    <<>>.
+
+-spec normalize_secret(term()) -> binary().
+normalize_secret(undefined) ->
+    <<>>;
+normalize_secret(false) ->
+    <<>>;
+normalize_secret(Value) when is_binary(Value) ->
+    Value;
+normalize_secret(Value) when is_list(Value) ->
+    unicode:characters_to_binary(Value);
+normalize_secret(Value) when is_atom(Value) ->
+    atom_to_binary(Value, utf8);
+normalize_secret(Value) ->
+    ec_cnv:to_binary(Value).
