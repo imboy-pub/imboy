@@ -11,6 +11,7 @@
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -27,6 +28,7 @@ init(Req0, State0) ->
         message -> message(Method, Req0, State);
         group -> group(Method, Req0, State);
         ranking -> ranking(Method, Req0, State);
+        ux_events -> ux_events(Method, Req0, State);
         _ -> Req0
     end,
     {ok, Req1, State}.
@@ -158,7 +160,96 @@ ranking(<<"GET">>, Req0, _State) ->
             % 默认返回用户消息排名
             get_user_message_ranking(Limit)
     end,
-    elib_response:success(Req0, #{items => Result}).
+    elib_response:success(Req0, #{list => Result}).
+
+%% @doc UX 埋点事件上报接收端
+-spec ux_events(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+ux_events(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"ux:events:ingest">>, Req0) of
+        ok ->
+            AdmUid = maps:get(adm_user_id, State, 0),
+            PostVals = elib_param:post(Req0),
+            Events = maps:get(<<"events">>, PostVals, []),
+            EventCount = case is_list(Events) of
+                true -> length(Events);
+                false -> 0
+            end,
+            ?INFO_LOG([ux_events_ingest, adm_uid, AdmUid, event_count, EventCount]),
+            elib_response:success(Req0, #{<<"accepted">> => EventCount});
+        {error, Req1} ->
+            Req1
+    end;
+ux_events(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec ensure_permission(map(), binary(), cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_permission(State, Permission, Req0) ->
+    AdmUserId = maps:get(adm_user_id, State, 0),
+    case has_permission(AdmUserId, Permission) of
+        true ->
+            ok;
+        false ->
+            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
+    end.
+
+-spec has_permission(term(), binary()) -> boolean().
+has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
+    Permissions = resolve_permissions_by_adm_user_id(AdmUserId),
+    lists:member(Permission, Permissions);
+has_permission(_, _) ->
+    false.
+
+-spec resolve_permissions_by_adm_user_id(integer()) -> list(binary()).
+resolve_permissions_by_adm_user_id(AdmUserId) ->
+    Key = {adm_user_stats_permission, AdmUserId},
+    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+        AdmUser when is_map(AdmUser) ->
+            RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
+            lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
+        _ ->
+            []
+    end.
+
+-spec role_permissions(integer()) -> list(binary()).
+role_permissions(RoleId) ->
+    try adm_index_handler:role_acl(RoleId) of
+        {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
+            Permissions;
+        _ ->
+            []
+    catch
+        _:_ ->
+            []
+    end.
+
+-spec normalize_role_ids(term()) -> list(integer()).
+normalize_role_ids(RoleId) when is_integer(RoleId), RoleId > 0 ->
+    [RoleId];
+normalize_role_ids(RoleIds) when is_list(RoleIds) ->
+    lists:usort([Id || Value <- RoleIds, Id <- [normalize_role_id(Value)], Id > 0]);
+normalize_role_ids(RoleValue) ->
+    case normalize_role_id(RoleValue) of
+        Id when Id > 0 ->
+            [Id];
+        _ ->
+            []
+    end.
+
+-spec normalize_role_id(term()) -> integer().
+normalize_role_id(Value) when is_integer(Value), Value > 0 ->
+    Value;
+normalize_role_id(Value) when is_binary(Value); is_list(Value) ->
+    try ec_cnv:to_integer(Value) of
+        Id when is_integer(Id), Id > 0 ->
+            Id;
+        _ ->
+            0
+    catch
+        _:_ ->
+            0
+    end;
+normalize_role_id(_) ->
+    0.
 
 %% ===================================================================
 %% Helper Functions
@@ -168,7 +259,7 @@ ranking(<<"GET">>, Req0, _State) ->
 count_table(Table) ->
     Sql = <<"SELECT COUNT(*) FROM ", Table/binary>>,
     case elib_pg:one(Sql, []) of
-        {ok, #{count := Count}} -> Count;
+        {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
@@ -176,7 +267,7 @@ count_table(Table) ->
 count_today(Table) ->
     Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE created_at >= CURRENT_DATE">>,
     case elib_pg:one(Sql, []) of
-        {ok, #{count := Count}} -> Count;
+        {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
@@ -184,7 +275,7 @@ count_today(Table) ->
 count_today_messages(Table) ->
     Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE created_at >= CURRENT_DATE">>,
     case elib_pg:one(Sql, []) of
-        {ok, #{count := Count}} -> Count;
+        {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
@@ -214,7 +305,7 @@ count_daily_messages(Table, Days) ->
 count_by_status(Table, Status) ->
     Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE status = $1">>,
     case elib_pg:one(Sql, [Status]) of
-        {ok, #{count := Count}} -> Count;
+        {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
@@ -222,8 +313,19 @@ count_by_status(Table, Status) ->
 count_by_type(Table, Type) ->
     Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE type = $1">>,
     case elib_pg:one(Sql, [Type]) of
-        {ok, #{count := Count}} -> Count;
+        {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
+    end.
+
+-spec map_count(map()) -> integer().
+map_count(Row) ->
+    case maps:find(<<"count">>, Row) of
+        {ok, Count} -> ec_cnv:to_integer(Count);
+        error ->
+            case maps:find(count, Row) of
+                {ok, Count2} -> ec_cnv:to_integer(Count2);
+                error -> 0
+            end
     end.
 
 %% ===================================================================
