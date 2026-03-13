@@ -109,7 +109,8 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                     ok;
                 _ ->
                     ok = ?DEBUG_LOG({immediate_publish, MsgId, length(Filtered2)}),
-                    _ = imboy_syn:publish(ToUid, Msg, 0),
+                    %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递
+                    [erlang:start_timer(0, Pid, Msg) || {Pid, {_Dtype, _DID}} <- Filtered2],
                     send_next_loop(ToUid, MsgId, Msg, Tail, DIDLi, IncludeDIDLi)
             end;
         _ when is_integer(Delay), Delay > 0 ->
@@ -304,10 +305,10 @@ decode_websocket_message(Data) ->
 
     %% 保持客户端字段名：from/to（binary，hashids编码）
     %% Logic 层会使用 elib_hashids:decode/1 将其转换为 integer
-    #{<<"id">> => maps:get(<<"id">>, Msg),
+    #{<<"id">> => maps:get(<<"id">>, Msg, <<>>),
       <<"type">> => Type,
-      <<"from">> => maps:get(<<"from">>, Msg),
-      <<"to">> => maps:get(<<"to">>, Msg),
+      <<"from">> => maps:get(<<"from">>, Msg, <<>>),
+      <<"to">> => maps:get(<<"to">>, Msg, <<>>),
       <<"msg_type">> => MsgType,
       <<"action">> => Action,
       <<"e2ee">> => E2EE,
@@ -541,17 +542,26 @@ get_offline_msg_threshold() ->
 %% end
 -spec validate_message(map()) -> {ok, map()} | {error, binary()}.
 validate_message(Msg) when is_map(Msg) ->
-    % 验证必填字段
-    RequiredFields = [<<"id">>, <<"type">>, <<"from">>, <<"to">>],
-    case lists:all(fun(Field) -> maps:is_key(Field, Msg) end, RequiredFields) of
-        false ->
-            {error, <<"missing_required_fields">>};
-        true ->
-            Type = maps:get(<<"type">>, Msg),
+    case validate_base_required_fields(Msg) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            Type = maps:get(<<"type">>, Msg, <<>>),
             validate_message_by_type(Type, Msg)
     end;
 validate_message(_Msg) ->
     {error, <<"invalid_message_format">>}.
+
+%% @private
+%% @doc 验证基础必填字段（id/type）
+-spec validate_base_required_fields(map()) -> ok | {error, binary()}.
+validate_base_required_fields(Msg) ->
+    Id = maps:get(<<"id">>, Msg, <<>>),
+    Type = maps:get(<<"type">>, Msg, <<>>),
+    case is_non_empty_binary(Id) andalso is_non_empty_binary(Type) of
+        true -> ok;
+        false -> {error, <<"missing_required_fields">>}
+    end.
 
 
 %% @private
@@ -571,17 +581,62 @@ validate_message_by_type(<<"S2C">>, Msg) ->
             end
     end;
 validate_message_by_type(Type, Msg) when Type =:= <<"C2C">>; Type =:= <<"C2G">>; Type =:= <<"C2S">> ->
-    % 非 S2C 消息：msg_type 必须有
-    MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
-    case MsgType of
-        <<>> ->
-            {error, <<"non_s2c_message_missing_msg_type">>};
-        _ ->
-            {ok, Msg}
+    case validate_peer_fields(Msg) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            % 非 S2C 消息：msg_type 必须有
+            MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
+            case MsgType of
+                <<>> ->
+                    {error, <<"non_s2c_message_missing_msg_type">>};
+                _ ->
+                    {ok, Msg}
+            end
+    end;
+validate_message_by_type(Type, Msg) when is_binary(Type) ->
+    case is_webrtc_type(Type) of
+        true ->
+            case validate_peer_fields(Msg) of
+                ok -> {ok, Msg};
+                {error, _} = Err -> Err
+            end;
+        false ->
+            % 未知消息类型
+            {error, <<"unknown_message_type">>}
     end;
 validate_message_by_type(_Type, _Msg) ->
-    % 未知消息类型，但包含基本字段
-    {error, <<"unknown_message_type">>}.
+    {error, <<"invalid_message_format">>}.
+
+%% @private
+%% @doc 验证消息发送方和接收方字段
+-spec validate_peer_fields(map()) -> ok | {error, binary()}.
+validate_peer_fields(Msg) ->
+    From = maps:get(<<"from">>, Msg, <<>>),
+    To = maps:get(<<"to">>, Msg, <<>>),
+    case is_non_empty_binary(From) andalso is_non_empty_binary(To) of
+        true -> ok;
+        false -> {error, <<"missing_required_fields">>}
+    end.
+
+%% @private
+%% @doc 判断是否为 WebRTC 信令类型
+-spec is_webrtc_type(binary()) -> boolean().
+is_webrtc_type(Type) when is_binary(Type) ->
+    case cowboy_bstr:to_lower(Type) of
+        <<"webrtc_", _Rest/binary>> -> true;
+        _ -> false
+    end;
+is_webrtc_type(_) ->
+    false.
+
+%% @private
+%% @doc 判断字段是否为非空 binary
+-spec is_non_empty_binary(term()) -> boolean().
+is_non_empty_binary(Bin) when is_binary(Bin), byte_size(Bin) > 0 ->
+    true;
+is_non_empty_binary(_) ->
+    false.
 
 
 %% @doc 将 v1.0 格式消息转换为 v2.0 格式

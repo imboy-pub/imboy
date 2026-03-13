@@ -180,34 +180,43 @@ handle_json_message(Msg, State) ->
     try
         CurrentUid = auth_ds:current_uid(State),
 
-        %% 使用 v2.0 解码函数解析消息
-        Data = message_ds:decode_websocket_message(Msg),
+        %% 统一消息处理流程：decode -> convert -> validate -> route
+        Data0 = message_ds:decode_websocket_message(Msg),
+        Data = message_ds:convert_v1_to_v2(Data0),
 
-        MsgId = maps:get(<<"id">>, Data),
-        Type = maps:get(<<"type">>, Data),
+        case message_ds:validate_message(Data) of
+            {error, Reason} ->
+                MsgId0 = maps:get(<<"id">>, Data, <<>>),
+                ok = ?WARN_LOG({json_message_invalid, Reason, MsgId0}),
+                ErrorMsg = ws_validation_error(MsgId0, <<"invalid_message">>, Reason),
+                {reply, {text, jsone:encode(ErrorMsg, [native_utf8])}, State, hibernate};
+            {ok, ValidatedData} ->
+                MsgId = maps:get(<<"id">>, ValidatedData, <<>>),
+                Type = maps:get(<<"type">>, ValidatedData, <<>>),
 
-        %% 注入发送者设备信息到 payload
-        Payload0 = maps:get(<<"payload">>, Data),
+                %% 注入发送者设备信息到 payload
+                Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
 
-        % 将发送者的设备信息（sender_did 和 sender_dtype）注入到消息的 payload 中。
-        Payload = message_ds:inject_sender_device(Payload0, State),
-        Data2 = maps:put(<<"payload">>, Payload, Data),
+                % 将发送者的设备信息（sender_did 和 sender_dtype）注入到消息的 payload 中。
+                Payload = message_ds:inject_sender_device(Payload0, State),
+                Data2 = maps:put(<<"payload">>, Payload, ValidatedData),
 
-        % ?DEBUG_LOG([MsgId, Type, Data]),
+                %% 统一消息路由：根据 action 和 type 分发到对应的 logic 模块
+                Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, Msg),
 
-        %% 统一消息路由：根据 action 和 type 分发到对应的 logic 模块
-        Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, Msg),
-
-        case Result of
-            ok ->
-                {ok, State, hibernate};
-            {reply, Msg2} ->
-                {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate}
+                case Result of
+                    ok ->
+                        {ok, State, hibernate};
+                    {reply, Msg2} ->
+                        {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate}
+                end
         end
     catch
-        Class:Reason:Stacktrace ->
-            ok = ?ERROR_LOG({json_message_error, Class, Reason, Stacktrace}),
-            {ok, State, hibernate}
+        Class:CatchReason:Stacktrace ->
+            ok = ?ERROR_LOG({json_message_error, Class, CatchReason, Stacktrace}),
+            ReasonBin = elib_cnv:safe_to_binary(CatchReason),
+            ErrorMsg2 = ws_validation_error(<<>>, <<"invalid_json">>, ReasonBin),
+            {reply, {text, jsone:encode(ErrorMsg2, [native_utf8])}, State, hibernate}
     end.
 
 
@@ -253,7 +262,13 @@ websocket_info(stop, State) ->
 %% 处理跨节点的 ACK 取消消息
 websocket_info({ack_cancel, Uid, DID, MsgId, Timestamp}, State) ->
     ok = ?DEBUG_LOG({ack_cancel_from_remote, MsgId, Uid, DID, Timestamp}),
-    websocket_logic:handle_ack_cancel(Uid, DID, MsgId),
+    try
+        websocket_logic:handle_ack_cancel(Uid, DID, MsgId)
+    catch
+        Class:Reason ->
+            _ = ?WARN_LOG({ack_cancel_handle_failed, MsgId, Uid, DID, Class, Reason}),
+            ok
+    end,
     {ok, State, hibernate};
 
 %% 处理设备踢出消息
@@ -323,6 +338,21 @@ is_error_state(State) ->
         error ->
             false
     end.
+
+%% @doc 组装统一的 WebSocket 校验错误消息
+%% @param MsgId 客户端消息ID（可为空）
+%% @param Action 错误动作类型
+%% @param Reason 具体错误原因
+%% @return map()
+-spec ws_validation_error(binary(), binary(), binary()) -> map().
+ws_validation_error(MsgId, Action, Reason) ->
+    #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"S2C">>,
+        <<"action">> => Action,
+        <<"payload">> => #{<<"reason">> => Reason},
+        <<"server_ts">> => elib_dt:millisecond()
+    }.
 
 
 %% @doc 验证 CLIENT_ACK 参数

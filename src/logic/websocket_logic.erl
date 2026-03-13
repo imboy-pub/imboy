@@ -30,14 +30,14 @@
 -spec cancel_timer(pos_integer(), binary(), binary()) -> ok.
 cancel_timer(CurrentUid, DID, MsgId) ->
     Key = {CurrentUid, DID, MsgId},
-    ok = ?DEBUG_LOG({cancel_timer, Key}),
+    _ = ?DEBUG_LOG({cancel_timer, Key}),
 
     %% 【优化】使用 syn 广播替代 rpc:multicall
     %% 优势：
     %% 1. 非阻塞式广播，无需等待所有节点响应
     %% 2. 自动处理节点故障，无需手动重试
     %% 3. 性能更高，适合高频 ACK 场景
-    imboy_syn:broadcast_ack_cancel(CurrentUid, DID, MsgId),
+    _ = broadcast_ack_cancel_safe(CurrentUid, DID, MsgId),
 
     %% 【重要】立即执行本地处理
     %% 确保当前节点立即处理 ACK，不依赖 syn 的广播延迟
@@ -55,25 +55,35 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
     AckReceivedKey = {ack_received, ToUid, DID, MsgId},
     imboy_cache:set(AckReceivedKey, true, 40000),  % 40秒 TTL（最大重试时间）
 
-    ok = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
+    _ = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
 
     case imboy_cache:get(TimerKey) of
         {ok, Ref} when is_reference(Ref) ->
-            ok = ?DEBUG_LOG({ack_cancel_canceling_timer, MsgId, Ref}),
+            _ = ?DEBUG_LOG({ack_cancel_canceling_timer, MsgId, Ref}),
             case erlang:cancel_timer(Ref) of
                 false ->
-                    ok = ?DEBUG_LOG({ack_cancel_timer_already_fired, MsgId});
+                    _ = ?DEBUG_LOG({ack_cancel_timer_already_fired, MsgId});
                 Time ->
-                    ok = ?DEBUG_LOG({ack_cancel_timer_canceled, MsgId, Time})
+                    _ = ?DEBUG_LOG({ack_cancel_timer_canceled, MsgId, Time})
             end,
             imboy_cache:flush(TimerKey),
             ok;
         undefined ->
-            ok = ?DEBUG_LOG({ack_cancel_timer_not_found, MsgId}),
+            _ = ?DEBUG_LOG({ack_cancel_timer_not_found, MsgId}),
             ok;
         {ok, Other} ->
-            ok = ?WARN_LOG({ack_cancel_invalid_cache_value, MsgId, Other}),
+            _ = ?WARN_LOG({ack_cancel_invalid_cache_value, MsgId, Other}),
             imboy_cache:flush(TimerKey),
+            ok
+    end.
+
+%% 防御性封装：跨节点广播失败时不影响本地 ACK 取消
+broadcast_ack_cancel_safe(Uid, DID, MsgId) ->
+    try
+        imboy_syn:broadcast_ack_cancel(Uid, DID, MsgId)
+    catch
+        Class:Reason ->
+            _ = ?WARN_LOG({ack_cancel_broadcast_failed, Uid, DID, MsgId, Class, Reason}),
             ok
     end.
 

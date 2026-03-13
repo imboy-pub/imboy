@@ -75,6 +75,26 @@ cancel_timer_with_timer_already_fired_test_() ->
         end)
     end).
 
+cancel_timer_broadcast_failure_still_handles_locally_test_() ->
+    ?WITH_MECK(imboy_syn, [
+        {'broadcast_ack_cancel', 3, fun(_CurrentUid, _DID, _MsgId) ->
+            erlang:error(simulated_syn_failure)
+        end}
+    ], fun() ->
+        ?WITH_MECK(imboy_cache, [
+            {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+            {'get', 1, fun(_Key) -> undefined end}
+        ], fun() ->
+            CurrentUid = 123,
+            DID = <<"device_abc">>,
+            MsgId = <<"msg_broadcast_fail">>,
+
+            Result = websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(imboy_cache, set, 3))
+        end)
+    end).
+
 %% ===================================================================
 %% handle_ack_cancel/3 测试
 %% ===================================================================
@@ -163,6 +183,40 @@ handle_ack_cancel_with_invalid_cache_value_test_() ->
 
         Result = websocket_logic:handle_ack_cancel(ToUid, DID, MsgId),
         ?assertEqual(ok, Result)
+    end).
+
+handle_ack_cancel_duplicate_ack_is_idempotent_test_() ->
+    TestRef = make_ref(),
+    ?WITH_MECK(imboy_cache, [
+        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+        {'get', 1, fun(_Key) ->
+            case erlang:get(ack_cancel_get_seen) of
+                undefined ->
+                    erlang:put(ack_cancel_get_seen, 1),
+                    {ok, TestRef};
+                _ ->
+                    undefined
+            end
+        end},
+        {'flush', 1, fun(_Key) -> ok end}
+    ], fun() ->
+        ?WITH_MECK(erlang, [
+            {'cancel_timer', 1, fun(Ref) ->
+                ?assertEqual(TestRef, Ref),
+                1000
+            end}
+        ], fun() ->
+            ToUid = 123,
+            DID = <<"device_abc">>,
+            MsgId = <<"msg_dup_ack">>,
+
+            erase(ack_cancel_get_seen),
+            ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
+            ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
+            ?assertEqual(1, meck:num_calls(erlang, cancel_timer, 1)),
+            ?assertEqual(1, meck:num_calls(imboy_cache, flush, 1)),
+            erase(ack_cancel_get_seen)
+        end)
     end).
 
 %% ===================================================================
