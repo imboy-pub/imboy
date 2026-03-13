@@ -50,3 +50,33 @@ decode_encode_roundtrip_test_() ->
         Decoded = elib_hashids:decode(Encoded),
         ?assertEqual(OriginalId, Decoded)
     end).
+
+%% ===================================================================
+%% replace_id / replace_fields 稳健性测试
+%% ===================================================================
+
+replace_fields_keeps_already_encoded_id_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        OriginalId = 12345,
+        EncodedId = elib_hashids:encode(OriginalId),
+        Input = #{<<"id">> => EncodedId, <<"name">> => <<"tester">>},
+        Output = elib_hashids:replace_fields(Input, [<<"id">>]),
+        ?assertEqual(EncodedId, maps:get(<<"id">>, Output)),
+        ?assertEqual(<<"tester">>, maps:get(<<"name">>, Output))
+    end).
+
+replace_fields_encodes_numeric_binary_id_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Input = #{<<"id">> => <<"42">>},
+        Output = elib_hashids:replace_fields(Input, [<<"id">>]),
+        ?assertEqual(42, elib_hashids:decode(maps:get(<<"id">>, Output)))
+    end).
+
+replace_id_keeps_already_encoded_id_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        OriginalId = 67890,
+        EncodedId = elib_hashids:encode(OriginalId),
+        Input = #{<<"id">> => EncodedId},
+        Output = elib_hashids:replace_id(Input),
+        ?assertEqual(EncodedId, maps:get(<<"id">>, Output))
+    end).

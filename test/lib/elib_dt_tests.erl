@@ -182,3 +182,99 @@ compare_rfc3339_with_lt_test_() ->
         Result = elib_dt:compare_rfc3339(Dt1, Dt2, gt),
         ?assertEqual(true, Result)
     end).
+
+%% ===================================================================
+%% 边界值测试
+%% ===================================================================
+
+to_rfc3339_with_zero_timestamp_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % Unix epoch (1970-01-01 00:00:00 UTC)
+        Result = elib_dt:to_rfc3339(0, second),
+        ?assertMatch(<<_/binary>>, Result),
+        % 验证返回的是 epoch 时间
+        ?assert(re:run(Result, "1970-01-01") =/= nomatch)
+    end).
+
+to_rfc3339_with_invalid_negative_timestamp_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 负数时间戳应该返回安全的默认值
+        Result = elib_dt:to_rfc3339(-1, second),
+        ?assertMatch(<<_/binary>>, Result),
+        % 负数时间戳返回 epoch 时间作为安全默认值
+        ?assertEqual(<<"1970-01-01T00:00:00Z">>, Result)
+    end).
+
+to_rfc3339_with_large_timestamp_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 测试大时间戳（2100年之前）
+        MaxValidTimestamp = 4102444800,  % 2100-01-01 00:00:00 UTC
+        Result = elib_dt:to_rfc3339(MaxValidTimestamp, second),
+        ?assertMatch(<<_/binary>>, Result),
+        ?assert(byte_size(Result) > 0)
+    end).
+
+rfc3339_to_with_t_separator_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 测试标准 T 分隔符
+        Rfc3339String = <<"2024-01-01T12:00:00Z">>,
+        Result = elib_dt:rfc3339_to(Rfc3339String, second),
+        ?assert(is_integer(Result)),
+        ?assert(Result > 1700000000)
+    end).
+
+rfc3339_to_with_space_separator_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 测试空格分隔符（向后兼容）
+        Rfc3339String = <<"2024-01-01 12:00:00Z">>,
+        Result = elib_dt:rfc3339_to(Rfc3339String, second),
+        ?assert(is_integer(Result)),
+        ?assert(Result > 1700000000)
+    end).
+
+rfc3339_to_with_integer_passthrough_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 整数应该直接返回
+        Timestamp = 1704067200,
+        Result = elib_dt:rfc3339_to(Timestamp),
+        ?assertEqual(Timestamp, Result)
+    end).
+
+rfc3339_to_with_undefined_returns_undefined_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % undefined 应该返回 undefined
+        Result = elib_dt:rfc3339_to(undefined),
+        ?assertEqual(undefined, Result)
+    end).
+
+add_with_invalid_datetime_returns_error_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 无效的日期时间应该返回错误
+        Result = elib_dt:add(<<"invalid-datetime">>, {10, minute}),
+        ?assertMatch({error, _}, Result)
+    end).
+
+minus_with_invalid_datetime_returns_error_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 无效的日期时间应该返回错误
+        Result = elib_dt:minus(<<"invalid-datetime">>, {10, minute}),
+        ?assertMatch({error, _}, Result)
+    end).
+
+%% ===================================================================
+%% utc/1 测试
+%% ===================================================================
+
+utc_second_returns_integer_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_dt:utc(second),
+        ?assert(is_integer(Result)),
+        ?assert(Result > 1700000000)
+    end).
+
+utc_millisecond_returns_integer_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = elib_dt:utc(millisecond),
+        ?assert(is_integer(Result)),
+        ?assert(Result > 1700000000000)
+    end).

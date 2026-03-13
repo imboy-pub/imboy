@@ -70,13 +70,13 @@ replace_id(Li, K) when is_list(Li) ->
         false ->
             Li;
         {value, {K, Id}, Rest} ->
-            [{K, elib_hashids:encode(Id)} | Rest]
+            [{K, maybe_encode(Id)} | Rest]
     end;
 replace_id(M, K) when is_map(M) ->
     case maps:is_key(K, M) of
         true ->
             Id = maps:get(K, M),
-            maps:put(K, elib_hashids:encode(Id), M);
+            maps:put(K, maybe_encode(Id), M);
         _ ->
             M
     end.
@@ -100,15 +100,50 @@ replace_fields(Map, Fields) when is_map(Map), is_list(Fields) ->
         case maps:is_key(Field, AccMap) of
             true ->
                 Id = maps:get(Field, AccMap),
-                % 只对非零值进行编码
-                case Id of
-                    0 -> AccMap;
-                    _ -> maps:put(Field, encode(Id), AccMap)
+                % 仅对可安全转换为整数的字段进行编码，避免重复编码导致崩溃
+                case to_integer(Id) of
+                    {ok, 0} ->
+                        AccMap;
+                    {ok, IntId} ->
+                        maps:put(Field, encode(IntId), AccMap);
+                    error ->
+                        AccMap
                 end;
             false ->
                 AccMap
         end
     end, Map, Fields).
+
+-spec maybe_encode(term()) -> term().
+maybe_encode(Id) ->
+    case to_integer(Id) of
+        {ok, IntId} ->
+            encode(IntId);
+        error ->
+            Id
+    end.
+
+-spec to_integer(term()) -> {ok, integer()} | error.
+to_integer(Id) when is_integer(Id) ->
+    {ok, Id};
+to_integer(Id) when is_binary(Id) ->
+    try binary_to_integer(Id) of
+        IntId ->
+            {ok, IntId}
+    catch
+        _:_ ->
+            error
+    end;
+to_integer(Id) when is_list(Id) ->
+    try list_to_integer(Id) of
+        IntId ->
+            {ok, IntId}
+    catch
+        _:_ ->
+            error
+    end;
+to_integer(_) ->
+    error.
 
 %% @doc 带自定义参数的编码函数
 %% @param Id 要编码的数字
