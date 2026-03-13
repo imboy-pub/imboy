@@ -12,6 +12,7 @@
 -export ([find_by_task_and_user/2]).
 -export ([list_by_task_id/3]).
 -export ([list_by_user_id/3]).
+-export ([list_by_user_id/4]).
 -export ([count_by_status/2]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -147,18 +148,38 @@ list_by_user_id(UserId, Page, Size)
     when is_integer(UserId), UserId > 0,
          is_integer(Page), Page > 0,
          is_integer(Size), Size > 0, Size =< 100 ->
+    list_by_user_id(UserId, undefined, Page, Size);
+list_by_user_id(_UserId, _Page, _Size) ->
+    {error, invalid_param}.
+
+%% @doc 分页查询用户的作业列表（支持状态筛选）
+%% Status:
+%% - undefined: 不筛选
+%% - 0: 未完成（status < 2）
+%% - 1: 已完成（status >= 2）
+%% - 2/3: 精确匹配 status
+-spec list_by_user_id(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, term()}.
+list_by_user_id(UserId, Status, Page, Size)
+    when is_integer(UserId), UserId > 0,
+         is_integer(Page), Page > 0,
+         is_integer(Size), Size > 0, Size =< 100 ->
     Tb = tablename(),
     Column = <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
-    Where = <<"user_id = $1">>,
-    OrderBy = <<"id DESC">>,
-    Offset = (Page - 1) * Size,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", OrderBy/binary,
-            " LIMIT ", (integer_to_binary(Size))/binary,
-            " OFFSET ", (integer_to_binary(Offset))/binary>>,
-    elib_pg:query(Sql, [UserId]);
-list_by_user_id(_UserId, _Page, _Size) ->
+    case user_status_where(Status) of
+        {error, Reason} ->
+            {error, Reason};
+        StatusWhere ->
+            Where = <<"user_id = $1", StatusWhere/binary>>,
+            OrderBy = <<"id DESC">>,
+            Offset = (Page - 1) * Size,
+            Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+                    " WHERE ", Where/binary,
+                    " ORDER BY ", OrderBy/binary,
+                    " LIMIT ", (integer_to_binary(Size))/binary,
+                    " OFFSET ", (integer_to_binary(Offset))/binary>>,
+            elib_pg:query(Sql, [UserId])
+    end;
+list_by_user_id(_UserId, _Status, _Page, _Size) ->
     {error, invalid_param}.
 
 %% @doc 统计指定状态的作业数量
@@ -175,6 +196,10 @@ count_by_status(TaskId, Status)
     case elib_pg:query(Sql, [TaskId, Status]) of
         {ok, [[{<<"count">>, Count}]]} ->
             {ok, Count};
+        {ok, [{#{<<"count">> := Count}}]} ->
+            {ok, Count};
+        {ok, [#{<<"count">> := Count}]} ->
+            {ok, Count};
         {error, Reason} ->
             {error, Reason}
     end;
@@ -184,6 +209,20 @@ count_by_status(_TaskId, _Status) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+-spec user_status_where(integer() | undefined) -> binary() | {error, term()}.
+user_status_where(undefined) ->
+    <<>>;
+user_status_where(0) ->
+    <<" AND (CASE WHEN status >= 2 THEN 1 ELSE 0 END) = 0">>;
+user_status_where(1) ->
+    <<" AND (CASE WHEN status >= 2 THEN 1 ELSE 0 END) = 1">>;
+user_status_where(2) ->
+    <<" AND status = 2">>;
+user_status_where(3) ->
+    <<" AND status = 3">>;
+user_status_where(_Status) ->
+    {error, invalid_status}.
 
 %% ===================================================================
 %% EUnit tests.

@@ -18,8 +18,11 @@
 -export ([detail/1]).
 %% 查询群作业列表
 -export ([list/3]).
+%% 查询群作业列表（带筛选）
+-export ([list/5]).
 %% 查询我的作业
 -export ([my_tasks/3]).
+-export ([my_tasks/4]).
 %% 查询待批改作业
 -export ([pending_review/3]).
 
@@ -83,7 +86,7 @@ update(TaskId, CreatorId, Data) when is_integer(TaskId), TaskId > 0,
                         3 ->
                             {error, <<"作业已截止，无法修改"/utf8>>, ?ERR_TASK_DEADLINE_PASSED};
                         _ ->
-                            UpdateData = maps:with([<<"title">>, <<"description">>, <<"deadline">>, <<"attachment">>], Data),
+                            UpdateData = normalize_update_data(Data),
                             case maps:size(UpdateData) of
                                 0 ->
                                     {error, <<"没有要更新的字段"/utf8>>, ?ERR_BAD_REQUEST};
@@ -237,8 +240,45 @@ detail(_TaskId) ->
 list(GroupId, Page, Size) when is_integer(GroupId), GroupId > 0,
                                 is_integer(Page), Page > 0,
                                 is_integer(Size), Size > 0, Size =< 100 ->
-    group_task_repo:list_by_group_id(GroupId, Page, Size);
+    list(GroupId, undefined, undefined, Page, Size);
 list(_GroupId, _Page, _Size) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 查询群作业列表（支持状态与执行人筛选）
+%% @param GroupId 群组ID
+%% @param Status 状态（undefined/0/1/2/3）
+%% @param AssigneeId 执行人ID（undefined 表示群全量视角）
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, List} | {error, Reason}
+-spec list(integer(), integer() | undefined, integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, binary()}.
+list(GroupId, Status, AssigneeId, Page, Size)
+    when is_integer(GroupId), GroupId > 0,
+         is_integer(Page), Page > 0,
+         is_integer(Size), Size > 0, Size =< 100 ->
+    case AssigneeId of
+        undefined ->
+            case Status of
+                undefined ->
+                    group_task_repo:list_by_group_id(GroupId, Page, Size);
+                S when is_integer(S), S >= 1, S =< 3 ->
+                    group_task_repo:list_by_group_id(GroupId, S, Page, Size);
+                _ ->
+                    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
+            end;
+        A when is_integer(A), A > 0 ->
+            case Status of
+                undefined ->
+                    group_task_repo:list_by_group_and_user(GroupId, A, Page, Size);
+                S when is_integer(S), S >= 0, S =< 3 ->
+                    group_task_repo:list_by_group_and_user(GroupId, A, S, Page, Size);
+                _ ->
+                    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
+            end;
+        _ ->
+            {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
+    end;
+list(_GroupId, _Status, _AssigneeId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 查询我的作业
@@ -250,8 +290,25 @@ list(_GroupId, _Page, _Size) ->
 my_tasks(UserId, Page, Size) when is_integer(UserId), UserId > 0,
                                    is_integer(Page), Page > 0,
                                    is_integer(Size), Size > 0, Size =< 100 ->
-    group_task_assignment_repo:list_by_user_id(UserId, Page, Size);
+    my_tasks(UserId, undefined, Page, Size);
 my_tasks(_UserId, _Page, _Size) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 查询我的作业（支持状态筛选）
+%% @param Status 状态（undefined/0/1/2/3）
+-spec my_tasks(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, binary()}.
+my_tasks(UserId, Status, Page, Size) when is_integer(UserId), UserId > 0,
+                                          is_integer(Page), Page > 0,
+                                          is_integer(Size), Size > 0, Size =< 100 ->
+    case Status of
+        undefined ->
+            group_task_assignment_repo:list_by_user_id(UserId, undefined, Page, Size);
+        S when is_integer(S), S >= 0, S =< 3 ->
+            group_task_assignment_repo:list_by_user_id(UserId, S, Page, Size);
+        _ ->
+            {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
+    end;
+my_tasks(_UserId, _Status, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 查询待批改作业
@@ -295,6 +352,33 @@ check_deadline(Deadline) ->
     catch
         _:_ ->
             false
+    end.
+
+-spec normalize_update_data(map()) -> map().
+normalize_update_data(Data) ->
+    Fields = [
+        {title, <<"title">>},
+        {description, <<"description">>},
+        {deadline, <<"deadline">>},
+        {attachment, <<"attachment">>},
+        {status, <<"status">>}
+    ],
+    lists:foldl(fun({AtomKey, BinaryKey}, Acc) ->
+        case update_field(Data, AtomKey, BinaryKey) of
+            undefined ->
+                Acc;
+            Value ->
+                Acc#{AtomKey => Value}
+        end
+    end, #{}, Fields).
+
+-spec update_field(map(), atom(), binary()) -> term().
+update_field(Data, AtomKey, BinaryKey) ->
+    case maps:find(AtomKey, Data) of
+        {ok, Value} ->
+            Value;
+        error ->
+            maps:get(BinaryKey, Data, undefined)
     end.
 
 %% ===================================================================

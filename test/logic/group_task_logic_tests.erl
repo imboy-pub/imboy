@@ -28,8 +28,10 @@ create_success_test_() ->
     end).
 
 create_with_missing_title_test_() ->
-    Result = group_task_logic:create(123, 456, <<>>, #{}),
-    ?assertMatch({error, _}, Result).
+    ?_test(begin
+        Result = group_task_logic:create(123, 456, <<>>, #{}),
+        ?assertMatch({error, _, _}, Result)
+    end).
 
 %% ===================================================================
 %% update/3 测试 - 更新作业
@@ -50,6 +52,22 @@ update_success_test_() ->
         ?assertEqual(ok, Result)
     end).
 
+update_success_with_atom_keys_test_() ->
+    ?WITH_MECK(group_task_repo, [
+        {'find_by_id', 1, fun(_Id) ->
+            {ok, #{<<"id">> => 1001, <<"creator_id">> => 456, <<"status">> => 1}}
+        end},
+        {'update', 2, fun(_Id, Data) ->
+            ?assertEqual(<<"Atom Key 标题"/utf8>>, maps:get(title, Data)),
+            {ok, 1}
+        end}
+    ], fun() ->
+        Result = group_task_logic:update(1001, 456, #{
+            title => <<"Atom Key 标题"/utf8>>
+        }),
+        ?assertEqual(ok, Result)
+    end).
+
 update_not_creator_test_() ->
     ?WITH_MECK(group_task_repo, [
         {'find_by_id', 1, fun(_Id) ->
@@ -59,7 +77,7 @@ update_not_creator_test_() ->
         Result = group_task_logic:update(1001, 456, #{
             <<"title">> => <<"更新后的标题"/utf8>>
         }),
-        ?assertMatch({error, _}, Result)
+        ?assertMatch({error, _, _}, Result)
     end).
 
 %% ===================================================================
@@ -87,8 +105,10 @@ assign_success_test_() ->
     end).
 
 assign_empty_list_test_() ->
-    Result = group_task_logic:assign(1001, []),
-    ?assertMatch({error, _}, Result).
+    ?_test(begin
+        Result = group_task_logic:assign(1001, []),
+        ?assertMatch({error, _, _}, Result)
+    end).
 
 %% ===================================================================
 %% submit/3 测试 - 提交作业
@@ -97,8 +117,8 @@ assign_empty_list_test_() ->
 submit_success_test_() ->
     ?WITH_MECKS([
         {group_task_repo, [
-            {'find_by_id', 1, fun(_Id) ->
-                {ok, #{<<"id">> => 1001, <<"task_id">> => <<"task123">>, <<"deadline">> => <<"2099-12-31 23:59:59">>}}
+            {'find_by_task_id', 1, fun(_TaskId) ->
+                {ok, #{<<"id">> => 1001, <<"task_id">> => <<"task123">>, <<"deadline">> => undefined}}
             end}
         ]},
         {group_task_assignment_repo, [
@@ -119,7 +139,7 @@ submit_success_test_() ->
 submit_assignment_not_found_test_() ->
     ?WITH_MECKS([
         {group_task_repo, [
-            {'find_by_id', 1, fun(_Id) ->
+            {'find_by_task_id', 1, fun(_TaskId) ->
                 {ok, #{<<"id">> => 1001, <<"task_id">> => <<"task123">>}}
             end}
         ]},
@@ -132,7 +152,7 @@ submit_assignment_not_found_test_() ->
         Result = group_task_logic:submit(<<"task123">>, 789, #{
             content => <<"作业内容"/utf8>>
         }),
-        ?assertMatch({error, _}, Result)
+        ?assertMatch({error, _, _}, Result)
     end).
 
 %% ===================================================================
@@ -164,7 +184,7 @@ review_not_submitted_test_() ->
         Result = group_task_logic:review(2001, 456, #{
             score => 95
         }),
-        ?assertMatch({error, _}, Result)
+        ?assertMatch({error, _, _}, Result)
     end).
 
 %% ===================================================================
@@ -178,6 +198,26 @@ list_success_test_() ->
         end}
     ], fun() ->
         Result = group_task_logic:list(123, 1, 20),
+        ?assertMatch({ok, [_|_]}, Result)
+    end).
+
+list_with_assignee_status_filter_success_test_() ->
+    ?WITH_MECK(group_task_repo, [
+        {'list_by_group_and_user', 5, fun(123, 789, 0, 1, 20) ->
+            {ok, [#{<<"id">> => 1002, <<"title">> => <<"作业2"/utf8>>, <<"status">> => 0}]}
+        end}
+    ], fun() ->
+        Result = group_task_logic:list(123, 0, 789, 1, 20),
+        ?assertMatch({ok, [_|_]}, Result)
+    end).
+
+list_group_view_with_status_success_test_() ->
+    ?WITH_MECK(group_task_repo, [
+        {'list_by_group_id', 4, fun(123, 2, 1, 20) ->
+            {ok, [#{<<"id">> => 1003, <<"status">> => 2}]}
+        end}
+    ], fun() ->
+        Result = group_task_logic:list(123, 2, undefined, 1, 20),
         ?assertMatch({ok, [_|_]}, Result)
     end).
 
@@ -202,7 +242,7 @@ detail_not_found_test_() ->
         end}
     ], fun() ->
         Result = group_task_logic:detail(9999),
-        ?assertMatch({error, _}, Result)
+        ?assertMatch({error, _, _}, Result)
     end).
 
 %% ===================================================================
@@ -211,7 +251,7 @@ detail_not_found_test_() ->
 
 my_tasks_success_test_() ->
     ?WITH_MECK(group_task_assignment_repo, [
-        {'list_by_user_id', 3, fun(_UserId, _Page, _Size) ->
+        {'list_by_user_id', 4, fun(_UserId, undefined, _Page, _Size) ->
             {ok, [#{<<"id">> => 2001, <<"status">> => 2}]}
         end}
     ], fun() ->

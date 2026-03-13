@@ -87,7 +87,8 @@ update_not_found_test_() ->
 
 find_by_id_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
             {ok, [{[{<<"id">>, 1001},
                     {<<"group_id">>, 123},
                     {<<"title">>, <<"完成第一章练习"/utf8>>},
@@ -114,7 +115,8 @@ find_by_id_not_found_test_() ->
 
 find_by_task_id_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
             {ok, [{[{<<"id">>, 1001},
                     {<<"task_id">>, <<"task123">>},
                     {<<"title">>, <<"完成第一章练习"/utf8>>}]}]}
@@ -140,7 +142,8 @@ find_by_task_id_not_found_test_() ->
 
 list_by_group_id_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
             {ok, [{[{<<"id">>, 1001},
                     {<<"group_id">>, 123},
                     {<<"title">>, <<"作业1"/utf8>>},
@@ -165,13 +168,74 @@ list_by_group_id_empty_test_() ->
         ?assertEqual({ok, []}, Result)
     end).
 
+list_deleted_by_group_id_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NOT NULL">>)),
+            {ok, [{[{<<"id">>, 1009},
+                    {<<"group_id">>, 123},
+                    {<<"title">>, <<"已删除作业"/utf8>>},
+                    {<<"status">>, 1},
+                    {<<"deleted_at">>, <<"2026-02-24T09:00:00+08:00">>}]}]}
+        end}
+    ], fun() ->
+        Result = group_task_repo:list_deleted_by_group_id(123, 1, 20),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+list_by_group_and_user_success_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun
+                (<<"group_task">>) -> <<"public.group_task">>;
+                (<<"group_task_assignment">>) -> <<"public.group_task_assignment">>
+            end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(Sql, [123, 789]) ->
+                ?assertMatch(nomatch, binary:match(Sql, <<"a.status = 2">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"LEFT JOIN public.group_task_assignment">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"t.deleted_at IS NULL">>)),
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        Result = group_task_repo:list_by_group_and_user(123, 789, 1, 20),
+        ?assertEqual({ok, []}, Result)
+    end).
+
+list_by_group_and_user_status_filter_success_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun
+                (<<"group_task">>) -> <<"public.group_task">>;
+                (<<"group_task_assignment">>) -> <<"public.group_task_assignment">>
+            end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(Sql, [123, 789]) ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"CASE WHEN a.status IS NULL THEN 0 WHEN a.status >= 2 THEN 1 ELSE 0 END) = 1">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"t.deleted_at IS NULL">>)),
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        Result = group_task_repo:list_by_group_and_user(123, 789, 1, 1, 20),
+        ?assertEqual({ok, []}, Result)
+    end).
+
+list_by_group_and_user_invalid_status_test() ->
+    Result = group_task_repo:list_by_group_and_user(123, 789, 9, 1, 20),
+    ?assertEqual({error, invalid_status}, Result).
+
 %% ===================================================================
 %% count_by_group_id/1 测试 - 统计群作业数量
 %% ===================================================================
 
 count_by_group_id_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
             {ok, [{[{<<"count">>, 15}]}]}
         end}
     ], fun() ->
@@ -181,12 +245,41 @@ count_by_group_id_success_test_() ->
 
 count_by_group_id_zero_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
             {ok, [{[{<<"count">>, 0}]}]}
         end}
     ], fun() ->
         Result = group_task_repo:count_by_group_id(999),
         ?assertEqual({ok, 0}, Result)
+    end).
+
+count_by_group_id_with_status_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'query', 2, fun(Sql, Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = $2">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
+            ?assertEqual([123, 2], Params),
+            {ok, [{[{<<"count">>, 7}]}]}
+        end}
+    ], fun() ->
+        Result = group_task_repo:count_by_group_id(123, 2),
+        ?assertEqual({ok, 7}, Result)
+    end).
+
+count_by_group_id_with_invalid_status_test() ->
+    Result = group_task_repo:count_by_group_id(123, 9),
+    ?assertEqual({error, invalid_status}, Result).
+
+count_deleted_by_group_id_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"deleted_at IS NOT NULL">>)),
+            {ok, [{[{<<"count">>, 4}]}]}
+        end}
+    ], fun() ->
+        Result = group_task_repo:count_deleted_by_group_id(123),
+        ?assertEqual({ok, 4}, Result)
     end).
 
 %% ===================================================================
@@ -195,11 +288,40 @@ count_by_group_id_zero_test_() ->
 
 soft_delete_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'update', 4, fun(_Table, _Data, _Where, _Params) ->
+        {'update', 4, fun(_Table, Data, Where, _Params) ->
+            ?assert(maps:is_key(deleted_at, Data)),
+            ?assert(maps:is_key(updated_at, Data)),
+            ?assertNotEqual(nomatch, binary:match(Where, <<"deleted_at IS NULL">>)),
             {ok, 1}
         end}
     ], fun() ->
         Result = group_task_repo:soft_delete(1001),
+        ?assertEqual({ok, 1}, Result)
+    end).
+
+find_any_by_task_id_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'query', 2, fun(Sql, _Params) ->
+            ?assertEqual(nomatch, binary:match(Sql, <<"deleted_at IS NULL">>)),
+            {ok, [{[{<<"id">>, 1001},
+                    {<<"task_id">>, <<"task123">>},
+                    {<<"deleted_at">>, <<"2026-02-24T08:00:00+08:00">>}]}]}
+        end}
+    ], fun() ->
+        Result = group_task_repo:find_any_by_task_id(<<"task123">>),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+restore_success_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'update', 4, fun(_Table, Data, Where, _Params) ->
+            ?assertEqual({raw, <<"NULL">>}, maps:get(deleted_at, Data)),
+            ?assert(maps:is_key(updated_at, Data)),
+            ?assertNotEqual(nomatch, binary:match(Where, <<"deleted_at IS NOT NULL">>)),
+            {ok, 1}
+        end}
+    ], fun() ->
+        Result = group_task_repo:restore(1001),
         ?assertEqual({ok, 1}, Result)
     end).
 

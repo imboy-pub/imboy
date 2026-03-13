@@ -61,8 +61,8 @@ create(Req0, State) ->
     Title = maps:get(<<"title">>, PostVals, <<>>),
     Description = maps:get(<<"description">>, PostVals, <<>>),
     Options = maps:get(<<"options">>, PostVals, []),
-    VoteType = maps:get(<<"vote_type">>, PostVals, 1),
-    IsAnonymous = maps:get(<<"is_anonymous">>, PostVals, false),
+    VoteType = ec_cnv:to_integer(maps:get(<<"vote_type">>, PostVals, 1)),
+    IsAnonymous = to_boolean(maps:get(<<"is_anonymous">>, PostVals, false), false),
     EndAt = maps:get(<<"end_at">>, PostVals, undefined),
 
     % 验证必填参数
@@ -71,6 +71,8 @@ create(Req0, State) ->
             elib_response:error(Req0, "gid 必须");
         {_, <<>>} ->
             elib_response:error(Req0, "title 必须");
+        {_, _} when VoteType < 1; VoteType > 2 ->
+            elib_response:error(Req0, "vote_type 必须是 1 或 2");
         {_, _} when Options =:= [] ->
             elib_response:error(Req0, "options 必须");
         {_, _} ->
@@ -307,3 +309,16 @@ my_vote(Req0, State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+%% @doc 将请求参数中的布尔值统一转换为 boolean()
+to_boolean(true, _Default) -> true;
+to_boolean(false, _Default) -> false;
+to_boolean(1, _Default) -> true;
+to_boolean(0, _Default) -> false;
+to_boolean(<<"1">>, _Default) -> true;
+to_boolean(<<"0">>, _Default) -> false;
+to_boolean(<<"true">>, _Default) -> true;
+to_boolean(<<"false">>, _Default) -> false;
+to_boolean(<<"TRUE">>, _Default) -> true;
+to_boolean(<<"FALSE">>, _Default) -> false;
+to_boolean(_, Default) -> Default.

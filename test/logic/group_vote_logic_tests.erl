@@ -38,7 +38,7 @@ create_vote_success_test_() ->
             vote_type => VoteType,
             is_anonymous => IsAnonymous,
             end_at => EndAt
-        }),
+        }, #{}),
         ?assertMatch({ok, #{<<"vote_id">> := _}}, Result)
     end).
 
@@ -58,17 +58,21 @@ create_vote_with_options_test_() ->
         ],
         Result = group_vote_logic:create_vote(123, 456, <<"多选投票"/utf8>>, Options, #{
             vote_type => 2
-        }),
+        }, #{}),
         ?assertMatch({ok, _}, Result)
     end).
 
 create_vote_without_title_test_() ->
-    Result = group_vote_logic:create_vote(123, 456, <<>>, [], #{}),
-    ?assertMatch({error, {missing_param, title}}, Result).
+    ?_test(begin
+        Result = group_vote_logic:create_vote(123, 456, <<>>, [], #{}, #{}),
+        ?assertMatch({error, {missing_param, title}}, Result)
+    end).
 
 create_vote_without_options_test_() ->
-    Result = group_vote_logic:create_vote(123, 456, <<"标题"/utf8>>, [], #{}),
-    ?assertMatch({error, {missing_param, options}}, Result).
+    ?_test(begin
+        Result = group_vote_logic:create_vote(123, 456, <<"标题"/utf8>>, [], #{}, #{}),
+        ?assertMatch({error, {missing_param, options}}, Result)
+    end).
 
 %% ===================================================================
 %% cast_vote/3 测试 - 投票
@@ -132,7 +136,7 @@ cast_vote_multiple_choice_test_() ->
 cast_vote_already_voted_test_() ->
     ?WITH_MECK(group_vote_repo, [
         {'find_by_vote_id', 1, fun(_VoteId) ->
-            {ok, #{<<"vote_id">> => <<"vote123">>, <<"vote_type">> => 1, <<"status">> => 1}}
+            {ok, #{<<"vote_id">> => <<"vote123">>, <<"vote_type">> => 1, <<"status">> => 1, <<"end_at">> => null}}
         end},
         {'find_record_by_vote_and_user', 2, fun(_VoteId, _UserId) ->
             {ok, #{<<"id">> => 3001, <<"option_ids">> => <<"[\"opt1\"]">>}}
@@ -155,7 +159,7 @@ cast_vote_not_found_test_() ->
 cast_vote_closed_test_() ->
     ?WITH_MECK(group_vote_repo, [
         {'find_by_vote_id', 1, fun(_VoteId) ->
-            {ok, #{<<"vote_id">> => <<"vote123">>, <<"status">> => 2}}
+            {ok, #{<<"vote_id">> => <<"vote123">>, <<"vote_type">> => 1, <<"status">> => 2, <<"end_at">> => null}}
         end}
     ], fun() ->
         Result = group_vote_logic:cast_vote(<<"vote123">>, 789, [<<"opt1">>]),
@@ -167,8 +171,9 @@ cast_vote_expired_test_() ->
         {'find_by_vote_id', 1, fun(_VoteId) ->
             {ok, #{
                 <<"vote_id">> => <<"vote123">>,
+                <<"vote_type">> => 1,
                 <<"status">> => 1,
-                <<"end_at">> => <<"2024-01-01 00:00:00">>
+                <<"end_at">> => <<"2000-01-01T00:00:00Z">>
             }}
         end}
     ], fun() ->
@@ -191,6 +196,12 @@ update_vote_success_test_() ->
                 <<"vote_type">> => 1,
                 <<"status">> => 1
             }}
+        end},
+        {'list_options_by_vote_id', 1, fun(_VoteId) ->
+            {ok, [
+                #{<<"option_id">> => <<"opt1">>},
+                #{<<"option_id">> => <<"opt2">>}
+            ]}
         end},
         {'update_record', 2, fun(_RecordId, _Data) ->
             {ok, 1}

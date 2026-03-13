@@ -92,6 +92,8 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
                 {ok, _Count} ->
                     {ok, #{
                         <<"vote_id">> => VoteId,
+                        <<"group_id">> => elib_hashids:encode(Gid),
+                        <<"creator_id">> => elib_hashids:encode(CreatorId),
                         <<"title">> => Title,
                         <<"vote_type">> => VoteType,
                         <<"is_anonymous">> => IsAnonymous
@@ -309,7 +311,10 @@ build_vote_detail(Vote, VoteId) ->
                 Option#{<<"vote_count">> => Count}
             end, Options),
 
-            {ok, Vote#{
+            % 编码ID字段
+            Vote2 = elib_hashids:replace_fields(Vote, [<<"group_id">>, <<"creator_id">>]),
+
+            {ok, Vote2#{
                 <<"options">> => OptionsWithCount,
                 <<"total_votes">> => TotalVotes
             }};
@@ -328,11 +333,15 @@ list_votes(Gid, Page, Size) ->
         {ok, Votes} ->
             case group_vote_repo:count_votes_by_group_id(Gid) of
                 {ok, Total} ->
+                    % 编码ID字段
+                    Votes2 = lists:map(fun(Vote) ->
+                        elib_hashids:replace_fields(Vote, [<<"group_id">>, <<"creator_id">>])
+                    end, Votes),
                     {ok, #{
                         <<"total">> => Total,
                         <<"page">> => Page,
                         <<"size">> => Size,
-                        <<"list">> => Votes
+                        <<"list">> => Votes2
                     }};
                 {error, Reason} ->
                     {error, Reason}

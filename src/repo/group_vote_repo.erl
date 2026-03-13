@@ -146,6 +146,10 @@ count_votes_by_group_id(GroupId) when is_integer(GroupId), GroupId > 0 ->
     case elib_pg:query(Sql, [GroupId]) of
         {ok, [{#{<<"count">> := Count}}]} ->
             {ok, Count};
+        {ok, [#{<<"count">> := Count}]} ->
+            {ok, Count};
+        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
+            {ok, Count};
         {error, Reason} ->
             {error, Reason}
     end;
@@ -390,6 +394,10 @@ count_votes_by_option_id(OptionId) when is_binary(OptionId), byte_size(OptionId)
     case elib_pg:query(Sql, [OptionId]) of
         {ok, [{#{<<"count">> := Count}}]} ->
             {ok, Count};
+        {ok, [#{<<"count">> := Count}]} ->
+            {ok, Count};
+        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
+            {ok, Count};
         {error, Reason} ->
             {error, Reason}
     end;
@@ -405,6 +413,10 @@ count_total_votes_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) >
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE vote_id = $1">>,
     case elib_pg:query(Sql, [VoteId]) of
         {ok, [{#{<<"count">> := Count}}]} ->
+            {ok, Count};
+        {ok, [#{<<"count">> := Count}]} ->
+            {ok, Count};
+        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
             {ok, Count};
         {error, Reason} ->
             {error, Reason}
