@@ -744,7 +744,8 @@ feature_meta_catalog() ->
         all => feature_names(),
         plugin_managed => PluginManaged,
         standalone => feature_names() -- PluginManaged,
-        dependencies => feature_dependency_catalog()
+        dependencies => feature_dependency_catalog(),
+        catalog => feature_field_catalog()
     }.
 
 -spec plugin_managed_feature_names() -> [atom()].
@@ -763,6 +764,48 @@ feature_dependency_catalog() ->
         || FeatureName <- feature_names(),
            length(dependencies(FeatureName)) > 0
     ]).
+
+-spec feature_field_catalog() -> map().
+feature_field_catalog() ->
+    maps:from_list([
+        {FeatureName, feature_field_meta(FeatureName)}
+        || FeatureName <- feature_names()
+    ]).
+
+-spec feature_field_meta(atom()) -> map().
+feature_field_meta(FeatureName) ->
+    ManagedBy = feature_plugin_owner(FeatureName),
+    Dependencies = dependencies(FeatureName),
+    Meta0 = #{type => boolean},
+    Meta1 =
+        case ManagedBy of
+            undefined ->
+                Meta0;
+            _ ->
+                Meta0#{managed_by => ManagedBy}
+        end,
+    case Dependencies of
+        [] ->
+            Meta1;
+        _ ->
+            Meta1#{dependencies => Dependencies}
+    end.
+
+-spec feature_plugin_owner(atom()) -> atom() | undefined.
+feature_plugin_owner(FeatureName) ->
+    feature_plugin_owner(FeatureName, imboy_plugin_registry:plugin_names()).
+
+-spec feature_plugin_owner(atom(), [atom()]) -> atom() | undefined.
+feature_plugin_owner(_FeatureName, []) ->
+    undefined;
+feature_plugin_owner(FeatureName, [PluginName | Rest]) ->
+    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+    case lists:member(FeatureName, FeatureKeys) of
+        true ->
+            PluginName;
+        false ->
+            feature_plugin_owner(FeatureName, Rest)
+    end.
 
 -spec plugin_meta_catalog() -> map().
 plugin_meta_catalog() ->

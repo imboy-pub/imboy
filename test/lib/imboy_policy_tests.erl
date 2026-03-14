@@ -306,6 +306,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         Features = maps:get(<<"features">>, Meta),
         CapabilityConstraints = maps:get(<<"constraints">>, Capabilities),
         FeatureDependencies = maps:get(<<"dependencies">>, Features),
+        FeatureCatalog = maps:get(<<"catalog">>, Features),
         Plugins = maps:get(<<"plugins">>, Meta),
         ChannelPlugin = maps:get(<<"channel">>, Plugins),
         EditorOrder = maps:get(<<"editor_order">>, Meta),
@@ -343,6 +344,22 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assert(lists:member(<<"e2ee">>, maps:get(<<"standalone">>, Features))),
         ?assert(lists:member(<<"channel">>, maps:get(<<"plugin_managed">>, Features))),
         ?assertEqual([<<"channel">>], maps:get(<<"channel_discover">>, FeatureDependencies)),
+        ?assertEqual(<<"boolean">>, maps:get(<<"type">>, maps:get(<<"core">>, FeatureCatalog))),
+        ?assertEqual(
+            #{
+                <<"type">> => <<"boolean">>,
+                <<"managed_by">> => <<"channel">>,
+                <<"dependencies">> => [<<"channel">>]
+            },
+            maps:get(<<"channel_order">>, FeatureCatalog)
+        ),
+        ?assertEqual(
+            #{
+                <<"type">> => <<"boolean">>,
+                <<"managed_by">> => <<"group_collab">>
+            },
+            maps:get(<<"group_vote">>, FeatureCatalog)
+        ),
         ?assertEqual(
             false,
             maps:get(
