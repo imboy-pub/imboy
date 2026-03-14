@@ -362,6 +362,146 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
         )
     end).
 
+save_config_merges_partial_updates_with_existing_runtime_overrides_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:put(
+            {policy_config, <<"capabilities">>},
+            #{
+                <<"message_search">> => true,
+                <<"audit_mode">> => <<"metadata">>
+            }
+        ),
+        persistent_term:put(
+            {policy_config, <<"features">>},
+            #{
+                <<"moment">> => #{<<"enabled">> => true},
+                <<"location">> => #{<<"enabled">> => false}
+            }
+        ),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"capabilities">> => #{
+                <<"message_export">> => false
+            },
+            <<"plugins">> => #{
+                <<"channel">> => true
+            },
+            <<"features">> => #{
+                <<"channel_order">> => false
+            }
+        }),
+        ?assertEqual(2, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(
+            #{
+                <<"message_search">> => true,
+                <<"audit_mode">> => <<"metadata">>,
+                <<"message_export">> => false
+            },
+            persistent_term:get({policy_config, <<"capabilities">>})
+        ),
+        ?assertEqual(
+            #{
+                <<"moment">> => #{<<"enabled">> => true},
+                <<"location">> => #{<<"enabled">> => false},
+                <<"channel">> => #{<<"enabled">> => true},
+                <<"channel_discover">> => #{<<"enabled">> => true},
+                <<"channel_invitation">> => #{<<"enabled">> => true},
+                <<"channel_order">> => #{<<"enabled">> => false}
+            },
+            persistent_term:get({policy_config, <<"features">>})
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"message_export">>, maps:get(<<"capabilities">>, PolicyView))
+        ),
+        ?assertEqual(
+            true,
+            maps:get(<<"message_search">>, maps:get(<<"capabilities">>, PolicyView))
+        ),
+        ?assertEqual(
+            true,
+            maps:get(<<"moment">>, maps:get(<<"features">>, PolicyView))
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"location">>, maps:get(<<"features">>, PolicyView))
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, PolicyView))
+        )
+    end).
+
+save_config_rejects_invalid_capability_enum_input_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, <<"invalid storage_mode value">>},
+            save_policy_config(#{
+                <<"capabilities">> => #{
+                    <<"storage_mode">> => <<"invalid_mode">>
+                }
+            })
+        ),
+        ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+    end).
+
+save_config_rejects_invalid_feature_boolean_input_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, <<"invalid features payload">>},
+            save_policy_config(#{
+                <<"features">> => #{
+                    <<"channel">> => #{<<"enabled">> => <<"maybe">>}
+                }
+            })
+        ),
+        ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+    end).
+
+save_config_rejects_invalid_plugin_boolean_input_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, <<"invalid plugins payload">>},
+            save_policy_config(#{
+                <<"plugins">> => #{
+                    <<"channel">> => #{<<"enabled">> => <<"maybe">>}
+                }
+            })
+        ),
+        ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+    end).
+
 save_policy_config(Payload) ->
     ok = ensure_policy_module_loaded(),
     ExportCandidates = [save_config, save_admin_config, save_policy_config, save_admin_policy_config],

@@ -276,6 +276,10 @@ load_config_value(Key, Default) ->
             Value
     end.
 
+-spec load_saved_config_value(binary()) -> term().
+load_saved_config_value(Key) ->
+    load_config_value(Key, #{}).
+
 -spec capability_names() -> [atom()].
 capability_names() ->
     [
@@ -567,107 +571,302 @@ normalize_profile_input(_) ->
 -spec normalize_capability_payload(term()) -> {ok, map()} | {error, binary()}.
 normalize_capability_payload(Value) ->
     Map0 = normalize_map(Value),
-    Capabilities = lists:foldl(
-        fun(Key, Acc) ->
+    Result = lists:foldl(
+        fun(Key, {ok, Acc}) ->
             case find_in_map(Map0, candidate_keys(Key)) of
                 undefined ->
-                    Acc;
+                    {ok, Acc};
                 Item ->
-                    maps:put(Key, normalize_capability_payload_value(Key, Item), Acc)
-            end
+                    case normalize_capability_payload_value(Key, Item) of
+                        {ok, NormalizedValue} ->
+                            {ok, maps:put(Key, NormalizedValue, Acc)};
+                        {error, _} = Error ->
+                            Error
+                    end
+            end;
+           (_Key, {error, _} = Error) ->
+                Error
         end,
-        #{},
+        {ok, #{}},
         capability_names()
     ),
-    case {map_size(Map0), map_size(Capabilities)} of
-        {0, 0} ->
-            {ok, #{}};
-        {_, 0} ->
-            {error, <<"invalid capabilities payload">>};
-        _ ->
-            {ok, Capabilities}
+    case Result of
+        {error, _} = Error ->
+            Error;
+        {ok, Capabilities} ->
+            case {map_size(Map0), map_size(Capabilities)} of
+                {0, 0} ->
+                    {ok, #{}};
+                {_, 0} ->
+                    {error, <<"invalid capabilities payload">>};
+                _ ->
+                    {ok, Capabilities}
+            end
     end.
 
--spec normalize_capability_payload_value(atom(), term()) -> term().
+-spec normalize_capability_payload_value(atom(), term()) -> {ok, term()} | {error, binary()}.
 normalize_capability_payload_value(storage_mode, Value) ->
-    normalize_storage_mode(Value, archived);
+    case parse_storage_mode(Value) of
+        {ok, StorageMode} ->
+            {ok, StorageMode};
+        error ->
+            {error, <<"invalid storage_mode value">>}
+    end;
 normalize_capability_payload_value(e2ee_mode, Value) ->
-    normalize_e2ee_mode(Value, optional);
+    case parse_e2ee_mode(Value) of
+        {ok, E2eeMode} ->
+            {ok, E2eeMode};
+        error ->
+            {error, <<"invalid e2ee_mode value">>}
+    end;
 normalize_capability_payload_value(message_search, Value) ->
-    switch_enabled(Value);
+    case parse_toggle_payload(Value) of
+        {ok, Enabled} ->
+            {ok, Enabled};
+        error ->
+            {error, <<"invalid message_search value">>}
+    end;
 normalize_capability_payload_value(message_export, Value) ->
-    switch_enabled(Value);
+    case parse_toggle_payload(Value) of
+        {ok, Enabled} ->
+            {ok, Enabled};
+        error ->
+            {error, <<"invalid message_export value">>}
+    end;
 normalize_capability_payload_value(audit_mode, Value) ->
-    normalize_audit_mode(Value, metadata);
+    case parse_audit_mode(Value) of
+        {ok, AuditMode} ->
+            {ok, AuditMode};
+        error ->
+            {error, <<"invalid audit_mode value">>}
+    end;
 normalize_capability_payload_value(retention_policy, Value) ->
-    normalize_retention_policy(Value, #{});
+    case normalize_retention_policy_payload(Value) of
+        {ok, Policy} ->
+            {ok, Policy};
+        {error, _} = Error ->
+            Error
+    end;
 normalize_capability_payload_value(_Key, Value) ->
-    Value.
+    {ok, Value}.
 
 -spec normalize_feature_payload(term()) -> {ok, map()} | {error, binary()}.
 normalize_feature_payload(Value) ->
     Map0 = normalize_map(Value),
-    Features = lists:foldl(
-        fun(Key, Acc) ->
+    Result = lists:foldl(
+        fun(Key, {ok, Acc}) ->
             case find_in_map(Map0, candidate_keys(Key)) of
                 undefined ->
-                    Acc;
+                    {ok, Acc};
                 Item ->
-                    maps:put(Key, #{enabled => switch_enabled(Item)}, Acc)
-            end
+                    case parse_toggle_payload(Item) of
+                        {ok, Enabled} ->
+                            {ok, maps:put(Key, #{enabled => Enabled}, Acc)};
+                        error ->
+                            {error, <<"invalid features payload">>}
+                    end
+            end;
+           (_Key, {error, _} = Error) ->
+                Error
         end,
-        #{},
+        {ok, #{}},
         feature_names()
     ),
-    case {map_size(Map0), map_size(Features)} of
-        {0, 0} ->
-            {ok, #{}};
-        {_, 0} ->
-            {error, <<"invalid features payload">>};
-        _ ->
-            {ok, Features}
+    case Result of
+        {error, _} = Error ->
+            Error;
+        {ok, Features} ->
+            case {map_size(Map0), map_size(Features)} of
+                {0, 0} ->
+                    {ok, #{}};
+                {_, 0} ->
+                    {error, <<"invalid features payload">>};
+                _ ->
+                    {ok, Features}
+            end
     end.
 
 -spec normalize_plugin_payload(term()) -> {ok, map()} | {error, binary()}.
 normalize_plugin_payload(Value) ->
     Map0 = normalize_map(Value),
-    FeatureConfig = lists:foldl(
-        fun(PluginName, Acc) ->
+    Result = lists:foldl(
+        fun(PluginName, {ok, Acc}) ->
             case find_in_map(Map0, candidate_keys(PluginName)) of
                 undefined ->
-                    Acc;
+                    {ok, Acc};
                 Item ->
-                    Manifest = imboy_plugin_registry:get(PluginName),
-                    FeatureKeys = maps:get(feature_keys, Manifest, []),
-                    Enabled = switch_enabled(Item),
-                    lists:foldl(
-                        fun(FeatureKey, FeatureAcc) ->
-                            maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
-                        end,
-                        Acc,
-                        FeatureKeys
-                    )
-            end
+                    case parse_toggle_payload(Item) of
+                        {ok, Enabled} ->
+                            Manifest = imboy_plugin_registry:get(PluginName),
+                            FeatureKeys = maps:get(feature_keys, Manifest, []),
+                            {ok,
+                                lists:foldl(
+                                    fun(FeatureKey, FeatureAcc) ->
+                                        maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
+                                    end,
+                                    Acc,
+                                    FeatureKeys
+                                )};
+                        error ->
+                            {error, <<"invalid plugins payload">>}
+                    end
+            end;
+           (_PluginName, {error, _} = Error) ->
+                Error
         end,
-        #{},
+        {ok, #{}},
         imboy_plugin_registry:plugin_names()
     ),
-    case {map_size(Map0), map_size(FeatureConfig)} of
-        {0, 0} ->
-            {ok, #{}};
-        {_, 0} ->
-            {error, <<"invalid plugins payload">>};
-        _ ->
-            {ok, FeatureConfig}
+    case Result of
+        {error, _} = Error ->
+            Error;
+        {ok, FeatureConfig} ->
+            case {map_size(Map0), map_size(FeatureConfig)} of
+                {0, 0} ->
+                    {ok, #{}};
+                {_, 0} ->
+                    {error, <<"invalid plugins payload">>};
+                _ ->
+                    {ok, FeatureConfig}
+            end
     end.
 
 -spec persist_config_sections(map()) -> ok.
 persist_config_sections(Sections) ->
     _ = [
-        config_ds:set(Key, Value)
+        config_ds:set(Key, merge_persisted_section(Key, Value))
         || {Key, Value} <- maps:to_list(Sections)
     ],
     ok.
+
+-spec merge_persisted_section(binary(), term()) -> term().
+merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, Value) ->
+    Value;
+merge_persisted_section(Key, Value) ->
+    maps:merge(normalize_map(load_saved_config_value(Key)), normalize_map(Value)).
+
+-spec parse_toggle_payload(term()) -> {ok, boolean()} | error.
+parse_toggle_payload(#{enabled := Enabled}) ->
+    parse_boolean_value(Enabled);
+parse_toggle_payload(#{<<"enabled">> := Enabled}) ->
+    parse_boolean_value(Enabled);
+parse_toggle_payload(Options) when is_list(Options) ->
+    case is_charlist(Options) of
+        true ->
+            parse_boolean_value(Options);
+        false ->
+            case proplists:get_value(enabled, Options, undefined) of
+                undefined ->
+                    case proplists:get_value(<<"enabled">>, Options, undefined) of
+                        undefined ->
+                            error;
+                        Enabled ->
+                            parse_boolean_value(Enabled)
+                    end;
+                Enabled ->
+                    parse_boolean_value(Enabled)
+            end
+    end;
+parse_toggle_payload(Value) ->
+    parse_boolean_value(Value).
+
+-spec parse_boolean_value(term()) -> {ok, boolean()} | error.
+parse_boolean_value(true) ->
+    {ok, true};
+parse_boolean_value(false) ->
+    {ok, false};
+parse_boolean_value(1) ->
+    {ok, true};
+parse_boolean_value(0) ->
+    {ok, false};
+parse_boolean_value(<<"true">>) ->
+    {ok, true};
+parse_boolean_value(<<"false">>) ->
+    {ok, false};
+parse_boolean_value("true") ->
+    {ok, true};
+parse_boolean_value("false") ->
+    {ok, false};
+parse_boolean_value(_) ->
+    error.
+
+-spec is_charlist(list()) -> boolean().
+is_charlist([]) ->
+    true;
+is_charlist([H | T]) when is_integer(H), H >= 0, H =< 16#10FFFF ->
+    is_charlist(T);
+is_charlist(_) ->
+    false.
+
+-spec parse_storage_mode(term()) -> {ok, archived | secure_e2ee} | error.
+parse_storage_mode(archived) ->
+    {ok, archived};
+parse_storage_mode(secure_e2ee) ->
+    {ok, secure_e2ee};
+parse_storage_mode(<<"archived">>) ->
+    {ok, archived};
+parse_storage_mode(<<"secure_e2ee">>) ->
+    {ok, secure_e2ee};
+parse_storage_mode("archived") ->
+    {ok, archived};
+parse_storage_mode("secure_e2ee") ->
+    {ok, secure_e2ee};
+parse_storage_mode(_) ->
+    error.
+
+-spec parse_e2ee_mode(term()) -> {ok, disabled | optional | required} | error.
+parse_e2ee_mode(disabled) ->
+    {ok, disabled};
+parse_e2ee_mode(optional) ->
+    {ok, optional};
+parse_e2ee_mode(required) ->
+    {ok, required};
+parse_e2ee_mode(<<"disabled">>) ->
+    {ok, disabled};
+parse_e2ee_mode(<<"optional">>) ->
+    {ok, optional};
+parse_e2ee_mode(<<"required">>) ->
+    {ok, required};
+parse_e2ee_mode("disabled") ->
+    {ok, disabled};
+parse_e2ee_mode("optional") ->
+    {ok, optional};
+parse_e2ee_mode("required") ->
+    {ok, required};
+parse_e2ee_mode(_) ->
+    error.
+
+-spec parse_audit_mode(term()) -> {ok, none | metadata | full} | error.
+parse_audit_mode(none) ->
+    {ok, none};
+parse_audit_mode(metadata) ->
+    {ok, metadata};
+parse_audit_mode(full) ->
+    {ok, full};
+parse_audit_mode(<<"none">>) ->
+    {ok, none};
+parse_audit_mode(<<"metadata">>) ->
+    {ok, metadata};
+parse_audit_mode(<<"full">>) ->
+    {ok, full};
+parse_audit_mode("none") ->
+    {ok, none};
+parse_audit_mode("metadata") ->
+    {ok, metadata};
+parse_audit_mode("full") ->
+    {ok, full};
+parse_audit_mode(_) ->
+    error.
+
+-spec normalize_retention_policy_payload(term()) -> {ok, map()} | {error, binary()}.
+normalize_retention_policy_payload(Value) ->
+    Policy = normalize_map(Value),
+    case maps:size(Policy) of
+        0 ->
+            {error, <<"invalid retention_policy value">>};
+        _ ->
+            {ok, Policy}
+    end.
 
 -spec public_term(term()) -> term().
 public_term(Map) when is_map(Map) ->
