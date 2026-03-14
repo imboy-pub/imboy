@@ -77,7 +77,7 @@ meta_view() ->
             preview_returns => [saved, effective, adjustments],
             bootstrap_available => true,
             bootstrap_returns => [meta, saved, effective],
-            save_returns => [effective],
+            save_returns => [effective, saved],
             editable_sections => [profile, capabilities, plugins, features]
         }
     }).
@@ -120,7 +120,7 @@ save_config(Payload) when is_map(Payload) ->
     case validate_save_sections(Sections) of
         {ok, SaveSections} when map_size(SaveSections) > 0 ->
             persist_config_sections(SaveSections),
-            {ok, effective_view()};
+            {ok, save_result_view()};
         {ok, _SaveSections} ->
             {error, <<"policy payload missing editable fields">>};
         {error, Reason} ->
@@ -128,6 +128,11 @@ save_config(Payload) when is_map(Payload) ->
     end;
 save_config(_) ->
     {error, <<"policy payload must be an object">>}.
+
+-spec save_result_view() -> map().
+save_result_view() ->
+    Effective = effective_view(),
+    Effective#{<<"saved">> => saved_view()}.
 
 -spec preview_config(map()) -> {ok, map()} | {error, binary()}.
 preview_config(Payload) when is_map(Payload) ->

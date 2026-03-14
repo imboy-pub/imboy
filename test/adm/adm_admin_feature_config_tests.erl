@@ -233,7 +233,10 @@ save_config_policy_put_success_test_() ->
                 {ok, PolicyPayload}
             end},
             {'effective_view', 0, fun() ->
-                PolicyPayload
+                erlang:error(should_not_be_called)
+            end},
+            {'saved_view', 0, fun() ->
+                erlang:error(should_not_be_called)
             end}
         ]},
         {elib_response, [
@@ -245,9 +248,12 @@ save_config_policy_put_success_test_() ->
         {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
         ?assertEqual(200, maps:get(response_status, RespReq)),
         ?assertEqual(PolicyPayload, maps:get(payload, RespReq)),
+        ?assertEqual(true, maps:is_key(<<"saved">>, maps:get(payload, RespReq))),
         ?assertEqual(#{adm_user_id => 1001}, State),
         ?assertEqual(1, meck:num_calls(elib_param, post, 1)),
-        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1))
+        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, effective_view, 0)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, saved_view, 0))
     end).
 
 save_config_policy_post_success_test_() ->
@@ -271,7 +277,10 @@ save_config_policy_post_success_test_() ->
                 {ok, PolicyPayload}
             end},
             {'effective_view', 0, fun() ->
-                PolicyPayload
+                erlang:error(should_not_be_called)
+            end},
+            {'saved_view', 0, fun() ->
+                erlang:error(should_not_be_called)
             end}
         ]},
         {elib_response, [
@@ -283,9 +292,12 @@ save_config_policy_post_success_test_() ->
         {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
         ?assertEqual(200, maps:get(response_status, RespReq)),
         ?assertEqual(PolicyPayload, maps:get(payload, RespReq)),
+        ?assertEqual(true, maps:is_key(<<"saved">>, maps:get(payload, RespReq))),
         ?assertEqual(#{adm_user_id => 1001}, State),
         ?assertEqual(1, meck:num_calls(elib_param, post, 1)),
-        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1))
+        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, effective_view, 0)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, saved_view, 0))
     end).
 
 init_config_features_forbidden_without_settings_permission_test_() ->
@@ -625,5 +637,19 @@ policy_response_payload() ->
             <<"channel">> => #{<<"enabled">> => true},
             <<"group_collab">> => #{<<"enabled">> => false},
             <<"moment">> => #{<<"enabled">> => false}
+        },
+        <<"saved">> => #{
+            <<"profile">> => <<"enterprise">>,
+            <<"capabilities">> => #{
+                <<"storage_mode">> => <<"archived">>,
+                <<"message_search">> => true,
+                <<"message_export">> => false,
+                <<"audit_mode">> => <<"metadata">>
+            },
+            <<"plugins">> => #{
+                <<"channel">> => true,
+                <<"group_collab">> => false,
+                <<"moment">> => false
+            }
         }
     }.

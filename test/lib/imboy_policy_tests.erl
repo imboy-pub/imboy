@@ -331,7 +331,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             [<<"meta">>, <<"saved">>, <<"effective">>],
             maps:get(<<"bootstrap_returns">>, WriteContract)
         ),
-        ?assertEqual([<<"effective">>], maps:get(<<"save_returns">>, WriteContract)),
+        ?assertEqual([<<"effective">>, <<"saved">>], maps:get(<<"save_returns">>, WriteContract)),
         ?assertEqual(
             [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
             maps:get(<<"editable_sections">>, WriteContract)
@@ -629,11 +629,27 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
                 <<"group_collab">> => false
             }
         }),
+        SavedView = maps:get(<<"saved">>, PolicyView),
         ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
         ?assertEqual(<<"metadata">>, maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, PolicyView))),
         ?assertEqual(true, maps:get(<<"channel">>, maps:get(<<"features">>, PolicyView))),
         ?assertEqual(false, maps:get(<<"group_vote">>, maps:get(<<"features">>, PolicyView))),
+        ?assertEqual(
+            #{
+                <<"profile">> => <<"enterprise">>,
+                <<"capabilities">> => #{
+                    <<"message_export">> => false,
+                    <<"audit_mode">> => <<"metadata">>
+                },
+                <<"plugins">> => #{
+                    <<"channel">> => true,
+                    <<"group_collab">> => false,
+                    <<"moment">> => true
+                }
+            },
+            SavedView
+        ),
         ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))),
         ?assertEqual(
             false,
@@ -676,8 +692,10 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
             end}
         ]}
     ], fun() ->
+        persistent_term:erase({policy_config, <<"product_profile">>}),
+        persistent_term:erase({policy_config, <<"capabilities">>}),
         persistent_term:erase({policy_config, <<"features">>}),
-        {ok, _PolicyView} = save_policy_config(#{
+        {ok, PolicyView} = save_policy_config(#{
             <<"plugins">> => #{
                 <<"channel">> => true
             },
@@ -685,8 +703,20 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
                 <<"channel_order">> => false
             }
         }),
+        SavedView = maps:get(<<"saved">>, PolicyView),
         AfterSaveView = imboy_policy:effective_view(),
         ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(
+            #{
+                <<"features">> => #{
+                    <<"channel">> => true,
+                    <<"channel_discover">> => true,
+                    <<"channel_invitation">> => true,
+                    <<"channel_order">> => false
+                }
+            },
+            SavedView
+        ),
         ?assertEqual(
             false,
             maps:get(<<"channel_order">>, maps:get(<<"features">>, AfterSaveView))
@@ -808,12 +838,15 @@ save_config_allows_clearing_profile_override_with_null_test_() ->
             end}
         ]}
     ], fun() ->
+        persistent_term:erase({policy_config, <<"capabilities">>}),
+        persistent_term:erase({policy_config, <<"features">>}),
         persistent_term:put({policy_config, <<"product_profile">>}, <<"community">>),
         {ok, PolicyView} = save_policy_config(#{<<"profile">> => null}),
 
         ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(null, persistent_term:get({policy_config, <<"product_profile">>})),
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+        ?assertEqual(#{}, maps:get(<<"saved">>, PolicyView)),
         ?assertEqual(false, maps:is_key(<<"profile">>, imboy_policy:saved_view()))
     end).
 
