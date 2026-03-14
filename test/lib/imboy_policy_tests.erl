@@ -3,9 +3,13 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+default_config_get(_Key, Default) ->
+    Default.
+
 current_profile_defaults_to_community_when_missing_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun(product_profile, community) -> community end}
         ]}
     ], fun() ->
@@ -15,7 +19,18 @@ current_profile_defaults_to_community_when_missing_test_() ->
 current_profile_reads_explicit_enterprise_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun(product_profile, community) -> enterprise end}
+        ]}
+    ], fun() ->
+        ?assertEqual(enterprise, imboy_policy:current_profile())
+    end).
+
+current_profile_prefers_runtime_config_over_sys_config_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(<<"product_profile">>, _Default) -> <<"enterprise">> end},
+            {'env', 2, fun(product_profile, community) -> community end}
         ]}
     ], fun() ->
         ?assertEqual(enterprise, imboy_policy:current_profile())
@@ -24,6 +39,7 @@ current_profile_reads_explicit_enterprise_test_() ->
 effective_capabilities_merge_profile_defaults_and_overrides_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> enterprise;
                 (capabilities, #{}) ->
@@ -51,6 +67,7 @@ effective_capabilities_merge_profile_defaults_and_overrides_test_() ->
 effective_features_preserve_missing_features_block_compatibility_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> community;
                 (capabilities, #{}) -> #{};
@@ -68,6 +85,7 @@ effective_features_preserve_missing_features_block_compatibility_test_() ->
 effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> enterprise;
                 (capabilities, #{}) -> #{audit_mode => full};
@@ -93,6 +111,7 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
 secure_e2ee_forces_search_export_off_and_downgrades_audit_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> enterprise;
                 (capabilities, #{}) ->
@@ -121,6 +140,7 @@ secure_e2ee_forces_search_export_off_and_downgrades_audit_test_() ->
 required_e2ee_disables_body_visibility_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> community;
                 (capabilities, #{}) ->
@@ -144,6 +164,7 @@ required_e2ee_disables_body_visibility_test_() ->
 effective_view_returns_json_friendly_policy_payload_test_() ->
     ?WITH_MECKS([
         {config_ds, [
+            {'get', 2, fun default_config_get/2},
             {'env', 2, fun
                 (product_profile, community) -> enterprise;
                 (capabilities, #{}) ->
@@ -194,3 +215,167 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
         ?assertEqual(false, maps:is_key(<<"api_target_feature_rules">>, ChannelPlugin)),
         ?assertEqual(false, maps:is_key(<<"admin_target_feature_rules">>, ChannelPlugin))
     end).
+
+effective_policy_prefers_runtime_config_over_sys_config_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun
+                (<<"product_profile">>, _Default) -> <<"enterprise">>;
+                (<<"capabilities">>, _Default) ->
+                    #{
+                        <<"message_export">> => false,
+                        <<"audit_mode">> => <<"full">>
+                    };
+                (<<"features">>, _Default) ->
+                    #{
+                        <<"channel">> => #{<<"enabled">> => false},
+                        <<"moment">> => #{<<"enabled">> => true}
+                    }
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{message_export => true, audit_mode => metadata};
+                (features, undefined) ->
+                    #{
+                        channel => #{enabled => true},
+                        channel_invitation => #{enabled => true},
+                        moment => #{enabled => false}
+                    }
+            end}
+        ]}
+    ], fun() ->
+        Policy = imboy_policy:effective(),
+        ?assertEqual(enterprise, maps:get(profile, Policy)),
+        ?assertEqual(false, maps:get(message_export, maps:get(capabilities, Policy))),
+        ?assertEqual(full, maps:get(audit_mode, maps:get(capabilities, Policy))),
+        ?assertEqual(false, maps:get(channel, maps:get(features, Policy))),
+        ?assertEqual(false, maps:get(channel_invitation, maps:get(features, Policy))),
+        ?assertEqual(true, maps:get(moment, maps:get(features, Policy))),
+        ?assertEqual(false, maps:get(enabled, maps:get(channel, maps:get(plugins, Policy)))),
+        ?assertEqual(true, maps:get(enabled, maps:get(moment, maps:get(plugins, Policy))))
+    end).
+
+save_config_persists_profile_capabilities_and_plugin_translated_features_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:erase({policy_config, <<"product_profile">>}),
+        persistent_term:erase({policy_config, <<"capabilities">>}),
+        persistent_term:erase({policy_config, <<"features">>}),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"profile">> => <<"enterprise">>,
+            <<"capabilities">> => #{
+                <<"message_export">> => false,
+                <<"audit_mode">> => <<"metadata">>
+            },
+            <<"features">> => #{
+                <<"moment">> => true
+            },
+            <<"plugins">> => #{
+                <<"channel">> => #{<<"enabled">> => true},
+                <<"group_collab">> => false
+            }
+        }),
+        ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+        ?assertEqual(<<"metadata">>, maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, PolicyView))),
+        ?assertEqual(true, maps:get(<<"channel">>, maps:get(<<"features">>, PolicyView))),
+        ?assertEqual(false, maps:get(<<"group_vote">>, maps:get(<<"features">>, PolicyView))),
+        ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))),
+        ?assertEqual(
+            false,
+            maps:get(<<"enabled">>, maps:get(<<"group_collab">>, maps:get(<<"plugins">>, PolicyView)))
+        )
+    end).
+
+save_config_rejects_invalid_profile_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, <<"invalid profile value">>},
+            save_policy_config(#{<<"profile">> => <<"invalid">>})
+        ),
+        ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+    end).
+
+save_config_explicit_feature_override_beats_plugin_translation_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:erase({policy_config, <<"features">>}),
+        {ok, _PolicyView} = save_policy_config(#{
+            <<"plugins">> => #{
+                <<"channel">> => true
+            },
+            <<"features">> => #{
+                <<"channel_order">> => false
+            }
+        }),
+        AfterSaveView = imboy_policy:effective_view(),
+        ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(
+            false,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, AfterSaveView))
+        ),
+        ?assertEqual(
+            true,
+            maps:get(<<"channel">>, maps:get(<<"features">>, AfterSaveView))
+        )
+    end).
+
+save_policy_config(Payload) ->
+    ok = ensure_policy_module_loaded(),
+    ExportCandidates = [save_config, save_admin_config, save_policy_config, save_admin_policy_config],
+    case [Name || Name <- ExportCandidates, erlang:function_exported(imboy_policy, Name, 1)] of
+        [Name | _] ->
+            apply(imboy_policy, Name, [Payload]);
+        [] ->
+            erlang:error({missing_policy_save_export, ExportCandidates})
+    end.
+
+ensure_policy_module_loaded() ->
+    case code:ensure_loaded(imboy_policy) of
+        {module, imboy_policy} ->
+            ok;
+        Error ->
+            erlang:error({failed_to_load_policy_module, Error})
+    end.

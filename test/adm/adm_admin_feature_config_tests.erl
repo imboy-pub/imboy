@@ -63,6 +63,82 @@ init_config_policy_success_test_() ->
         ?assertEqual(#{adm_user_id => 1001}, State)
     end).
 
+save_config_policy_put_success_test_() ->
+    SavePayload = policy_save_payload(),
+    PolicyPayload = policy_response_payload(),
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"PUT">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) -> SavePayload end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(Payload) ->
+                ?assertEqual(SavePayload, Payload),
+                {ok, PolicyPayload}
+            end},
+            {'effective_view', 0, fun() ->
+                PolicyPayload
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(PolicyPayload, maps:get(payload, RespReq)),
+        ?assertEqual(#{adm_user_id => 1001}, State),
+        ?assertEqual(1, meck:num_calls(elib_param, post, 1)),
+        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1))
+    end).
+
+save_config_policy_post_success_test_() ->
+    SavePayload = policy_save_payload(),
+    PolicyPayload = policy_response_payload(),
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"POST">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) -> SavePayload end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(Payload) ->
+                ?assertEqual(SavePayload, Payload),
+                {ok, PolicyPayload}
+            end},
+            {'effective_view', 0, fun() ->
+                PolicyPayload
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(PolicyPayload, maps:get(payload, RespReq)),
+        ?assertEqual(#{adm_user_id => 1001}, State),
+        ?assertEqual(1, meck:num_calls(elib_param, post, 1)),
+        ?assertEqual(1, meck:num_calls(imboy_policy, save_admin_config, 1))
+    end).
+
 init_config_features_forbidden_without_settings_permission_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
@@ -114,3 +190,183 @@ init_config_policy_forbidden_without_settings_permission_test_() ->
         ?assertEqual(<<"无权限操作"/utf8>>, maps:get(error_msg, RespReq)),
         ?assertEqual(0, meck:num_calls(imboy_policy, effective_view, 0))
     end).
+
+save_config_policy_success_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"PUT">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"profile">> => <<"enterprise">>,
+                    <<"capabilities">> => #{<<"message_export">> => false},
+                    <<"features">> => #{<<"channel">> => true}
+                }
+            end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(Payload) ->
+                ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, Payload)),
+                {ok,
+                    #{
+                        <<"profile">> => <<"enterprise">>,
+                        <<"capabilities">> => #{<<"message_export">> => false},
+                        <<"features">> => #{<<"channel">> => true},
+                        <<"plugins">> => #{<<"channel">> => #{<<"enabled">> => true}}
+                    }}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, maps:get(payload, RespReq))),
+        ?assertEqual(#{adm_user_id => 1001}, State)
+    end).
+
+save_config_policy_bad_request_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"POST">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{<<"profile">> => <<"invalid">>}
+            end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(_Payload) ->
+                {error, <<"invalid profile value">>}
+            end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(Req, Msg, Code) ->
+                Req#{response_status => 400, error_msg => Msg, error_code => Code}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
+        ?assertEqual(400, maps:get(response_status, RespReq)),
+        ?assertEqual(?ERR_BAD_REQUEST, maps:get(error_code, RespReq)),
+        ?assertEqual(<<"invalid profile value">>, maps:get(error_msg, RespReq))
+    end).
+
+save_config_policy_forbidden_without_settings_update_permission_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"PUT">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(3001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 3001, <<"role_id">> => [3]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) -> erlang:error(should_not_be_called) end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(_Payload) -> erlang:error(should_not_be_called) end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(Req, Msg, Code) ->
+                Req#{response_status => 403, error_msg => Msg, error_code => Code}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 3001}),
+        ?assertEqual(403, maps:get(response_status, RespReq)),
+        ?assertEqual(?ERR_FORBIDDEN, maps:get(error_code, RespReq)),
+        ?assertEqual(<<"无权限操作"/utf8>>, maps:get(error_msg, RespReq)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, save_admin_config, 1))
+    end).
+
+save_config_policy_forbidden_without_settings_permission_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"PUT">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(3001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 3001, <<"role_id">> => [3]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) -> erlang:error(should_not_be_called) end}
+        ]},
+        {imboy_policy, [
+            {'save_admin_config', 1, fun(_Payload) -> erlang:error(should_not_be_called) end},
+            {'effective_view', 0, fun() -> erlang:error(should_not_be_called) end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(Req, Msg, Code) ->
+                Req#{response_status => 403, error_msg => Msg, error_code => Code}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 3001}),
+        ?assertEqual(403, maps:get(response_status, RespReq)),
+        ?assertEqual(?ERR_FORBIDDEN, maps:get(error_code, RespReq)),
+        ?assertEqual(<<"无权限操作"/utf8>>, maps:get(error_msg, RespReq)),
+        ?assertEqual(0, meck:num_calls(elib_param, post, 1)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, save_admin_config, 1)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, effective_view, 0))
+    end).
+
+policy_save_payload() ->
+    #{
+        <<"profile">> => <<"enterprise">>,
+        <<"capabilities">> => #{
+            <<"storage_mode">> => <<"archived">>,
+            <<"message_search">> => true,
+            <<"message_export">> => false,
+            <<"audit_mode">> => <<"metadata">>
+        },
+        <<"features">> => #{
+            <<"moment">> => false
+        },
+        <<"plugins">> => #{
+            <<"channel">> => #{<<"enabled">> => true},
+            <<"group_collab">> => false
+        }
+    }.
+
+policy_response_payload() ->
+    #{
+        <<"profile">> => <<"enterprise">>,
+        <<"capabilities">> => #{
+            <<"storage_mode">> => <<"archived">>,
+            <<"message_search">> => true,
+            <<"message_export">> => false,
+            <<"audit_mode">> => <<"metadata">>
+        },
+        <<"features">> => #{
+            <<"channel">> => true,
+            <<"channel_discover">> => true,
+            <<"channel_invitation">> => true,
+            <<"channel_order">> => true,
+            <<"group_vote">> => false,
+            <<"group_schedule">> => false,
+            <<"group_task">> => false,
+            <<"moment">> => false
+        },
+        <<"plugins">> => #{
+            <<"channel">> => #{<<"enabled">> => true},
+            <<"group_collab">> => #{<<"enabled">> => false},
+            <<"moment">> => #{<<"enabled">> => false}
+        }
+    }.

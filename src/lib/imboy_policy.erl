@@ -7,6 +7,8 @@
     effective_capabilities/0,
     effective_features/0,
     effective_plugins/0,
+    save_admin_config/1,
+    save_config/1,
     message_search_enabled/0,
     message_export_enabled/0,
     message_audit_mode/0,
@@ -14,9 +16,18 @@
     message_body_visible/0
 ]).
 
+-define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
+-define(CAPABILITIES_CONFIG_KEY, <<"capabilities">>).
+-define(FEATURES_CONFIG_KEY, <<"features">>).
+
 -spec current_profile() -> community | enterprise.
 current_profile() ->
-    imboy_profile_preset:current().
+    case normalize_profile_input(load_profile_config()) of
+        {ok, Profile} ->
+            Profile;
+        error ->
+            imboy_profile_preset:current()
+    end.
 
 -spec effective() -> map().
 effective() ->
@@ -45,7 +56,7 @@ effective_capabilities() ->
     Defaults = normalize_capability_map(
         maps:get(capabilities, imboy_profile_preset:defaults(current_profile()), #{})
     ),
-    Overrides = normalize_capability_map(config_ds:env(capabilities, #{})),
+    Overrides = normalize_capability_map(load_capability_config()),
     normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
 
 -spec message_search_enabled() -> boolean().
@@ -68,9 +79,28 @@ message_audit_enabled() ->
 message_body_visible() ->
     message_audit_mode() =:= full.
 
+-spec save_admin_config(map()) -> {ok, map()} | {error, binary()}.
+save_admin_config(Payload) ->
+    save_config(Payload).
+
+-spec save_config(map()) -> {ok, map()} | {error, binary()}.
+save_config(Payload) when is_map(Payload) ->
+    Sections = normalize_config_sections(Payload),
+    case validate_save_sections(Sections) of
+        {ok, SaveSections} when map_size(SaveSections) > 0 ->
+            persist_config_sections(SaveSections),
+            {ok, effective_view()};
+        {ok, _SaveSections} ->
+            {error, <<"policy payload missing editable fields">>};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+save_config(_) ->
+    {error, <<"policy payload must be an object">>}.
+
 -spec effective_features() -> map().
 effective_features() ->
-    Features = config_ds:env(features, undefined),
+    Features = load_feature_config(),
     maps:from_list([
         {Name, feature_enabled(Name, Features)}
         || Name <- feature_names()
@@ -224,6 +254,27 @@ normalize_map(Value) when is_list(Value) ->
     maps:from_list(Value);
 normalize_map(_) ->
     #{}.
+
+-spec load_profile_config() -> term().
+load_profile_config() ->
+    load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community)).
+
+-spec load_capability_config() -> term().
+load_capability_config() ->
+    load_config_value(?CAPABILITIES_CONFIG_KEY, config_ds:env(capabilities, #{})).
+
+-spec load_feature_config() -> term().
+load_feature_config() ->
+    load_config_value(?FEATURES_CONFIG_KEY, config_ds:env(features, undefined)).
+
+-spec load_config_value(binary(), term()) -> term().
+load_config_value(Key, Default) ->
+    case catch config_ds:get(Key, Default) of
+        {'EXIT', _} ->
+            Default;
+        Value ->
+            Value
+    end.
 
 -spec capability_names() -> [atom()].
 capability_names() ->
@@ -409,6 +460,214 @@ normalize_retention_policy(Value, Default) ->
         _ ->
             Policy
     end.
+
+-spec normalize_config_sections(map()) -> map().
+normalize_config_sections(Payload) ->
+    Sections0 = #{},
+    Sections1 = maybe_put_profile_section(Sections0, Payload),
+    Sections2 = maybe_put_capabilities_section(Sections1, Payload),
+    maybe_put_features_section(Sections2, Payload).
+
+-spec maybe_put_profile_section(map(), map()) -> map().
+maybe_put_profile_section(Sections, Payload) ->
+    case payload_value(Payload, [profile, <<"profile">>, product_profile, <<"product_profile">>]) of
+        {ok, Value} ->
+            case normalize_profile_input(Value) of
+                {ok, Profile} ->
+                    Sections#{?PRODUCT_PROFILE_CONFIG_KEY => atom_to_binary(Profile, utf8)};
+                error ->
+                    Sections#{profile_error => <<"invalid profile value">>}
+            end;
+        error ->
+            Sections
+    end.
+
+-spec maybe_put_capabilities_section(map(), map()) -> map().
+maybe_put_capabilities_section(Sections, Payload) ->
+    case payload_value(Payload, [capabilities, <<"capabilities">>]) of
+        {ok, Value} ->
+            case normalize_capability_payload(Value) of
+                {ok, CapabilityConfig} ->
+                    Sections#{?CAPABILITIES_CONFIG_KEY => public_term(CapabilityConfig)};
+                {error, Reason} ->
+                    Sections#{capabilities_error => Reason}
+            end;
+        error ->
+            Sections
+    end.
+
+-spec maybe_put_features_section(map(), map()) -> map().
+maybe_put_features_section(Sections, Payload) ->
+    FeaturesResult =
+        case payload_value(Payload, [features, <<"features">>]) of
+            {ok, FeatureValue} ->
+                normalize_feature_payload(FeatureValue);
+            error ->
+                {ok, #{}}
+        end,
+    PluginsResult =
+        case payload_value(Payload, [plugins, <<"plugins">>]) of
+            {ok, PluginValue} ->
+                normalize_plugin_payload(PluginValue);
+            error ->
+                {ok, #{}}
+        end,
+    case {FeaturesResult, PluginsResult} of
+        {{error, Reason}, _} ->
+            Sections#{features_error => Reason};
+        {_, {error, Reason}} ->
+            Sections#{features_error => Reason};
+        {{ok, FeatureConfig}, {ok, PluginFeatureConfig}} ->
+            MergedFeatureConfig = maps:merge(PluginFeatureConfig, FeatureConfig),
+            case map_size(MergedFeatureConfig) of
+                0 ->
+                    Sections;
+                _ ->
+                    Sections#{?FEATURES_CONFIG_KEY => public_term(MergedFeatureConfig)}
+            end
+    end.
+
+-spec validate_save_sections(map()) -> {ok, map()} | {error, binary()}.
+validate_save_sections(Sections) ->
+    ErrorKeys = [profile_error, capabilities_error, features_error],
+    case [maps:get(Key, Sections) || Key <- ErrorKeys, maps:is_key(Key, Sections)] of
+        [Reason | _] ->
+            {error, Reason};
+        [] ->
+            {ok, maps:without(ErrorKeys, Sections)}
+    end.
+
+-spec payload_value(map(), [term()]) -> {ok, term()} | error.
+payload_value(_Payload, []) ->
+    error;
+payload_value(Payload, [Key | Rest]) ->
+    case maps:find(Key, Payload) of
+        {ok, Value} ->
+            {ok, Value};
+        error ->
+            payload_value(Payload, Rest)
+    end.
+
+-spec normalize_profile_input(term()) -> {ok, community | enterprise} | error.
+normalize_profile_input(community) ->
+    {ok, community};
+normalize_profile_input(enterprise) ->
+    {ok, enterprise};
+normalize_profile_input(<<"community">>) ->
+    {ok, community};
+normalize_profile_input(<<"enterprise">>) ->
+    {ok, enterprise};
+normalize_profile_input("community") ->
+    {ok, community};
+normalize_profile_input("enterprise") ->
+    {ok, enterprise};
+normalize_profile_input(_) ->
+    error.
+
+-spec normalize_capability_payload(term()) -> {ok, map()} | {error, binary()}.
+normalize_capability_payload(Value) ->
+    Map0 = normalize_map(Value),
+    Capabilities = lists:foldl(
+        fun(Key, Acc) ->
+            case find_in_map(Map0, candidate_keys(Key)) of
+                undefined ->
+                    Acc;
+                Item ->
+                    maps:put(Key, normalize_capability_payload_value(Key, Item), Acc)
+            end
+        end,
+        #{},
+        capability_names()
+    ),
+    case {map_size(Map0), map_size(Capabilities)} of
+        {0, 0} ->
+            {ok, #{}};
+        {_, 0} ->
+            {error, <<"invalid capabilities payload">>};
+        _ ->
+            {ok, Capabilities}
+    end.
+
+-spec normalize_capability_payload_value(atom(), term()) -> term().
+normalize_capability_payload_value(storage_mode, Value) ->
+    normalize_storage_mode(Value, archived);
+normalize_capability_payload_value(e2ee_mode, Value) ->
+    normalize_e2ee_mode(Value, optional);
+normalize_capability_payload_value(message_search, Value) ->
+    switch_enabled(Value);
+normalize_capability_payload_value(message_export, Value) ->
+    switch_enabled(Value);
+normalize_capability_payload_value(audit_mode, Value) ->
+    normalize_audit_mode(Value, metadata);
+normalize_capability_payload_value(retention_policy, Value) ->
+    normalize_retention_policy(Value, #{});
+normalize_capability_payload_value(_Key, Value) ->
+    Value.
+
+-spec normalize_feature_payload(term()) -> {ok, map()} | {error, binary()}.
+normalize_feature_payload(Value) ->
+    Map0 = normalize_map(Value),
+    Features = lists:foldl(
+        fun(Key, Acc) ->
+            case find_in_map(Map0, candidate_keys(Key)) of
+                undefined ->
+                    Acc;
+                Item ->
+                    maps:put(Key, #{enabled => switch_enabled(Item)}, Acc)
+            end
+        end,
+        #{},
+        feature_names()
+    ),
+    case {map_size(Map0), map_size(Features)} of
+        {0, 0} ->
+            {ok, #{}};
+        {_, 0} ->
+            {error, <<"invalid features payload">>};
+        _ ->
+            {ok, Features}
+    end.
+
+-spec normalize_plugin_payload(term()) -> {ok, map()} | {error, binary()}.
+normalize_plugin_payload(Value) ->
+    Map0 = normalize_map(Value),
+    FeatureConfig = lists:foldl(
+        fun(PluginName, Acc) ->
+            case find_in_map(Map0, candidate_keys(PluginName)) of
+                undefined ->
+                    Acc;
+                Item ->
+                    Manifest = imboy_plugin_registry:get(PluginName),
+                    FeatureKeys = maps:get(feature_keys, Manifest, []),
+                    Enabled = switch_enabled(Item),
+                    lists:foldl(
+                        fun(FeatureKey, FeatureAcc) ->
+                            maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
+                        end,
+                        Acc,
+                        FeatureKeys
+                    )
+            end
+        end,
+        #{},
+        imboy_plugin_registry:plugin_names()
+    ),
+    case {map_size(Map0), map_size(FeatureConfig)} of
+        {0, 0} ->
+            {ok, #{}};
+        {_, 0} ->
+            {error, <<"invalid plugins payload">>};
+        _ ->
+            {ok, FeatureConfig}
+    end.
+
+-spec persist_config_sections(map()) -> ok.
+persist_config_sections(Sections) ->
+    _ = [
+        config_ds:set(Key, Value)
+        || {Key, Value} <- maps:to_list(Sections)
+    ],
+    ok.
 
 -spec public_term(term()) -> term().
 public_term(Map) when is_map(Map) ->

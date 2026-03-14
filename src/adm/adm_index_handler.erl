@@ -210,6 +210,7 @@ role_acl(1) ->
         <<"logout_applications:read">>,
         <<"ux:events:ingest">>,
         <<"settings:view">>,
+        <<"settings:update">>,
         <<"settings:version:read">>, <<"settings:version:create">>, <<"settings:version:update">>, <<"settings:version:delete">>,
         <<"settings:ddl:read">>, <<"settings:ddl:create">>, <<"settings:ddl:update">>, <<"settings:ddl:delete">>,
         <<"admins:read">>,

@@ -147,6 +147,7 @@ rbac_handler_supports_multi_role_payload_case() ->
         ?assert(lists:member(<<"groups:task:review">>, Permissions)),
         ?assert(lists:member(<<"groups:task:close">>, Permissions)),
         ?assert(lists:member(<<"groups:task:delete">>, Permissions)),
+        ?assert(lists:member(<<"settings:update">>, Permissions)),
         ?assert(lists:member(<<"settings:ddl:delete">>, Permissions))
     end).
 

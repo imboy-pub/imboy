@@ -2,9 +2,11 @@
 
 -export([current/0, defaults/0, defaults/1, supported_profiles/0]).
 
+-define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
+
 -spec current() -> community | enterprise.
 current() ->
-    normalize_profile(config_ds:env(product_profile, community)).
+    normalize_profile(config_ds:get(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community))).
 
 -spec defaults() -> map().
 defaults() ->

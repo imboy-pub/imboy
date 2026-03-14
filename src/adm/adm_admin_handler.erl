@@ -47,8 +47,27 @@ config_policy_action(<<"GET">>, Req0, State) ->
         {error, Req1} ->
             Req1
     end;
+config_policy_action(<<"PUT">>, Req0, State) ->
+    save_policy_action(Req0, State);
+config_policy_action(<<"POST">>, Req0, State) ->
+    save_policy_action(Req0, State);
 config_policy_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec save_policy_action(cowboy_req:req(), map()) -> cowboy_req:req().
+save_policy_action(Req0, State) ->
+    case ensure_permission(State, <<"settings:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            case imboy_policy:save_admin_config(PostVals) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end.
 
 -spec list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list_action(<<"GET">>, Req0, State) ->
