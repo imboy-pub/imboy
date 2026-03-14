@@ -65,10 +65,14 @@ init_config_policy_success_test_() ->
 
 init_config_policy_meta_success_test_() ->
     MetaPayload = #{
-        <<"profiles">> => [<<"community">>, <<"enterprise">>],
-        <<"capability_options">> => #{
-            <<"storage_mode">> => [<<"archived">>, <<"secure_e2ee">>]
-        }
+        <<"profiles">> => #{<<"supported">> => [<<"community">>, <<"enterprise">>]},
+        <<"capabilities">> => #{
+            <<"storage_mode">> => #{
+                <<"type">> => <<"enum">>,
+                <<"options">> => [<<"archived">>, <<"secure_e2ee">>]
+            }
+        },
+        <<"features">> => #{<<"all">> => [<<"core">>, <<"channel">>]}
     },
     ?WITH_MECKS([
         {cowboy_req, [

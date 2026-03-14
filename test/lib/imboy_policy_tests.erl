@@ -219,29 +219,31 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
 meta_view_returns_profiles_defaults_and_edit_options_test_() ->
     ?TEST_SIMPLE(fun() ->
         Meta = imboy_policy:meta_view(),
-        CapabilityOptions = maps:get(<<"capability_options">>, Meta),
-        ProfileDefaults = maps:get(<<"profile_defaults">>, Meta),
+        Profiles = maps:get(<<"profiles">>, Meta),
+        ProfileDefaults = maps:get(<<"defaults">>, Profiles),
         CommunityDefaults = maps:get(<<"community">>, ProfileDefaults),
         EnterpriseDefaults = maps:get(<<"enterprise">>, ProfileDefaults),
+        Capabilities = maps:get(<<"capabilities">>, Meta),
+        Features = maps:get(<<"features">>, Meta),
         Plugins = maps:get(<<"plugins">>, Meta),
         ChannelPlugin = maps:get(<<"channel">>, Plugins),
+        WriteContract = maps:get(<<"write_contract">>, Meta),
 
-        ?assertEqual([<<"community">>, <<"enterprise">>], maps:get(<<"profiles">>, Meta)),
+        ?assertEqual(
+            [<<"community">>, <<"enterprise">>],
+            maps:get(<<"supported">>, Profiles)
+        ),
         ?assertEqual(
             [<<"archived">>, <<"secure_e2ee">>],
-            maps:get(<<"storage_mode">>, CapabilityOptions)
+            maps:get(<<"options">>, maps:get(<<"storage_mode">>, Capabilities))
         ),
         ?assertEqual(
             [<<"disabled">>, <<"optional">>, <<"required">>],
-            maps:get(<<"e2ee_mode">>, CapabilityOptions)
+            maps:get(<<"options">>, maps:get(<<"e2ee_mode">>, Capabilities))
         ),
         ?assertEqual(
             [<<"none">>, <<"metadata">>, <<"full">>],
-            maps:get(<<"audit_mode">>, CapabilityOptions)
-        ),
-        ?assertEqual(
-            [<<"forever">>, <<"rolling_days">>],
-            maps:get(<<"retention_policy_mode">>, CapabilityOptions)
+            maps:get(<<"options">>, maps:get(<<"audit_mode">>, Capabilities))
         ),
         ?assertEqual(
             <<"metadata">>,
@@ -255,7 +257,12 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             [<<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>],
             maps:get(<<"feature_keys">>, ChannelPlugin)
         ),
-        ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin))
+        ?assert(lists:member(<<"core">>, maps:get(<<"standalone">>, Features))),
+        ?assert(lists:member(<<"e2ee">>, maps:get(<<"standalone">>, Features))),
+        ?assert(lists:member(<<"channel">>, maps:get(<<"plugin_managed">>, Features))),
+        ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin)),
+        ?assertEqual(true, maps:get(<<"plugins_translate_to_features">>, WriteContract)),
+        ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract))
     end).
 
 saved_view_returns_saved_overrides_and_compacts_complete_plugin_blocks_test_() ->

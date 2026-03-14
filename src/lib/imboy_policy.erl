@@ -64,18 +64,18 @@ saved_view() ->
 
 -spec meta_view() -> map().
 meta_view() ->
-    PluginCatalog = maps:map(
-        fun(_Name, Manifest) ->
-            public_plugin_manifest(Manifest)
-        end,
-        imboy_plugin_registry:all()
-    ),
     public_term(#{
-        profiles => imboy_profile_preset:supported_profiles(),
-        profile_defaults => profile_defaults_catalog(),
-        capability_options => capability_option_catalog(),
-        feature_keys => feature_names(),
-        plugins => PluginCatalog
+        profiles => #{
+            supported => imboy_profile_preset:supported_profiles(),
+            defaults => profile_defaults_catalog()
+        },
+        capabilities => capability_meta_catalog(),
+        features => feature_meta_catalog(),
+        plugins => plugin_meta_catalog(),
+        write_contract => #{
+            plugins_translate_to_features => true,
+            feature_overrides_take_precedence => true
+        }
     }).
 
 -spec effective_capabilities() -> map().
@@ -395,14 +395,62 @@ profile_defaults_catalog() ->
         || Profile <- imboy_profile_preset:supported_profiles()
     ]).
 
--spec capability_option_catalog() -> map().
-capability_option_catalog() ->
+-spec capability_meta_catalog() -> map().
+capability_meta_catalog() ->
     #{
-        storage_mode => [archived, secure_e2ee],
-        e2ee_mode => [disabled, optional, required],
-        audit_mode => [none, metadata, full],
-        retention_policy_mode => [forever, rolling_days]
+        storage_mode => #{
+            type => enum,
+            options => [archived, secure_e2ee]
+        },
+        e2ee_mode => #{
+            type => enum,
+            options => [disabled, optional, required]
+        },
+        message_search => #{
+            type => boolean
+        },
+        message_export => #{
+            type => boolean
+        },
+        audit_mode => #{
+            type => enum,
+            options => [none, metadata, full]
+        },
+        retention_policy => #{
+            type => object,
+            fields => #{
+                mode => #{type => string},
+                days => #{type => integer}
+            }
+        }
     }.
+
+-spec feature_meta_catalog() -> map().
+feature_meta_catalog() ->
+    PluginManaged = plugin_managed_feature_names(),
+    #{
+        all => feature_names(),
+        plugin_managed => PluginManaged,
+        standalone => feature_names() -- PluginManaged
+    }.
+
+-spec plugin_managed_feature_names() -> [atom()].
+plugin_managed_feature_names() ->
+    lists:usort(
+        lists:append([
+            maps:get(feature_keys, Manifest, [])
+            || Manifest <- maps:values(imboy_plugin_registry:all())
+        ])
+    ).
+
+-spec plugin_meta_catalog() -> map().
+plugin_meta_catalog() ->
+    maps:map(
+        fun(_Name, Manifest) ->
+            public_plugin_manifest(Manifest)
+        end,
+        imboy_plugin_registry:all()
+    ).
 
 -spec capability_names() -> [atom()].
 capability_names() ->
