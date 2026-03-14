@@ -335,6 +335,11 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             [<<"effective">>, <<"saved">>, <<"adjustments">>],
             maps:get(<<"save_returns">>, WriteContract)
         ),
+        ?assertEqual(true, maps:get(<<"validation_error_details">>, WriteContract)),
+        ?assertEqual(
+            [<<"section">>, <<"field">>, <<"reason">>],
+            maps:get(<<"validation_error_fields">>, WriteContract)
+        ),
         ?assertEqual(
             [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
             maps:get(<<"editable_sections">>, WriteContract)
@@ -669,7 +674,13 @@ save_config_rejects_invalid_profile_test_() ->
         ]}
     ], fun() ->
         ?assertEqual(
-            {error, <<"invalid profile value">>},
+            {error,
+                <<"invalid profile value">>,
+                #{
+                    <<"section">> => <<"profile">>,
+                    <<"field">> => <<"profile">>,
+                    <<"reason">> => <<"invalid_profile">>
+                }},
             save_policy_config(#{<<"profile">> => <<"invalid">>})
         ),
         ?assertEqual(0, meck:num_calls(config_ds, set, 2))
@@ -1081,7 +1092,13 @@ save_config_rejects_invalid_capability_enum_input_test_() ->
         ]}
     ], fun() ->
         ?assertEqual(
-            {error, <<"invalid storage_mode value">>},
+            {error,
+                <<"invalid storage_mode value">>,
+                #{
+                    <<"section">> => <<"capabilities">>,
+                    <<"field">> => <<"storage_mode">>,
+                    <<"reason">> => <<"invalid_enum">>
+                }},
             save_policy_config(#{
                 <<"capabilities">> => #{
                     <<"storage_mode">> => <<"invalid_mode">>
@@ -1098,7 +1115,13 @@ save_config_rejects_invalid_feature_boolean_input_test_() ->
         ]}
     ], fun() ->
         ?assertEqual(
-            {error, <<"invalid features payload">>},
+            {error,
+                <<"invalid features payload">>,
+                #{
+                    <<"section">> => <<"features">>,
+                    <<"field">> => <<"channel">>,
+                    <<"reason">> => <<"invalid_boolean">>
+                }},
             save_policy_config(#{
                 <<"features">> => #{
                     <<"channel">> => #{<<"enabled">> => <<"maybe">>}
@@ -1115,7 +1138,13 @@ save_config_rejects_invalid_plugin_boolean_input_test_() ->
         ]}
     ], fun() ->
         ?assertEqual(
-            {error, <<"invalid plugins payload">>},
+            {error,
+                <<"invalid plugins payload">>,
+                #{
+                    <<"section">> => <<"plugins">>,
+                    <<"field">> => <<"channel">>,
+                    <<"reason">> => <<"invalid_boolean">>
+                }},
             save_policy_config(#{
                 <<"plugins">> => #{
                     <<"channel">> => #{<<"enabled">> => <<"maybe">>}

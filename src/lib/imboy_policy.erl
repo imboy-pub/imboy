@@ -78,6 +78,8 @@ meta_view() ->
             bootstrap_available => true,
             bootstrap_returns => [meta, saved, effective],
             save_returns => [effective, saved, adjustments],
+            validation_error_details => true,
+            validation_error_fields => [section, field, reason],
             editable_sections => [profile, capabilities, plugins, features]
         }
     }).
@@ -106,15 +108,15 @@ message_audit_enabled() ->
 message_body_visible() ->
     message_audit_mode() =:= full.
 
--spec save_admin_config(map()) -> {ok, map()} | {error, binary()}.
+-spec save_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 save_admin_config(Payload) ->
     save_config(Payload).
 
--spec preview_admin_config(map()) -> {ok, map()} | {error, binary()}.
+-spec preview_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 preview_admin_config(Payload) ->
     preview_config(Payload).
 
--spec save_config(map()) -> {ok, map()} | {error, binary()}.
+-spec save_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 save_config(Payload) when is_map(Payload) ->
     Sections = normalize_config_sections(Payload),
     case validate_save_sections(Sections) of
@@ -122,12 +124,13 @@ save_config(Payload) when is_map(Payload) ->
             persist_config_sections(SaveSections),
             {ok, save_result_view()};
         {ok, _SaveSections} ->
-            {error, <<"policy payload missing editable fields">>};
-        {error, Reason} ->
-            {error, Reason}
+            policy_error_result(
+                undefined, undefined, missing_editable_fields, <<"policy payload missing editable fields">>);
+        {error, Reason, Details} ->
+            {error, Reason, Details}
     end;
 save_config(_) ->
-    {error, <<"policy payload must be an object">>}.
+    policy_error_result(undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>).
 
 -spec save_result_view() -> map().
 save_result_view() ->
@@ -138,19 +141,20 @@ save_result_view() ->
         <<"adjustments">> => preview_adjustments_view(Saved, Effective)
     }.
 
--spec preview_config(map()) -> {ok, map()} | {error, binary()}.
+-spec preview_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 preview_config(Payload) when is_map(Payload) ->
     Sections = normalize_config_sections(Payload),
     case validate_save_sections(Sections) of
         {ok, SaveSections} when map_size(SaveSections) > 0 ->
             {ok, preview_view(SaveSections)};
         {ok, _SaveSections} ->
-            {error, <<"policy payload missing editable fields">>};
-        {error, Reason} ->
-            {error, Reason}
+            policy_error_result(
+                undefined, undefined, missing_editable_fields, <<"policy payload missing editable fields">>);
+        {error, Reason, Details} ->
+            {error, Reason, Details}
     end;
 preview_config(_) ->
-    {error, <<"policy payload must be an object">>}.
+    policy_error_result(undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>).
 
 -spec effective_features() -> map().
 effective_features() ->
@@ -966,7 +970,10 @@ maybe_put_profile_section(Sections, Payload) ->
                 {ok, Profile} ->
                     Sections#{?PRODUCT_PROFILE_CONFIG_KEY => atom_to_binary(Profile, utf8)};
                 error ->
-                    Sections#{profile_error => <<"invalid profile value">>}
+                    Sections#{
+                        profile_error => policy_error_detail(
+                            profile, profile, invalid_profile, <<"invalid profile value">>)
+                    }
             end;
         error ->
             Sections
@@ -979,8 +986,8 @@ maybe_put_capabilities_section(Sections, Payload) ->
             case normalize_capability_payload(Value) of
                 {ok, CapabilityConfig} ->
                     Sections#{?CAPABILITIES_CONFIG_KEY => public_term(CapabilityConfig)};
-                {error, Reason} ->
-                    Sections#{capabilities_error => Reason}
+                {error, Detail} ->
+                    Sections#{capabilities_error => Detail}
             end;
         error ->
             Sections
@@ -1003,10 +1010,10 @@ maybe_put_features_section(Sections, Payload) ->
                 {ok, #{}}
         end,
     case {FeaturesResult, PluginsResult} of
-        {{error, Reason}, _} ->
-            Sections#{features_error => Reason};
-        {_, {error, Reason}} ->
-            Sections#{features_error => Reason};
+        {{error, Detail}, _} ->
+            Sections#{features_error => Detail};
+        {_, {error, Detail}} ->
+            Sections#{features_error => Detail};
         {{ok, FeatureConfig}, {ok, PluginFeatureConfig}} ->
             MergedFeatureConfig = maps:merge(PluginFeatureConfig, FeatureConfig),
             case map_size(MergedFeatureConfig) of
@@ -1017,12 +1024,12 @@ maybe_put_features_section(Sections, Payload) ->
             end
     end.
 
--spec validate_save_sections(map()) -> {ok, map()} | {error, binary()}.
+ -spec validate_save_sections(map()) -> {ok, map()} | {error, binary(), map()}.
 validate_save_sections(Sections) ->
     ErrorKeys = [profile_error, capabilities_error, features_error],
     case [maps:get(Key, Sections) || Key <- ErrorKeys, maps:is_key(Key, Sections)] of
-        [Reason | _] ->
-            {error, Reason};
+        [Detail | _] ->
+            {error, policy_error_message(Detail), public_policy_error_detail(Detail)};
         [] ->
             {ok, maps:without(ErrorKeys, Sections)}
     end.
@@ -1054,7 +1061,7 @@ normalize_profile_input("enterprise") ->
 normalize_profile_input(_) ->
     error.
 
--spec normalize_capability_payload(term()) -> {ok, map()} | {error, binary()}.
+-spec normalize_capability_payload(term()) -> {ok, map()} | {error, map()}.
 normalize_capability_payload(Value) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
@@ -1086,47 +1093,57 @@ normalize_capability_payload(Value) ->
                 {0, 0} ->
                     {ok, #{}};
                 {_, 0} ->
-                    {error, <<"invalid capabilities payload">>};
+                    {error,
+                        policy_error_detail(
+                            capabilities, undefined, invalid_payload, <<"invalid capabilities payload">>)};
                 _ ->
                     {ok, Capabilities}
             end
     end.
 
--spec normalize_capability_payload_value(atom(), term()) -> {ok, term()} | {error, binary()}.
+-spec normalize_capability_payload_value(atom(), term()) -> {ok, term()} | {error, map()}.
 normalize_capability_payload_value(storage_mode, Value) ->
     case parse_storage_mode(Value) of
         {ok, StorageMode} ->
             {ok, StorageMode};
         error ->
-            {error, <<"invalid storage_mode value">>}
+            {error,
+                policy_error_detail(
+                    capabilities, storage_mode, invalid_enum, <<"invalid storage_mode value">>)}
     end;
 normalize_capability_payload_value(e2ee_mode, Value) ->
     case parse_e2ee_mode(Value) of
         {ok, E2eeMode} ->
             {ok, E2eeMode};
         error ->
-            {error, <<"invalid e2ee_mode value">>}
+            {error,
+                policy_error_detail(capabilities, e2ee_mode, invalid_enum, <<"invalid e2ee_mode value">>)}
     end;
 normalize_capability_payload_value(message_search, Value) ->
     case parse_toggle_payload(Value) of
         {ok, Enabled} ->
             {ok, Enabled};
         error ->
-            {error, <<"invalid message_search value">>}
+            {error,
+                policy_error_detail(
+                    capabilities, message_search, invalid_boolean, <<"invalid message_search value">>)}
     end;
 normalize_capability_payload_value(message_export, Value) ->
     case parse_toggle_payload(Value) of
         {ok, Enabled} ->
             {ok, Enabled};
         error ->
-            {error, <<"invalid message_export value">>}
+            {error,
+                policy_error_detail(
+                    capabilities, message_export, invalid_boolean, <<"invalid message_export value">>)}
     end;
 normalize_capability_payload_value(audit_mode, Value) ->
     case parse_audit_mode(Value) of
         {ok, AuditMode} ->
             {ok, AuditMode};
         error ->
-            {error, <<"invalid audit_mode value">>}
+            {error,
+                policy_error_detail(capabilities, audit_mode, invalid_enum, <<"invalid audit_mode value">>)}
     end;
 normalize_capability_payload_value(retention_policy, Value) ->
     case normalize_retention_policy_payload(Value) of
@@ -1138,7 +1155,7 @@ normalize_capability_payload_value(retention_policy, Value) ->
 normalize_capability_payload_value(_Key, Value) ->
     {ok, Value}.
 
--spec normalize_feature_payload(term()) -> {ok, map()} | {error, binary()}.
+-spec normalize_feature_payload(term()) -> {ok, map()} | {error, map()}.
 normalize_feature_payload(Value) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
@@ -1153,7 +1170,9 @@ normalize_feature_payload(Value) ->
                         {ok, Enabled} ->
                             {ok, maps:put(Key, #{enabled => Enabled}, Acc)};
                         error ->
-                            {error, <<"invalid features payload">>}
+                            {error,
+                                policy_error_detail(
+                                    features, Key, invalid_boolean, <<"invalid features payload">>)}
                     end
             end;
            (_Key, {error, _} = Error) ->
@@ -1170,13 +1189,15 @@ normalize_feature_payload(Value) ->
                 {0, 0} ->
                     {ok, #{}};
                 {_, 0} ->
-                    {error, <<"invalid features payload">>};
+                    {error,
+                        policy_error_detail(
+                            features, undefined, invalid_payload, <<"invalid features payload">>)};
                 _ ->
                     {ok, Features}
             end
     end.
 
--spec normalize_plugin_payload(term()) -> {ok, map()} | {error, binary()}.
+-spec normalize_plugin_payload(term()) -> {ok, map()} | {error, map()}.
 normalize_plugin_payload(Value) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
@@ -1200,7 +1221,7 @@ normalize_plugin_payload(Value) ->
                         {ok, Enabled} ->
                             Manifest = imboy_plugin_registry:get(PluginName),
                             FeatureKeys = maps:get(feature_keys, Manifest, []),
-                            {ok,
+                        {ok,
                                 lists:foldl(
                                     fun(FeatureKey, FeatureAcc) ->
                                         maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
@@ -1209,7 +1230,9 @@ normalize_plugin_payload(Value) ->
                                     FeatureKeys
                                 )};
                         error ->
-                            {error, <<"invalid plugins payload">>}
+                            {error,
+                                policy_error_detail(
+                                    plugins, PluginName, invalid_boolean, <<"invalid plugins payload">>)}
                     end
             end;
            (_PluginName, {error, _} = Error) ->
@@ -1226,7 +1249,9 @@ normalize_plugin_payload(Value) ->
                 {0, 0} ->
                     {ok, #{}};
                 {_, 0} ->
-                    {error, <<"invalid plugins payload">>};
+                    {error,
+                        policy_error_detail(
+                            plugins, undefined, invalid_payload, <<"invalid plugins payload">>)};
                 _ ->
                     {ok, FeatureConfig}
             end
@@ -1384,15 +1409,40 @@ parse_audit_mode("full") ->
 parse_audit_mode(_) ->
     error.
 
--spec normalize_retention_policy_payload(term()) -> {ok, map()} | {error, binary()}.
+-spec normalize_retention_policy_payload(term()) -> {ok, map()} | {error, map()}.
 normalize_retention_policy_payload(Value) ->
     Policy = normalize_map(Value),
     case maps:size(Policy) of
         0 ->
-            {error, <<"invalid retention_policy value">>};
+            {error,
+                policy_error_detail(
+                    capabilities, retention_policy, invalid_object, <<"invalid retention_policy value">>)};
         _ ->
             {ok, Policy}
     end.
+
+-spec policy_error_result(atom() | undefined, atom() | undefined, atom(), binary()) ->
+    {error, binary(), map()}.
+policy_error_result(Section, Field, Reason, Message) ->
+    Detail = policy_error_detail(Section, Field, Reason, Message),
+    {error, Message, public_policy_error_detail(Detail)}.
+
+-spec policy_error_detail(atom() | undefined, atom() | undefined, atom(), binary()) -> map().
+policy_error_detail(Section, Field, Reason, Message) ->
+    Detail0 = maybe_put_saved_section(#{}, section, Section),
+    Detail1 = maybe_put_saved_section(Detail0, field, Field),
+    Detail1#{
+        reason => Reason,
+        message => Message
+    }.
+
+-spec policy_error_message(map()) -> binary().
+policy_error_message(Detail) ->
+    maps:get(message, Detail).
+
+-spec public_policy_error_detail(map()) -> map().
+public_policy_error_detail(Detail) ->
+    public_term(maps:remove(message, Detail)).
 
 -spec public_term(term()) -> term().
 public_term(Map) when is_map(Map) ->

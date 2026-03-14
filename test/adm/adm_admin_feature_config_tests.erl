@@ -212,6 +212,57 @@ preview_config_policy_post_success_test_() ->
         ?assertEqual(1, meck:num_calls(imboy_policy, preview_admin_config, 1))
     end).
 
+preview_config_policy_bad_request_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"POST">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{<<"capabilities">> => #{<<"storage_mode">> => <<"invalid_mode">>}}
+            end}
+        ]},
+        {imboy_policy, [
+            {'preview_admin_config', 1, fun(_Payload) ->
+                {error,
+                    <<"invalid storage_mode value">>,
+                    #{
+                        <<"section">> => <<"capabilities">>,
+                        <<"field">> => <<"storage_mode">>,
+                        <<"reason">> => <<"invalid_enum">>
+                    }}
+            end}
+        ]},
+        {elib_response, [
+            {'error', 4, fun(Req, Msg, Code, Options) ->
+                Req#{
+                    response_status => 400,
+                    error_msg => Msg,
+                    error_code => Code,
+                    error_details => maps:get(<<"details">>, Options)
+                }
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy_preview, adm_user_id => 1001}),
+        ?assertEqual(400, maps:get(response_status, RespReq)),
+        ?assertEqual(?ERR_BAD_REQUEST, maps:get(error_code, RespReq)),
+        ?assertEqual(<<"invalid storage_mode value">>, maps:get(error_msg, RespReq)),
+        ?assertEqual(
+            #{
+                <<"section">> => <<"capabilities">>,
+                <<"field">> => <<"storage_mode">>,
+                <<"reason">> => <<"invalid_enum">>
+            },
+            maps:get(error_details, RespReq)
+        )
+    end).
+
 save_config_policy_put_success_test_() ->
     SavePayload = policy_save_payload(),
     PolicyPayload = policy_response_payload(),
@@ -520,19 +571,38 @@ save_config_policy_bad_request_test_() ->
         ]},
         {imboy_policy, [
             {'save_admin_config', 1, fun(_Payload) ->
-                {error, <<"invalid profile value">>}
+                {error,
+                    <<"invalid profile value">>,
+                    #{
+                        <<"section">> => <<"profile">>,
+                        <<"field">> => <<"profile">>,
+                        <<"reason">> => <<"invalid_profile">>
+                    }}
             end}
         ]},
         {elib_response, [
-            {'error', 3, fun(Req, Msg, Code) ->
-                Req#{response_status => 400, error_msg => Msg, error_code => Code}
+            {'error', 4, fun(Req, Msg, Code, Options) ->
+                Req#{
+                    response_status => 400,
+                    error_msg => Msg,
+                    error_code => Code,
+                    error_details => maps:get(<<"details">>, Options)
+                }
             end}
         ]}
     ], fun() ->
         {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy, adm_user_id => 1001}),
         ?assertEqual(400, maps:get(response_status, RespReq)),
         ?assertEqual(?ERR_BAD_REQUEST, maps:get(error_code, RespReq)),
-        ?assertEqual(<<"invalid profile value">>, maps:get(error_msg, RespReq))
+        ?assertEqual(<<"invalid profile value">>, maps:get(error_msg, RespReq)),
+        ?assertEqual(
+            #{
+                <<"section">> => <<"profile">>,
+                <<"field">> => <<"profile">>,
+                <<"reason">> => <<"invalid_profile">>
+            },
+            maps:get(error_details, RespReq)
+        )
     end).
 
 save_config_policy_forbidden_without_settings_update_permission_test_() ->

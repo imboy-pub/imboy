@@ -111,6 +111,8 @@ preview_policy_action(Req0, State) ->
             case imboy_policy:preview_admin_config(PostVals) of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
+                {error, Msg, Details} ->
+                    policy_bad_request(Req0, Msg, Details);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
             end;
@@ -126,12 +128,18 @@ save_policy_action(Req0, State) ->
             case imboy_policy:save_admin_config(PostVals) of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
+                {error, Msg, Details} ->
+                    policy_bad_request(Req0, Msg, Details);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->
             Req1
     end.
+
+-spec policy_bad_request(cowboy_req:req(), binary(), map()) -> cowboy_req:req().
+policy_bad_request(Req0, Msg, Details) ->
+    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST, #{<<"details">> => Details}).
 
 -spec list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list_action(<<"GET">>, Req0, State) ->
