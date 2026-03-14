@@ -1,6 +1,5 @@
 # docker network create imboy-network
 # docker compose -f docker-compose.yml up -d
-# docker compose -f docker-compose-pro.yml up -d
 services:
   imboy_pg18:
     image: imboy/pg18:3.6.1-2
