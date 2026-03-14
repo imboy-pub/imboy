@@ -72,6 +72,7 @@ meta_view() ->
         capabilities => capability_meta_catalog(),
         features => feature_meta_catalog(),
         plugins => plugin_meta_catalog(),
+        editor_order => editor_order_catalog(),
         write_contract => #{
             plugins_translate_to_features => true,
             feature_overrides_take_precedence => true,
@@ -771,6 +772,16 @@ plugin_meta_catalog() ->
         end,
         imboy_plugin_registry:all()
     ).
+
+-spec editor_order_catalog() -> map().
+editor_order_catalog() ->
+    #{
+        sections => [profile, capabilities, plugins, features],
+        profiles => imboy_profile_preset:supported_profiles(),
+        capabilities => capability_names(),
+        features => feature_names(),
+        plugins => imboy_plugin_registry:plugin_names()
+    }.
 
 -spec capability_names() -> [atom()].
 capability_names() ->

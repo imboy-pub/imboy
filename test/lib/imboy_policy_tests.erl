@@ -308,6 +308,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         FeatureDependencies = maps:get(<<"dependencies">>, Features),
         Plugins = maps:get(<<"plugins">>, Meta),
         ChannelPlugin = maps:get(<<"channel">>, Plugins),
+        EditorOrder = maps:get(<<"editor_order">>, Meta),
         WriteContract = maps:get(<<"write_contract">>, Meta),
 
         ?assertEqual(
@@ -357,6 +358,45 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             )
         ),
         ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin)),
+        ?assertEqual(
+            [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
+            maps:get(<<"sections">>, EditorOrder)
+        ),
+        ?assertEqual(
+            [<<"community">>, <<"enterprise">>],
+            maps:get(<<"profiles">>, EditorOrder)
+        ),
+        ?assertEqual(
+            [
+                <<"storage_mode">>,
+                <<"e2ee_mode">>,
+                <<"message_search">>,
+                <<"message_export">>,
+                <<"audit_mode">>,
+                <<"retention_policy">>
+            ],
+            maps:get(<<"capabilities">>, EditorOrder)
+        ),
+        ?assertEqual(
+            [
+                <<"core">>,
+                <<"e2ee">>,
+                <<"channel">>,
+                <<"location">>,
+                <<"moment">>,
+                <<"channel_discover">>,
+                <<"channel_invitation">>,
+                <<"channel_order">>,
+                <<"group_vote">>,
+                <<"group_schedule">>,
+                <<"group_task">>
+            ],
+            maps:get(<<"features">>, EditorOrder)
+        ),
+        ?assertEqual(
+            [<<"channel">>, <<"moment">>, <<"location">>, <<"group_collab">>],
+            maps:get(<<"plugins">>, EditorOrder)
+        ),
         ?assertEqual(true, maps:get(<<"plugins_translate_to_features">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"null_clears_overrides">>, WriteContract)),
