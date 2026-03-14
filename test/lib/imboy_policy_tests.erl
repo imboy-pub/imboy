@@ -216,6 +216,78 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
         ?assertEqual(false, maps:is_key(<<"admin_target_feature_rules">>, ChannelPlugin))
     end).
 
+saved_view_returns_saved_overrides_and_compacts_complete_plugin_blocks_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun
+                (<<"product_profile">>, _Default) -> <<"enterprise">>;
+                (<<"capabilities">>, _Default) ->
+                    #{
+                        <<"message_export">> => false,
+                        <<"audit_mode">> => <<"metadata">>
+                    };
+                (<<"features">>, _Default) ->
+                    #{
+                        <<"channel">> => #{<<"enabled">> => true},
+                        <<"channel_discover">> => #{<<"enabled">> => true},
+                        <<"channel_invitation">> => #{<<"enabled">> => true},
+                        <<"channel_order">> => #{<<"enabled">> => true},
+                        <<"moment">> => #{<<"enabled">> => false},
+                        <<"group_vote">> => #{<<"enabled">> => false},
+                        <<"group_schedule">> => #{<<"enabled">> => false},
+                        <<"group_task">> => #{<<"enabled">> => false}
+                    };
+                (_Key, Default) -> Default
+            end}
+        ]}
+    ], fun() ->
+        SavedView = imboy_policy:saved_view(),
+        ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, SavedView)),
+        ?assertEqual(
+            #{<<"message_export">> => false, <<"audit_mode">> => <<"metadata">>},
+            maps:get(<<"capabilities">>, SavedView)
+        ),
+        ?assertEqual(
+            #{
+                <<"channel">> => true,
+                <<"moment">> => false,
+                <<"group_collab">> => false
+            },
+            maps:get(<<"plugins">>, SavedView)
+        ),
+        ?assertEqual(false, maps:is_key(<<"features">>, SavedView))
+    end).
+
+saved_view_keeps_mixed_plugin_feature_overrides_under_features_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun
+                (<<"product_profile">>, Default) -> Default;
+                (<<"capabilities">>, Default) -> Default;
+                (<<"features">>, _Default) ->
+                    #{
+                        <<"channel">> => #{<<"enabled">> => true},
+                        <<"channel_discover">> => #{<<"enabled">> => true},
+                        <<"channel_invitation">> => #{<<"enabled">> => true},
+                        <<"channel_order">> => #{<<"enabled">> => false},
+                        <<"location">> => #{<<"enabled">> => true}
+                    };
+                (_Key, Default) -> Default
+            end}
+        ]}
+    ], fun() ->
+        SavedView = imboy_policy:saved_view(),
+        Plugins = maps:get(<<"plugins">>, SavedView),
+        Features = maps:get(<<"features">>, SavedView),
+
+        ?assertEqual(#{<<"location">> => true}, Plugins),
+        ?assertEqual(false, maps:is_key(<<"channel">>, Plugins)),
+        ?assertEqual(true, maps:get(<<"channel">>, Features)),
+        ?assertEqual(true, maps:get(<<"channel_discover">>, Features)),
+        ?assertEqual(true, maps:get(<<"channel_invitation">>, Features)),
+        ?assertEqual(false, maps:get(<<"channel_order">>, Features))
+    end).
+
 effective_policy_prefers_runtime_config_over_sys_config_test_() ->
     ?WITH_MECKS([
         {config_ds, [

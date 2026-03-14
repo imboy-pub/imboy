@@ -475,6 +475,7 @@ get_routes() ->
         {"/adm/welcome", adm_index_handler, #{action => welcome}},
         {"/adm/feedback/index", adm_feedback_handler, #{action => index}},
         {"/adm/admin/config/features", adm_admin_handler, #{action => config_features}},
+        {"/adm/admin/config/policy/saved", adm_admin_handler, #{action => config_policy_saved}},
         {"/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
         {"/adm/admin/list", adm_admin_handler, #{action => list}},
         {"/adm/admin/create", adm_admin_handler, #{action => create}},

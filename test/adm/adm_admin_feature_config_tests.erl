@@ -63,6 +63,37 @@ init_config_policy_success_test_() ->
         ?assertEqual(#{adm_user_id => 1001}, State)
     end).
 
+init_config_policy_saved_success_test_() ->
+    SavedPayload = #{
+        <<"profile">> => <<"enterprise">>,
+        <<"capabilities">> => #{<<"message_export">> => false},
+        <<"plugins">> => #{<<"channel">> => true},
+        <<"features">> => #{<<"channel_order">> => false}
+    },
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 1001, <<"role_id">> => [1]}
+            end}
+        ]},
+        {imboy_policy, [
+            {'saved_view', 0, fun() -> SavedPayload end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, State} = adm_admin_handler:init(#{}, #{action => config_policy_saved, adm_user_id => 1001}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(SavedPayload, maps:get(payload, RespReq)),
+        ?assertEqual(#{adm_user_id => 1001}, State)
+    end).
+
 save_config_policy_put_success_test_() ->
     SavePayload = policy_save_payload(),
     PolicyPayload = policy_response_payload(),
@@ -189,6 +220,32 @@ init_config_policy_forbidden_without_settings_permission_test_() ->
         ?assertEqual(?ERR_FORBIDDEN, maps:get(error_code, RespReq)),
         ?assertEqual(<<"无权限操作"/utf8>>, maps:get(error_msg, RespReq)),
         ?assertEqual(0, meck:num_calls(imboy_policy, effective_view, 0))
+    end).
+
+init_config_policy_saved_forbidden_without_settings_permission_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end}
+        ]},
+        {adm_user_logic, [
+            {'find', 3, fun(3001, <<"id,role_id">>, _Key) ->
+                #{<<"id">> => 3001, <<"role_id">> => [3]}
+            end}
+        ]},
+        {imboy_policy, [
+            {'saved_view', 0, fun() -> erlang:error(should_not_be_called) end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(Req, Msg, Code) ->
+                Req#{response_status => 403, error_msg => Msg, error_code => Code}
+            end}
+        ]}
+    ], fun() ->
+        {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{action => config_policy_saved, adm_user_id => 3001}),
+        ?assertEqual(403, maps:get(response_status, RespReq)),
+        ?assertEqual(?ERR_FORBIDDEN, maps:get(error_code, RespReq)),
+        ?assertEqual(<<"无权限操作"/utf8>>, maps:get(error_msg, RespReq)),
+        ?assertEqual(0, meck:num_calls(imboy_policy, saved_view, 0))
     end).
 
 save_config_policy_success_test_() ->

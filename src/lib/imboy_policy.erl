@@ -4,6 +4,7 @@
     current_profile/0,
     effective/0,
     effective_view/0,
+    saved_view/0,
     effective_capabilities/0,
     effective_features/0,
     effective_plugins/0,
@@ -50,6 +51,15 @@ effective_view() ->
         Plugins0
     ),
     public_term(Policy#{plugins => Plugins}).
+
+-spec saved_view() -> map().
+saved_view() ->
+    SavedFeatures0 = saved_feature_overrides(),
+    {SavedPlugins, SavedFeatures} = compact_saved_plugin_overrides(SavedFeatures0),
+    Sections0 = maybe_put_saved_section(#{}, profile, saved_profile_override()),
+    Sections1 = maybe_put_saved_section(Sections0, capabilities, saved_capability_overrides()),
+    Sections2 = maybe_put_saved_section(Sections1, plugins, SavedPlugins),
+    public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
 
 -spec effective_capabilities() -> map().
 effective_capabilities() ->
@@ -279,6 +289,87 @@ load_config_value(Key, Default) ->
 -spec load_saved_config_value(binary()) -> term().
 load_saved_config_value(Key) ->
     load_config_value(Key, #{}).
+
+-spec saved_profile_override() -> community | enterprise | undefined.
+saved_profile_override() ->
+    case normalize_profile_input(load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, undefined)) of
+        {ok, Profile} ->
+            Profile;
+        error ->
+            undefined
+    end.
+
+-spec saved_capability_overrides() -> map().
+saved_capability_overrides() ->
+    case normalize_capability_payload(load_saved_config_value(?CAPABILITIES_CONFIG_KEY)) of
+        {ok, Capabilities} ->
+            Capabilities;
+        {error, _} ->
+            #{}
+    end.
+
+-spec saved_feature_overrides() -> map().
+saved_feature_overrides() ->
+    case normalize_feature_payload(load_saved_config_value(?FEATURES_CONFIG_KEY)) of
+        {ok, FeatureConfig} ->
+            flatten_saved_feature_config(FeatureConfig);
+        {error, _} ->
+            #{}
+    end.
+
+-spec flatten_saved_feature_config(map()) -> map().
+flatten_saved_feature_config(FeatureConfig) ->
+    maps:from_list([
+        {Key, maps:get(enabled, Toggle, false)}
+        || {Key, Toggle} <- maps:to_list(FeatureConfig)
+    ]).
+
+-spec compact_saved_plugin_overrides(map()) -> {map(), map()}.
+compact_saved_plugin_overrides(FeatureOverrides0) ->
+    lists:foldl(
+        fun(PluginName, {PluginsAcc, FeatureAcc}) ->
+            case plugin_override_candidate(PluginName, FeatureAcc) of
+                {ok, Enabled, FeatureKeys} ->
+                    {
+                        maps:put(PluginName, Enabled, PluginsAcc),
+                        maps:without(FeatureKeys, FeatureAcc)
+                    };
+                error ->
+                    {PluginsAcc, FeatureAcc}
+            end
+        end,
+        {#{}, FeatureOverrides0},
+        imboy_plugin_registry:plugin_names()
+    ).
+
+-spec plugin_override_candidate(atom(), map()) -> {ok, boolean(), [atom()]} | error.
+plugin_override_candidate(PluginName, FeatureOverrides) ->
+    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+    Values = [maps:get(Key, FeatureOverrides, '$missing') || Key <- FeatureKeys],
+    case Values of
+        [] ->
+            error;
+        _ ->
+            case lists:any(fun(Value) -> Value =:= '$missing' end, Values) of
+                true ->
+                    error;
+                false ->
+                    case lists:usort(Values) of
+                        [Enabled] when is_boolean(Enabled) ->
+                            {ok, Enabled, FeatureKeys};
+                        _ ->
+                            error
+                    end
+            end
+    end.
+
+-spec maybe_put_saved_section(map(), atom(), term()) -> map().
+maybe_put_saved_section(Sections, _Key, undefined) ->
+    Sections;
+maybe_put_saved_section(Sections, _Key, Value) when is_map(Value), map_size(Value) =:= 0 ->
+    Sections;
+maybe_put_saved_section(Sections, Key, Value) ->
+    Sections#{Key => Value}.
 
 -spec capability_names() -> [atom()].
 capability_names() ->
