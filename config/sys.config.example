@@ -8,6 +8,24 @@
         {cluster_nodes, []},
         {channel_revoke_window_seconds, 120},
 
+        %% Stage 1 product policy skeleton:
+        %% - `product_profile` and `capabilities` are now explicit config objects
+        %% - current App/Admin feature payload shape remains unchanged
+        %% - message/search/export/audit flows are not yet fully capability-enforced
+        {product_profile, community},
+
+        {capabilities, #{
+            storage_mode => archived,
+            e2ee_mode => optional,
+            message_search => false,
+            message_export => false,
+            audit_mode => metadata,
+            retention_policy => #{
+                mode => rolling_days,
+                days => 30
+            }
+        }},
+
         %% Feature flags consumed by:
         %% - GET /v1/app/features (public read-only feature matrix for App bootstrap)
         %% - GET /adm/admin/config/features (admin read-only feature matrix, requires settings:view)

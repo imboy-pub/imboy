@@ -1,0 +1,91 @@
+-module(imboy_profile_preset).
+
+-export([current/0, defaults/0, defaults/1, supported_profiles/0]).
+
+-spec current() -> community | enterprise.
+current() ->
+    normalize_profile(config_ds:env(product_profile, community)).
+
+-spec defaults() -> map().
+defaults() ->
+    defaults(current()).
+
+-spec defaults(term()) -> map().
+defaults(Profile) ->
+    profile_defaults(normalize_profile(Profile)).
+
+-spec supported_profiles() -> [community | enterprise].
+supported_profiles() ->
+    [community, enterprise].
+
+-spec profile_defaults(community | enterprise) -> map().
+profile_defaults(community) ->
+    #{
+        capabilities => #{
+            storage_mode => archived,
+            e2ee_mode => optional,
+            message_search => false,
+            message_export => false,
+            audit_mode => metadata,
+            retention_policy => #{
+                mode => rolling_days,
+                days => 30
+            }
+        },
+        features => #{
+            core => true,
+            e2ee => false,
+            channel => false,
+            location => false,
+            moment => false,
+            channel_discover => false,
+            channel_invitation => false,
+            channel_order => false,
+            group_vote => false,
+            group_schedule => false,
+            group_task => false
+        }
+    };
+profile_defaults(enterprise) ->
+    #{
+        capabilities => #{
+            storage_mode => archived,
+            e2ee_mode => disabled,
+            message_search => true,
+            message_export => true,
+            audit_mode => full,
+            retention_policy => #{
+                mode => rolling_days,
+                days => 365
+            }
+        },
+        features => #{
+            core => true,
+            e2ee => false,
+            channel => true,
+            location => false,
+            moment => false,
+            channel_discover => false,
+            channel_invitation => true,
+            channel_order => false,
+            group_vote => false,
+            group_schedule => false,
+            group_task => false
+        }
+    }.
+
+-spec normalize_profile(term()) -> community | enterprise.
+normalize_profile(community) ->
+    community;
+normalize_profile(enterprise) ->
+    enterprise;
+normalize_profile(<<"community">>) ->
+    community;
+normalize_profile(<<"enterprise">>) ->
+    enterprise;
+normalize_profile("community") ->
+    community;
+normalize_profile("enterprise") ->
+    enterprise;
+normalize_profile(_) ->
+    community.

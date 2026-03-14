@@ -83,3 +83,17 @@ all_returns_canonical_feature_map_test_() ->
         ?assertEqual(false, maps:get(<<"channel_order">>, Payload)),
         ?assertEqual(true, maps:get(<<"group_schedule">>, Payload))
     end).
+
+all_preserves_missing_features_block_compatibility_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun(product_profile, community) -> community;
+                         (capabilities, #{}) -> #{};
+                         (features, undefined) -> undefined end}
+        ]}
+    ], fun() ->
+        Payload = imboy_feature:all(),
+        ?assertEqual(true, maps:get(<<"core">>, Payload)),
+        ?assertEqual(true, maps:get(<<"moment">>, Payload)),
+        ?assertEqual(true, maps:get(<<"group_task">>, Payload))
+    end).
