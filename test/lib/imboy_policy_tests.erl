@@ -323,7 +323,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assertEqual(true, maps:get(<<"null_clears_overrides">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"preview_available">>, WriteContract)),
         ?assertEqual(
-            [<<"saved">>, <<"effective">>],
+            [<<"saved">>, <<"effective">>, <<"adjustments">>],
             maps:get(<<"preview_returns">>, WriteContract)
         ),
         ?assertEqual(true, maps:get(<<"bootstrap_available">>, WriteContract)),
@@ -458,10 +458,12 @@ preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
         }),
         Saved = maps:get(<<"saved">>, Preview),
         Effective = maps:get(<<"effective">>, Preview),
+        Adjustments = maps:get(<<"adjustments">>, Preview),
         SavedFeatures = maps:get(<<"features">>, Saved),
         SavedPlugins = maps:get(<<"plugins">>, Saved),
 
         ?assertEqual(0, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(#{}, Adjustments),
         ?assertEqual(true, maps:get(<<"location">>, SavedPlugins)),
         ?assertEqual(false, maps:get(<<"moment">>, SavedPlugins)),
         ?assertEqual(false, maps:get(<<"channel_order">>, SavedFeatures)),
@@ -471,6 +473,82 @@ preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
         ?assertEqual(true, maps:get(<<"channel">>, maps:get(<<"features">>, Effective))),
         ?assertEqual(false, maps:get(<<"channel_order">>, maps:get(<<"features">>, Effective))),
         ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, Effective))))
+    end).
+
+preview_config_reports_constraint_and_dependency_adjustments_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'set', 2, fun(_Key, _Value) ->
+                erlang:error(should_not_be_called)
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        {ok, Preview} = preview_policy_config(#{
+            <<"capabilities">> => #{
+                <<"storage_mode">> => <<"secure_e2ee">>,
+                <<"message_search">> => true,
+                <<"message_export">> => true,
+                <<"audit_mode">> => <<"full">>
+            },
+            <<"features">> => #{
+                <<"channel">> => false,
+                <<"channel_order">> => true
+            }
+        }),
+        Adjustments = maps:get(<<"adjustments">>, Preview),
+        CapabilityAdjustments = maps:get(<<"capabilities">>, Adjustments),
+        FeatureAdjustments = maps:get(<<"features">>, Adjustments),
+
+        ?assertEqual(
+            #{
+                <<"saved">> => true,
+                <<"effective">> => false,
+                <<"reason">> => <<"constraint">>,
+                <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+            },
+            maps:get(<<"message_search">>, CapabilityAdjustments)
+        ),
+        ?assertEqual(
+            #{
+                <<"saved">> => true,
+                <<"effective">> => false,
+                <<"reason">> => <<"constraint">>,
+                <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+            },
+            maps:get(<<"message_export">>, CapabilityAdjustments)
+        ),
+        ?assertEqual(
+            #{
+                <<"saved">> => <<"full">>,
+                <<"effective">> => <<"metadata">>,
+                <<"reason">> => <<"constraint">>,
+                <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+            },
+            maps:get(<<"audit_mode">>, CapabilityAdjustments)
+        ),
+        ?assertEqual(
+            #{
+                <<"saved">> => true,
+                <<"effective">> => false,
+                <<"reason">> => <<"dependency">>,
+                <<"depends_on">> => [<<"channel">>]
+            },
+            maps:get(<<"channel_order">>, FeatureAdjustments)
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"message_search">>, maps:get(<<"capabilities">>, maps:get(<<"effective">>, Preview)))
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, maps:get(<<"effective">>, Preview)))
+        )
     end).
 
 effective_policy_prefers_runtime_config_over_sys_config_test_() ->

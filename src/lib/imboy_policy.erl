@@ -74,7 +74,7 @@ meta_view() ->
             feature_overrides_take_precedence => true,
             null_clears_overrides => true,
             preview_available => true,
-            preview_returns => [saved, effective],
+            preview_returns => [saved, effective, adjustments],
             bootstrap_available => true,
             bootstrap_returns => [meta, saved, effective],
             save_returns => [effective],
@@ -196,9 +196,12 @@ public_effective_policy(Policy) ->
 
 -spec preview_view(map()) -> map().
 preview_view(SaveSections) ->
+    Saved = preview_saved_view(SaveSections),
+    Effective = preview_effective_view(SaveSections),
     #{
-        <<"saved">> => preview_saved_view(SaveSections),
-        <<"effective">> => preview_effective_view(SaveSections)
+        <<"saved">> => Saved,
+        <<"effective">> => Effective,
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
     }.
 
 -spec preview_saved_view(map()) -> map().
@@ -238,6 +241,126 @@ preview_effective_view(SaveSections) ->
         error -> load_feature_config()
     end,
     effective_view_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig).
+
+-spec preview_adjustments_view(map(), map()) -> map().
+preview_adjustments_view(Saved, Effective) ->
+    Sections0 = maybe_put_saved_section(
+        #{},
+        capabilities,
+        capability_adjustments(
+            maps:get(<<"capabilities">>, Saved, #{}),
+            maps:get(<<"capabilities">>, Effective, #{}))
+    ),
+    public_term(
+        maybe_put_saved_section(
+            Sections0,
+            features,
+            feature_adjustments(
+                maps:get(<<"features">>, Saved, #{}),
+                maps:get(<<"features">>, Effective, #{}))
+        )
+    ).
+
+-spec capability_adjustments(map(), map()) -> map().
+capability_adjustments(SavedCapabilities, EffectiveCapabilities) ->
+    lists:foldl(
+        fun(Key, Acc) ->
+            case capability_adjustment(Key, SavedCapabilities, EffectiveCapabilities) of
+                {ok, Adjustment} ->
+                    Acc#{Key => Adjustment};
+                error ->
+                    Acc
+            end
+        end,
+        #{},
+        [<<"message_search">>, <<"message_export">>, <<"audit_mode">>]
+    ).
+
+-spec capability_adjustment(binary(), map(), map()) -> {ok, map()} | error.
+capability_adjustment(Key, SavedCapabilities, EffectiveCapabilities) ->
+    case maps:find(Key, SavedCapabilities) of
+        {ok, SavedValue} ->
+            EffectiveValue = maps:get(Key, EffectiveCapabilities, SavedValue),
+            case SavedValue =:= EffectiveValue of
+                true ->
+                    error;
+                false ->
+                    {ok,
+                        #{
+                            saved => SavedValue,
+                            effective => EffectiveValue,
+                            reason => constraint,
+                            caused_by => capability_adjustment_caused_by(Key, EffectiveCapabilities)
+                        }}
+            end;
+        error ->
+            error
+    end.
+
+-spec capability_adjustment_caused_by(binary(), map()) -> map().
+capability_adjustment_caused_by(<<"message_search">>, EffectiveCapabilities) ->
+    constraint_cause_map(
+        [{<<"storage_mode">>, <<"secure_e2ee">>}, {<<"e2ee_mode">>, <<"required">>}],
+        EffectiveCapabilities
+    );
+capability_adjustment_caused_by(<<"message_export">>, EffectiveCapabilities) ->
+    constraint_cause_map([{<<"storage_mode">>, <<"secure_e2ee">>}], EffectiveCapabilities);
+capability_adjustment_caused_by(<<"audit_mode">>, EffectiveCapabilities) ->
+    constraint_cause_map(
+        [{<<"storage_mode">>, <<"secure_e2ee">>}, {<<"e2ee_mode">>, <<"required">>}],
+        EffectiveCapabilities
+    );
+capability_adjustment_caused_by(_, _EffectiveCapabilities) ->
+    #{}.
+
+-spec constraint_cause_map([{binary(), term()}], map()) -> map().
+constraint_cause_map(Candidates, EffectiveCapabilities) ->
+    maps:from_list([
+        {Key, ExpectedValue}
+        || {Key, ExpectedValue} <- Candidates,
+           maps:get(Key, EffectiveCapabilities, undefined) =:= ExpectedValue
+    ]).
+
+-spec feature_adjustments(map(), map()) -> map().
+feature_adjustments(SavedFeatures, EffectiveFeatures) ->
+    maps:fold(
+        fun(Key, SavedValue, Acc) ->
+            case feature_adjustment(Key, SavedValue, EffectiveFeatures) of
+                {ok, Adjustment} ->
+                    Acc#{Key => Adjustment};
+                error ->
+                    Acc
+            end
+        end,
+        #{},
+        SavedFeatures
+    ).
+
+-spec feature_adjustment(binary(), term(), map()) -> {ok, map()} | error.
+feature_adjustment(Key, SavedValue, EffectiveFeatures) ->
+    Dependencies = feature_dependencies_for_key(Key),
+    EffectiveValue = maps:get(Key, EffectiveFeatures, SavedValue),
+    case SavedValue =/= EffectiveValue andalso SavedValue =:= true andalso EffectiveValue =:= false of
+        true when Dependencies =/= [] ->
+            {ok,
+                #{
+                    saved => SavedValue,
+                    effective => EffectiveValue,
+                    reason => dependency,
+                    depends_on => Dependencies
+                }};
+        _ ->
+            error
+    end.
+
+-spec feature_dependencies_for_key(binary()) -> [binary()].
+feature_dependencies_for_key(Key) ->
+    try
+        public_term(dependencies(binary_to_existing_atom(Key, utf8)))
+    catch
+        error:badarg ->
+            []
+    end.
 
 -spec saved_view_from_values(term(), map(), map()) -> map().
 saved_view_from_values(Profile0, CapabilityOverrides, FeatureOverrides0) ->
@@ -647,7 +770,7 @@ capability_names() ->
 -spec normalize_capability_map(term()) -> map().
 normalize_capability_map(Value) ->
     Map0 = normalize_map(Value),
-    KnownKeys = lists:foldl(
+    lists:foldl(
         fun(Key, Acc) ->
             case find_in_map(Map0, candidate_keys(Key)) of
                 undefined ->
@@ -658,8 +781,7 @@ normalize_capability_map(Value) ->
         end,
         #{},
         capability_names()
-    ),
-    maps:merge(Map0, KnownKeys).
+    ).
 
 -spec normalize_capabilities(map(), map()) -> map().
 normalize_capabilities(Capabilities0, Defaults) ->

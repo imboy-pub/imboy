@@ -168,6 +168,16 @@ preview_config_policy_post_success_test_() ->
         <<"effective">> => #{
             <<"features">> => #{<<"channel">> => true},
             <<"plugins">> => #{<<"channel">> => #{<<"enabled">> => true}}
+        },
+        <<"adjustments">> => #{
+            <<"features">> => #{
+                <<"channel_order">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"dependency">>,
+                    <<"depends_on">> => [<<"channel">>]
+                }
+            }
         }
     },
     ?WITH_MECKS([
