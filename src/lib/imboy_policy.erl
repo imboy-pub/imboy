@@ -53,10 +53,13 @@ saved_view() ->
 
 -spec admin_config_view() -> map().
 admin_config_view() ->
+    Saved = saved_view(),
+    Effective = effective_view(),
     #{
         <<"meta">> => meta_view(),
-        <<"saved">> => saved_view(),
-        <<"effective">> => effective_view()
+        <<"saved">> => Saved,
+        <<"effective">> => Effective,
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
     }.
 
 -spec meta_view() -> map().
@@ -76,7 +79,7 @@ meta_view() ->
             preview_available => true,
             preview_returns => [saved, effective, adjustments],
             bootstrap_available => true,
-            bootstrap_returns => [meta, saved, effective],
+            bootstrap_returns => [meta, saved, effective, adjustments],
             save_returns => [effective, saved, adjustments],
             validation_error_details => true,
             validation_error_fields => [section, field, reason],

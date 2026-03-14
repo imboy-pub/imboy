@@ -67,7 +67,17 @@ init_config_policy_bootstrap_success_test_() ->
     BootstrapPayload = #{
         <<"meta">> => #{<<"profiles">> => #{<<"supported">> => [<<"community">>, <<"enterprise">>]}},
         <<"saved">> => #{<<"plugins">> => #{<<"channel">> => true}},
-        <<"effective">> => #{<<"profile">> => <<"enterprise">>}
+        <<"effective">> => #{<<"profile">> => <<"enterprise">>},
+        <<"adjustments">> => #{
+            <<"features">> => #{
+                <<"channel_order">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"dependency">>,
+                    <<"depends_on">> => [<<"channel">>]
+                }
+            }
+        }
     },
     ?WITH_MECKS([
         {cowboy_req, [

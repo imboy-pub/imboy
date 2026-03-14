@@ -216,17 +216,21 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
         ?assertEqual(false, maps:is_key(<<"admin_target_feature_rules">>, ChannelPlugin))
     end).
 
-admin_config_view_returns_meta_saved_and_effective_sections_test_() ->
+admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() ->
     ?WITH_MECKS([
         {config_ds, [
             {'get', 2, fun
                 (<<"product_profile">>, _Default) -> <<"enterprise">>;
-                (<<"capabilities">>, _Default) -> #{<<"message_export">> => false};
+                (<<"capabilities">>, _Default) ->
+                    #{
+                        <<"storage_mode">> => <<"secure_e2ee">>,
+                        <<"message_search">> => true,
+                        <<"message_export">> => true,
+                        <<"audit_mode">> => <<"full">>
+                    };
                 (<<"features">>, _Default) ->
                     #{
-                        <<"channel">> => #{<<"enabled">> => true},
-                        <<"channel_discover">> => #{<<"enabled">> => true},
-                        <<"channel_invitation">> => #{<<"enabled">> => true},
+                        <<"channel">> => #{<<"enabled">> => false},
                         <<"channel_order">> => #{<<"enabled">> => true}
                     };
                 (_Key, Default) -> Default
@@ -242,17 +246,52 @@ admin_config_view_returns_meta_saved_and_effective_sections_test_() ->
         ?assert(maps:is_key(<<"meta">>, View)),
         ?assert(maps:is_key(<<"saved">>, View)),
         ?assert(maps:is_key(<<"effective">>, View)),
+        ?assert(maps:is_key(<<"adjustments">>, View)),
         ?assertEqual(
             [<<"community">>, <<"enterprise">>],
             maps:get(<<"supported">>, maps:get(<<"profiles">>, maps:get(<<"meta">>, View)))
         ),
         ?assertEqual(
-            true,
-            maps:get(<<"channel">>, maps:get(<<"plugins">>, maps:get(<<"saved">>, View)))
+            <<"secure_e2ee">>,
+            maps:get(<<"storage_mode">>, maps:get(<<"capabilities">>, maps:get(<<"saved">>, View)))
         ),
         ?assertEqual(
             <<"enterprise">>,
             maps:get(<<"profile">>, maps:get(<<"effective">>, View))
+        ),
+        ?assertEqual(
+            #{
+                <<"message_search">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"constraint">>,
+                    <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                },
+                <<"message_export">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"constraint">>,
+                    <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                },
+                <<"audit_mode">> => #{
+                    <<"saved">> => <<"full">>,
+                    <<"effective">> => <<"metadata">>,
+                    <<"reason">> => <<"constraint">>,
+                    <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                }
+            },
+            maps:get(<<"capabilities">>, maps:get(<<"adjustments">>, View))
+        ),
+        ?assertEqual(
+            #{
+                <<"channel_order">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"dependency">>,
+                    <<"depends_on">> => [<<"channel">>]
+                }
+            },
+            maps:get(<<"features">>, maps:get(<<"adjustments">>, View))
         )
     end).
 
@@ -328,7 +367,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ),
         ?assertEqual(true, maps:get(<<"bootstrap_available">>, WriteContract)),
         ?assertEqual(
-            [<<"meta">>, <<"saved">>, <<"effective">>],
+            [<<"meta">>, <<"saved">>, <<"effective">>, <<"adjustments">>],
             maps:get(<<"bootstrap_returns">>, WriteContract)
         ),
         ?assertEqual(
