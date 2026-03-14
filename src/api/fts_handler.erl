@@ -15,6 +15,7 @@
 -include_lib("kernel/include/logger.hrl").
 
 -include("common.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -136,19 +137,27 @@ recently_user(Req0, State) ->
 %% @end
 -spec msg(cowboy_req:req(), map()) -> cowboy_req:req().
 msg(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    {Page, Size} = elib_param:page(Req0),
-    Qs1 = cowboy_req:parse_qs(Req0),
-    Keyword = proplists:get_value(<<"keyword">>, Qs1, <<"">>),
-    Type = proplists:get_value(<<"type">>, Qs1, <<"C2C">>),
+    case imboy_policy:message_search_enabled() of
+        false ->
+            elib_response:error(
+                Req0,
+                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                ?ERR_FEATURE_DISABLED
+            );
+        true ->
+            CurrentUid = auth_ds:current_uid(State),
+            {Page, Size} = elib_param:page(Req0),
+            Qs1 = cowboy_req:parse_qs(Req0),
+            Keyword = proplists:get_value(<<"keyword">>, Qs1, <<"">>),
+            Type = proplists:get_value(<<"type">>, Qs1, <<"C2C">>),
 
-    % 解析增强搜索选项
-    Options = parse_search_options(Qs1),
+            % 解析增强搜索选项
+            Options = parse_search_options(Qs1),
 
-    Payload = fts_logic:search_msg(CurrentUid, Page, Size, Keyword, Type, Options),
-    elib_response:success(Req0, Payload).
+            Payload = fts_logic:search_msg(CurrentUid, Page, Size, Keyword, Type, Options),
+            elib_response:success(Req0, Payload)
+    end.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

@@ -89,3 +89,54 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
         ?assertEqual(true, maps:get(enabled, maps:get(channel, Plugins))),
         ?assertEqual(false, maps:get(enabled, maps:get(moment, Plugins)))
     end).
+
+secure_e2ee_forces_search_export_off_and_downgrades_audit_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun
+                (product_profile, community) -> enterprise;
+                (capabilities, #{}) ->
+                    #{
+                        storage_mode => secure_e2ee,
+                        message_search => true,
+                        message_export => true,
+                        audit_mode => full
+                    }
+            end}
+        ]}
+    ], fun() ->
+        Capabilities = imboy_policy:effective_capabilities(),
+
+        ?assertEqual(secure_e2ee, maps:get(storage_mode, Capabilities)),
+        ?assertEqual(false, maps:get(message_search, Capabilities)),
+        ?assertEqual(false, maps:get(message_export, Capabilities)),
+        ?assertEqual(metadata, maps:get(audit_mode, Capabilities)),
+        ?assertEqual(false, imboy_policy:message_search_enabled()),
+        ?assertEqual(false, imboy_policy:message_export_enabled()),
+        ?assertEqual(metadata, imboy_policy:message_audit_mode()),
+        ?assertEqual(true, imboy_policy:message_audit_enabled()),
+        ?assertEqual(false, imboy_policy:message_body_visible())
+    end).
+
+required_e2ee_disables_body_visibility_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) ->
+                    #{
+                        e2ee_mode => required,
+                        message_search => true,
+                        audit_mode => full
+                    }
+            end}
+        ]}
+    ], fun() ->
+        Capabilities = imboy_policy:effective_capabilities(),
+
+        ?assertEqual(required, maps:get(e2ee_mode, Capabilities)),
+        ?assertEqual(false, maps:get(message_search, Capabilities)),
+        ?assertEqual(metadata, maps:get(audit_mode, Capabilities)),
+        ?assertEqual(false, imboy_policy:message_search_enabled()),
+        ?assertEqual(false, imboy_policy:message_body_visible())
+    end).

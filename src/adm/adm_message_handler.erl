@@ -11,12 +11,14 @@
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
+-include("error_code.hrl").
 
 -define(EXPORT_CHUNK_SIZE, 1000).
 
 -ifdef(EUNIT).
 -export([normalize_scope/1, parse_conversation/1, normalize_ts/1, build_union_sql/1]).
 -export([csv_escape/1, row_to_csv_line/1]).
+-export([sanitize_row_by_audit_mode/2, sanitize_rows_by_audit_mode/2]).
 -endif.
 
 %% ===================================================================
@@ -44,48 +46,57 @@ init(Req0, State0) ->
 %% @doc 消息列表
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list(<<"GET">>, Req0, _State) ->
-    {Page, Size} = elib_param:page(Req0),
-    Filters = extract_filters(Req0),
-    Params = build_params(Filters),
+    case ensure_message_audit_enabled(Req0) of
+        ok ->
+            AuditMode = imboy_policy:message_audit_mode(),
+            {Page, Size} = elib_param:page(Req0),
+            Filters = extract_filters(Req0),
+            Params = build_params(Filters),
 
-    UnionSql = build_union_sql(Filters),
-    CountSql = <<"SELECT COUNT(*) AS count FROM (", UnionSql/binary, ") m">>,
-    case elib_pg:one(CountSql, Params) of
-        {ok, CountMap} ->
-            Total = get_count(CountMap),
-            case Total > 0 of
-                true ->
-                    Offset = (Page - 1) * Size,
-                    LimitPos = integer_to_binary(length(Params) + 1),
-                    OffsetPos = integer_to_binary(length(Params) + 2),
-                    DataSql = iolist_to_binary([
-                        <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
-                        <<"FROM (">>, UnionSql, <<") m ">>,
-                        <<"ORDER BY created_at DESC, msg_id DESC ">>,
-                        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
-                    ]),
-                    case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
-                        {ok, Rows} ->
-                            Items = [normalize_row(Row) || Row <- Rows],
+            UnionSql = build_union_sql(Filters),
+            CountSql = <<"SELECT COUNT(*) AS count FROM (", UnionSql/binary, ") m">>,
+            case elib_pg:one(CountSql, Params) of
+                {ok, CountMap} ->
+                    Total = get_count(CountMap),
+                    case Total > 0 of
+                        true ->
+                            Offset = (Page - 1) * Size,
+                            LimitPos = integer_to_binary(length(Params) + 1),
+                            OffsetPos = integer_to_binary(length(Params) + 2),
+                            DataSql = iolist_to_binary([
+                                <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
+                                <<"FROM (">>, UnionSql, <<") m ">>,
+                                <<"ORDER BY created_at DESC, msg_id DESC ">>,
+                                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+                            ]),
+                            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
+                                {ok, Rows} ->
+                                    Items = sanitize_rows_by_audit_mode(
+                                        [normalize_row(Row) || Row <- Rows],
+                                        AuditMode
+                                    ),
+                                    elib_response:success(Req0, #{
+                                        list => Items,
+                                        total => Total,
+                                        page => Page,
+                                        size => Size
+                                    });
+                                {error, _Reason} ->
+                                    elib_response:error(Req0, "查询失败")
+                            end;
+                        false ->
                             elib_response:success(Req0, #{
-                                list => Items,
-                                total => Total,
+                                list => [],
+                                total => 0,
                                 page => Page,
                                 size => Size
-                            });
-                        {error, _Reason} ->
-                            elib_response:error(Req0, "查询失败")
+                            })
                     end;
-                false ->
-                    elib_response:success(Req0, #{
-                        list => [],
-                        total => 0,
-                        page => Page,
-                        size => Size
-                    })
+                {error, _Reason} ->
+                    elib_response:error(Req0, "查询失败")
             end;
-        {error, _Reason} ->
-            elib_response:error(Req0, "查询失败")
+        {error, Req1} ->
+            Req1
     end;
 list(_, Req0, _State) ->
     Req0.
@@ -93,47 +104,68 @@ list(_, Req0, _State) ->
 %% @doc 消息详情
 -spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 detail(<<"GET">>, Req0, _State) ->
-    {ok, MsgId} = elib_param:binary(msg_id, Req0, <<>>),
-    case MsgId of
-        <<>> ->
-            elib_response:error(Req0, "参数错误");
-        _ ->
-            Filters0 = extract_filters(Req0),
-            Filters = Filters0#{msg_id => MsgId},
-            Params = build_params(Filters),
-            UnionSql = build_union_sql(Filters),
-            DataSql = <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts "
-                        "FROM (", UnionSql/binary, ") m ORDER BY created_at DESC LIMIT 1">>,
-            case elib_pg:query(DataSql, Params) of
-                {ok, [Row | _]} ->
-                    elib_response:success(Req0, normalize_row(Row));
-                {ok, []} ->
-                    elib_response:error(Req0, "消息不存在");
-                {error, _Reason} ->
-                    elib_response:error(Req0, "查询失败")
-            end
+    case ensure_message_audit_enabled(Req0) of
+        ok ->
+            AuditMode = imboy_policy:message_audit_mode(),
+            {ok, MsgId} = elib_param:binary(msg_id, Req0, <<>>),
+            case MsgId of
+                <<>> ->
+                    elib_response:error(Req0, "参数错误");
+                _ ->
+                    Filters0 = extract_filters(Req0),
+                    Filters = Filters0#{msg_id => MsgId},
+                    Params = build_params(Filters),
+                    UnionSql = build_union_sql(Filters),
+                    DataSql = <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts "
+                                "FROM (", UnionSql/binary, ") m ORDER BY created_at DESC LIMIT 1">>,
+                    case elib_pg:query(DataSql, Params) of
+                        {ok, [Row | _]} ->
+                            elib_response:success(
+                                Req0,
+                                sanitize_row_by_audit_mode(normalize_row(Row), AuditMode)
+                            );
+                        {ok, []} ->
+                            elib_response:error(Req0, "消息不存在");
+                        {error, _Reason} ->
+                            elib_response:error(Req0, "查询失败")
+                    end
+            end;
+        {error, Req1} ->
+            Req1
     end;
 detail(_, Req0, _State) ->
     Req0.
 
 -spec export(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 export(<<"GET">>, Req0, _State) ->
-    Filters = extract_filters(Req0),
-    Params = build_params(Filters),
-    UnionSql = build_union_sql(Filters),
-    Headers = #{
-        <<"content-type">> => <<"text/csv; charset=utf-8">>,
-        <<"content-disposition">> => <<"attachment; filename=\"messages_export.csv\"">>,
-        <<"cache-control">> => <<"no-store">>
-    },
-    Req1 = cowboy_req:stream_reply(200, Headers, Req0),
-    ok = cowboy_req:stream_body(csv_header_with_bom(), nofin, Req1),
-    stream_export_rows(Req1, UnionSql, Params, ?EXPORT_CHUNK_SIZE, 0);
+    case ensure_message_export_enabled(Req0) of
+        ok ->
+            Filters = extract_filters(Req0),
+            Params = build_params(Filters),
+            UnionSql = build_union_sql(Filters),
+            Headers = #{
+                <<"content-type">> => <<"text/csv; charset=utf-8">>,
+                <<"content-disposition">> => <<"attachment; filename=\"messages_export.csv\"">>,
+                <<"cache-control">> => <<"no-store">>
+            },
+            Req1 = cowboy_req:stream_reply(200, Headers, Req0),
+            ok = cowboy_req:stream_body(csv_header_with_bom(), nofin, Req1),
+            stream_export_rows(
+                Req1,
+                UnionSql,
+                Params,
+                ?EXPORT_CHUNK_SIZE,
+                0,
+                imboy_policy:message_audit_mode()
+            );
+        {error, Req1} ->
+            Req1
+    end;
 export(_, Req0, _State) ->
     Req0.
 
--spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer()) -> ok.
-stream_export_rows(Req, UnionSql, Params, Limit, Offset) ->
+-spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer(), none | metadata | full) -> ok.
+stream_export_rows(Req, UnionSql, Params, Limit, Offset, AuditMode) ->
     LimitPos = integer_to_binary(length(Params) + 1),
     OffsetPos = integer_to_binary(length(Params) + 2),
     DataSql = iolist_to_binary([
@@ -146,14 +178,17 @@ stream_export_rows(Req, UnionSql, Params, Limit, Offset) ->
         {ok, []} ->
             cowboy_req:stream_body(<<>>, fin, Req);
         {ok, Rows} ->
-            NormalizedRows = [normalize_row(Row) || Row <- Rows],
+            NormalizedRows = sanitize_rows_by_audit_mode(
+                [normalize_row(Row) || Row <- Rows],
+                AuditMode
+            ),
             CsvChunk = rows_to_csv_chunk(NormalizedRows),
             ok = cowboy_req:stream_body(CsvChunk, nofin, Req),
             case length(Rows) < Limit of
                 true ->
                     cowboy_req:stream_body(<<>>, fin, Req);
                 false ->
-                    stream_export_rows(Req, UnionSql, Params, Limit, Offset + Limit)
+                    stream_export_rows(Req, UnionSql, Params, Limit, Offset + Limit, AuditMode)
             end;
         {error, _Reason} ->
             cowboy_req:stream_body(<<>>, fin, Req)
@@ -410,6 +445,45 @@ parse_hashid_or_int(_) ->
 -spec to_lower_binary(binary()) -> binary().
 to_lower_binary(Bin) ->
     list_to_binary(string:lowercase(ec_cnv:to_list(Bin))).
+
+-spec ensure_message_audit_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_message_audit_enabled(Req0) ->
+    case imboy_policy:message_audit_enabled() of
+        true ->
+            ok;
+        false ->
+            feature_disabled(Req0)
+    end.
+
+-spec ensure_message_export_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_message_export_enabled(Req0) ->
+    case imboy_policy:message_export_enabled() of
+        true ->
+            ok;
+        false ->
+            feature_disabled(Req0)
+    end.
+
+-spec feature_disabled(cowboy_req:req()) -> {error, cowboy_req:req()}.
+feature_disabled(Req0) ->
+    {error,
+     elib_response:error(
+         Req0,
+         imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+         ?ERR_FEATURE_DISABLED
+     )}.
+
+-spec sanitize_row_by_audit_mode(map(), none | metadata | full) -> map().
+sanitize_row_by_audit_mode(Row, full) ->
+    Row;
+sanitize_row_by_audit_mode(Row, metadata) ->
+    Row#{payload => <<>>};
+sanitize_row_by_audit_mode(Row, none) ->
+    Row#{payload => <<>>}.
+
+-spec sanitize_rows_by_audit_mode([map()], none | metadata | full) -> [map()].
+sanitize_rows_by_audit_mode(Rows, AuditMode) ->
+    [sanitize_row_by_audit_mode(Row, AuditMode) || Row <- Rows].
 
 -spec normalize_row(map()) -> map().
 normalize_row(Row) ->

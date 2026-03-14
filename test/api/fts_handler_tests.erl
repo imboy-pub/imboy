@@ -1,6 +1,7 @@
 -module(fts_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("error_code.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -347,7 +348,7 @@ handle_special_keyword_test_() ->
         {fts_logic, [
             {'user_search_page', 4, fun(_Uid, _Page, _Size, Keyword) ->
                 % 验证特殊字符被正确传递
-                ?ASSERT_EQUAL(<<"中文测试">>, Keyword),
+                ?ASSERT_EQUAL(<<"中文测试"/utf8>>, Keyword),
                 #{
                     total => 1,
                     page => 1,
@@ -386,4 +387,89 @@ handle_special_keyword_test_() ->
         % 验证响应
         {StatusCode, _, _Body} = cowboy_req_h:response(Req),
         ?ASSERT_EQUAL(200, StatusCode)
+    end).
+
+msg_search_disabled_by_capability_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) ->
+                [{<<"keyword">>, <<"secret">>}, {<<"type">>, <<"C2C">>}]
+            end}
+        ]},
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 12345 end}
+        ]},
+        {elib_param, [
+            {'page', 1, fun(_Req) -> {1, 20} end}
+        ]},
+        {imboy_policy, [
+            {'message_search_enabled', 0, fun() -> false end}
+        ]},
+        {fts_logic, [
+            {'search_msg', 6, fun(_, _, _, _, _, _) -> erlang:error(should_not_be_called) end}
+        ]},
+        {elib_response, [
+            {'error', 3, fun(Req, Msg, Code) ->
+                Req#{response_status => 200, error_msg => Msg, error_code => Code}
+            end}
+        ]}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
+        {ok, Req, _State} = fts_handler:init(MockReq, #{action => msg, current_uid => 12345}),
+
+        ?ASSERT_EQUAL(200, maps:get(response_status, Req)),
+        ?ASSERT_EQUAL(?ERR_FEATURE_DISABLED, maps:get(error_code, Req)),
+        ?ASSERT_EQUAL(<<"功能未启用"/utf8>>, maps:get(error_msg, Req)),
+        ?ASSERT_EQUAL(0, meck:num_calls(fts_logic, search_msg, 6))
+    end).
+
+msg_search_enabled_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) ->
+                [
+                    {<<"keyword">>, <<"hello">>},
+                    {<<"type">>, <<"C2C">>},
+                    {<<"msg_type">>, <<"text">>}
+                ]
+            end}
+        ]},
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 12345 end}
+        ]},
+        {elib_param, [
+            {'page', 1, fun(_Req) -> {2, 10} end}
+        ]},
+        {imboy_policy, [
+            {'message_search_enabled', 0, fun() -> true end}
+        ]},
+        {fts_logic, [
+            {'search_msg', 6, fun(Uid, Page, Size, Keyword, Type, Options) ->
+                ?ASSERT_EQUAL(12345, Uid),
+                ?ASSERT_EQUAL(2, Page),
+                ?ASSERT_EQUAL(10, Size),
+                ?ASSERT_EQUAL(<<"hello">>, Keyword),
+                ?ASSERT_EQUAL(<<"C2C">>, Type),
+                ?ASSERT_EQUAL(<<"text">>, maps:get(<<"msg_type">>, Options)),
+                #{
+                    total => 1,
+                    page => Page,
+                    size => Size,
+                    list => [#{msg_id => <<"m1">>, payload => <<"hello">>}]
+                }
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
+        {ok, Req, _State} = fts_handler:init(MockReq, #{action => msg, current_uid => 12345}),
+
+        ?ASSERT_EQUAL(200, maps:get(response_status, Req)),
+        Payload = maps:get(payload, Req),
+        ?ASSERT_EQUAL(1, maps:get(total, Payload)),
+        meck_helper:verify_called(fts_logic, search_msg, 6)
     end).
