@@ -201,11 +201,17 @@ preview_saved_view(SaveSections) ->
         error -> saved_profile_override()
     end,
     Capabilities = case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
-        {ok, CapabilityValue} -> merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue);
+        {ok, CapabilityValue} ->
+            normalize_preview_capability_overrides(
+                merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue)
+            );
         error -> saved_capability_overrides()
     end,
     Features = case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
-        {ok, FeatureValue} -> flatten_saved_feature_config(merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue));
+        {ok, FeatureValue} ->
+            normalize_preview_feature_overrides(
+                merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue)
+            );
         error -> saved_feature_overrides()
     end,
     saved_view_from_values(Profile, Capabilities, Features).
@@ -269,6 +275,24 @@ effective_features_from_config(FeatureConfig) ->
         {Name, feature_enabled(Name, FeatureConfig)}
         || Name <- feature_names()
     ]).
+
+-spec normalize_preview_capability_overrides(term()) -> map().
+normalize_preview_capability_overrides(Value) ->
+    case normalize_capability_payload(Value) of
+        {ok, Capabilities} ->
+            Capabilities;
+        {error, _} ->
+            #{}
+    end.
+
+-spec normalize_preview_feature_overrides(term()) -> map().
+normalize_preview_feature_overrides(Value) ->
+    case normalize_feature_payload(Value) of
+        {ok, FeatureConfig} ->
+            flatten_saved_feature_config(FeatureConfig);
+        {error, _} ->
+            #{}
+    end.
 
 -spec feature_names() -> [atom()].
 feature_names() ->

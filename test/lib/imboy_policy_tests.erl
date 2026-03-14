@@ -222,7 +222,13 @@ admin_config_view_returns_meta_saved_and_effective_sections_test_() ->
             {'get', 2, fun
                 (<<"product_profile">>, _Default) -> <<"enterprise">>;
                 (<<"capabilities">>, _Default) -> #{<<"message_export">> => false};
-                (<<"features">>, _Default) -> #{<<"channel">> => #{<<"enabled">> => true}};
+                (<<"features">>, _Default) ->
+                    #{
+                        <<"channel">> => #{<<"enabled">> => true},
+                        <<"channel_discover">> => #{<<"enabled">> => true},
+                        <<"channel_invitation">> => #{<<"enabled">> => true},
+                        <<"channel_order">> => #{<<"enabled">> => true}
+                    };
                 (_Key, Default) -> Default
             end},
             {'env', 2, fun
