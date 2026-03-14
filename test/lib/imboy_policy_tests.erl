@@ -265,6 +265,8 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         EnterpriseDefaults = maps:get(<<"enterprise">>, ProfileDefaults),
         Capabilities = maps:get(<<"capabilities">>, Meta),
         Features = maps:get(<<"features">>, Meta),
+        CapabilityConstraints = maps:get(<<"constraints">>, Capabilities),
+        FeatureDependencies = maps:get(<<"dependencies">>, Features),
         Plugins = maps:get(<<"plugins">>, Meta),
         ChannelPlugin = maps:get(<<"channel">>, Plugins),
         WriteContract = maps:get(<<"write_contract">>, Meta),
@@ -300,6 +302,21 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assert(lists:member(<<"core">>, maps:get(<<"standalone">>, Features))),
         ?assert(lists:member(<<"e2ee">>, maps:get(<<"standalone">>, Features))),
         ?assert(lists:member(<<"channel">>, maps:get(<<"plugin_managed">>, Features))),
+        ?assertEqual([<<"channel">>], maps:get(<<"channel_discover">>, FeatureDependencies)),
+        ?assertEqual(
+            false,
+            maps:get(
+                <<"message_search">>,
+                maps:get(<<"secure_e2ee">>, maps:get(<<"storage_mode">>, CapabilityConstraints))
+            )
+        ),
+        ?assertEqual(
+            <<"metadata">>,
+            maps:get(
+                <<"audit_mode">>,
+                maps:get(<<"required">>, maps:get(<<"e2ee_mode">>, CapabilityConstraints))
+            )
+        ),
         ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin)),
         ?assertEqual(true, maps:get(<<"plugins_translate_to_features">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract)),

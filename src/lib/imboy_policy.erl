@@ -575,6 +575,25 @@ capability_meta_catalog() ->
                 mode => #{type => string},
                 days => #{type => integer}
             }
+        },
+        constraints => capability_constraint_catalog()
+    }.
+
+-spec capability_constraint_catalog() -> map().
+capability_constraint_catalog() ->
+    #{
+        storage_mode => #{
+            secure_e2ee => #{
+                message_search => false,
+                message_export => false,
+                audit_mode => metadata
+            }
+        },
+        e2ee_mode => #{
+            required => #{
+                message_search => false,
+                audit_mode => metadata
+            }
         }
     }.
 
@@ -584,7 +603,8 @@ feature_meta_catalog() ->
     #{
         all => feature_names(),
         plugin_managed => PluginManaged,
-        standalone => feature_names() -- PluginManaged
+        standalone => feature_names() -- PluginManaged,
+        dependencies => feature_dependency_catalog()
     }.
 
 -spec plugin_managed_feature_names() -> [atom()].
@@ -595,6 +615,14 @@ plugin_managed_feature_names() ->
             || Manifest <- maps:values(imboy_plugin_registry:all())
         ])
     ).
+
+-spec feature_dependency_catalog() -> map().
+feature_dependency_catalog() ->
+    maps:from_list([
+        {FeatureName, dependencies(FeatureName)}
+        || FeatureName <- feature_names(),
+           length(dependencies(FeatureName)) > 0
+    ]).
 
 -spec plugin_meta_catalog() -> map().
 plugin_meta_catalog() ->
