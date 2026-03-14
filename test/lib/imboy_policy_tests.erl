@@ -770,6 +770,26 @@ preview_config_reports_constraint_and_dependency_adjustments_test_() ->
         )
     end).
 
+preview_config_rejects_empty_payload_without_editable_fields_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error,
+                <<"policy payload missing editable fields">>,
+                #{<<"reason">> => <<"missing_editable_fields">>}},
+            preview_policy_config(#{})
+        )
+    end).
+
+preview_config_rejects_non_object_payload_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error,
+                <<"policy payload must be an object">>,
+                #{<<"reason">> => <<"invalid_payload_type">>}},
+            preview_policy_config(<<"invalid">>)
+        )
+    end).
+
 effective_policy_prefers_runtime_config_over_sys_config_test_() ->
     ?WITH_MECKS([
         {config_ds, [
@@ -893,6 +913,26 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
         ?assertEqual(
             false,
             maps:get(<<"enabled">>, maps:get(<<"group_collab">>, maps:get(<<"plugins">>, PolicyView)))
+        )
+    end).
+
+save_config_rejects_empty_payload_without_editable_fields_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error,
+                <<"policy payload missing editable fields">>,
+                #{<<"reason">> => <<"missing_editable_fields">>}},
+            save_policy_config(#{})
+        )
+    end).
+
+save_config_rejects_non_object_payload_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error,
+                <<"policy payload must be an object">>,
+                #{<<"reason">> => <<"invalid_payload_type">>}},
+            save_policy_config(<<"invalid">>)
         )
     end).
 
