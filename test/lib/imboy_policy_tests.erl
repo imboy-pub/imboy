@@ -302,7 +302,23 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assert(lists:member(<<"channel">>, maps:get(<<"plugin_managed">>, Features))),
         ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin)),
         ?assertEqual(true, maps:get(<<"plugins_translate_to_features">>, WriteContract)),
-        ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract))
+        ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract)),
+        ?assertEqual(true, maps:get(<<"null_clears_overrides">>, WriteContract)),
+        ?assertEqual(true, maps:get(<<"preview_available">>, WriteContract)),
+        ?assertEqual(
+            [<<"saved">>, <<"effective">>],
+            maps:get(<<"preview_returns">>, WriteContract)
+        ),
+        ?assertEqual(true, maps:get(<<"bootstrap_available">>, WriteContract)),
+        ?assertEqual(
+            [<<"meta">>, <<"saved">>, <<"effective">>],
+            maps:get(<<"bootstrap_returns">>, WriteContract)
+        ),
+        ?assertEqual([<<"effective">>], maps:get(<<"save_returns">>, WriteContract)),
+        ?assertEqual(
+            [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
+            maps:get(<<"editable_sections">>, WriteContract)
+        )
     end).
 
 saved_view_returns_saved_overrides_and_compacts_complete_plugin_blocks_test_() ->

@@ -71,7 +71,14 @@ meta_view() ->
         plugins => plugin_meta_catalog(),
         write_contract => #{
             plugins_translate_to_features => true,
-            feature_overrides_take_precedence => true
+            feature_overrides_take_precedence => true,
+            null_clears_overrides => true,
+            preview_available => true,
+            preview_returns => [saved, effective],
+            bootstrap_available => true,
+            bootstrap_returns => [meta, saved, effective],
+            save_returns => [effective],
+            editable_sections => [profile, capabilities, plugins, features]
         }
     }).
 
