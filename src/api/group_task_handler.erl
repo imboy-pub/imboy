@@ -20,11 +20,16 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
-        case imboy_feature:ensure_enabled(Req0, group_task) of
-            ok ->
+        case imboy_plugin_registry:required_feature(api, group_task_handler, Action) of
+            undefined ->
                 handle_action(Action, Req0, State);
-            {error, RespReq} ->
-                RespReq
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        handle_action(Action, Req0, State);
+                    {error, RespReq} ->
+                        RespReq
+                end
         end,
     {ok, Req1, State}.
 

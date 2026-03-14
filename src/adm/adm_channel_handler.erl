@@ -28,7 +28,7 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case required_feature(Action) of
+        case imboy_plugin_registry:required_feature(admin, adm_channel_handler, Action) of
             undefined ->
                 dispatch(Action, Method, Req0, State);
             Feature ->
@@ -62,11 +62,6 @@ dispatch(delete_message, Method, Req0, State) -> delete_message_action(Method, R
 dispatch(search, Method, Req0, _State) -> search(Method, Req0);
 dispatch(delete, Method, Req0, _State) -> delete_action(Method, Req0);
 dispatch(false, _Method, Req0, _State) -> Req0.
-
--spec required_feature(atom() | false) -> atom() | undefined.
-required_feature(invitations) -> channel_invitation;
-required_feature(orders) -> channel_order;
-required_feature(_) -> undefined.
 
 %% @doc 获取频道列表
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().

@@ -26,8 +26,8 @@ init(Req0, State0) ->
     % ?DEBUG_LOG([people_nearby, handler, Action]),
     State = maps:remove(action, State0),
     Req1 =
-        case imboy_feature:ensure_enabled(Req0, location) of
-            ok ->
+        case imboy_plugin_registry:required_feature(api, location_handler, Action) of
+            undefined ->
                 case Action of
                     make_myself_visible ->
                         make_myself_visible(Req0, State);
@@ -38,8 +38,22 @@ init(Req0, State0) ->
                     false ->
                         Req0
                 end;
-            {error, RespReq} ->
-                RespReq
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        case Action of
+                            make_myself_visible ->
+                                make_myself_visible(Req0, State);
+                            make_myself_unvisible ->
+                                make_myself_unvisible(Req0, State);
+                            people_nearby ->
+                                people_nearby(Req0, State);
+                            false ->
+                                Req0
+                        end;
+                    {error, RespReq} ->
+                        RespReq
+                end
         end,
     {ok, Req1, State}.
 
@@ -105,4 +119,3 @@ people_nearby(Req0, State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

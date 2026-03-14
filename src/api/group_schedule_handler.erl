@@ -31,8 +31,8 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
-        case imboy_feature:ensure_enabled(Req0, group_schedule) of
-            ok ->
+        case imboy_plugin_registry:required_feature(api, group_schedule_handler, Action) of
+            undefined ->
                 case Action of
                     create ->
                         create(Req0, State);
@@ -51,8 +51,30 @@ init(Req0, State0) ->
                     _ ->
                         Req0
                 end;
-            {error, RespReq} ->
-                RespReq
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        case Action of
+                            create ->
+                                create(Req0, State);
+                            update ->
+                                update(Req0, State);
+                            cancel ->
+                                cancel(Req0, State);
+                            detail ->
+                                detail(Req0, State);
+                            list ->
+                                list(Req0, State);
+                            my_list ->
+                                my_list(Req0, State);
+                            confirm ->
+                                confirm(Req0, State);
+                            _ ->
+                                Req0
+                        end;
+                    {error, RespReq} ->
+                        RespReq
+                end
         end,
     {ok, Req1, State}.
 

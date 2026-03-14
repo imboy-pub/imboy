@@ -82,10 +82,13 @@ resolve_target(Req0, PostVals, {TargetType, BindingKey, FallbackKeys}) ->
     {TargetType, TargetId}.
 
 -spec ensure_target_feature(cowboy_req:req(), binary()) -> ok | {error, cowboy_req:req()}.
-ensure_target_feature(Req0, <<"moment">>) ->
-    imboy_feature:ensure_enabled(Req0, moment);
-ensure_target_feature(_Req0, _TargetType) ->
-    ok.
+ensure_target_feature(Req0, TargetType) ->
+    case imboy_plugin_registry:required_feature_for_target(api, report_handler, TargetType) of
+        undefined ->
+            ok;
+        Feature ->
+            imboy_feature:ensure_enabled(Req0, Feature)
+    end.
 
 -spec target_type_from_body(map()) -> binary().
 target_type_from_body(PostVals) ->

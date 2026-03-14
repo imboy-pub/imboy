@@ -25,7 +25,7 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case required_feature(Action) of
+        case imboy_plugin_registry:required_feature(admin, adm_group_handler, Action) of
             undefined ->
                 dispatch(Action, Method, Req0, State);
             Feature ->
@@ -77,23 +77,6 @@ dispatch(task_restore, Method, Req0, State) -> task_restore(Method, Req0, State)
 dispatch(task_close, Method, Req0, State) -> task_close(Method, Req0, State);
 dispatch(task_delete, Method, Req0, State) -> task_delete(Method, Req0, State);
 dispatch(_, _Method, Req0, _State) -> Req0.
-
--spec required_feature(atom()) -> atom() | undefined.
-required_feature(vote_list) -> group_vote;
-required_feature(vote_detail) -> group_vote;
-required_feature(vote_close) -> group_vote;
-required_feature(schedule_list) -> group_schedule;
-required_feature(schedule_detail) -> group_schedule;
-required_feature(schedule_cancel) -> group_schedule;
-required_feature(schedule_restore) -> group_schedule;
-required_feature(task_list) -> group_task;
-required_feature(task_detail) -> group_task;
-required_feature(task_pending_review) -> group_task;
-required_feature(task_review) -> group_task;
-required_feature(task_restore) -> group_task;
-required_feature(task_close) -> group_task;
-required_feature(task_delete) -> group_task;
-required_feature(_) -> undefined.
 
 %% @doc 群组列表
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

@@ -166,6 +166,7 @@ get_routes() ->
         {"/v1/init", index_handler, #{action => init}},
         {"/v1/refreshtoken", passport_handler, #{action => refreshtoken}},
         {"/v1/app/features", app_feature_handler, #{action => features}},
+        {"/v1/app/policy", app_feature_handler, #{action => policy}},
         {"/v1/app_version/check", app_version_handler, #{action => check}},
 
         % 【新增】Prometheus 指标端点
@@ -474,6 +475,7 @@ get_routes() ->
         {"/adm/welcome", adm_index_handler, #{action => welcome}},
         {"/adm/feedback/index", adm_feedback_handler, #{action => index}},
         {"/adm/admin/config/features", adm_admin_handler, #{action => config_features}},
+        {"/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
         {"/adm/admin/list", adm_admin_handler, #{action => list}},
         {"/adm/admin/create", adm_admin_handler, #{action => create}},
         {"/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
@@ -612,6 +614,7 @@ open() ->
      <<"/v1/conversation/online">>,
      <<"/v1/init">>,
      <<"/v1/app/features">>,
+     <<"/v1/app/policy">>,
      <<"/v1/user/show">>,
      <<"/v1/refreshtoken">>,
      <<"/v1/passport/login">>,

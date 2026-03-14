@@ -13,6 +13,8 @@ init(Req0, State0) ->
         case Action of
             features ->
                 features(Method, Req0);
+            policy ->
+                policy(Method, Req0);
             false ->
                 Req0
         end,
@@ -22,4 +24,10 @@ init(Req0, State0) ->
 features(<<"GET">>, Req0) ->
     elib_response:success(Req0, imboy_feature:all());
 features(_, Req0) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec policy(binary(), cowboy_req:req()) -> cowboy_req:req().
+policy(<<"GET">>, Req0) ->
+    elib_response:success(Req0, imboy_policy:effective_view());
+policy(_, Req0) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).

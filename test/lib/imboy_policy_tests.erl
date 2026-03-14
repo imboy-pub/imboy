@@ -140,3 +140,57 @@ required_e2ee_disables_body_visibility_test_() ->
         ?assertEqual(false, imboy_policy:message_search_enabled()),
         ?assertEqual(false, imboy_policy:message_body_visible())
     end).
+
+effective_view_returns_json_friendly_policy_payload_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun
+                (product_profile, community) -> enterprise;
+                (capabilities, #{}) ->
+                    #{
+                        storage_mode => archived,
+                        e2ee_mode => disabled,
+                        message_search => true,
+                        message_export => true,
+                        audit_mode => full,
+                        retention_policy => #{
+                            mode => rolling_days,
+                            days => 365
+                        }
+                    };
+                (features, undefined) ->
+                    #{
+                        channel => #{enabled => true},
+                        channel_invitation => #{enabled => true},
+                        moment => #{enabled => false}
+                    }
+            end}
+        ]}
+    ], fun() ->
+        PolicyView = imboy_policy:effective_view(),
+        Capabilities = maps:get(<<"capabilities">>, PolicyView),
+        Features = maps:get(<<"features">>, PolicyView),
+        Plugins = maps:get(<<"plugins">>, PolicyView),
+        ChannelPlugin = maps:get(<<"channel">>, Plugins),
+
+        ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+        ?assertEqual(<<"archived">>, maps:get(<<"storage_mode">>, Capabilities)),
+        ?assertEqual(<<"full">>, maps:get(<<"audit_mode">>, Capabilities)),
+        ?assertEqual(365, maps:get(<<"days">>, maps:get(<<"retention_policy">>, Capabilities))),
+        ?assertEqual(true, maps:get(<<"channel">>, Features)),
+        ?assertEqual(false, maps:get(<<"moment">>, Features)),
+        ?assertEqual(<<"plugin">>, maps:get(<<"kind">>, ChannelPlugin)),
+        ?assertEqual(true, maps:get(<<"enabled">>, ChannelPlugin)),
+        ?assertEqual(
+            [<<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>],
+            maps:get(<<"feature_keys">>, ChannelPlugin)
+        ),
+        ?assertEqual(
+            [<<"channel_tab">>, <<"channel_discover_page">>],
+            maps:get(<<"app_entries">>, ChannelPlugin)
+        ),
+        ?assertEqual(false, maps:is_key(<<"api_feature_rules">>, ChannelPlugin)),
+        ?assertEqual(false, maps:is_key(<<"admin_feature_rules">>, ChannelPlugin)),
+        ?assertEqual(false, maps:is_key(<<"api_target_feature_rules">>, ChannelPlugin)),
+        ?assertEqual(false, maps:is_key(<<"admin_target_feature_rules">>, ChannelPlugin))
+    end).

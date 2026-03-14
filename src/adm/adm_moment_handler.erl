@@ -13,8 +13,8 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case imboy_feature:ensure_enabled(Req0, moment) of
-            ok ->
+        case imboy_plugin_registry:required_feature(admin, adm_moment_handler, Action) of
+            undefined ->
                 case Action of
                     list -> list(Method, Req0, State);
                     detail -> detail(Method, Req0, State);
@@ -24,8 +24,21 @@ init(Req0, State0) ->
                     report_batch_resolve -> report_batch_resolve(Method, Req0, State);
                     false -> Req0
                 end;
-            {error, RespReq} ->
-                RespReq
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok ->
+                        case Action of
+                            list -> list(Method, Req0, State);
+                            detail -> detail(Method, Req0, State);
+                            delete -> delete_action(Method, Req0, State);
+                            report_list -> report_list(Method, Req0, State);
+                            report_resolve -> report_resolve(Method, Req0, State);
+                            report_batch_resolve -> report_batch_resolve(Method, Req0, State);
+                            false -> Req0
+                        end;
+                    {error, RespReq} ->
+                        RespReq
+                end
         end,
     {ok, Req1, State}.
 

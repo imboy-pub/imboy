@@ -32,19 +32,24 @@ init(Req0, State0) ->
 
 -spec create_action(binary(), cowboy_req:req(), map(), auto | binary()) -> cowboy_req:req().
 create_action(<<"POST">>, Req0, State, TargetOverride) ->
+    PostVals = elib_param:post(Req0),
+    TargetType = target_type_from_body(PostVals, TargetOverride),
     case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
         ok ->
-            AdmUid = maps:get(adm_user_id, State, 0),
-            PostVals = elib_param:post(Req0),
-            TargetType = target_type_from_body(PostVals, TargetOverride),
-            TargetId = maps:get(<<"target_id">>, PostVals, <<>>),
-            Reason = maps:get(<<"reason">>, PostVals, <<>>),
-            Desc = maps:get(<<"description">>, PostVals, <<>>),
-            case report_logic:create(AdmUid, TargetType, TargetId, Reason, Desc) of
-                {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            case ensure_target_feature(Req0, TargetType) of
+                ok ->
+                    AdmUid = maps:get(adm_user_id, State, 0),
+                    TargetId = maps:get(<<"target_id">>, PostVals, <<>>),
+                    Reason = maps:get(<<"reason">>, PostVals, <<>>),
+                    Desc = maps:get(<<"description">>, PostVals, <<>>),
+                    case report_logic:create(AdmUid, TargetType, TargetId, Reason, Desc) of
+                        {ok, Payload} ->
+                            elib_response:success(Req0, Payload);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                    end;
+                {error, Req1} ->
+                    Req1
             end;
         {error, Req1} ->
             Req1
@@ -54,25 +59,30 @@ create_action(_, Req0, _State, _TargetOverride) ->
 
 -spec list_action(binary(), cowboy_req:req(), map(), auto | binary()) -> cowboy_req:req().
 list_action(<<"GET">>, Req0, State, TargetOverride) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    TargetType = target_type_from_qs(Qs, TargetOverride),
     case ensure_any_permission(State, [<<"reports:read">>, <<"moments:report:read">>], Req0) of
         ok ->
-            {Page, Size} = elib_param:page(Req0),
-            Qs = cowboy_req:parse_qs(Req0),
-            Status = parse_qs_int(proplists:get_value(<<"status">>, Qs), -1, -1, 10),
-            TargetId = proplists:get_value(<<"target_id">>, Qs, <<>>),
-            ReporterUid = proplists:get_value(<<"reporter_uid">>, Qs, <<>>),
-            Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
-            TargetType = target_type_from_qs(Qs, TargetOverride),
-            Filter = #{
-                target_id => TargetId,
-                reporter_uid => ReporterUid,
-                keyword => Keyword
-            },
-            case report_logic:admin_list(TargetType, Status, Page, Size, Filter) of
-                {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            case ensure_target_feature(Req0, TargetType) of
+                ok ->
+                    {Page, Size} = elib_param:page(Req0),
+                    Status = parse_qs_int(proplists:get_value(<<"status">>, Qs), -1, -1, 10),
+                    TargetId = proplists:get_value(<<"target_id">>, Qs, <<>>),
+                    ReporterUid = proplists:get_value(<<"reporter_uid">>, Qs, <<>>),
+                    Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
+                    Filter = #{
+                        target_id => TargetId,
+                        reporter_uid => ReporterUid,
+                        keyword => Keyword
+                    },
+                    case report_logic:admin_list(TargetType, Status, Page, Size, Filter) of
+                        {ok, Payload} ->
+                            elib_response:success(Req0, Payload);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                    end;
+                {error, Req1} ->
+                    Req1
             end;
         {error, Req1} ->
             Req1
@@ -82,19 +92,24 @@ list_action(_, Req0, _State, _TargetOverride) ->
 
 -spec resolve_action(binary(), cowboy_req:req(), map(), auto | binary()) -> cowboy_req:req().
 resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
+    PostVals = elib_param:post(Req0),
+    TargetType = target_type_from_body(PostVals, TargetOverride),
     case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
         ok ->
-            AdmUid = maps:get(adm_user_id, State, 0),
-            PostVals = elib_param:post(Req0),
-            TargetType = target_type_from_body(PostVals, TargetOverride),
-            ReportId = maps:get(<<"report_id">>, PostVals, <<>>),
-            Result = ec_cnv:to_integer(maps:get(<<"result">>, PostVals, 0)),
-            Note = maps:get(<<"note">>, PostVals, <<>>),
-            case report_logic:admin_resolve(AdmUid, TargetType, ReportId, Result, Note) of
+            case ensure_target_feature(Req0, TargetType) of
                 ok ->
-                    elib_response:success(Req0, #{});
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                    AdmUid = maps:get(adm_user_id, State, 0),
+                    ReportId = maps:get(<<"report_id">>, PostVals, <<>>),
+                    Result = ec_cnv:to_integer(maps:get(<<"result">>, PostVals, 0)),
+                    Note = maps:get(<<"note">>, PostVals, <<>>),
+                    case report_logic:admin_resolve(AdmUid, TargetType, ReportId, Result, Note) of
+                        ok ->
+                            elib_response:success(Req0, #{});
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                    end;
+                {error, Req1} ->
+                    Req1
             end;
         {error, Req1} ->
             Req1
@@ -104,25 +119,30 @@ resolve_action(_, Req0, _State, _TargetOverride) ->
 
 -spec batch_resolve_action(binary(), cowboy_req:req(), map(), auto | binary()) -> cowboy_req:req().
 batch_resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
+    PostVals = elib_param:post(Req0),
+    TargetType = target_type_from_body(PostVals, TargetOverride),
     case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
         ok ->
-            AdmUid = maps:get(adm_user_id, State, 0),
-            PostVals = elib_param:post(Req0),
-            TargetType = target_type_from_body(PostVals, TargetOverride),
-            RawIds = maps:get(<<"report_ids">>, PostVals, []),
-            Result = ec_cnv:to_integer(maps:get(<<"result">>, PostVals, 0)),
-            Note = maps:get(<<"note">>, PostVals, <<>>),
-            ReportIds = normalize_report_ids(RawIds, #{}, []),
-            case {ReportIds, lists:member(Result, [1, 2])} of
-                {[], _} ->
-                    elib_response:error(Req0, <<"report_ids is empty"/utf8>>, ?ERR_BAD_REQUEST);
-                _ ->
-                    case report_logic:admin_batch_resolve(AdmUid, TargetType, ReportIds, Result, Note) of
-                        {ok, Payload} ->
-                            elib_response:success(Req0, Payload);
-                        {error, Msg} ->
-                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
-                    end
+            case ensure_target_feature(Req0, TargetType) of
+                ok ->
+                    AdmUid = maps:get(adm_user_id, State, 0),
+                    RawIds = maps:get(<<"report_ids">>, PostVals, []),
+                    Result = ec_cnv:to_integer(maps:get(<<"result">>, PostVals, 0)),
+                    Note = maps:get(<<"note">>, PostVals, <<>>),
+                    ReportIds = normalize_report_ids(RawIds, #{}, []),
+                    case {ReportIds, lists:member(Result, [1, 2])} of
+                        {[], _} ->
+                            elib_response:error(Req0, <<"report_ids is empty"/utf8>>, ?ERR_BAD_REQUEST);
+                        _ ->
+                            case report_logic:admin_batch_resolve(AdmUid, TargetType, ReportIds, Result, Note) of
+                                {ok, Payload} ->
+                                    elib_response:success(Req0, Payload);
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                            end
+                    end;
+                {error, Req1} ->
+                    Req1
             end;
         {error, Req1} ->
             Req1
@@ -165,6 +185,15 @@ normalize_target_type_binary(Value, Default) ->
         "user" -> <<"user">>;
         "users" -> <<"user">>;
         _ -> Default
+    end.
+
+-spec ensure_target_feature(cowboy_req:req(), binary()) -> ok | {error, cowboy_req:req()}.
+ensure_target_feature(Req0, TargetType) ->
+    case imboy_plugin_registry:required_feature_for_target(admin, adm_report_handler, TargetType) of
+        undefined ->
+            ok;
+        Feature ->
+            imboy_feature:ensure_enabled(Req0, Feature)
     end.
 
 -spec ensure_any_permission(map(), [binary()], cowboy_req:req()) -> ok | {error, cowboy_req:req()}.

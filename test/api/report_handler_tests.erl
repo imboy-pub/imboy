@@ -137,3 +137,56 @@ create_moment_target_short_circuits_when_feature_disabled_test_() ->
         ?assertEqual(blocked_req, Result),
         ?assertEqual(0, meck:num_calls(report_logic, create, 5))
     end).
+
+create_channel_target_short_circuits_when_feature_disabled_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"target_type">> => <<"channel">>,
+                    <<"target_id">> => <<"ch_hash_1">>,
+                    <<"reason">> => <<"spam">>,
+                    <<"description">> => <<"bad channel">>
+                }
+            end}
+        ]},
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, channel) ->
+                {error, blocked_req}
+            end}
+        ]},
+        {report_logic, [
+            {'create', 5, fun(_, _, _, _, _) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        Result = report_handler:handle_action(create, req_mock(), #{current_uid => 1006}),
+        ?assertEqual(blocked_req, Result),
+        ?assertEqual(0, meck:num_calls(report_logic, create, 5))
+    end).
+
+moment_create_route_short_circuits_when_feature_disabled_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [
+            {'binding', 2, fun(moment_id, _Req) -> <<"m_hash_path">>; (_, _Req) -> undefined end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"reason">> => <<"spam">>,
+                    <<"description">> => <<"bad moment">>
+                }
+            end}
+        ]},
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, moment) ->
+                {error, blocked_req}
+            end}
+        ]},
+        {report_logic, [
+            {'create', 5, fun(_, _, _, _, _) -> erlang:error(should_not_be_called) end}
+        ]}
+    ], fun() ->
+        Result = report_handler:handle_action(moment_create, req_mock(), #{current_uid => 1007}),
+        ?assertEqual(blocked_req, Result),
+        ?assertEqual(0, meck:num_calls(report_logic, create, 5))
+    end).

@@ -3,6 +3,7 @@
 -export([
     current_profile/0,
     effective/0,
+    effective_view/0,
     effective_capabilities/0,
     effective_features/0,
     effective_plugins/0,
@@ -26,6 +27,18 @@ effective() ->
         features => Features,
         plugins => effective_plugins(Features)
     }.
+
+-spec effective_view() -> map().
+effective_view() ->
+    Policy = effective(),
+    Plugins0 = maps:get(plugins, Policy, #{}),
+    Plugins = maps:map(
+        fun(_Name, Manifest) ->
+            public_plugin_manifest(Manifest)
+        end,
+        Plugins0
+    ),
+    public_term(Policy#{plugins => Plugins}).
 
 -spec effective_capabilities() -> map().
 effective_capabilities() ->
@@ -396,3 +409,49 @@ normalize_retention_policy(Value, Default) ->
         _ ->
             Policy
     end.
+
+-spec public_term(term()) -> term().
+public_term(Map) when is_map(Map) ->
+    maps:from_list([
+        {public_key(Key), public_term(Value)}
+        || {Key, Value} <- maps:to_list(Map)
+    ]);
+public_term(List) when is_list(List) ->
+    [public_term(Value) || Value <- List];
+public_term(true) ->
+    true;
+public_term(false) ->
+    false;
+public_term(null) ->
+    null;
+public_term(undefined) ->
+    null;
+public_term(Value) when is_atom(Value) ->
+    atom_to_binary(Value, utf8);
+public_term(Value) ->
+    Value.
+
+-spec public_key(term()) -> binary().
+public_key(Key) when is_binary(Key) ->
+    Key;
+public_key(Key) when is_atom(Key) ->
+    atom_to_binary(Key, utf8);
+public_key(Key) when is_list(Key) ->
+    unicode:characters_to_binary(Key);
+public_key(Key) ->
+    ec_cnv:to_binary(Key).
+
+-spec public_plugin_manifest(map()) -> map().
+public_plugin_manifest(Manifest) ->
+    AllowedKeys = [
+        kind,
+        feature_keys,
+        requires_capabilities,
+        depends_on_plugins,
+        app_entries,
+        admin_entries,
+        api_handlers,
+        children,
+        enabled
+    ],
+    maps:with(AllowedKeys, Manifest).
