@@ -341,6 +341,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ChannelPlugin = maps:get(<<"channel">>, Plugins),
         EditorOrder = maps:get(<<"editor_order">>, Meta),
         WriteContract = maps:get(<<"write_contract">>, Meta),
+        RequestShape = maps:get(<<"request_shape">>, WriteContract),
 
         ?assertEqual(
             [<<"community">>, <<"enterprise">>],
@@ -465,6 +466,36 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assertEqual(true, maps:get(<<"plugins_translate_to_features">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"feature_overrides_take_precedence">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"null_clears_overrides">>, WriteContract)),
+        ?assertEqual(
+            [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
+            maps:get(<<"top_level_fields">>, RequestShape)
+        ),
+        ?assertEqual(<<"profile">>, maps:get(<<"canonical_key">>, maps:get(<<"profile">>, RequestShape))),
+        ?assertEqual(
+            [<<"profile">>, <<"product_profile">>],
+            maps:get(<<"accepted_keys">>, maps:get(<<"profile">>, RequestShape))
+        ),
+        ?assertEqual(true, maps:get(<<"nullable">>, maps:get(<<"profile">>, RequestShape))),
+        ?assertEqual(
+            [
+                <<"storage_mode">>,
+                <<"e2ee_mode">>,
+                <<"message_search">>,
+                <<"message_export">>,
+                <<"audit_mode">>,
+                <<"retention_policy">>
+            ],
+            maps:get(<<"fields">>, maps:get(<<"capabilities">>, RequestShape))
+        ),
+        ?assertEqual(
+            [<<"boolean">>, <<"enabled_object">>],
+            maps:get(<<"value_forms">>, maps:get(<<"features">>, RequestShape))
+        ),
+        ?assertEqual(true, maps:get(<<"null_clears_fields">>, maps:get(<<"features">>, RequestShape))),
+        ?assertEqual(
+            [<<"channel">>, <<"moment">>, <<"location">>, <<"group_collab">>],
+            maps:get(<<"fields">>, maps:get(<<"plugins">>, RequestShape))
+        ),
         ?assertEqual(true, maps:get(<<"preview_available">>, WriteContract)),
         ?assertEqual(
             [<<"saved">>, <<"effective">>, <<"adjustments">>, <<"origins">>],

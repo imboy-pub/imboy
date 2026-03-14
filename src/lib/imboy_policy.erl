@@ -79,6 +79,7 @@ meta_view() ->
             plugins_translate_to_features => true,
             feature_overrides_take_precedence => true,
             null_clears_overrides => true,
+            request_shape => request_shape_meta_catalog(),
             preview_available => true,
             preview_returns => [saved, effective, adjustments, origins],
             bootstrap_available => true,
@@ -929,6 +930,39 @@ capability_names() ->
         audit_mode,
         retention_policy
     ].
+
+-spec request_shape_meta_catalog() -> map().
+request_shape_meta_catalog() ->
+    #{
+        top_level_fields => [profile, capabilities, plugins, features],
+        profile => #{
+            canonical_key => profile,
+            accepted_keys => [profile, product_profile],
+            type => enum,
+            options => imboy_profile_preset:supported_profiles(),
+            nullable => true
+        },
+        capabilities => #{
+            canonical_key => capabilities,
+            type => object,
+            fields => capability_names(),
+            null_clears_fields => true
+        },
+        features => #{
+            canonical_key => features,
+            type => object,
+            fields => feature_names(),
+            value_forms => [boolean, enabled_object],
+            null_clears_fields => true
+        },
+        plugins => #{
+            canonical_key => plugins,
+            type => object,
+            fields => imboy_plugin_registry:plugin_names(),
+            value_forms => [boolean, enabled_object],
+            null_clears_fields => true
+        }
+    }.
 
 -spec normalize_capability_map(term()) -> map().
 normalize_capability_map(Value) ->
