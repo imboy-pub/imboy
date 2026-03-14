@@ -4,11 +4,13 @@
     current_profile/0,
     effective/0,
     effective_view/0,
+    admin_config_view/0,
     meta_view/0,
     saved_view/0,
     effective_capabilities/0,
     effective_features/0,
     effective_plugins/0,
+    preview_admin_config/1,
     save_admin_config/1,
     save_config/1,
     message_search_enabled/0,
@@ -21,6 +23,7 @@
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
 -define(CAPABILITIES_CONFIG_KEY, <<"capabilities">>).
 -define(FEATURES_CONFIG_KEY, <<"features">>).
+-define(DELETE_VALUE, '$delete').
 
 -spec current_profile() -> community | enterprise.
 current_profile() ->
@@ -33,25 +36,11 @@ current_profile() ->
 
 -spec effective() -> map().
 effective() ->
-    Features = effective_features(),
-    #{
-        profile => current_profile(),
-        capabilities => effective_capabilities(),
-        features => Features,
-        plugins => effective_plugins(Features)
-    }.
+    effective_from_configs(load_profile_config(), load_capability_config(), load_feature_config()).
 
 -spec effective_view() -> map().
 effective_view() ->
-    Policy = effective(),
-    Plugins0 = maps:get(plugins, Policy, #{}),
-    Plugins = maps:map(
-        fun(_Name, Manifest) ->
-            public_plugin_manifest(Manifest)
-        end,
-        Plugins0
-    ),
-    public_term(Policy#{plugins => Plugins}).
+    effective_view_from_configs(load_profile_config(), load_capability_config(), load_feature_config()).
 
 -spec saved_view() -> map().
 saved_view() ->
@@ -61,6 +50,14 @@ saved_view() ->
     Sections1 = maybe_put_saved_section(Sections0, capabilities, saved_capability_overrides()),
     Sections2 = maybe_put_saved_section(Sections1, plugins, SavedPlugins),
     public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
+
+-spec admin_config_view() -> map().
+admin_config_view() ->
+    #{
+        <<"meta">> => meta_view(),
+        <<"saved">> => saved_view(),
+        <<"effective">> => effective_view()
+    }.
 
 -spec meta_view() -> map().
 meta_view() ->
@@ -80,11 +77,7 @@ meta_view() ->
 
 -spec effective_capabilities() -> map().
 effective_capabilities() ->
-    Defaults = normalize_capability_map(
-        maps:get(capabilities, imboy_profile_preset:defaults(current_profile()), #{})
-    ),
-    Overrides = normalize_capability_map(load_capability_config()),
-    normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
+    effective_capabilities_for_profile(current_profile(), load_capability_config()).
 
 -spec message_search_enabled() -> boolean().
 message_search_enabled() ->
@@ -110,6 +103,10 @@ message_body_visible() ->
 save_admin_config(Payload) ->
     save_config(Payload).
 
+-spec preview_admin_config(map()) -> {ok, map()} | {error, binary()}.
+preview_admin_config(Payload) ->
+    preview_config(Payload).
+
 -spec save_config(map()) -> {ok, map()} | {error, binary()}.
 save_config(Payload) when is_map(Payload) ->
     Sections = normalize_config_sections(Payload),
@@ -125,13 +122,23 @@ save_config(Payload) when is_map(Payload) ->
 save_config(_) ->
     {error, <<"policy payload must be an object">>}.
 
+-spec preview_config(map()) -> {ok, map()} | {error, binary()}.
+preview_config(Payload) when is_map(Payload) ->
+    Sections = normalize_config_sections(Payload),
+    case validate_save_sections(Sections) of
+        {ok, SaveSections} when map_size(SaveSections) > 0 ->
+            {ok, preview_view(SaveSections)};
+        {ok, _SaveSections} ->
+            {error, <<"policy payload missing editable fields">>};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+preview_config(_) ->
+    {error, <<"policy payload must be an object">>}.
+
 -spec effective_features() -> map().
 effective_features() ->
-    Features = load_feature_config(),
-    maps:from_list([
-        {Name, feature_enabled(Name, Features)}
-        || Name <- feature_names()
-    ]).
+    effective_features_from_config(load_feature_config()).
 
 -spec effective_plugins() -> map().
 effective_plugins() ->
@@ -151,6 +158,117 @@ effective_plugins(Features) ->
         end,
         imboy_plugin_registry:all()
     ).
+
+-spec effective_from_configs(term(), term(), term()) -> map().
+effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig) ->
+    Profile = resolve_profile(ProfileConfig),
+    Features = effective_features_from_config(FeatureConfig),
+    #{
+        profile => Profile,
+        capabilities => effective_capabilities_for_profile(Profile, CapabilityConfig),
+        features => Features,
+        plugins => effective_plugins(Features)
+    }.
+
+-spec effective_view_from_configs(term(), term(), term()) -> map().
+effective_view_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig) ->
+    public_effective_policy(
+        effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig)
+    ).
+
+-spec public_effective_policy(map()) -> map().
+public_effective_policy(Policy) ->
+    Plugins0 = maps:get(plugins, Policy, #{}),
+    Plugins = maps:map(
+        fun(_Name, Manifest) ->
+            public_plugin_manifest(Manifest)
+        end,
+        Plugins0
+    ),
+    public_term(Policy#{plugins => Plugins}).
+
+-spec preview_view(map()) -> map().
+preview_view(SaveSections) ->
+    #{
+        <<"saved">> => preview_saved_view(SaveSections),
+        <<"effective">> => preview_effective_view(SaveSections)
+    }.
+
+-spec preview_saved_view(map()) -> map().
+preview_saved_view(SaveSections) ->
+    Profile = case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
+        {ok, ProfileValue} -> ProfileValue;
+        error -> saved_profile_override()
+    end,
+    Capabilities = case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
+        {ok, CapabilityValue} -> merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue);
+        error -> saved_capability_overrides()
+    end,
+    Features = case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
+        {ok, FeatureValue} -> flatten_saved_feature_config(merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue));
+        error -> saved_feature_overrides()
+    end,
+    saved_view_from_values(Profile, Capabilities, Features).
+
+-spec preview_effective_view(map()) -> map().
+preview_effective_view(SaveSections) ->
+    ProfileConfig = case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
+        {ok, ProfileValue} -> ProfileValue;
+        error -> load_profile_config()
+    end,
+    CapabilityConfig = case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
+        {ok, CapabilityValue} -> merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue);
+        error -> load_capability_config()
+    end,
+    FeatureConfig = case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
+        {ok, FeatureValue} -> merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue);
+        error -> load_feature_config()
+    end,
+    effective_view_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig).
+
+-spec saved_view_from_values(term(), map(), map()) -> map().
+saved_view_from_values(Profile0, CapabilityOverrides, FeatureOverrides0) ->
+    {SavedPlugins, SavedFeatures} = compact_saved_plugin_overrides(FeatureOverrides0),
+    Profile = normalize_saved_profile_value(Profile0),
+    Sections0 = maybe_put_saved_section(#{}, profile, Profile),
+    Sections1 = maybe_put_saved_section(Sections0, capabilities, CapabilityOverrides),
+    Sections2 = maybe_put_saved_section(Sections1, plugins, SavedPlugins),
+    public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
+
+-spec normalize_saved_profile_value(term()) -> community | enterprise | undefined.
+normalize_saved_profile_value(undefined) ->
+    undefined;
+normalize_saved_profile_value(Value) ->
+    case normalize_profile_input(Value) of
+        {ok, Profile} ->
+            Profile;
+        error ->
+            undefined
+    end.
+
+-spec resolve_profile(term()) -> community | enterprise.
+resolve_profile(ProfileConfig) ->
+    case normalize_profile_input(ProfileConfig) of
+        {ok, Profile} ->
+            Profile;
+        error ->
+            imboy_profile_preset:current()
+    end.
+
+-spec effective_capabilities_for_profile(community | enterprise, term()) -> map().
+effective_capabilities_for_profile(Profile, CapabilityConfig) ->
+    Defaults = normalize_capability_map(
+        maps:get(capabilities, imboy_profile_preset:defaults(Profile), #{})
+    ),
+    Overrides = normalize_capability_map(CapabilityConfig),
+    normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
+
+-spec effective_features_from_config(term()) -> map().
+effective_features_from_config(FeatureConfig) ->
+    maps:from_list([
+        {Name, feature_enabled(Name, FeatureConfig)}
+        || Name <- feature_names()
+    ]).
 
 -spec feature_names() -> [atom()].
 feature_names() ->
@@ -298,6 +416,10 @@ load_feature_config() ->
 load_config_value(Key, Default) ->
     case catch config_ds:get(Key, Default) of
         {'EXIT', _} ->
+            Default;
+        null ->
+            Default;
+        undefined ->
             Default;
         Value ->
             Value
@@ -647,6 +769,8 @@ normalize_config_sections(Payload) ->
 -spec maybe_put_profile_section(map(), map()) -> map().
 maybe_put_profile_section(Sections, Payload) ->
     case payload_value(Payload, [profile, <<"profile">>, product_profile, <<"product_profile">>]) of
+        {ok, null} ->
+            Sections#{?PRODUCT_PROFILE_CONFIG_KEY => ?DELETE_VALUE};
         {ok, Value} ->
             case normalize_profile_input(Value) of
                 {ok, Profile} ->
@@ -748,6 +872,8 @@ normalize_capability_payload(Value) ->
             case find_in_map(Map0, candidate_keys(Key)) of
                 undefined ->
                     {ok, Acc};
+                null ->
+                    {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
                 Item ->
                     case normalize_capability_payload_value(Key, Item) of
                         {ok, NormalizedValue} ->
@@ -830,6 +956,8 @@ normalize_feature_payload(Value) ->
             case find_in_map(Map0, candidate_keys(Key)) of
                 undefined ->
                     {ok, Acc};
+                null ->
+                    {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
                 Item ->
                     case parse_toggle_payload(Item) of
                         {ok, Enabled} ->
@@ -866,6 +994,17 @@ normalize_plugin_payload(Value) ->
             case find_in_map(Map0, candidate_keys(PluginName)) of
                 undefined ->
                     {ok, Acc};
+                null ->
+                    Manifest = imboy_plugin_registry:get(PluginName),
+                    FeatureKeys = maps:get(feature_keys, Manifest, []),
+                    {ok,
+                        lists:foldl(
+                            fun(FeatureKey, FeatureAcc) ->
+                                maps:put(FeatureKey, ?DELETE_VALUE, FeatureAcc)
+                            end,
+                            Acc,
+                            FeatureKeys
+                        )};
                 Item ->
                     case parse_toggle_payload(Item) of
                         {ok, Enabled} ->
@@ -912,10 +1051,35 @@ persist_config_sections(Sections) ->
     ok.
 
 -spec merge_persisted_section(binary(), term()) -> term().
+merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, ?DELETE_VALUE) ->
+    null;
 merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, Value) ->
     Value;
 merge_persisted_section(Key, Value) ->
-    maps:merge(normalize_map(load_saved_config_value(Key)), normalize_map(Value)).
+    merge_saved_map_updates(normalize_map(load_saved_config_value(Key)), normalize_map(Value)).
+
+-spec merge_saved_map_updates(map(), map()) -> map().
+merge_saved_map_updates(Existing, Updates) ->
+    DeleteKeys = [
+        Key
+        || {Key, DeleteValue} <- maps:to_list(Updates),
+           is_delete_marker(DeleteValue)
+    ],
+    Existing1 = maps:without(DeleteKeys, Existing),
+    PutMap = maps:from_list([
+        {Key, UpdateValue}
+        || {Key, UpdateValue} <- maps:to_list(Updates),
+           not is_delete_marker(UpdateValue)
+    ]),
+    maps:merge(Existing1, PutMap).
+
+-spec is_delete_marker(term()) -> boolean().
+is_delete_marker(?DELETE_VALUE) ->
+    true;
+is_delete_marker(<<"$delete">>) ->
+    true;
+is_delete_marker(_) ->
+    false.
 
 -spec parse_toggle_payload(term()) -> {ok, boolean()} | error.
 parse_toggle_payload(#{enabled := Enabled}) ->
