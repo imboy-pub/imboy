@@ -77,6 +77,12 @@ init_config_policy_bootstrap_success_test_() ->
                     <<"depends_on">> => [<<"channel">>]
                 }
             }
+        },
+        <<"origins">> => #{
+            <<"profile">> => <<"default">>,
+            <<"capabilities">> => #{},
+            <<"features">> => #{<<"channel">> => <<"plugin_override">>},
+            <<"plugins">> => #{<<"channel">> => <<"override">>}
         }
     },
     ?WITH_MECKS([
@@ -188,6 +194,12 @@ preview_config_policy_post_success_test_() ->
                     <<"depends_on">> => [<<"channel">>]
                 }
             }
+        },
+        <<"origins">> => #{
+            <<"profile">> => <<"default">>,
+            <<"capabilities">> => #{},
+            <<"features">> => #{<<"channel">> => <<"feature_override">>},
+            <<"plugins">> => #{<<"channel">> => <<"feature_overrides">>}
         }
     },
     ?WITH_MECKS([
@@ -740,6 +752,30 @@ policy_response_payload() ->
                     <<"reason">> => <<"dependency">>,
                     <<"depends_on">> => [<<"channel">>]
                 }
+            }
+        },
+        <<"origins">> => #{
+            <<"profile">> => <<"override">>,
+            <<"capabilities">> => #{
+                <<"storage_mode">> => <<"override">>,
+                <<"message_search">> => <<"override">>,
+                <<"message_export">> => <<"override">>,
+                <<"audit_mode">> => <<"override">>
+            },
+            <<"features">> => #{
+                <<"channel">> => <<"plugin_override">>,
+                <<"channel_discover">> => <<"plugin_override">>,
+                <<"channel_invitation">> => <<"plugin_override">>,
+                <<"channel_order">> => <<"plugin_override">>,
+                <<"group_vote">> => <<"plugin_override">>,
+                <<"group_schedule">> => <<"plugin_override">>,
+                <<"group_task">> => <<"plugin_override">>,
+                <<"moment">> => <<"plugin_override">>
+            },
+            <<"plugins">> => #{
+                <<"channel">> => <<"override">>,
+                <<"group_collab">> => <<"override">>,
+                <<"moment">> => <<"override">>
             }
         }
     }.

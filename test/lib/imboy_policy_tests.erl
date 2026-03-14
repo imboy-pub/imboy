@@ -247,6 +247,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
         ?assert(maps:is_key(<<"saved">>, View)),
         ?assert(maps:is_key(<<"effective">>, View)),
         ?assert(maps:is_key(<<"adjustments">>, View)),
+        ?assert(maps:is_key(<<"origins">>, View)),
         ?assertEqual(
             [<<"community">>, <<"enterprise">>],
             maps:get(<<"supported">>, maps:get(<<"profiles">>, maps:get(<<"meta">>, View)))
@@ -292,6 +293,33 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
                 }
             },
             maps:get(<<"features">>, maps:get(<<"adjustments">>, View))
+        ),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"profile">>, maps:get(<<"origins">>, View))
+        ),
+        ?assertEqual(
+            #{
+                <<"storage_mode">> => <<"override">>,
+                <<"e2ee_mode">> => <<"default">>,
+                <<"message_search">> => <<"override">>,
+                <<"message_export">> => <<"override">>,
+                <<"audit_mode">> => <<"override">>,
+                <<"retention_policy">> => <<"default">>
+            },
+            maps:get(<<"capabilities">>, maps:get(<<"origins">>, View))
+        ),
+        ?assertEqual(
+            <<"feature_override">>,
+            maps:get(<<"channel">>, maps:get(<<"features">>, maps:get(<<"origins">>, View)))
+        ),
+        ?assertEqual(
+            <<"feature_override">>,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, maps:get(<<"origins">>, View)))
+        ),
+        ?assertEqual(
+            <<"feature_overrides">>,
+            maps:get(<<"channel">>, maps:get(<<"plugins">>, maps:get(<<"origins">>, View)))
         )
     end).
 
@@ -419,16 +447,16 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assertEqual(true, maps:get(<<"null_clears_overrides">>, WriteContract)),
         ?assertEqual(true, maps:get(<<"preview_available">>, WriteContract)),
         ?assertEqual(
-            [<<"saved">>, <<"effective">>, <<"adjustments">>],
+            [<<"saved">>, <<"effective">>, <<"adjustments">>, <<"origins">>],
             maps:get(<<"preview_returns">>, WriteContract)
         ),
         ?assertEqual(true, maps:get(<<"bootstrap_available">>, WriteContract)),
         ?assertEqual(
-            [<<"meta">>, <<"saved">>, <<"effective">>, <<"adjustments">>],
+            [<<"meta">>, <<"saved">>, <<"effective">>, <<"adjustments">>, <<"origins">>],
             maps:get(<<"bootstrap_returns">>, WriteContract)
         ),
         ?assertEqual(
-            [<<"effective">>, <<"saved">>, <<"adjustments">>],
+            [<<"effective">>, <<"saved">>, <<"adjustments">>, <<"origins">>],
             maps:get(<<"save_returns">>, WriteContract)
         ),
         ?assertEqual(true, maps:get(<<"validation_error_details">>, WriteContract)),
@@ -563,6 +591,7 @@ preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
         Saved = maps:get(<<"saved">>, Preview),
         Effective = maps:get(<<"effective">>, Preview),
         Adjustments = maps:get(<<"adjustments">>, Preview),
+        Origins = maps:get(<<"origins">>, Preview),
         SavedFeatures = maps:get(<<"features">>, Saved),
         SavedPlugins = maps:get(<<"plugins">>, Saved),
 
@@ -576,7 +605,28 @@ preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
         ?assertEqual(true, maps:get(<<"channel_invitation">>, SavedFeatures)),
         ?assertEqual(true, maps:get(<<"channel">>, maps:get(<<"features">>, Effective))),
         ?assertEqual(false, maps:get(<<"channel_order">>, maps:get(<<"features">>, Effective))),
-        ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, Effective))))
+        ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, Effective)))),
+        ?assertEqual(<<"default">>, maps:get(<<"profile">>, Origins)),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"message_search">>, maps:get(<<"capabilities">>, Origins))
+        ),
+        ?assertEqual(
+            <<"feature_override">>,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"plugin_override">>,
+            maps:get(<<"moment">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"moment">>, maps:get(<<"plugins">>, Origins))
+        ),
+        ?assertEqual(
+            <<"feature_overrides">>,
+            maps:get(<<"channel">>, maps:get(<<"plugins">>, Origins))
+        )
     end).
 
 preview_config_reports_constraint_and_dependency_adjustments_test_() ->
@@ -606,6 +656,7 @@ preview_config_reports_constraint_and_dependency_adjustments_test_() ->
             }
         }),
         Adjustments = maps:get(<<"adjustments">>, Preview),
+        Origins = maps:get(<<"origins">>, Preview),
         CapabilityAdjustments = maps:get(<<"capabilities">>, Adjustments),
         FeatureAdjustments = maps:get(<<"features">>, Adjustments),
 
@@ -652,6 +703,19 @@ preview_config_reports_constraint_and_dependency_adjustments_test_() ->
         ?assertEqual(
             false,
             maps:get(<<"channel_order">>, maps:get(<<"features">>, maps:get(<<"effective">>, Preview)))
+        ),
+        ?assertEqual(<<"default">>, maps:get(<<"profile">>, Origins)),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"storage_mode">>, maps:get(<<"capabilities">>, Origins))
+        ),
+        ?assertEqual(
+            <<"feature_override">>,
+            maps:get(<<"channel">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"feature_overrides">>,
+            maps:get(<<"channel">>, maps:get(<<"plugins">>, Origins))
         )
     end).
 
@@ -735,6 +799,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
         }),
         SavedView = maps:get(<<"saved">>, PolicyView),
         Adjustments = maps:get(<<"adjustments">>, PolicyView),
+        Origins = maps:get(<<"origins">>, PolicyView),
         ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
         ?assertEqual(<<"metadata">>, maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, PolicyView))),
@@ -756,6 +821,23 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             SavedView
         ),
         ?assertEqual(#{}, Adjustments),
+        ?assertEqual(<<"override">>, maps:get(<<"profile">>, Origins)),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"message_export">>, maps:get(<<"capabilities">>, Origins))
+        ),
+        ?assertEqual(
+            <<"plugin_override">>,
+            maps:get(<<"channel">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"plugin_override">>,
+            maps:get(<<"group_vote">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"override">>,
+            maps:get(<<"moment">>, maps:get(<<"plugins">>, Origins))
+        ),
         ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))),
         ?assertEqual(
             false,
@@ -817,6 +899,7 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
         }),
         SavedView = maps:get(<<"saved">>, PolicyView),
         Adjustments = maps:get(<<"adjustments">>, PolicyView),
+        Origins = maps:get(<<"origins">>, PolicyView),
         AfterSaveView = imboy_policy:effective_view(),
         ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(
@@ -841,6 +924,14 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
         ?assertEqual(
             true,
             maps:get(<<"channel">>, maps:get(<<"features">>, AfterSaveView))
+        ),
+        ?assertEqual(
+            <<"feature_override">>,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, Origins))
+        ),
+        ?assertEqual(
+            <<"feature_overrides">>,
+            maps:get(<<"channel">>, maps:get(<<"plugins">>, Origins))
         )
     end).
 
@@ -965,6 +1056,7 @@ save_config_allows_clearing_profile_override_with_null_test_() ->
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
         ?assertEqual(#{}, maps:get(<<"saved">>, PolicyView)),
         ?assertEqual(#{}, maps:get(<<"adjustments">>, PolicyView)),
+        ?assertEqual(<<"default">>, maps:get(<<"profile">>, maps:get(<<"origins">>, PolicyView))),
         ?assertEqual(false, maps:is_key(<<"profile">>, imboy_policy:saved_view()))
     end).
 

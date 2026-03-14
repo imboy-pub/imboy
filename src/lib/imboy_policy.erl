@@ -59,7 +59,8 @@ admin_config_view() ->
         <<"meta">> => meta_view(),
         <<"saved">> => Saved,
         <<"effective">> => Effective,
-        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective),
+        <<"origins">> => origins_view(Saved)
     }.
 
 -spec meta_view() -> map().
@@ -78,10 +79,10 @@ meta_view() ->
             feature_overrides_take_precedence => true,
             null_clears_overrides => true,
             preview_available => true,
-            preview_returns => [saved, effective, adjustments],
+            preview_returns => [saved, effective, adjustments, origins],
             bootstrap_available => true,
-            bootstrap_returns => [meta, saved, effective, adjustments],
-            save_returns => [effective, saved, adjustments],
+            bootstrap_returns => [meta, saved, effective, adjustments, origins],
+            save_returns => [effective, saved, adjustments, origins],
             validation_error_details => true,
             validation_error_fields => [section, field, reason],
             editable_sections => [profile, capabilities, plugins, features]
@@ -142,7 +143,8 @@ save_result_view() ->
     Saved = saved_view(),
     Effective#{
         <<"saved">> => Saved,
-        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective),
+        <<"origins">> => origins_view(Saved)
     }.
 
 -spec preview_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
@@ -218,7 +220,8 @@ preview_view(SaveSections) ->
     #{
         <<"saved">> => Saved,
         <<"effective">> => Effective,
-        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective),
+        <<"origins">> => origins_view(Saved)
     }.
 
 -spec preview_saved_view(map()) -> map().
@@ -277,6 +280,82 @@ preview_adjustments_view(Saved, Effective) ->
                 maps:get(<<"features">>, Effective, #{}))
         )
     ).
+
+-spec origins_view(map()) -> map().
+origins_view(Saved) ->
+    % Origins describe the canonical saved snapshot after plugin compaction.
+    SavedCapabilities = maps:get(<<"capabilities">>, Saved, #{}),
+    SavedFeatures = maps:get(<<"features">>, Saved, #{}),
+    SavedPlugins = maps:get(<<"plugins">>, Saved, #{}),
+    #{
+        <<"profile">> => origin_from_presence(maps:is_key(<<"profile">>, Saved), override, default),
+        <<"capabilities">> => capability_origins(SavedCapabilities),
+        <<"features">> => feature_origins(SavedFeatures, SavedPlugins),
+        <<"plugins">> => plugin_origins(SavedFeatures, SavedPlugins)
+    }.
+
+-spec origin_from_presence(boolean(), atom(), atom()) -> binary().
+origin_from_presence(true, PresentOrigin, _MissingOrigin) ->
+    atom_to_binary(PresentOrigin, utf8);
+origin_from_presence(false, _PresentOrigin, MissingOrigin) ->
+    atom_to_binary(MissingOrigin, utf8).
+
+-spec capability_origins(map()) -> map().
+capability_origins(SavedCapabilities) ->
+    maps:from_list([
+        {public_key(Key), origin_from_presence(maps:is_key(public_key(Key), SavedCapabilities), override, default)}
+        || Key <- capability_names()
+    ]).
+
+-spec feature_origins(map(), map()) -> map().
+feature_origins(SavedFeatures, SavedPlugins) ->
+    maps:from_list([
+        {public_key(Key), feature_origin(Key, SavedFeatures, SavedPlugins)}
+        || Key <- feature_names()
+    ]).
+
+-spec feature_origin(atom(), map(), map()) -> binary().
+feature_origin(FeatureName, SavedFeatures, SavedPlugins) ->
+    FeatureKey = public_key(FeatureName),
+    case maps:is_key(FeatureKey, SavedFeatures) of
+        true ->
+            <<"feature_override">>;
+        false ->
+            case feature_plugin_owner(FeatureName) of
+                undefined ->
+                    <<"default">>;
+                PluginName ->
+                    case maps:is_key(public_key(PluginName), SavedPlugins) of
+                        true ->
+                            <<"plugin_override">>;
+                        false ->
+                            <<"default">>
+                    end
+            end
+    end.
+
+-spec plugin_origins(map(), map()) -> map().
+plugin_origins(SavedFeatures, SavedPlugins) ->
+    maps:from_list([
+        {public_key(PluginName), plugin_origin(PluginName, SavedFeatures, SavedPlugins)}
+        || PluginName <- imboy_plugin_registry:plugin_names()
+    ]).
+
+-spec plugin_origin(atom(), map(), map()) -> binary().
+plugin_origin(PluginName, SavedFeatures, SavedPlugins) ->
+    PluginKey = public_key(PluginName),
+    case maps:is_key(PluginKey, SavedPlugins) of
+        true ->
+            <<"override">>;
+        false ->
+            FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+            case lists:any(fun(FeatureKey) -> maps:is_key(public_key(FeatureKey), SavedFeatures) end, FeatureKeys) of
+                true ->
+                    <<"feature_overrides">>;
+                false ->
+                    <<"default">>
+            end
+    end.
 
 -spec capability_adjustments(map(), map()) -> map().
 capability_adjustments(SavedCapabilities, EffectiveCapabilities) ->
