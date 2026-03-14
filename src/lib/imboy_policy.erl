@@ -70,6 +70,7 @@ meta_view() ->
             supported => imboy_profile_preset:supported_profiles(),
             defaults => profile_defaults_catalog()
         },
+        origins => origin_meta_catalog(),
         capabilities => capability_meta_catalog(),
         features => feature_meta_catalog(),
         plugins => plugin_meta_catalog(),
@@ -766,6 +767,19 @@ profile_defaults_catalog() ->
         {Profile, imboy_profile_preset:defaults(Profile)}
         || Profile <- imboy_profile_preset:supported_profiles()
     ]).
+
+-spec origin_meta_catalog() -> map().
+origin_meta_catalog() ->
+    #{
+        semantics => canonical_saved_snapshot,
+        description => <<"origins describe the canonical saved snapshot after plugin compaction">>,
+        sections => #{
+            profile => [default, override],
+            capabilities => [default, override],
+            features => [default, feature_override, plugin_override],
+            plugins => [default, override, feature_overrides]
+        }
+    }.
 
 -spec capability_meta_catalog() -> map().
 capability_meta_catalog() ->

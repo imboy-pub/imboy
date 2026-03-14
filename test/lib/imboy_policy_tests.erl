@@ -332,6 +332,8 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         EnterpriseDefaults = maps:get(<<"enterprise">>, ProfileDefaults),
         Capabilities = maps:get(<<"capabilities">>, Meta),
         Features = maps:get(<<"features">>, Meta),
+        Origins = maps:get(<<"origins">>, Meta),
+        OriginSections = maps:get(<<"sections">>, Origins),
         CapabilityConstraints = maps:get(<<"constraints">>, Capabilities),
         FeatureDependencies = maps:get(<<"dependencies">>, Features),
         FeatureCatalog = maps:get(<<"catalog">>, Features),
@@ -343,6 +345,24 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         ?assertEqual(
             [<<"community">>, <<"enterprise">>],
             maps:get(<<"supported">>, Profiles)
+        ),
+        ?assertEqual(<<"canonical_saved_snapshot">>, maps:get(<<"semantics">>, Origins)),
+        ?assert(maps:is_key(<<"description">>, Origins)),
+        ?assertEqual(
+            [<<"default">>, <<"override">>],
+            maps:get(<<"profile">>, OriginSections)
+        ),
+        ?assertEqual(
+            [<<"default">>, <<"override">>],
+            maps:get(<<"capabilities">>, OriginSections)
+        ),
+        ?assertEqual(
+            [<<"default">>, <<"feature_override">>, <<"plugin_override">>],
+            maps:get(<<"features">>, OriginSections)
+        ),
+        ?assertEqual(
+            [<<"default">>, <<"override">>, <<"feature_overrides">>],
+            maps:get(<<"plugins">>, OriginSections)
         ),
         ?assertEqual(
             [<<"archived">>, <<"secure_e2ee">>],

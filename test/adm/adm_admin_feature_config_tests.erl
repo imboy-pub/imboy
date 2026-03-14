@@ -112,6 +112,12 @@ init_config_policy_bootstrap_success_test_() ->
 init_config_policy_meta_success_test_() ->
     MetaPayload = #{
         <<"profiles">> => #{<<"supported">> => [<<"community">>, <<"enterprise">>]},
+        <<"origins">> => #{
+            <<"semantics">> => <<"canonical_saved_snapshot">>,
+            <<"sections">> => #{
+                <<"profile">> => [<<"default">>, <<"override">>]
+            }
+        },
         <<"capabilities">> => #{
             <<"storage_mode">> => #{
                 <<"type">> => <<"enum">>,
