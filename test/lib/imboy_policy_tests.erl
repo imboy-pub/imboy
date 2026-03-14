@@ -331,7 +331,10 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             [<<"meta">>, <<"saved">>, <<"effective">>],
             maps:get(<<"bootstrap_returns">>, WriteContract)
         ),
-        ?assertEqual([<<"effective">>, <<"saved">>], maps:get(<<"save_returns">>, WriteContract)),
+        ?assertEqual(
+            [<<"effective">>, <<"saved">>, <<"adjustments">>],
+            maps:get(<<"save_returns">>, WriteContract)
+        ),
         ?assertEqual(
             [<<"profile">>, <<"capabilities">>, <<"plugins">>, <<"features">>],
             maps:get(<<"editable_sections">>, WriteContract)
@@ -630,6 +633,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             }
         }),
         SavedView = maps:get(<<"saved">>, PolicyView),
+        Adjustments = maps:get(<<"adjustments">>, PolicyView),
         ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
         ?assertEqual(<<"metadata">>, maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, PolicyView))),
@@ -650,6 +654,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             },
             SavedView
         ),
+        ?assertEqual(#{}, Adjustments),
         ?assertEqual(true, maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))),
         ?assertEqual(
             false,
@@ -704,6 +709,7 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
             }
         }),
         SavedView = maps:get(<<"saved">>, PolicyView),
+        Adjustments = maps:get(<<"adjustments">>, PolicyView),
         AfterSaveView = imboy_policy:effective_view(),
         ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
         ?assertEqual(
@@ -716,6 +722,10 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
                 }
             },
             SavedView
+        ),
+        ?assertEqual(
+            #{},
+            Adjustments
         ),
         ?assertEqual(
             false,
@@ -847,7 +857,114 @@ save_config_allows_clearing_profile_override_with_null_test_() ->
         ?assertEqual(null, persistent_term:get({policy_config, <<"product_profile">>})),
         ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
         ?assertEqual(#{}, maps:get(<<"saved">>, PolicyView)),
+        ?assertEqual(#{}, maps:get(<<"adjustments">>, PolicyView)),
         ?assertEqual(false, maps:is_key(<<"profile">>, imboy_policy:saved_view()))
+    end).
+
+save_config_returns_capability_adjustments_when_constraints_apply_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:erase({policy_config, <<"product_profile">>}),
+        persistent_term:erase({policy_config, <<"capabilities">>}),
+        persistent_term:erase({policy_config, <<"features">>}),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"capabilities">> => #{
+                <<"storage_mode">> => <<"secure_e2ee">>,
+                <<"message_search">> => true,
+                <<"message_export">> => true,
+                <<"audit_mode">> => <<"full">>
+            }
+        }),
+        ?assertEqual(
+            #{
+                <<"capabilities">> => #{
+                    <<"message_search">> => #{
+                        <<"saved">> => true,
+                        <<"effective">> => false,
+                        <<"reason">> => <<"constraint">>,
+                        <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                    },
+                    <<"message_export">> => #{
+                        <<"saved">> => true,
+                        <<"effective">> => false,
+                        <<"reason">> => <<"constraint">>,
+                        <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                    },
+                    <<"audit_mode">> => #{
+                        <<"saved">> => <<"full">>,
+                        <<"effective">> => <<"metadata">>,
+                        <<"reason">> => <<"constraint">>,
+                        <<"caused_by">> => #{<<"storage_mode">> => <<"secure_e2ee">>}
+                    }
+                }
+            },
+            maps:get(<<"adjustments">>, PolicyView)
+        )
+    end).
+
+save_config_returns_feature_dependency_adjustments_when_saved_override_is_incompatible_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:erase({policy_config, <<"product_profile">>}),
+        persistent_term:erase({policy_config, <<"capabilities">>}),
+        persistent_term:erase({policy_config, <<"features">>}),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"features">> => #{
+                <<"channel">> => false,
+                <<"channel_order">> => true
+            }
+        }),
+        ?assertEqual(
+            #{
+                <<"features">> => #{
+                    <<"channel_order">> => #{
+                        <<"saved">> => true,
+                        <<"effective">> => false,
+                        <<"reason">> => <<"dependency">>,
+                        <<"depends_on">> => [<<"channel">>]
+                    }
+                }
+            },
+            maps:get(<<"adjustments">>, PolicyView)
+        )
     end).
 
 save_config_allows_clearing_capability_override_with_null_test_() ->

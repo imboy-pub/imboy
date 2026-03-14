@@ -77,7 +77,7 @@ meta_view() ->
             preview_returns => [saved, effective, adjustments],
             bootstrap_available => true,
             bootstrap_returns => [meta, saved, effective],
-            save_returns => [effective, saved],
+            save_returns => [effective, saved, adjustments],
             editable_sections => [profile, capabilities, plugins, features]
         }
     }).
@@ -132,7 +132,11 @@ save_config(_) ->
 -spec save_result_view() -> map().
 save_result_view() ->
     Effective = effective_view(),
-    Effective#{<<"saved">> => saved_view()}.
+    Saved = saved_view(),
+    Effective#{
+        <<"saved">> => Saved,
+        <<"adjustments">> => preview_adjustments_view(Saved, Effective)
+    }.
 
 -spec preview_config(map()) -> {ok, map()} | {error, binary()}.
 preview_config(Payload) when is_map(Payload) ->

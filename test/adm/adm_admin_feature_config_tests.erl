@@ -651,5 +651,15 @@ policy_response_payload() ->
                 <<"group_collab">> => false,
                 <<"moment">> => false
             }
+        },
+        <<"adjustments">> => #{
+            <<"features">> => #{
+                <<"channel_order">> => #{
+                    <<"saved">> => true,
+                    <<"effective">> => false,
+                    <<"reason">> => <<"dependency">>,
+                    <<"depends_on">> => [<<"channel">>]
+                }
+            }
         }
     }.
