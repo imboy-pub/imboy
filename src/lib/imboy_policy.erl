@@ -4,6 +4,7 @@
     current_profile/0,
     effective/0,
     effective_view/0,
+    meta_view/0,
     saved_view/0,
     effective_capabilities/0,
     effective_features/0,
@@ -60,6 +61,22 @@ saved_view() ->
     Sections1 = maybe_put_saved_section(Sections0, capabilities, saved_capability_overrides()),
     Sections2 = maybe_put_saved_section(Sections1, plugins, SavedPlugins),
     public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
+
+-spec meta_view() -> map().
+meta_view() ->
+    PluginCatalog = maps:map(
+        fun(_Name, Manifest) ->
+            public_plugin_manifest(Manifest)
+        end,
+        imboy_plugin_registry:all()
+    ),
+    public_term(#{
+        profiles => imboy_profile_preset:supported_profiles(),
+        profile_defaults => profile_defaults_catalog(),
+        capability_options => capability_option_catalog(),
+        feature_keys => feature_names(),
+        plugins => PluginCatalog
+    }).
 
 -spec effective_capabilities() -> map().
 effective_capabilities() ->
@@ -370,6 +387,22 @@ maybe_put_saved_section(Sections, _Key, Value) when is_map(Value), map_size(Valu
     Sections;
 maybe_put_saved_section(Sections, Key, Value) ->
     Sections#{Key => Value}.
+
+-spec profile_defaults_catalog() -> map().
+profile_defaults_catalog() ->
+    maps:from_list([
+        {Profile, imboy_profile_preset:defaults(Profile)}
+        || Profile <- imboy_profile_preset:supported_profiles()
+    ]).
+
+-spec capability_option_catalog() -> map().
+capability_option_catalog() ->
+    #{
+        storage_mode => [archived, secure_e2ee],
+        e2ee_mode => [disabled, optional, required],
+        audit_mode => [none, metadata, full],
+        retention_policy_mode => [forever, rolling_days]
+    }.
 
 -spec capability_names() -> [atom()].
 capability_names() ->

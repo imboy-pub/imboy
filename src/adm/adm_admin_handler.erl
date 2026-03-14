@@ -21,6 +21,8 @@ init(Req0, State0) ->
                 assign_role_action(Method, Req0, State);
             config_features ->
                 config_features_action(Method, Req0, State);
+            config_policy_meta ->
+                config_policy_meta_action(Method, Req0, State);
             config_policy_saved ->
                 config_policy_saved_action(Method, Req0, State);
             config_policy ->
@@ -39,6 +41,17 @@ config_features_action(<<"GET">>, Req0, State) ->
             Req1
     end;
 config_features_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec config_policy_meta_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+config_policy_meta_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            elib_response:success(Req0, imboy_policy:meta_view());
+        {error, Req1} ->
+            Req1
+    end;
+config_policy_meta_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec config_policy_saved_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

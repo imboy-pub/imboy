@@ -216,6 +216,48 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
         ?assertEqual(false, maps:is_key(<<"admin_target_feature_rules">>, ChannelPlugin))
     end).
 
+meta_view_returns_profiles_defaults_and_edit_options_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Meta = imboy_policy:meta_view(),
+        CapabilityOptions = maps:get(<<"capability_options">>, Meta),
+        ProfileDefaults = maps:get(<<"profile_defaults">>, Meta),
+        CommunityDefaults = maps:get(<<"community">>, ProfileDefaults),
+        EnterpriseDefaults = maps:get(<<"enterprise">>, ProfileDefaults),
+        Plugins = maps:get(<<"plugins">>, Meta),
+        ChannelPlugin = maps:get(<<"channel">>, Plugins),
+
+        ?assertEqual([<<"community">>, <<"enterprise">>], maps:get(<<"profiles">>, Meta)),
+        ?assertEqual(
+            [<<"archived">>, <<"secure_e2ee">>],
+            maps:get(<<"storage_mode">>, CapabilityOptions)
+        ),
+        ?assertEqual(
+            [<<"disabled">>, <<"optional">>, <<"required">>],
+            maps:get(<<"e2ee_mode">>, CapabilityOptions)
+        ),
+        ?assertEqual(
+            [<<"none">>, <<"metadata">>, <<"full">>],
+            maps:get(<<"audit_mode">>, CapabilityOptions)
+        ),
+        ?assertEqual(
+            [<<"forever">>, <<"rolling_days">>],
+            maps:get(<<"retention_policy_mode">>, CapabilityOptions)
+        ),
+        ?assertEqual(
+            <<"metadata">>,
+            maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, CommunityDefaults))
+        ),
+        ?assertEqual(
+            true,
+            maps:get(<<"channel">>, maps:get(<<"features">>, EnterpriseDefaults))
+        ),
+        ?assertEqual(
+            [<<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>],
+            maps:get(<<"feature_keys">>, ChannelPlugin)
+        ),
+        ?assertEqual(false, maps:is_key(<<"enabled">>, ChannelPlugin))
+    end).
+
 saved_view_returns_saved_overrides_and_compacts_complete_plugin_blocks_test_() ->
     ?WITH_MECKS([
         {config_ds, [
