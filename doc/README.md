@@ -13,6 +13,7 @@
 ### 1. 架构与规范
 
 - `architecture/overview.md`
+- `architecture/module_map.md`
 - `architecture/database-access.md`
 - `architecture/module-layer-cheatsheet.md`
 - `architecture/current-module-classification.md`
@@ -72,3 +73,4 @@
 
 - 根说明：`../README.md`
 - 研发上下文：`../CLAUDE.md`
+- 模块地图：`architecture/module_map.md`
