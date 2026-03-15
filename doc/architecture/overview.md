@@ -1,14 +1,14 @@
 # Imboy 架构总览
 
-> Last Updated: 2026-03-09  
+> Last Updated: 2026-03-15  
 > Status: 长期架构文档  
 > Scope: 当前仓库的分层职责、调用链路与设计边界  
 > Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
 > Related docs: `doc/architecture/database-access.md`, `doc/standards/api-format.md`, `doc/README.md`
 
-## 相关 ADR
+## 相关 ADR / Related Decisions
 
-- `doc/architecture/adr/2026-03-15-modular-monolith-boundaries.md`
+- [`2026-03-15-modular-monolith-boundaries.md`](adr/2026-03-15-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
 ## 1. 文档目的
 
