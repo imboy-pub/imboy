@@ -1,9 +1,76 @@
 -module(imboy_plugin_registry).
 
--export([all/0, get/1, plugin_names/0, required_feature/3, required_feature_for_target/3]).
+-export([
+    all/0,
+    get/1,
+    plugin_names/0,
+    manifest/1,
+    manifests/0,
+    enabled_app_entries/1,
+    enabled_admin_entries/1,
+    required_feature/3,
+    required_feature_for_target/3
+]).
 
 -spec all() -> map().
 all() ->
+    manifests().
+
+-spec get(atom()) -> map().
+get(Name) ->
+    manifest(Name).
+
+-spec manifest(atom()) -> map().
+manifest(Name) ->
+    maps:get(Name, manifests(), #{}).
+
+-spec manifests() -> map().
+manifests() ->
+    maps:map(
+        fun(_PluginName, RawManifest) ->
+            normalize_manifest(RawManifest)
+        end,
+        raw_manifests()
+    ).
+
+-spec plugin_names() -> [atom()].
+plugin_names() ->
+    [channel, moment, location, group_collab].
+
+-spec enabled_app_entries(map()) -> [atom()].
+enabled_app_entries(EnabledFeatures) ->
+    enabled_entries(app_entries, EnabledFeatures).
+
+-spec enabled_admin_entries(map()) -> [atom()].
+enabled_admin_entries(EnabledFeatures) ->
+    enabled_entries(admin_entries, EnabledFeatures).
+
+-spec required_feature(api | admin, atom(), atom() | false) -> atom() | undefined.
+required_feature(_Surface, _Handler, false) ->
+    undefined;
+required_feature(Surface, Handler, Action) ->
+    RulesKey = surface_rules_key(Surface),
+    case merged_handler_rules(maps:values(manifests()), RulesKey, Handler) of
+        Rules when is_map(Rules) ->
+            maps:get(Action, Rules, maps:get(default, Rules, undefined));
+        undefined ->
+            undefined
+    end.
+
+-spec required_feature_for_target(api | admin, atom(), binary()) -> atom() | undefined.
+required_feature_for_target(_Surface, _Handler, <<>>) ->
+    undefined;
+required_feature_for_target(Surface, Handler, TargetType) when is_binary(TargetType) ->
+    RulesKey = surface_target_rules_key(Surface),
+    case merged_handler_rules(maps:values(manifests()), RulesKey, Handler) of
+        Rules when is_map(Rules) ->
+            maps:get(TargetType, Rules, undefined);
+        undefined ->
+            undefined
+    end.
+
+-spec raw_manifests() -> map().
+raw_manifests() ->
     #{
         channel => #{
             kind => plugin,
@@ -134,36 +201,57 @@ all() ->
         }
     }.
 
--spec get(atom()) -> map().
-get(Name) ->
-    maps:get(Name, all(), #{}).
+-spec normalize_manifest(map()) -> map().
+normalize_manifest(RawManifest) ->
+    Defaults = #{
+        kind => plugin,
+        feature_keys => [],
+        requires_capabilities => [],
+        depends_on_plugins => [],
+        api_feature_rules => #{},
+        admin_feature_rules => #{},
+        api_target_feature_rules => #{},
+        admin_target_feature_rules => #{},
+        app_entries => [],
+        admin_entries => [],
+        api_handlers => []
+    },
+    maps:merge(Defaults, RawManifest).
 
--spec plugin_names() -> [atom()].
-plugin_names() ->
-    [channel, moment, location, group_collab].
+-spec enabled_entries(app_entries | admin_entries, map()) -> [atom()].
+enabled_entries(EntryKey, EnabledFeatures) ->
+    lists:usort(
+        lists:flatten(
+            [
+                maps:get(EntryKey, PluginManifest, [])
+             || PluginName <- plugin_names(),
+                PluginManifest <- [manifest(PluginName)],
+                manifest_enabled(PluginManifest, EnabledFeatures)
+            ]
+        )
+    ).
 
--spec required_feature(api | admin, atom(), atom() | false) -> atom() | undefined.
-required_feature(_Surface, _Handler, false) ->
-    undefined;
-required_feature(Surface, Handler, Action) ->
-    RulesKey = surface_rules_key(Surface),
-    case merged_handler_rules(maps:values(all()), RulesKey, Handler) of
-        Rules when is_map(Rules) ->
-            maps:get(Action, Rules, maps:get(default, Rules, undefined));
-        undefined ->
-            undefined
-    end.
+-spec manifest_enabled(map(), map()) -> boolean().
+manifest_enabled(PluginManifest, EnabledFeatures) ->
+    FeatureKeys = maps:get(feature_keys, PluginManifest, []),
+    lists:any(
+        fun(FeatureKey) ->
+            feature_enabled(FeatureKey, EnabledFeatures)
+        end,
+        FeatureKeys
+    ).
 
--spec required_feature_for_target(api | admin, atom(), binary()) -> atom() | undefined.
-required_feature_for_target(_Surface, _Handler, <<>>) ->
-    undefined;
-required_feature_for_target(Surface, Handler, TargetType) when is_binary(TargetType) ->
-    RulesKey = surface_target_rules_key(Surface),
-    case merged_handler_rules(maps:values(all()), RulesKey, Handler) of
-        Rules when is_map(Rules) ->
-            maps:get(TargetType, Rules, undefined);
-        undefined ->
-            undefined
+-spec feature_enabled(atom(), map()) -> boolean().
+feature_enabled(FeatureKey, EnabledFeatures) ->
+    case maps:find(FeatureKey, EnabledFeatures) of
+        {ok, true} ->
+            true;
+        {ok, #{enabled := true}} ->
+            true;
+        {ok, #{<<"enabled">> := true}} ->
+            true;
+        _ ->
+            false
     end.
 
 -spec surface_rules_key(api | admin) -> api_feature_rules | admin_feature_rules.
@@ -185,8 +273,8 @@ surface_target_rules_key(admin) ->
 ) -> map() | undefined.
 merged_handler_rules(Manifests, RulesKey, Handler) ->
     Rules = lists:foldl(
-        fun(Manifest, Acc) ->
-            RulesByHandler = maps:get(RulesKey, Manifest, #{}),
+        fun(PluginManifest, Acc) ->
+            RulesByHandler = maps:get(RulesKey, PluginManifest, #{}),
             case maps:find(Handler, RulesByHandler) of
                 {ok, HandlerRules} when is_map(HandlerRules) ->
                     maps:merge(Acc, HandlerRules);

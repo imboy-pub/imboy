@@ -3,9 +3,33 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+all_manifests_expose_stable_contract_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ManifestMap = imboy_plugin_registry:manifests(),
+
+        ?assert(is_map(ManifestMap)),
+        ?assert(map_size(ManifestMap) > 0),
+        lists:foreach(
+            fun({PluginName, Manifest}) ->
+                ?assertEqual(Manifest, imboy_plugin_registry:manifest(PluginName)),
+                ?assert(maps:is_key(kind, Manifest)),
+                ?assert(maps:is_key(feature_keys, Manifest)),
+                ?assert(maps:is_key(api_feature_rules, Manifest)),
+                ?assert(maps:is_key(admin_feature_rules, Manifest)),
+                case maps:get(kind, Manifest) of
+                    aggregate_plugin ->
+                        ?assert(maps:is_key(children, Manifest));
+                    _ ->
+                        ok
+                end
+            end,
+            maps:to_list(ManifestMap)
+        )
+    end).
+
 channel_manifest_exists_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Manifest = imboy_plugin_registry:get(channel),
+        Manifest = imboy_plugin_registry:manifest(channel),
 
         ?assertEqual(plugin, maps:get(kind, Manifest)),
         ?assertEqual(
@@ -16,7 +40,7 @@ channel_manifest_exists_test_() ->
 
 group_collab_manifest_is_aggregate_plugin_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Manifest = imboy_plugin_registry:get(group_collab),
+        Manifest = imboy_plugin_registry:manifest(group_collab),
 
         ?assertEqual(aggregate_plugin, maps:get(kind, Manifest)),
         ?assertEqual([vote, schedule, task], maps:get(children, Manifest)),
