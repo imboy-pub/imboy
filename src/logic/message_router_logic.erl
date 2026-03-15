@@ -35,15 +35,19 @@
 route(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
     %% v2.0: action 在顶层
     Action = maps:get(<<"action">>, Data, <<>>),
+    TypeLower = cowboy_bstr:to_lower(Type),
 
-    case Action of
-        <<>> ->
-            %% 普通消息（无 action）
+    case {TypeLower, Action} of
+        {<<"s2c">>, _} ->
+            %% S2C 由 msg_s2c_logic 基于 action 自己分发
             route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg);
-        _ ->
+        {_, ActionBin} when is_binary(ActionBin), ActionBin =/= <<>> ->
             %% action 消息（撤销、编辑等）
-            ActionLower = string:lowercase(Action),
-            route_action_message(ActionLower, MsgId, CurrentUid, Data, Type)
+            ActionLower = cowboy_bstr:to_lower(ActionBin),
+            route_action_message(ActionLower, MsgId, CurrentUid, Data, Type);
+        _ ->
+            %% 普通消息（无 action）
+            route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg)
     end.
 
 
@@ -82,7 +86,7 @@ route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
             webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, OriginalMsg);
         _ ->
             %% 未知消息类型
-            ok = ?WARN_LOG({unknown_message_type, Type, MsgId, CurrentUid}),
+            _ = ?WARN_LOG({unknown_message_type, Type, MsgId, CurrentUid}),
             ok
     end.
 
@@ -109,7 +113,7 @@ route_action_message(Action, MsgId, CurrentUid, Data, Type) ->
             route_c2g_action(Action, MsgId, CurrentUid, Data);
         _ ->
             %% 不支持的消息类型
-            ok = ?WARN_LOG({unsupported_action_type, TypeLower, Action, MsgId}),
+            _ = ?WARN_LOG({unsupported_action_type, TypeLower, Action, MsgId}),
             {reply, message_ds:assemble_s2c(MsgId, <<"invalid_message_type">>, <<>>)}
     end.
 
@@ -131,7 +135,7 @@ route_c2c_action(<<"message_read">>, MsgId, CurrentUid, Data) ->
 route_c2c_action(<<"message_read_ack">>, MsgId, CurrentUid, Data) ->
     msg_c2c_logic:c2c_read_ack(MsgId, CurrentUid, Data);
 route_c2c_action(Action, MsgId, _CurrentUid, _Data) ->
-    ok = ?WARN_LOG({unknown_c2c_action, Action, MsgId}),
+    _ = ?WARN_LOG({unknown_c2c_action, Action, MsgId}),
     {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.
 
 
@@ -148,5 +152,5 @@ route_c2g_action(<<"message_edit">>, MsgId, CurrentUid, Data) ->
 route_c2g_action(<<"message_edit_ack">>, MsgId, CurrentUid, Data) ->
     msg_c2g_logic:c2g_edit_ack(MsgId, CurrentUid, Data);
 route_c2g_action(Action, MsgId, _CurrentUid, _Data) ->
-    ok = ?WARN_LOG({unknown_c2g_action, Action, MsgId}),
+    _ = ?WARN_LOG({unknown_c2g_action, Action, MsgId}),
     {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.

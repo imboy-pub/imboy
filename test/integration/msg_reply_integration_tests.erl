@@ -25,6 +25,7 @@ msg_reply_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_reply">>),
@@ -34,9 +35,12 @@ setup() ->
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"reply_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
-    #{user1 => User1, user2 => User2, group => Group}.
+    Context = #{user1 => User1, user2 => User2, group => Group},
+    put(test_context, Context),
+    Context.
 
 cleanup(_Context) ->
+    erase(test_context),
     ok.
 
 %% ===================================================================

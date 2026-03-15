@@ -218,6 +218,133 @@ extract_reply_info_with_non_json_payload_falls_back_to_raw_snippet_test_() ->
         ?assertEqual(<<"plain payload text">>, ReplySnippet)
     end).
 
+c2c_plaintext_blocked_when_encryption_required_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"to_user">>) -> 456 end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+        ]},
+        {imboy_policy, [
+            {'validate_message_write', 5, fun(_, _, _, _, _) ->
+                {error, <<"encrypted_message_required">>}
+            end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2c_plaintext_blocked_001">>,
+        Data = #{
+            <<"to">> => <<"to_user">>,
+            <<"payload">> => #{<<"content">> => <<"hello">>},
+            <<"created_at">> => 1708768700000,
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<>>,
+            <<"e2ee">> => null
+        },
+
+        {reply, Reply} = msg_c2c_logic:c2c(MsgId, 123, Data),
+        ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(
+            <<"encrypted_message_required">>,
+            maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
+        ),
+        ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+        ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
+    end).
+
+c2c_e2ee_message_allowed_when_encryption_required_test_() ->
+    ?WITH_MECKS([
+        {elib_hashids, [
+            {'decode', 1, fun(<<"to_user">>) -> 456 end},
+            {'encode', 1, fun(123) -> <<"from_user">> end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+        ]},
+        {imboy_policy, [
+            {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]},
+        {elib_async, [
+            {'async_retry', 3, fun(Fun, 3, 1000) -> Fun(), ok end}
+        ]},
+        {message_ds, [
+            {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2c_e2ee_allowed_001">>,
+        Data = #{
+            <<"to">> => <<"to_user">>,
+            <<"payload">> => <<"nonce.ciphertext">>,
+            <<"created_at">> => 1708768700000,
+            <<"msg_type">> => <<"e2ee">>,
+            <<"action">> => <<>>,
+            <<"e2ee">> => #{<<"e2ee">> => true}
+        },
+
+        ok = msg_c2c_logic:c2c(MsgId, 123, Data),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+        ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
+    end).
+
+c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_hashids, [
+            {'decode', 1, fun(<<"to_user">>) -> 456;
+                             (<<"from_user">>) -> 123
+                         end}
+        ]},
+        {imboy_policy, [
+            {'validate_message_write', 5, fun(_, _, _, _, _) ->
+                {error, <<"encrypted_message_required">>}
+            end}
+        ]},
+        {msg_c2c_ds, [
+            {'edit_offline_msg', 5, fun(_, _, _, _, _) -> ok end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_c2c_edit_plaintext_blocked_001">>,
+        Data = #{
+            <<"to">> => <<"to_user">>,
+            <<"from">> => <<"from_user">>,
+            <<"payload">> => #{
+                <<"original_msg_id">> => <<"orig_c2c_edit_001">>,
+                <<"content">> => <<"new content">>,
+                <<"msg_type">> => <<"text">>
+            },
+            <<"e2ee">> => null
+        },
+
+        {reply, Reply} = msg_c2c_logic:c2c_edit(MsgId, 123, Data),
+        ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Reply)),
+        ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+        ?assertEqual(
+            <<"encrypted_message_required">>,
+            maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
+        ),
+        ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5))
+    end).
+
 c2c_revoke_success_online_sends_revoke_ack_test_() ->
     ?WITH_MECKS([
         {elib_hashids, [

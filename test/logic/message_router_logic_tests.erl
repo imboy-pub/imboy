@@ -89,14 +89,16 @@ route_webrtc_message_success_test_() ->
     end).
 
 route_unknown_message_type_returns_ok_test_() ->
-    MsgId = <<"msg_unknown">>,
-    CurrentUid = 1,
-    Data = #{<<"payload">> => <<"{}">>},
-    Type = <<"UNKNOWN_TYPE">>,
-    OriginalMsg = <<"{}">>,
+    ?TEST_SIMPLE(fun() ->
+        MsgId = <<"msg_unknown">>,
+        CurrentUid = 1,
+        Data = #{<<"payload">> => <<"{}">>},
+        Type = <<"UNKNOWN_TYPE">>,
+        OriginalMsg = <<"{}">>,
 
-    Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-    ?assertEqual(ok, Result).
+        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+        ?assertEqual(ok, Result)
+    end).
 
 %% ===================================================================
 %% route/5 Action 消息测试

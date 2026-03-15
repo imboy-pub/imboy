@@ -25,6 +25,16 @@
 %% Internal Functions
 %% ===================================================================
 
+-spec policy_violation_reply(binary(), binary()) -> {reply, map()}.
+policy_violation_reply(MsgId, Reason) ->
+    {reply, #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"S2C">>,
+        <<"action">> => <<"policy_violation">>,
+        <<"payload">> => #{<<"reason">> => Reason},
+        <<"server_ts">> => elib_dt:millisecond()
+    }}.
+
 %% @private
 %% @doc 解析时间戳或返回默认值
 %% 使用 try-catch 来处理所有可能的返回类型
@@ -50,6 +60,12 @@ ensure_integer(Val) ->
         true -> Val;
         false -> elib_dt:millisecond()
     end.
+
+-spec mentions_from_payload(term()) -> list().
+mentions_from_payload(Payload) when is_map(Payload) ->
+    maps:get(<<"mentions">>, Payload, []);
+mentions_from_payload(_) ->
+    [].
 
 
 %% ===================================================================
@@ -79,7 +95,7 @@ c2g(MsgId, CurrentUid, Data) ->
                 true ->
                     % 解析 mentions 字段
                     Payload = maps:get(<<"payload">>, Data, #{}),
-                    Mentions = maps:get(<<"mentions">>, Payload, []),
+                    Mentions = mentions_from_payload(Payload),
                     HasMentionAll = lists:member(<<"all">>, Mentions),
 
                     % @所有人需要管理员权限
@@ -140,6 +156,25 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
         <<"server_ts">> => NowMS
     },
     Msg2 = jsone:encode(Msg, [native_utf8]),
+
+    case imboy_policy:validate_message_write(<<"C2G">>, MsgType, Action, E2EE, Msg2) of
+        ok ->
+            do_stage_and_send_c2g(
+                MsgId, CurrentUid, Data, Gid, ToGID, MemberUids,
+                MsgType, Action, E2EE, Msg2, NowTs, NowMS, CreatedAtRfc
+            );
+        {error, Reason} ->
+            policy_violation_reply(MsgId, Reason)
+    end.
+
+-spec do_stage_and_send_c2g(
+    binary(), integer(), map(), binary(), integer(), [integer()],
+    binary(), binary(), term(), binary(), term(), integer(), binary()
+) -> ok | {reply, map()}.
+do_stage_and_send_c2g(
+    MsgId, CurrentUid, Data, Gid, ToGID, MemberUids,
+    MsgType, Action, E2EE, Msg2, NowTs, NowMS, CreatedAtRfc
+) ->
 
     % 提取引用回复信息
     {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
@@ -217,7 +252,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
 
             % ④ 创建@提及记录（如果有）
             Payload = maps:get(<<"payload">>, Data, #{}),
-            Mentions = maps:get(<<"mentions">>, Payload, []),
+            Mentions = mentions_from_payload(Payload),
             case Mentions of
                 [] -> ok;
                 _ -> mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
@@ -334,8 +369,8 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                             CreatedAt = maps:get(<<"created_at">>, MsgData),
                             NowMS = elib_dt:millisecond(),
 
-                            % 检查是否超过撤回时间限制（2分钟）
-                            case NowMS - CreatedAt > ?REVOKE_TIMEOUT_MS of
+                            % 编辑沿用权限校验，但不受撤回时限约束
+                            case ActionType =:= revoke andalso NowMS - CreatedAt > ?REVOKE_TIMEOUT_MS of
                                 true ->
                                     % 超过撤回时间限制
                                     ErrorMsg = #{
@@ -357,40 +392,68 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                                 false ->
                                     % 未超过时间限制，继续原有逻辑
                                     NowTs = elib_dt:now(),
-                                    MemberUids = group_ds:member_uids(ToGID),
-
-                                    % 构建操作消息（v2.0 格式）
-                                    %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
-                                    ActionMsg = maps:merge(#{
-                                        <<"id">> => MsgId,
-                                        <<"type">> => <<"C2G">>,
-                                        <<"from">> => From,
-                                        <<"to">> => To,
-                                        <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
-                                        <<"server_ts">> => NowMS
-                                    }, ActionMsgExtra),
-
-                                    ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
-                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
-
-                                    % 发送给群组其他成员
-                                    [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
-
                                     % v2.0: 存储离线消息时分离 payload、msg_type 和 action
                                     MsgType = maps:get(<<"msg_type">>, ActionMsgExtra, <<"custom">>),
                                     Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
                                     E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, null), % map() | null
                                     ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
 
-                                    % 根据操作类型调用相应的 v2.0 函数
                                     case ActionType of
                                         revoke ->
-                                            msg_c2g_ds:revoke_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID, MsgType, Action, E2EE);
-                                        edit ->
-                                            msg_c2g_ds:edit_offline_msg(ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID)
-                                    end,
+                                            MemberUids = group_ds:member_uids(ToGID),
+                                            % 构建操作消息（v2.0 格式）
+                                            %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
+                                            ActionMsg = maps:merge(#{
+                                                <<"id">> => MsgId,
+                                                <<"type">> => <<"C2G">>,
+                                                <<"from">> => From,
+                                                <<"to">> => To,
+                                                <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
+                                                <<"server_ts">> => NowMS
+                                            }, ActionMsgExtra),
+                                            ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
+                                            MsLi = elib_retry_config:intervals(<<"c2g">>),
 
-                                    {reply, ActionMsg}
+                                            % 发送给群组其他成员
+                                            [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+
+                                            % 根据操作类型调用相应的 v2.0 函数
+                                            msg_c2g_ds:revoke_offline_msg(
+                                                ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID, MsgType, Action, E2EE
+                                            ),
+                                            {reply, ActionMsg};
+                                        edit ->
+                                            case imboy_policy:validate_message_write(
+                                                <<"C2G">>,
+                                                MsgType,
+                                                <<"message_edit">>,
+                                                maps:get(<<"e2ee">>, Data, null),
+                                                ActionPayloadJson
+                                            ) of
+                                                ok ->
+                                                    MemberUids = group_ds:member_uids(ToGID),
+                                                    ActionMsg = maps:merge(#{
+                                                        <<"id">> => MsgId,
+                                                        <<"type">> => <<"C2G">>,
+                                                        <<"from">> => From,
+                                                        <<"to">> => To,
+                                                        <<"payload">> => ActionPayload#{<<"revoked_at">> => NowMS, <<"edited_at">> => NowMS},
+                                                        <<"server_ts">> => NowMS
+                                                    }, ActionMsgExtra),
+                                                    ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
+                                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
+
+                                                    % 发送给群组其他成员
+                                                    [message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+
+                                                    msg_c2g_ds:edit_offline_msg(
+                                                        ActionPayloadJson, NowTs, MsgId, CurrentUid, MemberUids, ToGID
+                                                    ),
+                                                    {reply, ActionMsg};
+                                                {error, Reason} ->
+                                                    policy_violation_reply(MsgId, Reason)
+                                            end
+                                    end
                             end;
                         #{<<"from_id">> := _OtherId} ->
                             %% 消息不属于当前用户

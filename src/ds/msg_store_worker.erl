@@ -75,7 +75,7 @@ start_link() ->
 -spec init(term()) -> {ok, state_name(), state()}.
 init([]) ->
     % 表结构由 msg_store_ds 在监督树启动时统一初始化，worker 不重复执行 DDL
-    ok = ?INFO_LOG("msg_store_worker started successfully"),
+    _ = ?INFO_LOG("msg_store_worker started successfully"),
     {ok, idle, start_tick(#state{})}.
 
 -spec callback_mode() -> state_functions.
@@ -106,7 +106,7 @@ draining(internal, drain, State) ->
         {ok, _N} ->
             {next_state, idle, start_tick(State)};
         {error, Reason} ->
-            ok = ?ERROR_LOG([msg_store_worker, drain_error, Reason]),
+            _ = ?ERROR_LOG([msg_store_worker, drain_error, Reason]),
             {next_state, idle, start_tick(State)}
     end;
 draining({cast, kick}, _Content, State) ->
@@ -120,7 +120,7 @@ draining(_EventType, _Event, State) ->
 -spec terminate(term(), state_name(), state()) -> ok.
 terminate(_Reason, _StateName, State) ->
     _ = cancel_tick(State),
-    ok = ?INFO_LOG("msg_store_worker terminated"),
+    _ = ?INFO_LOG("msg_store_worker terminated"),
     ok.
 
 %% @private
@@ -159,12 +159,12 @@ process_row(Row) ->
     case do_write(TypeAtom, Row) of
         ok ->
             msg_store_ds:unstage(MsgId),
-            ok = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
+            _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
         {error, Reason} ->
             BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
             _ = msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds),
-            ok = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
+            _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
     end.
 
 %% v2.0: 使用 staging 表的独立字段，避免重复解析 payload

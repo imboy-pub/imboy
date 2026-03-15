@@ -43,6 +43,24 @@ init(Req0, State0) ->
     Req1 = handle_action(Action, Req0, State),
     {ok, Req1, State}.
 
+%% ===================================================================
+%% Capability Gate
+%% ===================================================================
+
+%% @doc 检查 E2EE 功能是否启用
+-spec ensure_e2ee_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_e2ee_enabled(Req0) ->
+    case imboy_policy:e2ee_enabled() of
+        true ->
+            ok;
+        false ->
+            {error, elib_response:error(
+                Req0,
+                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                ?ERR_FEATURE_DISABLED
+            )}
+    end.
+
 %% @doc Action 分发处理
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(create_shards, Req, State) -> create_shards(Req, State);
@@ -64,6 +82,15 @@ handle_action(false, Req, _State) -> Req.
 %% Body: {"total_shards": 3, "threshold": 2, "proxies": [{"proxy_uid": 123, "encrypted_public_key": "..."}]}
 -spec create_shards(cowboy_req:req(), map()) -> cowboy_req:req().
 create_shards(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_create_shards(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_create_shards(cowboy_req:req(), map()) -> cowboy_req:req().
+do_create_shards(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -110,6 +137,15 @@ create_shards(Req0, State) ->
 %% GET /v1/e2ee/social/shards?key_version=xxx
 -spec get_shards(cowboy_req:req(), map()) -> cowboy_req:req().
 get_shards(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_get_shards(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_get_shards(cowboy_req:req(), map()) -> cowboy_req:req().
+do_get_shards(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     Qs = cowboy_req:parse_qs(Req0),
     KeyVersion = proplists:get_value(<<"key_version">>, Qs, <<"latest">>),
@@ -127,6 +163,15 @@ get_shards(Req0, State) ->
 %% @doc 零信任架构：客户端从代理获取解密后的分片，直接传给服务端重组
 -spec recover_key(cowboy_req:req(), map()) -> cowboy_req:req().
 recover_key(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_recover_key(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_recover_key(cowboy_req:req(), map()) -> cowboy_req:req().
+do_recover_key(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -158,6 +203,15 @@ recover_key(Req0, State) ->
 %% GET /v1/e2ee/social/proxy_shards
 -spec get_proxy_shards(cowboy_req:req(), map()) -> cowboy_req:req().
 get_proxy_shards(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_get_proxy_shards(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_get_proxy_shards(cowboy_req:req(), map()) -> cowboy_req:req().
+do_get_proxy_shards(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
 
     case e2ee_social_logic:get_proxy_shards(CurrentUid) of
@@ -173,6 +227,15 @@ get_proxy_shards(Req0, State) ->
 %% @doc 零信任架构：代理使用自己的私钥解密为用户加密的分片
 -spec decrypt_shard(cowboy_req:req(), map()) -> cowboy_req:req().
 decrypt_shard(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_decrypt_shard(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_decrypt_shard(cowboy_req:req(), map()) -> cowboy_req:req().
+do_decrypt_shard(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -267,6 +330,15 @@ generate_key_version() ->
 %% GET /v1/e2ee/social/contacts
 -spec contacts(cowboy_req:req(), map()) -> cowboy_req:req().
 contacts(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_contacts(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_contacts(cowboy_req:req(), map()) -> cowboy_req:req().
+do_contacts(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
 
     case e2ee_social_ds:list_trusted_contacts(CurrentUid) of
@@ -281,6 +353,15 @@ contacts(Req0, State) ->
 %% Body: {"contact_uid": "xxx", "nickname": "可选昵称"}
 -spec add_contact(cowboy_req:req(), map()) -> cowboy_req:req().
 add_contact(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_add_contact(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_add_contact(cowboy_req:req(), map()) -> cowboy_req:req().
+do_add_contact(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -311,6 +392,15 @@ add_contact(Req0, State) ->
 %% Body: {"contact_uid": "xxx"}
 -spec remove_contact(cowboy_req:req(), map()) -> cowboy_req:req().
 remove_contact(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_remove_contact(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_remove_contact(cowboy_req:req(), map()) -> cowboy_req:req().
+do_remove_contact(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),

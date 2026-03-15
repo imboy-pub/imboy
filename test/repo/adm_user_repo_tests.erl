@@ -282,11 +282,11 @@ list_by_ids_success_test_() ->
         ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, [1, 2, 3]) ->
-                {ok, [[
+                {ok, [
                     #{<<"id">> => 1, <<"account">> => <<"admin1">>},
                     #{<<"id">> => 2, <<"account">> => <<"admin2">>},
                     #{<<"id">> => 3, <<"account">> => <<"admin3">>}
-                ]]}
+                ]}
             end}
         ]}
     ], fun() ->
@@ -295,8 +295,10 @@ list_by_ids_success_test_() ->
     end).
 
 list_by_ids_empty_test_() ->
-    Result = adm_user_repo:list_by_ids([], <<"id">>),
-    ?assertEqual({ok, []}, Result).
+    ?_test(begin
+        Result = adm_user_repo:list_by_ids([], <<"id">>),
+        ?assertEqual({ok, []}, Result)
+    end).
 
 list_by_ids_binary_ids_test_() ->
     ?WITH_MECKS([
@@ -305,7 +307,7 @@ list_by_ids_binary_ids_test_() ->
         ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, [<<"1">>, <<"2">>]) ->
-                {ok, [[#{<<"id">> => 1}, #{<<"id">> => 2}]]}
+                {ok, [#{<<"id">> => 1}, #{<<"id">> => 2}]}
             end}
         ]}
     ], fun() ->
@@ -323,7 +325,7 @@ select_by_where_binary_test_() ->
             {'public_tablename', 1, fun(_) -> <<"adm_user">> end}
         ]},
         {elib_pg, [
-            {'page', 7, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
+            {'page', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
                 {ok, [#{<<"id">> => 1}]}
             end}
         ]}
@@ -333,8 +335,10 @@ select_by_where_binary_test_() ->
     end).
 
 select_by_where_binary_zero_limit_test_() ->
-    Result = adm_user_repo:select_by_where(<<"status = 1">>, 0, 0, <<"id DESC">>),
-    ?assertEqual({ok, []}, Result).
+    ?_test(begin
+        Result = adm_user_repo:select_by_where(<<"status = 1">>, 0, 0, <<"id DESC">>),
+        ?assertEqual({ok, []}, Result)
+    end).
 
 %% ===================================================================
 %% select_by_where/4 测试 - map Where
@@ -346,7 +350,7 @@ select_by_where_map_test_() ->
             {'public_tablename', 1, fun(_) -> <<"adm_user">> end}
         ]},
         {elib_pg, [
-            {'page', 7, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
+            {'page', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
                 {ok, [#{<<"id">> => 2}]}
             end}
         ]}
@@ -356,8 +360,10 @@ select_by_where_map_test_() ->
     end).
 
 select_by_where_map_zero_limit_test_() ->
-    Result = adm_user_repo:select_by_where(#{<<"status">> => 1}, 0, 0, <<"id ASC">>),
-    ?assertEqual({ok, []}, Result).
+    ?_test(begin
+        Result = adm_user_repo:select_by_where(#{<<"status">> => 1}, 0, 0, <<"id ASC">>),
+        ?assertEqual({ok, []}, Result)
+    end).
 
 %% ===================================================================
 %% select_by_where/5 测试 - binary Where
@@ -369,7 +375,7 @@ select_by_where_5_binary_test_() ->
             {'public_tablename', 1, fun(_) -> <<"adm_user">> end}
         ]},
         {elib_pg, [
-            {'page', 7, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
+            {'page', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
                 {ok, [#{<<"id">> => 3}]}
             end}
         ]}
@@ -388,7 +394,7 @@ select_by_where_5_map_test_() ->
             {'public_tablename', 1, fun(_) -> <<"adm_user">> end}
         ]},
         {elib_pg, [
-            {'page', 7, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
+            {'page', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Limit) ->
                 {ok, [#{<<"id">> => 4}]}
             end}
         ]}
@@ -413,7 +419,7 @@ select_by_where_safe_success_test_() ->
         ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, [1]) ->
-                {ok, [[#{<<"id">> => 1}, #{<<"id">> => 2}]]}
+                {ok, [#{<<"id">> => 1}, #{<<"id">> => 2}]}
             end}
         ]}
     ], fun() ->
@@ -429,15 +435,17 @@ select_by_where_safe_success_test_() ->
     end).
 
 select_by_where_safe_zero_limit_test_() ->
-    Result = adm_user_repo:select_by_where_safe(
-        <<"id">>,
-        #{<<"status">> => 1},
-        0,
-        0,
-        [{<<"id">>, desc}],
-        [<<"id">>]
-    ),
-    ?assertEqual({ok, []}, Result).
+    ?_test(begin
+        Result = adm_user_repo:select_by_where_safe(
+            <<"id">>,
+            #{<<"status">> => 1},
+            0,
+            0,
+            [{<<"id">>, desc}],
+            [<<"id">>]
+        ),
+        ?assertEqual({ok, []}, Result)
+    end).
 
 %% ===================================================================
 %% save/1 测试

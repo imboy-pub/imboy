@@ -44,60 +44,78 @@ user_keys_same_user_success_test_() ->
     end).
 
 user_keys_friend_success_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'check_relationship', 2, fun(_TargetUid, _CurrentUid) ->
-            {true, 0}  % 是好友，不在黑名单
+    ?WITH_MECK(user_device_ds, [
+        {'list_public_keys', 1, fun(_Uid) ->
+            {ok, [
+                #{
+                    <<"device_id">> => <<"device_1">>,
+                    <<"public_key">> => <<"MIIBIjANBgkqhkiG9w...">>
+                }
+            ]}
         end}
     ], fun() ->
-        ?WITH_MECK(user_device_ds, [
-            {'list_public_keys', 1, fun(_Uid) ->
-                {ok, [
-                    #{
-                        <<"device_id">> => <<"device_1">>,
-                        <<"public_key">> => <<"MIIBIjANBgkqhkiG9w...">>
-                    }
-                ]}
-            end}
+        ?WITH_MECK(elib_hashids, [
+            {'encode', 1, fun(456) -> <<"encoded_456">> end}
         ], fun() ->
-            ?WITH_MECK(elib_hashids, [
-                {'encode', 1, fun(456) -> <<"encoded_456">> end}
-            ], fun() ->
-                CurrentUid = 123,
-                TargetUid = 456,  % 好友
+            CurrentUid = 123,
+            TargetUid = 456,  % 好友
 
-                Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-                ?assertMatch({ok, #{
-                    <<"uid">> := <<"encoded_456">>,
-                    <<"devices">> := [_]
-                }}, Result)
-            end)
+            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+            ?assertMatch({ok, #{
+                <<"uid">> := <<"encoded_456">>,
+                <<"devices">> := [_]
+            }}, Result)
         end)
     end).
 
-user_keys_non_friend_forbidden_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'check_relationship', 2, fun(_TargetUid, _CurrentUid) ->
-            {false, 0}  % 不是好友
+user_keys_non_friend_still_returns_public_keys_test_() ->
+    ?WITH_MECK(user_device_ds, [
+        {'list_public_keys', 1, fun(_Uid) ->
+            {ok, [
+                #{
+                    <<"device_id">> => <<"device_public">>,
+                    <<"public_key">> => <<"public_key_non_friend">>
+                }
+            ]}
         end}
     ], fun() ->
-        CurrentUid = 123,
-        TargetUid = 789,  % 非好友
+        ?WITH_MECK(elib_hashids, [
+            {'encode', 1, fun(789) -> <<"encoded_789">> end}
+        ], fun() ->
+            CurrentUid = 123,
+            TargetUid = 789,  % 非好友
 
-        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-        ?assertEqual({error, <<"forbidden">>, 403}, Result)
+            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+            ?assertMatch({ok, #{
+                <<"uid">> := <<"encoded_789">>,
+                <<"devices">> := [_]
+            }}, Result)
+        end)
     end).
 
-user_keys_in_denylist_forbidden_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'check_relationship', 2, fun(_TargetUid, _CurrentUid) ->
-            {true, 1}  % 是好友但在黑名单
+user_keys_in_denylist_still_returns_public_keys_test_() ->
+    ?WITH_MECK(user_device_ds, [
+        {'list_public_keys', 1, fun(_Uid) ->
+            {ok, [
+                #{
+                    <<"device_id">> => <<"device_denylist">>,
+                    <<"public_key">> => <<"public_key_denylist">>
+                }
+            ]}
         end}
     ], fun() ->
-        CurrentUid = 123,
-        TargetUid = 999,  % 在黑名单
+        ?WITH_MECK(elib_hashids, [
+            {'encode', 1, fun(999) -> <<"encoded_999">> end}
+        ], fun() ->
+            CurrentUid = 123,
+            TargetUid = 999,  % 在黑名单
 
-        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-        ?assertEqual({error, <<"forbidden">>, 403}, Result)
+            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+            ?assertMatch({ok, #{
+                <<"uid">> := <<"encoded_999">>,
+                <<"devices">> := [_]
+            }}, Result)
+        end)
     end).
 
 user_keys_database_error_returns_500_test_() ->

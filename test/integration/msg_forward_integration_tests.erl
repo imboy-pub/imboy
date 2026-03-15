@@ -31,6 +31,7 @@ msg_forward_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_forward">>),
@@ -42,10 +43,12 @@ setup() ->
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"forward_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
-    #{user1 => User1, user2 => User2, user3 => User3, group => Group}.
+    Context = #{user1 => User1, user2 => User2, user3 => User3, group => Group},
+    put(test_context, Context),
+    Context.
 
 cleanup(_Context) ->
-    % 清理测试数据
+    erase(test_context),
     ok.
 
 %% ===================================================================

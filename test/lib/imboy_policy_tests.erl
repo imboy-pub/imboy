@@ -6,6 +6,40 @@
 default_config_get(_Key, Default) ->
     Default.
 
+plugin_manifest_fixture(FeatureKeys) ->
+    #{
+        kind => plugin,
+        feature_keys => FeatureKeys,
+        requires_capabilities => [],
+        depends_on_plugins => [],
+        app_entries => [],
+        admin_entries => [],
+        api_handlers => []
+    }.
+
+plugin_registry_lookup(Registry, Name) ->
+    maps:get(Name, Registry, #{}).
+
+plugin_registry_dependency_fixture() ->
+    #{
+        channel => plugin_manifest_fixture([channel]),
+        moment => (plugin_manifest_fixture([moment]))#{
+            depends_on_plugins => [channel]
+        }
+    }.
+
+plugin_registry_capability_fixture() ->
+    #{
+        channel => (plugin_manifest_fixture([
+            channel,
+            channel_discover,
+            channel_invitation,
+            channel_order
+        ]))#{
+            requires_capabilities => #{message_search => true}
+        }
+    }.
+
 current_profile_defaults_to_community_when_missing_test_() ->
     ?WITH_MECKS([
         {config_ds, [
@@ -64,7 +98,7 @@ effective_capabilities_merge_profile_defaults_and_overrides_test_() ->
         )
     end).
 
-effective_features_preserve_missing_features_block_compatibility_test_() ->
+effective_features_use_profile_defaults_when_features_block_missing_test_() ->
     ?WITH_MECKS([
         {config_ds, [
             {'get', 2, fun default_config_get/2},
@@ -78,8 +112,31 @@ effective_features_preserve_missing_features_block_compatibility_test_() ->
         Features = imboy_policy:effective_features(),
 
         ?assertEqual(true, maps:get(core, Features)),
-        ?assertEqual(true, maps:get(moment, Features)),
-        ?assertEqual(true, maps:get(channel_discover, Features))
+        ?assertEqual(false, maps:get(moment, Features)),
+        ?assertEqual(false, maps:get(channel, Features)),
+        ?assertEqual(false, maps:get(channel_discover, Features))
+    end).
+
+effective_features_explicit_overrides_beat_profile_defaults_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> enterprise;
+                (capabilities, #{}) -> #{};
+                (features, undefined) ->
+                    #{
+                        channel => #{enabled => false},
+                        moment => #{enabled => true}
+                    }
+            end}
+        ]}
+    ], fun() ->
+        Features = imboy_policy:effective_features(),
+
+        ?assertEqual(false, maps:get(channel, Features)),
+        ?assertEqual(false, maps:get(channel_invitation, Features)),
+        ?assertEqual(true, maps:get(moment, Features))
     end).
 
 effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
@@ -91,8 +148,6 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
                 (capabilities, #{}) -> #{audit_mode => full};
                 (features, undefined) ->
                     #{
-                        channel => #{enabled => true},
-                        channel_invitation => #{enabled => true},
                         moment => #{enabled => false}
                     }
             end}
@@ -104,6 +159,7 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
         ?assertEqual(enterprise, maps:get(profile, Policy)),
         ?assertMatch(#{audit_mode := full}, maps:get(capabilities, Policy)),
         ?assertMatch(#{channel := true}, maps:get(features, Policy)),
+        ?assertMatch(#{channel_invitation := true}, maps:get(features, Policy)),
         ?assertEqual(true, maps:get(enabled, maps:get(channel, Plugins))),
         ?assertEqual(false, maps:get(enabled, maps:get(moment, Plugins)))
     end).
@@ -159,6 +215,58 @@ required_e2ee_disables_body_visibility_test_() ->
         ?assertEqual(metadata, maps:get(audit_mode, Capabilities)),
         ?assertEqual(false, imboy_policy:message_search_enabled()),
         ?assertEqual(false, imboy_policy:message_body_visible())
+    end).
+
+e2ee_enabled_returns_true_when_optional_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{e2ee_mode => optional}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(true, imboy_policy:e2ee_enabled())
+    end).
+
+e2ee_enabled_returns_true_when_required_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{e2ee_mode => required}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(true, imboy_policy:e2ee_enabled())
+    end).
+
+e2ee_enabled_returns_false_when_disabled_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{e2ee_mode => disabled}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(false, imboy_policy:e2ee_enabled())
+    end).
+
+e2ee_enabled_defaults_to_profile_capability_when_missing_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(true, imboy_policy:e2ee_enabled())
     end).
 
 effective_view_returns_json_friendly_policy_payload_test_() ->
@@ -770,6 +878,54 @@ preview_config_reports_constraint_and_dependency_adjustments_test_() ->
         )
     end).
 
+preview_config_returns_plugin_adjustments_when_manifest_dependency_blocks_plugin_test_() ->
+    Registry = plugin_registry_dependency_fixture(),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'set', 2, fun(_Key, _Value) ->
+                erlang:error(should_not_be_called)
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]},
+        {imboy_plugin_registry, [
+            {'all', 0, fun() -> Registry end},
+            {'get', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
+            {'plugin_names', 0, fun() -> maps:keys(Registry) end}
+        ]}
+    ], fun() ->
+        {ok, Preview} = preview_policy_config(#{
+            <<"plugins">> => #{
+                <<"moment">> => true
+            }
+        }),
+        Adjustments = maps:get(<<"adjustments">>, Preview),
+        Effective = maps:get(<<"effective">>, Preview),
+
+        ?assertEqual(
+            #{
+                <<"plugins">> => #{
+                    <<"moment">> => #{
+                        <<"saved">> => true,
+                        <<"effective">> => false,
+                        <<"reason">> => <<"dependency">>,
+                        <<"depends_on_plugins">> => [<<"channel">>]
+                    }
+                }
+            },
+            Adjustments
+        ),
+        ?assertEqual(false, maps:get(<<"moment">>, maps:get(<<"features">>, Effective))),
+        ?assertEqual(
+            false,
+            maps:get(<<"enabled">>, maps:get(<<"moment">>, maps:get(<<"plugins">>, Effective)))
+        )
+    end).
+
 preview_config_rejects_empty_payload_without_editable_fields_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(
@@ -787,6 +943,68 @@ preview_config_rejects_non_object_payload_test_() ->
                 <<"policy payload must be an object">>,
                 #{<<"reason">> => <<"invalid_payload_type">>}},
             preview_policy_config(<<"invalid">>)
+        )
+    end).
+
+preview_config_allows_clearing_overrides_with_null_without_persisting_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(_Key, _Value) ->
+                erlang:error(should_not_be_called)
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> enterprise;
+                (capabilities, #{}) -> #{message_export => true};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        persistent_term:put({policy_config, <<"product_profile">>}, <<"community">>),
+        persistent_term:put(
+            {policy_config, <<"capabilities">>},
+            #{
+                <<"message_export">> => false
+            }
+        ),
+        persistent_term:put(
+            {policy_config, <<"features">>},
+            #{
+                <<"moment">> => #{<<"enabled">> => false}
+            }
+        ),
+        {ok, Preview} = preview_policy_config(#{
+            <<"profile">> => null,
+            <<"capabilities">> => #{<<"message_export">> => null},
+            <<"plugins">> => #{<<"moment">> => null}
+        }),
+        Saved = maps:get(<<"saved">>, Preview),
+        Effective = maps:get(<<"effective">>, Preview),
+        Origins = maps:get(<<"origins">>, Preview),
+
+        ?assertEqual(0, meck:num_calls(config_ds, set, 2)),
+        ?assertEqual(#{}, Saved),
+        ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, Effective)),
+        ?assertEqual(true, maps:get(<<"message_export">>, maps:get(<<"capabilities">>, Effective))),
+        ?assertEqual(
+            false,
+            maps:get(<<"enabled">>, maps:get(<<"moment">>, maps:get(<<"plugins">>, Effective)))
+        ),
+        ?assertEqual(<<"default">>, maps:get(<<"profile">>, Origins)),
+        ?assertEqual(
+            <<"default">>,
+            maps:get(<<"message_export">>, maps:get(<<"capabilities">>, Origins))
+        ),
+        ?assertEqual(
+            <<"default">>,
+            maps:get(<<"moment">>, maps:get(<<"plugins">>, Origins))
         )
     end).
 
@@ -1257,6 +1475,66 @@ save_config_returns_feature_dependency_adjustments_when_saved_override_is_incomp
         )
     end).
 
+save_config_returns_feature_capability_adjustments_when_manifest_requirement_blocks_plugin_test_() ->
+    Registry = plugin_registry_capability_fixture(),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]},
+        {imboy_plugin_registry, [
+            {'all', 0, fun() -> Registry end},
+            {'get', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
+            {'plugin_names', 0, fun() -> maps:keys(Registry) end}
+        ]}
+    ], fun() ->
+        persistent_term:erase({policy_config, <<"product_profile">>}),
+        persistent_term:erase({policy_config, <<"capabilities">>}),
+        persistent_term:erase({policy_config, <<"features">>}),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"features">> => #{
+                <<"channel">> => true
+            }
+        }),
+        Adjustments = maps:get(<<"adjustments">>, PolicyView),
+
+        ?assertEqual(
+            #{
+                <<"features">> => #{
+                    <<"channel">> => #{
+                        <<"reason">> => <<"capability_constraint">>,
+                        <<"saved">> => true,
+                        <<"effective">> => false,
+                        <<"requires_capabilities">> => #{
+                            <<"message_search">> => true
+                        }
+                    }
+                }
+            },
+            Adjustments
+        ),
+        ?assertEqual(false, maps:get(<<"channel">>, maps:get(<<"features">>, PolicyView))),
+        ?assertEqual(
+            false,
+            maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))
+        )
+    end).
+
 save_config_allows_clearing_capability_override_with_null_test_() ->
     ?WITH_MECKS([
         {config_ds, [
@@ -1351,7 +1629,7 @@ save_config_allows_clearing_plugin_override_with_null_test_() ->
             persistent_term:get({policy_config, <<"features">>})
         ),
         ?assertEqual(
-            true,
+            false,
             maps:get(<<"channel">>, maps:get(<<"features">>, PolicyView))
         ),
         ?assertEqual(
@@ -1361,6 +1639,66 @@ save_config_allows_clearing_plugin_override_with_null_test_() ->
         ?assertEqual(
             #{<<"moment">> => true},
             maps:get(<<"plugins">>, imboy_policy:saved_view())
+        )
+    end).
+
+save_config_clearing_plugin_null_preserves_mixed_feature_overrides_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun(Key, Default) ->
+                case persistent_term:get({policy_config, Key}, undefined) of
+                    undefined ->
+                        Default;
+                    Value ->
+                        Value
+                end
+            end},
+            {'set', 2, fun(Key, Value) ->
+                persistent_term:put({policy_config, Key}, Value),
+                ok
+            end},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{};
+                (features, undefined) -> undefined
+            end}
+        ]}
+    ], fun() ->
+        ExistingFeatureConfig = #{
+            <<"channel">> => #{<<"enabled">> => true},
+            <<"channel_discover">> => #{<<"enabled">> => true},
+            <<"channel_invitation">> => #{<<"enabled">> => true},
+            <<"channel_order">> => #{<<"enabled">> => false},
+            <<"moment">> => #{<<"enabled">> => true}
+        },
+        persistent_term:put({policy_config, <<"features">>}, ExistingFeatureConfig),
+        {ok, PolicyView} = save_policy_config(#{
+            <<"plugins">> => #{
+                <<"channel">> => null
+            }
+        }),
+
+        ?assertEqual(ExistingFeatureConfig, persistent_term:get({policy_config, <<"features">>})),
+        ?assertEqual(
+            #{<<"moment">> => true},
+            maps:get(<<"plugins">>, maps:get(<<"saved">>, PolicyView))
+        ),
+        ?assertEqual(
+            #{
+                <<"channel">> => true,
+                <<"channel_discover">> => true,
+                <<"channel_invitation">> => true,
+                <<"channel_order">> => false
+            },
+            maps:get(<<"features">>, maps:get(<<"saved">>, PolicyView))
+        ),
+        ?assertEqual(
+            false,
+            maps:get(<<"channel_order">>, maps:get(<<"features">>, PolicyView))
+        ),
+        ?assertEqual(
+            true,
+            maps:get(<<"enabled">>, maps:get(<<"channel">>, maps:get(<<"plugins">>, PolicyView)))
         )
     end).
 
@@ -1431,6 +1769,111 @@ save_config_rejects_invalid_plugin_boolean_input_test_() ->
             })
         ),
         ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+    end).
+
+message_encryption_required_when_storage_mode_secure_e2ee_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{storage_mode => secure_e2ee}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(true, imboy_policy:message_encryption_required())
+    end).
+
+message_encryption_required_when_e2ee_mode_required_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{e2ee_mode => required}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(true, imboy_policy:message_encryption_required())
+    end).
+
+message_encryption_not_required_for_default_archived_mode_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(false, imboy_policy:message_encryption_required())
+    end).
+
+validate_message_write_allows_encrypted_c2c_content_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{storage_mode => secure_e2ee}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            ok,
+            imboy_policy:validate_message_write(
+                <<"C2C">>,
+                <<"e2ee">>,
+                <<>>,
+                #{<<"e2ee">> => true},
+                <<"encrypted.body">>
+            )
+        )
+    end).
+
+validate_message_write_rejects_plaintext_c2c_content_when_encryption_required_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{storage_mode => secure_e2ee}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            {error, <<"encrypted_message_required">>},
+            imboy_policy:validate_message_write(
+                <<"C2C">>,
+                <<"text">>,
+                <<>>,
+                null,
+                #{<<"content">> => <<"hello">>}
+            )
+        )
+    end).
+
+validate_message_write_allows_metadata_only_actions_when_encryption_required_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'get', 2, fun default_config_get/2},
+            {'env', 2, fun
+                (product_profile, community) -> community;
+                (capabilities, #{}) -> #{storage_mode => secure_e2ee}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(
+            ok,
+            imboy_policy:validate_message_write(
+                <<"C2C">>,
+                <<"custom">>,
+                <<"message_revoke_ack">>,
+                null,
+                #{<<"original_msg_id">> => <<"msg_1">>}
+            )
+        )
     end).
 
 save_policy_config(Payload) ->

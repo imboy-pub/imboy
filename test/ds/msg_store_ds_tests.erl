@@ -168,9 +168,7 @@ stage_with_s2c_action_test_() ->
 %% ===================================================================
 
 enqueue_sends_kick_to_worker_test_() ->
-    ?WITH_MECK(msg_store_worker, [
-        {'kick', 1, fun(_Pid) -> ok end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Type = <<"c2c">>,
         MsgId = <<"msg_123">>,
         Data = #{payload => <<"{\"content\":\"hello\"}">>},
@@ -180,9 +178,7 @@ enqueue_sends_kick_to_worker_test_() ->
     end).
 
 enqueue_with_different_types_test_() ->
-    ?WITH_MECK(msg_store_worker, [
-        {'kick', 1, fun(_Pid) -> ok end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Types = [<<"c2c">>, <<"c2g">>, <<"s2c">>, <<"c2s">>],
         lists:foreach(fun(Type) ->
             MsgId = <<"msg_", (integer_to_binary(rand:uniform(1000)))/binary>>,
@@ -223,7 +219,7 @@ unstage_with_empty_msg_id_test_() ->
 len_returns_pending_count_test_() ->
     ?WITH_MECK(msg_store_repo, [
         {'get_staging_stats', 0, fun() ->
-            {ok, [#{<<"pending">> => 100, <<"processed">> => 5000}]}
+            {ok, #{<<"pending">> => 100, <<"processed">> => 5000}}
         end}
     ], fun() ->
         Result = msg_store_ds:len(),
@@ -233,7 +229,7 @@ len_returns_pending_count_test_() ->
 len_with_empty_stats_returns_zero_test_() ->
     ?WITH_MECK(msg_store_repo, [
         {'get_staging_stats', 0, fun() ->
-            {ok, []}
+            {ok, #{}}
         end}
     ], fun() ->
         Result = msg_store_ds:len(),
@@ -243,7 +239,7 @@ len_with_empty_stats_returns_zero_test_() ->
 len_with_atom_key_in_map_test_() ->
     ?WITH_MECK(msg_store_repo, [
         {'get_staging_stats', 0, fun() ->
-            {ok, [#{pending => 50}]}
+            {ok, #{pending => 50}}
         end}
     ], fun() ->
         Result = msg_store_ds:len(),
@@ -257,13 +253,13 @@ len_with_atom_key_in_map_test_() ->
 status_returns_queue_stats_test_() ->
     ?WITH_MECK(msg_store_repo, [
         {'get_staging_stats', 0, fun() ->
-            {ok, [#{<<"pending">> => 100, <<"processed">> => 5000, <<"total">> => 5100}]}
+            {ok, #{<<"pending">> => 100, <<"processed">> => 5000, <<"total">> => 5100}}
         end}
     ], fun() ->
         Result = msg_store_ds:status(),
         ?assertMatch(#{
-            <<"queue_len">> := 100,
-            <<"staging_stats">> := #{<<"pending">> := 100, <<"processed">> := 5000}
+            queue_len := 100,
+            staging_stats := {ok, #{<<"pending">> := 100, <<"processed">> := 5000}}
         }, Result)
     end).
 
@@ -274,8 +270,7 @@ status_with_error_returns_zero_test_() ->
         end}
     ], fun() ->
         Result = msg_store_ds:status(),
-        % staging_pending 函数会返回 0
-        ?assertMatch(#{<<"queue_len">> := 0}, Result)
+        ?assertMatch(#{queue_len := 0, staging_stats := {error, database_error}}, Result)
     end).
 
 %% ===================================================================
@@ -288,7 +283,7 @@ init_creates_table_and_starts_timer_test_() ->
     ], fun() ->
         {ok, State} = msg_store_ds:init([]),
         ?assert(is_record(State, state)),
-        ?assert(is_map_key(last_flush_time, State))
+        ?assert(State#state.last_flush_time =/= undefined)
     end).
 
 handle_info_cleanup_staging_deletes_old_records_test_() ->
@@ -322,8 +317,8 @@ handle_info_cleanup_staging_with_error_test_() ->
     end).
 
 handle_cast_enqueue_kicks_worker_test_() ->
-    ?WITH_MECK(msg_store_worker, [
-        {'kick', 1, fun(_Pid) -> ok end}
+    ?WITH_MECK(gen_statem, [
+        {'cast', 2, fun(msg_store_worker, kick) -> ok end}
     ], fun() ->
         State = #state{last_flush_time = 0},
 
@@ -339,15 +334,11 @@ handle_cast_unstage_calls_async_retry_test_() ->
     ?WITH_MECK(elib_async, [
         {'async_retry', 1, fun(_Fun) -> ok end}
     ], fun() ->
-        ?WITH_MECK(msg_store_repo, [
-            {'mark_processed', 2, fun(_Type, _MsgId) -> {ok, 1} end}
-        ], fun() ->
-            State = #state{last_flush_time = 0},
-            MsgId = <<"msg_123">>,
+        State = #state{last_flush_time = 0},
+        MsgId = <<"msg_123">>,
 
-            {noreply, NewState} = msg_store_ds:handle_cast({unstage, MsgId}, State),
-            ?assert(is_record(NewState, state))
-        end)
+        {noreply, NewState} = msg_store_ds:handle_cast({unstage, MsgId}, State),
+        ?assert(is_record(NewState, state))
     end).
 
 %% ===================================================================
@@ -378,7 +369,7 @@ stage_with_empty_e2ee_test_() ->
     end).
 
 stage_with_large_payload_test_() ->
-    LargePayload = lists:foldl(fun(_, Acc) -> <<Acc/binary, "x">> end, <<>>, lists:seq(1, 10000)),
+    LargePayload = lists:foldl(fun(_, Acc) -> <<Acc/binary, "x">> end, <<>>, lists:seq(1, 15000)),
     ?WITH_MECK(msg_store_repo, [
         {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2EE, Payload, _FromId, _ToId, _CreatedAt, _ServerTs) ->
             % 验证大负载被正确传递

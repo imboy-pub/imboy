@@ -31,6 +31,24 @@ init(Req0, State0) ->
     Req1 = handle_action(Action, Req0, State),
     {ok, Req1, State}.
 
+%% ===================================================================
+%% Capability Gate
+%% ===================================================================
+
+%% @doc 检查 E2EE 功能是否启用
+-spec ensure_e2ee_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_e2ee_enabled(Req0) ->
+    case imboy_policy:e2ee_enabled() of
+        true ->
+            ok;
+        false ->
+            {error, elib_response:error(
+                Req0,
+                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                ?ERR_FEATURE_DISABLED
+            )}
+    end.
+
 %% @doc Action 分发处理
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(create, Req, State) -> create_transfer(Req, State);
@@ -50,6 +68,15 @@ handle_action(false, Req, _State) -> Req.
 %% Body: {"to_uid": 123, "to_nickname": "新设备"}
 -spec create_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 create_transfer(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_create_transfer(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_create_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+do_create_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -101,6 +128,15 @@ create_transfer(Req0, State) ->
 %% Body: {"session_id": "uuid", "device_id": "new_device_id"}
 -spec accept_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 accept_transfer(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_accept_transfer(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_accept_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+do_accept_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -135,6 +171,15 @@ accept_transfer(Req0, State) ->
 %% Body: {"session_id": "uuid"}
 -spec confirm_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 confirm_transfer(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_confirm_transfer(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_confirm_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+do_confirm_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -160,6 +205,15 @@ confirm_transfer(Req0, State) ->
 %% Body: {"session_id": "uuid"}
 -spec cancel_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 cancel_transfer(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_cancel_transfer(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_cancel_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
+do_cancel_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),
@@ -184,6 +238,15 @@ cancel_transfer(Req0, State) ->
 %% GET /v1/e2ee/transfer/info?session_id=xxx
 -spec get_transfer_info(cowboy_req:req(), map()) -> cowboy_req:req().
 get_transfer_info(Req0, _State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_get_transfer_info(Req0);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_get_transfer_info(cowboy_req:req()) -> cowboy_req:req().
+do_get_transfer_info(Req0) ->
     Qs = cowboy_req:parse_qs(Req0),
     SessionId = proplists:get_value(<<"session_id">>, Qs, <<>>),
 
@@ -211,6 +274,15 @@ get_transfer_info(Req0, _State) ->
 %% GET /v1/e2ee/transfer/pending
 -spec get_pending_transfers(cowboy_req:req(), map()) -> cowboy_req:req().
 get_pending_transfers(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_get_pending_transfers(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_get_pending_transfers(cowboy_req:req(), map()) -> cowboy_req:req().
+do_get_pending_transfers(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
 
     case e2ee_transfer_logic:get_pending_transfers(CurrentUid) of

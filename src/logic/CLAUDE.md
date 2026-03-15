@@ -139,6 +139,8 @@ Logic 模块由 Handler 层或 DS 层调用：
 }
 ```
 
+若部署策略设置了 `storage_mode=secure_e2ee` 或 `e2ee_mode=required`，C2C/C2G 的普通发送与 `message_edit` 必须使用 `<<"msg_type">> = <<"e2ee">>`，并携带顶层 `<<"e2ee">>` 元数据；明文 `payload` map 会被服务端以 `policy_violation` / `encrypted_message_required` 拒绝。
+
 ### 常见错误
 
 #### 错误1: {badkey,<<"to">>}

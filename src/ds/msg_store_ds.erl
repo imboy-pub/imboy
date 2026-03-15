@@ -133,14 +133,14 @@ start_link() ->
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
     case msg_store_repo:stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) of
         {ok, _} ->
-            ok = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
+            _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             ok;
         {error, {unique_violation, _MsgId}} ->
             %% 【幂等性修复】消息已存在（客户端重发），返回 ok
-            ok = ?INFO_LOG([msg_store_ds, stage_duplicate, Type, MsgId]),
+            _ = ?INFO_LOG([msg_store_ds, stage_duplicate, Type, MsgId]),
             ok;
         {error, Reason} ->
-            ok = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
+            _ = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
             error
     end.
 
@@ -262,24 +262,20 @@ len() ->
 %%-------------------------------------------------------------------
 -spec status() -> map().
 status() ->
-    gen_server:call(?SERVER, status).
+    status_from_stats(msg_store_repo:get_staging_stats()).
 
 %% ==================== Callbacks ====================
 
 %% @private
 init([]) ->
     _ = msg_store_repo:ensure_table_exists(),
-    ok = ?INFO_LOG("msg_store_ds started successfully"),
+    _ = ?INFO_LOG("msg_store_ds started successfully"),
     erlang:send_after(?CLEANUP_INTERVAL, self(), cleanup_staging),
     {ok, #state{last_flush_time = erlang:monotonic_time(millisecond)}}.
 
 %% @private
 handle_call(status, _From, State) ->
-    StagingStats = msg_store_repo:get_staging_stats(),
-    {reply, #{
-        queue_len => staging_pending(StagingStats),
-        staging_stats => StagingStats
-    }, State};
+    {reply, status_from_stats(msg_store_repo:get_staging_stats()), State};
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -288,7 +284,7 @@ handle_call(_Request, _From, State) ->
 handle_cast({enqueue, MsgType, MsgId, Data}, State) ->
     _ = Data,
     _ = gen_statem:cast(msg_store_worker, kick),
-    ok = ?DEBUG_LOG([msg_store_ds, enqueue, MsgType, MsgId, ok]),
+    _ = ?DEBUG_LOG([msg_store_ds, enqueue, MsgType, MsgId, ok]),
     {noreply, State};
 
 handle_cast({unstage, MsgId}, State) ->
@@ -307,11 +303,11 @@ handle_info(cleanup_staging, State) ->
     % 清理已处理的备份消息（超过 1 小时）
     case msg_store_repo:delete_processed(3600) of
         {ok, Count} when Count > 0 ->
-            ok = ?INFO_LOG("msg_store_ds cleanup: deleted ~p processed staging records", [Count]);
+            _ = ?INFO_LOG("msg_store_ds cleanup: deleted ~p processed staging records", [Count]);
         {ok, 0} ->
             ok;
         {error, Reason} ->
-            ok = ?ERROR_LOG("msg_store_ds cleanup failed: ~p", [Reason])
+            _ = ?ERROR_LOG("msg_store_ds cleanup failed: ~p", [Reason])
     end,
     % 重新启动定时器
     erlang:send_after(?CLEANUP_INTERVAL, self(), cleanup_staging),
@@ -322,7 +318,7 @@ handle_info(_Info, State) ->
 
 %% @private
 terminate(_Reason, _State) ->
-    ok = ?INFO_LOG("msg_store_ds terminated"),
+    _ = ?INFO_LOG("msg_store_ds terminated"),
     ok.
 
 %% @private
@@ -331,13 +327,29 @@ code_change(_OldVsn, State, _Extra) ->
 
 staging_pending(Result) ->
     case Result of
+        {ok, Row} when is_map(Row) ->
+            pending_from_row(Row);
         {ok, [Row | _]} when is_map(Row) ->
-            case maps:get(<<"pending">>, Row, 0) of
-                Pending when is_integer(Pending) -> Pending;
-                _ -> maps:get(pending, Row, 0)
-            end;
+            pending_from_row(Row);
         {ok, []} ->
             0;
         _ ->
             0
+    end.
+
+status_from_stats(StagingStats) ->
+    #{
+        queue_len => staging_pending(StagingStats),
+        staging_stats => StagingStats
+    }.
+
+pending_from_row(Row) ->
+    case maps:find(<<"pending">>, Row) of
+        {ok, Pending} when is_integer(Pending) ->
+            Pending;
+        _ ->
+            case maps:get(pending, Row, 0) of
+                Pending when is_integer(Pending) -> Pending;
+                _ -> 0
+            end
     end.

@@ -31,8 +31,40 @@ init(Req0, State0) ->
         end,
     {ok, Req1, State}.
 
+%% ===================================================================
+%% Capability Gate
+%% ===================================================================
+
+%% @doc 检查 E2EE 功能是否启用
+%% 根据 e2ee_mode capability 决定是否允许访问 E2EE 相关接口
+-spec ensure_e2ee_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
+ensure_e2ee_enabled(Req0) ->
+    case imboy_policy:e2ee_enabled() of
+        true ->
+            ok;
+        false ->
+            {error, elib_response:error(
+                Req0,
+                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                ?ERR_FEATURE_DISABLED
+            )}
+    end.
+
+%% ===================================================================
+%% API Handlers
+%% ===================================================================
+
 -spec user_keys(cowboy_req:req(), map()) -> cowboy_req:req().
 user_keys(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_user_keys(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_user_keys(cowboy_req:req(), map()) -> cowboy_req:req().
+do_user_keys(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     TargetUidEnc = elib_param:get(<<"uid">>, Req0, <<"">>),
     TargetUid = elib_hashids:decode(TargetUidEnc),
@@ -50,6 +82,15 @@ user_keys(Req0, State) ->
 
 -spec group_member_keys(cowboy_req:req(), map()) -> cowboy_req:req().
 group_member_keys(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_group_member_keys(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_group_member_keys(cowboy_req:req(), map()) -> cowboy_req:req().
+do_group_member_keys(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     GidEnc = elib_param:get(<<"gid">>, Req0, <<"">>),
     Gid = elib_hashids:decode(GidEnc),
@@ -70,6 +111,15 @@ group_member_keys(Req0, State) ->
 %% 服务端更新密钥后，会通知该用户的所有好友清除其公钥缓存
 -spec report_device_key(cowboy_req:req(), map()) -> cowboy_req:req().
 report_device_key(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_report_device_key(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_report_device_key(cowboy_req:req(), map()) -> cowboy_req:req().
+do_report_device_key(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     case read_report_params(Req0) of
         {error, Reason} ->
@@ -127,6 +177,15 @@ validate_params(DeviceId, DeviceType, PublicKey, KeyId) ->
 %% 返回当前设备的密钥状态和可用的恢复方式
 -spec key_status(cowboy_req:req(), map()) -> cowboy_req:req().
 key_status(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_key_status(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_key_status(cowboy_req:req(), map()) -> cowboy_req:req().
+do_key_status(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     DeviceId = elib_param:get(<<"device_id">>, Req0, <<>>),
 
@@ -147,6 +206,15 @@ key_status(Req0, State) ->
 %% 支持增量拉取，返回好友的密钥变更记录
 -spec pull_notifications(cowboy_req:req(), map()) -> cowboy_req:req().
 pull_notifications(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_pull_notifications(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_pull_notifications(cowboy_req:req(), map()) -> cowboy_req:req().
+do_pull_notifications(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Since = elib_param:get(<<"since">>, Req0, <<"0">>),
     Limit = elib_param:get(<<"limit">>, Req0, 50),
@@ -167,6 +235,15 @@ pull_notifications(Req0, State) ->
 %% 根据推荐方式自动启动恢复流程
 -spec start_recovery(cowboy_req:req(), map()) -> cowboy_req:req().
 start_recovery(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_start_recovery_entry(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_start_recovery_entry(cowboy_req:req(), map()) -> cowboy_req:req().
+do_start_recovery_entry(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data = jsx:decode(Body, [return_maps]),

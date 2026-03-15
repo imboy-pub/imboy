@@ -6,6 +6,10 @@
 -export([report_device_key/6]).
 -export([pull_key_notifications/3]).
 
+-ifdef(TEST).
+-export([group_by_uid/1]).
+-endif.
+
 -include("log.hrl").
 
 -spec user_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
@@ -26,7 +30,7 @@ group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) 
                         <<"members">> => group_by_uid(Rows)
                     }};
                 {error, Reason} ->
-                    ok = ?ERROR_LOG({e2ee_group_member_keys_db_error, Reason}),
+                    _ = ?ERROR_LOG({e2ee_group_member_keys_db_error, Reason}),
                     {error, <<"internal_error">>, 500}
             end;
         false ->
@@ -64,18 +68,18 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when 
             },
             case user_device_ds:save(Now, Uid, DeviceId, PostVals) of
                 {ok, _} ->
-                    ok = ?INFO_LOG([e2ee_report_device_key_created, Uid, DeviceId, DeviceType]),
+                    _ = ?INFO_LOG([e2ee_report_device_key_created, Uid, DeviceId, DeviceType]),
                     ok;
                 {error, Reason} ->
-                    ok = ?ERROR_LOG({e2ee_report_device_key_create_error, Reason}),
+                    _ = ?ERROR_LOG({e2ee_report_device_key_create_error, Reason}),
                     {error, Reason}
             end;
         {ok, _Count} ->
             % 设备已存在，更新公钥
-            ok = ?INFO_LOG([e2ee_report_device_key_updated, Uid, DeviceId, DeviceType]),
+            _ = ?INFO_LOG([e2ee_report_device_key_updated, Uid, DeviceId, DeviceType]),
             ok;
         {error, Reason} ->
-            ok = ?ERROR_LOG({e2ee_report_device_key_error, Reason}),
+            _ = ?ERROR_LOG({e2ee_report_device_key_error, Reason}),
             {error, Reason}
     end,
 
@@ -120,7 +124,7 @@ user_keys_payload(TargetUid) ->
                 <<"devices">> => Devices
             }};
         {error, Reason} ->
-            ok = ?ERROR_LOG({e2ee_user_keys_db_error, Reason}),
+            _ = ?ERROR_LOG({e2ee_user_keys_db_error, Reason}),
             {error, <<"internal_error">>, 500}
     end.
 
@@ -200,6 +204,6 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
             end, Rows),
             {ok, Notifications};
         {error, Reason} ->
-            ok = ?ERROR_LOG({pull_key_notifications_db_error, Reason}),
+            _ = ?ERROR_LOG({pull_key_notifications_db_error, Reason}),
             {error, Reason}
     end.

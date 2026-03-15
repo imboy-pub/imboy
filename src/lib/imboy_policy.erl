@@ -17,7 +17,10 @@
     message_export_enabled/0,
     message_audit_mode/0,
     message_audit_enabled/0,
-    message_body_visible/0
+    message_body_visible/0,
+    message_encryption_required/0,
+    e2ee_enabled/0,
+    validate_message_write/5
 ]).
 
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
@@ -115,6 +118,52 @@ message_audit_enabled() ->
 message_body_visible() ->
     message_audit_mode() =:= full.
 
+-spec message_encryption_required() -> boolean().
+message_encryption_required() ->
+    Capabilities = effective_capabilities(),
+    maps:get(storage_mode, Capabilities, archived) =:= secure_e2ee orelse
+    maps:get(e2ee_mode, Capabilities, disabled) =:= required.
+
+-spec e2ee_enabled() -> boolean().
+e2ee_enabled() ->
+    maps:get(e2ee_mode, effective_capabilities(), disabled) =/= disabled.
+
+-spec validate_message_write(binary(), binary(), binary(), term(), term()) -> ok | {error, binary()}.
+validate_message_write(Type, MsgType, Action, E2EE, Payload) ->
+    case policy_managed_content_write(Type, Action) andalso message_encryption_required() of
+        false ->
+            ok;
+        true ->
+            case encrypted_message_body(MsgType, E2EE, Payload) of
+                true ->
+                    ok;
+                false ->
+                    {error, <<"encrypted_message_required">>}
+            end
+    end.
+
+-spec policy_managed_content_write(binary(), binary()) -> boolean().
+policy_managed_content_write(<<"C2C">>, Action) ->
+    content_bearing_action(Action);
+policy_managed_content_write(<<"C2G">>, Action) ->
+    content_bearing_action(Action);
+policy_managed_content_write(_, _) ->
+    false.
+
+-spec content_bearing_action(binary()) -> boolean().
+content_bearing_action(<<>>) ->
+    true;
+content_bearing_action(<<"message_edit">>) ->
+    true;
+content_bearing_action(_) ->
+    false.
+
+-spec encrypted_message_body(binary(), term(), term()) -> boolean().
+encrypted_message_body(<<"e2ee">>, E2EE, Payload) when is_map(E2EE), is_binary(Payload) ->
+    map_size(E2EE) > 0 andalso Payload =/= <<>>;
+encrypted_message_body(_, _, _) ->
+    false.
+
 -spec save_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 save_admin_config(Payload) ->
     save_config(Payload).
@@ -166,11 +215,23 @@ preview_config(_) ->
 
 -spec effective_features() -> map().
 effective_features() ->
-    effective_features_from_config(load_feature_config()).
+    Profile = current_profile(),
+    {_, Features, _} = effective_policy_components(
+        Profile,
+        load_capability_config(),
+        load_feature_config()
+    ),
+    Features.
 
 -spec effective_plugins() -> map().
 effective_plugins() ->
-    effective_plugins(effective_features()).
+    Profile = current_profile(),
+    {_, _, Plugins} = effective_policy_components(
+        Profile,
+        load_capability_config(),
+        load_feature_config()
+    ),
+    Plugins.
 
 -spec effective_plugins(map()) -> map().
 effective_plugins(Features) ->
@@ -190,12 +251,16 @@ effective_plugins(Features) ->
 -spec effective_from_configs(term(), term(), term()) -> map().
 effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig) ->
     Profile = resolve_profile(ProfileConfig),
-    Features = effective_features_from_config(FeatureConfig),
+    {Capabilities, Features, Plugins} = effective_policy_components(
+        Profile,
+        CapabilityConfig,
+        FeatureConfig
+    ),
     #{
         profile => Profile,
-        capabilities => effective_capabilities_for_profile(Profile, CapabilityConfig),
+        capabilities => Capabilities,
         features => Features,
-        plugins => effective_plugins(Features)
+        plugins => Plugins
     }.
 
 -spec effective_view_from_configs(term(), term(), term()) -> map().
@@ -251,6 +316,7 @@ preview_saved_view(SaveSections) ->
 -spec preview_effective_view(map()) -> map().
 preview_effective_view(SaveSections) ->
     ProfileConfig = case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
+        {ok, ?DELETE_VALUE} -> config_ds:env(product_profile, community);
         {ok, ProfileValue} -> ProfileValue;
         error -> load_profile_config()
     end,
@@ -273,13 +339,23 @@ preview_adjustments_view(Saved, Effective) ->
             maps:get(<<"capabilities">>, Saved, #{}),
             maps:get(<<"capabilities">>, Effective, #{}))
     ),
+    Sections1 = maybe_put_saved_section(
+        Sections0,
+        plugins,
+        plugin_adjustments(
+            maps:get(<<"plugins">>, Saved, #{}),
+            maps:get(<<"plugins">>, Effective, #{}),
+            maps:get(<<"capabilities">>, Effective, #{}))
+    ),
     public_term(
         maybe_put_saved_section(
-            Sections0,
+            Sections1,
             features,
             feature_adjustments(
                 maps:get(<<"features">>, Saved, #{}),
-                maps:get(<<"features">>, Effective, #{}))
+                maps:get(<<"features">>, Effective, #{}),
+                maps:get(<<"plugins">>, Effective, #{}),
+                maps:get(<<"capabilities">>, Effective, #{}))
         )
     ).
 
@@ -419,11 +495,50 @@ constraint_cause_map(Candidates, EffectiveCapabilities) ->
            maps:get(Key, EffectiveCapabilities, undefined) =:= ExpectedValue
     ]).
 
--spec feature_adjustments(map(), map()) -> map().
-feature_adjustments(SavedFeatures, EffectiveFeatures) ->
+-spec plugin_adjustments(map(), map(), map()) -> map().
+plugin_adjustments(SavedPlugins, EffectivePlugins, EffectiveCapabilities) ->
     maps:fold(
         fun(Key, SavedValue, Acc) ->
-            case feature_adjustment(Key, SavedValue, EffectiveFeatures) of
+            case plugin_adjustment(Key, SavedValue, EffectivePlugins, EffectiveCapabilities) of
+                {ok, Adjustment} ->
+                    Acc#{Key => Adjustment};
+                error ->
+                    Acc
+            end
+        end,
+        #{},
+        SavedPlugins
+    ).
+
+-spec plugin_adjustment(binary(), term(), map(), map()) -> {ok, map()} | error.
+plugin_adjustment(Key, SavedValue, EffectivePlugins, EffectiveCapabilities) ->
+    EffectiveEnabled = plugin_enabled_in_public_map(Key, EffectivePlugins),
+    case SavedValue =:= true andalso EffectiveEnabled =:= false of
+        true ->
+            case plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilities) of
+                {ok, Constraint} ->
+                    {ok, Constraint#{
+                        saved => SavedValue,
+                        effective => EffectiveEnabled
+                    }};
+                error ->
+                    error
+            end;
+        false ->
+            error
+    end.
+
+-spec feature_adjustments(map(), map(), map(), map()) -> map().
+feature_adjustments(SavedFeatures, EffectiveFeatures, EffectivePlugins, EffectiveCapabilities) ->
+    maps:fold(
+        fun(Key, SavedValue, Acc) ->
+            case feature_adjustment(
+                Key,
+                SavedValue,
+                EffectiveFeatures,
+                EffectivePlugins,
+                EffectiveCapabilities
+            ) of
                 {ok, Adjustment} ->
                     Acc#{Key => Adjustment};
                 error ->
@@ -434,8 +549,8 @@ feature_adjustments(SavedFeatures, EffectiveFeatures) ->
         SavedFeatures
     ).
 
--spec feature_adjustment(binary(), term(), map()) -> {ok, map()} | error.
-feature_adjustment(Key, SavedValue, EffectiveFeatures) ->
+-spec feature_adjustment(binary(), term(), map(), map(), map()) -> {ok, map()} | error.
+feature_adjustment(Key, SavedValue, EffectiveFeatures, EffectivePlugins, EffectiveCapabilities) ->
     Dependencies = feature_dependencies_for_key(Key),
     EffectiveValue = maps:get(Key, EffectiveFeatures, SavedValue),
     case SavedValue =/= EffectiveValue andalso SavedValue =:= true andalso EffectiveValue =:= false of
@@ -447,8 +562,32 @@ feature_adjustment(Key, SavedValue, EffectiveFeatures) ->
                     reason => dependency,
                     depends_on => Dependencies
                 }};
-        _ ->
+        true ->
+            case feature_plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilities) of
+                {ok, Constraint} ->
+                    {ok, Constraint#{
+                        saved => SavedValue,
+                        effective => EffectiveValue
+                    }};
+                error ->
+                    error
+            end;
+        false ->
             error
+    end.
+
+-spec feature_plugin_constraint_adjustment(binary(), map(), map()) -> {ok, map()} | error.
+feature_plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilities) ->
+    case feature_name_from_public_key(Key) of
+        undefined ->
+            error;
+        FeatureName ->
+            case feature_plugin_owner(FeatureName) of
+                undefined ->
+                    error;
+                PluginName ->
+                    plugin_constraint_adjustment(PluginName, EffectivePlugins, EffectiveCapabilities)
+            end
     end.
 
 -spec feature_dependencies_for_key(binary()) -> [binary()].
@@ -497,12 +636,315 @@ effective_capabilities_for_profile(Profile, CapabilityConfig) ->
     Overrides = normalize_capability_map(CapabilityConfig),
     normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
 
+-spec effective_policy_components(community | enterprise, term(), term()) -> {map(), map(), map()}.
+effective_policy_components(Profile, CapabilityConfig, FeatureConfig) ->
+    Capabilities = effective_capabilities_for_profile(Profile, CapabilityConfig),
+    BaseFeatures = effective_features_for_profile(Profile, FeatureConfig),
+    {Features, Plugins} = resolve_plugin_constraints(BaseFeatures, Capabilities),
+    {Capabilities, Features, Plugins}.
+
 -spec effective_features_from_config(term()) -> map().
 effective_features_from_config(FeatureConfig) ->
+    effective_features_from_switches(normalize_feature_switches(FeatureConfig)).
+
+-spec effective_features_for_profile(community | enterprise, term()) -> map().
+effective_features_for_profile(Profile, FeatureConfig) ->
+    Defaults = normalize_feature_switches(
+        maps:get(features, imboy_profile_preset:defaults(Profile), #{})
+    ),
+    Overrides = normalize_feature_switches(FeatureConfig),
+    effective_features_from_config(maps:merge(Defaults, Overrides)).
+
+-spec effective_features_from_switches(map()) -> map().
+effective_features_from_switches(Features) ->
     maps:from_list([
-        {Name, feature_enabled(Name, FeatureConfig)}
+        {Name, feature_enabled(Name, Features)}
         || Name <- feature_names()
     ]).
+
+-spec normalize_feature_switches(term()) -> map().
+normalize_feature_switches(Features) ->
+    lists:foldl(
+        fun(FeatureName, Acc) ->
+            case lookup_feature_switch(Features, FeatureName) of
+                undefined ->
+                    Acc;
+                Value ->
+                    maps:put(FeatureName, Value, Acc)
+            end
+        end,
+        #{},
+        feature_names()
+    ).
+
+-spec resolve_plugin_constraints(map(), map()) -> {map(), map()}.
+resolve_plugin_constraints(Features, Capabilities) ->
+    Plugins = effective_plugins(Features),
+    DisabledFeatureKeys = plugin_constrained_feature_keys(Plugins, Capabilities),
+    ForcedFeatures = disable_feature_keys(Features, DisabledFeatureKeys),
+    case ForcedFeatures =:= Features of
+        true ->
+            {Features, Plugins};
+        false ->
+            resolve_plugin_constraints(ForcedFeatures, Capabilities)
+    end.
+
+-spec plugin_constrained_feature_keys(map(), map()) -> [atom()].
+plugin_constrained_feature_keys(Plugins, Capabilities) ->
+    lists:usort(lists:append([
+        maps:get(feature_keys, Manifest, [])
+        || {_PluginName, Manifest} <- maps:to_list(Plugins),
+           maps:get(enabled, Manifest, false),
+           plugin_constraint_violation_native(Manifest, Plugins, Capabilities) =/= none
+    ])).
+
+-spec disable_feature_keys(map(), [atom()]) -> map().
+disable_feature_keys(Features, FeatureKeys) ->
+    lists:foldl(
+        fun(FeatureKey, Acc) ->
+            maps:put(FeatureKey, false, Acc)
+        end,
+        Features,
+        FeatureKeys
+    ).
+
+-spec plugin_constraint_violation_native(map(), map(), map()) ->
+    none | {dependency, [term()]} | {capability_constraint, map()}.
+plugin_constraint_violation_native(Manifest, Plugins, Capabilities) ->
+    case unsatisfied_plugin_dependencies_native(
+        maps:get(depends_on_plugins, Manifest, []),
+        Plugins
+    ) of
+        [] ->
+            case unmet_capability_requirements_native(
+                maps:get(requires_capabilities, Manifest, []),
+                Capabilities
+            ) of
+                Requirements when map_size(Requirements) =:= 0 ->
+                    none;
+                Requirements ->
+                    {capability_constraint, Requirements}
+            end;
+        Dependencies ->
+            {dependency, Dependencies}
+    end.
+
+-spec unsatisfied_plugin_dependencies_native(term(), map()) -> [term()].
+unsatisfied_plugin_dependencies_native(Dependencies, Plugins) ->
+    [
+        Dependency
+        || Dependency <- normalize_dependency_list(Dependencies),
+           not plugin_enabled_in_native_map(Dependency, Plugins)
+    ].
+
+-spec unmet_capability_requirements_native(term(), map()) -> map().
+unmet_capability_requirements_native(Requirements, Capabilities) ->
+    maps:from_list([
+        {Key, Expected}
+        || {Key, Expected} <- normalize_required_capabilities(Requirements),
+           not capability_requirement_met(Expected, native_capability_value(Key, Capabilities))
+    ]).
+
+-spec normalize_dependency_list(term()) -> [term()].
+normalize_dependency_list(Dependencies) when is_list(Dependencies) ->
+    Dependencies;
+normalize_dependency_list(_) ->
+    [].
+
+-spec normalize_required_capabilities(term()) -> [{term(), term()}].
+normalize_required_capabilities(Requirements) when is_map(Requirements) ->
+    maps:to_list(Requirements);
+normalize_required_capabilities(Requirements) when is_list(Requirements) ->
+    lists:foldl(
+        fun(Item, Acc) ->
+            case Item of
+                {Key, Expected} ->
+                    [{Key, Expected} | Acc];
+                Key ->
+                    [{Key, true} | Acc]
+            end
+        end,
+        [],
+        Requirements
+    );
+normalize_required_capabilities(_) ->
+    [].
+
+-spec plugin_enabled_in_native_map(term(), map()) -> boolean().
+plugin_enabled_in_native_map(PluginRef, Plugins) ->
+    case maps:find(normalize_plugin_ref(PluginRef), Plugins) of
+        {ok, Manifest} ->
+            maps:get(enabled, Manifest, false);
+        error ->
+            false
+    end.
+
+-spec native_capability_value(term(), map()) -> term().
+native_capability_value(Key, Capabilities) ->
+    maps:get(normalize_capability_ref(Key), Capabilities, undefined).
+
+-spec capability_requirement_met(term(), term()) -> boolean().
+capability_requirement_met(Expected, Actual) when is_list(Expected) ->
+    case is_charlist(Expected) of
+        true ->
+            capability_requirement_met(unicode:characters_to_binary(Expected), Actual);
+        false ->
+            lists:any(fun(Option) -> capability_requirement_met(Option, Actual) end, Expected)
+    end;
+capability_requirement_met(true, Actual) ->
+    capability_truthy(Actual);
+capability_requirement_met(false, Actual) ->
+    Actual =:= false;
+capability_requirement_met(Expected, Actual) ->
+    normalize_requirement_value(Expected) =:= normalize_requirement_value(Actual).
+
+-spec capability_truthy(term()) -> boolean().
+capability_truthy(undefined) ->
+    false;
+capability_truthy(null) ->
+    false;
+capability_truthy(false) ->
+    false;
+capability_truthy(0) ->
+    false;
+capability_truthy(<<"false">>) ->
+    false;
+capability_truthy("false") ->
+    false;
+capability_truthy(_) ->
+    true.
+
+-spec normalize_requirement_value(term()) -> term().
+normalize_requirement_value(Value) when is_list(Value) ->
+    case is_charlist(Value) of
+        true ->
+            unicode:characters_to_binary(Value);
+        false ->
+            [normalize_requirement_value(Item) || Item <- Value]
+    end;
+normalize_requirement_value(Value) ->
+    Value.
+
+-spec normalize_plugin_ref(term()) -> atom() | undefined.
+normalize_plugin_ref(Key) when is_atom(Key) ->
+    Key;
+normalize_plugin_ref(Key) when is_binary(Key) ->
+    try
+        binary_to_existing_atom(Key, utf8)
+    catch
+        error:badarg ->
+            undefined
+    end;
+normalize_plugin_ref(Key) when is_list(Key) ->
+    normalize_plugin_ref(unicode:characters_to_binary(Key));
+normalize_plugin_ref(_) ->
+    undefined.
+
+-spec normalize_capability_ref(term()) -> atom() | undefined.
+normalize_capability_ref(Key) when is_atom(Key) ->
+    Key;
+normalize_capability_ref(Key) when is_binary(Key) ->
+    try
+        binary_to_existing_atom(Key, utf8)
+    catch
+        error:badarg ->
+            undefined
+    end;
+normalize_capability_ref(Key) when is_list(Key) ->
+    normalize_capability_ref(unicode:characters_to_binary(Key));
+normalize_capability_ref(_) ->
+    undefined.
+
+-spec plugin_constraint_adjustment(term(), map(), map()) -> {ok, map()} | error.
+plugin_constraint_adjustment(PluginRef, EffectivePlugins, EffectiveCapabilities) ->
+    case plugin_manifest_by_public_ref(PluginRef) of
+        undefined ->
+            error;
+        Manifest ->
+            case unsatisfied_plugin_dependencies_public(
+                maps:get(depends_on_plugins, Manifest, []),
+                EffectivePlugins
+            ) of
+                [] ->
+                    case unmet_capability_requirements_public(
+                        maps:get(requires_capabilities, Manifest, []),
+                        EffectiveCapabilities
+                    ) of
+                        Requirements when map_size(Requirements) =:= 0 ->
+                            error;
+                        Requirements ->
+                            {ok, #{
+                                reason => capability_constraint,
+                                requires_capabilities => Requirements
+                            }}
+                    end;
+                Dependencies ->
+                    {ok, #{
+                        reason => dependency,
+                        depends_on_plugins => Dependencies
+                    }}
+            end
+    end.
+
+-spec unsatisfied_plugin_dependencies_public(term(), map()) -> [term()].
+unsatisfied_plugin_dependencies_public(Dependencies, EffectivePlugins) ->
+    [
+        Dependency
+        || Dependency <- normalize_dependency_list(Dependencies),
+           not plugin_enabled_in_public_map(Dependency, EffectivePlugins)
+    ].
+
+-spec unmet_capability_requirements_public(term(), map()) -> map().
+unmet_capability_requirements_public(Requirements, EffectiveCapabilities) ->
+    maps:from_list([
+        {Key, Expected}
+        || {Key, Expected} <- normalize_required_capabilities(Requirements),
+           not capability_requirement_met(Expected, maps:get(public_key(Key), EffectiveCapabilities, undefined))
+    ]).
+
+-spec plugin_enabled_in_public_map(term(), map()) -> boolean().
+plugin_enabled_in_public_map(PluginRef, EffectivePlugins) ->
+    case maps:find(public_key(PluginRef), EffectivePlugins) of
+        {ok, PluginState} when is_map(PluginState) ->
+            to_boolean(
+                maps:get(<<"enabled">>, PluginState, maps:get(enabled, PluginState, false)),
+                false
+            );
+        _ ->
+            false
+    end.
+
+-spec plugin_manifest_by_public_ref(term()) -> map() | undefined.
+plugin_manifest_by_public_ref(PluginRef) ->
+    case normalize_plugin_ref(PluginRef) of
+        undefined ->
+            undefined;
+        PluginName ->
+            imboy_plugin_registry:get(PluginName)
+    end.
+
+-spec feature_name_from_public_key(binary()) -> atom() | undefined.
+feature_name_from_public_key(Key) ->
+    case binary_to_atom_or_undefined(Key) of
+        undefined ->
+            undefined;
+        FeatureName ->
+            case lists:member(FeatureName, feature_names()) of
+                true ->
+                    FeatureName;
+                false ->
+                    undefined
+            end
+    end.
+
+-spec binary_to_atom_or_undefined(binary()) -> atom() | undefined.
+binary_to_atom_or_undefined(Key) ->
+    try
+        binary_to_existing_atom(Key, utf8)
+    catch
+        error:badarg ->
+            undefined
+    end.
 
 -spec normalize_preview_capability_overrides(term()) -> map().
 normalize_preview_capability_overrides(Value) ->
@@ -1179,6 +1621,7 @@ maybe_put_capabilities_section(Sections, Payload) ->
 
 -spec maybe_put_features_section(map(), map()) -> map().
 maybe_put_features_section(Sections, Payload) ->
+    ExistingFeatureOverrides = saved_feature_overrides(),
     FeaturesResult =
         case payload_value(Payload, [features, <<"features">>]) of
             {ok, FeatureValue} ->
@@ -1189,7 +1632,7 @@ maybe_put_features_section(Sections, Payload) ->
     PluginsResult =
         case payload_value(Payload, [plugins, <<"plugins">>]) of
             {ok, PluginValue} ->
-                normalize_plugin_payload(PluginValue);
+                normalize_plugin_payload(PluginValue, ExistingFeatureOverrides);
             error ->
                 {ok, #{}}
         end,
@@ -1383,6 +1826,10 @@ normalize_feature_payload(Value) ->
 
 -spec normalize_plugin_payload(term()) -> {ok, map()} | {error, map()}.
 normalize_plugin_payload(Value) ->
+    normalize_plugin_payload(Value, saved_feature_overrides()).
+
+-spec normalize_plugin_payload(term(), map()) -> {ok, map()} | {error, map()}.
+normalize_plugin_payload(Value, ExistingFeatureOverrides) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
         fun(PluginName, {ok, Acc}) ->
@@ -1390,15 +1837,10 @@ normalize_plugin_payload(Value) ->
                 undefined ->
                     {ok, Acc};
                 null ->
-                    Manifest = imboy_plugin_registry:get(PluginName),
-                    FeatureKeys = maps:get(feature_keys, Manifest, []),
                     {ok,
-                        lists:foldl(
-                            fun(FeatureKey, FeatureAcc) ->
-                                maps:put(FeatureKey, ?DELETE_VALUE, FeatureAcc)
-                            end,
+                        maps:merge(
                             Acc,
-                            FeatureKeys
+                            plugin_clear_payload(PluginName, ExistingFeatureOverrides)
                         )};
                 Item ->
                     case parse_toggle_payload(Item) of
@@ -1440,6 +1882,38 @@ normalize_plugin_payload(Value) ->
                     {ok, FeatureConfig}
             end
     end.
+
+-spec plugin_clear_payload(atom(), map()) -> map().
+plugin_clear_payload(PluginName, ExistingFeatureOverrides) ->
+    case plugin_override_candidate(PluginName, ExistingFeatureOverrides) of
+        {ok, _Enabled, FeatureKeys} ->
+            lists:foldl(
+                fun(FeatureKey, Acc) ->
+                    maps:put(FeatureKey, ?DELETE_VALUE, Acc)
+                end,
+                #{},
+                FeatureKeys
+            );
+        error ->
+            preserve_plugin_feature_overrides(PluginName, ExistingFeatureOverrides)
+    end.
+
+-spec preserve_plugin_feature_overrides(atom(), map()) -> map().
+preserve_plugin_feature_overrides(PluginName, ExistingFeatureOverrides) ->
+    Manifest = imboy_plugin_registry:get(PluginName),
+    FeatureKeys = maps:get(feature_keys, Manifest, []),
+    lists:foldl(
+        fun(FeatureKey, Acc) ->
+            case maps:find(FeatureKey, ExistingFeatureOverrides) of
+                {ok, Enabled} ->
+                    maps:put(FeatureKey, #{enabled => Enabled}, Acc);
+                error ->
+                    Acc
+            end
+        end,
+        #{},
+        FeatureKeys
+    ).
 
 -spec persist_config_sections(map()) -> ok.
 persist_config_sections(Sections) ->

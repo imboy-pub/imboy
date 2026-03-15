@@ -92,34 +92,41 @@ build_and_send_with_retry_type_test_() ->
     end).
 
 build_and_send_with_different_retry_types_test_() ->
-    {foreach,
-     fun() ->
-         meck:new([message_ds, elib_retry_config]),
-         ok
-     end,
-     fun(_) ->
-         meck:unload([message_ds, elib_retry_config])
-     end,
-     [
-      fun(_) ->
-          meck:expect(message_ds, send_next, 4, ok),
-          meck:expect(elib_retry_config, intervals, fun(<<"c2c">>) -> [1, 2] end),
-          Msg = #{<<"t">> => 1},
-          ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m1">>, Msg, <<"c2c">>))
-      end,
-      fun(_) ->
-          meck:expect(message_ds, send_next, 4, ok),
-          meck:expect(elib_retry_config, intervals, fun(<<"c2s">>) -> [3, 4] end),
-          Msg = #{<<"t">> => 2},
-          ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m2">>, Msg, <<"c2s">>))
-      end,
-      fun(_) ->
-          meck:expect(message_ds, send_next, 4, ok),
-          meck:expect(elib_retry_config, intervals, fun(<<"s2c">>) -> [5, 6] end),
-          Msg = #{<<"t">> => 3},
-          ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m3">>, Msg, <<"s2c">>))
-      end
-     ]}.
+    [
+        ?WITH_MECKS([
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {elib_retry_config, [
+                {'intervals', 1, fun(<<"c2c">>) -> [1, 2] end}
+            ]}
+        ], fun() ->
+            Msg = #{<<"t">> => 1},
+            ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m1">>, Msg, <<"c2c">>))
+        end),
+        ?WITH_MECKS([
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {elib_retry_config, [
+                {'intervals', 1, fun(<<"c2s">>) -> [3, 4] end}
+            ]}
+        ], fun() ->
+            Msg = #{<<"t">> => 2},
+            ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m2">>, Msg, <<"c2s">>))
+        end),
+        ?WITH_MECKS([
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {elib_retry_config, [
+                {'intervals', 1, fun(<<"s2c">>) -> [5, 6] end}
+            ]}
+        ], fun() ->
+            Msg = #{<<"t">> => 3},
+            ?assertEqual(ok, imboy_message_helper:build_and_send(1, <<"m3">>, Msg, <<"s2c">>))
+        end)
+    ].
 
 build_and_send_with_binary_uid_test_() ->
     ?WITH_MECKS([
@@ -417,7 +424,7 @@ build_and_send_with_large_message_test_() ->
             {'intervals', 1, fun(_) -> [1000] end}
         ]}
     ], fun() ->
-        LargeBody = list_to_binary(lists:duplicate(500, $x)),
+        LargeBody = list_to_binary(lists:duplicate(1500, $x)),
         Msg = #{<<"body">> => LargeBody},
         Result = imboy_message_helper:build_and_send(999, <<"msg_large">>, Msg, <<"c2c">>),
         ?assertEqual(ok, Result)
