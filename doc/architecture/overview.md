@@ -6,6 +6,10 @@
 > Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
 > Related docs: `doc/architecture/database-access.md`, `doc/standards/api-format.md`, `doc/README.md`
 
+## 相关 ADR
+
+- `doc/architecture/adr/2026-03-15-modular-monolith-boundaries.md`
+
 ## 1. 文档目的
 
 本文档用于描述 `Imboy` 当前仓库的真实分层方式，以及各层在代码中的职责边界。
