@@ -3,7 +3,7 @@
 %%%
 % 消息路由模块
 % 负责将 WebSocket 消息路由到对应的业务逻辑模块
-% 替代 websocket_handler 中的消息分发逻辑
+% 当前作为 messaging_logic 的内部 WebSocket 路由器
 %%%
 
 -include("log.hrl").

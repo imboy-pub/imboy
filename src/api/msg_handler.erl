@@ -13,7 +13,17 @@
            {nowarn_function, reaction_remove/2},
            {nowarn_function, reaction_list/2}]).
            
--export([init/2]).
+-export([
+    init/2,
+    offline/2,
+    offline_ack/2,
+    read_stats/2,
+    pin/2,
+    forward/2,
+    reaction_add/2,
+    reaction_remove/2,
+    reaction_list/2
+]).
 
 -include("log.hrl").
 -include("error_code.hrl").
@@ -35,27 +45,7 @@ init(Req0, State0) ->
     % ?DEBUG_LOG(State0),
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 =
-        case Action of
-            offline ->
-                offline(Req0, State);
-            offline_ack ->
-                offline_ack(Req0, State);
-            read_stats ->
-                read_stats(Req0, State);
-            pin ->
-                pin(Req0, State);
-            forward ->
-                forward(Req0, State);
-            reaction_add ->
-                reaction_add(Req0, State);
-            reaction_remove ->
-                reaction_remove(Req0, State);
-            reaction_list ->
-                reaction_list(Req0, State);
-            false ->
-                Req0
-        end,
+    Req1 = messaging_logic:handle_rest_action(Action, Req0, State),
     {ok, Req1, State}.
 
 %% ===================================================================

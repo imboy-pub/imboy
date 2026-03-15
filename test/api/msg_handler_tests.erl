@@ -17,6 +17,26 @@ req_mock() -> cowboy_req_h:new(#{}).
 %% init/2 测试（按 action 分发）
 %% ===================================================================
 
+init_delegates_actions_to_messaging_logic_test_() ->
+    ?WITH_MECK(messaging_logic, [
+        {'handle_rest_action', 3, fun(offline, _Req, State) ->
+            self() ! {delegated_state, State},
+            delegated_req
+        end}
+    ], fun() ->
+        {ok, Req1, State1} = msg_handler:init(req_mock(), #{action => offline, current_uid => 12345}),
+        ?assertEqual(delegated_req, Req1),
+        ?assertEqual(#{current_uid => 12345}, State1),
+        ?assertEqual(
+            {delegated_state, #{current_uid => 12345}},
+            receive
+                Delegated -> Delegated
+            after 1000 ->
+                timeout
+            end
+        )
+    end).
+
 init_with_valid_request_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = req_mock(),
