@@ -1,4 +1,6 @@
 -module(passport_handler).
+%% Thin HTTP adapter for the identity passport boundary.
+%% Keep request parsing here and delegate auth/account flows to passport_logic.
 
 -dialyzer({nowarn_function, [validate_bind_mail_params/4, validate_bind_mail_cache/2, bind_mail/1]}).
 

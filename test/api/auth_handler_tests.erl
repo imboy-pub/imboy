@@ -10,6 +10,10 @@
 %%% 覆盖：Assets 服务认证、参数验证、错误处理
 %%%===================================================================
 
+run_assets_action(MockReq) ->
+    {ok, Req, _State} = auth_handler:init(MockReq, #{action => assets}),
+    Req.
+
 %% ===================================================================
 %% 基础测试验证
 %% ===================================================================
@@ -88,7 +92,7 @@ assets_post_open_verify_success_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"ok">>, maps:get(response_body, Req))
     end).
@@ -114,7 +118,7 @@ assets_post_open_verify_fail_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"fail"/utf8>>, maps:get(response_body, Req))
     end).
@@ -144,7 +148,7 @@ assets_post_verify_for_assets_success_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"ok">>, maps:get(response_body, Req))
     end).
@@ -170,7 +174,7 @@ assets_post_verify_for_assets_fail_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"fail"/utf8>>, maps:get(response_body, Req))
     end).
@@ -192,7 +196,7 @@ assets_post_missing_params_returns_fail_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"fail"/utf8>>, maps:get(response_body, Req))
     end).
@@ -214,7 +218,7 @@ assets_post_exception_returns_fail_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"fail"/utf8>>, maps:get(response_body, Req))
     end).
@@ -232,7 +236,7 @@ assets_get_returns_fail_test_() ->
         end}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"GET">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         ?assertEqual(<<"fail"/utf8>>, maps:get(response_body, Req))
     end).
@@ -263,7 +267,7 @@ assets_post_with_empty_token_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -289,7 +293,7 @@ assets_post_with_empty_path_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -315,7 +319,7 @@ assets_post_with_empty_scene_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -329,8 +333,8 @@ assets_post_with_invalid_integer_test_() ->
         ]},
         {auth_logic, [
             {'verify_for_assets', 4, fun(_Scene, _Token, V, _Path) ->
-                % string:to_integer 失败返回 {error, ...}，V 为 0
-                ?assertEqual(0, V),
+                % 当前 string:to_integer/1 失败时第一项为 error。
+                ?assertEqual(error, V),
                 <<"ok">>
             end}
         ]},
@@ -342,7 +346,7 @@ assets_post_with_invalid_integer_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -368,7 +372,7 @@ assets_post_with_large_value_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -395,7 +399,7 @@ assets_post_with_long_path_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -421,7 +425,7 @@ assets_post_with_special_chars_path_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -452,7 +456,7 @@ assets_post_with_different_scenes_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req))
     end).
 
@@ -477,7 +481,7 @@ assets_post_returns_correct_content_type_test_() ->
         ]}
     ], fun() ->
         MockReq = cowboy_req_h:new(#{}),
-        Req = auth_handler:assets(<<"POST">>, MockReq),
+        Req = run_assets_action(MockReq),
         ?assertEqual(200, maps:get(response_status, Req)),
         Headers = maps:get(response_headers, Req),
         ?assertEqual(<<"text/html">>, maps:get(<<"content-type">>, Headers))

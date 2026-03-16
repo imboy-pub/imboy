@@ -1,4 +1,6 @@
 -module(user_handler).
+%% Thin HTTP adapter for the identity user boundary.
+%% Keep transport concerns here and route user lifecycle rules through user_logic.
 
 -behavior(cowboy_rest).
 

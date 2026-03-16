@@ -1,4 +1,6 @@
 -module(auth_logic).
+%% Stable identity auth domain boundary.
+%% API adapters should call this module instead of reaching auth data internals directly.
 
 %%%
 % auth 业务逻辑模块
@@ -84,4 +86,3 @@ do_verify_for_assets(_, _) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

@@ -1,4 +1,6 @@
 -module(passport_logic).
+%% Stable identity passport domain boundary.
+%% API adapters should call this module instead of reaching auth/user internals directly.
 -dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}]}).
 %%%
 % passport_logic 是 passport application logic 缩写

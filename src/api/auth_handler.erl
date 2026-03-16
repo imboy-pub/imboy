@@ -1,4 +1,6 @@
 -module(auth_handler).
+%% Thin HTTP adapter for the identity auth boundary.
+%% Keep transport parsing here and route auth checks through auth_logic.
 -behavior(cowboy_rest).
 
 -include("log.hrl").

@@ -1,4 +1,6 @@
 -module(user_logic).
+%% Stable identity user domain boundary.
+%% API adapters should call this module instead of reaching user internals directly.
 
 %%%
 % user 业务逻辑模块
