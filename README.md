@@ -32,6 +32,7 @@ make eunit
 make ct
 make tests
 make dialyze
+bash script/check_module_boundaries.sh
 
 IMBOYENV=local make run
 IMBOYENV=local make rel
@@ -43,6 +44,12 @@ IMBOYENV=local make relup
 - `make eunit` 默认使用 `config/sys.config`，可通过 `EUNIT_CONFIG=config/sys.local.config` 指定配置。
 - 提交迁移前，按 `doc/standards/migration_naming.md` 做命名自检。
 - 功能开关 smoke 校验可直接使用 `script/run_feature_flag_smoke.sh`，或通过 `make feature-smoke` 触发。
+
+## Architecture Gates / 架构门禁
+
+- 后端边界检查：`bash script/check_module_boundaries.sh`
+- 编译门禁：`make compile`
+- 约束范围：已迁移的 HTTP handler 只能依赖当前登记的领域 facade 或兼容层，新增跨域 `*_repo` / `*_ds` / `*_logic` 直连会直接失败
 
 ## 工程化基线
 
