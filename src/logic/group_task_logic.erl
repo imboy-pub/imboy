@@ -1,4 +1,6 @@
 -module(group_task_logic).
+%% Stable group_collab task domain boundary.
+%% HTTP adapters should call this module instead of repo internals.
 %%%
 % 群作业业务逻辑模块
 % Group task business logic module

@@ -1,4 +1,6 @@
 -module(group_vote_handler).
+%% Thin HTTP adapter for the group_collab vote boundary.
+%% Plugin-gated vote actions should stay behind this handler and group_vote_logic.
 
 -behavior(cowboy_rest).
 

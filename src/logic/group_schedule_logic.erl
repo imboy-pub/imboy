@@ -1,4 +1,6 @@
 -module(group_schedule_logic).
+%% Stable group_collab schedule domain boundary.
+%% HTTP adapters should call this module instead of repo internals.
 
 %%%
 % group_schedule 业务逻辑模块

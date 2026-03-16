@@ -1,4 +1,6 @@
 -module(group_handler).
+%% Thin HTTP adapter for the core group_collab boundary.
+%% Keep transport parsing here and route domain work through group_logic.
 
 -dialyzer({nowarn_function, [validate_gid/1, process_group_edit/5, edit/2, handle_action/3]}).
 

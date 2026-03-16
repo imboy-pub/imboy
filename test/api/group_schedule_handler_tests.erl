@@ -6,10 +6,12 @@
 %%%===================================================================
 %%% @doc
 %%% group_schedule_handler 参数校验与错误码回归测试
+%%% 这些用例只覆盖 handler 参数校验与兼容行为。
+%%% feature gate 行为由 feature_gate_public_handler_tests 独立覆盖。
 %%%===================================================================
 
 init_create_missing_group_id_returns_bad_request_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -32,7 +34,7 @@ init_create_missing_group_id_returns_bad_request_test_() ->
     end).
 
 init_create_invalid_time_range_returns_bad_request_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -64,7 +66,7 @@ init_create_invalid_time_range_returns_bad_request_test_() ->
     end).
 
 init_create_epoch_time_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -96,7 +98,7 @@ init_create_epoch_time_compatible_test_() ->
     end).
 
 init_update_unauthorized_returns_forbidden_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -125,7 +127,7 @@ init_update_unauthorized_returns_forbidden_test_() ->
     end).
 
 init_update_numeric_schedule_id_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -159,7 +161,7 @@ init_update_numeric_schedule_id_compatible_test_() ->
     end).
 
 init_cancel_numeric_schedule_id_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -188,7 +190,7 @@ init_cancel_numeric_schedule_id_compatible_test_() ->
     end).
 
 init_confirm_participant_not_found_returns_forbidden_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -215,7 +217,7 @@ init_confirm_participant_not_found_returns_forbidden_test_() ->
     end).
 
 init_confirm_numeric_schedule_id_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -245,7 +247,7 @@ init_confirm_numeric_schedule_id_compatible_test_() ->
     end).
 
 init_detail_missing_schedule_id_returns_bad_request_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [] end}
         ]},
@@ -262,7 +264,7 @@ init_detail_missing_schedule_id_returns_bad_request_test_() ->
     end).
 
 init_detail_hashid_schedule_id_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"hash_66">>}] end}
         ]},
@@ -290,7 +292,7 @@ init_detail_hashid_schedule_id_compatible_test_() ->
     end).
 
 init_list_with_time_range_query_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
                 [
@@ -329,7 +331,7 @@ init_list_with_time_range_query_compatible_test_() ->
     end).
 
 init_my_list_with_time_range_query_compatible_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
                 [
@@ -362,6 +364,15 @@ init_my_list_with_time_range_query_compatible_test_() ->
 
 req_mock() ->
     #{mock_req => true}.
+
+feature_gate_bypass_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, _Feature) ->
+                ok
+            end}
+        ]}
+    ].
 
 receive_resp_code() ->
     receive

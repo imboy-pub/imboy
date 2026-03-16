@@ -1,4 +1,6 @@
 -module(group_logic).
+%% Stable group_collab domain facade for core group lifecycle flows.
+%% API adapters should depend on this module instead of reaching repo internals directly.
 
 %%%
 % group 业务逻辑模块
@@ -303,4 +305,3 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

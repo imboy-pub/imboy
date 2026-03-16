@@ -1,4 +1,6 @@
 -module(group_schedule_handler).
+%% Thin HTTP adapter for the group_collab schedule boundary.
+%% Keep feature-gated request parsing here and route schedule rules via group_schedule_logic.
 
 %%%
 % group_schedule 控制器模块

@@ -1,4 +1,6 @@
 -module(group_vote_logic).
+%% Stable group_collab vote domain boundary.
+%% HTTP adapters should call this module instead of repo internals.
 
 %%%
 % group_vote 业务逻辑模块
