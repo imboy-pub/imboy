@@ -4,7 +4,7 @@
 -include("eunit_setup.hrl").
 
 create_unified_group_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -29,7 +29,7 @@ create_unified_group_success_test_() ->
     end).
 
 group_create_prefers_path_group_id_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
@@ -61,7 +61,7 @@ group_create_prefers_path_group_id_test_() ->
     end).
 
 create_normalizes_channels_alias_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -86,7 +86,7 @@ create_normalizes_channels_alias_test_() ->
     end).
 
 create_error_passthrough_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
@@ -111,6 +111,13 @@ create_error_passthrough_test_() ->
 
 req_mock() ->
     #{}.
+
+feature_gate_bypass_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+        ]}
+    ].
 
 create_moment_target_short_circuits_when_feature_disabled_test_() ->
     ?WITH_MECKS([

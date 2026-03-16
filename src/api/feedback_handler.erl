@@ -1,5 +1,7 @@
 -module(feedback_handler).
 
+%% Thin HTTP adapter for the ops_governance feedback boundary.
+
 %%%
 % feedback 控制器模块
 % feedback controller module

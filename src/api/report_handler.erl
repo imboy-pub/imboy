@@ -1,5 +1,7 @@
 -module(report_handler).
 
+%% Thin HTTP adapter for the ops_governance report boundary.
+
 -behavior(cowboy_rest).
 
 -export([init/2]).

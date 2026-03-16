@@ -1,5 +1,7 @@
 -module(report_logic).
 
+%% Stable ops_governance report domain boundary.
+
 -export([create/5]).
 -export([admin_list/5]).
 -export([admin_resolve/5]).
