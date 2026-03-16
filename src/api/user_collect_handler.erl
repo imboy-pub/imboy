@@ -1,5 +1,7 @@
 -module(user_collect_handler).
 
+%% Thin HTTP adapter for the social_graph collect boundary.
+
 %%%
 % collect 控制器模块
 % collect controller module
@@ -169,4 +171,3 @@ change(Req0, State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

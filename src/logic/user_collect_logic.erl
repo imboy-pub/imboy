@@ -1,5 +1,7 @@
 -module(user_collect_logic).
 
+%% Stable social_graph collect domain boundary.
+
 %%%
 % user_collect 业务逻辑模块
 % user collect business logic module
@@ -272,4 +274,3 @@ add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

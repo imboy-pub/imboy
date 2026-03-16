@@ -1,5 +1,7 @@
 -module(user_tag_relation_handler).
 
+%% Thin HTTP adapter for the social_graph tag relation boundary.
+
 %%%
 % user_tag_relation 控制器模块
 % user_tag_relation controller module
