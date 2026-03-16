@@ -1,4 +1,6 @@
 -module(e2ee_handler).
+
+%% Thin HTTP adapter for the security_privacy e2ee boundary.
 -dialyzer({nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2]}).
 
 -behavior(cowboy_rest).

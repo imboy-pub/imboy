@@ -1,4 +1,6 @@
 -module(e2ee_logic).
+
+%% Stable security_privacy e2ee domain boundary.
 -dialyzer(no_return).
 
 -export([user_keys/2]).
