@@ -12,10 +12,14 @@
     required_feature_for_target/3
 ]).
 
+%% Deprecated compatibility wrapper.
+%% New callers should prefer manifests/0.
 -spec all() -> map().
 all() ->
     manifests().
 
+%% Deprecated compatibility wrapper.
+%% New callers should prefer manifest/1.
 -spec get(atom()) -> map().
 get(Name) ->
     manifest(Name).
@@ -35,7 +39,7 @@ manifests() ->
 
 -spec plugin_names() -> [atom()].
 plugin_names() ->
-    [channel, moment, location, group_collab].
+    maps:keys(raw_manifests()).
 
 -spec enabled_app_entries(map()) -> [atom()].
 enabled_app_entries(EnabledFeatures) ->
