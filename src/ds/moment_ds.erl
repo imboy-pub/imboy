@@ -2,6 +2,7 @@
 %%%
 % moment domain service
 %%%
+%% Internal domain service for moment_social. External callers should prefer moment_logic.
 
 -export([create_post/2]).
 -export([get_post/1, get_post_any/1]).

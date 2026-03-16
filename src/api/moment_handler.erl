@@ -1,4 +1,6 @@
 -module(moment_handler).
+%% Thin HTTP adapter for the moment_social domain.
+%% Keep transport parsing here and route business work through moment_logic.
 
 -behavior(cowboy_rest).
 

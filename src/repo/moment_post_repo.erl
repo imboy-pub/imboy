@@ -2,6 +2,7 @@
 %%%
 % moment_post repository
 %%%
+%% Internal persistence detail for the moment_social domain.
 
 -export([tablename/0]).
 -export([add/1, add/2]).

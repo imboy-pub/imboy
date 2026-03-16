@@ -2,6 +2,7 @@
 %%%
 % moment notification helpers
 %%%
+%% Internal cross-cutting helper. Keep notification glue behind moment_logic.
 
 -export([notify_post_created/2]).
 -export([notify_post_deleted/2]).

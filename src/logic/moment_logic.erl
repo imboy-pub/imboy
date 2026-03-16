@@ -2,6 +2,8 @@
 %%%
 % moment business logic
 %%%
+%% Stable domain boundary for moment_social.
+%% API, admin, and report adapters should call this module instead of ds/repo internals.
 
 -export([create_post/2]).
 -export([get_post/2]).

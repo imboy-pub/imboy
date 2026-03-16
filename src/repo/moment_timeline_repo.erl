@@ -2,6 +2,7 @@
 %%%
 % moment_timeline repository
 %%%
+%% Internal persistence detail for the moment_social domain.
 
 -export([tablename/0]).
 -export([upsert_batch/5]).
