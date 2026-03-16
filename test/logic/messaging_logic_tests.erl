@@ -86,3 +86,94 @@ route_ws_delegates_c2c_to_existing_logic_modules_test_() ->
             end
         )
     end).
+
+handle_rest_action_offline_ack_uses_messaging_boundary_test_() ->
+    ?WITH_MECKS([
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 12345 end}
+        ]},
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{
+                    <<"type">> => <<"C2C">>,
+                    <<"msg_ids">> => [<<"m1">>, <<"m2">>]
+                }
+            end}
+        ]},
+        {msg_c2c_repo, [
+            {'delete_by_msg_ids_and_to_id', 2, fun(MsgIds, 12345) ->
+                self() ! {acked_ids, MsgIds},
+                2
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, Data) ->
+                self() ! {resp_data, Data},
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        Req1 = messaging_logic:handle_rest_action(offline_ack, req_mock(), #{current_uid => 12345}),
+        ?assertEqual(req_ok, Req1),
+        ?assertEqual(
+            {acked_ids, [<<"m1">>, <<"m2">>]},
+            receive
+                Acked -> Acked
+            after 1000 ->
+                timeout
+            end
+        ),
+        Payload = receive
+            {resp_data, Data} -> Data
+        after 1000 ->
+            timeout
+        end,
+        ?assertEqual(<<"c2c">>, maps:get(<<"type">>, Payload)),
+        ?assertEqual(2, maps:get(<<"processed_count">>, Payload)),
+        ?assertEqual(2, maps:get(<<"msg_ids_count">>, Payload))
+    end).
+
+handle_rest_action_reaction_add_uses_messaging_boundary_test_() ->
+    ?WITH_MECKS([
+        {elib_req, [
+            {'body', 2, fun(Req, _Opts) ->
+                {ok,
+                 #{
+                     <<"msg_id">> => <<"msg-1">>,
+                     <<"msg_type">> => <<"c2c">>,
+                     <<"emoji">> => <<240, 159, 145, 141>>
+                 },
+                 Req}
+            end}
+        ]},
+        {msg_reaction_logic, [
+            {'add', 4, fun(<<"msg-1">>, <<"c2c">>, 12345, Emoji) ->
+                self() ! {reaction_added, Emoji},
+                {ok, #{<<"user_id">> => 12345, <<"created_at">> => 1700000000}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(_Req, Data, _Msg) ->
+                self() ! {resp_data, Data},
+                req_ok
+            end}
+        ]}
+    ], fun() ->
+        Req1 = messaging_logic:handle_rest_action(reaction_add, req_mock(), #{current_uid => 12345}),
+        ?assertEqual(req_ok, Req1),
+        ?assertEqual(
+            {reaction_added, <<240, 159, 145, 141>>},
+            receive
+                Added -> Added
+            after 1000 ->
+                timeout
+            end
+        ),
+        Payload = receive
+            {resp_data, Data} -> Data
+        after 1000 ->
+            timeout
+        end,
+        ?assertEqual(<<"msg-1">>, maps:get(<<"msg_id">>, Payload)),
+        ?assertEqual(12345, maps:get(<<"user_id">>, Payload))
+    end).
