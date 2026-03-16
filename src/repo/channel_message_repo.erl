@@ -3,6 +3,7 @@
 % channel_message_repo 是 channel_message repository 缩写
 % 频道消息数据仓库层
 %%%
+%% Internal persistence detail for the channel_content domain.
 
 -export([tablename/0]).
 -export([add/1]).

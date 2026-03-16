@@ -3,6 +3,7 @@
 % channel_repo 是 channel repository 缩写
 % 频道数据仓库层，提供频道数据的基础数据库操作
 %%%
+%% Internal persistence detail for the channel_content domain.
 
 -export([tablename/0]).
 -export([add/1]).

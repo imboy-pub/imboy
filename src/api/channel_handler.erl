@@ -1,4 +1,6 @@
 -module(channel_handler).
+%% Thin HTTP adapter for the channel_content domain.
+%% Keep transport parsing here and route domain work through channel_logic.
 
 -behavior(cowboy_rest).
 

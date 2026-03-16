@@ -1,4 +1,5 @@
 -module(channel_logic_message).
+%% Internal channel_content message/application logic.
 
 -export([channel_transfer/1]).
 -export([message_transfer/1]).

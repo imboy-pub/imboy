@@ -3,6 +3,8 @@
 % channel_logic facade
 % 对外保持兼容签名，内部按领域子模块分发
 %%%
+%% Stable domain boundary for channel_content.
+%% API and admin adapters should call this module instead of repo internals.
 
 %% ==================== Specs ====================
 

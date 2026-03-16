@@ -1,4 +1,5 @@
 -module(channel_logic_subscription).
+%% Internal channel_content subscription/application logic.
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).

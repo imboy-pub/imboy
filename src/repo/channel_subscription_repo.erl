@@ -3,6 +3,7 @@
 % channel_subscription_repo 是 channel_subscription repository 缩写
 % 频道订阅关系数据仓库层
 %%%
+%% Internal persistence detail for the channel_content domain.
 
 -export([tablename/0]).
 -export([add/1]).
