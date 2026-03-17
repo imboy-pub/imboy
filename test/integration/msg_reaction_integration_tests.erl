@@ -297,5 +297,5 @@ send_c2g_message(From, Group, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
     MsgId.

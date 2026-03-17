@@ -3,8 +3,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+moment_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, moment) -> ok end}
+        ]}
+    ].
+
 init_list_reads_filters_and_pagination_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(moment_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'parse_qs', 1, fun(_Req) ->
@@ -45,7 +52,7 @@ init_list_reads_filters_and_pagination_test_() ->
     end).
 
 init_delete_uses_admin_user_id_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(moment_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"POST">> end}
         ]},
@@ -81,7 +88,7 @@ init_delete_uses_admin_user_id_test_() ->
     end).
 
 init_report_resolve_passes_params_to_logic_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(moment_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"POST">> end}
         ]},

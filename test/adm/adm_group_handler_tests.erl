@@ -9,6 +9,27 @@
 %%% 目标：覆盖群组管理分页、详情与解散等高风险动作
 %%%===================================================================
 
+group_task_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, group_task) -> ok end}
+        ]}
+    ].
+
+group_schedule_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, group_schedule) -> ok end}
+        ]}
+    ].
+
+group_vote_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, group_vote) -> ok end}
+        ]}
+    ].
+
 init_list_with_pagination_filters_test_() ->
     ?WITH_MECKS([
         {adm_user_logic, [
@@ -267,7 +288,7 @@ init_search_requires_non_empty_keyword_test_() ->
     end).
 
 init_vote_list_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_vote_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -296,7 +317,7 @@ init_vote_list_success_test_() ->
     end).
 
 init_vote_close_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_vote_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -341,7 +362,7 @@ init_vote_close_success_writes_audit_test_() ->
     end).
 
 init_vote_close_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_vote_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -941,7 +962,7 @@ init_album_delete_permission_denied_test_() ->
     end).
 
 init_task_list_with_status_uses_repo_count_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -980,7 +1001,7 @@ init_task_list_with_status_uses_repo_count_test_() ->
     end).
 
 init_task_list_deleted_view_uses_deleted_repo_count_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1019,7 +1040,7 @@ init_task_list_deleted_view_uses_deleted_repo_count_test_() ->
     end).
 
 init_task_pending_review_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1059,7 +1080,7 @@ init_task_pending_review_success_test_() ->
     end).
 
 init_task_review_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1129,7 +1150,7 @@ init_task_review_success_writes_audit_test_() ->
     end).
 
 init_task_review_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -1153,7 +1174,7 @@ init_task_review_permission_denied_test_() ->
     end).
 
 init_task_close_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1200,7 +1221,7 @@ init_task_close_success_writes_audit_test_() ->
     end).
 
 init_task_close_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -1224,7 +1245,7 @@ init_task_close_permission_denied_test_() ->
     end).
 
 init_task_restore_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1276,7 +1297,7 @@ init_task_restore_success_writes_audit_test_() ->
     end).
 
 init_task_restore_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -1300,7 +1321,7 @@ init_task_restore_permission_denied_test_() ->
     end).
 
 init_task_delete_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1345,7 +1366,7 @@ init_task_delete_success_writes_audit_test_() ->
     end).
 
 init_schedule_detail_supports_numeric_schedule_id_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_schedule_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1379,7 +1400,7 @@ init_schedule_detail_supports_numeric_schedule_id_test_() ->
     end).
 
 init_schedule_cancel_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_schedule_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1431,7 +1452,7 @@ init_schedule_cancel_success_writes_audit_test_() ->
     end).
 
 init_schedule_cancel_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_schedule_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -1455,7 +1476,7 @@ init_schedule_cancel_permission_denied_test_() ->
     end).
 
 init_schedule_restore_success_writes_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_schedule_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1509,7 +1530,7 @@ init_schedule_restore_success_writes_audit_test_() ->
     end).
 
 init_schedule_restore_permission_denied_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_schedule_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9003, <<"role_id">> => 3}
@@ -1650,7 +1671,7 @@ init_governance_log_list_logs_view_role_allowed_test_() ->
     end).
 
 init_task_detail_supports_task_uid_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -1683,7 +1704,7 @@ init_task_detail_supports_task_uid_test_() ->
     end).
 
 init_task_delete_soft_delete_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(group_task_feature_enabled_mocks() ++ [
         {adm_user_logic, [
             {'find', 3, fun(9002, <<"id,role_id">>, _Key) ->
                 #{<<"id">> => 9002, <<"role_id">> => 2}

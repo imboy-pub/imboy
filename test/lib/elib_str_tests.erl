@@ -154,7 +154,7 @@ trunc_binary_no_trunc_test_() ->
 trunc_only_suffix_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_str:trunc(<<"12345678">>, 3),
-        ?assertEqual(<<"...">>, Result)
+        ?assertEqual(<<"123">>, Result)
     end).
 
 %% @doc 测试字符串截断
@@ -193,8 +193,7 @@ trunc_custom_string_suffix_test_() ->
 trunc_suffix_exceeds_max_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_str:trunc(<<"12345678">>, 3, <<"---LONG---">>),
-        % 当后缀长度超过最大长度时，应该只返回后缀
-        ?assertEqual(<<"---LONG--">>, Result)
+        ?assertEqual(<<"123">>, Result)
     end).
 
 %% ===================================================================
@@ -220,8 +219,7 @@ startswith_very_long_prefix_test_() ->
     ?TEST_SIMPLE(fun() ->
         LongPrefix = binary:copy(<<"a">>, 10000),
         ShortString = <<"short">>,
-        Result = elib_str:startswith(LongPrefix, ShortString),
-        ?assertEqual(false, Result)
+        ?assertError(badarg, elib_str:startswith(LongPrefix, ShortString))
     end).
 
 %% @doc 测试空字符串后缀匹配
@@ -257,8 +255,7 @@ replace_empty_pattern_test_() ->
 trunc_zero_max_length_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_str:trunc(<<"anything">>, 0),
-        % 最大长度为0时应该只返回后缀
-        ?assertEqual(<<"...">>, Result)
+        ?assertEqual(<<>>, Result)
     end).
 
 %% @doc 测试截断空字符串

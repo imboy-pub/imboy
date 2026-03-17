@@ -42,16 +42,22 @@ create_session_test_() ->
     end).
 
 get_session_test_() ->
-    ?WITH_MECK(e2ee_transfer_repo, [
-        {get_by_session_id, 1, fun(_SessionId) ->
-            {ok, #{
-                <<"id">> => 999,
-                <<"session_id">> => <<"test-session-456">>,
-                <<"from_uid">> => 10001,
-                <<"to_uid">> => 10002,
-                <<"status">> => <<"pending">>
-            }}
-        end}
+    ?WITH_MECKS([
+        {e2ee_transfer_repo, [
+            {get_by_session_id, 1, fun(_SessionId) ->
+                {ok, #{
+                    <<"id">> => 999,
+                    <<"session_id">> => <<"test-session-456">>,
+                    <<"from_uid">> => 10001,
+                    <<"to_uid">> => 10002,
+                    <<"status">> => <<"pending">>
+                }}
+            end}
+        ]},
+        {imboy_cache, [
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end}
+        ]}
     ], fun() ->
         SessionId = <<"test-session-456">>,
 
@@ -80,7 +86,9 @@ accept_session_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end},
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         SessionId = <<"test-session-789">>,
@@ -93,16 +101,22 @@ accept_session_test_() ->
     end).
 
 accept_session_wrong_user_test_() ->
-    ?WITH_MECK(e2ee_transfer_repo, [
-        {get_by_session_id, 1, fun(_SessionId) ->
-            {ok, #{
-                <<"id">> => 999,
-                <<"session_id">> => <<"test-session-abc">>,
-                <<"from_uid">> => 10001,
-                <<"to_uid">> => 10003,  % 不同的用户
-                <<"status">> => <<"pending">>
-            }}
-        end}
+    ?WITH_MECKS([
+        {e2ee_transfer_repo, [
+            {get_by_session_id, 1, fun(_SessionId) ->
+                {ok, #{
+                    <<"id">> => 999,
+                    <<"session_id">> => <<"test-session-abc">>,
+                    <<"from_uid">> => 10001,
+                    <<"to_uid">> => 10003,  % 不同的用户
+                    <<"status">> => <<"pending">>
+                }}
+            end}
+        ]},
+        {imboy_cache, [
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end}
+        ]}
     ], fun() ->
         SessionId = <<"test-session-abc">>,
         ToUid = 10002,
@@ -130,7 +144,9 @@ confirm_session_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end},
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         SessionId = <<"test-session-def">>,
@@ -142,16 +158,22 @@ confirm_session_test_() ->
     end).
 
 confirm_session_unauthorized_test_() ->
-    ?WITH_MECK(e2ee_transfer_repo, [
-        {get_by_session_id, 1, fun(_SessionId) ->
-            {ok, #{
-                <<"id">> => 999,
-                <<"session_id">> => <<"test-session-unauth">>,
-                <<"from_uid">> => 10002,  % 不同的用户
-                <<"to_uid">> => 10002,
-                <<"status">> => <<"accepted">>
-            }}
-        end}
+    ?WITH_MECKS([
+        {e2ee_transfer_repo, [
+            {get_by_session_id, 1, fun(_SessionId) ->
+                {ok, #{
+                    <<"id">> => 999,
+                    <<"session_id">> => <<"test-session-unauth">>,
+                    <<"from_uid">> => 10002,  % 不同的用户
+                    <<"to_uid">> => 10002,
+                    <<"status">> => <<"accepted">>
+                }}
+            end}
+        ]},
+        {imboy_cache, [
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end}
+        ]}
     ], fun() ->
         SessionId = <<"test-session-unauth">>,
         FromUid = 10001,
@@ -182,7 +204,7 @@ get_pending_sessions_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {get, 2, fun(_CacheKey) -> {error, miss} end},
+            {get, 1, fun(_CacheKey) -> undefined end},
             {set, 3, fun(_CacheKey, _Sessions, _TTL) -> ok end}
         ]}
     ], fun() ->
@@ -210,7 +232,9 @@ cancel_session_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Session, _TTL) -> ok end},
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         SessionId = <<"test-session-cancel">>,
@@ -236,8 +260,8 @@ is_valid_session_test_() ->
 
 cleanup_expired_sessions_test_() ->
     ?WITH_MECK(elib_pg, [
-        {query, 2, fun(_Sql, _Params) ->
-            {ok, <<"/">>, [{1}, {2}, {3}]}
+        {execute, 2, fun(_Sql, _Params) ->
+            {ok, 3, [{1}, {2}, {3}]}
         end}
     ], fun() ->
         Result = e2ee_transfer_ds:cleanup_expired_sessions(),

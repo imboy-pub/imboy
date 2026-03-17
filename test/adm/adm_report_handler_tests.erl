@@ -3,6 +3,13 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+channel_report_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, channel) -> ok end}
+        ]}
+    ].
+
 init_group_list_reads_filters_and_target_override_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
@@ -49,7 +56,7 @@ init_group_list_reads_filters_and_target_override_test_() ->
     end).
 
 init_channel_resolve_passes_target_override_and_params_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_report_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"POST">> end}
         ]},

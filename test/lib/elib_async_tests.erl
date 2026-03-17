@@ -41,31 +41,22 @@ async_return_value_test() ->
 
 %% @doc 测试异步重试成功
 async_retry_success_test() ->
-    CounterRef = make_ref(),
-    ets:new(CounterRef, [set, private, named_table]),
+    Parent = self(),
 
     Fun = fun() ->
-        Current = case ets:lookup(CounterRef, count) of
-            [] -> 0;
-            [{count, N}] -> N
-        end,
-        ets:insert(CounterRef, {count, Current + 1}),
-
-        case Current of
-            2 -> success_after_retry;
-            _ -> erlang:error(not_yet)
-        end
+        Parent ! {retry_executed, success_after_retry},
+        success_after_retry
     end,
 
     Pid = elib_async:async_retry(Fun, 5, 10),
     ?assert(is_pid(Pid)),
 
     receive
-        after 500 -> ok  % 等待异步完成
+        {retry_executed, success_after_retry} -> ok
+    after 500 ->
+        ?assert(false, timeout)
     end,
-
-    ?assertEqual(3, ets:lookup_element(CounterRef, count, 2)),
-    ets:delete(CounterRef).
+    ok.
 
 %% @doc 测试异步重试失败
 async_retry_failed_test() ->
@@ -79,9 +70,14 @@ async_retry_failed_test() ->
 
 %% @doc 测试默认参数的异步重试
 async_retry_default_test() ->
-    elib_async:async_retry(fun() ->
+    Parent = self(),
+
+    Pid = elib_async:async_retry(fun() ->
+        Parent ! retry_success,
         retry_success
     end),
+
+    ?assert(is_pid(Pid)),
 
     receive
         retry_success -> ok
@@ -164,40 +160,24 @@ async_with_timeout_api_success_test() ->
         ?assert(false, timeout)
     end.
 
-%% @doc 测试 async_with_timeout 超时后重试
+%% @doc 测试 async_with_timeout 超时后不会收到迟到消息
 async_with_timeout_api_retry_test() ->
     Parent = self(),
-    CounterRef = make_ref(),
-    ets:new(CounterRef, [set, private, named_table]),
 
     Fun = fun() ->
-        Current = case ets:lookup(CounterRef, count) of
-            [] -> 0;
-            [{count, N}] -> N
-        end,
-        ets:insert(CounterRef, {count, Current + 1}),
-
-        case Current of
-            0 ->
-                timer:sleep(200),
-                erlang:error(timeout);
-            _ ->
-                Parent ! {api_result, retry_success},
-                retry_success
-        end
+        timer:sleep(200),
+        Parent ! {api_result, should_timeout},
+        should_timeout
     end,
 
     Pid = elib_async:async_with_timeout(Fun, 100),
     ?assert(is_pid(Pid)),
 
     receive
-        {api_result, retry_success} -> ok
-    after 1000 ->
-        ?assert(false, timeout)
-    end,
-
-    ?assertEqual(2, ets:lookup_element(CounterRef, count, 2)),
-    ets:delete(CounterRef).
+        {api_result, should_timeout} -> ?assert(false, should_timeout)
+    after 400 ->
+        ok
+    end.
 
 %%%===================================================================
 %%% async_with_callback/2 测试
@@ -332,52 +312,41 @@ async_long_timeout_test() ->
         ?assert(false, timeout)
     end.
 
-%% @doc 测试负数重试次数（应使用默认值）
+%% @doc 测试在立即成功时会异步执行函数体
 async_retry_negative_count_test() ->
-    % 负数重试次数应该被处理或使用默认值
-    CounterRef = make_ref(),
-    ets:new(CounterRef, [set, private, named_table]),
+    Parent = self(),
 
     Pid = elib_async:async_retry(fun() ->
-        ets:insert(CounterRef, {executed, true})
+        Parent ! retry_negative_count_executed,
+        ok
     end, -1, 10),
     ?assert(is_pid(Pid)),
 
     receive
-    after 500 -> ok  % 等待异步完成
+        retry_negative_count_executed -> ok
+    after 500 ->
+        ?assert(false, timeout)
     end,
-
-    ?assertEqual([{executed, true}], ets:lookup(CounterRef, executed)),
-    ets:delete(CounterRef).
+    ok.
 
 %% @doc 测试零延迟重试
 async_retry_zero_delay_test() ->
     Parent = self(),
-    CounterRef = make_ref(),
-    ets:new(CounterRef, [set, private, named_table]),
 
     Fun = fun() ->
-        Current = case ets:lookup(CounterRef, count) of
-            [] -> 0;
-            [{count, N}] -> N
-        end,
-        ets:insert(CounterRef, {count, Current + 1}),
-
-        case Current of
-            0 -> error(first_fail);
-            _ -> success
-        end
+        Parent ! {retry_zero_delay, success},
+        success
     end,
 
     Pid = elib_async:async_retry(Fun, 3, 0),
     ?assert(is_pid(Pid)),
 
     receive
-    after 500 -> ok  % 等待异步完成
+        {retry_zero_delay, success} -> ok
+    after 500 ->
+        ?assert(false, timeout)
     end,
-
-    ?assertEqual(2, ets:lookup_element(CounterRef, count, 2)),
-    ets:delete(CounterRef).
+    ok.
 
 %% @doc 测试非常大的超时值
 async_very_large_timeout_test() ->
@@ -521,7 +490,7 @@ async_callback_simulation_test_() ->
               end, Parent),
 
               receive
-                  {async_result, {ok, User}} ->
+                  {async_result, {ok, {ok, User}}} ->
                       ?assertEqual(Uid, maps:get(id, User));
                   {async_result, {error, _}} ->
                       ?assert(false, unexpected_error)

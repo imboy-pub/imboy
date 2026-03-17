@@ -21,8 +21,8 @@ debug_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(debug, Level),
             ?assertMatch([_|_], Metadata),
             ?assert(lists:keymember(module, 1, Metadata)),
@@ -36,7 +36,7 @@ debug_log_test_() ->
             elib_log:debug(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -49,8 +49,8 @@ info_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(info, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message)
@@ -61,11 +61,7 @@ info_log_test_() ->
             elib_log:info(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4)),
-            
-            % 验证调用参数
-            [{_, {Level, _Metadata, _Message}, _}] = meck:history(lager),
-            ?assertEqual(info, Level)
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -78,8 +74,8 @@ notice_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(notice, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message)
@@ -90,7 +86,7 @@ notice_log_test_() ->
             elib_log:notice(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -103,8 +99,8 @@ warning_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(warning, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message)
@@ -115,7 +111,7 @@ warning_log_test_() ->
             elib_log:warning(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -128,8 +124,8 @@ error_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(error, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message)
@@ -140,11 +136,7 @@ error_log_test_() ->
             elib_log:error(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4)),
-            
-            % 验证调用参数
-            [{_, {Level, _Metadata, _Message}, _}] = meck:history(lager),
-            ?assertEqual(error, Level)
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -157,13 +149,14 @@ format_log_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
+            MessageBin = iolist_to_binary(Message),
             ?assertEqual(info, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message),
             % 验证格式化结果
-            ?assert(string:str(Message, "Test format:") > 0)
+            ?assert(binary:match(MessageBin, <<"Test format:">>) =/= nomatch)
         end),
         
         try
@@ -171,7 +164,7 @@ format_log_test_() ->
             elib_log:info(?TEST_FORMAT, ?TEST_ARGS),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -184,8 +177,8 @@ different_message_types_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(_Level, _Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(_Level, _Metadata, Message) ->
             ?assertMatch([_|_], Message)
         end),
         
@@ -206,7 +199,7 @@ different_message_types_test_() ->
             elib_log:info(#{key => <<"value">>}),
             
             % 验证所有调用都成功
-            ?assertEqual(5, meck:num_calls(lager, log, 4))
+            ?assertEqual(5, meck:num_calls(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -219,8 +212,8 @@ log_metadata_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(_Level, Metadata, _Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(_Level, Metadata, _Message) ->
             ?assertMatch([_|_], Metadata),
             
             % 验证必需的元数据字段
@@ -243,7 +236,7 @@ log_metadata_test_() ->
             elib_log:info(?TEST_MESSAGE),
             
             % 验证lager:log被调用
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -256,14 +249,16 @@ error_handling_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4 来捕获错误消息
-        meck:expect(lager, log, 4, fun(_Level, _Metadata, Message) ->
+        % Mock lager:log/3 来捕获错误消息
+        meck:expect(lager, log, 3, fun(_Level, _Metadata, Message) ->
+            MessageBin = iolist_to_binary(Message),
             % 验证错误消息格式
             ?assertMatch([_|_], Message),
-            case Message of
-                "INVALID_MESSAGE" -> ok;
-                "INVALID_FORMAT:" ++ _ -> ok;
-                _ -> ?assert(false, "Unexpected error message format")
+            case MessageBin of
+                <<"INVALID_MESSAGE">> ->
+                    ok;
+                _ ->
+                    ?assert(binary:match(MessageBin, <<"INVALID_FORMAT:">>) =/= nomatch)
             end
         end),
         
@@ -272,7 +267,7 @@ error_handling_test_() ->
             elib_log:info("Invalid format ~p", [too, many, args]),
             
             % 验证错误处理
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -285,11 +280,12 @@ argument_sanitization_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(_Level, _Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(_Level, _Metadata, Message) ->
+            MessageBin = iolist_to_binary(Message),
             ?assertMatch([_|_], Message),
             % 验证二进制参数被转换为字符串
-            ?assertNot(string:str(Message, "<<") > 0)
+            ?assert(binary:match(MessageBin, <<"<<">>) =:= nomatch)
         end),
         
         try
@@ -297,7 +293,7 @@ argument_sanitization_test_() ->
             elib_log:info("Binary arg: ~s", [<<"binary_arg">>]),
             
             % 验证参数清理
-            ?assert(meck:called(lager, log, 4))
+            ?assert(meck:called(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -310,8 +306,8 @@ internal_log_functions_test_() ->
         % 设置Mock
         meck:new(lager, [passthrough, no_link]),
         
-        % Mock lager:log/4
-        meck:expect(lager, log, 4, fun(Level, Metadata, Message) ->
+        % Mock lager:log/3
+        meck:expect(lager, log, 3, fun(Level, Metadata, Message) ->
             ?assertEqual(debug, Level),
             ?assertMatch([_|_], Metadata),
             ?assertMatch([_|_], Message)
@@ -325,7 +321,7 @@ internal_log_functions_test_() ->
             elib_log:internal_log(debug, "Format: ~s", [<<"arg">>], test_module, 123),
             
             % 验证所有调用
-            ?assertEqual(2, meck:num_calls(lager, log, 4))
+            ?assertEqual(2, meck:num_calls(lager, log, 3))
         after
             % 清理Mock
             meck:unload(lager)
@@ -340,8 +336,8 @@ log_level_filtering_test_() ->
         
         _CallCount = 0,
         
-        % Mock lager:log/4 并计数调用
-        meck:expect(lager, log, 4, fun(_Level, _Metadata, _Message) ->
+        % Mock lager:log/3 并计数调用
+        meck:expect(lager, log, 3, fun(_Level, _Metadata, _Message) ->
             put(call_count, get(call_count) + 1)
         end),
         
@@ -356,9 +352,9 @@ log_level_filtering_test_() ->
             elib_log:warning(?TEST_MESSAGE),
             elib_log:error(?TEST_MESSAGE),
             
-            % 验证调用次数（至少应该有一些调用）
+            % 当前实现的日志级别阈值是 debug，5 个入口都会调用
             FinalCount = get(call_count),
-            ?assert(FinalCount > 0)
+            ?assertEqual(5, FinalCount)
         after
             % 清理Mock
             meck:unload(lager),

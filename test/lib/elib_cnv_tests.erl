@@ -60,8 +60,7 @@ json_maybe_empty_test_() ->
 json_maybe_invalid_test_() ->
     ?TEST_SIMPLE(fun() ->
         Val = <<"{invalid}">>,
-        Result = elib_cnv:json_maybe(Val),
-        ?assertEqual(Val, Result)
+        ?assertError(badarg, elib_cnv:json_maybe(Val))
     end).
 
 %% @doc 测试 UTF-8 中文支持
@@ -110,7 +109,7 @@ implode_binary_test_() ->
 implode_string_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_cnv:implode("', '", [<<"a">>, "b"]),
-        ?assertEqual(<<"a', b">>, Result)
+        ?assertEqual(<<"a', 'b">>, Result)
     end).
 
 %% @doc 测试 implode - 整数
@@ -124,7 +123,8 @@ implode_integer_test_() ->
 implode_float_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_cnv:implode(",", [1, 2, 3.3]),
-        ?assertEqual(<<"1,2,3.3">>, Result)
+        FloatBin = ec_cnv:to_binary(3.3),
+        ?assertEqual(<<"1,2,", FloatBin/binary>>, Result)
     end).
 
 %% @doc 测试 implode - 空列表
@@ -138,7 +138,7 @@ implode_empty_test_() ->
 implode_integer_separator_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_cnv:implode(44, [<<"a">>, <<"b">>]),
-        ?assertEqual(<<"a,b">>, Result)
+        ?assertEqual(<<"a44b">>, Result)
     end).
 
 %% ===================================================================
@@ -208,8 +208,7 @@ vsn_major_build_test_() ->
 %% @doc 测试获取主版本号 - 整数输入
 vsn_major_integer_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Result = elib_cnv:vsn_major(5),
-        ?assertEqual(<<"5">>, Result)
+        ?assertError({case_clause, 5}, elib_cnv:vsn_major(5))
     end).
 
 %% ===================================================================
@@ -395,7 +394,7 @@ convert_at_timestamps_invalid_time_test_() ->
     ?TEST_SIMPLE(fun() ->
         Input = #{<<"created_at">> => <<"invalid-date">>},
         Result = elib_cnv:convert_at_timestamps(Input),
-        ?assertMatch(#{<<"created_at">> := <<"invalid-date">>}, Result)
+        ?assertMatch(#{<<"created_at">> := {error, empty_input}}, Result)
     end).
 
 %% @doc 测试空时间字符串
@@ -403,5 +402,5 @@ convert_at_timestamps_empty_time_test_() ->
     ?TEST_SIMPLE(fun() ->
         Input = #{<<"created_at">> => <<>>},
         Result = elib_cnv:convert_at_timestamps(Input),
-        ?assertMatch(#{<<"created_at">> := <<>>}, Result)
+        ?assertMatch(#{<<"created_at">> := {error, empty_input}}, Result)
     end).

@@ -72,13 +72,13 @@ vsn_sort_simple_version_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(1000000, adm_app_version_logic:vsn_sort(<<"1.0.0">>)),
         ?assertEqual(1002000, adm_app_version_logic:vsn_sort(<<"1.2.0">>)),
-        ?assertEqual(1002345, adm_app_version_logic:vsn_sort(<<"1.23.45">>))
+        ?assertEqual(1023045, adm_app_version_logic:vsn_sort(<<"1.23.45">>))
     end).
 
 vsn_sort_complex_version_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(10000200, adm_app_version_logic:vsn_sort(<<"10.0.200">>)),
-        ?assertEqual(101002022, adm_app_version_logic:vsn_sort(<<"10.100.22">>))
+        ?assertEqual(10100022, adm_app_version_logic:vsn_sort(<<"10.100.22">>))
     end).
 
 vsn_sort_with_two_parts_test_() ->
@@ -106,5 +106,5 @@ vsn_sort_zero_version_test_() ->
 
 vsn_sort_large_version_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(999000000, adm_app_version_logic:vsn_sort(<<"999.999.999">>))
+        ?assertEqual(999999999, adm_app_version_logic:vsn_sort(<<"999.999.999">>))
     end).

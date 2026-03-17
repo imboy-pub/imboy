@@ -1,151 +1,155 @@
 -module(msg_reaction_ds_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
-%% ===================================================================
-%% 测试固具
-%% ===================================================================
+encoded_uid(Uid) ->
+    list_to_binary(["uid:", integer_to_list(Uid)]).
 
-setup() ->
-    {ok, _} = application:ensure_all_started(imboy),
-    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id = $1">>, [999999]),
-    ok.
+find_reaction_group(Emoji, Reactions) ->
+    {Emoji, Data} = lists:keyfind(Emoji, 1, Reactions),
+    Data.
 
-cleanup(_) ->
-    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id = $1">>, [999999]),
-    ok.
+find_reaction_stat(Emoji, Stats) ->
+    [Stat] = [Item || Item <- Stats, maps:get(<<"emoji">>, Item) =:= Emoji],
+    Stat.
 
-%% ===================================================================
-%% 测试用例
-%% ===================================================================
-
-msg_reaction_ds_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      fun test_add_reaction/0,
-      fun test_remove_reaction/0,
-      fun test_get_reactions/0,
-      fun test_get_reaction_stats/0,
-      fun test_is_reacted/0,
-      fun test_multiple_users_same_emoji/0,
-      fun test_cache_invalidation/0
-     ]}.
-
-%% @doc 测试添加表情
-test_add_reaction() ->
+add_reaction_returns_encoded_user_and_timestamp_test_() ->
     MsgId = <<"test_msg_ds_001">>,
     MsgType = <<"c2c">>,
     UserId = 999999,
     Emoji = <<"👍"/utf8>>,
+    CreatedAt = <<"2026-03-16T00:00:00Z">>,
+    EncodedUid = encoded_uid(UserId),
+    CacheKey = {msg_reaction, MsgId, MsgType},
+    ?WITH_MECKS([
+        {msg_reaction_repo, [
+            {'add', 4, fun(MsgId, MsgType, UserId, Emoji) -> ok end}
+        ]},
+        {imboy_cache, [
+            {'delete', 1, fun(CacheKey) -> ok end}
+        ]},
+        {elib_hashids, [
+            {'encode', 1, fun(UserId) -> EncodedUid end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> fixed_now end},
+            {'to_rfc3339', 1, fun(fixed_now) -> CreatedAt end}
+        ]}
+    ], fun() ->
+        {ok, Result} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
+        ?assertEqual(MsgId, maps:get(<<"msg_id">>, Result)),
+        ?assertEqual(MsgType, maps:get(<<"msg_type">>, Result)),
+        ?assertEqual(EncodedUid, maps:get(<<"user_id">>, Result)),
+        ?assertEqual(Emoji, maps:get(<<"emoji">>, Result)),
+        ?assertEqual(CreatedAt, maps:get(<<"created_at">>, Result)),
+        ?assert(meck:called(imboy_cache, delete, [CacheKey]))
+    end).
 
-    % 添加表情
-    {ok, Result} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
-    ?assertEqual(MsgId, maps:get(<<"msg_id">>, Result)),
-    ?assertEqual(Emoji, maps:get(<<"emoji">>, Result)).
-
-%% @doc 测试移除表情
-test_remove_reaction() ->
+remove_reaction_clears_cache_test_() ->
     MsgId = <<"test_msg_ds_002">>,
     MsgType = <<"c2c">>,
     UserId = 999999,
     Emoji = <<"❤️"/utf8>>,
+    CacheKey = {msg_reaction, MsgId, MsgType},
+    ?WITH_MECKS([
+        {msg_reaction_repo, [
+            {'remove', 4, fun(MsgId, MsgType, UserId, Emoji) -> ok end}
+        ]},
+        {imboy_cache, [
+            {'delete', 1, fun(CacheKey) -> ok end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, msg_reaction_ds:remove_reaction(MsgId, MsgType, UserId, Emoji)),
+        ?assert(meck:called(imboy_cache, delete, [CacheKey]))
+    end).
 
-    % 先添加
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
-
-    % 再移除
-    ok = msg_reaction_ds:remove_reaction(MsgId, MsgType, UserId, Emoji),
-
-    % 验证已移除
-    {ok, Stats} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
-    ?assertEqual(0, length(Stats)).
-
-%% @doc 测试获取表情列表
-test_get_reactions() ->
+get_reactions_groups_by_emoji_and_encodes_users_test_() ->
     MsgId = <<"test_msg_ds_003">>,
     MsgType = <<"c2g">>,
+    ThumbsUp = <<"👍"/utf8>>,
+    Heart = <<"❤️"/utf8>>,
+    ?WITH_MECKS([
+        {msg_reaction_repo, [
+            {'find_by_msg', 2, fun(MsgId, MsgType) ->
+                {ok, [
+                    #{<<"emoji">> => ThumbsUp, <<"user_id">> => 999999},
+                    #{<<"emoji">> => ThumbsUp, <<"user_id">> => 999998},
+                    #{<<"emoji">> => Heart, <<"user_id">> => 999997}
+                ]}
+            end}
+        ]},
+        {elib_hashids, [
+            {'encode', 1, fun(Uid) -> encoded_uid(Uid) end}
+        ]}
+    ], fun() ->
+        {ok, Reactions} = msg_reaction_ds:get_reactions(MsgId, MsgType),
+        ?assertEqual(2, length(Reactions)),
 
-    % 添加多个表情
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999999, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999998, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999997, <<"❤️"/utf8>>),
+        ThumbsUpData = find_reaction_group(ThumbsUp, Reactions),
+        HeartData = find_reaction_group(Heart, Reactions),
+        ?assertEqual(2, maps:get(<<"count">>, ThumbsUpData)),
+        ?assertEqual(
+            lists:sort([encoded_uid(999998), encoded_uid(999999)]),
+            lists:sort(maps:get(<<"users">>, ThumbsUpData))
+        ),
+        ?assertEqual(1, maps:get(<<"count">>, HeartData))
+    end).
 
-    % 获取表情列表
-    {ok, Reactions} = msg_reaction_ds:get_reactions(MsgId, MsgType),
-    ?assertEqual(2, length(Reactions)),
-
-    % 验证第一个表情的统计
-    [{<<"👍"/utf8>>, ThumbsUpData}] = lists:filter(fun({E, _}) -> E =:= <<"👍"/utf8>> end, Reactions),
-    ?assertEqual(2, maps:get(<<"count">>, ThumbsUpData)),
-    ?assertEqual(2, length(maps:get(<<"users">>, ThumbsUpData))).
-
-%% @doc 测试获取表情统计
-test_get_reaction_stats() ->
+get_reaction_stats_returns_map_entries_test_() ->
     MsgId = <<"test_msg_ds_004">>,
     MsgType = <<"c2c">>,
+    ThumbsUp = <<"👍"/utf8>>,
+    Heart = <<"❤️"/utf8>>,
+    ?WITH_MECKS([
+        {msg_reaction_repo, [
+            {'find_by_msg', 2, fun(MsgId, MsgType) ->
+                {ok, [
+                    #{<<"emoji">> => ThumbsUp, <<"user_id">> => 999999},
+                    #{<<"emoji">> => ThumbsUp, <<"user_id">> => 999998},
+                    #{<<"emoji">> => Heart, <<"user_id">> => 999997}
+                ]}
+            end}
+        ]},
+        {elib_hashids, [
+            {'encode', 1, fun(Uid) -> encoded_uid(Uid) end}
+        ]}
+    ], fun() ->
+        {ok, Stats} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
+        ?assertEqual(2, length(Stats)),
 
-    % 添加表情
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999999, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999998, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999999, <<"❤️"/utf8>>),
+        ThumbsUpStat = find_reaction_stat(ThumbsUp, Stats),
+        HeartStat = find_reaction_stat(Heart, Stats),
+        ?assertEqual(2, maps:get(<<"count">>, ThumbsUpStat)),
+        ?assertEqual(
+            lists:sort([encoded_uid(999998), encoded_uid(999999)]),
+            lists:sort(maps:get(<<"users">>, ThumbsUpStat))
+        ),
+        ?assertEqual(1, maps:get(<<"count">>, HeartStat))
+    end).
 
-    % 获取统计
-    {ok, Stats} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
-    ?assertEqual(2, length(Stats)),
-
-    % 验证总数
-    TotalCount = lists:foldl(fun(_, Acc) -> Acc + 1 end, 0, Stats),
-    ?assertEqual(2, TotalCount).
-
-%% @doc 测试检查用户是否已添加表情
-test_is_reacted() ->
+is_reacted_returns_false_when_repo_is_empty_test_() ->
     MsgId = <<"test_msg_ds_005">>,
     MsgType = <<"c2c">>,
     UserId = 999999,
     Emoji = <<"😄"/utf8>>,
+    ?WITH_MECK(msg_reaction_repo, [
+        {'find_by_msg_emoji', 3, fun(MsgId, MsgType, Emoji) -> {ok, []} end}
+    ], fun() ->
+        ?assertEqual(false, msg_reaction_ds:is_reacted(MsgId, MsgType, UserId, Emoji))
+    end).
 
-    % 初始状态
-    false = msg_reaction_ds:is_reacted(MsgId, MsgType, UserId, Emoji),
-
-    % 添加表情
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
-
-    % 验证已添加
-    true = msg_reaction_ds:is_reacted(MsgId, MsgType, UserId, Emoji).
-
-%% @doc 测试多个用户添加相同emoji
-test_multiple_users_same_emoji() ->
+is_reacted_returns_true_when_user_reaction_exists_test_() ->
     MsgId = <<"test_msg_ds_006">>,
     MsgType = <<"c2g">>,
-
-    % 多个用户添加相同emoji
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999999, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999998, <<"👍"/utf8>>),
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, 999997, <<"👍"/utf8>>),
-
-    % 获取统计
-    {ok, Stats} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
-    [{<<"👍"/utf8>>, Data}] = Stats,
-    ?assertEqual(3, maps:get(<<"count">>, Data)),
-    ?assertEqual(3, length(maps:get(<<"users">>, Data))).
-
-%% @doc 测试缓存失效
-test_cache_invalidation() ->
-    MsgId = <<"test_msg_ds_007">>,
-    MsgType = <<"c2c">>,
     UserId = 999999,
     Emoji = <<"🎉"/utf8>>,
-
-    % 添加表情
-    {ok, _} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
-
-    % 获取统计（缓存）
-    {ok, Stats1} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
-
-    % 移除表情
-    ok = msg_reaction_ds:remove_reaction(MsgId, MsgType, UserId, Emoji),
-
-    % 再次获取统计（应该从数据库重新加载）
-    {ok, Stats2} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),
-    ?assertEqual(length(Stats1) - 1, length(Stats2)).
+    ?WITH_MECK(msg_reaction_repo, [
+        {'find_by_msg_emoji', 3, fun(MsgId, MsgType, Emoji) ->
+            {ok, [
+                #{<<"emoji">> => Emoji, <<"user_id">> => 999998},
+                #{<<"emoji">> => Emoji, <<"user_id">> => UserId}
+            ]}
+        end}
+    ], fun() ->
+        ?assertEqual(true, msg_reaction_ds:is_reacted(MsgId, MsgType, UserId, Emoji))
+    end).

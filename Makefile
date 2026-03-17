@@ -121,6 +121,31 @@ EUNIT_EBIN_MODS =
 EUNIT_MODS = $(foreach mod,$(EUNIT_EBIN_MODS) $(filter-out \
 	$(patsubst %,%_tests,$(EUNIT_EBIN_MODS)),$(EUNIT_TEST_MODS)),'$(mod)')
 
+# Full-suite EUnit runs can deadlock when tests that start the app overlap
+# with modules that globally meck shared dependencies like elib_pg. Run the
+# suite module-by-module by default, while keeping `make eunit t=module_tests`
+# on erlang.mk's native single-module path.
+ifndef t
+.PHONY: eunit
+eunit: test-build cover-data-dir
+ifneq ($(wildcard src/ $(TEST_DIR)),)
+	@set -e; \
+	failures=""; \
+	ret=0; \
+	for mod in $(EUNIT_MODS); do \
+		echo " GEN    eunit $$mod"; \
+		if ! $(MAKE) --no-print-directory t=$$mod eunit EUNIT_CONFIG="$(EUNIT_CONFIG)"; then \
+			failures="$$failures $$mod"; \
+			ret=1; \
+		fi; \
+	done; \
+	if [ $$ret -ne 0 ]; then \
+		echo "EUNIT failed modules:$$failures"; \
+		exit $$ret; \
+	fi
+endif
+endif
+
 # 警告数量限制（用于 CI）
 DIALYZER_WARNINGS ?= 50
 

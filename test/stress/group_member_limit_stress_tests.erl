@@ -141,7 +141,7 @@ test_large_group_broadcast() ->
         },
 
         StartTime = erlang:monotonic_time(millisecond),
-        Result = msg_c2g_logic:c2g(MsgId, Owner, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}),
+        Result = msg_c2g_logic:c2g(MsgId, Owner, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
         EndTime = erlang:monotonic_time(millisecond),
 
         case Result of

@@ -56,9 +56,10 @@ auth(<<"POST">>, Req0, _State) ->
     PostVals = elib_param:post(Req0),
     Uri = maps:get(<<"uri">>, PostVals, ""),
     Result = [elib_uri:check_auth(I) || I <- binary:split(Uri, <<",">>)],
-    elib_response:success(Req0, #{<<"uri">> => Result}, "success.").
+    elib_response:success(Req0, #{<<"uri">> => Result}, "success.");
+auth(_, Req0, _State) ->
+    Req0.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

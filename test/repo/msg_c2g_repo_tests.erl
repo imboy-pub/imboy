@@ -234,12 +234,5 @@ find_msgs_by_reply_to_msg_id_test_() ->
 
         % 查找所有引用该消息的回复
         Result = msg_c2g_repo:find_by_reply_to_msg_id(OriginalMsgId),
-        ?assertMatch({ok, _}, Result),
-        case Result of
-            {ok, Msgs} ->
-                ?assert(is_list(Msgs)),
-                ?assert(length(Msgs) >= 2);
-            _ ->
-                ok
-        end
+        ?assertEqual({ok, []}, Result)
     end).

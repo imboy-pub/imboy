@@ -151,7 +151,7 @@ int_from_post_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"count\":42}">>, Req0} end),
             {ok, Count} = elib_param:int(count, Req0, 0),
             ?assertEqual(42, Count),
@@ -295,7 +295,8 @@ post_from_json_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"email\":\"test@example.com\",\"password\":\"secret\"}">>, Req0} end),
             Email = elib_param:post(email, Req0, <<>>),
             ?assertEqual(<<"test@example.com">>, Email),
@@ -311,7 +312,8 @@ post_with_default_value_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"name\":\"Test\"}">>, Req0} end),
             Value = elib_param:post(missing, Req0, <<"default">>),
             ?assertEqual(<<"default">>, Value),
@@ -347,7 +349,7 @@ param_from_post_when_get_missing_test_() ->
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
             meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"action\":\"submit\"}">>, Req0} end),
             Value = elib_param:param(action, Req0, <<>>),
             ?assertEqual(<<"submit">>, Value),
@@ -382,7 +384,7 @@ post_json_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"username\":\"john\",\"age\":30,\"active\":true}">>, Req0} end),
             Params = elib_param:post(Req0),
             ?assertEqual(<<"john">>, maps:get(<<"username">>, Params)),
@@ -400,11 +402,29 @@ post_urlencoded_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
             meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) -> {ok, [{<<"name">>, <<"Alice">>}, {<<"city">>, <<"NYC">>}], Req0} end),
             Params = elib_param:post(Req0),
             ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Params)),
             ?assertEqual(<<"NYC">>, maps:get(<<"city">>, Params)),
+            ?assert(meck:validate(cowboy_req))
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+post_urlencoded_body_duplicate_keys_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(cowboy_req, [unstick, passthrough]),
+        try
+            Req0 = #{},
+            meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
+            meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) ->
+                {ok, [{<<"tag">>, <<"a">>}, {<<"tag">>, <<"b">>}], Req0}
+            end),
+            Params = elib_param:post(Req0),
+            ?assertEqual([<<"a">>, <<"b">>], maps:get(<<"tag">>, Params)),
             ?assert(meck:validate(cowboy_req))
         after
             meck:unload(cowboy_req)
@@ -417,7 +437,7 @@ post_empty_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0, _) -> {<<"application">>, <<"json">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<>>, Req0} end),
             Params = elib_param:post(Req0),
             ?assertEqual(#{}, Params),
@@ -431,56 +451,36 @@ post_empty_body_test_() ->
 %% 辅助函数测试
 %% ===================================================================
 
-urlencoded_to_map_simple_test_() ->
+get_required_existing_value_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Params = [{<<"a">>, <<"1">>}, {<<"b">>, <<"2">>}],
-        Result = elib_param:urlencoded_to_map(Params),
-        ?assertEqual(2, map_size(Result)),
-        ?assertEqual(<<"1">>, maps:get(<<"a">>, Result)),
-        ?assertEqual(<<"2">>, maps:get(<<"b">>, Result))
+        Params = #{<<"a">> => <<"1">>},
+        ?assertEqual({ok, <<"1">>}, elib_param:get_required(<<"a">>, Params))
     end).
 
-urlencoded_to_map_duplicate_keys_test_() ->
+get_required_missing_or_empty_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Params = [{<<"a">>, <<"1">>}, {<<"a">>, <<"2">>}, {<<"b">>, <<"3">>}],
-        Result = elib_param:urlencoded_to_map(Params),
-        ?assertEqual([<<"1">>, <<"2">>], maps:get(<<"a">>, Result)),
-        ?assertEqual(<<"3">>, maps:get(<<"b">>, Result))
+        ?assertEqual({error, missing_param}, elib_param:get_required(<<"missing">>, #{})),
+        ?assertEqual({error, missing_param}, elib_param:get_required(<<"empty">>, #{<<"empty">> => <<>>}))
     end).
 
-pase_page_size_normal_test_() ->
+get_optional_uses_default_test_() ->
     ?TEST_SIMPLE(fun() ->
-        {Page, Size} = elib_param:pase_page_size(2, 30),
-        ?assertEqual(2, Page),
-        ?assertEqual(30, Size)
+        Params = #{<<"a">> => <<"1">>},
+        ?assertEqual(<<"1">>, elib_param:get_optional(<<"a">>, Params, <<"default">>)),
+        ?assertEqual(<<"default">>, elib_param:get_optional(<<"missing">>, Params, <<"default">>))
     end).
 
-pase_page_size_zero_page_test_() ->
+validate_required_success_test_() ->
     ?TEST_SIMPLE(fun() ->
-        {Page, Size} = elib_param:pase_page_size(0, 20),
-        ?assertEqual(1, Page),
-        ?assertEqual(20, Size)
+        Params = #{<<"a">> => <<"1">>, <<"b">> => <<"2">>},
+        ?assertEqual(ok, elib_param:validate_required([<<"a">>, <<"b">>], Params))
     end).
 
-pase_page_size_negative_page_test_() ->
+validate_required_first_missing_key_test_() ->
     ?TEST_SIMPLE(fun() ->
-        {Page, Size} = elib_param:pase_page_size(-5, 20),
-        ?assertEqual(1, Page),
-        ?assertEqual(20, Size)
+        Params = #{<<"a">> => <<"1">>, <<"c">> => <<>>},
+        ?assertEqual(
+            {error, {missing_param, <<"b">>}},
+            elib_param:validate_required([<<"a">>, <<"b">>, <<"c">>], Params)
+        )
     end).
-
-pase_page_size_zero_size_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        {Page, Size} = elib_param:pase_page_size(1, 0),
-        ?assertEqual(1, Page),
-        ?assertEqual(20, Size)
-    end).
-
-pase_page_size_large_size_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        {Page, Size} = elib_param:pase_page_size(1, 5000),
-        ?assertEqual(1, Page),
-        ?assertEqual(1000, Size)
-    end).
-
-

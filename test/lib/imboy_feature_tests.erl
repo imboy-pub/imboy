@@ -4,96 +4,101 @@
 -include("eunit_setup.hrl").
 -include("error_code.hrl").
 
-defaults_to_enabled_when_features_missing_test_() ->
+enabled_defaults_true_when_feature_missing_test_() ->
     ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(features, undefined) -> undefined end}
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{} end}
         ]}
     ], fun() ->
         ?assertEqual(true, imboy_feature:enabled(moment))
     end).
 
-reads_disabled_switch_from_config_map_test_() ->
+enabled_reads_explicit_feature_flag_test_() ->
     ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(features, undefined) ->
-                #{moment => #{enabled => false}}
-            end}
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{moment => false} end}
         ]}
     ], fun() ->
         ?assertEqual(false, imboy_feature:enabled(moment))
     end).
 
-channel_subfeature_depends_on_channel_switch_test_() ->
+enabled_unknown_feature_defaults_true_test_() ->
     ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(features, undefined) ->
-                #{
-                    channel => #{enabled => false},
-                    channel_discover => #{enabled => true}
-                }
-            end}
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{moment => false} end}
         ]}
     ], fun() ->
-        ?assertEqual(false, imboy_feature:enabled(channel_discover))
+        ?assertEqual(true, imboy_feature:enabled(<<"unknown_feature">>))
     end).
 
-ensure_enabled_returns_uniform_feature_disabled_response_test_() ->
+ensure_enabled_returns_ok_when_flag_on_test_() ->
     ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(features, undefined) ->
-                #{moment => #{enabled => false}}
-            end}
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{moment => true} end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, imboy_feature:ensure_enabled(#{req => 1}, moment))
+    end).
+
+ensure_enabled_returns_uniform_error_when_flag_off_test_() ->
+    Req = #{req => 1},
+    ?WITH_MECKS([
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{moment => false} end}
+        ]},
+        {imboy_error, [
+            {'error_msg', 1, fun(?ERR_FEATURE_DISABLED) -> <<"feature disabled">> end}
         ]},
         {elib_response, [
-            {'error', 3, fun(_Req, Msg, Code) ->
-                {error_resp, Msg, Code}
-            end}
+            {'error', 3, fun(Req0, Msg, Code) -> {error_resp, Req0, Msg, Code} end}
         ]}
     ], fun() ->
-        Result = imboy_feature:ensure_enabled(#{}, moment),
-        ?assertEqual({error, {error_resp, <<"功能未启用"/utf8>>, ?ERR_FEATURE_DISABLED}}, Result)
+        ?assertEqual(
+            {error, {error_resp, Req, <<"feature disabled">>, ?ERR_FEATURE_DISABLED}},
+            imboy_feature:ensure_enabled(Req, moment)
+        )
     end).
 
-
-all_returns_canonical_feature_map_test_() ->
+all_returns_binary_key_view_for_known_features_test_() ->
+    FeatureMap = #{
+        core => true,
+        e2ee => false,
+        channel => true,
+        location => false,
+        moment => true,
+        channel_discover => false,
+        channel_invitation => true,
+        channel_order => false,
+        group_vote => true,
+        group_schedule => false,
+        group_task => true
+    },
     ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(features, undefined) ->
-                #{
-                    core => #{enabled => true},
-                    e2ee => #{enabled => false},
-                    channel => #{enabled => true},
-                    location => #{enabled => false},
-                    moment => #{enabled => true},
-                    channel_discover => #{enabled => true},
-                    channel_invitation => #{enabled => true},
-                    channel_order => #{enabled => false},
-                    group_vote => #{enabled => false},
-                    group_schedule => #{enabled => true},
-                    group_task => #{enabled => false}
-                }
-            end}
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> FeatureMap end}
         ]}
     ], fun() ->
         Payload = imboy_feature:all(),
-        ?assertEqual(true, maps:get(<<"core">>, Payload)),
-        ?assertEqual(false, maps:get(<<"e2ee">>, Payload)),
-        ?assertEqual(true, maps:get(<<"moment">>, Payload)),
-        ?assertEqual(false, maps:get(<<"channel_order">>, Payload)),
-        ?assertEqual(true, maps:get(<<"group_schedule">>, Payload))
+        lists:foreach(fun(Name) ->
+            BinKey = atom_to_binary(Name, utf8),
+            ?assertEqual(maps:get(Name, FeatureMap), maps:get(BinKey, Payload))
+        end, imboy_feature:feature_names())
     end).
 
-all_preserves_missing_features_block_compatibility_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 2, fun(product_profile, community) -> community;
-                         (capabilities, #{}) -> #{};
-                         (features, undefined) -> undefined end}
-        ]}
-    ], fun() ->
-        Payload = imboy_feature:all(),
-        ?assertEqual(true, maps:get(<<"core">>, Payload)),
-        ?assertEqual(true, maps:get(<<"moment">>, Payload)),
-        ?assertEqual(true, maps:get(<<"group_task">>, Payload))
-    end).
+feature_names_contract_test() ->
+    ?assertEqual(
+        [
+            core,
+            e2ee,
+            channel,
+            location,
+            moment,
+            channel_discover,
+            channel_invitation,
+            channel_order,
+            group_vote,
+            group_schedule,
+            group_task
+        ],
+        imboy_feature:feature_names()
+    ).

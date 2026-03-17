@@ -108,7 +108,7 @@ test_c2g_send_performance() ->
         },
 
         StartTime = erlang:monotonic_time(millisecond),
-        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}),
+        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
         EndTime = erlang:monotonic_time(millisecond),
 
         EndTime - StartTime

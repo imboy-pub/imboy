@@ -18,13 +18,11 @@ generate_returns_binary_test_() ->
     ?TEST_WITH_APP(fun() ->
         Plaintext = "test_password",
         Result = elib_password:generate(Plaintext),
-        % 验证返回的是二进制格式
         ?assertMatch(<<_/binary>>, Result),
-        % 验证密码哈希包含预期的分隔符和格式
-        ?assert(binary:match(Result, <<"$">>) =/= nomatch),
-        % 验证密码哈希长度合理（bcrypt 通常60字节）
-        ?assert(byte_size(Result) >= 50),
-        % 验证生成的哈希每次都不同（包含salt）
+        Decoded = base64:decode(Result, #{padding => false}),
+        [Salt, <<"hmac_sha512">>, Mac] = binary:split(Decoded, <<$:>>, [global]),
+        ?assert(byte_size(Salt) > 0),
+        ?assert(byte_size(Mac) > 0),
         Hash2 = elib_password:generate(Plaintext),
         ?assertNotEqual(Result, Hash2)
     end).

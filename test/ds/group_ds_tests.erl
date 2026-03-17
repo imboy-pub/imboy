@@ -4,181 +4,153 @@
 
 %%%===================================================================
 %%% @doc
-%%% group_ds 模块的 EUnit 测试
+%%% group_ds 的纯单元测试
 %%%
-%%% 目标：验证群组服务功能
-%%% 覆盖：成员检查、加入、离开、解散群组
+%%% 当前实现主要是缓存协调层：
+%%% - is_member/2 直接查 repo
+%%% - member_uids/1 带缓存读写
+%%% - join/2 / leave/2 / dissolve/1 只维护缓存
+%%% - check_avatar/1 接收 map，返回 map
 %%%===================================================================
 
-%% ===================================================================
-%% is_member/2 测试
-%% ===================================================================
-
-is_member_returns_boolean_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Gid = 1,
-        Result = group_ds:is_member(Uid, Gid),
-        % 精确断言：验证返回的是布尔值并检查具体状态
-        ?assertMatch(Boolean when is_boolean(Boolean), Result),
-        % 进一步验证：对于存在的用户组，应该返回明确的布尔值
-        ?assert(is_boolean(Result))
+is_member_returns_true_when_repo_finds_member_test_() ->
+    ?WITH_MECK(group_member_repo, [
+        {'find', 3, fun(1, 100, <<"id">>) ->
+            #{<<"id">> => 1}
+        end}
+    ], fun() ->
+        ?assertEqual(true, group_ds:is_member(100, 1))
     end).
 
-is_member_false_when_not_member_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 999999,
-        Gid = 999999,
-        Result = group_ds:is_member(Uid, Gid),
-        ?assertEqual(false, Result)
+is_member_returns_false_when_repo_is_empty_test_() ->
+    ?WITH_MECK(group_member_repo, [
+        {'find', 3, fun(999999, 999999, <<"id">>) ->
+            #{}
+        end}
+    ], fun() ->
+        ?assertEqual(false, group_ds:is_member(999999, 999999))
     end).
 
-%% ===================================================================
-%% member_uids/1 测试
-%% ===================================================================
-
-member_uids_returns_list_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = 1,
-        Result = group_ds:member_uids(Gid),
-        ?assertMatch([_|_], Result)
+member_uids_reads_repo_and_populates_cache_on_miss_test_() ->
+    ?WITH_MECKS([
+        {imboy_cache, [
+            {'get', 1, fun({group, 1}) -> undefined end},
+            {'set', 3, fun({group, 1}, [11, 12], Ttl) ->
+                ?assert(is_integer(Ttl)),
+                ok
+            end}
+        ]},
+        {group_member_repo, [
+            {'list_by_gid', 2, fun(1, <<"user_id">>) ->
+                {ok, [
+                    #{<<"user_id">> => 11},
+                    #{<<"user_id">> => 12}
+                ]}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual([11, 12], group_ds:member_uids(1))
     end).
 
-member_uids_empty_when_no_members_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = 999999,
-        Result = group_ds:member_uids(Gid),
-        ?assertEqual([], Result)
+member_uids_uses_cache_on_hit_test_() ->
+    ?WITH_MECK(imboy_cache, [
+        {'get', 1, fun({group, 2}) -> {ok, [21, 22]} end}
+    ], fun() ->
+        ?assertEqual([21, 22], group_ds:member_uids(2))
     end).
 
-%% ===================================================================
-%% check_avatar/1 测试
-%% ===================================================================
+member_uids_returns_empty_list_on_repo_error_test_() ->
+    ?WITH_MECKS([
+        {imboy_cache, [
+            {'get', 1, fun({group, 3}) -> undefined end}
+        ]},
+        {group_member_repo, [
+            {'list_by_gid', 2, fun(3, <<"user_id">>) ->
+                {error, db_error}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual([], group_ds:member_uids(3))
+    end).
 
-check_avatar_returns_boolean_test_() ->
+check_avatar_sets_default_when_avatar_empty_test_() ->
     ?TEST_SIMPLE(fun() ->
-        AvatarUrl = <<"https://example.com/avatar.jpg">>,
-        Result = group_ds:check_avatar(AvatarUrl),
-        % 验证返回值类型
-        ?assert(is_binary(Result) orelse is_boolean(Result))
+        Result = group_ds:check_avatar(#{
+            <<"id">> => 1,
+            <<"avatar">> => <<>>
+        }),
+        ?assertEqual(
+            <<"/static/image/group_default_avatar.jpeg">>,
+            maps:get(<<"avatar">>, Result)
+        )
     end).
 
-check_avatar_empty_url_test_() ->
+check_avatar_preserves_existing_avatar_test_() ->
     ?TEST_SIMPLE(fun() ->
-        AvatarUrl = <<>>,
-        Result = group_ds:check_avatar(AvatarUrl),
-        % 验证空URL的处理
-        ?assert(is_binary(Result) orelse is_boolean(Result))
+        Avatar = <<"https://example.com/avatar.jpg">>,
+        Result = group_ds:check_avatar(#{
+            <<"id">> => 1,
+            <<"avatar">> => Avatar
+        }),
+        ?assertEqual(Avatar, maps:get(<<"avatar">>, Result))
     end).
 
-%% ===================================================================
-%% join/2 测试
-%% ===================================================================
-
-join_adds_member_to_group_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Gid = 1,
-        Result = group_ds:join(Uid, Gid),
-        ?assertMatch({ok, 1}, Result)
-    end).
-
-%% ===================================================================
-%% leave/2 测试
-%% ===================================================================
-
-leave_removes_member_from_group_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Gid = 1,
-        Result = group_ds:leave(Uid, Gid),
-        ?assertMatch({ok, 1}, Result)
-    end).
-
-%% ===================================================================
-%% dissolve/1 测试
-%% ===================================================================
-
-dissolve_removes_group_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = 999999,
-        Result = group_ds:dissolve(Gid),
-        ?assertMatch({ok, UpdatedCount} when is_integer(UpdatedCount), Result)
-    end).
-
-%% ===================================================================
-%% 边界条件测试
-%% ===================================================================
-
-is_member_with_same_uid_and_gid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Gid = 1,
-        Result = group_ds:is_member(Uid, Gid),
-        ?assert(is_boolean(Result))
-    end).
-
-is_member_with_zero_gid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Gid = 0,
-        Result = group_ds:is_member(Uid, Gid),
-        ?assert(is_boolean(Result))
-    end).
-
-member_uids_with_zero_gid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = 0,
-        Result = group_ds:member_uids(Gid),
-        ?assertEqual([], Result)
-    end).
-
-member_uids_with_negative_gid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = -1,
-        Result = group_ds:member_uids(Gid),
-        ?assertEqual([], Result)
-    end).
-
-join_with_invalid_uid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 0,
-        Gid = 1,
-        Result = group_ds:join(Uid, Gid),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ok
-        end
-    end).
-
-leave_with_non_member_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 999999,
-        Gid = 999999,
-        Result = group_ds:leave(Uid, Gid),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ok
-        end
-    end).
-
-dissolve_with_nonexistent_group_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Gid = 0,
-        Result = group_ds:dissolve(Gid),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ok
-        end
-    end).
-
-%% ===================================================================
-%% UTF-8 编码测试
-%% ===================================================================
-
-check_avatar_with_unicode_url_test_() ->
+check_avatar_returns_empty_map_for_non_map_input_test_() ->
     ?TEST_SIMPLE(fun() ->
-        AvatarUrl = <<"https://example.com/头像.jpg"/utf8>>,
-        Result = group_ds:check_avatar(AvatarUrl),
-        ?assert(is_binary(Result) orelse is_boolean(Result))
+        ?assertEqual(#{}, group_ds:check_avatar(<<"not-a-map">>))
+    end).
+
+join_adds_uid_to_cached_member_list_test_() ->
+    ?WITH_MECKS([
+        {imboy_cache, [
+            {'get', 1, fun({group, 10}) -> {ok, [2, 3]} end},
+            {'set', 3, fun({group, 10}, [1, 2, 3], Ttl) ->
+                ?assert(is_integer(Ttl)),
+                ok
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, group_ds:join(1, 10))
+    end).
+
+join_is_idempotent_when_uid_already_exists_test_() ->
+    ?WITH_MECK(imboy_cache, [
+        {'get', 1, fun({group, 11}) -> {ok, [1, 2, 3]} end}
+    ], fun() ->
+        ?assertEqual(ok, group_ds:join(1, 11))
+    end).
+
+leave_removes_uid_from_cache_test_() ->
+    ?WITH_MECKS([
+        {imboy_cache, [
+            {'get', 1, fun({group, 12}) -> {ok, [1, 2, 3]} end},
+            {'set', 2, fun({group, 12}, [2, 3]) ->
+                ok
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, group_ds:leave(1, 12))
+    end).
+
+leave_is_noop_when_group_has_no_members_test_() ->
+    ?WITH_MECKS([
+        {imboy_cache, [
+            {'get', 1, fun({group, 13}) -> undefined end}
+        ]},
+        {group_member_repo, [
+            {'list_by_gid', 2, fun(13, <<"user_id">>) ->
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual(ok, group_ds:leave(1, 13))
+    end).
+
+dissolve_flushes_group_cache_test_() ->
+    ?WITH_MECK(imboy_cache, [
+        {'flush', 1, fun({group, 14}) ->
+            ok
+        end}
+    ], fun() ->
+        ?assertEqual(ok, group_ds:dissolve(14))
     end).

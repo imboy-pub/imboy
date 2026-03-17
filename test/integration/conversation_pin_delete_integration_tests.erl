@@ -160,7 +160,7 @@ test_delete_c2g_conversation() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to_gid">> => elib_hashids:encode(Group1)})
+        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group1)})
     end, lists:seq(1, 3)),
 
     % 2. 删除会话
@@ -306,4 +306,4 @@ send_c2g_message(From, Group, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}).
+    msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}).

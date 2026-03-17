@@ -24,7 +24,7 @@ add_trusted_contact_test_() ->
             {add_contact, 1, fun(_ContactMap) -> {ok, 999} end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         Uid = 10001,
@@ -66,7 +66,7 @@ remove_trusted_contact_test_() ->
             {remove_contact, 2, fun(_Uid, _ContactUid) -> ok end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         Uid = 10001,
@@ -88,7 +88,7 @@ list_trusted_contacts_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {get, 2, fun(_CacheKey) -> {error, miss} end},
+            {get, 1, fun(_CacheKey) -> undefined end},
             {set, 3, fun(_CacheKey, _Contacts, _TTL) -> ok end}
         ]}
     ], fun() ->
@@ -101,7 +101,7 @@ list_trusted_contacts_test_() ->
 
 list_trusted_contacts_cached_test_() ->
     ?WITH_MECK(imboy_cache, [
-        {get, 2, fun(_CacheKey) ->
+        {get, 1, fun(_CacheKey) ->
             {ok, [#{<<"uid">> => 10001, <<"contact_uid">> => 10002}]}
         end}
     ], fun() ->
@@ -114,7 +114,7 @@ list_trusted_contacts_cached_test_() ->
 
 is_trusted_contact_test_() ->
     ?WITH_MECK(imboy_cache, [
-        {get, 2, fun(_CacheKey) ->
+        {get, 1, fun(_CacheKey) ->
             {ok, [#{<<"contact_uid">> => 10002}]}
         end}
     ], fun() ->
@@ -128,7 +128,7 @@ is_trusted_contact_test_() ->
 
 is_trusted_contact_false_test_() ->
     ?WITH_MECK(imboy_cache, [
-        {get, 2, fun(_CacheKey) ->
+        {get, 1, fun(_CacheKey) ->
             {ok, [#{<<"contact_uid">> => 10003}]}
         end}
     ], fun() ->
@@ -151,11 +151,11 @@ create_key_shares_test_() ->
         ]},
         {shamir_secret_sharing, [
             {create_shares, 3, fun(_PrivateKeyPem, _Threshold, _TotalShards) ->
-                {ok, [
+                [
                     #{<<"x">> => 1, <<"y">> => <<"share1">>},
                     #{<<"x">> => 2, <<"y">> => <<"share2">>},
                     #{<<"x">> => 3, <<"y">> => <<"share3">>}
-                ]}
+                ]
             end}
         ]},
         {user_device_ds, [
@@ -165,7 +165,7 @@ create_key_shares_test_() ->
         ]},
         {elib_cipher, [
             {encrypt_rsa_oaep, 2, fun(_Data, _PublicKey) ->
-                <<"encrypted-data">>
+                {ok, <<"encrypted-data">>}
             end}
         ]},
         {e2ee_social_repo, [
@@ -173,7 +173,7 @@ create_key_shares_test_() ->
             {create, 1, fun(_ShardRecord) -> {ok, 999} end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         Uid = 10001,
@@ -234,7 +234,7 @@ get_user_shards_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {get, 2, fun(_CacheKey) -> {error, miss} end},
+            {get, 1, fun(_CacheKey) -> undefined end},
             {set, 3, fun(_CacheKey, _Shards, _TTL) -> ok end}
         ]}
     ], fun() ->
@@ -256,7 +256,7 @@ get_proxy_shards_test_() ->
             end}
         ]},
         {imboy_cache, [
-            {get, 2, fun(_CacheKey) -> {error, miss} end},
+            {get, 1, fun(_CacheKey) -> undefined end},
             {set, 3, fun(_CacheKey, _Shards, _TTL) -> ok end}
         ]}
     ], fun() ->
@@ -299,7 +299,7 @@ decrypt_shard_test_() ->
     ?WITH_MECKS([
         {elib_cipher, [
             {decrypt_rsa_oaep, 2, fun(_EncryptedShard, _PrivateKeyPem) ->
-                <<"{\"x\":1,\"y\":\"share-data\"}">>
+                {ok, <<"{\"x\":1,\"y\":\"share-data\"}">>}
             end}
         ]},
         {jsx, [
@@ -331,13 +331,19 @@ decrypt_shard_failure_test_() ->
     end).
 
 recover_key_insufficient_shares_test_() ->
-    ?WITH_MECK(e2ee_social_repo, [
-        {get_user_shards, 2, fun(_Uid, _KeyVersion) ->
-            {ok, [
-                #{<<"shard_id">> => <<"shard-1">>, <<"threshold">> => 2},
-                #{<<"shard_id">> => <<"shard-2">>, <<"threshold">> => 2}
-            ]}
-        end}
+    ?WITH_MECKS([
+        {e2ee_social_repo, [
+            {get_user_shards, 2, fun(_Uid, _KeyVersion) ->
+                {ok, [
+                    #{<<"shard_id">> => <<"shard-1">>, <<"threshold">> => 2},
+                    #{<<"shard_id">> => <<"shard-2">>, <<"threshold">> => 2}
+                ]}
+            end}
+        ]},
+        {imboy_cache, [
+            {get, 1, fun(_CacheKey) -> undefined end},
+            {set, 3, fun(_CacheKey, _Shards, _TTL) -> ok end}
+        ]}
     ], fun() ->
         Uid = 10001,
         KeyVersion = <<"latest">>,
@@ -366,7 +372,7 @@ delete_restored_shards_test_() ->
             {delete_restored_shards, 2, fun(_Uid, _KeyVersion) -> ok end}
         ]},
         {imboy_cache, [
-            {delete, 2, fun(_CacheKey) -> ok end}
+            {delete, 1, fun(_CacheKey) -> ok end}
         ]}
     ], fun() ->
         Uid = 10001,

@@ -43,12 +43,9 @@ member_list_replaces_ids_test_() ->
         end, Result)
     end).
 
-member_list_empty_list_test_() ->
-    % 测试空列表输入
+member_list_empty_list_test() ->
     EmptyList = [],
-    
     Result = group_member_transfer:member_list(EmptyList),
-    
     ?assertEqual([], Result).
 
 member_list_single_member_test_() ->

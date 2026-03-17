@@ -1,241 +1,142 @@
 -module(group_category_ds_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
-%% ===================================================================
-%%   EUnit Tests for group_category_ds
-%% ===================================================================
+%%%===================================================================
+%%% @doc
+%%% group_category_ds 的纯单元测试
+%%%
+%%% 当前实现已经是 service 层薄封装，这里只验证：
+%%% - repo 返回值映射
+%%% - 默认分类补齐
+%%% - 参数校验和删除前迁移逻辑
+%%%===================================================================
 
-%% @doc 测试添加群组分类（正常流程）
-add_test() ->
-    application:set_env(imboy, env, test),
+add_returns_existing_category_id_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'find_by_name', 2, fun(100, <<"工作群"/utf8>>) ->
+            {ok, #{<<"id">> => 10}}
+        end}
+    ], fun() ->
+        ?assertEqual({ok, 10}, group_category_ds:add(100, <<"工作群"/utf8>>))
+    end).
 
-    Uid = 989999,
-    CategoryName = <<"工作群"/utf8>>,
+add_inserts_when_category_missing_test_() ->
+    ?WITH_MECKS([
+        {group_category_repo, [
+            {'find_by_name', 2, fun(100, <<"新分类"/utf8>>) ->
+                {ok, #{}}
+            end},
+            {'add', 2, fun(100, <<"新分类"/utf8>>) ->
+                {ok, 11}
+            end}
+        ]}
+    ], fun() ->
+        ?assertEqual({ok, 11}, group_category_ds:add(100, <<"新分类"/utf8>>))
+    end).
 
-    %% 清理测试数据
-    cleanup_test_data(Uid),
+add_propagates_lookup_error_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'find_by_name', 2, fun(_Uid, _Name) ->
+            {error, db_error}
+        end}
+    ], fun() ->
+        ?assertEqual({error, db_error}, group_category_ds:add(100, <<"异常"/utf8>>))
+    end).
 
-    %% 测试添加分类
-    case group_category_ds:add(Uid, CategoryName) of
-        {ok, CategoryId} when is_integer(CategoryId), CategoryId > 0 ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("添加分类失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
+find_by_uid_prepends_default_category_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'list_by_uid', 2, fun(100, <<"id, category_name, sort_order">>) ->
+            {ok, [
+                #{
+                    <<"id">> => 1,
+                    <<"category_name">> => <<"工作"/utf8>>,
+                    <<"sort_order">> => 10
+                }
+            ]}
+        end}
+    ], fun() ->
+        [Default, Custom] = group_category_ds:find_by_uid(100),
+        ?assertEqual(0, maps:get(<<"id">>, Default)),
+        ?assertEqual(<<"未分类"/utf8>>, maps:get(<<"category_name">>, Default)),
+        ?assertEqual(1, maps:get(<<"id">>, Custom))
+    end).
 
-    %% 清理测试数据
-    cleanup_test_data(Uid).
+find_by_uid_returns_default_category_on_repo_error_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'list_by_uid', 2, fun(_Uid, _Field) ->
+            {error, db_error}
+        end}
+    ], fun() ->
+        [Default] = group_category_ds:find_by_uid(100),
+        ?assertEqual(0, maps:get(<<"id">>, Default)),
+        ?assertEqual(<<"未分类"/utf8>>, maps:get(<<"category_name">>, Default))
+    end).
 
-%% @doc 测试添加重复分类（应返回已存在的分类ID）
-add_duplicate_test() ->
-    application:set_env(imboy, env, test),
+rename_success_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'update_name', 3, fun(100, 9, <<"新名称"/utf8>>) ->
+            {ok, 1}
+        end}
+    ], fun() ->
+        ?assertEqual({ok, 1}, group_category_ds:rename(100, 9, <<"新名称"/utf8>>))
+    end).
 
-    Uid = 989998,
-    CategoryName = <<"重复分类"/utf8>>,
+rename_invalid_params_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertMatch({error, _}, group_category_ds:rename(100, undefined, <<"新名称"/utf8>>)),
+        ?assertMatch({error, _}, group_category_ds:rename(100, 1, <<>>))
+    end).
 
-    %% 清理测试数据
-    cleanup_test_data(Uid),
+delete_moves_groups_to_default_before_delete_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'list_groups_by_category', 3, fun(100, 9, <<"gm.group_id">>) ->
+            {ok, [
+                #{<<"group_id">> => 2001},
+                #{<<"group_id">> => 2002}
+            ]}
+        end},
+        {'update_group_category', 3, fun(100, Gid, 0) ->
+            self() ! {moved_to_default, Gid},
+            {ok, 1}
+        end},
+        {'delete', 2, fun(100, 9) ->
+            {ok, 1}
+        end}
+    ], fun() ->
+        ?assertEqual({ok, 1}, group_category_ds:delete(100, 9)),
+        Moved = lists:sort(collect_messages([])),
+        ?assertEqual([{moved_to_default, 2001}, {moved_to_default, 2002}], Moved)
+    end).
 
-    %% 添加第一次
-    {ok, CategoryId1} = group_category_ds:add(Uid, CategoryName),
+delete_invalid_params_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertMatch({error, _}, group_category_ds:delete(100, undefined)),
+        ?assertMatch({error, _}, group_category_ds:delete(100, <<>>))
+    end).
 
-    %% 添加第二次（应返回已存在的ID）
-    case group_category_ds:add(Uid, CategoryName) of
-        {ok, CategoryId2} when CategoryId2 =:= CategoryId1 ->
-            ?assert(true);
-        {ok, _} ->
-            ?debugFmt("重复添加应返回已存在的分类ID~n", []),
-            ?assert(false);
-        {error, Reason} ->
-            ?debugFmt("重复添加失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
+update_sort_order_success_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'update_sort_order', 3, fun(100, 9, 88) ->
+            {ok, 1}
+        end}
+    ], fun() ->
+        ?assertEqual({ok, 1}, group_category_ds:update_sort_order(100, 9, 88))
+    end).
 
-    %% 清理测试数据
-    cleanup_test_data(Uid).
+move_group_to_category_returns_updated_count_test_() ->
+    ?WITH_MECK(group_category_repo, [
+        {'update_group_category', 3, fun(100, 2001, 9) ->
+            {ok, 1}
+        end}
+    ], fun() ->
+        ?assertEqual({ok, 1}, group_category_ds:move_group_to_category(100, 2001, 9))
+    end).
 
-%% @doc 测试查询用户的分类列表
-find_by_uid_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989997,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid),
-
-    %% 添加测试分类
-    {ok, _} = group_category_ds:add(Uid, <<"分类1"/utf8>>),
-    {ok, _} = group_category_ds:add(Uid, <<"分类2"/utf8>>),
-    {ok, _} = group_category_ds:add(Uid, <<"分类3"/utf8>>),
-
-    %% 测试查询分类列表
-    Categories = group_category_ds:find_by_uid(Uid),
-    ?assert(length(Categories) >= 4),  % 至少包含3个自定义分类 + 1个默认分类
-
-    %% 清理测试数据
-    cleanup_test_data(Uid).
-
-%% @doc 测试重命名分类
-rename_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989996,
-    OldName = <<"旧名称"/utf8>>,
-    NewName = <<"新名称"/utf8>>,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid),
-
-    %% 添加测试分类
-    {ok, CategoryId} = group_category_ds:add(Uid, OldName),
-
-    %% 测试重命名
-    case group_category_ds:rename(Uid, CategoryId, NewName) of
-        {ok, 1} ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("重命名失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid).
-
-%% @doc 测试重命名时的参数验证
-rename_invalid_params_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989995,
-
-    %% 测试无效的分类ID
-    case group_category_ds:rename(Uid, undefined, <<"新名称"/utf8>>) of
-        {error, _} ->
-            ?assert(true);
-        _ ->
-            ?assert(false)
-    end,
-
-    %% 测试空的分类名称
-    case group_category_ds:rename(Uid, 1, <<>>) of
-        {error, _} ->
-            ?assert(true);
-        _ ->
-            ?assert(false)
-    end.
-
-%% @doc 测试删除分类
-delete_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989994,
-    CategoryName = <<"待删除分类"/utf8>>,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid),
-
-    %% 添加测试分类
-    {ok, CategoryId} = group_category_ds:add(Uid, CategoryName),
-
-    %% 测试删除分类
-    case group_category_ds:delete(Uid, CategoryId) of
-        {ok, 1} ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("删除分类失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid).
-
-%% @doc 测试删除时的参数验证
-delete_invalid_params_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989993,
-
-    %% 测试无效的分类ID
-    case group_category_ds:delete(Uid, undefined) of
-        {error, _} ->
-            ?assert(true);
-        _ ->
-            ?assert(false)
-    end,
-
-    %% 测试空的分类ID
-    case group_category_ds:delete(Uid, <<>>) of
-        {error, _} ->
-            ?assert(true);
-        _ ->
-            ?assert(false)
-    end.
-
-%% @doc 测试更新排序
-update_sort_order_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989992,
-    CategoryName = <<"排序测试"/utf8>>,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid),
-
-    %% 添加测试分类
-    {ok, CategoryId} = group_category_ds:add(Uid, CategoryName),
-
-    %% 测试更新排序
-    case group_category_ds:update_sort_order(Uid, CategoryId, 100) of
-        {ok, 1} ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("更新排序失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid).
-
-%% @doc 测试移动群组到分类
-move_group_to_category_test() ->
-    application:set_env(imboy, env, test),
-
-    Uid = 989991,
-    Gid = 989991,
-    CategoryName = <<"目标分类"/utf8>>,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid),
-
-    %% 添加测试分类
-    {ok, CategoryId} = group_category_ds:add(Uid, CategoryName),
-
-    %% 测试移动群组到分类
-    case group_category_ds:move_group_to_category(Uid, Gid, CategoryId) of
-        {ok, 1} ->
-            ?assert(true);
-        {ok, 0} ->
-            %% 可能群成员记录不存在，这也是正常的
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("移动群组失败: ~p~n", [Reason]),
-            ?assert(false)
-    end,
-
-    %% 清理测试数据
-    cleanup_test_data(Uid).
-
-%% ===================================================================
-%% Internal Helper Functions
-%% ===================================================================
-
-%% @doc 清理测试数据
-cleanup_test_data(Uid) ->
-    case group_category_repo:list_by_uid(Uid, <<"id">>) of
-        {ok, Categories} ->
-            lists:foreach(fun(#{<<"id">> := Id}) ->
-                group_category_repo:delete(Uid, Id)
-            end, Categories);
-        _ ->
-            ok
+collect_messages(Acc) ->
+    receive
+        Msg ->
+            collect_messages([Msg | Acc])
+    after 0 ->
+        Acc
     end.

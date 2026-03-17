@@ -114,12 +114,9 @@ handle_check_no_update_test_() ->
 handle_check_with_region_test_() ->
     ?WITH_MECKS([
         {app_version_repo, [
-            {'find', 2, fun(Where, _Column) ->
-                % 验证 WHERE 条件包含区域码
-                case binary:match(Where, <<"region_code='us'">>) of
-                    nomatch -> error({unexpected_where, Where});
-                    _ -> ok
-                end,
+            {'find', 2, fun(Cos, RegionCode) ->
+                ?assertEqual(<<"web">>, Cos),
+                ?assertEqual(<<"us">>, RegionCode),
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"us">>,
@@ -167,12 +164,9 @@ handle_check_with_region_test_() ->
 handle_check_different_platform_test_() ->
     ?WITH_MECKS([
         {app_version_repo, [
-            {'find', 2, fun(Where, _Column) ->
-                % 验证 WHERE 条件包含平台类型
-                case binary:match(Where, <<"type='ios'">>) of
-                    nomatch -> error({unexpected_where, Where});
-                    _ -> ok
-                end,
+            {'find', 2, fun(Cos, RegionCode) ->
+                ?assertEqual(<<"ios">>, Cos),
+                ?assertEqual(<<>>, RegionCode),
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"cn">>,

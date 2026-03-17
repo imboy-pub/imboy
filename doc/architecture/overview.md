@@ -10,6 +10,12 @@
 
 - [`2026-03-15-modular-monolith-boundaries.md`](adr/2026-03-15-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
+## 迁移状态（2026-03-16）
+
+- 已建立稳定领域入口的逻辑层模块：`messaging_logic`、`moment_logic`、`channel_logic`、`group_logic`、`group_vote_logic`、`group_schedule_logic`、`group_task_logic`、`auth_logic`、`passport_logic`、`user_logic`、`e2ee_logic`、`report_logic`、`user_collect_logic`。
+- 生产中的扩展点保持轻量：`src/lib/imboy_plugin_registry.erl` 作为插件 manifest contract，被 `channel_handler`、`moment_handler`、`group_*_handler`、`report_handler`、后台对应 handler 以及 `imboy_policy` 使用。
+- 兼容层仍保留且属于迁移期设计：`imboy_plugin_registry:all/0` 与 `get/1` 继续作为 `manifests/0` 与 `manifest/1` 的 deprecated aliases，待调用点完全收敛后再删除。
+
 ## 1. 文档目的
 
 本文档用于描述 `Imboy` 当前仓库的真实分层方式，以及各层在代码中的职责边界。

@@ -44,7 +44,9 @@ delete(Where) ->
 -spec delete_by_id(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_by_id(Id) when is_integer(Id), Id > 0 ->
     % 使用 DS 层接口
-    app_version_ds:delete_by_id(Id).
+    app_version_ds:delete_by_id(Id);
+delete_by_id(_Id) ->
+    {error, invalid_id}.
 
 % adm_app_version_logic:vsn_sort(<<"0.2">>).
 % adm_app_version_logic:vsn_sort(<<"0.2.22">>).
@@ -76,4 +78,3 @@ vsn_sort(Vsn) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

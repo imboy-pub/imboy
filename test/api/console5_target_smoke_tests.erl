@@ -1,5 +1,6 @@
 -module(console5_target_smoke_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -29,7 +30,11 @@ mention_init_false_action_passthrough_test() ->
     ?assertEqual(10, maps:get(current_uid, State)).
 
 group_schedule_init_unknown_action_passthrough_test() ->
-    Req = #{req => schedule},
-    {ok, Req1, State} = group_schedule_handler:init(Req, #{action => unknown_action, current_uid => 20}),
-    ?assertEqual(Req, Req1),
-    ?assertEqual(20, maps:get(current_uid, State)).
+    ?WITH_MECK(imboy_feature, [
+        {'ensure_enabled', 2, fun(_Req, group_schedule) -> ok end}
+    ], fun() ->
+        Req = #{req => schedule},
+        {ok, Req1, State} = group_schedule_handler:init(Req, #{action => unknown_action, current_uid => 20}),
+        ?assertEqual(Req, Req1),
+        ?assertEqual(20, maps:get(current_uid, State))
+    end).

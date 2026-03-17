@@ -271,7 +271,10 @@ batch_save_attachments_test_() ->
             ok
         end}
     ], fun() ->
-        Attach = [#{<<"url">> => <<"https://example.com/file", (integer_to_binary(N)), ".pdf">>} || N <- lists:seq(1, 10)],
+        Attach = [
+            #{<<"url">> => <<"https://example.com/file", (integer_to_binary(N))/binary, ".pdf">>}
+            || N <- lists:seq(1, 10)
+        ],
         Result = attachment_ds:save(self(), <<"2023-01-01T00:00:00Z">>, 100, Attach),
         ?assertEqual(ok, Result)
     end).

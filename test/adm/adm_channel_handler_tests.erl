@@ -9,8 +9,18 @@
 %%% 目标：覆盖频道消息治理核心路径（列表、置顶、删除校验）
 %%%===================================================================
 
+channel_admin_feature_enabled_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, channel) -> ok;
+                                     (_Req, channel_invitation) -> ok;
+                                     (_Req, channel_order) -> ok
+                                  end}
+        ]}
+    ].
+
 init_messages_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -60,7 +70,7 @@ init_messages_success_test_() ->
     end).
 
 init_messages_accepts_hashid_channel_id_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"6q58gm">> end}
@@ -99,7 +109,7 @@ init_messages_accepts_hashid_channel_id_test_() ->
     end).
 
 init_pin_message_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"PUT">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -153,7 +163,7 @@ init_pin_message_success_test_() ->
     end).
 
 init_delete_message_rejects_foreign_message_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -184,7 +194,7 @@ init_delete_message_rejects_foreign_message_test_() ->
     end).
 
 init_subscribers_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -245,7 +255,7 @@ init_subscribers_success_test_() ->
     end).
 
 init_remove_subscriber_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -304,7 +314,7 @@ init_remove_subscriber_success_test_() ->
     end).
 
 init_remove_subscriber_accepts_hashid_path_params_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -351,7 +361,7 @@ init_remove_subscriber_accepts_hashid_path_params_test_() ->
     end).
 
 init_remove_subscriber_noop_still_flushes_cache_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -399,7 +409,7 @@ init_remove_subscriber_noop_still_flushes_cache_test_() ->
     end).
 
 init_remove_subscriber_tx_error_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -447,7 +457,7 @@ init_remove_subscriber_tx_error_test_() ->
     end).
 
 init_update_admin_role_rejects_creator_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"PUT">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -486,7 +496,7 @@ init_update_admin_role_rejects_creator_test_() ->
     end).
 
 init_update_admin_role_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"PUT">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -542,7 +552,7 @@ init_update_admin_role_success_test_() ->
     end).
 
 init_update_admin_role_repo_failure_no_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"PUT">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -588,7 +598,7 @@ init_update_admin_role_repo_failure_no_audit_test_() ->
     end).
 
 init_remove_admin_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -641,7 +651,7 @@ init_remove_admin_success_test_() ->
     end).
 
 init_invitations_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -705,7 +715,7 @@ init_invitations_success_test_() ->
     end).
 
 init_orders_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -760,7 +770,7 @@ init_orders_success_test_() ->
     end).
 
 init_stats_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -797,7 +807,7 @@ init_stats_success_test_() ->
     end).
 
 init_stats_not_found_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
@@ -823,7 +833,7 @@ init_stats_not_found_test_() ->
     end).
 
 init_delete_message_success_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -871,7 +881,7 @@ init_delete_message_success_test_() ->
     end).
 
 init_delete_message_repo_failure_no_audit_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
@@ -909,7 +919,7 @@ init_delete_message_repo_failure_no_audit_test_() ->
     end).
 
 init_search_returns_list_with_normalized_ids_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'parse_qs', 1, fun(_Req) ->
@@ -957,7 +967,7 @@ init_search_returns_list_with_normalized_ids_test_() ->
     end).
 
 init_search_empty_keyword_returns_empty_list_test_() ->
-    ?WITH_MECKS([
+    ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'parse_qs', 1, fun(_Req) ->

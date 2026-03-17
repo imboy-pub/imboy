@@ -21,7 +21,7 @@ page_returns_tag_list_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'page_with_total', 5, fun(_Tb, _Where, Page, Size) ->
+            {'page_with_total', 4, fun(_Tb, _Where, Page, Size) ->
                 ?assertEqual(1, Page),
                 ?assertEqual(10, Size),
                 {ok, #{
@@ -56,7 +56,7 @@ page_with_empty_result_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'page_with_total', 5, fun(_Tb, _Where, _Page, _Size) ->
+            {'page_with_total', 4, fun(_Tb, _Where, _Page, _Size) ->
                 {ok, #{total => 0, page => 1, size => 10, list => []}}
             end}
         ]}
@@ -73,7 +73,7 @@ page_with_error_returns_empty_list_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'page_with_total', 5, fun(_Tb, _Where, _Page, _Size) ->
+            {'page_with_total', 4, fun(_Tb, _Where, _Page, _Size) ->
                 {error, <<"database_error">>}
             end}
         ]}
@@ -95,7 +95,7 @@ delete_success_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 1
             end},
             {'with_tx', 1, fun(Fun) ->
@@ -108,6 +108,11 @@ delete_success_test_() ->
         {user_tag_relation_repo, [
             {'tablename', 0, fun() -> <<"user_tag_relation">> end},
             {'flush_subtitle', 1, fun(_TagId) -> ok end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(<<"user_collect">>) ->
+                <<"public.user_collect">>
+            end}
         ]}
     ], fun() ->
         Result = user_tag_ds:delete(100, 1, <<"标签1"/utf8>>),
@@ -121,7 +126,7 @@ delete_nonexistent_tag_returns_ok_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end}
         ]}
@@ -140,6 +145,11 @@ change_name_success_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(<<"user_collect">>) ->
+                <<"public.user_collect">>
+            end}
+        ]},
         {user_tag_relation_repo, [
             {'update_tag', 5, fun(_Conn, _TagId, _TagName, _Uid, _CreatedAt) ->
                 ok
@@ -147,8 +157,16 @@ change_name_success_test_() ->
             {'flush_subtitle', 1, fun(_TagId) -> ok end}
         ]},
         {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) ->
-                {ok, [#{<<"object_id">> => 1}]}
+            {'query', 2, fun(Sql, _Params) ->
+                case binary:match(Sql, <<"SELECT object_id">>) of
+                    {0, _} ->
+                        {ok, [#{<<"object_id">> => 1}]};
+                    nomatch ->
+                        {ok, [#{<<"id">> => 9, <<"name">> => <<"旧标签"/utf8>>}]}
+                end
+            end},
+            {'execute', 2, fun(_Sql, [_TagBin, 100, 1]) ->
+                {ok, 1}
             end},
             {'with_tx', 1, fun(Fun) ->
                 Fun(self())
@@ -198,17 +216,17 @@ add_success_test_() ->
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
+            end},
+            {'parse_result', 1, fun(_Result) ->
+                {ok, 1, #{}}
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end},
             {'insert', 3, fun(_Tb, _Data, _Returning) ->
                 {ok, 1, #{<<"id">> => 1}}
-            end},
-            {'parse_result', 1, fun(Result) ->
-                Result
             end}
         ]}
     ], fun() ->
@@ -225,7 +243,7 @@ add_existing_tag_returns_tag_id_test_() ->
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 5
             end}
         ]}
@@ -259,7 +277,7 @@ find_tag_id_returns_tag_id_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 5
             end}
         ]}
@@ -275,7 +293,7 @@ find_tag_id_not_found_returns_zero_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end}
         ]}
@@ -340,13 +358,12 @@ change_scene_tag_for_collect_scene_test_() ->
                 <<"public.user_collect">>
             end}
         ]},
-        {user_tag_ds, [
-            {'merge_tag', 4, fun(_Tag, _Scene, _Uid, _ObjectId) ->
-                <<"tag1,tag2">>
-            end}
-        ]},
         {elib_pg, [
-            {'execute', 3, fun(_Sql, [_TagBin, Uid, ObjectId]) ->
+            {'query', 2, fun(_Sql, [1, 100, 1]) ->
+                {ok, [#{<<"id">> => 2, <<"name">> => <<"old_tag"/utf8>>}]}
+            end},
+            {'execute', 2, fun(_Sql, [TagBin, Uid, ObjectId]) ->
+                ?assertEqual(<<"tag1,old_tag,">>, TagBin),
                 ?assertEqual(100, Uid),
                 ?assertEqual(1, ObjectId),
                 {ok, 1}
@@ -366,13 +383,12 @@ change_scene_tag_for_friend_scene_test_() ->
                 <<"public.user_friend">>
             end}
         ]},
-        {user_tag_ds, [
-            {'merge_tag', 4, fun(_Tag, _Scene, _Uid, _ObjectId) ->
-                <<"tag1,tag2">>
-            end}
-        ]},
         {elib_pg, [
-            {'execute', 3, fun(_Sql, [_TagBin, Uid, ObjectId]) ->
+            {'query', 2, fun(_Sql, [2, 100, 1]) ->
+                {ok, [#{<<"id">> => 2, <<"name">> => <<"old_tag"/utf8>>}]}
+            end},
+            {'execute', 2, fun(_Sql, [TagBin, Uid, ObjectId]) ->
+                ?assertEqual(<<"tag1,old_tag,">>, TagBin),
                 ?assertEqual(100, Uid),
                 ?assertEqual(1, ObjectId),
                 {ok, 1}
@@ -406,16 +422,13 @@ flush_subtitle_success_test_() ->
 %% @doc 测试零页码
 page_with_zero_page_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % page 函数要求 Page > 0，0 会跳过匹配
-        Result = user_tag_ds:page(1, 0, 10, #{}, <<"id desc">>),
-        ?assertEqual(0, maps:get(total, Result))
+        ?assertError(function_clause, user_tag_ds:page(1, 0, 10, #{}, <<"id desc">>))
     end).
 
 %% @doc 测试负页码
 page_with_negative_page_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Result = user_tag_ds:page(1, -1, 10, #{}, <<"id desc">>),
-        ?assertEqual(0, maps:get(total, Result))
+        ?assertError(function_clause, user_tag_ds:page(1, -1, 10, #{}, <<"id desc">>))
     end).
 
 %% @doc 测试大页码
@@ -425,7 +438,7 @@ page_with_large_page_test_() ->
             {'tablename', 0, fun() -> <<"user_tag">> end}
         ]},
         {elib_pg, [
-            {'page_with_total', 5, fun(_Tb, _Where, Page, Size) ->
+            {'page_with_total', 4, fun(_Tb, _Where, Page, Size) ->
                 ?assertEqual(9999, Page),
                 {ok, #{total => 0, page => 9999, size => 10, list => []}}
             end}
@@ -457,18 +470,18 @@ add_with_long_tag_name_test_() ->
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
+            end},
+            {'parse_result', 1, fun(_Result) ->
+                {ok, 1, #{}}
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end},
             {'insert', 3, fun(_Tb, Data, _Returning) ->
-                ?assertEqual(LongTag, maps:get(<<"name">>, Data)),
+                ?assertEqual(LongTag, maps:get(name, Data)),
                 {ok, 1, #{<<"id">> => 1}}
-            end},
-            {'parse_result', 1, fun(Result) ->
-                Result
             end}
         ]}
     ], fun() ->
@@ -485,18 +498,18 @@ add_with_utf8_tag_name_test_() ->
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
+            end},
+            {'parse_result', 1, fun(_Result) ->
+                {ok, 1, #{}}
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end},
             {'insert', 3, fun(_Tb, Data, _Returning) ->
-                ?assertEqual(<<"测试标签"/utf8>>, maps:get(<<"name">>, Data)),
+                ?assertEqual(<<"测试标签"/utf8>>, maps:get(name, Data)),
                 {ok, 1, #{<<"id">> => 1}}
-            end},
-            {'parse_result', 1, fun(Result) ->
-                Result
             end}
         ]}
     ], fun() ->
@@ -513,19 +526,19 @@ add_with_special_scene_test_() ->
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
+            end},
+            {'parse_result', 1, fun(_Result) ->
+                {ok, 1, #{}}
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, Where, _Default) ->
+            {'pluck_value', 5, fun(_Tb, _Column, Where, _Opts, _Default) ->
                 ?assertEqual(999, maps:get(scene, Where)),
                 0
             end},
             {'insert', 3, fun(_Tb, Data, _Returning) ->
                 ?assertEqual(999, maps:get(scene, Data)),
                 {ok, 1, #{<<"id">> => 1}}
-            end},
-            {'parse_result', 1, fun(Result) ->
-                Result
             end}
         ]}
     ], fun() ->
@@ -581,8 +594,14 @@ complete_tag_lifecycle_test_() ->
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
         {elib_pg_sql, [
-            {'public_tablename', 1, fun(_Table) ->
-                <<"public.user_tag">>
+            {'parse_result', 1, fun(_Result) ->
+                {ok, 1, #{}}
+            end},
+            {'public_tablename', 1, fun(Table) ->
+                case Table of
+                    <<"user_collect">> -> <<"public.user_collect">>;
+                    _ -> <<"public.user_tag">>
+                end
             end}
         ]},
         {user_tag_repo, [
@@ -595,16 +614,16 @@ complete_tag_lifecycle_test_() ->
             end}
         ]},
         {elib_pg, [
-            {'pluck_value', 4, fun(_Tb, _Column, _Where, _Default) ->
-                0
+            {'pluck_value', 5, fun(Tb, _Column, _Where, _Opts, _Default) ->
+                case Tb of
+                    <<"public.user_tag">> -> 0;
+                    <<"user_tag">> -> 1
+                end
             end},
             {'insert', 3, fun(_Tb, _Data, _Returning) ->
                 {ok, 1, #{<<"id">> => 1}}
             end},
-            {'parse_result', 1, fun(Result) ->
-                Result
-            end},
-            {'page_with_total', 5, fun(_Tb, _Where, Page, Size) ->
+            {'page_with_total', 4, fun(_Tb, _Where, Page, Size) ->
                 {ok, #{total => 1, page => Page, size => Size, list => [
                     #{<<"id">> => 1, <<"name">> => <<"新标签"/utf8>>, <<"referer_time">> => 0}
                 ]}}

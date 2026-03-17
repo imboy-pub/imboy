@@ -15,37 +15,74 @@
 %% ===================================================================
 
 add_creates_feedback_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {elib_hasher, [
+            {'md5', 1, fun(_Input) -> <<"feedback_md5">> end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 5, fun(_Table, _Field, _Where, _Opts, _Default) -> 0 end}
+        ]},
+        {feedback_repo, [
+            {'add', 11, fun(Uid, Did, COS, COSV, AppVsn, Type, Rating, Contact, Body, Attach, Md5) ->
+                ?assertEqual(1, Uid),
+                ?assertEqual(<<"device-1">>, Did),
+                ?assertEqual(<<"ios">>, COS),
+                ?assertEqual(<<"17">>, COSV),
+                ?assertEqual(<<"1.0.0">>, AppVsn),
+                ?assertEqual(<<"bug">>, Type),
+                ?assertEqual(<<"5">>, Rating),
+                ?assertEqual(<<"test@example.com">>, Contact),
+                ?assertEqual(<<"Test feedback content">>, Body),
+                ?assertEqual(<<>>, Attach),
+                ?assertEqual(<<"feedback_md5">>, Md5),
+                ok
+            end}
+        ]}
+    ], fun() ->
         Uid = 1,
-        Content = <<"Test feedback content">>,
-        Contact = <<"test@example.com">>,
-        Pics = <<>>,
-        Result = feedback_ds:add(Uid, Content, Contact, Pics, <<>>, <<>>, <<>>, <<>>, <<>>, <<>>),
-        % 精确断言：验证返回的反馈ID
-        case Result of
-            {ok, #{<<"id">> := FeedbackId}} when is_integer(FeedbackId) ->
-                ?assert(FeedbackId > 0);
-            {ok, _} ->
-                ?assert(true);
-            _ ->
-                ?assert(false, "Expected {ok, FeedbackMap}")
-        end
+        Result = feedback_ds:add(
+            Uid,
+            <<"device-1">>,
+            <<"ios">>,
+            <<"17">>,
+            <<"1.0.0">>,
+            <<"bug">>,
+            <<"5">>,
+            <<"test@example.com">>,
+            <<"Test feedback content">>,
+            <<>>
+        ),
+        ?assertEqual(ok, Result)
     end).
 
 add_with_minimal_params_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {elib_hasher, [
+            {'md5', 1, fun(_Input) -> <<"minimal_feedback_md5">> end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 5, fun(_Table, _Field, _Where, _Opts, _Default) -> 0 end}
+        ]},
+        {feedback_repo, [
+            {'add', 11, fun(_Uid, _Did, _COS, _COSV, _AppVsn, _Type, _Rating, _Contact, _Body, _Attach, _Md5) ->
+                ok
+            end}
+        ]}
+    ], fun() ->
         Uid = 1,
-        Content = <<"Minimal feedback">>,
-        Result = feedback_ds:add(Uid, Content, <<>>, <<>>, <<>>, <<>>, <<>>, <<>>, <<>>, <<>>),
-        % 精确断言：验证返回的反馈ID
-        case Result of
-            {ok, #{<<"id">> := FeedbackId}} when is_integer(FeedbackId) ->
-                ?assert(FeedbackId > 0);
-            {ok, _} ->
-                ?assert(true);
-            _ ->
-                ?assert(false, "Expected {ok, FeedbackMap}")
-        end
+        Result = feedback_ds:add(
+            Uid,
+            <<"device-min">>,
+            <<>>,
+            <<>>,
+            <<>>,
+            <<>>,
+            <<>>,
+            <<>>,
+            <<"Minimal feedback">>,
+            <<>>
+        ),
+        ?assertEqual(ok, Result)
     end).
 
 %% ===================================================================
@@ -53,19 +90,28 @@ add_with_minimal_params_test_() ->
 %% ===================================================================
 
 remove_deletes_feedback_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
+        ]},
+        {elib_pg, [
+            {'update', 4, fun(Table, Data, Where, Params) ->
+                ?assertEqual(<<"feedback">>, Table),
+                ?assertEqual(-1, maps:get(<<"status">>, Data)),
+                ?assertEqual(<<"2024-01-01T00:00:00Z">>, maps:get(<<"updated_at">>, Data)),
+                ?assertEqual(<<"user_id = $1 AND id = $2">>, Where),
+                ?assertEqual([1, 1], Params),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
         Uid = 1,
         Id = 1,
         Result = feedback_ds:remove(Uid, Id),
-        % 精确断言：验证返回的删除时间戳
-        case Result of
-            {ok, #{<<"deleted_at">> := DeletedAt}} when is_integer(DeletedAt); is_binary(DeletedAt) ->
-                ?assert(true);
-            {ok, _} ->
-                ?assert(true);
-            _ ->
-                ?assert(false, "Expected {ok, FeedbackMap}")
-        end
+        ?assertEqual(ok, Result)
     end).
 
 %% ===================================================================
@@ -73,19 +119,43 @@ remove_deletes_feedback_test_() ->
 %% ===================================================================
 
 add_reply_creates_reply_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {feedback_reply_repo, [
+            {tablename, 0, fun() -> <<"feedback_reply">> end}
+        ]},
+        {elib_pg_sql, [
+            {'insert', 3, fun(Table, Data, OnConflict) ->
+                ?assertEqual(<<"feedback_reply">>, Table),
+                ?assertEqual(<<>>, OnConflict),
+                ?assertEqual(1, maps:get(<<"feedback_id">>, Data)),
+                ?assertEqual(<<"Test reply">>, maps:get(<<"body">>, Data)),
+                {<<"INSERT INTO feedback_reply (...) VALUES (...)">>, [1]}
+            end}
+        ]},
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end},
+            {'update', 4, fun(Table, Data, Where, Params) ->
+                ?assertEqual(<<"feedback">>, Table),
+                ?assertEqual(2, maps:get(<<"status">>, Data)),
+                ?assertMatch({raw, <<"reply_count + 1">>}, maps:get(<<"reply_count">>, Data)),
+                ?assertEqual(<<"id = $1">>, Where),
+                ?assertEqual([1], Params),
+                {ok, 1}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
+        ]}
+    ], fun() ->
         FeedbackId = 1,
-        Reply = <<"Test reply">>,
-        Result = feedback_ds:add_reply([{feedback_id, FeedbackId}, {reply, Reply}]),
-        % 精确断言：验证返回的回复ID
-        case Result of
-            {ok, #{<<"id">> := ReplyId}} when is_integer(ReplyId) ->
-                ?assert(ReplyId > 0);
-            {ok, _} ->
-                ?assert(true);
-            _ ->
-                ?assert(false, "Expected {ok, ReplyMap}")
-        end
+        Result = feedback_ds:add_reply(#{
+            <<"feedback_id">> => FeedbackId,
+            <<"body">> => <<"Test reply">>
+        }),
+        ?assertEqual(ok, Result)
     end).
 
 %% ===================================================================
@@ -190,6 +260,9 @@ add_with_different_params_creates_different_md5_test_() ->
 
 remove_updates_status_to_deleted_test_() ->
     ?WITH_MECKS([
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
@@ -205,6 +278,9 @@ remove_updates_status_to_deleted_test_() ->
 
 remove_with_nonexistent_feedback_test_() ->
     ?WITH_MECKS([
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
@@ -224,15 +300,21 @@ remove_with_nonexistent_feedback_test_() ->
 
 add_reply_increments_reply_count_test_() ->
     ?WITH_MECKS([
+        {feedback_reply_repo, [
+            {tablename, 0, fun() -> <<"feedback_reply">> end}
+        ]},
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
         {elib_pg_sql, [
-            {'insert', 2, fun(_Table, _Data, _OnConflict) ->
+            {'insert', 3, fun(_Table, _Data, _OnConflict) ->
                 {<<"INSERT INTO feedback_reply (...) VALUES (...)">>, []}
             end}
         ]},
         {elib_pg, [
             {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end},
             {'update', 4, fun(_Table, Data, _Where, _Params) ->
-                ?assertEqual(<<"2">>, maps:get(<<"status">>, Data)),
+                ?assertEqual(2, maps:get(<<"status">>, Data)),
                 ?assertMatch({raw, <<"reply_count + 1">>}, maps:get(<<"reply_count">>, Data)),
                 {ok, 1}
             end}
@@ -255,8 +337,14 @@ add_reply_increments_reply_count_test_() ->
 
 add_reply_with_minimal_data_test_() ->
     ?WITH_MECKS([
+        {feedback_reply_repo, [
+            {tablename, 0, fun() -> <<"feedback_reply">> end}
+        ]},
+        {feedback_repo, [
+            {tablename, 0, fun() -> <<"feedback">> end}
+        ]},
         {elib_pg_sql, [
-            {'insert', 2, fun(_Table, _Data, _OnConflict) ->
+            {'insert', 3, fun(_Table, _Data, _OnConflict) ->
                 {<<"INSERT">>, []}
             end}
         ]},

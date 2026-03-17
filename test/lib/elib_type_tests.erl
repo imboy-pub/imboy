@@ -2,62 +2,58 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% elib_type 模块的 EUnit 测试
-%%%
-%%% 目标：验证类型判断工具功能
-%%% 覆盖：类型检查、转换
-%%%===================================================================
-
-%% ===================================================================
-%% 类型判断测试
-%% ===================================================================
-
-is_binary_with_binary_test_() ->
+is_numeric_with_native_numbers_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Value = <<"hello">>,
-        Result = elib_type:is_binary_type(Value),
-        ?assertEqual(true, Result)
+        ?assertEqual(true, elib_type:is_numeric(123)),
+        ?assertEqual(true, elib_type:is_numeric(-123.45))
     end).
 
-is_binary_with_string_test_() ->
+is_numeric_with_string_like_values_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Value = "hello",
-        Result = elib_type:is_binary_type(Value),
-        ?assertEqual(false, Result)
+        ?assertEqual(true, elib_type:is_numeric("123e2")),
+        ?assertEqual(true, elib_type:is_numeric(<<"-.45">>))
     end).
 
-is_integer_with_integer_test_() ->
+is_numeric_rejects_non_numeric_values_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Value = 123,
-        Result = elib_type:is_integer_type(Value),
-        ?assertEqual(true, Result)
+        ?assertEqual(false, elib_type:is_numeric("12a3")),
+        ?assertEqual(false, elib_type:is_numeric(atom)),
+        ?assertEqual(false, elib_type:is_numeric([1, 2, 3]))
     end).
 
-is_integer_with_float_test_() ->
+is_proplist_accepts_key_value_list_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Value = 123.45,
-        Result = elib_type:is_integer_type(Value),
-        ?assertEqual(false, Result)
+        ?assertEqual(true, elib_type:is_proplist([{a, 1}, {b, <<"2">>}])),
+        ?assertEqual(true, elib_type:is_proplist([]))
     end).
 
-%% ===================================================================
-%% 类型转换测试
-%% ===================================================================
-
-to_integer_from_string_test_() ->
+is_proplist_rejects_non_proplist_values_test_() ->
     ?TEST_SIMPLE(fun() ->
-        String = <<"123">>,
-        Result = elib_type:to_integer(String),
-        % 验证字符串转整数结果
-        ?assertEqual(123, Result)
+        ?assertEqual(false, elib_type:is_proplist([a, b])),
+        ?assertEqual(false, elib_type:is_proplist(#{a => 1}))
     end).
 
-to_binary_from_integer_test_() ->
+is_mobile_matches_mainland_number_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Integer = 123,
-        Result = elib_type:to_binary(Integer),
-        % 验证整数转二进制结果
-        ?assertEqual(<<"123">>, Result)
+        ?assertEqual(true, elib_type:is_mobile(<<"13800138000">>)),
+        ?assertEqual(true, elib_type:is_mobile("19912345678"))
+    end).
+
+is_mobile_rejects_invalid_number_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(false, elib_type:is_mobile(<<"23800138000">>)),
+        ?assertEqual(false, elib_type:is_mobile("1380013800"))
+    end).
+
+is_email_matches_valid_addresses_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(true, elib_type:is_email(<<"test_user@example.com">>)),
+        ?assertEqual(true, elib_type:is_email("dev-team@test.example.com"))
+    end).
+
+is_email_rejects_invalid_inputs_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(false, elib_type:is_email(undefined)),
+        ?assertEqual(false, elib_type:is_email(<<"invalid-email">>)),
+        ?assertEqual(false, elib_type:is_email("bad@@example.com"))
     end).

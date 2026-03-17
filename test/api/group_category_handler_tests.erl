@@ -1,88 +1,81 @@
 -module(group_category_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
-%% ===================================================================
-%%   EUnit Tests for group_category_handler
-%% ===================================================================
+mock_request() ->
+    #{method => <<"POST">>, path => <<"/v1/group/category">>}.
 
-%% @doc 测试模块是否可以加载
-module_loads_test() ->
-    ?assertNotEqual(undefined, whereis(group_category_handler)).
+init_false_action_passthrough_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Req = mock_request(),
+        {ok, RespReq, State} = group_category_handler:init(Req, #{action => false, current_uid => 12345}),
+        ?assertEqual(Req, RespReq),
+        ?assertEqual(#{current_uid => 12345}, State)
+    end).
 
-%% @doc 测试 init 函数的基本功能
-init_test() ->
-    %% 创建一个模拟的 Cowboy 请求对象
-    MockReq = #{
-        bindings => #{},
-        headers => #{},
-        body => <<>>,
-        method => <<"POST">>,
-        path => <<"/v1/group/category/create">>
-    },
+init_create_success_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{<<"category_name">> => <<"分类A"/utf8>>}
+            end}
+        ]},
+        {group_category_logic, [
+            {'create', 2, fun(12345, <<"分类A"/utf8>>) ->
+                {ok, 77}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(Req, Payload, <<"创建分类成功"/utf8>>) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        Req = mock_request(),
+        {ok, RespReq, _State} = group_category_handler:init(Req, #{action => create, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(77, maps:get(<<"id">>, maps:get(payload, RespReq)))
+    end).
 
-    %% 创建模拟的状态
-    MockState = #{
-        action => create,
-        current_uid => 12345
-    },
+init_list_success_test_() ->
+    ?WITH_MECKS([
+        {group_category_logic, [
+            {'list', 1, fun(12345) ->
+                {ok, [#{<<"id">> => 1, <<"category_name">> => <<"默认">>}]}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(Req, Payload, <<"success."/utf8>>) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        Req = mock_request(),
+        {ok, RespReq, _State} = group_category_handler:init(Req, #{action => list, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(1, length(maps:get(<<"categories">>, maps:get(payload, RespReq))))
+    end).
 
-    %% 测试 init 函数（不抛出错误即为通过）
-    try
-        {ok, _Req, _State} = group_category_handler:init(MockReq, MockState),
-        ?assert(true)
-    catch
-        _Error:_Reason ->
-            ?debugFmt("init 测试失败: ~p: ~p~n", [_Error, _Reason]),
-            ?assert(false)
-    end.
-
-%% @doc 测试所有 action 类型
-actions_test() ->
-    ValidActions = [create, list, rename, delete, move_group, sort],
-
-    lists:foreach(fun(Action) ->
-        MockReq = #{
-            bindings => #{},
-            headers => #{},
-            body => <<>>,
-            method => <<"POST">>,
-            path => <<"/v1/group/category/", (atom_to_binary(Action))/binary>>
-        },
-        MockState = #{
-            action => Action,
-            current_uid => 12345
-        },
-
-        try
-            {ok, _Req, _State} = group_category_handler:init(MockReq, MockState),
-            ?assert(true)
-        catch
-            _Error:_Reason ->
-                ?debugFmt("action ~p 测试失败: ~p: ~p~n", [Action, _Error, _Reason]),
-                ?assert(false)
-        end
-    end, ValidActions).
-
-%% @doc 测试无效的 action
-invalid_action_test() ->
-    MockReq = #{
-        bindings => #{},
-        headers => #{},
-        body => <<>>,
-        method => <<"POST">>,
-        path => <<"/v1/group/category/invalid">>
-    },
-    MockState = #{
-        action => invalid_action,
-        current_uid => 12345
-    },
-
-    try
-        {ok, ReturnedReq, _ReturnedState} = group_category_handler:init(MockReq, MockState),
-        %% 无效的 action 应该返回原始请求
-        ?assertEqual(MockReq, ReturnedReq)
-    catch
-        _Error:_Reason ->
-            ?debugFmt("无效 action 测试失败: ~p: ~p~n", [_Error, _Reason]),
-            ?assert(false)
-    end.
+init_rename_success_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'post', 1, fun(_Req) ->
+                #{<<"id">> => 8, <<"category_name">> => <<"重命名后"/utf8>>}
+            end}
+        ]},
+        {group_category_logic, [
+            {'rename', 3, fun(12345, 8, <<"重命名后"/utf8>>) ->
+                ok
+            end}
+        ]},
+        {elib_response, [
+            {'success', 3, fun(Req, Payload, <<"重命名成功"/utf8>>) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        Req = mock_request(),
+        {ok, RespReq, _State} = group_category_handler:init(Req, #{action => rename, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(#{}, maps:get(payload, RespReq))
+    end).

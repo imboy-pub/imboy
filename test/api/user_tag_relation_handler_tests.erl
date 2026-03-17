@@ -2,374 +2,123 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc
-%%% user_tag_relation_handler 模块的 EUnit 测试
-%%%
-%%% 目标：验证用户标签关系处理器功能
-%%% 改进：使用 meck_helper 进行 Mock 管理，添加实际业务逻辑测试
-%%%===================================================================
+mock_request() ->
+    #{method => <<"POST">>, path => <<"/v1/user/tag/relation">>}.
 
-%% ===================================================================
-%% 添加标签到用户测试
-%% ===================================================================
+init_false_action_passthrough_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Req = mock_request(),
+        {ok, RespReq, State} = user_tag_relation_handler:init(Req, #{action => false, current_uid => 12345}),
+        ?assertEqual(Req, RespReq),
+        ?assertEqual(#{current_uid => 12345}, State)
+    end).
 
-%% @doc 测试添加标签到用户 - 成功场景
-handle_add_tag_to_user_test_() ->
+init_add_collect_success_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                [
-                    {<<"user_id">>, 67890},
-                    {<<"tag_id">>, 12345}
-                ]
+                #{
+                    <<"scene">> => <<"collect">>,
+                    <<"tag">> => [<<"tag-a">>],
+                    <<"objectId">> => <<"kind-1">>
+                }
             end}
         ]},
         {user_tag_relation_logic, [
-            {'add_tag_to_user', 3, fun(_OperatorUid, _UserId, _TagId) ->
-                {ok, #{
-                    relation_id => 54321,
-                    user_id => 67890,
-                    tag_id => 12345,
-                    operator_uid => 12345,
-                    created_at => elib_dt:timestamp()
-                }}
+            {'add', 4, fun(12345, 1, <<"kind-1">>, [<<"tag-a">>]) ->
+                ok
             end}
         ]},
         {elib_response, [
-            {'success', 3, fun(_Req, Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success, data => Data}
-                })
+            {'success', 3, fun(Req, Payload, "success.") ->
+                Req#{response_status => 200, payload => Payload}
             end}
         ]}
     ], fun() ->
-        % 模拟请求
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => add}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_MATCH(#{status := success, data := #{relation_id := 54321}}, Body),
-        
-        % 验证具体返回值
-        #{data := Relation} = Body,
-        ?ASSERT_EQUAL(67890, maps:get(<<"user_id">>, Relation)),
-        ?ASSERT_EQUAL(12345, maps:get(<<"tag_id">>, Relation)),
-        
-        % 验证 Mock 调用
-        meck_helper:verify_called(user_tag_relation_logic, add_tag_to_user, 3),
-        meck_helper:verify_called(elib_response, success, 3)
+        Req = mock_request(),
+        {ok, RespReq, _State} = user_tag_relation_handler:init(Req, #{action => add, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(#{}, maps:get(payload, RespReq))
     end).
 
-%% @doc 测试添加标签到用户 - 关系已存在
-handle_add_tag_to_user_relation_exists_test_() ->
+init_remove_friend_success_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                [
-                    {<<"user_id">>, 67890},
-                    {<<"tag_id">>, 12345}
-                ]
+                #{
+                    <<"scene">> => <<"friend">>,
+                    <<"tagId">> => 7,
+                    <<"objectId">> => <<"friend_hash">>
+                }
             end}
         ]},
+        {elib_hashids, [
+            {'decode', 1, fun(<<"friend_hash">>) -> 67890 end}
+        ]},
         {user_tag_relation_logic, [
-            {'add_tag_to_user', 3, fun(_OperatorUid, _UserId, _TagId) ->
-                {error, relation_already_exists}
+            {'remove', 4, fun(12345, <<"2">>, 67890, 7) ->
+                ok
             end}
         ]},
         {elib_response, [
-            {'error', 2, fun(_Req, Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 409,
-                    response_body => #{status => error, message => Message}
-                })
+            {'success', 3, fun(Req, Payload, "success.") ->
+                Req#{response_status => 200, payload => Payload}
             end}
         ]}
     ], fun() ->
-        % 模拟请求（关系已存在）
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => add}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(409, StatusCode),
-        ?ASSERT_MATCH(#{status := error, message := relation_already_exists}, Body)
+        Req = mock_request(),
+        {ok, RespReq, _State} = user_tag_relation_handler:init(Req, #{action => remove, current_uid => 12345}),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(#{}, maps:get(payload, RespReq))
     end).
 
-%% @doc 测试添加标签到用户 - 用户不存在
-handle_add_tag_to_user_not_found_test_() ->
+init_friend_page_success_test_() ->
+    ?WITH_MECKS([
+        {elib_param, [
+            {'page', 1, fun(_Req) ->
+                {1, 20}
+            end},
+            {'int', 3, fun(tag_id, _Req, 0) ->
+                {ok, 9}
+            end}
+        ]},
+        {cowboy_req, [
+            {'parse_qs', 1, fun(_Req) ->
+                [{<<"kwd">>, <<"alice">>}]
+            end}
+        ]},
+        {friend_ds, [
+            {'page_by_tag', 5, fun(12345, 1, 20, 9, <<"alice">>) ->
+                #{total => 1, page => 1, size => 20, list => [#{<<"uid">> => 67890}]}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(Req, Payload) ->
+                Req#{response_status => 200, payload => Payload}
+            end}
+        ]}
+    ], fun() ->
+        Req = mock_request(),
+        {ok, RespReq, _State} = user_tag_relation_handler:init(Req, #{action => friend_page, current_uid => 12345}),
+        Payload = maps:get(payload, RespReq),
+        ?assertEqual(200, maps:get(response_status, RespReq)),
+        ?assertEqual(1, maps:get(total, Payload))
+    end).
+
+init_add_invalid_scene_error_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                [
-                    {<<"user_id">>, 99999},
-                    {<<"tag_id">>, 12345}
-                ]
-            end}
-        ]},
-        {user_tag_relation_logic, [
-            {'add_tag_to_user', 3, fun(_OperatorUid, UserId, _TagId) when UserId =:= 99999 ->
-                {error, user_not_found}
+                #{<<"scene">> => <<"unknown">>, <<"tag">> => [<<"tag-a">>], <<"objectId">> => <<"kind-1">>}
             end}
         ]},
         {elib_response, [
-            {'error', 2, fun(_Req, Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 404,
-                    response_body => #{status => error, message => Message}
-                })
+            {'error', 2, fun(Req, <<"不支持的 Scene"/utf8>>) ->
+                Req#{response_status => 400}
             end}
         ]}
     ], fun() ->
-        % 模拟请求（用户不存在）
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => add}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(404, StatusCode),
-        ?ASSERT_MATCH(#{status := error, message := user_not_found}, Body)
-    end).
-
-%% ===================================================================
-%% 从用户移除标签测试
-%% ===================================================================
-
-%% @doc 测试从用户移除标签 - 成功场景
-handle_remove_tag_from_user_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                [
-                    {<<"user_id">>, 67890},
-                    {<<"tag_id">>, 12345}
-                ]
-            end}
-        ]},
-        {user_tag_relation_logic, [
-            {'remove_tag_from_user', 3, fun(_OperatorUid, _UserId, _TagId) ->
-                {ok, #{
-                    deleted_relation_id => 54321,
-                    user_id => 67890,
-                    tag_id => 12345,
-                    operator_uid => 12345,
-                    deleted_at => elib_dt:timestamp()
-                }}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success, data => Data}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟请求
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => remove}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_MATCH(#{status := success, data := #{deleted_relation_id := 54321}}, Body),
-        
-        % 验证 Mock 调用
-        meck_helper:verify_called(user_tag_relation_logic, remove_tag_from_user, 3)
-    end).
-
-%% @doc 测试从用户移除标签 - 关系不存在
-handle_remove_tag_from_user_relation_not_found_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                [
-                    {<<"user_id">>, 67890},
-                    {<<"tag_id">>, 12345}
-                ]
-            end}
-        ]},
-        {user_tag_relation_logic, [
-            {'remove_tag_from_user', 3, fun(_OperatorUid, _UserId, _TagId) ->
-                {error, relation_not_found}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 404,
-                    response_body => #{status => error, message => Message}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟请求（关系不存在）
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => remove}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(404, StatusCode),
-        ?ASSERT_MATCH(#{status := error, message := relation_not_found}, Body)
-    end).
-
-%% @doc 测试从用户移除标签 - 参数缺失
-handle_remove_tag_from_user_missing_params_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                % 缺少必要参数
-                [
-                    {<<"user_id">>, 67890}
-                ]
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 400,
-                    response_body => #{status => error, message => Message}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟请求（参数缺失）
-        MockReq = meck_helper:test_request(#{
-            method => <<"POST">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>}
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => remove}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(400, StatusCode),
-        ?ASSERT_MATCH(#{status := error}, Body)
-    end).
-
-%% ===================================================================
-%% 查看用户标签关系测试
-%% ===================================================================
-
-%% @doc 测试查看用户标签关系 - 成功场景
-handle_get_user_tags_test_() ->
-    ?WITH_MECKS([
-        {user_tag_relation_logic, [
-            {'get_user_tags', 2, fun(_OperatorUid, TargetUserId) ->
-                {ok, [
-                    #{
-                        relation_id => 54321,
-                        user_id => TargetUserId,
-                        tag_id => 12345,
-                        tag_name => <<"重要联系人">>,
-                        tag_color => <<"#FF5722">>,
-                        created_at => elib_dt:timestamp()
-                    },
-                    #{
-                        relation_id => 54322,
-                        user_id => TargetUserId,
-                        tag_id => 12346,
-                        tag_name => <<"同事">>,
-                        tag_color => <<"#4CAF50">>,
-                        created_at => elib_dt:timestamp()
-                    }
-                ]}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success, data => Data}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟请求
-        MockReq = meck_helper:test_request(#{
-            method => <<"GET">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>},
-            qs => <<"user_id=67890">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => get_user_tags}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_MATCH(#{status := success, data := [_|_]}, Body), % 非空列表
-        
-        % 验证返回数据结构
-        #{data := List} = Body,
-        ?assert(length(List) >= 1),
-        lists:foreach(fun(Relation) ->
-            ?ASSERT_MATCH(#{relation_id := _, user_id := _, tag_name := _}, Relation)
-        end, List),
-        
-        % 验证 Mock 调用
-        meck_helper:verify_called(user_tag_relation_logic, get_user_tags, 2)
-    end).
-
-%% @doc 测试查看用户标签关系 - 空列表
-handle_get_user_tags_empty_test_() ->
-    ?WITH_MECKS([
-        {user_tag_relation_logic, [
-            {'get_user_tags', 2, fun(_OperatorUid, _TargetUserId) ->
-                {ok, []}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(_Req, Data, _Message) ->
-                cowboy_req_h:new(#{
-                    response_status => 200,
-                    response_body => #{status => success, data => Data}
-                })
-            end}
-        ]}
-    ], fun() ->
-        % 模拟请求
-        MockReq = meck_helper:test_request(#{
-            method => <<"GET">>,
-            headers => #{<<"imboy-uid">> => <<"12345">>},
-            qs => <<"user_id=67890">>
-        }),
-        
-        % 调用 handler
-        {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => get_user_tags}),
-        
-        % 验证响应
-        {StatusCode, _, Body} = cowboy_req_h:response(Req),
-        ?ASSERT_EQUAL(200, StatusCode),
-        ?ASSERT_MATCH(#{status := success, data := []}, Body)
+        Req = mock_request(),
+        {ok, RespReq, _State} = user_tag_relation_handler:init(Req, #{action => add, current_uid => 12345}),
+        ?assertEqual(400, maps:get(response_status, RespReq))
     end).

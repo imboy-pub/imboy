@@ -32,6 +32,7 @@ msg_forward_test_() ->
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
+    ok = wait_for_db_ready(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_forward">>),
@@ -79,8 +80,8 @@ test_c2c_to_c2c_forward() ->
 
     % 4. 验证转发记录
     [ForwardMsgId | _] = ForwardMsgIds,
-    {ok, Records} = msg_forward_repo:find_by_forward_msg_id(ForwardMsgId),
-    ?assertEqual(1, length(Records)).
+    {ok, Record} = find_forward_record(MsgId, ForwardMsgId),
+    ?assertEqual(ForwardMsgId, maps:get(<<"forward_msg_id">>, Record)).
 
 test_c2c_to_c2g_forward() ->
     Context = get_context(),
@@ -118,7 +119,7 @@ test_c2g_to_c2c_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
 
     % 2. 转发到单聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, User2, <<"c2c">>),
@@ -142,7 +143,7 @@ test_c2g_to_c2g_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to_gid">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
 
     % 3. 转发到另一个群聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, Group2, <<"c2g">>),
@@ -195,7 +196,7 @@ test_forward_trace() ->
     {ok, [ForwardMsgId | _]} = msg_forward_logic:forward([MsgId], User1, User3, <<"c2c">>),
 
     % 3. 查询转发记录
-    {ok, Record} = msg_forward_repo:find_by_forward_msg_id(ForwardMsgId),
+    {ok, Record} = find_forward_record(MsgId, ForwardMsgId),
 
     % 4. 验证溯源信息
     ?assertEqual(MsgId, maps:get(<<"original_msg_id">>, Record)),
@@ -210,12 +211,9 @@ test_forward_trace() ->
 test_forward_to_non_friend() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
-    User3 = maps:get(user3, Context),
+    User2 = maps:get(user2, Context),
 
-    % 1. 删除好友关系
-    ok = friend_ds:delete_friend(User1, User3),
-
-    % 2. 发送消息
+    % 1. 先向现有好友发送一条原始消息
     MsgId = imboy_hashid:uid(),
     MsgData = #{
         <<"payload">> => <<"非好友转发测试"/utf8>>,
@@ -223,14 +221,13 @@ test_forward_to_non_friend() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User3)}),
+    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
 
-    % 3. 尝试转发到非好友（User1 和 User3 已经不是好友）
-    % 需要先创建一个新用户
+    % 2. 转发到一个未建立好友关系的新用户
     {ok, User4} = create_test_user(<<"user4_forward">>),
     Result = msg_forward_logic:forward([MsgId], User1, User4, <<"c2c">>),
 
-    % 4. 验证转发失败
+    % 3. 验证转发失败
     ?assertMatch({error, {not_friends, _}}, Result).
 
 test_forward_to_non_group_member() ->
@@ -301,6 +298,36 @@ test_batch_forward_limit() ->
 get_context() ->
     % 从进程字典获取测试上下文
     get(test_context).
+
+wait_for_db_ready() ->
+    wait_for_db_ready(20).
+
+wait_for_db_ready(0) ->
+    error(no_connection);
+wait_for_db_ready(AttemptsLeft) ->
+    case eunit_runner:eunit_try_db() of
+        {ok, _ConnPid} ->
+            ok;
+        _ ->
+            timer:sleep(100),
+            wait_for_db_ready(AttemptsLeft - 1)
+    end.
+
+find_forward_record(OriginalMsgId, ForwardMsgId) ->
+    case msg_forward_repo:find_by_original_msg_id(OriginalMsgId) of
+        {ok, Records} ->
+            case lists:filter(
+                fun(Record) ->
+                    maps:get(<<"forward_msg_id">>, Record, undefined) =:= ForwardMsgId
+                end,
+                Records
+            ) of
+                [Record | _] -> {ok, Record};
+                [] -> {error, not_found}
+            end;
+        Error ->
+            Error
+    end.
 
 create_test_user(Nickname) ->
     Uid = imboy_hashid:uid(),
