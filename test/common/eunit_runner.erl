@@ -110,22 +110,28 @@ eunit_cleanup(_State) ->
 %% @doc 尝试建立数据库连接
 %% @return {ok, Conn} | {error, Reason}
 eunit_try_db() ->
-    % 先检查 pooler 是否已启动
-    case whereis(pooler) of
-        undefined ->
-            {error, pooler_not_started};
-        _Pid ->
-            % pooler 已启动，尝试快速获取连接
-            try pooler:take_member() of
-                {ok, Pid} when is_pid(Pid) ->
-                    % 成功获取连接，立即归还
-                    pooler:return_member(Pid, ok),
-                    {ok, Pid};
-                {error, Reason} ->
-                    {error, Reason}
-            catch
-                _:_ ->
-                    {error, no_connection}
+    eunit_try_db(100).
+
+eunit_try_db(0) ->
+    {error, no_connection};
+eunit_try_db(AttemptsLeft) ->
+    try pooler:take_member() of
+        {ok, Pid} when is_pid(Pid) ->
+            % 成功获取连接，立即归还
+            pooler:return_member(Pid, ok),
+            {ok, Pid};
+        {error, Reason} ->
+            timer:sleep(100),
+            case AttemptsLeft of
+                1 -> {error, Reason};
+                _ -> eunit_try_db(AttemptsLeft - 1)
+            end
+    catch
+        _:_ ->
+            timer:sleep(100),
+            case AttemptsLeft of
+                1 -> {error, no_connection};
+                _ -> eunit_try_db(AttemptsLeft - 1)
             end
     end.
 

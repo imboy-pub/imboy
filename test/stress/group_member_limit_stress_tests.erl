@@ -25,6 +25,7 @@ group_limit_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建群主
     {ok, Owner} = create_test_user(<<"group_owner">>),
@@ -35,9 +36,12 @@ setup() ->
         Uid
     end, lists:seq(1, ?MEGA_GROUP_SIZE)),
 
-    #{owner => Owner, members => MemberIds}.
+    Context = #{owner => Owner, members => MemberIds},
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -228,14 +232,17 @@ test_member_limit_boundary() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -243,7 +250,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

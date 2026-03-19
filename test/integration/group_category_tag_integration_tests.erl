@@ -29,6 +29,7 @@ group_category_tag_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_category">>),
@@ -36,14 +37,17 @@ setup() ->
     {ok, Group1} = create_test_group(User1, <<"group1_tag">>),
     {ok, Group2} = create_test_group(User1, <<"group2_tag">>),
     {ok, Group3} = create_test_group(User1, <<"group3_tag">>),
-    #{
+    Context = #{
         user1 => User1,
         group1 => Group1,
         group2 => Group2,
         group3 => Group3
-    }.
+    },
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -56,11 +60,14 @@ test_create_category() ->
 
     % 1. 创建群分组
     CategoryName = <<"工作群"/utf8>>,
-    {ok, Category} = group_category_logic:create(User1, CategoryName),
+    {ok, CategoryId} = group_category_logic:create(User1, CategoryName),
 
     % 2. 验证返回结果
-    ?assertEqual(CategoryName, maps:get(<<"name">>, Category)),
-    ?assertEqual(elib_hashids:encode(User1), maps:get(<<"user_id">>, Category)),
+    ?assert(is_integer(CategoryId)),
+    ?assert(CategoryId > 0),
+    {ok, Category} = group_category_repo:find_by_name(User1, CategoryName),
+    ?assertEqual(CategoryId, maps:get(<<"id">>, Category)),
+    ?assertEqual(CategoryName, maps:get(<<"category_name">>, Category)),
 
     ok.
 
@@ -69,15 +76,18 @@ test_update_category() ->
     User1 = maps:get(user1, Context),
 
     % 1. 创建分组
-    {ok, Category} = group_category_logic:create(User1, <<"原始名称"/utf8>>),
-    CategoryId = maps:get(<<"id">>, Category),
+    OldName = <<"原始名称"/utf8>>,
+    {ok, CategoryId} = group_category_logic:create(User1, OldName),
 
     % 2. 更新分组
     NewName = <<"更新后的名称"/utf8>>,
-    {ok, UpdatedCategory} = group_category_logic:update(CategoryId, User1, NewName),
+    ok = group_category_logic:rename(User1, CategoryId, NewName),
 
     % 3. 验证更新成功
-    ?assertEqual(NewName, maps:get(<<"name">>, UpdatedCategory)),
+    {ok, #{}} = group_category_repo:find_by_name(User1, OldName),
+    {ok, UpdatedCategory} = group_category_repo:find_by_name(User1, NewName),
+    ?assertEqual(CategoryId, maps:get(<<"id">>, UpdatedCategory)),
+    ?assertEqual(NewName, maps:get(<<"category_name">>, UpdatedCategory)),
 
     ok.
 
@@ -86,15 +96,14 @@ test_delete_category() ->
     User1 = maps:get(user1, Context),
 
     % 1. 创建分组
-    {ok, Category} = group_category_logic:create(User1, <<"要删除的分组"/utf8>>),
-    CategoryId = maps:get(<<"id">>, Category),
+    CategoryName = <<"要删除的分组"/utf8>>,
+    {ok, CategoryId} = group_category_logic:create(User1, CategoryName),
 
     % 2. 删除分组
-    ok = group_category_logic:delete(CategoryId, User1),
+    ok = group_category_logic:delete(User1, CategoryId),
 
     % 3. 验证删除成功
-    Result = group_category_repo:find_by_id(CategoryId),
-    ?assertMatch({error, not_found}, Result),
+    {ok, #{}} = group_category_repo:find_by_name(User1, CategoryName),
 
     ok.
 
@@ -103,22 +112,18 @@ test_category_sort() ->
     User1 = maps:get(user1, Context),
 
     % 1. 创建多个分组
-    {ok, Cat1} = group_category_logic:create(User1, <<"分组1"/utf8>>),
-    {ok, Cat2} = group_category_logic:create(User1, <<"分组2"/utf8>>),
-    {ok, Cat3} = group_category_logic:create(User1, <<"分组3"/utf8>>),
-
-    CatId1 = maps:get(<<"id">>, Cat1),
-    CatId2 = maps:get(<<"id">>, Cat2),
-    CatId3 = maps:get(<<"id">>, Cat3),
+    {ok, CatId1} = group_category_logic:create(User1, <<"分组1"/utf8>>),
+    {ok, CatId2} = group_category_logic:create(User1, <<"分组2"/utf8>>),
+    {ok, CatId3} = group_category_logic:create(User1, <<"分组3"/utf8>>),
 
     % 2. 更新排序
-    NewOrder = [CatId3, CatId1, CatId2],
-    ok = group_category_logic:update_sort(User1, NewOrder),
+    NewOrder = [{CatId3, 1}, {CatId1, 2}, {CatId2, 3}],
+    ok = group_category_logic:update_sort_order(User1, NewOrder),
 
     % 3. 验证排序
     {ok, Categories} = group_category_logic:list(User1),
-    ActualOrder = lists:map(fun(C) -> maps:get(<<"id">>, C) end, Categories),
-    ?assertEqual(NewOrder, ActualOrder),
+    ActualOrder = custom_category_ids(Categories),
+    ?assertEqual([CatId3, CatId1, CatId2], ActualOrder),
 
     ok.
 
@@ -129,31 +134,37 @@ test_add_group_to_category() ->
     Group2 = maps:get(group2, Context),
 
     % 1. 创建分组
-    {ok, Category} = group_category_logic:create(User1, <<"分组A"/utf8>>),
-    CategoryId = maps:get(<<"id">>, Category),
+    {ok, CategoryId} = group_category_logic:create(User1, <<"分组A"/utf8>>),
 
     % 2. 将群加入分组
-    ok = group_category_logic:add_group(CategoryId, User1, Group1),
-    ok = group_category_logic:add_group(CategoryId, User1, Group2),
+    ok = group_category_logic:move_group(User1, Group1, CategoryId),
+    ok = group_category_logic:move_group(User1, Group2, CategoryId),
 
     % 3. 获取分组内的群
-    {ok, Groups} = group_category_logic:list_groups(CategoryId, User1),
+    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
 
     % 4. 验证数量
     ?assertEqual(2, length(Groups)),
+    ?assertEqual(lists:sort([Group1, Group2]), GroupIds),
 
     ok.
 
 test_create_tag() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
+    Group1 = maps:get(group1, Context),
 
     % 1. 创建群标签
     TagName = <<"技术交流"/utf8>>,
-    {ok, Tag} = group_tag_logic:create(User1, TagName),
+    {ok, TagId} = group_tag_logic:add(Group1, User1, TagName),
 
     % 2. 验证返回结果
-    ?assertEqual(TagName, maps:get(<<"name">>, Tag)),
+    ?assert(is_integer(TagId)),
+    {ok, Tags} = group_tag_logic:list(Group1, User1),
+    ?assert(lists:any(fun(Tag) ->
+        maps:get(<<"id">>, Tag) =:= TagId andalso maps:get(<<"tag_name">>, Tag) =:= TagName
+    end, Tags)),
 
     ok.
 
@@ -163,21 +174,16 @@ test_add_tag_to_group() ->
     Group1 = maps:get(group1, Context),
 
     % 1. 创建标签
-    {ok, Tag1} = group_tag_logic:create(User1, <<"标签1"/utf8>>),
-    {ok, Tag2} = group_tag_logic:create(User1, <<"标签2"/utf8>>),
-
-    TagId1 = maps:get(<<"id">>, Tag1),
-    TagId2 = maps:get(<<"id">>, Tag2),
+    {ok, _TagId1} = group_tag_logic:add(Group1, User1, <<"标签1"/utf8>>),
+    {ok, _TagId2} = group_tag_logic:add(Group1, User1, <<"标签2"/utf8>>),
 
     % 2. 为群添加标签
-    ok = group_tag_logic:add_tag_to_group(Group1, TagId1),
-    ok = group_tag_logic:add_tag_to_group(Group1, TagId2),
-
-    % 3. 获取群的标签
-    {ok, Tags} = group_tag_logic:list_group_tags(Group1),
+    {ok, Tags} = group_tag_logic:list(Group1, User1),
+    TagNames = lists:sort([maps:get(<<"tag_name">>, Tag) || Tag <- Tags]),
 
     % 4. 验证数量
     ?assertEqual(2, length(Tags)),
+    ?assertEqual([<<"标签1"/utf8>>, <<"标签2"/utf8>>], TagNames),
 
     ok.
 
@@ -189,19 +195,21 @@ test_filter_groups_by_tag() ->
     Group3 = maps:get(group3, Context),
 
     % 1. 创建标签
-    {ok, Tag} = group_tag_logic:create(User1, <<"公共标签"/utf8>>),
-    TagId = maps:get(<<"id">>, Tag),
+    TagName = <<"公共标签"/utf8>>,
+    {ok, _} = group_tag_logic:add(Group1, User1, TagName),
+    {ok, _} = group_tag_logic:add(Group2, User1, TagName),
 
     % 2. 为群添加标签
-    ok = group_tag_logic:add_tag_to_group(Group1, TagId),
-    ok = group_tag_logic:add_tag_to_group(Group2, TagId),
     % Group3 不添加标签
 
     % 3. 按标签筛选群
-    {ok, Groups} = group_tag_logic:list_groups_by_tag(TagId),
+    {ok, Groups} = group_tag_logic:search(TagName),
+    GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
 
     % 4. 验证数量
     ?assertEqual(2, length(Groups)),
+    ?assertEqual(lists:sort([Group1, Group2]), GroupIds),
+    ?assertNot(lists:member(Group3, GroupIds)),
 
     ok.
 
@@ -213,26 +221,37 @@ test_batch_operations() ->
     Group3 = maps:get(group3, Context),
 
     % 1. 创建分组
-    {ok, Category} = group_category_logic:create(User1, <<"批量测试分组"/utf8>>),
-    CategoryId = maps:get(<<"id">>, Category),
+    {ok, CategoryId} = group_category_logic:create(User1, <<"批量测试分组"/utf8>>),
 
     % 2. 批量将群加入分组
-    ok = group_category_logic:add_groups(CategoryId, User1, [Group1, Group2, Group3]),
+    lists:foreach(fun(GroupId) ->
+        ok = group_category_logic:move_group(User1, GroupId, CategoryId)
+    end, [Group1, Group2, Group3]),
 
     % 3. 验证所有群都已加入
-    {ok, Groups} = group_category_logic:list_groups(CategoryId, User1),
+    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
     ?assertEqual(3, length(Groups)),
+    ?assertEqual(lists:sort([Group1, Group2, Group3]), GroupIds),
 
     % 4. 创建标签
-    {ok, Tag} = group_tag_logic:create(User1, <<"批量标签"/utf8>>),
-    TagId = maps:get(<<"id">>, Tag),
+    TagName = <<"批量标签"/utf8>>,
+    lists:foreach(fun(GroupId) ->
+        {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
+    end, [Group1, Group2, Group3]),
 
     % 5. 批量为群添加标签
-    ok = group_tag_logic:add_tag_to_groups([Group1, Group2, Group3], TagId),
+    {ok, TaggedGroups0} = group_tag_logic:search(TagName),
+    TaggedGroupIds0 = lists:sort([maps:get(<<"group_id">>, Group) || Group <- TaggedGroups0]),
+    ?assertEqual(lists:sort([Group1, Group2, Group3]), TaggedGroupIds0),
 
-    % 6. 验证标签关联
-    {ok, TaggedGroups} = group_tag_logic:list_groups_by_tag(TagId),
-    ?assertEqual(3, length(TaggedGroups)),
+    % 6. 删除其中一个群的标签并验证收敛
+    ok = group_tag_logic:remove(Group2, User1, TagName),
+    {ok, Group2Tags} = group_tag_logic:list(Group2, User1),
+    ?assertNot(lists:any(fun(Tag) -> maps:get(<<"tag_name">>, Tag) =:= TagName end, Group2Tags)),
+    {ok, TaggedGroups} = group_tag_logic:search(TagName),
+    TaggedGroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- TaggedGroups]),
+    ?assertEqual(lists:sort([Group1, Group3]), TaggedGroupIds),
 
     ok.
 
@@ -241,14 +260,22 @@ test_batch_operations() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
+
+custom_category_ids(Categories) ->
+    [maps:get(<<"id">>, Category)
+     || Category <- Categories,
+        maps:get(<<"id">>, Category) =/= 0].
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -256,7 +283,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

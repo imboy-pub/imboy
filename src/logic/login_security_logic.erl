@@ -33,7 +33,7 @@
 
 %% 类型定义
 -type login_check_result() :: {ok, true} | {error, locked, map()}.
--type failure_result() :: {ok, pos_integer()} | {ok, pos_integer(), locked}.
+-type failure_result() :: {ok, pos_integer()} | {ok, pos_integer(), locked} | {error, invalid_ip | rate_limited}.
 -type ip_limit_result() :: {ok, pos_integer()} | {error, rate_limited}.
 
 %%%===================================================================
@@ -65,6 +65,8 @@ record_login_failure(Identifier, Ip) ->
     case login_attempt_ds:check_ip_rate_limit(Ip) of
         {error, rate_limited} ->
             {error, rate_limited};
+        {error, invalid_ip} ->
+            {error, invalid_ip};
         {ok, _IpCount} ->
             {ok, Count} = login_attempt_ds:record_failure(Identifier, Ip),
             % 检查是否达到锁定阈值

@@ -219,18 +219,24 @@ list_same_group(Uid1, Uid2) ->
 %% @param Conn 数据库连接（可选）
 %% @param Gid 群组ID
 %% @param UserId 用户ID
-%% @param Role 角色值（1-普通成员，2-管理员，3-群主）
-%% @return {ok, Count} | {error, Reason}
--spec update_role(pid() | undefined, integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
+%% @param Role 角色值
+%% @return ok | {error, Reason}
+-spec update_role(pid() | undefined, integer(), integer(), integer() | binary()) -> ok | {error, term()}.
 update_role(undefined, Gid, UserId, Role) ->
     Tb = tablename(),
     Data = #{role => Role, updated_at => elib_dt:now()},
-    elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]);
-update_role(Conn, _Gid, _UserId, Role) ->
+    case elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end;
+update_role(Conn, Gid, UserId, Role) ->
     Tb = tablename(),
     Data = #{role => Role, updated_at => elib_dt:now()},
-    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>),
-    elib_pg:execute(Conn, Sql, Params).
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 
 %% ===================================================================

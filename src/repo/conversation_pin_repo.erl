@@ -38,7 +38,7 @@ pin(Uid, ConversationId, Type) ->
     Now = elib_dt:now(),
     Data = #{
         <<"user_id">> => Uid,
-        <<"conversation_id">> => elib_hasher:encoded_val(ConversationId),
+        <<"conversation_id">> => ConversationId,
         <<"conversation_type">> => Type,
         <<"pinned_at">> => Now,
         <<"created_at">> => Now

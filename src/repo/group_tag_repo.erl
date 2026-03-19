@@ -35,6 +35,9 @@ tablename() ->
 %% @param Data 包含标签信息的map
 %% @return {ok, TagId, #{}} | {ok, TagId} | {error, Reason}
 -spec add(any(), map()) -> {ok, integer(), map()} | {ok, map()} | {error, term()}.
+add(undefined, Data) ->
+    Tb = tablename(),
+    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>));
 add(Conn, Data) ->
     Tb = tablename(),
     elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).

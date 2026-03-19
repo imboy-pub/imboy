@@ -33,22 +33,26 @@ msg_reaction_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_reaction">>),
     {ok, User2} = create_test_user(<<"user2_reaction">>),
     {ok, User3} = create_test_user(<<"user3_reaction">>),
     % 创建好友关系
-    ok = friend_ds:add_friend(User1, User2),
-    ok = friend_ds:add_friend(User1, User3),
-    ok = friend_ds:add_friend(User2, User3),
+    ok = ensure_friends(User1, User2),
+    ok = ensure_friends(User1, User3),
+    ok = ensure_friends(User2, User3),
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"reaction_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
     ok = group_member_ds:add_member(Group, User3),
-    #{user1 => User1, user2 => User2, user3 => User3, group => Group}.
+    Context = #{user1 => User1, user2 => User2, user3 => User3, group => Group},
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -67,8 +71,14 @@ test_c2c_add_reaction() ->
     {ok, Result} = msg_reaction_logic:add(MsgId, <<"c2c">>, User2, ?EMOJI_LIKE),
 
     % 3. 验证返回结果
+    ?assertEqual(MsgId, maps:get(<<"msg_id">>, Result)),
     ?assertEqual(?EMOJI_LIKE, maps:get(<<"emoji">>, Result)),
-    ?assertEqual(1, maps:get(<<"count">>, Result)),
+    {ok, Stats} = msg_reaction_logic:stats(MsgId, <<"c2c">>),
+    ?assertEqual(1, maps:get(<<"total_count">>, Stats)),
+    [LikeStat | _] = lists:filter(fun(S) ->
+        maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
+    end, maps:get(<<"reactions">>, Stats)),
+    ?assertEqual(1, maps:get(<<"count">>, LikeStat)),
 
     ok.
 
@@ -138,17 +148,18 @@ test_list_reactions() ->
     User1 = maps:get(user1, Context),
     User2 = maps:get(user2, Context),
     User3 = maps:get(user3, Context),
+    Group = maps:get(group, Context),
 
-    % 1. 发送消息
-    MsgId = send_c2c_message(User1, User2, <<"列表测试"/utf8>>),
+    % 1. 发送群聊消息，允许多成员响应
+    MsgId = send_c2g_message(User1, Group, <<"列表测试"/utf8>>),
 
     % 2. 多人添加不同表情
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User2, ?EMOJI_LIKE),
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User3, ?EMOJI_HEART),
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User1, ?EMOJI_SMILE),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User2, ?EMOJI_LIKE),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User3, ?EMOJI_HEART),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User1, ?EMOJI_SMILE),
 
     % 3. 查询表情列表
-    {ok, Reactions} = msg_reaction_logic:list(MsgId, <<"c2c">>),
+    {ok, Reactions} = msg_reaction_logic:list(MsgId, <<"c2g">>),
 
     % 4. 验证结果
     ?assertEqual(3, maps:get(<<"total_count">>, Reactions)),
@@ -162,17 +173,18 @@ test_reaction_stats() ->
     User1 = maps:get(user1, Context),
     User2 = maps:get(user2, Context),
     User3 = maps:get(user3, Context),
+    Group = maps:get(group, Context),
 
-    % 1. 发送消息
-    MsgId = send_c2c_message(User1, User2, <<"统计测试"/utf8>>),
+    % 1. 发送群聊消息，允许多成员响应
+    MsgId = send_c2g_message(User1, Group, <<"统计测试"/utf8>>),
 
     % 2. 添加表情
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User2, ?EMOJI_LIKE),
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User3, ?EMOJI_LIKE),
-    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2c">>, User1, ?EMOJI_HEART),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User2, ?EMOJI_LIKE),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User3, ?EMOJI_LIKE),
+    {ok, _} = msg_reaction_logic:add(MsgId, <<"c2g">>, User1, ?EMOJI_HEART),
 
     % 3. 获取统计
-    {ok, Stats} = msg_reaction_logic:stats(MsgId, <<"c2c">>),
+    {ok, Stats} = msg_reaction_logic:stats(MsgId, <<"c2g">>),
 
     % 4. 验证统计结果
     ?assertEqual(3, maps:get(<<"total_count">>, Stats)),
@@ -252,14 +264,66 @@ test_is_reacted() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
+
+wait_for_c2c_message(MsgId) ->
+    wait_for_c2c_message(MsgId, 40).
+
+wait_for_c2c_message(_MsgId, 0) ->
+    error(c2c_message_not_ready);
+wait_for_c2c_message(MsgId, AttemptsLeft) ->
+    case msg_c2c_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2c_message(MsgId, AttemptsLeft - 1)
+    end.
+
+wait_for_c2g_message(MsgId) ->
+    wait_for_c2g_message(MsgId, 40).
+
+wait_for_c2g_message(_MsgId, 0) ->
+    error(c2g_message_not_ready);
+wait_for_c2g_message(MsgId, AttemptsLeft) ->
+    case msg_c2g_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2g_message(MsgId, AttemptsLeft - 1)
+    end.
+
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -267,7 +331,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,
@@ -287,6 +351,7 @@ send_c2c_message(From, To, Content) ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(To)}),
+    ok = wait_for_c2c_message(MsgId),
     MsgId.
 
 send_c2g_message(From, Group, Content) ->
@@ -298,4 +363,5 @@ send_c2g_message(From, Group, Content) ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_c2g_message(MsgId),
     MsgId.

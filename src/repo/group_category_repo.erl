@@ -101,11 +101,10 @@ add(Uid, Name) ->
 -spec update_name(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 update_name(Uid, CategoryId, NewName) ->
     Tb = tablename(),
-    Now = elib_dt:now(),
     Sql = <<"UPDATE ", Tb/binary,
-            " SET category_name = $1, updated_at = $2 "
-            "WHERE id = $3 AND user_id = $4">>,
-    elib_pg:execute(Sql, [NewName, Now, CategoryId, Uid]).
+            " SET category_name = $1 "
+            "WHERE id = $2 AND user_id = $3">>,
+    elib_pg:execute(Sql, [NewName, CategoryId, Uid]).
 
 %% @doc 更新群组分类排序
 %% @param Uid 用户ID
@@ -115,11 +114,10 @@ update_name(Uid, CategoryId, NewName) ->
 -spec update_sort_order(integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
 update_sort_order(Uid, CategoryId, SortOrder) ->
     Tb = tablename(),
-    Now = elib_dt:now(),
     Sql = <<"UPDATE ", Tb/binary,
-            " SET sort_order = $1, updated_at = $2 "
-            "WHERE id = $3 AND user_id = $4">>,
-    elib_pg:execute(Sql, [SortOrder, Now, CategoryId, Uid]).
+            " SET sort_order = $1 "
+            "WHERE id = $2 AND user_id = $3">>,
+    elib_pg:execute(Sql, [SortOrder, CategoryId, Uid]).
 
 %% @doc 删除群组分类
 %% @param Uid 用户ID

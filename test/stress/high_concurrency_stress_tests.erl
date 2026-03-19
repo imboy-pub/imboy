@@ -26,6 +26,7 @@ high_concurrency_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建大量测试用户
     UserIds = lists:map(fun(N) ->
@@ -39,13 +40,16 @@ setup() ->
             Uid1 =/= Uid2 andalso (Uid1 + Uid2) rem 3 =:= 0
         end, UserIds),
         lists:foreach(fun(Uid2) ->
-            friend_ds:add_friend(Uid1, Uid2)
+            ensure_friends(Uid1, Uid2)
         end, Friends)
     end, UserIds),
 
-    #{user_ids => UserIds}.
+    Context = #{user_ids => UserIds},
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -271,14 +275,38 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
+
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },

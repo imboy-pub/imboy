@@ -30,23 +30,27 @@ msg_performance_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"perf_user1">>),
     {ok, User2} = create_test_user(<<"perf_user2">>),
     % 创建好友关系
-    ok = friend_ds:add_friend(User1, User2),
+    ok = ensure_friends(User1, User2),
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"perf_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
-    #{
+    Context = #{
         user1 => User1,
         user2 => User2,
         group => Group,
         msg_ids => []
-    }.
+    },
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -302,14 +306,38 @@ test_concurrent_send_performance() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
+
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -317,7 +345,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

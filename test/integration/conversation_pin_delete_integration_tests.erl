@@ -30,26 +30,30 @@ conversation_pin_delete_test_() ->
     }.
 
 setup() ->
+    _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_conv">>),
     {ok, User2} = create_test_user(<<"user2_conv">>),
     {ok, User3} = create_test_user(<<"user3_conv">>),
     % 创建好友关系
-    ok = friend_ds:add_friend(User1, User2),
-    ok = friend_ds:add_friend(User1, User3),
+    ok = ensure_friends(User1, User2),
+    ok = ensure_friends(User1, User3),
     % 创建测试群组
     {ok, Group1} = create_test_group(User1, <<"conv_test_group1">>),
     {ok, Group2} = create_test_group(User1, <<"conv_test_group2">>),
-    #{
+    Context = #{
         user1 => User1,
         user2 => User2,
         user3 => User3,
         group1 => Group1,
         group2 => Group2
-    }.
+    },
+    persistent_term:put({?MODULE, test_context}, Context),
+    Context.
 
 cleanup(_Context) ->
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -65,7 +69,7 @@ test_pin_c2c_conversation() ->
     ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 2. 验证置顶状态
-    true = conversation_pin_ds:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 3. 再次置顶（幂等性测试）
     ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
@@ -81,7 +85,7 @@ test_pin_c2g_conversation() ->
     ok = conversation_pin_logic:pin(User1, elib_hashids:encode(Group1), <<"c2g">>),
 
     % 2. 验证置顶状态
-    true = conversation_pin_ds:is_pinned(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(Group1), <<"c2g">>),
 
     ok.
 
@@ -97,7 +101,7 @@ test_unpin_conversation() ->
     ok = conversation_pin_logic:unpin(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 3. 验证取消成功
-    false = conversation_pin_ds:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    false = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     ok.
 
@@ -114,7 +118,7 @@ test_get_pinned_list() ->
     ok = conversation_pin_logic:pin(User1, elib_hashids:encode(Group1), <<"c2g">>),
 
     % 2. 获取置顶列表
-    {ok, PinnedList} = conversation_pin_repo:list_pinned(User1),
+    {ok, PinnedList} = conversation_pin_logic:list(User1),
 
     % 3. 验证数量
     ?assertEqual(3, length(PinnedList)),
@@ -128,21 +132,14 @@ test_delete_c2c_conversation() ->
 
     % 1. 发送一些消息
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "测试消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)})
+        _ = send_c2c_message(User1, User2, <<N/integer, "测试消息"/utf8>>)
     end, lists:seq(1, 5)),
 
     % 2. 删除会话（软删除）
-    ok = conversation_delete_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 3. 验证删除状态
-    true = conversation_delete_ds:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_logic:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     ok.
 
@@ -153,21 +150,14 @@ test_delete_c2g_conversation() ->
 
     % 1. 发送一些群聊消息
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "群聊消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group1)})
+        _ = send_c2g_message(User1, Group1, <<N/integer, "群聊消息"/utf8>>)
     end, lists:seq(1, 3)),
 
     % 2. 删除会话
-    ok = conversation_delete_logic:delete(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    ok = conversation_logic:delete(User1, elib_hashids:encode(Group1), <<"c2g">>),
 
     % 3. 验证删除状态
-    true = conversation_delete_ds:is_deleted(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    true = conversation_logic:is_deleted(User1, elib_hashids:encode(Group1), <<"c2g">>),
 
     ok.
 
@@ -177,13 +167,13 @@ test_restore_deleted_conversation() ->
     User2 = maps:get(user2, Context),
 
     % 1. 删除会话
-    ok = conversation_delete_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 2. 恢复会话
-    ok = conversation_delete_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 3. 验证恢复成功
-    false = conversation_delete_ds:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
+    false = conversation_logic:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     ok.
 
@@ -196,13 +186,13 @@ test_pin_then_delete() ->
     ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 2. 删除会话（置顶状态应该保持或被清除，取决于业务逻辑）
-    ok = conversation_delete_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 3. 恢复会话
-    ok = conversation_delete_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     % 4. 验证置顶状态（假设保持）
-    true = conversation_pin_ds:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
 
     ok.
 
@@ -227,7 +217,7 @@ test_batch_pin() ->
     end, Conversations),
 
     % 2. 验证所有会话都已置顶
-    {ok, PinnedList} = conversation_pin_repo:list_pinned(User1),
+    {ok, PinnedList} = conversation_pin_logic:list(User1),
     ?assertEqual(4, length(PinnedList)),
 
     ok.
@@ -240,8 +230,8 @@ test_conversation_list_with_pin() ->
     Group1 = maps:get(group1, Context),
 
     % 1. 发送消息创建会话
-    send_c2c_message(User1, User2, <<"消息1"/utf8>>),
-    send_c2c_message(User1, User3, <<"消息2"/utf8>>),
+    send_c2c_message(User2, User1, <<"消息1"/utf8>>),
+    send_c2c_message(User3, User1, <<"消息2"/utf8>>),
     send_c2g_message(User1, Group1, <<"群消息1"/utf8>>),
 
     % 2. 置顶 User3 的会话
@@ -262,14 +252,38 @@ test_conversation_list_with_pin() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
+
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -277,7 +291,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,
@@ -296,7 +310,9 @@ send_c2c_message(From, To, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(To)}).
+    ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(To)}),
+    ok = wait_for_c2c_message(MsgId),
+    MsgId.
 
 send_c2g_message(From, Group, Content) ->
     MsgId = imboy_hashid:uid(),
@@ -306,4 +322,34 @@ send_c2g_message(From, Group, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}).
+    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_c2g_message(MsgId),
+    MsgId.
+
+wait_for_c2c_message(MsgId) ->
+    wait_for_c2c_message(MsgId, 100).
+
+wait_for_c2c_message(_MsgId, 0) ->
+    error(c2c_message_not_ready);
+wait_for_c2c_message(MsgId, AttemptsLeft) ->
+    case msg_c2c_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2c_message(MsgId, AttemptsLeft - 1)
+    end.
+
+wait_for_c2g_message(MsgId) ->
+    wait_for_c2g_message(MsgId, 100).
+
+wait_for_c2g_message(_MsgId, 0) ->
+    error(c2g_message_not_ready);
+wait_for_c2g_message(MsgId, AttemptsLeft) ->
+    case msg_c2g_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2g_message(MsgId, AttemptsLeft - 1)
+    end.

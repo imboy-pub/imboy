@@ -80,8 +80,12 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
         %% ---------- 批量插入时间线表 ----------
         %% 注意：to_uid 和 to_gid 是 bigint 类型，需要传入 integer，不能转换成 binary
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
-        {SqlTimeline, ParamsTimeline} =
+        {SqlTimeline0, ParamsTimeline} =
             elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
+        SqlTimeline = iolist_to_binary([
+            SqlTimeline0,
+            <<" ON CONFLICT (to_uid, msg_id) DO NOTHING">>
+        ]),
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
     end).
@@ -118,7 +122,7 @@ find_msg_by_id(Id) ->
     Column = <<"id, payload, created_at, from_id, to_id, msg_id, msg_type, e2ee">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
     case elib_pg:query(Sql, [Id]) of
-        {ok, [{Row}]} -> {ok, Row};
+        {ok, [Row]} when is_map(Row) -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
     end.
@@ -274,8 +278,12 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
 
         %% ---------- 批量插入时间线表 ----------
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
-        {SqlTimeline, ParamsTimeline} =
+        {SqlTimeline0, ParamsTimeline} =
             elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
+        SqlTimeline = iolist_to_binary([
+            SqlTimeline0,
+            <<" ON CONFLICT (to_uid, msg_id) DO NOTHING">>
+        ]),
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
     end).

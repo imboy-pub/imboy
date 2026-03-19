@@ -32,24 +32,23 @@ msg_forward_test_() ->
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
-    ok = wait_for_db_ready(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_forward">>),
     {ok, User2} = create_test_user(<<"user2_forward">>),
     {ok, User3} = create_test_user(<<"user3_forward">>),
     % 创建好友关系
-    ok = friend_ds:add_friend(User1, User2),
-    ok = friend_ds:add_friend(User1, User3),
+    ok = ensure_friends(User1, User2),
+    ok = ensure_friends(User1, User3),
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"forward_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
     Context = #{user1 => User1, user2 => User2, user3 => User3, group => Group},
-    put(test_context, Context),
+    persistent_term:put({?MODULE, test_context}, Context),
     Context.
 
 cleanup(_Context) ->
-    erase(test_context),
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -71,6 +70,7 @@ test_c2c_to_c2c_forward() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = wait_for_source_message(MsgId),
 
     % 2. 转发到另一个单聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, User3, <<"c2c">>),
@@ -98,6 +98,7 @@ test_c2c_to_c2g_forward() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = wait_for_source_message(MsgId),
 
     % 2. 转发到群聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, Group, <<"c2g">>),
@@ -120,6 +121,7 @@ test_c2g_to_c2c_forward() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_source_message(MsgId),
 
     % 2. 转发到单聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, User2, <<"c2c">>),
@@ -144,6 +146,7 @@ test_c2g_to_c2g_forward() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_source_message(MsgId),
 
     % 3. 转发到另一个群聊
     {ok, ForwardMsgIds} = msg_forward_logic:forward([MsgId], User1, Group2, <<"c2g">>),
@@ -169,6 +172,7 @@ test_batch_forward() ->
         ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
         MsgId
     end, lists:seq(1, 5)),
+    ok = wait_for_source_messages(MsgIds),
 
     % 2. 批量转发
     {ok, ForwardMsgIds} = msg_forward_logic:forward(MsgIds, User1, User3, <<"c2c">>),
@@ -191,6 +195,7 @@ test_forward_trace() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = wait_for_source_message(MsgId),
 
     % 2. 转发消息
     {ok, [ForwardMsgId | _]} = msg_forward_logic:forward([MsgId], User1, User3, <<"c2c">>),
@@ -222,6 +227,7 @@ test_forward_to_non_friend() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = wait_for_source_message(MsgId),
 
     % 2. 转发到一个未建立好友关系的新用户
     {ok, User4} = create_test_user(<<"user4_forward">>),
@@ -247,6 +253,7 @@ test_forward_to_non_group_member() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(MsgId, User2, MsgData#{<<"to">> => elib_hashids:encode(User1)}),
+    ok = wait_for_source_message(MsgId),
 
     % 3. User2 尝试转发到 Group2（不是群成员）
     Result = msg_forward_logic:forward([MsgId], User2, Group2, <<"c2g">>),
@@ -289,7 +296,7 @@ test_batch_forward_limit() ->
     Result = msg_forward_logic:forward(MsgIds, User1, User3, <<"c2c">>),
 
     % 3. 验证转发失败
-    ?assertMatch({error, {invalid_param, _}}, Result).
+    ?assertMatch({error, {invalid_param, _, _, _}}, Result).
 
 %% ===================================================================
 %% 辅助函数
@@ -297,20 +304,37 @@ test_batch_forward_limit() ->
 
 get_context() ->
     % 从进程字典获取测试上下文
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
 
-wait_for_db_ready() ->
-    wait_for_db_ready(20).
+wait_for_source_messages(MsgIds) ->
+    lists:foreach(fun wait_for_source_message/1, MsgIds),
+    ok.
 
-wait_for_db_ready(0) ->
-    error(no_connection);
-wait_for_db_ready(AttemptsLeft) ->
-    case eunit_runner:eunit_try_db() of
-        {ok, _ConnPid} ->
+wait_for_source_message(MsgId) ->
+    wait_for_source_message(MsgId, 100).
+
+wait_for_source_message(_MsgId, 0) ->
+    error(source_message_not_ready);
+wait_for_source_message(MsgId, AttemptsLeft) ->
+    case source_message_ready(MsgId) of
+        true ->
             ok;
+        false ->
+            timer:sleep(50),
+            wait_for_source_message(MsgId, AttemptsLeft - 1)
+    end.
+
+source_message_ready(MsgId) ->
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            true;
+        {error, not_found} ->
+            case msg_c2g_timeline_repo:find_by_msg_id(MsgId) of
+                {ok, [_ | _]} -> true;
+                _ -> false
+            end;
         _ ->
-            timer:sleep(100),
-            wait_for_db_ready(AttemptsLeft - 1)
+            false
     end.
 
 find_forward_record(OriginalMsgId, ForwardMsgId) ->
@@ -330,19 +354,43 @@ find_forward_record(OriginalMsgId, ForwardMsgId) ->
     end.
 
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = user_repo:create(User),
     {ok, Uid}.
 
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
+
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

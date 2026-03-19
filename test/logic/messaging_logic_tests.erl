@@ -92,6 +92,9 @@ handle_rest_action_offline_ack_uses_messaging_boundary_test_() ->
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 12345 end}
         ]},
+        {elib_log, [
+            {'internal_log', 5, fun(_Level, _Fmt, _Args, _Module, _Line) -> ok end}
+        ]},
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{

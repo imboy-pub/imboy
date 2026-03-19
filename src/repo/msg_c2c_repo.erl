@@ -39,7 +39,7 @@ tablename() ->
 -spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
 find_msg_by_id(MsgId) ->
     Tb = tablename(),
-    Sql = <<"SELECT from_id, created_at, payload "
+    Sql = <<"SELECT from_id, to_id, created_at, payload "
             "FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
     case elib_pg:query(Sql, [MsgId]) of
         {ok, [Msg]} -> {ok, Msg};

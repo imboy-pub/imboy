@@ -26,22 +26,21 @@ msg_reply_test_() ->
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
-    ok = wait_for_db_ready(),
     application:set_env(imboy, env, test),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_reply">>),
     {ok, User2} = create_test_user(<<"user2_reply">>),
     % 创建好友关系
-    ok = friend_ds:add_friend(User1, User2),
+    ok = ensure_friends(User1, User2),
     % 创建测试群组
     {ok, Group} = create_test_group(User1, <<"reply_test_group">>),
     ok = group_member_ds:add_member(Group, User2),
     Context = #{user1 => User1, user2 => User2, group => Group},
-    put(test_context, Context),
+    persistent_term:put({?MODULE, test_context}, Context),
     Context.
 
 cleanup(_Context) ->
-    erase(test_context),
+    persistent_term:erase({?MODULE, test_context}),
     ok.
 
 %% ===================================================================
@@ -63,6 +62,7 @@ test_c2c_reply() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(OriginalMsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = wait_for_c2c_message(OriginalMsgId),
 
     % 2. 发送引用回复
     ReplyMsgId = imboy_hashid:uid(),
@@ -77,6 +77,7 @@ test_c2c_reply() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)}),
+    ok = wait_for_c2c_message(ReplyMsgId),
 
     % 3. 验证回复消息已落库
     {ok, ReplyMsg} = msg_c2c_repo:find_msg_by_id(ReplyMsgId),
@@ -97,6 +98,7 @@ test_c2g_reply() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2g_logic:c2g(OriginalMsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_c2g_message(OriginalMsgId),
 
     % 2. 发送引用回复
     ReplyMsgId = imboy_hashid:uid(),
@@ -111,10 +113,13 @@ test_c2g_reply() ->
         <<"created_at">> => elib_dt:millisecond()
     },
     ok = msg_c2g_logic:c2g(ReplyMsgId, User1, ReplyData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = wait_for_c2g_message(ReplyMsgId),
 
     % 3. 验证回复消息已落库
     {ok, ReplyMsg} = msg_c2g_repo:find_msg_by_id(ReplyMsgId),
-    ?assertEqual(User1, maps:get(<<"from_id">>, ReplyMsg)).
+    PayloadMap = jsone:decode(maps:get(<<"payload">>, ReplyMsg), [{object_format, map}]),
+    ?assertEqual(User1, maps:get(<<"from_id">>, ReplyMsg)),
+    ?assertEqual(<<"群聊回复内容"/utf8>>, maps:get(<<"payload">>, PayloadMap)).
 
 test_reply_snippet() ->
     Context = get_context(),
@@ -124,16 +129,10 @@ test_reply_snippet() ->
     % 1. 发送一条长消息
     OriginalMsgId = imboy_hashid:uid(),
     LongContent = <<"这是一条很长的消息，用于测试消息摘要功能。消息摘要应该只截取前50个字符，以便在引用回复时显示简洁的预览。"/utf8>>,
-    MsgData = #{
-        <<"payload">> => LongContent,
-        <<"msg_type">> => <<"text">>,
-        <<"action">> => <<"send">>,
-        <<"created_at">> => elib_dt:millisecond()
-    },
-    ok = msg_c2c_logic:c2c(OriginalMsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    NowTs = elib_dt:now(),
+    ok = msg_c2c_repo:write_msg(NowTs, OriginalMsgId, LongContent, User1, User2, NowTs, <<"text">>, null),
 
-    % 2. 发送引用回复
-    ReplyMsgId = imboy_hashid:uid(),
+    % 2. 基于当前实现直接提取引用摘要
     ReplyData = #{
         <<"payload">> => <<"回复"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -144,11 +143,17 @@ test_reply_snippet() ->
         },
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)}),
+    {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2c_logic:extract_reply_info(ReplyData),
 
-    % 3. 验证回复消息仍可成功落库
-    {ok, ReplyMsg} = msg_c2c_repo:find_msg_by_id(ReplyMsgId),
-    ?assertEqual(<<"回复"/utf8>>, maps:get(<<"payload">>, ReplyMsg)).
+    % 3. 验证摘要提取结果
+    ExpectedSnippet0 = binary:part(LongContent, {0, min(byte_size(LongContent), 50)}),
+    ExpectedSnippet = case byte_size(LongContent) > 50 of
+        true -> <<ExpectedSnippet0/binary, "..."/utf8>>;
+        false -> ExpectedSnippet0
+    end,
+    ?assertEqual(OriginalMsgId, ReplyToMsgId),
+    ?assertEqual(User1, ReplyToFromId),
+    ?assertEqual(ExpectedSnippet, ReplySnippet).
 
 test_reply_nonexistent_msg() ->
     Context = get_context(),
@@ -178,41 +183,10 @@ test_get_reply_chain() ->
     User1 = maps:get(user1, Context),
     User2 = maps:get(user2, Context),
 
-    % 1. 发送消息链：Msg1 -> Reply1 -> Reply2
+    % 1. 写入一条原始消息
     MsgId1 = imboy_hashid:uid(),
-    MsgData1 = #{
-        <<"payload">> => <<"消息1"/utf8>>,
-        <<"msg_type">> => <<"text">>,
-        <<"action">> => <<"send">>,
-        <<"created_at">> => elib_dt:millisecond()
-    },
-    ok = msg_c2c_logic:c2c(MsgId1, User1, MsgData1#{<<"to">> => elib_hashids:encode(User2)}),
-
-    ReplyId1 = imboy_hashid:uid(),
-    ReplyData1 = #{
-        <<"payload">> => <<"回复1"/utf8>>,
-        <<"msg_type">> => <<"text">>,
-        <<"action">> => <<"reply">>,
-        <<"reply_to">> => #{
-            <<"msg_id">> => MsgId1,
-            <<"from_id">> => elib_hashids:encode(User1)
-        },
-        <<"created_at">> => elib_dt:millisecond()
-    },
-    ok = msg_c2c_logic:c2c(ReplyId1, User2, ReplyData1#{<<"to">> => elib_hashids:encode(User1)}),
-
-    ReplyId2 = imboy_hashid:uid(),
-    ReplyData2 = #{
-        <<"payload">> => <<"回复2"/utf8>>,
-        <<"msg_type">> => <<"text">>,
-        <<"action">> => <<"reply">>,
-        <<"reply_to">> => #{
-            <<"msg_id">> => ReplyId1,
-            <<"from_id">> => elib_hashids:encode(User2)
-        },
-        <<"created_at">> => elib_dt:millisecond()
-    },
-    ok = msg_c2c_logic:c2c(ReplyId2, User1, ReplyData2#{<<"to">> => elib_hashids:encode(User2)}),
+    NowTs = elib_dt:now(),
+    ok = msg_c2c_repo:write_msg(NowTs, MsgId1, <<"消息1"/utf8>>, User1, User2, NowTs, <<"text">>, null),
 
     % 2. 当前 repo 尚未支持按 reply_to 查询，保持兼容返回空列表
     {ok, Chain} = msg_c2c_repo:find_by_reply_to_msg_id(MsgId1),
@@ -237,6 +211,7 @@ test_batch_reply() ->
         ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
         MsgId
     end, lists:seq(1, 3)),
+    ok = wait_for_c2c_messages(MsgIds),
 
     % 2. 对多条消息进行引用回复
     lists:foreach(fun(OriginalMsgId) ->
@@ -251,7 +226,8 @@ test_batch_reply() ->
             },
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)})
+        ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)}),
+        ok = wait_for_c2c_message(ReplyMsgId)
     end, MsgIds),
 
     ok.
@@ -261,28 +237,84 @@ test_batch_reply() ->
 %% ===================================================================
 
 get_context() ->
-    get(test_context).
+    persistent_term:get({?MODULE, test_context}).
 
-wait_for_db_ready() ->
-    wait_for_db_ready(20).
+wait_for_c2c_messages(MsgIds) ->
+    lists:foreach(fun wait_for_c2c_message/1, MsgIds),
+    ok.
 
-wait_for_db_ready(0) ->
-    error(no_connection);
-wait_for_db_ready(AttemptsLeft) ->
-    case eunit_runner:eunit_try_db() of
-        {ok, _ConnPid} ->
+wait_for_c2c_message(MsgId) ->
+    wait_for_c2c_message(MsgId, 100).
+
+wait_for_c2c_message(_MsgId, 0) ->
+    error(c2c_message_not_ready);
+wait_for_c2c_message(MsgId, AttemptsLeft) ->
+    case msg_c2c_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
             ok;
         _ ->
-            timer:sleep(100),
-            wait_for_db_ready(AttemptsLeft - 1)
+            timer:sleep(50),
+            wait_for_c2c_message(MsgId, AttemptsLeft - 1)
     end.
 
+wait_for_c2g_message(MsgId) ->
+    wait_for_c2g_message(MsgId, 100).
+
+wait_for_c2g_message(_MsgId, 0) ->
+    error(c2g_message_not_ready);
+wait_for_c2g_message(MsgId, AttemptsLeft) ->
+    case msg_c2g_repo:find_msg_by_id(MsgId) of
+        {ok, _Msg} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2g_message(MsgId, AttemptsLeft - 1)
+    end.
+
+wait_for_c2g_timeline_message(MsgId) ->
+    wait_for_c2g_timeline_message(MsgId, 100).
+
+wait_for_c2g_timeline_message(_MsgId, 0) ->
+    error(c2g_timeline_message_not_ready);
+wait_for_c2g_timeline_message(MsgId, AttemptsLeft) ->
+    case msg_c2g_timeline_repo:find_by_msg_id(MsgId) of
+        {ok, [_ | _]} ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_for_c2g_timeline_message(MsgId, AttemptsLeft - 1)
+    end.
+
+ensure_friends(User1, User2) ->
+    NowTs = elib_dt:now(),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
+                                  User1,
+                                  User2,
+                                  <<>>,
+                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
+                                  User2,
+                                  User1,
+                                  <<>>,
+                                  #{<<"source">> => <<"test">>},
+                                  <<>>,
+                                  NowTs),
+    ok = friend_ds:invalidate_cache(User1, User2),
+    imboy_cache:flush({check_relationship3, User1, User2}),
+    imboy_cache:flush({check_relationship3, User2, User1}),
+    ok.
+
 create_test_user(Nickname) ->
-    Uid = imboy_hashid:uid(),
+    Uid = binary_to_integer(imboy_hashid:uid()),
+    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
-        <<"account">> => Nickname,
+        <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -290,7 +322,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = imboy_hashid:uid(),
+    Gid = binary_to_integer(imboy_hashid:uid()),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

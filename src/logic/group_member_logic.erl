@@ -144,7 +144,7 @@ update_role(CurrentUid, Gid, UserId, Role) ->
             Now = elib_dt:now(),
             % 使用事务执行角色更新操作
             case elib_pg:with_tx(fun(Conn) -> update_role_internal(Conn, CurrentUid, Gid, UserId, Role, Now) end) of
-                {ok, _} ->
+                ok ->
                     % 发送角色变更通知
                     role_change_notice(CurrentUid, Gid, UserId, Role),
                     ok;
@@ -169,12 +169,12 @@ mute(CurrentUid, Gid, UserId, Duration) ->
         {error, Reason} -> {error, Reason};
         ok ->
             % 获取当前时间
-            Now = elib_dt:now(),
+            Now = elib_dt:millisecond(),
             % 计算禁言到期时间
             MuteUntil = Now + Duration * 1000,
             % 使用事务执行禁言操作
             case elib_pg:with_tx(fun(Conn) -> mute_internal(Conn, Gid, UserId, MuteUntil) end) of
-                {ok, _} ->
+                ok ->
                     % 发送禁言通知
                     mute_notice(CurrentUid, Gid, UserId, MuteUntil),
                     ok;
@@ -193,12 +193,12 @@ mute(CurrentUid, Gid, UserId, Duration) ->
 check_mute(Gid, UserId) ->
     case group_member_ds:get_member_info(Gid, UserId, <<"mute_until">>) of
         {ok, MemberInfo} ->
-            MuteUntil = maps:get(<<"mute_until">>, MemberInfo, null),
-            case MuteUntil of
+            MuteUntilRaw = maps:get(<<"mute_until">>, MemberInfo, null),
+            case to_millisecond(MuteUntilRaw) of
                 null -> false;
-                _ ->
+                MuteUntil when is_integer(MuteUntil) ->
                     % 如果未到期则返回 true
-                    MuteUntil >= elib_dt:now()
+                    MuteUntil >= elib_dt:millisecond()
             end;
         {error, _} ->
             false
@@ -209,6 +209,25 @@ check_mute(Gid, UserId) ->
 mute_internal(Conn, Gid, UserId, MuteUntil) ->
     % 使用 DS 层接口执行禁言
     group_member_ds:update_mute(Conn, Gid, UserId, MuteUntil).
+
+-spec to_millisecond(term()) -> integer() | null.
+to_millisecond(null) ->
+    null;
+to_millisecond(Value) when is_integer(Value), Value >= 0 ->
+    Value;
+to_millisecond(Value) when is_binary(Value); is_list(Value) ->
+    ValueBin = elib_cnv:safe_to_binary(Value),
+    case catch elib_dt:rfc3339_to(ValueBin, millisecond) of
+        Ts when is_integer(Ts), Ts >= 0 ->
+            Ts;
+        _ ->
+            case catch binary_to_integer(ValueBin) of
+                Int when is_integer(Int), Int >= 0 -> Int;
+                _ -> null
+            end
+    end;
+to_millisecond(_) ->
+    null.
 
 %% @doc 验证禁言权限
 -spec validate_mute_permission(integer(), integer()) -> ok | {error, binary()}.
@@ -231,7 +250,7 @@ mute_notice(AdminUid, Gid, _UserId, MuteUntil) ->
     % 获取群成员列表
     ToUidLi = group_ds:member_uids(Gid),
     Admin = user_ds:find_by_id(AdminUid, <<"nickname">>),
-    Now = elib_dt:now(),
+    Now = elib_dt:millisecond(),
 
     % 计算剩余时间（转换为秒）
     RemainingSec = round((MuteUntil - Now) / 1000),
@@ -255,15 +274,15 @@ mute_notice(AdminUid, Gid, _UserId, MuteUntil) ->
 -spec format_duration(integer()) -> binary().
 format_duration(Seconds) when Seconds > 86400 ->
     Days = Seconds div 86400,
-    elib_cnv:to_binary(Days) ++ <<"天"/utf8>>;
+    <<(ec_cnv:to_binary(Days))/binary, "天"/utf8>>;
 format_duration(Seconds) when Seconds > 3600 ->
     Hours = Seconds div 3600,
-    elib_cnv:to_binary(Hours) ++ <<"小时"/utf8>>;
+    <<(ec_cnv:to_binary(Hours))/binary, "小时"/utf8>>;
 format_duration(Seconds) when Seconds > 60 ->
     Minutes = Seconds div 60,
-    elib_cnv:to_binary(Minutes) ++ <<"分钟"/utf8>>;
+    <<(ec_cnv:to_binary(Minutes))/binary, "分钟"/utf8>>;
 format_duration(Seconds) ->
-    elib_cnv:to_binary(Seconds) ++ <<"秒"/utf8>>.
+    <<(ec_cnv:to_binary(Seconds))/binary, "秒"/utf8>>.
 
 %% ===================================================================
 %% Internal

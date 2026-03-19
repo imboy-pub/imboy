@@ -24,7 +24,7 @@ check_login_allowed_succeeds_when_no_prior_failures_test_() ->
         Identifier = <<"test@example.com">>,
         Ip = <<"127.0.0.1">>,
 
-        {ok, allowed} = login_security_logic:check_login_allowed(Identifier, Ip)
+        {ok, true} = login_security_logic:check_login_allowed(Identifier, Ip)
      end).
 
 check_login_allowed_succeeds_when_below_limit_test_() ->
@@ -35,12 +35,19 @@ check_login_allowed_succeeds_when_below_limit_test_() ->
         Identifier = <<"test@example.com">>,
         Ip = <<"127.0.0.1">>,
 
-        {ok, allowed} = login_security_logic:check_login_allowed(Identifier, Ip)
+        {ok, true} = login_security_logic:check_login_allowed(Identifier, Ip)
      end).
 
 check_login_allowed_fails_when_locked_test_() ->
-    ?WITH_MECK(login_attempt_ds, [
-        {'is_locked', 2, fun(_Identifier, _Ip) -> true end}
+    ?WITH_MECKS([
+        {login_attempt_ds, [
+            {'is_locked', 2, fun(_Identifier, _Ip) -> true end},
+            {'get_attempts', 2, fun(_Identifier, _Ip) -> {ok, 5} end},
+            {'get_remaining_attempts', 2, fun(_Identifier, _Ip) -> {ok, 0} end}
+        ]},
+        {imboy_cache, [
+            {'get', 1, fun(_Key) -> undefined end}
+        ]}
     ], fun() ->
         Identifier = <<"test@example.com">>,
         Ip = <<"127.0.0.1">>,
@@ -55,7 +62,9 @@ check_login_allowed_fails_when_locked_test_() ->
 
 record_login_failure_increments_count_test_() ->
     ?WITH_MECK(login_attempt_ds, [
-        {'record_failure', 2, fun(_Identifier, _Ip) -> {ok, 3} end}
+        {'check_ip_rate_limit', 1, fun(_Ip) -> {ok, 1} end},
+        {'record_failure', 2, fun(_Identifier, _Ip) -> {ok, 3} end},
+        {'is_locked', 2, fun(_Identifier, _Ip) -> false end}
     ], fun() ->
         Identifier = <<"test@example.com">>,
         Ip = <<"127.0.0.1">>,
@@ -66,6 +75,7 @@ record_login_failure_increments_count_test_() ->
 record_login_failure_returns_lock_warning_when_at_limit_test_() ->
     ?WITH_MECKS([
         {login_attempt_ds, [
+            {'check_ip_rate_limit', 1, fun(_Ip) -> {ok, 1} end},
             {'record_failure', 2, fun(_Identifier, _Ip) -> {ok, 5} end},
             {'is_locked', 2, fun(_Identifier, _Ip) -> true end}
         ]}
@@ -148,18 +158,18 @@ check_login_allowed_with_empty_identifier_test_() ->
         Ip = <<"127.0.0.1">>,
 
         % 空标识符应该允许登录（可能不是邮箱/手机号登录）
-        {ok, allowed} = login_security_logic:check_login_allowed(Identifier, Ip)
+        {ok, true} = login_security_logic:check_login_allowed(Identifier, Ip)
      end).
 
 record_login_failure_with_empty_ip_test_() ->
     ?WITH_MECK(login_attempt_ds, [
-        {'record_failure', 2, fun(_Identifier, _Ip) -> {ok, 1} end}
+        {'check_ip_rate_limit', 1, fun(_Ip) -> {error, invalid_ip} end}
     ], fun() ->
         Identifier = <<"test@example.com">>,
         Ip = <<>>,
 
-        % 空IP应该正常记录
-        {ok, 1} = login_security_logic:record_login_failure(Identifier, Ip)
+        % 空IP按当前契约返回 invalid_ip
+        {error, invalid_ip} = login_security_logic:record_login_failure(Identifier, Ip)
      end).
 
 %% ===================================================================
@@ -169,6 +179,7 @@ record_login_failure_with_empty_ip_test_() ->
 login_failure_flow_records_and_locks_test_() ->
     ?WITH_MECKS([
         {login_attempt_ds, [
+            {'check_ip_rate_limit', 1, fun(_Ip) -> {ok, 1} end},
             {'record_failure', 2, fun(_Identifier, _Ip) -> {ok, 1} end},
             {'is_locked', 2, fun(_Identifier, _Ip) -> false end}
         ]}
@@ -180,7 +191,7 @@ login_failure_flow_records_and_locks_test_() ->
         {ok, 1} = login_security_logic:record_login_failure(Identifier, Ip),
 
         % 检查是否被锁定
-        {ok, not_locked} = login_security_logic:check_login_allowed(Identifier, Ip)
+        {ok, true} = login_security_logic:check_login_allowed(Identifier, Ip)
      end).
 
 login_success_flow_resets_count_test_() ->

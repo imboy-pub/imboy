@@ -92,22 +92,32 @@ error(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info;
 %% ===================================================================
 safe_log(Level, Msg, Module, Line) ->
     Pid = self(),
+    Message = try
+        ensure_string(Msg)
+    catch
+        _:_ ->
+            "INVALID_MESSAGE"
+    end,
     try
-        Message = ensure_string(Msg),
         lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
     catch
-        _:_ -> lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], "INVALID_MESSAGE")
+        _:_ ->
+            ok
     end.
 
 safe_log(Level, Fmt, Args, Module, Line) ->
     Pid = self(),
+    Message = try
+        io_lib:format(Fmt, sanitize_args(Args))
+    catch
+        _:_ ->
+            io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
+    end,
     try
-        Message = io_lib:format(Fmt, sanitize_args(Args)),
         lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
     catch
         _:_ ->
-            ErrorMsg = io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args]),
-            lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], ErrorMsg)
+            ok
     end.
 
 ensure_string(Msg) when is_binary(Msg) ->

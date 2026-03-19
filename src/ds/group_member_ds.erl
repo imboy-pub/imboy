@@ -15,10 +15,12 @@
 -export([leave/4]).
 -export([alias/4]).
 -export([update_role/4]).
+-export([update_role/5]).
 -export([update_mute/4]).
 -export([get_member_info/3]).
 -export([update_statistics/2]).
 -export([find_by_gid_and_uid/3]).
+-export([is_member/2]).
 -export([check_admin/2]).
 
 %% ===================================================================
@@ -34,6 +36,14 @@ list_members(Gid) ->
 -spec list_members_with_info(integer()) -> {ok, list(map())} | {error, any()}.
 list_members_with_info(Gid) ->
     list_member(Gid, []).
+
+%% @doc 兼容旧逻辑接口：检查是否为群成员
+-spec is_member(integer(), integer()) -> boolean().
+is_member(Gid, Uid) ->
+    case group_member_repo:find(Gid, Uid, <<"id">>) of
+        #{<<"id">> := _Id} -> true;
+        _ -> false
+    end.
 
 %% @doc 兼容旧测试接口：添加群成员（事务内复用 join_group）
 -spec add_member(integer(), integer()) -> ok | {error, any()}.
@@ -227,10 +237,17 @@ check_admin(Uid, Gid) ->
 %% @param MuteUntil 禁言到期时间戳（null 表示取消禁言）
 %% @return ok | {error, Reason}
 -spec update_mute(pid() | undefined, integer(), integer(), integer() | null) -> ok | {error, any()}.
+update_mute(undefined, Gid, UserId, MuteUntil) ->
+    elib_pg:with_tx(fun(Conn) -> update_mute(Conn, Gid, UserId, MuteUntil) end);
 update_mute(Conn, Gid, UserId, MuteUntil) ->
     GMTb = group_member_repo:tablename(),
     Now = elib_dt:now(),
-    Data = #{mute_until => MuteUntil, updated_at => Now},
+    FixedMuteUntil = case MuteUntil of
+        null -> null;
+        Value when is_integer(Value), Value >= 0 -> elib_dt:to_rfc3339(Value, millisecond);
+        Value -> Value
+    end,
+    Data = #{mute_until => FixedMuteUntil, updated_at => Now},
 
     case elib_pg:update(Conn, GMTb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
         {ok, _} -> ok;
