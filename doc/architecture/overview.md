@@ -10,7 +10,15 @@
 
 - [`2026-03-15-modular-monolith-boundaries.md`](adr/2026-03-15-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
-## 迁移状态（2026-03-16）
+## 迁移状态（2026-03-28 — 闭环）
+
+> Workspace Modular + Plugin Architecture 迁移已全部完成（Task 0-17）。
+
+- 已建立稳定领域入口的逻辑层模块：`messaging_logic`、`moment_logic`、`channel_logic`、`group_logic`、`group_vote_logic`、`group_schedule_logic`、`group_task_logic`、`auth_logic`、`passport_logic`、`user_logic`、`e2ee_logic`、`report_logic`、`user_collect_logic`。
+- 生产中的扩展点保持轻量：`src/lib/imboy_plugin_registry.erl` 作为插件 manifest contract，被 `channel_handler`、`moment_handler`、`group_*_handler`、`report_handler`、后台对应 handler 以及 `imboy_policy` 使用。
+- 兼容层已清理：`imboy_plugin_registry:all/0` 与 `get/1` 已移除，调用点已全部收敛到 `manifests/0` 与 `manifest/1`。
+- 边界门禁已启用：`script/check_module_boundaries.sh` 在 CI 中防止跨域直接依赖。
+- 回归验证：`make app` 编译通过；2709 非DB断言全部通过；修复 `elib_uri:exclusion_param/2` 无 query 字段崩溃。
 
 - 已建立稳定领域入口的逻辑层模块：`messaging_logic`、`moment_logic`、`channel_logic`、`group_logic`、`group_vote_logic`、`group_schedule_logic`、`group_task_logic`、`auth_logic`、`passport_logic`、`user_logic`、`e2ee_logic`、`report_logic`、`user_collect_logic`。
 - 生产中的扩展点保持轻量：`src/lib/imboy_plugin_registry.erl` 作为插件 manifest contract，被 `channel_handler`、`moment_handler`、`group_*_handler`、`report_handler`、后台对应 handler 以及 `imboy_policy` 使用。
