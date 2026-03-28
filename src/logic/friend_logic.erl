@@ -3,6 +3,7 @@
 %  friend 业务逻辑模块
 %%%
 -export([add_friend/4]).
+-export([add_friend/5]).
 -export([confirm_friend/4]).
 -export([confirm_friend_resp/2]).
 -export([delete_friend/2]).
@@ -36,6 +37,12 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     %% 统一转换时间戳为 RFC3339 binary 格式
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     do_add_friend(CurrentUid, To, Payload, CreatedAt2).
+
+%% @doc 兼容旧入口：保留旧 MsgId 参数但复用当前实现
+-spec add_friend(binary(), integer(), binary(), map(), binary() | integer()) ->
+    ok | {error, binary(), binary()}.
+add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
+    add_friend(CurrentUid, To, Payload, CreatedAt).
 
 
 %% @doc 内部函数：实际执行添加好友操作
@@ -72,6 +79,10 @@ confirm_friend(_, _, undefined, _) ->
     {error, <<"Parameter error">>, <<"to">>};
 confirm_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"payload">>};
+confirm_friend(_MsgId, CurrentUid, From, Payload)
+    when is_integer(CurrentUid), is_binary(From), is_binary(Payload) ->
+    To = elib_hashids:encode(CurrentUid),
+    confirm_friend(CurrentUid, From, To, Payload);
 confirm_friend(CurrentUid, From, To, Payload) ->
     FromID = elib_hashids:decode(From),
     ToID = elib_hashids:decode(To),
@@ -138,7 +149,8 @@ confirm_friend(CurrentUid, From, To, Payload) ->
             _ = user_tag_relation_logic:add(ToID, 2, FromID, FromTag2),
             ok
     end,
-    % 为了简单，删除好友关系清理两个缓存
+    % 兼容旧缓存键，同时清理当前 friend_ds 使用的缓存键
+    _ = friend_ds:invalidate_cache(FromID, ToID),
     imboy_cache:flush({is_friend, FromID, ToID}),
     imboy_cache:flush({is_friend, ToID, FromID}),
     {ok, FromID, Remark2, Source}.

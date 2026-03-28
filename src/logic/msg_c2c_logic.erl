@@ -4,6 +4,7 @@
 %%%
 
 -export([c2c/3]).
+-export([c2c/4]).
 -export([c2c_client_ack/3]).
 -export([c2c_revoke/3]).
 -export([c2c_revoke_ack/3]).
@@ -48,9 +49,37 @@ c2c(MsgId, CurrentUid, Data) ->
             {reply, Msg}
     end.
 
+%% @doc 兼容旧入口：保留 To/Payload 形态并复用当前 c2c/3
+-spec c2c(binary(), integer(), binary(), map() | binary()) -> ok | {reply, map()}.
+c2c(MsgId, CurrentUid, To, Payload) ->
+    PayloadMap = compat_payload_map(Payload),
+    Data = #{
+        <<"to">> => To,
+        <<"payload">> => PayloadMap,
+        <<"created_at">> => elib_dt:now(),
+        <<"msg_type">> => maps:get(<<"msg_type">>, PayloadMap, <<>>),
+        <<"action">> => maps:get(<<"action">>, PayloadMap, <<>>),
+        <<"e2ee">> => maps:get(<<"e2ee">>, PayloadMap, null)
+    },
+    c2c(MsgId, CurrentUid, Data).
+
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+-spec compat_payload_map(map() | binary()) -> map().
+compat_payload_map(Payload) when is_map(Payload) ->
+    Payload;
+compat_payload_map(Payload) when is_binary(Payload) ->
+    try jsone:decode(Payload, [{object_format, map}]) of
+        Map when is_map(Map) ->
+            Map;
+        _ ->
+            #{<<"body">> => Payload}
+    catch
+        _:_ ->
+            #{<<"body">> => Payload}
+    end.
 
 -spec policy_violation_reply(binary(), binary()) -> {reply, map()}.
 policy_violation_reply(MsgId, Reason) ->

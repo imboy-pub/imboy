@@ -12,6 +12,7 @@
 %% @param Tag 标签列表或单个标签
 %% @returns ok | binary()
 -export([add/4]).
+-export([list/2]).
 
 %% @doc 移除用户标签关系
 %% 从对象上移除指定标签
@@ -178,16 +179,67 @@ add(Uid, 1, ObjectId, Tag) ->
     do_add(1, Uid, ObjectId, Tag),
     ok;
 add(Uid, 2, ObjectId, Tag) when is_integer(ObjectId) ->
-    do_add(2, Uid, ObjectId, Tag),
+    do_add(2, Uid, ObjectId, normalize_friend_tags(Uid, Tag)),
     ok;
 add(Uid, 2, ObjectId, Tag) ->
-    do_add(2, Uid, elib_hashids:decode(ObjectId), Tag),
+    do_add(2, Uid, elib_hashids:decode(ObjectId), normalize_friend_tags(Uid, Tag)),
     ok.
+
+%% @doc 兼容旧入口：列出好友对象的标签关系
+-spec list(integer(), integer() | binary()) -> {ok, list(map())} | {error, term()}.
+list(Uid, ObjectId) when is_binary(ObjectId) ->
+    list(Uid, elib_hashids:decode(ObjectId));
+list(Uid, ObjectId) ->
+    Where = <<"scene = $1 AND user_id = $2 AND object_id = $3">>,
+    Column = <<"id, tag_id, object_id, created_at">>,
+    user_tag_relation_repo:select_user_tag_relation(
+        Where,
+        [2, Uid, integer_to_binary(ObjectId)],
+        Column
+    ).
 
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
+
+-spec normalize_friend_tags(integer(), list()) -> list().
+normalize_friend_tags(Uid, TagList) when is_list(TagList) ->
+    [normalize_friend_tag(Uid, Tag) || Tag <- TagList];
+normalize_friend_tags(_Uid, TagList) ->
+    TagList.
+
+-spec normalize_friend_tag(integer(), term()) -> term().
+normalize_friend_tag(Uid, Tag) when is_binary(Tag) ->
+    case maybe_tag_id(Tag) of
+        {ok, TagId} ->
+            Tb = user_tag_repo:tablename(),
+            case elib_pg:pluck_value(
+                Tb,
+                <<"name">>,
+                #{id => TagId, creator_user_id => Uid, scene => 2},
+                #{},
+                <<>>
+            ) of
+                <<>> ->
+                    Tag;
+                Name ->
+                    Name
+            end;
+        error ->
+            Tag
+    end;
+normalize_friend_tag(_Uid, Tag) ->
+    Tag.
+
+-spec maybe_tag_id(binary()) -> {ok, integer()} | error.
+maybe_tag_id(Tag) ->
+    try
+        {ok, binary_to_integer(Tag)}
+    catch
+        error:badarg ->
+            error
+    end.
 
 
 -spec do_add(integer(), integer(), any(), any()) -> ok.
@@ -289,4 +341,3 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

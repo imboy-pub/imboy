@@ -61,15 +61,12 @@ groups() ->
     ].
 
 init_per_suite(Config) ->
-    application:set_env(imboy, env, test),
     ct:log("开始用户认证流程测试套件"),
-    {ok, _} = application:ensure_all_started(imboy),
-    Config.
+    eunit_runner:ct_suite_setup(Config).
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     ct:log("结束用户认证流程测试套件"),
-    application:stop(imboy),
-    ok.
+    eunit_runner:ct_suite_cleanup(Config).
 
 init_per_group(_Group, Config) ->
     % 每个测试组开始前清理数据
@@ -138,7 +135,7 @@ signup_with_valid_data_succeeds(_Config) ->
     ?assert(maps:is_key(<<"token">>, UserMap)),
 
     % 验证数据库中存在该用户
-    {ok, User} = user_repo:find_by_mobile(Mobile, <<"id, mobile, email">>),
+    User = user_repo:find_by_mobile(Mobile, <<"id, mobile, email">>),
     ?assertEqual(Mobile, maps:get(<<"mobile">>, User)),
 
     % 清理

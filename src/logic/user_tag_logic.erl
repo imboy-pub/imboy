@@ -6,7 +6,9 @@
 
 -export([page/5]).
 -export([change_name/5]).
+-export([add/2]).
 -export([add/3]).
+-export([save/3]).
 -export([delete/3]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -63,6 +65,34 @@ change_name(0, Uid, Scene, TagId, TagName) ->
 
 %% @doc 添加标签
 %% 添加新的用户标签
+%% 兼容旧入口：默认使用好友场景（scene = 2）
+%% @param Uid 用户ID
+%% @param Tag 标签名称
+%% @return {ok, map()} | {error, binary()}
+-spec add(integer(), binary()) -> {ok, map()} | {error, binary()}.
+add(Uid, Tag) ->
+    case add(Uid, 2, Tag) of
+        {ok, TagId} ->
+            {ok, #{
+                <<"id">> => TagId,
+                <<"name">> => Tag,
+                <<"tag_name">> => Tag
+            }};
+        Error ->
+            Error
+    end.
+
+%% @doc 兼容旧入口：保留 save 名称但复用当前 add/3
+%% @param Uid 用户ID
+%% @param Scene 场景
+%% @param Tag 标签名称
+%% @return {ok, integer()} | {error, binary()}
+-spec save(integer(), integer(), binary()) -> {ok, integer()} | {error, binary()}.
+save(Uid, Scene, Tag) ->
+    add(Uid, Scene, Tag).
+
+%% @doc 添加标签
+%% 添加新的用户标签
 %% @param Uid 用户ID
 %% @param Scene 场景
 %% @param Tag 标签名称
@@ -75,4 +105,3 @@ add(Uid, Scene, Tag) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

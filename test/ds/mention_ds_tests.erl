@@ -17,7 +17,7 @@
 save_mentions_with_empty_list_test_() ->
     ?WITH_MECKS([
         {mention_repo, [
-            {'insert', 5, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
+            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_1">>,
@@ -34,7 +34,7 @@ save_mentions_with_single_user_test_() ->
             {'decode', 1, fun(<<"hash1">>) -> 200 end}
         ]},
         {mention_repo, [
-            {'insert', 5, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
+            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_2">>,
@@ -55,7 +55,7 @@ save_mentions_with_multiple_users_test_() ->
             end}
         ]},
         {mention_repo, [
-            {'insert', 5, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
+            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_3">>,
@@ -72,7 +72,7 @@ save_mentions_with_all_test_() ->
             {'member_uids', 1, fun(_Gid) -> [201, 202, 203, 204, 205] end}
         ]},
         {mention_repo, [
-            {'insert', 5, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
+            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"test_msg_4">>,

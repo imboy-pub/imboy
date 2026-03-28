@@ -108,11 +108,14 @@ EUNIT_OPTS += {timeout, 30}
 #   make eunit EUNIT_CONFIG=config/sys.dev.config     # 使用 dev 配置
 EUNIT_CONFIG ?= config/sys.config
 EUNIT_CONFIG_BASE = $(patsubst %.config,%,$(EUNIT_CONFIG))
+TEST_HTTP_PORT ?= 19800
 EUNIT_ERL_OPTS += -config $(EUNIT_CONFIG_BASE)
 # eunit_runner 在 setup 阶段会读取 application:get_env，需要预先 load 应用
 EUNIT_ERL_OPTS += -eval 'application:load(imboy)'
 # 在测试环境中设置 env 标记
 EUNIT_ERL_OPTS += -eval 'application:set_env(imboy, env, test)'
+# 避免与开发中常驻的本地后端实例争用默认 9800 端口
+EUNIT_ERL_OPTS += -eval 'application:set_env(imboy, http_port, $(TEST_HTTP_PORT))'
 
 # 覆盖 EUNIT_MODS - 只运行测试模块，不运行源码模块
 # 这是解决 make eunit 卡住的关键
@@ -170,6 +173,11 @@ DIALYZER_WARNINGS ?= 50
 # CT 配置选项:
 CT_OPTS ?=
 CT_LOGS_DIR ?= logs/ct
+CT_CONFIG ?= config/sys.config
+CT_CONFIG_BASE = $(patsubst %.config,%,$(CT_CONFIG))
+CT_CONFIG_BASE_ABS = $(abspath $(CT_CONFIG_BASE))
+CT_ERL_ARGS = -config $(CT_CONFIG_BASE_ABS) -eval 'application:load(imboy)' -eval 'application:set_env(imboy, env, test)' -eval 'application:set_env(imboy, http_port, $(TEST_HTTP_PORT))' -eval 'application:set_env(imboy, dsync_enabled, false)'
+CT_OPTS += -erl_args "$(CT_ERL_ARGS)"
 
 FEATURE_SMOKE_BASE_URL ?=
 FEATURE_SMOKE_PUBLIC_PATH ?= /v1/app/features

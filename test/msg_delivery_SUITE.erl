@@ -52,13 +52,12 @@ groups() ->
     ].
 
 init_per_suite(Config) ->
-    application:set_env(imboy, env, test),
     ct:log("开始消息投递测试套件"),
-    Config.
+    eunit_runner:ct_suite_setup(Config).
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     ct:log("结束消息投递测试套件"),
-    ok.
+    eunit_runner:ct_suite_cleanup(Config).
 
 init_per_group(_Group, Config) ->
     Config.

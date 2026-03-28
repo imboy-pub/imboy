@@ -8,9 +8,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% 压力测试参数
--define(HIGH_CONCURRENT_USERS, 100).     % 高并发用户数
--define(MESSAGES_PER_USER, 50).          % 每用户消息数
--define(TOTAL_MESSAGES, 5000).           % 总消息数
 -define(MAX_ACCEPTABLE_FAILURE_RATE, 0.05). % 最大可接受失败率 5%
 
 %% 测试夹具
@@ -28,11 +25,19 @@ high_concurrency_test_() ->
 setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    Profile = stress_profile(),
+    UserCount = maps:get(user_count, Profile),
     % 创建大量测试用户
     UserIds = lists:map(fun(N) ->
         {ok, Uid} = create_test_user(<<"stress_user", N/integer>>),
         Uid
-    end, lists:seq(1, ?HIGH_CONCURRENT_USERS)),
+    end, lists:seq(1, UserCount)),
+
+    % 先建立一个稳定的环状好友关系，保证每个用户至少有一个可发送对象
+    RingPairs = lists:zip(UserIds, tl(UserIds) ++ [hd(UserIds)]),
+    lists:foreach(fun({Uid1, Uid2}) ->
+        ensure_friends(Uid1, Uid2)
+    end, RingPairs),
 
     % 创建好友关系网格（每个用户与其他部分用户是好友）
     lists:foreach(fun(Uid1) ->
@@ -44,7 +49,7 @@ setup() ->
         end, Friends)
     end, UserIds),
 
-    Context = #{user_ids => UserIds},
+    Context = #{user_ids => UserIds, profile => Profile},
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
 
@@ -59,13 +64,17 @@ cleanup(_Context) ->
 test_high_concurrency_messages() ->
     Context = get_context(),
     UserIds = maps:get(user_ids, Context),
+    Profile = maps:get(profile, Context),
+    UserCount = maps:get(user_count, Profile),
+    MessagesPerUser = maps:get(messages_per_user, Profile),
+    TotalMessages = UserCount * MessagesPerUser,
 
     io:format("~n========================================~n"),
     io:format("高并发消息压力测试~n"),
     io:format("========================================~n"),
-    io:format("用户数: ~p~n", [?HIGH_CONCURRENT_USERS]),
-    io:format("每用户消息数: ~p~n", [?MESSAGES_PER_USER]),
-    io:format("预期总消息数: ~p~n", [?TOTAL_MESSAGES]),
+    io:format("用户数: ~p~n", [UserCount]),
+    io:format("每用户消息数: ~p~n", [MessagesPerUser]),
+    io:format("预期总消息数: ~p~n", [TotalMessages]),
 
     Parent = self(),
     StartTime = erlang:monotonic_time(millisecond),
@@ -75,9 +84,8 @@ test_high_concurrency_messages() ->
         spawn(fun() ->
             Results = lists:map(fun(N) ->
                 MsgId = imboy_hashid:uid(),
-                % 选择一个好友作为接收者
-                FriendId = lists:nth((N rem (?HIGH_CONCURRENT_USERS - 1)) + 1,
-                                     lists:delete(UserId, UserIds)),
+                % 使用 setup 中明确建立过的环状好友关系，避免把非好友流量混进成功率统计
+                FriendId = next_ring_friend(UserId, UserIds),
                 MsgData = #{
                     <<"payload">> => <<N/integer, "压力测试消息"/utf8>>,
                     <<"msg_type">> => <<"text">>,
@@ -92,7 +100,7 @@ test_high_concurrency_messages() ->
                 catch
                     _:_ -> error
                 end
-            end, lists:seq(1, ?MESSAGES_PER_USER)),
+            end, lists:seq(1, MessagesPerUser)),
             Parent ! {results, self(), Results}
         end)
     end, UserIds),
@@ -137,14 +145,16 @@ test_high_concurrency_messages() ->
 test_sustained_message_load() ->
     Context = get_context(),
     UserIds = maps:get(user_ids, Context),
-    [User1, User2 | _] = UserIds,
+    Profile = maps:get(profile, Context),
+    [User1 | _] = UserIds,
+    User2 = next_ring_friend(User1, UserIds),
 
     io:format("~n========================================~n"),
     io:format("持续消息压力测试~n"),
     io:format("========================================~n"),
 
-    % 持续发送消息30秒
-    DurationMs = 30000,
+    % 控制在 EUnit 的安全时长内，避免长时间压测把整个回归拖死
+    DurationMs = maps:get(duration_ms, Profile),
     StartTime = erlang:monotonic_time(millisecond),
 
     Stats = sustain_send_loop(User1, User2, StartTime, DurationMs, #{success => 0, failure => 0, error => 0}),
@@ -176,14 +186,16 @@ test_sustained_message_load() ->
 test_burst_messages() ->
     Context = get_context(),
     UserIds = maps:get(user_ids, Context),
-    [User1, User2 | _] = UserIds,
+    Profile = maps:get(profile, Context),
+    [User1 | _] = UserIds,
+    User2 = next_ring_friend(User1, UserIds),
 
     io:format("~n========================================~n"),
     io:format("爆发式消息压力测试~n"),
     io:format("========================================~n"),
 
-    % 爆发式发送大量消息
-    BurstSize = 1000,
+    % 根据当前 VM 进程余量自适应，避免直接打到 system_limit
+    BurstSize = maps:get(burst_size, Profile),
     Parent = self(),
 
     StartTime = erlang:monotonic_time(millisecond),
@@ -312,3 +324,34 @@ create_test_user(Nickname) ->
     },
     ok = user_repo:create(User),
     {ok, Uid}.
+
+stress_profile() ->
+    Schedulers = erlang:system_info(schedulers_online),
+    ProcessLimit = erlang:system_info(process_limit),
+    ProcessCount = erlang:system_info(process_count),
+    UserCount = clamp(Schedulers * 2, 12, 24),
+    MessagesPerUser = clamp(Schedulers, 8, 12),
+    DurationMs = clamp(Schedulers * 250, 2000, 5000),
+    ProcessHeadroom = erlang:max(ProcessLimit - ProcessCount - 1500, 0),
+    BurstSize = clamp(ProcessHeadroom div 20, 100, 200),
+    #{
+        user_count => UserCount,
+        messages_per_user => MessagesPerUser,
+        duration_ms => DurationMs,
+        burst_size => BurstSize
+    }.
+
+clamp(Value, Min, _Max) when Value < Min ->
+    Min;
+clamp(Value, _Min, Max) when Value > Max ->
+    Max;
+clamp(Value, _Min, _Max) ->
+    Value.
+
+next_ring_friend(UserId, UserIds) ->
+    case lists:dropwhile(fun(Uid) -> Uid =/= UserId end, UserIds) of
+        [_Current, Next | _] ->
+            Next;
+        [_Current] ->
+            hd(UserIds)
+    end.

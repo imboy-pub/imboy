@@ -69,16 +69,13 @@ groups() ->
     ].
 
 init_per_suite(Config) ->
-    application:set_env(imboy, env, test),
     ct:log("开始群组管理流程测试套件"),
-    {ok, _} = application:ensure_all_started(imboy),
-    Config.
+    eunit_runner:ct_suite_setup(Config).
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     ct:log("结束群组管理流程测试套件"),
     cleanup_all_test_data(),
-    application:stop(imboy),
-    ok.
+    eunit_runner:ct_suite_cleanup(Config).
 
 init_per_group(_Group, Config) ->
     cleanup_all_test_data(),
@@ -511,12 +508,9 @@ unmute_member_restores_permission(_Config) ->
 
 %% 创建三个测试用户
 create_three_users() ->
-    Rand1 = erlang:unique_integer([positive]) rem 100000,
-    Rand2 = (erlang:unique_integer([positive]) + 1) rem 100000,
-    Rand3 = (erlang:unique_integer([positive]) + 2) rem 100000,
-    Mobile1 = list_to_binary(["13900", integer_to_list(Rand1)]),
-    Mobile2 = list_to_binary(["13900", integer_to_list(Rand2)]),
-    Mobile3 = list_to_binary(["13900", integer_to_list(Rand3)]),
+    Mobile1 = unique_mobile("13900"),
+    Mobile2 = unique_mobile("13900"),
+    Mobile3 = unique_mobile("13900"),
     Password = <<"Test@123456">>,
 
     % 创建用户
@@ -525,15 +519,24 @@ create_three_users() ->
     {ok, _} = passport_logic:signup(Mobile3, Password, <<".@example.com">>, #{}),
 
     % 获取用户 ID
-    {ok, User1} = user_repo:find_by_mobile(Mobile1, <<"id">>),
-    {ok, User2} = user_repo:find_by_mobile(Mobile2, <<"id">>),
-    {ok, User3} = user_repo:find_by_mobile(Mobile3, <<"id">>),
+    User1 = user_repo:find_by_mobile(Mobile1, <<"id">>),
+    User2 = user_repo:find_by_mobile(Mobile2, <<"id">>),
+    User3 = user_repo:find_by_mobile(Mobile3, <<"id">>),
 
     Uid1 = maps:get(<<"id">>, User1),
     Uid2 = maps:get(<<"id">>, User2),
     Uid3 = maps:get(<<"id">>, User3),
 
     {Uid1, Uid2, Uid3}.
+
+unique_mobile(Prefix) ->
+    Suffix = erlang:phash2(
+        {erlang:system_time(microsecond),
+         erlang:unique_integer([monotonic, positive]),
+         self()},
+        1000000
+    ),
+    list_to_binary(io_lib:format("~s~6..0B", [Prefix, Suffix])).
 
 %% 清理用户
 cleanup_users([]) -> ok;

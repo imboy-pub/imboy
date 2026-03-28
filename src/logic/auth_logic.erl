@@ -9,6 +9,7 @@
 
 -export([verify_for_open/3]).
 -export([verify_for_assets/4]).
+-export([logout/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -70,6 +71,18 @@ verify_for_open(Path, Tk, Val) ->
     NewTk = auth_ds:get_token(assets, <<"open">>, V),
     % elib_log:info(io_lib:format("auth_logic:verify_for_open/3 new ~p, Tk:~p;~n", [NewTk, Tk])),
     do_verify_for_assets(NewTk, Tk).
+
+%% @doc 兼容旧测试入口：按设备登出
+-spec logout(integer(), binary()) -> {ok, binary()}.
+logout(Uid, DID) when is_integer(Uid), is_binary(DID) ->
+    Devices = imboy_syn:list_by_uid(Uid),
+    lists:foreach(fun({Pid, {_DType, DeviceId}}) when DeviceId =:= DID ->
+        imboy_syn:leave(Uid, Pid);
+       (_) ->
+        ok
+    end, Devices),
+    ok = user_device_ds:delete(Uid, DID),
+    {ok, <<"success">>}.
 
 %% ===================================================================
 %% Internal Function Definitions
