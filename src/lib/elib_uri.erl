@@ -129,11 +129,15 @@ exclusion_param(Url, Keys) when is_list(Url) ->
     exclusion_param(list_to_binary(Url), Keys);
 exclusion_param(Url, Keys) ->
     UrlMap = uri_string:parse(Url),
-    Query = maps:get(query, UrlMap),
-    Query2 = uri_string:dissect_query(Query),
-    Query3 = [ [K, "=", V, "&"] || {K, V} <- Query2, lists:member(K, Keys) == false ],
-    Query4 = iolist_to_binary(Query3),
-    uri_string:normalize(UrlMap#{query => Query4}).
+    case maps:find(query, UrlMap) of
+        error -> Url;
+        {ok, <<>>} -> Url;
+        {ok, Query} ->
+            Query2 = uri_string:dissect_query(Query),
+            Query3 = [ [K, "=", V, "&"] || {K, V} <- Query2, lists:member(K, Keys) == false ],
+            Query4 = iolist_to_binary(Query3),
+            uri_string:normalize(UrlMap#{query => Query4})
+    end.
 
 
 % lists:droplast(uri_string:normalize(UrlMap#{query => Query4})).
