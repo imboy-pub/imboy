@@ -45,7 +45,7 @@ setup_mock(Module, Expectations) ->
     try
         meck:new(Module, [passthrough]),
         lists:foreach(fun({Func, Arity, Fun}) ->
-            meck:expect(Module, Func, Arity, Fun)
+            meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
         end, Expectations)
     catch
         error:{already_started, _} ->
@@ -53,7 +53,7 @@ setup_mock(Module, Expectations) ->
             meck:unload(Module),
             meck:new(Module, [passthrough]),
             lists:foreach(fun({Func, Arity, Fun}) ->
-                meck:expect(Module, Func, Arity, Fun)
+                meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
             end, Expectations)
     end.
 
@@ -64,7 +64,7 @@ setup_mock(Module, Expectations) ->
 setup_mock(Module, Options, Expectations) ->
     meck:new(Module, Options),
     lists:foreach(fun({Func, Arity, Fun}) ->
-        meck:expect(Module, Func, Arity, Fun)
+        meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
     end, Expectations).
 
 %% @doc 设置 Mock 配置
@@ -73,7 +73,7 @@ setup_mock(Module, Options, Expectations) ->
 setup_mock(MockConfigs) ->
     Mocks = lists:map(fun({Module, Function, Arity, MockFun}) ->
         ok = meck:new(Module, [passthrough]),
-        ok = meck:expect(Module, Function, Arity, MockFun),
+        ok = meck:expect(Module, Function, Arity, normalize_mock_fun(MockFun, Arity)),
         {Module, Function}
     end, MockConfigs),
     Mocks.
@@ -180,7 +180,8 @@ with_db(TestFun) ->
                 TestFun(Conn)
             after
                 % 清理测试数据
-                cleanup_test_data(Conn)
+                cleanup_test_data(Conn),
+                eunit_runner:eunit_cleanup_db(Conn)
             end;
         {error, Reason} ->
             ?debugFmt("Database not available: ~p", [Reason]),
@@ -195,6 +196,40 @@ with_mock(Module, Expectations, TestFun) ->
     after
         cleanup_mock(Module)
     end.
+
+normalize_mock_fun(Fun, Arity) ->
+    {arity, FunArity} = erlang:fun_info(Fun, arity),
+    case FunArity of
+        Arity ->
+            Fun;
+        N when N =:= Arity - 1 ->
+            wrap_drop_first_arg(Fun, Arity);
+        _ ->
+            Fun
+    end.
+
+wrap_drop_first_arg(Fun, 1) ->
+    fun(_A1) ->
+        Fun()
+    end;
+wrap_drop_first_arg(Fun, 2) ->
+    fun(_A1, A2) ->
+        Fun(A2)
+    end;
+wrap_drop_first_arg(Fun, 3) ->
+    fun(_A1, A2, A3) ->
+        Fun(A2, A3)
+    end;
+wrap_drop_first_arg(Fun, 4) ->
+    fun(_A1, A2, A3, A4) ->
+        Fun(A2, A3, A4)
+    end;
+wrap_drop_first_arg(Fun, 5) ->
+    fun(_A1, A2, A3, A4, A5) ->
+        Fun(A2, A3, A4, A5)
+    end;
+wrap_drop_first_arg(Fun, _) ->
+    Fun.
 
 %% ===================================================================
 %% 内部辅助函数
@@ -257,7 +292,9 @@ cleanup_test_data(Conn) ->
              {error, _} -> skip
          end
      end,
-     fun({ok, Conn}) -> test_helper:cleanup_test_data(Conn);
+     fun({ok, Conn}) ->
+         test_helper:cleanup_test_data(Conn),
+         eunit_runner:eunit_cleanup_db(Conn);
         (skip) -> ok
      end,
      fun({ok, Conn}) -> ?_test(TestFun(Conn));

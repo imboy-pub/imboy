@@ -10,6 +10,7 @@
 %% ==================== API ====================
 
 -export([save/4]).
+-export([list/1]).
 -export([login_count/2]).
 -export([device_name/2]).
 -export([delete/2]).
@@ -23,6 +24,19 @@
 %% ===================================================================
 %% API Functions
 %% ===================================================================
+
+%% @doc 获取用户设备列表
+%% @param Uid 用户ID
+%% @return {ok, list(map())} | {error, any()}
+-spec list(integer()) -> {ok, list(map())} | {error, any()}.
+list(Uid) ->
+    Limit = erlang:max(count_by_uid(Uid), 1) + 10,
+    case page(Uid, Limit, 0) of
+        {ok, Rows} ->
+            {ok, [normalize_compat_device(Row) || Row <- Rows]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 获取用户设备列表
 %% @param Uid 用户ID
@@ -132,3 +146,10 @@ update_public_key(Uid, DeviceId, PublicKey, KeyId, Now) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+normalize_compat_device(Row) ->
+    Row#{
+        <<"did">> => maps:get(<<"device_id">>, Row, <<>>),
+        <<"dtype">> => maps:get(<<"device_type">>, Row, <<>>),
+        <<"dname">> => maps:get(<<"device_name">>, Row, <<>>)
+    }.

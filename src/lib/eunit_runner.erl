@@ -5,6 +5,7 @@
     run_fast/0,
     eunit_setup/0,
     eunit_cleanup/1,
+    eunit_cleanup_db/1,
     eunit_try_db/0,
     eunit_setup_with_db/0,
     eunit_setup_db_or_skip/0
@@ -176,17 +177,16 @@ eunit_cleanup(_State) ->
 %% @return {ok, Conn} | {error, Reason}
 -spec eunit_try_db() -> {ok, any()} | {error, any()}.
 eunit_try_db() ->
-    eunit_try_db(100).
+    eunit_try_db(30).
 
 -spec eunit_try_db(non_neg_integer()) -> {ok, any()} | {error, any()}.
 eunit_try_db(0) ->
     {error, no_connection};
 eunit_try_db(AttemptsLeft) ->
-    try pooler:take_member(elib_pg) of
+    Driver = test_sql_driver(),
+    try pooler:take_member(Driver, 100) of
         ConnPid when is_pid(ConnPid) ->
-            % 成功获取连接，立即归还
-            pooler:return_member(elib_pg, ConnPid),
-            {ok, ConnPid};
+            {ok, Driver, ConnPid};
         error_no_members ->
             timer:sleep(100),
             case AttemptsLeft of
@@ -194,6 +194,12 @@ eunit_try_db(AttemptsLeft) ->
                 _ -> eunit_try_db(AttemptsLeft - 1)
             end
     catch
+        exit:{noproc, _} ->
+            timer:sleep(100),
+            case AttemptsLeft of
+                1 -> {error, no_pool};
+                _ -> eunit_try_db(AttemptsLeft - 1)
+            end;
         _:_ ->
             timer:sleep(100),
             case AttemptsLeft of
@@ -206,10 +212,30 @@ eunit_try_db(AttemptsLeft) ->
 %% @return {ok, Conn} | {error, Reason}
 -spec eunit_setup_with_db() -> {ok, any()} | {error, any()}.
 eunit_setup_with_db() ->
-    % 先启动应用
-    _ = eunit_setup(),
-    % 然后尝试连接数据库
-    eunit_try_db().
+    SetupState = eunit_setup(),
+    case eunit_try_db() of
+        {ok, Driver, ConnPid} ->
+            persistent_term:put({?MODULE, db_conn, ConnPid}, {Driver, SetupState}),
+            {ok, ConnPid};
+        {error, Reason} ->
+            eunit_cleanup(SetupState),
+            {error, Reason}
+    end.
+
+%% @doc 归还测试数据库连接并清理应用状态
+-spec eunit_cleanup_db(any()) -> ok.
+eunit_cleanup_db(ConnPid) when is_pid(ConnPid) ->
+    Key = {?MODULE, db_conn, ConnPid},
+    case persistent_term:get(Key, undefined) of
+        {Driver, SetupState} ->
+            persistent_term:erase(Key),
+            _ = catch pooler:return_member(Driver, ConnPid, ok),
+            eunit_cleanup(SetupState);
+        undefined ->
+            ok
+    end;
+eunit_cleanup_db(_) ->
+    ok.
 
 %% @doc 启动应用，如果数据库不可用则返回 skip
 %% @return ok | {skip, Reason}
@@ -218,4 +244,12 @@ eunit_setup_db_or_skip() ->
     case eunit_setup_with_db() of
         {ok, _Conn} -> ok;
         {error, Reason} -> {skip, <<"Database connection not available">>, <<>>, Reason}
+    end.
+
+test_sql_driver() ->
+    case application:get_env(imboy, sql_driver) of
+        {ok, Driver} when is_atom(Driver) ->
+            Driver;
+        _ ->
+            pgsql
     end.

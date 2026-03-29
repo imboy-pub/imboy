@@ -7,6 +7,8 @@
 %%%
 
 -export([send_code/2]).
+-export([signup/4]).
+-export([login/3]).
 -export([do_login/3]).
 -export([do_login/5]).
 -export([do_signup/5]).
@@ -76,6 +78,71 @@ send_code(EMail, <<"email">>) ->
     send_email_code(EMail);
 send_code(_, _) ->
     {error, <<"验证码类型不支持，仅支持 sms 或 email"/utf8>>}.
+
+%% @doc 兼容旧测试入口：明文手机号注册，并直接返回登录态数据
+-spec signup(binary(), binary(), binary(), map()) -> {ok, map()} | {error, binary(), integer()}.
+signup(Mobile, Pwd, Email, PostVals) when is_binary(Mobile), is_binary(Pwd), is_binary(Email), is_map(PostVals) ->
+    case validate_compat_password(Pwd) of
+        ok ->
+            case prepare_compat_mobile(Mobile) of
+                ok ->
+                    Nickname = compat_signup_nickname(Mobile, PostVals),
+                    Email2 = compat_signup_email(Email),
+                    PostVals2 = PostVals#{
+                        <<"nickname">> => Nickname
+                    },
+                    BaseData0 = #{
+                        <<"password">> => elib_password:generate(Pwd),
+                        <<"mobile">> => Mobile,
+                        <<"account">> => Mobile
+                    },
+                    BaseData = case Email2 of
+                        undefined ->
+                            BaseData0;
+                        _ ->
+                            BaseData0#{<<"email">> => Email2}
+                    end,
+                    Data = pick_data_for_insert(BaseData, PostVals2),
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, Uid} ->
+                            User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+                            {ok, login_resp(User, #{})};
+                        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                            {error, <<"账号已被占用"/utf8>>, 400};
+                        {error, Reason} ->
+                            {error, compat_error_message(Reason), 400}
+                    end;
+                {error, Msg, Code} ->
+                    {error, Msg, Code}
+            end;
+        {error, Msg} ->
+            {error, Msg, 400}
+    end.
+
+%% @doc 兼容旧测试入口：使用明文账号密码登录
+-spec login(binary(), binary(), map()) -> {ok, map()} | {error, binary(), integer()}.
+login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(PostVals) ->
+    Type = compat_login_type(Account),
+    Did = maps:get(<<"did">>, PostVals, <<>>),
+    DType = compat_device_type(PostVals, Did),
+    DName = maps:get(<<"dname">>, PostVals, <<>>),
+    Ip = maps:get(<<"ip">>, PostVals, <<"{}">>),
+    PostVals2 = PostVals#{
+        <<"did">> => Did,
+        <<"dtype">> => DType,
+        <<"cos">> => DType,
+        <<"dname">> => DName,
+        <<"ip">> => Ip
+    },
+    case do_login(Type, Account, Pwd, DType, Did) of
+        {ok, Data} ->
+            _ = record_compat_login_success(Data, PostVals2),
+            {ok, Data};
+        {{error, conflict}, ConflictInfo} ->
+            {error, compat_error_message(ConflictInfo), 5100};
+        {error, Msg} ->
+            {error, compat_error_message(Msg), 400}
+    end.
 
 
 -spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.
@@ -442,3 +509,123 @@ login_resp(User, Resp) ->
        <<"status">> => maps:get(<<"status">>, User),
        <<"role">> => 1
       }, Resp).
+
+validate_compat_password(<<>>) ->
+    {error, <<"密码不能为空"/utf8>>};
+validate_compat_password(Pwd) when is_binary(Pwd) ->
+    Len = byte_size(Pwd),
+    HasDigit = lists:any(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Pwd)),
+    HasAlpha = lists:any(
+        fun(C) ->
+            (C >= $a andalso C =< $z) orelse (C >= $A andalso C =< $Z)
+        end, binary_to_list(Pwd)),
+    case Len >= 8 andalso HasDigit andalso HasAlpha of
+        true ->
+            ok;
+        false ->
+            {error, <<"密码格式不正确"/utf8>>}
+    end.
+
+compat_signup_nickname(Mobile, PostVals) ->
+    case maps:get(<<"nickname">>, PostVals, <<>>) of
+        <<>> ->
+            Mobile;
+        Nickname ->
+            Nickname
+    end.
+
+prepare_compat_mobile(Mobile) ->
+    case user_repo:find_by_mobile(Mobile, <<"id,status">>) of
+        #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
+            ok = user_ds:delete_all_related_data(Id),
+            ok;
+        #{<<"id">> := _Id} ->
+            {error, <<"手机号已经被占用了"/utf8>>, 400};
+        _ ->
+            ok
+    end.
+
+compat_signup_email(Email) ->
+    case elib_type:is_email(Email) of
+        false ->
+            undefined;
+        true ->
+            case user_repo:find_by_email(Email, <<"id,status">>) of
+                #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
+                    ok = user_ds:delete_all_related_data(Id),
+                    Email;
+                #{<<"id">> := _Id} ->
+                    undefined;
+                _ ->
+                    Email
+            end
+    end.
+
+compat_login_type(Account) ->
+    case elib_type:is_email(Account) of
+        true ->
+            <<"email">>;
+        false ->
+            <<"mobile">>
+    end.
+
+compat_device_type(PostVals, Did) ->
+    case maps:get(<<"dtype">>, PostVals, maps:get(<<"cos">>, PostVals, <<>>)) of
+        DType when DType == <<"ios">>; DType == <<"android">>; DType == <<"macos">>;
+                    DType == <<"windows">>; DType == <<"linux">>; DType == <<"web">> ->
+            DType;
+        _ ->
+            infer_device_type(Did)
+    end.
+
+infer_device_type(Did) when is_binary(Did) ->
+    LowerDid = binary:lowercase(Did),
+    case binary:match(LowerDid, <<"android">>) of
+        {_, _} ->
+            <<"android">>;
+        nomatch ->
+            case binary:match(LowerDid, <<"web">>) of
+                {_, _} ->
+                    <<"web">>;
+                nomatch ->
+                    case binary:match(LowerDid, <<"mac">>) of
+                        {_, _} ->
+                            <<"macos">>;
+                        nomatch ->
+                            case binary:match(LowerDid, <<"win">>) of
+                                {_, _} ->
+                                    <<"windows">>;
+                                nomatch ->
+                                    case binary:match(LowerDid, <<"linux">>) of
+                                        {_, _} ->
+                                            <<"linux">>;
+                                        nomatch ->
+                                            <<"ios">>
+                                    end
+                            end
+                    end
+            end
+    end.
+
+record_compat_login_success(Data, PostVals) ->
+    UidHash = maps:get(<<"uid">>, Data, <<>>),
+    Uid = elib_hashids:decode(UidHash),
+    Did = maps:get(<<"did">>, PostVals, <<>>),
+    Now = elib_dt:now(),
+    _ = user_device_ds:save(Now, Uid, Did, PostVals),
+    _ = user_ds:update_friends_last_seen_at(Uid, Now),
+    _ = message_ds:check_and_notify_offline_msgs(Uid),
+    ok.
+
+compat_error_message(#{<<"reason">> := Reason}) when is_binary(Reason) ->
+    Reason;
+compat_error_message(Map) when is_map(Map) ->
+    jsx:encode(Map);
+compat_error_message(Reason) when is_binary(Reason) ->
+    Reason;
+compat_error_message(Reason) when is_list(Reason) ->
+    unicode:characters_to_binary(Reason);
+compat_error_message(Reason) when is_atom(Reason) ->
+    atom_to_binary(Reason, utf8);
+compat_error_message(Reason) ->
+    ec_cnv:to_binary(Reason).

@@ -194,7 +194,8 @@ change_scene_tag(_Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
     end,
 
     TagBinWithComma = <<TagBin/binary, ",">>,
-    {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId]),
+    ObjectId2 = normalize_scene_object_id(Scene, ObjectId),
+    {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId2]),
     ok.
 
 %% @doc 清理缓存
@@ -209,13 +210,24 @@ flush_subtitle(TagId) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+-spec normalize_scene_object_id(integer(), any()) -> any().
+normalize_scene_object_id(2, ObjectId) when is_binary(ObjectId) ->
+    try
+        binary_to_integer(ObjectId)
+    catch
+        error:badarg ->
+            ObjectId
+    end;
+normalize_scene_object_id(_Scene, ObjectId) ->
+    ObjectId.
+
 %% @doc 内部函数：添加标签（Scene 已验证）
 %% @private
 %% @param Uid 用户ID
 %% @param Scene 场景（整数）
 %% @param Tag 标签名称
-%% @return {ok, TagId}
--spec add_internal(integer(), integer(), binary()) -> {ok, integer()}.
+%% @return {ok, TagId} | {error, term()}
+-spec add_internal(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_internal(Uid, Scene, Tag) ->
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
     TagId = elib_pg:pluck_value(Tb, <<"id">>,
@@ -229,8 +241,21 @@ add_internal(Uid, Scene, Tag) ->
                 referer_time => 0,
                 created_at => elib_dt:now()
             },
-            {ok, Id, _} = elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)),
-            {ok, Id};
+            case elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)) of
+                {ok, Id, _} ->
+                    {ok, Id};
+                {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                    TagId2 = elib_pg:pluck_value(Tb, <<"id">>,
+                        #{scene => Scene, creator_user_id => Uid, name => Tag}, #{}, 0),
+                    case TagId2 of
+                        0 ->
+                            {error, <<"tag_already_exists">>};
+                        _ ->
+                            {ok, TagId2}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         _ ->
             {ok, TagId}
     end.

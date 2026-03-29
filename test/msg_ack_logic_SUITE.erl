@@ -42,57 +42,12 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    % 设置测试环境并启动必要应用（含 lager/pooler 等依赖）
     ct:log("开始 msg_ack_logic 测试套件"),
-    {ok, OldCwd} = file:get_cwd(),
-    ProjectRoot = project_root_dir(OldCwd),
-    case file:set_cwd(ProjectRoot) of
-        ok ->
-            SetupState = eunit_runner:eunit_setup(),
-            [{setup_state, SetupState}, {old_cwd, OldCwd} | Config];
-        {error, Reason} ->
-            {skip, io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
-    end.
+    eunit_runner:ct_suite_setup(Config).
 
 end_per_suite(Config) ->
-    case lists:keyfind(setup_state, 1, Config) of
-        {setup_state, SetupState} ->
-            eunit_runner:eunit_cleanup(SetupState);
-        false ->
-            ok
-    end,
-    case lists:keyfind(old_cwd, 1, Config) of
-        {old_cwd, OldCwd} ->
-            _ = file:set_cwd(OldCwd),
-            ok;
-        false ->
-            ok
-    end,
     ct:log("结束 msg_ack_logic 测试套件"),
-    ok.
-
-project_root_dir() ->
-    project_root_dir(".").
-
-project_root_dir(StartDir) ->
-    find_project_root(filename:absname(StartDir), 10).
-
-find_project_root(Dir, 0) ->
-    Dir;
-find_project_root(Dir, N) ->
-    ConfigPath = filename:join([Dir, "config", "sys.local.config"]),
-    case filelib:is_regular(ConfigPath) of
-        true ->
-            Dir;
-        false ->
-            Parent = filename:dirname(Dir),
-            case Parent =:= Dir of
-                true ->
-                    Dir;
-                false ->
-                    find_project_root(Parent, N - 1)
-            end
-    end.
+    eunit_runner:ct_suite_cleanup(Config).
 
 init_per_testcase(_TestCase, Config) ->
     % 每个测试用例前的初始化

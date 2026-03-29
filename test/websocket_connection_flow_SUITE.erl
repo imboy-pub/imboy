@@ -65,16 +65,13 @@ groups() ->
     ].
 
 init_per_suite(Config) ->
-    application:set_env(imboy, env, test),
     ct:log("开始 WebSocket 连接流程测试套件"),
-    {ok, _} = application:ensure_all_started(imboy),
-    Config.
+    eunit_runner:ct_suite_setup(Config).
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     ct:log("结束 WebSocket 连接流程测试套件"),
     cleanup_all_test_data(),
-    application:stop(imboy),
-    ok.
+    eunit_runner:ct_suite_cleanup(Config).
 
 init_per_group(_Group, Config) ->
     cleanup_all_test_data(),
@@ -494,8 +491,7 @@ stale_connection_cleanup(_Config) ->
 
 %% 创建测试用户
 create_test_user() ->
-    Rand = erlang:unique_integer([positive]) rem 100000,
-    Mobile = list_to_binary(["13700", integer_to_list(Rand)]),
+    Mobile = unique_mobile("13700"),
     Password = <<"Test@123456">>,
 
     % 清理可能存在的用户
@@ -509,10 +505,8 @@ create_test_user() ->
 
 %% 创建两个测试用户
 create_two_users() ->
-    Rand1 = erlang:unique_integer([positive]) rem 100000,
-    Rand2 = (erlang:unique_integer([positive]) + 1) rem 100000,
-    Mobile1 = list_to_binary(["13700", integer_to_list(Rand1)]),
-    Mobile2 = list_to_binary(["13700", integer_to_list(Rand2)]),
+    Mobile1 = unique_mobile("13700"),
+    Mobile2 = unique_mobile("13700"),
     Password = <<"Test@123456">>,
 
     % 创建用户
@@ -520,13 +514,22 @@ create_two_users() ->
     {ok, _} = passport_logic:signup(Mobile2, Password, <<".@example.com">>, #{}),
 
     % 获取用户 ID
-    {ok, User1} = user_repo:find_by_mobile(Mobile1, <<"id">>),
-    {ok, User2} = user_repo:find_by_mobile(Mobile2, <<"id">>),
+    User1 = user_repo:find_by_mobile(Mobile1, <<"id">>),
+    User2 = user_repo:find_by_mobile(Mobile2, <<"id">>),
 
     Uid1 = maps:get(<<"id">>, User1),
     Uid2 = maps:get(<<"id">>, User2),
 
     {Uid1, Uid2}.
+
+unique_mobile(Prefix) ->
+    Suffix = erlang:phash2(
+        {erlang:system_time(microsecond),
+         erlang:unique_integer([monotonic, positive]),
+         self()},
+        1000000
+    ),
+    list_to_binary(io_lib:format("~s~6..0B", [Prefix, Suffix])).
 
 %% 清理用户
 cleanup_user(Uid) ->

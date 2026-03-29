@@ -48,7 +48,7 @@
                  skip
          end
      end,
-     fun({ok, _Conn}) -> ok;
+     fun({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
         (skip) -> ok
      end,
      fun({ok, _Conn}) ->
@@ -96,7 +96,7 @@
 
      end,
 
-     fun(Conn) when is_pid(Conn) -> ok;
+     fun(Conn) when is_pid(Conn) -> eunit_runner:eunit_cleanup_db(Conn);
 
         (skip) -> ok
 

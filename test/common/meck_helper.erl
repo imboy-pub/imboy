@@ -81,7 +81,7 @@ setup_mock(Module, Options, Expectations, Retries) ->
     try
         meck:new(Module, Options),
         lists:foreach(fun({Func, Arity, Fun}) ->
-            meck:expect(Module, Func, Arity, Fun)
+            meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
         end, Expectations),
         {ok, Module}
     catch
@@ -134,6 +134,40 @@ verify_mock(Module) ->
         _:Error ->
             {error, Error}
     end.
+
+normalize_mock_fun(Fun, Arity) ->
+    {arity, FunArity} = erlang:fun_info(Fun, arity),
+    case FunArity of
+        Arity ->
+            Fun;
+        N when N =:= Arity - 1 ->
+            wrap_drop_first_arg(Fun, Arity);
+        _ ->
+            Fun
+    end.
+
+wrap_drop_first_arg(Fun, 1) ->
+    fun(_A1) ->
+        Fun()
+    end;
+wrap_drop_first_arg(Fun, 2) ->
+    fun(_A1, A2) ->
+        Fun(A2)
+    end;
+wrap_drop_first_arg(Fun, 3) ->
+    fun(_A1, A2, A3) ->
+        Fun(A2, A3)
+    end;
+wrap_drop_first_arg(Fun, 4) ->
+    fun(_A1, A2, A3, A4) ->
+        Fun(A2, A3, A4)
+    end;
+wrap_drop_first_arg(Fun, 5) ->
+    fun(_A1, A2, A3, A4, A5) ->
+        Fun(A2, A3, A4, A5)
+    end;
+wrap_drop_first_arg(Fun, _) ->
+    Fun.
 
 %% @doc 验证 Mock 调用（带期望）
 %% @param Module Mock 的模块名

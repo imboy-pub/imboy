@@ -10,7 +10,7 @@ setup() ->
     Pid.
 
 cleanup(_Pid) ->
-    eunit_runner:eunit_cleanup({app_started, imboy}).
+    eunit_runner:eunit_cleanup_db(_Pid).
 
 %% ===================================================================
 %% Test Generators

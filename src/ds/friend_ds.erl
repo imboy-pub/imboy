@@ -11,6 +11,8 @@
 -export([page_by_cid/4]).
 -export([page_by_tag/5]).
 -export([change_remark/3]).
+-export([save/3]).
+-export([find_by_users/2]).
 -export([set_category_id/3]).
 -export([confirm_friend/7]).
 -export([delete/2]).
@@ -248,6 +250,26 @@ page(Where, WhereArgs, Fields) ->
 -spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 change_remark(FromUid, ToUid, Remark) ->
     friend_repo:change_remark(FromUid, ToUid, Remark).
+
+%% @doc 兼容旧入口：直接保存好友关系
+-spec save(integer(), integer(), map()) -> ok.
+save(FromUid, ToUid, Data) ->
+    Remark = maps:get(<<"remark">>, Data, <<>>),
+    Tag = maps:get(<<"tag">>, Data, <<>>),
+    Setting = maps:without([<<"remark">>, <<"tag">>], Data),
+    ok = friend_repo:confirm_friend(false, FromUid, ToUid, Remark, Setting, Tag, elib_dt:now()),
+    invalidate_cache(FromUid, ToUid).
+
+%% @doc 兼容旧入口：按双方用户查询好友关系
+-spec find_by_users(integer(), integer()) -> {ok, map()} | {error, not_found}.
+find_by_users(FromUid, ToUid) ->
+    Fields = [<<"remark">>, <<"tag">>, <<"category_id">>, <<"created_at">>],
+    case friend_repo:friend_fields(FromUid, ToUid, Fields) of
+        {ok, [Row | _]} ->
+            {ok, Row};
+        _ ->
+            {error, not_found}
+    end.
 
 %% @doc 设置好友分类ID
 %%

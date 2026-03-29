@@ -6,6 +6,7 @@
 %%%
 
 -export([add/2,
+         add/3,
          remove/2]).
 -export([page/3]).
 -export([in_denylist/2]).
@@ -63,6 +64,12 @@ add(Uid, DeniedUserId) ->
     imboy_cache:flush(Key),
     Now.
 
+%% @doc 兼容旧入口：保留 remark 参数并返回 ok
+-spec add(integer(), integer(), binary()) -> ok.
+add(Uid, DeniedUserId, _Remark) ->
+    _ = add(Uid, DeniedUserId),
+    ok.
+
 
 %% @doc 移除黑名单
 %% 将用户从黑名单中移除
@@ -97,4 +104,3 @@ in_denylist(Uid, DeniedUserId) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

@@ -7,6 +7,7 @@
 -include("log.hrl").
 
 -export([tablename/0]).
+-export([read/2]).
 -export([read_msg/4]).
 -export([write_msg/9]).
 -export([delete_msg/1]).
@@ -26,6 +27,15 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_s2c">>).
+
+
+%% @doc 兼容旧入口：按接收者读取离线 S2C 消息
+-spec read(integer(), integer()) -> {ok, list(map())} | {error, any()}.
+read(ToUid, Limit) ->
+    Column = <<"id, payload, from_id, to_id,
+        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
+    Where = <<"WHERE to_id = $1">>,
+    read_msg(Where, [ToUid], Column, Limit).
 
 
 -spec read_msg(binary(), list(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
