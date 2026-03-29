@@ -245,7 +245,7 @@ effective_plugins(Features) ->
             ),
             Manifest#{enabled => Enabled}
         end,
-        imboy_plugin_registry:all()
+        imboy_plugin_registry:manifests()
     ).
 
 -spec effective_from_configs(term(), term(), term()) -> map().
@@ -426,7 +426,7 @@ plugin_origin(PluginName, SavedFeatures, SavedPlugins) ->
         true ->
             <<"override">>;
         false ->
-            FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+            FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:manifest(PluginName), []),
             case lists:any(fun(FeatureKey) -> maps:is_key(public_key(FeatureKey), SavedFeatures) end, FeatureKeys) of
                 true ->
                     <<"feature_overrides">>;
@@ -920,7 +920,7 @@ plugin_manifest_by_public_ref(PluginRef) ->
         undefined ->
             undefined;
         PluginName ->
-            imboy_plugin_registry:get(PluginName)
+            imboy_plugin_registry:manifest(PluginName)
     end.
 
 -spec feature_name_from_public_key(binary()) -> atom() | undefined.
@@ -1177,7 +1177,7 @@ compact_saved_plugin_overrides(FeatureOverrides0) ->
 
 -spec plugin_override_candidate(atom(), map()) -> {ok, boolean(), [atom()]} | error.
 plugin_override_candidate(PluginName, FeatureOverrides) ->
-    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:manifest(PluginName), []),
     Values = [maps:get(Key, FeatureOverrides, '$missing') || Key <- FeatureKeys],
     case Values of
         [] ->
@@ -1289,7 +1289,7 @@ plugin_managed_feature_names() ->
     lists:usort(
         lists:append([
             maps:get(feature_keys, Manifest, [])
-            || Manifest <- maps:values(imboy_plugin_registry:all())
+            || Manifest <- maps:values(imboy_plugin_registry:manifests())
         ])
     ).
 
@@ -1335,7 +1335,7 @@ feature_plugin_owner(FeatureName) ->
 feature_plugin_owner(_FeatureName, []) ->
     undefined;
 feature_plugin_owner(FeatureName, [PluginName | Rest]) ->
-    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:get(PluginName), []),
+    FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:manifest(PluginName), []),
     case lists:member(FeatureName, FeatureKeys) of
         true ->
             PluginName;
@@ -1349,7 +1349,7 @@ plugin_meta_catalog() ->
         fun(_Name, Manifest) ->
             public_plugin_manifest(Manifest)
         end,
-        imboy_plugin_registry:all()
+        imboy_plugin_registry:manifests()
     ).
 
 -spec editor_order_catalog() -> map().
@@ -1845,7 +1845,7 @@ normalize_plugin_payload(Value, ExistingFeatureOverrides) ->
                 Item ->
                     case parse_toggle_payload(Item) of
                         {ok, Enabled} ->
-                            Manifest = imboy_plugin_registry:get(PluginName),
+                            Manifest = imboy_plugin_registry:manifest(PluginName),
                             FeatureKeys = maps:get(feature_keys, Manifest, []),
                         {ok,
                                 lists:foldl(
@@ -1900,7 +1900,7 @@ plugin_clear_payload(PluginName, ExistingFeatureOverrides) ->
 
 -spec preserve_plugin_feature_overrides(atom(), map()) -> map().
 preserve_plugin_feature_overrides(PluginName, ExistingFeatureOverrides) ->
-    Manifest = imboy_plugin_registry:get(PluginName),
+    Manifest = imboy_plugin_registry:manifest(PluginName),
     FeatureKeys = maps:get(feature_keys, Manifest, []),
     lists:foldl(
         fun(FeatureKey, Acc) ->
