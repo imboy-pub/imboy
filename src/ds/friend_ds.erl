@@ -22,6 +22,9 @@
 -include("log.hrl").
 -include("common.hrl").
 
+%% 缓存 TTL 常量（秒）— 好友关系缓存统一 5 分钟
+-define(CACHE_TTL_FRIEND, 300).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -79,8 +82,7 @@ is_friend(FromUid, ToUid, Field) ->
                           {false, <<>>}
                   end
           end,
-    %% 【缓存一致性修复】缓存时间从 1 天缩短到 5 分钟（300 秒）
-    imboy_cache:memo(Fun, Key, 300).
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
 
 %% @doc 检查好友关系并获取多个字段值
 %%
@@ -105,9 +107,7 @@ is_friend_fields(FromUid, ToUid, Fields) ->
                           {false, #{}}
                   end
           end,
-    %% 【缓存一致性修复】缓存时间从 1 天缩短到 5 分钟（300 秒）
-    imboy_cache:memo(Fun, Key, 300).
-
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
 %% @doc 分页获取用户好友列表
 %%
 %% 使用默认参数分页获取用户的好友列表
@@ -348,8 +348,7 @@ check_relationship(FromUid, ToUid) ->
                 {false, false}
         end
     end,
-    % 【缓存一致性修复】统一缓存时间为 5 分钟（300 秒），与 is_friend/3 保持一致
-    imboy_cache:memo(Fun, Key, 300).
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
 
 %% @doc 确认好友关系
 %% @param IsFriend 是否已经是好友

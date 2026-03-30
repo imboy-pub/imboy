@@ -165,18 +165,20 @@ count_by_to_id(ToUid) ->
 %% @param ToUid 接收者用户ID
 %% @param Limit 保留的消息数量限制
 %% @return ok | {error, Reason}
-%% @details 删除最旧的消息，保留最新的指定数量消息
+%% @details 使用单条 SQL 批量删除最旧消息，避免 N+1 问题
 -spec delete_overflow_msg(integer(), integer()) -> ok | {error, any()}.
 delete_overflow_msg(ToUid, Limit) ->
     Tb = tablename(),
-    Where = <<" WHERE to_id = $1 ORDER BY id ASC LIMIT $2">>,
-    Sql = <<"SELECT id FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:query(Sql, [ToUid, Limit]) of
-        {ok, []} ->
-            ok;
-        {ok, Rows} ->
-            _ = [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
-            ok
+    Sql = <<
+        "DELETE FROM ", Tb/binary,
+        " WHERE ctid IN ("
+        "   SELECT ctid FROM ", Tb/binary,
+        "   WHERE to_id = $1 ORDER BY id ASC LIMIT $2"
+        " )"
+    >>,
+    case elib_pg:execute(Sql, [ToUid, Limit]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 删除用户的所有C2C离线消息

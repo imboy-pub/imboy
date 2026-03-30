@@ -55,12 +55,14 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     ok.
 
 
-%% @doc 查询好友关系中的特定字段值
+%% @doc 查询好友关系的字段值（单字段或多字段）
 %% @param FromID 发起好友关系的用户ID
 %% @param ToID 接收好友关系的用户ID
-%% @param Field 要查询的字段名
-%% @return {ok, Rows} 查询成功返回列和行数据（map） | {error, Reason} 查询失败
--spec friend_field(integer(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
+%% @param Field 字段名或字段列表，如 <<"remark">> 或 [<<"remark">>, <<"created_at">>]
+%% @return {ok, Rows} | {error, Reason}
+-spec friend_field(integer(), integer(), binary() | [binary()]) -> {ok, list(map())} | {error, any()}.
+friend_field(FromID, ToID, Field) when is_list(Field) ->
+    friend_fields(FromID, ToID, Field);
 friend_field(FromID, ToID, Field) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
@@ -113,23 +115,22 @@ count_by_uid(UID) ->
     end.
 
 
-%% @doc 删除好友关系
+%% @doc 删除好友关系（双向，单条 SQL 原子操作）
 %% @param FromID 发起好友关系的用户ID
 %% @param ToID 接收好友关系的用户ID
 %% @return ok | {error, any()}
 -spec delete(integer(), integer()) -> ok | {error, any()}.
 delete(FromID, ToID) ->
-    %% 【原子性修复】使用事务确保双向删除的原子性
     Tb = tablename(),
-    elib_pg:with_tx(fun(Conn) ->
-        % 删除正向关系
-        Where1 = <<"from_user_id = $1 AND to_user_id = $2">>,
-        {ok, _} = elib_pg:execute(Conn, <<"DELETE FROM ", Tb/binary, " WHERE ", Where1/binary>>, [FromID, ToID]),
-        % 删除反向关系
-        Where2 = <<"from_user_id = $1 AND to_user_id = $2">>,
-        {ok, _} = elib_pg:execute(Conn, <<"DELETE FROM ", Tb/binary, " WHERE ", Where2/binary>>, [ToID, FromID]),
-        ok
-    end).
+    Sql = <<
+        "DELETE FROM ", Tb/binary,
+        " WHERE (from_user_id = $1 AND to_user_id = $2)"
+        "    OR (from_user_id = $2 AND to_user_id = $1)"
+    >>,
+    case elib_pg:execute(Sql, [FromID, ToID]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 移动好友到指定分类
 %% @param FromUID 当前用户ID
