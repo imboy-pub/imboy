@@ -326,7 +326,7 @@ decode_websocket_message(Data) ->
 check_and_notify_offline_msgs(Uid) ->
     % ?DEBUG_LOG([check_and_notify_offline_msgs, 1, Uid]),
     % 检查各类型离线消息数量
-    C2CMsgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
+    C2CMsgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
     C2GMsgs = msg_c2g_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
     S2CMsgs = msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
 

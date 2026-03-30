@@ -62,7 +62,14 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
         false ->
             ok
     end,
-    msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
+    case msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE) of
+        ok ->
+            {ok, 1};
+        {ok, _Count} = Ok ->
+            Ok;
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 %% @doc 存储点对点消息（v2.0 格式，支持 msg_type 和 e2ee）
 %%
@@ -96,16 +103,18 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
 
 
-%% @doc 读取点对点消息
+%% @doc 兼容历史 read_msg/2 单条消息查询入口
 %%
-%% 从数据库中读取指定用户的消息，默认从最早的消息开始读取
+%% 当前离线消息拉取统一走 read_msg/3；保留 read_msg/2 以兼容旧调用方。
 %%
-%% @param ToUid 接收方用户ID
-%% @param Limit 读取消息数量限制
-%% @returns list() 消息列表，每条消息包含完整信息
--spec read_msg(any(), integer()) -> [map()].
-read_msg(ToUid, Limit) ->
-    read_msg(ToUid, Limit, undefined).
+%% @param _ToUid 历史接口保留参数，当前不参与查询
+%% @param MsgId 消息主键或消息ID
+%% @returns {ok, Msg} | {error, Reason}
+-spec read_msg(any(), integer() | binary()) -> {ok, map()} | {error, any()}.
+read_msg(_ToUid, MsgId) when is_binary(MsgId) ->
+    find_msg_by_id(MsgId);
+read_msg(_ToUid, MsgId) when is_integer(MsgId) ->
+    {error, not_found}.
 
 %% @doc 读取点对点消息（带时间戳参数）
 %%
@@ -136,16 +145,17 @@ read_msg(ToUid, Limit, Ts) ->
 %%
 %% @param Id 消息ID
 %% @returns ok 表示操作成功
--spec delete_msg(any()) -> ok.
+-spec delete_msg(any()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_msg(Id) ->
-    _ = msg_c2c_repo:delete_msg(Id),
-    ok.
+    msg_c2c_repo:delete_msg(Id).
 
 
 %% @doc 根据消息ID查找单条消息（用于撤回权限验证）
 %% @param MsgId 消息唯一ID
 %% @return {ok, MsgMap} | {error, Reason}
--spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
+-spec find_msg_by_id(binary() | integer()) -> {ok, map()} | {error, any()}.
+find_msg_by_id(MsgId) when is_integer(MsgId) ->
+    {error, not_found};
 find_msg_by_id(MsgId) ->
     msg_c2c_repo:find_msg_by_id(MsgId).
 
@@ -161,6 +171,12 @@ find_msg_by_id(MsgId) ->
 %% @param ToId 接收方用户ID
 %% @returns ok | {error, Reason}
 -spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+revoke_offline_msg(NowTs, MsgId, FromId, ToId, Payload)
+        when is_integer(NowTs), is_binary(MsgId), is_integer(FromId), is_integer(ToId), is_binary(Payload) ->
+    revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId);
+revoke_offline_msg(NowTs, MsgId, FromId, ToId, Payload)
+        when is_binary(NowTs), is_binary(MsgId), is_integer(FromId), is_integer(ToId), is_binary(Payload) ->
+    revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId);
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
@@ -213,6 +229,12 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) -
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}
 -spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+edit_offline_msg(NowTs, MsgId, FromId, ToId, Payload)
+        when is_integer(NowTs), is_binary(MsgId), is_integer(FromId), is_integer(ToId), is_binary(Payload) ->
+    edit_offline_msg(Payload, NowTs, MsgId, FromId, ToId);
+edit_offline_msg(NowTs, MsgId, FromId, ToId, Payload)
+        when is_binary(NowTs), is_binary(MsgId), is_integer(FromId), is_integer(ToId), is_binary(Payload) ->
+    edit_offline_msg(Payload, NowTs, MsgId, FromId, ToId);
 edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
     case elib_pg:update(

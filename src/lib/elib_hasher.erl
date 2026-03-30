@@ -1,6 +1,6 @@
 -module(elib_hasher).
 
--export([md5/1]).
+-export([md5/1, hash/1]).
 -export([hmac_sha256/2,
          hmac_sha512/2]).
 
@@ -46,6 +46,11 @@ decoded_field(Field) ->
 md5(Str) ->
     Sig = erlang:md5(Str),
     iolist_to_binary([ io_lib:format("~2.16.0b", [S]) || S <- binary_to_list(Sig) ]).
+
+%% 兼容历史调用入口，保留旧的 hash/1 名称。
+-spec hash(binary() | list()) -> binary().
+hash(Str) ->
+    md5(Str).
 
 % elib_hasher:hmac_sha512("", "").
 -spec hmac_sha512(binary(), binary() | iolist()) -> binary().
