@@ -205,7 +205,8 @@ write_msg_with_empty_body_test_() ->
         Result = msg_c2c_ds:write_msg(CreatedAt, MsgId, Body, FromUid, ToUid, CreatedAt),
         case Result of
             {ok, _} -> ok;
-            {error, _} -> ok
+            {error, _} -> ok;
+            ok -> ok
         end
     end).
 
@@ -219,6 +220,7 @@ write_msg_with_large_body_test_() ->
         Result = msg_c2c_ds:write_msg(CreatedAt, MsgId, LargeBody, FromUid, ToUid, CreatedAt),
         case Result of
             {ok, _} -> ok;
-            {error, _} -> ok
+            {error, _} -> ok;
+            ok -> ok
         end
     end).

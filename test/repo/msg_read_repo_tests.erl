@@ -26,7 +26,7 @@ tablename_returns_correct_table_name_test_() ->
 %% ===================================================================
 
 save_read_with_valid_data_succeeds_test_() ->
-    ?TEST_WITH_DB(fun(Conn) ->
+    ?TEST_WITH_CONN(fun(Conn) ->
         MsgId = <<"msg_test_123">>,
         FromUid = 123,
         ToUid = 456,
@@ -57,7 +57,7 @@ save_read_with_valid_data_succeeds_test_() ->
 %% ===================================================================
 
 save_read_is_idempotent_test_() ->
-    ?TEST_WITH_DB(fun(Conn) ->
+    ?TEST_WITH_CONN(fun(Conn) ->
         MsgId = <<"msg_test_idempotent">>,
         FromUid = 123,
         ToUid = 456,
@@ -92,7 +92,7 @@ save_read_is_idempotent_test_() ->
 %% ===================================================================
 
 get_read_status_with_existing_record_returns_status_test_() ->
-    ?TEST_WITH_DB(fun(Conn) ->
+    ?TEST_WITH_CONN(fun(Conn) ->
         MsgId = <<"msg_test_get_status">>,
         FromUid = 123,
         ToUid = 456,
@@ -114,7 +114,7 @@ get_read_status_with_existing_record_returns_status_test_() ->
 
 
 get_read_status_with_no_records_returns_empty_list_test_() ->
-    ?TEST_WITH_DB(fun(_Conn) ->
+    ?TEST_WITH_DB(fun() ->
         MsgId = <<"msg_test_nonexistent">>,
         FromUid = 999,
 
@@ -129,7 +129,7 @@ get_read_status_with_no_records_returns_empty_list_test_() ->
 %% ===================================================================
 
 delete_read_records_deletes_records_test_() ->
-    ?TEST_WITH_DB(fun(Conn) ->
+    ?TEST_WITH_CONN(fun(Conn) ->
         MsgId = <<"msg_test_delete">>,
         FromUid = 123,
         ToUid = 456,

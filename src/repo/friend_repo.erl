@@ -6,7 +6,7 @@
 -include("log.hrl").
 
 -export([tablename/0]).
--export([list_by_uid/2]).
+-export([list_by_uid/2, list_by_uid/3]).
 -export([count_by_uid/1]).
 -export([friend_field/3]).
 -export([friend_fields/3]).
@@ -55,14 +55,12 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     ok.
 
 
-%% @doc 查询好友关系的字段值（单字段或多字段）
+%% @doc 查询好友关系的字段值（单字段）
 %% @param FromID 发起好友关系的用户ID
 %% @param ToID 接收好友关系的用户ID
-%% @param Field 字段名或字段列表，如 <<"remark">> 或 [<<"remark">>, <<"created_at">>]
+%% @param Field 字段名，如 <<"remark">>
 %% @return {ok, Rows} | {error, Reason}
--spec friend_field(integer(), integer(), binary() | [binary()]) -> {ok, list(map())} | {error, any()}.
-friend_field(FromID, ToID, Field) when is_list(Field) ->
-    friend_fields(FromID, ToID, Field);
+-spec friend_field(integer(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
 friend_field(FromID, ToID, Field) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),

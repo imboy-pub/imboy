@@ -53,15 +53,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
     E2EE = maps:get(<<"e2ee">>, PayloadMap, null), % map() | null
 
-    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    Count = msg_c2c_repo:count_by_to_id(To),
-    _ = case Count >= ?SAVE_MSG_LIMIT of
-        true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
-        false ->
-            ok
-    end,
+    % 检查并清理溢出消息
+    ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
 
 %% @doc 存储点对点消息（v2.0 格式，支持 msg_type 和 e2ee）
@@ -84,15 +77,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
-    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    Count = msg_c2c_repo:count_by_to_id(To),
-    _ = case Count >= ?SAVE_MSG_LIMIT of
-        true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
-        false ->
-            ok
-    end,
+    % 检查并清理溢出消息
+    ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
 
 
@@ -257,6 +243,26 @@ read_offline_msg(MsgId, FromId, ToId, ReadAt, Action) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% @doc 检查并清理溢出消息（公共逻辑，DRY）
+%%
+%% 检查指定用户的离线消息数量，如果超过限制则异步删除最旧的消息
+%%
+%% @param ToUid 接收方用户ID
+%% @returns ok
+-spec check_and_delete_overflow(integer()) -> ok.
+check_and_delete_overflow(ToUid) ->
+    Count = msg_c2c_repo:count_by_to_id(ToUid),
+    case Count >= ?SAVE_MSG_LIMIT of
+        true ->
+            Limit = Count - ?SAVE_MSG_LIMIT + 1,
+            _ = elib_async:async_retry(
+                fun() -> msg_c2c_repo:delete_overflow_msg(ToUid, Limit) end
+            );
+        false ->
+            ok
+    end,
+    ok.
+
 %% @doc 内部函数：根据查询条件过滤和读取消息
 %%
 %% 执行数据库查询并处理返回的消息数据，包括解码JSON格式的payload
@@ -305,14 +311,7 @@ write_msg_with_reply(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE,
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
-    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    Count = msg_c2c_repo:count_by_to_id(To),
-    _ = case Count >= ?SAVE_MSG_LIMIT of
-        true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            _ = elib_async:async_retry(fun() -> msg_c2c_repo:delete_overflow_msg(To, Limit) end);
-        false ->
-            ok
-    end,
+    % 检查并清理溢出消息
+    ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg_with_reply(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE,
                                       ReplyToMsgId, ReplyToFromId, ReplySnippet).

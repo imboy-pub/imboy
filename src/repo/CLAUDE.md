@@ -74,7 +74,8 @@ Repo 模块由 DS 层调用：
 | `msg_c2g_timeline_repo.erl` | 群聊时间线 |
 | `msg_c2s_repo.erl` | 客户端请求 |
 | `msg_s2c_repo.erl` | 系统消息 |
-| `msg_store_repo.erl` | 消息存储 |
+| `msg_store_repo.erl` | 消息存储（staging 暂存） |
+| `msg_archive_repo.erl` | 永久消息归档（conv_seq 游标） |
 | `msg_read_repo.erl` | 消息已读回执 |
 
 ### E2EE 相关 Repo
@@ -250,6 +251,13 @@ src/repo/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-04-04
+- 新增 `msg_archive_repo.erl` 永久消息归档仓库层
+  - `conv_key/3`：生成 per-conversation 唯一键（c2c/c2g）
+  - `next_conv_seq/1`：原子递增 per-conversation 序列号
+  - `archive/1`：写入 msg_store 永久表（幂等）
+  - `get_history/3,4`：基于 conv_seq 游标的历史查询
 
 ### 2026-02-01
 - 新增 `e2ee_transfer_repo.erl` E2EE 设备间传输

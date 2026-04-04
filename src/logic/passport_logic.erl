@@ -579,7 +579,7 @@ compat_device_type(PostVals, Did) ->
     end.
 
 infer_device_type(Did) when is_binary(Did) ->
-    LowerDid = binary:lowercase(Did),
+    LowerDid = cowboy_bstr:to_lower(Did),
     case binary:match(LowerDid, <<"android">>) of
         {_, _} ->
             <<"android">>;

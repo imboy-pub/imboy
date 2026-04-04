@@ -32,11 +32,11 @@ add_log_success_test_() ->
     ], fun() ->
         Conn = mock_conn,
         Data = #{
-            <<"type">> => <<"create">>,
-            <<"option_uid">> => 12345,
-            <<"group_id">> => 67890,
-            <<"body">> => <<"创建群组"/utf8>>,
-            <<"created_at">> => <<"2021-12-31 16:00:00">>
+            type => <<"create">>,
+            option_uid => 12345,
+            group_id => 67890,
+            body => <<"创建群组"/utf8>>,
+            created_at => <<"2021-12-31 16:00:00">>
         },
 
         Result = group_log_repo:add(Conn, Data),
@@ -49,11 +49,11 @@ add_log_different_types_test_() ->
     ], fun() ->
         Conn = mock_conn,
         Data = #{
-            <<"type">> => <<"member_join">>,
-            <<"option_uid">> => 12345,
-            <<"group_id">> => 67890,
-            <<"body">> => <<"成员加入群组"/utf8>>,
-            <<"created_at">> => <<"2021-12-31 16:00:00">>
+            type => <<"member_join">>,
+            option_uid => 12345,
+            group_id => 67890,
+            body => <<"成员加入群组"/utf8>>,
+            created_at => <<"2021-12-31 16:00:00">>
         },
 
         Result = group_log_repo:add(Conn, Data),
@@ -66,11 +66,11 @@ add_log_error_test_() ->
     ], fun() ->
         Conn = mock_conn,
         Data = #{
-            <<"type">> => <<"create">>,
-            <<"option_uid">> => 12345,
-            <<"group_id">> => 67890,
-            <<"body">> => <<"创建群组"/utf8>>,
-            <<"created_at">> => <<"2021-12-31 16:00:00">>
+            type => <<"create">>,
+            option_uid => 12345,
+            group_id => 67890,
+            body => <<"创建群组"/utf8>>,
+            created_at => <<"2021-12-31 16:00:00">>
         },
 
         Result = group_log_repo:add(Conn, Data),
@@ -99,11 +99,11 @@ batch_add_single_log_test_() ->
         Conn = mock_conn,
         DataList = [
             #{
-                <<"type">> => <<"create">>,
-                <<"option_uid">> => 12345,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"创建群组"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:00:00">>
+                type => <<"create">>,
+                option_uid => 12345,
+                group_id => 67890,
+                body => <<"创建群组"/utf8>>,
+                created_at => <<"2021-12-31 16:00:00">>
             }
         ],
 
@@ -118,25 +118,25 @@ batch_add_multiple_logs_test_() ->
         Conn = mock_conn,
         DataList = [
             #{
-                <<"type">> => <<"create">>,
-                <<"option_uid">> => 12345,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"创建群组"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:00:00">>
+                type => <<"create">>,
+                option_uid => 12345,
+                group_id => 67890,
+                body => <<"创建群组"/utf8>>,
+                created_at => <<"2021-12-31 16:00:00">>
             },
             #{
-                <<"type">> => <<"member_join">>,
-                <<"option_uid">> => 12346,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"成员加入"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:01:00">>
+                type => <<"member_join">>,
+                option_uid => 12346,
+                group_id => 67890,
+                body => <<"成员加入"/utf8>>,
+                created_at => <<"2021-12-31 16:01:00">>
             },
             #{
-                <<"type">> => <<"member_leave">>,
-                <<"option_uid">> => 12347,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"成员离开"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:02:00">>
+                type => <<"member_leave">>,
+                option_uid => 12347,
+                group_id => 67890,
+                body => <<"成员离开"/utf8>>,
+                created_at => <<"2021-12-31 16:02:00">>
             }
         ],
 
@@ -151,11 +151,11 @@ batch_add_error_test_() ->
         Conn = mock_conn,
         DataList = [
             #{
-                <<"type">> => <<"create">>,
-                <<"option_uid">> => 12345,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"创建群组"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:00:00">>
+                type => <<"create">>,
+                option_uid => 12345,
+                group_id => 67890,
+                body => <<"创建群组"/utf8>>,
+                created_at => <<"2021-12-31 16:00:00">>
             }
         ],
 
@@ -176,29 +176,29 @@ add_and_batch_add_logs_flow_test_() ->
 
         % 1. 单条添加
         SingleData = #{
-            <<"type">> => <<"create">>,
-            <<"option_uid">> => 12345,
-            <<"group_id">> => 67890,
-            <<"body">> => <<"创建群组"/utf8>>,
-            <<"created_at">> => <<"2021-12-31 16:00:00">>
+            type => <<"create">>,
+            option_uid => 12345,
+            group_id => 67890,
+            body => <<"创建群组"/utf8>>,
+            created_at => <<"2021-12-31 16:00:00">>
         },
         ?assertEqual({ok, 1}, group_log_repo:add(Conn, SingleData)),
 
         % 2. 批量添加
         BatchData = [
             #{
-                <<"type">> => <<"member_join">>,
-                <<"option_uid">> => 12346,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"成员加入"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:01:00">>
+                type => <<"member_join">>,
+                option_uid => 12346,
+                group_id => 67890,
+                body => <<"成员加入"/utf8>>,
+                created_at => <<"2021-12-31 16:01:00">>
             },
             #{
-                <<"type">> => <<"member_leave">>,
-                <<"option_uid">> => 12347,
-                <<"group_id">> => 67890,
-                <<"body">> => <<"成员离开"/utf8>>,
-                <<"created_at">> => <<"2021-12-31 16:02:00">>
+                type => <<"member_leave">>,
+                option_uid => 12347,
+                group_id => 67890,
+                body => <<"成员离开"/utf8>>,
+                created_at => <<"2021-12-31 16:02:00">>
             }
         ],
         ?assertEqual({ok, 2}, group_log_repo:batch_add(Conn, BatchData))

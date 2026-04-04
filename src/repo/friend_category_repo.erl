@@ -3,7 +3,7 @@
 % friend_category_repo 是 friend_category repository 缩写
 %%%
 -export([tablename/0]).
--export([list_by_uid/2]).
+-export([list_by_uid/2, list_by_uid/3]).
 -export([add/2]).
 -export([delete/2]).
 -export([find_by_name/2]).

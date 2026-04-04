@@ -226,10 +226,14 @@ clear_session_cache(SessionId) ->
     imboy_cache:delete(CacheKey),
     ok.
 
-%% @doc 清除所有会话缓存
+%% @doc 清除所有 E2EE 传输会话缓存（intentional no-op）
+%%
+%% depcache 不支持按前缀枚举键，无法批量删除 {e2ee_transfer_session, _} 形式的键。
+%% 全量 flush（imboy_cache:flush/0）会影响整个应用的缓存，代价过高。
+%% 各 session 缓存条目会在 TTL 到期后自动失效，此函数保留为接口占位。
+%% 如需精确清除，应维护一个 session ID 注册表并逐一调用 clear_session_cache/1。
 -spec clear_all_session_cache() -> ok.
 clear_all_session_cache() ->
-    % 注意：这里简化处理，实际可能需要更复杂的缓存清除策略
     ok.
 
 %% @doc 清除用户待处理会话缓存

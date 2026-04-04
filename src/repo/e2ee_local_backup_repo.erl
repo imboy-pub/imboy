@@ -37,6 +37,7 @@
 -export([count_by_uid/1]).
 -export([update_file_size/2]).
 -export([delete/1]).
+-export([delete_by_id_and_uid/2]).
 
 %% 类型定义
 -type backup() :: #{
@@ -201,6 +202,25 @@ delete(BackupId) ->
         {ok, _, _} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_deleted, BackupId]),
             ok;
+        {error, Reason} ->
+            ?ERROR_LOG([e2ee_local_backup_repo, delete_failed, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 安全删除备份记录（同时验证所有权）
+%% @param BackupId 备份记录 ID
+%% @param Uid 当前用户 ID（只能删除自己的备份）
+%% @returns ok | {error, not_found} | {error, Reason}
+-spec delete_by_id_and_uid(integer(), integer()) -> ok | {error, term()}.
+delete_by_id_and_uid(BackupId, Uid) ->
+    Sql = <<"DELETE FROM e2ee_local_backups WHERE id = $1 AND uid = $2">>,
+
+    case elib_pg:query(Sql, [BackupId, Uid]) of
+        {ok, 1, _} ->
+            ?INFO_LOG([e2ee_local_backup_repo, backup_deleted_by_owner, BackupId, Uid]),
+            ok;
+        {ok, 0, _} ->
+            {error, not_found};
         {error, Reason} ->
             ?ERROR_LOG([e2ee_local_backup_repo, delete_failed, Reason]),
             {error, Reason}

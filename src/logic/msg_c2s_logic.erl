@@ -124,36 +124,26 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
     end.
 
 
-%% @doc AI 角色聊天处理（预留接口，需配合 ai_role_ds 使用）
--spec c2s_to_role_chat(binary(), integer(), map()) -> {reply, map()}.
-c2s_to_role_chat(MsgId, _CurrentUid, Data) ->
+%% @doc AI 角色聊天处理
+%% 从 config_ds:env(ai_roles) 读取角色 system_prompt，通过千帆 API 回复
+%% ai_roles 配置示例：#{<<"doctor">> => <<"你是一名专业的医生助手..."/utf8>>}
+-spec c2s_to_role_chat(binary(), integer(), map()) -> ok | {reply, map()}.
+c2s_to_role_chat(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
-    _RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
-
-    % AI 角色聊天功能需要以下组件：
-    % 1. ai_role_ds - 管理角色定义（system_prompt、人格等）
-    % 2. 千帆 AI API - qianfan_api.erl 模块已存在
-    % 3. 对话历史管理 - 维护角色对话上下文
-    %
-    % 实现步骤：
-    % case ai_role_ds:get_role(_RoleId) of
-    %     {ok, Role} ->
-    %         SystemPrompt = maps:get(<<"system_prompt">>, Role),
-    %         UserMessage = maps:get(<<"content">>, Payload),
-    %         % 调用千帆 AI API
-    %         case qianfan_api:chat(UserMessage, SystemPrompt) of
-    %             {ok, Response} ->
-    %                 % 发送 AI 响应给用户
-    %                 send_ai_response(MsgId, Response);
-    %             {error, Reason} ->
-    %                 {reply, error_message(MsgId, Reason)}
-    %         end;
-    %     {error, not_found} ->
-    %         {reply, error_message(MsgId, <<"role_not_found">>)}
-    % end.
-
-    Msg = message_ds:assemble_s2c(MsgId, <<"role_chat_not_implemented">>, <<"bot_role_chat">>),
-    {reply, Msg}.
+    RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
+    % 从配置读取角色 system_prompt；未配置时使用通用助手提示
+    Roles = config_ds:env(ai_roles, #{}),
+    SystemPrompt = maps:get(RoleId, Roles,
+                            <<"你是一个有帮助的AI助手，请专业、友善地回答用户问题。"/utf8>>),
+    % 将 system_prompt 注入为开场历史，使千帆 API 持有角色上下文
+    RoleCallback = fun(Uid, Content, _Opts) ->
+        History = [
+            #{<<"role">> => <<"user">>,      <<"content">> => SystemPrompt},
+            #{<<"role">> => <<"assistant">>, <<"content">> => <<"好的，我会按照这个角色来回答您的问题。"/utf8>>}
+        ],
+        qianfan_api:create_chat(Uid, Content, History)
+    end,
+    c2s_to_external(MsgId, CurrentUid, <<"bot_role_chat">>, Data, RoleCallback).
 
 
 %% ===================================================================
@@ -182,7 +172,7 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
         <<"from">> => To,
         <<"to">> => From,
         <<"payload">> => #{
-            <<"text">> => elib_str:replace_single_quote(maps:get(<<"result">>, RespMap))
+            <<"text">> => elib_str:replace_single_quote(maps:get(<<"result">>, RespMap, <<>>))
         },
         <<"created_at">> => CreatedAt
     },

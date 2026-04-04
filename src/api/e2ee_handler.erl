@@ -28,6 +28,10 @@ init(Req0, State0) ->
                 pull_notifications(Req0, State);
             start_recovery ->
                 start_recovery(Req0, State);
+            backup_list ->
+                backup_list(Req0, State);
+            backup_delete ->
+                backup_delete(Req0, State);
             _ ->
                 elib_response:error(Req0, <<"not_found">>, 404)
         end,
@@ -279,4 +283,58 @@ do_start_recovery(Req0, Uid, DeviceId, Method) ->
             elib_response:error(Req0, Msg, Code);
         {error, Reason} ->
             elib_response:error(Req0, Reason, ?ERR_E2EE_RECOVERY_FAILED)
+    end.
+
+%% @doc 获取当前用户的备份历史列表
+%% GET /v1/e2ee/backup/list
+-spec backup_list(cowboy_req:req(), map()) -> cowboy_req:req().
+backup_list(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_backup_list(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_backup_list(cowboy_req:req(), map()) -> cowboy_req:req().
+do_backup_list(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    case e2ee_local_backup_repo:list_by_uid(CurrentUid) of
+        {ok, Backups} ->
+            elib_response:success(Req0, #{<<"list">> => Backups});
+        {error, Reason} ->
+            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+    end.
+
+%% @doc 删除指定备份记录（仅允许删除自己的备份）
+%% DELETE /v1/e2ee/backup/delete
+%% Body: {"backup_id": 1}
+-spec backup_delete(cowboy_req:req(), map()) -> cowboy_req:req().
+backup_delete(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_backup_delete(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_backup_delete(cowboy_req:req(), map()) -> cowboy_req:req().
+do_backup_delete(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    {ok, Body, _} = cowboy_req:read_body(Req0),
+    Data = jsx:decode(Body, [return_maps]),
+    BackupId = maps:get(<<"backup_id">>, Data, 0),
+
+    case is_integer(BackupId) andalso BackupId > 0 of
+        false ->
+            elib_response:error(Req0, <<"缺少或无效的 backup_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        true ->
+            case e2ee_local_backup_repo:delete_by_id_and_uid(BackupId, CurrentUid) of
+                ok ->
+                    elib_response:success(Req0, #{<<"deleted">> => true});
+                {error, not_found} ->
+                    elib_response:error(Req0, <<"备份记录不存在或无权限删除"/utf8>>, ?ERR_NOT_FOUND);
+                {error, Reason} ->
+                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+            end
     end.

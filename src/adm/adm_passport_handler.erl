@@ -11,6 +11,8 @@
 -include("log.hrl").
 -include("common.hrl").
 
+-define(ADM_TEST_CAPTCHA, <<"1234">>).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -161,12 +163,36 @@ decrypt_password(Pwd) ->
     end.
 
 -spec safe_captcha_check(term(), term()) -> boolean().
+safe_captcha_check(CryptKey, ?ADM_TEST_CAPTCHA) ->
+    case admin_test_captcha_enabled() of
+        true -> true;
+        false -> safe_captcha_check_real(CryptKey, ?ADM_TEST_CAPTCHA)
+    end;
 safe_captcha_check(CryptKey, Captcha) ->
+    safe_captcha_check_real(CryptKey, Captcha).
+
+-spec safe_captcha_check_real(term(), term()) -> boolean().
+safe_captcha_check_real(CryptKey, Captcha) ->
     try simple_captcha:check(CryptKey, Captcha) of
         true -> true;
         _ -> false
     catch
         _:_ -> false
+    end.
+
+-spec admin_test_captcha_enabled() -> boolean().
+admin_test_captcha_enabled() ->
+    case os:getenv("IMBOYENV") of
+        "local" -> true;
+        "dev" -> true;
+        "test" -> true;
+        _ ->
+            case application:get_env(imboy, env) of
+                {ok, local} -> true;
+                {ok, dev} -> true;
+                {ok, test} -> true;
+                _ -> false
+            end
     end.
 
 %% @doc 管理后台登录元数据
@@ -227,3 +253,37 @@ build_login_meta() ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+safe_captcha_check_allows_fixed_code_in_local_env_test_() ->
+    {setup,
+        fun snapshot_runtime_env/0,
+        fun restore_runtime_env/1,
+        fun() ->
+            os:putenv("IMBOYENV", "local"),
+            application:set_env(imboy, env, prod),
+            ?assertEqual(true, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA)),
+            ?assertEqual(false, safe_captcha_check(undefined, <<"wrong">>))
+        end}.
+
+safe_captcha_check_respects_prod_env_without_bypass_test_() ->
+    {setup,
+        fun snapshot_runtime_env/0,
+        fun restore_runtime_env/1,
+        fun() ->
+            os:putenv("IMBOYENV", "prod"),
+            application:set_env(imboy, env, prod),
+            ?assertEqual(false, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA))
+        end}.
+
+snapshot_runtime_env() ->
+    {os:getenv("IMBOYENV"), application:get_env(imboy, env)}.
+
+restore_runtime_env({PrevImboyEnv, PrevAppEnv}) ->
+    case PrevImboyEnv of
+        false -> os:unsetenv("IMBOYENV");
+        PrevOsValue -> os:putenv("IMBOYENV", PrevOsValue)
+    end,
+    case PrevAppEnv of
+        {ok, PrevEnvValue} -> application:set_env(imboy, env, PrevEnvValue);
+        undefined -> application:unset_env(imboy, env)
+    end.

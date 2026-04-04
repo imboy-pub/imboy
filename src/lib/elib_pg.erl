@@ -57,7 +57,9 @@
     page_with_total/4,
     page_with_total/6,
     page_safe/7,
-    page_with_total_safe/7
+    page_with_total_safe/7,
+
+    escape_like/1
 ]).
 
 -define(DEFAULT_TIMEOUT, 1000).
@@ -486,6 +488,23 @@ page_with_total_safe(Table, Column, WhereMap, OrderSpec, ValidFields, Page, Size
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% @doc 转义 LIKE 模式中的特殊字符（%, _, \）
+%% 防止用户输入被解释为 LIKE 通配符
+-spec escape_like(binary()) -> binary().
+escape_like(Bin) when is_binary(Bin) ->
+    escape_like(Bin, <<>>).
+
+escape_like(<<>>, Acc) ->
+    Acc;
+escape_like(<<$\\, Rest/binary>>, Acc) ->
+    escape_like(Rest, <<Acc/binary, $\\, $\\>>);
+escape_like(<<$%, Rest/binary>>, Acc) ->
+    escape_like(Rest, <<Acc/binary, $\\, $%>>);
+escape_like(<<$_, Rest/binary>>, Acc) ->
+    escape_like(Rest, <<Acc/binary, $\\, $_>>);
+escape_like(<<C, Rest/binary>>, Acc) ->
+    escape_like(Rest, <<Acc/binary, C>>).
 
 %% ================== internal ==================
 

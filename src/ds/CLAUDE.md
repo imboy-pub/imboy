@@ -87,6 +87,7 @@ DS 模块由 Logic 层调用：
 | `app_ddl_ds.erl` | DDL 配置 |
 | `e2ee_social_ds.erl` | E2EE 社交恢复 |
 | `e2ee_transfer_ds.erl` | E2EE 设备传输 |
+| `msg_archive_ds.erl` | 永久消息历史查询 |
 
 ---
 
@@ -204,6 +205,9 @@ src/ds/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-04-04
+- 新增 `msg_archive_ds.erl` 永久消息历史查询服务（方案 B：conv_seq 游标）
 
 ### 2026-01-31
 - 新增 `e2ee_social_ds.erl` E2EE 社交恢复数据服务

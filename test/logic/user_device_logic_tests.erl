@@ -13,18 +13,28 @@
 
 save_device_success_test_() ->
     ?WITH_MECK(user_device_ds, [
-        {'save', 4, fun(_Now, _Uid, _Did, _Data) -> ok end}
+        {'count_by_uid', 1, fun(_Uid) -> 1 end},
+        {'page', 3, fun(_Uid, _Limit, _Offset) ->
+            {ok, [#{<<"device_id">> => <<"device1">>, <<"device_name">> => <<"iPhone">>,
+                    <<"device_type">> => <<"ios">>, <<"last_active_at">> => <<>>,
+                    <<"device_vsn">> => <<"1.0">>}]}
+        end}
     ], fun() ->
-        Result = user_device_logic:save(100, <<"device1">>, #{<<"device_name">> => <<"iPhone">>}),
-        ?assertEqual(ok, Result)
+        Result = user_device_logic:page(100, 1, 10),
+        ?assertMatch(#{list := [_ | _]}, Result)
     end).
 
 get_devices_success_test_() ->
     ?WITH_MECK(user_device_ds, [
-            {'page', 3, fun(_Uid, _Limit, _Offset) -> {ok, [#{<<"device_id">> => <<"d1">>}]} end}
-        ], fun() ->
-        Result = user_device_logic:get_devices(100, 10, 0),
-        ?assertMatch({ok, [_ | _]}, Result)
+        {'count_by_uid', 1, fun(_Uid) -> 1 end},
+        {'page', 3, fun(_Uid, _Limit, _Offset) ->
+            {ok, [#{<<"device_id">> => <<"d1">>, <<"device_name">> => <<"Test">>,
+                    <<"device_type">> => <<"android">>, <<"last_active_at">> => <<>>,
+                    <<"device_vsn">> => <<"1.0">>}]}
+        end}
+    ], fun() ->
+        Result = user_device_logic:page(100, 1, 10),
+        ?assertMatch(#{list := [_ | _]}, Result)
     end).
 
 %% ===================================================================

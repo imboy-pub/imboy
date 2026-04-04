@@ -39,8 +39,7 @@ write_topic_test_() ->
         MsgId = <<"msg_topic_123">>,
         FromId = 1,
         ToId = 2,
-        Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Topic message">>},
-        PayloadMd5 = elib_hasher:hash(maps:get(<<"content">>, Payload)),
-        Result = msg_c2s_ds:write_topic(NowTs, MsgId, FromId, ToId, Payload, PayloadMd5),
+        Title = <<"Topic message">>,
+        Result = msg_c2s_ds:write_topic(<<"C2S">>, MsgId, FromId, ToId, Title, NowTs),
         ?assertEqual(ok, Result)
     end).

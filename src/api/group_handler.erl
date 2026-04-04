@@ -45,6 +45,7 @@ handle_action(page, Req, State) ->
     page(Req, State, Attr);
 handle_action(msg_page, Req, State) -> msg_page(Req, State);
 handle_action(qrcode, Req, State) -> qrcode(Req, State);
+handle_action(remark, Req, State) -> remark(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %% @doc 获取群组详情
@@ -106,7 +107,7 @@ face2face(Req0, State) ->
                           <<"nickname">> => maps:get(<<"nickname">>, User),
                           <<"avatar">> => maps:get(<<"avatar">>, User),
                           <<"account">> => maps:get(<<"account">>, User)},
-                    msg_s2c_ds:send(Uid, ToUidLi2, Action, <<>>, null, Payload, no_save),
+                    msg_s2c_ds:send(Uid, ToUidLi2, Action, <<>>, null, Payload, save),
 
                     MemberListRes =
                         user_repo:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
@@ -559,6 +560,61 @@ qrcode(Req0, State) ->
                     end
             end
     end.
+
+%% @doc 获取或更新群备注（仅自己可见）
+%% GET  /v1/group/remark?gid=<gid>       → 返回当前用户对该群的备注
+%% POST /v1/group/remark {gid, remark}   → 更新备注
+%%
+%% @param Req0 Cowboy请求对象
+%% @param State 状态映射，包含 current_uid
+%% @return 返回备注信息或成功响应
+%% @end
+-spec remark(cowboy_req:req(), map()) -> cowboy_req:req().
+remark(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    Method = cowboy_req:method(Req0),
+    remark(Method, Req0, State, CurrentUid).
+
+remark(<<"GET">>, Req0, _State, CurrentUid) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
+    Gid2 = elib_hashids:decode(Gid),
+    case Gid2 of
+        0 ->
+            elib_response:error(Req0, <<"group id 必须"/utf8>>);
+        _ ->
+            Member = group_member_repo:find(Gid2, CurrentUid, <<"remark">>),
+            Remark = maps:get(<<"remark">>, Member, <<"">>),
+            elib_response:success(Req0, #{<<"remark">> => Remark, <<"gid">> => Gid}, "success.")
+    end;
+remark(<<"POST">>, Req0, _State, CurrentUid) ->
+    PostVals = elib_param:post(Req0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    Gid2 = elib_hashids:decode(Gid),
+    case Gid2 of
+        0 ->
+            elib_response:error(Req0, <<"group id 必须"/utf8>>);
+        _ ->
+            Remark = maps:get(<<"remark">>, PostVals, <<"">>),
+            % 验证是否为群成员
+            Member = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+            case maps:size(Member) of
+                0 ->
+                    elib_response:error(Req0, <<"你不是该群成员"/utf8>>);
+                _ ->
+                    Tb = group_member_repo:tablename(),
+                    WhereSql = <<" WHERE group_id = $1 AND user_id = $2">>,
+                    case elib_pg:update(Tb, #{<<"remark">> => Remark}, WhereSql, [Gid2, CurrentUid]) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{<<"gid">> => Gid}, "success.");
+                        {error, Reason} ->
+                            ?ERROR_LOG(["group remark update error: ", Reason]),
+                            elib_response:error(Req0, <<"更新失败"/utf8>>)
+                    end
+            end
+    end;
+remark(_, Req0, _State, _CurrentUid) ->
+    Req0.
 
 %% ===================================================================
 %% EUnit tests.

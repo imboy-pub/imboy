@@ -30,8 +30,6 @@ create_album_valid_test_() ->
         CreatorId = 1,
         Result = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
         case Result of
-            {ok, InsertId} when is_integer(InsertId) ->
-                ?assert(InsertId > 0, "Expected positive insert ID");
             {ok, Id, _} when is_integer(Id) ->
                 ?assert(Id > 0, "Expected positive ID");
             {error, Reason} ->
@@ -50,7 +48,7 @@ find_album_by_id_existing_test_() ->
         AlbumId = <<"album_test_002">>,
         AlbumName = <<"测试相册2"/utf8>>,
         CreatorId = 1,
-        {ok, InsertId} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
+        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
 
         % 查询测试
         Result = group_album_repo:find_album_by_id(InsertId),
@@ -100,8 +98,6 @@ insert_photo_valid_test_() ->
         },
         Result = group_album_repo:insert_photo(PhotoData),
         case Result of
-            {ok, InsertId} when is_integer(InsertId) ->
-                ?assert(InsertId > 0, "Expected positive insert ID");
             {ok, Id, _} when is_integer(Id) ->
                 ?assert(Id > 0, "Expected positive ID");
             {error, Reason} ->
@@ -125,7 +121,7 @@ find_photo_by_id_existing_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
 
         % 查询测试
         Result = group_album_repo:find_photo_by_id(InsertId),
@@ -174,7 +170,7 @@ like_photo_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
         PhotoId = integer_to_binary(InsertId),
         UserId = 1,
 
@@ -202,7 +198,7 @@ unlike_photo_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
         PhotoId = integer_to_binary(InsertId),
         UserId = 1,
         group_album_repo:like_photo(PhotoId, UserId),
@@ -231,7 +227,7 @@ is_liked_true_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
         PhotoId = integer_to_binary(InsertId),
         UserId = 1,
         group_album_repo:like_photo(PhotoId, UserId),
@@ -265,7 +261,7 @@ add_comment_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
         PhotoId = integer_to_binary(InsertId),
         UserId = 1,
         Content = <<"这是一条测试评论"/utf8>>,
@@ -294,7 +290,7 @@ list_comments_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
         PhotoId = integer_to_binary(InsertId),
         UserId = 1,
         Content = <<"测试评论"/utf8>>,
@@ -321,7 +317,7 @@ update_album_test_() ->
         AlbumId = <<"album_test_011">>,
         AlbumName = <<"原相册名"/utf8>>,
         CreatorId = 1,
-        {ok, InsertId} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
+        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
 
         % 更新相册
         UpdateData = #{id => InsertId, album_name => <<"新相册名"/utf8>>},
@@ -343,7 +339,7 @@ delete_album_test_() ->
         AlbumId = <<"album_test_012">>,
         AlbumName = <<"要删除的相册"/utf8>>,
         CreatorId = 1,
-        {ok, InsertId} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
+        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
 
         % 删除相册
         Result = group_album_repo:delete_album(InsertId),
@@ -369,7 +365,7 @@ delete_photo_test_() ->
             photo_size => 102400,
             uploader_id => 1
         },
-        {ok, InsertId} = group_album_repo:insert_photo(PhotoData),
+        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
 
         % 删除图片
         Result = group_album_repo:delete_photo(InsertId),
@@ -390,7 +386,7 @@ increment_photo_count_test_() ->
         AlbumId = <<"album_test_014">>,
         AlbumName = <<"测试相册14"/utf8>>,
         CreatorId = 1,
-        {ok, InsertId} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
+        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
 
         % 增加照片计数
         Result = group_album_repo:increment_photo_count(InsertId),
@@ -411,7 +407,7 @@ decrement_photo_count_test_() ->
         AlbumId = <<"album_test_015">>,
         AlbumName = <<"测试相册15"/utf8>>,
         CreatorId = 1,
-        {ok, InsertId} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
+        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
 
         % 减少照片计数
         Result = group_album_repo:decrement_photo_count(InsertId),

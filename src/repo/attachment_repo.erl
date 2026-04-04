@@ -17,6 +17,15 @@
 %% @returns ok
 -export([save/4]).
 
+%% @doc 查询附件统计信息（管理后台用）
+-export([stats/0]).
+
+%% @doc 分页查询附件列表（管理后台用）
+%% @param Page 页码（从1开始）
+%% @param Size 每页大小
+%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary()}
+-export([page/3]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -96,6 +105,105 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 递归保存附近信息
     save(Conn, CreatedAt, Uid, Tail),
     ok.
+
+
+%% ===================================================================
+%% Admin Query Functions
+%% ===================================================================
+
+%% @doc 查询附件统计信息
+%% 返回总文件数、总大小、各类型计数、今日上传等聚合数据
+-spec stats() -> map().
+stats() ->
+    Tb = tablename(),
+    Sql = <<
+        "SELECT "
+        "  COUNT(*) AS total_files, "
+        "  COALESCE(SUM(size), 0) AS total_size, "
+        "  COUNT(*) FILTER (WHERE mime_type LIKE 'image/%') AS image_count, "
+        "  COUNT(*) FILTER (WHERE mime_type LIKE 'video/%') AS video_count, "
+        "  COUNT(*) FILTER (WHERE mime_type LIKE '%pdf%' OR mime_type LIKE 'text/%' "
+        "    OR mime_type LIKE 'application/msword%' OR mime_type LIKE 'application/vnd%') AS document_count, "
+        "  COUNT(*) FILTER (WHERE mime_type NOT LIKE 'image/%' AND mime_type NOT LIKE 'video/%' "
+        "    AND mime_type NOT LIKE '%pdf%' AND mime_type NOT LIKE 'text/%' "
+        "    AND mime_type NOT LIKE 'application/msword%' AND mime_type NOT LIKE 'application/vnd%') AS other_count, "
+        "  COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS today_uploads, "
+        "  COALESCE(SUM(size) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_size "
+        "FROM ">>,
+    FullSql = [Sql, Tb, <<" WHERE status = 1">>],
+    case elib_pg:one(FullSql, []) of
+        {ok, Row} -> Row;
+        _ -> #{}
+    end.
+
+
+%% @doc 分页查询附件列表
+%% @param Page 页码（从1开始）
+%% @param Size 每页大小
+%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary()}
+-spec page(pos_integer(), pos_integer(), map()) -> {ok, map()} | {error, term()}.
+page(Page, Size, Opts) ->
+    Tb = tablename(),
+    Offset = (Page - 1) * Size,
+    MimeType = maps:get(mime_type, Opts, undefined),
+    Keyword = maps:get(keyword, Opts, undefined),
+
+    {WhereExtra, FilterParams} = build_filter(MimeType, Keyword),
+    BaseWhere = [<<" WHERE status = 1">>, WhereExtra],
+
+    CountSql = [<<"SELECT COUNT(*) AS count FROM ">>, Tb, BaseWhere],
+    Total = case elib_pg:one(CountSql, FilterParams) of
+        {ok, #{<<"count">> := C}} -> C;
+        _ -> 0
+    end,
+
+    ParamN = length(FilterParams),
+    LimitN = ParamN + 1,
+    OffsetN = ParamN + 2,
+    LimitRef = <<"$", (integer_to_binary(LimitN))/binary>>,
+    OffsetRef = <<"$", (integer_to_binary(OffsetN))/binary>>,
+
+    DataSql = [
+        <<"SELECT id, md5, mime_type, name, path, url, size, referer_time, status, created_at FROM ">>,
+        Tb, BaseWhere,
+        <<" ORDER BY created_at DESC LIMIT ">>, LimitRef,
+        <<" OFFSET ">>, OffsetRef
+    ],
+    AllParams = FilterParams ++ [Size, Offset],
+
+    Items = case elib_pg:query(DataSql, AllParams) of
+        {ok, Rows} -> Rows;
+        _ -> []
+    end,
+
+    TotalPage = case Total > 0 of
+        true -> ((Total - 1) div Size) + 1;
+        false -> 0
+    end,
+
+    {ok, #{
+        <<"list">> => Items,
+        <<"page">> => Page,
+        <<"size">> => Size,
+        <<"total">> => Total,
+        <<"total_page">> => TotalPage
+    }}.
+
+
+%% @doc 构建动态 WHERE 条件
+-spec build_filter(binary() | undefined, binary() | undefined) -> {iodata(), list()}.
+build_filter(undefined, undefined) ->
+    {<<>>, []};
+build_filter(MimeType, undefined) when MimeType =/= undefined, MimeType =/= <<>> ->
+    {<<" AND mime_type LIKE $1">>, [<<MimeType/binary, "%">>]};
+build_filter(undefined, Keyword) when Keyword =/= undefined, Keyword =/= <<>> ->
+    {<<" AND (name ILIKE $1 OR md5 LIKE $1)">>, [<<"%", Keyword/binary, "%">>]};
+build_filter(MimeType, Keyword) when MimeType =/= undefined, MimeType =/= <<>>,
+                                     Keyword =/= undefined, Keyword =/= <<>> ->
+    {<<" AND mime_type LIKE $1 AND (name ILIKE $2 OR md5 LIKE $2)">>,
+     [<<MimeType/binary, "%">>, <<"%", Keyword/binary, "%">>]};
+build_filter(_, _) ->
+    {<<>>, []}.
 
 
 %% ===================================================================

@@ -18,10 +18,10 @@ do_signup_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
         {user_repo, [
             {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end},
-            {'insert', 1, fun(_Data) -> {ok, 1} end}
+            {'save', 1, fun(_Data) -> {ok, 1} end}
         ]},
         {user_setting_ds, [
-            {'init', 1, fun(_Uid) -> ok end}
+            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
         ]},
         {user_device_ds, [
             {'is_activated', 2, fun(_Uid, _DID) -> false end}

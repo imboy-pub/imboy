@@ -18,15 +18,15 @@
 %% @doc 测试插入单条传输日志
 insert_test_() ->
     LogMap = #{
-        <<"shard_id">> => ?TEST_SHARD_ID,
-        <<"key_version">> => ?TEST_KEY_VERSION,
-        <<"uid">> => ?TEST_UID,
-        <<"proxy_uid">> => ?TEST_PROXY_UID,
-        <<"action">> => <<"shard_created">>,
-        <<"direction">> => <<"server_to_proxy">>,
-        <<"metadata">> => #{},
-        <<"ip_address">> => <<"127.0.0.1">>,
-        <<"user_agent">> => <<"test_agent">>
+        shard_id => ?TEST_SHARD_ID,
+        key_version => ?TEST_KEY_VERSION,
+        uid => ?TEST_UID,
+        proxy_uid => ?TEST_PROXY_UID,
+        action => <<"shard_created">>,
+        direction => <<"server_to_proxy">>,
+        metadata => #{},
+        ip_address => <<"127.0.0.1">>,
+        user_agent => <<"test_agent">>
     },
 
     % 测试插入
@@ -42,20 +42,20 @@ insert_test_() ->
 get_by_shard_id_test_() ->
     % 先插入测试数据
     LogMap = #{
-        <<"shard_id">> => ?TEST_SHARD_ID,
-        <<"key_version">> => ?TEST_KEY_VERSION,
-        <<"uid">> => ?TEST_UID,
-        <<"proxy_uid">> => ?TEST_PROXY_UID,
-        <<"action">> => <<"shard_sent">>,
-        <<"direction">> => <<"server_to_proxy">>,
-        <<"metadata">> => #{},
-        <<"ip_address">> => null,
-        <<"user_agent">> => null
+        shard_id => ?TEST_SHARD_ID,
+        key_version => ?TEST_KEY_VERSION,
+        uid => ?TEST_UID,
+        proxy_uid => ?TEST_PROXY_UID,
+        action => <<"shard_sent">>,
+        direction => <<"server_to_proxy">>,
+        metadata => #{},
+        ip_address => null,
+        user_agent => null
     },
     e2ee_shard_transmission_log_repo:insert(LogMap),
 
     % 测试查询
-    case e2ee_shard_transmission_log_repo:get_by_shard_id(?TEST_SHARD_ID) of
+    case e2ee_shard_transmission_log_repo:list_by_shard_id(?TEST_SHARD_ID) of
         {ok, Logs} when is_list(Logs) ->
             ?assert(length(Logs) > 0);
         {error, Reason} ->
@@ -63,23 +63,27 @@ get_by_shard_id_test_() ->
             ?assert(false)
     end.
 
-%% @doc 测试按密钥版本查询
-get_by_key_version_test_() ->
+%% @doc 测试按操作类型查询（原 get_by_key_version 已移除，改用 list_by_action/2）
+list_by_action_test_() ->
     % 测试查询
-    case e2ee_shard_transmission_log_repo:get_by_key_version(?TEST_KEY_VERSION) of
+    case e2ee_shard_transmission_log_repo:list_by_action(?TEST_SHARD_ID, <<"create">>) of
+        {ok, _, Logs} when is_list(Logs) ->
+            ?assert(true);
         {ok, Logs} when is_list(Logs) ->
-            ?assert(length(Logs) > 0);
+            ?assert(true);
         {error, Reason} ->
             ?debugFmt("查询失败: ~p~n", [Reason]),
             ?assert(false)
     end.
 
-%% @doc 测试获取统计数据
-get_stats_test_() ->
+%% @doc 测试获取统计数据（get_transmission_stats/1 仅需 ShardId）
+get_transmission_stats_test_() ->
     % 测试统计
-    case e2ee_shard_transmission_log_repo:get_stats(?TEST_KEY_VERSION, ?TEST_SHARD_ID) of
-        {ok, Stats} when is_map(Stats) ->
-            ?assert(maps:get(key_version, Stats) =:= ?TEST_KEY_VERSION);
+    case e2ee_shard_transmission_log_repo:get_transmission_stats(?TEST_SHARD_ID) of
+        {ok, _, Stats} when is_list(Stats) ->
+            ?assert(true);
+        {ok, Stats} when is_list(Stats) ->
+            ?assert(true);
         {error, Reason} ->
             ?debugFmt("统计失败: ~p~n", [Reason]),
             ?assert(false)

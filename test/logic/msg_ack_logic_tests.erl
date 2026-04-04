@@ -21,10 +21,10 @@ c2c_ack_deletes_offline_msg_test_() ->
         MsgId = <<"test_c2c_msg_001">>,
 
         % 准备测试数据：插入离线消息
-        Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)
-                VALUES ($1, $2, $3, $4, NOW())">>,
+        Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())">>,
         Payload = <<"{\"content\":\"test message\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, <<"text">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -34,7 +34,7 @@ c2c_ack_deletes_offline_msg_test_() ->
 
         % 验证消息被删除
         Sql2 = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1 AND to_id = $2">>,
-        {ok, _Cols, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
         ?assertEqual(0, Count),
 
         % 清理测试数据
@@ -68,7 +68,7 @@ c2g_ack_marks_timeline_test_() ->
         MsgId = <<"test_c2g_msg_001">>,
 
         % Mock msg_c2g_timeline_repo:client_ack
-        meck:expect(msg_c2g_timeline_repo, client_ack, 1, fun(_, _) -> ok end),
+        meck:expect(msg_c2g_timeline_repo, client_ack, 2, fun(_, _) -> {ok, 1} end),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -92,10 +92,10 @@ s2c_ack_deletes_offline_msg_test_() ->
         MsgId = <<"test_s2c_msg_001">>,
 
         % 准备测试数据：插入离线消息
-        Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, payload, created_at)
-                VALUES ($1, $2, $3, $4, NOW())">>,
+        Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, action, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
         Payload = <<"{\"msg_type\":\"system\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -105,7 +105,7 @@ s2c_ack_deletes_offline_msg_test_() ->
 
         % 验证消息被删除
         Sql2 = <<"SELECT COUNT(*) FROM msg_s2c WHERE msg_id = $1 AND to_id = $2">>,
-        {ok, _Cols, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
         ?assertEqual(0, Count),
 
         % 清理测试数据
@@ -123,10 +123,10 @@ c2s_ack_uses_parameterized_query_test_() ->
         MsgId = <<"test_c2s_msg_001">>,
 
         % 准备测试数据：插入消息
-        Sql = <<"INSERT INTO msg_c2s (from_id, topic_id, msg_id, payload, created_at)
-                VALUES ($1, $2, $3, $4, NOW())">>,
+        Sql = <<"INSERT INTO msg_c2s (from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
         Payload = <<"{\"text\":\"hello\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [Uid, 123, MsgId, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [Uid, 0, 123, MsgId, <<"text">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -136,7 +136,7 @@ c2s_ack_uses_parameterized_query_test_() ->
 
         % 验证消息被删除
         Sql2 = <<"SELECT COUNT(*) FROM msg_c2s WHERE msg_id = $1 AND from_id = $2">>,
-        {ok, _Cols, [{Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
+        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
         ?assertEqual(0, Count),
 
         % 清理测试数据
@@ -159,8 +159,8 @@ c2s_ack_prevents_sql_injection_test_() ->
 
         % 验证表仍然存在
         Sql = <<"SELECT COUNT(*) FROM msg_c2s">>,
-        {ok, _Cols, [{Count}]} = elib_pg:query(Sql, []),
-        ?assert(Count >= 0, "Table should still exist")
+        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, []),
+        ?assert(Count >= 0)
     end).
 
 %% ===================================================================

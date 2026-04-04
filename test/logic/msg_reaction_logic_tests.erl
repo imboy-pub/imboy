@@ -8,21 +8,75 @@
 
 setup() ->
     {ok, _} = application:ensure_all_started(imboy),
-    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id IN ($1, $2)">>, [999999, 999998]),
+    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id IN ($1, $2, $3)">>, [999999, 999998, 999997]),
     % 创建测试消息
     setup_test_messages(),
+    % mock group_member_ds:is_member/2
+    % uid 999999/999998 是成员，999997 不是
+    meck:new(group_member_ds, [passthrough, no_link]),
+    meck:expect(group_member_ds, is_member, fun
+        (_, 999997) -> false;
+        (_, _) -> true
+    end),
     ok.
 
 cleanup(_) ->
-    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id IN ($1, $2)">>, [999999, 999998]),
+    elib_pg:query(<<"DELETE FROM msg_reaction WHERE user_id IN ($1, $2, $3)">>, [999999, 999998, 999997]),
     cleanup_test_messages(),
+    catch meck:unload(group_member_ds),
     ok.
 
 setup_test_messages() ->
-    % 在实际测试中需要创建测试消息
+    NowTs = elib_dt:to_rfc3339(elib_dt:now(millisecond)),
+    Payload = <<"{}">>,
+    MsgType = <<"text">>,
+    % 插入 c2c 测试消息（from_id=999999, to_id=999998）
+    C2CMsgIds = [
+        <<"test_msg_logic_c2c_001">>,
+        <<"test_msg_logic_002">>,
+        <<"test_msg_logic_003">>,
+        <<"test_msg_logic_004">>,
+        <<"test_msg_logic_006">>,
+        <<"test_msg_logic_007">>
+    ],
+    lists:foreach(fun(MsgId) ->
+        elib_pg:query(
+            <<"INSERT INTO public.msg_c2c (from_id, to_id, msg_id, msg_type, payload, server_ts, created_at) "
+              "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING">>,
+            [999999, 999998, MsgId, MsgType, Payload, NowTs, NowTs]
+        )
+    end, C2CMsgIds),
+    % 插入 c2g 测试消息（from_id=999999, to_id=100 即 group_id）
+    C2GMsgIds = [
+        <<"test_msg_logic_c2g_001">>,
+        <<"test_msg_logic_005">>,
+        <<"test_msg_logic_008">>
+    ],
+    lists:foreach(fun(MsgId) ->
+        elib_pg:query(
+            <<"INSERT INTO public.msg_c2g (from_id, to_id, msg_id, msg_type, payload, server_ts, created_at) "
+              "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING">>,
+            [999999, 100, MsgId, MsgType, Payload, NowTs, NowTs]
+        )
+    end, C2GMsgIds),
     ok.
 
 cleanup_test_messages() ->
+    AllMsgIds = [
+        <<"test_msg_logic_c2c_001">>,
+        <<"test_msg_logic_c2g_001">>,
+        <<"test_msg_logic_002">>,
+        <<"test_msg_logic_003">>,
+        <<"test_msg_logic_004">>,
+        <<"test_msg_logic_005">>,
+        <<"test_msg_logic_006">>,
+        <<"test_msg_logic_007">>,
+        <<"test_msg_logic_008">>
+    ],
+    lists:foreach(fun(MsgId) ->
+        elib_pg:query(<<"DELETE FROM public.msg_c2c WHERE msg_id = $1">>, [MsgId]),
+        elib_pg:query(<<"DELETE FROM public.msg_c2g WHERE msg_id = $1">>, [MsgId])
+    end, AllMsgIds),
     ok.
 
 %% ===================================================================
@@ -52,9 +106,6 @@ test_add_reaction_c2c() ->
     CurrentUid = 999999,
     Emoji = <<"👍"/utf8>>,
 
-    % 先创建测试消息（这里假设消息已存在）
-    % 在实际测试中需要插入测试消息
-
     % 添加表情
     {ok, Result} = msg_reaction_logic:add(MsgId, <<"c2c">>, CurrentUid, Emoji),
     ?assertEqual(MsgId, maps:get(<<"msg_id">>, Result)),
@@ -65,9 +116,6 @@ test_add_reaction_c2g() ->
     MsgId = <<"test_msg_logic_c2g_001">>,
     CurrentUid = 999999,
     Emoji = <<"❤️"/utf8>>,
-
-    % 先创建测试消息（这里假设消息已存在）
-    % 在实际测试中需要插入测试消息
 
     % 添加表情
     {ok, Result} = msg_reaction_logic:add(MsgId, <<"c2g">>, CurrentUid, Emoji),
@@ -160,7 +208,7 @@ test_check_is_reacted() ->
 %% @doc 测试单聊权限验证（非消息参与者）
 test_permission_denied_c2c() ->
     MsgId = <<"test_msg_logic_007">>,
-    CurrentUid = 999997,  % 非消息参与者
+    CurrentUid = 999997,  % 非消息参与者（消息 from=999999, to=999998）
     Emoji = <<"👍"/utf8>>,
 
     % 尝试添加表情（应该被拒绝）
@@ -169,7 +217,7 @@ test_permission_denied_c2c() ->
 %% @doc 测试群聊权限验证（非群成员）
 test_permission_denied_c2g() ->
     MsgId = <<"test_msg_logic_008">>,
-    CurrentUid = 999997,  % 非群成员
+    CurrentUid = 999997,  % mock 返回 false，视为非群成员
     Emoji = <<"👍"/utf8>>,
 
     % 尝试添加表情（应该被拒绝）

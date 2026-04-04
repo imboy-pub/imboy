@@ -158,6 +158,8 @@ process_row(Row) ->
     TypeAtom = msg_type_atom(TypeBin),
     case do_write(TypeAtom, Row) of
         ok ->
+            %% 归档到永久存储（受 msg_archive_enabled 配置开关控制）
+            maybe_archive(Row),
             msg_store_ds:unstage(MsgId),
             _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
         {error, Reason} ->
@@ -165,6 +167,29 @@ process_row(Row) ->
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
             _ = msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds),
             _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
+    end.
+
+%%-------------------------------------------------------------------
+%% @private 按配置开关决定是否归档到永久存储
+%%
+%% 归档失败只记日志，不阻塞投递流程（最终一致性）。
+%%
+%% 配置方式（sys.config）：
+%%   {imboy, [{msg_archive_enabled, true}]}
+%% @end
+%%-------------------------------------------------------------------
+maybe_archive(Row) ->
+    case application:get_env(imboy, msg_archive_enabled, false) of
+        true ->
+            case msg_archive_repo:archive(Row) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    MsgId = maps:get(<<"msg_id">>, Row, <<>>),
+                    _ = ?ERROR_LOG([msg_store_worker, archive_error, MsgId, Reason])
+            end;
+        _ ->
+            ok
     end.
 
 %% v2.0: 使用 staging 表的独立字段，避免重复解析 payload

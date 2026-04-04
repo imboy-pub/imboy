@@ -201,7 +201,7 @@ leave_with_different_current_uid_test_() ->
 alias_updates_nickname_test_() ->
     ?WITH_MECKS([
         {group_member_ds, [
-            {'alias', 3, fun(_Uid, _Gid, _Alias) -> ok end}
+            {'alias', 4, fun(_Uid, _Gid, _Alias, _Description) -> ok end}
         ]},
         {group_ds, [
             {'member_uids', 1, fun(_Gid) -> [123, 456] end}
@@ -228,7 +228,7 @@ alias_updates_nickname_test_() ->
 alias_with_empty_description_test_() ->
     ?WITH_MECKS([
         {group_member_ds, [
-            {'alias', 3, fun(_Uid, _Gid, _Alias) -> ok end}
+            {'alias', 4, fun(_Uid, _Gid, _Alias, _Description) -> ok end}
         ]},
         {group_ds, [
             {'member_uids', 1, fun(_Gid) -> [123] end}
@@ -254,7 +254,7 @@ alias_with_empty_description_test_() ->
 
 alias_returns_error_on_failure_test_() ->
     ?WITH_MECK(group_member_ds, [
-        {'alias', 3, fun(_Uid, _Gid, _Alias) -> {error, database_error} end}
+        {'alias', 4, fun(_Uid, _Gid, _Alias, _Description) -> {error, database_error} end}
     ], fun() ->
         Uid = 100,
         Gid = 1,

@@ -15,34 +15,36 @@
 %% ===================================================================
 
 init_returns_empty_state_test_() ->
-    Result = user_server:init([]),
-    ?assertMatch({ok, _State}, Result),
-    {ok, State} = Result,
-    ?assertEqual([], State).
+    ?_test(begin
+        Result = user_server:init([]),
+        ?assertMatch({ok, _State}, Result),
+        {ok, State} = Result,
+        ?assertEqual([], State)
+    end).
 
-handle_call_stop_returns_stopped_test_() ->
+handle_call_stop_returns_stopped_test() ->
     State = [],
     Result = user_server:handle_call(stop, self(), State),
     ?assertMatch({stop, normal, stopped, []}, Result).
 
-handle_call_unknown_request_returns_ignored_test_() ->
+handle_call_unknown_request_returns_ignored_test() ->
     State = [],
     From = self(),
     Request = unknown_request,
     Result = user_server:handle_call(Request, From, State),
     ?assertMatch({reply, ignored, []}, Result).
 
-handle_info_returns_noreply_test_() ->
+handle_info_returns_noreply_test() ->
     State = [],
     Info = some_info,
     Result = user_server:handle_info(Info, State),
     ?assertMatch({noreply, []}, Result).
 
-terminate_returns_ok_test_() ->
+terminate_returns_ok_test() ->
     Result = user_server:terminate(normal, []),
     ?assertEqual(ok, Result).
 
-code_change_returns_ok_test_() ->
+code_change_returns_ok_test() ->
     State = [],
     Result = user_server:code_change(v1, State, v2),
     ?assertMatch({ok, []}, Result).
@@ -51,7 +53,7 @@ code_change_returns_ok_test_() ->
 %% handle_cast 测试
 %% ===================================================================
 
-handle_cast_signup_success_hibernates_test_() ->
+handle_cast_signup_success_hibernates_test() ->
     State = [],
     Uid = <<"uid_123">>,
     PostVals = #{<<"email">> => <<"test@example.com">>},
@@ -259,7 +261,7 @@ handle_cast_notice_friend_sends_notification_test_() ->
         end)
     end).
 
-handle_cast_unknown_message_returns_noreply_test_() ->
+handle_cast_unknown_message_returns_noreply_test() ->
     State = [],
     Msg = unknown_message,
     Result = user_server:handle_cast(Msg, State),

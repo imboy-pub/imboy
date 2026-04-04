@@ -142,7 +142,7 @@ search_msg(Uid, Page, Size, Keyword, Type) ->
 -spec search_msg(integer(), integer(), integer(), binary(), binary(), map()) -> map().
 search_msg(Uid, Page, Size, Keyword, Type, Options) ->
     Offset = (Page - 1) * Size,
-    TypeBin = binary:upper_case(Type),
+    TypeBin = unicode:characters_to_binary(string:uppercase(unicode:characters_to_list(Type))),
 
     % 判断是否使用增强搜索
     HasOptions = map_size(Options) > 0,

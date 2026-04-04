@@ -76,8 +76,8 @@ stage_with_integer_toid_validates_all_fields_test_() ->
                 % 验证时间戳格式（RFC3339）
                 CreatedAt = maps:get(created_at, Data),
                 ServerTs = maps:get(server_ts, Data),
-                ?assertMatch(<<_:4,"-",_:2,"-",_:2,"T",_:8,"Z">>, CreatedAt),
-                ?assertMatch(<<_:4,"-",_:2,"-",_:2,"T",_:8,"Z">>, ServerTs),
+                ?assertMatch(<<_:4/binary,"-",_:2/binary,"-",_:2/binary,"T",_:8/binary,"Z">>, CreatedAt),
+                ?assertMatch(<<_:4/binary,"-",_:2/binary,"-",_:2/binary,"T",_:8/binary,"Z">>, ServerTs),
 
                 {ok, 1}
             end}
@@ -147,8 +147,8 @@ stage_unique_violation_converts_to_business_error_test_() ->
         ]},
         {elib_pg, [
             {'insert', 2, fun(_Tb, _Data) ->
-                % 模拟 PostgreSQL 唯一约束错误
-                {error, {error, [[{23505, unique_constraint}]]}}
+                % 模拟 PostgreSQL 唯一约束错误（与源码匹配的格式）
+                {error, {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
             end}
         ]}
     ], fun() ->
@@ -285,7 +285,7 @@ stage_with_list_unique_violation_test_() ->
         ]},
         {elib_pg, [
             {'insert', 2, fun(_Tb, _Data) ->
-                {error, {error, [[{23505, unique_constraint}]]}}
+                {error, {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
             end}
         ]}
     ], fun() ->

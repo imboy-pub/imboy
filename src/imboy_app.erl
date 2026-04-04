@@ -11,6 +11,7 @@
 start(_Type, _Args) ->
     _ = inets:start(),
     ok = validate_runtime_config(),
+    ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
     % 初始化集群管理
     _ = imboy_cluster:init(),
@@ -32,6 +33,7 @@ start(_Type, _Args) ->
                     cowboy_router % 必须是第一个元素
                     , cors_middleware % CORS 中间件，处理跨域请求
                     , auth_middleware % 认证中间件
+                    , throttle_middleware % 限流中间件
                     , cowboy_handler
                 ],
                 % metrics_callback => do_metrics_callback(),

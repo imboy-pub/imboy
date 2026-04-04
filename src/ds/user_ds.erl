@@ -217,24 +217,26 @@ delete_all_related_data(Uid) ->
 %% @private
 -spec delete_all_related_data(pid(), integer()) -> ok.
 delete_all_related_data(Conn, Uid) ->
-    % 删除用户基本信息
-    delete_from_table(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
-    delete_from_table(Conn, user_collect_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, user_denylist_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, user_setting_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, user_tag_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, <<"fts_user">>, <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, geo_people_nearby_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    % 删除好友关系
-    delete_from_table(Conn, friend_repo:tablename(), <<"from_user_id = $1">>, [Uid]),
-    delete_from_table(Conn, friend_repo:tablename(), <<"to_user_id = $1">>, [Uid]),
-    delete_from_table(Conn, <<"user_friend_category">>, <<"owner_user_id = $1">>, [Uid]),
-    % 删除群组相关（作为群主）
-    delete_from_table(Conn, group_repo:tablename(), <<"owner_uid = $1">>, [Uid]),
-    delete_from_table(Conn, group_member_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    delete_from_table(Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    % 旧测试夹具会反复复用手机号。这里优先删除依赖表，再删除 user 主表，
+    % 同时兼容当前 schema 中已经移除的历史表，避免清理阶段因缺表中断。
+    ok = delete_from_table_if_exists(Conn, user_collect_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_denylist_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_setting_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_tag_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.user_token">>, <<"uid = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.user_group">>, <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, group_category_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.fts_user">>, <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, geo_people_nearby_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, friend_repo:tablename(), <<"from_user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, friend_repo:tablename(), <<"to_user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.user_friend_category">>, <<"owner_user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, group_repo:tablename(), <<"owner_uid = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, group_member_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
     ok.
 
 %% @doc 从表中删除数据的辅助函数
@@ -242,8 +244,45 @@ delete_all_related_data(Conn, Uid) ->
 -spec delete_from_table(pid(), binary(), binary(), list()) -> ok.
 delete_from_table(Conn, Table, WhereSql, Params) ->
     Sql = <<"DELETE FROM ", Table/binary, " WHERE ", WhereSql/binary>>,
-    _ = elib_pg:execute(Conn, Sql, Params),
-    ok.
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _} ->
+            ok;
+        {ok, _, _} ->
+            ok;
+        {error, Reason} ->
+            erlang:error({delete_from_table_failed, Table, Reason})
+    end.
+
+-spec delete_from_table_if_exists(pid(), binary(), binary(), list()) -> ok.
+delete_from_table_if_exists(Conn, Table0, WhereSql, Params) ->
+    Table = qualify_table(Table0),
+    case table_exists(Conn, Table) of
+        true ->
+            delete_from_table(Conn, Table, WhereSql, Params);
+        false ->
+            ok
+    end.
+
+-spec table_exists(pid(), binary()) -> boolean().
+table_exists(Conn, Table) ->
+    Sql = <<"SELECT to_regclass($1) IS NOT NULL AS present">>,
+    case elib_pg:one(Conn, Sql, [Table]) of
+        {ok, #{<<"present">> := true}} ->
+            true;
+        {ok, #{<<"present">> := <<"t">>}} ->
+            true;
+        _ ->
+            false
+    end.
+
+-spec qualify_table(binary()) -> binary().
+qualify_table(Table) ->
+    case binary:match(Table, <<".">>) of
+        nomatch ->
+            <<"public.", Table/binary>>;
+        _ ->
+            Table
+    end.
 
 %% @doc 插入用户并返回ID
 %% @param Data 用户数据map
@@ -320,4 +359,3 @@ update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

@@ -249,7 +249,12 @@ page(Where, WhereArgs, Fields) ->
 % friend_ds:change_remark(1, 2, <<" 1 to 2 f">>).
 -spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 change_remark(FromUid, ToUid, Remark) ->
-    friend_repo:change_remark(FromUid, ToUid, Remark).
+    Result = friend_repo:change_remark(FromUid, ToUid, Remark),
+    case Result of
+        {ok, _} -> invalidate_cache(FromUid, ToUid);
+        _ -> ok
+    end,
+    Result.
 
 %% @doc 兼容旧入口：直接保存好友关系
 -spec save(integer(), integer(), map()) -> ok.
@@ -361,7 +366,8 @@ check_relationship(FromUid, ToUid) ->
 %% @return ok
 -spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()) -> ok.
 confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs) ->
-    friend_repo:confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs).
+    friend_repo:confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs),
+    invalidate_cache(FromID, ToID).
 
 %% @doc 删除好友
 %% @param FromID 源用户ID
@@ -383,7 +389,12 @@ delete(FromID, ToID) ->
 %% @return ok | {error, Reason}
 -spec move_to_category(integer(), integer(), integer()) -> ok | {error, any()}.
 move_to_category(FromUID, ToUID, CategoryId) ->
-    friend_repo:move_to_category(FromUID, ToUID, CategoryId).
+    Result = friend_repo:move_to_category(FromUID, ToUID, CategoryId),
+    case Result of
+        ok -> invalidate_cache(FromUID, ToUID);
+        _ -> Result
+    end,
+    Result.
 
 %% @doc 主动失效好友关系缓存
 %%
@@ -398,17 +409,7 @@ invalidate_cache(FromUid, ToUid) ->
     %% 清除 is_friend2 缓存
     imboy_cache:flush({is_friend2, FromUid, ToUid}),
     imboy_cache:flush({is_friend2, ToUid, FromUid}),
-    %% 清除 is_friend_fields 缓存（使用通配符模式）
-    lists:foreach(fun(Key) ->
-        case imboy_cache:get(Key) of
-            {ok, _} -> imboy_cache:flush(Key);
-            _ -> ok
-        end
-    end, [
-        {is_friend_fields, FromUid, ToUid, '_'},
-        {is_friend_fields, ToUid, FromUid, '_'}
-    ]),
-    %% 清除 check_relationship 缓存
-    imboy_cache:flush({check_relationship, FromUid, ToUid}),
-    imboy_cache:flush({check_relationship, ToUid, FromUid}),
+    %% 清除 check_relationship3 缓存（双向）
+    imboy_cache:flush({check_relationship3, FromUid, ToUid}),
+    imboy_cache:flush({check_relationship3, ToUid, FromUid}),
     ok.

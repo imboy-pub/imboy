@@ -166,8 +166,8 @@ search(<<"GET">>, Req0, State) ->
                 true ->
                     Where = #{
                         'or' => [
-                            #{title => {like, <<"%", Keyword/binary, "%">>}},
-                            #{introduction => {like, <<"%", Keyword/binary, "%">>}}
+                            #{title => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+                            #{introduction => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
                         ]
                     },
                     {ok, P} = group_repo:page(Page, Size, Where, <<"created_at DESC">>),

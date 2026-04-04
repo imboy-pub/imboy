@@ -25,27 +25,16 @@ tablename_returns_correct_table_test_() ->
 %% 日志查询测试
 %% ===================================================================
 
-find_logs_by_uid_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        Uid = 1,
-        Limit = 20,
-        
-        Result = user_log_repo:find_logs_by_uid(Uid, Limit),
-        % 验证函数调用不会崩溃
-        ?assert(is_tuple(Result))
-    end).
+%% user_log_repo 仅导出 add/1 和 add/2，无查询函数
 
-%% ===================================================================
-%% 日志创建测试
-%% ===================================================================
-
-create_log_test_() ->
+add_log_test_() ->
     ?TEST_WITH_APP(fun() ->
-        Uid = 1,
-        Action = <<"login">>,
-        Detail = <<"User logged in from iOS">>,
-        
-        Result = user_log_repo:create_log(Uid, Action, Detail),
+        Data = #{
+            uid => 1,
+            action => <<"login">>,
+            detail => <<"User logged in from iOS">>
+        },
+        Result = user_log_repo:add(Data),
         % 验证函数调用不会崩溃
         ?assert(is_tuple(Result))
     end).

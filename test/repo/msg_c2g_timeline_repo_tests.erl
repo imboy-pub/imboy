@@ -20,8 +20,8 @@ tablename_returns_correct_table_test_() ->
 list_by_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
         ToId = 1,
-        Limit = 20,
-        Result = msg_c2g_timeline_repo:list_by_uid(ToId, Limit),
+        Column = <<"msg_id">>,
+        Result = msg_c2g_timeline_repo:list_by_uid(ToId, Column),
         case Result of
             {ok, Timeline} when is_list(Timeline) -> ?assert(true);
             {ok, _} -> ?assert(true);
@@ -31,8 +31,8 @@ list_by_uid_test_() ->
 
 client_ack_test_() ->
     ?TEST_WITH_DB(fun() ->
-        MsgId = <<"msg_123">>,
         ToId = 1,
-        Result = msg_c2g_timeline_repo:client_ack(MsgId, ToId),
-        ?assertEqual(ok, Result)
+        MsgId = <<"msg_123">>,
+        Result = msg_c2g_timeline_repo:client_ack(ToId, MsgId),
+        ?assertMatch({ok, _}, Result)
     end).

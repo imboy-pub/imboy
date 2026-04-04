@@ -497,6 +497,45 @@ From = elib_hashids:encode(CurrentUid).
 4. 4 次投递失败后存储为离线消息
 5. 客户端确认后清理定时器和数据库
 
+### 消息永久存储机制（方案 B：conv_seq 游标）
+
+> 配置开关：`{imboy, [{msg_archive_enabled, true}]}`（默认 false）
+
+消息存储分三层，各自职责不同：
+
+| 表 | 类型 | 生命周期 | 用途 |
+|----|------|---------|------|
+| `msg_store_staging` | 暂存缓冲 | 处理后 1 小时清理 | WAL 保证零丢失 |
+| `msg_c2c` / `msg_c2g` | 投递队列 | ACK 后删除 | 在线/离线投递 |
+| `msg_store` | 永久存储 | 运营商配置 retention | 历史查询 / 审计 |
+| `msg_store_seq` | 序列号计数器 | 永久保留 | per-conversation 单调递增 |
+
+**写入流程**（Worker 批量处理）：
+```
+msg_store_staging
+  → do_write → msg_c2c / msg_c2g（投递，不变）
+  → maybe_archive → msg_archive_repo:archive/1
+      → next_conv_seq → msg_store_seq（原子 +1）
+      → elib_pg:insert → msg_store（永久存储）
+```
+
+**conv_key 格式**：
+- C2C: `"c2c:{min_uid}:{max_uid}"` — 两端 uid 排序保证唯一
+- C2G: `"c2g:{group_id}"`
+
+**客户端增量同步**（类 Telegram PTS）：
+```erlang
+% 客户端保存 last_conv_seq，每次请求传入
+ConvKey = msg_archive_ds:conv_key_c2c(MyUid, PeerUid),
+{ok, Rows} = msg_archive_ds:history(ConvKey, LastConvSeq, 50).
+```
+
+**相关模块**：
+- `src/repo/msg_archive_repo.erl` — Repo 层（读写 msg_store / msg_store_seq）
+- `src/ds/msg_archive_ds.erl` — DS 层（历史查询接口）
+- `src/ds/msg_store_worker.erl` — Worker（写入触发点，含 maybe_archive/1）
+- `priv/migrations/00000075_msg_store.sql` — DDL
+
 ### Token 刷新机制
 
 - WS 连接时即使 token 过期也响应成功

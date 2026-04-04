@@ -4,6 +4,7 @@
          offline/2,
          offline_ack/2,
          read_stats/2,
+         history/2,
          reaction_add/2,
          reaction_remove/2,
          reaction_list/2,
@@ -30,6 +31,8 @@ handle_rest_action(reaction_remove, Req0, State) ->
     reaction_remove(Req0, State);
 handle_rest_action(reaction_list, Req0, State) ->
     reaction_list(Req0, State);
+handle_rest_action(history, Req0, State) ->
+    history(Req0, State);
 handle_rest_action(false, Req0, _State) ->
     Req0.
 
@@ -110,6 +113,100 @@ read_stats(Req0, State) ->
                     end
             end
     end.
+
+%%-------------------------------------------------------------------
+%% @doc  消息历史查询（基于 conv_seq 游标）
+%%
+%% 仅在 msg_archive_enabled=true 且已执行 00000075 DDL 时有效。
+%%
+%% 查询参数（GET）：
+%%   chat_type  : "c2c" | "c2g"
+%%   peer_id    : hashids 编码的对方 uid（C2C）或 group_id（C2G）
+%%   after_seq  : 上次最后消息的 conv_seq（首次传 0）
+%%   limit      : 每次返回条数（默认 50，最大 100）
+%%
+%% 响应：
+%%   {messages: [...], next_seq: N, has_more: true|false}
+%% @end
+%%-------------------------------------------------------------------
+-spec history(cowboy_req:req(), map()) -> cowboy_req:req().
+history(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            ChatType = cowboy_req:qs_val(<<"chat_type">>, Req0, <<>>),
+            PeerIdEnc = cowboy_req:qs_val(<<"peer_id">>, Req0, <<>>),
+            {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
+            {ok, Limit0}   = elib_param:int(limit, Req0, 50),
+            Limit = erlang:min(Limit0, 100),   %% 最大 100 条
+
+            case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
+                {error, Reason} ->
+                    elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST);
+                {ok, ConvKey} ->
+                    case msg_archive_ds:history(ConvKey, AfterSeq, Limit) of
+                        {ok, Rows} ->
+                            Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
+                            NextSeq  = next_seq_from_rows(Rows, AfterSeq),
+                            Payload  = #{
+                                <<"messages">>  => Messages,
+                                <<"next_seq">>  => NextSeq,
+                                <<"has_more">>  => length(Rows) >= Limit,
+                                <<"conv_key">>  => ConvKey
+                            },
+                            elib_response:success(Req0, Payload);
+                        {error, _Reason} ->
+                            elib_response:error(Req0,
+                                <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
+                                ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
+    end.
+
+%% @private 验证参数并生成 conv_key
+validate_history_params(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
+    PeerId = elib_hashids:decode(PeerIdEnc),
+    {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId)};
+validate_history_params(<<"c2g">>, PeerIdEnc, _CurrentUid) when PeerIdEnc =/= <<>> ->
+    Gid = elib_hashids:decode(PeerIdEnc),
+    {ok, msg_archive_ds:conv_key_c2g(Gid)};
+validate_history_params(<<>>, _, _) ->
+    {error, <<"缺少 chat_type 参数"/utf8>>};
+validate_history_params(_, <<>>, _) ->
+    {error, <<"缺少 peer_id 参数"/utf8>>};
+validate_history_params(ChatType, _, _) ->
+    {error, iolist_to_binary([<<"不支持的 chat_type: "/utf8>>, ChatType])}.
+
+%% @private 编码历史消息（from_id/to_id → hashids）
+encode_history_msg(_CurrentUid, Row) ->
+    FromId  = maps:get(<<"from_id">>, Row, undefined),
+    ToId    = maps:get(<<"to_id">>,   Row, undefined),
+    GroupId = maps:get(<<"group_id">>, Row, undefined),
+    Row2 = maps:remove(<<"from_id">>, Row),
+    Row3 = maps:remove(<<"to_id">>,   Row2),
+    Row4 = maps:remove(<<"group_id">>, Row3),
+    Row5 = case FromId of
+        undefined -> Row4;
+        _         -> Row4#{<<"from">> => elib_hashids:encode(FromId)}
+    end,
+    Row6 = case ToId of
+        null      -> Row5;
+        undefined -> Row5;
+        _         -> Row5#{<<"to">> => elib_hashids:encode(ToId)}
+    end,
+    case GroupId of
+        null      -> Row6;
+        undefined -> Row6;
+        _         -> Row6#{<<"group_id">> => elib_hashids:encode(GroupId)}
+    end.
+
+%% @private 从返回行中提取最大 conv_seq 作为 next_seq
+next_seq_from_rows([], AfterSeq) ->
+    AfterSeq;
+next_seq_from_rows(Rows, _AfterSeq) ->
+    LastRow = lists:last(Rows),
+    maps:get(<<"conv_seq">>, LastRow, 0).
 
 -spec offline_ack(cowboy_req:req(), map()) -> cowboy_req:req().
 offline_ack(Req0, State) ->

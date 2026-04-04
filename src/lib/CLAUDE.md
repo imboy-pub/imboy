@@ -3,7 +3,7 @@
 [根目录](../CLAUDE.md) > **src/lib**
 
 > **最后更新**: 2026-02-01 04:35:00 CST
-> **模块数量**: 30 个
+> **模块数量**: 31 个
 > **职责**: 提供基础工具函数，封装数据库连接、缓存、加密等通用功能
 
 ---
@@ -69,7 +69,8 @@ Pid = elib_async:async(fun() -> ok end).
 
 | Lib | 说明 |
 |-----|------|
-| `elib_hashids.erl` | HashID 编码/解码 |
+| `elib_hashids.erl` | HashID 编码/解码（逐步废弃，迁移到 elib_tsid） |
+| `elib_tsid.erl` | TSID 时间有序分布式唯一 ID 生成器（替代 hashids + bigserial） |
 
 ### 异步与重试
 
@@ -123,12 +124,88 @@ Pid = elib_async:async(fun() -> ok end).
 |-----|------|
 | `eunit_runner.erl` | EUnit 运行器 |
 | `epgsql_codec_rfc3339_bin.erl` | RFC3339 编解码 |
+| `elib_tsid_tests.erl` | TSID 生成器测试 (15 个测试) |
 
 ### 其他
 
 | Lib | 说明 |
 |-----|------|
 | `qianfan_api.erl` | 千帆 AI API |
+
+---
+
+## elib_tsid — TSID 时间有序分布式唯一 ID 生成器
+
+### 位布局 (64-bit 有符号整数，适配 PostgreSQL BIGINT)
+
+```
+[0] [timestamp: 42 bits] [node: 10 bits] [sequence: 11 bits]
+sign  毫秒时间戳           DC+节点标识      毫秒内序列号
+```
+
+### 容量
+
+| 指标 | 值 |
+|------|-----|
+| 时间跨度 | 2^42 ms ≈ 139.5 年 (纪元 2025-01-01 → 2164 年) |
+| 节点总数 | 2^10 = 1024 (DC×Node 任意分配) |
+| 每节点每毫秒 | 2^11 = 2048 个 ID |
+| 每节点每秒 | 2,048,000 个 ID |
+| 数字位数 | 永远 ≤ 19 位 (BIGINT 最大值 9.2 × 10^18) |
+
+### DC/Node 分配 (dc_bits 参数控制)
+
+| dc_bits | DC 数量 | 每 DC 节点数 | 推荐场景 |
+|---------|---------|-------------|---------|
+| 0 | 1 | 1024 | 单机房 |
+| 2 | 4 | 256 | 多区域 |
+| **3 (默认)** | **8** | **128** | **推荐：多 DC + 充足节点** |
+| 4 | 16 | 64 | DC 多节点少 |
+| 5 | 32 | 32 | 极多 DC |
+
+### 唯一性保证
+
+1. **不同 NodeId** → 跨节点唯一 (10-bit node 嵌入 ID)
+2. **同节点同毫秒** → Sequence 单调递增 (CAS 原子操作)
+3. **时钟回拨** → `EffTs = max(NowRel, OldTs)` 沿用上次时间戳 + 递增序列，绝不倒退
+4. **序列溢出** → 借用下一毫秒时间戳 `{OldTs + 1, 0}`，绝不阻塞
+5. **并发安全** → `atomics:compare_exchange` lock-free CAS 循环
+
+### 使用
+
+```erlang
+%% 初始化 (应用启动时调用一次)
+elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
+
+%% 生成 ID
+Id = elib_tsid:generate().           %% 单个
+Ids = elib_tsid:generate_n(100).     %% 批量
+
+%% 解析
+#{timestamp := Ts, dc_id := Dc, node_id := Node, sequence := Seq} = elib_tsid:parse(Id).
+
+%% 提取
+Ts = elib_tsid:timestamp(Id).        %% Unix 毫秒时间戳
+NodeId = elib_tsid:node_id(Id).      %% 10-bit 节点标识
+
+%% Base62 编码 (URL/日志场景，最长 11 字符)
+Encoded = elib_tsid:to_base62(Id).   %% <<"1a2B3c4D5">>
+Id = elib_tsid:from_base62(Encoded).
+```
+
+### 迁移规划 (elib_hashids → elib_tsid)
+
+现有 374 处 hashids 调用 (240 encode + 80 decode + 54 batch)，分三阶段迁移：
+
+- **阶段 1**: 新建表直接使用 TSID 做主键，不再需要 encode/decode
+- **阶段 2**: 存量表新记录改用 TSID，旧记录保持 BIGSERIAL (BIGINT 列兼容)
+- **阶段 3**: 逐步清理 encode/decode 调用，客户端直接使用 TSID 数字
+
+### 关键约束
+
+- `dc_bits` 全集群必须统一，否则 `parse/1` 会错误拆分 DC/Node
+- `persistent_term` 键: `elib_tsid_state`, `elib_tsid_node_id`, `elib_tsid_dc_bits`
+- 纪元: 2025-01-01 00:00:00 UTC (`?EPOCH_MS = 1735689600000`)
 
 ---
 
@@ -250,7 +327,7 @@ test/lib/
 
 ## 相关文件清单
 
-### Lib 文件 (30 个)
+### Lib 文件 (31 个)
 
 ```
 src/lib/
@@ -284,6 +361,7 @@ src/lib/
 ├── imboy_sms.erl
 ├── elib_str.erl
 ├── imboy_syn.erl
+├── elib_tsid.erl
 ├── elib_type.erl
 ├── elib_uri.erl
 └── qianfan_api.erl
@@ -292,6 +370,14 @@ src/lib/
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-04-04
+- 新增 `elib_tsid.erl` TSID 时间有序分布式唯一 ID 生成器
+- 位布局: [sign:1][timestamp:42][node:10][sequence:11]，适配 PostgreSQL BIGINT
+- 容量: 139.5 年 × 1024 节点 × 204.8 万 ID/秒/节点
+- 唯一性: CAS lock-free + 时钟回拨保护 + 序列溢出借用
+- 计划逐步替代 elib_hashids (374 处调用)
+- 更新模块数量：30 → 31
 
 ### 2026-02-01
 - 新增 `shamir_secret_sharing.erl` Shamir 密钥分割算法

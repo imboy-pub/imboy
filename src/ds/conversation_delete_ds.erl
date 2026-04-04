@@ -15,6 +15,9 @@
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
 
+%% 缓存 TTL 常量（秒）— 会话删除状态缓存 5 分钟
+-define(CACHE_TTL_CONV_DELETE, 300).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -28,6 +31,7 @@
 delete_conversation(Uid, ConversationId, Type) ->
     case conversation_delete_repo:mark_deleted(Uid, ConversationId, Type) of
         {ok, _Count} ->
+            imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
             ok;
         {error, Reason} ->
             {error, Reason}
@@ -41,6 +45,7 @@ delete_conversation(Uid, ConversationId, Type) ->
 -spec restore_conversation(integer(), binary(), binary()) -> ok.
 restore_conversation(Uid, ConversationId, Type) ->
     conversation_delete_repo:restore(Uid, ConversationId, Type),
+    imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
     ok.
 
 %% @doc 获取用户的已删除会话列表
@@ -57,7 +62,9 @@ get_deleted_conversations(Uid) ->
 %% @return true 已删除 | false 未删除
 -spec is_conversation_deleted(integer(), binary(), binary()) -> boolean().
 is_conversation_deleted(Uid, ConversationId, Type) ->
-    conversation_delete_repo:is_deleted(Uid, ConversationId, Type).
+    Key = {conv_deleted, Uid, ConversationId, Type},
+    Fun = fun() -> conversation_delete_repo:is_deleted(Uid, ConversationId, Type) end,
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_CONV_DELETE).
 
 %% ===================================================================
 %% Internal Function Definitions

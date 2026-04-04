@@ -349,7 +349,7 @@ send_remind_notification(ScheduleId, UserId) ->
                 start_at => StartAt
             },
             % 发送系统通知
-            msg_s2c_ds:send(0, [UserId], <<"schedule_remind">>, <<>>, null, Payload, no_save)
+            msg_s2c_ds:send(0, [UserId], <<"schedule_remind">>, <<>>, null, Payload, save)
     end.
 
 %% ===================================================================

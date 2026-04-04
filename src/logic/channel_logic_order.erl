@@ -71,23 +71,32 @@ pay_order(Uid, OrderNo) ->
                         OrderUserId =/= Uid ->
                             {error, <<"无权操作此订单"/utf8>>};
                         true ->
-                            PaymentData = #{
-                                payment_no => generate_payment_no(),
-                                payment_method => <<"mock">>
-                            },
-                            case channel_subscribe_ds:pay_order(OrderNo, PaymentData) of
-                                ok ->
-                                    channel_logic_notify:notify_order_paid(ChannelId, Uid);
-                                {error, already_paid} ->
-                                    {error, <<"订单已支付"/utf8>>};
-                                {error, not_found_or_expired} ->
-                                    {error, <<"订单不存在或已过期"/utf8>>};
-                                {error, Reason} when is_binary(Reason) ->
-                                    {error, Reason};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                            % 从订单中获取支付方式（默认 mock，可传 wallet）
+                            Method = maps:get(<<"payment_method">>, Order, <<"mock">>),
+                            Amount = maps:get(<<"amount">>, Order, 0),
+                            PayOpts = #{uid => Uid, amount => Amount},
+                            case payment_gateway:pay(Method, OrderNo, PayOpts) of
+                                {ok, PayNo} ->
+                                    PaymentData = #{
+                                        payment_no => PayNo,
+                                        payment_method => Method
+                                    },
+                                    case channel_subscribe_ds:pay_order(OrderNo, PaymentData) of
+                                        ok ->
+                                            channel_logic_notify:notify_order_paid(ChannelId, Uid);
+                                        {error, already_paid} ->
+                                            {error, <<"订单已支付"/utf8>>};
+                                        {error, not_found_or_expired} ->
+                                            {error, <<"订单不存在或已过期"/utf8>>};
+                                        {error, Reason} when is_binary(Reason) ->
+                                            {error, Reason};
+                                        {error, Reason} ->
+                                            {error, elib_cnv:safe_to_binary(Reason)};
+                                        Other ->
+                                            {error, elib_cnv:safe_to_binary(Other)}
+                                    end;
+                                {error, PayReason} ->
+                                    {error, PayReason}
                             end
                     end
             end;
@@ -160,7 +169,3 @@ decode_positive_id(Value) ->
 order_transfer(Order) ->
     elib_hashids:replace_fields(Order, [<<"id">>, <<"channel_id">>, <<"user_id">>]).
 
-generate_payment_no() ->
-    Timestamp = erlang:system_time(millisecond),
-    Random = rand:uniform(1000000) - 1,
-    iolist_to_binary(["PAY", integer_to_binary(Timestamp), integer_to_binary(Random)]).

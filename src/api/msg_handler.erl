@@ -17,6 +17,7 @@
     offline/2,
     offline_ack/2,
     read_stats/2,
+    history/2,
     pin/2,
     forward/2,
     reaction_add/2,
@@ -208,6 +209,17 @@ offline_ack(Req0, State) ->
 -spec read_stats(cowboy_req:req(), map()) -> cowboy_req:req().
 read_stats(Req0, State) ->
     messaging_logic:read_stats(Req0, State).
+
+%% @doc 查询消息历史（conv_seq 游标分页）
+%%
+%% GET /v1/msg/history?chat_type=c2c&peer_id=xxx&after_seq=0&limit=50
+%%
+%% @param Req0 Cowboy 请求对象
+%% @param State 包含 current_uid 的状态
+%% @end
+-spec history(cowboy_req:req(), map()) -> cowboy_req:req().
+history(Req0, State) ->
+    messaging_logic:history(Req0, State).
 
 %% @doc 处理消息置顶请求
 %% 设置消息的置顶状态

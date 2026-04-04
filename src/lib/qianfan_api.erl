@@ -210,7 +210,7 @@ canonical_header(Headers) ->
     % Step 2: Trim whitespace and ignore empty headers
     TrimmedHeaders = [{Name, string:trim(Value)} || {Name, Value} <- SelectedHeaders, Value /= ""],
 
-    % Step 3: URI Encode headers (stubbed)
+    % Step 3: URI Encode header values（对 Value 做 percent-encoding，保留 / 不编码）
     EncodedHeaders = [{Name, elib_str:replace(cow_uri:urlencode(ec_cnv:to_binary(Value)), "(?i)%2f", "/")} || {Name, Value} <- TrimmedHeaders],
 
     % Step 4: Sort headers lexicographically

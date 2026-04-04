@@ -17,7 +17,7 @@
 tablename_returns_valid_table_name_test_() ->
     ?TEST_SIMPLE(fun() ->
         TableName = msg_forward_repo:tablename(),
-        ?assertMatch(<<"msg_forward">>, TableName)
+        ?assertMatch(<<"public.msg_forward">>, TableName)
     end).
 
 %% ===================================================================
@@ -29,14 +29,14 @@ insert_with_valid_data_succeeds_test_() ->
         {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         ForwardRecord = #{
-            original_msg_id => <<"msg_123">>,
-            original_from_id => 123,
-            original_to_id => 456,
-            original_type => <<"c2c">>,
-            forward_msg_id => <<"msg_456">>,
-            forward_from_id => 123,
-            forward_to_id => 789,
-            forward_type => <<"c2c">>
+            <<"original_msg_id">> => <<"msg_123">>,
+            <<"original_from_id">> => 123,
+            <<"original_to_id">> => 456,
+            <<"original_type">> => <<"c2c">>,
+            <<"forward_msg_id">> => <<"msg_456">>,
+            <<"forward_from_id">> => 123,
+            <<"forward_to_id">> => 789,
+            <<"forward_type">> => <<"c2c">>
         },
 
         Result = msg_forward_repo:insert(ForwardRecord),
@@ -48,14 +48,14 @@ insert_with_database_error_fails_test_() ->
         {'query', 2, fun(_Sql, _Params) -> {error, database_error} end}
     ], fun() ->
         ForwardRecord = #{
-            original_msg_id => <<"msg_123">>,
-            original_from_id => 123,
-            original_to_id => 456,
-            original_type => <<"c2c">>,
-            forward_msg_id => <<"msg_456">>,
-            forward_from_id => 123,
-            forward_to_id => 789,
-            forward_type => <<"c2c">>
+            <<"original_msg_id">> => <<"msg_123">>,
+            <<"original_from_id">> => 123,
+            <<"original_to_id">> => 456,
+            <<"original_type">> => <<"c2c">>,
+            <<"forward_msg_id">> => <<"msg_456">>,
+            <<"forward_from_id">> => 123,
+            <<"forward_to_id">> => 789,
+            <<"forward_type">> => <<"c2c">>
         },
 
         Result = msg_forward_repo:insert(ForwardRecord),
@@ -175,8 +175,8 @@ insert_with_missing_required_field_fails_test_() ->
     ], fun() ->
         % 缺少必需字段
         ForwardRecord = #{
-            original_msg_id => <<"msg_123">>,
-            original_from_id => 123
+            <<"original_msg_id">> => <<"msg_123">>,
+            <<"original_from_id">> => 123
             % 缺少其他必需字段
         },
 
@@ -203,14 +203,14 @@ insert_with_invalid_type_fails_test_() ->
         {'query', 2, fun(_Sql, _Params) -> {error, {invalid, <<"type_mismatch">>}} end}
     ], fun() ->
         ForwardRecord = #{
-            original_msg_id => <<"msg_123">>,
-            original_from_id => <<"not_an_integer">>,  % 错误的类型
-            original_to_id => 456,
-            original_type => <<"c2c">>,
-            forward_msg_id => <<"msg_456">>,
-            forward_from_id => 123,
-            forward_to_id => 789,
-            forward_type => <<"c2c">>
+            <<"original_msg_id">> => <<"msg_123">>,
+            <<"original_from_id">> => <<"not_an_integer">>,  % 错误的类型
+            <<"original_to_id">> => 456,
+            <<"original_type">> => <<"c2c">>,
+            <<"forward_msg_id">> => <<"msg_456">>,
+            <<"forward_from_id">> => 123,
+            <<"forward_to_id">> => 789,
+            <<"forward_type">> => <<"c2c">>
         },
 
         Result = msg_forward_repo:insert(ForwardRecord),

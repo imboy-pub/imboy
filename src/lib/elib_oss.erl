@@ -105,28 +105,40 @@ upload(FileBinary, FileName, Options) ->
             end
     end.
 
-%% @doc 下载文件
+%% @doc 下载文件（本地文件系统）
 %% @param FileId 文件ID
 %% @return {ok, FileBinary} | {error, Reason}
 -spec download(binary()) -> {ok, binary()} | {error, term()}.
-download(_FileId) ->
-    % 占位符实现：返回错误
-    {error, not_implemented}.
+download(FileId) ->
+    case validate_file_id(FileId) of
+        ok ->
+            file:read_file(upload_path(FileId));
+        {error, _} = Err ->
+            Err
+    end.
 
-%% @doc 删除文件
+%% @doc 删除文件（本地文件系统）
 %% @param FileId 文件ID
 %% @return ok | {error, Reason}
 -spec delete(binary()) -> ok | {error, term()}.
-delete(_FileId) ->
-    % 占位符实现：返回成功
-    ok.
+delete(FileId) ->
+    case validate_file_id(FileId) of
+        ok ->
+            FilePath = upload_path(FileId),
+            case file:delete(FilePath) of
+                ok -> ok;
+                {error, enoent} -> ok;  % 文件不存在视为删除成功
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
 
 %% @doc 获取文件URL
 %% @param FileId 文件ID
 %% @return {ok, FileUrl} | {error, Reason}
 -spec get_url(binary()) -> {ok, binary()} | {error, term()}.
 get_url(FileId) ->
-    % 占位符实现：返回本地路径
     {ok, <<"/static/files/", FileId/binary>>}.
 
 %% @doc 生成文件ID
@@ -166,18 +178,43 @@ validate_file_type(MimeType) ->
 %% 内部函数
 %% ===================================================================
 
-%% @doc 上传文件到存储（占位符实现）
+%% @doc 上传文件到本地文件系统
 %% @param FileId 文件ID
-%% @param FileName 文件名
+%% @param FileName 原始文件名（用于构建 URL，不作为存储路径）
 %% @param FileBinary 文件二进制数据
-%% @param MimeType MIME类型
+%% @param MimeType MIME类型（保留，供未来 OSS 集成使用）
 %% @return {ok, FileUrl} | {error, Reason}
 -spec upload_to_storage(binary(), binary(), binary(), binary()) -> {ok, binary()} | {error, term()}.
-upload_to_storage(FileId, FileName, _FileBinary, _MimeType) ->
-    % 占位符实现：返回本地路径
-    % 实际使用时应该上传到 OSS
-    FileUrl = <<"/static/files/", FileId/binary, "/", FileName/binary>>,
-    {ok, FileUrl}.
+upload_to_storage(FileId, FileName, FileBinary, _MimeType) ->
+    FilePath = upload_path(FileId),
+    UploadDir = filename:dirname(FilePath),
+    ok = filelib:ensure_dir(FilePath),
+    _ = file:make_dir(UploadDir),
+    case file:write_file(FilePath, FileBinary) of
+        ok ->
+            % 使用 basename 防止文件名中包含路径分隔符导致目录遍历
+            SafeName = filename:basename(FileName),
+            FileUrl = <<"/static/files/", FileId/binary, "/", SafeName/binary>>,
+            {ok, FileUrl};
+        {error, Reason} ->
+            ?ERROR_LOG(["elib_oss upload_to_storage failed: ", Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 获取文件在本地文件系统的完整路径（仅供内部使用，调用前需验证 FileId）
+-spec upload_path(binary()) -> string().
+upload_path(FileId) ->
+    PrivDir = code:priv_dir(imboy),
+    filename:join([PrivDir, "uploads", binary_to_list(FileId)]).
+
+%% @doc 验证 FileId 格式，防止路径遍历攻击
+%% FileId 必须符合 generate_file_id/0 生成的格式：file_<数字>_<数字>
+-spec validate_file_id(binary()) -> ok | {error, binary()}.
+validate_file_id(FileId) ->
+    case re:run(FileId, <<"^file_[0-9]+_[0-9]+$">>, [{capture, none}]) of
+        match -> ok;
+        nomatch -> {error, <<"invalid_file_id"/utf8>>}
+    end.
 
 %% @doc 猜测文件MIME类型
 %% @param FileName 文件名

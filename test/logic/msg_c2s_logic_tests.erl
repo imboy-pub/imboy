@@ -120,7 +120,7 @@ c2s_to_external_with_valid_data_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -210,7 +210,7 @@ c2s_to_external_with_topic_id_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -262,7 +262,7 @@ c2s_to_external_without_topic_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -299,10 +299,12 @@ c2s_to_external_without_topic_succeeds_test_() ->
     end).
 
 %% ===================================================================
-%% c2s_to_role_chat/3 测试 - AI 角色聊天处理（预留接口）
+%% c2s_to_role_chat/3 测试 - AI 角色聊天处理
+%% 实现路由至 c2s_to_external，测试环境下 msg_store_ds:stage 失败
+%% 会走 error 分支返回 {reply, S2C}
 %% ===================================================================
 
-c2s_to_role_chat_returns_not_implemented_test_() ->
+c2s_to_role_chat_routes_to_external_test_() ->
     ?TEST_SIMPLE(fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
@@ -317,7 +319,7 @@ c2s_to_role_chat_with_default_role_id_test_() ->
     ?TEST_SIMPLE(fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
-        Payload = #{},  % 无 role_id，使用默认值
+        Payload = #{},  % 无 role_id，默认使用 <<"doctor">>
         Data = #{<<"payload">> => Payload},
 
         Result = msg_c2s_logic:c2s_to_role_chat(MsgId, CurrentUid, Data),
@@ -376,7 +378,7 @@ c2s_to_external_with_empty_text_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -426,7 +428,7 @@ c2s_to_external_with_unicode_text_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -595,7 +597,7 @@ c2s_to_external_with_large_topic_id_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -646,7 +648,7 @@ c2s_to_external_with_long_topic_title_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
@@ -701,7 +703,7 @@ c2s_to_external_with_utf8_text_succeeds_test_() ->
         ]},
         {msg_store_ds, [
             {'stage', 10, fun(_Type, _MsgId, _MsgType, _Action, _E2ee, _Payload, _FromId, _ToId, _CreatedAt, _UpdatedAt) -> ok end},
-            {'enqueue', 2, fun(_Type, _MsgId, _Data) -> ok end}
+            {'enqueue', 3, fun(_Type, _MsgId, _Data) -> ok end}
         ]},
         {qianfan_api, [
             {'create_chat', 3, fun(_Uid, _Text, _Opts) ->

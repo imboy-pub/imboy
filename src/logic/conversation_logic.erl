@@ -57,6 +57,7 @@ delete(Uid, ConversationId, Type) ->
             % 标记会话为已删除
             case conversation_delete_ds:delete_conversation(Uid, ConversationId, Type) of
                 ok ->
+                    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_deleted">>),
                     ok;
                 {error, Reason} ->
                     ?LOG(error, "删除会话失败: ~p", [Reason]),
@@ -72,6 +73,7 @@ delete(Uid, ConversationId, Type) ->
 -spec restore(integer(), binary(), binary()) -> ok.
 restore(Uid, ConversationId, Type) ->
     conversation_delete_ds:restore_conversation(Uid, ConversationId, Type),
+    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_restored">>),
     ok.
 
 %% @doc 检查会话是否已删除
@@ -124,6 +126,17 @@ filter_deleted_conversations(Uid, MsgList) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 向用户的所有在线设备推送会话变更通知
+%% @private
+-spec notify_conversation_change(integer(), binary(), binary(), binary()) -> ok.
+notify_conversation_change(Uid, ConversationId, Type, Action) ->
+    Payload = #{
+        <<"conversation_id">> => ConversationId,
+        <<"conversation_type">> => Type
+    },
+    msg_s2c_ds:send(Uid, [Uid], Action, <<>>, null, Payload, no_save),
+    ok.
 
 -spec normalize_limit(term()) -> integer().
 normalize_limit(Limit) when is_integer(Limit), Limit > 0 ->

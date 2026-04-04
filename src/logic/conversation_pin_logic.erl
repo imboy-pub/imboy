@@ -42,6 +42,7 @@ pin(Uid, ConversationId, Type) ->
             % 置顶会话
             case conversation_pin_ds:pin_conversation(Uid, ConversationId, Type) of
                 ok ->
+                    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_pinned">>),
                     ok;
                 {error, Reason} ->
                     ?LOG(error, "置顶会话失败: ~p", [Reason]),
@@ -57,6 +58,7 @@ pin(Uid, ConversationId, Type) ->
 -spec unpin(integer(), binary(), binary()) -> ok.
 unpin(Uid, ConversationId, Type) ->
     conversation_pin_ds:unpin_conversation(Uid, ConversationId, Type),
+    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_unpinned">>),
     ok.
 
 %% @doc 获取用户的置顶会话列表
@@ -78,6 +80,19 @@ is_pinned(Uid, ConversationId, Type) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 向用户的所有在线设备推送会话变更通知
+%% 使用 no_save 模式：会话状态变更属于轻量级同步，
+%% 客户端重连时会拉取最新会话列表作为补偿
+%% @private
+-spec notify_conversation_change(integer(), binary(), binary(), binary()) -> ok.
+notify_conversation_change(Uid, ConversationId, Type, Action) ->
+    Payload = #{
+        <<"conversation_id">> => ConversationId,
+        <<"conversation_type">> => Type
+    },
+    msg_s2c_ds:send(Uid, [Uid], Action, <<>>, null, Payload, no_save),
+    ok.
 
 %% ===================================================================
 %% EUnit tests.

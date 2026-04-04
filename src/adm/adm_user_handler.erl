@@ -125,10 +125,10 @@ search(<<"GET">>, Req0, _State) ->
         true ->
             Where = #{
                 'or' => [
-                    #{account => {like, <<"%", Keyword/binary, "%">>}},
-                    #{nickname => {like, <<"%", Keyword/binary, "%">>}},
-                    #{email => {like, <<"%", Keyword/binary, "%">>}},
-                    #{mobile => {like, <<"%", Keyword/binary, "%">>}}
+                    #{account => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+                    #{nickname => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+                    #{email => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+                    #{mobile => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
                 ]
             },
             {ok, P} = user_repo:page(Page, Size, Where, <<"created_at DESC">>),
@@ -275,10 +275,10 @@ collect_remove(<<"POST">>, Req0, _State) ->
 build_where(Status, Keyword) when byte_size(Keyword) > 0 ->
     KeywordWhere = #{
         'or' => [
-            #{account => {like, <<"%", Keyword/binary, "%">>}},
-            #{nickname => {like, <<"%", Keyword/binary, "%">>}},
-            #{email => {like, <<"%", Keyword/binary, "%">>}},
-            #{mobile => {like, <<"%", Keyword/binary, "%">>}}
+            #{account => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{nickname => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{email => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{mobile => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
         ]
     },
     case Status >= 0 of

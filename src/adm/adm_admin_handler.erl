@@ -439,7 +439,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
             normalize_positive_int(Value);
         false ->
             case catch elib_hashids:decode(Value) of
-                [Id] when is_integer(Id), Id > 0 ->
+                Id when is_integer(Id), Id > 0 ->
                     Id;
                 _ ->
                     0

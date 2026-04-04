@@ -37,7 +37,7 @@ is_online_returns_false_when_user_offline_test_() ->
 %% ===================================================================
 
 is_online_with_dtype_returns_true_when_online_test_() ->
-    ?WITH_MECK(imboy_syn, [
+    ?WITH_MECK(user_device_logic, [
         {'is_online', 2, fun(_Uid, _Condition) -> true end}
     ], fun() ->
         Uid = 1,
@@ -47,7 +47,7 @@ is_online_with_dtype_returns_true_when_online_test_() ->
     end).
 
 is_online_with_dtype_returns_false_when_offline_test_() ->
-    ?WITH_MECK(imboy_syn, [
+    ?WITH_MECK(user_device_logic, [
         {'is_online', 2, fun(_Uid, _Condition) -> false end}
     ], fun() ->
         Uid = 999,

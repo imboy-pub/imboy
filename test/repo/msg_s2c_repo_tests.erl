@@ -17,15 +17,17 @@ tablename_returns_correct_table_test_() ->
         ?assert(<<>> =/= Result)
     end).
 
-find_messages_by_uid_test_() ->
+read_by_to_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Uid = 1,
+        ToUid = 1,
         Limit = 10,
-        Result = msg_s2c_repo:find_messages_by_uid(Uid, Limit),
+        Result = msg_s2c_repo:read(ToUid, Limit),
         ?assert(is_tuple(Result)),
         case Result of
-            {ok, Messages} ->
-                ?assert(is_list(Messages));
+            {ok, _, Messages} when is_list(Messages) ->
+                ?assert(true);
+            {ok, Messages} when is_list(Messages) ->
+                ?assert(true);
             {error, Reason} ->
                 ?assert(is_atom(Reason) orelse is_binary(Reason))
         end

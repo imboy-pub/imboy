@@ -206,6 +206,7 @@ get_routes() ->
         {"/v1/msg/reaction/add", msg_handler, #{action => reaction_add}},
         {"/v1/msg/reaction/remove", msg_handler, #{action => reaction_remove}},
         {"/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
+        {"/v1/msg/history", msg_handler, #{action => history}},
 
         {"/v1/uqrcode", user_handler, #{action => qrcode}},% 2024-05-10 过两个版本可以清除该路由
         {"/v1/user/qrcode", user_handler, #{action => qrcode}},
@@ -236,6 +237,8 @@ get_routes() ->
         {"/v1/e2ee/key/status", e2ee_handler, #{action => key_status}},
         {"/v1/e2ee/notifications/pull", e2ee_handler, #{action => pull_notifications}},
         {"/v1/e2ee/recovery/start", e2ee_handler, #{action => start_recovery}},
+        {"/v1/e2ee/backup/list", e2ee_handler, #{action => backup_list}},
+        {"/v1/e2ee/backup/delete", e2ee_handler, #{action => backup_delete}},
 
         {"/v1/e2ee/transfer/create", e2ee_transfer_handler, #{action => create}},
         {"/v1/e2ee/transfer/accept", e2ee_transfer_handler, #{action => accept}},
@@ -463,7 +466,20 @@ get_routes() ->
         {"/v1/moment/:moment_id/comment", moment_handler, #{action => add_comment}},
         {"/v1/moment/:moment_id/comments", moment_handler, #{action => comments}},
         {"/v1/moment/:moment_id/comment/:comment_id/delete", moment_handler, #{action => delete_comment}},
-        {"/v1/moment/:moment_id/report", moment_handler, #{action => report}}
+        {"/v1/moment/:moment_id/report", moment_handler, #{action => report}},
+
+        % 直播间 API
+        {"/v1/live_room/list", live_room_handler, #{action => list}},
+        {"/v1/live_room/my_list", live_room_handler, #{action => my_list}},
+        {"/v1/live_room/create", live_room_handler, #{action => create}},
+        {"/v1/live_room/start", live_room_handler, #{action => start}},
+        {"/v1/live_room/stop", live_room_handler, #{action => stop}},
+        {"/v1/live_room/detail", live_room_handler, #{action => detail}},
+
+        % 钱包 API
+        {"/v1/wallet/balance", wallet_handler, #{action => balance}},
+        {"/v1/wallet/transactions", wallet_handler, #{action => transactions}},
+        {"/v1/wallet/topup", wallet_handler, #{action => topup}}
     ],
 
     % Admin routes (原 imadm)
@@ -498,6 +514,9 @@ get_routes() ->
         {"/adm/app_version/save", adm_app_version_handler, #{action => save}},
         {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
         {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
+        % 存储管理 API（附件统计和列表）
+        {"/adm/storage/stats", adm_attach_handler, #{action => stats}},
+        {"/adm/storage/index", adm_attach_handler, #{action => index}},
         {"/adm/passport/meta", adm_passport_handler, #{action => meta}},
         {"/adm/passport/login", adm_passport_handler, #{action => login}},
         {"/adm/passport/captcha", adm_passport_handler, #{action => captcha}},
@@ -558,6 +577,12 @@ get_routes() ->
         {"/adm/user/report/resolve", adm_report_handler, #{action => user_resolve}},
         {"/adm/user/report/batch_resolve", adm_report_handler, #{action => user_batch_resolve}},
         % 统计 API
+        {"/adm/announcement/index", adm_announcement_handler, #{action => index}},
+        {"/adm/announcement/create", adm_announcement_handler, #{action => create}},
+        {"/adm/announcement/update", adm_announcement_handler, #{action => update}},
+        {"/adm/announcement/delete", adm_announcement_handler, #{action => delete}},
+        {"/adm/announcement/publish", adm_announcement_handler, #{action => publish}},
+        {"/adm/announcement/unpublish", adm_announcement_handler, #{action => unpublish}},
         {"/adm/stats/overview", adm_stats_handler, #{action => overview}},
         {"/adm/stats/user", adm_stats_handler, #{action => user}},
         {"/adm/stats/message", adm_stats_handler, #{action => message}},

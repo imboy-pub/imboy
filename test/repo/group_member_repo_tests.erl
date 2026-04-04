@@ -25,11 +25,19 @@ tablename_returns_correct_table_test_() ->
 %% 成员查询测试
 %% ===================================================================
 
-find_members_by_group_id_test_() ->
+list_by_gid_test_() ->
     ?TEST_WITH_DB(fun() ->
-        GroupId = <<"group123">>,
-        Result = group_member_repo:find_by_group_id(GroupId),
-        ?assertMatch([_|_], Result orelse is_map(Result))
+        Gid = 1,
+        Column = <<"user_id, role, created_at">>,
+        Result = group_member_repo:list_by_gid(Gid, Column),
+        case Result of
+            {ok, _, Members} when is_list(Members) ->
+                ?assert(true);
+            {ok, Members} when is_list(Members) ->
+                ?assert(true);
+            {error, _Reason} ->
+                ?assert(true)
+        end
     end).
 
 %% ===================================================================

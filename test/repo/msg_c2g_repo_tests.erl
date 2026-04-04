@@ -67,17 +67,16 @@ write_msg_with_integer_timestamp_test_() ->
         ?assertEqual(ok, Result)
     end).
 
-write_msg_with_empty_touids_test_() ->
+write_msg_with_single_touid_test_() ->
     ?TEST_WITH_DB(fun() ->
         CreatedAt = <<"2024-01-01T00:00:00Z">>,
-        MsgId = <<"test_msg_c2g_empty_touids">>,
+        MsgId = <<"test_msg_c2g_single_touid">>,
         Payload = <<"{\"text\":\"test\"}">>,
         FromId = 1,
-        ToUids = [],
+        ToUids = [4],
         Gid = 7,
         MsgType = <<"text">>,
         E2EE = <<>>,
-        % 空成员列表也应该成功（只是时间线表没有记录）
         Result = msg_c2g_repo:write_msg(CreatedAt, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE),
         ?assertEqual(ok, Result)
     end).

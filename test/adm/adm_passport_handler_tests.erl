@@ -238,6 +238,90 @@ login_post_success_with_valid_credentials_test_() ->
         ?ASSERT_EQUAL(<<"/adm/dashboard">>, maps:get(<<"next">>, ResponseData))
     end).
 
+%% @doc 测试登录提交 - local/test 环境允许固定验证码，且不会再调用 simple_captcha:check/2
+login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
+    {setup,
+        fun() ->
+            PrevImboyEnv = os:getenv("IMBOYENV"),
+            os:putenv("IMBOYENV", "local"),
+            PrevImboyEnv
+        end,
+        fun restore_imboyenv/1,
+        fun(_) ->
+            ?WITH_MECKS([
+                {elib_req, [
+                    {'cookie', 2, fun
+                        (<<"captcha_key">>, _Req) -> <<"valid_crypt_key">>;
+                        (<<"back_uri">>, _Req) -> <<"/adm/dashboard">>
+                    end}
+                ]},
+                {elib_param, [
+                    {'post', 1, fun(_Req) ->
+                        #{
+                            <<"account">> => <<"admin">>,
+                            <<"pwd">> => <<"encrypted_password">>,
+                            <<"captcha">> => <<"1234">>,
+                            <<"csrf_token">> => <<"valid_csrf_token">>
+                        }
+                    end}
+                ]},
+                {imboy_cache, [
+                    {'get', 1, fun(<<"valid_csrf_token">>) ->
+                        {ok, 1}
+                    end},
+                    {'flush', 1, fun(_Key) ->
+                        ok
+                    end}
+                ]},
+                {simple_captcha, [
+                    {'check', 2, fun(_, _) ->
+                        erlang:error(simple_captcha_should_not_be_called)
+                    end}
+                ]},
+                {elib_cipher, [
+                    {'rsa_decrypt', 1, fun(_EncryptedPwd) ->
+                        <<"decrypted_password">>
+                    end}
+                ]},
+                {adm_passport_logic, [
+                    {'do_login', 2, fun(<<"admin">>, <<"decrypted_password">>) ->
+                        {ok, #{
+                            <<"id">> => <<"admin_id_123">>,
+                            <<"account">> => <<"admin">>,
+                            <<"nickname">> => <<"Administrator"/utf8>>,
+                            <<"avatar">> => <<>>,
+                            <<"role_id">> => 1
+                        }}
+                    end}
+                ]},
+                {cowboy_req, [
+                    {'set_resp_cookie', 4, fun(_Name, _Value, _Req, _Opts) ->
+                        cowboy_req_h:new(#{has_adm_user_id_cookie => true})
+                    end}
+                ]},
+                {elib_response, [
+                    {'success', 3, fun(Req, Data, _Msg) ->
+                        Req#{
+                            response_status => 200,
+                            response_data => Data
+                        }
+                    end}
+                ]}
+            ], fun() ->
+                MockReq = cowboy_req_h:new(#{
+                    method => <<"POST">>
+                }),
+
+                {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => login}),
+
+                {StatusCode, _Headers, _Body} = cowboy_req_h:response(Req),
+                ?ASSERT_EQUAL(200, StatusCode),
+                ResponseData = maps:get(response_data, Req, #{}),
+                ?ASSERT_EQUAL(<<"admin_id_123">>, maps:get(<<"id">>, ResponseData)),
+                ?ASSERT_EQUAL(<<"/adm/dashboard">>, maps:get(<<"next">>, ResponseData))
+            end)
+        end}.
+
 %% @doc 测试登录提交 - 默认跳转到 /adm/
 login_post_success_default_redirect_test_() ->
     ?WITH_MECKS([
@@ -834,3 +918,9 @@ logout_non_post_method_returns_405_test_() ->
         {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => logout}),
         ?ASSERT_EQUAL(405, maps:get(response_status, Req))
     end).
+
+restore_imboyenv(PrevImboyEnv) ->
+    case PrevImboyEnv of
+        false -> os:unsetenv("IMBOYENV");
+        Value -> os:putenv("IMBOYENV", Value)
+    end.

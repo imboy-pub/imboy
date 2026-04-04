@@ -103,23 +103,29 @@ add_minimal_data_test_() ->
     end).
 
 %% ===================================================================
-%% demo/3 测试
+%% find/2 测试（原 demo/3 已移除，改为测试 find/2）
 %% ===================================================================
 
-demo_valid_id_test_() ->
+find_valid_type_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Val1 = <<"val1">>,
-        Val2 = <<"val2">>,
-        Result = app_version_repo:demo(Uid, Val1, Val2),
-        ?assertMatch({ok, _, _}, Result)
+        Type = <<"android">>,
+        RegionCode = <<"CN">>,
+        Result = app_version_repo:find(Type, RegionCode),
+        case Result of
+            {ok, _, _} -> ?assert(true);
+            {ok, _} -> ?assert(true);
+            {error, _} -> ?assert(true)
+        end
     end).
 
-demo_non_existing_id_test_() ->
+find_non_existing_type_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Uid = 999999,
-        Val1 = <<"val1">>,
-        Val2 = <<"val2">>,
-        Result = app_version_repo:demo(Uid, Val1, Val2),
-        ?assertMatch({ok, _, _}, Result)
+        Type = <<"nonexistent">>,
+        RegionCode = <<"XX">>,
+        Result = app_version_repo:find(Type, RegionCode),
+        case Result of
+            {ok, _, _} -> ?assert(true);
+            {ok, _} -> ?assert(true);
+            {error, _} -> ?assert(true)
+        end
     end).

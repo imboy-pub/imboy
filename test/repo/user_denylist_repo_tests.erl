@@ -25,35 +25,34 @@ tablename_returns_correct_table_test_() ->
 %% 黑名单查询测试
 %% ===================================================================
 
-find_denylist_by_uid_test_() ->
+page_for_uid_test_() ->
     ?TEST_SIMPLE(fun() ->
         Uid = 1,
+        Limit = 10,
+        Offset = 0,
         % 测试函数调用不会崩溃
-        Result = user_denylist_repo:find_by_uid(Uid),
+        Result = user_denylist_repo:page_for_uid(Uid, Limit, Offset),
         % 验证返回值格式
         ?assert(is_tuple(Result)),
         case Result of
-            {ok, List} ->
-                ?assert(is_list(List));
+            {ok, _, List} when is_list(List) ->
+                ?assert(true);
+            {ok, List} when is_list(List) ->
+                ?assert(true);
             {error, Reason} ->
                 ?assert(is_atom(Reason) orelse is_binary(Reason))
         end
     end).
 
-check_is_blocked_test_() ->
+in_denylist_test_() ->
     ?TEST_SIMPLE(fun() ->
         Uid = 1,
-        BlockedUid = 2,
+        DeniedUid = 2,
         % 测试函数调用不会崩溃
-        Result = user_denylist_repo:is_blocked(Uid, BlockedUid),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, IsBlocked} ->
-                ?assert(is_boolean(IsBlocked));
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        Result = user_denylist_repo:in_denylist(Uid, DeniedUid),
+        % 验证返回值格式：返回计数值（plain integer）
+        ?assert(is_integer(Result)),
+        ?assert(Result >= 0)
     end).
 
 %% ===================================================================
@@ -64,8 +63,9 @@ add_to_denylist_test_() ->
     ?TEST_SIMPLE(fun() ->
         Uid = 1,
         BlockedUid = 2,
+        Now = elib_dt:now(),
         % 测试函数调用不会崩溃
-        Result = user_denylist_repo:add(Uid, BlockedUid),
+        Result = user_denylist_repo:add(Uid, BlockedUid, Now),
         % 验证返回值格式
         ?assert(is_tuple(Result)),
         case Result of

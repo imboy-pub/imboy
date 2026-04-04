@@ -402,14 +402,16 @@ delete_non_existing_user_test_() ->
     end).
 
 %% ===================================================================
-%% update_last_seen_at_by_from_uid/2 测试
+%% update_friends_last_seen_at/2 测试
+%% （原 update_last_seen_at_by_from_uid/2 和 update_last_seen_at_by_to_uid/2
+%%   已合并为 update_friends_last_seen_at/2，同时更新 from 和 to 两方向）
 %% ===================================================================
 
-update_last_seen_at_by_from_uid_test_() ->
+update_friends_last_seen_at_test_() ->
     ?TEST_WITH_DB(fun() ->
         Uid = 1,
         Timestamp = elib_dt:now(),
-        Result = user_repo:update_last_seen_at_by_from_uid(Uid, Timestamp),
+        Result = user_repo:update_friends_last_seen_at(Uid, Timestamp),
         % 精确断言：验证更新操作返回结构
         case Result of
             {ok, AffectedCount} when is_integer(AffectedCount) ->
@@ -421,31 +423,11 @@ update_last_seen_at_by_from_uid_test_() ->
         end
     end).
 
-update_last_seen_at_by_from_uid_zero_uid_test_() ->
+update_friends_last_seen_at_zero_uid_test_() ->
     ?TEST_WITH_DB(fun() ->
         Uid = 0,
         Timestamp = elib_dt:now(),
-        Result = user_repo:update_last_seen_at_by_from_uid(Uid, Timestamp),
-        % 精确断言：验证更新操作返回结构
-        case Result of
-            {ok, AffectedCount} when is_integer(AffectedCount) ->
-                ?assert(AffectedCount >= 0);
-            {ok, _} ->
-                ?assert(true);
-            _ ->
-                ?assert(false, "Expected {ok, AffectedCount}")
-        end
-    end).
-
-%% ===================================================================
-%% update_last_seen_at_by_to_uid/2 测试
-%% ===================================================================
-
-update_last_seen_at_by_to_uid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Timestamp = elib_dt:now(),
-        Result = user_repo:update_last_seen_at_by_to_uid(Uid, Timestamp),
+        Result = user_repo:update_friends_last_seen_at(Uid, Timestamp),
         % 精确断言：验证更新操作返回结构
         case Result of
             {ok, AffectedCount} when is_integer(AffectedCount) ->

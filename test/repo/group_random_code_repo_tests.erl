@@ -17,33 +17,23 @@ tablename_returns_correct_table_test_() ->
         ?assert(<<>> =/= Result)
     end).
 
-find_by_code_test_() ->
+find_by_gid_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Code = <<"ABC123">>,
-        % 测试函数调用不会崩溃
-        Result = group_random_code_repo:find_by_code(Code),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, GroupData} ->
-                ?assert(is_map(GroupData));
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        Gid = 1,
+        Column = <<"id, group_id, code, created_at">>,
+        % find_by_gid/2 返回 map 或 {}
+        Result = group_random_code_repo:find_by_gid(Gid, Column),
+        ?assert(is_map(Result) orelse Result =:= #{})
     end).
 
-generate_code_test_() ->
+add_code_test_() ->
     ?TEST_SIMPLE(fun() ->
-        GroupId = <<"group123">>,
-        % 测试函数调用不会崩溃
-        Result = group_random_code_repo:generate_code(GroupId),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, Code} ->
-                ?assertMatch(<<_/binary>>, Code),
-                ?assert(byte_size(Code) > 0);
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        Conn = self(),
+        Data = #{
+            group_id => 1,
+            code => <<"ABC123">>
+        },
+        % add/2 需要连接和数据
+        Result = group_random_code_repo:add(Conn, Data),
+        ?assert(is_tuple(Result))
     end).
