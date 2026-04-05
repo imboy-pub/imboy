@@ -107,24 +107,30 @@ send_apns(Token, Title, Body) ->
                     <<"mutable-content">> => 1
                 }
             }, [native_utf8]),
-            Host = get_apns_host(),
-            Path = <<"/3/device/", Token/binary>>,
-            Headers = [
-                {<<"authorization">>, <<"bearer ", (get_apns_jwt(KeyId, TeamId))/binary>>},
-                {<<"apns-topic">>, BundleId},
-                {<<"apns-push-type">>, <<"alert">>},
-                {<<"apns-priority">>, <<"10">>}
-            ],
-            case http_post(<<"https://", Host/binary, Path/binary>>, Headers, Payload) of
-                {ok, 200, _RespBody} ->
-                    ok;
-                {ok, StatusCode, RespBody} ->
-                    ?ERROR_LOG(["APNs push failed", StatusCode, RespBody]),
-                    maybe_deactivate_token(StatusCode, Token),
-                    {error, {apns_error, StatusCode}};
-                {error, Reason} ->
-                    ?ERROR_LOG(["APNs push request failed", Reason]),
-                    {error, Reason}
+            case get_apns_jwt(KeyId, TeamId) of
+                {ok, Jwt} ->
+                    Host = get_apns_host(),
+                    Path = <<"/3/device/", Token/binary>>,
+                    Headers = [
+                        {<<"authorization">>, <<"bearer ", Jwt/binary>>},
+                        {<<"apns-topic">>, BundleId},
+                        {<<"apns-push-type">>, <<"alert">>},
+                        {<<"apns-priority">>, <<"10">>}
+                    ],
+                    case http_post(<<"https://", Host/binary, Path/binary>>, Headers, Payload) of
+                        {ok, 200, _RespBody} ->
+                            ok;
+                        {ok, StatusCode, RespBody} ->
+                            ?ERROR_LOG(["APNs push failed", StatusCode, RespBody]),
+                            maybe_deactivate_token(StatusCode, Token),
+                            {error, {apns_error, StatusCode}};
+                        {error, Reason} ->
+                            ?ERROR_LOG(["APNs push request failed", Reason]),
+                            {error, Reason}
+                    end;
+                {error, JwtErr} ->
+                    ?ERROR_LOG(["APNs JWT generation failed", JwtErr]),
+                    {error, {jwt_error, JwtErr}}
             end;
         {error, not_configured} ->
             ?DEBUG_LOG(["APNs not configured, skip push"]),
@@ -206,36 +212,65 @@ get_apns_config() ->
             {error, not_configured}
     end.
 
-%% @doc HTTP POST 请求（使用 gun）
+%% @doc HTTP POST 请求（使用 gun，连接按 Host 复用）
 http_post(Url, Headers, Body) ->
     try
         %% 解析 URL
         #{host := Host, path := Path} = uri_string:parse(Url),
         Port = 443,
-        {ok, ConnPid} = gun:open(binary_to_list(Host), Port, #{
-            transport => tls,
-            protocols => [http2],
-            tls_opts => [{verify, verify_peer},
-                         {customize_hostname_check,
-                          [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}]
-        }),
-        {ok, http2} = gun:await_up(ConnPid, 5000),
+        ConnPid = get_or_open_conn(Host, Port),
         StreamRef = gun:post(ConnPid, Path, Headers, Body),
         case gun:await(ConnPid, StreamRef, 10000) of
             {response, fin, Status, _RespHeaders} ->
-                gun:close(ConnPid),
                 {ok, Status, <<>>};
             {response, nofin, Status, _RespHeaders} ->
                 {ok, RespBody} = gun:await_body(ConnPid, StreamRef, 5000),
-                gun:close(ConnPid),
                 {ok, Status, RespBody};
             {error, Reason} ->
-                gun:close(ConnPid),
+                %% 连接可能失效，清除缓存让下次重建
+                close_cached_conn(Host),
                 {error, Reason}
         end
     catch
         _:Error ->
             {error, Error}
+    end.
+
+%% @doc 获取或建立到指定 Host 的 HTTP/2 连接（进程字典缓存）
+get_or_open_conn(Host, Port) ->
+    Key = {gun_conn, Host},
+    case get(Key) of
+        Pid when is_pid(Pid) ->
+            case is_process_alive(Pid) of
+                true -> Pid;
+                false ->
+                    erase(Key),
+                    open_and_cache_conn(Key, Host, Port)
+            end;
+        _ ->
+            open_and_cache_conn(Key, Host, Port)
+    end.
+
+open_and_cache_conn(Key, Host, Port) ->
+    {ok, ConnPid} = gun:open(binary_to_list(Host), Port, #{
+        transport => tls,
+        protocols => [http2],
+        tls_opts => [{verify, verify_peer},
+                     {customize_hostname_check,
+                      [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}]
+    }),
+    {ok, http2} = gun:await_up(ConnPid, 5000),
+    put(Key, ConnPid),
+    ConnPid.
+
+close_cached_conn(Host) ->
+    Key = {gun_conn, Host},
+    case erase(Key) of
+        Pid when is_pid(Pid) ->
+            catch gun:close(Pid),
+            ok;
+        _ ->
+            ok
     end.
 
 %% @doc 获取 APNs 服务器地址
@@ -252,18 +287,25 @@ get_apns_host() ->
 
 %% @doc 生成 APNs JWT (ES256)
 %% 缓存 50 分钟（APNs JWT 有效期 60 分钟）
+%% 返回 {ok, JWT} | {error, Reason}
 get_apns_jwt(KeyId, TeamId) ->
     CacheKey = {apns_jwt, KeyId},
     case imboy_cache:get(CacheKey) of
         {ok, Jwt} ->
-            Jwt;
+            {ok, Jwt};
         _ ->
-            Jwt = generate_apns_jwt(KeyId, TeamId),
-            imboy_cache:set(CacheKey, Jwt, 3000), % 缓存 50 分钟
-            Jwt
+            case generate_apns_jwt(KeyId, TeamId) of
+                {ok, Jwt} ->
+                    imboy_cache:set(CacheKey, Jwt, 3000), % 缓存 50 分钟
+                    {ok, Jwt};
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end.
 
 %% @doc 生成 APNs ES256 JWT
+%% 返回 {ok, JWT} | {error, Reason}，调用方需匹配错误不发请求
+-spec generate_apns_jwt(binary(), binary()) -> {ok, binary()} | {error, term()}.
 generate_apns_jwt(KeyId, TeamId) ->
     Now = erlang:system_time(second),
     Header = base64url_encode(jsone:encode(#{
@@ -280,9 +322,9 @@ generate_apns_jwt(KeyId, TeamId) ->
             Signature = base64url_encode(
                 public_key:sign(SignInput, sha256, PrivateKey)
             ),
-            <<SignInput/binary, ".", Signature/binary>>;
-        {error, _} ->
-            <<>>
+            {ok, <<SignInput/binary, ".", Signature/binary>>};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 读取 APNs P8 私钥文件
