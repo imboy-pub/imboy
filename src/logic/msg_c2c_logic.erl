@@ -202,7 +202,17 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
 
                         % ③ 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
                         Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE),
-                        imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>)
+                        imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
+                        % ④ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
+                        ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
+                        case msg_burn_logic:valid_expire_secs(ExpireSecs) of
+                            true when is_integer(ExpireSecs), ExpireSecs > 0 ->
+                                ExpireAt = msg_burn_logic:calc_expire_at(CreatedAtRfc, ExpireSecs),
+                                set_c2c_expire_at(MsgId, ExpireAt);
+                            _ -> ok
+                        end,
+                        % ⑤ 离线推送（异步，不阻塞消息投递）
+                        push_notification_logic:maybe_push_for_c2c(CurrentUid, ToId, MsgType, Payload)
                     end, 3, 1000),
                     ok;
                 error ->
@@ -596,6 +606,22 @@ extract_reply_info(Data) ->
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
+    end.
+
+%% @doc 设置C2C消息的自毁时间
+%% @param MsgId 消息ID
+%% @param ExpireAt 过期时间（RFC3339 binary）
+-spec set_c2c_expire_at(binary(), binary()) -> ok.
+set_c2c_expire_at(MsgId, ExpireAt) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+           " SET expire_at = $1"
+           " WHERE msg_id = $2">>,
+    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            _ = ?WARN_LOG({set_c2c_expire_at_failed, MsgId, Reason}),
+            ok
     end.
 
 %% @doc 持久化 action ack payload 到原消息记录

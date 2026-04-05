@@ -9,6 +9,7 @@
 
 -export([tablename/0]).
 -export([write_msg/8]).
+-export([write_msg/9]).
 -export([write_msg_with_reply/11]).
 -export([list_by_ids/2]).
 -export([find_msg_by_id/1]).
@@ -47,38 +48,47 @@ tablename() ->
         map() | null       %% E2EE (可选)
       ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
+    write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, null).
+
+%% @doc 写入群离线消息（支持 expire_at 自毁时间）
+-spec write_msg(
+        binary() | integer(), binary(), binary(), integer(),
+        [integer()], integer(), binary(), map() | null, binary() | null
+      ) -> ok.
+write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
 
     TbMsg = tablename(),           %% 群离线消息表
     TbTimeline = msg_c2g_timeline_repo:tablename(), %% 群消息时间线表
 
-    % ?DEBUG_LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
-
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入群离线消息 ----------
-        %% 使用 elib_pg:insert/4 在事务中插入，与其他 repo 保持一致的安全方式
-        %% 注意：msg_c2g 表中 to_id 是群组 ID (Gid)，不是用户 ID
-        _ = elib_pg:insert(Conn, TbMsg, #{
+        MsgData = #{
             payload => Payload,
             to_id => Gid,
             from_id => FromId,
             created_at => CreatedAt,
-            server_ts => CreatedAt,  %% 记录服务器接收时间
-            topic_id => 0,           %% 默认主题 ID 为 0
+            server_ts => CreatedAt,
+            topic_id => 0,
             msg_id => MsgId,
             msg_type => MsgType,
             e2ee => case E2EE of
                 <<>> -> null;
                 null -> null;
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
-                Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
+                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+                Bin when is_binary(Bin) -> Bin;
                 _ -> null
             end
-        }, <<>>),
+        },
+        %% 仅当 ExpireAt 非 null 时添加字段
+        MsgData2 = case ExpireAt of
+            null -> MsgData;
+            _ -> MsgData#{expire_at => ExpireAt}
+        end,
+        _ = elib_pg:insert(Conn, TbMsg, MsgData2, <<>>),
 
         %% ---------- 批量插入时间线表 ----------
-        %% 注意：to_uid 和 to_gid 是 bigint 类型，需要传入 integer，不能转换成 binary
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
         {SqlTimeline0, ParamsTimeline} =
             elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),

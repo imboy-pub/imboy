@@ -24,8 +24,9 @@
 -export([is_muted/1]).
 -export([unmute/1]).
 
-%% 内部导出（用于测试）
+%% 内部导出（用于测试和定时器回调）
 -export([init_table/0]).
+-export([reset_counters/0]).
 
 %% 阈值常量
 -define(WARN_THRESHOLD, 30).       % 每分钟超过 30 条触发警告
@@ -34,8 +35,8 @@
 -define(WINDOW_MS, 60000).         % 统计窗口 1 分钟 (毫秒)
 
 %% ETS 表名
--define(MSG_RATE_TAB, msg_rate_counter).
--define(MSG_MUTE_TAB, msg_rate_muted).
+-define(MSG_RATE_TAB, msg_rate_counter).   % {Uid, Count}  — 原子计数器
+-define(MSG_MUTE_TAB, msg_rate_muted).     % {Uid, MuteUntil}
 
 %%%===================================================================
 %%% API 函数
@@ -54,11 +55,19 @@ check_and_record(Uid) ->
         true ->
             {error, muted};
         false ->
-            Now = erlang:system_time(millisecond),
-            Count = record_and_count(Uid, Now),
+            %% 使用 ets:update_counter 原子递增，避免竞态条件
+            Count = try
+                ets:update_counter(?MSG_RATE_TAB, Uid, {2, 1})
+            catch
+                error:badarg ->
+                    %% Key 不存在，初始化为 1
+                    ets:insert_new(?MSG_RATE_TAB, {Uid, 1}),
+                    1
+            end,
             if
                 Count > ?MUTE_THRESHOLD ->
                     %% 超过禁言阈值，自动禁言
+                    Now = erlang:system_time(millisecond),
                     do_mute(Uid, Now),
                     ?WARN_LOG("User ~p auto-muted: ~p msgs/min exceeded threshold ~p",
                               [Uid, Count, ?MUTE_THRESHOLD]),
@@ -101,36 +110,27 @@ unmute(Uid) ->
     ok.
 
 %% @doc 初始化 ETS 表（应用启动时调用）
+%% MSG_RATE_TAB 存储 {Uid, Count}，每分钟由 reset_counters 定时器清零
 -spec init_table() -> ok.
 init_table() ->
     create_table_if_not_exists(?MSG_RATE_TAB, [set, public, named_table,
-                                                {read_concurrency, true},
                                                 {write_concurrency, true}]),
     create_table_if_not_exists(?MSG_MUTE_TAB, [set, public, named_table,
                                                 {read_concurrency, true},
                                                 {write_concurrency, true}]),
+    %% 每分钟清零计数器（滑动窗口近似为固定窗口，简单且无竞态）
+    {ok, _TRef} = timer:apply_interval(?WINDOW_MS, ?MODULE, reset_counters, []),
+    ok.
+
+%% @doc 每分钟清零所有用户的消息计数器
+-spec reset_counters() -> ok.
+reset_counters() ->
+    ets:delete_all_objects(?MSG_RATE_TAB),
     ok.
 
 %%%===================================================================
 %%% 内部函数
 %%%===================================================================
-
-%% @doc 记录消息并返回当前窗口内的消息数
-%% @private
--spec record_and_count(integer(), integer()) -> integer().
-record_and_count(Uid, Now) ->
-    WindowStart = Now - ?WINDOW_MS,
-    case ets:lookup(?MSG_RATE_TAB, Uid) of
-        [{Uid, Timestamps}] ->
-            %% 过滤掉过期的时间戳
-            ValidTimestamps = [T || T <- Timestamps, T > WindowStart],
-            NewTimestamps = [Now | ValidTimestamps],
-            ets:insert(?MSG_RATE_TAB, {Uid, NewTimestamps}),
-            length(NewTimestamps);
-        [] ->
-            ets:insert(?MSG_RATE_TAB, {Uid, [Now]}),
-            1
-    end.
 
 %% @doc 执行禁言操作
 %% @private
@@ -144,7 +144,6 @@ do_mute(Uid, Now) ->
 -spec ensure_tables() -> ok.
 ensure_tables() ->
     create_table_if_not_exists(?MSG_RATE_TAB, [set, public, named_table,
-                                                {read_concurrency, true},
                                                 {write_concurrency, true}]),
     create_table_if_not_exists(?MSG_MUTE_TAB, [set, public, named_table,
                                                 {read_concurrency, true},

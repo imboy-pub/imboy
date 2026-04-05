@@ -31,6 +31,20 @@ init(Req0, State0) ->
                 config_policy_saved_action(Method, Req0, State);
             config_policy ->
                 config_policy_action(Method, Req0, State);
+            muted_users_list ->
+                muted_users_list_action(Method, Req0, State);
+            muted_users_unmute ->
+                muted_users_unmute_action(Method, Req0, State);
+            muted_users_unmute_batch ->
+                muted_users_unmute_batch_action(Method, Req0, State);
+            push_token_list ->
+                push_token_list_action(Method, Req0, State);
+            compliance_key_list ->
+                compliance_key_list_action(Method, Req0, State);
+            compliance_key_create ->
+                compliance_key_create_action(Method, Req0, State);
+            compliance_key_revoke ->
+                compliance_key_revoke_action(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -523,3 +537,191 @@ flush_admin_permission_cache(AdminId) ->
     ],
     _ = [imboy_cache:flush(Key) || Key <- Keys],
     ok.
+
+%% ===================================================================
+%% 禁言用户管理
+%% ===================================================================
+
+-spec muted_users_list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+muted_users_list_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            Now = erlang:system_time(millisecond),
+            MutedList = case ets:whereis(msg_rate_muted) of
+                undefined -> [];
+                _ ->
+                    ets:foldl(fun({Uid, MuteUntil}, Acc) ->
+                        case MuteUntil > Now of
+                            true ->
+                                RemainingMs = MuteUntil - Now,
+                                [#{<<"uid">> => elib_hashids:encode(Uid),
+                                   <<"mute_until">> => MuteUntil,
+                                   <<"remaining_seconds">> => RemainingMs div 1000} | Acc];
+                            false ->
+                                Acc
+                        end
+                    end, [], msg_rate_muted)
+            end,
+            elib_response:success(Req0, #{<<"list">> => MutedList});
+        {error, Req1} ->
+            Req1
+    end;
+muted_users_list_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec muted_users_unmute_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+muted_users_unmute_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
+            Uid = parse_hashid_or_int(UidRaw),
+            case Uid > 0 of
+                true ->
+                    msg_rate_logic:unmute(Uid),
+                    elib_response:success(Req0, #{});
+                false ->
+                    elib_response:error(Req0, <<"uid 无效"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+muted_users_unmute_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec muted_users_unmute_batch_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+muted_users_unmute_batch_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Uids = maps:get(<<"uids">>, PostVals, []),
+            case is_list(Uids) andalso length(Uids) > 0 of
+                true ->
+                    Results = lists:map(fun(UidRaw) ->
+                        Uid = parse_hashid_or_int(UidRaw),
+                        case Uid > 0 of
+                            true ->
+                                msg_rate_logic:unmute(Uid),
+                                #{<<"uid">> => UidRaw, <<"ok">> => true};
+                            false ->
+                                #{<<"uid">> => UidRaw, <<"ok">> => false}
+                        end
+                    end, Uids),
+                    SuccessCount = length([1 || #{<<"ok">> := true} <- Results]),
+                    elib_response:success(Req0, #{
+                        <<"total">> => length(Uids),
+                        <<"success">> => SuccessCount
+                    });
+                false ->
+                    elib_response:error(Req0, <<"uids 必须是非空数组"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+muted_users_unmute_batch_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% ===================================================================
+%% 推送 Token 管理
+%% ===================================================================
+
+-spec push_token_list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+push_token_list_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            {Page, Size} = elib_param:page(Req0),
+            case push_token_repo:list_page(Page, Size) of
+                {ok, #{list := Rows, total := Total}} ->
+                    Items = [elib_hashids:replace_fields(Row, [<<"user_id">>]) || Row <- Rows],
+                    elib_response:success(Req0, #{
+                        <<"list">> => Items,
+                        <<"total">> => Total,
+                        <<"page">> => Page,
+                        <<"size">> => Size
+                    });
+                {error, Reason} ->
+                    elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+push_token_list_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% ===================================================================
+%% 合规密钥管理
+%% ===================================================================
+
+-spec compliance_key_list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+compliance_key_list_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            case compliance_key_repo:list_all() of
+                {ok, Rows} ->
+                    elib_response:success(Req0, #{<<"list">> => Rows});
+                {error, Reason} ->
+                    elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+compliance_key_list_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec compliance_key_create_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+compliance_key_create_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            PublicKey = normalize_binary(maps:get(<<"public_key">>, PostVals, <<>>)),
+            PrivateKeyEncrypted = normalize_binary(maps:get(<<"private_key_encrypted">>, PostVals, <<>>)),
+            case {byte_size(PublicKey) > 0, byte_size(PrivateKeyEncrypted) > 0} of
+                {true, true} ->
+                    KeyId = elib_id:gen(<<"ck_">>),
+                    AdmUserId = maps:get(adm_user_id, State, 0),
+                    case compliance_key_repo:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{<<"key_id">> => KeyId});
+                        {error, Reason} ->
+                            elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                    end;
+                _ ->
+                    elib_response:error(Req0, <<"public_key 和 private_key_encrypted 不能为空"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+compliance_key_create_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec compliance_key_revoke_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+compliance_key_revoke_action(<<"POST">>, Req0, State) ->
+    compliance_key_revoke_handle(Req0, State);
+compliance_key_revoke_action(<<"PUT">>, Req0, State) ->
+    compliance_key_revoke_handle(Req0, State);
+compliance_key_revoke_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec compliance_key_revoke_handle(cowboy_req:req(), map()) -> cowboy_req:req().
+compliance_key_revoke_handle(Req0, State) ->
+    case ensure_permission(State, <<"settings:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            KeyId = normalize_binary(maps:get(<<"key_id">>, PostVals, <<>>)),
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case byte_size(KeyId) > 0 of
+                true ->
+                    case compliance_key_repo:revoke(KeyId, AdmUserId) of
+                        {ok, N} when N > 0 ->
+                            elib_response:success(Req0, #{});
+                        {ok, 0} ->
+                            elib_response:error(Req0, <<"密钥不存在或已撤销"/utf8>>, ?ERR_NOT_FOUND);
+                        {error, Reason} ->
+                            elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                    end;
+                false ->
+                    elib_response:error(Req0, <<"key_id 不能为空"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end.

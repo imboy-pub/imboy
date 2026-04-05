@@ -5,25 +5,128 @@
 -export([init/2]).
 
 %% @doc Metrics endpoint for runtime observability.
+%% 支持两种格式：
+%% - Accept: text/plain → Prometheus text exposition format
+%% - 默认 → JSON 格式
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
-    Req1 =
-        case fetch_metrics() of
-            {ok, Metrics} ->
-                elib_response:success(Req0, Metrics, "success.");
-            {error, Reason} ->
-                elib_response:error(Req0, format_error(Reason))
-        end,
+    Accept = cowboy_req:header(<<"accept">>, Req0, <<>>),
+    Req1 = case binary:match(Accept, <<"text/plain">>) of
+        nomatch ->
+            %% JSON 格式
+            case fetch_metrics() of
+                {ok, Metrics} ->
+                    elib_response:success(Req0, Metrics, "success.");
+                {error, Reason} ->
+                    elib_response:error(Req0, format_error(Reason))
+            end;
+        _ ->
+            %% Prometheus text 格式
+            case fetch_metrics() of
+                {ok, Metrics} ->
+                    Body = format_prometheus(Metrics),
+                    cowboy_req:reply(200, #{
+                        <<"content-type">> => <<"text/plain; version=0.0.4; charset=utf-8">>
+                    }, Body, Req0);
+                {error, Reason} ->
+                    cowboy_req:reply(500, #{}, format_error(Reason), Req0)
+            end
+    end,
     {ok, Req1, State0}.
 
 -spec fetch_metrics() -> {ok, map()} | {error, term()}.
 fetch_metrics() ->
     try
-        {ok, elib_metric:get_all_metrics()}
+        AppMetrics = elib_metric:get_all_metrics(),
+        SystemMetrics = collect_system_metrics(),
+        Counters = maps:get(counters, AppMetrics, #{}),
+        MergedCounters = maps:merge(Counters, SystemMetrics),
+        {ok, AppMetrics#{counters => MergedCounters}}
     catch
         Class:Reason ->
             {error, {Class, Reason}}
     end.
+
+%% @doc 收集系统级指标
+-spec collect_system_metrics() -> map().
+collect_system_metrics() ->
+    %% 进程数
+    ProcessCount = erlang:system_info(process_count),
+    %% 内存（字节）
+    [{total, MemTotal}, {processes, MemProc}, {ets, MemEts}] =
+        [lists:keyfind(K, 1, erlang:memory()) || K <- [total, processes, ets]],
+    %% 连接池状态
+    PoolStatus = try pooler:pool_stats(pgsql) of
+        Stats when is_list(Stats) ->
+            #{
+                db_pool_free => proplists:get_value(free_count, Stats, 0),
+                db_pool_in_use => proplists:get_value(in_use_count, Stats, 0)
+            };
+        _ -> #{}
+    catch _:_ -> #{}
+    end,
+    %% WebSocket 在线用户数（syn 注册的唯一用户）
+    OnlineCount = try syn:count(imboy) of
+        Count when is_integer(Count) -> Count;
+        _ -> 0
+    catch _:_ -> 0
+    end,
+    %% 活跃 TCP/WebSocket 连接数（ranch listener 统计）
+    WsConnections = try ranch:info(imboy_listener) of
+        Info when is_map(Info) ->
+            maps:get(active_connections, Info, 0);
+        Info when is_list(Info) ->
+            proplists:get_value(active_connections, Info, 0);
+        _ -> 0
+    catch _:_ -> 0
+    end,
+
+    maps:merge(#{
+        erlang_process_count => ProcessCount,
+        erlang_memory_total_bytes => MemTotal,
+        erlang_memory_processes_bytes => MemProc,
+        erlang_memory_ets_bytes => MemEts,
+        imboy_online_users => OnlineCount,
+        ws_connections_current => WsConnections
+    }, PoolStatus).
+
+%% @doc 将指标格式化为 Prometheus text exposition format
+-spec format_prometheus(map()) -> iodata().
+format_prometheus(Metrics) ->
+    Counters = maps:get(counters, Metrics, #{}),
+    Histograms = maps:get(histograms, Metrics, #{}),
+
+    CounterLines = maps:fold(fun(Name, Value, Acc) ->
+        NameBin = metric_name(Name),
+        [Acc, <<"# TYPE ">>, NameBin, <<" gauge\n">>,
+         NameBin, <<" ">>, integer_to_binary(Value), <<"\n">>]
+    end, [], Counters),
+
+    HistLines = maps:fold(fun(Name, Buckets, Acc) ->
+        NameBin = metric_name(Name),
+        Count = length(Buckets),
+        Sum = lists:foldl(fun(#{value := V}, S) -> S + V; (_, S) -> S end, 0, Buckets),
+        [Acc,
+         <<"# TYPE ">>, NameBin, <<" summary\n">>,
+         NameBin, <<"_count ">>, integer_to_binary(Count), <<"\n">>,
+         NameBin, <<"_sum ">>, number_to_binary(Sum), <<"\n">>]
+    end, [], Histograms),
+
+    iolist_to_binary([CounterLines, HistLines]).
+
+%% @doc 将指标名转为合法的 Prometheus metric name
+-spec metric_name(atom() | tuple()) -> binary().
+metric_name(Name) when is_atom(Name) ->
+    atom_to_binary(Name, utf8);
+metric_name(Name) when is_tuple(Name) ->
+    Parts = [atom_to_list(E) || E <- tuple_to_list(Name), is_atom(E)],
+    list_to_binary(string:join(Parts, "_"));
+metric_name(Name) ->
+    iolist_to_binary(io_lib:format("~p", [Name])).
+
+-spec number_to_binary(number()) -> binary().
+number_to_binary(N) when is_integer(N) -> integer_to_binary(N);
+number_to_binary(N) when is_float(N) -> float_to_binary(N, [{decimals, 2}]).
 
 -spec format_error(term()) -> binary().
 format_error(Reason) ->

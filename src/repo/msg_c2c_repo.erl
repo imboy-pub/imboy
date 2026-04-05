@@ -10,6 +10,7 @@
 -export([read_msg/3, read_msg/4]).
 -export([find_msg_by_id/1]).
 -export([write_msg/8]).
+-export([write_msg/9]).
 -export([write_msg_with_reply/11]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
@@ -121,6 +122,30 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc 写入C2C消息（支持 expire_at 自毁时间）
+-spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null, binary() | null) ->
+    ok | {error, term()}.
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, null) ->
+    write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE);
+write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, ExpireAt) ->
+    Tb = tablename(),
+    E2EEValue = case E2EE of
+        null -> null;
+        <<>> -> null;
+        Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+        Bin when is_binary(Bin) -> Bin;
+        _ -> null
+    end,
+    Sql = [
+        <<"INSERT INTO ">>, Tb,
+        <<" (payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case elib_pg:query(Sql, [Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue, ExpireAt]) of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 删除C2C离线消息（根据主键ID或消息ID）
 %% @param Id 消息主键ID或消息唯一ID

@@ -48,6 +48,8 @@ handle_action(sessions, Req, State) -> sessions(Req, State);
 handle_action(check_login, Req, State) -> check_login(Req, State);
 handle_action(kick, Req, State) -> kick(Req, State);
 handle_action(kick_others, Req, State) -> kick_others(Req, State);
+handle_action(push_register, Req, State) -> push_register(Req, State);
+handle_action(push_unregister, Req, State) -> push_unregister(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %% ===================================================================
@@ -199,6 +201,49 @@ kick_others(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR)
             end
+    end.
+
+%% ===================================================================
+%% Push Token Actions
+%% ===================================================================
+
+%% @doc 注册推送 Token
+%% POST /v1/push/register
+%% Body: {"device_id": "...", "device_type": "android|ios", "platform": "fcm|apns", "token": "..."}
+-spec push_register(cowboy_req:req(), map()) -> cowboy_req:req().
+push_register(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    DeviceType = maps:get(<<"device_type">>, PostVals, <<>>),
+    Platform = maps:get(<<"platform">>, PostVals, <<>>),
+    Token = maps:get(<<"token">>, PostVals, <<>>),
+    case byte_size(DeviceId) > 0 andalso byte_size(Token) > 0 andalso byte_size(Platform) > 0 of
+        false ->
+            elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
+        true ->
+            case push_notification_logic:register_token(Uid, DeviceId, DeviceType, Platform, Token) of
+                ok ->
+                    elib_response:success(Req0);
+                {error, _Reason} ->
+                    elib_response:error(Req0, error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR)
+            end
+    end.
+
+%% @doc 注销推送 Token
+%% POST /v1/push/unregister
+%% Body: {"device_id": "..."}
+-spec push_unregister(cowboy_req:req(), map()) -> cowboy_req:req().
+push_unregister(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    case byte_size(DeviceId) > 0 of
+        false ->
+            elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
+        true ->
+            push_notification_logic:unregister_token(Uid, DeviceId),
+            elib_response:success(Req0)
     end.
 
 %% @doc 格式化错误消息

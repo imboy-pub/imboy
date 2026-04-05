@@ -13,6 +13,11 @@ start(_Type, _Args) ->
     ok = validate_runtime_config(),
     ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
+    % 初始化 TSID 分布式ID生成器
+    TsidDcId = application:get_env(imboy, tsid_dc_id, 1),
+    TsidNodeId = application:get_env(imboy, tsid_node_id, 1),
+    TsidDcBits = application:get_env(imboy, tsid_dc_bits, 3),
+    ok = elib_tsid:init(#{dc_id => TsidDcId, node_id => TsidNodeId, dc_bits => TsidDcBits}),
     % 初始化集群管理
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表

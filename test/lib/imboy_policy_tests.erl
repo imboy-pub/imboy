@@ -474,11 +474,11 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             maps:get(<<"plugins">>, OriginSections)
         ),
         ?assertEqual(
-            [<<"archived">>, <<"secure_e2ee">>],
+            [<<"archived">>, <<"compliance_e2ee">>, <<"secure_e2ee">>],
             maps:get(<<"options">>, maps:get(<<"storage_mode">>, Capabilities))
         ),
         ?assertEqual(
-            [<<"disabled">>, <<"optional">>, <<"required">>],
+            [<<"disabled">>, <<"optional">>, <<"compliance">>, <<"required">>],
             maps:get(<<"options">>, maps:get(<<"e2ee_mode">>, Capabilities))
         ),
         ?assertEqual(

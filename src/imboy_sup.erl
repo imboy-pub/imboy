@@ -87,12 +87,45 @@ init([]) ->
         , modules => [e2ee_cleanup_worker]
     },
 
+    % 消息自毁定时清理工作进程
+    MsgBurnWorker = #{
+        id => msg_burn_logic
+        , start => {msg_burn_logic, start_link, []}
+        , restart => permanent
+        , shutdown => 5000
+        , type => worker
+        , modules => [msg_burn_logic]
+    },
+
+    % 账号注销自动清理工作进程
+    UserDeletionWorker = #{
+        id => user_deletion_logic
+        , start => {user_deletion_logic, start_link, []}
+        , restart => permanent
+        , shutdown => 5000
+        , type => worker
+        , modules => [user_deletion_logic]
+    },
+
+    % Prometheus 风格指标收集器（metrics_handler / message_ds / msg_ack_logic 依赖）
+    MetricWorker = #{
+        id => elib_metric
+        , start => {elib_metric, start_link, []}
+        , restart => permanent
+        , shutdown => 5000
+        , type => worker
+        , modules => [elib_metric]
+    },
+
     Specs = [
         IMBoyCache
         % , PgoChildSpec
+        , MetricWorker
         , UserServer
         , MsgWriteQueueSup
         , E2eeCleanupWorker
+        , MsgBurnWorker
+        , UserDeletionWorker
     ] ++ CacheSyncSpec,
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},
     {ok, {Restart, Specs}}.

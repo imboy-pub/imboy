@@ -167,6 +167,7 @@ get_routes() ->
         {"/v1/refreshtoken", passport_handler, #{action => refreshtoken}},
         {"/v1/app/features", app_feature_handler, #{action => features}},
         {"/v1/app/policy", app_feature_handler, #{action => policy}},
+        {"/v1/app/ice_servers", app_feature_handler, #{action => ice_servers}},
         {"/v1/app_version/check", app_version_handler, #{action => check}},
 
         % 【新增】Prometheus 指标端点
@@ -219,6 +220,7 @@ get_routes() ->
         {"/v1/user/set_password", user_handler, #{action => set_password}},
         {"/v1/user/apply_logout", user_handler, #{action => apply_logout}},
         {"/v1/user/cancel_logout", user_handler, #{action => cancel_logout}},
+        {"/v1/user/export_data", user_handler, #{action => export_data}},
         {"/v1/user/search", user_handler, #{action => search}},
 
         {"/v1/user_device/page", user_device_handler, #{action => page}},
@@ -230,6 +232,10 @@ get_routes() ->
         {"/v1/user_device/check_login", user_device_handler, #{action => check_login}},
         {"/v1/user_device/kick", user_device_handler, #{action => kick}},
         {"/v1/user_device/kick-others", user_device_handler, #{action => kick_others}},
+
+        % 推送 Token 管理
+        {"/v1/push/register", user_device_handler, #{action => push_register}},
+        {"/v1/push/unregister", user_device_handler, #{action => push_unregister}},
 
         {"/v1/e2ee/user_keys", e2ee_handler, #{action => user_keys}},
         {"/v1/e2ee/group_member_keys", e2ee_handler, #{action => group_member_keys}},
@@ -255,6 +261,9 @@ get_routes() ->
         {"/v1/e2ee/social/recover", e2ee_social_handler, #{action => recover_key}},
         {"/v1/e2ee/social/proxy_shards", e2ee_social_handler, #{action => get_proxy_shards}},
         {"/v1/e2ee/social/decrypt_shard", e2ee_social_handler, #{action => decrypt_shard}},
+
+        % 合规密钥分发（三层加密架构）
+        {"/v1/e2ee/compliance_key", e2ee_handler, #{action => compliance_key}},
 
         {"/v1/user_collect/page", user_collect_handler, #{action => page}},
         {"/v1/user_collect/add", user_collect_handler, #{action => add}},
@@ -496,6 +505,16 @@ get_routes() ->
         {"/adm/admin/config/policy/preview", adm_admin_handler, #{action => config_policy_preview}},
         {"/adm/admin/config/policy/saved", adm_admin_handler, #{action => config_policy_saved}},
         {"/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
+        % 禁言用户管理 API
+        {"/adm/admin/muted_users/list", adm_admin_handler, #{action => muted_users_list}},
+        {"/adm/admin/muted_users/unmute", adm_admin_handler, #{action => muted_users_unmute}},
+        {"/adm/admin/muted_users/unmute_batch", adm_admin_handler, #{action => muted_users_unmute_batch}},
+        % 推送 Token 管理 API
+        {"/adm/admin/push_token/list", adm_admin_handler, #{action => push_token_list}},
+        % 合规密钥管理 API
+        {"/adm/admin/compliance_key/list", adm_admin_handler, #{action => compliance_key_list}},
+        {"/adm/admin/compliance_key/create", adm_admin_handler, #{action => compliance_key_create}},
+        {"/adm/admin/compliance_key/revoke", adm_admin_handler, #{action => compliance_key_revoke}},
         {"/adm/admin/list", adm_admin_handler, #{action => list}},
         {"/adm/admin/create", adm_admin_handler, #{action => create}},
         {"/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
@@ -658,5 +677,8 @@ open() ->
      <<"/v1/passport/qr_login/confirm">>,
      <<"/v1/passport/qr_login/cancel">>,
      <<"/v1/auth/assets">>,
+
+     <<"/metrics">>,
+     <<"/v1/metrics">>,
 
      <<"/">>].

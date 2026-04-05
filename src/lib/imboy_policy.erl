@@ -121,8 +121,12 @@ message_body_visible() ->
 -spec message_encryption_required() -> boolean().
 message_encryption_required() ->
     Capabilities = effective_capabilities(),
-    maps:get(storage_mode, Capabilities, archived) =:= secure_e2ee orelse
-    maps:get(e2ee_mode, Capabilities, disabled) =:= required.
+    StorageMode = maps:get(storage_mode, Capabilities, archived),
+    E2eeMode = maps:get(e2ee_mode, Capabilities, disabled),
+    StorageMode =:= secure_e2ee orelse
+    StorageMode =:= compliance_e2ee orelse
+    E2eeMode =:= required orelse
+    E2eeMode =:= compliance.
 
 -spec e2ee_enabled() -> boolean().
 e2ee_enabled() ->
@@ -1229,11 +1233,11 @@ capability_meta_catalog() ->
     #{
         storage_mode => #{
             type => enum,
-            options => [archived, secure_e2ee]
+            options => [archived, compliance_e2ee, secure_e2ee]
         },
         e2ee_mode => #{
             type => enum,
-            options => [disabled, optional, required]
+            options => [disabled, optional, compliance, required]
         },
         message_search => #{
             type => boolean
@@ -1259,6 +1263,10 @@ capability_meta_catalog() ->
 capability_constraint_catalog() ->
     #{
         storage_mode => #{
+            compliance_e2ee => #{
+                message_search => compliance_key,
+                audit_mode => full
+            },
             secure_e2ee => #{
                 message_search => false,
                 message_export => false,
@@ -1266,6 +1274,10 @@ capability_constraint_catalog() ->
             }
         },
         e2ee_mode => #{
+            compliance => #{
+                message_search => compliance_key,
+                audit_mode => full
+            },
             required => #{
                 message_search => false,
                 audit_mode => metadata
@@ -1506,42 +1518,58 @@ body_visibility_allowed(secure_e2ee, _E2eeMode) ->
     false;
 body_visibility_allowed(_StorageMode, required) ->
     false;
+body_visibility_allowed(compliance_e2ee, _E2eeMode) ->
+    true;  % compliance 模式下合规密钥持有者可查看
+body_visibility_allowed(_StorageMode, compliance) ->
+    true;  % compliance 模式下合规密钥持有者可查看
 body_visibility_allowed(_, _) ->
     true.
 
--spec normalize_storage_mode(term(), atom()) -> archived | secure_e2ee.
+-spec normalize_storage_mode(term(), atom()) -> archived | compliance_e2ee | secure_e2ee.
 normalize_storage_mode(archived, _Default) ->
     archived;
+normalize_storage_mode(compliance_e2ee, _Default) ->
+    compliance_e2ee;
 normalize_storage_mode(secure_e2ee, _Default) ->
     secure_e2ee;
 normalize_storage_mode(<<"archived">>, _Default) ->
     archived;
+normalize_storage_mode(<<"compliance_e2ee">>, _Default) ->
+    compliance_e2ee;
 normalize_storage_mode(<<"secure_e2ee">>, _Default) ->
     secure_e2ee;
 normalize_storage_mode("archived", _Default) ->
     archived;
+normalize_storage_mode("compliance_e2ee", _Default) ->
+    compliance_e2ee;
 normalize_storage_mode("secure_e2ee", _Default) ->
     secure_e2ee;
 normalize_storage_mode(_, Default) ->
     Default.
 
--spec normalize_e2ee_mode(term(), atom()) -> disabled | optional | required.
+-spec normalize_e2ee_mode(term(), atom()) -> disabled | optional | compliance | required.
 normalize_e2ee_mode(disabled, _Default) ->
     disabled;
 normalize_e2ee_mode(optional, _Default) ->
     optional;
+normalize_e2ee_mode(compliance, _Default) ->
+    compliance;
 normalize_e2ee_mode(required, _Default) ->
     required;
 normalize_e2ee_mode(<<"disabled">>, _Default) ->
     disabled;
 normalize_e2ee_mode(<<"optional">>, _Default) ->
     optional;
+normalize_e2ee_mode(<<"compliance">>, _Default) ->
+    compliance;
 normalize_e2ee_mode(<<"required">>, _Default) ->
     required;
 normalize_e2ee_mode("disabled", _Default) ->
     disabled;
 normalize_e2ee_mode("optional", _Default) ->
     optional;
+normalize_e2ee_mode("compliance", _Default) ->
+    compliance;
 normalize_e2ee_mode("required", _Default) ->
     required;
 normalize_e2ee_mode(_, Default) ->
@@ -2007,39 +2035,51 @@ is_charlist([H | T]) when is_integer(H), H >= 0, H =< 16#10FFFF ->
 is_charlist(_) ->
     false.
 
--spec parse_storage_mode(term()) -> {ok, archived | secure_e2ee} | error.
+-spec parse_storage_mode(term()) -> {ok, archived | compliance_e2ee | secure_e2ee} | error.
 parse_storage_mode(archived) ->
     {ok, archived};
+parse_storage_mode(compliance_e2ee) ->
+    {ok, compliance_e2ee};
 parse_storage_mode(secure_e2ee) ->
     {ok, secure_e2ee};
 parse_storage_mode(<<"archived">>) ->
     {ok, archived};
+parse_storage_mode(<<"compliance_e2ee">>) ->
+    {ok, compliance_e2ee};
 parse_storage_mode(<<"secure_e2ee">>) ->
     {ok, secure_e2ee};
 parse_storage_mode("archived") ->
     {ok, archived};
+parse_storage_mode("compliance_e2ee") ->
+    {ok, compliance_e2ee};
 parse_storage_mode("secure_e2ee") ->
     {ok, secure_e2ee};
 parse_storage_mode(_) ->
     error.
 
--spec parse_e2ee_mode(term()) -> {ok, disabled | optional | required} | error.
+-spec parse_e2ee_mode(term()) -> {ok, disabled | optional | compliance | required} | error.
 parse_e2ee_mode(disabled) ->
     {ok, disabled};
 parse_e2ee_mode(optional) ->
     {ok, optional};
+parse_e2ee_mode(compliance) ->
+    {ok, compliance};
 parse_e2ee_mode(required) ->
     {ok, required};
 parse_e2ee_mode(<<"disabled">>) ->
     {ok, disabled};
 parse_e2ee_mode(<<"optional">>) ->
     {ok, optional};
+parse_e2ee_mode(<<"compliance">>) ->
+    {ok, compliance};
 parse_e2ee_mode(<<"required">>) ->
     {ok, required};
 parse_e2ee_mode("disabled") ->
     {ok, disabled};
 parse_e2ee_mode("optional") ->
     {ok, optional};
+parse_e2ee_mode("compliance") ->
+    {ok, compliance};
 parse_e2ee_mode("required") ->
     {ok, required};
 parse_e2ee_mode(_) ->

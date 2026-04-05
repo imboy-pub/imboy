@@ -10,6 +10,7 @@
 -export([aes_encrypt/1]).
 -export([env/1, env/2, env/3]).
 -export([reload/0, local_reload/0]).
+-export([ice_servers/0]).
 
 -include_lib("kernel/include/logger.hrl").
 
@@ -49,6 +50,29 @@ env(App, Attr, Def) ->
         _ ->
             Def
     end.
+
+%% @doc 获取 WebRTC ICE Server 配置列表
+%% 从 sys.config 中读取 {imboy, [{ice_servers, [...]}]}
+%% 返回值可直接序列化为 JSON 返回给客户端
+-spec ice_servers() -> [map()].
+ice_servers() ->
+    case application:get_env(imboy, ice_servers) of
+        {ok, Servers} when is_list(Servers) ->
+            [normalize_ice_server(S) || S <- Servers];
+        _ ->
+            %% 默认 STUN 服务器
+            [#{<<"urls">> => <<"stun:stun.l.google.com:19302">>}]
+    end.
+
+%% @doc 将 ICE server 配置中的 atom key 转为 binary key（用于 JSON 序列化）
+normalize_ice_server(S) when is_map(S) ->
+    maps:fold(fun(K, V, Acc) ->
+        BinK = elib_cnv:to_binary(K),
+        BinV = elib_cnv:to_binary(V),
+        Acc#{BinK => BinV}
+    end, #{}, S);
+normalize_ice_server(_) ->
+    #{}.
 
 % config_ds:reload().
 -spec reload() -> ok.

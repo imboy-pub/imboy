@@ -31,6 +31,9 @@ client_ack(Type, MsgId, CurrentUid, _DID) ->
             ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
     end,
 
+    %% 消息投递确认计数
+    elib_metric:increment(msg_delivered_total),
+
     % 统一清理 staging 表
     msg_store_ds:unstage(MsgId),
 

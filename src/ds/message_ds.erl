@@ -55,6 +55,8 @@ send_next(_ToUid, _MsgId, _Msg, [], _, _) ->
     ok;
 send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
     % ?DEBUG_LOG(["message_ds:send_next/6", ToUid, MsgId, length(MsLi), length(DIDLi), IncludeDIDLi]),
+    %% 消息发送计数
+    elib_metric:increment(msg_sent_total),
     % 只允许整数或定时重发间隔组成的列表
     case lists:all(fun(T) -> is_integer(T) andalso T >= 0 end, MsLi) of
         false ->
@@ -305,6 +307,12 @@ decode_websocket_message(Data) ->
 
     %% 保持客户端字段名：from/to（binary，hashids编码）
     %% Logic 层会使用 elib_hashids:decode/1 将其转换为 integer
+    %% 消息自毁秒数（可选，0 或 undefined 表示不自毁）
+    ExpireSecs = case maps:get(<<"expire_secs">>, Msg, undefined) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> undefined
+    end,
+
     #{<<"id">> => maps:get(<<"id">>, Msg, <<>>),
       <<"type">> => Type,
       <<"from">> => maps:get(<<"from">>, Msg, <<>>),
@@ -312,6 +320,7 @@ decode_websocket_message(Data) ->
       <<"msg_type">> => MsgType,
       <<"action">> => Action,
       <<"e2ee">> => E2EE,
+      <<"expire_secs">> => ExpireSecs,
       <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
       <<"created_at">> => maps:get(<<"created_at">>, Msg, elib_dt:millisecond())}.
 

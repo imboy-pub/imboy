@@ -250,6 +250,18 @@ do_stage_and_send_c2g(
             % ③ 后投递消息（给每个群成员）
             [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
 
+            % ③.5 离线推送（异步，不阻塞消息投递）
+            push_notification_logic:maybe_push_for_c2g(CurrentUid, ToGID, MsgType, MemberUids),
+
+            % ③.6 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
+            ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
+            case msg_burn_logic:valid_expire_secs(ExpireSecs) of
+                true when is_integer(ExpireSecs), ExpireSecs > 0 ->
+                    ExpireAt = msg_burn_logic:calc_expire_at(CreatedAtRfc, ExpireSecs),
+                    set_c2g_expire_at(MsgId, ExpireAt);
+                _ -> ok
+            end,
+
             % ④ 创建@提及记录（如果有）
             Payload = maps:get(<<"payload">>, Data, #{}),
             Mentions = mentions_from_payload(Payload),
@@ -559,6 +571,22 @@ extract_reply_info(Data) ->
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
+    end.
+
+%% @doc 设置C2G消息的自毁时间
+%% @param MsgId 消息ID
+%% @param ExpireAt 过期时间（RFC3339 binary）
+-spec set_c2g_expire_at(binary(), binary()) -> ok.
+set_c2g_expire_at(MsgId, ExpireAt) ->
+    Tb = msg_c2g_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+           " SET expire_at = $1"
+           " WHERE msg_id = $2">>,
+    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            _ = ?WARN_LOG({set_c2g_expire_at_failed, MsgId, Reason}),
+            ok
     end.
 
 %% @doc 持久化 action ack payload 到原消息记录

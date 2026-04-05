@@ -1,7 +1,7 @@
 -module(e2ee_handler).
 
 %% Thin HTTP adapter for the security_privacy e2ee boundary.
--dialyzer({nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2]}).
+-dialyzer({nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2, compliance_key/2]}).
 
 -behavior(cowboy_rest).
 
@@ -32,6 +32,8 @@ init(Req0, State0) ->
                 backup_list(Req0, State);
             backup_delete ->
                 backup_delete(Req0, State);
+            compliance_key ->
+                compliance_key(Req0, State);
             _ ->
                 elib_response:error(Req0, <<"not_found">>, 404)
         end,
@@ -337,4 +339,21 @@ do_backup_delete(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
             end
+    end.
+
+%% @doc 获取当前活跃的合规公钥
+%% GET /v1/e2ee/compliance_key
+%% 返回合规密钥的 key_id 和 public_key，客户端用于 compliance_e2ee 模式的双密钥加密
+-spec compliance_key(cowboy_req:req(), map()) -> cowboy_req:req().
+compliance_key(Req0, _State) ->
+    case compliance_key_repo:find_active() of
+        {ok, KeyId, PublicKey} ->
+            elib_response:success(Req0, #{
+                <<"key_id">> => KeyId,
+                <<"public_key">> => PublicKey
+            });
+        {error, not_found} ->
+            elib_response:error(Req0, <<"无活跃合规密钥"/utf8>>, ?ERR_NOT_FOUND);
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"合规密钥查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end.
