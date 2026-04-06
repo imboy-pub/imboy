@@ -252,16 +252,26 @@ get_or_open_conn(Host, Port) ->
     end.
 
 open_and_cache_conn(Key, Host, Port) ->
-    {ok, ConnPid} = gun:open(binary_to_list(Host), Port, #{
+    case gun:open(binary_to_list(Host), Port, #{
         transport => tls,
         protocols => [http2],
         tls_opts => [{verify, verify_peer},
                      {customize_hostname_check,
                       [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}]
-    }),
-    {ok, http2} = gun:await_up(ConnPid, 5000),
-    put(Key, ConnPid),
-    ConnPid.
+    }) of
+        {ok, ConnPid} ->
+            case gun:await_up(ConnPid, 5000) of
+                {ok, http2} ->
+                    put(Key, ConnPid),
+                    ConnPid;
+                {error, AwaitReason} ->
+                    catch gun:close(ConnPid),
+                    erase(Key),
+                    error({gun_await_up_failed, AwaitReason})
+            end;
+        {error, OpenReason} ->
+            error({gun_open_failed, OpenReason})
+    end.
 
 close_cached_conn(Host) ->
     Key = {gun_conn, Host},

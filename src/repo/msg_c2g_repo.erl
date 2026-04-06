@@ -86,7 +86,12 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
             null -> MsgData;
             _ -> MsgData#{expire_at => ExpireAt}
         end,
-        _ = elib_pg:insert(Conn, TbMsg, MsgData2, <<>>),
+        case elib_pg:insert(Conn, TbMsg, MsgData2, <<>>) of
+            {ok, _} -> ok;
+            {error, InsertReason} ->
+                ?ERROR_LOG({msg_c2g_insert_failed, MsgId, InsertReason}),
+                error({msg_c2g_insert_failed, InsertReason})
+        end,
 
         %% ---------- 批量插入时间线表 ----------
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
@@ -264,7 +269,7 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
 
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入群离线消息（带@信息）----------
-        _ = elib_pg:insert(Conn, TbMsg, #{
+        case elib_pg:insert(Conn, TbMsg, #{
             payload => Payload,
             to_id => Gid,
             from_id => FromId,
@@ -284,7 +289,12 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
                 [] -> null;
                 _ -> jsone:encode(Mentions, [native_utf8])
             end
-        }, <<>>),
+        }, <<>>) of
+            {ok, _} -> ok;
+            {error, InsertReason} ->
+                ?ERROR_LOG({msg_c2g_mention_insert_failed, MsgId, InsertReason}),
+                error({msg_c2g_insert_failed, InsertReason})
+        end,
 
         %% ---------- 批量插入时间线表 ----------
         Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],

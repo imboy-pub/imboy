@@ -261,12 +261,15 @@ process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
     case Count > 0 of
         true ->
             % 更新现有群组
-            _ = elib_pg:update(Tb, Data#{updated_at => Now}, <<"id = $1">>, [Gid2]),
-            ToUidLi = group_ds:member_uids(Gid2),
-            %% v2.0: 使用 send/7 API
-            Action = <<"group_edit">>,
-            Payload = Data#{<<"gid">> => Gid},
-            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save);
+            case elib_pg:update(Tb, Data#{updated_at => Now}, <<"id = $1">>, [Gid2]) of
+                {ok, _} ->
+                    ToUidLi = group_ds:member_uids(Gid2),
+                    Action = <<"group_edit">>,
+                    Payload = Data#{<<"gid">> => Gid},
+                    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save);
+                {error, UpdateReason} ->
+                    ?ERROR_LOG({group_edit_update_failed, Gid2, UpdateReason})
+            end;
         false ->
             % 创建新群组
             M3 = group_random_code_repo:find_by_gid(Gid2, <<"user_id, created_at">>),
@@ -274,7 +277,11 @@ process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
                           creator_uid => maps:get(<<"user_id">>, M3, Uid),
                           created_at => maps:get(<<"created_at">>, M3, Now),
                           id => Gid2},
-            _ = elib_pg:insert(Tb, Data4)
+            case elib_pg:insert(Tb, Data4) of
+                {ok, _} -> ok;
+                {error, InsertReason} ->
+                    ?ERROR_LOG({group_create_insert_failed, Gid2, InsertReason})
+            end
     end,
     elib_response:success(Req0, #{<<"gid">> => Gid}, "success.").
 
@@ -520,10 +527,10 @@ qrcode(Req0, State) ->
     % ?DEBUG_LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of
         {0, _} ->
-            Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
+            Req = cowboy_req:reply(302, #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)}, Req0),
             {ok, Req, State};
         {_, false} ->
-            Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
+            Req = cowboy_req:reply(302, #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)}, Req0),
             {ok, Req, State};
         {_, true} when NowInt > ExpiredAtInt ->
             elib_response:error(Req0, "验证码已过期");

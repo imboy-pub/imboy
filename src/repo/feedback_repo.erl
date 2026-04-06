@@ -31,7 +31,7 @@ tablename() ->
     ok | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach, FeedbackMd5)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) ->
-    _ = elib_pg:insert(tablename(), #{
+    case elib_pg:insert(tablename(), #{
         <<"user_id">> => Uid,  % 用户ID (整型)
         <<"device_id">> => Did,  % 设备ID (字符串)
         <<"client_operating_system">> => COS,  % 客户端操作系统 (字符串)
@@ -45,8 +45,12 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, Feed
         <<"feedback_md5">> => FeedbackMd5,  % MD5校验值 (字符串)
         <<"status">> => 1,  % 状态 (整型 1-有效)
         <<"created_at">> => elib_dt:now()  % 创建时间 (使用原生时间函数)
-    }),
-    ok.
+    }) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            ?ERROR_LOG({feedback_insert_failed, Uid, Reason}),
+            {error, Reason}
+    end.
 
 -spec delete(integer(), binary()) -> ok | {error, any()}.
 delete(Uid, FeedbackId) ->

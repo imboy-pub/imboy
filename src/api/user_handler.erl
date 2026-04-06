@@ -214,7 +214,8 @@ qrcode(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, undefined),
     case CurrentUid of
         undefined ->
-            Req = cowboy_req:reply(302, #{<<"Location">> => <<"http://www.imboy.pub">>}, Req0),
+            RedirectUrl = config_ds:env(redirect_url, <<"http://www.imboy.pub">>),
+            Req = cowboy_req:reply(302, #{<<"Location">> => RedirectUrl}, Req0),
             {ok, Req, State};
         _ ->
             Uid2 = elib_hashids:decode(Uid),

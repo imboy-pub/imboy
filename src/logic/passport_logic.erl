@@ -280,7 +280,10 @@ send_email_code(ToEmail) ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            _ = elib_email:send(ToEmail, Msg),
+            case elib_email:send(ToEmail, Msg) of
+                ok -> ok;
+                {error, EmailErr} -> ?WARN_LOG({email_send_failed, ToEmail, EmailErr})
+            end,
             {ok, <<"验证码已发送"/utf8>>};
         _ ->
             VerifyCode = elib_cipher:num_random(6),
@@ -290,7 +293,10 @@ send_email_code(ToEmail) ->
                 ValidityAt when is_binary(ValidityAt) ->
                     _ = verification_code_ds:save(ToEmail, VerifyCodeBinary, ValidityAt, Now),
                     Msg = <<"Code is ", VerifyCodeBinary/binary, " will expire in 10 minutes.">>,
-                    _ = elib_email:send(ToEmail, Msg),
+                    case elib_email:send(ToEmail, Msg) of
+                        ok -> ok;
+                        {error, EmailErr2} -> ?WARN_LOG({email_send_failed, ToEmail, EmailErr2})
+                    end,
                     {ok, <<"验证码已发送"/utf8>>};
                 _ ->
                     {error, <<"invalid_datetime"/utf8>>}
@@ -311,7 +317,10 @@ send_sms_code(Mobile) ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-            _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
+            case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
+                ok -> ok;
+                {error, SmsErr} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr})
+            end,
             {ok, <<"验证码已发送"/utf8>>};
         _ ->
             Code = elib_cipher:num_random(6),
@@ -321,7 +330,10 @@ send_sms_code(Mobile) ->
                 ValidityAt when is_binary(ValidityAt) ->
                     _ = verification_code_ds:save(Mobile, CodeBinary, ValidityAt, Now),
                     Content = <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-                    _ = imboy_sms:send(Mobile, Content, <<"yjsms">>),
+                    case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
+                        ok -> ok;
+                        {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2})
+                    end,
                     {ok, <<"验证码已发送"/utf8>>};
                 _ ->
                     {error, <<"invalid_datetime"/utf8>>}

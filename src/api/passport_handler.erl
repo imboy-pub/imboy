@@ -115,9 +115,14 @@ validate_bind_mail_cache(_CacheVal, _Mail) ->
 -spec process_bind_mail(cowboy_req:req(), map()) -> cowboy_req:req().
 process_bind_mail(Req0, #{uid := Uid, mail := Mail, cache_key := CacheKey}) ->
     Uid2 = elib_hashids:decode(Uid),
-    _ = elib_pg:update(user_repo:tablename(), #{<<"email">> => Mail}, <<"id = $1">>, [Uid2]),
-    imboy_cache:set(CacheKey, 1, 86400),
-    elib_response:success(Req0, #{}).
+    case elib_pg:update(user_repo:tablename(), #{<<"email">> => Mail}, <<"id = $1">>, [Uid2]) of
+        {ok, _} ->
+            imboy_cache:set(CacheKey, 1, 86400),
+            elib_response:success(Req0, #{});
+        {error, Reason} ->
+            ?ERROR_LOG({bind_mail_update_failed, Uid2, Reason}),
+            elib_response:error(Req0, <<"邮箱绑定失败"/utf8>>)
+    end.
 
 %% @doc 用户登录
 %% 使用账号密码进行登录

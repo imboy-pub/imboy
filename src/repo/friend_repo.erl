@@ -42,7 +42,7 @@ confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Tb = tablename(),
-    _ = elib_pg:insert(Tb, #{
+    case elib_pg:insert(Tb, #{
         from_user_id => FromID,
         to_user_id => ToID,
         status => 1,
@@ -51,8 +51,12 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
         created_at => NowTs,
         setting => jsone:encode(filter_friend_setting(Setting), [native_utf8]),
         tag => Tag
-        }),
-    ok.
+        }) of
+        {ok, _} -> ok;
+        {error, Reason} ->
+            ?ERROR_LOG({friend_insert_failed, FromID, ToID, Reason}),
+            ok
+    end.
 
 
 %% @doc 查询好友关系的字段值（单字段）
