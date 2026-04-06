@@ -28,11 +28,11 @@
 -export([init_table/0]).
 -export([reset_counters/0]).
 
-%% 阈值常量
--define(WARN_THRESHOLD, 30).       % 每分钟超过 30 条触发警告
--define(MUTE_THRESHOLD, 60).       % 每分钟超过 60 条自动禁言
--define(MUTE_DURATION_MS, 300000). % 禁言持续 5 分钟 (毫秒)
--define(WINDOW_MS, 60000).         % 统计窗口 1 分钟 (毫秒)
+%% 阈值默认值（可通过 sys.config 覆盖）
+-define(DEFAULT_WARN_THRESHOLD, 30).       % 每分钟超过 30 条触发警告
+-define(DEFAULT_MUTE_THRESHOLD, 60).       % 每分钟超过 60 条自动禁言
+-define(DEFAULT_MUTE_DURATION_MS, 300000). % 禁言持续 5 分钟 (毫秒)
+-define(WINDOW_MS, 60000).                 % 统计窗口 1 分钟 (毫秒)
 
 %% ETS 表名
 -define(MSG_RATE_TAB, msg_rate_counter).   % {Uid, Count}  — 原子计数器
@@ -64,18 +64,20 @@ check_and_record(Uid) ->
                     ets:insert_new(?MSG_RATE_TAB, {Uid, 1}),
                     1
             end,
+            MuteThreshold = mute_threshold(),
+            WarnThreshold = warn_threshold(),
             if
-                Count > ?MUTE_THRESHOLD ->
+                Count > MuteThreshold ->
                     %% 超过禁言阈值，自动禁言
                     Now = erlang:system_time(millisecond),
                     do_mute(Uid, Now),
                     ?WARN_LOG("User ~p auto-muted: ~p msgs/min exceeded threshold ~p",
-                              [Uid, Count, ?MUTE_THRESHOLD]),
+                              [Uid, Count, MuteThreshold]),
                     {error, muted};
-                Count > ?WARN_THRESHOLD ->
+                Count > WarnThreshold ->
                     %% 超过警告阈值
                     ?WARN_LOG("User ~p msg rate warning: ~p msgs/min exceeded threshold ~p",
-                              [Uid, Count, ?WARN_THRESHOLD]),
+                              [Uid, Count, WarnThreshold]),
                     {warning, Count};
                 true ->
                     ok
@@ -136,8 +138,16 @@ reset_counters() ->
 %% @private
 -spec do_mute(integer(), integer()) -> true.
 do_mute(Uid, Now) ->
-    MuteUntil = Now + ?MUTE_DURATION_MS,
+    MuteUntil = Now + mute_duration_ms(),
     ets:insert(?MSG_MUTE_TAB, {Uid, MuteUntil}).
+
+%% @doc 从 sys.config 读取阈值，未配置则用默认值
+warn_threshold() ->
+    config_ds:env(msg_rate_warn_threshold, ?DEFAULT_WARN_THRESHOLD).
+mute_threshold() ->
+    config_ds:env(msg_rate_mute_threshold, ?DEFAULT_MUTE_THRESHOLD).
+mute_duration_ms() ->
+    config_ds:env(msg_rate_mute_duration_ms, ?DEFAULT_MUTE_DURATION_MS).
 
 %% @doc 确保 ETS 表存在
 %% @private
