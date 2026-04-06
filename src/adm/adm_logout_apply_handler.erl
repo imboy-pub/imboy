@@ -31,6 +31,7 @@ init(Req0, State0) ->
         case Action of
             list -> list(Method, Req0, State);
             export -> export(Method, Req0, State);
+            reject -> reject(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -59,7 +60,7 @@ list(<<"GET">>, Req0, _State) ->
             LimitPos = integer_to_binary(length(Params) + 1),
             OffsetPos = integer_to_binary(length(Params) + 2),
             DataSql = iolist_to_binary([
-                <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
+                <<"SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at ">>,
                 BaseFrom,
                 <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
                 <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
@@ -80,6 +81,38 @@ list(<<"GET">>, Req0, _State) ->
             elib_response:error(Req0, "查询失败")
     end;
 list(_, Req0, _State) ->
+    Req0.
+
+%% @doc 驳回注销申请：将用户状态从 2（申请注销中）恢复为 1（正常）
+-spec reject(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+reject(<<"POST">>, Req0, _State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Data = jsone:decode(Body, [{object_format, map}]),
+    UidRaw = maps:get(<<"uid">>, Data, <<>>),
+    Uid = parse_hashid_or_int(UidRaw),
+    Reason = maps:get(<<"reason">>, Data, <<>>),
+    case Uid > 0 of
+        true ->
+            UserTb = user_repo:tablename(),
+            %% 仅当 status=2（申请注销中）时才允许驳回
+            Sql = <<"UPDATE ", UserTb/binary,
+                    " SET status = 1, updated_at = NOW()"
+                    " WHERE id = $1 AND status = 2"
+                    " RETURNING id">>,
+            case elib_pg:query(Sql, [Uid]) of
+                {ok, [_]} ->
+                    %% 记录驳回日志
+                    ok = ?INFO_LOG([logout_apply_rejected, #{uid => Uid, reason => Reason}]),
+                    elib_response:success(Req1, #{uid => elib_hashids:encode(Uid), status => <<"rejected">>});
+                {ok, []} ->
+                    elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
+                {error, _Reason} ->
+                    elib_response:error(Req1, <<"操作失败"/utf8>>)
+            end;
+        false ->
+            elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+    end;
+reject(_, Req0, _State) ->
     Req0.
 
 -spec export(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -260,6 +293,7 @@ normalize_row(Row) ->
         uid => elib_hashids:encode(Uid),
         account => row_get(Row, <<"account">>, <<>>),
         nickname => row_get(Row, <<"nickname">>, <<>>),
+        user_status => row_get(Row, <<"user_status">>, 0),
         app_vsn => maps:get(<<"app_vsn">>, BodyMap, <<>>),
         did => maps:get(<<"did">>, BodyMap, <<>>),
         dtype => maps:get(<<"dtype">>, BodyMap, <<>>),

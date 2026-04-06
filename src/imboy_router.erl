@@ -549,6 +549,7 @@ get_routes() ->
         {"/adm/user/search", adm_user_handler, #{action => search}},
         {"/adm/user/logout_apply/list", adm_logout_apply_handler, #{action => list}},
         {"/adm/user/logout_apply/export", adm_logout_apply_handler, #{action => export}},
+        {"/adm/user/logout_apply/reject", adm_logout_apply_handler, #{action => reject}},
         % 群组管理 API
         {"/adm/group/list", adm_group_handler, #{action => list}},
         {"/adm/group/detail", adm_group_handler, #{action => detail}},
