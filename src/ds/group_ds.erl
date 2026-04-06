@@ -227,18 +227,21 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
                 Gid
         end,
     % 检查群成员是否已存在，不存在则插入
-    _ = case group_member_repo:find(Gid2, Uid, <<"id">>) of
-            GM when map_size(GM) == 0 ->
-                elib_pg:insert(Conn,
-                                group_member_repo:tablename(),
-                                #{group_id => Gid2,
-                                  user_id => Uid,
-                                  role => 4, % 群主
-                                  created_at => Now},
-                                <<>>);
-            _ ->
-                ok
-        end,
+    case group_member_repo:find(Gid2, Uid, <<"id">>) of
+        GM when map_size(GM) == 0 ->
+            case elib_pg:insert(Conn,
+                            group_member_repo:tablename(),
+                            #{group_id => Gid2,
+                              user_id => Uid,
+                              role => 4, % 群主
+                              created_at => Now},
+                            <<>>) of
+                {ok, _} -> ok;
+                {error, Reason} -> ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason])
+            end;
+        _ ->
+            ok
+    end,
     Gid2.
 
 %% @doc 查询附近的群组（基于地理位置）
@@ -327,23 +330,27 @@ face2face_save(Code, Gid, Uid) ->
         end,
 
         % 群不存在就创建
-        _ = case group_repo:find_by_id(Gid, <<"id">>) of
-                #{<<"id">> := _} -> ok;
-                {error, _} ->
-                    Now = elib_dt:now(),
-                    create_group(Conn, Gid, Uid, Now, 2, 1)
-            end,
+        case group_repo:find_by_id(Gid, <<"id">>) of
+            #{<<"id">> := _} -> ok;
+            {error, Reason1} ->
+                ?ERROR_LOG([group_find_by_id_failed, Gid, Reason1]),
+                Now = elib_dt:now(),
+                create_group(Conn, Gid, Uid, Now, 2, 1);
+            _ ->
+                Now = elib_dt:now(),
+                create_group(Conn, Gid, Uid, Now, 2, 1)
+        end,
 
         % 不是群成员则加入
-        _ = case group_member_repo:find(Gid, Uid, <<"id">>) of
-                #{<<"id">> := _} -> ok;
-                _ ->
-                    group_member_ds:join_group(Conn,
-                          <<"face2face_join">>,
-                          Uid,
-                          Gid,
-                          #{})
-            end,
+        case group_member_repo:find(Gid, Uid, <<"id">>) of
+            #{<<"id">> := _} -> ok;
+            _ ->
+                group_member_ds:join_group(Conn,
+                      <<"face2face_join">>,
+                      Uid,
+                      Gid,
+                      #{})
+        end,
         {ok, <<"success">>}
     end).
 
@@ -363,12 +370,15 @@ dissolve_group(Uid, Gid, _, G) ->
 
     elib_pg:with_tx(fun(Conn) ->
         % 添加群日志
-        _ = group_log_repo:add(Conn,
+        case group_log_repo:add(Conn,
                 #{type => 101,
                   option_uid => Uid,
                   group_id => Gid,
                   body => Body,
-                  created_at => Now}),
+                  created_at => Now}) of
+            {ok, _} -> ok;
+            {error, LogReason} -> ?ERROR_LOG([group_log_add_failed, Gid, Uid, LogReason])
+        end,
 
         % 删除群组
         Tb = group_repo:tablename(),
@@ -392,7 +402,10 @@ dissolve_group(Uid, Gid, _, G) ->
                 case MemberLogs of
                     [] -> ok;
                     _ ->
-                        _ = group_log_repo:batch_add(Conn, MemberLogs),
+                        case group_log_repo:batch_add(Conn, MemberLogs) of
+                            {ok, _} -> ok;
+                            {error, BatchReason} -> ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
+                        end,
                         ok
                 end;
             {error, _Reason} ->

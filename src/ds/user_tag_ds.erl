@@ -100,7 +100,10 @@ change_name(0, Uid, Scene, TagId, TagName) ->
             % 使用事务更新
             elib_pg:with_tx(fun(Conn) ->
                 % 更新 user_tag
-                _ = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                case user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt) of
+                    {ok, _} -> ok;
+                    {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason])
+                end,
 
                 % 更新所有关联对象的 tag
                 [ change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [{TagId, TagName}]) || Row <- Rows ],
@@ -149,7 +152,10 @@ find_tag_id(Uid, Scene, Tag) ->
 %% @return ok
 -spec update_tag(pid(), integer(), binary(), integer(), binary()) -> ok.
 update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
-    _ = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+    case user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt) of
+        {ok, _} -> ok;
+        {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason])
+    end,
     ok.
 
 %% @doc 获取标签关联的对象列表

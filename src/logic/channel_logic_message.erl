@@ -21,6 +21,8 @@
 -export([get_admins/1]).
 -export([update_admin_role/4]).
 
+-include("log.hrl").
+
 -spec channel_transfer(map()) -> map().
 channel_transfer(Channel) when is_map(Channel) ->
     channel_logic_common:channel_transfer(Channel).
@@ -246,7 +248,11 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    _ = channel_subscription_repo:clear_unread(ChannelId, Uid),
+                    case channel_subscription_repo:clear_unread(ChannelId, Uid) of
+                        {ok, _} -> ok;
+                        {error, ClearReason} ->
+                            ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
+                    end,
                     channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, 0),
                     ok;
                 {error, Reason} ->

@@ -8,6 +8,7 @@
 -export([admin_batch_resolve/5]).
 
 -include("error_code.hrl").
+-include("log.hrl").
 
 -spec create(integer(), term(), term(), term(), term()) -> {ok, map()} | {error, binary()}.
 create(ReporterUid, TargetTypeRaw, TargetIdRaw, ReasonRaw, DescRaw) when is_integer(ReporterUid), ReporterUid > 0 ->
@@ -143,7 +144,11 @@ resolve_non_moment(AdmUid, TargetType, ReportIdRaw, Result, Note) ->
                         true ->
                             case report_ticket_repo:resolve(ReportId, Result, Note, AdmUid) of
                                 {ok, N} when N > 0 ->
-                                    _ = report_action_log_repo:create(ReportId, AdmUid, Result, Note),
+                                    case report_action_log_repo:create(ReportId, AdmUid, Result, Note) of
+                                        {ok, _} -> ok;
+                                        {error, LogReason} ->
+                                            ?ERROR_LOG(["report_action_log_failed", ReportId, AdmUid, LogReason])
+                                    end,
                                     ok;
                                 {ok, _} ->
                                     {error, <<"举报记录不存在"/utf8>>};

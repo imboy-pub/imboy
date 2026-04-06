@@ -104,20 +104,26 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, MemberUids, Gid, MsgType, _Act
     % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
     write_msg(NowTs, MsgId, Payload, FromId, MemberUids, Gid, MsgType, E2EE),
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    _ = elib_pg:update(
+    case elib_pg:update(
         msg_c2g_repo:tablename(),
         #{payload => Payload},
         <<"msg_id = $1">>,
         [MsgId]
-    ),
+    ) of
+        {ok, _} -> ok;
+        {error, Reason1} -> ?ERROR_LOG([msg_c2g_payload_update_failed, MsgId, Reason1])
+    end,
     % 已确认的消息需要重新确认
     % 使用安全的参数化查询，避免SQL注入
-    _ = elib_pg:update(
+    case elib_pg:update(
         msg_c2g_timeline_repo:tablename(),
         #{client_ack => 0},
         <<"msg_id = $1">>,
         [MsgId]
-    ),
+    ) of
+        {ok, _} -> ok;
+        {error, Reason2} -> ?ERROR_LOG([msg_c2g_ack_update_failed, MsgId, Reason2])
+    end,
     ok.
 
 %% @doc 编辑离线消息
@@ -131,20 +137,26 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, MemberUids, Gid, MsgType, _Act
 -spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), list(), integer()) -> ok.
 edit_offline_msg(Payload, _NowTs, MsgId, FromId, _MemberUids, _Gid) ->
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    _ = elib_pg:update(
+    case elib_pg:update(
         msg_c2g_repo:tablename(),
         #{payload => Payload},
         <<"msg_id = $1 AND from_id = $2">>,
         [MsgId, FromId]
-    ),
+    ) of
+        {ok, _} -> ok;
+        {error, Reason1} -> ?ERROR_LOG([msg_c2g_edit_payload_update_failed, MsgId, FromId, Reason1])
+    end,
     % 已确认的消息需要重新确认
     % 使用安全的参数化查询，避免SQL注入
-    _ = elib_pg:update(
+    case elib_pg:update(
         msg_c2g_timeline_repo:tablename(),
         #{client_ack => 0},
         <<"msg_id = $1">>,
         [MsgId]
-    ),
+    ) of
+        {ok, _} -> ok;
+        {error, Reason2} -> ?ERROR_LOG([msg_c2g_edit_ack_update_failed, MsgId, Reason2])
+    end,
     ok.
 
 %% @doc 读取离线消息

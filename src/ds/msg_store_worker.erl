@@ -165,7 +165,10 @@ process_row(Row) ->
         {error, Reason} ->
             BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
-            _ = msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds),
+            case msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
+                {ok, _} -> ok;
+                {error, MarkReason} -> ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
+            end,
             _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
     end.
 

@@ -268,7 +268,13 @@ status() ->
 
 %% @private
 init([]) ->
-    _ = msg_store_repo:ensure_table_exists(),
+    case msg_store_repo:ensure_table_exists() of
+        ok -> ok;
+        {ok, _} -> ok;
+        {error, Reason} ->
+            ?ERROR_LOG([msg_store_init_failed, ensure_table_exists, Reason]),
+            error({msg_store_init_failed, Reason})
+    end,
     _ = ?INFO_LOG("msg_store_ds started successfully"),
     erlang:send_after(?CLEANUP_INTERVAL, self(), cleanup_staging),
     {ok, #state{last_flush_time = erlang:monotonic_time(millisecond)}}.

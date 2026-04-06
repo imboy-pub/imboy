@@ -31,8 +31,13 @@ register_token(Uid, DeviceId, DeviceType, Platform, Token) ->
 %% @doc 注销推送 token（客户端登出时调用）
 -spec unregister_token(integer(), binary()) -> ok.
 unregister_token(Uid, DeviceId) ->
-    _ = push_token_repo:deactivate(Uid, DeviceId),
-    ok.
+    case push_token_repo:deactivate(Uid, DeviceId) of
+        {ok, _} -> ok;
+        ok -> ok;
+        {error, Reason} ->
+            ?ERROR_LOG(["push_token_deactivate_failed", Uid, DeviceId, Reason]),
+            ok
+    end.
 
 %% ===================================================================
 %% 离线推送 API

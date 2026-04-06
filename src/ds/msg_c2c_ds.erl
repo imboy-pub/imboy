@@ -124,7 +124,10 @@ read_msg(ToUid, Limit, Ts) ->
 %% @returns ok 表示操作成功
 -spec delete_msg(any()) -> ok.
 delete_msg(Id) ->
-    _ = msg_c2c_repo:delete_msg(Id),
+    case msg_c2c_repo:delete_msg(Id) of
+        {ok, _} -> ok;
+        {error, Reason} -> ?ERROR_LOG([msg_c2c_delete_failed, Id, Reason])
+    end,
     ok.
 
 

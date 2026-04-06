@@ -59,7 +59,10 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     if Count > 0 ->
             ok;
         true ->
-            _ = feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5),
+            case feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) of
+                {ok, _} -> ok;
+                {error, Reason} -> ?ERROR_LOG([feedback_add_failed, Uid, Reason])
+            end,
             ok
     end.
 
@@ -68,10 +71,13 @@ remove(Uid, FeedbackId) ->
     % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"user_id = $1 AND id = $2">>,
-    _ = elib_pg:update(feedback_repo:tablename(), #{
+    case elib_pg:update(feedback_repo:tablename(), #{
         <<"status">> => -1,
         <<"updated_at">> => elib_dt:now()
-    }, Where, [Uid, FeedbackId]),
+    }, Where, [Uid, FeedbackId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> ?ERROR_LOG([feedback_status_update_failed, Uid, FeedbackId, Reason])
+    end,
     % feedback_repo:delete(Uid, FeedbackId),
     % Key = {user_device_name, Uid, FeedbackId},
     % imboy_cache:flush(Key),
@@ -84,13 +90,19 @@ add_reply(Data) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data),
     Tb = feedback_reply_repo:tablename(),
     {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"">>),
-    _ = elib_pg:execute(Sql, Params),
+    case elib_pg:execute(Sql, Params) of
+        {ok, _} -> ok;
+        {error, Reason1} -> ?ERROR_LOG([feedback_reply_add_failed, FeedbackId, Reason1])
+    end,
     % 使用安全的参数化查询，避免SQL注入
-    _ = elib_pg:update(feedback_repo:tablename(), #{
+    case elib_pg:update(feedback_repo:tablename(), #{
         <<"status">> => 2,
         <<"reply_count">> => {raw, <<"reply_count + 1">>},
         <<"updated_at">> => elib_dt:now()
-    }, <<"id = $1">>, [FeedbackId]),
+    }, <<"id = $1">>, [FeedbackId]) of
+        {ok, _} -> ok;
+        {error, Reason2} -> ?ERROR_LOG([feedback_status_update_failed, FeedbackId, Reason2])
+    end,
     ok.
 
 %% ===================================================================
