@@ -42,6 +42,7 @@ do_throttle(Req, Env) ->
                 {ok, _Remaining, _RetryAfter} ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
+                    ?WARN_LOG([rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}]),
                     reply_429(Req)
             end;
         Uid ->
@@ -51,6 +52,7 @@ do_throttle(Req, Env) ->
                 {ok, _Remaining, _RetryAfter} ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
+                    ?WARN_LOG([rate_limited, #{key_type => uid, key => Uid, path => cowboy_req:path(Req)}]),
                     reply_429(Req)
             end
     end.

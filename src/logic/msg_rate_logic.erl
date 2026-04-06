@@ -55,15 +55,8 @@ check_and_record(Uid) ->
         true ->
             {error, muted};
         false ->
-            %% 使用 ets:update_counter 原子递增，避免竞态条件
-            Count = try
-                ets:update_counter(?MSG_RATE_TAB, Uid, {2, 1})
-            catch
-                error:badarg ->
-                    %% Key 不存在，初始化为 1
-                    ets:insert_new(?MSG_RATE_TAB, {Uid, 1}),
-                    1
-            end,
+            %% 使用 ets:update_counter/4 原子递增（带默认值，无竞态条件）
+            Count = ets:update_counter(?MSG_RATE_TAB, Uid, {2, 1}, {Uid, 0}),
             MuteThreshold = mute_threshold(),
             WarnThreshold = warn_threshold(),
             if
@@ -121,7 +114,15 @@ init_table() ->
                                                 {read_concurrency, true},
                                                 {write_concurrency, true}]),
     %% 每分钟清零计数器（滑动窗口近似为固定窗口，简单且无竞态）
-    {ok, _TRef} = timer:apply_interval(?WINDOW_MS, ?MODULE, reset_counters, []),
+    %% 先取消旧定时器（防止多次 init_table 导致多个定时器）
+    case persistent_term:get(msg_rate_timer, undefined) of
+        OldRef when is_reference(OldRef) ->
+            timer:cancel(OldRef);
+        _ ->
+            ok
+    end,
+    {ok, TRef} = timer:apply_interval(?WINDOW_MS, ?MODULE, reset_counters, []),
+    persistent_term:put(msg_rate_timer, TRef),
     ok.
 
 %% @doc 每分钟清零所有用户的消息计数器

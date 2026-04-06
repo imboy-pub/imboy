@@ -234,6 +234,7 @@ delete_expired_users(RetentionDays, BatchSize) ->
             end, 0, Rows);
         {ok, []} ->
             0;
-        {error, _Reason} ->
+        {error, Reason} ->
+            ok = ?ERROR_LOG([user_deletion_query_failed, #{retention_days => RetentionDays, error => Reason}]),
             0
     end.

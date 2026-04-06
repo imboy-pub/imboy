@@ -25,13 +25,17 @@
 
 % for webrtc
 -spec event(integer(), integer(), binary(), binary()) -> ok | {reply, binary()}.
-event(CurrentUid, ToUid, MsgId, Msg) ->
+event(CurrentUid, ToUid, MsgId, Msg) when
+    is_integer(CurrentUid), CurrentUid > 0,
+    is_integer(ToUid), ToUid > 0,
+    is_binary(MsgId), is_binary(Msg) ->
     % 判断当前用户是否是 ToUid 用户的朋友
     IsFriend = friend_ds:is_friend(ToUid, CurrentUid),
     % 判断当前用户是否在 ToUid 的黑名单里面
     InDenylist = user_denylist_logic:in_denylist(ToUid, CurrentUid),
     case {IsFriend, InDenylist} of
         {true, 0} ->
+            %% MsLi: 消息状态列表，[0] 表示未读
             MsLi = [0],
             message_ds:send_next(ToUid, MsgId, Msg, MsLi),
             ok;

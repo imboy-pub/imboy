@@ -22,13 +22,16 @@
 -spec send_to_user(integer(), binary(), binary()) -> ok.
 send_to_user(Uid, Title, Body) ->
     case push_token_repo:list_by_uid(Uid) of
-        {ok, _, Rows} when is_list(Rows), length(Rows) > 0 ->
+        {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
             lists:foreach(fun(Row) ->
                 do_send_push(Row, Title, Body)
             end, Rows),
             ok;
-        _ ->
+        {ok, _} ->
             ?DEBUG_LOG(["push_notification_ds: no push token for uid", Uid]),
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG(["push_notification_ds: list_by_uid failed", Uid, Reason]),
             ok
     end.
 
@@ -38,12 +41,15 @@ send_to_users([], _Title, _Body) ->
     ok;
 send_to_users(Uids, Title, Body) ->
     case push_token_repo:list_by_uids(Uids) of
-        {ok, _, Rows} when is_list(Rows), length(Rows) > 0 ->
+        {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
             lists:foreach(fun(Row) ->
                 do_send_push(Row, Title, Body)
             end, Rows),
             ok;
-        _ ->
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG(["push_notification_ds: list_by_uids failed", Uids, Reason]),
             ok
     end.
 
@@ -168,12 +174,7 @@ do_send_push(Row, Title, Body) ->
     end, 2, 3000). % 最多重试 2 次，间隔 3 秒
 
 %% @doc 从查询结果行提取推送信息
-%% list_by_uid 返回: {device_id, device_type, platform, token}
-%% list_by_uids 返回: {user_id, device_id, device_type, platform, token}
-extract_push_info({_DeviceId, _DeviceType, Platform, Token}) ->
-    {Platform, Token};
-extract_push_info({_UserId, _DeviceId, _DeviceType, Platform, Token}) ->
-    {Platform, Token};
+%% elib_pg:query 返回 [map()]，每个 map 包含 <<"platform">> 和 <<"token">> 键
 extract_push_info(Row) when is_map(Row) ->
     {maps:get(<<"platform">>, Row, <<>>), maps:get(<<"token">>, Row, <<>>)}.
 
@@ -219,12 +220,14 @@ http_post(Url, Headers, Body) ->
         #{host := Host, path := Path} = uri_string:parse(Url),
         Port = 443,
         ConnPid = get_or_open_conn(Host, Port),
+        HttpTimeout = config_ds:env(push_http_timeout, 15000),
+        BodyTimeout = config_ds:env(push_body_timeout, 8000),
         StreamRef = gun:post(ConnPid, Path, Headers, Body),
-        case gun:await(ConnPid, StreamRef, 10000) of
+        case gun:await(ConnPid, StreamRef, HttpTimeout) of
             {response, fin, Status, _RespHeaders} ->
                 {ok, Status, <<>>};
             {response, nofin, Status, _RespHeaders} ->
-                {ok, RespBody} = gun:await_body(ConnPid, StreamRef, 5000),
+                {ok, RespBody} = gun:await_body(ConnPid, StreamRef, BodyTimeout),
                 {ok, Status, RespBody};
             {error, Reason} ->
                 %% 连接可能失效，清除缓存让下次重建
@@ -237,6 +240,9 @@ http_post(Url, Headers, Body) ->
     end.
 
 %% @doc 获取或建立到指定 Host 的 HTTP/2 连接（进程字典缓存）
+%% NOTE: 进程字典缓存仅在当前进程生命周期内有效。
+%% 由于 do_send_push 通过 elib_async:async_retry 在短生命周期进程中执行，
+%% 连接会随进程结束而释放。如果未来改为长生命周期进程池，需迁移至 ETS 全局缓存。
 get_or_open_conn(Host, Port) ->
     Key = {gun_conn, Host},
     case get(Key) of

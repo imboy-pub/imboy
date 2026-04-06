@@ -118,9 +118,14 @@ init(Opts) ->
 -spec generate() -> pos_integer().
 generate() ->
     NowRel = erlang:system_time(millisecond) - ?EPOCH_MS,
-    StateRef = persistent_term:get(?PT_STATE),
-    NodeId   = persistent_term:get(?PT_NODE_ID),
-    cas_loop(StateRef, NodeId, NowRel).
+    try
+        StateRef = persistent_term:get(?PT_STATE),
+        NodeId   = persistent_term:get(?PT_NODE_ID),
+        cas_loop(StateRef, NodeId, NowRel)
+    catch
+        error:badarg ->
+            error({elib_tsid_not_initialized, 'call elib_tsid:init/1 first'})
+    end.
 
 %% @doc 批量生成 N 个 TSID (有序)
 -spec generate_n(pos_integer()) -> [pos_integer()].

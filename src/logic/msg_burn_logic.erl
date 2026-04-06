@@ -179,7 +179,12 @@ cleanup_expired_c2c(Now, BatchSize) ->
             ")">>,
     case elib_pg:execute(Sql, [Now, BatchSize]) of
         {ok, Count} when is_integer(Count) -> Count;
-        _ -> 0
+        {error, Reason} ->
+            ?ERROR_LOG([cleanup_c2c_failed, #{reason => Reason}]),
+            0;
+        Other ->
+            ?ERROR_LOG([cleanup_c2c_unexpected, #{result => Other}]),
+            0
     end.
 
 %% @doc 删除 msg_c2g 中已过期的消息
@@ -194,5 +199,10 @@ cleanup_expired_c2g(Now, BatchSize) ->
             ")">>,
     case elib_pg:execute(Sql, [Now, BatchSize]) of
         {ok, Count} when is_integer(Count) -> Count;
-        _ -> 0
+        {error, Reason} ->
+            ?ERROR_LOG([cleanup_c2g_failed, #{reason => Reason}]),
+            0;
+        Other ->
+            ?ERROR_LOG([cleanup_c2g_unexpected, #{result => Other}]),
+            0
     end.
