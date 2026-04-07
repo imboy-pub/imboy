@@ -38,14 +38,15 @@ insert(ForwardRecord) when is_map(ForwardRecord) ->
     ForwardToId = maps:get(<<"forward_to_id">>, ForwardRecord),
     ForwardType = maps:get(<<"forward_type">>, ForwardRecord),
 
+    Id = elib_tsid:generate(msg_forward),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (original_msg_id, original_from_id, original_to_id, original_type, ",
+            " (id, original_msg_id, original_from_id, original_to_id, original_type, ",
             "forward_msg_id, forward_from_id, forward_to_id, forward_type) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)">>,
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
 
-    case elib_pg:query(Sql, [OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
+    case elib_pg:query(Sql, [Id, OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
                               ForwardMsgId, ForwardFromId, ForwardToId, ForwardType]) of
-        {ok, _} -> {ok, 1};
+        {ok, _} -> {ok, Id};
         {error, Reason} -> {error, Reason}
     end.
 

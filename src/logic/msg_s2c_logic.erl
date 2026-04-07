@@ -19,7 +19,7 @@
 s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     To = maps:get(<<"to">>, Data),
-    % ToId = elib_hashids:decode(To),  % 移除 Logic 层的 HashID 解码
+    % ToId = ec_cnv:to_integer(To),
 
     OldMsgId = maps:get(<<"old_msg_id">>, Payload),
     ok = ?DEBUG_LOG([CurrentUid, To, Data]),
@@ -30,7 +30,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 数据库会自动删除 相关 msg_c2g_timeline
 
     % 按策略发送消息
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     Action = <<"C2C_DEL_EVERYONE">>,
     Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
     % ?DEBUG_LOG(Msg),
@@ -59,7 +59,7 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 s2c(<<"C2G_DEL_FOR_ME">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     Gid = maps:get(<<"to">>, Data),
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     OldMsgId = maps:get(<<"old_msg_id">>, Payload),
     % 使用 DS 层接口删除时间线
     ok = msg_operation_ds:delete_c2g_timeline(CurrentUid, OldMsgId),
@@ -70,7 +70,7 @@ s2c(<<"C2G_DEL_FOR_ME">>, MsgId, CurrentUid, Data) ->
 s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     Gid = maps:get(<<"to">>, Data),
-    ToGID = elib_hashids:decode(Gid),
+    ToGID = ec_cnv:to_integer(Gid),
     MemberUids = group_ds:member_uids(ToGID),
 
     OldMsgId = maps:get(<<"old_msg_id">>, Payload),
@@ -79,7 +79,7 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 删除原有消息 - 使用 DS 层接口
     ok = msg_operation_ds:delete_c2c_msg(OldMsgId, CurrentUid),
 
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
 
     % 存储s2c消息
     [s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
@@ -104,7 +104,7 @@ s2c(<<"store_shard">>, MsgId, CurrentUid, Data) ->
     % 零信任架构：服务端不存储分片，直接转发给代理
     % 代理将在本地安全存储中保存分片
 
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     Action = <<"store_shard">>,
 
     % 构造转发消息
@@ -114,7 +114,7 @@ s2c(<<"store_shard">>, MsgId, CurrentUid, Data) ->
     ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
     KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
     Uid = maps:get(<<"uid">>, Payload, 0),
-    ProxyUid = elib_hashids:decode(To),
+    ProxyUid = ec_cnv:to_integer(To),
 
     % 记录分片传输日志（持久化到数据库）
     e2ee_shard_validator:log_shard_transmission(
@@ -140,7 +140,7 @@ s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     To = maps:get(<<"to">>, Data),
 
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     Action = <<"shard_stored">>,
 
     % 构造确认消息
@@ -164,7 +164,7 @@ s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
     ),
 
     % 转发给原始发送者
-    ToUid = elib_hashids:decode(To),
+    ToUid = ec_cnv:to_integer(To),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
@@ -178,7 +178,7 @@ s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
 %% 好友确认已收到并更新密钥
 s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
-    FromUid = elib_hashids:decode(maps:get(<<"uid">>, Payload, <<"0">>)),
+    FromUid = ec_cnv:to_integer(maps:get(<<"uid">>, Payload, <<"0">>)),
     KeyId = maps:get(<<"key_id">>, Payload, <<>>),
 
     % 记录确认日志
@@ -191,7 +191,7 @@ s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
     % 返回空回复（仅确认，无需转发）
     {reply, #{
         <<"status">> => <<"acknowledged">>,
-        <<"uid">> => elib_hashids:encode(FromUid)
+        <<"uid">> => FromUid
     }}.
 
 %% 1 存储s2c消息
@@ -205,7 +205,7 @@ s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
 -spec s2c_for_c2g(binary() | integer(), integer(), binary(), integer(), map()) -> ok.
 s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     % Uid 已经是 integer（来自 group_ds:member_uids），直接编码即可
-    To = elib_hashids:encode(Uid),
+    To = Uid,
     % s2c.5ia0V5.Kr3aUs.F
     MsgId = elib_id:gen("s2c"),
     % 按策略发送消息

@@ -33,7 +33,7 @@ add_reaction(MsgId, MsgType, UserId, Emoji) ->
             {ok, #{
                 <<"msg_id">> => MsgId,
                 <<"msg_type">> => MsgType,
-                <<"user_id">> => elib_hashids:encode(UserId),
+                <<"user_id">> => UserId,
                 <<"emoji">> => Emoji,
                 <<"created_at">> => elib_dt:to_rfc3339(elib_dt:now())
             }};
@@ -131,13 +131,13 @@ group_reactions_by_emoji(Reactions) ->
                 % 添加用户到现有组
                 Acc#{Emoji => #{
                     <<"count">> => Count + 1,
-                    <<"users">> => [elib_hashids:encode(UserId) | Users]
+                    <<"users">> => [UserId | Users]
                 }};
             error ->
                 % 创建新组
                 Acc#{Emoji => #{
                     <<"count">> => 1,
-                    <<"users">> => [elib_hashids:encode(UserId)]
+                    <<"users">> => [UserId]
                 }}
         end
     end, #{}, Reactions),
@@ -171,7 +171,7 @@ build_reaction_stats(Reactions) ->
         [#{
             <<"emoji">> => Emoji,
             <<"count">> => length(UserIds),
-            <<"users">> => [elib_hashids:encode(Uid) || Uid <- UserIds]
+            <<"users">> => UserIds
         } | Acc]
     end, [], GroupedMap).
 

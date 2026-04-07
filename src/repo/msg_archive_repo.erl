@@ -112,7 +112,8 @@ archive(Row) ->
         {ok, ConvKey, Data} ->
             case next_conv_seq(ConvKey) of
                 {ok, Seq} ->
-                    FinalData = Data#{conv_seq => Seq},
+                    GenId = elib_tsid:generate(msg_store),
+                    FinalData = Data#{id => GenId, conv_seq => Seq},
                     case elib_pg:insert(?TABLE, FinalData) of
                         {ok, _} ->
                             ok;
@@ -235,7 +236,7 @@ safe_decode_group_id(Payload) ->
     try
         PayloadMap = jsone:decode(Payload, [{object_format, map}]),
         GidEnc = maps:get(<<"to">>, PayloadMap),
-        Gid = elib_hashids:decode(GidEnc),
+        Gid = ec_cnv:to_integer(GidEnc),
         {ok, Gid}
     catch
         _:Reason ->

@@ -218,7 +218,7 @@ do_write(c2g, Row) ->
     %% C2G 需要 Gid，从 payload 解析
     PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
     GidEnc = maps:get(<<"to">>, PayloadMap),
-    Gid = elib_hashids:decode(GidEnc),
+    Gid = ec_cnv:to_integer(GidEnc),
     msg_c2g_repo:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE);
 
 do_write(s2c, Row) ->

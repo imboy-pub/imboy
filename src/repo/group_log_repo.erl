@@ -28,11 +28,16 @@ tablename() ->
 %% @param Conn 数据库连接
 %% @param Data 日志数据map，包含 type, option_uid, group_id, body, created_at 等字段
 %% @return {ok, Result} | {ok, Count, Result} | {error, Reason}
--spec add(epgsql:connection() | pid(), map()) -> {ok, term()} | {ok, term(), term()} | {error, term()}.
+-spec add(epgsql:connection() | pid(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(group_log),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 批量添加群日志
 %% 使用 PostgreSQL 的 VALUES 语法批量插入，避免 N+1 查询问题

@@ -72,9 +72,6 @@ feed_decodes_cursor_and_passes_limit_test_() ->
                 [{<<"cursor">>, <<"6q58gm">>}, {<<"limit">>, <<"30">>}]
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"6q58gm">>) -> 11 end}
-        ]},
         {moment_logic, [
             {'feed', 3, fun(1001, 11, 30) ->
                 {ok, #{list => [], cursor => <<>>, limit => 30}}
@@ -99,9 +96,6 @@ user_posts_prefers_path_uid_over_query_and_decodes_cursor_test_() ->
                 ]
             end},
             {'binding', 2, fun(uid, _Req) -> <<"uid_from_path">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"6q58gm">>) -> 11 end}
         ]},
         {moment_logic, [
             {'user_posts', 4, fun(1001, <<"uid_from_path">>, 11, 30) ->
@@ -190,9 +184,6 @@ comments_decodes_cursor_and_clamps_limit_test_() ->
             {'parse_qs', 1, fun(_Req) ->
                 [{<<"cursor">>, <<"6q58gm">>}, {<<"limit">>, <<"500">>}]
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"6q58gm">>) -> 11 end}
         ]},
         {moment_logic, [
             {'list_comments', 4, fun(1001, <<"m_hash_path">>, 11, 100) ->

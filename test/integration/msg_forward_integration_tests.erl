@@ -69,7 +69,7 @@ test_c2c_to_c2c_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
     ok = wait_for_source_message(MsgId),
 
     % 2. 转发到另一个单聊
@@ -97,7 +97,7 @@ test_c2c_to_c2g_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
     ok = wait_for_source_message(MsgId),
 
     % 2. 转发到群聊
@@ -120,7 +120,7 @@ test_c2g_to_c2c_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_source_message(MsgId),
 
     % 2. 转发到单聊
@@ -145,7 +145,7 @@ test_c2g_to_c2g_forward() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_source_message(MsgId),
 
     % 3. 转发到另一个群聊
@@ -169,7 +169,7 @@ test_batch_forward() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         MsgId
     end, lists:seq(1, 5)),
     ok = wait_for_source_messages(MsgIds),
@@ -194,7 +194,7 @@ test_forward_trace() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
     ok = wait_for_source_message(MsgId),
 
     % 2. 转发消息
@@ -226,7 +226,7 @@ test_forward_to_non_friend() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
     ok = wait_for_source_message(MsgId),
 
     % 2. 转发到一个未建立好友关系的新用户
@@ -252,7 +252,7 @@ test_forward_to_non_group_member() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, User2, MsgData#{<<"to">> => elib_hashids:encode(User1)}),
+    ok = msg_c2c_logic:c2c(MsgId, User2, MsgData#{<<"to">> => integer_to_binary(User1)}),
     ok = wait_for_source_message(MsgId),
 
     % 3. User2 尝试转发到 Group2（不是群成员）
@@ -288,7 +288,7 @@ test_batch_forward_limit() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         MsgId
     end, lists:seq(1, 15)),
 

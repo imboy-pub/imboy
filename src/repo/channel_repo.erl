@@ -46,20 +46,32 @@ tablename() ->
 
 %% @doc 添加新频道
 %% @param Data 包含频道信息的map
-%% @return {ok, ChannelId, #{}} | {error, Reason}
--spec add(map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, ChannelId} | {error, Reason}
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(channel),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 添加新频道（使用连接）
 %% @param Conn 数据库连接
 %% @param Data 包含频道信息的map
-%% @return {ok, ChannelId, #{}} | {error, Reason}
--spec add(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, ChannelId} | {error, Reason}
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(channel),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据频道ID查找频道信息
 %% @param ChannelId 频道ID
@@ -244,20 +256,28 @@ has_viewed_message(MessageId, UserId) ->
     end.
 
 %% @doc 插入消息阅读记录
--spec insert_message_view(integer(), integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
+-spec insert_message_view(integer(), integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
 insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
-    Sql = <<"INSERT INTO channel_message_view (channel_id, message_id, user_id, viewed_at) "
-            "VALUES ($1, $2, $3, $4) "
-            "ON CONFLICT (message_id, user_id) DO NOTHING RETURNING id">>,
-    elib_pg:one(Sql, [ChannelId, MessageId, UserId, ViewedAt]).
+    Id = elib_tsid:generate(channel_message_view),
+    Sql = <<"INSERT INTO channel_message_view (id, channel_id, message_id, user_id, viewed_at) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "ON CONFLICT (message_id, user_id) DO NOTHING">>,
+    case elib_pg:execute(Sql, [Id, ChannelId, MessageId, UserId, ViewedAt]) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 插入消息反应
--spec insert_reaction(integer(), integer(), integer(), binary(), integer()) -> {ok, map()} | {error, term()}.
+-spec insert_reaction(integer(), integer(), integer(), binary(), integer()) -> {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
-    Sql = <<"INSERT INTO channel_reaction (channel_id, message_id, user_id, reaction_type, created_at) "
-            "VALUES ($1, $2, $3, $4, $5) "
-            "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING RETURNING id">>,
-    elib_pg:one(Sql, [ChannelId, MessageId, UserId, ReactionType, CreatedAt]).
+    Id = elib_tsid:generate(channel),
+    Sql = <<"INSERT INTO channel_reaction (id, channel_id, message_id, user_id, reaction_type, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6) "
+            "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING">>,
+    case elib_pg:execute(Sql, [Id, ChannelId, MessageId, UserId, ReactionType, CreatedAt]) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 删除消息反应
 -spec delete_reaction(integer(), integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.

@@ -97,9 +97,8 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
         Check > 0 ->
             <<TagName/binary, " 已存在"/utf8>>;
         true ->
-            % [elib_hashids:encode(108), elib_hashids:encode(62902), elib_hashids:encode(62903)].
-            ObjectIds2 = [ integer_to_binary(elib_hashids:decode(I))
-                           || I <- ObjectIds, elib_hashids:decode(I) > 0 ],
+            ObjectIds2 = [ integer_to_binary(ec_cnv:to_integer(I))
+                           || I <- ObjectIds, ec_cnv:to_integer(I) > 0 ],
             Tb = elib_pg_sql:public_tablename(<<"user_friend">>),
             % 使用安全的参数化查询，避免SQL注入
             OldSql = <<"SELECT to_user_id::text FROM ", Tb/binary, " WHERE tag LIKE $1">>,
@@ -182,13 +181,13 @@ add(Uid, 2, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(2, Uid, ObjectId, normalize_friend_tags(Uid, Tag)),
     ok;
 add(Uid, 2, ObjectId, Tag) ->
-    do_add(2, Uid, elib_hashids:decode(ObjectId), normalize_friend_tags(Uid, Tag)),
+    do_add(2, Uid, ec_cnv:to_integer(ObjectId), normalize_friend_tags(Uid, Tag)),
     ok.
 
 %% @doc 兼容旧入口：列出好友对象的标签关系
 -spec list(integer(), integer() | binary()) -> {ok, list(map())} | {error, term()}.
 list(Uid, ObjectId) when is_binary(ObjectId) ->
-    list(Uid, elib_hashids:decode(ObjectId));
+    list(Uid, ec_cnv:to_integer(ObjectId));
 list(Uid, ObjectId) ->
     Where = <<"scene = $1 AND user_id = $2 AND object_id = $3">>,
     Column = <<"id, tag_id, object_id, created_at">>,

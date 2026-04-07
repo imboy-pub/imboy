@@ -22,12 +22,9 @@
 -include("log.hrl").
 -include("group_role.hrl").
 
-%% @doc 转换群组数据中的 ID 字段为 HashID 格式
-%% @param G 群组数据映射
-%% @return map() 转换后的群组数据
+%% @doc 群转让时的数据转换（ID 已直接以 integer 返回，无需转换）
 -spec group_transfer(map()) -> map().
-group_transfer(G) ->
-    elib_hashids:replace_fields(G, [<<"id">>, <<"creator_uid">>, <<"owner_uid">>, <<"gid">>]).
+group_transfer(G) -> G.
 
 %% @doc 面对面建群
 %% 通过随机码创建或加入附近的群组
@@ -88,7 +85,7 @@ add(_, Uid, Type, MemberUids) ->
         _ -> []
     end,
     Now = elib_dt:now(),
-    MemberUids3 = [elib_hashids:decode(Id) || Id <- MemberUids2, is_binary(Id)],
+    MemberUids3 = [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
     % 【防御性编程】确保创建者不会被重复添加
     MemberUids4 = lists:usort([U || U <- MemberUids3, U =/= Uid]),
     Sum = lists:sum(lists:usort([Uid | MemberUids4])),

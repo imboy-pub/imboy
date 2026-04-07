@@ -31,12 +31,6 @@ mute_accepts_string_duration_test_() ->
                 #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"duration">> => <<"60">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"g_101">>) -> 101;
-                (<<"u_202">>) -> 202
-            end}
-        ]},
         {throttle, [
             {'check', 2, fun(three_second_once, {group_member_mute, 12345}) -> ok end}
         ]},
@@ -59,12 +53,6 @@ role_accepts_string_role_test_() ->
                 #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"role">> => <<"3">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"g_101">>) -> 101;
-                (<<"u_202">>) -> 202
-            end}
-        ]},
         {throttle, [
             {'check', 2, fun(three_second_once, {group_member_role, 12345}) -> ok end}
         ]},
@@ -84,9 +72,6 @@ page_preserves_atom_list_payload_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"g_101">>}] end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_101">>) -> 101 end}
         ]},
         {group_member_repo, [
             {'find', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end},

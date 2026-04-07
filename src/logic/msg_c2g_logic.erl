@@ -76,7 +76,7 @@ mentions_from_payload(_) ->
 -spec c2g(binary(), integer(), map()) -> ok | {reply, map()}.
 c2g(MsgId, CurrentUid, Data) ->
     Gid = maps:get(<<"to">>, Data),
-    ToGID = elib_hashids:decode(Gid),
+    ToGID = ec_cnv:to_integer(Gid),
 
     % 检查是否被禁言
     case group_member_logic:check_mute(ToGID, CurrentUid) of
@@ -149,7 +149,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     Msg = #{
         <<"id">> => MsgId,
         <<"type">> => <<"C2G">>,
-        <<"from">> => elib_hashids:encode(CurrentUid),
+        <<"from">> => CurrentUid,
         <<"to">> => Gid,
         <<"payload">> => Payload,
         <<"created_at">> => CreatedAtRfc,
@@ -360,8 +360,8 @@ c2g_edit_ack(MsgId, CurrentUid, Data) ->
 handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, ActionType) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
-    ToGID = elib_hashids:decode(To),
-    FromId = elib_hashids:decode(From),
+    ToGID = ec_cnv:to_integer(To),
+    FromId = ec_cnv:to_integer(From),
     ok = ?DEBUG_LOG([From, To, ToGID, CurrentUid, Data]),
 
     % 验证权限：只能操作自己发送的消息，且必须是群成员
@@ -379,10 +379,11 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                     case MsgData of
                         #{<<"from_id">> := FromId} ->
                             CreatedAt = maps:get(<<"created_at">>, MsgData),
+                            CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                             NowMS = elib_dt:millisecond(),
 
                             % 编辑沿用权限校验，但不受撤回时限约束
-                            case ActionType =:= revoke andalso NowMS - CreatedAt > ?REVOKE_TIMEOUT_MS of
+                            case ActionType =:= revoke andalso NowMS - CreatedAtMs > ?REVOKE_TIMEOUT_MS of
                                 true ->
                                     % 超过撤回时间限制
                                     ErrorMsg = #{
@@ -534,7 +535,7 @@ extract_reply_info(Data) ->
         ReplyTo when is_map(ReplyTo) ->
             ReplyToMsgId = maps:get(<<"msg_id">>, ReplyTo, <<>>),
             ReplyToFromIdBin = maps:get(<<"from_id">>, ReplyTo, <<>>),
-            ReplyToFromId = elib_hashids:decode(ReplyToFromIdBin),
+            ReplyToFromId = ec_cnv:to_integer(ReplyToFromIdBin),
 
             % 从被引用的消息中提取摘要
             ReplySnippet = case ReplyToMsgId of

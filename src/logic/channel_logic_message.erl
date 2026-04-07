@@ -29,10 +29,7 @@ channel_transfer(Channel) when is_map(Channel) ->
 
 -spec message_transfer(map()) -> map().
 message_transfer(Message) when is_map(Message) ->
-    Message2 = elib_hashids:replace_id(Message),
-    Message3 = elib_hashids:replace_id(Message2, <<"channel_id">>),
-    Message4 = elib_hashids:replace_id(Message3, <<"author_id">>),
-    Message4.
+    Message.
 
 -spec create_channel(integer(), binary(), integer(), map(), integer()) ->
     {ok, map()} | {error, binary()}.
@@ -498,10 +495,7 @@ get_admins(ChannelId) when not is_integer(ChannelId); ChannelId =< 0 ->
 get_admins(ChannelId) ->
     case channel_admin_repo:list_by_channel(ChannelId) of
         {ok, Admins} when is_list(Admins) ->
-            {ok, [
-                elib_hashids:replace_fields(A, [<<"id">>, <<"user_id">>, <<"channel_id">>])
-                || A <- Admins, is_map(A)
-            ]};
+            {ok, [A || A <- Admins, is_map(A)]};
         {ok, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
@@ -533,7 +527,7 @@ update_admin_role(Uid, ChannelId, TargetUid, Role) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

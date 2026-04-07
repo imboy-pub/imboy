@@ -166,8 +166,4 @@ filter_users_by_keyword(Users, Keyword) ->
 %% @doc 编码用户ID
 -spec encode_user_ids(list(map())) -> list(map()).
 encode_user_ids(Users) ->
-    lists:map(fun(User) ->
-        UserId = maps:get(<<"id">>, User),
-        UserIdEncoded = elib_hashids:encode(UserId),
-        User#{<<"id">> => UserIdEncoded}
-    end, Users).
+    Users.

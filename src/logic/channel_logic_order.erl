@@ -158,7 +158,7 @@ get_order(Uid, OrderNo) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
@@ -167,5 +167,5 @@ decode_positive_id(Value) ->
 
 -spec order_transfer(map()) -> map().
 order_transfer(Order) ->
-    elib_hashids:replace_fields(Order, [<<"id">>, <<"channel_id">>, <<"user_id">>]).
+    Order.
 

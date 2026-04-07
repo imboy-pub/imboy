@@ -48,8 +48,6 @@ dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
 # goldrush 提供了快速的事件流处理
 # 6years
 dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
-# 9years https://github.com/snaiper80/hashids-erlang
-dep_hashids_erlang = git https://gitee.com/imboy-tripartite-deps/hashids-erlang 1.0.5
 
 # https://github.com/hnc-agency/shq.git
 # 进程间共享队列

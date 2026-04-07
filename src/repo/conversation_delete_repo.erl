@@ -36,13 +36,14 @@ tablename() ->
 mark_deleted(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Now = elib_dt:now(),
+    GenId = elib_tsid:generate(conversation_delete),
     % 使用 INSERT ... ON CONFLICT DO NOTHING 实现幂等性
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (user_id, conversation_id, conversation_type, deleted_at, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5) ",
+            " (id, user_id, conversation_id, conversation_type, deleted_at, created_at) ",
+            "VALUES ($1, $2, $3, $4, $5, $6) ",
             "ON CONFLICT (user_id, conversation_id, conversation_type) ",
             "DO NOTHING">>,
-    Params = [Uid, ConversationId, Type, Now, Now],
+    Params = [GenId, Uid, ConversationId, Type, Now, Now],
     case elib_pg:execute(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}

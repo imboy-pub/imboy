@@ -44,11 +44,16 @@ find_by_gid(Gid, Column) ->
 %% @param Conn 数据库连接
 %% @param Data 包含群随机码信息的map
 %% @return {ok, Result} | {ok, Count, Result} | {error, Reason}
--spec add(epgsql:connection() | pid(), map()) -> {ok, term()} | {ok, term(), term()} | {error, term()}.
+-spec add(epgsql:connection() | pid(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(group_random_code),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -48,10 +48,16 @@ find_by_uid(Uid) ->
 %% @doc 创建钱包记录
 %% @param Data 包含 user_id 的map
 %% @return {ok, Count} | {error, Reason}
--spec create(map()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(wallet),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 用乐观锁更新余额
 %% @param NewBalance 新余额（分）
@@ -72,10 +78,16 @@ update_balance(NewBalance, Uid, Version) ->
 %% @doc 插入钱包流水记录
 %% @param Data 流水数据map，包含 wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark
 %% @return {ok, Count} | {error, Reason}
--spec add_transaction(map()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec add_transaction(map()) -> {ok, integer()} | {error, term()}.
 add_transaction(Data) ->
     Tb = tx_tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(wallet_transaction),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据流水单号查询流水记录（用于退款查询原始支付）
 %% @param RefNo 流水参考单号（如 WPY_xxxxx）
@@ -126,7 +138,10 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
                     <<"balance_after">> => NewBalance,
                     <<"reference_no">> => RefNo
                 },
-                elib_pg:insert(Conn, TxTb, TxData2, <<>>),
+                TxId = elib_tsid:generate(wallet_transaction),
+                TxData3 = TxData2#{<<"id">> => TxId},
+                {TxSql, TxParams} = elib_pg_sql:insert(TxTb, TxData3),
+                elib_pg:execute(Conn, TxSql, TxParams),
                 {ok, NewBalance};
             {ok, 0} ->
                 %% 余额不足或用户不存在

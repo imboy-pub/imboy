@@ -4,10 +4,6 @@
 
 c2c_success_sends_server_ack_and_dispatch_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end},
-            {'encode', 1, fun(123) -> <<"from_user">> end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
@@ -33,7 +29,7 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
         MsgId = <<"msg_c2c_ok_001">>,
         CurrentUid = 123,
         Data = #{
-            <<"to">> => <<"to_user">>,
+            <<"to">> => <<"456">>,
             <<"payload">> => #{<<"content">> => <<"hello">>},
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"text">>,
@@ -59,20 +55,17 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
 
 c2c_not_friend_returns_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {false, 0} end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(MsgId, <<"not_a_friend">>, <<"to_user">>) ->
+            {'assemble_s2c', 3, fun(MsgId, <<"not_a_friend">>, <<"456">>) ->
                 #{<<"id">> => MsgId, <<"error">> => <<"not_a_friend">>}
             end}
         ]}
     ], fun() ->
         MsgId = <<"msg_c2c_not_friend_001">>,
-        Data = #{<<"to">> => <<"to_user">>},
+        Data = #{<<"to">> => <<"456">>},
 
         Result = msg_c2c_logic:c2c(MsgId, 123, Data),
         ?assertMatch({reply, _}, Result),
@@ -82,20 +75,17 @@ c2c_not_friend_returns_reply_test_() ->
 
 c2c_in_denylist_returns_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, 2} end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(MsgId, <<"in_denylist">>, <<"to_user">>) ->
+            {'assemble_s2c', 3, fun(MsgId, <<"in_denylist">>, <<"456">>) ->
                 #{<<"id">> => MsgId, <<"error">> => <<"in_denylist">>}
             end}
         ]}
     ], fun() ->
         MsgId = <<"msg_c2c_deny_001">>,
-        Data = #{<<"to">> => <<"to_user">>},
+        Data = #{<<"to">> => <<"456">>},
 
         Result = msg_c2c_logic:c2c(MsgId, 123, Data),
         ?assertMatch({reply, _}, Result),
@@ -105,12 +95,6 @@ c2c_in_denylist_returns_reply_test_() ->
 
 c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 999
-                         end},
-            {'encode', 1, fun(123) -> <<"from_user">> end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
@@ -123,7 +107,7 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             {'find_msg_by_id', 1, fun(<<"missing_reply_msg">>) -> {error, not_found} end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"to_user">>) ->
+            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"456">>) ->
                 #{<<"id">> => MsgId, <<"type">> => <<"MSG_NOT_FOUND">>}
             end}
         ]},
@@ -133,12 +117,12 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2c_reply_missing_001">>,
         Data = #{
-            <<"to">> => <<"to_user">>,
+            <<"to">> => <<"456">>,
             <<"payload">> => #{<<"content">> => <<"reply">>},
             <<"created_at">> => 1708768700000,
             <<"reply_to">> => #{
                 <<"msg_id">> => <<"missing_reply_msg">>,
-                <<"from_id">> => <<"from_user">>
+                <<"from_id">> => <<"456">>
             }
         },
 
@@ -172,9 +156,6 @@ extract_reply_info_without_reply_to_returns_empty_tuple_test_() ->
 
 extract_reply_info_with_json_payload_extracts_content_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 456 end}
-        ]},
         {msg_c2c_repo, [
             {'find_msg_by_id', 1, fun(<<"origin_msg_001">>) ->
                 {ok, #{<<"payload">> => <<"{\"content\":\"hello reply\"}">>}}
@@ -184,7 +165,7 @@ extract_reply_info_with_json_payload_extracts_content_test_() ->
         Data = #{
             <<"reply_to">> => #{
                 <<"msg_id">> => <<"origin_msg_001">>,
-                <<"from_id">> => <<"from_user">>
+                <<"from_id">> => <<"456">>
             }
         },
 
@@ -196,9 +177,6 @@ extract_reply_info_with_json_payload_extracts_content_test_() ->
 
 extract_reply_info_with_non_json_payload_falls_back_to_raw_snippet_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 456 end}
-        ]},
         {msg_c2c_repo, [
             {'find_msg_by_id', 1, fun(<<"origin_msg_002">>) ->
                 {ok, #{<<"payload">> => <<"plain payload text">>}}
@@ -208,7 +186,7 @@ extract_reply_info_with_non_json_payload_falls_back_to_raw_snippet_test_() ->
         Data = #{
             <<"reply_to">> => #{
                 <<"msg_id">> => <<"origin_msg_002">>,
-                <<"from_id">> => <<"from_user">>
+                <<"from_id">> => <<"456">>
             }
         },
 
@@ -220,9 +198,6 @@ extract_reply_info_with_non_json_payload_falls_back_to_raw_snippet_test_() ->
 
 c2c_plaintext_blocked_when_encryption_required_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
@@ -238,7 +213,7 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2c_plaintext_blocked_001">>,
         Data = #{
-            <<"to">> => <<"to_user">>,
+            <<"to">> => <<"456">>,
             <<"payload">> => #{<<"content">> => <<"hello">>},
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"text">>,
@@ -259,10 +234,6 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
 
 c2c_e2ee_message_allowed_when_encryption_required_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456 end},
-            {'encode', 1, fun(123) -> <<"from_user">> end}
-        ]},
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
@@ -290,7 +261,7 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2c_e2ee_allowed_001">>,
         Data = #{
-            <<"to">> => <<"to_user">>,
+            <<"to">> => <<"456">>,
             <<"payload">> => <<"nonce.ciphertext">>,
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"e2ee">>,
@@ -309,11 +280,6 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 123
-                         end}
-        ]},
         {imboy_policy, [
             {'validate_message_write', 5, fun(_, _, _, _, _) ->
                 {error, <<"encrypted_message_required">>}
@@ -325,8 +291,8 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2c_edit_plaintext_blocked_001">>,
         Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"456">>,
+            <<"from">> => <<"123">>,
             <<"payload">> => #{
                 <<"original_msg_id">> => <<"orig_c2c_edit_001">>,
                 <<"content">> => <<"new content">>,
@@ -347,11 +313,6 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
 
 c2c_revoke_success_online_sends_revoke_ack_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 123
-                         end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(<<"orig_c2c_revoke_001">>) ->
                 {ok, #{
@@ -363,7 +324,8 @@ c2c_revoke_success_online_sends_revoke_ack_test_() ->
         ]},
         {elib_dt, [
             {'millisecond', 0, fun() -> 1700000060000 end},
-            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+            {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
         ]},
         {user_logic, [
             {'is_online', 1, fun(456) -> true end}
@@ -373,8 +335,8 @@ c2c_revoke_success_online_sends_revoke_ack_test_() ->
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"456">>,
+            <<"from">> => <<"123">>,
             <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2c_revoke_001">>}
         },
 
@@ -387,20 +349,15 @@ c2c_revoke_success_online_sends_revoke_ack_test_() ->
 
 c2c_revoke_permission_denied_when_operator_not_sender_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 789
-                         end}
-        ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(<<"c2c_revoke_denied_001">>, <<"permission_denied">>, <<"to_user">>) ->
+            {'assemble_s2c', 3, fun(<<"c2c_revoke_denied_001">>, <<"permission_denied">>, <<"456">>) ->
                 #{<<"id">> => <<"c2c_revoke_denied_001">>, <<"error">> => <<"permission_denied">>}
             end}
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"456">>,
+            <<"from">> => <<"789">>,
             <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2c_revoke_002">>}
         },
 
@@ -414,11 +371,6 @@ c2c_edit_success_online_sends_edit_ack_test_() ->
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 123
-                         end}
-        ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
             {'millisecond', 0, fun() -> 1700000065000 end}
@@ -431,8 +383,8 @@ c2c_edit_success_online_sends_edit_ack_test_() ->
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"456">>,
+            <<"from">> => <<"123">>,
             <<"payload">> => #{
                 <<"original_msg_id">> => <<"orig_c2c_edit_001">>,
                 <<"content">> => <<"edited content">>,
@@ -454,20 +406,15 @@ c2c_edit_permission_denied_when_operator_not_sender_test_() ->
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 456;
-                             (<<"from_user">>) -> 789
-                         end}
-        ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(<<"c2c_edit_denied_001">>, <<"permission_denied">>, <<"to_user">>) ->
+            {'assemble_s2c', 3, fun(<<"c2c_edit_denied_001">>, <<"permission_denied">>, <<"456">>) ->
                 #{<<"id">> => <<"c2c_edit_denied_001">>, <<"error">> => <<"permission_denied">>}
             end}
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"to_user">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"456">>,
+            <<"from">> => <<"789">>,
             <<"payload">> => #{
                 <<"original_msg_id">> => <<"orig_c2c_edit_002">>,
                 <<"content">> => <<"edited content">>,

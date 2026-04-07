@@ -91,9 +91,6 @@ delete_hashid_still_supported_test_() ->
                 #{<<"id">> => <<"hash_cat">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"hash_cat">>) -> 88 end}
-        ]},
         {group_category_logic, [
             {'delete', 2, fun(321, 88) -> ok end}
         ]},

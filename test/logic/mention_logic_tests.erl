@@ -192,9 +192,6 @@ get_member_suggestions_returns_members_test_() ->
                     #{<<"id">> => 203, <<"nickname">> => <<"用户C"/utf8>>}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]}
     ], fun() ->
         {ok, Results} = mention_logic:get_member_suggestions(100, 200, <<"用户"/utf8>>),
@@ -215,9 +212,6 @@ get_member_suggestions_filters_by_keyword_test_() ->
                     #{<<"id">> => 203, <<"nickname">> => <<"王五"/utf8>>}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]}
     ], fun() ->
         {ok, Results} = mention_logic:get_member_suggestions(100, 200, <<"张"/utf8>>),
@@ -267,9 +261,6 @@ get_member_suggestions_with_empty_keyword_test_() ->
                     #{<<"id">> => 202, <<"nickname">> => <<"用户B"/utf8>>}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]}
     ], fun() ->
         % 空关键字应该返回所有成员

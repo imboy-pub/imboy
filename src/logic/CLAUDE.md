@@ -95,8 +95,8 @@ Logic 模块由 Handler 层或 DS 层调用：
 #{
   <<"id">> => MsgId,                    % binary: 消息ID
   <<"type">> => <<"C2C">>,             % binary: 消息类型
-  <<"from">> => FromId,                % binary: 发送者ID (hashids编码)
-  <<"to">> => ToId,                    % binary: 接收者ID (hashids编码) ⚠️ 注意：不是 to_id
+  <<"from">> => FromId,                % binary: 发送者ID (TSID字符串)
+  <<"to">> => ToId,                    % binary: 接收者ID (TSID字符串) ⚠️ 注意：不是 to_id
   <<"msg_type">> => MsgType,           % binary: 消息类型 (text/image/file等)
   <<"action">> => Action,              % binary: 动作类型 (可选)
   <<"e2ee">> => E2EEMap,               % map: E2EE元数据 (可选, 加密消息时必须有)
@@ -109,12 +109,15 @@ Logic 模块由 Handler 层或 DS 层调用：
 
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
-| `<<"to">>` | binary | 接收者ID (hashids编码) - **推荐使用** | `<<"gdwqa5">>` |
-| `<<"from">>` | binary | 发送者ID (hashids编码) - **推荐使用** | `<<"p25vd5">>` |
+| `<<"to">>` | binary | 接收者ID (TSID字符串) - **推荐使用** | `<<"83540663203007943">>` |
+| `<<"from">>` | binary | 发送者ID (TSID字符串) - **推荐使用** | `<<"83540663189424128">>` |
 | `<<"e2ee">>` | map | E2EE 元数据，必须是 **Map** 不是 JSON 字符串 | `#{<<"e2ee">> => true, ...}` |
 | `<<"payload">>` | binary|string | 消息内容（明文时为 JSON 字符串，加密时为 base64 密文） | 见下方示例 |
+| `<<"created_at">>` | integer | 客户端创建时间，仅作业务时间参考，不是服务端严格排序依据 | `1710000000000` |
 
 > **注意**：`message_ds:decode_websocket_message/1` 已支持字段兼容性，同时接受 `to`/`from`（推荐）和 `to_id`/`from_id`（兼容）两种格式。
+>
+> **排序约束**：客户端 `id` / `msg_id` 即使未来迁移为 TSID，也只能保证唯一和近似时间有序；跨数据中心、跨节点场景下不保证严格单调。需要严格顺序时，应使用服务端顺序字段（如 `server_ts`、`conv_seq`）。
 
 ### E2EE 加密消息格式
 
@@ -210,7 +213,8 @@ Logic 模块由 Handler 层或 DS 层调用：
 - `imboy_syn.erl`: 分布式进程注册
 - `imboy_cache.erl`: 缓存操作
 - `elib_async.erl`: 异步执行
-- `elib_hashids.erl`: ID 编码/解码
+- `elib_tsid.erl`: TSID 分布式 ID 生成
+- `elib_cnv.erl`: ID 类型转换工具
 
 ---
 
@@ -331,8 +335,8 @@ src/logic/
 - **新增 WebSocket API v2.0 文档**：详细说明消息格式和常见错误
 - **修复 WebSocket 消息字段只支持 `to`/`from`字段名格式（数据库存储的是对应的int类型 to_id 和 from_id）
 - **字段类型说明**：
-  - `<<"to">>` 字段值类型为 **binary**（hashids编码的字符串，如 `<<"gdwqa5">>`）
-  - `<<"from">>` 字段值类型为 **binary**（hashids编码的字符串，如 `<<"p25vd5">>`）
+  - `<<"to">>` 字段值类型为 **binary**（TSID 字符串，如 `<<"83540663203007943">>`）
+  - `<<"from">>` 字段值类型为 **binary**（TSID 字符串，如 `<<"83540663189424128">>`）
   - 服务端内部解码后的 `ToId`/`FromId` 变量类型为 **integer**（如 `12345`）
 
 ### 2026-01-20

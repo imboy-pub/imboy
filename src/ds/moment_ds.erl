@@ -324,10 +324,14 @@ report_post(UserId, PostId, Reason, Desc) ->
 
 -spec list_post_acl(integer()) -> {[integer()], [integer()]}.
 list_post_acl(PostId) ->
-    {
-        moment_post_acl_repo:list_uids_by_post(PostId, 1),
-        moment_post_acl_repo:list_uids_by_post(PostId, 2)
-    }.
+    Key = {moment_acl, PostId},
+    Fun = fun() ->
+        {
+            moment_post_acl_repo:list_uids_by_post(PostId, 1),
+            moment_post_acl_repo:list_uids_by_post(PostId, 2)
+        }
+    end,
+    imboy_cache:memo(Fun, Key, 300).
 
 -spec list_post_likes(integer(), integer()) -> {ok, [map()]} | {error, any()}.
 list_post_likes(PostId, Limit) ->

@@ -93,7 +93,7 @@ test_high_concurrency_messages() ->
                     <<"created_at">> => elib_dt:millisecond()
                 },
                 try
-                    case msg_c2c_logic:c2c(MsgId, UserId, MsgData#{<<"to">> => elib_hashids:encode(FriendId)}) of
+                    case msg_c2c_logic:c2c(MsgId, UserId, MsgData#{<<"to">> => integer_to_binary(FriendId)}) of
                         ok -> success;
                         _ -> failure
                     end
@@ -210,7 +210,7 @@ test_burst_messages() ->
                 <<"created_at">> => elib_dt:millisecond()
             },
             Result = try
-                case msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}) of
+                case msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}) of
                     ok -> success;
                     _ -> failure
                 end
@@ -271,7 +271,7 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
                 <<"created_at">> => elib_dt:millisecond()
             },
             Result = try
-                case msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}) of
+                case msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}) of
                     ok -> success;
                     _ -> failure
                 end

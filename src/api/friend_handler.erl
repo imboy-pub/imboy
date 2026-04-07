@@ -112,9 +112,11 @@ list(Req0, State) ->
     Mine = user_logic:find_by_id(CurrentUid),
     {K, V} = user_logic:mine_state(CurrentUid),
     % ?DEBUG_LOG(["CurrentUid", CurrentUid, "; State ", K, V, Mine#{K => V}]),
+    Mine2 = convert_user_id(Mine#{K => V}),
     Friend = friend_ds:page_by_uid(CurrentUid),
+    Friend2 = [convert_friend_ids(F) || F <- Friend],
     % ?DEBUG_LOG(["friend_handler/list", CurrentUid, "; Friend ", Friend]),
-    Payload = list_transfer(Mine#{K => V}, Friend),
+    Payload = list_transfer(Mine2, Friend2),
     % ?DEBUG_LOG(Payload),
     elib_response:success(Req0, Payload).
 
@@ -127,7 +129,7 @@ list(Req0, State) ->
 %% @end
 -spec list_transfer(map(), list()) -> map().
 list_transfer(User, Friends) ->
-    #{<<"mine">> => elib_hashids:replace_id(User), <<"friend">> => Friends}.
+    #{<<"mine">> => User, <<"friend">> => Friends}.
 
 %% @doc 移动好友到分组
 %% 将好友移动到指定的分组
@@ -166,7 +168,8 @@ information(Req0, State) ->
             % ?DEBUG_LOG(User),
             UserSetting = user_setting_ds:find_by_uid(Uid),
             % ?DEBUG_LOG([UserSetting, Uid]),
-            Payload = information_transfer(CurrentUid, <<"friend">>, User, UserSetting),
+            User2 = convert_user_id(User),
+            Payload = information_transfer(CurrentUid, <<"friend">>, User2, UserSetting),
             elib_response:success(Req0, Payload);
         <<"group">> ->
             elib_response:success(Req0, #{});
@@ -185,8 +188,7 @@ information(Req0, State) ->
 %% @end
 -spec information_transfer(integer(), binary(), map(), map()) -> map().
 information_transfer(CurrentUid, Type, User, UserSetting) ->
-    User2 = elib_hashids:replace_id(User),
-    User2#{<<"mine_uid">> => elib_hashids:encode(CurrentUid),
+    User#{<<"mine_uid">> => CurrentUid,
            <<"type">> => Type,
            <<"user_setting">> => UserSetting}.
 
@@ -214,3 +216,26 @@ change_remark(Req0, State) ->
                     elib_response:success(Req0, #{<<"remark">> => Remark}, "success.")
             end
     end.
+
+%% @doc 转换用户数据中的 ID 字段为 binary 字符串
+-spec convert_user_id(map()) -> map().
+convert_user_id(User) ->
+    case maps:find(<<"id">>, User) of
+        {ok, Id} when is_integer(Id) ->
+            maps:put(<<"id">>, Id, User);
+        _ ->
+            User
+    end.
+
+%% @doc 转换好友数据中的 ID 字段为 binary 字符串
+-spec convert_friend_ids(map()) -> map().
+convert_friend_ids(F) ->
+    Fields = [<<"id">>, <<"from_user_id">>, <<"to_user_id">>],
+    lists:foldl(fun(Field, Acc) ->
+        case maps:find(Field, Acc) of
+            {ok, V} when is_integer(V) ->
+                maps:put(Field, V, Acc);
+            _ ->
+                Acc
+        end
+    end, F, Fields).

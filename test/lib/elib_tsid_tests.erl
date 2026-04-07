@@ -2,6 +2,10 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(SETUP, fun() -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}) end).
+-define(SETUP_NAMED, fun() ->
+    elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3,
+                     names => [user, group_info, attachment]})
+end).
 
 %% ===================================================================
 %% 基础功能测试
@@ -152,3 +156,108 @@ different_nodes_no_collision_test() ->
     Combined = IdsNode1 ++ IdsNode2,
     Unique = lists:usort(Combined),
     ?assertEqual(2000, length(Unique)).
+
+%% ===================================================================
+%% 命名生成器测试
+%% ===================================================================
+
+register_single_test() ->
+    ?SETUP(),
+    ok = elib_tsid:register(user),
+    Names = elib_tsid:registered(),
+    ?assert(lists:member(user, Names)).
+
+register_list_test() ->
+    ?SETUP(),
+    ok = elib_tsid:register([group_info, attachment, channel]),
+    Names = elib_tsid:registered(),
+    ?assert(lists:member(group_info, Names)),
+    ?assert(lists:member(attachment, Names)),
+    ?assert(lists:member(channel, Names)).
+
+register_idempotent_test() ->
+    ?SETUP(),
+    ok = elib_tsid:register(feedback),
+    Names1 = elib_tsid:registered(),
+    ok = elib_tsid:register(feedback),
+    Names2 = elib_tsid:registered(),
+    ?assertEqual(Names1, Names2).
+
+init_with_names_test() ->
+    ?SETUP_NAMED(),
+    Names = elib_tsid:registered(),
+    ?assert(lists:member(default, Names)),
+    ?assert(lists:member(user, Names)),
+    ?assert(lists:member(group_info, Names)),
+    ?assert(lists:member(attachment, Names)).
+
+generate_named_test() ->
+    ?SETUP_NAMED(),
+    UserId = elib_tsid:generate(user),
+    GroupId = elib_tsid:generate(group_info),
+    AttachId = elib_tsid:generate(attachment),
+    ?assert(UserId > 0),
+    ?assert(GroupId > 0),
+    ?assert(AttachId > 0).
+
+generate_named_unique_within_test() ->
+    %% 同一命名生成器内 ID 唯一
+    ?SETUP_NAMED(),
+    UserIds = elib_tsid:generate_n(user, 5000),
+    UniqueIds = lists:usort(UserIds),
+    ?assertEqual(5000, length(UniqueIds)).
+
+generate_named_monotonic_test() ->
+    %% 同一命名生成器内 ID 单调递增
+    ?SETUP_NAMED(),
+    UserIds = elib_tsid:generate_n(user, 5000),
+    ?assertEqual(UserIds, lists:sort(UserIds)).
+
+named_generators_independent_test() ->
+    %% 不同生成器拥有独立的 sequence 计数器
+    %% 同一毫秒内可能产生相同数值的 ID (这是预期行为)
+    ?SETUP_NAMED(),
+    UserIds = elib_tsid:generate_n(user, 100),
+    GroupIds = elib_tsid:generate_n(group_info, 100),
+    %% 各自内部唯一
+    ?assertEqual(100, length(lists:usort(UserIds))),
+    ?assertEqual(100, length(lists:usort(GroupIds))),
+    %% 但跨生成器可能有交集 (独立号段的正常行为)
+    ok.
+
+named_concurrent_unique_test() ->
+    %% 同一命名生成器并发下 ID 唯一
+    ?SETUP_NAMED(),
+    Self = self(),
+    N = 500,
+    Workers = 10,
+    Pids = [spawn(fun() ->
+        Ids = elib_tsid:generate_n(user, N),
+        Self ! {ids, Ids}
+    end) || _ <- lists:seq(1, Workers)],
+    AllIds = collect_ids(Workers, []),
+    UniqueIds = lists:usort(AllIds),
+    ?assertEqual(Workers * N, length(AllIds)),
+    ?assertEqual(length(AllIds), length(UniqueIds)),
+    _ = Pids,
+    ok.
+
+unregistered_generator_error_test() ->
+    ?SETUP(),
+    %% 使用未注册的生成器应该报错
+    ?assertError({elib_tsid_generator_not_registered, _},
+                 elib_tsid:generate(nonexistent_table)).
+
+default_generator_always_available_test() ->
+    ?SETUP(),
+    %% default 生成器始终可用
+    Id = elib_tsid:generate(default),
+    ?assert(Id > 0),
+    %% generate/0 等同于 generate(default)
+    Id2 = elib_tsid:generate(),
+    ?assert(Id2 > Id).
+
+registered_includes_default_test() ->
+    ?SETUP(),
+    Names = elib_tsid:registered(),
+    ?assert(lists:member(default, Names)).

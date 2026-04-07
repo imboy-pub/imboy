@@ -26,10 +26,16 @@ tablename() ->
 %% @doc 添加应用DDL记录
 %% @param Data 包含DDL信息的map
 %% @return {ok, Result} | {error, Reason}
--spec add(map()) -> {ok, any()} | {error, any()}.
+-spec add(map()) -> {ok, integer()} | {error, any()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(app_ddl),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -361,7 +361,7 @@ normalize_admin_row(Row) ->
         <<"role_id">> => PrimaryRoleId,
         <<"role_ids">> => RoleIds
     },
-    elib_hashids:replace_fields(Row1, [<<"id">>]).
+    Row1.
 
 -spec normalize_role_ids(term()) -> [integer()].
 normalize_role_ids(RoleId) when is_integer(RoleId), RoleId > 0 ->
@@ -452,7 +452,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             normalize_positive_int(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 ->
                     Id;
                 _ ->
@@ -554,7 +554,7 @@ muted_users_list_action(<<"GET">>, Req0, State) ->
                         case MuteUntil > Now of
                             true ->
                                 RemainingMs = MuteUntil - Now,
-                                [#{<<"uid">> => elib_hashids:encode(Uid),
+                                [#{<<"uid">> => Uid,
                                    <<"mute_until">> => MuteUntil,
                                    <<"remaining_seconds">> => RemainingMs div 1000} | Acc];
                             false ->
@@ -632,7 +632,7 @@ push_token_list_action(<<"GET">>, Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             case push_token_repo:list_page(Page, Size) of
                 {ok, #{list := Rows, total := Total}} ->
-                    Items = [elib_hashids:replace_fields(Row, [<<"user_id">>]) || Row <- Rows],
+                    Items = Rows,
                     elib_response:success(Req0, #{
                         <<"list">> => Items,
                         <<"total">> => Total,

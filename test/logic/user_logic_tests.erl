@@ -162,17 +162,12 @@ find_by_id_with_integer_returns_user_test_() ->
     end).
 
 find_by_id_with_binary_decodes_id_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
-        ]},
-        {user_ds, [
-            {'find_by_id', 2, fun(_Uid, _Column) ->
-                #{<<"id">> => 123, <<"nickname">> => <<"测试用户"/utf8>>}
-            end}
-        ]}
+    ?WITH_MECK(user_ds, [
+        {'find_by_id', 2, fun(_Uid, _Column) ->
+            #{<<"id">> => 123, <<"nickname">> => <<"测试用户"/utf8>>}
+        end}
     ], fun() ->
-        Uid = <<"encoded_123">>,
+        Uid = <<"123">>,
         Result = user_logic:find_by_id(Uid),
         ?assertMatch(#{<<"id">> := 123}, Result)
     end).

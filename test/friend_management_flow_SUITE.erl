@@ -135,7 +135,7 @@ send_friend_request_to_valid_user_succeeds(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_request_001">>,
     Payload = #{<<"msg">> => <<"添加好友吧"/utf8>>},
-    Result = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    Result = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 验证请求发送成功
     ?assertEqual(ok, Result),
@@ -157,7 +157,7 @@ send_friend_request_to_non_friend_succeeds(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_request_002">>,
     Payload = #{<<"msg">> => <<"你好"/utf8>>},
-    Result = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    Result = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 验证请求发送成功
     ?assertEqual(ok, Result),
@@ -175,7 +175,7 @@ send_friend_request_to_blocked_user_fails(_Config) ->
     % 尝试发送好友请求
     MsgId = <<"friend_request_003">>,
     Payload = #{<<"msg">> => <<"test">>},
-    Result = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    Result = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 验证请求失败（或返回 ok 但消息未投递）
     % 根据 friend_logic 的实现，如果被拉黑仍然返回 ok，但消息不会被投递
@@ -191,11 +191,11 @@ send_duplicate_friend_request(_Config) ->
     % 发送第一个好友请求
     MsgId1 = <<"friend_request_004a">>,
     Payload = #{<<"msg">> => <<"test">>},
-    ok = friend_logic:add_friend(MsgId1, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    ok = friend_logic:add_friend(MsgId1, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 发送第二个好友请求（相同用户）
     MsgId2 = <<"friend_request_004b">>,
-    Result = friend_logic:add_friend(MsgId2, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    Result = friend_logic:add_friend(MsgId2, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 验证请求仍然成功（幂等性）
     ?assertEqual(ok, Result),
@@ -214,7 +214,7 @@ confirm_friend_request_succeeds(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_confirm_001">>,
     Payload = #{<<"msg">> => <<"test">>},
-    ok = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    ok = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 确认好友
     ConfirmData = #{
@@ -222,7 +222,7 @@ confirm_friend_request_succeeds(_Config) ->
         <<"to">> => #{<<"remark">> => <<>>, <<"tag">> => <<>>},
         <<"source">> => <<"search">>
     },
-    Result = friend_logic:confirm_friend(MsgId, Uid2, elib_hashids:encode(Uid1), jsone:encode(ConfirmData)),
+    Result = friend_logic:confirm_friend(MsgId, Uid2, integer_to_binary(Uid1), jsone:encode(ConfirmData)),
 
     % 验证确认成功
     ?assertMatch({ok, _FromId, _Remark, _Source}, Result),
@@ -241,7 +241,7 @@ confirm_friend_with_custom_remark_succeeds(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_confirm_002">>,
     Payload = #{<<"msg">> => <<"test">>},
-    ok = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    ok = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 确认好友并设置备注
     Remark1 = <<"好友 A"/utf8>>,
@@ -251,7 +251,7 @@ confirm_friend_with_custom_remark_succeeds(_Config) ->
         <<"to">> => #{<<"remark">> => Remark2, <<"tag">> => <<>>},
         <<"source">> => <<"search">>
     },
-    {ok, _FromId, _Remark2, _Source} = friend_logic:confirm_friend(MsgId, Uid2, elib_hashids:encode(Uid1), jsone:encode(ConfirmData)),
+    {ok, _FromId, _Remark2, _Source} = friend_logic:confirm_friend(MsgId, Uid2, integer_to_binary(Uid1), jsone:encode(ConfirmData)),
 
     % 验证备注已设置
     {ok, Friend1} = friend_ds:find_by_users(Uid1, Uid2),
@@ -269,7 +269,7 @@ confirm_friend_with_tags_succeeds(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_confirm_003">>,
     Payload = #{<<"msg">> => <<"test">>},
-    ok = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    ok = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 创建标签
     TagName = list_to_binary(io_lib:format("tag_~B", [erlang:unique_integer([monotonic, positive])])),
@@ -281,7 +281,7 @@ confirm_friend_with_tags_succeeds(_Config) ->
         <<"to">> => #{<<"remark">> => <<>>, <<"tag">> => <<>>},
         <<"source">> => <<"search">>
     },
-    {ok, _, _, _} = friend_logic:confirm_friend(MsgId, Uid2, elib_hashids:encode(Uid1), jsone:encode(ConfirmData)),
+    {ok, _, _, _} = friend_logic:confirm_friend(MsgId, Uid2, integer_to_binary(Uid1), jsone:encode(ConfirmData)),
 
     % 验证标签关系已建立，兼容“关系表或聚合 tag 字段”两种实现路径
     {ok, TagRelations} = user_tag_relation_logic:list(Uid1, Uid2),
@@ -300,7 +300,7 @@ reject_friend_request_removes_pending_request(_Config) ->
     % 发送好友请求
     MsgId = <<"friend_reject_001">>,
     Payload = #{<<"msg">> => <<"test">>},
-    ok = friend_logic:add_friend(MsgId, Uid1, elib_hashids:encode(Uid2), Payload, elib_dt:now()),
+    ok = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
     % 这里应该有拒绝好友的逻辑，如果 friend_logic 不支持，跳过
     % 目前 friend_logic 只有 confirm_friend，没有 reject
@@ -473,7 +473,7 @@ block_user_hides_messages_from_blocked_user(_Config) ->
     % 发送消息（应该被过滤或标记）
     MsgId = <<"msg_blocked_001">>,
     Payload = #{<<"text">> => <<"test">>},
-    case msg_c2c_logic:c2c(MsgId, Uid2, elib_hashids:encode(Uid1), Payload) of
+    case msg_c2c_logic:c2c(MsgId, Uid2, integer_to_binary(Uid1), Payload) of
         ok ->
             % 消息发送成功（但投递时应该被过滤）
             ct:log("消息发送成功，但投递时应该被过滤");

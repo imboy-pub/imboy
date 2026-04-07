@@ -235,7 +235,7 @@ decode_positive_id(Value) ->
 
 -spec safe_hash_decode(binary()) -> integer().
 safe_hash_decode(Hash) ->
-    try elib_hashids:decode(Hash) of
+    try ec_cnv:to_integer(Hash) of
         Int when is_integer(Int), Int > 0 ->
             Int;
         _ ->
@@ -297,11 +297,11 @@ to_binary(Value) when is_integer(Value) ->
 to_binary(Value) ->
     ec_cnv:to_binary(Value).
 
--spec safe_encode(integer()) -> binary().
+-spec safe_encode(term()) -> integer().
 safe_encode(Int) when is_integer(Int), Int > 0 ->
-    elib_hashids:encode(Int);
+    Int;
 safe_encode(_) ->
-    <<>>.
+    0.
 
 -spec clamp(integer(), integer(), integer()) -> integer().
 clamp(Value, Min, _Max) when Value < Min ->

@@ -158,11 +158,7 @@ validate_required_with_list_validator_test_() ->
 %% ===================================================================
 
 validate_id_with_valid_hashid_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"5abc123">>) -> 100 end}
-        ]}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Result = imboy_error:validate_id(Req, <<"5abc123">>),
         ?assertMatch({ok, 100}, Result)
@@ -170,9 +166,6 @@ validate_id_with_valid_hashid_test_() ->
 
 validate_id_with_invalid_hashid_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(_InvalidId) -> 0 end}
-        ]},
         {elib_response, [
             {'error', 2, fun(_Req, _Msg) ->
                 #{response_status => 400}
@@ -199,9 +192,6 @@ validate_id_with_non_binary_test_() ->
 
 validate_id_with_empty_binary_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<>>) -> 0 end}
-        ]},
         {elib_response, [
             {'error', 2, fun(_Req, _Msg) ->
                 #{response_status => 400}
@@ -231,15 +221,7 @@ validate_id_with_atom_test_() ->
 %% ===================================================================
 
 validate_id_list_with_valid_ids_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(Id) ->
-            case Id of
-                <<"abc">> -> 1;
-                <<"def">> -> 2;
-                <<"ghi">> -> 3
-            end
-        end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, [<<"abc">>, <<"def">>, <<"ghi">>]),
         ?assertMatch({ok, [1, 2, 3]}, Result)
@@ -247,14 +229,6 @@ validate_id_list_with_valid_ids_test_() ->
 
 validate_id_list_with_one_invalid_id_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(Id) ->
-                case Id of
-                    <<"valid">> -> 1;
-                    _ -> 0
-                end
-            end}
-        ]},
         {elib_response, [
             {'error', 2, fun(_Req, _Msg) ->
                 #{response_status => 400}
@@ -267,18 +241,14 @@ validate_id_list_with_one_invalid_id_test_() ->
     end).
 
 validate_id_list_with_empty_list_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(_Id) -> 0 end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, []),
         ?assertMatch({ok, []}, Result)
     end).
 
 validate_id_list_with_single_valid_id_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"single">>) -> 999 end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Result = imboy_error:validate_id_list(Req, [<<"single">>]),
         ?assertMatch({ok, [999]}, Result)
@@ -449,15 +419,10 @@ not_found_with_long_id_test_() ->
 %% ===================================================================
 
 validate_multiple_params_successfully_test_() ->
-    ?WITH_MECKS([
-        {cowboy_req, [
-            {'match_qs', 2, fun(_Pattern, _Req) ->
-                #{account => <<"user">>, page => 1}
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid123">>) -> 100 end}
-        ]}
+    ?WITH_MECK(cowboy_req, [
+        {'match_qs', 2, fun(_Pattern, _Req) ->
+            #{account => <<"user">>, page => 1}
+        end}
     ], fun() ->
         Req = mock_request(),
         ?assertMatch({ok, <<"user">>}, imboy_error:validate_required(Req, account)),

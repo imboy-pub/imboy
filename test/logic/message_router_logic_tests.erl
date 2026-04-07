@@ -71,21 +71,17 @@ route_s2c_message_success_test_() ->
     end).
 
 route_webrtc_message_success_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"encoded_2">>) -> 2 end}
+    ?WITH_MECK(webrtc_ws_logic, [
+        {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
     ], fun() ->
-        ?WITH_MECK(webrtc_ws_logic, [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-        ], fun() ->
-            MsgId = <<"msg_webrtc">>,
-            CurrentUid = 1,
-            Data = #{<<"to">> => <<"encoded_2">>},
-            Type = <<"webrtc_offer">>,
-            OriginalMsg = <<"{\"sdp\":\"...\"}">>,
+        MsgId = <<"msg_webrtc">>,
+        CurrentUid = 1,
+        Data = #{<<"to">> => <<"2">>},
+        Type = <<"webrtc_offer">>,
+        OriginalMsg = <<"{\"sdp\":\"...\"}">>,
 
-            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-            ?assertEqual(ok, Result)
-        end)
+        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+        ?assertEqual(ok, Result)
     end).
 
 route_unknown_message_type_returns_ok_test_() ->
@@ -112,7 +108,7 @@ route_c2c_revoke_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"message_revoke">>,
-            <<"to">> => <<"encoded_2">>
+            <<"to">> => <<"2">>
         }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}),
         Type = <<"C2C">>,
         OriginalMsg = <<"{}">>,
@@ -145,7 +141,7 @@ route_c2c_edit_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"message_edit">>,
-            <<"to">> => <<"encoded_2">>
+            <<"to">> => <<"2">>
         }, #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}),
         Type = <<"C2C">>,
         OriginalMsg = <<"{}">>,
@@ -178,7 +174,7 @@ route_c2g_revoke_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"message_revoke">>,
-            <<"to">> => <<"encoded_group">>
+            <<"to">> => <<"100">>
         }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_456">>}}),
         Type = <<"C2G">>,
         OriginalMsg = <<"{}">>,
@@ -195,7 +191,7 @@ route_c2g_edit_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"message_edit">>,
-            <<"to">> => <<"encoded_group">>
+            <<"to">> => <<"100">>
         }, #{<<"payload">> => #{<<"content">> => <<"updated group msg"/utf8>>}}),
         Type = <<"C2G">>,
         OriginalMsg = <<"{}">>,
@@ -288,7 +284,7 @@ route_with_uppercase_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"MESSAGE_REVOKE">>,
-            <<"to">> => <<"encoded_2">>
+            <<"to">> => <<"2">>
         }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}),
         Type = <<"c2c">>,
         OriginalMsg = <<"{}">>,
@@ -388,16 +384,13 @@ route_c2g_edit_ack_action_test_() ->
 
 route_webrtc_answer_event_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_2">>) -> 2 end}
-        ]},
         {webrtc_ws_logic, [
             {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"msg_webrtc_answer">>,
         CurrentUid = 1,
-        Data = #{<<"to">> => <<"encoded_2">>},
+        Data = #{<<"to">> => <<"2">>},
         Type = <<"webrtc_answer">>,
         OriginalMsg = <<"{\"sdp\":\"answer_sdp\"}">>,
 
@@ -407,16 +400,13 @@ route_webrtc_answer_event_test_() ->
 
 route_webrtc_ice_candidate_event_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_2">>) -> 2 end}
-        ]},
         {webrtc_ws_logic, [
             {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"msg_webrtc_ice">>,
         CurrentUid = 1,
-        Data = #{<<"to">> => <<"encoded_2">>},
+        Data = #{<<"to">> => <<"2">>},
         Type = <<"webrtc_ice_candidate">>,
         OriginalMsg = <<"{\"candidate\":\"...\"}">>,
 
@@ -426,16 +416,13 @@ route_webrtc_ice_candidate_event_test_() ->
 
 route_webrtc_hangup_event_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_2">>) -> 2 end}
-        ]},
         {webrtc_ws_logic, [
             {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"msg_webrtc_hangup">>,
         CurrentUid = 1,
-        Data = #{<<"to">> => <<"encoded_2">>},
+        Data = #{<<"to">> => <<"2">>},
         Type = <<"webrtc_hangup">>,
         OriginalMsg = <<"{\"reason\":\"user_hangup\"}">>,
 
@@ -507,7 +494,7 @@ route_with_mixed_case_action_test_() ->
         CurrentUid = 1,
         Data = maps:merge(#{
             <<"action">> => <<"Message_Edit">>,  % 混合大小写
-            <<"to">> => <<"encoded_2">>
+            <<"to">> => <<"2">>
         }, #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}),
         Type = <<"c2c">>,
         OriginalMsg = <<"{}">>,
@@ -522,16 +509,13 @@ route_with_mixed_case_action_test_() ->
 
 route_with_lowercase_webrtc_type_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_2">>) -> 2 end}
-        ]},
         {webrtc_ws_logic, [
             {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"msg_webrtc_lower">>,
         CurrentUid = 1,
-        Data = #{<<"to">> => <<"encoded_2">>},
+        Data = #{<<"to">> => <<"2">>},
         Type = <<"webrtc_offer">>,  % 小写
         OriginalMsg = <<"{\"sdp\":\"...\"}">>,
 

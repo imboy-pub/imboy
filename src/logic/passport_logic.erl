@@ -185,7 +185,7 @@ do_login_verify(Pwd, User, DType, _Did) ->
         {ok, Data} ->
             % 从 uid (hashids 编码) 解码得到整数 ID
             UidHashed = maps:get(<<"uid">>, Data),
-            Uid = elib_hashids:decode(UidHashed),
+            Uid = ec_cnv:to_integer(UidHashed),
             % 检查设备类型是否有效
             case user_device_logic:validate_device_type(DType) of
                 false when DType =/= <<>> ->
@@ -430,18 +430,16 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
     end.
 
 pick_data_for_insert(Data, PostVals) ->
-    Uid0 = elib_hashids:encode(0),
-
     Source = maps:get(<<"source">>, PostVals, <<>>),
     Ip = maps:get(<<"ip">>, PostVals, <<"{}">>),
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
     Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
     Cosv = maps:get(<<"cosv">>, PostVals, <<>>),
-    RefUid = maps:get(<<"ref_uid">>, PostVals, Uid0),
+    RefUid = maps:get(<<"ref_uid">>, PostVals, <<>>),
 
-    [RefUid2, ParentRefUid2] = case bit_size(RefUid) > 5 of
+    [RefUid2, ParentRefUid2] = case is_binary(RefUid) andalso bit_size(RefUid) > 5 of
         true ->
-            RefUid2_in = elib_hashids:decode(RefUid),
+            RefUid2_in = ec_cnv:to_integer(RefUid),
             P = user_ds:find_by_id(RefUid2_in, <<"ref_user_id">>),
             [RefUid2_in, maps:get(<<"ref_user_id">>, P, 0)];
         _ ->
@@ -508,7 +506,7 @@ verify_user(Pwd, User) ->
 login_resp(User, Resp) ->
     Id = maps:get(<<"id">>, User),
     maps:merge(#{
-       <<"uid">> => elib_hashids:encode(Id),
+       <<"uid">> => Id,
        <<"token">> => token_ds:encrypt_token(Id),
        <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
        <<"email">> => maps:get(<<"email">>, User),
@@ -621,7 +619,7 @@ infer_device_type(Did) when is_binary(Did) ->
 
 record_compat_login_success(Data, PostVals) ->
     UidHash = maps:get(<<"uid">>, Data, <<>>),
-    Uid = elib_hashids:decode(UidHash),
+    Uid = ec_cnv:to_integer(UidHash),
     Did = maps:get(<<"did">>, PostVals, <<>>),
     Now = elib_dt:now(),
     _ = user_device_ds:save(Now, Uid, Did, PostVals),

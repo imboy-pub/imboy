@@ -14,10 +14,8 @@
 %% group_transfer/1 测试
 %% ===================================================================
 
-group_transfer_encodes_id_fields_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'replace_fields', 2, fun(G, _Fields) -> G end}
-    ], fun() ->
+group_transfer_returns_input_unchanged_test_() ->
+    ?TEST_SIMPLE(fun() ->
         Input = #{
             <<"id">> => 1,
             <<"creator_uid">> => 100,
@@ -26,15 +24,12 @@ group_transfer_encodes_id_fields_test_() ->
             <<"name">> => <<"测试群"/utf8>>
         },
         Result = group_logic:group_transfer(Input),
-        ?assertMatch(#{<<"id">> := _, <<"name">> := _}, Result)
+        ?assertEqual(Input, Result)
     end).
 
 group_transfer_with_empty_map_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'replace_fields', 2, fun(G, _Fields) -> G end}
-    ], fun() ->
-        Input = #{},
-        Result = group_logic:group_transfer(Input),
+    ?TEST_SIMPLE(fun() ->
+        Result = group_logic:group_transfer(#{}),
         ?assertEqual(#{}, Result)
     end).
 
@@ -161,7 +156,7 @@ add_with_exceeding_count_limit_returns_error_test_() ->
         Count = 101,
         Uid = 123,
         Type = 1,
-        MemberUids = [<<"encoded_1">>, <<"encoded_2">>],
+        MemberUids = [<<"1">>, <<"2">>],
 
         Result = group_logic:add(Count, Uid, Type, MemberUids),
         ?assertEqual({error, <<"每人最多创建100个群"/utf8>>}, Result)
@@ -171,9 +166,6 @@ add_creates_new_group_success_test_() ->
     ?WITH_MECKS([
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_1">>) -> 456; (<<"encoded_2">>) -> 789 end}
         ]},
         {group_ds, [
             {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 0 end},
@@ -192,7 +184,7 @@ add_creates_new_group_success_test_() ->
         Count = 5,
         Uid = 123,
         Type = 1,
-        MemberUids = [<<"encoded_1">>, <<"encoded_2">>],
+        MemberUids = [<<"1">>, <<"2">>],
 
         Result = group_logic:add(Count, Uid, Type, MemberUids),
         ?assertMatch({ok, _Gid}, Result)
@@ -203,9 +195,6 @@ add_with_existing_group_returns_existing_gid_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_1">>) -> 456 end}
-        ]},
         {group_ds, [
             {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 888 end}
         ]}
@@ -213,7 +202,7 @@ add_with_existing_group_returns_existing_gid_test_() ->
         Count = 5,
         Uid = 123,
         Type = 1,
-        MemberUids = [<<"encoded_1">>],
+        MemberUids = [<<"1">>],
 
         Result = group_logic:add(Count, Uid, Type, MemberUids),
         ?assertEqual({ok, 888}, Result)

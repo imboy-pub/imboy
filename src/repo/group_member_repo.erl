@@ -36,21 +36,32 @@ tablename() ->
 
 %% @doc 添加群组成员
 %% @param Data 包含群组成员信息的map
-%% @return {ok, Result} | {error, Reason}
--spec add(map()) -> {ok, term()} | {error, term()}.
+%% @return {ok, integer()} | {error, Reason}
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(group_member),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 添加群组成员（使用连接）
 %% @param Conn 数据库连接
 %% @param Data 包含群组成员信息的map
-%% @return {ok, Count, Result} | {error, Reason} (三元组，包含RETURNING结果)
--spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
+%% @return {ok, integer()} | {error, Reason}
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(group_member),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 查找群组成员
 %% @param Gid 群组ID

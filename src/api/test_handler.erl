@@ -50,7 +50,7 @@ init(Req0, State0) ->
 -spec req_get(cowboy_req:req(), map()) -> cowboy_req:req().
 req_get(Req0, _State) ->
     % CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
+
     Qs3 = cowboy_req:parse_qs(Req0),
     Type = proplists:get_value(<<"type">>, Qs3, undefined),
     A = proplists:get_value(<<"a">>, Qs3, 0),
@@ -75,7 +75,7 @@ req_get(Req0, _State) ->
 -spec req_post(cowboy_req:req(), map()) -> cowboy_req:req().
 req_post(Req0, _State) ->
     % CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
+
     PostVals = elib_param:post(Req0),
     % Val1 = proplists:get_value(<<"val1">>, PostVals, ""),
     % Val2 = proplists:get_value(<<"val2">>, PostVals, ""),

@@ -36,15 +36,14 @@ create(Params) ->
     ProxyUid = maps:get(<<"proxy_uid">>, Params),
     ShardId = maps:get(<<"shard_id">>, Params),
 
+    Id = elib_tsid:generate(e2ee_social),
     Sql1 = <<"INSERT INTO e2ee_social_shards ",
-             "(uid, key_version, shard_index, total_shards, threshold, ",
+             "(id, uid, key_version, shard_index, total_shards, threshold, ",
              "encrypted_shard, proxy_uid, shard_id, status) "
-             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active') "
-             "RETURNING id">>,
-    % 使用 elib_pg:execute 处理 INSERT RETURNING
-    case elib_pg:execute(Sql1, [Uid, KeyVersion, ShardIndex, TotalShards, Threshold,
+             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')">>,
+    case elib_pg:execute(Sql1, [Id, Uid, KeyVersion, ShardIndex, TotalShards, Threshold,
                              EncryptedShard, ProxyUid, ShardId]) of
-        {ok, 1, [{Id}]} -> {ok, Id};
+        {ok, _Count} -> {ok, Id};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -145,15 +144,14 @@ add_contact(Params) ->
     ContactUid = maps:get(<<"contact_uid">>, Params),
     Nickname = maps:get(<<"contact_nickname">>, Params, <<>>),
 
+    Id = elib_tsid:generate(e2ee_social),
     Sql1 = <<"INSERT INTO e2ee_trusted_contacts ",
-             "(uid, contact_uid, nickname) ",
-             "VALUES ($1, $2, $3) ",
+             "(id, uid, contact_uid, nickname) ",
+             "VALUES ($1, $2, $3, $4) ",
              "ON CONFLICT (uid, contact_uid) ",
-             "DO UPDATE SET nickname = $3 ",
-             "RETURNING id">>,
-    % 使用 elib_pg:execute 处理 INSERT RETURNING
-    case elib_pg:execute(Sql1, [Uid, ContactUid, Nickname]) of
-        {ok, 1, [{Id}]} -> {ok, Id};
+             "DO UPDATE SET nickname = $4">>,
+    case elib_pg:execute(Sql1, [Id, Uid, ContactUid, Nickname]) of
+        {ok, _Count} -> {ok, Id};
         {error, Reason} -> {error, Reason}
     end.
 

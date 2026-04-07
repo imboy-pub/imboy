@@ -96,8 +96,11 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"status">> => 1
     },
 
+    % 预生成 TSID
+    AttId = elib_tsid:generate(attachment),
+    NewAttach2 = NewAttach#{<<"id">> => AttId},
     % 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach, <<>>),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach2),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
     _ = elib_pg:execute(Conn, FullSql, Params),
     % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),

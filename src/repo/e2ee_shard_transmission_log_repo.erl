@@ -72,16 +72,16 @@ insert(Data) ->
     UserAgent = maps:get(user_agent, Data, null),
     CreatedAt = maps:get(created_at, Data, elib_dt:now()),
 
+    Id = elib_tsid:generate(e2ee_shard_transmission_log),
     Sql = <<"INSERT INTO e2ee_shard_transmission_log ",
-            "(shard_id, key_version, uid, proxy_uid, action, direction, ",
+            "(id, shard_id, key_version, uid, proxy_uid, action, direction, ",
             "metadata, ip_address, user_agent, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10/1000)) ",
-            "RETURNING id">>,
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11/1000))">>,
     case elib_pg:execute(Sql, [
-        ShardId, KeyVersion, Uid, ProxyUid, Action, Direction,
+        Id, ShardId, KeyVersion, Uid, ProxyUid, Action, Direction,
         Metadata, IpAddress, UserAgent, CreatedAt
     ]) of
-        {ok, 1, [{Id}]} ->
+        {ok, _Count} ->
             {ok, Id};
         {error, Reason} ->
             ?ERROR_LOG([e2ee_shard_transmission_log_insert, failed, Reason]),

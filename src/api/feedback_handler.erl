@@ -111,7 +111,6 @@ page_reply(Req0, _State) ->
 -spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    % Uid = elib_hashids:encode(CurrentUid),
     COS = cowboy_req:header(<<"cos">>, Req0),
     AppVsn = cowboy_req:header(<<"vsn">>, Req0),
     Did = cowboy_req:header(<<"did">>, Req0),
@@ -180,7 +179,7 @@ normalize_reply_payload(Payload) ->
 %% @doc 规范化单条回复数据（编码ID字段）
 -spec normalize_reply(map()) -> map().
 normalize_reply(Reply) ->
-    elib_hashids:replace_fields(Reply, [<<"feedback_reply_id">>, <<"feedback_id">>, <<"replier_user_id">>]).
+    Reply.
 
 %% ===================================================================
 %% EUnit tests.

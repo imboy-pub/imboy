@@ -27,20 +27,15 @@ title_returns_account_when_nickname_empty_test_() ->
     end).
 
 title_decodes_binary_uid_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_uid">>) -> 12345 end}
-        ]},
-        {user_repo, [
-            {'find_by_id', 2, fun(12345, <<"account,nickname">>) ->
-                #{
-                    <<"account">> => <<"testuser">>,
-                    <<"nickname">> => <<"Decoded Nickname">>
-                }
-            end}
-        ]}
+    ?WITH_MECK(user_repo, [
+        {'find_by_id', 2, fun(12345, <<"account,nickname">>) ->
+            #{
+                <<"account">> => <<"testuser">>,
+                <<"nickname">> => <<"Decoded Nickname">>
+            }
+        end}
     ], fun() ->
-        ?assertEqual(<<"Decoded Nickname">>, user_ds:title(<<"encoded_uid">>))
+        ?assertEqual(<<"Decoded Nickname">>, user_ds:title(<<"12345">>))
     end).
 
 title_mode2_returns_tuple_test_() ->
@@ -81,15 +76,12 @@ webrtc_credential_returns_expected_payload_test_() ->
                            (<<"stun_urls">>) -> [<<"stun:example.org">>]
             end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(12345) -> <<"encoded_uid">> end}
-        ]},
         {elib_dt, [
             {'utc', 1, fun(second) -> 100 end}
         ]}
     ], fun() ->
         Result = user_ds:webrtc_credential(12345),
-        Username = <<"86500:encoded_uid">>,
+        Username = <<"86500:12345">>,
         ExpectedCredential = base64:encode(
             crypto:mac(hmac, sha, <<"test_secret">>, Username)
         ),

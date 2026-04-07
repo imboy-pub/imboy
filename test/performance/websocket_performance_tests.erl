@@ -97,7 +97,7 @@ test_push_performance() ->
         Payload = #{
             <<"msg_id">> => MsgId,
             <<"content">> => <<N/integer, "推送测试"/utf8>>,
-            <<"from">> => elib_hashids:encode(User1)
+            <<"from">> => integer_to_binary(User1)
         },
 
         StartTime = erlang:monotonic_time(millisecond),
@@ -211,7 +211,7 @@ test_throughput() ->
         Payload = #{
             <<"msg_id">> => MsgId,
             <<"content">> => <<N/integer>>,
-            <<"from">> => elib_hashids:encode(User1)
+            <<"from">> => integer_to_binary(User1)
         },
         msg_s2c_ds:send(User1, [User2], <<"throughput_test">>, MsgId, null, Payload, nosave)
     end, lists:seq(1, MessageCount)),

@@ -350,7 +350,7 @@ send_c2c_message(From, To, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(To)}),
+    ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => integer_to_binary(To)}),
     ok = wait_for_c2c_message(MsgId),
     MsgId.
 
@@ -362,6 +362,6 @@ send_c2g_message(From, Group, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_c2g_message(MsgId),
     MsgId.

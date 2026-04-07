@@ -42,7 +42,9 @@ confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Tb = tablename(),
-    case elib_pg:insert(Tb, #{
+    Id = elib_tsid:generate(friend),
+    Data = #{
+        id => Id,
         from_user_id => FromID,
         to_user_id => ToID,
         status => 1,
@@ -51,7 +53,9 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
         created_at => NowTs,
         setting => jsone:encode(filter_friend_setting(Setting), [native_utf8]),
         tag => Tag
-        }) of
+    },
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data),
+    case elib_pg:query(Sql, Params) of
         {ok, _} -> ok;
         {error, Reason} ->
             ?ERROR_LOG({friend_insert_failed, FromID, ToID, Reason}),

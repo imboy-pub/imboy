@@ -48,9 +48,9 @@ add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
 %% @doc 内部函数：实际执行添加好友操作
 -spec do_add_friend(integer(), binary(), map(), binary()) -> ok.
 do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
-    ToId = elib_hashids:decode(To),
+    ToId = ec_cnv:to_integer(To),
     NowTs = elib_dt:now(),
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     MsgId = <<"af_", From/binary, "_", To/binary>>,
     % ?DEBUG_LOG([is_binary(Payload), Payload]),
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
@@ -81,11 +81,11 @@ confirm_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"payload">>};
 confirm_friend(_MsgId, CurrentUid, From, Payload)
     when is_integer(CurrentUid), is_binary(From), is_binary(Payload) ->
-    To = elib_hashids:encode(CurrentUid),
+    To = CurrentUid,
     confirm_friend(CurrentUid, From, To, Payload);
 confirm_friend(CurrentUid, From, To, Payload) ->
-    FromID = elib_hashids:decode(From),
-    ToID = elib_hashids:decode(To),
+    FromID = ec_cnv:to_integer(From),
+    ToID = ec_cnv:to_integer(To),
     NowTs = elib_dt:now(),
     Payload2 = jsone:decode(Payload, [{object_format, map}]),
 
@@ -162,7 +162,7 @@ confirm_friend_resp(Uid, Remark) ->
     Column = <<"id,account,nickname,avatar,gender,sign,region,status">>,
     User = user_logic:find_by_id(Uid, Column),
     User#{
-        <<"id">> => elib_hashids:encode(Uid),
+        <<"id">> => Uid,
         <<"remark">> => Remark
     }.
 
@@ -174,7 +174,7 @@ confirm_friend_resp(Uid, Remark) ->
 %% @return ok
 -spec delete_friend(integer(), binary() | integer()) -> ok.
 delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
-    Uid2 = elib_hashids:decode(Uid),
+    Uid2 = ec_cnv:to_integer(Uid),
     delete_friend(CurrentUid, Uid2);
 delete_friend(CurrentUid, Uid) ->
     _ = friend_ds:delete(CurrentUid, Uid),
@@ -187,7 +187,7 @@ delete_friend(CurrentUid, Uid) ->
 %% @doc 移动好友到分组
 -spec move_to_category(integer(), binary() | integer(), integer()) -> ok.
 move_to_category(CurrentUid, Uid, CategoryId) when is_binary(Uid) ->
-    Uid2 = elib_hashids:decode(Uid),
+    Uid2 = ec_cnv:to_integer(Uid),
     move_to_category(CurrentUid, Uid2, CategoryId);
 move_to_category(CurrentUid, Uid, CategoryId) ->
     _ = friend_ds:move_to_category(CurrentUid, Uid, CategoryId),

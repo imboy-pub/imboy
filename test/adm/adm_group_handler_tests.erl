@@ -146,9 +146,6 @@ init_detail_accepts_hashid_gid_test_() ->
         {elib_param, [
             {'binary', 3, fun(gid, _Req, _Default) -> {ok, <<"gid_hash_66">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid_hash_66">>) -> 66 end}
-        ]},
         {group_repo, [
             {'find_by_id', 2, fun(66, _Column) ->
                 #{

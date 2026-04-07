@@ -63,14 +63,15 @@ create_order(Data) ->
     CreatedAt = maps:get(created_at, Data, elib_dt:now()),
 
     OrderNo = generate_order_no(),
+    GenId = elib_tsid:generate(channel_order),
 
     Sql = <<"INSERT INTO channel_order ",
-            "(channel_id, user_id, order_no, amount, currency, status, payment_method, ",
+            "(id, channel_id, user_id, order_no, amount, currency, status, payment_method, ",
             "expires_at, extra_data, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8/1000), $9, to_timestamp($10/1000)) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9/1000), $10, to_timestamp($11/1000)) ",
             "RETURNING order_no">>,
     case elib_pg:execute(Sql, [
-        ChannelId, UserId, OrderNo, Amount, Currency, ?STATUS_PENDING,
+        GenId, ChannelId, UserId, OrderNo, Amount, Currency, ?STATUS_PENDING,
         PaymentMethod, ExpiresAt, ExtraData, CreatedAt
     ]) of
         {ok, 1, [{OrderNo}]} ->

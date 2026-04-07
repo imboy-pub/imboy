@@ -41,7 +41,7 @@ create_chat(Uid, Content, History) ->
     Method = "POST",
     Authorization = elib_cnv:implode("/", signature(Method, URL, Headers)),
     Data = #{
-        <<"user_id">> => elib_hashids:encode(Uid), % string
+        <<"user_id">> => Uid, % integer
         <<"messages">> => History ++ [
             #{
                 <<"content">> => Content,

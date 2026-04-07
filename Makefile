@@ -19,7 +19,7 @@ DEPS = ranch cowlib cowboy gun
 # Type system and utility libraries
 DEPS += erlware_commons
 
-DEPS += jwerl hashids_erlang gen_smtp throttle
+DEPS += jwerl gen_smtp throttle
 DEPS += qdate qdate_localtime
 # goldrush provides fast event flow processing
 DEPS += goldrush

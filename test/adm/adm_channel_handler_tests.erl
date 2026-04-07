@@ -75,10 +75,6 @@ init_messages_accepts_hashid_channel_id_test_() ->
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"6q58gm">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"6q58gm">>) -> 11 end},
-            {'replace_fields', 2, fun(Map, _Fields) -> Map end}
-        ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 10} end}
         ]},
@@ -323,13 +319,6 @@ init_remove_subscriber_accepts_hashid_path_params_test_() ->
                     user_id -> <<"uid_hash_22">>;
                     _ -> undefined
                 end
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"ch_hash_11">>) -> 11;
-                (<<"uid_hash_22">>) -> 22;
-                (_) -> 0
             end}
         ]},
         {elib_pg, [
@@ -775,9 +764,6 @@ init_stats_success_test_() ->
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {channel_logic, [
             {'get_channel_stats', 1, fun(<<"ch_hash_11">>) ->
                 {ok, #{
@@ -811,9 +797,6 @@ init_stats_not_found_test_() ->
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
         ]},
         {channel_logic, [
             {'get_channel_stats', 1, fun(<<"ch_hash_11">>) ->
@@ -938,15 +921,6 @@ init_search_returns_list_with_normalized_ids_test_() ->
                         <<"name">> => <<"Tech Daily">>
                     }
                 ]}
-            end}
-        ]},
-        {elib_hashids, [
-            {'replace_fields', 2, fun(Map, Fields) ->
-                ?assertEqual([<<"id">>, <<"owner_id">>, <<"creator_uid">>], Fields),
-                Map#{
-                    <<"id">> => <<"ch_hash_11">>,
-                    <<"owner_id">> => <<"uid_hash_99">>
-                }
             end}
         ]},
         {elib_response, [

@@ -137,11 +137,6 @@ page_reply_normalizes_reply_ids_test_() ->
                 }}
             end}
         ]},
-        {elib_hashids, [
-            {'replace_fields', 2, fun(Item, _Fields) ->
-                Item#{<<"feedback_reply_id">> => <<"fr_9">>, <<"feedback_id">> => <<"fb_1001">>, <<"replier_user_id">> => <<"u_7">>}
-            end}
-        ]},
         {elib_response, [
             {'success', 2, fun(Req, Payload) -> Req#{response_status => 200, payload => Payload} end}
         ]}

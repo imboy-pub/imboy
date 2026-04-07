@@ -93,9 +93,6 @@ init_list_accepts_hashid_uid_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_88">>) -> 88 end}
-        ]},
         {user_log_repo, [
             {'tablename', 0, fun() -> <<"public.user_log">> end}
         ]},

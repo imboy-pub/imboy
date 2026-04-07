@@ -59,7 +59,6 @@ init(Req0, State0) ->
 -spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Tag = maps:get(<<"tag">>, PostVals, []),
@@ -72,7 +71,7 @@ add(Req0, State) ->
             <<"collect">> ->
                 {1, false};
             <<"friend">> ->
-                {2, friend_ds:is_friend(CurrentUid, elib_hashids:decode(ObjectId))};
+                {2, friend_ds:is_friend(CurrentUid, ec_cnv:to_integer(ObjectId))};
             _ ->
                 {0, false}
         end,
@@ -155,7 +154,6 @@ set(Req0, State) ->
 -spec remove(cowboy_req:req(), map()) -> cowboy_req:req().
 remove(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagId = maps:get(<<"tagId">>, PostVals, 0),
@@ -186,7 +184,7 @@ remove(Req0, State) ->
             user_tag_relation_logic:remove(CurrentUid, <<"1">>, Obj, Id),
             elib_response:success(Req0, #{}, "success.");
         {2, Obj, Id} ->
-            ToUid = elib_hashids:decode(Obj),
+            ToUid = ec_cnv:to_integer(Obj),
             if ToUid > 0 ->
                    user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
                    elib_response:success(Req0, #{}, "success.");

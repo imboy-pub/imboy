@@ -192,7 +192,7 @@ archive_c2c_seq_error_propagates_test_() ->
 
 archive_c2g_success_test_() ->
     %% C2G payload 中包含 group_id（hashids 编码），需要能解析
-    %% elib_hashids:decode(<<"abc">>) 需要 mock
+    %% binary_to_integer(<<"abc">>) 需要 mock
     Row = #{
         <<"type">>       => <<"c2g">>,
         <<"msg_id">>     => <<"msg-g001">>,
@@ -205,9 +205,6 @@ archive_c2g_success_test_() ->
         <<"server_ts">>  => <<"2024-01-01T00:00:01Z">>
     },
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"grp123">>) -> 9000 end}
-        ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, _Params) ->
                 {ok, [#{<<"seq">> => 1}]}

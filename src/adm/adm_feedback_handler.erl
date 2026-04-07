@@ -77,7 +77,6 @@ index(_, _Ajax, Req0, _State) ->
 %% @return cowboy_req:req() 更新后的请求对象
 -spec reply(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 reply(<<"POST">>, Req0, State) ->
-    % Uid = elib_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
     Key = {adm_user_sample, AdmUserId},
     U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
@@ -223,7 +222,7 @@ normalize_feedback_payload(Payload) ->
 %% @doc 规范化单条反馈数据（编码ID字段）
 -spec normalize_feedback(map()) -> map().
 normalize_feedback(Feedback) ->
-    elib_hashids:replace_fields(Feedback, [<<"feedback_id">>, <<"user_id">>]).
+    Feedback.
 
 %% ===================================================================
 %% Feedback Workflow Config

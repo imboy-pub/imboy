@@ -45,9 +45,6 @@ init_create_invalid_time_range_returns_bad_request_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 9 end}
-        ]},
         {group_schedule_logic, [
             {'create_schedule', 9, fun(_GroupId, _Uid, _Title, _Desc, _Loc, _StartAt, _EndAt, _Remind, _Participants) ->
                 {error, {invalid_time_range, start_at, end_at}}
@@ -76,9 +73,6 @@ init_create_epoch_time_compatible_test_() ->
                     <<"end_at">> => 1700003600
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 9 end}
         ]},
         {group_schedule_logic, [
             {'create_schedule', 9, fun(9, 300, _Title, _Desc, _Loc, StartAt, EndAt, _Remind, _Participants) ->
@@ -268,9 +262,6 @@ init_detail_hashid_schedule_id_compatible_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"hash_66">>}] end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"hash_66">>) -> 66 end}
-        ]},
         {group_schedule_repo, [
             {'find_by_id', 2, fun(66, <<"schedule_id">>) ->
                 #{<<"schedule_id">> => <<"sched_66">>}
@@ -303,9 +294,6 @@ init_list_with_time_range_query_compatible_test_() ->
                     {<<"size">>, <<"20">>}
                 ]
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid_9">>) -> 9 end}
         ]},
         {elib_param, [
             {'int', 3, fun

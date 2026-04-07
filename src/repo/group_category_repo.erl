@@ -83,12 +83,13 @@ find_by_name(Uid, Name) ->
 -spec add(integer(), binary()) -> {ok, integer()} | {error, term()}.
 add(Uid, Name) ->
     Tb = tablename(),
+    Id = elib_tsid:generate(group_category),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (user_id, category_name, sort_order) "
-            "VALUES ($1, $2, 0) RETURNING id">>,
-    case elib_pg_sql:parse_result(elib_pg:execute(Sql, [Uid, Name])) of
-        {ok, CategoryId, _} ->
-            {ok, CategoryId};
+            " (id, user_id, category_name, sort_order) "
+            "VALUES ($1, $2, $3, 0)">>,
+    case elib_pg:execute(Sql, [Id, Uid, Name]) of
+        {ok, _Count} ->
+            {ok, Id};
         {error, Reason} ->
             {error, Reason}
     end.

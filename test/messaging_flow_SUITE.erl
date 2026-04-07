@@ -134,7 +134,7 @@ send_c2c_message_successfully(_Config) ->
     Result = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -154,7 +154,7 @@ c2c_message_saved_to_db(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -175,7 +175,7 @@ c2c_message_delivered_to_recipient(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -200,7 +200,7 @@ c2c_message_with_attachment_succeeds(_Config) ->
     Result = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -229,7 +229,7 @@ send_c2g_message_successfully(_Config) ->
     Result = msg_c2g_logic:c2g(
         MsgId,
         Uid1,
-        elib_hashids:encode(Gid),
+        integer_to_binary(Gid),
         jsone:encode(Payload)
     ),
 
@@ -255,7 +255,7 @@ c2g_message_delivered_to_all_members(_Config) ->
     ok = msg_c2g_logic:c2g(
         MsgId,
         OwnerUid,
-        elib_hashids:encode(Gid),
+        integer_to_binary(Gid),
         jsone:encode(Payload)
     ),
 
@@ -285,7 +285,7 @@ non_member_cannot_send_c2g_message_fails(_Config) ->
     Result = msg_c2g_logic:c2g(
         MsgId,
         Uid2,
-        elib_hashids:encode(Gid),
+        integer_to_binary(Gid),
         jsone:encode(Payload)
     ),
 
@@ -309,12 +309,12 @@ recall_message_within_time_limit_succeeds(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
     % 撤回消息（在时间限制内）
-    Result = msg_c2c_logic:recall(MsgId, FromUid, elib_hashids:encode(ToUid)),
+    Result = msg_c2c_logic:recall(MsgId, FromUid, integer_to_binary(ToUid)),
 
     % 验证撤回成功
     ?assertEqual(ok, Result),
@@ -338,12 +338,12 @@ recall_message_after_time_limit_fails(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
     % 尝试撤回
-    Result = msg_c2c_logic:recall(MsgId, FromUid, elib_hashids:encode(ToUid)),
+    Result = msg_c2c_logic:recall(MsgId, FromUid, integer_to_binary(ToUid)),
 
     % 验证撤回失败
     ?assertMatch({error, _, _}, Result),
@@ -362,10 +362,10 @@ recalled_message_marked_as_recalled(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
-    ok = msg_c2c_logic:recall(MsgId, FromUid, elib_hashids:encode(ToUid)),
+    ok = msg_c2c_logic:recall(MsgId, FromUid, integer_to_binary(ToUid)),
 
     % 验证消息被标记为已撤回
     {ok, Msg} = msg_c2c_repo:find_by_msg_id(MsgId),
@@ -401,7 +401,7 @@ message_retry_on_delivery_failure(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -428,7 +428,7 @@ message_retry_reaches_max_attempts(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -454,12 +454,12 @@ message_ack_confirmed_by_recipient(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
     % 接收者确认消息
-    Result = msg_ack_logic:ack(ToUid, elib_hashids:encode(FromUid), MsgId),
+    Result = msg_ack_logic:ack(ToUid, integer_to_binary(FromUid), MsgId),
 
     % 验证确认成功
     ?assertEqual(ok, Result),
@@ -477,7 +477,7 @@ message_ack_clears_retry_timer(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         FromUid,
-        elib_hashids:encode(ToUid),
+        integer_to_binary(ToUid),
         jsone:encode(Payload)
     ),
 
@@ -488,7 +488,7 @@ message_ack_clears_retry_timer(_Config) ->
     meck:expect(erlang, send_after, fun(_Delay, _Msg) -> TimerRef end),
 
     % 接收者确认消息
-    ok = msg_ack_logic:ack(ToUid, elib_hashids:encode(FromUid), MsgId),
+    ok = msg_ack_logic:ack(ToUid, integer_to_binary(FromUid), MsgId),
 
     % 验证定时器被取消
     % （这里需要根据实际实现调整）

@@ -29,18 +29,14 @@ user_keys_same_user_success_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_123">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 123,  % 同一个用户
+        CurrentUid = 123,
+        TargetUid = 123,  % 同一个用户
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_123">>,
-                <<"devices">> := _
-            }}, Result)
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 123,
+            <<"devices">> := _
+        }}, Result)
     end).
 
 user_keys_friend_success_test_() ->
@@ -54,18 +50,14 @@ user_keys_friend_success_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(456) -> <<"encoded_456">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 456,  % 好友
+        CurrentUid = 123,
+        TargetUid = 456,  % 好友
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_456">>,
-                <<"devices">> := [_]
-            }}, Result)
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 456,
+            <<"devices">> := [_]
+        }}, Result)
     end).
 
 user_keys_non_friend_still_returns_public_keys_test_() ->
@@ -79,18 +71,14 @@ user_keys_non_friend_still_returns_public_keys_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(789) -> <<"encoded_789">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 789,  % 非好友
+        CurrentUid = 123,
+        TargetUid = 789,  % 非好友
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_789">>,
-                <<"devices">> := [_]
-            }}, Result)
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 789,
+            <<"devices">> := [_]
+        }}, Result)
     end).
 
 user_keys_in_denylist_still_returns_public_keys_test_() ->
@@ -104,18 +92,14 @@ user_keys_in_denylist_still_returns_public_keys_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(999) -> <<"encoded_999">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 999,  % 在黑名单
+        CurrentUid = 123,
+        TargetUid = 999,  % 在黑名单
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_999">>,
-                <<"devices">> := [_]
-            }}, Result)
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 999,
+            <<"devices">> := [_]
+        }}, Result)
     end).
 
 user_keys_database_error_returns_500_test_() ->
@@ -153,20 +137,16 @@ user_keys_with_multiple_devices_test_() ->
             ]}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_123">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 123,
+        CurrentUid = 123,
+        TargetUid = 123,
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_123">>,
-                <<"devices">> := _
-            }}, Result),
-            {ok, #{<<"devices">> := Devices}} = Result,
-            ?assertEqual(3, length(Devices))
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 123,
+            <<"devices">> := _
+        }}, Result),
+        {ok, #{<<"devices">> := Devices}} = Result,
+        ?assertEqual(3, length(Devices))
     end).
 
 %% ===================================================================
@@ -199,25 +179,16 @@ group_member_keys_member_success_test_() ->
                 ]}
             end}
         ], fun() ->
-            ?WITH_MECK(elib_hashids, [
-                {'encode', 1, fun
-                    (1) -> <<"encoded_1">>;
-                    (123) -> <<"encoded_123">>;
-                    (456) -> <<"encoded_456">>;
-                    (789) -> <<"encoded_789">>
-                end}
-            ], fun() ->
-                CurrentUid = 123,
-                Gid = 1,
+            CurrentUid = 123,
+            Gid = 1,
 
-                Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                ?assertMatch({ok, #{
-                    <<"gid">> := <<"encoded_1">>,
-                    <<"members">> := _
-                }}, Result),
-                {ok, #{<<"members">> := Members}} = Result,
-                ?assertEqual(3, length(Members))
-            end)
+            Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
+            ?assertMatch({ok, #{
+                <<"gid">> := 1,
+                <<"members">> := _
+            }}, Result),
+            {ok, #{<<"members">> := Members}} = Result,
+            ?assertEqual(3, length(Members))
         end)
     end).
 
@@ -260,18 +231,14 @@ group_member_keys_empty_group_test_() ->
                 {ok, []}
             end}
         ], fun() ->
-            ?WITH_MECK(elib_hashids, [
-                {'encode', 1, fun(1) -> <<"encoded_1">> end}
-            ], fun() ->
-                CurrentUid = 123,
-                Gid = 1,
+            CurrentUid = 123,
+            Gid = 1,
 
-                Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                ?assertMatch({ok, #{
-                    <<"gid">> := <<"encoded_1">>,
-                    <<"members">> := []
-                }}, Result)
-            end)
+            Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
+            ?assertMatch({ok, #{
+                <<"gid">> := 1,
+                <<"members">> := []
+            }}, Result)
         end)
     end).
 
@@ -287,11 +254,9 @@ group_by_uid_single_device_test_() ->
             <<"public_key">> => <<"key_1">>
         }
     ],
-    ?WITH_MECK(elib_hashids, [
-        {'encode', 1, fun(123) -> <<"encoded_123">> end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Result = e2ee_logic:group_by_uid(Input),
-        ?assertMatch([#{<<"uid">> := <<"encoded_123">>, <<"devices">> := [_]}], Result),
+        ?assertMatch([#{<<"uid">> := 123, <<"devices">> := [_]}], Result),
         [#{<<"devices">> := [Device | _]}] = Result,
         ?assertEqual(<<"device_1">>, maps:get(<<"device_id">>, Device)),
         ?assertEqual(<<"key_1">>, maps:get(<<"public_key">>, Device))
@@ -310,13 +275,11 @@ group_by_uid_multiple_devices_same_user_test_() ->
             <<"public_key">> => <<"key_2">>
         }
     ],
-    ?WITH_MECK(elib_hashids, [
-        {'encode', 1, fun(123) -> <<"encoded_123">> end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Result = e2ee_logic:group_by_uid(Input),
         ?assertMatch([
             #{
-                <<"uid">> := <<"encoded_123">>,
+                <<"uid">> := 123,
                 <<"devices">> := [_, _]
             }
         ], Result),
@@ -337,12 +300,7 @@ group_by_uid_multiple_users_test_() ->
             <<"public_key">> => <<"key_2">>
         }
     ],
-    ?WITH_MECK(elib_hashids, [
-        {'encode', 1, fun
-            (123) -> <<"encoded_123">>;
-            (456) -> <<"encoded_456">>
-        end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Result = e2ee_logic:group_by_uid(Input),
         ?assertMatch([_, _], Result),
         ?assertEqual(2, length(Result))
@@ -356,9 +314,7 @@ group_by_uid_removes_user_id_field_test_() ->
             <<"public_key">> => <<"key_1">>
         }
     ],
-    ?WITH_MECK(elib_hashids, [
-        {'encode', 1, fun(123) -> <<"encoded_123">> end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Result = e2ee_logic:group_by_uid(Input),
         [#{<<"devices">> := [Device | _]}] = Result,
         % user_id 字段应被移除
@@ -375,18 +331,14 @@ user_keys_with_no_devices_test_() ->
             {ok, []}
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_123">> end}
-        ], fun() ->
-            CurrentUid = 123,
-            TargetUid = 123,
+        CurrentUid = 123,
+        TargetUid = 123,
 
-            Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
-            ?assertMatch({ok, #{
-                <<"uid">> := <<"encoded_123">>,
-                <<"devices">> := []
-            }}, Result)
-        end)
+        Result = e2ee_logic:user_keys(CurrentUid, TargetUid),
+        ?assertMatch({ok, #{
+            <<"uid">> := 123,
+            <<"devices">> := []
+        }}, Result)
     end).
 
 group_member_keys_sorts_by_uid_test_() ->
@@ -415,22 +367,13 @@ group_member_keys_sorts_by_uid_test_() ->
                 ]}
             end}
         ], fun() ->
-            ?WITH_MECK(elib_hashids, [
-                {'encode', 1, fun
-                    (1) -> <<"encoded_1">>;
-                    (123) -> <<"encoded_123">>;
-                    (456) -> <<"encoded_456">>;
-                    (789) -> <<"encoded_789">>
-                end}
-            ], fun() ->
-                CurrentUid = 123,
-                Gid = 1,
+            CurrentUid = 123,
+            Gid = 1,
 
-                Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                {ok, #{<<"members">> := Members}} = Result,
-                % 验证成员按 UID 排序
-                Uids = [maps:get(<<"uid">>, M) || M <- Members],
-                ?assert(Uids =:= lists:sort(Uids))
-            end)
+            Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
+            {ok, #{<<"members">> := Members}} = Result,
+            % 验证成员按 UID 排序
+            Uids = [maps:get(<<"uid">>, M) || M <- Members],
+            ?assert(Uids =:= lists:sort(Uids))
         end)
     end).

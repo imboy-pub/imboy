@@ -246,7 +246,7 @@ find_by_id(Id) ->
 %% @returns 用户信息，包含指定的列数据
 -spec find_by_id(binary() | pos_integer(), binary()) -> map().
 find_by_id(Id, Column) when is_binary(Id) ->
-    find_by_id(elib_hashids:decode(Id), Column);
+    find_by_id(ec_cnv:to_integer(Id), Column);
 find_by_id(Id, Column) ->
     check_avatar(user_ds:find_by_id(Id, Column)).
 
@@ -358,7 +358,7 @@ send_bind_email(Uid, Email) ->
     SolKey = config_ds:get(<<"solidified_key">>),
     Args =
         #{ts => ExpireAtS,
-          uin => elib_hashids:encode(Uid),
+          uin => Uid,
           mail => Email},
 
     Tk = elib_hasher:hmac_sha512(

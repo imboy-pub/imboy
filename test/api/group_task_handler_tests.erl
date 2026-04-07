@@ -39,9 +39,6 @@ create_missing_title_returns_title_required_code_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end}
-        ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
@@ -63,9 +60,6 @@ create_logic_error_propagates_code_test_() ->
                     <<"title">> => <<"第 1 章作业"/utf8>>
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end}
         ]},
         {group_task_logic, [
             {'create', 4, fun(_Gid, _Uid, _Title, _Data) ->
@@ -94,10 +88,6 @@ create_with_user_ids_assigns_members_test_() ->
                     <<"user_ids">> => [101, 102]
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end},
-            {'encode', 1, fun(42) -> <<"task_h42">> end}
         ]},
         {group_task_logic, [
             {'create', 4, fun(12, 200, _Title, _Data) ->
@@ -173,14 +163,6 @@ assign_hashid_task_id_and_user_ids_compatible_test_() ->
                     <<"task_id">> => <<"task_hash_42">>,
                     <<"user_ids">> => [<<"user_hash_1">>, <<"user_hash_2">>]
                 }
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"task_hash_42">>) -> 42;
-                (<<"user_hash_1">>) -> 101;
-                (<<"user_hash_2">>) -> 102;
-                (_Any) -> 0
             end}
         ]},
         {group_task_logic, [
@@ -291,9 +273,6 @@ review_hashid_assignment_id_compatible_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"assignment_hash_456">>) -> 456 end}
-        ]},
         {group_task_logic, [
             {'review', 3, fun(456, 200, Data) ->
                 ?assertEqual(95, maps:get(score, Data)),
@@ -337,9 +316,6 @@ detail_hashid_task_id_compatible_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"task_id">>, <<"task_hash_88">>}] end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"task_hash_88">>) -> 88 end}
         ]},
         {group_task_logic, [
             {'detail', 1, fun(88) ->
@@ -409,9 +385,6 @@ list_defaults_to_current_uid_assignee_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"group_id">>, <<"gid_12">>}] end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid_12">>) -> 12 end}
-        ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
@@ -437,9 +410,6 @@ list_status_filter_uses_current_uid_assignee_test_() ->
                 [{<<"group_id">>, <<"gid_12">>}, {<<"status">>, <<"1">>}]
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid_12">>) -> 12 end}
-        ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
@@ -463,13 +433,6 @@ list_hashid_assignee_compatible_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
                 [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"user_hash_321">>}]
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"gid_12">>) -> 12;
-                (<<"user_hash_321">>) -> 321;
-                (_Any) -> 0
             end}
         ]},
         {elib_param, [
@@ -497,9 +460,6 @@ list_assignee_all_uses_group_view_test_() ->
                 [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"all">>}]
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"gid_12">>) -> 12 end}
-        ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
@@ -523,12 +483,6 @@ list_invalid_assignee_returns_bad_request_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
                 [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"bad_uid">>}]
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"gid_12">>) -> 12;
-                (<<"bad_uid">>) -> 0
             end}
         ]},
         {elib_param, [

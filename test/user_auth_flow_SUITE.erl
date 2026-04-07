@@ -276,7 +276,7 @@ token_refresh_after_login(_Config) ->
     {ok, #{<<"uid">> := UidBin} = LoginMap} = passport_logic:login(Mobile, Password, #{}),
 
     % 刷新 token
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
     Result = token_ds:refresh_token(Uid),
 
     % 验证刷新成功
@@ -303,7 +303,7 @@ change_password_with_valid_old_password_succeeds(_Config) ->
     cleanup_user_by_mobile(Mobile),
     {ok, _} = passport_logic:signup(Mobile, OldPassword, <<"test@example.com">>, #{}),
     {ok, #{<<"uid">> := UidBin} = _LoginMap} = passport_logic:login(Mobile, OldPassword, #{}),
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
 
     % 修改密码
     Result = user_logic:change_password(Uid, OldPassword, NewPassword),
@@ -329,7 +329,7 @@ change_password_with_invalid_old_password_fails(_Config) ->
     cleanup_user_by_mobile(Mobile),
     {ok, _} = passport_logic:signup(Mobile, OldPassword, <<"test@example.com">>, #{}),
     {ok, #{<<"uid">> := UidBin} = _LoginMap} = passport_logic:login(Mobile, OldPassword, #{}),
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
 
     % 使用错误旧密码修改密码
     Result = user_logic:change_password(Uid, WrongOldPassword, NewPassword),
@@ -393,7 +393,7 @@ login_with_new_device_registers_device(_Config) ->
 
     % 使用新设备登录
     {ok, #{<<"uid">> := UidBin} = _LoginMap} = passport_logic:login(Mobile, Password, #{<<"did">> => DID}),
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
 
     % 验证设备已注册
     {ok, Devices} = user_device_ds:list(Uid),
@@ -422,7 +422,7 @@ login_from_multiple_devices_creates_multiple_records(_Config) ->
 
     % 从设备 1 登录
     {ok, #{<<"uid">> := UidBin} = _} = passport_logic:login(Mobile, Password, #{<<"did">> => DID1}),
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
 
     % 从设备 2 登录
     {ok, _} = passport_logic:login(Mobile, Password, #{<<"did">> => DID2}),
@@ -445,7 +445,7 @@ logout_clears_device_session(_Config) ->
     cleanup_user_by_mobile(Mobile),
     {ok, _} = passport_logic:signup(Mobile, Password, <<"test@example.com">>, #{}),
     {ok, #{<<"uid">> := UidBin} = _LoginMap} = passport_logic:login(Mobile, Password, #{<<"did">> => DID}),
-    Uid = elib_hashids:decode(UidBin),
+    Uid = binary_to_integer(UidBin),
 
     % 验证设备已注册
     {ok, Devices} = user_device_ds:list(Uid),

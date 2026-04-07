@@ -28,7 +28,7 @@
 -spec upload(binary(), integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
 upload(Gid, CurrentUid, FileName, FileBinary, FileType) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层上传文件
     case group_file_ds:upload_file(Gid2, CurrentUid, FileName, FileBinary, FileType) of
@@ -83,14 +83,14 @@ list(Gid, CurrentUid, Page, Size) ->
 -spec list(binary(), integer(), integer(), integer(), map()) -> {ok, map()} | {error, term()}.
 list(Gid, CurrentUid, Page, Size, Options) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层查询文件列表
     case group_file_ds:list_files(Gid2, CurrentUid, Page, Size, Options) of
         {ok, Files} ->
             % 3. 编码ID字段
             Files2 = lists:map(fun(File) ->
-                elib_hashids:replace_fields(File, [<<"group_id">>, <<"uploader_id">>])
+                File
             end, Files),
 
             % 4. 查询总数
@@ -117,14 +117,14 @@ list(Gid, CurrentUid, Page, Size, Options) ->
 -spec search(binary(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
 search(Gid, Keyword, Page, Size) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层搜索文件
     case group_file_ds:search_files(Gid2, Keyword, Page, Size) of
         {ok, Files} ->
             % 3. 编码ID字段
             Files2 = lists:map(fun(File) ->
-                elib_hashids:replace_fields(File, [<<"group_id">>, <<"uploader_id">>])
+                File
             end, Files),
             {ok, Files2};
         {error, Reason} ->
@@ -138,7 +138,7 @@ search(Gid, Keyword, Page, Size) ->
 -spec get_categories(binary(), integer()) -> {ok, list(map())} | {error, term()}.
 get_categories(Gid, CurrentUid) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 验证群成员身份
     case group_ds:is_member(CurrentUid, Gid2) of

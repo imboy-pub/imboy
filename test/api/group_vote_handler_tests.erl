@@ -17,9 +17,6 @@ create_missing_gid_returns_validation_error_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<>>) -> 0 end}
-        ]},
         {elib_response, [
             {'error', 2, fun(_Req, Msg) ->
                 self() ! {resp_msg, Msg},
@@ -43,9 +40,6 @@ create_invalid_vote_type_returns_validation_error_test_() ->
                     <<"vote_type">> => 9
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 1 end}
         ]},
         {elib_response, [
             {'error', 2, fun(_Req, Msg) ->

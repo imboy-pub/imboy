@@ -89,13 +89,6 @@ mine_action_returns_server_authoritative_conversation_list_test_() ->
         {conversation_pin_logic, [
             {'is_pinned', 3, fun(100, _ConversationId, _Type) -> false end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun
-                (2001) -> <<"gdwqa5">>;
-                (3001) -> <<"grp001">>;
-                (Any) -> erlang:integer_to_binary(Any)
-            end}
-        ]},
         {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},

@@ -47,7 +47,7 @@ save_mentions(MsgId, Gid, Mentions, FromUid) when is_list(Mentions) ->
 decode_mention_uids([], Acc) ->
     lists:reverse(Acc);
 decode_mention_uids([HashId | Rest], Acc) ->
-    Uid = elib_hashids:decode(HashId),
+    Uid = ec_cnv:to_integer(HashId),
     case Uid > 0 of
         true -> decode_mention_uids(Rest, [Uid | Acc]);
         false -> decode_mention_uids(Rest, Acc)

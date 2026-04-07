@@ -23,9 +23,6 @@ create_chat_success_test_() ->
         {ec_date, [
             {'format_iso8601', 1, fun(_Time) -> <<"2023-01-01T00:00:00Z">> end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> ?assertEqual(1, Uid), <<"encoded_uid">> end}
-        ]},
         {elib_req, [
             {'post', 3, fun(_URL, _Data, _Headers) ->
                 {ok, #{<<"result">> => <<"AI 回复"/utf8>>}}
@@ -127,9 +124,6 @@ create_chat_with_empty_content_test_() ->
         {ec_date, [
             {'format_iso8601', 1, fun(_Time) -> <<"2023-01-01T00:00:00Z">> end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Uid) -> <<"encoded_uid">> end}
-        ]},
         {elib_req, [
             {'post', 3, fun(_URL, _Data, _Headers) -> {ok, #{<<"result">> => <<>>}} end}
         ]},
@@ -151,9 +145,6 @@ create_chat_with_utf8_content_test_() ->
         ]},
         {ec_date, [
             {'format_iso8601', 1, fun(_Time) -> <<"2023-01-01T00:00:00Z">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Uid) -> <<"encoded_uid">> end}
         ]},
         {elib_req, [
             {'post', 3, fun(_URL, Data, _Headers) ->

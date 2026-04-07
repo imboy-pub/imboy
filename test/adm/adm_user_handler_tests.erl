@@ -88,9 +88,6 @@ init_detail_accepts_hashid_uid_test_() ->
             {'int', 3, fun(uid, _Req, _Default) -> {ok, 0} end},
             {'binary', 3, fun(uid, _Req, _Default) -> {ok, <<"uid_hash_1001">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_1001">>) -> 1001 end}
-        ]},
         {user_repo, [
             {'find_by_id', 2, fun(1001, _Column) ->
                 #{

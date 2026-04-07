@@ -21,9 +21,10 @@ tablename() ->
     {ok, integer()} | {error, any()}.
 upsert(PostId, ReporterUid, Reason, Desc) ->
     Tb = tablename(),
+    Id = elib_tsid:generate(moment_report),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (post_id, reporter_uid, reason, description, status, created_at, updated_at)"
-            " VALUES ($1, $2, $3, $4, 0, NOW(), NOW())"
+            " (id, post_id, reporter_uid, reason, description, status, created_at, updated_at)"
+            " VALUES ($1, $2, $3, $4, $5, 0, NOW(), NOW())"
             " ON CONFLICT (post_id, reporter_uid) DO UPDATE SET"
             " reason = EXCLUDED.reason,"
             " description = EXCLUDED.description,"
@@ -32,7 +33,7 @@ upsert(PostId, ReporterUid, Reason, Desc) ->
             " handled_at = NULL,"
             " updated_at = NOW()"
             " RETURNING id">>,
-    case elib_pg:one(Sql, [PostId, ReporterUid, Reason, Desc]) of
+    case elib_pg:one(Sql, [Id, PostId, ReporterUid, Reason, Desc]) of
         {ok, #{<<"id">> := ReportId}} ->
             {ok, ReportId};
         {error, ReasonErr} ->

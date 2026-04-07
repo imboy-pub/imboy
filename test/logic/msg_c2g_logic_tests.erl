@@ -4,10 +4,6 @@
 
 c2g_success_sends_server_ack_and_dispatch_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end},
-            {'encode', 1, fun(1001) -> <<"from_user">> end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -37,7 +33,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
         MsgId = <<"msg_c2g_ok_001">>,
         CurrentUid = 1001,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"hello group">>, <<"mentions">> => []},
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"text">>,
@@ -64,16 +60,13 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
 
 c2g_muted_user_gets_error_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> true end}
         ]}
     ], fun() ->
         MsgId = <<"msg_c2g_muted_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"hello">>},
             <<"created_at">> => 1708768700000
         },
@@ -93,9 +86,6 @@ c2g_muted_user_gets_error_reply_test_() ->
 
 c2g_non_member_gets_error_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -105,7 +95,7 @@ c2g_non_member_gets_error_reply_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_non_member_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"hello">>},
             <<"created_at">> => 1708768700000
         },
@@ -125,9 +115,6 @@ c2g_non_member_gets_error_reply_test_() ->
 
 c2g_mention_all_requires_admin_role_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -140,7 +127,7 @@ c2g_mention_all_requires_admin_role_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_all_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"hello">>, <<"mentions">> => [<<"all">>]},
             <<"created_at">> => 1708768700000
         },
@@ -160,12 +147,6 @@ c2g_mention_all_requires_admin_role_test_() ->
 
 c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100;
-                             (<<"from_user">>) -> 777
-                         end},
-            {'encode', 1, fun(1001) -> <<"from_user">> end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -182,7 +163,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             {'find_msg_by_id', 1, fun(<<"missing_group_reply_msg">>) -> {error, not_found} end}
         ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"group_1">>) ->
+            {'assemble_s2c', 3, fun(MsgId, <<"msg_not_found">>, <<"100">>) ->
                 #{<<"id">> => MsgId, <<"type">> => <<"MSG_NOT_FOUND">>}
             end}
         ]},
@@ -192,12 +173,12 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_reply_missing_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"reply">>, <<"mentions">> => []},
             <<"created_at">> => 1708768700000,
             <<"reply_to">> => #{
                 <<"msg_id">> => <<"missing_group_reply_msg">>,
-                <<"from_id">> => <<"from_user">>
+                <<"from_id">> => <<"1001">>
             }
         },
 
@@ -321,9 +302,6 @@ extract_reply_info_without_reply_to_returns_empty_tuple_test_() ->
 
 extract_reply_info_with_json_payload_extracts_content_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"from_user">>) -> 321 end}
-        ]},
         {msg_c2g_repo, [
             {'find_msg_by_id', 1, fun(<<"origin_group_msg_001">>) ->
                 {ok, #{<<"payload">> => <<"{\"content\":\"hello group reply\"}">>}}
@@ -333,13 +311,13 @@ extract_reply_info_with_json_payload_extracts_content_test_() ->
         Data = #{
             <<"reply_to">> => #{
                 <<"msg_id">> => <<"origin_group_msg_001">>,
-                <<"from_id">> => <<"from_user">>
+                <<"from_id">> => <<"1001">>
             }
         },
 
         {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2g_logic:extract_reply_info(Data),
         ?assertEqual(<<"origin_group_msg_001">>, ReplyToMsgId),
-        ?assertEqual(321, ReplyToFromId),
+        ?assertEqual(1001, ReplyToFromId),
         ?assertEqual(<<"hello group reply">>, ReplySnippet)
     end).
 
@@ -348,11 +326,6 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
         {elib_log, [
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 88;
-                             (<<"from_user">>) -> 1001
-                         end}
         ]},
         {group_ds, [
             {'is_member', 2, fun(1001, 88) -> true end},
@@ -369,7 +342,8 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
         ]},
         {elib_dt, [
             {'millisecond', 0, fun() -> 1700000060000 end},
-            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+            {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
         ]},
         {elib_retry_config, [
             {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
@@ -379,8 +353,8 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"group_1">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"88">>,
+            <<"from">> => <<"1001">>,
             <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2g_revoke_001">>}
         },
 
@@ -399,23 +373,23 @@ c2g_revoke_permission_denied_when_operator_not_sender_test_() ->
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 88;
-                             (<<"from_user">>) -> 2002
-                         end}
-        ]},
         {group_ds, [
             {'is_member', 2, fun(1001, 88) -> true end}
         ]},
+        {msg_c2g_repo, [
+            {'find_msg_by_id', 1, fun(<<"orig_c2g_revoke_002">>) ->
+                {ok, #{<<"from_id">> => 9999, <<"created_at">> => 1700000000000}}
+            end}
+        ]},
         {message_ds, [
-            {'assemble_s2c', 3, fun(<<"c2g_revoke_denied_001">>, <<"permission_denied">>, <<"group_1">>) ->
+            {'assemble_s2c', 3, fun(<<"c2g_revoke_denied_001">>, <<"permission_denied">>, <<"88">>) ->
                 #{<<"id">> => <<"c2g_revoke_denied_001">>, <<"error">> => <<"permission_denied">>}
             end}
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"group_1">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"88">>,
+            <<"from">> => <<"1001">>,
             <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2g_revoke_002">>}
         },
 
@@ -428,11 +402,6 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
         {elib_log, [
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 88;
-                             (<<"from_user">>) -> 1001
-                         end}
         ]},
         {group_ds, [
             {'is_member', 2, fun(1001, 88) -> true end},
@@ -459,8 +428,8 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
         ]}
     ], fun() ->
         Data = #{
-            <<"to">> => <<"group_1">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"88">>,
+            <<"from">> => <<"1001">>,
             <<"payload">> => #{
                 <<"original_msg_id">> => <<"orig_c2g_edit_001">>,
                 <<"content">> => <<"new content">>,
@@ -479,9 +448,6 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
 
 c2g_plaintext_blocked_when_encryption_required_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -501,7 +467,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_plaintext_blocked_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => #{<<"content">> => <<"hello group">>, <<"mentions">> => []},
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"text">>,
@@ -522,10 +488,6 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
 
 c2g_e2ee_message_allowed_when_encryption_required_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 100 end},
-            {'encode', 1, fun(1001) -> <<"from_user">> end}
-        ]},
         {group_member_logic, [
             {'check_mute', 2, fun(100, 1001) -> false end}
         ]},
@@ -557,7 +519,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_e2ee_allowed_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
+            <<"to">> => <<"100">>,
             <<"payload">> => <<"nonce.ciphertext">>,
             <<"created_at">> => 1708768700000,
             <<"msg_type">> => <<"e2ee">>,
@@ -575,11 +537,6 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
         {elib_log, [
             {'internal_log', 4, fun(_, _, _, _) -> ok end},
             {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_1">>) -> 88;
-                             (<<"from_user">>) -> 1001
-                         end}
         ]},
         {group_ds, [
             {'is_member', 2, fun(1001, 88) -> true end}
@@ -601,8 +558,8 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
     ], fun() ->
         MsgId = <<"msg_c2g_edit_plaintext_blocked_001">>,
         Data = #{
-            <<"to">> => <<"group_1">>,
-            <<"from">> => <<"from_user">>,
+            <<"to">> => <<"88">>,
+            <<"from">> => <<"1001">>,
             <<"payload">> => #{
                 <<"original_msg_id">> => <<"orig_c2g_edit_blocked_001">>,
                 <<"content">> => <<"new content">>,

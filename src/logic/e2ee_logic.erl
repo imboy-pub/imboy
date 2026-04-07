@@ -28,7 +28,7 @@ group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) 
             case user_device_ds:list_public_keys_by_uids(MemberUids) of
                 {ok, Rows} ->
                     {ok, #{
-                        <<"gid">> => elib_hashids:encode(Gid),
+                        <<"gid">> => Gid,
                         <<"members">> => group_by_uid(Rows)
                     }};
                 {error, Reason} ->
@@ -104,7 +104,7 @@ notify_friends_key_changed(Uid, DeviceId, DeviceType, KeyId) ->
 
     % 构造通知负载
     Payload = #{
-        <<"uid">> => elib_hashids:encode(Uid),
+        <<"uid">> => Uid,
         <<"device_id">> => DeviceId,
         <<"device_type">> => DeviceType,
         <<"key_id">> => KeyId
@@ -122,7 +122,7 @@ user_keys_payload(TargetUid) ->
     case user_device_ds:list_public_keys(TargetUid) of
         {ok, Devices} ->
             {ok, #{
-                <<"uid">> => elib_hashids:encode(TargetUid),
+                <<"uid">> => TargetUid,
                 <<"devices">> => Devices
             }};
         {error, Reason} ->
@@ -137,7 +137,7 @@ group_by_uid(Rows) ->
             fun(Row, Acc) ->
                 Uid = maps:get(<<"user_id">>, Row),
                 Existing = maps:get(Uid, Acc, []),
-                Row2 = maps:put(<<"uid">>, elib_hashids:encode(Uid), maps:remove(<<"user_id">>, Row)),
+                Row2 = maps:put(<<"uid">>, Uid, maps:remove(<<"user_id">>, Row)),
                 maps:put(Uid, [Row2 | Existing], Acc)
             end,
             #{},
@@ -145,7 +145,7 @@ group_by_uid(Rows) ->
         ),
     lists:map(
         fun({Uid, DevsRev}) ->
-            #{<<"uid">> => elib_hashids:encode(Uid), <<"devices">> => lists:reverse(DevsRev)}
+            #{<<"uid">> => Uid, <<"devices">> => lists:reverse(DevsRev)}
         end,
         lists:sort(maps:to_list(Map0))
     ).
@@ -197,7 +197,7 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
         {ok, _, Rows} ->
             Notifications = lists:map(fun(Row) ->
                 #{
-                    <<"uid">> => elib_hashids:encode(maps:get(<<"user_id">>, Row)),
+                    <<"uid">> => maps:get(<<"user_id">>, Row),
                     <<"device_id">> => maps:get(<<"device_id">>, Row),
                     <<"device_type">> => maps:get(<<"device_type">>, Row),
                     <<"key_id">> => maps:get(<<"key_id">>, Row),

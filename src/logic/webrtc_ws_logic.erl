@@ -40,10 +40,10 @@ event(CurrentUid, ToUid, MsgId, Msg) when
             message_ds:send_next(ToUid, MsgId, Msg, MsLi),
             ok;
         {_, InDenylist2} when InDenylist2 > 0 ->
-            MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, elib_hashids:encode(ToUid)),
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
             {reply, jsone:encode(MsgMap, [native_utf8])};
         {false, _InDenylist} ->
-            MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, elib_hashids:encode(ToUid)),
+            MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, ToUid),
             {reply, jsone:encode(MsgMap, [native_utf8])}
     end.
 

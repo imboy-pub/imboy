@@ -80,11 +80,6 @@ init_list_success_test_() ->
                 [#{<<"uid">> => 67890, <<"remark">> => <<"好友">>}]
             end}
         ]},
-        {elib_hashids, [
-            {'replace_id', 1, fun(Map) ->
-                Map#{<<"id">> => <<"me_hash">>}
-            end}
-        ]},
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}

@@ -69,7 +69,7 @@ test_create_notice() ->
 
     % 2. 验证返回结果
     ?assertEqual(Content, maps:get(<<"content">>, Notice)),
-    ?assertEqual(elib_hashids:encode(Owner), maps:get(<<"author_id">>, Notice)),
+    ?assertEqual(integer_to_binary(Owner), maps:get(<<"author_id">>, Notice)),
     ?assertEqual(false, maps:get(<<"is_pinned">>, Notice)),
 
     ok.

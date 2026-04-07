@@ -108,7 +108,7 @@ Repo 模块由 DS 层调用：
 
 - **`elib_pg.erl`**: 所有数据库操作必须使用此模块
 - **`imboy_cache.erl`**: 缓存操作
-- **`elib_hashids.erl`**: ID 编码/解码
+- **`elib_tsid.erl`**: TSID 分布式 ID 生成（insert 时调用 `elib_tsid:generate(table_name)`）
 
 ### 数据库配置
 

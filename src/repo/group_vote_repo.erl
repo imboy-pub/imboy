@@ -88,7 +88,13 @@ insert_vote(Data) ->
                 is_anonymous => maps:get(is_anonymous, Data, false),
                 status => maps:get(status, Data, 1)
             },
-            elib_pg:insert(Tb, Data2, <<"RETURNING id">>);
+            Id = elib_tsid:generate(group_vote),
+            Data3 = Data2#{id => Id},
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
+            case elib_pg:query(Sql, Params) of
+                {ok, _Count} -> {ok, Id};
+                {error, _} = Err -> Err
+            end;
         _ ->
             {error, invalid_param}
     end.
@@ -209,7 +215,13 @@ insert_option(Data) ->
                 created_at => maps:get(created_at, Data, Now),
                 sort_order => maps:get(sort_order, Data, 0)
             },
-            elib_pg:insert(Tb, Data2, <<"RETURNING id">>);
+            Id = elib_tsid:generate(group_vote_option),
+            Data3 = Data2#{id => Id},
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
+            case elib_pg:query(Sql, Params) of
+                {ok, _Count} -> {ok, Id};
+                {error, _} = Err -> Err
+            end;
         _ ->
             {error, invalid_param}
     end.
@@ -307,7 +319,13 @@ insert_record(Data) ->
         {VoteId, UserId, _OptionIds} when is_binary(VoteId), is_integer(UserId) ->
             Now = elib_dt:now(),
             Data2 = Data#{created_at => maps:get(created_at, Data, Now)},
-            elib_pg:insert(Tb, Data2, <<"RETURNING id">>);
+            Id = elib_tsid:generate(group_vote),
+            Data3 = Data2#{id => Id},
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
+            case elib_pg:query(Sql, Params) of
+                {ok, _Count} -> {ok, Id};
+                {error, _} = Err -> Err
+            end;
         _ ->
             {error, invalid_param}
     end.

@@ -20,10 +20,6 @@ init_add_success_test_() ->
                 #{<<"denied_user_id">> => <<"u_hash_67890">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"u_hash_67890">>) -> 67890 end},
-            {'encode', 1, fun(12345) -> <<"u_hash_12345">> end}
-        ]},
         {user_denylist_logic, [
             {'add', 2, fun(12345, 67890) ->
                 <<"2026-03-16T00:00:00Z">>
@@ -49,9 +45,6 @@ init_remove_success_test_() ->
             {'post', 1, fun(_Req) ->
                 #{<<"denied_user_id">> => <<"u_hash_67890">>}
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"u_hash_67890">>) -> 67890 end}
         ]},
         {user_denylist_logic, [
             {'remove', 2, fun(12345, 67890) ->

@@ -66,7 +66,7 @@ filter_deleted_conversations_test_() ->
             #{<<"from_id">> => 1003, <<"payload">> => <<"message3">>}
         ],
 
-        ConversationId2 = elib_hashids:encode(1002),
+        ConversationId2 = integer_to_binary(1002),
         ?assertEqual(ok, conversation_logic:delete(Uid, ConversationId2, <<"c2c">>)),
 
         FilteredList = conversation_logic:filter_deleted_conversations(Uid, MsgList),

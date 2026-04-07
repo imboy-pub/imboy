@@ -12,9 +12,7 @@
 
 -spec channel_transfer(map()) -> map().
 channel_transfer(Channel) when is_map(Channel) ->
-    Channel2 = elib_hashids:replace_id(Channel),
-    Channel3 = elib_hashids:replace_id(Channel2, <<"creator_uid">>),
-    Channel3.
+    Channel.
 
 -spec resolve_channel_id(binary()) -> integer().
 resolve_channel_id(ChannelIdBin) ->
@@ -27,7 +25,7 @@ resolve_channel_id(ChannelIdBin) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

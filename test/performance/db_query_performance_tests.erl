@@ -177,7 +177,7 @@ test_message_history_performance() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)})
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)})
     end, lists:seq(1, 500)),
 
     % 测试分页查询
@@ -218,7 +218,7 @@ test_fulltext_search_performance() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)})
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)})
     end, lists:seq(1, 200)),
 
     % 测试全文检索

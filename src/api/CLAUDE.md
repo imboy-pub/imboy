@@ -116,7 +116,7 @@ get_routes() ->
 
 - `elib_req.erl`: 请求参数解析
 - `elib_response.erl`: 响应格式化
-- `elib_hashids.erl`: ID 编码/解码
+- `elib_cnv.erl`: ID 类型转换工具
 - `auth_middleware.erl`: 认证中间件
 
 ---

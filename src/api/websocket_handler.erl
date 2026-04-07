@@ -83,6 +83,9 @@ websocket_init(State) ->
             DID = maps:get(did, State, <<>>),
             DType = maps:get(dtype, State, <<>>),
             user_logic:online(CurrentUid, DType, self(), DID),
+            %% 版本保护：检查客户端版本是否过低，发送升级提醒
+            AppVsn = maps:get(vsn, State, undefined),
+            maybe_send_upgrade_notice(AppVsn, DType, DID),
             {ok, State, hibernate}
     end.
 
@@ -377,6 +380,43 @@ validate_ack_params(_Type, MsgId, DID, State) ->
             {error, <<"did_mismatch">>}
     end.
 
+
+%% @doc WebSocket 版本保护：版本过低时发送 S2C 升级提醒
+%% 不断开连接，只发消息提醒，用户体验更好
+-spec maybe_send_upgrade_notice(binary() | undefined, binary(), binary()) -> ok.
+maybe_send_upgrade_notice(undefined, _DType, _DID) ->
+    ok;
+maybe_send_upgrade_notice(<<>>, _DType, _DID) ->
+    ok;
+maybe_send_upgrade_notice(AppVsn, DType, DID) ->
+    try
+        Result = app_version_logic:check(AppVsn, DType, DID),
+        UpgradeType = maps:get(<<"upgrade_type">>, Result, <<"none">>),
+        case UpgradeType of
+            <<"force">> ->
+                %% 版本过低需要强制升级，发送 S2C 升级消息
+                Msg = #{
+                    <<"type">> => <<"S2C">>,
+                    <<"action">> => <<"app_upgrade">>,
+                    <<"payload">> => #{
+                        <<"upgrade_type">> => UpgradeType,
+                        <<"vsn">> => maps:get(<<"vsn">>, Result, <<>>),
+                        <<"download_url">> => maps:get(<<"download_url">>, Result, <<>>),
+                        <<"description">> => maps:get(<<"description">>, Result, <<>>),
+                        <<"changelog">> => maps:get(<<"changelog">>, Result, []),
+                        <<"file_size">> => maps:get(<<"file_size">>, Result, 0),
+                        <<"file_hash">> => maps:get(<<"file_hash">>, Result, <<>>)
+                    },
+                    <<"server_ts">> => elib_dt:millisecond()
+                },
+                self() ! {reply, Msg},
+                ok;
+            _ ->
+                ok
+        end
+    catch
+        _:_ -> ok
+    end.
 
 %% @doc 处理 ACK 消息类型
 -spec process_ack_type(binary(), binary(), integer(), binary()) -> ok.

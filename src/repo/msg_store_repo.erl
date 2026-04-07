@@ -73,9 +73,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         created_at => CreatedAt,
         server_ts => ServerTs,
         retry_count => 0},
+    %% 预生成 TSID
+    GenId = elib_tsid:generate(msg_store),
+    Data2 = Data#{id => GenId},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     %% 【幂等性修复】捕获唯一约束错误
-    case elib_pg:insert(Tb, Data) of
-        {ok, _} = OkResult -> OkResult;
+    case elib_pg:query(Sql, Params) of
+        {ok, _} -> {ok, GenId};
         {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
             %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
             {error, {unique_violation, MsgId}};
@@ -104,9 +108,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
              created_at => CreatedAt,
              server_ts => ServerTs,
              retry_count => 0},
+    %% 预生成 TSID
+    GenId2 = elib_tsid:generate(msg_store),
+    Data3 = Data#{id => GenId2},
+    {Sql2, Params2} = elib_pg_sql:insert(Tb, Data3),
     %% 【幂等性修复】捕获唯一约束错误
-    case elib_pg:insert(Tb, Data) of
-        {ok, _} = OkResult -> OkResult;
+    case elib_pg:query(Sql2, Params2) of
+        {ok, _} -> {ok, GenId2};
         {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
             %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
             {error, {unique_violation, MsgId}};

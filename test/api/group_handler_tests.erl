@@ -115,9 +115,6 @@ msg_page_preserves_atom_list_payload_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"g_101">>}] end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_101">>) -> 101 end}
-        ]},
         {group_member_repo, [
             {'find', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end}
         ]},

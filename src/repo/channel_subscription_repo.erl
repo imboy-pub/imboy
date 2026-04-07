@@ -42,17 +42,28 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"channel_subscription">>).
 
 %% @doc 添加订阅关系
--spec add(map()) -> {ok, term()} | {error, term()}.
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(channel_subscription),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 添加订阅关系（使用连接）
--spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(channel_subscription),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 幂等激活订阅关系（插入或将 status 恢复为 1）
 %% @param Conn 事务连接
@@ -65,14 +76,15 @@ add(Conn, Data) ->
 upsert_active(Conn, ChannelId, Uid) ->
     Tb = tablename(),
     Now = elib_dt:now(),
+    GenId = elib_tsid:generate(channel_subscription),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (channel_id, user_id, subscribed_at, status) "
-            "VALUES ($1, $2, $3, 1) "
+            " (id, channel_id, user_id, subscribed_at, status) "
+            "VALUES ($1, $2, $3, $4, 1) "
             "ON CONFLICT (channel_id, user_id) DO UPDATE "
             "SET status = 1, subscribed_at = EXCLUDED.subscribed_at "
             "WHERE ", Tb/binary, ".status <> 1 "
             "RETURNING 1 AS changed">>,
-    case elib_pg:query(Conn, Sql, [ChannelId, Uid, Now]) of
+    case elib_pg:query(Conn, Sql, [GenId, ChannelId, Uid, Now]) of
         {ok, []} ->
             {ok, false};
         {ok, [_ | _]} ->

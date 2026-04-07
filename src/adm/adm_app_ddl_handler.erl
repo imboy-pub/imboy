@@ -73,7 +73,6 @@ index(_Method, _Ajax, Req0, _State) ->
 -spec save(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 save(<<"POST">>, Req0, State) ->
     % CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     AdmUserId = maps:get(adm_user_id, State),
 
     PostVals = elib_param:post(Req0),

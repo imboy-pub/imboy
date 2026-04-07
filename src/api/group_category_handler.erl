@@ -183,7 +183,7 @@ normalize_hashid_or_int(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    elib_hashids:decode(Value)
+                    ec_cnv:to_integer(Value)
             end
     end;
 normalize_hashid_or_int(_Value) ->

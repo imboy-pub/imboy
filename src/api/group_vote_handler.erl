@@ -62,7 +62,7 @@ handle_action(false, Req, _State) -> Req.
 create(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, <<>>),
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
     Uid = maps:get(current_uid, State),
 
     Title = maps:get(<<"title">>, PostVals, <<>>),
@@ -112,7 +112,7 @@ create(Req0, State) ->
 list(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
     {Page, Size} = elib_param:page(Req0),
 
     case Gid2 of

@@ -35,8 +35,8 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
     MsgId = elib_id:gen("s2c"),
     Msg = message_ds:assemble_msg(
         <<"S2C">>,
-        elib_hashids:encode(FromId),
-        elib_hashids:encode(ToUid),
+        FromId,
+        ToUid,
         Payload,
         MsgId,
         MsgType,   % S2C 消息通常为空
@@ -260,6 +260,16 @@ process_s2c_row(Row) ->
     % 移除 msg_id 字段（已经替换到 id）
     Row3 = maps:remove(<<"msg_id">>, Row2),
 
+    % TSID 大整数超过 JS 安全范围，ID 字段转为 binary 字符串
+    Row3b = case maps:find(<<"from_id">>, Row3) of
+        {ok, FId} -> Row3#{<<"from_id">> => FId};
+        error -> Row3
+    end,
+    Row3c = case maps:find(<<"to_id">>, Row3b) of
+        {ok, TId} -> Row3b#{<<"to_id">> => TId};
+        error -> Row3b
+    end,
+
     % 处理旧数据的嵌套 payload 格式
     % 旧数据: payload 是完整消息对象，包含嵌套的 payload 子字段
     % 新数据: payload 只包含实际数据
@@ -267,8 +277,8 @@ process_s2c_row(Row) ->
         true ->
             % 旧数据格式：提取嵌套的 payload
             ActualPayload = maps:get(<<"payload">>, Payload, #{}),
-            Row3#{<<"payload">> => ActualPayload};
+            Row3c#{<<"payload">> => ActualPayload};
         false ->
             % 新数据格式：直接使用
-            Row3
+            Row3c
     end.

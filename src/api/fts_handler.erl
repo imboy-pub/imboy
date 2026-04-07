@@ -72,8 +72,8 @@ parse_search_options(QueryList) ->
     Options4 = case proplists:get_value(<<"from_uid">>, QueryList, undefined) of
         undefined -> Options3;
         FromUid ->
-            case elib_hashids:decode(FromUid) of
-                {ok, FromUidInt} -> maps:put(<<"from_uid">>, FromUidInt, Options3);
+            case ec_cnv:to_integer(FromUid) of
+                FromUidInt when is_integer(FromUidInt), FromUidInt > 0 -> maps:put(<<"from_uid">>, FromUidInt, Options3);
                 _ -> Options3
             end
     end,
@@ -82,8 +82,8 @@ parse_search_options(QueryList) ->
     Options5 = case proplists:get_value(<<"conversation_id">>, QueryList, undefined) of
         undefined -> Options4;
         ConversationId ->
-            case elib_hashids:decode(ConversationId) of
-                {ok, ConversationIdInt} -> maps:put(<<"conversation_id">>, ConversationIdInt, Options4);
+            case ec_cnv:to_integer(ConversationId) of
+                ConversationIdInt when is_integer(ConversationIdInt), ConversationIdInt > 0 -> maps:put(<<"conversation_id">>, ConversationIdInt, Options4);
                 _ -> Options4
             end
     end,

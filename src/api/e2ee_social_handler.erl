@@ -368,7 +368,7 @@ do_add_contact(Req0, State) ->
 
     % 解码 contact_uid
     ContactUidEnc = maps:get(<<"contact_uid">>, Data, <<>>),
-    ContactUid = elib_hashids:decode(ContactUidEnc),
+    ContactUid = ec_cnv:to_integer(ContactUidEnc),
     case ContactUid of
         0 ->
             elib_response:error(Req0, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
@@ -407,7 +407,7 @@ do_remove_contact(Req0, State) ->
 
     % 解码 contact_uid
     ContactUidEnc = maps:get(<<"contact_uid">>, Data, <<>>),
-    ContactUid = elib_hashids:decode(ContactUidEnc),
+    ContactUid = ec_cnv:to_integer(ContactUidEnc),
     case ContactUid of
         0 ->
             elib_response:error(Req0, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);

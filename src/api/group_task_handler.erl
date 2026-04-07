@@ -54,7 +54,7 @@ create(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"group_id">>, PostVals, <<>>),
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
     Title = maps:get(<<"title">>, PostVals, <<>>),
     UserIds = maps:get(<<"user_ids">>, PostVals, []),
 
@@ -73,7 +73,7 @@ create(Req0, State) ->
             case group_task_logic:create(Gid2, CurrentUid, Title, Data) of
                 {ok, TaskId} ->
                     maybe_assign_task(TaskId, UserIds),
-                    TaskId2 = elib_hashids:encode(TaskId),
+                    TaskId2 = TaskId,
                     elib_response:success(Req0, #{<<"task_id">> => TaskId2}, <<"作业创建成功"/utf8>>);
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
@@ -127,7 +127,7 @@ assign(Req0, State) ->
             elib_response:error(Req0, <<"作业ID必填"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             % 解码用户ID列表
-            UserIds2 = [elib_hashids:decode(Uid) || Uid <- UserIds],
+            UserIds2 = [ec_cnv:to_integer(Uid) || Uid <- UserIds],
             case group_task_logic:assign(TaskId2, UserIds2) of
                 ok ->
                     elib_response:success(Req0, #{<<"task_id">> => TaskId}, <<"作业分配成功"/utf8>>);
@@ -200,7 +200,7 @@ list(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"group_id">>, Qs, <<>>),
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
     Status = normalize_optional_status(proplists:get_value(<<"status">>, Qs, undefined)),
     AssigneeId = normalize_assignee_id(proplists:get_value(<<"assignee_id">>, Qs, undefined), CurrentUid),
     {Page, Size} = elib_param:page(Req0),
@@ -296,12 +296,12 @@ pending_review(Req0, State) ->
 %% @doc 转换作业数据格式
 -spec task_transfer(map()) -> map().
 task_transfer(Task) ->
-    elib_hashids:replace_fields(Task, [<<"id">>, <<"group_id">>, <<"creator_id">>]).
+    Task.
 
 %% @doc 转换作业分配数据格式
 -spec assignment_transfer(map()) -> map().
 assignment_transfer(Assignment) ->
-    elib_hashids:replace_fields(Assignment, [<<"user_id">>]).
+    Assignment.
 
 %% @doc 兼容 task_id:
 %% - 原生 task_uid（二进制字符串）
@@ -329,7 +329,7 @@ normalize_task_uid(TaskId) when is_binary(TaskId) ->
                         {ok, _Task} ->
                             TaskId;
                         _ ->
-                            case elib_hashids:decode(TaskId) of
+                            case ec_cnv:to_integer(TaskId) of
                                 0 ->
                                     undefined;
                                 Id ->
@@ -370,7 +370,7 @@ normalize_hashid_id(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    elib_hashids:decode(Value)
+                    ec_cnv:to_integer(Value)
             end
     end;
 normalize_hashid_id(_Value) ->

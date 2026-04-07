@@ -19,9 +19,6 @@ send_system_message_success_test_() ->
         {elib_id, [
             {'gen', 1, fun(_Prefix) -> <<"msg_id_s2c">> end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
-        ]},
         {message_ds, [
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->
                 #{<<"type">> => <<"S2C">>, <<"id">> => <<"msg_id_s2c">>}
@@ -51,9 +48,6 @@ send_with_action_test_() ->
     ?WITH_MECKS([
         {elib_id, [
             {'gen', 1, fun(_Prefix) -> <<"msg_id_action">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
         ]},
         {message_ds, [
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->
@@ -88,9 +82,6 @@ send_with_multiple_recipients_test_() ->
         {elib_id, [
             {'gen', 1, fun(_Prefix) -> <<"msg_id_multi">> end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
-        ]},
         {message_ds, [
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->
                 #{<<"type">> => <<"S2C">>, <<"id">> => <<"msg_id_multi">>}
@@ -120,9 +111,6 @@ send_with_empty_body_test_() ->
     ?WITH_MECKS([
         {elib_id, [
             {'gen', 1, fun(_Prefix) -> <<"msg_id_empty">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
         ]},
         {message_ds, [
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->
@@ -171,9 +159,6 @@ s2c_sends_to_user_test_() ->
         {elib_retry_config, [
             {'intervals', 1, fun(_Type) -> [0, 1000, 2000] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
-        ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end},
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end}
@@ -184,7 +169,7 @@ s2c_sends_to_user_test_() ->
         CurrentUid = 1,
         Data = #{
             <<"payload">> => #{<<"old_msg_id">> => <<"old_msg_1">>},
-            <<"to">> => <<"encoded_uid_2">>
+            <<"to">> => <<"2">>
         },
 
         Result = msg_s2c_logic:s2c(Action, MsgId, CurrentUid, Data),
@@ -200,9 +185,6 @@ s2c_with_pull_offline_msg_action_test_() ->
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->
                 #{<<"type">> => <<"S2C">>, <<"id">> => <<"msg_pull">>}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
         ]}
     ], fun() ->
         Action = <<"C2G_DEL_FOR_ME">>,
@@ -210,7 +192,7 @@ s2c_with_pull_offline_msg_action_test_() ->
         CurrentUid = 1,
         Data = #{
             <<"payload">> => #{<<"old_msg_id">> => <<"old_msg_2">>},
-            <<"to">> => <<"encoded_gid_1">>
+            <<"to">> => <<"1">>
         },
 
         Result = msg_s2c_logic:s2c(Action, MsgId, CurrentUid, Data),
@@ -240,9 +222,6 @@ send_direct_without_save_test_() ->
     ?WITH_MECKS([
         {elib_id, [
             {'gen', 1, fun(_Prefix) -> <<"msg_direct">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Id) -> <<"encoded_id">> end}
         ]},
         {message_ds, [
             {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _MsgType, _Action, _E2EE) ->

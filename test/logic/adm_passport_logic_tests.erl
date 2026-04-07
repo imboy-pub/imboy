@@ -32,9 +32,6 @@ do_login_with_mobile_success_test_() ->
         ]},
         {elib_password, [
             {'verify', 2, fun(<<"password">>, <<"hash">>) -> {ok, valid} end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(1) -> <<"encoded-1">> end}
         ]}
     ], fun() ->
         Result = adm_passport_logic:do_login(<<"13800138000">>, <<"password">>),
@@ -70,9 +67,6 @@ do_login_with_account_success_and_default_role_test_() ->
         ]},
         {elib_password, [
             {'verify', 2, fun(<<"password">>, <<"hash2">>) -> {ok, valid} end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(2) -> <<"encoded-2">> end}
         ]}
     ], fun() ->
         Result = adm_passport_logic:do_login(<<"admin">>, <<"password">>),

@@ -279,9 +279,6 @@ remove_admin_uses_path_params_on_delete_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
-        ]},
         {channel_logic, [
             {'remove_admin', 3, fun(1001, <<"ch_hash_path">>, 2002) -> ok end}
         ]},
@@ -309,9 +306,6 @@ remove_admin_returns_error_when_user_id_decode_unexpected_test_() ->
                     _ -> undefined
                 end
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> invalid_uid_decode end}
         ]},
         {channel_logic, [
             {'remove_admin', 3, fun(_, _, _) -> erlang:error(should_not_call_remove_admin_when_user_id_invalid) end}
@@ -343,9 +337,6 @@ remove_admin_put_delegates_to_update_admin_role_test_() ->
                     _ -> undefined
                 end
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
         ]},
         {channel_logic, [
             {'update_admin_role', 4, fun(1001, <<"ch_hash_path">>, 2002, 2) -> ok end},
@@ -381,9 +372,6 @@ update_admin_role_prefers_path_params_over_body_test_() ->
                     _ -> undefined
                 end
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
         ]},
         {channel_logic, [
             {'update_admin_role', 4, fun(1001, <<"ch_hash_path">>, 2002, 3) -> ok end}
@@ -448,9 +436,6 @@ update_admin_role_returns_error_when_user_id_decode_unexpected_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> invalid_uid_decode end}
-        ]},
         {channel_logic, [
             {'update_admin_role', 4, fun(_, _, _, _) ->
                 erlang:error(should_not_call_update_admin_role_when_user_id_invalid)
@@ -480,9 +465,6 @@ create_invitation_prefers_path_channel_id_over_body_test_() ->
         {cowboy_req, [
             {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
-        ]},
         {channel_logic, [
             {'create_invitation', 3, fun(1001, <<"ch_hash_path">>, 2002) ->
                 {ok, #{<<"id">> => <<"inv_1">>}}
@@ -505,9 +487,6 @@ create_invitation_without_invitee_uid_returns_error_test_() ->
         ]},
         {cowboy_req, [
             {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<>>) -> 0 end}
         ]},
         {channel_logic, [
             {'create_invitation', 3, fun(_, _, _) ->
@@ -532,9 +511,6 @@ create_invitation_returns_error_when_invitee_uid_decode_unexpected_test_() ->
         ]},
         {cowboy_req, [
             {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> invalid_uid_decode end}
         ]},
         {channel_logic, [
             {'create_invitation', 3, fun(_, _, _) ->
@@ -704,9 +680,6 @@ remove_subscriber_uses_path_params_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
-        ]},
         {channel_logic, [
             {'remove_subscriber', 3, fun(1001, <<"ch_hash_path">>, 2002) -> ok end}
         ]},
@@ -731,9 +704,6 @@ remove_subscriber_returns_error_when_user_id_decode_unexpected_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> invalid_uid_decode end}
-        ]},
         {channel_logic, [
             {'remove_subscriber', 3, fun(_, _, _) ->
                 erlang:error(should_not_call_remove_subscriber_when_user_id_invalid)
@@ -751,8 +721,8 @@ remove_subscriber_returns_error_when_user_id_decode_unexpected_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -797,14 +767,14 @@ create_invitation_handler_logic_repo_chain_success_test_() ->
         Result = channel_handler:handle_action(create_invitation, Req, State),
         ?assertMatch({ok_resp, _}, Result),
         {ok_resp, Invitation} = Result,
-        ?assertEqual(11, elib_hashids:decode(maps:get(<<"channel_id">>, Invitation))),
+        ?assertEqual(11, binary_to_integer(maps:get(<<"channel_id">>, Invitation))),
         ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
         ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
     end).
 
 create_invitation_handler_logic_repo_chain_channel_not_found_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -836,8 +806,8 @@ create_invitation_handler_logic_repo_chain_channel_not_found_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_channel_disabled_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -871,8 +841,8 @@ create_invitation_handler_logic_repo_chain_channel_disabled_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_non_private_channel_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -906,8 +876,8 @@ create_invitation_handler_logic_repo_chain_non_private_channel_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_inviter_not_subscribed_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -947,8 +917,8 @@ create_invitation_handler_logic_repo_chain_inviter_not_subscribed_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_ds_binary_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -988,8 +958,8 @@ create_invitation_handler_logic_repo_chain_ds_binary_error_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_ds_atom_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1032,8 +1002,8 @@ create_invitation_handler_logic_repo_chain_ds_atom_error_test_() ->
     end).
 
 create_invitation_handler_logic_repo_chain_invitation_load_failed_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1080,9 +1050,6 @@ accept_invitation_handler_logic_ds_chain_already_accepted_is_success_and_silent_
                 #{<<"invitation_id">> => <<"inv_hash_1">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
-        ]},
         {channel_subscribe_ds, [
             {'accept_invitation', 2, fun(501, 1001) -> {error, already_accepted} end}
         ]},
@@ -1107,7 +1074,7 @@ accept_invitation_handler_logic_ds_chain_already_accepted_is_success_and_silent_
     end).
 
 accept_invitation_handler_logic_ds_chain_notify_crash_still_returns_success_test_() ->
-    InvitationIdBin = elib_hashids:encode(513),
+    InvitationIdBin = integer_to_binary(513),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1148,7 +1115,7 @@ accept_invitation_handler_logic_ds_chain_notify_crash_still_returns_success_test
     end).
 
 create_order_handler_logic_repo_chain_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1183,12 +1150,12 @@ create_order_handler_logic_repo_chain_success_test_() ->
         Result = channel_handler:handle_action(create_order, Req, State),
         ?assertMatch({ok_resp, _}, Result),
         {ok_resp, Order} = Result,
-        ?assertEqual(11, elib_hashids:decode(maps:get(<<"channel_id">>, Order))),
+        ?assertEqual(11, binary_to_integer(maps:get(<<"channel_id">>, Order))),
         ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
     end).
 
 create_order_handler_logic_repo_chain_channel_not_found_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1218,7 +1185,7 @@ create_order_handler_logic_repo_chain_channel_not_found_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_channel_lookup_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1248,7 +1215,7 @@ create_order_handler_logic_repo_chain_channel_lookup_error_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_non_paid_channel_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1280,7 +1247,7 @@ create_order_handler_logic_repo_chain_non_paid_channel_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_order_load_failed_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1315,7 +1282,7 @@ create_order_handler_logic_repo_chain_order_load_failed_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_channel_disabled_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1347,7 +1314,7 @@ create_order_handler_logic_repo_chain_channel_disabled_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_ds_binary_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1379,7 +1346,7 @@ create_order_handler_logic_repo_chain_ds_binary_error_test_() ->
     end).
 
 create_order_handler_logic_repo_chain_ds_atom_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -1414,8 +1381,8 @@ create_order_handler_logic_repo_chain_ds_atom_error_test_() ->
     end).
 
 update_admin_role_handler_logic_repo_chain_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1447,7 +1414,7 @@ update_admin_role_handler_logic_repo_chain_success_test_() ->
     end).
 
 pay_order_handler_logic_repo_chain_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1492,8 +1459,8 @@ pay_order_handler_logic_repo_chain_success_test_() ->
     end).
 
 remove_subscriber_handler_logic_repo_chain_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(Key, _Req) ->
@@ -1778,7 +1745,7 @@ pay_order_handler_logic_repo_chain_not_found_or_expired_error_test_() ->
     end).
 
 pay_order_handler_logic_repo_chain_notify_failed_still_returns_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -1859,8 +1826,8 @@ pay_order_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
     end).
 
 remove_subscriber_handler_logic_repo_chain_permission_denied_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(Key, _Req) ->
@@ -1893,8 +1860,8 @@ remove_subscriber_handler_logic_repo_chain_permission_denied_test_() ->
     end).
 
 remove_subscriber_handler_logic_repo_chain_delete_failed_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(Key, _Req) ->
@@ -1936,8 +1903,8 @@ remove_subscriber_handler_logic_repo_chain_delete_failed_test_() ->
     end).
 
 remove_subscriber_handler_logic_repo_chain_noop_is_idempotent_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(Key, _Req) ->
@@ -1983,8 +1950,8 @@ remove_subscriber_handler_logic_repo_chain_noop_is_idempotent_test_() ->
     end).
 
 update_admin_role_handler_logic_repo_chain_permission_denied_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -2016,8 +1983,8 @@ update_admin_role_handler_logic_repo_chain_permission_denied_test_() ->
     end).
 
 update_admin_role_handler_logic_repo_chain_update_failed_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    TargetUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    TargetUidBin = integer_to_binary(2002),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -2061,9 +2028,6 @@ add_admin_invalid_role_returns_contract_error_test_() ->
         {cowboy_req, [
             {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> 2002 end}
-        ]},
         {channel_logic, [
             {'add_admin', 4, fun(_, _, _, _) ->
                 erlang:error(should_not_call_add_admin)
@@ -2092,9 +2056,6 @@ add_admin_returns_error_when_user_id_decode_unexpected_test_() ->
         ]},
         {cowboy_req, [
             {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_path">>) -> invalid_uid_decode end}
         ]},
         {channel_logic, [
             {'add_admin', 4, fun(_, _, _, _) ->
@@ -2434,7 +2395,7 @@ update_prefers_path_channel_id_over_body_test_() ->
     end).
 
 update_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -2484,7 +2445,7 @@ update_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
     end).
 
 update_handler_logic_repo_chain_notify_failed_still_returns_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -2555,7 +2516,7 @@ delete_prefers_path_channel_id_over_body_test_() ->
     end).
 
 delete_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -2592,7 +2553,7 @@ delete_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
     end).
 
 delete_handler_logic_repo_chain_notify_failed_still_returns_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
@@ -2836,8 +2797,8 @@ delete_message_propagates_logic_error_test_() ->
     end).
 
 delete_message_handler_logic_repo_chain_notify_failed_still_returns_success_test_() ->
-    MessageIdBin = elib_hashids:encode(99),
-    ChannelIdBin = elib_hashids:encode(11),
+    MessageIdBin = integer_to_binary(99),
+    ChannelIdBin = integer_to_binary(11),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(message_id, _Req) -> MessageIdBin end}
@@ -2880,7 +2841,7 @@ delete_message_handler_logic_repo_chain_notify_failed_still_returns_success_test
     end).
 
 delete_message_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
-    MessageIdBin = elib_hashids:encode(100),
+    MessageIdBin = integer_to_binary(100),
     ?WITH_MECKS([
         {cowboy_req, [
             {'binding', 2, fun(message_id, _Req) -> MessageIdBin end}
@@ -3069,9 +3030,6 @@ accept_invitation_decodes_invitation_id_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
-        ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> ok end}
         ]},
@@ -3089,9 +3047,6 @@ accept_invitation_returns_error_when_invitation_id_missing_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<>>) -> 0 end}
         ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(_, _) -> erlang:error(should_not_call_accept_invitation) end}
@@ -3112,9 +3067,6 @@ accept_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> invalid_invitation_id end}
-        ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(_, _) -> erlang:error(should_not_call_accept_invitation_when_id_invalid) end}
         ]},
@@ -3134,9 +3086,6 @@ accept_invitation_returns_logic_error_message_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
-        ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
         ]},
@@ -3155,9 +3104,6 @@ accept_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
         ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> ok end}
@@ -3180,9 +3126,6 @@ reject_invitation_decodes_invitation_id_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
-        ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> ok end}
         ]},
@@ -3200,9 +3143,6 @@ reject_invitation_returns_error_when_invitation_id_missing_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{} end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<>>) -> 0 end}
         ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(_, _) -> erlang:error(should_not_call_reject_invitation) end}
@@ -3223,9 +3163,6 @@ reject_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> invalid_invitation_id end}
-        ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(_, _) -> erlang:error(should_not_call_reject_invitation_when_id_invalid) end}
         ]},
@@ -3245,9 +3182,6 @@ reject_invitation_returns_logic_error_message_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
-        ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
         ]},
@@ -3266,9 +3200,6 @@ reject_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"inv_hash_1">>) -> 501 end}
         ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> ok end}

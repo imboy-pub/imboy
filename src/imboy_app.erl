@@ -17,7 +17,12 @@ start(_Type, _Args) ->
     TsidDcId = application:get_env(imboy, tsid_dc_id, 1),
     TsidNodeId = application:get_env(imboy, tsid_node_id, 1),
     TsidDcBits = application:get_env(imboy, tsid_dc_bits, 3),
-    ok = elib_tsid:init(#{dc_id => TsidDcId, node_id => TsidNodeId, dc_bits => TsidDcBits}),
+    ok = elib_tsid:init(#{
+        dc_id => TsidDcId,
+        node_id => TsidNodeId,
+        dc_bits => TsidDcBits,
+        names => tsid_generator_names()
+    }),
     % 初始化集群管理
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
@@ -88,6 +93,116 @@ stop(_State) ->
             _ = cowboy:stop_listener(imboy_listener)
     end.
 
+
+%% ===================================================================
+%% TSID 命名生成器配置
+%% ===================================================================
+
+%% @doc 返回需要独立号段的 TSID 命名生成器列表
+%%
+%% 每个名称对应一张实体表，拥有独立的 sequence 计数器。
+%% 同一节点同一毫秒内，不同生成器可能产生相同数值的 ID，
+%% 但因为它们属于不同的数据库表，主键不冲突。
+-spec tsid_generator_names() -> [atom()].
+tsid_generator_names() ->
+    [
+        %% ── 用户相关 ──
+        user,
+        user_setting,
+        user_device,
+        user_collect,
+        user_denylist,
+        user_tag,
+        user_tag_relation,
+        user_log,
+        %% ── 好友相关 ──
+        friend,
+        friend_category,
+        %% ── 群组相关 ──
+        group_info,
+        group_member,
+        group_notice,
+        group_log,
+        group_random_code,
+        group_category,
+        group_tag,
+        group_vote,
+        group_vote_option,
+        group_schedule,
+        group_schedule_reminder,
+        group_album,
+        group_album_photo,
+        group_album_comment,
+        group_file,
+        group_task,
+        group_task_assignment,
+        %% ── 消息相关 (msg_id 标识用, 不做排序) ──
+        msg_c2c,
+        msg_c2g,
+        msg_c2s,
+        msg_s2c,
+        msg_store,
+        msg_read,
+        msg_mention,
+        msg_forward,
+        msg_reply,
+        msg_reaction,
+        msg_pinned,
+        %% ── 会话相关 ──
+        conversation,
+        conversation_pin,
+        conversation_delete,
+        %% ── 附件 / 媒体 ──
+        attachment,
+        %% ── 朋友圈 ──
+        moment_post,
+        moment_comment,
+        moment_like,
+        moment_timeline,
+        moment_post_acl,
+        moment_report,
+        %% ── 频道 ──
+        channel,
+        channel_message,
+        channel_subscription,
+        channel_admin,
+        channel_message_view,
+        channel_order,
+        channel_invitation,
+        %% ── 反馈 ──
+        feedback,
+        feedback_reply,
+        %% ── E2EE 恢复 ──
+        e2ee_transfer,
+        e2ee_social,
+        e2ee_local_backup,
+        e2ee_shard_transmission_log,
+        %% ── 举报 ──
+        report_ticket,
+        report_action_log,
+        %% ── 钱包 ──
+        wallet,
+        wallet_transaction,
+        %% ── 直播 ──
+        live_room,
+        %% ── 推送 ──
+        push_token,
+        %% ── 公告 ──
+        announcement,
+        %% ── 合规 ──
+        compliance_key,
+        %% ── 验证码 ──
+        verification_code,
+        %% ── 管理员 ──
+        adm_user,
+        %% ── 应用配置 ──
+        app_version,
+        app_ddl,
+        %% ── 附近的人 ──
+        geo_people_nearby,
+        %% ── 全文搜索 ──
+        fts_user
+    ].
 
 %% ===================================================================
 %% Internal Function Definitions

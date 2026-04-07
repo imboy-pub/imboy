@@ -35,11 +35,17 @@ tablename() ->
 
 %% @doc 插入群文件记录
 %% @param Data 包含文件信息的map
-%% @return {ok, FileId, #{}} | {error, Reason}
--spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, FileId} | {error, Reason}
+-spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(undefined, Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_file),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据文件ID（主键）查找文件
 %% @param FileId 文件主键ID

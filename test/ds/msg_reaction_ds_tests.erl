@@ -28,9 +28,6 @@ add_reaction_returns_encoded_user_and_timestamp_test_() ->
         {imboy_cache, [
             {'delete', 1, fun(CacheKey) -> ok end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(UserId) -> EncodedUid end}
-        ]},
         {elib_dt, [
             {'now', 0, fun() -> fixed_now end},
             {'to_rfc3339', 1, fun(fixed_now) -> CreatedAt end}
@@ -77,9 +74,6 @@ get_reactions_groups_by_emoji_and_encodes_users_test_() ->
                     #{<<"emoji">> => Heart, <<"user_id">> => 999997}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> encoded_uid(Uid) end}
         ]}
     ], fun() ->
         {ok, Reactions} = msg_reaction_ds:get_reactions(MsgId, MsgType),
@@ -109,9 +103,6 @@ get_reaction_stats_returns_map_entries_test_() ->
                     #{<<"emoji">> => Heart, <<"user_id">> => 999997}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> encoded_uid(Uid) end}
         ]}
     ], fun() ->
         {ok, Stats} = msg_reaction_ds:get_reaction_stats(MsgId, MsgType),

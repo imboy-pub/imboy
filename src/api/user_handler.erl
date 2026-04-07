@@ -98,10 +98,11 @@ search(Req0, State) ->
            true ->
                {IsF, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
                User2 = User#{<<"is_friend">> => IsF, <<"remark">> => Remark},
+               User3 = convert_user_id(User2),
                #{total => 1,
                  page => Page,
                  size => Size,
-                 list => [elib_hashids:replace_id(User2)]}
+                 list => [User3]}
         end,
     elib_response:success(Req0, Payload).
 
@@ -218,7 +219,7 @@ qrcode(Req0, State) ->
             Req = cowboy_req:reply(302, #{<<"Location">> => RedirectUrl}, Req0),
             {ok, Req, State};
         _ ->
-            Uid2 = elib_hashids:decode(Uid),
+            Uid2 = ec_cnv:to_integer(Uid),
             Column = <<"id,nickname,gender,avatar,sign,region,status">>,
             User = user_logic:find_by_id(Uid2, Column),
             Status = maps:get(<<"status">>, User, -2),
@@ -243,10 +244,9 @@ qrcode_transfer(CurrentUid, 1, User) ->
     User2 = maps:remove(<<"status">>, User),
     {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
     User2#{<<"type">> => <<"user">>,
-           <<"id">> => elib_hashids:encode(Uid2),
+           <<"id">> => Uid2,
            <<"isfriend">> => Isfriend,
            <<"remark">> => Remark};
-% [{<<"remark">>, Remark}, {<<"isfriend">>, Isfriend}] ++ elib_hashids:replace_id(User2);
 qrcode_transfer(_, _, _) ->
     % 状态: -1 删除  0 禁用  1 启用
     #{<<"result">> => <<"user_is_disabled_or_deleted">>, <<"msg">> => <<"用户被禁用或已删除"/utf8>>}.
@@ -335,6 +335,18 @@ show(Req0, _State) ->
                 {ok, DecodedUid} ->
                     Column = <<"id, nickname, avatar, account, sign">>,
                     User = user_logic:find_by_id(DecodedUid, Column),
-                    elib_response:success(Req0, elib_hashids:replace_id(User))
+                    User2 = convert_user_id(User),
+                    elib_response:success(Req0, User2)
             end
+    end.
+
+%% @doc 转换用户数据中的 ID 字段为 binary 字符串
+%% TSID 大整数超过 JS 安全范围，必须转为 binary 字符串
+-spec convert_user_id(map()) -> map().
+convert_user_id(User) ->
+    case maps:find(<<"id">>, User) of
+        {ok, Id} when is_integer(Id) ->
+            maps:put(<<"id">>, Id, User);
+        _ ->
+            User
     end.

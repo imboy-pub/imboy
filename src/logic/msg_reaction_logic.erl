@@ -252,7 +252,7 @@ notify_reaction_added(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
                         <<"msg_id">> => MsgId,
                         <<"emoji">> => Emoji,
                         <<"action">> => <<"add">>,
-                        <<"user_id">> => elib_hashids:encode(CurrentUid)
+                        <<"user_id">> => CurrentUid
                     },
                     Action = <<"message_reaction">>,
                     % 通过 WebSocket 发送通知
@@ -274,8 +274,8 @@ notify_reaction_added(MsgId, <<"c2g">>, CurrentUid, Emoji) ->
                 <<"msg_id">> => MsgId,
                 <<"emoji">> => Emoji,
                 <<"action">> => <<"add">>,
-                <<"user_id">> => elib_hashids:encode(CurrentUid),
-                <<"gid">> => elib_hashids:encode(Gid)
+                <<"user_id">> => CurrentUid,
+                <<"gid">> => Gid
             },
             Action = <<"message_reaction">>,
             % 通过 WebSocket 发送通知
@@ -311,7 +311,7 @@ notify_reaction_removed(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
                         <<"msg_id">> => MsgId,
                         <<"emoji">> => Emoji,
                         <<"action">> => <<"remove">>,
-                        <<"user_id">> => elib_hashids:encode(CurrentUid)
+                        <<"user_id">> => CurrentUid
                     },
                     Action = <<"message_reaction">>,
                     % 通过 WebSocket 发送通知
@@ -333,8 +333,8 @@ notify_reaction_removed(MsgId, <<"c2g">>, CurrentUid, Emoji) ->
                 <<"msg_id">> => MsgId,
                 <<"emoji">> => Emoji,
                 <<"action">> => <<"remove">>,
-                <<"user_id">> => elib_hashids:encode(CurrentUid),
-                <<"gid">> => elib_hashids:encode(Gid)
+                <<"user_id">> => CurrentUid,
+                <<"gid">> => Gid
             },
             Action = <<"message_reaction">>,
             % 通过 WebSocket 发送通知

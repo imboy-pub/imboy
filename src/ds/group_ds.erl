@@ -426,7 +426,7 @@ dissolve_group(Uid, Gid, _, G) ->
 
     % 发送通知
     Action = <<"group_dissolve">>,
-    Payload = #{<<"gid">> => elib_hashids:encode(Gid)},
+    Payload = #{<<"gid">> => Gid},
     msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
     ok.
 

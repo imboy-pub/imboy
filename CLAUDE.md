@@ -68,7 +68,7 @@ Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18**
 - 高并发：单机支持 100 万+ TCP 连接（阿里云 8 核 16G 压测验证）
 - 分布式：支持多节点集群部署
 - 实时通讯：WebSocket + HTTP/RESTful 双协议
-- 安全性：JWT 认证、RSA 加密、HashID 混淆、端到端加密 (E2EE)
+- 安全性：JWT 认证、RSA 加密、TSID 分布式 ID、端到端加密 (E2EE)
 - 可扩展：基于 PostgreSQL 18+ 的关系型数据库，支持全文检索、地理位置、时序数据
 
 ### 技术栈
@@ -212,7 +212,7 @@ graph TD
     LIB --> LIB_SYN["imboy_syn.erl<br/>分布式同步"]
     LIB --> LIB_ASYNC["elib_async.erl<br/>异步执行"]
     LIB --> LIB_RETRY["elib_retry.erl<br/>重试机制"]
-    LIB --> LIB_HASHID["elib_hashids.erl<br/>ID 编码/解码"]
+    LIB --> LIB_TSID["elib_tsid.erl<br/>TSID 分布式 ID"]
     LIB --> LIB_CIPHER["elib_cipher.erl<br/>加密/解密"]
 
     click ROOT "./CLAUDE.md" "查看根目录文档"
@@ -385,7 +385,7 @@ test/
 - **UTF-8 编码**: [doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
 - **错误码规范**: [doc/standards/error-codes.md](./doc/standards/error-codes.md)
 - **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **HashID 编码**: [doc/standards/hashid-encoding.md](./doc/standards/hashid-encoding.md)
+- **ID 规范**: TSID 分布式 ID（替代 HashID），客户端 ID 以 integer 传输
 - **API 格式**: [doc/standards/api-format.md](./doc/standards/api-format.md)
 
 ### 快速参考
@@ -395,7 +395,7 @@ test/
 | **UTF-8 编码** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
 | **错误码** | 使用宏定义，如 `?ERR_OK`, `?ERR_NOT_FOUND` | [error-codes.md](./doc/standards/error-codes.md) |
 | **数据库访问** | 所有数据库操作必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **HashID** | 输入 decode，输出 encode，数据库使用原始 ID | [hashid-encoding.md](./doc/standards/hashid-encoding.md) |
+| **TSID** | 分布式 ID 生成，客户端以 integer 传输，DB 存 BIGINT | [elib_tsid 文档](./src/lib/CLAUDE.md) |
 | **API 格式** | HTTP JSON 响应，WebSocket 消息格式 | [api-format.md](./doc/standards/api-format.md) |
 
 ### 常用示例
@@ -416,13 +416,16 @@ test/
 elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ```
 
-#### HashID 编码
+#### TSID ID 规范
 ```erlang
-% 输入解码
-Uid2 = elib_hashids:decode(Uid).
+% 生成 TSID（Repo 层 insert 时）
+Id = elib_tsid:generate(table_name).
 
-% 输出编码
-From = elib_hashids:encode(CurrentUid).
+% 客户端输入：binary → integer
+Uid2 = ec_cnv:to_integer(UidBin).
+
+% 客户端输出：直接返回 integer（不做字符串转换）
+From = CurrentUid.
 ```
 
 ### 代码生成建议
@@ -510,6 +513,11 @@ From = elib_hashids:encode(CurrentUid).
 | `msg_store` | 永久存储 | 运营商配置 retention | 历史查询 / 审计 |
 | `msg_store_seq` | 序列号计数器 | 永久保留 | per-conversation 单调递增 |
 
+**排序约束**：
+- `msg_id` / `TSID` 只承担唯一标识与近似时间有序，不保证跨数据中心、跨节点严格单调
+- 历史同步、会话游标、消息时间线的严格顺序以 `conv_seq` 为准，不以 `TSID` 为准
+- 客户端上传的 `created_at` 只能视为业务时间，不能替代服务端顺序字段
+
 **写入流程**（Worker 批量处理）：
 ```
 msg_store_staging
@@ -529,6 +537,8 @@ msg_store_staging
 ConvKey = msg_archive_ds:conv_key_c2c(MyUid, PeerUid),
 {ok, Rows} = msg_archive_ds:history(ConvKey, LastConvSeq, 50).
 ```
+
+> 结论：需要严格顺序的业务统一依赖 `conv_seq`，不要把 `msg_id` / `TSID` 当作全局顺序游标。
 
 **相关模块**：
 - `src/repo/msg_archive_repo.erl` — Repo 层（读写 msg_store / msg_store_seq）
@@ -720,7 +730,7 @@ A: 在节点 shell 中执行 `pooler:status()`。
 A:
 1. 使用在线工具: http://coolaf.com/tool/chattest
 2. 生成 Token: `io:format("~p~n", [token_ds:encrypt_token(Uid)])`
-3. 编码 UID: `elib_hashids:uid_encode(Uid)`
+3. 获取 UID: 客户端直接使用 TSID 整数（以字符串形式传输）
 
 ### Q: 如何查看进程信息?
 
@@ -804,7 +814,7 @@ observer_cli:start()
 | **UTF-8** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
 | **错误码** | 使用 `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏 | [error-codes.md](./doc/standards/error-codes.md) |
 | **数据库** | 必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **HashID** | 输入 decode，输出 encode | [hashid-encoding.md](./doc/standards/hashid-encoding.md) |
+| **TSID** | 分布式 ID，客户端 integer 传输 | [elib_tsid](./src/lib/CLAUDE.md) |
 
 ### 代码生成模板
 

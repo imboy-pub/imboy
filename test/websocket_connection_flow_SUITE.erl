@@ -279,7 +279,7 @@ receive_real_time_messages(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId,
         Uid2,
-        elib_hashids:encode(Uid1),
+        integer_to_binary(Uid1),
         jsone:encode(Payload)
     ),
 
@@ -307,14 +307,14 @@ handle_messages_from_multiple_users(_Config) ->
     ok = msg_c2c_logic:c2c(
         MsgId1,
         Uid1,
-        elib_hashids:encode(Uid),
+        integer_to_binary(Uid),
         jsone:encode(Payload1)
     ),
 
     ok = msg_c2c_logic:c2c(
         MsgId2,
         Uid2,
-        elib_hashids:encode(Uid),
+        integer_to_binary(Uid),
         jsone:encode(Payload2)
     ),
 
@@ -499,7 +499,7 @@ create_test_user() ->
 
     % 创建用户
     {ok, User} = passport_logic:signup(Mobile, Password, <<".@example.com">>, #{}),
-    Uid = elib_hashids:decode(maps:get(<<"uid">>, User)),
+    Uid = binary_to_integer(maps:get(<<"uid">>, User)),
 
     Uid.
 

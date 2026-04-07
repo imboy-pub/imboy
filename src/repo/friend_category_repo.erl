@@ -50,10 +50,11 @@ find_by_name(Uid, Name) ->
 -spec add(integer(), binary() | string()) -> {ok, integer()} | {error, term()}.
 add(Uid, Name) ->
     Tb = tablename(),
-    Sql = <<"INSERT INTO ", Tb/binary, " (name, owner_user_id)
-        VALUES ($1, $2)  RETURNING id">>,
-    case elib_pg_sql:parse_result(elib_pg:execute(Sql, [Name, Uid])) of
-        {ok, Id, _} ->
+    Id = elib_tsid:generate(friend_category),
+    Sql = <<"INSERT INTO ", Tb/binary, " (id, name, owner_user_id)
+        VALUES ($1, $2, $3)">>,
+    case elib_pg:execute(Sql, [Id, Name, Uid]) of
+        {ok, _Count} ->
             {ok, Id};
         {error, Reason} ->
             {error, Reason}

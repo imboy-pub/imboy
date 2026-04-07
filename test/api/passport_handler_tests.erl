@@ -34,7 +34,7 @@ signup_test_() ->
         {passport_logic, [
             {'do_signup', 5, fun(<<"email">>, <<"test@example.com">>, <<"password123">>, <<"123456">>, PostVals) ->
                 ?assertEqual(<<"{}">>, maps:get(<<"ip">>, PostVals)),
-                {ok, #{<<"uid">> => <<"encoded_12345">>}}
+                {ok, #{<<"uid">> => <<"12345">>}}
             end}
         ]},
         {elib_response, [
@@ -50,7 +50,7 @@ signup_test_() ->
         {ok, Req, _State} = passport_handler:init(MockReq, #{action => signup}),
         {StatusCode, _, Body} = cowboy_req_h:response(Req),
         ?assertEqual(200, StatusCode),
-        ?assertEqual(<<"encoded_12345">>, maps:get(<<"uid">>, Body))
+        ?assertEqual(<<"12345">>, maps:get(<<"uid">>, Body))
     end).
 
 find_password_test_() ->
@@ -120,13 +120,13 @@ login_test_() ->
         {passport_logic, [
             {'do_login', 5, fun(<<"email">>, <<"test@example.com">>, <<"password123">>, <<"ios">>, <<"device-1">>) ->
                 {ok, #{
-                    <<"uid">> => <<"encoded_12345">>,
+                    <<"uid">> => <<"12345">>,
                     <<"account">> => <<"test@example.com">>
                 }}
             end}
         ]},
         {user_setting_ds, [
-            {'find_by_uid', 1, fun(<<"encoded_12345">>) ->
+            {'find_by_uid', 1, fun(<<"12345">>) ->
                 #{<<"theme">> => <<"light">>, <<"language">> => <<"zh-CN">>}
             end}
         ]},

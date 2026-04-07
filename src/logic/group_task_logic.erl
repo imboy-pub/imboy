@@ -49,7 +49,7 @@ create(GroupId, CreatorId, Title, Data) when is_integer(GroupId), GroupId > 0,
                                              is_integer(CreatorId), CreatorId > 0,
                                              is_binary(Title), byte_size(Title) > 0 ->
     % 生成唯一的作业ID（使用HashID）
-    TaskId = elib_hashids:encode(GroupId + CreatorId + erlang:unique_integer([positive])),
+    TaskId = GroupId + CreatorId + erlang:unique_integer([positive]),
     TaskData = #{
         group_id => GroupId,
         task_id => TaskId,

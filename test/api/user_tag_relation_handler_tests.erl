@@ -52,9 +52,6 @@ init_remove_friend_success_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"friend_hash">>) -> 67890 end}
-        ]},
         {user_tag_relation_logic, [
             {'remove', 4, fun(12345, <<"2">>, 67890, 7) ->
                 ok

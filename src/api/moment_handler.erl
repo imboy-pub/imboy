@@ -280,7 +280,7 @@ decode_positive_id(Value) when is_binary(Value), Value =/= <<>> ->
             Int = ec_cnv:to_integer(Value),
             case Int > 0 of true -> Int; false -> 0 end;
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end

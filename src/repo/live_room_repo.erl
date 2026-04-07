@@ -44,11 +44,17 @@ find_by_id(_) ->
 
 %% @doc 创建直播间
 %% @param Data 直播间数据 map
-%% @return {ok, Id, Row} | {error, Reason}
--spec create(map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, Id} | {error, Reason}
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(live_room),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 更新直播间指定字段
 %% @param Id 直播间ID

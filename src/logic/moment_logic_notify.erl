@@ -16,8 +16,8 @@
 notify_post_created(AuthorUid, PostId) ->
     RecipientUids = resolve_post_recipients(AuthorUid),
     Payload = #{
-        <<"moment_id">> => elib_hashids:encode(PostId),
-        <<"author_uid">> => elib_hashids:encode(AuthorUid)
+        <<"moment_id">> => PostId,
+        <<"author_uid">> => AuthorUid
     },
     safe_send(RecipientUids, <<"moment_new">>, Payload, save).
 
@@ -29,8 +29,8 @@ notify_post_deleted(AuthorUid, PostId) ->
 notify_post_deleted(AuthorUid, PostId, DeletedByUid) ->
     RecipientUids = resolve_post_recipients(AuthorUid),
     Payload = #{
-        <<"moment_id">> => elib_hashids:encode(PostId),
-        <<"deleted_by">> => elib_hashids:encode(DeletedByUid)
+        <<"moment_id">> => PostId,
+        <<"deleted_by">> => DeletedByUid
     },
     safe_send(RecipientUids, <<"moment_deleted">>, Payload, save).
 
@@ -41,8 +41,8 @@ notify_post_liked(FromUid, PostId, AuthorUid) ->
             ok;
         false ->
             Payload = #{
-                <<"moment_id">> => elib_hashids:encode(PostId),
-                <<"from_uid">> => elib_hashids:encode(FromUid)
+                <<"moment_id">> => PostId,
+                <<"from_uid">> => FromUid
             },
             safe_send([AuthorUid], <<"moment_like">>, Payload, no_save)
     end.
@@ -54,9 +54,9 @@ notify_post_commented(FromUid, PostId, CommentId, AuthorUid) ->
             ok;
         false ->
             Payload = #{
-                <<"moment_id">> => elib_hashids:encode(PostId),
-                <<"comment_id">> => elib_hashids:encode(CommentId),
-                <<"from_uid">> => elib_hashids:encode(FromUid)
+                <<"moment_id">> => PostId,
+                <<"comment_id">> => CommentId,
+                <<"from_uid">> => FromUid
             },
             safe_send([AuthorUid], <<"moment_comment">>, Payload, save)
     end.

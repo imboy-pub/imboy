@@ -9,6 +9,7 @@
 %%%
 
 -export([json_maybe/1]).
+-export([id_to_binary/1]).
 
 -export([implode/2]).
 -export([remove_dups/1]).
@@ -19,6 +20,21 @@
 
 % elib_cnv:convert_at_timestamps(List).
 -export([convert_at_timestamps/1]).
+
+%% @doc 将 ID 转换为 binary 字符串，用于 API 响应
+%%
+%% @deprecated 不再使用。ID 现在直接以 integer 返回客户端，不做字符串转换。
+%% 保留仅用于向后兼容。
+%%
+-spec id_to_binary(integer() | binary()) -> binary().
+id_to_binary(Id) when is_integer(Id) ->
+    integer_to_binary(Id);
+id_to_binary(Id) when is_binary(Id) ->
+    Id;
+id_to_binary(Id) when is_list(Id) ->
+    list_to_binary(Id);
+id_to_binary(Id) ->
+    ec_cnv:to_binary(Id).
 
 %% @doc 将 map 转换为 URL 查询字符串
 %% @param Map 键值对映射

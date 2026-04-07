@@ -50,14 +50,14 @@ add(Req0, State) ->
         {_, undefined} ->
             elib_response:error(Req0, <<"标签名不能为空"/utf8>>);
         {Gid2, TagName2} ->
-            Gid3 = elib_hashids:decode(Gid2),
+            Gid3 = ec_cnv:to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);
                 _ ->
                     case group_tag_logic:add(Gid3, Uid, TagName2) of
                         {ok, TagId} ->
-                            elib_response:success(Req0, #{<<"tag_id">> => elib_hashids:encode(TagId)}, <<"标签添加成功"/utf8>>);
+                            elib_response:success(Req0, #{<<"tag_id">> => TagId}, <<"标签添加成功"/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
                     end
@@ -80,7 +80,7 @@ remove(Req0, State) ->
         {_, undefined} ->
             elib_response:error(Req0, <<"标签名不能为空"/utf8>>);
         {Gid2, TagName2} ->
-            Gid3 = elib_hashids:decode(Gid2),
+            Gid3 = ec_cnv:to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);
@@ -107,7 +107,7 @@ list(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"群组ID不能为空"/utf8>>);
         Gid2 ->
-            Gid3 = elib_hashids:decode(Gid2),
+            Gid3 = ec_cnv:to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);
@@ -115,7 +115,7 @@ list(Req0, State) ->
                     case group_tag_logic:list(Gid3, Uid) of
                         {ok, Tags} ->
                             % 编码标签ID
-                            Tags2 = [maps:put(<<"id">>, elib_hashids:encode(maps:get(<<"id">>, Tag, 0)), Tag) || Tag <- Tags],
+                            Tags2 = Tags,
                             elib_response:success(Req0, #{<<"list">> => Tags2}, <<"success."/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
@@ -138,7 +138,7 @@ search(Req0, _State) ->
             case group_tag_logic:search(TagName2) of
                 {ok, Groups} ->
                     % 编码群组ID
-                    Groups2 = [maps:put(<<"group_id">>, elib_hashids:encode(maps:get(<<"group_id">>, G, 0)), G) || G <- Groups],
+                    Groups2 = Groups,
                     elib_response:success(Req0, #{<<"list">> => Groups2}, <<"success."/utf8>>);
                 {error, Reason} ->
                     elib_response:error(Req0, Reason)

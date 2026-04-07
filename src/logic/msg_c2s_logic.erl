@@ -66,7 +66,7 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 -spec c2s_to_external(binary(), integer(), binary(), map(), function()) ->
     ok | {reply, map()}.
 c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     Payload = maps:get(<<"payload">>, Data),
     Text = maps:get(<<"text">>, Payload),
     TopicId = maps:get(<<"topic_id">>, Payload, 0),
@@ -197,12 +197,12 @@ handle_e2ee_social_shard(MsgId, CurrentUid, Data) ->
             % 用户向代理请求解密分片
             % 服务端仅作为传输通道，转发请求给代理
             To = maps:get(<<"to">>, Data),
-            From = elib_hashids:encode(CurrentUid),
+            From = CurrentUid,
 
             ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
             KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
             Uid = maps:get(<<"uid">>, Payload, CurrentUid),
-            ProxyUid = elib_hashids:decode(To),
+            ProxyUid = ec_cnv:to_integer(To),
 
             % 记录分片解密请求日志（持久化到数据库）
             e2ee_shard_validator:log_shard_transmission(

@@ -36,48 +36,43 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
         false ->
             {error, {<<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND}};
         true ->
-            % 2. 并发保护：检查是否已有进行中的会话
-            case e2ee_transfer_repo:has_pending_session(FromUid, ToUid) of
-                true ->
-                    {error, {<<"已有进行中的传输会话，请先取消或等待完成"/utf8>>, ?ERR_E2EE_TRANSFER_CONCURRENT}};
-                false ->
-                    try
-                        % 3. 生成会话 ID
-                        SessionId = e2ee_transfer_repo:generate_session_id(),
+            % 2. 直接尝试创建会话，依赖数据库唯一约束防止并发重复
+            try
+                % 3. 生成会话 ID
+                SessionId = e2ee_transfer_repo:generate_session_id(),
 
-                        % 4. 使用接收方公钥加密私钥
-                        EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
+                % 4. 使用接收方公钥加密私钥
+                EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
 
-                        % 5. 设置过期时间（5 分钟后）
-                        ExpiresAt = calendar:universal_time() + 300,
-                        ExpiresAtStr = calendar:system_time_to_rfc3339(ExpiresAt),
+                % 5. 设置过期时间（5 分钟后）
+                ExpiresAt = calendar:universal_time() + 300,
+                ExpiresAtStr = calendar:system_time_to_rfc3339(ExpiresAt),
 
-                        % 6. 创建会话记录
-                        SessionMap = #{
-                            <<"session_id">> => SessionId,
-                            <<"from_uid">> => FromUid,
-                            <<"from_device_id">> => FromDeviceId,
-                            <<"to_uid">> => ToUid,
-                            <<"to_device_id">> => <<>>,
-                            <<"encrypted_key_bundle">> => EncryptedBundle,
-                            <<"expires_at">> => ExpiresAtStr,
-                            <<"status">> => <<"pending">>
-                        },
+                % 6. 创建会话记录
+                SessionMap = #{
+                    <<"session_id">> => SessionId,
+                    <<"from_uid">> => FromUid,
+                    <<"from_device_id">> => FromDeviceId,
+                    <<"to_uid">> => ToUid,
+                    <<"to_device_id">> => <<>>,
+                    <<"encrypted_key_bundle">> => EncryptedBundle,
+                    <<"expires_at">> => ExpiresAtStr,
+                    <<"status">> => <<"pending">>
+                },
 
-                        case e2ee_transfer_repo:create(SessionMap) of
-                            {ok, _SessionId} ->
-                                {ok, SessionMap};
-                            {error, unique_violation} ->
-                                % 数据库级唯一约束违规（并发创建）
-                                {error, {<<"已有进行中的传输会话，请稍后重试"/utf8>>, ?ERR_E2EE_TRANSFER_CONCURRENT}};
-                            {error, CreateReason} ->
-                                {error, CreateReason}
-                        end
-                    catch
-                        error:Reason -> {error, Reason};
-                        exit:Reason -> {error, Reason};
-                        throw:Reason -> {error, Reason}
-                    end
+                case e2ee_transfer_repo:create(SessionMap) of
+                    {ok, _SessionId} ->
+                        {ok, SessionMap};
+                    {error, unique_violation} ->
+                        % 数据库唯一约束违反：已有进行中的会话
+                        {error, {<<"已有进行中的传输会话，请先取消或等待完成"/utf8>>, ?ERR_E2EE_TRANSFER_CONCURRENT}};
+                    {error, CreateReason} ->
+                        {error, CreateReason}
+                end
+            catch
+                error:Reason -> {error, Reason};
+                exit:Reason -> {error, Reason};
+                throw:Reason -> {error, Reason}
             end
     end.
 

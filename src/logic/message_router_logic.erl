@@ -82,7 +82,7 @@ route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
         <<"webrtc_", _Event/binary>> ->
             %% WebRTC 信令处理
             To = maps:get(<<"to">>, Data),
-            ToUid = elib_hashids:decode(To),
+            ToUid = ec_cnv:to_integer(To),
             webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, OriginalMsg);
         _ ->
             %% 未知消息类型

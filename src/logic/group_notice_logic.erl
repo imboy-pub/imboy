@@ -177,10 +177,7 @@ check_admin_permission(CurrentUid, Gid) ->
 %% @return 编码后的公告数据
 -spec encode_notice_ids(map()) -> map().
 encode_notice_ids(Notice) ->
-    Notice1 = elib_hashids:replace_id(Notice, <<"user_id">>),
-    Notice2 = elib_hashids:replace_id(Notice1, <<"edit_user_id">>),
-    Notice3 = elib_hashids:replace_id(Notice2, <<"group_id">>),
-    elib_hashids:replace_id(Notice3, <<"id">>).
+    Notice.
 
 %% ===================================================================
 %% EUnit tests.

@@ -86,7 +86,13 @@ create_album(Gid, AlbumId, AlbumName, CreatorId) ->
         creator_id => CreatorId,
         created_at => elib_dt:now()
     },
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_album),
+    Data2 = Data#{id => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据ID查找相册
 %% @param Id 相册ID
@@ -170,8 +176,13 @@ decrement_photo_count(Id) ->
 -spec insert_photo(map()) -> {ok, integer()} | {error, term()}.
 insert_photo(Data) ->
     Tb = photo_tablename(),
-    Data2 = Data#{created_at => elib_dt:now()},
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data2, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_album_photo),
+    Data2 = Data#{id => Id, created_at => elib_dt:now()},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据ID查找图片
 %% @param Id 图片ID
@@ -219,8 +230,11 @@ like_photo(PhotoId, UserId) ->
     Now = elib_dt:now(),
 
     % 插入点赞记录
-    case elib_pg:insert(TbLike, #{photo_id => PhotoId, user_id => UserId, created_at => Now}, <<>>) of
-        {ok, _, _} ->
+    Id = elib_tsid:generate(group_album),
+    LikeData = #{id => Id, photo_id => PhotoId, user_id => UserId, created_at => Now},
+    {SqlInsert, ParamsInsert} = elib_pg_sql:insert(TbLike, LikeData),
+    case elib_pg:query(SqlInsert, ParamsInsert) of
+        {ok, _Count} ->
             % 增加点赞计数
             Sql = <<"UPDATE ", TbPhoto/binary, " SET like_count = like_count + 1 WHERE id = $1">>,
             elib_pg:execute(Sql, [PhotoId]);
@@ -277,8 +291,11 @@ add_comment(PhotoId, UserId, Content) ->
     Now = elib_dt:now(),
 
     % 插入评论记录
-    case elib_pg:insert(TbComment, #{photo_id => PhotoId, user_id => UserId, content => Content, created_at => Now}, <<"RETURNING id">>) of
-        {ok, _, _} ->
+    CommentId = elib_tsid:generate(group_album_comment),
+    CommentData = #{id => CommentId, photo_id => PhotoId, user_id => UserId, content => Content, created_at => Now},
+    {SqlInsert, ParamsInsert} = elib_pg_sql:insert(TbComment, CommentData),
+    case elib_pg:query(SqlInsert, ParamsInsert) of
+        {ok, _Count} ->
             % 增加评论计数
             Sql = <<"UPDATE ", TbPhoto/binary, " SET comment_count = comment_count + 1 WHERE id = $1">>,
             elib_pg:execute(Sql, [PhotoId]);

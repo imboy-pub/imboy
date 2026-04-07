@@ -108,9 +108,6 @@ c2s_client_ack_with_empty_did_succeeds_test_() ->
 
 c2s_to_external_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -158,9 +155,6 @@ c2s_to_external_with_valid_data_succeeds_test_() ->
 
 c2s_to_external_with_stage_failure_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -198,9 +192,6 @@ c2s_to_external_with_stage_failure_fails_test_() ->
 
 c2s_to_external_with_topic_id_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -250,9 +241,6 @@ c2s_to_external_with_topic_id_succeeds_test_() ->
 
 c2s_to_external_without_topic_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -366,9 +354,6 @@ c2s_with_empty_to_field_fails_test_() ->
 
 c2s_to_external_with_empty_text_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -416,9 +401,6 @@ c2s_to_external_with_empty_text_succeeds_test_() ->
 
 c2s_to_external_with_unicode_text_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -492,9 +474,6 @@ c2s_with_invalid_data_structure_test_() ->
 
 c2s_to_external_with_missing_payload_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end}
         ]}
@@ -519,9 +498,6 @@ c2s_to_external_with_missing_payload_test_() ->
 
 c2s_to_external_with_missing_text_in_payload_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end}
         ]}
@@ -585,9 +561,6 @@ c2s_client_ack_with_binary_did_test_() ->
 
 c2s_to_external_with_large_topic_id_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -636,9 +609,6 @@ c2s_to_external_with_large_topic_id_test_() ->
 
 c2s_to_external_with_long_topic_title_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -691,9 +661,6 @@ c2s_to_external_with_long_topic_title_test_() ->
 
 c2s_to_external_with_utf8_text_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_uid_123">> end}
-        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}

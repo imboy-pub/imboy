@@ -34,20 +34,26 @@ tablename() ->
 
 %% @doc 添加新群组
 %% @doc 添加群组（使用连接）
-%% @param Conn 数据库连接（未使用，保留用于API兼容性）
+%% @param Conn 数据库连接
 %% @param Data 包含群组信息的map
-%% @return {ok, GroupId, #{}} | {error, Reason} (返回插入的群组ID)
--spec add(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, GroupId} | {error, Reason} (返回插入的群组ID)
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_info),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 兼容旧接口：创建群组
 -spec create(map()) -> ok | {error, term()}.
 create(Data0) ->
     Data = normalize_legacy_create_data(Data0),
     case elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end) of
-        {ok, _Gid, _Row} -> ok;
+        {ok, _Gid} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 

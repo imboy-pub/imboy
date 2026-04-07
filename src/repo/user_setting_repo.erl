@@ -29,7 +29,7 @@ tablename() ->
 %% @return {ok, [{UserId, Key, Value}]}
 -spec find_by_uid(binary() | integer()) -> {ok, list()} | {error, term()}.
 find_by_uid(Uid) when is_binary(Uid) ->
-    find_by_uid(elib_hashids:decode(Uid));
+    find_by_uid(ec_cnv:to_integer(Uid));
 find_by_uid(Uid) when is_integer(Uid) ->
     Tb = tablename(),
     Sql = <<
@@ -51,7 +51,7 @@ find_by_uid(Uid) when is_integer(Uid) ->
 %% @return {ok, Value} | {error, not_found}
 -spec get(binary() | integer(), binary()) -> {ok, binary()} | {error, term()}.
 get(Uid, Key) when is_binary(Uid) ->
-    get(elib_hashids:decode(Uid), Key);
+    get(ec_cnv:to_integer(Uid), Key);
 get(Uid, Key) when is_integer(Uid) ->
     Tb = tablename(),
     Sql = <<
@@ -78,20 +78,21 @@ get(Uid, Key) when is_integer(Uid) ->
 %% @return ok
 -spec save(binary() | integer(), binary(), term()) -> ok.
 save(Uid, Key, Value) when is_binary(Uid) ->
-    save(elib_hashids:decode(Uid), Key, Value);
+    save(ec_cnv:to_integer(Uid), Key, Value);
 save(Uid, Key, Value) when is_integer(Uid) ->
     Tb = tablename(),
     Now = elib_dt:now(),
+    GenId = elib_tsid:generate(user_setting),
     Sql = <<
         "/* INSERT.*INTO.*user_setting ON CONFLICT.*DO UPDATE */ "
-        "INSERT INTO ", Tb/binary, " (user_id, setting, updated_at) "
-        "VALUES ($1, jsonb_build_object($2, $3)::json, $4) "
+        "INSERT INTO ", Tb/binary, " (id, user_id, setting, updated_at) "
+        "VALUES ($1, $2, jsonb_build_object($3, $4)::json, $5) "
         "ON CONFLICT (user_id) DO UPDATE SET "
         "setting = (COALESCE(", Tb/binary, ".setting, '{}'::json)::jsonb || "
-        "jsonb_build_object($2, $3))::json, "
+        "jsonb_build_object($3, $4))::json, "
         "updated_at = EXCLUDED.updated_at"
     >>,
-    _ = execute_compat(Sql, [Uid, Key, Value, Now]),
+    _ = execute_compat(Sql, [GenId, Uid, Key, Value, Now]),
     ok.
 
 %% @doc 根据用户ID查找用户设置
@@ -100,7 +101,7 @@ save(Uid, Key, Value) when is_integer(Uid) ->
 %% @return Map 查询成功返回设置信息map，未找到返回空map
 -spec find_by_uid(binary() | integer(), binary()) -> map().
 find_by_uid(Uid, Column) when is_binary(Uid) ->
-    find_by_uid(elib_hashids:decode(Uid), Column);
+    find_by_uid(ec_cnv:to_integer(Uid), Column);
 find_by_uid(Uid, Column) when is_integer(Uid) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1">>,
@@ -119,7 +120,7 @@ find_by_uid(Uid, Column) when is_integer(Uid) ->
 %% @example user_setting_repo:update(3, #{people_nearby_visible => true}).
 -spec update(binary() | integer(), map()) -> ok.
 update(Uid, Setting) when is_binary(Uid) ->
-    update(elib_hashids:decode(Uid), Setting);
+    update(ec_cnv:to_integer(Uid), Setting);
 update(Uid, Setting) when is_integer(Uid) ->
     Data = #{
         <<"user_id">> => Uid,  % 用户ID
@@ -137,8 +138,11 @@ update(Uid, Setting) when is_integer(Uid) ->
         "  updated_at = EXCLUDED.updated_at"
     >>,
 
+    %% 预生成 TSID
+    Id = elib_tsid:generate(user_setting),
+    Data2 = Data#{<<"id">> => Id},
     %% 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = elib_pg_sql:insert(tablename(), Data, <<>>),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Data2),
     FullSql = [Sql, <<" ">>, OnConflict],
     _ = elib_pg:execute(FullSql, Params),
     ok.

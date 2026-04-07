@@ -52,13 +52,19 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule">>).
 
 %% @doc 插入新日程
--spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
+-spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
     Tb = tablename(),
     % 验证必填字段
     case validate_schedule_data(Data) of
         ok ->
-            elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>));
+            Id = elib_tsid:generate(group_schedule),
+            Data2 = Data#{<<"id">> => Id},
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+            case elib_pg:query(Sql, Params) of
+                {ok, _Count} -> {ok, Id};
+                {error, _} = Err -> Err
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -224,10 +230,16 @@ participant_tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule_participant">>).
 
 %% @doc 插入参与人
--spec insert_participant(map()) -> {ok, integer(), map()} | {error, term()}.
+-spec insert_participant(map()) -> {ok, integer()} | {error, term()}.
 insert_participant(Data) ->
     Tb = participant_tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_schedule),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 更新参与人状态
 -spec update_participant_status(binary(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -280,10 +292,16 @@ remind_tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule_remind">>).
 
 %% @doc 插入提醒记录
--spec insert_remind(map()) -> {ok, integer(), map()} | {error, term()}.
+-spec insert_remind(map()) -> {ok, integer()} | {error, term()}.
 insert_remind(Data) ->
     Tb = remind_tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_schedule_reminder),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 查询待发送的提醒列表（默认字段）
 -spec list_pending_reminds() -> {ok, list(map())} | {error, term()}.

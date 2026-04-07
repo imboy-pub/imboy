@@ -15,7 +15,7 @@
 %% ===================================================================
 
 publish_message_with_admin_role_succeeds_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -43,11 +43,9 @@ publish_message_with_admin_role_succeeds_test_() ->
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save) ->
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, BroadcastPayload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, BroadcastPayload)),
                 ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, BroadcastPayload)),
-                BroadcastId = maps:get(<<"id">>, BroadcastPayload),
-                ?assert(is_binary(BroadcastId)),
-                ?assertEqual(99, elib_hashids:decode(BroadcastId)),
+                ?assertEqual(99, maps:get(<<"id">>, BroadcastPayload)),
                 ok
             end}
         ]}
@@ -67,19 +65,15 @@ publish_message_with_admin_role_succeeds_test_() ->
 
                 ?assertMatch({ok, _}, Result),
                 {ok, Message} = Result,
-                MessageId = maps:get(<<"id">>, Message),
-                ?assert(is_binary(MessageId)),
-                ?assertEqual(99, elib_hashids:decode(MessageId)),
-                AuthorId = maps:get(<<"author_id">>, Message),
-                ?assert(is_binary(AuthorId)),
-                ?assertEqual(1001, elib_hashids:decode(AuthorId)),
+                ?assertEqual(99, maps:get(<<"id">>, Message)),
+                ?assertEqual(1001, maps:get(<<"author_id">>, Message)),
                 ?assertEqual(<<"hello"/utf8>>, maps:get(<<"content">>, Message))
             end)
         end
     }.
 
 publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -107,7 +101,7 @@ publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() 
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save) ->
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, BroadcastPayload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, BroadcastPayload)),
                 erlang:error(mock_notify_crash)
             end}
         ]}
@@ -127,14 +121,14 @@ publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() 
 
                 ?assertMatch({ok, _}, Result),
                 {ok, Message} = Result,
-                ?assertEqual(109, elib_hashids:decode(maps:get(<<"id">>, Message))),
+                ?assertEqual(109, maps:get(<<"id">>, Message)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
     }.
 
 publish_message_with_non_admin_role_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
@@ -170,7 +164,7 @@ publish_message_with_non_admin_role_fails_test_() ->
     }.
 
 publish_message_when_storage_fails_returns_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 1 end}
@@ -208,7 +202,7 @@ publish_message_when_storage_fails_returns_error_test_() ->
     }.
 
 publish_message_returns_error_when_loading_new_message_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -405,7 +399,7 @@ get_channel_by_custom_id_checks_subscription_when_admin_role_unexpected_test_() 
     }.
 
 get_channel_returns_error_when_repo_returns_non_map_payload_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"*">>) -> [] end}
@@ -496,7 +490,7 @@ get_channel_by_custom_id_returns_error_when_channel_id_invalid_test_() ->
     }.
 
 update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -542,7 +536,7 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
     }.
 
 update_channel_returns_permission_denied_when_admin_role_unexpected_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> {error, db_down} end}
@@ -571,7 +565,7 @@ update_channel_returns_permission_denied_when_admin_role_unexpected_test_() ->
     }.
 
 update_channel_success_still_returns_ok_when_notify_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -617,7 +611,7 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
     }.
 
 update_channel_returns_error_when_reload_payload_not_map_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
@@ -648,7 +642,7 @@ update_channel_returns_error_when_reload_payload_not_map_test_() ->
     }.
 
 delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 3 end}
@@ -679,7 +673,7 @@ delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
     }.
 
 delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 3 end}
@@ -710,7 +704,7 @@ delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
     }.
 
 delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 3 end}
@@ -741,7 +735,7 @@ delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
     }.
 
 get_messages_paid_channel_requires_purchase_or_subscription_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, Fields) ->
@@ -782,7 +776,7 @@ get_messages_paid_channel_requires_purchase_or_subscription_test_() ->
     }.
 
 get_messages_paid_channel_allows_purchased_user_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, Fields) ->
@@ -830,7 +824,7 @@ get_messages_paid_channel_allows_purchased_user_test_() ->
     }.
 
 get_messages_returns_error_when_repo_query_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -856,7 +850,7 @@ get_messages_returns_error_when_repo_query_fails_test_() ->
     }.
 
 get_messages_returns_error_when_repo_payload_not_list_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -882,7 +876,7 @@ get_messages_returns_error_when_repo_payload_not_list_test_() ->
     }.
 
 get_messages_filters_non_map_entries_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -920,7 +914,7 @@ get_messages_filters_non_map_entries_test_() ->
     }.
 
 get_messages_returns_error_when_channel_payload_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
@@ -944,7 +938,7 @@ get_messages_returns_error_when_channel_payload_invalid_test_() ->
     }.
 
 pin_message_returns_error_when_reload_after_update_fails_test_() ->
-    MessageIdBin = elib_hashids:encode(99),
+    MessageIdBin = integer_to_binary(99),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(99) ->
@@ -983,7 +977,7 @@ pin_message_returns_error_when_reload_after_update_fails_test_() ->
     }.
 
 pin_message_returns_error_when_repo_returns_non_map_payload_test_() ->
-    MessageIdBin = elib_hashids:encode(198),
+    MessageIdBin = integer_to_binary(198),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(198) -> [] end},
@@ -1011,9 +1005,6 @@ pin_message_returns_error_when_repo_returns_non_map_payload_test_() ->
 pin_message_returns_error_when_message_id_decode_unexpected_test_() ->
     MessageIdBin = <<"msg_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(_) ->
                 erlang:error(should_not_query_message_when_message_id_decode_unexpected)
@@ -1043,7 +1034,7 @@ pin_message_returns_error_when_message_id_decode_unexpected_test_() ->
     }.
 
 pin_message_returns_error_when_channel_id_type_invalid_test_() ->
-    MessageIdBin = elib_hashids:encode(199),
+    MessageIdBin = integer_to_binary(199),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(199) ->
@@ -1075,8 +1066,8 @@ pin_message_returns_error_when_channel_id_type_invalid_test_() ->
     }.
 
 delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    MessageIdBin = elib_hashids:encode(99),
+    ChannelIdBin = integer_to_binary(11),
+    MessageIdBin = integer_to_binary(99),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(99) ->
@@ -1116,8 +1107,8 @@ delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
     }.
 
 delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    MessageIdBin = elib_hashids:encode(100),
+    ChannelIdBin = integer_to_binary(11),
+    MessageIdBin = integer_to_binary(100),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(100) ->
@@ -1156,7 +1147,7 @@ delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
     }.
 
 delete_message_returns_permission_denied_when_not_author_or_admin_test_() ->
-    MessageIdBin = elib_hashids:encode(101),
+    MessageIdBin = integer_to_binary(101),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(101) ->
@@ -1194,7 +1185,7 @@ delete_message_returns_permission_denied_when_not_author_or_admin_test_() ->
     }.
 
 delete_message_returns_error_when_message_not_found_test_() ->
-    MessageIdBin = elib_hashids:encode(404),
+    MessageIdBin = integer_to_binary(404),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(404) -> {error, not_found} end},
@@ -1225,7 +1216,7 @@ delete_message_returns_error_when_message_not_found_test_() ->
     }.
 
 delete_message_returns_repo_error_as_binary_test_() ->
-    MessageIdBin = elib_hashids:encode(102),
+    MessageIdBin = integer_to_binary(102),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(102) ->
@@ -1265,7 +1256,7 @@ delete_message_returns_repo_error_as_binary_test_() ->
     }.
 
 delete_message_returns_error_when_repo_returns_non_map_payload_test_() ->
-    MessageIdBin = elib_hashids:encode(103),
+    MessageIdBin = integer_to_binary(103),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(103) -> [] end},
@@ -1296,7 +1287,7 @@ delete_message_returns_error_when_repo_returns_non_map_payload_test_() ->
     }.
 
 delete_message_returns_error_when_required_fields_missing_test_() ->
-    MessageIdBin = elib_hashids:encode(104),
+    MessageIdBin = integer_to_binary(104),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(104) ->
@@ -1337,7 +1328,7 @@ delete_message_returns_error_when_required_fields_missing_test_() ->
     }.
 
 delete_message_returns_error_when_required_fields_type_invalid_test_() ->
-    MessageIdBin = elib_hashids:encode(105),
+    MessageIdBin = integer_to_binary(105),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(105) ->
@@ -1379,7 +1370,7 @@ delete_message_returns_error_when_required_fields_type_invalid_test_() ->
     }.
 
 create_invitation_success_notifies_invitee_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1401,7 +1392,7 @@ create_invitation_success_notifies_invitee_test_() ->
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], <<"channel_invitation_created">>, <<>>, null, Payload, save) ->
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ok
             end}
         ]}
@@ -1415,14 +1406,14 @@ create_invitation_success_notifies_invitee_test_() ->
 
                 ?assertMatch({ok, _}, Result),
                 {ok, Invitation} = Result,
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Invitation)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
     }.
 
 create_invitation_rejects_non_private_channel_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1447,7 +1438,7 @@ create_invitation_rejects_non_private_channel_test_() ->
     }.
 
 create_invitation_returns_error_when_channel_not_found_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1474,9 +1465,6 @@ create_invitation_returns_error_when_channel_not_found_test_() ->
 create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
@@ -1502,7 +1490,7 @@ create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
     }.
 
 create_invitation_returns_error_when_channel_payload_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
@@ -1526,7 +1514,7 @@ create_invitation_returns_error_when_channel_payload_invalid_test_() ->
     }.
 
 create_invitation_rejects_disabled_channel_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1551,7 +1539,7 @@ create_invitation_rejects_disabled_channel_test_() ->
     }.
 
 create_invitation_ds_binary_error_passthrough_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1589,7 +1577,7 @@ create_invitation_ds_binary_error_passthrough_test_() ->
     }.
 
 create_invitation_ds_atom_error_converted_to_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1627,7 +1615,7 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
     }.
 
 create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1664,7 +1652,7 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
     }.
 
 create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1699,7 +1687,7 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
     }.
 
 create_invitation_returns_error_when_loading_created_invitation_payload_not_map_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -1733,8 +1721,8 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
     }.
 
 get_my_invitations_success_transfers_ids_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InvitationIdBin = elib_hashids:encode(501),
+    ChannelIdBin = integer_to_binary(11),
+    InvitationIdBin = integer_to_binary(501),
     MockConfigs = [
         {channel_invitation_repo, [
             {'list_pending_by_invitee', 1, fun(2002) ->
@@ -1756,8 +1744,8 @@ get_my_invitations_success_transfers_ids_test_() ->
 
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Invitation]} = Result,
-                ?assertEqual(InvitationIdBin, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Invitation)),
+                ?assertEqual(501, maps:get(<<"id">>, Invitation)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
                 ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_pending_by_invitee, 1))
             end)
         end
@@ -1802,8 +1790,8 @@ get_my_invitations_returns_error_when_repo_payload_not_list_test_() ->
     }.
 
 get_my_invitations_filters_non_map_entries_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InvitationIdBin = elib_hashids:encode(501),
+    ChannelIdBin = integer_to_binary(11),
+    InvitationIdBin = integer_to_binary(501),
     MockConfigs = [
         {channel_invitation_repo, [
             {'list_pending_by_invitee', 1, fun(2002) ->
@@ -1827,8 +1815,8 @@ get_my_invitations_filters_non_map_entries_test_() ->
                 Result = channel_logic:get_my_invitations(2002),
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Invitation]} = Result,
-                ?assertEqual(InvitationIdBin, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Invitation))
+                ?assertEqual(501, maps:get(<<"id">>, Invitation)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation))
             end)
         end
     }.
@@ -1872,8 +1860,8 @@ get_sent_invitations_returns_error_when_repo_payload_not_list_test_() ->
     }.
 
 get_sent_invitations_success_transfers_ids_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InvitationIdBin = elib_hashids:encode(701),
+    ChannelIdBin = integer_to_binary(11),
+    InvitationIdBin = integer_to_binary(701),
     MockConfigs = [
         {channel_invitation_repo, [
             {'list_by_inviter', 2, fun(1001, 50) ->
@@ -1895,8 +1883,8 @@ get_sent_invitations_success_transfers_ids_test_() ->
 
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Invitation]} = Result,
-                ?assertEqual(InvitationIdBin, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Invitation)),
+                ?assertEqual(701, maps:get(<<"id">>, Invitation)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
                 ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_by_inviter, 2))
             end)
         end
@@ -1934,8 +1922,8 @@ accept_invitation_already_accepted_is_idempotent_and_silent_test_() ->
     }.
 
 accept_invitation_success_notifies_inviter_and_invitee_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
-    InviteeUidBin = elib_hashids:encode(2002),
+    ChannelIdBin = integer_to_binary(11),
+    InviteeUidBin = integer_to_binary(2002),
     MockConfigs = [
         {channel_subscribe_ds, [
             {'accept_invitation', 2, fun(501, 2002) -> ok end}
@@ -1954,11 +1942,11 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
             {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
                 case {Uids, Action} of
                     {[1001], <<"channel_invitation_accepted">>} ->
-                        ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
-                        ?assertEqual(InviteeUidBin, maps:get(<<"invitee_uid">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(2002, maps:get(<<"invitee_uid">>, Payload)),
                         ok;
                     {[2002], <<"channel_subscribed">>} ->
-                        ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                         ok;
                     _ ->
                         erlang:error({unexpected_notify, Uids, Action, Payload})
@@ -2290,7 +2278,7 @@ reject_invitation_unexpected_return_converted_to_binary_test_() ->
     }.
 
 create_order_success_returns_transferred_order_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -2320,14 +2308,14 @@ create_order_success_returns_transferred_order_test_() ->
 
                 ?assertMatch({ok, _}, Result),
                 {ok, Order} = Result,
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Order)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
                 ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
             end)
         end
     }.
 
 create_order_rejects_non_paid_channel_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -2352,7 +2340,7 @@ create_order_rejects_non_paid_channel_test_() ->
     }.
 
 create_order_propagates_channel_lookup_error_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -2377,7 +2365,7 @@ create_order_propagates_channel_lookup_error_test_() ->
     }.
 
 create_order_returns_error_when_channel_payload_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
@@ -2403,9 +2391,6 @@ create_order_returns_error_when_channel_payload_invalid_test_() ->
 create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
@@ -2431,7 +2416,7 @@ create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
     }.
 
 create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -2457,7 +2442,7 @@ create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
     }.
 
 create_order_unexpected_ds_result_converted_to_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
@@ -2590,7 +2575,7 @@ pay_order_returns_not_found_when_required_fields_invalid_test_() ->
     }.
 
 pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_order_repo, [
             {'find_by_order_no', 1, fun(<<"ORD001">>) ->
@@ -2606,14 +2591,14 @@ pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
                 ?assertEqual(<<"mock">>, maps:get(payment_method, PaymentData)),
                 PaymentNo = maps:get(payment_no, PaymentData),
                 ?assert(is_binary(PaymentNo)),
-                ?assertEqual(<<"PAY">>, binary:part(PaymentNo, 0, 3)),
+                ?assertEqual(<<"MOCK_">>, binary:part(PaymentNo, 0, 5)),
                 ok
             end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], Action, <<>>, null, Payload, no_save) ->
                 ?assert(lists:member(Action, [<<"channel_order_paid">>, <<"channel_subscribed">>])),
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ok
             end}
         ]}
@@ -2814,7 +2799,7 @@ pay_order_unexpected_ds_result_converted_to_binary_test_() ->
     }.
 
 get_order_returns_transferred_order_for_owner_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_order_repo, [
             {'find_by_order_no', 1, fun(<<"ORD010">>) ->
@@ -2836,7 +2821,7 @@ get_order_returns_transferred_order_for_owner_test_() ->
 
                 ?assertMatch({ok, _}, Result),
                 {ok, Order} = Result,
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Order))
+                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
             end)
         end
     }.
@@ -2964,7 +2949,7 @@ get_order_returns_not_found_when_required_fields_invalid_test_() ->
     }.
 
 get_my_orders_returns_transferred_orders_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_order_repo, [
             {'list_by_user', 2, fun(2002, 50) ->
@@ -2988,13 +2973,13 @@ get_my_orders_returns_transferred_orders_test_() ->
 
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Order]} = Result,
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Order))
+                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
             end)
         end
     }.
 
 get_my_orders_filters_non_map_entries_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_order_repo, [
             {'list_by_user', 2, fun(2002, 50) ->
@@ -3018,7 +3003,7 @@ get_my_orders_filters_non_map_entries_test_() ->
                 Result = channel_logic:get_my_orders(2002),
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Order]} = Result,
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Order))
+                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
             end)
         end
     }.
@@ -3137,9 +3122,6 @@ get_admins_filters_non_map_entries_test_() ->
 get_admins_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_admin_repo, [
             {'list_by_channel', 1, fun(_) ->
                 erlang:error(should_not_query_admins_when_channel_id_decode_unexpected)
@@ -3161,9 +3143,6 @@ get_admins_returns_error_when_channel_id_decode_unexpected_test_() ->
 update_admin_role_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_admin_repo, [
             {'get_role', 2, fun(_, _) ->
                 erlang:error(should_not_check_role_when_channel_id_decode_unexpected)
@@ -3187,7 +3166,7 @@ update_admin_role_returns_error_when_channel_id_decode_unexpected_test_() ->
     }.
 
 update_admin_role_requires_creator_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end},
@@ -3213,7 +3192,7 @@ update_admin_role_requires_creator_test_() ->
     }.
 
 update_admin_role_creator_success_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 3 end},
@@ -3234,7 +3213,7 @@ update_admin_role_creator_success_test_() ->
     }.
 
 remove_subscriber_admin_success_updates_counter_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -3274,7 +3253,7 @@ remove_subscriber_admin_success_updates_counter_test_() ->
     }.
 
 remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -3316,7 +3295,7 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
     }.
 
 remove_subscriber_tx_error_returns_failure_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {elib_pg, [
             {'with_tx', 1, fun(Fun) ->
@@ -3357,7 +3336,7 @@ remove_subscriber_tx_error_returns_failure_test_() ->
     }.
 
 remove_subscriber_requires_admin_role_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
@@ -3385,7 +3364,7 @@ remove_subscriber_requires_admin_role_test_() ->
     }.
 
 get_messages_private_channel_requires_subscription_test_() ->
-    ChannelIdBin = elib_hashids:encode(12),
+    ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(12, Fields) ->
@@ -3423,7 +3402,7 @@ get_messages_private_channel_requires_subscription_test_() ->
     }.
 
 get_messages_private_channel_allows_subscriber_test_() ->
-    ChannelIdBin = elib_hashids:encode(12),
+    ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(12, Fields) ->
@@ -3466,7 +3445,7 @@ get_messages_private_channel_allows_subscriber_test_() ->
     }.
 
 get_messages_returns_error_when_channel_type_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(12),
+    ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(12, Fields) ->
@@ -3512,7 +3491,7 @@ get_messages_returns_error_when_channel_type_invalid_test_() ->
     }.
 
 get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() ->
-    ChannelIdBin = elib_hashids:encode(13),
+    ChannelIdBin = integer_to_binary(13),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(13, <<"id,type,status">>) ->
@@ -3559,28 +3538,19 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
     }.
 
 subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type">>) ->
                 #{<<"id">> => 11, <<"type">> => 1}
             end}
         ]},
-        {channel_subscription_repo, [
-            {'is_subscribed', 2, fun(11, 2002) -> true end}
-        ]},
         {channel_subscribe_ds, [
-            {'is_invited', 2, fun(_, _) ->
-                erlang:error(should_not_check_invitation_for_existing_private_subscriber)
-            end},
-            {'subscribe_private', 3, fun(_, _, _) ->
-                erlang:error(should_not_re_subscribe_private_subscriber)
-            end}
+            {'is_invited', 2, fun(11, 2002) -> true end},
+            {'subscribe_private', 3, fun(11, 2002, undefined) -> ok end}
         ]},
         {channel_logic_notify, [
-            {'notify_channel_subscribed', 2, fun(_, _) ->
-                erlang:error(should_not_send_subscribed_notify_for_noop_private_subscribe)
-            end}
+            {'notify_channel_subscribed', 2, fun(11, 2002) -> ok end}
         ]}
     ],
     {setup,
@@ -3591,34 +3561,26 @@ subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
                 Result = channel_logic:subscribe(2002, ChannelIdBin),
 
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, is_invited, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, subscribe_private, 3)),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, is_invited, 2)),
+                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, subscribe_private, 3)),
+                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
             end)
         end
     }.
 
 subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
-    ChannelIdBin = elib_hashids:encode(12),
+    ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(12, <<"id,type">>) ->
                 #{<<"id">> => 12, <<"type">> => 0}
             end}
         ]},
-        {channel_subscription_repo, [
-            {'is_subscribed', 2, fun(12, 2002) -> true end}
-        ]},
         {channel_ds, [
-            {'subscribe', 2, fun(_, _) ->
-                erlang:error(should_not_re_subscribe_public_subscriber)
-            end}
+            {'subscribe', 2, fun(12, 2002) -> ok end}
         ]},
         {channel_logic_notify, [
-            {'notify_channel_subscribed', 2, fun(_, _) ->
-                erlang:error(should_not_notify_for_noop_public_subscribe)
-            end}
+            {'notify_channel_subscribed', 2, fun(12, 2002) -> ok end}
         ]}
     ],
     {setup,
@@ -3629,33 +3591,28 @@ subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
                 Result = channel_logic:subscribe(2002, ChannelIdBin),
 
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
+                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
             end)
         end
     }.
 
 subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
-    ChannelIdBin = elib_hashids:encode(13),
+    ChannelIdBin = integer_to_binary(13),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(13, <<"id,type">>) ->
                 #{<<"id">> => 13, <<"type">> => 2}
             end}
         ]},
-        {channel_subscription_repo, [
-            {'is_subscribed', 2, fun(13, 2002) -> true end}
-        ]},
         {channel_subscribe_ds, [
-            {'has_purchased', 2, fun(_, _) ->
-                erlang:error(should_not_check_purchase_for_existing_paid_subscriber)
-            end}
+            {'has_purchased', 2, fun(13, 2002) -> true end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(13, 2002) -> ok end}
         ]},
         {channel_logic_notify, [
-            {'notify_channel_subscribed', 2, fun(_, _) ->
-                erlang:error(should_not_notify_for_noop_paid_subscribe)
-            end}
+            {'notify_channel_subscribed', 2, fun(13, 2002) -> ok end}
         ]}
     ],
     {setup,
@@ -3666,15 +3623,15 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
                 Result = channel_logic:subscribe(2002, ChannelIdBin),
 
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
+                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
             end)
         end
     }.
 
 subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(14, <<"id,type">>) ->
@@ -3706,7 +3663,7 @@ subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
     }.
 
 subscribe_returns_error_when_channel_payload_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(14, <<"id,type">>) -> [] end}
@@ -3738,9 +3695,6 @@ subscribe_returns_error_when_channel_payload_invalid_test_() ->
 subscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
@@ -3772,7 +3726,7 @@ subscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
     }.
 
 subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
-    ChannelIdBin = elib_hashids:encode(11),
+    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type">>) ->
@@ -3801,20 +3755,20 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
         end
     }.
 
-subscribe_returns_error_when_is_subscribed_unexpected_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+subscribe_returns_error_when_ds_subscribe_fails_test_() ->
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(14, <<"id,type">>) ->
                 #{<<"id">> => 14, <<"type">> => 0}
             end}
         ]},
-        {channel_subscription_repo, [
-            {'is_subscribed', 2, fun(14, 2002) -> unexpected_state end}
-        ]},
         {channel_ds, [
-            {'subscribe', 2, fun(_, _) ->
-                erlang:error(should_not_subscribe_when_subscribed_state_unexpected)
+            {'subscribe', 2, fun(14, 2002) -> {error, unexpected_state} end}
+        ]},
+        {channel_logic_notify, [
+            {'notify_channel_subscribed', 2, fun(_, _) ->
+                erlang:error(should_not_notify_when_subscribe_failed)
             end}
         ]}
     ],
@@ -3825,13 +3779,13 @@ subscribe_returns_error_when_is_subscribed_unexpected_test_() ->
             ?_test(begin
                 Result = channel_logic:subscribe(2002, ChannelIdBin),
                 ?assertEqual({error, <<"unexpected_state">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2))
+                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2))
             end)
         end
     }.
 
 unsubscribe_propagates_ds_atom_error_as_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(15),
+    ChannelIdBin = integer_to_binary(15),
     MockConfigs = [
         {channel_ds, [
             {'unsubscribe', 2, fun(15, 2002) -> {error, db_down} end}
@@ -3855,7 +3809,7 @@ unsubscribe_propagates_ds_atom_error_as_binary_test_() ->
     }.
 
 unsubscribe_propagates_unexpected_ds_result_as_binary_test_() ->
-    ChannelIdBin = elib_hashids:encode(16),
+    ChannelIdBin = integer_to_binary(16),
     MockConfigs = [
         {channel_ds, [
             {'unsubscribe', 2, fun(16, 2002) -> unexpected_result end}
@@ -3881,9 +3835,6 @@ unsubscribe_propagates_unexpected_ds_result_as_binary_test_() ->
 unsubscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_ds, [
             {'unsubscribe', 2, fun(_, _) ->
                 erlang:error(should_not_call_unsubscribe_when_channel_id_decode_unexpected)
@@ -3914,14 +3865,11 @@ unsubscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
 
 mark_as_read_clears_unread_only_for_current_user_test_() ->
     ChannelId = 13,
-    ChannelIdBin = elib_hashids:encode(ChannelId),
-    MessageIdBin = elib_hashids:encode(999),
+    ChannelIdBin = integer_to_binary(ChannelId),
+    MessageIdBin = integer_to_binary(999),
     Uid = 1001,
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> ChannelId end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"type">> => 0, <<"status">> => 1}
@@ -3963,13 +3911,10 @@ mark_as_read_clears_unread_only_for_current_user_test_() ->
 
 mark_as_read_returns_error_when_channel_not_found_test_() ->
     ChannelIdBin = <<"invalid_channel_id">>,
-    MessageIdBin = elib_hashids:encode(999),
+    MessageIdBin = integer_to_binary(999),
     Uid = 1001,
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 0 end}
-        ]},
         {channel_repo, [
             {'find_by_custom_id', 1, fun(_) -> {error, not_found} end}
         ]}
@@ -3988,13 +3933,10 @@ mark_as_read_returns_error_when_channel_not_found_test_() ->
 mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_() ->
     ChannelId = 13,
     ChannelIdBin = <<"tech_daily">>,
-    MessageIdBin = elib_hashids:encode(999),
+    MessageIdBin = integer_to_binary(999),
     Uid = 1001,
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => ChannelId}
@@ -4042,12 +3984,9 @@ mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_()
 
 mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpected_test_() ->
     ChannelIdBin = <<"tech_daily">>,
-    MessageIdBin = elib_hashids:encode(999),
+    MessageIdBin = integer_to_binary(999),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> {bad_decode, <<"tech_daily">>} end}
-        ]},
         {channel_repo, [
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => <<"invalid">>}
@@ -4152,12 +4091,9 @@ create_channel_returns_error_when_reload_payload_not_map_test_() ->
 %% P0-3: 验证统计使用 SQL 聚合查询而非加载消息列表
 get_channel_stats_uses_aggregation_query_test_() ->
     ChannelId = 11,
-    ChannelIdBin = elib_hashids:encode(ChannelId),
+    ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> ChannelId end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"test">>, <<"subscriber_count">> => 100}
@@ -4199,12 +4135,9 @@ get_channel_stats_uses_aggregation_query_test_() ->
 
 %% P0-3: 验证统计在频道不存在时返回错误
 get_channel_stats_returns_error_when_channel_not_found_test_() ->
-    ChannelIdBin = elib_hashids:encode(99999),
+    ChannelIdBin = integer_to_binary(99999),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 99999 end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) -> {error, not_found} end}
         ]}
@@ -4221,11 +4154,8 @@ get_channel_stats_returns_error_when_channel_not_found_test_() ->
     }.
 
 get_channel_stats_returns_error_when_channel_payload_invalid_test_() ->
-    ChannelIdBin = elib_hashids:encode(99998),
+    ChannelIdBin = integer_to_binary(99998),
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 99998 end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) -> [] end},
             {'get_reaction_count', 1, fun(_) ->
@@ -4248,9 +4178,6 @@ get_channel_stats_returns_error_when_channel_payload_invalid_test_() ->
 get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
@@ -4276,12 +4203,9 @@ get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
 %% P0-3: 验证统计在无消息时返回 0
 get_channel_stats_returns_zero_when_no_messages_test_() ->
     ChannelId = 12,
-    ChannelIdBin = elib_hashids:encode(ChannelId),
+    ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> ChannelId end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"empty">>, <<"subscriber_count">> => 5}
@@ -4314,12 +4238,9 @@ get_channel_stats_returns_zero_when_no_messages_test_() ->
 
 get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
     ChannelId = 13,
-    ChannelIdBin = elib_hashids:encode(ChannelId),
+    ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> ChannelId end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"agg_err">>, <<"subscriber_count">> => 9}
@@ -4351,12 +4272,9 @@ get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
 
 get_channel_stats_returns_error_when_reaction_query_fails_test_() ->
     ChannelId = 14,
-    ChannelIdBin = elib_hashids:encode(ChannelId),
+    ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> ChannelId end}
-        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"reaction_err">>, <<"subscriber_count">> => 12}
@@ -4384,16 +4302,10 @@ get_channel_stats_returns_error_when_reaction_query_fails_test_() ->
     }.
 
 get_daily_stats_returns_error_when_repo_payload_not_list_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'get_daily_stats', 2, fun(14, 7) -> {ok, invalid_payload} end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 14 end},
-            {'replace_id', 2, fun(_, _) ->
-                erlang:error(should_not_replace_when_daily_stats_payload_invalid)
-            end}
         ]}
     ],
     {setup,
@@ -4408,7 +4320,7 @@ get_daily_stats_returns_error_when_repo_payload_not_list_test_() ->
     }.
 
 get_daily_stats_filters_non_map_entries_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'get_daily_stats', 2, fun(14, 7) ->
@@ -4416,12 +4328,6 @@ get_daily_stats_filters_non_map_entries_test_() ->
                     #{<<"channel_id">> => 14, <<"day">> => <<"2026-02-24">>, <<"messages">> => 12},
                     invalid_item
                 ]}
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 14 end},
-            {'replace_id', 2, fun(Map, <<"channel_id">>) ->
-                Map#{<<"channel_id">> => <<"ch_hash_14">>}
             end}
         ]}
     ],
@@ -4433,19 +4339,16 @@ get_daily_stats_filters_non_map_entries_test_() ->
                 Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Item]} = Result,
-                ?assertEqual(<<"ch_hash_14">>, maps:get(<<"channel_id">>, Item))
+                ?assertEqual(14, maps:get(<<"channel_id">>, Item))
             end)
         end
     }.
 
 get_daily_stats_returns_error_when_repo_returns_unexpected_term_test_() ->
-    ChannelIdBin = elib_hashids:encode(14),
+    ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_repo, [
             {'get_daily_stats', 2, fun(14, 7) -> unexpected_lookup end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_) -> 14 end}
         ]}
     ],
     {setup,
@@ -4462,9 +4365,6 @@ get_daily_stats_returns_error_when_repo_returns_unexpected_term_test_() ->
 get_daily_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'get_daily_stats', 2, fun(_, _) ->
                 erlang:error(should_not_query_daily_stats_when_channel_id_decode_unexpected)
@@ -4490,9 +4390,6 @@ record_message_view_returns_error_when_message_id_decode_unexpected_test_() ->
             {'ensure_channel_content_access', 2, fun(_, _) ->
                 erlang:error(should_not_check_access_when_message_id_decode_unexpected)
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_unexpected">>) -> invalid_decode_result end}
         ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(_, _) ->
@@ -4525,9 +4422,6 @@ add_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
                 erlang:error(should_not_check_access_when_message_id_decode_unexpected)
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'insert_reaction', 5, fun(_, _, _, _, _) ->
                 erlang:error(should_not_insert_reaction_when_message_id_decode_unexpected)
@@ -4555,9 +4449,6 @@ remove_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
                 erlang:error(should_not_check_access_when_message_id_decode_unexpected)
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_repo, [
             {'delete_reaction', 4, fun(_, _, _, _) ->
                 erlang:error(should_not_delete_reaction_when_message_id_decode_unexpected)
@@ -4583,9 +4474,6 @@ record_message_view_returns_error_when_has_viewed_message_fails_test_() ->
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_99">>) -> 99 end}
-        ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> {error, db_down} end},
             {'insert_message_view', 4, fun(_, _, _, _) ->
@@ -4598,7 +4486,7 @@ record_message_view_returns_error_when_has_viewed_message_fails_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"msg_hash_99">>),
+                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
                 ?assertEqual({error, <<"db_down">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
                 ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
@@ -4612,9 +4500,6 @@ record_message_view_returns_error_when_has_viewed_message_returns_unexpected_tes
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_99">>) -> 99 end}
-        ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> unexpected_lookup end},
             {'insert_message_view', 4, fun(_, _, _, _) ->
@@ -4627,7 +4512,7 @@ record_message_view_returns_error_when_has_viewed_message_returns_unexpected_tes
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"msg_hash_99">>),
+                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
                 ?assertEqual({error, <<"unexpected_lookup">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
                 ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
@@ -4641,9 +4526,6 @@ record_message_view_returns_error_when_insert_message_view_returns_unexpected_te
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_99">>) -> 99 end}
-        ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> false end},
             {'insert_message_view', 4, fun(11, 99, 1001, _) -> unexpected_insert_result end}
@@ -4654,7 +4536,7 @@ record_message_view_returns_error_when_insert_message_view_returns_unexpected_te
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"msg_hash_99">>),
+                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
                 ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
                 ?assertEqual(1, meck:num_calls(channel_repo, insert_message_view, 4))
@@ -4668,9 +4550,6 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_99">>) -> 99 end}
-        ]},
         {channel_repo, [
             {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, _) -> unexpected_insert_result end}
         ]}
@@ -4680,7 +4559,7 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"msg_hash_99">>, <<"like">>),
+                Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
                 ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_repo, insert_reaction, 5))
             end)
@@ -4693,9 +4572,6 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"msg_hash_99">>) -> 99 end}
-        ]},
         {channel_repo, [
             {'delete_reaction', 4, fun(11, 99, 1001, <<"like">>) -> unexpected_delete_result end}
         ]}
@@ -4705,7 +4581,7 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic:remove_reaction(1001, <<"ch_hash_11">>, <<"msg_hash_99">>, <<"like">>),
+                Result = channel_logic:remove_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
                 ?assertEqual({error, <<"unexpected_delete_result">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_repo, delete_reaction, 4))
             end)
@@ -4717,26 +4593,9 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
 %% ===================================================================
 
 revoke_message_author_success_within_window_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_991">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"991">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_991">> -> 991;
-                    _ -> 0
-                end
-            end},
-            {'encode', 1, fun(Val) ->
-                case Val of
-                    11 -> <<"ch_hash_11">>;
-                    991 -> <<"msg_hash_991">>;
-                    1001 -> <<"uid_hash_1001">>;
-                    _ -> integer_to_binary(Val)
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(991) ->
                 #{
@@ -4775,9 +4634,9 @@ revoke_message_author_success_within_window_test_() ->
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(<<"msg_hash_991">>, maps:get(<<"message_id">>, Payload)),
-                ?assertEqual(<<"uid_hash_1001">>, maps:get(<<"revoked_by">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(991, maps:get(<<"message_id">>, Payload)),
+                ?assertEqual(1001, maps:get(<<"revoked_by">>, Payload)),
                 ?assertEqual(<<"2026-02-22T10:01:00Z">>, maps:get(<<"revoked_at">>, Payload)),
                 ok
             end}
@@ -4797,26 +4656,9 @@ revoke_message_author_success_within_window_test_() ->
     }.
 
 revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_991">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"991">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_991">> -> 991;
-                    _ -> 0
-                end
-            end},
-            {'encode', 1, fun(Val) ->
-                case Val of
-                    11 -> <<"ch_hash_11">>;
-                    991 -> <<"msg_hash_991">>;
-                    1001 -> <<"uid_hash_1001">>;
-                    _ -> integer_to_binary(Val)
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(991) ->
                 #{
@@ -4873,18 +4715,9 @@ revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
     }.
 
 revoke_message_returns_timeout_error_when_window_expired_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_991">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"991">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_991">> -> 991;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(991) ->
                 #{
@@ -4929,18 +4762,9 @@ revoke_message_returns_timeout_error_when_window_expired_test_() ->
     }.
 
 revoke_message_is_idempotent_when_already_revoked_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_991">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"991">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_991">> -> 991;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(991) ->
                 #{
@@ -4977,18 +4801,9 @@ revoke_message_is_idempotent_when_already_revoked_test_() ->
     }.
 
 revoke_message_returns_permission_denied_for_non_author_non_admin_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_991">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"991">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_991">> -> 991;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(991) ->
                 #{
@@ -5021,18 +4836,9 @@ revoke_message_returns_permission_denied_for_non_author_non_admin_test_() ->
     }.
 
 revoke_message_returns_error_when_repo_returns_non_map_payload_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_992">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"992">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_992">> -> 992;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(992) -> [] end},
             {'revoke', 3, fun(_, _, _) -> erlang:error(should_not_revoke_when_message_invalid) end}
@@ -5058,18 +4864,9 @@ revoke_message_returns_error_when_repo_returns_non_map_payload_test_() ->
     }.
 
 revoke_message_returns_error_when_required_fields_missing_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_993">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"993">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_993">> -> 993;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(993) ->
                 #{
@@ -5101,18 +4898,9 @@ revoke_message_returns_error_when_required_fields_missing_test_() ->
     }.
 
 revoke_message_returns_error_when_required_fields_type_invalid_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_995">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"995">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_995">> -> 995;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(995) ->
                 #{
@@ -5146,18 +4934,9 @@ revoke_message_returns_error_when_required_fields_type_invalid_test_() ->
     }.
 
 revoke_message_treats_non_boolean_revoked_field_as_not_revoked_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_996">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"996">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_996">> -> 996;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(996) ->
                 #{
@@ -5203,18 +4982,9 @@ revoke_message_treats_non_boolean_revoked_field_as_not_revoked_test_() ->
     }.
 
 revoke_message_returns_timeout_error_when_created_at_invalid_test_() ->
-    ChannelIdBin = <<"ch_hash_11">>,
-    MessageIdBin = <<"msg_hash_994">>,
+    ChannelIdBin = <<"11">>,
+    MessageIdBin = <<"994">>,
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(Bin) ->
-                case Bin of
-                    <<"ch_hash_11">> -> 11;
-                    <<"msg_hash_994">> -> 994;
-                    _ -> 0
-                end
-            end}
-        ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(994) ->
                 #{
@@ -5776,9 +5546,6 @@ get_managed_channels_filters_non_map_entries_test_() ->
 
 get_subscribers_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_11">>) -> 11 end}
-        ]},
         {channel_subscription_repo, [
             {'list_by_channel', 3, fun(11, 10, 20) -> {error, db_down} end}
         ]}
@@ -5788,7 +5555,7 @@ get_subscribers_returns_error_when_repo_fails_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"ch_hash_11">>, 10, 20),
+                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
                 ?assertEqual({error, <<"db_down">>}, Result)
             end)
         end
@@ -5796,9 +5563,6 @@ get_subscribers_returns_error_when_repo_fails_test_() ->
 
 get_subscribers_returns_error_when_channel_id_decode_unexpected_test_() ->
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_unexpected">>) -> invalid_decode_result end}
-        ]},
         {channel_subscription_repo, [
             {'list_by_channel', 3, fun(_, _, _) ->
                 erlang:error(should_not_query_subscribers_when_channel_id_decode_unexpected)
@@ -5819,9 +5583,6 @@ get_subscribers_returns_error_when_channel_id_decode_unexpected_test_() ->
 
 get_subscribers_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_11">>) -> 11 end}
-        ]},
         {channel_subscription_repo, [
             {'list_by_channel', 3, fun(11, 10, 20) -> {ok, invalid_payload} end}
         ]}
@@ -5831,7 +5592,7 @@ get_subscribers_returns_error_when_repo_payload_not_list_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"ch_hash_11">>, 10, 20),
+                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
                 ?assertEqual({error, <<"invalid_payload">>}, Result)
             end)
         end
@@ -5839,10 +5600,6 @@ get_subscribers_returns_error_when_repo_payload_not_list_test_() ->
 
 get_subscribers_filters_non_map_entries_test_() ->
     MockConfigs = [
-        {elib_hashids, [
-            {'decode', 1, fun(<<"ch_hash_11">>) -> 11 end},
-            {'replace_fields', 2, fun(Map, _Fields) -> Map end}
-        ]},
         {channel_subscription_repo, [
             {'list_by_channel', 3, fun(11, 10, 20) ->
                 {ok, [
@@ -5857,7 +5614,7 @@ get_subscribers_filters_non_map_entries_test_() ->
         fun(_) -> cleanup_mocks(MockConfigs) end,
         fun(_) ->
             ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"ch_hash_11">>, 10, 20),
+                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
                 ?assertMatch({ok, [_]}, Result),
                 {ok, [Subscriber]} = Result,
                 ?assert(maps:is_key(<<"id">>, Subscriber)),

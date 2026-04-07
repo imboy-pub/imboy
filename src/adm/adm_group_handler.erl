@@ -1713,7 +1713,7 @@ normalize_positive_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -1739,7 +1739,7 @@ normalize_user_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case elib_hashids:decode(Value) of
+                    case ec_cnv:to_integer(Value) of
                         Id when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -1779,7 +1779,7 @@ normalize_category_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case elib_hashids:decode(Value) of
+                    case ec_cnv:to_integer(Value) of
                         Id when is_integer(Id), Id >= 0 ->
                             Id;
                         _ ->
@@ -1871,7 +1871,7 @@ normalize_schedule_id(Value) when is_binary(Value) ->
                         #{<<"schedule_id">> := _} ->
                             Value;
                         _ ->
-                            case elib_hashids:decode(Value) of
+                            case ec_cnv:to_integer(Value) of
                                 Id when is_integer(Id), Id > 0 ->
                                     schedule_id_by_pk(Id);
                                 _ ->
@@ -1901,7 +1901,7 @@ normalize_notice_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case elib_hashids:decode(Value) of
+                    case ec_cnv:to_integer(Value) of
                         Id when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -1945,7 +1945,7 @@ normalize_file_pk(Value) when is_binary(Value) ->
                         #{<<"id">> := Id} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
-                            case elib_hashids:decode(Value) of
+                            case ec_cnv:to_integer(Value) of
                                 Id when is_integer(Id), Id > 0 ->
                                     Id;
                                 _ ->
@@ -1979,7 +1979,7 @@ normalize_album_pk(Value) when is_binary(Value) ->
                         #{<<"id">> := Id} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
-                            case elib_hashids:decode(Value) of
+                            case ec_cnv:to_integer(Value) of
                                 Id when is_integer(Id), Id > 0 ->
                                     Id;
                                 _ ->
@@ -2024,7 +2024,7 @@ normalize_task_pk(Value) when is_binary(Value) ->
                         {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
-                            case elib_hashids:decode(Value) of
+                            case ec_cnv:to_integer(Value) of
                                 Id when is_integer(Id), Id > 0 ->
                                     Id;
                                 _ ->
@@ -2058,7 +2058,7 @@ normalize_restore_task_pk(Value) when is_binary(Value) ->
                         {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
-                            case elib_hashids:decode(Value) of
+                            case ec_cnv:to_integer(Value) of
                                 Id when is_integer(Id), Id > 0 ->
                                     Id;
                                 _ ->
@@ -2088,7 +2088,7 @@ normalize_assignment_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case elib_hashids:decode(Value) of
+                    case ec_cnv:to_integer(Value) of
                         Id when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -2193,7 +2193,7 @@ normalize_group_payload(Payload) ->
 %% @doc 规范化单条群组数据（编码ID字段）
 -spec normalize_group(map()) -> map().
 normalize_group(Group) ->
-    elib_hashids:replace_fields(Group, [<<"id">>, <<"owner_uid">>, <<"creator_uid">>]).
+    Group.
 
 %% @doc 规范化群成员分页数据（编码ID字段）
 -spec normalize_member_payload(map()) -> map().
@@ -2205,9 +2205,9 @@ normalize_member_payload(Payload) ->
 %% @doc 规范化单条群成员数据（编码ID字段）
 -spec normalize_member(map()) -> map().
 normalize_member(Member) ->
-    elib_hashids:replace_fields(Member, [<<"user_id">>]).
+    Member.
 
 %% @doc 规范化用户数据（编码ID字段）
 -spec normalize_user(map()) -> map().
 normalize_user(User) ->
-    elib_hashids:replace_fields(User, [<<"id">>]).
+    User.

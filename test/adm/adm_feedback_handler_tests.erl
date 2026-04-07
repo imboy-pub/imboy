@@ -32,11 +32,6 @@ init_index_returns_normalized_json_test_() ->
                 }}
             end}
         ]},
-        {elib_hashids, [
-            {'replace_fields', 2, fun(Item, _Fields) ->
-                Item#{<<"feedback_id">> => <<"fb_11">>, <<"user_id">> => <<"u_9">>}
-            end}
-        ]},
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}

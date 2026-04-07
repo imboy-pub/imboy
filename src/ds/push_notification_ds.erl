@@ -10,6 +10,7 @@
 -export([send_to_users/3]).
 -export([send_fcm/3]).
 -export([send_apns/3]).
+-export([cleanup_inactive_tokens/1]).
 
 %% ===================================================================
 %% API
@@ -141,6 +142,22 @@ send_apns(Token, Title, Body) ->
         {error, not_configured} ->
             ?DEBUG_LOG(["APNs not configured, skip push"]),
             {error, not_configured}
+    end.
+
+%% @doc 清理超过指定天数未更新的不活跃推送 Token
+%% 建议通过定时任务（如每天一次）调用此函数，InactiveDays 建议设为 30
+%% 示例: push_notification_ds:cleanup_inactive_tokens(30).
+-spec cleanup_inactive_tokens(pos_integer()) -> {ok, integer()} | {error, term()}.
+cleanup_inactive_tokens(InactiveDays) when InactiveDays > 0 ->
+    case push_token_repo:deactivate_inactive(InactiveDays) of
+        {ok, Count} ->
+            ?DEBUG_LOG(["push_notification_ds: cleaned up inactive tokens",
+                        InactiveDays, <<"days">>, Count, <<"deactivated">>]),
+            {ok, Count};
+        {error, Reason} = Err ->
+            ?ERROR_LOG(["push_notification_ds: cleanup_inactive_tokens failed",
+                        Reason]),
+            Err
     end.
 
 %% ===================================================================

@@ -59,7 +59,7 @@ verify_user(Pwd, User) ->
         {ok, _} when Status == 1 ->
             Id = maps:get(<<"id">>, User),
             {ok, #{
-               <<"id">> => elib_hashids:encode(Id),
+               <<"id">> => Id,
                <<"mobile">> => maps:get(<<"mobile">>, User),
                <<"email">> => maps:get(<<"email">>, User),
                <<"nickname">> => maps:get(<<"nickname">>, User),

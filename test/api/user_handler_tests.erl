@@ -46,11 +46,6 @@ search_by_email_test_() ->
                 {false, <<>>}
             end}
         ]},
-        {elib_hashids, [
-            {'replace_id', 1, fun(User) ->
-                User#{<<"id">> => <<"encoded_12345">>}
-            end}
-        ]},
         {elib_response, [
             {'success', 2, fun(_Req, Payload) ->
                 cowboy_req_h:new(#{
@@ -147,12 +142,8 @@ qrcode_user_exists_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"id">>, <<"encoded_12345">>}]
+                [{<<"id">>, <<"12345">>}]
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_12345">>) -> 12345 end},
-            {'encode', 1, fun(12345) -> <<"encoded_12345">> end}
         ]},
         {user_logic, [
             {'find_by_id', 2, fun(12345, _Columns) ->
@@ -185,7 +176,7 @@ qrcode_user_exists_test_() ->
         {ok, Req, _State} = user_handler:init(MockReq, #{action => qrcode, current_uid => 67890}),
         {StatusCode, _, Body} = cowboy_req_h:response(Req),
         ?assertEqual(200, StatusCode),
-        ?assertEqual(<<"encoded_12345">>, maps:get(<<"id">>, Body)),
+        ?assertEqual(<<"12345">>, maps:get(<<"id">>, Body)),
         ?assertEqual(true, maps:get(<<"isfriend">>, Body))
     end).
 

@@ -31,17 +31,28 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"channel_admin">>).
 
 %% @doc 添加管理员
--spec add(map()) -> {ok, term()} | {error, term()}.
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(channel_admin),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 添加管理员（使用连接）
--spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(channel_admin),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 查找管理员记录
 -spec find(integer(), integer()) -> map() | #{}.

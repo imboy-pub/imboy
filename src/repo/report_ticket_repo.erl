@@ -14,13 +14,13 @@ tablename() ->
 -spec create(binary(), integer(), integer(), binary(), binary()) -> {ok, integer()} | {error, any()}.
 create(TargetType, TargetId, ReporterUid, Reason, Desc) ->
     Tb = tablename(),
+    Id = elib_tsid:generate(report_ticket),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (target_type, target_id, reporter_uid, reason, description, status, created_at, updated_at)"
-            " VALUES ($1, $2, $3, $4, $5, 0, NOW(), NOW())"
-            " RETURNING id">>,
-    case elib_pg:one(Sql, [TargetType, TargetId, ReporterUid, Reason, Desc]) of
-        {ok, #{<<"id">> := ReportId}} ->
-            {ok, ReportId};
+            " (id, target_type, target_id, reporter_uid, reason, description, status, created_at, updated_at)"
+            " VALUES ($1, $2, $3, $4, $5, $6, 0, NOW(), NOW())">>,
+    case elib_pg:execute(Sql, [Id, TargetType, TargetId, ReporterUid, Reason, Desc]) of
+        {ok, _Count} ->
+            {ok, Id};
         {error, ReasonErr} ->
             {error, ReasonErr}
     end.

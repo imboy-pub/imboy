@@ -347,16 +347,11 @@ normalize_to_uid(ToUid) when is_binary(ToUid); is_list(ToUid) ->
         <<>> ->
             {error, invalid};
         _ ->
-            case catch elib_hashids:decode(ToUidBin) of
-                Uid when is_integer(Uid), Uid > 0 ->
+            case safe_positive_integer(ToUidBin) of
+                {ok, Uid} ->
                     {ok, Uid};
-                _ ->
-                    case safe_positive_integer(ToUidBin) of
-                        {ok, Uid} ->
-                            {ok, Uid};
-                        error ->
-                            {error, invalid}
-                    end
+                error ->
+                    {error, invalid}
             end
     end;
 normalize_to_uid(_) ->

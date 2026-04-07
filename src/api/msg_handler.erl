@@ -167,13 +167,13 @@ process_message(Msg) when is_map(Msg) ->
     Msg2 = maps:remove(<<"from_id">>, Msg),
     Msg3 = maps:remove(<<"to_id">>, Msg2),
 
-    % 添加编码后的 from 和 to 字段
+    % 添加 from 和 to 字段
     Msg4 =
         case FromId of
             undefined ->
                 Msg3;
             _ ->
-                Msg3#{<<"from">> => elib_hashids:encode(FromId)}
+                Msg3#{<<"from">> => FromId}
         end,
 
     case ToId of
@@ -181,11 +181,10 @@ process_message(Msg) when is_map(Msg) ->
             Msg4;
         ToList when is_list(ToList) ->
             % 对于群组消息，to_id 是一个列表
-            ToEncoded = [elib_hashids:encode(ToUid) || ToUid <- ToList],
-            Msg4#{<<"to">> => ToEncoded};
+            Msg4#{<<"to">> => ToList};
         _ ->
             % 对于单个用户
-            Msg4#{<<"to">> => elib_hashids:encode(ToId)}
+            Msg4#{<<"to">> => ToId}
     end.
 
 %% @doc 处理离线消息确认
@@ -307,7 +306,7 @@ forward(Req0, State) ->
                     elib_response:error(Req0, <<"缺少目标类型参数"/utf8>>, ?ERR_BAD_REQUEST);
                 _ ->
                     % 解码目标ID
-                    ToId = elib_hashids:decode(To),
+                    ToId = ec_cnv:to_integer(To),
 
                     % 调用逻辑层处理转发
                     case msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType) of

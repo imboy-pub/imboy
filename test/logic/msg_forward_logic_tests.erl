@@ -16,9 +16,6 @@
 
 forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
@@ -99,9 +96,6 @@ forward_c2c_reply_rejected_returns_error_test_() ->
 
 forward_c2c_to_c2c_with_non_friend_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
@@ -126,9 +120,6 @@ forward_c2c_to_c2c_with_non_friend_fails_test_() ->
 
 forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_123">>) -> 1001 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
@@ -155,9 +146,6 @@ forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
 
 forward_c2c_to_c2g_with_non_group_member_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_123">>) -> 1001 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
@@ -182,9 +170,6 @@ forward_c2c_to_c2g_with_non_group_member_fails_test_() ->
 
 forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2g_timeline_repo, [
             {'find_by_msg_id', 1, fun(_MsgId) ->
                 {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
@@ -242,9 +227,6 @@ forward_c2g_to_c2c_without_group_membership_fails_test_() ->
 
 forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"group_456">>) -> 1002 end}
-        ]},
         {msg_c2g_timeline_repo, [
             {'find_by_msg_id', 1, fun(_MsgId) ->
                 {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
@@ -275,9 +257,6 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
 
 forward_batch_messages_succeeds_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
@@ -308,9 +287,6 @@ forward_batch_messages_succeeds_test_() ->
 
 forward_with_permission_denied_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 % 消息不属于当前用户
@@ -329,9 +305,6 @@ forward_with_permission_denied_fails_test_() ->
 
 forward_msg_not_found_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {error, not_found}
@@ -379,9 +352,6 @@ forward_with_invalid_to_type_fails_test_() ->
 
 forward_partial_success_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"to_user">>) -> 789 end}
-        ]},
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 case _MsgId of

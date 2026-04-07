@@ -62,28 +62,24 @@ handle_cast_signup_success_hibernates_test() ->
     ?assertMatch({noreply, [], hibernate}, Result).
 
 handle_cast_login_success_updates_device_and_notifies_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"uid_123">>) -> 123 end}
+    ?WITH_MECK(elib_dt, [
+        {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
     ], fun() ->
-        ?WITH_MECK(elib_dt, [
-            {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
+        ?WITH_MECK(user_device_repo, [
+            {'save', 5, fun(_Now, _Uid, _DID, _PostMap) -> ok end}
         ], fun() ->
-            ?WITH_MECK(user_device_repo, [
-                {'save', 5, fun(_Now, _Uid, _DID, _PostMap) -> ok end}
+            ?WITH_MECK(user_repo, [
+                {'update_friends_last_seen_at', 2, fun(_Uid, _Now) -> ok end}
             ], fun() ->
-                ?WITH_MECK(user_repo, [
-                    {'update_friends_last_seen_at', 2, fun(_Uid, _Now) -> ok end}
+                ?WITH_MECK(message_ds, [
+                    {'check_and_notify_offline_msgs', 1, fun(_Uid) -> ok end}
                 ], fun() ->
-                    ?WITH_MECK(message_ds, [
-                        {'check_and_notify_offline_msgs', 1, fun(_Uid) -> ok end}
-                    ], fun() ->
-                        State = [],
-                        Uid = <<"uid_123">>,
-                        PostVals = #{<<"did">> => <<"device_1">>},
+                    State = [],
+                    Uid = <<"uid_123">>,
+                    PostVals = #{<<"did">> => <<"device_1">>},
 
-                        Result = user_server:handle_cast({login_success, Uid, PostVals}, State),
-                        ?assertMatch({noreply, [], hibernate}, Result)
-                    end)
+                    Result = user_server:handle_cast({login_success, Uid, PostVals}, State),
+                    ?assertMatch({noreply, [], hibernate}, Result)
                 end)
             end)
         end)
@@ -358,28 +354,24 @@ notice_friend_sends_offline_notification_test_() ->
 %% ===================================================================
 
 handle_cast_login_success_with_missing_did_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"uid_123">>) -> 123 end}
+    ?WITH_MECK(elib_dt, [
+        {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
     ], fun() ->
-        ?WITH_MECK(elib_dt, [
-            {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
+        ?WITH_MECK(user_device_repo, [
+            {'save', 5, fun(_Now, _Uid, _DID, _PostMap) -> ok end}
         ], fun() ->
-            ?WITH_MECK(user_device_repo, [
-                {'save', 5, fun(_Now, _Uid, _DID, _PostMap) -> ok end}
+            ?WITH_MECK(user_repo, [
+                {'update_friends_last_seen_at', 2, fun(_Uid, _Now) -> ok end}
             ], fun() ->
-                ?WITH_MECK(user_repo, [
-                    {'update_friends_last_seen_at', 2, fun(_Uid, _Now) -> ok end}
+                ?WITH_MECK(message_ds, [
+                    {'check_and_notify_offline_msgs', 1, fun(_Uid) -> ok end}
                 ], fun() ->
-                    ?WITH_MECK(message_ds, [
-                        {'check_and_notify_offline_msgs', 1, fun(_Uid) -> ok end}
-                    ], fun() ->
-                        State = [],
-                        Uid = <<"uid_123">>,
-                        PostVals = #{<<"other">> => <<"data">>},  % 缺少 did
+                    State = [],
+                    Uid = <<"uid_123">>,
+                    PostVals = #{<<"other">> => <<"data">>},  % 缺少 did
 
-                        Result = user_server:handle_cast({login_success, Uid, PostVals}, State),
-                        ?assertMatch({noreply, [], hibernate}, Result)
-                    end)
+                    Result = user_server:handle_cast({login_success, Uid, PostVals}, State),
+                    ?assertMatch({noreply, [], hibernate}, Result)
                 end)
             end)
         end)

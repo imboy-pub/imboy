@@ -31,7 +31,7 @@
 -spec c2c(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
 c2c(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
-    ToId = elib_hashids:decode(To),
+    ToId = ec_cnv:to_integer(To),
 
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
@@ -97,7 +97,7 @@ policy_violation_reply(MsgId, Reason) ->
 prepare_c2c_data(CurrentUid, Data) ->
     NowTs = elib_dt:now(),
     NowMS = elib_dt:rfc3339_to(NowTs, millisecond),
-    From = elib_hashids:encode(CurrentUid),
+    From = CurrentUid,
     Payload = maps:get(<<"payload">>, Data),
     CreatedAt = maps:get(<<"created_at">>, Data),
     CreatedAtRfc = elib_dt:to_rfc3339(CreatedAt),
@@ -237,8 +237,8 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
-    ToId = elib_hashids:decode(To),
-    FromId = elib_hashids:decode(From),
+    ToId = ec_cnv:to_integer(To),
+    FromId = ec_cnv:to_integer(From),
     % ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
 
     %% 【权限验证】只能撤销自己发送的消息
@@ -251,10 +251,11 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                     case MsgData of
                         #{<<"from_id">> := FromId} ->
                             CreatedAt = maps:get(<<"created_at">>, MsgData),
+                            CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                             NowMs = elib_dt:millisecond(),
 
                             % 检查是否超过撤回时间限制（2分钟）
-                            case NowMs - CreatedAt > ?REVOKE_TIMEOUT_MS of
+                            case NowMs - CreatedAtMs > ?REVOKE_TIMEOUT_MS of
                                 true ->
                                     % 超过撤回时间限制
                                     ErrorMsg = #{
@@ -350,8 +351,8 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     NewContent = maps:get(<<"content">>, Payload),
     MsgType = maps:get(<<"msg_type">>, Payload),
     E2EE = maps:get(<<"e2ee">>, Data, null),
-    ToId = elib_hashids:decode(To),
-    FromId = elib_hashids:decode(From),
+    ToId = ec_cnv:to_integer(To),
+    FromId = ec_cnv:to_integer(From),
     ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
     
     % 验证权限：只能编辑自己发送的消息
@@ -443,8 +444,8 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
 c2c_read(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
-    ToId = elib_hashids:decode(To),  % 发送者ID
-    FromId = elib_hashids:decode(From),  % 接收者ID（自己）
+    ToId = ec_cnv:to_integer(To),  % 发送者ID
+    FromId = ec_cnv:to_integer(From),  % 接收者ID（自己）
 
     % 检查是否是发给自己的消息（不能对自己发送已读回执）
     case CurrentUid =:= FromId of
@@ -569,7 +570,7 @@ extract_reply_info(Data) ->
         ReplyTo when is_map(ReplyTo) ->
             ReplyToMsgId = maps:get(<<"msg_id">>, ReplyTo, <<>>),
             ReplyToFromIdBin = maps:get(<<"from_id">>, ReplyTo, <<>>),
-            ReplyToFromId = elib_hashids:decode(ReplyToFromIdBin),
+            ReplyToFromId = ec_cnv:to_integer(ReplyToFromIdBin),
 
             % 从被引用的消息中提取摘要
             ReplySnippet = case ReplyToMsgId of

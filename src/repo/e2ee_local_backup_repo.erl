@@ -239,14 +239,15 @@ insert_new(BackupMap) ->
     FileSize = maps:get(<<"file_size">>, BackupMap, 0),
     UserNotes = maps:get(<<"user_notes">>, BackupMap, <<>>),
 
+    Id = elib_tsid:generate(e2ee_local_backup),
     Sql = <<"INSERT INTO e2ee_local_backups (
-                uid, device_id, backup_version, key_checksum,
+                id, uid, device_id, backup_version, key_checksum,
                 file_size, user_notes
-            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, uid, device_id, backup_version, key_checksum,
                       file_size, user_notes, created_at">>,
 
-    case elib_pg:query(Sql, [Uid, DeviceId, BackupVersion, KeyChecksum,
+    case elib_pg:query(Sql, [Id, Uid, DeviceId, BackupVersion, KeyChecksum,
                             FileSize, UserNotes]) of
         {ok, _, [{Result}]} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_created, Uid, DeviceId, BackupVersion]),

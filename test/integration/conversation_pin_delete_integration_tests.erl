@@ -66,13 +66,13 @@ test_pin_c2c_conversation() ->
     User2 = maps:get(user2, Context),
 
     % 1. 置顶会话
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 2. 验证置顶状态
-    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_pin_logic:is_pinned(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 3. 再次置顶（幂等性测试）
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User2), <<"c2c">>),
 
     ok.
 
@@ -82,10 +82,10 @@ test_pin_c2g_conversation() ->
     Group1 = maps:get(group1, Context),
 
     % 1. 置顶群聊会话
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(Group1), <<"c2g">>),
 
     % 2. 验证置顶状态
-    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    true = conversation_pin_logic:is_pinned(User1, integer_to_binary(Group1), <<"c2g">>),
 
     ok.
 
@@ -95,13 +95,13 @@ test_unpin_conversation() ->
     User2 = maps:get(user2, Context),
 
     % 1. 先置顶
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 2. 取消置顶
-    ok = conversation_pin_logic:unpin(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_pin_logic:unpin(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 3. 验证取消成功
-    false = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    false = conversation_pin_logic:is_pinned(User1, integer_to_binary(User2), <<"c2c">>),
 
     ok.
 
@@ -113,9 +113,9 @@ test_get_pinned_list() ->
     Group1 = maps:get(group1, Context),
 
     % 1. 置顶多个会话
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User3), <<"c2c">>),
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User2), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User3), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(Group1), <<"c2g">>),
 
     % 2. 获取置顶列表
     {ok, PinnedList} = conversation_pin_logic:list(User1),
@@ -136,10 +136,10 @@ test_delete_c2c_conversation() ->
     end, lists:seq(1, 5)),
 
     % 2. 删除会话（软删除）
-    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 3. 验证删除状态
-    true = conversation_logic:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_logic:is_deleted(User1, integer_to_binary(User2), <<"c2c">>),
 
     ok.
 
@@ -154,10 +154,10 @@ test_delete_c2g_conversation() ->
     end, lists:seq(1, 3)),
 
     % 2. 删除会话
-    ok = conversation_logic:delete(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    ok = conversation_logic:delete(User1, integer_to_binary(Group1), <<"c2g">>),
 
     % 3. 验证删除状态
-    true = conversation_logic:is_deleted(User1, elib_hashids:encode(Group1), <<"c2g">>),
+    true = conversation_logic:is_deleted(User1, integer_to_binary(Group1), <<"c2g">>),
 
     ok.
 
@@ -167,13 +167,13 @@ test_restore_deleted_conversation() ->
     User2 = maps:get(user2, Context),
 
     % 1. 删除会话
-    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 2. 恢复会话
-    ok = conversation_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:restore(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 3. 验证恢复成功
-    false = conversation_logic:is_deleted(User1, elib_hashids:encode(User2), <<"c2c">>),
+    false = conversation_logic:is_deleted(User1, integer_to_binary(User2), <<"c2c">>),
 
     ok.
 
@@ -183,16 +183,16 @@ test_pin_then_delete() ->
     User2 = maps:get(user2, Context),
 
     % 1. 置顶会话
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 2. 删除会话（置顶状态应该保持或被清除，取决于业务逻辑）
-    ok = conversation_logic:delete(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:delete(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 3. 恢复会话
-    ok = conversation_logic:restore(User1, elib_hashids:encode(User2), <<"c2c">>),
+    ok = conversation_logic:restore(User1, integer_to_binary(User2), <<"c2c">>),
 
     % 4. 验证置顶状态（假设保持）
-    true = conversation_pin_logic:is_pinned(User1, elib_hashids:encode(User2), <<"c2c">>),
+    true = conversation_pin_logic:is_pinned(User1, integer_to_binary(User2), <<"c2c">>),
 
     ok.
 
@@ -206,10 +206,10 @@ test_batch_pin() ->
 
     % 1. 批量置顶
     Conversations = [
-        {elib_hashids:encode(User2), <<"c2c">>},
-        {elib_hashids:encode(User3), <<"c2c">>},
-        {elib_hashids:encode(Group1), <<"c2g">>},
-        {elib_hashids:encode(Group2), <<"c2g">>}
+        {integer_to_binary(User2), <<"c2c">>},
+        {integer_to_binary(User3), <<"c2c">>},
+        {integer_to_binary(Group1), <<"c2g">>},
+        {integer_to_binary(Group2), <<"c2g">>}
     ],
 
     lists:foreach(fun({ConvId, ConvType}) ->
@@ -235,14 +235,14 @@ test_conversation_list_with_pin() ->
     send_c2g_message(User1, Group1, <<"群消息1"/utf8>>),
 
     % 2. 置顶 User3 的会话
-    ok = conversation_pin_logic:pin(User1, elib_hashids:encode(User3), <<"c2c">>),
+    ok = conversation_pin_logic:pin(User1, integer_to_binary(User3), <<"c2c">>),
 
     % 3. 获取会话列表
     {ok, ConversationList} = conversation_logic:list(User1, #{limit => 20}),
 
     % 4. 验证置顶会话在最前面
     [FirstConv | _] = ConversationList,
-    ?assertEqual(elib_hashids:encode(User3), maps:get(<<"conversation_id">>, FirstConv)),
+    ?assertEqual(integer_to_binary(User3), maps:get(<<"conversation_id">>, FirstConv)),
     ?assertEqual(true, maps:get(<<"is_pinned">>, FirstConv)),
 
     ok.
@@ -310,7 +310,7 @@ send_c2c_message(From, To, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(To)}),
+    ok = msg_c2c_logic:c2c(MsgId, From, MsgData#{<<"to">> => integer_to_binary(To)}),
     ok = wait_for_c2c_message(MsgId),
     MsgId.
 
@@ -322,7 +322,7 @@ send_c2g_message(From, Group, Content) ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(MsgId, From, MsgData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_c2g_message(MsgId),
     MsgId.
 

@@ -166,11 +166,6 @@ offline_with_custom_parameters_test_() ->
                 (_Sql, [12345, <<"ts-s2c">>]) -> {ok, [#{<<"count">> => 1}]}
             end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) ->
-                <<"h_", (erlang:integer_to_binary(Uid))/binary>>
-            end}
-        ]},
         {msg_c2c_ds, [
             {'read_msg', 3, fun(12345, 500, <<"ts-c2c">>) ->
                 [

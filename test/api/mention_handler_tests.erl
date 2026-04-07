@@ -28,9 +28,6 @@ list_mentions_with_is_read_true_passes_filter_test_() ->
                 ]}
             end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(_Any) -> <<"encoded">> end}
-        ]},
         {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
@@ -109,9 +106,6 @@ suggest_not_group_member_maps_permission_denied_code_test_() ->
                 [{<<"gid">>, <<"g_12">>}, {<<"keyword">>, <<"张"/utf8>>}]
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end}
-        ]},
         {mention_logic, [
             {'get_member_suggestions', 3, fun(_Gid, _Uid, _Keyword) ->
                 {error, not_group_member}
@@ -137,10 +131,6 @@ list_mentions_accepts_group_id_in_post_test_() ->
         ]},
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [] end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end},
-            {'encode', 1, fun(_Any) -> <<"encoded">> end}
         ]},
         {mention_logic, [
             {'list_group_mentions', 4, fun(_Gid, _Uid, _IsRead, _Options) ->
@@ -204,12 +194,9 @@ suggest_accepts_group_id_in_post_and_returns_items_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [] end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end}
-        ]},
         {mention_logic, [
             {'get_member_suggestions', 3, fun(_Gid, _Uid, _Keyword) ->
-                {ok, [#{<<"id">> => <<"u_1">>}]} 
+                {ok, [#{<<"id">> => <<"u_1">>}]}
             end}
         ]},
         {elib_response, [
@@ -232,9 +219,6 @@ unread_supports_group_filter_test_() ->
         ]},
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [] end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_Any) -> 12 end}
         ]},
         {mention_logic, [
             {'count_group_unread', 2, fun(_Uid, _Gid) -> 3 end}

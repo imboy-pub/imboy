@@ -20,12 +20,13 @@ tablename() ->
 -spec add(integer(), integer()) -> {ok, boolean()} | {error, any()}.
 add(PostId, UserId) ->
     Tb = tablename(),
+    GenId = elib_tsid:generate(moment_like),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (post_id, user_id, created_at)"
-            " VALUES ($1, $2, NOW())"
+            " (id, post_id, user_id, created_at)"
+            " VALUES ($1, $2, $3, NOW())"
             " ON CONFLICT (post_id, user_id) DO NOTHING"
             " RETURNING 1 AS inserted">>,
-    case elib_pg:query(Sql, [PostId, UserId]) of
+    case elib_pg:query(Sql, [GenId, PostId, UserId]) of
         {ok, []} ->
             {ok, false};
         {ok, [_ | _]} ->
@@ -37,12 +38,13 @@ add(PostId, UserId) ->
 -spec add(any(), integer(), integer()) -> {ok, boolean()} | {error, any()}.
 add(Conn, PostId, UserId) ->
     Tb = tablename(),
+    GenId = elib_tsid:generate(moment_like),
     Sql = <<"INSERT INTO ", Tb/binary,
-            " (post_id, user_id, created_at)"
-            " VALUES ($1, $2, NOW())"
+            " (id, post_id, user_id, created_at)"
+            " VALUES ($1, $2, $3, NOW())"
             " ON CONFLICT (post_id, user_id) DO NOTHING"
             " RETURNING 1 AS inserted">>,
-    case elib_pg:query(Conn, Sql, [PostId, UserId]) of
+    case elib_pg:query(Conn, Sql, [GenId, PostId, UserId]) of
         {ok, []} ->
             {ok, false};
         {ok, [_ | _]} ->

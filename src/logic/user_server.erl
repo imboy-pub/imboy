@@ -62,13 +62,13 @@ handle_call(Request, From, State) ->
 
 % 用户注册成功后的逻辑处理
 handle_cast({signup_success, _Uid, _PostVals}, State) ->
-    % ?DEBUG_LOG([Uid, elib_hashids:decode(Uid), PostVals]),
+    % ?DEBUG_LOG([Uid, PostVals]),
     % 生成account
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
 handle_cast({login_success, Uid, PostVals}, State) ->
     % 用户登录成功之后的业务逻辑处理
-    Uid2 = elib_hashids:decode(Uid),
+    Uid2 = ec_cnv:to_integer(Uid),
     Now = elib_dt:now(),
     % 记录设备信息
     PostMap = PostVals,

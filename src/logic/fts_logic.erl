@@ -44,7 +44,7 @@ user_search_page(Uid, Page, Size, Keyword) ->
                                      case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
                                          {B1, Remark} ->
                                              [B1, Remark]
-                                     end ++ [elib_hashids:encode(Uid2), maps:get(<<"nickname">>, Row, <<>>), maps:get(<<"avatar">>, Row, <<>>), maps:get(<<"gender">>, Row, 0), maps:get(<<"signature">>, Row, <<>>), maps:get(<<"created_at">>, Row, <<>>)])
+                                     end ++ [Uid2, maps:get(<<"nickname">>, Row, <<>>), maps:get(<<"avatar">>, Row, <<>>), maps:get(<<"gender">>, Row, 0), maps:get(<<"signature">>, Row, <<>>), maps:get(<<"created_at">>, Row, <<>>)])
                        || #{<<"uid">> := Uid2} = Row <- Items0, Uid2 /= Uid ],
             #{total => Total, page => Page, size => Size, list => Items2};
         _ ->
@@ -78,7 +78,7 @@ recently_user_page(Uid, Page, Size, Keyword) ->
                                              case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
                                                  {B1, Remark} ->
                                                      [B1, Remark]
-                                             end ++ [elib_hashids:encode(Uid2) | Row])
+                                             end ++ [Uid2 | Row])
                                || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
                     #{total => Total, page => Page, size => Size, list => Items2};
                 {error, _} ->
@@ -103,7 +103,7 @@ recently_user_page(Uid, Page, Size, Keyword) ->
                                              case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
                                                  {B1, Remark} ->
                                                      [B1, Remark]
-                                             end ++ [elib_hashids:encode(Uid2) | Row])
+                                             end ++ [Uid2 | Row])
                                || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
                     #{total => Total, page => Page, size => Size, list => Items2}
             end
@@ -204,12 +204,12 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
 -spec format_c2c_msg_item(map()) -> map().
 format_c2c_msg_item(Msg) ->
     BaseMap = #{
-        <<"message_id">> => elib_hashids:encode(maps:get(<<"id">>, Msg)),
+        <<"message_id">> => maps:get(<<"id">>, Msg),
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),
-        <<"from">> => elib_hashids:encode(maps:get(<<"from_id">>, Msg)),
-        <<"to">> => elib_hashids:encode(maps:get(<<"to_id">>, Msg)),
+        <<"from">> => maps:get(<<"from_id">>, Msg),
+        <<"to">> => maps:get(<<"to_id">>, Msg),
         <<"status">> => maps:get(<<"status">>, Msg, 0)
     },
     % 添加高亮字段（如果存在）
@@ -228,12 +228,12 @@ format_c2c_msg_item(Msg) ->
 -spec format_c2g_msg_item(map()) -> map().
 format_c2g_msg_item(Msg) ->
     BaseMap = #{
-        <<"message_id">> => elib_hashids:encode(maps:get(<<"id">>, Msg)),
+        <<"message_id">> => maps:get(<<"id">>, Msg),
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),
-        <<"from">> => elib_hashids:encode(maps:get(<<"from_id">>, Msg)),
-        <<"group_id">> => elib_hashids:encode(maps:get(<<"group_id">>, Msg)),
+        <<"from">> => maps:get(<<"from_id">>, Msg),
+        <<"group_id">> => maps:get(<<"group_id">>, Msg),
         <<"status">> => maps:get(<<"status">>, Msg, 0)
     },
     % 添加高亮字段（如果存在）

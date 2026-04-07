@@ -64,7 +64,9 @@ read_msg(Where, Vals, Column, Limit) ->
 -spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary(), map() | null) -> {ok, any()} | {error, any()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，需要传入 integer
-    elib_pg:insert(tablename(), #{
+    GenId = elib_tsid:generate(msg_s2c),
+    Data = #{
+        id => GenId,
         payload => Payload,
         from_id => FromId,
         to_id => ToId,
@@ -83,7 +85,12 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE)
             Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
             _ -> null
         end
-    }).
+    },
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, GenId};
+        {error, _} = Err -> Err
+    end.
 
 -spec delete_msg(integer() | binary()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_msg(Id) when is_integer(Id) ->

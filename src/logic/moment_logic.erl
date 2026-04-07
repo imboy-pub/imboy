@@ -263,7 +263,7 @@ report_post(Uid, PostIdRaw, ReasonRaw, DescRaw) ->
         true ->
             case moment_ds:report_post(Uid, PostId, Reason, Desc) of
                 {ok, ReportId} ->
-                    {ok, #{<<"report_id">> => elib_hashids:encode(ReportId)}};
+                    {ok, #{<<"report_id">> => ReportId}};
                 {error, invalid_reporter} ->
                     {error, <<"不能举报自己的动态"/utf8>>};
                 {error, not_found} ->
@@ -305,8 +305,8 @@ admin_post_detail(PostIdRaw) ->
                     PostPayload = admin_post_transfer(Post),
                     Payload = PostPayload#{
                         <<"acl">> => #{
-                            <<"allow_uids">> => [elib_hashids:encode(U) || U <- AllowUids],
-                            <<"deny_uids">> => [elib_hashids:encode(U) || U <- DenyUids]
+                            <<"allow_uids">> => AllowUids,
+                            <<"deny_uids">> => DenyUids
                         },
                         <<"reports">> => Reports
                     },
@@ -586,7 +586,7 @@ decode_positive_id(Value) when is_binary(Value), Value =/= <<>> ->
             Int = ec_cnv:to_integer(Value),
             case Int > 0 of true -> Int; false -> 0 end;
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -604,9 +604,7 @@ decode_optional_positive_id(<<>>) ->
 decode_optional_positive_id(Value) ->
     decode_positive_id(Value).
 
--spec safe_encode(term()) -> binary() | term().
-safe_encode(Id) when is_integer(Id), Id > 0 ->
-    elib_hashids:encode(Id);
+-spec safe_encode(term()) -> term().
 safe_encode(Id) ->
     Id.
 

@@ -68,11 +68,11 @@ add(Req0, State) ->
     PostVals = elib_param:post(Req0),
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
 
-    DeniedUserId2 = elib_hashids:decode(DeniedUserId),
+    DeniedUserId2 = ec_cnv:to_integer(DeniedUserId),
     CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
     elib_response:success(Req0,
-                           #{<<"user_id">> => elib_hashids:encode(CurrentUid),
-                             <<"denied_user_id">> => DeniedUserId,
+                           #{<<"user_id">> => CurrentUid,
+                             <<"denied_user_id">> => DeniedUserId2,
                              <<"created_at">> => CreatedAt}).
 
 %% @doc 移除黑名单
@@ -88,7 +88,7 @@ remove(Req0, State) ->
 
     PostVals = elib_param:post(Req0),
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
-    DeniedUserId2 = elib_hashids:decode(DeniedUserId),
+    DeniedUserId2 = ec_cnv:to_integer(DeniedUserId),
 
     user_denylist_logic:remove(CurrentUid, DeniedUserId2),
     elib_response:success(Req0).

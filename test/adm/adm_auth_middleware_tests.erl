@@ -68,15 +68,12 @@ execute_with_valid_uid_cookie_get_test_() ->
         ]},
         {elib_req, [
             {'cookie', 2, fun
-                (<<"adm_user_id">>, _Req) -> <<"encoded_uid_123">>;
+                (<<"adm_user_id">>, _Req) -> <<"100">>;
                 (<<"adm_user_sig">>, _Req) ->
-                    adm_auth_middleware:sign_admin_cookie(<<"encoded_uid_123">>);
+                    adm_auth_middleware:sign_admin_cookie(<<"100">>);
                 (_, _) ->
                     false
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_encoded) -> 100 end}
         ]}
     ], fun() ->
         Req = mock_request(),
@@ -99,9 +96,6 @@ execute_with_valid_uid_cookie_post_test_() ->
                 (_, _) ->
                     false
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(_encoded) -> 200 end}
         ]}
     ], fun() ->
         Req = mock_request(),
@@ -158,9 +152,7 @@ execute_without_uid_cookie_post_test_() ->
 %% ===================================================================
 
 condition_with_binary_uid_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(_uid) -> 100 end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{test_key => test_value}},
         Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_123">>, Req, Env),
@@ -168,9 +160,7 @@ condition_with_binary_uid_test_() ->
     end).
 
 condition_without_has_sent_resp_in_env_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(_uid) -> 300 end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{existing => data}},
         Result = adm_auth_middleware:condition(<<"POST">>, <<"uid_abc">>, Req, Env),
@@ -292,9 +282,7 @@ execute_with_passport_do_login_path_test_() ->
     end).
 
 condition_preserves_existing_handler_opts_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(_uid) -> 999 end}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{key1 => val1, key2 => val2}},
         Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_xyz">>, Req, Env),

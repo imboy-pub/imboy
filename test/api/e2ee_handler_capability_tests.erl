@@ -48,14 +48,11 @@ user_keys_works_when_e2ee_enabled_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(_Key, _Req, _Default) -> <<"encoded_456">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_456">>) -> 456 end}
+            {'get', 3, fun(_Key, _Req, _Default) -> <<"456">> end}
         ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"encoded_456">>, <<"devices">> => []}}
+                {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
             end}
         ]},
         {elib_response, [

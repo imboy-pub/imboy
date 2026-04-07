@@ -48,9 +48,6 @@ init_list_success_test_() ->
                 ]}
             end}
         ]},
-        {elib_hashids, [
-            {'replace_fields', 2, fun(Map, _Fields) -> Map end}
-        ]},
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}

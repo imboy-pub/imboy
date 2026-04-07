@@ -86,7 +86,10 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
             null -> MsgData;
             _ -> MsgData#{expire_at => ExpireAt}
         end,
-        case elib_pg:insert(Conn, TbMsg, MsgData2, <<>>) of
+        GenId = elib_tsid:generate(msg_c2g),
+        MsgData3 = MsgData2#{id => GenId},
+        {MsgSql, MsgParams} = elib_pg_sql:insert(TbMsg, MsgData3),
+        case elib_pg:execute(Conn, MsgSql, MsgParams) of
             {ok, _} -> ok;
             {error, InsertReason} ->
                 ?ERROR_LOG({msg_c2g_insert_failed, MsgId, InsertReason}),
@@ -269,7 +272,9 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
 
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入群离线消息（带@信息）----------
-        case elib_pg:insert(Conn, TbMsg, #{
+        GenId2 = elib_tsid:generate(msg_c2g),
+        MentionMsgData = #{
+            id => GenId2,
             payload => Payload,
             to_id => Gid,
             from_id => FromId,
@@ -289,7 +294,9 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
                 [] -> null;
                 _ -> jsone:encode(Mentions, [native_utf8])
             end
-        }, <<>>) of
+        },
+        {MentionSql, MentionParams} = elib_pg_sql:insert(TbMsg, MentionMsgData),
+        case elib_pg:execute(Conn, MentionSql, MentionParams) of
             {ok, _} -> ok;
             {error, InsertReason} ->
                 ?ERROR_LOG({msg_c2g_mention_insert_failed, MsgId, InsertReason}),

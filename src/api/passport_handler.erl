@@ -114,7 +114,7 @@ validate_bind_mail_cache(_CacheVal, _Mail) ->
 %% @doc 处理绑定邮箱
 -spec process_bind_mail(cowboy_req:req(), map()) -> cowboy_req:req().
 process_bind_mail(Req0, #{uid := Uid, mail := Mail, cache_key := CacheKey}) ->
-    Uid2 = elib_hashids:decode(Uid),
+    Uid2 = ec_cnv:to_integer(Uid),
     case elib_pg:update(user_repo:tablename(), #{<<"email">> => Mail}, <<"id = $1">>, [Uid2]) of
         {ok, _} ->
             imboy_cache:set(CacheKey, 1, 86400),

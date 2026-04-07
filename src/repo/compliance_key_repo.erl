@@ -38,7 +38,10 @@ create(KeyId, PublicKey, PrivateKeyEncrypted, CreatedBy) ->
         created_by => CreatedBy,
         status => 1
     },
-    case elib_pg:insert(Tb, Data, <<>>) of
+    Id = elib_tsid:generate(compliance_key),
+    Data2 = Data#{id => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
         {ok, _} -> {ok, KeyId};
         {error, Reason} -> {error, Reason}
     end.

@@ -336,7 +336,7 @@ normalize_report_id(Value) ->
 
 -spec safe_hash_decode(binary()) -> integer().
 safe_hash_decode(Hash) ->
-    try elib_hashids:decode(Hash) of
+    try ec_cnv:to_integer(Hash) of
         Int when is_integer(Int), Int > 0 ->
             Int;
         _ ->

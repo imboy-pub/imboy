@@ -152,9 +152,6 @@ leave_success_test_() ->
         {msg_s2c_ds, [
             {'send', 7, fun(_FromUid, _ToUidLi, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(1) -> <<"encoded_1">> end}
-        ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
         ]}
@@ -178,9 +175,6 @@ leave_with_different_current_uid_test_() ->
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_FromUid, _ToUidLi, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(1) -> <<"encoded_1">> end}
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
@@ -211,9 +205,6 @@ alias_updates_nickname_test_() ->
         ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(1) -> <<"encoded_1">> end}
         ]}
     ], fun() ->
         Uid = 100,
@@ -238,9 +229,6 @@ alias_with_empty_description_test_() ->
         ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(1) -> <<"encoded_1">> end}
         ]}
     ], fun() ->
         Uid = 100,

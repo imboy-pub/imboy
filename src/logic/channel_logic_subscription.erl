@@ -23,27 +23,22 @@ subscribe(Uid, ChannelIdBin) ->
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    case channel_subscription_repo:is_subscribed(ChannelId, Uid) of
-                        true ->
-                            ok;
-                        false ->
-                            Type = maps:get(<<"type">>, Channel, 0),
-                            case Type of
-                                1 ->
-                                    subscribe_private_channel(Uid, ChannelId);
-                                2 ->
-                                    subscribe_paid_channel(Uid, ChannelId);
-                                _ ->
-                                    case channel_ds:subscribe(ChannelId, Uid) of
-                                        ok ->
-                                            channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
-                                            ok;
-                                        {error, Reason} ->
-                                            {error, elib_cnv:safe_to_binary(Reason)}
-                                    end
-                            end;
-                        Other ->
-                            {error, elib_cnv:safe_to_binary(Other)}
+                    % 直接走订阅流程，底层 upsert_active 保证幂等，
+                    % 避免先 is_subscribed 再 subscribe 的 TOCTOU 竞态
+                    Type = maps:get(<<"type">>, Channel, 0),
+                    case Type of
+                        1 ->
+                            subscribe_private_channel(Uid, ChannelId);
+                        2 ->
+                            subscribe_paid_channel(Uid, ChannelId);
+                        _ ->
+                            case channel_ds:subscribe(ChannelId, Uid) of
+                                ok ->
+                                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
+                                    ok;
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end;
                 _ ->
                     {error, <<"频道不存在"/utf8>>}
@@ -134,7 +129,7 @@ get_unread_summary(Uid) ->
         {ok, Rows} when is_list(Rows) ->
             ChannelUnreadList = [
                 #{
-                    <<"channel_id">> => elib_hashids:encode(ChannelId),
+                    <<"channel_id">> => ChannelId,
                     <<"unread_count">> => UnreadCount
                 }
                 || #{
@@ -166,10 +161,7 @@ get_subscribers(ChannelIdBin, Cursor, Limit) ->
         _ ->
             case channel_subscription_repo:list_by_channel(ChannelId, Cursor, Limit) of
                 {ok, Subscribers} when is_list(Subscribers) ->
-                    Subscribers2 = lists:map(fun(S) ->
-                        elib_hashids:replace_fields(S, [<<"id">>, <<"user_id">>])
-                    end, [S || S <- Subscribers, is_map(S)]),
-                    {ok, Subscribers2};
+                    {ok, [S || S <- Subscribers, is_map(S)]};
                 {ok, Other} ->
                     {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
@@ -254,7 +246,7 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

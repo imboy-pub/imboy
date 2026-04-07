@@ -86,7 +86,7 @@ current(<<"GET">>, Req0, State) ->
                 <<"id,account,nickname,avatar,role_id,login_count,last_login_ip,last_login_at,status,created_at">>,
                 Key
             ),
-            AdmUser2 = elib_hashids:replace_fields(AdmUser, [<<"id">>]),
+            AdmUser2 = AdmUser,
             elib_response:success(Req0, AdmUser2);
         _ ->
             elib_response:error(Req0, <<"Need to log in again"/utf8>>, 706)

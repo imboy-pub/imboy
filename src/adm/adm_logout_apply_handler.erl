@@ -103,7 +103,7 @@ reject(<<"POST">>, Req0, _State) ->
                 {ok, [_]} ->
                     %% 记录驳回日志
                     ok = ?INFO_LOG([logout_apply_rejected, #{uid => Uid, reason => Reason}]),
-                    elib_response:success(Req1, #{uid => elib_hashids:encode(Uid), status => <<"rejected">>});
+                    elib_response:success(Req1, #{uid => Uid, status => <<"rejected">>});
                 {ok, []} ->
                     elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
                 {error, _Reason} ->
@@ -254,7 +254,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -290,7 +290,7 @@ normalize_row(Row) ->
     BodyMap = decode_body(BodyBin),
     Uid = row_get(Row, <<"uid">>, 0),
     #{
-        uid => elib_hashids:encode(Uid),
+        uid => Uid,
         account => row_get(Row, <<"account">>, <<>>),
         nickname => row_get(Row, <<"nickname">>, <<>>),
         user_status => row_get(Row, <<"user_status">>, 0),

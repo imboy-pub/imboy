@@ -8,6 +8,7 @@
 -export([upsert/5]).
 -export([deactivate/2]).
 -export([deactivate_by_token/1]).
+-export([deactivate_inactive/1]).
 -export([list_by_uid/1]).
 -export([list_by_uids/1]).
 -export([list_page/2]).
@@ -36,7 +37,9 @@ upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
                       " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
     _ = elib_pg:execute(DeactivateSql, [Now, Uid, DeviceId]),
     %% 插入新 token
-    elib_pg:insert(Tb, #{
+    Id = elib_tsid:generate(push_token),
+    Data = #{
+        <<"id">> => Id,
         <<"user_id">> => Uid,
         <<"device_id">> => DeviceId,
         <<"device_type">> => DeviceType,
@@ -45,7 +48,12 @@ upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
         <<"status">> => 1,
         <<"created_at">> => Now,
         <<"updated_at">> => Now
-    }).
+    },
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 使指定用户设备的 token 失效
 -spec deactivate(integer(), binary()) -> {ok, integer()} | {error, term()}.
@@ -66,6 +74,19 @@ deactivate_by_token(Token) ->
             " SET status = 0, updated_at = $1"
             " WHERE token = $2 AND status = 1">>,
     elib_pg:execute(Sql, [Now, Token]).
+
+%% @doc 将超过指定天数未更新的活跃 Token 置为失效
+%% 用于定期清理不活跃的推送 Token，避免向失效设备发送推送
+-spec deactivate_inactive(pos_integer()) -> {ok, integer()} | {error, term()}.
+deactivate_inactive(InactiveDays) ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    %% 计算截止时间：当前时间减去 InactiveDays 天（毫秒）
+    CutoffMs = Now - InactiveDays * 86400000,
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET status = 0, updated_at = $1"
+            " WHERE status = 1 AND updated_at < $2">>,
+    elib_pg:execute(Sql, [Now, CutoffMs]).
 
 %% @doc 查询用户所有活跃推送 token
 -spec list_by_uid(integer()) -> {ok, list()} | {error, term()}.

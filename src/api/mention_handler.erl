@@ -126,11 +126,25 @@ mark_read(Req0, State) ->
                 {<<>>, false} ->
                     elib_response:error(Req0, "消息ID必须提供");
                 {MsgId2, _} when MsgId2 =/= <<>> ->
-                    case mention_logic:mark_as_read(MsgId2, CurrentUid) of
-                        ok ->
-                            elib_response:success(Req0, #{<<"msg_id">> => MsgId2});
+                    %% 验证该 mention 记录确实属于当前用户（mentioned_uid = CurrentUid）
+                    case mention_repo:find_by_msg_id(MsgId2) of
+                        {ok, Mentions} ->
+                            BelongsToUser = lists:any(fun(M) ->
+                                maps:get(<<"mentioned_uid">>, M, 0) =:= CurrentUid
+                            end, Mentions),
+                            case BelongsToUser of
+                                true ->
+                                    case mention_logic:mark_as_read(MsgId2, CurrentUid) of
+                                        ok ->
+                                            elib_response:success(Req0, #{<<"msg_id">> => MsgId2});
+                                        {error, _Reason} ->
+                                            elib_response:error(Req0, "标记已读失败")
+                                    end;
+                                false ->
+                                    elib_response:error(Req0, "无权操作该@消息", ?ERR_BAD_REQUEST)
+                            end;
                         {error, _Reason} ->
-                            elib_response:error(Req0, "获取@消息列表失败")
+                            elib_response:error(Req0, "标记已读失败")
                     end;
                 {<<>>, true} ->
                     case mention_logic:mark_as_read_by_mention_id(MentionId, CurrentUid) of
@@ -140,9 +154,10 @@ mark_read(Req0, State) ->
                                 <<"msg_id">> => MsgId2
                             });
                         {error, not_found} ->
-                            elib_response:error(Req0, "消息ID必须提供");
+                            %% mention_id 不存在或不属于当前用户
+                            elib_response:error(Req0, "无权操作该@消息或记录不存在", ?ERR_BAD_REQUEST);
                         {error, _Reason} ->
-                            elib_response:error(Req0, "获取@消息列表失败")
+                            elib_response:error(Req0, "标记已读失败")
                     end
             end
     end.
@@ -203,8 +218,8 @@ encode_mention_ids(Mentions) ->
             <<"id">> => MentionId,
             <<"msg_id">> => MsgId,  % msg_id 已经是字符串，不需要编码
             <<"group_id">> => maybe_encode_id(Gid),
-            <<"from_uid">> => elib_hashids:encode(maps:get(<<"from_uid">>, Mention, 0)),
-            <<"mentioned_uid">> => elib_hashids:encode(maps:get(<<"mentioned_uid">>, Mention, 0)),
+            <<"from_uid">> => maps:get(<<"from_uid">>, Mention, 0),
+            <<"mentioned_uid">> => maps:get(<<"mentioned_uid">>, Mention, 0),
             <<"is_read">> => IsRead,
             <<"is_read_bool">> => IsReadRaw,
             <<"created_at">> => CreatedAt
@@ -227,7 +242,7 @@ mark_read_all(Req0, PostVals, CurrentUid) ->
                 ok ->
                     elib_response:success(Req0, #{
                         <<"all">> => true,
-                        <<"group_id">> => elib_hashids:encode(Gid2)
+                        <<"group_id">> => Gid2
                     });
                 {error, _Reason} ->
                     elib_response:error(Req0, "获取@消息列表失败")
@@ -337,7 +352,7 @@ decode_optional_gid(Value) ->
 decode_gid(Gid) when is_integer(Gid), Gid > 0 ->
     Gid;
 decode_gid(Gid) when is_binary(Gid) ->
-    case elib_hashids:decode(Gid) of
+    case ec_cnv:to_integer(Gid) of
         Decoded when is_integer(Decoded), Decoded > 0 ->
             Decoded;
         _ ->
@@ -392,9 +407,7 @@ to_integer(_) ->
     0.
 
 %% @private
--spec maybe_encode_id(integer()) -> binary() | integer().
-maybe_encode_id(Id) when is_integer(Id), Id > 0 ->
-    elib_hashids:encode(Id);
+-spec maybe_encode_id(integer() | binary()) -> integer() | binary().
 maybe_encode_id(Id) ->
     Id.
 

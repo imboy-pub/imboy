@@ -33,16 +33,16 @@
 -spec create_album(binary(), integer(), binary(), binary() | undefined) -> {ok, map()} | {error, term()}.
 create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层创建相册
     case group_album_ds:create_album(Gid2, CurrentUid, AlbumName, CoverPhotoId) of
         {ok, AlbumData} ->
             % 3. 编码ID
-            CreatorId = maps:get(<<"id">>, AlbumData),
+            AlbumId = maps:get(<<"id">>, AlbumData),
 
             AlbumData2 = AlbumData#{
-                <<"id">> => elib_hashids:encode(CreatorId),
+                <<"id">> => AlbumId,
                 <<"gid">> => Gid
             },
             {ok, AlbumData2};
@@ -60,16 +60,16 @@ create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
 -spec upload_photo(binary(), integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
 upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层上传图片
     case group_album_ds:upload_photo(Gid2, CurrentUid, AlbumId, PhotoBinary, PhotoName) of
         {ok, PhotoData} ->
             % 3. 编码ID
-            UploaderId = maps:get(<<"id">>, PhotoData),
+            PhotoId = maps:get(<<"id">>, PhotoData),
 
             PhotoData2 = PhotoData#{
-                <<"id">> => elib_hashids:encode(UploaderId),
+                <<"id">> => PhotoId,
                 <<"gid">> => Gid,
                 <<"album_id">> => AlbumId
             },
@@ -87,7 +87,7 @@ upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
     {ok, list(map())} | {error, term()}.
 batch_upload_photos(Gid, CurrentUid, Photos) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 构建完整的图片数据列表
     Photos2 = [{Gid2, AlbumId, PhotoBinary, PhotoName} || {AlbumId, PhotoBinary, PhotoName} <- Photos],
@@ -99,9 +99,9 @@ batch_upload_photos(Gid, CurrentUid, Photos) ->
             Results2 = lists:map(fun(Result) ->
                 case Result of
                     {ok, PhotoData} ->
-                        UploaderId = maps:get(<<"id">>, PhotoData),
+                        PhotoId2 = maps:get(<<"id">>, PhotoData),
                         PhotoData2 = PhotoData#{
-                            <<"id">> => elib_hashids:encode(UploaderId),
+                            <<"id">> => PhotoId2,
                             <<"gid">> => Gid
                         },
                         {ok, PhotoData2};
@@ -179,7 +179,7 @@ add_comment(PhotoId, CurrentUid, Content) ->
 -spec list_albums(binary(), integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
 list_albums(Gid, CurrentUid, Page, Size) ->
     % 1. 解码群组ID
-    Gid2 = elib_hashids:decode(Gid),
+    Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层查询相册列表
     group_album_ds:list_albums(Gid2, CurrentUid, Page, Size).

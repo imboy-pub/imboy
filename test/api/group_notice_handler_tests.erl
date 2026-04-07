@@ -36,9 +36,6 @@ add_rejects_out_of_range_status_test_() ->
                 #{<<"gid">> => <<"g_101">>, <<"title">> => <<"n">>, <<"body">> => <<"b">>, <<"status">> => <<"3">>, <<"expired_at">> => <<"2026-03-13T00:00:00Z">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_101">>) -> 101 end}
-        ]},
         {elib_dt, [
             {'rfc3339_to', 2, fun(_ExpiredAt, millisecond) -> 1 end},
             {'now', 0, fun() -> <<"2026-03-13T00:00:00Z">> end}
@@ -62,12 +59,6 @@ edit_rejects_out_of_range_status_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{<<"gid">> => <<"g_101">>, <<"notice_id">> => <<"n_201">>, <<"title">> => <<"n">>, <<"body">> => <<"b">>, <<"status">> => <<"9">>, <<"expired_at">> => <<"2026-03-13T00:00:00Z">>}
-            end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"g_101">>) -> 101;
-                (<<"n_201">>) -> 201
             end}
         ]},
         {throttle, [

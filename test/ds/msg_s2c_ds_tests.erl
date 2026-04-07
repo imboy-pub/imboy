@@ -112,11 +112,6 @@ send_nosave_uses_current_send_7_contract_test_() ->
         {elib_id, [
             {'gen', 1, fun("s2c") -> MsgId end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(FromId) -> EncodedFrom;
-                              (ToUid) -> EncodedTo
-                           end}
-        ]},
         {message_ds, [
             {'assemble_msg', 8, fun(
                 <<"S2C">>,
@@ -158,11 +153,6 @@ send_save_persists_payload_and_schedules_retry_test_() ->
     ?WITH_MECKS([
         {elib_id, [
             {'gen', 1, fun("s2c") -> MsgId end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(FromId) -> EncodedFrom;
-                              (ToUid) -> EncodedTo
-                           end}
         ]},
         {message_ds, [
             {'assemble_msg', 8, fun(

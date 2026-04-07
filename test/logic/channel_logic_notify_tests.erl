@@ -4,12 +4,9 @@
 
 notify_channel_subscribed_succeeds_when_send_ok_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001], <<"channel_subscribed">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ok
             end}
         ]}
@@ -21,12 +18,9 @@ notify_channel_subscribed_succeeds_when_send_ok_test_() ->
 
 notify_channel_unread_count_sends_expected_payload_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001], <<"channel_unread_count">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(8, maps:get(<<"unread_count">>, Payload)),
                 ok
             end}
@@ -43,12 +37,9 @@ notify_channel_update_uses_subscribers_and_handles_unexpected_return_test_() ->
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_updated">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(Channel, maps:get(<<"channel">>, Payload)),
                 unexpected_return
             end}
@@ -65,9 +56,6 @@ notify_channel_update_still_returns_ok_when_subscribers_invalid_test_() ->
     ?WITH_MECKS([
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
@@ -86,9 +74,6 @@ notify_channel_update_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> erlang:error(db_down) end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
                 erlang:error(should_not_send_when_subscriber_lookup_crashes)
@@ -102,12 +87,9 @@ notify_channel_update_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
 
 notify_channel_unsubscribed_still_returns_ok_when_send_failed_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001], <<"channel_unsubscribed">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 {error, notify_failed}
             end}
         ]}
@@ -119,12 +101,9 @@ notify_channel_unsubscribed_still_returns_ok_when_send_failed_test_() ->
 
 notify_invitation_created_still_returns_ok_when_send_crashes_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], <<"channel_invitation_created">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 erlang:error(mock_notify_crash)
             end}
         ]}
@@ -136,13 +115,10 @@ notify_invitation_created_still_returns_ok_when_send_crashes_test_() ->
 
 notify_order_paid_still_returns_ok_when_send_returns_unexpected_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], Action, <<>>, null, Payload, no_save) ->
                 ?assert(lists:member(Action, [<<"channel_order_paid">>, <<"channel_subscribed">>])),
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 unexpected_return
             end}
         ]}
@@ -154,12 +130,9 @@ notify_order_paid_still_returns_ok_when_send_returns_unexpected_test_() ->
 
 notify_channel_deleted_still_returns_ok_when_send_failed_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 {error, notify_failed}
             end}
         ]}
@@ -171,12 +144,9 @@ notify_channel_deleted_still_returns_ok_when_send_failed_test_() ->
 
 notify_channel_deleted_filters_invalid_uids_and_still_sends_valid_ones_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ok
             end}
         ]}
@@ -192,12 +162,9 @@ broadcast_channel_message_uses_subscribers_and_still_returns_ok_when_send_failed
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
                 ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
                 {error, notify_failed}
@@ -216,12 +183,9 @@ broadcast_channel_message_filters_invalid_subscribers_and_sends_valid_ones_test_
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> [1001, <<"bad">>, 0, 2002] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
                 ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
                 ok
@@ -239,9 +203,6 @@ broadcast_channel_message_still_returns_ok_when_subscribers_invalid_test_() ->
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_hash_11">> end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
                 erlang:error(should_not_send_when_subscribers_invalid)
@@ -258,18 +219,10 @@ notify_message_deleted_uses_subscribers_and_still_returns_ok_when_send_failed_te
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Value) ->
-                case Value of
-                    11 -> <<"ch_hash_11">>;
-                    99 -> <<"msg_hash_99">>
-                end
-            end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(<<"msg_hash_99">>, maps:get(<<"message_id">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
                 {error, notify_failed}
             end}
         ]}
@@ -286,20 +239,11 @@ notify_message_revoked_still_returns_ok_when_send_crashes_test_() ->
         {channel_ds, [
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Value) ->
-                case Value of
-                    11 -> <<"ch_hash_11">>;
-                    99 -> <<"msg_hash_99">>;
-                    1001 -> <<"uid_hash_1001">>
-                end
-            end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save) ->
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(<<"msg_hash_99">>, maps:get(<<"message_id">>, Payload)),
-                ?assertEqual(<<"uid_hash_1001">>, maps:get(<<"revoked_by">>, Payload)),
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
+                ?assertEqual(1001, maps:get(<<"revoked_by">>, Payload)),
                 ?assertEqual(RevokedAt, maps:get(<<"revoked_at">>, Payload)),
                 erlang:error(mock_notify_crash)
             end}
@@ -313,23 +257,15 @@ notify_message_revoked_still_returns_ok_when_send_crashes_test_() ->
 
 notify_invitation_accepted_still_returns_ok_when_second_send_fails_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(Value) ->
-                case Value of
-                    11 -> <<"ch_hash_11">>;
-                    2002 -> <<"uid_hash_2002">>
-                end
-            end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
                 case {Uids, Action} of
                     {[1001], <<"channel_invitation_accepted">>} ->
-                        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
-                        ?assertEqual(<<"uid_hash_2002">>, maps:get(<<"invitee_uid">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(2002, maps:get(<<"invitee_uid">>, Payload)),
                         ok;
                     {[2002], <<"channel_subscribed">>} ->
-                        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                         {error, notify_failed}
                 end
             end}
@@ -342,22 +278,14 @@ notify_invitation_accepted_still_returns_ok_when_second_send_fails_test_() ->
 
 notify_invitation_accepted_still_returns_ok_when_first_send_crashes_test_() ->
     ?WITH_MECKS([
-        {elib_hashids, [
-            {'encode', 1, fun(Value) ->
-                case Value of
-                    11 -> <<"ch_hash_11">>;
-                    2002 -> <<"uid_hash_2002">>
-                end
-            end}
-        ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
                 case {Uids, Action} of
                     {[1001], <<"channel_invitation_accepted">>} ->
-                        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                         erlang:error(mock_notify_crash);
                     {[2002], <<"channel_subscribed">>} ->
-                        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                         ok
                 end
             end}

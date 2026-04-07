@@ -141,7 +141,7 @@ maybe_authorize_with_legacy_cookie(Uid) ->
 
 -spec decode_uid(binary()) -> {ok, integer()} | error.
 decode_uid(Uid) ->
-    try elib_hashids:decode(Uid) of
+    try ec_cnv:to_integer(Uid) of
         DecodedUid when is_integer(DecodedUid), DecodedUid > 0 ->
             {ok, DecodedUid};
         _ ->

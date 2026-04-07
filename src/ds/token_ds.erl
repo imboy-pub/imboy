@@ -49,7 +49,7 @@ decrypt_token(Token) ->
     try jwerl:verify(Token, hs256, JwtKey, #{}, Opts) of
         {ok, Payload} ->
             Uid = maps:get(uid, Payload, 0),
-            ID = elib_hashids:decode(Uid),
+            ID = ec_cnv:to_integer(Uid),
             ExpireDAt = maps:get(exp, Payload, <<>>),
             Sub = maps:get(sub, Payload, <<"tk">>),
             Now = elib_dt:utc(second),
@@ -89,6 +89,6 @@ encrypt_token(ID, Second, Sub) ->
           % , iat => Now % iat (Issued At)：签发时间
           sub => Sub,  % sub (subject)：主题
           exp => ExpireDAt,  % exp (expiration time)：过期时间
-          uid => elib_hashids:encode(ID)},
+          uid => ID},
     JwtKey = config_ds:env(jwt_key, <<>>),
     jwerl:sign(Data, hs256, JwtKey).

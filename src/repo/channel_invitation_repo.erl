@@ -63,15 +63,15 @@ create(Data) ->
     ExpiresAt = maps:get(expires_at, Data, default_expire_time()),
     CreatedAt = maps:get(created_at, Data, elib_dt:now()),
 
+    Id = elib_tsid:generate(channel_invitation),
     Sql = <<"INSERT INTO channel_invitation ",
-            "(channel_id, inviter_uid, invitee_uid, invitation_code, message, status, expires_at, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7/1000), to_timestamp($8/1000)) ",
-            "RETURNING id">>,
+            "(id, channel_id, inviter_uid, invitee_uid, invitation_code, message, status, expires_at, created_at) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8/1000), to_timestamp($9/1000))">>,
     case elib_pg:execute(Sql, [
-        ChannelId, InviterUid, InviteeUid, InvitationCode, Message,
+        Id, ChannelId, InviterUid, InviteeUid, InvitationCode, Message,
         ?STATUS_PENDING, ExpiresAt, CreatedAt
     ]) of
-        {ok, 1, [{Id}]} ->
+        {ok, _Count} ->
             {ok, Id};
         {error, {pgsql_error, #{code := <<"23505">>}}} ->
             % 唯一约束违规 - 已存在待处理邀请

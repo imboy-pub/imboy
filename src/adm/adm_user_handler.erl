@@ -322,7 +322,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -362,4 +362,4 @@ normalize_user_payload(Payload) ->
 %% @doc 规范化单条用户数据（编码ID字段）
 -spec normalize_user(map()) -> map().
 normalize_user(User) ->
-    elib_hashids:replace_fields(User, [<<"id">>]).
+    User.

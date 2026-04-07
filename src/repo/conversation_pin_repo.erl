@@ -43,7 +43,9 @@ pin(Uid, ConversationId, Type) ->
         <<"pinned_at">> => Now,
         <<"created_at">> => Now
     },
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
+    Id = elib_tsid:generate(conversation_pin),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:execute(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}

@@ -35,13 +35,14 @@ tablename() ->
 -spec save_read(binary(), integer(), integer(), binary(), binary()) -> ok | {error, term()}.
 save_read(MsgId, FromUid, ToUid, ToDid, ReadAt) ->
     Tb = tablename(),
+    GenId = elib_tsid:generate(msg_read),
     Sql = [
         <<"INSERT INTO ">>, Tb,
-        <<" (msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $5)">>,
+        <<" (id, msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $6)">>,
         <<" ON CONFLICT (msg_id, to_uid, to_did) DO NOTHING">>
     ],
-    case elib_pg:query(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
+    case elib_pg:query(Sql, [GenId, MsgId, FromUid, ToUid, ToDid, ReadAt]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -101,29 +102,27 @@ mark_messages_read(MsgIds, ToUid, ToDid) when is_list(MsgIds), length(MsgIds) > 
     Tb = tablename(),
     ReadAt = elib_dt:now(),
 
-    % 构建批量插入 SQL
-    % 需要从 msg_c2c 获取 from_uid
-    TbC2C = msg_c2c_repo:tablename(),
-    Placeholders = lists:join(<<",">>,
-        [<<"($1, ", (integer_to_binary(I + 2))/binary, ", $2, $3, $4)">>
-            || I <- lists:seq(0, length(MsgIds) - 1)]),
+    % 为每条记录预生成 TSID，构建批量 INSERT VALUES
+    N = length(MsgIds),
+    {ValuesList, AllParams} = lists:foldl(fun(MsgId, {ValsAcc, ParamsAcc}) ->
+        GenId = elib_tsid:generate(msg_read),
+        Idx = length(ParamsAcc),
+        Placeholder = io_lib:format("($~p, $~p, 0, $~p, $~p, $~p, $~p)",
+            [Idx + 1, Idx + 2, Idx + 3, Idx + 4, Idx + 5, Idx + 5]),
+        {[Placeholder | ValsAcc],
+         ParamsAcc ++ [GenId, MsgId, ToUid, ToDid, ReadAt]}
+    end, {[], []}, MsgIds),
 
+    ValuesStr = lists:join(<<",">>, lists:reverse(ValuesList)),
     Sql = [
         <<"INSERT INTO ">>, Tb,
-        <<" (msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
-        <<" SELECT c.msg_id, c.from_id, $2::bigint, $3::varchar, $4::timestamptz, $4::timestamptz">>,
-        <<" FROM ">>, TbC2C, <<" c">>,
-        <<" WHERE c.msg_id IN (">>, iolist_to_binary(Placeholders), <<")">>,
-        <<" AND c.to_id = $2">>,
+        <<" (id, msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
+        <<" VALUES ">>, iolist_to_binary(ValuesStr),
         <<" ON CONFLICT (msg_id, to_uid, to_did) DO NOTHING">>
     ],
 
-    % 参数：MsgIds + ToUid + ToDid + ReadAt
-    Params = MsgIds ++ [ToUid, ToDid, ReadAt],
-
-    case elib_pg:query(Sql, Params) of
-        {ok, #{<<"rows">> := Count}} -> {ok, Count};
-        {ok, _} -> {ok, 0};
+    case elib_pg:query(Sql, AllParams) of
+        {ok, _} -> {ok, N};
         {error, Reason} -> {error, Reason}
     end;
 mark_messages_read([], _ToUid, _ToDid) ->

@@ -89,9 +89,6 @@ event_returns_in_denylist_error_when_user_blocked_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -122,9 +119,6 @@ event_returns_in_denylist_for_multiple_denied_users_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -155,9 +149,6 @@ event_returns_not_a_friend_error_when_not_friends_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -190,9 +181,6 @@ event_prioritizes_denylist_over_friend_status_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -446,9 +434,6 @@ event_returns_valid_json_for_in_denylist_error_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -488,9 +473,6 @@ event_returns_valid_json_for_not_a_friend_error_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,
@@ -594,9 +576,6 @@ event_not_friend_and_in_denylist_returns_denylist_error_test_() ->
                     <<"to">> => To
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Uid) -> <<"encoded_", (integer_to_binary(Uid))/binary>> end}
         ]}
     ], fun() ->
         CurrentUid = 123,

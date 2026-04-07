@@ -379,10 +379,8 @@ generate_schedule_id() ->
 
 %% @doc 转换日程数据
 schedule_transfer(Schedule) ->
-    Schedule2 = elib_hashids:replace_fields(Schedule, [<<"id">>, <<"group_id">>, <<"creator_id">>]),
-    Schedule3 = maps:remove(<<"updated_at">>, Schedule2),
-    Schedule3.
+    maps:remove(<<"updated_at">>, Schedule).
 
 %% @doc 转换参与人数据
 participant_transfer(Participant) ->
-    elib_hashids:replace_fields(Participant, [<<"user_id">>]).
+    Participant.

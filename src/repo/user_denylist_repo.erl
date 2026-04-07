@@ -73,12 +73,17 @@ page_for_uid(Uid, Limit, Offset) ->
 %% @return {ok, Id} 添加成功返回记录ID
 -spec add(integer(), integer(), binary()) -> {ok, integer()}.
 add(Uid, DeniedUserId, Now) ->
+    Id = elib_tsid:generate(user_denylist),
     {Sql, Params} = elib_pg_sql:insert(tablename(), #{
+        id => Id,
         user_id => Uid,
         denied_user_id => DeniedUserId,
         created_at => Now
-    }, <<>>),
-    elib_pg:execute(Sql, Params).
+    }),
+    case elib_pg:execute(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 从黑名单移除用户
 %% @param Uid 用户ID

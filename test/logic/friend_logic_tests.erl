@@ -45,11 +45,7 @@ add_friend_with_undefined_created_at_returns_error_test_() ->
     end).
 
 add_friend_success_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"test_to_2">>) -> 123 end},
-        {'encode', 1, fun(1) -> <<"encoded_1">> end}
-    ], fun() ->
-        ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(elib_dt, [
             {'to_rfc3339', 1, fun(_Timestamp) -> <<"2023-01-01T00:00:00Z">> end},
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ], fun() ->
@@ -78,15 +74,10 @@ add_friend_success_test_() ->
                     end)
                 end)
             end)
-        end)
-    end).
+        end).
 
 add_friend_with_map_payload_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"test_to_2">>) -> 123 end},
-        {'encode', 1, fun(1) -> <<"encoded_1">> end}
-    ], fun() ->
-        ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(elib_dt, [
             {'to_rfc3339', 1, fun(_Timestamp) -> <<"2023-01-01T00:00:00Z">> end},
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ], fun() ->
@@ -115,8 +106,7 @@ add_friend_with_map_payload_test_() ->
                     end)
                 end)
             end)
-        end)
-    end).
+        end).
 
 %% ===================================================================
 %% confirm_friend/4 测试
@@ -153,10 +143,7 @@ confirm_friend_with_undefined_payload_returns_error_test_() ->
     end).
 
 confirm_friend_success_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"test_from_2">>) -> 100; (<<"test_to_2">>) -> 200 end}
-    ], fun() ->
-        ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ], fun() ->
             ?WITH_MECK(jsone, [
@@ -201,14 +188,10 @@ confirm_friend_success_test_() ->
                     end)
                 end)
             end)
-        end)
-    end).
+        end).
 
 confirm_friend_with_tags_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"test_from_2">>) -> 100; (<<"test_to_2">>) -> 200 end}
-    ], fun() ->
-        ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ], fun() ->
             ?WITH_MECK(jsone, [
@@ -257,8 +240,7 @@ confirm_friend_with_tags_test_() ->
                     end)
                 end)
             end)
-        end)
-    end).
+        end).
 
 %% ===================================================================
 %% confirm_friend_resp/2 测试
@@ -279,20 +261,16 @@ confirm_friend_resp_test_() ->
             }
         end}
     ], fun() ->
-        ?WITH_MECK(elib_hashids, [
-            {'encode', 1, fun(123) -> <<"encoded_123">> end}
-        ], fun() ->
-            Uid = 123,
-            Remark = <<"备注名"/utf8>>,
+        Uid = 123,
+        Remark = <<"备注名"/utf8>>,
 
-            Result = friend_logic:confirm_friend_resp(Uid, Remark),
-            ?assertMatch(#{
-                <<"id">> := <<"encoded_123">>,
-                <<"remark">> := <<"备注名"/utf8>>,
-                <<"account">> := <<"test_account">>,
-                <<"nickname">> := <<"测试用户"/utf8>>
-            }, Result)
-        end)
+        Result = friend_logic:confirm_friend_resp(Uid, Remark),
+        ?assertMatch(#{
+            <<"id">> := 123,
+            <<"remark">> := <<"备注名"/utf8>>,
+            <<"account">> := <<"test_account">>,
+            <<"nickname">> := <<"测试用户"/utf8>>
+        }, Result)
     end).
 
 %% ===================================================================
@@ -300,21 +278,17 @@ confirm_friend_resp_test_() ->
 %% ===================================================================
 
 delete_friend_with_binary_uid_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"encoded_uid_2">>) -> 2 end}
+    ?WITH_MECK(friend_ds, [
+        {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
     ], fun() ->
-        ?WITH_MECK(friend_ds, [
-            {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
+        ?WITH_MECK(imboy_cache, [
+            {'flush', 1, fun(_Key) -> ok end}
         ], fun() ->
-            ?WITH_MECK(imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
-            ], fun() ->
-                CurrentUid = 1,
-                Uid = <<"encoded_uid_2">>,
+            CurrentUid = 1,
+            Uid = <<"2">>,
 
-                Result = friend_logic:delete_friend(CurrentUid, Uid),
-                ?assertEqual(ok, Result)
-            end)
+            Result = friend_logic:delete_friend(CurrentUid, Uid),
+            ?assertEqual(ok, Result)
         end)
     end).
 
@@ -350,19 +324,15 @@ move_to_category_success_test_() ->
     end).
 
 move_to_category_with_binary_uid_test_() ->
-    ?WITH_MECK(elib_hashids, [
-        {'decode', 1, fun(<<"encoded_uid_2">>) -> 2 end}
+    ?WITH_MECK(friend_ds, [
+        {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
     ], fun() ->
-        ?WITH_MECK(friend_ds, [
-            {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
-        ], fun() ->
-            CurrentUid = 1,
-            Uid = <<"encoded_uid_2">>,
-            CategoryId = 3,
+        CurrentUid = 1,
+        Uid = <<"2">>,
+        CategoryId = 3,
 
-            Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-            ?assertEqual(ok, Result)
-        end)
+        Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
+        ?assertEqual(ok, Result)
     end).
 
 %% ===================================================================

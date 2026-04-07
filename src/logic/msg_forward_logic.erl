@@ -178,7 +178,7 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     NowMs = elib_dt:millisecond(),
 
     % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
-    To = elib_hashids:encode(ToId),
+    To = ToId,
     ForwardData = #{
         <<"to">> => To,
         <<"payload">> => #{

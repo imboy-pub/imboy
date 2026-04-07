@@ -92,8 +92,8 @@ create(Req0, State) ->
                     case live_room_repo:create(Data) of
                         {ok, RoomId, _Row} ->
                             Room = Data#{
-                                <<"id">> => elib_hashids:encode(RoomId),
-                                <<"user_id">> => elib_hashids:encode(CurrentUid),
+                                <<"id">> => RoomId,
+                                <<"user_id">> => CurrentUid,
                                 <<"stream_key">> => StreamKey,
                                 <<"status">> => 0,
                                 <<"viewer_count">> => 0
@@ -116,7 +116,7 @@ start(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
-            RoomId = elib_hashids:decode(RoomIdEnc),
+            RoomId = ec_cnv:to_integer(RoomIdEnc),
             case live_room_repo:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = _Room when OwnerId =:= CurrentUid ->
                     Now = elib_dt:now(),
@@ -142,7 +142,7 @@ stop(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
-            RoomId = elib_hashids:decode(RoomIdEnc),
+            RoomId = ec_cnv:to_integer(RoomIdEnc),
             case live_room_repo:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = _Room when OwnerId =:= CurrentUid ->
                     Now = elib_dt:now(),
@@ -168,7 +168,7 @@ detail(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
-            RoomId = elib_hashids:decode(RoomIdEnc),
+            RoomId = ec_cnv:to_integer(RoomIdEnc),
             case live_room_repo:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = Room when map_size(Room) > 0 ->
                     Room2 = encode_room(Room),
@@ -193,13 +193,8 @@ generate_stream_key() ->
     RawBytes = crypto:strong_rand_bytes(16),
     base64:encode(RawBytes).
 
-%% @doc 对房间数据进行 ID 编码（列表用，不含推流地址）
+%% @doc 对房间数据进行格式化（列表用，不含推流地址）
 -spec encode_room(map()) -> map().
 encode_room(Room) ->
-    RoomId = maps:get(<<"id">>, Room, 0),
-    UserId = maps:get(<<"user_id">>, Room, 0),
-    Room#{
-        <<"id">> => elib_hashids:encode(RoomId),
-        <<"user_id">> => elib_hashids:encode(UserId)
-    }.
+    Room.
 

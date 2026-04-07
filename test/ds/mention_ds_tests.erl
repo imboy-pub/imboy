@@ -29,13 +29,8 @@ save_mentions_with_empty_list_test_() ->
     end).
 
 save_mentions_with_single_user_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(<<"hash1">>) -> 200 end}
-        ]},
-        {mention_repo, [
-            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
-        ]}
+    ?WITH_MECK(mention_repo, [
+        {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
     ], fun() ->
         MsgId = <<"test_msg_2">>,
         Gid = 100,
@@ -46,17 +41,8 @@ save_mentions_with_single_user_test_() ->
     end).
 
 save_mentions_with_multiple_users_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"hash1">>) -> 201;
-                (<<"hash2">>) -> 202;
-                (<<"hash3">>) -> 203
-            end}
-        ]},
-        {mention_repo, [
-            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
-        ]}
+    ?WITH_MECK(mention_repo, [
+        {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
     ], fun() ->
         MsgId = <<"test_msg_3">>,
         Gid = 100,
@@ -179,11 +165,7 @@ delete_by_msg_id_calls_repo_test_() ->
 %% ===================================================================
 
 save_mentions_with_invalid_uid_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun(_Hash) -> 0 end}
-        ]}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         MsgId = <<"test_msg_5">>,
         Gid = 100,
         Mentions = [<<"invalid">>],

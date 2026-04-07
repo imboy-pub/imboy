@@ -111,13 +111,14 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     end,
     %% 使用 ON CONFLICT DO NOTHING 避免重试时的唯一约束冲突
     %% 唯一约束: (msg_id, created_at)
+    GenId = elib_tsid:generate(msg_c2c),
     Sql = [
         <<"INSERT INTO ">>, Tb,
-        <<" (payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
-    case elib_pg:query(Sql, [Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue]) of
+    case elib_pg:query(Sql, [GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue]) of
         {ok, _Rows} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -136,13 +137,14 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, ExpireA
         Bin when is_binary(Bin) -> Bin;
         _ -> null
     end,
+    GenId = elib_tsid:generate(msg_c2c),
     Sql = [
         <<"INSERT INTO ">>, Tb,
-        <<" (payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
-    case elib_pg:query(Sql, [Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue, ExpireAt]) of
+    case elib_pg:query(Sql, [GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue, ExpireAt]) of
         {ok, _Rows} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -280,7 +282,8 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
     end.
 
 %% @doc 写入带引用回复信息的C2C离线消息
-%% 注意：当前数据库表不支持 reply_to_msg_id 等字段，此函数忽略回复信息
+%% 数据库已通过 00000054_msg_reply.sql 迁移添加 reply_to_msg_id(varchar(40)),
+%% reply_to_from_id(bigint), reply_snippet(text) 三个字段
 %% @param CreatedAt 消息创建时间（RFC3339 binary）
 %% @param Id 消息唯一ID
 %% @param Payload 消息载荷（JSON binary）
@@ -289,23 +292,66 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
 %% @param ServerTS 服务器时间戳（RFC3339 binary）
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
 %% @param E2EE 端到端加密信息（JSON map，可选）
-%% @param _ReplyToMsgId 被引用回复的消息ID（暂不支持）
-%% @param _ReplyToFromId 被引用消息的发送者ID（暂不支持）
-%% @param _ReplySnippet 被引用消息的摘要（暂不支持）
+%% @param ReplyToMsgId 被引用回复的消息ID
+%% @param ReplyToFromId 被引用消息的发送者ID
+%% @param ReplySnippet 被引用消息的摘要（前50字符）
 %% @return ok | {error, Reason}
 -spec write_msg_with_reply(binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null,
-                           binary(), integer(), binary()) -> ok | {error, term()}.
+                           binary() | null, integer() | null, binary() | null) -> ok | {error, term()}.
 write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
-                     _ReplyToMsgId, _ReplyToFromId, _ReplySnippet) ->
-    % 当前数据库表不支持 reply_to_msg_id 等字段
-    % 直接调用 write_msg/8 忽略回复信息
-    write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE).
+                     null, _ReplyToFromId, _ReplySnippet) ->
+    %% 无引用回复信息，退化为普通写入
+    write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE);
+write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
+                     <<>>, _ReplyToFromId, _ReplySnippet) ->
+    %% 空引用回复ID，退化为普通写入
+    write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE);
+write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
+                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
+    Tb = tablename(),
+    E2EEValue = case E2EE of
+        null -> null;
+        <<>> -> null;
+        Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+        Bin when is_binary(Bin) -> Bin;
+        _ -> null
+    end,
+    ReplyToFromIdVal = case ReplyToFromId of
+        null -> null;
+        0 -> null;
+        V when is_integer(V) -> V;
+        _ -> null
+    end,
+    ReplySnippetVal = case ReplySnippet of
+        null -> null;
+        <<>> -> null;
+        S when is_binary(S) -> S;
+        _ -> null
+    end,
+    GenId = elib_tsid:generate(msg_c2c),
+    Sql = [
+        <<"INSERT INTO ">>, Tb,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee,"
+          " reply_to_msg_id, reply_to_from_id, reply_snippet)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case elib_pg:query(Sql, [GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType,
+                             E2EEValue, ReplyToMsgId, ReplyToFromIdVal, ReplySnippetVal]) of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 根据被引用消息ID查找所有回复消息
-%% 注意：当前数据库表不支持 reply_to_msg_id 字段，此函数返回空列表
-%% @param _ReplyToMsgId 被引用的消息ID
-%% @return {ok, []}
+%% 使用 idx_msg_c2c_reply 索引（00000054_msg_reply.sql 中创建）
+%% @param ReplyToMsgId 被引用的消息ID
+%% @return {ok, list(map())} | {error, Reason}
 -spec find_by_reply_to_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
-find_by_reply_to_msg_id(_ReplyToMsgId) ->
-    % 当前数据库表不支持 reply_to_msg_id 字段
-    {ok, []}.
+find_by_reply_to_msg_id(ReplyToMsgId) when ReplyToMsgId =:= <<>>; ReplyToMsgId =:= null ->
+    {ok, []};
+find_by_reply_to_msg_id(ReplyToMsgId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT msg_id, from_id, to_id, payload, created_at, reply_to_msg_id, reply_to_from_id, reply_snippet"
+            " FROM ", Tb/binary,
+            " WHERE reply_to_msg_id = $1 ORDER BY id ASC">>,
+    elib_pg:query(Sql, [ReplyToMsgId]).

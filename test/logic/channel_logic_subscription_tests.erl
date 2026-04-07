@@ -15,9 +15,6 @@ get_unread_summary_success_filters_invalid_rows_test_() ->
                     #{<<"channel_id">> => 13, <<"unread_count">> => <<"bad">>}
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(11) -> <<"ch_11">> end}
         ]}
     ], fun() ->
         Result = channel_logic_subscription:get_unread_summary(1001),
@@ -25,11 +22,10 @@ get_unread_summary_success_filters_invalid_rows_test_() ->
             {ok, #{
                 <<"total_unread">> := 9,
                 <<"unread_channels">> := 2,
-                <<"channels">> := [#{<<"channel_id">> := <<"ch_11">>, <<"unread_count">> := 8}]
+                <<"channels">> := [#{<<"channel_id">> := 11, <<"unread_count">> := 8}]
             }},
             Result
-        ),
-        ?assertEqual(1, meck:num_calls(elib_hashids, encode, 1))
+        )
     end).
 
 get_unread_summary_returns_error_when_repo_returns_error_test_() ->

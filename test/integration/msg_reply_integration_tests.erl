@@ -61,7 +61,7 @@ test_c2c_reply() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(OriginalMsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+    ok = msg_c2c_logic:c2c(OriginalMsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
     ok = wait_for_c2c_message(OriginalMsgId),
 
     % 2. 发送引用回复
@@ -72,11 +72,11 @@ test_c2c_reply() ->
         <<"action">> => <<"reply">>,
         <<"reply_to">> => #{
             <<"msg_id">> => OriginalMsgId,
-            <<"from_id">> => elib_hashids:encode(User1)
+            <<"from_id">> => integer_to_binary(User1)
         },
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)}),
+    ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => integer_to_binary(User1)}),
     ok = wait_for_c2c_message(ReplyMsgId),
 
     % 3. 验证回复消息已落库
@@ -97,7 +97,7 @@ test_c2g_reply() ->
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(OriginalMsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(OriginalMsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_c2g_message(OriginalMsgId),
 
     % 2. 发送引用回复
@@ -108,11 +108,11 @@ test_c2g_reply() ->
         <<"action">> => <<"reply">>,
         <<"reply_to">> => #{
             <<"msg_id">> => OriginalMsgId,
-            <<"from_id">> => elib_hashids:encode(User1)
+            <<"from_id">> => integer_to_binary(User1)
         },
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = msg_c2g_logic:c2g(ReplyMsgId, User1, ReplyData#{<<"to">> => elib_hashids:encode(Group)}),
+    ok = msg_c2g_logic:c2g(ReplyMsgId, User1, ReplyData#{<<"to">> => integer_to_binary(Group)}),
     ok = wait_for_c2g_message(ReplyMsgId),
 
     % 3. 验证回复消息已落库
@@ -139,7 +139,7 @@ test_reply_snippet() ->
         <<"action">> => <<"reply">>,
         <<"reply_to">> => #{
             <<"msg_id">> => OriginalMsgId,
-            <<"from_id">> => elib_hashids:encode(User1)
+            <<"from_id">> => integer_to_binary(User1)
         },
         <<"created_at">> => elib_dt:millisecond()
     },
@@ -168,14 +168,14 @@ test_reply_nonexistent_msg() ->
         <<"action">> => <<"reply">>,
         <<"reply_to">> => #{
             <<"msg_id">> => <<"nonexistent_msg_id">>,
-            <<"from_id">> => elib_hashids:encode(User2)
+            <<"from_id">> => integer_to_binary(User2)
         },
         <<"created_at">> => elib_dt:millisecond()
     },
 
     % 验证行为：可以选择允许发送但标记为无效引用，或者拒绝发送
     % 这里假设允许发送
-    Result = msg_c2c_logic:c2c(ReplyMsgId, User1, ReplyData#{<<"to">> => elib_hashids:encode(User2)}),
+    Result = msg_c2c_logic:c2c(ReplyMsgId, User1, ReplyData#{<<"to">> => integer_to_binary(User2)}),
     ?assertMatch(ok, Result).
 
 test_get_reply_chain() ->
@@ -208,7 +208,7 @@ test_batch_reply() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         MsgId
     end, lists:seq(1, 3)),
     ok = wait_for_c2c_messages(MsgIds),
@@ -222,11 +222,11 @@ test_batch_reply() ->
             <<"action">> => <<"reply">>,
             <<"reply_to">> => #{
                 <<"msg_id">> => OriginalMsgId,
-                <<"from_id">> => elib_hashids:encode(User1)
+                <<"from_id">> => integer_to_binary(User1)
             },
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => elib_hashids:encode(User1)}),
+        ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => integer_to_binary(User1)}),
         ok = wait_for_c2c_message(ReplyMsgId)
     end, MsgIds),
 

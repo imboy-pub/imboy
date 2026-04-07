@@ -31,16 +31,28 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"group_tag">>).
 
 %% @doc 添加群组标签
-%% @param Conn 数据库连接（未使用，保留用于API兼容性）
+%% @param Conn 数据库连接（undefined 表示使用连接池）
 %% @param Data 包含标签信息的map
-%% @return {ok, TagId, #{}} | {ok, TagId} | {error, Reason}
--spec add(any(), map()) -> {ok, integer(), map()} | {ok, map()} | {error, term()}.
+%% @return {ok, TagId} | {error, Reason}
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(undefined, Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>));
+    Id = elib_tsid:generate(group_tag),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end;
 add(Conn, Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(group_tag),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据标签ID查找标签信息
 %% @param Id 标签ID

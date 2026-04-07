@@ -156,12 +156,6 @@ verify_user_returns_id_field_test_() ->
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) ->
-                UidBin = integer_to_binary(Id),
-                <<"uid-", UidBin/binary>>
-            end}
-        ]},
         {token_ds, [
             {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
             {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
@@ -195,12 +189,6 @@ do_login_verify_returns_id_field_test_() ->
     ?WITH_MECKS([
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) ->
-                UidBin = integer_to_binary(Id),
-                <<"uid-", UidBin/binary>>
-            end}
         ]},
         {token_ds, [
             {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},

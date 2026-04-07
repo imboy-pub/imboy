@@ -52,9 +52,6 @@ do_login_with_mobile_and_mock_test_() ->
                 }
             end}
         ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
-        ]},
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, valid} end}
         ]}
@@ -89,9 +86,6 @@ do_login_with_account_and_mock_test_() ->
                     <<"status">> => 1
                 }
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> integer_to_binary(Id) end}
         ]},
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, valid} end}

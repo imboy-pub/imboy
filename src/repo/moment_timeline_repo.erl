@@ -22,11 +22,11 @@ upsert_batch(_Conn, [], _PostId, _AuthorUid, _RankAt) ->
     {ok, 0};
 upsert_batch(Conn, RecipientUids0, PostId, AuthorUid, RankAt) ->
     RecipientUids = lists:usort([Uid || Uid <- RecipientUids0, is_integer(Uid), Uid > 0]),
-    Rows = [[Uid, PostId, AuthorUid, RankAt, 1, RankAt] || Uid <- RecipientUids],
+    Rows = [[elib_tsid:generate(moment_timeline), Uid, PostId, AuthorUid, RankAt, 1, RankAt] || Uid <- RecipientUids],
     Tb = tablename(),
     {Sql0, Params} = elib_pg_sql:insert_batch(
         Tb,
-        [recipient_uid, post_id, author_uid, rank_at, status, created_at],
+        [id, recipient_uid, post_id, author_uid, rank_at, status, created_at],
         Rows
     ),
     Sql = [

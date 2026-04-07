@@ -50,7 +50,7 @@
 %% @returns 用户显示名称（昵称优先，否则返回账号）
 -spec title(pos_integer() | binary()) -> binary().
 title(Uid) when is_binary(Uid) ->
-    title(elib_hashids:decode(Uid));
+    title(ec_cnv:to_integer(Uid));
 title(Uid) when is_integer(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
@@ -69,7 +69,7 @@ title(Uid) when is_integer(Uid) ->
 %% @returns {显示名称, 昵称}的元组
 -spec title(pos_integer() | binary(), 2) -> {binary(), binary()}.
 title(Uid, 2) when is_binary(Uid) ->
-    title(elib_hashids:decode(Uid), 2);
+    title(ec_cnv:to_integer(Uid), 2);
 title(Uid, 2) when is_integer(Uid) ->
     U = user_repo:find_by_id(Uid, <<"account,nickname">>),
     #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
@@ -92,7 +92,7 @@ webrtc_credential(Uid) ->
     Secret = config_ds:get(<<"eturnal_secret">>),
     TurnUrls = config_ds:get(<<"turn_urls">>),
     StunUrls = config_ds:get(<<"stun_urls">>),
-    UidBin = elib_hashids:encode(Uid),
+    UidBin = integer_to_binary(Uid),
     TmBin = integer_to_binary(elib_dt:utc(second) + 86400),
     Username = <<TmBin/binary, ":", UidBin/binary>>,
     Credential =

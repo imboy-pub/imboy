@@ -434,7 +434,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -494,8 +494,8 @@ normalize_row(Row) ->
     #{
         scope => row_get(Row, <<"scope">>, <<>>),
         msg_id => row_get(Row, <<"msg_id">>, <<>>),
-        from_id => elib_hashids:encode(FromId),
-        to_id => elib_hashids:encode(ToId),
+        from_id => FromId,
+        to_id => ToId,
         msg_type => row_get(Row, <<"msg_type">>, <<>>),
         action => row_get(Row, <<"action">>, <<>>),
         payload => row_get(Row, <<"payload">>, <<>>),

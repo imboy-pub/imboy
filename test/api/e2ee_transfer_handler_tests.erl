@@ -34,9 +34,6 @@ create_transfer_accepts_hashid_to_uid_test_() ->
                 {ok, <<"{\"to_uid\":\"hash_to_uid\"}">>, req_after_body}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"hash_to_uid">>) -> 12345 end}
-        ]},
         {user_repo, [
             {'may_exist', 1, fun(12345) -> true end}
         ]},

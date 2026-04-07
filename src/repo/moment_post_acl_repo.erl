@@ -16,15 +16,27 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"moment_post_acl">>).
 
--spec add(map()) -> {ok, integer(), map()} | {error, term()}.
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(moment_post_acl),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
--spec add(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Conn, Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(moment_post_acl),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 -spec replace_for_post(any(), integer(), [integer()], [integer()]) -> ok | {error, any()}.
 replace_for_post(Conn, PostId, AllowUids0, DenyUids0) ->

@@ -210,7 +210,10 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
     Ip = maps:get(<<"ip">>, PostVals, <<>>),
 
-    elib_pg:insert(tablename(), #{
+    GenId = elib_tsid:generate(user_device),
+    DevData = #{
+        %% 预生成 TSID
+        <<"id">> => GenId,
         %% 用户ID (字符串类型)
         <<"user_id">> => Uid,
         %% 设备类型 (字符串，如"ios"/"android")
@@ -233,4 +236,9 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
         <<"public_key">> => PublicKey,
         %% 创建时间
         <<"created_at">> => Now
-    }).
+    },
+    {Sql, Params} = elib_pg_sql:insert(tablename(), DevData),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, GenId};
+        {error, _} = Err -> Err
+    end.

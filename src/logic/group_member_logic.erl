@@ -88,9 +88,9 @@ leave(Uid, Gid, CurrentUid) ->
             ToUidLi = group_ds:member_uids(Gid),
             Action = <<"group_member_leave">>,
             Payload = #{
-                <<"gid">>        => elib_hashids:encode(Gid),
+                <<"gid">>        => Gid,
                 <<"user_id_sum">> => UidSum,
-                <<"leave_uid">>   => elib_hashids:encode(Uid)
+                <<"leave_uid">>   => Uid
             },
             _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
@@ -117,7 +117,7 @@ alias(Uid, Gid, Alias, Description) ->
             Data = #{alias => Alias, description => Description, updated_at => Now},
             % v2.0: 使用 send/7 API
             Action = <<"group_member_alias">>,
-            Payload = maps:put(<<"gid">>, elib_hashids:encode(Gid), Data),
+            Payload = maps:put(<<"gid">>, Gid, Data),
             _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
         {error, Reason} ->
@@ -258,7 +258,7 @@ mute_notice(AdminUid, Gid, _UserId, MuteUntil) ->
 
     % 构建通知数据
     Payload = #{
-        <<"gid">> => elib_hashids:encode(Gid),
+        <<"gid">> => Gid,
         <<"mute_until">> => MuteUntil,
         <<"remaining_seconds">> => RemainingSec,
         <<"duration_text">> => DurationText,
@@ -303,7 +303,7 @@ group_member_join_notice(Gid, Uid, Sum) ->
     %% v2.0: 使用 send/7 API
     Action = <<"group_member_join">>,
     Payload = #{
-        <<"gid">>          => elib_hashids:encode(Gid),
+        <<"gid">>          => Gid,
         <<"user_id_sum">>  => Sum,
         <<"nickname">>     => maps:get(<<"nickname">>, User, <<>>),
         <<"avatar">>       => maps:get(<<"avatar">>, User, <<>>),
@@ -361,8 +361,8 @@ role_change_notice(AdminUid, Gid, UserId, Role) ->
 
     % 构建通知数据
     Payload = #{
-        <<"gid">> => elib_hashids:encode(Gid),
-        <<"user_id">> => elib_hashids:encode(UserId),
+        <<"gid">> => Gid,
+        <<"user_id">> => UserId,
         <<"role">> => Role,
         <<"role_text">> => RoleText,
         <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),

@@ -77,7 +77,7 @@ people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) ->
                         {<<>>, 0}
                 end,
                 Data = #{
-                    <<"id">> => elib_hashids:encode(UserId),
+                    <<"id">> => UserId,
                     <<"is_friend">> => IsFriend,
                     <<"remark">> => Remark,
                     <<"friend_created_at">> => CreatedAt

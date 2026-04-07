@@ -523,7 +523,7 @@ list_comments(Req0, _State) ->
                     % 编码用户ID
                     Comments2 = lists:map(fun(Comment) ->
                         UserId = maps:get(<<"user_id">>, Comment, 0),
-                        Comment#{<<"user_id">> => elib_hashids:encode(UserId)}
+                        Comment#{<<"user_id">> => UserId}
                     end, Comments),
                     elib_response:success(Req0, #{comments => Comments2}, <<"查询成功"/utf8>>);
                 {error, _Reason} ->

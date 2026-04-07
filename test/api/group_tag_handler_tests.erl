@@ -20,10 +20,6 @@ init_add_success_test_() ->
                 #{<<"gid">> => <<"g_hash_1">>, <<"tag_name">> => <<"tag-a">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_hash_1">>) -> 321 end},
-            {'encode', 1, fun(1) -> <<"tag_hash_1">> end}
-        ]},
         {group_tag_logic, [
             {'add', 3, fun(321, 12345, <<"tag-a">>) ->
                 {ok, 1}
@@ -67,9 +63,6 @@ init_remove_success_test_() ->
                 #{<<"gid">> => <<"g_hash_1">>, <<"tag_name">> => <<"tag-a">>}
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_hash_1">>) -> 321 end}
-        ]},
         {group_tag_logic, [
             {'remove', 3, fun(321, 12345, <<"tag-a">>) ->
                 ok
@@ -93,10 +86,6 @@ init_list_success_test_() ->
             {'parse_qs', 1, fun(_Req) ->
                 [{<<"gid">>, <<"g_hash_1">>}]
             end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"g_hash_1">>) -> 321 end},
-            {'encode', 1, fun(7) -> <<"tag_hash_7">> end}
         ]},
         {group_tag_logic, [
             {'list', 2, fun(321, 12345) ->
@@ -123,9 +112,6 @@ init_search_success_test_() ->
             {'parse_qs', 1, fun(_Req) ->
                 [{<<"tag_name">>, <<"tag-a">>}]
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(99) -> <<"group_hash_99">> end}
         ]},
         {group_tag_logic, [
             {'search', 1, fun(<<"tag-a">>) ->

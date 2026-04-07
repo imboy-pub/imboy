@@ -166,10 +166,10 @@ history(Req0, State) ->
 
 %% @private 验证参数并生成 conv_key
 validate_history_params(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
-    PeerId = elib_hashids:decode(PeerIdEnc),
+    PeerId = ec_cnv:to_integer(PeerIdEnc),
     {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId)};
 validate_history_params(<<"c2g">>, PeerIdEnc, _CurrentUid) when PeerIdEnc =/= <<>> ->
-    Gid = elib_hashids:decode(PeerIdEnc),
+    Gid = ec_cnv:to_integer(PeerIdEnc),
     {ok, msg_archive_ds:conv_key_c2g(Gid)};
 validate_history_params(<<>>, _, _) ->
     {error, <<"缺少 chat_type 参数"/utf8>>};
@@ -188,17 +188,17 @@ encode_history_msg(_CurrentUid, Row) ->
     Row4 = maps:remove(<<"group_id">>, Row3),
     Row5 = case FromId of
         undefined -> Row4;
-        _         -> Row4#{<<"from">> => elib_hashids:encode(FromId)}
+        _         -> Row4#{<<"from">> => FromId}
     end,
     Row6 = case ToId of
         null      -> Row5;
         undefined -> Row5;
-        _         -> Row5#{<<"to">> => elib_hashids:encode(ToId)}
+        _         -> Row5#{<<"to">> => ToId}
     end,
     case GroupId of
         null      -> Row6;
         undefined -> Row6;
-        _         -> Row6#{<<"group_id">> => elib_hashids:encode(GroupId)}
+        _         -> Row6#{<<"group_id">> => GroupId}
     end.
 
 %% @private 从返回行中提取最大 conv_seq 作为 next_seq
@@ -397,17 +397,16 @@ process_message(Msg) when is_map(Msg) ->
             undefined ->
                 Msg3;
             _ ->
-                Msg3#{<<"from">> => elib_hashids:encode(FromId)}
+                Msg3#{<<"from">> => FromId}
         end,
 
     case ToId of
         undefined ->
             Msg4;
         ToList when is_list(ToList) ->
-            ToEncoded = [elib_hashids:encode(ToUid) || ToUid <- ToList],
-            Msg4#{<<"to">> => ToEncoded};
+            Msg4#{<<"to">> => ToList};
         _ ->
-            Msg4#{<<"to">> => elib_hashids:encode(ToId)}
+            Msg4#{<<"to">> => ToId}
     end.
 
 -spec process_offline_ack(integer(), binary(), list()) -> {ok, integer()} | {error, binary()}.

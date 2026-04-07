@@ -6,6 +6,7 @@
 
 -export([tablename/0]).
 -export([delete/3]).
+-export([delete_by_tag_id/1]).
 -export([remove_user_tag_relation/5,
          replace_object_tag/6]).
 -export([save_tag/5,
@@ -42,6 +43,17 @@ delete(Scene, Uid, ObjectId) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE scene = $1 AND user_id = $2 AND object_id = $3">>,
     ok = elib_log:info(io_lib:format("user_tag_relation_repo:delete/3 Sql ~p, params: ~p ~n", [Sql, [Scene, Uid, ObjectId]])),
     elib_pg:execute(Sql, [Scene, Uid, ObjectId]).
+
+
+%% @doc 根据 tag_id 删除所有关联记录
+%% 用于标签删除时级联清理，避免孤立数据
+%% @param TagId 标签ID
+%% @return {ok, Count} | {error, Reason}
+-spec delete_by_tag_id(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_by_tag_id(TagId) ->
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE tag_id = $1">>,
+    elib_pg:execute(Sql, [TagId]).
 
 
 -spec remove_user_tag_relation(any(), binary(), term(), integer(), binary()) -> ok.
@@ -103,8 +115,12 @@ save_tag(Conn, Uid, Scene, CreatedAt, Tag) ->
         "RETURNING id"
     >>,
 
+    % 预生成 TSID
+    GenId = elib_tsid:generate(user_tag),
+    Data2 = Data#{<<"id">> => GenId},
+
     % 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     FullSql = [Sql, <<" ">>, OnConflict],
     case elib_pg:execute(Conn, FullSql, Params) of
         {ok, 1, Result} when is_list(Result) ->
@@ -162,8 +178,11 @@ save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
         "UPDATE SET created_at = EXCLUDED.created_at "
         "RETURNING id"
     >>,
+    % 预生成 TSID
+    GenId = elib_tsid:generate(user_tag_relation),
+    Data2 = Data#{<<"id">> => GenId},
     % 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = elib_pg_sql:insert(tablename(), Data, <<"RETURNING id">>),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Data2),
     FullSql = [Sql, <<" ">>, OnConflict],
     case elib_pg_sql:parse_result(elib_pg:execute(Conn, FullSql, Params)) of
         {ok, Id, _} ->

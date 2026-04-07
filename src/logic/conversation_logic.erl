@@ -191,7 +191,7 @@ merge_latest_conversations(C2cMsgs, C2gMsgs) ->
 normalize_c2c_conversation(Msg) ->
     case maps:get(<<"from_id">>, Msg, 0) of
         FromId when is_integer(FromId), FromId > 0 ->
-            ConversationId = elib_hashids:encode(FromId),
+            ConversationId = FromId,
             Ts = extract_server_ts(Msg),
             LastMsg = normalize_payload(maps:get(<<"payload">>, Msg, #{})),
             {true, #{
@@ -209,7 +209,7 @@ normalize_c2c_conversation(Msg) ->
 normalize_c2g_conversation(Msg) ->
     case maps:get(<<"to_id">>, Msg, 0) of
         GroupId when is_integer(GroupId), GroupId > 0 ->
-            ConversationId = elib_hashids:encode(GroupId),
+            ConversationId = GroupId,
             Ts = extract_server_ts(Msg),
             LastMsg = normalize_payload(maps:get(<<"payload">>, Msg, #{})),
             {true, #{
@@ -270,7 +270,7 @@ resolve_conversation_key(Item) ->
         _ ->
             case maps:get(<<"from_id">>, Item, 0) of
                 FromId when is_integer(FromId), FromId > 0 ->
-                    {ok, {elib_hashids:encode(FromId), <<"c2c">>}};
+                    {ok, {FromId, <<"c2c">>}};
                 _ ->
                     error
             end

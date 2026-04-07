@@ -26,16 +26,7 @@ parse_conversation_test_() ->
     end).
 
 parse_conversation_accepts_hashid_tokens_test_() ->
-    ?WITH_MECKS([
-        {elib_hashids, [
-            {'decode', 1, fun
-                (<<"uidhash12">>) -> 12;
-                (<<"uidhash34">>) -> 34;
-                (<<"gidhash7">>) -> 7;
-                (_) -> 0
-            end}
-        ]}
-    ], fun() ->
+    ?TEST_SIMPLE(fun() ->
         ?assertEqual(
             {12, 34, 0},
             adm_message_handler:parse_conversation(<<"uidhash12:uidhash34">>)
@@ -194,9 +185,6 @@ init_list_accepts_hashid_uid_test_() ->
                 end
             end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"uid_hash_99">>) -> 99 end}
-        ]},
         {msg_c2c_repo, [{'tablename', 0, fun() -> <<"public.msg_c2c">> end}]},
         {msg_c2g_repo, [{'tablename', 0, fun() -> <<"public.msg_c2g">> end}]},
         {msg_c2s_repo, [{'tablename', 0, fun() -> <<"public.msg_c2s">> end}]},
@@ -281,9 +269,6 @@ init_list_redacts_payload_when_audit_mode_metadata_test_() ->
                     }
                 ]}
             end}
-        ]},
-        {elib_hashids, [
-            {'encode', 1, fun(Id) -> <<"id_", (integer_to_binary(Id))/binary>> end}
         ]},
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->

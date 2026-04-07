@@ -148,7 +148,7 @@ prepare_context(Opts) ->
             throw({benchmark_error, {create_channel_failed, Reason}})
     end,
     expect_ok(channel_ds:subscribe(ChannelId, SubscriberUid)),
-    ChannelIdBin = elib_hashids:encode(ChannelId),
+    ChannelIdBin = integer_to_binary(ChannelId),
     seed_messages(
         AdminUid,
         ChannelIdBin,

@@ -73,7 +73,7 @@ test_c2c_send_performance() ->
         },
 
         StartTime = erlang:monotonic_time(millisecond),
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         EndTime = erlang:monotonic_time(millisecond),
 
         EndTime - StartTime
@@ -112,7 +112,7 @@ test_c2g_send_performance() ->
         },
 
         StartTime = erlang:monotonic_time(millisecond),
-        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(Group)}),
+        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
         EndTime = erlang:monotonic_time(millisecond),
 
         EndTime - StartTime
@@ -151,7 +151,7 @@ test_batch_send_performance() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         MsgId
     end, lists:seq(1, ?BATCH_COUNT)),
 
@@ -186,7 +186,7 @@ test_query_performance() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
         MsgId
     end, lists:seq(1, 50)),
 
@@ -224,7 +224,7 @@ test_list_load_performance() ->
             <<"action">> => <<"send">>,
             <<"created_at">> => elib_dt:millisecond()
         },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)})
+        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)})
     end, lists:seq(1, 200)),
 
     % 测试分页加载性能
@@ -270,7 +270,7 @@ test_concurrent_send_performance() ->
                 <<"action">> => <<"send">>,
                 <<"created_at">> => elib_dt:millisecond()
             },
-            Result = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => elib_hashids:encode(User2)}),
+            Result = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
             Parent ! {done, self(), Result}
         end)
     end, lists:seq(1, ConcurrentCount)),

@@ -271,14 +271,8 @@ list_albums(Gid, CurrentUid, Page, Size) ->
         true ->
             case group_album_repo:list_albums(Gid, Page, Size) of
                 {ok, #{<<"list">> := List, <<"total">> := Total}} ->
-                    % 编码用户ID
-                    List2 = lists:map(fun(Album) ->
-                        CreatorId = maps:get(<<"creator_id">>, Album, 0),
-                        Album#{<<"creator_id">> => elib_hashids:encode(CreatorId)}
-                    end, List),
-
                     AlbumList = #{
-                        <<"items">> => List2,
+                        <<"items">> => List,
                         <<"total">> => Total,
                         <<"page">> => Page,
                         <<"size">> => Size
@@ -307,14 +301,8 @@ list_photos(AlbumId, CurrentUid, Page, Size) ->
                 true ->
                     case group_album_repo:list_photos(AlbumId, Page, Size, <<"*">>) of
                         {ok, #{<<"list">> := List, <<"total">> := Total}} ->
-                            % 编码用户ID
-                            List2 = lists:map(fun(Photo) ->
-                                UploaderId = maps:get(<<"uploader_id">>, Photo, 0),
-                                Photo#{<<"uploader_id">> => elib_hashids:encode(UploaderId)}
-                            end, List),
-
                             PhotoList = #{
-                                <<"items">> => List2,
+                                <<"items">> => List,
                                 <<"total">> => Total,
                                 <<"page">> => Page,
                                 <<"size">> => Size
@@ -341,16 +329,12 @@ get_photo_detail(PhotoId, CurrentUid) ->
                 false ->
                     {error, <<"非群组成员"/utf8>>};
                 true ->
-                    % 编码用户ID
-                    UploaderId = maps:get(<<"uploader_id">>, Photo, 0),
-                    Photo2 = Photo#{<<"uploader_id">> => elib_hashids:encode(UploaderId)},
-
                     % 查询是否已点赞
                     PhotoIdBin = maps:get(<<"photo_id">>, Photo, <<>>),
                     IsLiked = group_album_repo:is_liked(PhotoIdBin, CurrentUid),
-                    Photo3 = Photo2#{<<"is_liked">> => IsLiked},
+                    Photo2 = Photo#{<<"is_liked">> => IsLiked},
 
-                    {ok, Photo3}
+                    {ok, Photo2}
             end;
         _ ->
             {error, <<"图片不存在"/utf8>>}
@@ -426,6 +410,7 @@ guess_mime_type(FileName) ->
         <<".webp">> -> <<"image/webp">>;
         _ -> <<"image/jpeg">>
     end.
+
 
 %% @doc 生成缩略图URL（占位符实现）
 -spec generate_thumbnail_url(binary()) -> binary().

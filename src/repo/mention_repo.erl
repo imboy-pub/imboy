@@ -48,7 +48,10 @@ insert(MsgId, Gid, MentionedUid, FromUid) ->
         from_uid => FromUid,
         is_read => false
     },
-    case elib_pg:insert(Tb, Data, <<>>) of
+    Id = elib_tsid:generate(msg_mention),
+    Data2 = Data#{id => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.

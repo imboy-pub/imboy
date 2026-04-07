@@ -20,9 +20,6 @@ upload_success_test_() ->
         FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
             {ok, <<"file_123">>}
@@ -31,7 +28,6 @@ upload_success_test_() ->
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, FileData} when is_map(FileData) ->
@@ -49,9 +45,6 @@ upload_not_member_test_() ->
         FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
             {error, not_member}
@@ -60,7 +53,6 @@ upload_not_member_test_() ->
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         ?assertMatch({error, not_member}, Result)
     end.
@@ -73,9 +65,6 @@ upload_file_too_large_test_() ->
         FileBinary = <<0:100102400>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
             {error, file_too_large}
@@ -84,7 +73,6 @@ upload_file_too_large_test_() ->
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         ?assertMatch({error, file_too_large}, Result)
     end.
@@ -213,9 +201,6 @@ list_success_test_() ->
         Page = 1,
         Size = 20,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
             {ok, [
@@ -230,7 +215,6 @@ list_success_test_() ->
 
         meck:unload(group_file_repo),
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, FileList} when is_map(FileList) ->
@@ -247,9 +231,6 @@ list_not_member_test_() ->
         Page = 1,
         Size = 20,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
             {error, not_member}
@@ -258,7 +239,6 @@ list_not_member_test_() ->
         Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         ?assertMatch({error, not_member}, Result)
     end.
@@ -270,9 +250,6 @@ list_with_category_test_() ->
         Page = 1,
         Size = 20,
         Options = #{category => <<"document">>},
-
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
 
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
@@ -288,7 +265,6 @@ list_with_category_test_() ->
 
         meck:unload(group_file_repo),
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, FileList} when is_map(FileList) ->
@@ -309,9 +285,6 @@ search_success_test_() ->
         Page = 1,
         Size = 20,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, search_files, fun(_, _, _, _) ->
             {ok, [
@@ -322,7 +295,6 @@ search_success_test_() ->
         Result = group_file_logic:search(Gid, Keyword, Page, Size),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, Files} when is_list(Files) ->
@@ -339,9 +311,6 @@ search_empty_result_test_() ->
         Page = 1,
         Size = 20,
 
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
-
         meck:new(group_file_ds, [passthrough]),
         meck:expect(group_file_ds, search_files, fun(_, _, _, _) ->
             {ok, []}
@@ -350,7 +319,6 @@ search_empty_result_test_() ->
         Result = group_file_logic:search(Gid, Keyword, Page, Size),
 
         meck:unload(group_file_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, []} ->
@@ -371,11 +339,8 @@ get_categories_success_test_() ->
         Gid = <<"g1">>,
         CurrentUid = 100,
 
-        _ = catch meck:unload(elib_hashids),
         _ = catch meck:unload(group_ds),
         _ = catch meck:unload(group_file_ds),
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
 
         meck:new(group_ds, [passthrough]),
         meck:expect(group_ds, is_member, fun(100, 1) -> true end),
@@ -391,7 +356,6 @@ get_categories_success_test_() ->
 
         meck:unload(group_file_ds),
         meck:unload(group_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, Stats} when is_list(Stats) ->
@@ -406,11 +370,8 @@ get_categories_empty_test_() ->
         Gid = <<"g1">>,
         CurrentUid = 100,
 
-        _ = catch meck:unload(elib_hashids),
         _ = catch meck:unload(group_ds),
         _ = catch meck:unload(group_file_ds),
-        meck:new(elib_hashids, [passthrough]),
-        meck:expect(elib_hashids, decode, fun(_) -> 1 end),
 
         meck:new(group_ds, [passthrough]),
         meck:expect(group_ds, is_member, fun(100, 1) -> true end),
@@ -424,7 +385,6 @@ get_categories_empty_test_() ->
 
         meck:unload(group_file_ds),
         meck:unload(group_ds),
-        meck:unload(elib_hashids),
 
         case Result of
             {ok, []} ->

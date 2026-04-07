@@ -32,12 +32,9 @@ init_with_user_keys_action_test_() ->
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"value">>) -> 456 end}
-        ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"encoded_456">>, <<"devices">> => []}}
+                {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
             end}
         ]},
         {elib_response, [
@@ -59,12 +56,9 @@ init_with_group_member_keys_action_test_() ->
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"value">>) -> 1 end}
-        ]},
         {e2ee_logic, [
             {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {ok, #{<<"gid">> => <<"encoded_1">>, <<"members">> => []}}
+                {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
             end}
         ]},
         {elib_response, [
@@ -99,14 +93,11 @@ user_keys_with_valid_uid_returns_success_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_456">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_456">>) -> 456 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
         ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"encoded_456">>, <<"devices">> => []}}
+                {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
             end}
         ]},
         {elib_response, [
@@ -128,9 +119,6 @@ user_keys_with_invalid_uid_returns_400_test_() ->
         {elib_param, [
             {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid_uid">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"invalid_uid">>) -> undefined end}
-        ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
         ]}
@@ -148,10 +136,7 @@ user_keys_with_forbidden_returns_403_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_789">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_789">>) -> 789 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"789">> end}
         ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
@@ -175,10 +160,7 @@ user_keys_with_internal_error_returns_500_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_456">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_456">>) -> 456 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
         ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
@@ -206,17 +188,14 @@ group_member_keys_with_valid_gid_returns_success_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"encoded_1">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_1">>) -> 1 end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
         ]},
         {e2ee_logic, [
             {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
                 {ok, #{
-                    <<"gid">> => <<"encoded_1">>,
+                    <<"gid">> => <<"1">>,
                     <<"members">> => [
-                        #{<<"uid">> => <<"encoded_123">>, <<"devices">> => []}
+                        #{<<"uid">> => <<"123">>, <<"devices">> => []}
                     ]
                 }}
             end}
@@ -240,9 +219,6 @@ group_member_keys_with_invalid_gid_returns_400_test_() ->
         {elib_param, [
             {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"invalid_gid">> end}
         ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"invalid_gid">>) -> undefined end}
-        ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
         ]}
@@ -260,10 +236,7 @@ group_member_keys_with_non_member_returns_403_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"encoded_999">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_999">>) -> 999 end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"999">> end}
         ]},
         {e2ee_logic, [
             {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
@@ -287,10 +260,7 @@ group_member_keys_with_database_error_returns_500_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"encoded_1">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_1">>) -> 1 end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
         ]},
         {e2ee_logic, [
             {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
@@ -318,14 +288,11 @@ user_keys_with_same_user_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_123">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_123">>) -> 123 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"123">> end}
         ]},
         {e2ee_logic, [
             {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"encoded_123">>, <<"devices">> => []}}
+                {ok, #{<<"uid">> => <<"123">>, <<"devices">> => []}}
             end}
         ]},
         {elib_response, [
@@ -345,14 +312,11 @@ group_member_keys_with_empty_group_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"encoded_1">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_1">>) -> 1 end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
         ]},
         {e2ee_logic, [
             {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {ok, #{<<"gid">> => <<"encoded_1">>, <<"members">> => []}}
+                {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
             end}
         ]},
         {elib_response, [
@@ -372,10 +336,7 @@ user_keys_with_zero_uid_returns_400_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_0">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_0">>) -> 0 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"0">> end}
         ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
@@ -394,10 +355,7 @@ user_keys_with_negative_uid_returns_400_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"encoded_invalid">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_invalid">>) -> -1 end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid">> end}
         ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
@@ -416,10 +374,7 @@ group_member_keys_with_zero_gid_returns_400_test_() ->
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
         {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"encoded_0">> end}
-        ]},
-        {elib_hashids, [
-            {'decode', 1, fun(<<"encoded_0">>) -> 0 end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"0">> end}
         ]},
         {elib_response, [
             {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}

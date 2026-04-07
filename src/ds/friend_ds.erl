@@ -197,8 +197,10 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                 end,
             case elib_pg:page_with_total(BaseFrom, fields(Uid), WhereMap, OrderBy, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
+                    % TSID 大整数超过 JS 安全范围，ID 字段转为 binary 字符串
+                    Rows2 = [convert_friend_ids(R) || R <- Rows],
                     % 【优化】使用批量在线状态查询，避免 N+1 查询问题
-                    Items = [ elib_hashids:replace_id(User) || User <- user_logic:batch_online_state(Rows) ],
+                    Items = user_logic:batch_online_state(Rows2),
                     #{total => Total, page => Page, size => Size, list => Items};
                 {error, Reason} ->
                     _ = elib_log:error(Reason),
@@ -232,7 +234,8 @@ page(Where, WhereArgs, Fields) ->
             [];
         {ok, Rows} when is_list(Rows) ->
             % 【优化】使用批量在线状态查询，避免 N+1 查询问题
-            [ elib_hashids:replace_id(User) || User <- user_logic:batch_online_state(Rows) ];
+            Rows2 = [convert_friend_ids(R) || R <- Rows],
+            user_logic:batch_online_state(Rows2);
         {error, _Reason} ->
             []
     end.
@@ -311,6 +314,20 @@ fields(Uid) ->
     C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.tag, f.category_id,f.created_at">>,
     <<"id,", F2/binary>> = ?DEF_USER_COLUMN,
     <<"u.id,", F2/binary, ",", C2/binary>>.
+
+
+%% @doc 转换好友记录中的 ID 字段为 binary 字符串
+%% TSID 大整数超过 JS 安全范围，发送给客户端时必须转为 binary
+-spec convert_friend_ids(map()) -> map().
+convert_friend_ids(Row) ->
+    Row2 = case maps:find(<<"id">>, Row) of
+        {ok, Id} -> Row#{<<"id">> => Id};
+        error -> Row
+    end,
+    case maps:find(<<"uid">>, Row2) of
+        {ok, Uid} -> Row2#{<<"uid">> => Uid};
+        error -> Row2
+    end.
 
 
 %% ===================================================================

@@ -33,17 +33,28 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"channel_message">>).
 
 %% @doc 添加频道消息
--spec add(map()) -> {ok, term(), term()} | {error, term()}.
+-spec add(map()) -> {ok, integer()} | {error, term()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)).
+    Id = elib_tsid:generate(channel_message),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 添加频道消息（使用连接）
--spec add(any(), map()) -> {ok, term(), term()} | {error, term()}.
+-spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"RETURNING id">>),
-    elib_pg:execute(Conn, Sql, Params).
+    Id = elib_tsid:generate(channel_message),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据ID查找消息
 -spec find_by_id(integer()) -> map() | {error, any()}.

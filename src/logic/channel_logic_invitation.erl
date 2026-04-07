@@ -123,7 +123,7 @@ get_sent_invitations(Uid) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
@@ -132,8 +132,4 @@ decode_positive_id(Value) ->
 
 -spec invitation_transfer(map()) -> map().
 invitation_transfer(Invitation) ->
-    Invitation2 = elib_hashids:replace_id(Invitation),
-    Invitation3 = elib_hashids:replace_id(Invitation2, <<"channel_id">>),
-    Invitation4 = elib_hashids:replace_id(Invitation3, <<"inviter_uid">>),
-    Invitation5 = elib_hashids:replace_id(Invitation4, <<"invitee_uid">>),
-    Invitation5.
+    Invitation.

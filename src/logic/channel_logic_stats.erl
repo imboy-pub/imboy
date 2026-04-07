@@ -145,8 +145,7 @@ get_daily_stats(ChannelIdBin, Days) ->
         _ ->
             case channel_repo:get_daily_stats(ChannelId, Days) of
                 {ok, Stats} when is_list(Stats) ->
-                    Stats2 = [elib_hashids:replace_id(S, <<"channel_id">>) || S <- Stats, is_map(S)],
-                    {ok, Stats2};
+                    {ok, [S || S <- Stats, is_map(S)]};
                 {ok, Other} ->
                     {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
@@ -158,7 +157,7 @@ get_daily_stats(ChannelIdBin, Days) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

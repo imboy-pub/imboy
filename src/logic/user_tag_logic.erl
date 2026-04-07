@@ -37,13 +37,22 @@ page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
 
 %% @doc 删除标签
 %% 删除标签，标签中的联系人不会被删除，使用此标签设置了分组的朋友圈，可见范围也将更新
+%% 会先删除 user_tag_relation 中该标签的所有关联记录，再删除标签本身，避免孤立数据
 %% @param Uid 用户ID
 %% @param Scene 场景（1 收藏 2 好友）
 %% @param Tag 标签名称
 %% @return ok
 -spec delete(integer(), integer(), binary()) -> ok.
 delete(Uid, Scene, Tag) ->
-    % 使用 DS 层接口
+    %% 先通过 DS 层查找 TagId，用于级联清理
+    case user_tag_ds:find_tag_id(Uid, Scene, Tag) of
+        {ok, TagId} when TagId > 0 ->
+            %% 先删除 user_tag_relation 中该标签的所有关联记录，防止孤立数据
+            user_tag_relation_repo:delete_by_tag_id(TagId);
+        _ ->
+            ok
+    end,
+    %% 调用 DS 层完成标签删除及相关表 tag 字段更新
     user_tag_ds:delete(Uid, Scene, Tag).
 
 

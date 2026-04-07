@@ -18,12 +18,6 @@ collect_remove_uses_raw_object_id_test_() ->
                     }
                 end}
             ]},
-            {elib_hashids, [
-                {'decode', 1, fun(_Obj) ->
-                    ?assert(false, should_not_decode_collect_object_id),
-                    0
-                end}
-            ]},
             {user_tag_relation_logic, [
                 {'remove', 4, fun(Uid, Scene, ObjectId, TagId) ->
                     ?assertEqual(101, Uid),
@@ -44,8 +38,7 @@ collect_remove_uses_raw_object_id_test_() ->
             {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => remove}),
             {StatusCode, _, _Body} = cowboy_req_h:response(Req),
             ?assertEqual(200, StatusCode),
-            meck_helper:verify_called(user_tag_relation_logic, remove, 4),
-            ?assertEqual(0, meck:num_calls(elib_hashids, decode, 1))
+            meck_helper:verify_called(user_tag_relation_logic, remove, 4)
         end
     ).
 
@@ -64,9 +57,6 @@ friend_remove_invalid_object_id_error_test_() ->
                         <<"objectId">> => <<"bad_hashid">>
                     }
                 end}
-            ]},
-            {elib_hashids, [
-                {'decode', 1, fun(_Obj) -> 0 end}
             ]},
             {user_tag_relation_logic, [
                 {'remove', 4, fun(_Uid, _Scene, _ObjectId, _TagId) ->
@@ -105,9 +95,6 @@ friend_remove_valid_object_id_success_test_() ->
                     }
                 end}
             ]},
-            {elib_hashids, [
-                {'decode', 1, fun(_Obj) -> 2233 end}
-            ]},
             {user_tag_relation_logic, [
                 {'remove', 4, fun(Uid, Scene, ObjectId, TagId) ->
                     ?assertEqual(101, Uid),
@@ -128,7 +115,6 @@ friend_remove_valid_object_id_success_test_() ->
             {ok, Req, _State} = user_tag_relation_handler:init(MockReq, #{action => remove}),
             {StatusCode, _, _Body} = cowboy_req_h:response(Req),
             ?assertEqual(200, StatusCode),
-            meck_helper:verify_called(user_tag_relation_logic, remove, 4),
-            meck_helper:verify_called(elib_hashids, decode, 1)
+            meck_helper:verify_called(user_tag_relation_logic, remove, 4)
         end
     ).

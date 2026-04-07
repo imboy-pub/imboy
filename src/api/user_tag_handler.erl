@@ -99,7 +99,6 @@ page(Req0, State) ->
 -spec change_name(cowboy_req:req(), map()) -> cowboy_req:req().
 change_name(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     TagName = maps:get(<<"tagName">>, PostVals, <<>>),
@@ -151,7 +150,6 @@ change_name(Req0, State) ->
 -spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    % Uid = elib_hashids:encode(CurrentUid),
     PostVals = elib_param:post(Req0),
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Tag = maps:get(<<"tag">>, PostVals, <<>>),

@@ -65,7 +65,13 @@ insert(Data) ->
                 status => maps:get(status, Data, 1),
                 description => maps:get(description, Data, <<>>)
             },
-            elib_pg:insert(Tb, Data2, <<"RETURNING id">>);
+            Id = elib_tsid:generate(group_task),
+            Data3 = Data2#{id => Id},
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
+            case elib_pg:query(Sql, Params) of
+                {ok, _Count} -> {ok, Id};
+                {error, _} = Err -> Err
+            end;
         _ ->
             {error, invalid_param}
     end.

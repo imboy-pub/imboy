@@ -34,7 +34,7 @@ page(Uid, Page, Size) when Page > 0 ->
         {ok, []} ->
             #{total => Total, page => Page, size => Size, list => []};
         {ok, Items0} ->
-            Items2 = [#{<<"denied_user_id">> => elib_hashids:encode(maps:get(<<"denied_user_id">>, Row)),
+            Items2 = [#{<<"denied_user_id">> => maps:get(<<"denied_user_id">>, Row),
                         <<"created_at">> => maps:get(<<"created_at">>, Row, <<>>),
                         <<"nickname">> => maps:get(<<"nickname">>, Row, <<>>),
                         <<"avatar">> => maps:get(<<"avatar">>, Row, <<>>),

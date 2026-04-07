@@ -45,7 +45,9 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入机器人离线消息 ----------
         %% 使用 elib_pg:insert/4 在事务中插入，与其他 repo 保持一致的安全方式
-        _ = elib_pg:insert(Conn, Tb, #{
+        GenId = elib_tsid:generate(msg_c2s),
+        C2sData = #{
+            id => GenId,
             payload => Payload,
             to_id => Gid,
             from_id => FromId,
@@ -59,7 +61,9 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
                 Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
                 _ -> null
             end
-        }, <<>>),
+        },
+        {C2sSql, C2sParams} = elib_pg_sql:insert(Tb, C2sData),
+        _ = elib_pg:execute(Conn, C2sSql, C2sParams),
 
         %% ---------- 批量插入时间线表 ----------
         %% 注意：时间线表的 to_uid 和 to_gid 是 bigint 类型，需要传入 integer

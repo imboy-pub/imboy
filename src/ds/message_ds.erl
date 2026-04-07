@@ -185,15 +185,9 @@ assemble_s2c(MsgId, Action, To) ->
                    binary(),
                    binary(),
                    map() | null) -> map().
-assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE)
-        when is_integer(From), From > 0 ->
-    assemble_msg(Type, elib_hashids:encode(From), To, Payload, MsgId, MsgType, Action, E2EE);
-assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) when is_list(To) ->
-    assemble_msg(Type, From, elib_hashids:encode(To), Payload, MsgId, MsgType, Action, E2EE);
-assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) when is_integer(To), To > 0 ->
-    assemble_msg(Type, From, elib_hashids:encode(To), Payload, MsgId, MsgType, Action, E2EE);
 assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) ->
     %% v2.0: MsgType/Action/E2EE 作为独立参数，直接使用
+    %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
     #{<<"id">> => MsgId,
       <<"type">> => Type,
       <<"from">> => From,
@@ -278,6 +272,7 @@ encode_websocket_message(Msg) ->
     E2EE = maps:get(<<"e2ee">>, Msg, null),
 
     %% v2.0 格式：所有字段提升到顶层
+    %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
     #{<<"id">> => maps:get(<<"id">>, Msg),
       <<"type">> => Type,
       <<"from">> => From,
@@ -306,7 +301,7 @@ decode_websocket_message(Data) ->
     E2EE = maps:get(<<"e2ee">>, Msg, null), % map() | null
 
     %% 保持客户端字段名：from/to（binary，hashids编码）
-    %% Logic 层会使用 elib_hashids:decode/1 将其转换为 integer
+    %% Logic 层会使用 ec_cnv:to_integer/1 将其转换为 integer
     %% 消息自毁秒数（可选，0 或 undefined 表示不自毁）
     ExpireSecs = case maps:get(<<"expire_secs">>, Msg, undefined) of
         N when is_integer(N), N > 0 -> N;
@@ -396,7 +391,7 @@ handle_offline_msgs(Uid, Type, Msgs, Count) when Count > 0 ->
 send_pull_offline_msg(Uid) ->
     MsgId = elib_id:gen("pull_offline"),
     %% v2.0: S2C 消息使用 action 字段
-    Msg = assemble_s2c(MsgId, <<"pull_offline_msg">>, elib_hashids:encode(Uid)),
+    Msg = assemble_s2c(MsgId, <<"pull_offline_msg">>, Uid),
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"pull">>),
     send_next(Uid, MsgId, MsgJson, MsLi),
@@ -427,8 +422,8 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
     %% 使用 encode_websocket_message/1 统一编码
     Msg = encode_websocket_message(#{<<"id">> => MsgId,
                                      <<"type">> => Type,
-                                     <<"from_id">> => elib_hashids:encode(FromId),
-                                     <<"to_id">> => elib_hashids:encode(ToId),
+                                     <<"from_id">> => FromId,
+                                     <<"to_id">> => ToId,
                                      <<"msg_type">> => MsgType,
                                      <<"action">> => Action,
                                      <<"e2ee">> => E2EE,

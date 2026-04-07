@@ -42,11 +42,12 @@ add(MsgId, MsgType, UserId, Emoji) ->
             {error, emoji_too_long};
         _ ->
             Tb = tablename(),
+            GenId = elib_tsid:generate(msg_reaction),
             Sql = <<"INSERT INTO ", Tb/binary,
-                   " (msg_id, msg_type, user_id, emoji) "
-                   "VALUES ($1, $2, $3, $4) "
+                   " (id, msg_id, msg_type, user_id, emoji) "
+                   "VALUES ($1, $2, $3, $4, $5) "
                    "ON CONFLICT (msg_id, msg_type, user_id, emoji) DO NOTHING">>,
-            case elib_pg:query(Sql, [MsgId, MsgType, UserId, Emoji]) of
+            case elib_pg:query(Sql, [GenId, MsgId, MsgType, UserId, Emoji]) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end

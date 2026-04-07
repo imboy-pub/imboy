@@ -114,7 +114,12 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
             )
         end, PersistedShardRecords),
 
-        {ok, PersistedShardRecords}
+        % 转换 ID 为 binary（客户端安全传输）
+        ClientShards = [S#{
+            <<"uid">> => maps:get(<<"uid">>, S),
+            <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S)
+        } || S <- PersistedShardRecords],
+        {ok, ClientShards}
     catch
         {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
             {error, {Msg, Code}};
@@ -128,7 +133,16 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
 %% @doc 获取用户的所有恢复分片（服务端持久化）
 -spec get_user_shards(integer(), binary()) -> {ok, list(map())} | {error, term()}.
 get_user_shards(Uid, KeyVersion) ->
-    e2ee_social_ds:get_user_shards(Uid, KeyVersion).
+    case e2ee_social_ds:get_user_shards(Uid, KeyVersion) of
+        {ok, Shards} ->
+            ClientShards = [S#{
+                <<"uid">> => maps:get(<<"uid">>, S, 0),
+                <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S, 0)
+            } || S <- Shards],
+            {ok, ClientShards};
+        Error ->
+            Error
+    end.
 
 %% @doc 获取用户作为代理的所有分片（服务端持久化）
 -spec get_proxy_shards(integer()) -> {ok, list(map())} | {error, term()}.

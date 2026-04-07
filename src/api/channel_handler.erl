@@ -961,8 +961,10 @@ safe_to_integer(_) ->
     error.
 
 -spec decode_positive_id(term()) -> integer().
+decode_positive_id(Value) when is_integer(Value), Value > 0 ->
+    Value;
 decode_positive_id(Value) ->
-    case catch elib_hashids:decode(Value) of
+    case catch ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

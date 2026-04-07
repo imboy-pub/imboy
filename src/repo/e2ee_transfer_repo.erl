@@ -54,14 +54,13 @@ create(Params) ->
     KeyBundle = maps:get(<<"encrypted_key_bundle">>, Params),
     ExpiresAt = maps:get(<<"expires_at">>, Params),
 
+    Id = elib_tsid:generate(e2ee_transfer),
     Sql1 = <<"INSERT INTO e2ee_transfer_sessions ",
-             "(session_id, from_uid, from_device_id, to_uid, to_device_id, ",
+             "(id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
              "status, encrypted_key_bundle, expires_at) ",
-             "VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7) ",
-             "RETURNING id">>,
-    % 使用 elib_pg:execute 处理 INSERT RETURNING
-    case elib_pg:execute(Sql1, [SessionId, FromUid, FromDeviceId, ToUid, <<>>, KeyBundle, ExpiresAt]) of
-        {ok, 1, [{Id}]} ->
+             "VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)">>,
+    case elib_pg:execute(Sql1, [Id, SessionId, FromUid, FromDeviceId, ToUid, <<>>, KeyBundle, ExpiresAt]) of
+        {ok, _Count} ->
             {ok, Id};
         {error, {pgsql_error, #{code := <<"23505">>}}} ->
             % 唯一约束违规（并发保护）

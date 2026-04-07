@@ -379,7 +379,7 @@ stats(<<"GET">>, Req0) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
-            ChannelIdBin = elib_hashids:encode(ChannelId),
+            ChannelIdBin = ChannelId,
             case channel_logic:get_channel_stats(ChannelIdBin) of
                 {ok, Stats} ->
                     Payload = #{
@@ -677,7 +677,7 @@ attach_users(Item, Fields, UserMap) ->
                 UserKey = user_field_to_key(Field),
                 User = maps:get(Uid, UserMap, #{}),
                 % 编码 ID 字段并附加用户对象
-                Acc#{Field => elib_hashids:encode(Uid), UserKey => User};
+                Acc#{Field => Uid, UserKey => User};
             _ ->
                 Acc
         end
@@ -720,7 +720,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch elib_hashids:decode(Value) of
+            case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
             end
@@ -802,7 +802,7 @@ normalize_channel_payload(Payload) ->
 %% @doc 规范化单条频道数据（编码ID字段）
 -spec normalize_channel(map()) -> map().
 normalize_channel(Channel) ->
-    elib_hashids:replace_fields(Channel, [<<"id">>, <<"owner_id">>, <<"creator_uid">>]).
+    Channel.
 
 %% @doc 规范化消息分页数据（编码ID字段）
 -spec normalize_message_payload(map()) -> map().
@@ -814,7 +814,7 @@ normalize_message_payload(Payload) ->
 %% @doc 规范化单条消息数据（编码ID字段）
 -spec normalize_message(map()) -> map().
 normalize_message(Message) ->
-    elib_hashids:replace_fields(Message, [<<"id">>, <<"channel_id">>, <<"author_id">>]).
+    Message.
 
 %% ===================================================================
 %% EUnit tests.
