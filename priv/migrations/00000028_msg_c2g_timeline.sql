@@ -23,6 +23,6 @@ COMMENT ON COLUMN public.msg_c2g_timeline.to_gid IS '消息接收群 group_id';
 COMMENT ON COLUMN public.msg_c2g_timeline.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
-CREATE INDEX uk_c2g_timeline_MsgId ON public.msg_c2g_timeline (msg_id);
-CREATE UNIQUE INDEX uk_c2g_timeline_ToUid_MsgId ON public.msg_c2g_timeline (to_uid, msg_id);
-CREATE INDEX idx_c2g_timeline_ToUid_ClientAck ON public.msg_c2g_timeline (to_uid, client_ack);
+CREATE INDEX IF NOT EXISTS uk_c2g_timeline_MsgId ON public.msg_c2g_timeline (msg_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_c2g_timeline_ToUid_MsgId ON public.msg_c2g_timeline (to_uid, msg_id);
+CREATE INDEX IF NOT EXISTS idx_c2g_timeline_ToUid_ClientAck ON public.msg_c2g_timeline (to_uid, client_ack);

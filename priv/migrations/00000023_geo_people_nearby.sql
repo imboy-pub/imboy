@@ -15,7 +15,7 @@ ALTER TABLE IF EXISTS public.geo_people_nearby OWNER to imboy_user;
 
 COMMENT ON TABLE public.geo_people_nearby IS '附近的人';
 
-CREATE INDEX i_people_nearby_location ON public.geo_people_nearby USING GIST(location);
+CREATE INDEX IF NOT EXISTS i_people_nearby_location ON public.geo_people_nearby USING GIST(location);
 
 -- 一条 SQL 实现查询附近的人
 -- https://github.com/tencentyun/qcloud-documents/blob/master/product/数据库/云数据库PostgreSQL/最佳实践/一条SQL实现附近的人.md

@@ -2,7 +2,7 @@
 
 -- DROP TABLE IF EXISTS public."user_log";
 
-CREATE TABLE public.user_log (
+CREATE TABLE IF NOT EXISTS public.user_log (
     ts timestamptz DEFAULT CURRENT_TIMESTAMP(6) NOT NULL,
     "type" int4 NOT NULL, -- 日志类型: 100 用户注销备份  102 用户注销申请记录 110 修改密码
     uid int8 DEFAULT 0 NOT NULL, -- 用户ID
@@ -10,7 +10,7 @@ CREATE TABLE public.user_log (
     remark varchar(200) DEFAULT ''::character varying NOT NULL, -- 备注
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL -- 创建记录时间 2025-02-21 08:33:16.268288+08:00
 );
-CREATE INDEX i_user_log_type_uid_createdat ON public.user_log USING btree (type, uid, created_at);
+CREATE INDEX IF NOT EXISTS i_user_log_type_uid_createdat ON public.user_log USING btree (type, uid, created_at);
 COMMENT ON TABLE public.user_log IS '用户日志表';
 
 -- Column comments

@@ -53,5 +53,5 @@ COMMENT ON COLUMN public.group.status IS '状态: -1 删除  0 禁用  1 启用'
 
 -- index
 
-CREATE INDEX i_Status_OwnerUid_Type ON public.group(status,owner_uid,type);
-CREATE INDEX i_CreatorId_MemberIdSum ON public.group(creator_uid, user_id_sum);
+CREATE INDEX IF NOT EXISTS i_Status_OwnerUid_Type ON public.group(status,owner_uid,type);
+CREATE INDEX IF NOT EXISTS i_CreatorId_MemberIdSum ON public.group(creator_uid, user_id_sum);

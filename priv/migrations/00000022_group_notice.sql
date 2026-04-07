@@ -37,5 +37,5 @@ COMMENT ON COLUMN public.group_notice.updated_at IS '更新截止时间';
 COMMENT ON COLUMN public.group_notice.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
-CREATE INDEX i_Gid_Status_ExpiredAt ON public.group_notice (group_id, status, expired_at asc);
+CREATE INDEX IF NOT EXISTS i_Gid_Status_ExpiredAt ON public.group_notice (group_id, status, expired_at asc);
 

@@ -43,10 +43,10 @@ COMMENT ON COLUMN public.channel.updated_at IS '最后更新时间';
 COMMENT ON COLUMN public.channel.created_at IS '创建时间';
 
 -- 索引
-CREATE INDEX i_channel_creator_uid ON public.channel(creator_uid);
-CREATE INDEX i_channel_status_created ON public.channel(status, created_at DESC);
-CREATE INDEX i_channel_subscriber_count ON public.channel(subscriber_count DESC);
-CREATE INDEX i_channel_custom_id ON public.channel(custom_id) WHERE custom_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS i_channel_creator_uid ON public.channel(creator_uid);
+CREATE INDEX IF NOT EXISTS i_channel_status_created ON public.channel(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS i_channel_subscriber_count ON public.channel(subscriber_count DESC);
+CREATE INDEX IF NOT EXISTS i_channel_custom_id ON public.channel(custom_id) WHERE custom_id IS NOT NULL;
 
 -- 频道订阅表：存储用户订阅关系
 CREATE TABLE IF NOT EXISTS public.channel_subscription
@@ -88,8 +88,8 @@ COMMENT ON COLUMN public.channel_subscription.is_muted IS '是否免打扰';
 COMMENT ON COLUMN public.channel_subscription.status IS '状态: 0 取消订阅 1 已订阅';
 
 -- 索引
-CREATE INDEX i_channel_subscription_user ON public.channel_subscription(user_id, status);
-CREATE INDEX i_channel_subscription_channel ON public.channel_subscription(channel_id, status);
+CREATE INDEX IF NOT EXISTS i_channel_subscription_user ON public.channel_subscription(user_id, status);
+CREATE INDEX IF NOT EXISTS i_channel_subscription_channel ON public.channel_subscription(channel_id, status);
 
 -- 频道消息表：存储频道发布的消息
 CREATE TABLE IF NOT EXISTS public.channel_message
@@ -134,9 +134,9 @@ COMMENT ON COLUMN public.channel_message.updated_at IS '更新时间';
 COMMENT ON COLUMN public.channel_message.created_at IS '创建时间';
 
 -- 索引
-CREATE INDEX i_channel_message_channel_created ON public.channel_message(channel_id, created_at DESC);
-CREATE INDEX i_channel_message_author ON public.channel_message(author_id);
-CREATE INDEX i_channel_message_pinned ON public.channel_message(channel_id, is_pinned) WHERE is_pinned = true;
+CREATE INDEX IF NOT EXISTS i_channel_message_channel_created ON public.channel_message(channel_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS i_channel_message_author ON public.channel_message(author_id);
+CREATE INDEX IF NOT EXISTS i_channel_message_pinned ON public.channel_message(channel_id, is_pinned) WHERE is_pinned = true;
 
 -- 频道管理员表：存储频道管理员信息
 CREATE TABLE IF NOT EXISTS public.channel_admin
@@ -166,7 +166,7 @@ COMMENT ON COLUMN public.channel_admin.role IS '角色: 1 编辑 2 管理员 3 �
 COMMENT ON COLUMN public.channel_admin.created_at IS '添加时间';
 
 -- 索引
-CREATE INDEX i_channel_admin_user ON public.channel_admin(user_id);
+CREATE INDEX IF NOT EXISTS i_channel_admin_user ON public.channel_admin(user_id);
 
 -- ============================================================================
 -- 频道统计相关表 (Channel Statistics)
@@ -219,8 +219,8 @@ COMMENT ON COLUMN public.channel_stats_daily.total_reactions IS '当日总反应
 COMMENT ON COLUMN public.channel_stats_daily.active_viewers IS '当日活跃阅读者数';
 
 -- 索引
-CREATE INDEX i_channel_stats_daily_channel ON public.channel_stats_daily(channel_id, stats_date DESC);
-CREATE INDEX i_channel_stats_daily_date ON public.channel_stats_daily(stats_date DESC);
+CREATE INDEX IF NOT EXISTS i_channel_stats_daily_channel ON public.channel_stats_daily(channel_id, stats_date DESC);
+CREATE INDEX IF NOT EXISTS i_channel_stats_daily_date ON public.channel_stats_daily(stats_date DESC);
 
 -- 消息阅读记录表
 -- 记录用户对频道消息的阅读行为，用于精确统计阅读量和用户行为分析
@@ -253,9 +253,9 @@ COMMENT ON COLUMN public.channel_message_view.user_id IS '阅读者用户ID';
 COMMENT ON COLUMN public.channel_message_view.viewed_at IS '阅读时间';
 
 -- 索引
-CREATE INDEX i_channel_message_view_message ON public.channel_message_view(message_id);
-CREATE INDEX i_channel_message_view_channel_user ON public.channel_message_view(channel_id, user_id);
-CREATE INDEX i_channel_message_view_viewed_at ON public.channel_message_view(viewed_at DESC);
+CREATE INDEX IF NOT EXISTS i_channel_message_view_message ON public.channel_message_view(message_id);
+CREATE INDEX IF NOT EXISTS i_channel_message_view_channel_user ON public.channel_message_view(channel_id, user_id);
+CREATE INDEX IF NOT EXISTS i_channel_message_view_viewed_at ON public.channel_message_view(viewed_at DESC);
 
 -- 消息反应表（点赞、收藏等）
 -- 存储用户对频道消息的反应（emoji 表情、点赞、收藏等）
@@ -290,10 +290,10 @@ COMMENT ON COLUMN public.channel_reaction.reaction_type IS '反应类型: like, 
 COMMENT ON COLUMN public.channel_reaction.created_at IS '反应时间';
 
 -- 索引
-CREATE INDEX i_channel_reaction_message ON public.channel_reaction(message_id);
-CREATE INDEX i_channel_reaction_channel ON public.channel_reaction(channel_id);
-CREATE INDEX i_channel_reaction_user ON public.channel_reaction(user_id);
-CREATE INDEX i_channel_reaction_type ON public.channel_reaction(reaction_type);
+CREATE INDEX IF NOT EXISTS i_channel_reaction_message ON public.channel_reaction(message_id);
+CREATE INDEX IF NOT EXISTS i_channel_reaction_channel ON public.channel_reaction(channel_id);
+CREATE INDEX IF NOT EXISTS i_channel_reaction_user ON public.channel_reaction(user_id);
+CREATE INDEX IF NOT EXISTS i_channel_reaction_type ON public.channel_reaction(reaction_type);
 
 -- ============================================================================
 -- 触发器：自动更新消息阅读量

@@ -36,4 +36,4 @@ COMMENT ON COLUMN public.group_log.remark IS '备注';
 COMMENT ON COLUMN public.group_log.created_at IS '创建记录时间 2025-02-21 08:33:16.268288+08:00';
 
 -- index
-CREATE INDEX i_group_log_Type_OptionUid_CreatedAt ON public.group_log(type, option_uid, created_at);
+CREATE INDEX IF NOT EXISTS i_group_log_Type_OptionUid_CreatedAt ON public.group_log(type, option_uid, created_at);

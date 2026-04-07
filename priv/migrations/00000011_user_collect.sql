@@ -43,4 +43,4 @@ COMMENT ON COLUMN public.user_collect.status IS '状态: 0 禁用  1 启用';
 
 -- index
 
-CREATE INDEX i_user_collect_UserId_Status_Kind ON public.user_collect(user_id, status, kind);
+CREATE INDEX IF NOT EXISTS i_user_collect_UserId_Status_Kind ON public.user_collect(user_id, status, kind);

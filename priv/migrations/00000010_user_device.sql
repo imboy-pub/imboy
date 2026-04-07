@@ -5,7 +5,7 @@
 -- 导入数据后，需要更新自增长ID
 -- select setval('"user_device_id_seq"', (select max(id) from public."user_device"));
 
-CREATE TABLE public.user_device (
+CREATE TABLE IF NOT EXISTS public.user_device (
     id bigserial NOT NULL, -- 主键 自增长ID
     user_id int8 NOT NULL, -- 用户ID
     device_type varchar(40) DEFAULT ''::character varying NULL, -- 设备类型 web ios android macos windows

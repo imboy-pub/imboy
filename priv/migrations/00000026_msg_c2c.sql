@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.msg_c2c (
 
 ALTER TABLE IF EXISTS public.msg_c2c OWNER TO imboy_user;
 -- 2. 创建其他索引
-CREATE UNIQUE INDEX uk_c2c_MsgId_CreatedAt ON public.msg_c2c (msg_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_c2c_MsgId_CreatedAt ON public.msg_c2c (msg_id, created_at);
 CREATE INDEX IF NOT EXISTS i_c2c_ToId ON public.msg_c2c (to_id);
 CREATE INDEX IF NOT EXISTS i_c2c_FromId ON public.msg_c2c (from_id);
 CREATE INDEX IF NOT EXISTS i_c2c_MsgType ON public.msg_c2c (msg_type);

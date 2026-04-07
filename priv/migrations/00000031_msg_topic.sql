@@ -30,4 +30,4 @@ COMMENT ON COLUMN public.msg_topic.user_id IS '发起话题用户ID int';
 
 COMMENT ON COLUMN public.msg_topic.topic_id IS '话题ID，客户端话题自增长ID';
 -- index
-CREATE INDEX i_msg_topic_type_UserId_Title ON public.msg_topic (type, user_id, title);
+CREATE INDEX IF NOT EXISTS i_msg_topic_type_UserId_Title ON public.msg_topic (type, user_id, title);

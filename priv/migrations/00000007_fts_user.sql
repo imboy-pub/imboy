@@ -20,7 +20,7 @@ COMMENT ON COLUMN public.fts_user.user_id IS '用户唯一ID';
 
 COMMENT ON COLUMN public.fts_user.allow_search IS '用户允许被搜索 1 是  2 否';
 COMMENT ON COLUMN public.fts_user.token IS '搜索矢量信息';
-CREATE INDEX user_fts_gin_idex ON public."fts_user" USING gin (token);
+CREATE INDEX IF NOT EXISTS user_fts_gin_idex ON public."fts_user" USING gin (token);
 
 
 -- select * from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.allow_search=1 and fts.token @@ to_tsquery('jiebacfg', '硕士')
@@ -36,7 +36,7 @@ INSERT INTO public."fts_user" (user_id, allow_search, token) VALUES
 https://m.imooc.com/wiki/sqlbase-sqlpractice6
 
 DROP TABLE IF EXISTS article;
-CREATE TABLE article
+CREATE TABLE IF NOT EXISTS article
 (
   id      serial PRIMARY KEY,
   title   varchar(40),
@@ -47,7 +47,7 @@ ALTER TABLE article ADD COLUMN fts tsvector;
 UPDATE article
 SET fts = setweight(to_tsvector('jiebacfg', title), 'A') ||
           setweight(to_tsvector('jiebacfg', content), 'B');
-CREATE INDEX article_fts_gin_index ON article USING gin (fts);
+CREATE INDEX IF NOT EXISTS article_fts_gin_index ON article USING gin (fts);
 
 -- http://javabin.cn/2018/pg_jieba.html
 select * from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.token @@ to_tsquery('jiebacfg', '硕士小名')

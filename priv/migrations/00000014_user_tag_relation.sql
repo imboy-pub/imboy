@@ -29,5 +29,5 @@ COMMENT ON COLUMN public.user_tag_relation.created_at IS '创建记录时间 202
 
 -- index
 
-CREATE UNIQUE INDEX uk_user_tag_relation_Scene_UserId_ObjectId_TagId ON public.user_tag_relation(scene, user_id, object_id, tag_id);
-CREATE INDEX i_user_tag_relation_Scene_TagId ON public.user_tag_relation(scene, tag_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_tag_relation_Scene_UserId_ObjectId_TagId ON public.user_tag_relation(scene, user_id, object_id, tag_id);
+CREATE INDEX IF NOT EXISTS i_user_tag_relation_Scene_TagId ON public.user_tag_relation(scene, tag_id);

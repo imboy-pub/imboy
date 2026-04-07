@@ -5,7 +5,7 @@
 -- 导入数据后，需要更新自增长ID
 -- select setval('"user_id_seq"', (select max(id) from public."user"));
 
-CREATE TABLE public."user" (
+CREATE TABLE IF NOT EXISTS public."user" (
     id bigserial NOT NULL, -- 主键 自增长ID
     level_id int8 DEFAULT 1 NOT NULL, -- 会员等级ID
     nickname varchar(80) DEFAULT ''::character varying NOT NULL, -- 用户昵称
@@ -27,9 +27,9 @@ CREATE TABLE public."user" (
     "source" varchar(80) DEFAULT ''::character varying NOT NULL, -- 注册来源标记
     CONSTRAINT user_pkey PRIMARY KEY (id)
 );
-CREATE UNIQUE INDEX uk_account ON public."user" USING btree (account);
-CREATE UNIQUE INDEX uk_email ON public."user" USING btree (email);
-CREATE UNIQUE INDEX uk_mobile ON public."user" USING btree (mobile);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_account ON public."user" USING btree (account);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_email ON public."user" USING btree (email);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_mobile ON public."user" USING btree (mobile);
 COMMENT ON TABLE public."user" IS '用户表';
 
 -- Column comments

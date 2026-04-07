@@ -45,8 +45,8 @@ COMMENT ON COLUMN public.user_friend.setting IS '好友权限设置等信息';
 
 -- index
 
-CREATE UNIQUE INDEX uk_FromUID_ToUID ON public.user_friend (from_user_id, to_user_id);
-CREATE INDEX i_Status_FromUid_Cid ON public.user_friend (status, from_user_id, category_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_FromUID_ToUID ON public.user_friend (from_user_id, to_user_id);
+CREATE INDEX IF NOT EXISTS i_Status_FromUid_Cid ON public.user_friend (status, from_user_id, category_id);
 
 
 -- 为 user_friend 表添加 last_seen_at 字段

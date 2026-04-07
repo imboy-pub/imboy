@@ -38,4 +38,4 @@ COMMENT ON COLUMN public.conversation.type IS '会话类型 C2C C2G C2S S2C';
 
 COMMENT ON COLUMN public.conversation.user_id IS '发起会话用户ID int';
 -- index
-CREATE UNIQUE INDEX uk_cvt_UserId_Type_PeerId ON public.conversation (user_id, type, peer_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_cvt_UserId_Type_PeerId ON public.conversation (user_id, type, peer_id);

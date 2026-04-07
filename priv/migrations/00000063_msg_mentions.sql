@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS public.msg_mention
     is_read boolean NOT NULL DEFAULT false,   -- 是否已读
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    CONSTRAINT fk_msg_mention_msg FOREIGN KEY (msg_id)
-        REFERENCES public.msg_c2g(msg_id) ON DELETE CASCADE,
+    -- 注意：msg_c2g 使用复合主键 (id, created_at) 且 msg_id 无唯一约束，
+    -- 因此不能建立外键引用。通过应用层保证一致性。
     CONSTRAINT uk_msg_mention UNIQUE (msg_id, mentioned_uid)
 )
 

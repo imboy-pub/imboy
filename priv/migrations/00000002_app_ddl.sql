@@ -23,7 +23,7 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.app_ddl OWNER to imboy_user;
 
-CREATE INDEX i_ddl_Status_NewVsn ON public.app_ddl (status, new_vsn);
+CREATE INDEX IF NOT EXISTS i_ddl_Status_NewVsn ON public.app_ddl (status, new_vsn);
 
 COMMENT ON TABLE public.app_ddl IS 'APP sqlite3 数据库 DDL 语句版本管理表';
 COMMENT ON COLUMN public.app_ddl.id IS '主键 自增长ID 反馈ID';

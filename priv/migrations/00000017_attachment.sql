@@ -54,4 +54,4 @@ COMMENT ON COLUMN public.attachment.status IS '状态: -1 删除  0 禁用  1 �
 
 -- index
 
-CREATE INDEX i_attachment_CreatorUserId_Status ON public.attachment (creator_user_id,status);
+CREATE INDEX IF NOT EXISTS i_attachment_CreatorUserId_Status ON public.attachment (creator_user_id,status);

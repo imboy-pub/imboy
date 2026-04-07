@@ -36,4 +36,4 @@ COMMENT ON COLUMN public.user_group.created_at IS '创建记录时间 2025-02-21
 COMMENT ON COLUMN public.user_group.status IS '状态: -1 删除  0 禁用  1 启用 ';
 
 -- index
-CREATE UNIQUE INDEX uk_ug_Uid_Gid ON public.user_group (user_id, group_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ug_Uid_Gid ON public.user_group (user_id, group_id);
