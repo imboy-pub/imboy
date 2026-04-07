@@ -41,6 +41,8 @@ init(Req0, State0) ->
                 save(Method, Req0, State);
             delete ->
                 delete(Method, Req0, State);
+            version_stats ->
+                version_stats(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -85,6 +87,13 @@ save(<<"POST">>, Req0, _State) ->
     ForceUpdate = maps:get(<<"force_update">>, PostVals, 2),
     Status = maps:get(<<"status">>, PostVals, 0),
     Id = maps:get(<<"id">>, PostVals, 0),
+    %% 新增字段
+    MinSupportedVsn = maps:get(<<"min_supported_vsn">>, PostVals, <<"0.0.0">>),
+    GrayscalePercent = maps:get(<<"grayscale_percent">>, PostVals, 100),
+    UpgradeType = maps:get(<<"upgrade_type">>, PostVals, <<"recommend">>),
+    Changelog = maps:get(<<"changelog">>, PostVals, []),
+    FileSize = maps:get(<<"file_size">>, PostVals, 0),
+    FileHash = maps:get(<<"file_hash">>, PostVals, <<>>),
     Data =
         #{id => Id,
           region_code => RCode,
@@ -97,7 +106,14 @@ save(<<"POST">>, Req0, _State) ->
           download_url => DUrl,
           description => Desc,
           force_update => ec_cnv:to_integer(ForceUpdate),
-          status => ec_cnv:to_integer(Status)},
+          status => ec_cnv:to_integer(Status),
+          %% 升级策略字段
+          min_supported_vsn => MinSupportedVsn,
+          grayscale_percent => ec_cnv:to_integer(GrayscalePercent),
+          upgrade_type => UpgradeType,
+          changelog => Changelog,
+          file_size => ec_cnv:to_integer(FileSize),
+          file_hash => FileHash},
     _ = adm_app_version_logic:save(Data),
     elib_response:success(Req0, PostVals, <<"success."/utf8>>);
 save(_, Req0, _State) ->
@@ -114,6 +130,29 @@ delete(<<"DELETE">>, Req0, _State) ->
     adm_app_version_logic:delete(Where),
     elib_response:success(Req0, PostVals, <<"success."/utf8>>);
 delete(_, Req0, _State) ->
+    Req0.
+
+%% @doc 查询版本分布统计和升级事件统计
+%% GET /adm/app_version/version_stats
+%%
+%% 返回：
+%%   distribution - 各版本设备数分布
+%%   events       - 近7天升级事件统计
+-spec version_stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+version_stats(<<"GET">>, Req0, _State) ->
+    Distribution = app_upgrade_log_repo:version_distribution(),
+    %% 近7天事件统计
+    Now = elib_dt:now(),
+    SevenDaysAgo = elib_dt:to_binary(
+        calendar:gregorian_seconds_to_datetime(
+            calendar:datetime_to_gregorian_seconds(
+                elib_dt:to_datetime(Now)) - 7 * 86400)),
+    Events = app_upgrade_log_repo:event_stats(SevenDaysAgo, Now),
+    elib_response:success(Req0, #{
+        <<"distribution">> => Distribution,
+        <<"events">> => Events
+    });
+version_stats(_, Req0, _State) ->
     Req0.
 
 %% ===================================================================

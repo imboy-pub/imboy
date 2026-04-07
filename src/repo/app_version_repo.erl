@@ -39,12 +39,14 @@ find(Type, RegionCode) ->
 %% @doc 构建查询语句和参数
 -spec build_find_query(binary(), binary()) -> {binary(), [term()]}.
 build_find_query(Type, <<>>) ->
-    Sql = <<"SELECT region_code,type, package_name, app_name, vsn, download_url, description, force_update "
+    Sql = <<"SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
+            "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
             "FROM ", (tablename())/binary,
             " WHERE status = 1 AND type = $1 ORDER BY sort desc, updated_at desc limit 1">>,
     {Sql, [Type]};
 build_find_query(Type, RegionCode) ->
-    Sql = <<"SELECT region_code,type, package_name, app_name, vsn, download_url, description, force_update "
+    Sql = <<"SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
+            "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
             "FROM ", (tablename())/binary,
             " WHERE status = 1 AND region_code = $1 AND type = $2 ORDER BY sort desc, updated_at desc limit 1">>,
     {Sql, [RegionCode, Type]}.
@@ -63,10 +65,16 @@ execute_find_query(Sql, Params) ->
 %% @doc 添加应用版本记录
 %% @param Data 包含版本信息的map
 %% @returns {ok, any()} | {error, any()}
--spec add(map()) -> {ok, any()} | {error, any()}.
+-spec add(map()) -> {ok, integer()} | {error, any()}.
 add(Data) ->
     Tb = tablename(),
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(app_version),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 根据 ID 删除应用版本记录（使用参数化查询，防止SQL注入）
 %% @param Id 要删除的版本记录 ID（原始数字 ID，非 HashID）

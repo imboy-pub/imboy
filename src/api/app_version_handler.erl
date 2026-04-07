@@ -57,17 +57,13 @@ init(Req0, State0) ->
 -spec check(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 check(<<"GET">>, Req0, _State) ->
     Cos = cowboy_req:header(<<"cos">>, Req0, <<"web">>),
-    % elib_log:info(Cos),
+    DID = cowboy_req:header(<<"did">>, Req0, <<>>),
     Qs0 = cowboy_req:parse_qs(Req0),
     Vsn = proplists:get_value(<<"vsn">>, Qs0, <<>>),
-    RegionCode = proplists:get_value(<<"region_code">>, Qs0, <<>>),
-
-    Res = app_version_repo:find(Cos, RegionCode),
-    % ?DEBUG_LOG([Res]),
-    LastVsn = maps:get(<<"vsn">>, Res, <<"0.0.0">>),
-    % ?DEBUG_LOG([LastVsn, Res, WhereMap]),
-    %  updatable = [true | false]
-    elib_response:success(Req0, Res#{<<"updatable">> => ec_semver:lt(Vsn, LastVsn)}).
+    _RegionCode = proplists:get_value(<<"region_code">>, Qs0, <<>>),
+    %% 调用 logic 层计算升级策略
+    Res = app_version_logic:check(Vsn, Cos, DID),
+    elib_response:success(Req0, Res).
 
 %% ===================================================================
 %% EUnit tests.

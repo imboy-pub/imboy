@@ -169,6 +169,7 @@ get_routes() ->
         {"/v1/app/policy", app_feature_handler, #{action => policy}},
         {"/v1/app/ice_servers", app_feature_handler, #{action => ice_servers}},
         {"/v1/app_version/check", app_version_handler, #{action => check}},
+        {"/v1/app_upgrade/report", app_upgrade_log_handler, #{action => report}},
 
         % 【新增】Prometheus 指标端点
         {"/v1/metrics", metrics_handler, #{}},
@@ -532,6 +533,7 @@ get_routes() ->
         {"/adm/app_version/index", adm_app_version_handler, #{action => index}},
         {"/adm/app_version/save", adm_app_version_handler, #{action => save}},
         {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
+        {"/adm/app_version/version_stats", adm_app_version_handler, #{action => version_stats}},
         {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
         % 存储管理 API（附件统计和列表）
         {"/adm/storage/stats", adm_attach_handler, #{action => stats}},
@@ -629,6 +631,7 @@ option() ->
         , <<"/v1/uqrcode">>
         , <<"/v1/feedback/add">> % 没有登录也可以提交反馈建议
         , <<"/v1/app_version/check">>
+        , <<"/v1/app_upgrade/report">>
     ].
 
 
