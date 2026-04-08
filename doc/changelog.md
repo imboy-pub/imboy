@@ -95,7 +95,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 添加 elib_type 模块；
 * 保证时间相关的字段写入数据库的时候总是 rfc3339格式；
 * 保证时间相关的字段响应到前端的总是 unix毫秒时间戳；
-* 优化 elib_hashids 模块，提升效率
+* 优化 elib_hashids 模块，提升效率（注：elib_hashids 已于 2026-04-07 删除，已被 elib_tsid 替代）
 
 # 0.6.0
 * 调整 elib_dt 模块，相关的utc时间戳，不需要扣除偏移量；

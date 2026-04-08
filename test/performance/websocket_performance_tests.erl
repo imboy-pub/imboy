@@ -93,7 +93,7 @@ test_push_performance() ->
 
     % 测试消息推送
     PushTimes = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         Payload = #{
             <<"msg_id">> => MsgId,
             <<"content">> => <<N/integer, "推送测试"/utf8>>,
@@ -135,7 +135,7 @@ test_broadcast_performance() ->
 
     % 测试广播性能
     BroadcastTimes = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         Payload = #{
             <<"msg_id">> => MsgId,
             <<"content">> => <<N/integer, "广播测试"/utf8>>
@@ -207,7 +207,7 @@ test_throughput() ->
     StartTime = erlang:monotonic_time(millisecond),
 
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         Payload = #{
             <<"msg_id">> => MsgId,
             <<"content">> => <<N/integer>>,
@@ -242,7 +242,7 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,

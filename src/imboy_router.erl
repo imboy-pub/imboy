@@ -30,9 +30,8 @@ get_routes() ->
         {"/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
         {"/ws", websocket_handler, #{}},
-        {"/auth/assets", auth_handler, #{action => assets}},
-        {"/test/req_get", test_handler, #{action => req_get}},
-        {"/test/req_post", test_handler, #{action => req_post}},
+        {"/auth/assets", auth_handler, #{action => assets}}] ++
+        test_routes() ++ [
 
         {"/conversation/online", conversation_handler, #{action => online}},
         {"/conversation/mine", conversation_handler, #{action => mine}},
@@ -189,9 +188,8 @@ get_routes() ->
         {"/v1/passport/qr_login/cancel", qr_login_handler, #{action => cancel}},
 
         {"/v1/ws", websocket_handler, #{}},
-        {"/v1/auth/assets", auth_handler, #{action => assets}},
-        {"/v1/test/req_get", test_handler, #{action => req_get}},
-        {"/v1/test/req_post", test_handler, #{action => req_post}},
+        {"/v1/auth/assets", auth_handler, #{action => assets}}] ++
+        test_routes_v1() ++ [
 
         {"/v1/conversation/online", conversation_handler, #{action => online}},
         {"/v1/conversation/mine", conversation_handler, #{action => mine}},
@@ -646,8 +644,6 @@ open() ->
      <<"/account-deletion">>,
      % /ws 有自己的auth
      <<"/ws">>,
-     <<"/test/req_get">>,
-     <<"/test/req_post">>,
      <<"/conversation/online">>,
      <<"/init">>,
      <<"/user/show">>,
@@ -661,8 +657,6 @@ open() ->
      <<"/auth/assets">>,
 
      <<"/v1/ws">>,
-     <<"/v1/test/req_get">>,
-     <<"/v1/test/req_post">>,
      <<"/v1/conversation/online">>,
      <<"/v1/init">>,
      <<"/v1/app/features">>,
@@ -685,4 +679,57 @@ open() ->
      <<"/metrics">>,
      <<"/v1/metrics">>,
 
-     <<"/">>].
+     <<"/">>] ++ test_open_routes().
+
+
+%% ===================================================================
+%% 测试路由（仅非生产环境注册）
+%% ===================================================================
+
+%% @doc 判断当前是否为开发/测试环境
+-spec is_dev_env() -> boolean().
+is_dev_env() ->
+    Env = case config_ds:env(env, undefined) of
+        undefined ->
+            case os:getenv("IMBOYENV") of
+                false -> <<"pro">>;
+                Val -> list_to_binary(Val)
+            end;
+        V when is_atom(V) -> atom_to_binary(V, utf8);
+        V when is_binary(V) -> V;
+        _ -> <<"pro">>
+    end,
+    not lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
+
+%% @doc 测试路由（v0）- 仅非生产环境
+-spec test_routes() -> list().
+test_routes() ->
+    case is_dev_env() of
+        true ->
+            [{"/test/req_get", test_handler, #{action => req_get}},
+             {"/test/req_post", test_handler, #{action => req_post}}];
+        false ->
+            []
+    end.
+
+%% @doc 测试路由（v1）- 仅非生产环境
+-spec test_routes_v1() -> list().
+test_routes_v1() ->
+    case is_dev_env() of
+        true ->
+            [{"/v1/test/req_get", test_handler, #{action => req_get}},
+             {"/v1/test/req_post", test_handler, #{action => req_post}}];
+        false ->
+            []
+    end.
+
+%% @doc 测试端点开放路由（用于 open/0）- 仅非生产环境
+-spec test_open_routes() -> [binary()].
+test_open_routes() ->
+    case is_dev_env() of
+        true ->
+            [<<"/test/req_get">>, <<"/test/req_post">>,
+             <<"/v1/test/req_get">>, <<"/v1/test/req_post">>];
+        false ->
+            []
+    end.

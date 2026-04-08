@@ -54,7 +54,7 @@
         %% - postgre_aes_key: binary, 32+ bytes
         {jwt_key, <<"CHANGE_ME_WITH_32_BYTES_SECRET">>},
         {postgre_aes_key, <<"CHANGE_ME_WITH_32_BYTES_SECRET">>},
-        {hashids_salt, "CHANGE_ME_HASHIDS_SALT"},
+        {adm_cookie_secret, "CHANGE_ME_ADM_COOKIE_SECRET"},
 
         {sql_driver, pgsql},
         {pg_conf, #{

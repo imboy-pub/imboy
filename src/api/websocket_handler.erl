@@ -126,7 +126,17 @@ websocket_handle({text, <<"PING">>}, State) ->
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     handle_client_ack(Tail, State);
 websocket_handle({text, Msg}, State) ->
-    handle_json_message(Msg, State);
+    %% 对用户发送的业务消息进行速率限制（CLIENT_ACK 不受限）
+    CurrentUid = auth_ds:current_uid(State),
+    case throttle:check(msg_per_user, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
+            RateLimitMsg = ws_validation_error(<<>>, <<"rate_limited">>,
+                <<"消息发送过于频繁，请稍后再试"/utf8>>),
+            {reply, {text, jsone:encode(RateLimitMsg, [native_utf8])}, State, hibernate};
+        _ ->
+            handle_json_message(Msg, State)
+    end;
 websocket_handle({binary, Msg}, State) ->
     {[{binary, Msg}], State};
 websocket_handle(_Frame, State) ->

@@ -221,10 +221,10 @@ HTTP/1.1 1000 (Normal Closure)
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `id` | binary | ✅ | 消息唯一标识符，格式：`<type>.<hashid>.<timestamp>.<random>` |
+| `id` | binary | ✅ | 消息唯一标识符，格式：`<type>.<tsid>.<timestamp>.<random>` |
 | `type` | binary | ✅ | 消息类型：`C2C`\|`C2G`\|`C2S`\|`S2C` |
-| `from` | binary | ✅ | 发送方 ID (HashID 编码)，S2C 消息可能为空 |
-| `to` | binary | ✅ | 接收方 ID (HashID 编码) |
+| `from` | binary | ✅ | 发送方 ID (TSID integer)，S2C 消息可能为空 |
+| `to` | binary | ✅ | 接收方 ID (TSID integer) |
 | `payload` | map | ✅ | 消息载荷，仅包含展示相关内容 |
 | `created_at` | binary | ⚪ | 客户端创建时间 (RFC3339 格式)，可选 |
 | `server_ts` | integer | ✅ | 服务端时间戳 (毫秒，UTC+0) |
@@ -604,11 +604,11 @@ WebSocket 的通用安全基线以 `doc/operations/security.md` 为准；本节�
 - 服务端负责鉴权、路由、存储与转发，不应将可解密明文作为默认承诺；
 - 多设备场景下应按设备分发 wrapped key，而不是复用单份接收密钥。
 
-### HashID 与资源标识
+### TSID 与资源标识
 
-- `HashID` 只用于降低直接枚举风险，不是权限控制；
+- TSID 降低了直接枚举风险，但不是权限控制；
 - 实际资源访问权限以后端鉴权和业务校验为准；
-- 编码规则统一参考 `doc/standards/hashid-encoding.md`。
+- TSID 规范参考 `src/lib/CLAUDE.md` 中 elib_tsid 章节。
 
 ---
 ## 扩展指南
@@ -762,9 +762,9 @@ validate_v2_message(Msg) ->
 
 **构建步骤**：
 
-1. 生成消息 ID：`<type>.<hashid>.<timestamp>.<random>`
+1. 生成消息 ID：`<type>.<tsid>.<timestamp>.<random>`
 2. 设置 `type`：`"C2C"` 或 `"C2G"`
-3. 设置 `from` 和 `to`：HashID 编码的用户/群组 ID
+3. 设置 `from` 和 `to`：TSID 用户/群组 ID
 4. 设置 `msg_type`：消息子类型（text/image/voice/video/file/location/custom）
 5. 设置 `action`：空字符串 `""`
 6. 设置 `e2ee`：加密时包含，否则空字符串 `""`
@@ -783,7 +783,7 @@ Map<String, dynamic> buildC2CMessage({
   Map<String, dynamic>? e2eeData,
 }) {
   final now = DateTime.now().toUtc();
-  final id = 'c2c.${hashid(from)}.${now.millisecondsSinceEpoch}.${randomId()}';
+  final id = 'c2c.${from}.${now.millisecondsSinceEpoch}.${randomId()}';
 
   final message = <String, dynamic>{
     'id': id,
@@ -832,7 +832,7 @@ final encryptedMessage = buildC2CMessage(
 
 **构建步骤**：
 
-1. 生成消息 ID：`s2c.<hashid>.<timestamp>.<random>`
+1. 生成消息 ID：`s2c.<tsid>.<timestamp>.<random>`
 2. 设置 `type`：`"S2C"`
 3. 设置 `from`：空字符串 `""`
 4. 设置 `to`：接收方用户 ID
@@ -850,7 +850,7 @@ Map<String, dynamic> buildS2CMessage({
   Map<String, dynamic> payload = const {},
 }) {
   final now = DateTime.now().toUtc();
-  final id = 's2c.${hashid(to)}.${now.millisecondsSinceEpoch}.${randomId()}';
+  final id = 's2c.${to}.${now.millisecondsSinceEpoch}.${randomId()}';
 
   return <String, dynamic>{
     'id': id,
@@ -990,7 +990,7 @@ class V2MessageBuilder {
     String? createdAt,
   }) {
     final now = DateTime.now().toUtc();
-    final id = '${type.toLowerCase()}.${hashid(from)}.${now.millisecondsSinceEpoch}.${randomId()}';
+    final id = '${type.toLowerCase()}.${from}.${now.millisecondsSinceEpoch}.${randomId()}';
 
     return {
       'id': id,
@@ -1013,7 +1013,7 @@ class V2MessageBuilder {
     Map<String, dynamic> payload = const {},
   }) {
     final now = DateTime.now().toUtc();
-    final id = 's2c.${hashid(to)}.${now.millisecondsSinceEpoch}.${randomId()}';
+    final id = 's2c.${to}.${now.millisecondsSinceEpoch}.${randomId()}';
 
     return {
       'id': id,
@@ -1096,13 +1096,13 @@ final s2cMsg = V2MessageBuilder.buildS2CMessage(
 
 发送消息前，请验证：
 
-- [ ] 消息 ID 格式正确：`<type>.<hashid>.<timestamp>.<random>`
+- [ ] 消息 ID 格式正确：`<type>.<tsid>.<timestamp>.<random>`
 - [ ] `type` 字段值有效：`C2C`/`C2G`/`C2S`/`S2C`
 - [ ] S2C 消息：`action` 非空，`msg_type` 可为空
 - [ ] 非 S2C 消息：`msg_type` 非空，`action` 为空
 - [ ] E2EE 消息：`e2ee` 包含完整元数据，`payload` 为空
 - [ ] 非 E2EE 消息：`e2ee` 为空字符串，`payload` 包含内容
-- [ ] `from` 和 `to` 使用 HashID 编码（S2C 的 `from` 除外）
+- [ ] `from` 和 `to` 使用 TSID（S2C 的 `from` 除外）
 
 ---
 
@@ -1222,7 +1222,7 @@ v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。
 
 - `doc/api/rest-api.md`
 - `doc/standards/error-codes.md`
-- `doc/standards/hashid-encoding.md`
+- ~~`doc/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
 - `doc/operations/security.md`
 - `doc/api/e2ee_server_persisted_shard_contract_v1.md`
 - `CLAUDE.md`

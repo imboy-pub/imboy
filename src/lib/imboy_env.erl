@@ -1,0 +1,202 @@
+-module(imboy_env).
+
+%%%
+% 环境变量覆盖模块
+%
+% 启动时从操作系统环境变量读取敏感配置，覆盖 sys.config 中的值。
+% 这样生产环境只需设置环境变量即可，无需修改配置文件。
+%
+% 环境变量命名规范: IMBOY_<KEY>
+%   IMBOY_JWT_KEY          -> {imboy, jwt_key}
+%   IMBOY_POSTGRE_AES_KEY  -> {imboy, postgre_aes_key}
+%   IMBOY_ADM_COOKIE_SECRET -> {imboy, adm_cookie_secret}
+%   IMBOY_PG_HOST          -> pg_conf 中的 host
+%   IMBOY_PG_PASSWORD      -> pg_conf 中的 password
+%   IMBOY_PG_DATABASE      -> pg_conf 中的 database
+%   IMBOY_PG_PORT          -> pg_conf 中的 port
+%   IMBOY_PG_USERNAME      -> pg_conf 中的 username
+%   IMBOY_SMTP_USERNAME    -> smtp_option 中的 username
+%   IMBOY_SMTP_PASSWORD    -> smtp_option 中的 password
+%   IMBOY_REDIS_PASSWORD   -> redis_options 中的 password
+%   IMBOY_REDIS_HOST       -> redis_options 中的 host
+%   IMBOY_REDIS_PORT       -> redis_options 中的 port
+%%%
+
+-export([override_from_env/0]).
+
+-include_lib("kernel/include/logger.hrl").
+
+%% @doc 从环境变量覆盖 application config 中的敏感值。
+%% 在 imboy_app:start/2 中 validate_runtime_config() 之前调用。
+-spec override_from_env() -> ok.
+override_from_env() ->
+    %% 简单键值覆盖（binary 类型）
+    ok = override_binary_key("IMBOY_JWT_KEY", jwt_key),
+    ok = override_binary_key("IMBOY_POSTGRE_AES_KEY", postgre_aes_key),
+    ok = override_string_key("IMBOY_ADM_COOKIE_SECRET", adm_cookie_secret),
+
+    %% PostgreSQL 连接配置覆盖
+    ok = override_pg_conf(),
+
+    %% PostgreSQL 超级账户覆盖
+    ok = override_super_account(),
+
+    %% SMTP 配置覆盖
+    ok = override_smtp(),
+
+    %% Redis 配置覆盖
+    ok = override_redis(),
+
+    %% 百度千帆 API 配置覆盖
+    ok = override_qianfan(),
+
+    ok.
+
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
+%% @doc 覆盖 binary 类型的简单 app env key
+-spec override_binary_key(string(), atom()) -> ok.
+override_binary_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            BinVal = unicode:characters_to_binary(Value),
+            application:set_env(imboy, AppKey, BinVal),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 string (list) 类型的 app env key
+-spec override_string_key(string(), atom()) -> ok.
+override_string_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            application:set_env(imboy, AppKey, Value),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 pg_conf 中的连接参数
+-spec override_pg_conf() -> ok.
+override_pg_conf() ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, PgConf} when is_map(PgConf) ->
+            #{start_mfa := {Mod, Fun, [ConnOpts]}} = PgConf,
+            NewConnOpts = override_pg_conn_opts(ConnOpts),
+            NewPgConf = PgConf#{start_mfa := {Mod, Fun, [NewConnOpts]}},
+            application:set_env(imboy, pg_conf, NewPgConf),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 super_account 中的连接参数
+-spec override_super_account() -> ok.
+override_super_account() ->
+    case application:get_env(imboy, super_account) of
+        {ok, Account} when is_map(Account) ->
+            NewAccount = override_pg_conn_opts(Account),
+            application:set_env(imboy, super_account, NewAccount),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 从环境变量覆盖 PG 连接选项 map
+-spec override_pg_conn_opts(map()) -> map().
+override_pg_conn_opts(Opts) ->
+    Opts1 = maybe_override_map(Opts, host, "IMBOY_PG_HOST", fun(V) -> V end),
+    Opts2 = maybe_override_map(Opts1, username, "IMBOY_PG_USERNAME", fun(V) -> V end),
+    Opts3 = maybe_override_map(Opts2, password, "IMBOY_PG_PASSWORD", fun(V) -> V end),
+    Opts4 = maybe_override_map(Opts3, database, "IMBOY_PG_DATABASE", fun(V) -> V end),
+    maybe_override_map(Opts4, port, "IMBOY_PG_PORT", fun list_to_integer/1).
+
+%% @doc 覆盖 SMTP 配置
+-spec override_smtp() -> ok.
+override_smtp() ->
+    case application:get_env(imboy, smtp_option) of
+        {ok, SmtpOpts} when is_list(SmtpOpts) ->
+            NewOpts1 = maybe_override_proplist(SmtpOpts, username, "IMBOY_SMTP_USERNAME"),
+            NewOpts2 = maybe_override_proplist(NewOpts1, password, "IMBOY_SMTP_PASSWORD"),
+            NewOpts3 = maybe_override_proplist(NewOpts2, relay, "IMBOY_SMTP_RELAY"),
+            application:set_env(imboy, smtp_option, NewOpts3),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 Redis 配置
+-spec override_redis() -> ok.
+override_redis() ->
+    case application:get_env(imboy, redis_options) of
+        {ok, RedisOpts} when is_list(RedisOpts) ->
+            NewOpts1 = maybe_override_proplist(RedisOpts, password, "IMBOY_REDIS_PASSWORD"),
+            NewOpts2 = maybe_override_proplist(NewOpts1, host, "IMBOY_REDIS_HOST"),
+            NewOpts3 = maybe_override_proplist_int(NewOpts2, port, "IMBOY_REDIS_PORT"),
+            application:set_env(imboy, redis_options, NewOpts3),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖百度千帆 API 配置
+-spec override_qianfan() -> ok.
+override_qianfan() ->
+    case application:get_env(imboy, qianfan) of
+        {ok, QfConf} when is_map(QfConf) ->
+            Qf1 = maybe_override_map(QfConf, api_key, "IMBOY_QIANFAN_API_KEY",
+                                     fun(V) -> unicode:characters_to_binary(V) end),
+            Qf2 = maybe_override_map(Qf1, secret_key, "IMBOY_QIANFAN_SECRET_KEY",
+                                     fun(V) -> unicode:characters_to_binary(V) end),
+            Qf3 = maybe_override_map(Qf2, auth_access_key, "IMBOY_QIANFAN_AUTH_ACCESS_KEY",
+                                     fun(V) -> unicode:characters_to_binary(V) end),
+            Qf4 = maybe_override_map(Qf3, auth_secret_key, "IMBOY_QIANFAN_AUTH_SECRET_KEY",
+                                     fun(V) -> unicode:characters_to_binary(V) end),
+            application:set_env(imboy, qianfan, Qf4),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 若环境变量存在则覆盖 map 中的 key
+-spec maybe_override_map(map(), atom(), string(), fun((string()) -> term())) -> map().
+maybe_override_map(Map, Key, EnvVar, Transform) ->
+    case os:getenv(EnvVar) of
+        false ->
+            Map;
+        Value when is_list(Value), length(Value) > 0 ->
+            Map#{Key => Transform(Value)};
+        _ ->
+            Map
+    end.
+
+%% @doc 若环境变量存在则覆盖 proplist 中的 key（string 类型）
+-spec maybe_override_proplist(list(), atom(), string()) -> list().
+maybe_override_proplist(PropList, Key, EnvVar) ->
+    case os:getenv(EnvVar) of
+        false ->
+            PropList;
+        Value when is_list(Value), length(Value) > 0 ->
+            lists:keystore(Key, 1, PropList, {Key, Value});
+        _ ->
+            PropList
+    end.
+
+%% @doc 若环境变量存在则覆盖 proplist 中的 key（integer 类型）
+-spec maybe_override_proplist_int(list(), atom(), string()) -> list().
+maybe_override_proplist_int(PropList, Key, EnvVar) ->
+    case os:getenv(EnvVar) of
+        false ->
+            PropList;
+        Value when is_list(Value), length(Value) > 0 ->
+            lists:keystore(Key, 1, PropList, {Key, list_to_integer(Value)});
+        _ ->
+            PropList
+    end.

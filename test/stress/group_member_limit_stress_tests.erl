@@ -136,7 +136,7 @@ test_large_group_broadcast() ->
     % 2. 发送多条群消息测试广播性能
     MessageCount = 10,
     BroadcastTimes = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "群广播测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -235,7 +235,7 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
@@ -250,7 +250,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = binary_to_integer(imboy_hashid:uid()),
+    Gid = elib_tsid:generate(),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

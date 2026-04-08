@@ -135,8 +135,8 @@ ensure_db_connection() ->
 
 -spec prepare_context(map()) -> map().
 prepare_context(Opts) ->
-    AdminUid = normalize_uid(imboy_hashid:uid()),
-    SubscriberUid = normalize_uid(imboy_hashid:uid()),
+    AdminUid = normalize_uid(integer_to_binary(elib_tsid:generate())),
+    SubscriberUid = normalize_uid(integer_to_binary(elib_tsid:generate())),
     ensure_user(AdminUid, <<"ch_perf_admin">>),
     ensure_user(SubscriberUid, <<"ch_perf_subscriber">>),
     ChannelName = <<"perf_channel_", (integer_to_binary(AdminUid))/binary>>,

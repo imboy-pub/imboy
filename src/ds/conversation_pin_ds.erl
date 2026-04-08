@@ -24,7 +24,7 @@
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功 | {error, Reason} 失败
--spec pin_conversation(integer(), binary(), binary()) -> ok | {error, term()}.
+-spec pin_conversation(integer(), integer(), binary()) -> ok | {error, term()}.
 pin_conversation(Uid, ConversationId, Type) ->
     case conversation_pin_repo:pin(Uid, ConversationId, Type) of
         {ok, _Count} ->
@@ -38,7 +38,7 @@ pin_conversation(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功
--spec unpin_conversation(integer(), binary(), binary()) -> ok.
+-spec unpin_conversation(integer(), integer(), binary()) -> ok.
 unpin_conversation(Uid, ConversationId, Type) ->
     conversation_pin_repo:unpin(Uid, ConversationId, Type),
     ok.
@@ -55,7 +55,7 @@ get_pinned_conversations(Uid) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已置顶 | false 未置顶
--spec is_conversation_pinned(integer(), binary(), binary()) -> boolean().
+-spec is_conversation_pinned(integer(), integer(), binary()) -> boolean().
 is_conversation_pinned(Uid, ConversationId, Type) ->
     conversation_pin_repo:is_pinned(Uid, ConversationId, Type).
 

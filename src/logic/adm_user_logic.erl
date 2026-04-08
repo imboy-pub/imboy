@@ -55,7 +55,7 @@ save(Data) ->
         _ ->
             % 密码加密
             Password = maps:get(<<"password">>, Data),
-            PasswordHash = elib_password:generate(elib_hasher:md5(Password)),
+            PasswordHash = elib_password:generate(Password),
             Now = elib_dt:now(),
             SaveData = Data#{
                 <<"password">> => PasswordHash,
@@ -130,7 +130,7 @@ update_status(_, _) ->
 %% @doc 重置管理员密码
 -spec reset_password(integer(), binary()) -> ok | {error, any()}.
 reset_password(UserId, NewPassword) when byte_size(NewPassword) > 0 ->
-    PasswordHash = elib_password:generate(elib_hasher:md5(NewPassword)),
+    PasswordHash = elib_password:generate(NewPassword),
     case adm_user_ds:update(UserId, #{<<"password">> => PasswordHash}) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}

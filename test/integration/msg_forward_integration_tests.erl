@@ -62,7 +62,7 @@ test_c2c_to_c2c_forward() ->
     User3 = maps:get(user3, Context),
 
     % 1. 发送一条单聊消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"测试转发消息"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -90,7 +90,7 @@ test_c2c_to_c2g_forward() ->
     Group = maps:get(group, Context),
 
     % 1. 发送一条单聊消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"转发到群聊"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -113,7 +113,7 @@ test_c2g_to_c2c_forward() ->
     Group = maps:get(group, Context),
 
     % 1. 发送一条群聊消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"群聊消息转发到单聊"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -138,7 +138,7 @@ test_c2g_to_c2g_forward() ->
     {ok, Group2} = create_test_group(User1, <<"forward_test_group2">>),
 
     % 2. 发送一条群聊消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"群聊到群聊转发"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -162,7 +162,7 @@ test_batch_forward() ->
 
     % 1. 发送多条消息
     MsgIds = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "批量转发消息"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -187,7 +187,7 @@ test_forward_trace() ->
     User3 = maps:get(user3, Context),
 
     % 1. 发送原始消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"溯源测试"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -219,7 +219,7 @@ test_forward_to_non_friend() ->
     User2 = maps:get(user2, Context),
 
     % 1. 先向现有好友发送一条原始消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"非好友转发测试"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -245,7 +245,7 @@ test_forward_to_non_group_member() ->
     {ok, Group2} = create_test_group(User1, <<"non_member_group">>),
 
     % 2. 发送消息
-    MsgId = imboy_hashid:uid(),
+    MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
         <<"payload">> => <<"非群成员转发测试"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -281,7 +281,7 @@ test_batch_forward_limit() ->
 
     % 1. 创建超过限制的消息数量（假设限制是10条）
     MsgIds = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "超限转发消息"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -354,7 +354,7 @@ find_forward_record(OriginalMsgId, ForwardMsgId) ->
     end.
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
@@ -390,7 +390,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_group(OwnerId, Name) ->
-    Gid = binary_to_integer(imboy_hashid:uid()),
+    Gid = elib_tsid:generate(),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

@@ -10,6 +10,7 @@
 -spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start(_Type, _Args) ->
     _ = inets:start(),
+    ok = imboy_env:override_from_env(),
     ok = validate_runtime_config(),
     ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
@@ -42,6 +43,7 @@ start(_Type, _Args) ->
                 middlewares => [
                     cowboy_router % 必须是第一个元素
                     , cors_middleware % CORS 中间件，处理跨域请求
+                    , security_headers_middleware % 安全响应头中间件
                     , auth_middleware % 认证中间件
                     , throttle_middleware % 限流中间件
                     , cowboy_handler
@@ -240,10 +242,31 @@ start_clear(ProtoOpts, Port) ->
 validate_runtime_config() ->
     case is_strict_env(runtime_env()) of
         true ->
+            %% 生产环境必须配置的敏感项
             ok = ensure_required_secret(jwt_key),
             ok = ensure_required_secret(postgre_aes_key),
+            ok = ensure_required_secret(adm_cookie_secret),
+            %% 验证数据库密码不是默认值
+            ok = ensure_pg_password_not_default(),
             ok;
         false ->
+            ok
+    end.
+
+%% @doc 确保生产环境数据库密码不是常见弱密码
+-spec ensure_pg_password_not_default() -> ok.
+ensure_pg_password_not_default() ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, #{start_mfa := {_, _, [#{password := Pwd}]}}} ->
+            BlockedPasswords = ["123456", "password", "abc54321", ""],
+            case lists:member(Pwd, BlockedPasswords) of
+                true ->
+                    erlang:error({insecure_pg_password,
+                        "Production database password is too weak or is a known default"});
+                false ->
+                    ok
+            end;
+        _ ->
             ok
     end.
 

@@ -85,7 +85,7 @@ Query：
 ```json
 [
   {
-    "conversation_id": "hashid",
+    "conversation_id": 1838294017982464,
     "conversation_type": "c2c|c2g",
     "server_ts": 1700000000123,
     "last_msg_id": "msg-uuid-or-id",

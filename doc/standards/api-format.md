@@ -85,10 +85,10 @@
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `id` | binary | ✅ | 消息唯一标识符，格式：`<type>.<hashid>.<timestamp>.<random>` |
+| `id` | binary | ✅ | 消息唯一标识符，格式：`<type>.<tsid>.<timestamp>.<random>` |
 | `type` | binary | ✅ | 消息类型：`C2C`\|`C2G`\|`C2S`\|`S2C` |
-| `from` | binary | ✅ | 发送方 ID (HashID 编码) |
-| `to` | binary | ✅ | 接收方 ID (HashID 编码) |
+| `from` | binary | ✅ | 发送方 ID (TSID integer) |
+| `to` | binary | ✅ | 接收方 ID (TSID integer) |
 | `payload` | map | ✅ | 消息载荷 |
 | `created_at` | binary | ⚪ | 客户端创建时间 (RFC3339 格式)，可选 |
 | `server_ts` | integer | ✅ | 服务端时间戳 (毫秒，UTC+0) |
@@ -141,22 +141,22 @@ handleResponse(response) {
 
 ### ID 字段编码
 
-所有 ID 字段必须使用 HashID 编码：
+所有 ID 字段使用 TSID（64-bit BIGINT integer）直接返回：
 
 ```json
 {
   "code": 0,
   "msg": "success.",
   "payload": {
-    "id": "XyZ9aBcDeF",
-    "uid": "XyZ9aBcDeF",
-    "from": "XyZ9aBcDeF",
-    "to": "GhI8jKlMnO"
+    "id": 1838294017982464,
+    "uid": 1838294017982465,
+    "from": 1838294017982464,
+    "to": 1838294017982466
   }
 }
 ```
 
-**详细规范**: [hashid-encoding.md](./hashid-encoding.md)
+**详细规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)
 
 ### 时间戳格式
 
@@ -273,6 +273,6 @@ GET /api/messages?page=1&limit=20
 
 - **UTF-8 编码规范**: [utf8-encoding.md](./utf8-encoding.md)
 - **错误码规范**: [error-codes.md](./error-codes.md)
-- **HashID 编码规范**: [hashid-encoding.md](./hashid-encoding.md)
+- **TSID 规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
 - **WebSocket API**: [websocket-api.md](../api/websocket-api.md)
 - **主文档**: [CLAUDE.md](../../CLAUDE.md)

@@ -193,7 +193,7 @@ signing_key() ->
     JwtKey = normalize_binary(config_ds:env(jwt_key, <<>>)),
     case JwtKey of
         <<>> ->
-            normalize_binary(config_ds:env(hashids_salt, <<"imboy-adm-cookie">>));
+            normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>));
         _ ->
             JwtKey
     end.

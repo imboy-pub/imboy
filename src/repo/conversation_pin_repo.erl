@@ -32,7 +32,7 @@ tablename() ->
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return {ok, Count} 插入成功返回影响行数 | {error, Reason} 插入失败
--spec pin(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec pin(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 pin(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Now = elib_dt:now(),
@@ -56,7 +56,7 @@ pin(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return {ok, Count} 删除成功返回影响行数 | {error, Reason} 删除失败
--spec unpin(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec unpin(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 unpin(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
@@ -71,7 +71,7 @@ unpin(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已置顶 | false 未置顶
--spec is_pinned(integer(), binary(), binary()) -> boolean().
+-spec is_pinned(integer(), integer(), binary()) -> boolean().
 is_pinned(Uid, ConversationId, Type) ->
     Sql = <<"SELECT count(*) as count FROM ", (tablename())/binary,
             " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,

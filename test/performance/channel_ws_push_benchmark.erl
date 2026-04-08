@@ -127,8 +127,8 @@ ensure_db_connection() ->
 
 -spec prepare_context() -> map().
 prepare_context() ->
-    SenderUid = normalize_uid(imboy_hashid:uid()),
-    ReceiverUid = normalize_uid(imboy_hashid:uid()),
+    SenderUid = normalize_uid(integer_to_binary(elib_tsid:generate())),
+    ReceiverUid = normalize_uid(integer_to_binary(elib_tsid:generate())),
     ensure_user(SenderUid, <<"ws_perf_sender">>),
     ensure_user(ReceiverUid, <<"ws_perf_receiver">>),
     ReceiverPid = start_receiver(ReceiverUid, self()),

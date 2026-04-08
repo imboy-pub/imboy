@@ -224,9 +224,9 @@ delete_processed(Seconds) ->
 get_staging_stats() ->
     Tb = tablename(),
     Sql = <<"SELECT ",
-            "COUNT(*) FILTER (processed_at IS NULL) as pending, ",
-            "COUNT(*) FILTER (processed_at IS NOT NULL) as processed, ",
-            "COUNT(*) FILTER (error_msg IS NOT NULL) as failed, ",
+            "COUNT(*) FILTER (WHERE processed_at IS NULL) as pending, ",
+            "COUNT(*) FILTER (WHERE processed_at IS NOT NULL) as processed, ",
+            "COUNT(*) FILTER (WHERE error_msg IS NOT NULL) as failed, ",
             "COUNT(*) as total ",
             "FROM ", Tb/binary>>,
     elib_pg:query(Sql, []).

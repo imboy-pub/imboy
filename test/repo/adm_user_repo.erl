@@ -133,7 +133,7 @@ list_by_ids(Uids, Column) ->
 %% @doc 保存新管理员用户记录
 %% @param Data 包含管理员用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, 1} 保存成功 | {ok, 1, ReturnData} 保存成功并返回数据 | {error, Reason} 保存失败
-%% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(elib_hasher:md5("admin888")), account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
+%% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, 1} | {error, any()}.
 save(Data) ->
     Tb = tablename(),

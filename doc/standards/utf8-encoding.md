@@ -182,6 +182,6 @@ ensure_utf8(String) when is_list(String) ->
 ## 相关文档
 
 - **错误码规范**: [error-codes.md](./error-codes.md)
-- **HashID 编码规范**: [hashid-encoding.md](./hashid-encoding.md)
+- **TSID 规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
 - **API 格式规范**: [api-format.md](./api-format.md)
 - **主文档**: [CLAUDE.md](../../CLAUDE.md)

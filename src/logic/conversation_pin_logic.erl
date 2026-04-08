@@ -25,9 +25,9 @@
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功 | {error, Reason} 失败
--spec pin(integer(), binary(), binary()) -> ok | {error, binary()}.
-pin(_Uid, <<>>, _Type) ->
-    {error, <<"会话ID不能为空"/utf8>>};
+-spec pin(integer(), integer(), binary()) -> ok | {error, binary()}.
+pin(_Uid, ConversationId, _Type) when not is_integer(ConversationId); ConversationId =< 0 ->
+    {error, <<"会话ID无效"/utf8>>};
 pin(_Uid, _ConversationId, <<>>) ->
     {error, <<"会话类型不能为空"/utf8>>};
 pin(_Uid, _ConversationId, Type) when Type =/= <<"c2c">> andalso Type =/= <<"c2g">> ->
@@ -55,7 +55,7 @@ pin(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功
--spec unpin(integer(), binary(), binary()) -> ok.
+-spec unpin(integer(), integer(), binary()) -> ok.
 unpin(Uid, ConversationId, Type) ->
     conversation_pin_ds:unpin_conversation(Uid, ConversationId, Type),
     notify_conversation_change(Uid, ConversationId, Type, <<"conversation_unpinned">>),
@@ -73,7 +73,7 @@ list(Uid) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已置顶 | false 未置顶
--spec is_pinned(integer(), binary(), binary()) -> boolean().
+-spec is_pinned(integer(), integer(), binary()) -> boolean().
 is_pinned(Uid, ConversationId, Type) ->
     conversation_pin_ds:is_conversation_pinned(Uid, ConversationId, Type).
 
@@ -85,7 +85,7 @@ is_pinned(Uid, ConversationId, Type) ->
 %% 使用 no_save 模式：会话状态变更属于轻量级同步，
 %% 客户端重连时会拉取最新会话列表作为补偿
 %% @private
--spec notify_conversation_change(integer(), binary(), binary(), binary()) -> ok.
+-spec notify_conversation_change(integer(), integer(), binary(), binary()) -> ok.
 notify_conversation_change(Uid, ConversationId, Type, Action) ->
     Payload = #{
         <<"conversation_id">> => ConversationId,

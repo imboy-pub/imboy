@@ -64,7 +64,7 @@ test_c2c_send_performance() ->
 
     % 发送100条单聊消息，计算平均耗时
     Times = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "性能测试消息"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -103,7 +103,7 @@ test_c2g_send_performance() ->
 
     % 发送100条群聊消息，计算平均耗时
     Times = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "群聊性能测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -144,7 +144,7 @@ test_batch_send_performance() ->
     StartTime = erlang:monotonic_time(millisecond),
 
     MsgIds = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "批量测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -179,7 +179,7 @@ test_query_performance() ->
 
     % 先发送一些消息
     MsgIds = lists:map(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "查询测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -217,7 +217,7 @@ test_list_load_performance() ->
 
     % 先发送200条消息
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "列表测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -263,7 +263,7 @@ test_concurrent_send_performance() ->
 
     Pids = lists:map(fun(N) ->
         spawn(fun() ->
-            MsgId = imboy_hashid:uid(),
+            MsgId = integer_to_binary(elib_tsid:generate()),
             MsgData = #{
                 <<"payload">> => <<N/integer, "并发测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -330,7 +330,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
@@ -345,7 +345,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = binary_to_integer(imboy_hashid:uid()),
+    Gid = elib_tsid:generate(),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

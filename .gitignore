@@ -84,3 +84,6 @@ temp_exports.txt
 
 # Local Codex temp artifacts
 .tmp_codex/
+
+# Environment secrets (never commit)
+.env

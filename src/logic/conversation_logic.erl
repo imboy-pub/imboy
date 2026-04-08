@@ -40,9 +40,9 @@ list(Uid, Opts) ->
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功 | {error, Reason} 失败
--spec delete(integer(), binary(), binary()) -> ok | {error, binary()}.
-delete(_Uid, <<>>, _Type) ->
-    {error, <<"会话ID不能为空"/utf8>>};
+-spec delete(integer(), integer(), binary()) -> ok | {error, binary()}.
+delete(_Uid, ConversationId, _Type) when not is_integer(ConversationId); ConversationId =< 0 ->
+    {error, <<"会话ID无效"/utf8>>};
 delete(_Uid, _ConversationId, <<>>) ->
     {error, <<"会话类型不能为空"/utf8>>};
 delete(_Uid, _ConversationId, Type) when Type =/= <<"c2c">> andalso Type =/= <<"c2g">> ->
@@ -70,7 +70,7 @@ delete(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功
--spec restore(integer(), binary(), binary()) -> ok.
+-spec restore(integer(), integer(), binary()) -> ok.
 restore(Uid, ConversationId, Type) ->
     conversation_delete_ds:restore_conversation(Uid, ConversationId, Type),
     notify_conversation_change(Uid, ConversationId, Type, <<"conversation_restored">>),
@@ -81,7 +81,7 @@ restore(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已删除 | false 未删除
--spec is_deleted(integer(), binary(), binary()) -> boolean().
+-spec is_deleted(integer(), integer(), binary()) -> boolean().
 is_deleted(Uid, ConversationId, Type) ->
     conversation_delete_ds:is_conversation_deleted(Uid, ConversationId, Type).
 
@@ -129,7 +129,7 @@ filter_deleted_conversations(Uid, MsgList) ->
 
 %% @doc 向用户的所有在线设备推送会话变更通知
 %% @private
--spec notify_conversation_change(integer(), binary(), binary(), binary()) -> ok.
+-spec notify_conversation_change(integer(), integer(), binary(), binary()) -> ok.
 notify_conversation_change(Uid, ConversationId, Type, Action) ->
     Payload = #{
         <<"conversation_id">> => ConversationId,

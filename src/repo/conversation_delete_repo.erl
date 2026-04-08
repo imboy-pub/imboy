@@ -32,7 +32,7 @@ tablename() ->
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return {ok, Count} 插入成功返回影响行数 | {error, Reason} 插入失败
--spec mark_deleted(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec mark_deleted(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 mark_deleted(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Now = elib_dt:now(),
@@ -54,7 +54,7 @@ mark_deleted(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已删除 | false 未删除
--spec is_deleted(integer(), binary(), binary()) -> boolean().
+-spec is_deleted(integer(), integer(), binary()) -> boolean().
 is_deleted(Uid, ConversationId, Type) ->
     Sql = <<"SELECT count(*) as count FROM ", (tablename())/binary,
             " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
@@ -86,7 +86,7 @@ list(Uid) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return {ok, Count} 删除成功返回影响行数 | {error, Reason} 删除失败
--spec restore(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec restore(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 restore(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,

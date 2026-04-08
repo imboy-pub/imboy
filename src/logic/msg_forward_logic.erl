@@ -174,7 +174,7 @@ validate_forward_permission(Msg, CurrentUid) ->
 -spec create_forward_message(map(), binary(), binary(), integer(), integer(), binary()) -> {ok, binary()} | {error, term()}.
 create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType) ->
     % 生成新的消息ID
-    ForwardMsgId = imboy_hashid:uid(),
+    ForwardMsgId = integer_to_binary(elib_tsid:generate()),
     NowMs = elib_dt:millisecond(),
 
     % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）

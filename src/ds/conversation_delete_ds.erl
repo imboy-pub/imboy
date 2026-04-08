@@ -27,7 +27,7 @@
 %% @param ConversationId 会话ID（单聊为对方UID，群聊为群ID）
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功 | {error, Reason} 失败
--spec delete_conversation(integer(), binary(), binary()) -> ok | {error, term()}.
+-spec delete_conversation(integer(), integer(), binary()) -> ok | {error, term()}.
 delete_conversation(Uid, ConversationId, Type) ->
     case conversation_delete_repo:mark_deleted(Uid, ConversationId, Type) of
         {ok, _Count} ->
@@ -42,7 +42,7 @@ delete_conversation(Uid, ConversationId, Type) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return ok 成功
--spec restore_conversation(integer(), binary(), binary()) -> ok.
+-spec restore_conversation(integer(), integer(), binary()) -> ok.
 restore_conversation(Uid, ConversationId, Type) ->
     conversation_delete_repo:restore(Uid, ConversationId, Type),
     imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
@@ -60,7 +60,7 @@ get_deleted_conversations(Uid) ->
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
 %% @return true 已删除 | false 未删除
--spec is_conversation_deleted(integer(), binary(), binary()) -> boolean().
+-spec is_conversation_deleted(integer(), integer(), binary()) -> boolean().
 is_conversation_deleted(Uid, ConversationId, Type) ->
     Key = {conv_deleted, Uid, ConversationId, Type},
     Fun = fun() -> conversation_delete_repo:is_deleted(Uid, ConversationId, Type) end,

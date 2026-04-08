@@ -170,7 +170,7 @@ may_exist(_) ->
 %% @doc 保存新用户记录
 %% @param Data 包含用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, Count} 保存成功 | {error, Reason} 保存失败
-%% @example user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(elib_hasher:md5("admin888")), account => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
+%% @example user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, integer()} | {error, term()}.
 save(Data) ->
     Tb = tablename(),

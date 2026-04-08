@@ -20,7 +20,7 @@
 - `architecture/product-profile-and-plugin-registry-design.md`
 - `standards/api-format.md`
 - `standards/error-codes.md`
-- `standards/hashid-encoding.md`
+- ~~`standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
 - `standards/utf8-encoding.md`
 - `standards/migration_naming.md`
 

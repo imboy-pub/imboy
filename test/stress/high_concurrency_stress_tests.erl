@@ -83,7 +83,7 @@ test_high_concurrency_messages() ->
     Pids = lists:map(fun(UserId) ->
         spawn(fun() ->
             Results = lists:map(fun(N) ->
-                MsgId = imboy_hashid:uid(),
+                MsgId = integer_to_binary(elib_tsid:generate()),
                 % 使用 setup 中明确建立过的环状好友关系，避免把非好友流量混进成功率统计
                 FriendId = next_ring_friend(UserId, UserIds),
                 MsgData = #{
@@ -202,7 +202,7 @@ test_burst_messages() ->
 
     Pids = lists:map(fun(N) ->
         spawn(fun() ->
-            MsgId = imboy_hashid:uid(),
+            MsgId = integer_to_binary(elib_tsid:generate()),
             MsgData = #{
                 <<"payload">> => <<N/integer, "爆发测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -263,7 +263,7 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
         true ->
             Stats;
         false ->
-            MsgId = imboy_hashid:uid(),
+            MsgId = integer_to_binary(elib_tsid:generate()),
             MsgData = #{
                 <<"payload">> => <<"持续测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -311,7 +311,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,

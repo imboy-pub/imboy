@@ -202,7 +202,7 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
@@ -217,7 +217,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = binary_to_integer(imboy_hashid:uid()),
+    Gid = elib_tsid:generate(),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

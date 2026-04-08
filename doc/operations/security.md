@@ -48,7 +48,7 @@
 
 - `jwt_key` 使用 32 字节及以上随机密钥；
 - `postgre_aes_key` 使用 32 字节及以上随机密钥；
-- `hashids_salt` 必须替换示例值，且每个正式环境独立；
+- `adm_cookie_secret` 必须替换示例值，且每个正式环境独立；
 - `config/sys.config.example` 中的 `CHANGE_ME_*` 仅作示例，不能直接用于任何正式环境。
 
 ### 3.2 认证、会话与后台入口保护
@@ -91,12 +91,11 @@
 
 ### 3.4 ID 暴露收敛与接口层输出控制
 
-当前 API 层对外暴露的很多业务 ID 已通过 `hashids` 做编码处理，用于减少直接暴露自增整数 ID 的风险。
+当前 API 层已完成 TSID 迁移（2026-04-07），所有业务 ID 以 TSID（64-bit BIGINT）直接返回，不再通过 hashids 编码。TSID 本身具备时间有序、分布式唯一、不可简单枚举的特性。
 
-但必须明确：
+必须明确：
 
-- `hashids` 的作用是降低直接枚举风险和改善接口暴露形态；
-- `hashids` 不是权限控制；
+- TSID 降低了直接枚举风险，但不是权限控制；
 - 任何资源是否可读、可写、可删除，仍必须以后端鉴权与业务校验为准。
 
 ### 3.5 登录初始化与传输过程保护
@@ -170,7 +169,7 @@
 生产环境至少满足：
 
 - 不使用任何 `CHANGE_ME_*` 示例值；
-- `jwt_key`、`postgre_aes_key`、`hashids_salt` 按环境独立；
+- `jwt_key`、`postgre_aes_key`、`adm_cookie_secret` 按环境独立；
 - 密钥不提交到 Git 仓库；
 - 配置文件、运维平台、CI Secret 之间职责清晰，避免多人本地复制正式密钥。
 
@@ -220,7 +219,7 @@
 
 发布或客户验收前，至少逐项确认：
 
-- [ ] `jwt_key`、`postgre_aes_key`、`hashids_salt` 已替换为正式值；
+- [ ] `jwt_key`、`postgre_aes_key`、`adm_cookie_secret` 已替换为正式值；
 - [ ] 生产环境启动不会因缺密钥降级运行；
 - [ ] `/privacy-policy` 与 `/account-deletion` 可公网访问；
 - [ ] `/v1/user/apply_logout`、`/v1/user/cancel_logout` 联调通过；
@@ -235,7 +234,7 @@
 
 以下说法不应直接对外使用：
 
-- “用了 `hashids`，所以数据就是加密的”；
+- “用了 ID 编码，所以数据就是加密的”；
 - “密码有 RSA 包装，所以不需要 HTTPS”；
 - “数据库字段加密了，所以后台人员完全看不到敏感数据”；
 - “支持 `E2EE` 代码，就等于所有版本默认已经端到端加密”；

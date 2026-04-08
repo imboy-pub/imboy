@@ -170,7 +170,7 @@ test_message_history_performance() ->
 
     % 创建测试消息
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         MsgData = #{
             <<"payload">> => <<N/integer, "历史测试"/utf8>>,
             <<"msg_type">> => <<"text">>,
@@ -210,7 +210,7 @@ test_fulltext_search_performance() ->
     % 创建带关键词的消息
     Keywords = [<<"测试"/utf8>>, <<"性能"/utf8>>, <<"消息"/utf8>>, <<"搜索"/utf8>>],
     lists:foreach(fun(N) ->
-        MsgId = imboy_hashid:uid(),
+        MsgId = integer_to_binary(elib_tsid:generate()),
         Keyword = lists:nth((N rem 4) + 1, Keywords),
         MsgData = #{
             <<"payload">> => <<Keyword/binary, N/integer, "全文检索"/utf8>>,
@@ -292,7 +292,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = binary_to_integer(imboy_hashid:uid()),
+    Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
         <<"uid">> => Uid,
@@ -307,7 +307,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = binary_to_integer(imboy_hashid:uid()),
+    Gid = elib_tsid:generate(),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

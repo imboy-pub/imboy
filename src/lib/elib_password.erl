@@ -4,8 +4,8 @@
 %%% 使用 HMAC-SHA512 算法生成密码哈希，支持密码验证
 
 %%%
-% Pwd = elib_password:generate(elib_hasher:md5("admin888")).
-% elib_password:verify(elib_hasher:md5("admin888"), Pwd).
+% Pwd = elib_password:generate(<<"admin888">>).
+% elib_password:verify(<<"admin888">>, Pwd).
 %%%
 -include("log.hrl").
 -include("common.hrl").
