@@ -25,6 +25,10 @@ high_concurrency_test_() ->
 setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    %% 确保 elib_tsid 已初始化 —— 当 imboy app 未启动时（如独立跑测试），
+    %% eunit_runner 走 app_not_started 分支，elib_tsid:init/1 不会被调用，
+    %% 此处幂等地兜底初始化，避免 create_test_user 调用 generate/1 crash。
+    _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
     Profile = stress_profile(),
     UserCount = maps:get(user_count, Profile),
     % 创建大量测试用户
