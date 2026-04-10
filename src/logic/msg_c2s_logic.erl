@@ -10,6 +10,7 @@
 -export([c2s_client_ack/3]).
 -export([c2s_to_external/5]).
 -export([c2s_to_role_chat/3]).
+-export([handle_sync/3]).
 
 %% ===================================================================
 %% API
@@ -21,6 +22,16 @@
 c2s(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     case cowboy_bstr:to_lower(To) of
+        <<"sync">> ->
+            %% 客户端增量同步：基于 conv_seq 游标拉取缺失消息
+            Payload = maps:get(<<"payload">>, Data, #{}),
+            Cursors = maps:get(<<"cursors">>, Payload, []),
+            Limit = maps:get(<<"limit">>, Payload, 50),
+            Result = handle_sync(CurrentUid, Cursors, Limit),
+            {reply, #{<<"id">> => MsgId,
+                      <<"type">> => <<"C2S">>,
+                      <<"action">> => <<"sync_resp">>,
+                      <<"payload">> => Result}};
         <<"bot_qian_fan">> ->
             c2s_to_external(MsgId, CurrentUid, <<"bot_qian_fan">>, Data,
                            fun qianfan_api:create_chat/3);
@@ -179,6 +190,67 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"c2s">>),
     message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi).
+
+
+%% ===================================================================
+%% Sync — 客户端增量同步（基于 conv_seq 游标）
+%% ===================================================================
+
+
+%% @doc 处理客户端 sync 请求
+%% 客户端传入多个会话的游标 [{conv_key, seq}...]，服务端返回每个会话的增量消息
+%% @param CurrentUid 当前用户 ID
+%% @param Cursors 游标列表，每项为 #{<<"conv_key">> => Key, <<"seq">> => Seq}
+%% @param Limit 每个会话最多返回条数
+-spec handle_sync(integer(), list(map()), non_neg_integer()) -> map().
+handle_sync(CurrentUid, Cursors, Limit) when is_list(Cursors) ->
+    ClampedLimit = erlang:min(erlang:max(Limit, 1), 100),
+    Results = lists:filtermap(
+        fun(Cursor) ->
+            ConvKey = maps:get(<<"conv_key">>, Cursor, <<>>),
+            Seq = maps:get(<<"seq">>, Cursor, 0),
+            case authorize_conv(CurrentUid, ConvKey) of
+                false ->
+                    false;
+                true ->
+                    case msg_archive_ds:history(ConvKey, Seq, ClampedLimit) of
+                        {ok, []} ->
+                            false;
+                        {ok, Rows} ->
+                            Messages = [messaging_logic:encode_history_msg(CurrentUid, R)
+                                        || R <- Rows],
+                            NextSeq = messaging_logic:next_seq_from_rows(Rows, Seq),
+                            {true, #{<<"conv_key">> => ConvKey,
+                                     <<"messages">> => Messages,
+                                     <<"next_seq">> => NextSeq,
+                                     <<"has_more">> => length(Rows) >= ClampedLimit}};
+                        {error, _} ->
+                            false
+                    end
+            end
+        end, Cursors),
+    #{<<"results">> => Results};
+handle_sync(_CurrentUid, _Cursors, _Limit) ->
+    #{<<"results">> => []}.
+
+
+%% @doc 验证用户是否有权访问该会话
+%% conv_key 格式: "c2c:{min_uid}:{max_uid}" 或 "c2g:{group_id}"
+-spec authorize_conv(integer(), binary()) -> boolean().
+authorize_conv(CurrentUid, <<"c2c:", Rest/binary>>) ->
+    case binary:split(Rest, <<":">>) of
+        [UidA, UidB] ->
+            A = ec_cnv:to_integer(UidA),
+            B = ec_cnv:to_integer(UidB),
+            CurrentUid =:= A orelse CurrentUid =:= B;
+        _ ->
+            false
+    end;
+authorize_conv(CurrentUid, <<"c2g:", GidBin/binary>>) ->
+    Gid = ec_cnv:to_integer(GidBin),
+    group_ds:is_member(CurrentUid, Gid);
+authorize_conv(_CurrentUid, _ConvKey) ->
+    false.
 
 
 %% ===================================================================

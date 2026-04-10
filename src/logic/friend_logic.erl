@@ -19,7 +19,7 @@
 %% @doc 添加好友
 %% 发送好友请求，存储消息并通知对方
 %% @param CurrentUid 当前用户ID
-%% @param To 对方用户ID（HashID格式）
+%% @param To 对方用户ID（整数）
 %% @param Payload 消息内容映射
 %% @param CreatedAt 创建时间（RFC3339格式或时间戳）
 %% @return ok | {error, ErrorCode, ErrorMsg}
@@ -68,8 +68,8 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
 %% @doc 确认好友请求
 %% 接受好友请求，建立双向好友关系
 %% @param CurrentUid 当前用户ID
-%% @param From 发起方用户ID（HashID格式）
-%% @param To 接收方用户ID（HashID格式）
+%% @param From 发起方用户ID（整数）
+%% @param To 接收方用户ID（整数）
 %% @param Payload 包含好友设置信息的映射
 %% @return {ok, FromID, Remark2, Source} | {error, ErrorCode, ErrorMsg}
 -spec confirm_friend(integer(), binary(), binary(), binary()) -> {ok, integer(), binary(), binary()} | {error, binary(), binary()}.
@@ -170,7 +170,7 @@ confirm_friend_resp(Uid, Remark) ->
 %% @doc 删除好友
 %% 删除好友关系，清理相关缓存
 %% @param CurrentUid 当前用户ID
-%% @param Uid 要删除的好友用户ID（HashID格式或原始ID）
+%% @param Uid 要删除的好友用户ID（整数）
 %% @return ok
 -spec delete_friend(integer(), binary() | integer()) -> ok.
 delete_friend(CurrentUid, Uid) when is_binary(Uid) ->

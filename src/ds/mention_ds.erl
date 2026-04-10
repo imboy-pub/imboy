@@ -25,7 +25,7 @@
 %% @doc 保存@提及记录
 %% @param MsgId 消息ID
 %% @param Gid 群组ID
-%% @param Mentions 被@的用户列表（hashids编码），可以是 <<"all">> 表示@所有人
+%% @param Mentions 被@的用户ID列表，可以是 <<"all">> 表示@所有人
 %% @param FromUid 发送者ID
 %% @return ok | {error, Reason}
 -spec save_mentions(binary(), integer(), list(binary()), integer()) -> ok | {error, term()}.
@@ -36,18 +36,18 @@ save_mentions(MsgId, Gid, Mentions, FromUid) when is_list(Mentions) ->
             MemberUids = group_ds:member_uids(Gid),
             save_mentions_to_members(MsgId, Gid, MemberUids, FromUid);
         false ->
-            % @特定用户，解码hashids
+            % @特定用户，解析ID列表
             MemberUids = decode_mention_uids(Mentions, []),
             save_mentions_to_members(MsgId, Gid, MemberUids, FromUid)
     end.
 
 %% @private
-%% @doc 解码@用户列表的hashids
+%% @doc 解析@用户ID列表
 -spec decode_mention_uids(list(binary()), list(integer())) -> list(integer()).
 decode_mention_uids([], Acc) ->
     lists:reverse(Acc);
-decode_mention_uids([HashId | Rest], Acc) ->
-    Uid = ec_cnv:to_integer(HashId),
+decode_mention_uids([IdBin | Rest], Acc) ->
+    Uid = ec_cnv:to_integer(IdBin),
     case Uid > 0 of
         true -> decode_mention_uids(Rest, [Uid | Acc]);
         false -> decode_mention_uids(Rest, Acc)

@@ -204,7 +204,7 @@ build_archive_data(<<"c2g">>, Row) ->
     Payload   = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
     ServerTs  = maps:get(<<"server_ts">>, Row, CreatedAt),
-    %% C2G 的 group_id 存在 payload 的 <<"to">> 字段（hashids 编码）
+    %% C2G 的 group_id 存在 payload 的 <<"to">> 字段（字符串格式）
     case safe_decode_group_id(Payload) of
         {ok, Gid} ->
             ConvKey = conv_key(<<"c2g">>, FromId, Gid),

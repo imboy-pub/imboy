@@ -46,7 +46,7 @@
 %% @doc 获取用户显示名称
 %% 根据用户ID获取用户的显示名称。如果用户设置了昵称则返回昵称，
 %% 否则返回用户账号。
-%% @param Uid 用户ID（支持 HashID 或原始数字ID）
+%% @param Uid 用户ID（整数）
 %% @returns 用户显示名称（昵称优先，否则返回账号）
 -spec title(pos_integer() | binary()) -> binary().
 title(Uid) when is_binary(Uid) ->
@@ -64,7 +64,7 @@ title(Uid) when is_integer(Uid) ->
 %% @doc 获取用户显示名称和昵称（模式2）
 %% 返回用户的显示名称和昵称的组合。显示名称的规则与title/1相同，
 %% 但额外返回昵称信息供调用方使用。
-%% @param Uid 用户ID（支持 HashID 或原始数字ID）
+%% @param Uid 用户ID（整数）
 %% @param Mode 模式参数，当前只支持2
 %% @returns {显示名称, 昵称}的元组
 -spec title(pos_integer() | binary(), 2) -> {binary(), binary()}.

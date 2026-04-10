@@ -10,6 +10,9 @@
          reaction_list/2,
          route_ws/5]).
 
+%% 供 msg_c2s_logic:handle_sync 等模块复用的工具函数
+-export([encode_history_msg/2, next_seq_from_rows/2]).
+
 -include("error_code.hrl").
 -include("log.hrl").
 
@@ -121,7 +124,7 @@ read_stats(Req0, State) ->
 %%
 %% 查询参数（GET）：
 %%   chat_type  : "c2c" | "c2g"
-%%   peer_id    : hashids 编码的对方 uid（C2C）或 group_id（C2G）
+%%   peer_id    : TSID 格式的对方 uid（C2C）或 group_id（C2G）
 %%   after_seq  : 上次最后消息的 conv_seq（首次传 0）
 %%   limit      : 每次返回条数（默认 50，最大 100）
 %%
@@ -178,7 +181,7 @@ validate_history_params(_, <<>>, _) ->
 validate_history_params(ChatType, _, _) ->
     {error, iolist_to_binary([<<"不支持的 chat_type: "/utf8>>, ChatType])}.
 
-%% @private 编码历史消息（from_id/to_id → hashids）
+%% @private 编码历史消息（from_id/to_id → TSID）
 encode_history_msg(_CurrentUid, Row) ->
     FromId  = maps:get(<<"from_id">>, Row, undefined),
     ToId    = maps:get(<<"to_id">>,   Row, undefined),

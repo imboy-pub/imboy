@@ -198,7 +198,7 @@ test_get_user_info() {
 
     log_info "使用 Token 和 UID 获取用户信息..."
 
-    # /user/show 需要 id 参数（使用 hashids 编码的 uid）
+    # /user/show 需要 id 参数（uid）
     response=$(api_get "/user/show?id=$TEST_UID" "$TEST_TOKEN")
 
     if echo "$response" | grep -q '"code":0'; then

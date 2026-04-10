@@ -231,17 +231,17 @@ check_online_status(Uid) ->
     end.
 
 %% @doc 根据用户ID查找用户信息
-%% 支持原始ID或hashid格式，返回默认列的用户信息。
-%% @param Id 用户ID（可以是原始数字ID或hashid）
+%% 返回默认列的用户信息。
+%% @param Id 用户ID
 %% @returns 用户信息列表，包含默认列的数据
 -spec find_by_id(binary() | pos_integer()) -> map().
 find_by_id(Id) ->
     find_by_id(Id, ?DEF_USER_COLUMN).
 
 %% @doc 根据用户ID和指定列查找用户信息
-%% 支持原始ID或hashid格式，返回指定列的用户信息。
+%% 返回指定列的用户信息。
 %% 自动处理头像为空的情况，设置默认头像。
-%% @param Id 用户ID（可以是原始数字ID或hashid）
+%% @param Id 用户ID
 %% @param Column 需要查询的列名
 %% @returns 用户信息，包含指定的列数据
 -spec find_by_id(binary() | pos_integer(), binary()) -> map().

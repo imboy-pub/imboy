@@ -136,7 +136,7 @@ init_detail_success_with_owner_profile_test_() ->
         ?assert(byte_size(OwnerId) > 0)
     end).
 
-init_detail_accepts_hashid_gid_test_() ->
+init_detail_accepts_legacy_gid_test_() ->
     ?WITH_MECKS([
         {adm_user_logic, [
             {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->

@@ -155,7 +155,7 @@ assign_invalid_task_id_returns_bad_request_test_() ->
         ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
     end).
 
-assign_hashid_task_id_and_user_ids_compatible_test_() ->
+assign_legacy_task_id_and_user_ids_compatible_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -262,7 +262,7 @@ submit_attachments_array_compatible_test_() ->
         ?assertEqual(req_ok, Result)
     end).
 
-review_hashid_assignment_id_compatible_test_() ->
+review_legacy_assignment_id_compatible_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
@@ -312,7 +312,7 @@ review_invalid_assignment_id_returns_bad_request_test_() ->
         ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
     end).
 
-detail_hashid_task_id_compatible_test_() ->
+detail_legacy_task_id_compatible_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"task_id">>, <<"task_hash_88">>}] end}
@@ -428,7 +428,7 @@ list_status_filter_uses_current_uid_assignee_test_() ->
         ?assertEqual(req_ok, Result)
     end).
 
-list_hashid_assignee_compatible_test_() ->
+list_legacy_assignee_compatible_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->

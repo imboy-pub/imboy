@@ -81,7 +81,7 @@ sort_numeric_ids_compatible_test_() ->
         ?assertEqual(req_ok, Req1)
     end).
 
-delete_hashid_still_supported_test_() ->
+delete_legacy_id_still_supported_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 321 end}

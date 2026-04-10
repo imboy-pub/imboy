@@ -257,7 +257,7 @@ init_detail_missing_schedule_id_returns_bad_request_test_() ->
         ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
     end).
 
-init_detail_hashid_schedule_id_compatible_test_() ->
+init_detail_legacy_schedule_id_compatible_test_() ->
     ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"hash_66">>}] end}

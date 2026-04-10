@@ -1,16 +1,17 @@
 # ImBoy WebSocket API 规范 v2.0
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-04-10  
 > Status: 长期协议契约文档  
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
-> Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl`  
+> Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/lib/imboy_codec.erl`  
 > Note: 本文中的 `v2.0` 指协议结构版本，不等同于应用发布版本号。  
-> Related docs: `doc/api/rest-api.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/operations/security.md`
+> Related docs: `doc/api/rest-api.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/operations/security.md`, `proto/imboy.proto`
 
 ## 目录
 
 - [概述](#概述)
 - [连接管理](#连接管理)
+- [传输协议](#传输协议)
 - [消息格式规范](#消息格式规范)
 - [消息类型定义](#消息类型定义)
 - [消息流程](#消息流程)
@@ -210,6 +211,91 @@ HTTP/1.1 1000 (Normal Closure)
 第 5 次断开 → 10 秒后重连
 后续断开 → 指数退避，最大 60 秒
 ```
+
+---
+
+## 传输协议
+
+### 双协议支持
+
+ImBoy WebSocket 支持 JSON 和 Protocol Buffers 两种传输协议，通过 WebSocket 子协议协商选择。
+
+#### 子协议协商
+
+客户端在握手时通过 `Sec-WebSocket-Protocol` 请求头声明支持的协议：
+
+```http
+Sec-WebSocket-Protocol: imboy-protobuf, imboy-json, text
+```
+
+服务端按优先级选择：`imboy-protobuf` > `imboy-json` > `text`
+
+| 子协议 | 传输格式 | 帧类型 | 说明 |
+|--------|----------|--------|------|
+| `imboy-protobuf` | Protocol Buffers | binary frame | 推荐，体积小解码快 |
+| `imboy-json` | JSON | text frame | 默认，开发调试友好 |
+| `text` | JSON | text frame | 向后兼容 |
+
+#### 协议差异
+
+| 特性 | JSON | Protocol Buffers |
+|------|------|------------------|
+| 编码速度 | ~1.3 us/op | ~1.4 us/op |
+| 解码速度 | ~1.4 us/op | ~0.4 us/op (3.5x 更快) |
+| 消息体积 | 基准 | 约 -67% |
+| 调试友好性 | 高（可读文本） | 低（二进制） |
+
+#### Proto 定义
+
+消息结构定义在 `proto/imboy.proto`，核心消息类型：
+
+```protobuf
+message IMBoyMessage {
+  string id = 1;
+  MsgDirection type = 2;    // C2C, C2G, S2C, C2S, CLIENT_ACK, etc.
+  sint64 from = 3;
+  sint64 to = 4;
+  ContentType msg_type = 5;
+  string action = 6;
+  bytes payload = 7;
+  int64 server_ts = 8;
+  int64 created_at = 9;
+  E2EEMeta e2ee = 10;
+}
+```
+
+#### CLIENT_ACK 协议
+
+**JSON 格式**（向后兼容）：
+```
+CLIENT_ACK,{Type},{MsgId},{DID}
+```
+
+**Protobuf 格式**：
+```protobuf
+IMBoyMessage {
+  type: CLIENT_ACK
+  payload: PayloadClientAck {
+    msg_direction: C2C    // 原始消息类型
+    msg_id: "msg-123"     // 被确认的消息 ID
+    did: "device-456"     // 设备 ID
+  }
+}
+```
+
+**服务端响应** — CLIENT_ACK_CONFIRM：
+```protobuf
+IMBoyMessage {
+  id: "msg-123"
+  type: CLIENT_ACK_CONFIRM
+  action: "CLIENT_ACK_CONFIRM"
+  server_ts: 1710000000000
+}
+```
+
+#### 连接级错误
+
+连接级错误（认证失败、协议不支持等）始终使用 JSON text frame 响应，不受客户端协议选择影响。
 
 ---
 

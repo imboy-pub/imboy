@@ -191,7 +191,7 @@ archive_c2c_seq_error_propagates_test_() ->
 %% ===================================================================
 
 archive_c2g_success_test_() ->
-    %% C2G payload 中包含 group_id（hashids 编码），需要能解析
+    %% C2G payload 中包含 group_id（TSID），需要能解析
     %% binary_to_integer(<<"abc">>) 需要 mock
     Row = #{
         <<"type">>       => <<"c2g">>,

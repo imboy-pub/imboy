@@ -36,7 +36,7 @@ conversation_delete_repo_test_() ->
 test_mark_deleted(_Pid) ->
     fun() ->
         Uid = 1001,
-        ConversationId = <<"gdwqa5">>,  % hashids 编码的对方 UID
+        ConversationId = <<"gdwqa5">>,  % 对方 UID
         Type = <<"c2c">>,
 
         % 清理测试数据

@@ -83,7 +83,7 @@ delete(Where) ->
     ok.
 
 %% @doc 根据 ID 删除应用版本记录
-%% @param Id 要删除的版本记录 ID（原始数字 ID，非 HashID）
+%% @param Id 要删除的版本记录 ID（数字 ID）
 %% @return {ok, Affected} | {error, Reason}
 -spec delete_by_id(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_by_id(Id) when is_integer(Id), Id > 0 ->

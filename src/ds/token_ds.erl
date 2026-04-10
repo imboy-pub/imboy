@@ -75,7 +75,7 @@ decrypt_token(Token) ->
 
 %% @doc 内部token生成函数
 %% 根据用户ID、有效时间和主题类型生成JWT token。
-%% 用户ID会通过hashids编码后放入payload中。
+%% 用户ID会通过TSID放入payload中。
 %% @param ID 用户ID或标识符
 %% @param Second token有效期（秒）
 %% @param Sub token主题类型（tk表示access token，rtk表示refresh token）

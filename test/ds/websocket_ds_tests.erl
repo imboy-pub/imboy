@@ -84,3 +84,46 @@ idle_timeout_with_different_uid_test_() ->
         ?assert(is_integer(Result)),
         ?assert(Result > 0)
     end).
+
+
+%% ===================================================================
+%% select_subprotocol/1 测试
+%% ===================================================================
+
+select_subprotocol_prefers_protobuf_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(<<"imboy-protobuf">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-protobuf">>])),
+        ?assertEqual(<<"imboy-protobuf">>,
+            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy-json">>]))
+    end).
+
+select_subprotocol_falls_back_to_json_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(<<"imboy-json">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-json">>])),
+        ?assertEqual(<<"imboy-json">>,
+            websocket_ds:select_subprotocol([<<"imboy-json">>]))
+    end).
+
+select_subprotocol_falls_back_to_text_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(<<"text">>,
+            websocket_ds:select_subprotocol([<<"text">>])),
+        ?assertEqual(<<"text">>,
+            websocket_ds:select_subprotocol([<<"sip">>, <<"text">>]))
+    end).
+
+select_subprotocol_unknown_returns_undefined_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(undefined,
+            websocket_ds:select_subprotocol([<<"sip">>])),
+        ?assertEqual(undefined,
+            websocket_ds:select_subprotocol([<<"mqtt">>, <<"sip">>]))
+    end).
+
+select_subprotocol_undefined_returns_undefined_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(undefined, websocket_ds:select_subprotocol(undefined)),
+        ?assertEqual(undefined, websocket_ds:select_subprotocol([]))
+    end).

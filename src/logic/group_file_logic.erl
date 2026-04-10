@@ -19,7 +19,7 @@
 %% ===================================================================
 
 %% @doc 上传文件到群文件
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param FileName 文件名
 %% @param FileBinary 文件二进制数据
@@ -64,7 +64,7 @@ delete(FileId, CurrentUid) ->
     group_file_ds:delete_file(FileId, CurrentUid).
 
 %% @doc 查询群文件列表
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param Page 页码
 %% @param Size 每页数量
@@ -74,7 +74,7 @@ list(Gid, CurrentUid, Page, Size) ->
     list(Gid, CurrentUid, Page, Size, #{}).
 
 %% @doc 查询群文件列表（带选项）
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param Page 页码
 %% @param Size 每页数量
@@ -109,7 +109,7 @@ list(Gid, CurrentUid, Page, Size, Options) ->
     end.
 
 %% @doc 搜索群文件
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param Keyword 关键词
 %% @param Page 页码
 %% @param Size 每页数量
@@ -132,7 +132,7 @@ search(Gid, Keyword, Page, Size) ->
     end.
 
 %% @doc 获取群文件分类统计
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @return {ok, CategoryStats} | {error, Reason}
 -spec get_categories(binary(), integer()) -> {ok, list(map())} | {error, term()}.

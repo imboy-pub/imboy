@@ -300,7 +300,7 @@ decode_websocket_message(Data) ->
     Action = maps:get(<<"action">>, Msg, <<>>),
     E2EE = maps:get(<<"e2ee">>, Msg, null), % map() | null
 
-    %% 保持客户端字段名：from/to（binary，hashids编码）
+    %% 保持客户端字段名：from/to（binary，TSID 字符串）
     %% Logic 层会使用 ec_cnv:to_integer/1 将其转换为 integer
     %% 消息自毁秒数（可选，0 或 undefined 表示不自毁）
     ExpireSecs = case maps:get(<<"expire_secs">>, Msg, undefined) of

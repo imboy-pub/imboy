@@ -604,7 +604,7 @@ parse_channel_id(Req0) ->
         undefined ->
             {error, <<"频道ID不能为空"/utf8>>};
         ChannelIdBin ->
-            ChannelId = parse_hashid_or_int(ChannelIdBin),
+            ChannelId = parse_id(ChannelIdBin),
             case ChannelId > 0 of
                 true -> {ok, ChannelId};
                 false -> {error, <<"频道ID格式错误"/utf8>>}
@@ -621,7 +621,7 @@ parse_channel_user_ids(Req0) ->
                 undefined ->
                     {error, <<"用户ID不能为空"/utf8>>};
                 UserIdBin ->
-                    UserId = parse_hashid_or_int(UserIdBin),
+                    UserId = parse_id(UserIdBin),
                     case UserId > 0 of
                         true -> {ok, ChannelId, UserId};
                         false -> {error, <<"用户ID格式错误"/utf8>>}
@@ -701,8 +701,8 @@ parse_message_scope_ids(Req0) ->
                 undefined ->
                     {error, <<"消息ID不能为空"/utf8>>};
                 MessageIdBin ->
-                    ChannelId = parse_hashid_or_int(ChannelIdBin),
-                    MessageId = parse_hashid_or_int(MessageIdBin),
+                    ChannelId = parse_id(ChannelIdBin),
+                    MessageId = parse_id(MessageIdBin),
                     case ChannelId > 0 andalso MessageId > 0 of
                         true -> {ok, ChannelId, MessageId};
                         false -> {error, <<"ID格式错误"/utf8>>}
@@ -710,12 +710,12 @@ parse_message_scope_ids(Req0) ->
             end
     end.
 
--spec parse_hashid_or_int(term()) -> integer().
-parse_hashid_or_int(Value) when is_integer(Value), Value > 0 ->
+-spec parse_id(term()) -> integer().
+parse_id(Value) when is_integer(Value), Value > 0 ->
     Value;
-parse_hashid_or_int(Value) when is_list(Value) ->
-    parse_hashid_or_int(ec_cnv:to_binary(Value));
-parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
+parse_id(Value) when is_list(Value) ->
+    parse_id(ec_cnv:to_binary(Value));
+parse_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             ec_cnv:to_integer(Value);
@@ -725,7 +725,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
                 _ -> 0
             end
     end;
-parse_hashid_or_int(_) ->
+parse_id(_) ->
     0.
 
 -spec ensure_message_belongs_to_channel(integer(), integer()) -> ok | {error, binary()}.

@@ -25,7 +25,7 @@ parse_conversation_test_() ->
         ?assertEqual({0, 0, 0}, adm_message_handler:parse_conversation(<<"bad_input">>))
     end).
 
-parse_conversation_accepts_hashid_tokens_test_() ->
+parse_conversation_accepts_legacy_tokens_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(
             {12, 34, 0},
@@ -160,7 +160,7 @@ init_list_success_test_() ->
         ?assertEqual(<<"m_1">>, maps:get(msg_id, First))
     end).
 
-init_list_accepts_hashid_uid_test_() ->
+init_list_accepts_legacy_uid_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end}

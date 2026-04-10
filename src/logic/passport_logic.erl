@@ -183,7 +183,7 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
 do_login_verify(Pwd, User, DType, _Did) ->
     case verify_user(Pwd, User) of
         {ok, Data} ->
-            % 从 uid (hashids 编码) 解码得到整数 ID
+            % 从 uid (字符串格式) 转换为整数 ID
             UidHashed = maps:get(<<"uid">>, Data),
             Uid = ec_cnv:to_integer(UidHashed),
             % 检查设备类型是否有效

@@ -54,7 +54,7 @@ friend_remove_invalid_object_id_error_test_() ->
                     #{
                         <<"scene">> => <<"friend">>,
                         <<"tagId">> => 7,
-                        <<"objectId">> => <<"bad_hashid">>
+                        <<"objectId">> => <<"bad_id">>
                     }
                 end}
             ]},

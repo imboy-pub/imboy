@@ -154,17 +154,17 @@ validate_required_with_list_validator_test_() ->
     end).
 
 %% ===================================================================
-%% validate_id/2 测试 - HashID 验证
+%% validate_id/2 测试 - ID 格式验证
 %% ===================================================================
 
-validate_id_with_valid_hashid_test_() ->
+validate_id_with_valid_legacy_id_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
         Result = imboy_error:validate_id(Req, <<"5abc123">>),
         ?assertMatch({ok, 100}, Result)
     end).
 
-validate_id_with_invalid_hashid_test_() ->
+validate_id_with_invalid_legacy_id_test_() ->
     ?WITH_MECKS([
         {elib_response, [
             {'error', 2, fun(_Req, _Msg) ->

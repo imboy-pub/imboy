@@ -166,10 +166,10 @@ tag_list(<<"GET">>, Req0, _State) ->
 -spec tag_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 tag_delete(<<"POST">>, Req0, _State) ->
     PostVals = elib_param:post(Req0),
-    Uid = parse_hashid_or_int(maps:get(<<"uid">>, PostVals, 0)),
+    Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
     Scene = parse_scene(maps:get(<<"scene">>, PostVals, <<"friend">>)),
     TagFromBody = maps:get(<<"tag">>, PostVals, <<>>),
-    TagId = parse_hashid_or_int(maps:get(<<"tag_id">>, PostVals, 0)),
+    TagId = parse_id(maps:get(<<"tag_id">>, PostVals, 0)),
     Tag =
         case {TagFromBody, TagId > 0, Uid > 0, Scene > 0} of
             {<<>>, true, true, true} ->
@@ -258,7 +258,7 @@ collect_list(<<"GET">>, Req0, _State) ->
 -spec collect_remove(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 collect_remove(<<"POST">>, Req0, _State) ->
     PostVals = elib_param:post(Req0),
-    Uid = parse_hashid_or_int(maps:get(<<"uid">>, PostVals, 0)),
+    Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
     KindId = maps:get(<<"kind_id">>, PostVals, <<>>),
     case {Uid > 0, KindId =/= <<>>} of
         {false, _} ->
@@ -306,18 +306,18 @@ parse_uid_param(Req0) ->
         false ->
             case catch elib_param:binary(uid, Req0, <<>>) of
                 {ok, UidBin} ->
-                    parse_hashid_or_int(UidBin);
+                    parse_id(UidBin);
                 _ ->
                     0
             end
     end.
 
--spec parse_hashid_or_int(term()) -> integer().
-parse_hashid_or_int(Value) when is_integer(Value), Value > 0 ->
+-spec parse_id(term()) -> integer().
+parse_id(Value) when is_integer(Value), Value > 0 ->
     Value;
-parse_hashid_or_int(Value) when is_list(Value) ->
-    parse_hashid_or_int(ec_cnv:to_binary(Value));
-parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
+parse_id(Value) when is_list(Value) ->
+    parse_id(ec_cnv:to_binary(Value));
+parse_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             ec_cnv:to_integer(Value);
@@ -327,7 +327,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
                 _ -> 0
             end
     end;
-parse_hashid_or_int(_) ->
+parse_id(_) ->
     0.
 
 -spec parse_scene(term()) -> integer().

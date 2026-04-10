@@ -25,7 +25,7 @@
 %% ===================================================================
 
 %% @doc 创建相册
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param AlbumName 相册名称
 %% @param CoverPhotoId 封面图片ID（可选）
@@ -51,7 +51,7 @@ create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
     end.
 
 %% @doc 上传图片
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param AlbumId 相册ID
 %% @param PhotoBinary 图片二进制数据
@@ -79,7 +79,7 @@ upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
     end.
 
 %% @doc 批量上传图片
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param Photos 图片列表 [{AlbumId, PhotoBinary, PhotoName}]
 %% @return {ok, Results} | {error, Reason}
@@ -171,7 +171,7 @@ add_comment(PhotoId, CurrentUid, Content) ->
     group_album_ds:add_comment(PhotoId, CurrentUid, Content).
 
 %% @doc 查询相册列表
-%% @param Gid 群组ID（HashID编码）
+%% @param Gid 群组ID（整数）
 %% @param CurrentUid 当前用户ID
 %% @param Page 页码
 %% @param Size 每页数量

@@ -89,7 +89,7 @@ reject(<<"POST">>, Req0, _State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
     Data = jsone:decode(Body, [{object_format, map}]),
     UidRaw = maps:get(<<"uid">>, Data, <<>>),
-    Uid = parse_hashid_or_int(UidRaw),
+    Uid = parse_id(UidRaw),
     Reason = maps:get(<<"reason">>, Data, <<>>),
     case Uid > 0 of
         true ->
@@ -238,18 +238,18 @@ parse_uid_param(Req0) ->
         false ->
             case catch elib_param:binary(uid, Req0, <<>>) of
                 {ok, UidBin} ->
-                    parse_hashid_or_int(UidBin);
+                    parse_id(UidBin);
                 _ ->
                     0
             end
     end.
 
--spec parse_hashid_or_int(term()) -> integer().
-parse_hashid_or_int(Value) when is_integer(Value), Value > 0 ->
+-spec parse_id(term()) -> integer().
+parse_id(Value) when is_integer(Value), Value > 0 ->
     Value;
-parse_hashid_or_int(Value) when is_list(Value) ->
-    parse_hashid_or_int(ec_cnv:to_binary(Value));
-parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
+parse_id(Value) when is_list(Value) ->
+    parse_id(ec_cnv:to_binary(Value));
+parse_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             ec_cnv:to_integer(Value);
@@ -259,7 +259,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
                 _ -> 0
             end
     end;
-parse_hashid_or_int(_) ->
+parse_id(_) ->
     0.
 
 -spec normalize_ts(binary()) -> binary().

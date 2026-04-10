@@ -73,7 +73,7 @@ face2face_save(Code, Gid, Uid) ->
 %% @param Count 已创建的群组数量
 %% @param Uid 创建者用户ID
 %% @param Type 群组类型（1 公开 2 私有）
-%% @param MemberUids 初始成员ID列表（HashID格式）
+%% @param MemberUids 初始成员ID列表（整数）
 %% @return {ok, Gid} | {error, Reason}
 -spec add(non_neg_integer(), integer(), integer(), [binary()]) ->
              {ok, integer()} | {error, binary()}.

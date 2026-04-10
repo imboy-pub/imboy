@@ -856,7 +856,7 @@ resolve_message_id(Req0, PostVals) ->
         MessageId -> MessageId
     end.
 
-%% @doc 统一解析用户 ID（HashID 文本）：路径参数优先，body 兼容回退
+%% @doc 统一解析用户 ID：路径参数优先，body 兼容回退
 -spec resolve_user_id_bin(cowboy_req:req(), map()) -> binary().
 resolve_user_id_bin(Req0, PostVals) ->
     case binding_or_empty(user_id, Req0) of

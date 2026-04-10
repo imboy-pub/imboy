@@ -102,7 +102,7 @@ create(Req0, State) ->
     RemindBefore = ec_cnv:to_integer(maps:get(<<"remind_before">>, PostVals, 15)),
     ParticipantIds0 = maps:get(<<"participant_ids">>, PostVals, []),
 
-    % 解码 HashID
+    % 解析 ID
     GroupId2 = ec_cnv:to_integer(GroupId),
     ParticipantIds = [ec_cnv:to_integer(Id) || Id <- ParticipantIds0],
 
@@ -331,7 +331,7 @@ normalize_time_value(_Value) ->
 %% @doc 兼容 schedule_id:
 %% - 原生 schedule_id (sched_xxx)
 %% - 数据库主键 id（int/数字字符串）
-%% - 主键 hashid
+%% - 主键 ID
 -spec normalize_schedule_id(term()) -> binary() | undefined.
 normalize_schedule_id(undefined) ->
     undefined;

@@ -27,7 +27,7 @@ init_with_false_action_removes_action_from_state_test_() ->
         ?assertEqual(#{keep => 2}, State1)
     end).
 
-create_transfer_accepts_hashid_to_uid_test_() ->
+create_transfer_accepts_legacy_to_uid_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'read_body', 1, fun(_Req) ->

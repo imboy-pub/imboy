@@ -199,3 +199,7 @@ dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 # 它提供了一个非常简单的持久层，能够与不同的数据库交互，同时为您的代码提供一致的 api。
 # dep_sumo_db = git https://gitee.com/imboy-tripartite-deps/sumo_db.git main
 # dep_erlfmt = git https://github.com/WhatsApp/erlfmt.git main
+
+# gpb - Google Protocol Buffers compiler for Erlang
+# https://github.com/tomas-abrahamsson/gpb
+dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.2

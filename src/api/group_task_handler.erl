@@ -86,7 +86,7 @@ update(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     TaskId = maps:get(<<"task_id">>, PostVals, <<>>),
-    TaskId2 = normalize_hashid_id(TaskId),
+    TaskId2 = normalize_id(TaskId),
     Status = normalize_task_status(maps:get(<<"status">>, PostVals, undefined)),
 
     case {TaskId2, Status} of
@@ -119,7 +119,7 @@ assign(Req0, State) ->
     _CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     TaskId = maps:get(<<"task_id">>, PostVals, <<>>),
-    TaskId2 = normalize_hashid_id(TaskId),
+    TaskId2 = normalize_id(TaskId),
     UserIds = maps:get(<<"user_ids">>, PostVals, []),
 
     case TaskId2 of
@@ -174,7 +174,7 @@ review(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     AssignmentId = maps:get(<<"assignment_id">>, PostVals, <<>>),
-    AssignmentId2 = normalize_hashid_id(AssignmentId),
+    AssignmentId2 = normalize_id(AssignmentId),
     Score = maps:get(<<"score">>, PostVals, undefined),
     Comment = maps:get(<<"comment">>, PostVals, <<>>),
 
@@ -229,7 +229,7 @@ detail(Req0, State) ->
     _CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     TaskId = proplists:get_value(<<"task_id">>, Qs, <<>>),
-    TaskId2 = normalize_hashid_id(TaskId),
+    TaskId2 = normalize_id(TaskId),
 
     case TaskId2 of
         0 ->
@@ -306,7 +306,6 @@ assignment_transfer(Assignment) ->
 %% @doc 兼容 task_id:
 %% - 原生 task_uid（二进制字符串）
 %% - 数字主键（int）
-%% - 主键 hashid
 -spec normalize_task_uid(term()) -> binary() | undefined.
 normalize_task_uid(undefined) ->
     undefined;
@@ -355,13 +354,12 @@ task_uid_by_pk(_) ->
 %% @doc 兼容主键参数:
 %% - int
 %% - 数字字符串
-%% - hashid
--spec normalize_hashid_id(term()) -> integer().
-normalize_hashid_id(Value) when is_integer(Value), Value > 0 ->
+-spec normalize_id(term()) -> integer().
+normalize_id(Value) when is_integer(Value), Value > 0 ->
     Value;
-normalize_hashid_id(Value) when is_list(Value) ->
-    normalize_hashid_id(ec_cnv:to_binary(Value));
-normalize_hashid_id(Value) when is_binary(Value) ->
+normalize_id(Value) when is_list(Value) ->
+    normalize_id(ec_cnv:to_binary(Value));
+normalize_id(Value) when is_binary(Value) ->
     case Value of
         <<>> ->
             0;
@@ -373,7 +371,7 @@ normalize_hashid_id(Value) when is_binary(Value) ->
                     ec_cnv:to_integer(Value)
             end
     end;
-normalize_hashid_id(_Value) ->
+normalize_id(_Value) ->
     0.
 
 -spec normalize_optional_status(term()) -> integer() | undefined | invalid.
@@ -430,7 +428,7 @@ normalize_assignee_id(<<"all">>, _CurrentUid) ->
 normalize_assignee_id(<<"ALL">>, _CurrentUid) ->
     undefined;
 normalize_assignee_id(Value, _CurrentUid) ->
-    case normalize_hashid_id(Value) of
+    case normalize_id(Value) of
         Id when is_integer(Id), Id > 0 -> Id;
         _ -> invalid
     end.
@@ -449,7 +447,7 @@ normalize_attachment(Value) ->
 
 -spec maybe_assign_task(integer(), list()) -> ok.
 maybe_assign_task(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(UserIds) ->
-    UserIds2 = lists:usort([Id || Id <- [normalize_hashid_id(Uid) || Uid <- UserIds], Id > 0]),
+    UserIds2 = lists:usort([Id || Id <- [normalize_id(Uid) || Uid <- UserIds], Id > 0]),
     case UserIds2 of
         [] ->
             ok;

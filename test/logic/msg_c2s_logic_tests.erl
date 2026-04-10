@@ -71,6 +71,210 @@ c2s_with_lowercase_bot_name_succeeds_test_() ->
     end).
 
 %% ===================================================================
+%% c2s sync 路由测试
+%% ===================================================================
+
+c2s_sync_routes_to_handle_sync_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_sync_1">>,
+        CurrentUid = 100,
+        Data = #{<<"to">> => <<"sync">>,
+                 <<"payload">> => #{
+                     <<"cursors">> => [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 0}],
+                     <<"limit">> => 50
+                 }},
+        Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
+        ?assertMatch({reply, #{<<"action">> := <<"sync_resp">>}}, Result)
+    end).
+
+c2s_sync_uppercase_routes_correctly_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        MsgId = <<"msg_sync_2">>,
+        CurrentUid = 100,
+        Data = #{<<"to">> => <<"SYNC">>,
+                 <<"payload">> => #{<<"cursors">> => [], <<"limit">> => 50}},
+        Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
+        ?assertMatch({reply, #{<<"action">> := <<"sync_resp">>}}, Result)
+    end).
+
+%% ===================================================================
+%% handle_sync/3 测试
+%% ===================================================================
+
+handle_sync_returns_messages_for_valid_c2c_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(<<"c2c:100:200">>, 0, 50) ->
+                {ok, [#{<<"conv_seq">> => 1, <<"from_id">> => 200, <<"to_id">> => 100,
+                        <<"payload">> => <<"hello">>}]}
+            end}
+        ]},
+        {messaging_logic, [
+            {'encode_history_msg', 2, fun(_Uid, Row) -> Row end},
+            {'next_seq_from_rows', 2, fun(_Rows, _Seq) -> 1 end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 0}], 50),
+        #{<<"results">> := Results} = Result,
+        ?assertEqual(1, length(Results)),
+        [First | _] = Results,
+        ?assertEqual(<<"c2c:100:200">>, maps:get(<<"conv_key">>, First)),
+        ?assertEqual(1, maps:get(<<"next_seq">>, First))
+    end).
+
+handle_sync_rejects_unauthorized_c2c_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% Uid 999 不在 c2c:100:200 中，应被拒绝（不会调用 history）
+        Result = msg_c2s_logic:handle_sync(999,
+            [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 0}], 50),
+        #{<<"results">> := Results} = Result,
+        ?assertEqual([], Results)
+    end).
+
+handle_sync_authorizes_c2g_member_test_() ->
+    ?WITH_MECKS([
+        {group_ds, [
+            {'is_member', 2, fun(100, 500) -> true end}
+        ]},
+        {msg_archive_ds, [
+            {'history', 3, fun(<<"c2g:500">>, 0, 50) ->
+                {ok, [#{<<"conv_seq">> => 1, <<"group_id">> => 500,
+                        <<"from_id">> => 200, <<"payload">> => <<"hi group">>}]}
+            end}
+        ]},
+        {messaging_logic, [
+            {'encode_history_msg', 2, fun(_Uid, Row) -> Row end},
+            {'next_seq_from_rows', 2, fun(_Rows, _Seq) -> 1 end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"c2g:500">>, <<"seq">> => 0}], 50),
+        #{<<"results">> := Results} = Result,
+        ?assertEqual(1, length(Results))
+    end).
+
+handle_sync_rejects_c2g_non_member_test_() ->
+    ?WITH_MECKS([
+        {group_ds, [
+            {'is_member', 2, fun(_Uid, _Gid) -> false end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(999,
+            [#{<<"conv_key">> => <<"c2g:500">>, <<"seq">> => 0}], 50),
+        #{<<"results">> := Results} = Result,
+        ?assertEqual([], Results)
+    end).
+
+handle_sync_clamps_limit_to_100_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, Limit) ->
+                %% 验证 limit 被 clamp 到 100
+                ?assert(Limit =< 100),
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 0}], 9999),
+        ?assertMatch(#{<<"results">> := []}, Result)
+    end).
+
+handle_sync_empty_cursors_returns_empty_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = msg_c2s_logic:handle_sync(100, [], 50),
+        ?assertEqual(#{<<"results">> => []}, Result)
+    end).
+
+handle_sync_skips_empty_history_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 5}], 50),
+        #{<<"results">> := Results} = Result,
+        ?assertEqual([], Results)
+    end).
+
+handle_sync_has_more_flag_test_() ->
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, Limit) ->
+                %% 返回刚好等于 limit 条数据，表示还有更多
+                Rows = [#{<<"conv_seq">> => I, <<"from_id">> => 200,
+                          <<"to_id">> => 100, <<"payload">> => <<"msg">>}
+                        || I <- lists:seq(1, Limit)],
+                {ok, Rows}
+            end}
+        ]},
+        {messaging_logic, [
+            {'encode_history_msg', 2, fun(_Uid, Row) -> Row end},
+            {'next_seq_from_rows', 2, fun(Rows, _Seq) ->
+                Last = lists:last(Rows),
+                maps:get(<<"conv_seq">>, Last, 0)
+            end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"c2c:100:200">>, <<"seq">> => 0}], 10),
+        #{<<"results">> := [First | _]} = Result,
+        ?assertEqual(true, maps:get(<<"has_more">>, First))
+    end).
+
+handle_sync_skips_unknown_conv_key_format_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = msg_c2s_logic:handle_sync(100,
+            [#{<<"conv_key">> => <<"invalid:format">>, <<"seq">> => 0}], 50),
+        ?assertEqual(#{<<"results">> => []}, Result)
+    end).
+
+handle_sync_non_list_cursors_returns_empty_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = msg_c2s_logic:handle_sync(100, not_a_list, 50),
+        ?assertEqual(#{<<"results">> => []}, Result)
+    end).
+
+%% ===================================================================
+%% authorize_conv/2 单元测试（通过 handle_sync 间接测试）
+%% ===================================================================
+
+authorize_conv_c2c_min_uid_test_() ->
+    %% 当前用户是 min uid (50 < 200)
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(50,
+            [#{<<"conv_key">> => <<"c2c:50:200">>, <<"seq">> => 0}], 50),
+        %% 不会返回消息（空历史），但不会被 authorize 拒绝
+        ?assertMatch(#{<<"results">> := []}, Result)
+    end).
+
+authorize_conv_c2c_max_uid_test_() ->
+    %% 当前用户是 max uid
+    ?WITH_MECKS([
+        {msg_archive_ds, [
+            {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        Result = msg_c2s_logic:handle_sync(200,
+            [#{<<"conv_key">> => <<"c2c:50:200">>, <<"seq">> => 0}], 50),
+        ?assertMatch(#{<<"results">> := []}, Result)
+    end).
+
+%% ===================================================================
 %% c2s_client_ack/3 测试 - 客户端确认 C2S 投递消息
 %% ===================================================================
 

@@ -233,7 +233,7 @@ assign_role_handle(Req0, State) ->
     case ensure_permission(State, <<"admins:assign_role">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            AdminId = parse_hashid_or_int(
+            AdminId = parse_id(
                 maps:get(<<"admin_id">>, PostVals, maps:get(<<"uid">>, PostVals, 0))
             ),
             RoleId = normalize_positive_int(maps:get(<<"role_id">>, PostVals, 0)),
@@ -442,12 +442,12 @@ normalize_status(Value) ->
             1
     end.
 
--spec parse_hashid_or_int(term()) -> integer().
-parse_hashid_or_int(Value) when is_integer(Value), Value > 0 ->
+-spec parse_id(term()) -> integer().
+parse_id(Value) when is_integer(Value), Value > 0 ->
     Value;
-parse_hashid_or_int(Value) when is_list(Value) ->
-    parse_hashid_or_int(ec_cnv:to_binary(Value));
-parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
+parse_id(Value) when is_list(Value) ->
+    parse_id(ec_cnv:to_binary(Value));
+parse_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             normalize_positive_int(Value);
@@ -459,7 +459,7 @@ parse_hashid_or_int(Value) when is_binary(Value), Value =/= <<>> ->
                     0
             end
     end;
-parse_hashid_or_int(_) ->
+parse_id(_) ->
     0.
 
 -spec get_count(map()) -> integer().
@@ -575,7 +575,7 @@ muted_users_unmute_action(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
-            Uid = parse_hashid_or_int(UidRaw),
+            Uid = parse_id(UidRaw),
             case Uid > 0 of
                 true ->
                     msg_rate_logic:unmute(Uid),
@@ -598,7 +598,7 @@ muted_users_unmute_batch_action(<<"POST">>, Req0, State) ->
             case is_list(Uids) andalso length(Uids) > 0 of
                 true ->
                     Results = lists:map(fun(UidRaw) ->
-                        Uid = parse_hashid_or_int(UidRaw),
+                        Uid = parse_id(UidRaw),
                         case Uid > 0 of
                             true ->
                                 msg_rate_logic:unmute(Uid),

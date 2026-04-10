@@ -70,7 +70,7 @@ row_to_csv_line_test_() ->
         end
     ).
 
-init_list_accepts_hashid_uid_test_() ->
+init_list_accepts_legacy_uid_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end}

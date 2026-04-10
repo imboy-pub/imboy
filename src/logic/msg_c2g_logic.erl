@@ -247,8 +247,11 @@ do_stage_and_send_c2g(
                         MsgType, E2EE, ReplyToMsgId, ReplyToFromId, ReplySnippet)
             end,
 
-            % ③ 后投递消息（给每个群成员）
-            [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- MemberUids, CurrentUid /= Uid],
+            % ③ 后投递消息（仅推送在线成员，离线成员通过 sync 拉取）
+            OnlineUids = [Uid || Uid <- MemberUids,
+                          CurrentUid /= Uid,
+                          user_logic:is_online(Uid)],
+            [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- OnlineUids],
 
             % ③.5 离线推送（异步，不阻塞消息投递）
             push_notification_logic:maybe_push_for_c2g(CurrentUid, ToGID, MsgType, MemberUids),

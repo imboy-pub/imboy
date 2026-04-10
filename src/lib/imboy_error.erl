@@ -75,15 +75,15 @@ validate_required(Req, Field, ValidateFun) ->
         false -> {error, missing_param(Req, Field)}
     end.
 
-%% @doc 验证 HashID 格式的 ID
+%% @doc 验证 ID 格式
 %%
-%% 验证 ID 是否为有效的 HashID 格式，并解码为整数。
+%% 验证 ID 是否为有效格式，并转换为整数。
 %% 如果验证失败，直接返回错误响应。
 %%
 %% @param Req Cowboy 请求对象
-%% @param Id 要验证的 ID（HashID 字符串）
+%% @param Id 要验证的 ID
 %% @returns {ok, DecodedId} | {error, cowboy_req:req()}
-%% @returns DecodedId 解码后的整数 ID
+%% @returns DecodedId 转换后的整数 ID
 %%
 %% @example
 %% case imboy_error:validate_id(Req, Gid) of
@@ -101,7 +101,7 @@ validate_id(Req, _Id) ->
 
 %% @doc 验证 ID 列表
 %%
-%% 验证 ID 列表中的每个 ID 是否为有效的 HashID 格式。
+%% 验证 ID 列表中的每个 ID 是否为有效格式。
 %% 如果有任何一个 ID 无效，返回错误响应。
 %%
 %% @param Req Cowboy 请求对象

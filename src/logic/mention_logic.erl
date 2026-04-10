@@ -24,7 +24,7 @@
 %% @doc 创建@提及记录
 %% @param MsgId 消息ID
 %% @param Gid 群组ID
-%% @param Mentions 被@的用户列表（hashids编码），可以是 <<"all">> 表示@所有人
+%% @param Mentions 被@的用户ID列表，可以是 <<"all">> 表示@所有人
 %% @param FromUid 发送者ID
 %% @return ok | {error, Reason}
 -spec create_mentions(binary(), integer(), list(binary) | binary(), integer()) -> ok | {error, term()}.

@@ -6,17 +6,17 @@
 %% 测试用例
 %% ===================================================================
 
-%% @doc 测试 c2c 消息重试间隔
+%% @doc 测试 c2c 消息重试间隔（sync 范式：best-effort，2 次尝试）
 intervals_c2c_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Expected = [0, 5000, 7000, 11000, 17000],
+        Expected = [0, 3000],
         ?assertEqual(Expected, elib_retry_config:intervals(<<"c2c">>))
     end).
 
-%% @doc 测试 c2g 消息重试间隔
+%% @doc 测试 c2g 消息重试间隔（sync 范式：仅推送在线成员，1 次尝试）
 intervals_c2g_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Expected = [0, 3500, 7000, 11000, 17000],
+        Expected = [0],
         ?assertEqual(Expected, elib_retry_config:intervals(<<"c2g">>))
     end).
 

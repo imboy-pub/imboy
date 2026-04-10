@@ -1848,7 +1848,7 @@ list_group_files_with_total(Gid, _Category, _Keyword, Page, Size) ->
 %% @doc 兼容 schedule_id:
 %% - 原生 schedule_id (sched_xxx)
 %% - 数字主键（int/数字字符串）
-%% - hashid 主键
+%% - ID 主键
 -spec normalize_schedule_id(term()) -> binary() | undefined.
 normalize_schedule_id(undefined) ->
     undefined;

@@ -4,6 +4,7 @@
 % websocket_ds 是 websocket domain service 缩写
 %%%
 -export([check_subprotocols/2]).
+-export([select_subprotocol/1]).
 -export([auth/4]).
 -export([idle_timeout/1]).
 
@@ -31,10 +32,34 @@ check_subprotocols([], Req0) ->
     % HTTP 406 - 无法接受
     Req = cowboy_req:reply(406, Req0),
     {ok, Req};
-check_subprotocols([H | _Tail], Req0) ->
-    % [<<"sip">>,<<"text">>] = Subprotocols
-    Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, H, Req0),
-    {cowboy_websocket, Req, #{}, #{}}.
+check_subprotocols([_|_] = SubPt, Req0) ->
+    case select_subprotocol(SubPt) of
+        undefined ->
+            Req = cowboy_req:reply(406, Req0),
+            {ok, Req};
+        Selected ->
+            Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, Selected, Req0),
+            {cowboy_websocket, Req, #{}, #{}}
+    end.
+
+
+%% @doc 从客户端支持的子协议列表中选择最佳协议
+%% 优先级：imboy-protobuf > imboy-json > text
+-spec select_subprotocol([binary()] | undefined) -> binary() | undefined.
+select_subprotocol(Subprotocols) when is_list(Subprotocols), length(Subprotocols) > 0 ->
+    Preferred = [<<"imboy-protobuf">>, <<"imboy-json">>, <<"text">>],
+    select_first_match(Preferred, Subprotocols);
+select_subprotocol(_) ->
+    undefined.
+
+%% @private
+-spec select_first_match([binary()], [binary()]) -> binary() | undefined.
+select_first_match([], _) -> undefined;
+select_first_match([P | Rest], Subprotocols) ->
+    case lists:member(P, Subprotocols) of
+        true -> P;
+        false -> select_first_match(Rest, Subprotocols)
+    end.
 
 %% @doc WebSocket认证处理
 %%

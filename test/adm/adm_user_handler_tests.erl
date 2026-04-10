@@ -82,7 +82,7 @@ init_detail_success_includes_relation_counters_test_() ->
         ?assertEqual(3, maps:get(group_count, Payload))
     end).
 
-init_detail_accepts_hashid_uid_test_() ->
+init_detail_accepts_legacy_uid_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'int', 3, fun(uid, _Req, _Default) -> {ok, 0} end},

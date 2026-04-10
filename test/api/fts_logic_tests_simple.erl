@@ -263,7 +263,7 @@ search_result_encoding_test_() ->
             ?assert(is_integer(Uid)),
             ?assert(Uid > 0),
             
-            % 模拟hashid编码
+            % 模拟ID
             EncodedId = <<"hash_", (integer_to_binary(Uid))/binary>>,
             ?assertMatch(<<_/binary>>, EncodedId),
             EncodedStr = binary_to_list(EncodedId),

@@ -69,7 +69,7 @@ init_messages_success_test_() ->
         ?assertEqual(false, maps:is_key(items, Payload))
     end).
 
-init_messages_accepts_hashid_channel_id_test_() ->
+init_messages_accepts_legacy_channel_id_test_() ->
     ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
@@ -309,7 +309,7 @@ init_remove_subscriber_success_test_() ->
         ?assertEqual(1, meck:num_calls(user_log_repo, add, 1))
     end).
 
-init_remove_subscriber_accepts_hashid_path_params_test_() ->
+init_remove_subscriber_accepts_legacy_path_params_test_() ->
     ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"DELETE">> end},

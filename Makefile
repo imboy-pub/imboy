@@ -60,7 +60,7 @@ DEPS += sync
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 
 # 如果依赖包不用在erlang运行的时候跑的话，那就把它设置为BUILD_DEPS就行了，这样就只有构建的时候会用到
-BUILD_DEPS = relx
+BUILD_DEPS = relx gpb
 
 DEP_PLUGINS = cowboy
 
@@ -78,6 +78,26 @@ EDOC_OPTS = {doclet, edown_doclet}
 
 
 include erlang.mk
+
+# Override erlang.mk's default gpb compile options
+# Add maps support, strings_as_binaries, and type_specs for better Erlang integration
+define compile_proto.erl
+	[begin
+		gpb_compile:file(F, [
+			{i, "src"},
+			{include_as_lib, true},
+			{module_name_suffix, "_pb"},
+			{o_hrl, "./include"},
+			{o_erl, "./src"},
+			maps,
+			strings_as_binaries,
+			{type_specs, true},
+			{maps_unset_optional, omitted},
+			{maps_oneof, flat}
+		])
+	end || F <- string:tokens("$1", " ")],
+	halt().
+endef
 include include/tpl.mk
 include include/cli.mk
 
