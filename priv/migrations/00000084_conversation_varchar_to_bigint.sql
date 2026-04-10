@@ -38,8 +38,11 @@ BEGIN
     UPDATE public.conversation SET last_msg_id = '0' WHERE last_msg_id = '' OR last_msg_id IS NULL;
 
     -- user_id: varchar(40) → bigint
+    -- 必须先 DROP DEFAULT，否则 varchar 默认值（如 ''）无法自动 cast 到 bigint
     ALTER TABLE public.conversation
-        ALTER COLUMN user_id TYPE bigint USING user_id::bigint;
+        ALTER COLUMN user_id DROP DEFAULT;
+    ALTER TABLE public.conversation
+        ALTER COLUMN user_id TYPE bigint USING NULLIF(user_id, '')::bigint;
     ALTER TABLE public.conversation
         ALTER COLUMN user_id SET DEFAULT 0;
     ALTER TABLE public.conversation
@@ -47,7 +50,9 @@ BEGIN
 
     -- peer_id: varchar(40) → bigint
     ALTER TABLE public.conversation
-        ALTER COLUMN peer_id TYPE bigint USING peer_id::bigint;
+        ALTER COLUMN peer_id DROP DEFAULT;
+    ALTER TABLE public.conversation
+        ALTER COLUMN peer_id TYPE bigint USING NULLIF(peer_id, '')::bigint;
     ALTER TABLE public.conversation
         ALTER COLUMN peer_id SET DEFAULT 0;
     ALTER TABLE public.conversation
@@ -55,7 +60,9 @@ BEGIN
 
     -- last_msg_id: varchar(40) → bigint（允许 0 表示无消息）
     ALTER TABLE public.conversation
-        ALTER COLUMN last_msg_id TYPE bigint USING last_msg_id::bigint;
+        ALTER COLUMN last_msg_id DROP DEFAULT;
+    ALTER TABLE public.conversation
+        ALTER COLUMN last_msg_id TYPE bigint USING NULLIF(last_msg_id, '')::bigint;
     ALTER TABLE public.conversation
         ALTER COLUMN last_msg_id SET DEFAULT 0;
 
@@ -98,7 +105,9 @@ BEGIN
 
     -- conversation_id: varchar(40) → bigint
     ALTER TABLE public.conversation_pin
-        ALTER COLUMN conversation_id TYPE bigint USING conversation_id::bigint;
+        ALTER COLUMN conversation_id DROP DEFAULT;
+    ALTER TABLE public.conversation_pin
+        ALTER COLUMN conversation_id TYPE bigint USING NULLIF(conversation_id, '')::bigint;
 
     -- 重建唯一约束
     ALTER TABLE public.conversation_pin
@@ -141,7 +150,9 @@ BEGIN
 
     -- conversation_id: varchar(40) → bigint
     ALTER TABLE public.conversation_delete
-        ALTER COLUMN conversation_id TYPE bigint USING conversation_id::bigint;
+        ALTER COLUMN conversation_id DROP DEFAULT;
+    ALTER TABLE public.conversation_delete
+        ALTER COLUMN conversation_id TYPE bigint USING NULLIF(conversation_id, '')::bigint;
 
     -- 重建唯一约束
     ALTER TABLE public.conversation_delete

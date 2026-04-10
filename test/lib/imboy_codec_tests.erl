@@ -7,6 +7,7 @@
 -module(imboy_codec_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("imboy_frame.hrl").
 
 %%%===================================================================
 %%% Test generators
@@ -25,7 +26,11 @@ codec_test_() ->
       {"E2EE metadata conversion", fun e2ee_conversion/0},
       {"Empty/null field handling", fun empty_field_handling/0},
       {"Payload encode/decode", fun payload_encode_decode/0},
-      {"Large UID handling (TSID)", fun large_uid_handling/0}
+      {"Large UID handling (TSID)", fun large_uid_handling/0},
+      {"Framing atom conversion", fun framing_atom_test/0},
+      {"v2 frame wrap/unwrap roundtrip", fun v2_frame_roundtrip/0},
+      {"v2 protocol atom maps to protobuf", fun v2_protocol_atom_test/0},
+      {"v2 frame unwrap error on bad input", fun v2_frame_unwrap_error/0}
      ]}.
 
 %%%===================================================================
@@ -161,6 +166,42 @@ large_uid_handling() ->
 
     ?assertEqual(LargeUid, maps:get(<<"from">>, Decoded)),
     ?assertEqual(LargeUid + 1, maps:get(<<"to">>, Decoded)).
+
+%% @doc framing_atom/1 测试
+framing_atom_test() ->
+    ?assertEqual(v2, imboy_codec:framing_atom(<<"imboy.v2">>)),
+    ?assertEqual(none, imboy_codec:framing_atom(<<"imboy-protobuf">>)),
+    ?assertEqual(none, imboy_codec:framing_atom(<<"imboy-json">>)),
+    ?assertEqual(none, imboy_codec:framing_atom(<<"text">>)),
+    ?assertEqual(none, imboy_codec:framing_atom(undefined)),
+    ?assertEqual(none, imboy_codec:framing_atom(<<"unknown">>)).
+
+%% @doc v2 framing 子协议映射为 protobuf 编码
+v2_protocol_atom_test() ->
+    ?assertEqual(protobuf, imboy_codec:protocol_atom(<<"imboy.v2">>)).
+
+%% @doc v2 frame wrap/unwrap 往返测试
+v2_frame_roundtrip() ->
+    Msg = test_c2c_message(),
+    Payload = imboy_codec:encode(protobuf, Msg),
+    ?assert(is_binary(Payload)),
+    Frame = imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_C2C, 0, Payload),
+    ?assert(is_binary(Frame)),
+    ?assert(byte_size(Frame) > byte_size(Payload)),
+    {ok, Decoded} = imboy_codec:unwrap_v2_frame(Frame),
+    ?assertEqual(?FRAME_TYPE_MSG_C2C, imboy_frame:type(Decoded)),
+    ?assertEqual(0, imboy_frame:flags(Decoded)),
+    ?assertEqual(Payload, imboy_frame:payload(Decoded)),
+    %% 二次 decode payload
+    DecodedMsg = imboy_codec:decode(protobuf, imboy_frame:payload(Decoded)),
+    ?assertEqual(<<"msg-test-001">>, maps:get(<<"id">>, DecodedMsg)).
+
+%% @doc v2 frame unwrap 错误用例
+v2_frame_unwrap_error() ->
+    %% 魔数不对
+    ?assertMatch({error, bad_magic}, imboy_codec:unwrap_v2_frame(<<"not-a-frame">>)),
+    %% 不完整的 header
+    ?assertMatch({error, incomplete_frame}, imboy_codec:unwrap_v2_frame(<<>>)).
 
 
 %%%===================================================================

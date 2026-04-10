@@ -16,6 +16,7 @@
 -module(imboy_codec).
 
 -include("log.hrl").
+-include("imboy_frame.hrl").
 
 %% API
 -export([
@@ -24,12 +25,16 @@
     encode_payload/3,
     decode_payload/3,
     encode_ws_frame/2,
-    protocol_atom/1
+    protocol_atom/1,
+    framing_atom/1,
+    wrap_v2_frame/3,
+    unwrap_v2_frame/1
 ]).
 
 %% 协议类型
 -type protocol() :: json | protobuf.
--export_type([protocol/0]).
+-type framing() :: none | v2.
+-export_type([protocol/0, framing/0]).
 
 %%%===================================================================
 %%% API
@@ -148,10 +153,36 @@ encode_ws_frame(protobuf, EncodedMsg) ->
 %% @param SubProtocol WebSocket 子协议字符串
 %% @returns 协议原子
 -spec protocol_atom(binary() | undefined) -> protocol().
+protocol_atom(<<"imboy.v2">>) -> protobuf;
 protocol_atom(<<"imboy-protobuf">>) -> protobuf;
 protocol_atom(<<"imboy-json">>) -> json;
 protocol_atom(<<"text">>) -> json;
 protocol_atom(_) -> json.
+
+%% @doc 将子协议字符串转换为 framing 原子
+%%
+%% v2 分层二进制协议对应的 framing=v2，其余为 none
+-spec framing_atom(binary() | undefined) -> framing().
+framing_atom(<<"imboy.v2">>) -> v2;
+framing_atom(_) -> none.
+
+%% @doc v2 framing 封包：调用 imboy_frame:encode/3 包裹 payload
+-spec wrap_v2_frame(0..255, 0..255, binary()) -> binary().
+wrap_v2_frame(Type, Flags, Payload)
+  when is_integer(Type), is_integer(Flags), is_binary(Payload) ->
+    imboy_frame:encode(Type, Flags, Payload).
+
+%% @doc v2 framing 解包：调用 imboy_frame:decode/1，丢弃 Rest 字节
+%%
+%% 返回 {ok, Frame} 或 {error, Reason}
+-spec unwrap_v2_frame(binary()) ->
+    {ok, imboy_frame:frame()} | {error, atom()}.
+unwrap_v2_frame(Bin) when is_binary(Bin) ->
+    case imboy_frame:decode(Bin) of
+        {ok, Frame, _Rest} -> {ok, Frame};
+        {more, _} -> {error, incomplete_frame};
+        {error, Reason} -> {error, Reason}
+    end.
 
 
 %%%===================================================================

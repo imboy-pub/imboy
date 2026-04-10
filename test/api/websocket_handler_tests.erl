@@ -500,6 +500,90 @@ text_client_ack_protobuf_response_test_() ->
         ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
     end).
 
+%% ===================================================================
+%% Iteration 6: v2 framing 宽容 payload 解码（JSON text / protobuf / CLIENT_ACK text）
+%% ===================================================================
+
+%% v2 MSG_C2C 帧，payload 为 UTF-8(JSON) 字符串 —— Dart 客户端主线路径
+v2_msg_c2c_json_payload_test_() ->
+    ?WITH_MECKS(log_mocks() ++ [
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 123 end}
+        ]},
+        {throttle, [
+            {'check', 2, fun(msg_per_user, _) -> ok end}
+        ]},
+        {message_ds, [
+            {'decode_websocket_message', 1, fun(Bin) ->
+                jsone:decode(Bin, [{object_format, map}])
+            end},
+            {'convert_v1_to_v2', 1, fun(M) -> M end},
+            {'validate_message', 1, fun(M) -> {ok, M} end},
+            {'inject_sender_device', 2, fun(P, _State) -> P end}
+        ]},
+        {message_router_logic, [
+            {'route', 5, fun(<<"mid-json-1">>, 123, _Data, <<"C2C">>, _Raw) -> ok end}
+        ]}
+    ], fun() ->
+        State = #{did => <<"did_json">>, current_uid => 123,
+                  protocol => protobuf, framing => v2, dtype => <<"ios">>},
+        JsonBin = jsone:encode(#{<<"id">> => <<"mid-json-1">>,
+                                 <<"type">> => <<"C2C">>,
+                                 <<"from">> => 111,
+                                 <<"to">> => 222,
+                                 <<"payload">> => #{<<"text">> => <<"hi">>}},
+                               [native_utf8]),
+        Frame = imboy_codec:wrap_v2_frame(16#20, 0, JsonBin),
+        {ok, State2, hibernate} = websocket_handler:websocket_handle({binary, Frame}, State),
+        ?assertEqual(State, State2),
+        ?assertEqual(1, meck:num_calls(message_router_logic, route, 5))
+    end).
+
+%% v2 MSG_C2S 帧，payload 为 "CLIENT_ACK,C2C,msg_1,did_1" 纯文本 —— Dart ACK 上行路径
+v2_msg_c2s_text_client_ack_test_() ->
+    ?WITH_MECKS(log_mocks() ++ [
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 123 end}
+        ]},
+        {websocket_logic, [
+            {'cancel_timer', 3, fun(123, <<"did_v2">>, <<"msg_v2_1">>) -> ok end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000123 end}
+        ]},
+        {msg_c2c_logic, [
+            {'c2c_client_ack', 3, fun(<<"msg_v2_1">>, 123, <<"did_v2">>) -> ok end}
+        ]}
+    ], fun() ->
+        State = #{did => <<"did_v2">>, current_uid => 123,
+                  protocol => protobuf, framing => v2},
+        AckText = <<"CLIENT_ACK,C2C,msg_v2_1,did_v2">>,
+        Frame = imboy_codec:wrap_v2_frame(16#22, 0, AckText),
+        {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+            {binary, Frame}, State
+        ),
+        Decoded = imboy_codec:decode(protobuf, RespBin),
+        ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
+    end).
+
+%% v2 MSG_C2C 帧，payload 为损坏数据（既非 JSON 也非 protobuf） —— 不应 crash
+v2_msg_c2c_garbage_payload_tolerated_test_() ->
+    ?WITH_MECKS(log_mocks() ++ [
+        {auth_ds, [
+            {'current_uid', 1, fun(_State) -> 123 end}
+        ]},
+        {throttle, [
+            {'check', 2, fun(msg_per_user, _) -> ok end}
+        ]}
+    ], fun() ->
+        State = #{did => <<"did_bad">>, current_uid => 123,
+                  protocol => protobuf, framing => v2},
+        Garbage = <<16#FF, 16#FE, "not-json-not-pb">>,
+        Frame = imboy_codec:wrap_v2_frame(16#20, 0, Garbage),
+        {ok, State2, hibernate} = websocket_handler:websocket_handle({binary, Frame}, State),
+        ?assertEqual(State, State2)
+    end).
+
 %% 测试 protobuf CLIENT_ACK 不受速率限制
 protobuf_client_ack_bypasses_throttle_test_() ->
     ?WITH_MECKS(log_mocks() ++ [

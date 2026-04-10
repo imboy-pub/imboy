@@ -44,10 +44,10 @@ check_subprotocols([_|_] = SubPt, Req0) ->
 
 
 %% @doc 从客户端支持的子协议列表中选择最佳协议
-%% 优先级：imboy-protobuf > imboy-json > text
+%% 优先级：imboy.v2 > imboy-protobuf > imboy-json > text
 -spec select_subprotocol([binary()] | undefined) -> binary() | undefined.
 select_subprotocol(Subprotocols) when is_list(Subprotocols), length(Subprotocols) > 0 ->
-    Preferred = [<<"imboy-protobuf">>, <<"imboy-json">>, <<"text">>],
+    Preferred = [<<"imboy.v2">>, <<"imboy-protobuf">>, <<"imboy-json">>, <<"text">>],
     select_first_match(Preferred, Subprotocols);
 select_subprotocol(_) ->
     undefined.

@@ -90,6 +90,16 @@ idle_timeout_with_different_uid_test_() ->
 %% select_subprotocol/1 测试
 %% ===================================================================
 
+select_subprotocol_prefers_v2_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(<<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy.v2">>])),
+        ?assertEqual(<<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"imboy.v2">>, <<"imboy-protobuf">>])),
+        ?assertEqual(<<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy.v2">>, <<"imboy-json">>]))
+    end).
+
 select_subprotocol_prefers_protobuf_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(<<"imboy-protobuf">>,

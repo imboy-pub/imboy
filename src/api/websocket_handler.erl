@@ -11,6 +11,7 @@
 
 -include("log.hrl").
 -include("chat.hrl").
+-include("imboy_frame.hrl").
 
 
 %% @doc WebSocket握手
@@ -57,8 +58,8 @@ init(Req0, State0) ->
                 {ok, Req1} ->
                     {ok, Req1, State1};
                 {cowboy_websocket, Req1, _, _} ->
-                    Protocol = negotiate_protocol(SubPt),
-                    State2 = State1#{protocol => Protocol},
+                    {Protocol, Framing} = negotiate_protocol(SubPt),
+                    State2 = State1#{protocol => Protocol, framing => Framing},
                     Auth2 = auth_ds:parse_authorization_header(Auth),
                     websocket_ds:auth(Auth2, Req1, State2, Opt0)
             end
@@ -140,7 +141,19 @@ websocket_handle({text, Msg}, State) ->
             handle_json_message(Msg, State)
     end;
 websocket_handle({binary, Msg}, State) ->
+    Framing = maps:get(framing, State, none),
     Protocol = maps:get(protocol, State, json),
+    case Framing of
+        v2 ->
+            handle_v2_binary(Msg, State);
+        _ ->
+            handle_legacy_binary(Msg, Protocol, State)
+    end;
+websocket_handle(_Frame, State) ->
+    {ok, State, hibernate}.
+
+%% @doc 非 v2 framing 下的 binary 帧处理（原有逻辑）
+handle_legacy_binary(Msg, Protocol, State) ->
     case Protocol of
         protobuf ->
             %% 先解码检查消息类型，CLIENT_ACK 不受速率限制
@@ -168,9 +181,107 @@ websocket_handle({binary, Msg}, State) ->
             %% JSON 协议不应收到 binary 帧，忽略
             ok = ?WARN_LOG({unexpected_binary_frame, Protocol}),
             {ok, State, hibernate}
+    end.
+
+%% @doc v2 framing binary 帧处理：按 Type 分派
+-spec handle_v2_binary(binary(), map()) ->
+    {ok, map(), hibernate} |
+    {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
+handle_v2_binary(Msg, State) ->
+    case imboy_codec:unwrap_v2_frame(Msg) of
+        {ok, Frame} ->
+            Type = imboy_frame:type(Frame),
+            Payload = imboy_frame:payload(Frame),
+            dispatch_v2_frame(Type, Payload, State);
+        {error, Reason} ->
+            ok = ?WARN_LOG({v2_frame_decode_failed, Reason, byte_size(Msg)}),
+            {ok, State, hibernate}
+    end.
+
+%% @doc 根据 v2 帧 Type 分派处理
+dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, <<Seq:16/big-unsigned>>, State) ->
+    ok = ?DEBUG_LOG({v2_heartbeat_ping, Seq}),
+    Pong = imboy_frame:heartbeat_pong(Seq),
+    {reply, {binary, Pong}, State, hibernate};
+dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Bad, State) ->
+    ok = ?WARN_LOG({v2_heartbeat_ping_bad_payload}),
+    {ok, State, hibernate};
+dispatch_v2_frame(?FRAME_TYPE_ACK, <<MsgIdInt:64/big-unsigned>>, State) ->
+    ok = ?DEBUG_LOG({v2_ack, MsgIdInt}),
+    %% 将 msg_id 适配为现有 protobuf ACK 处理管道
+    MsgIdBin = integer_to_binary(MsgIdInt),
+    AckPayload = #{<<"msg_id">> => MsgIdBin,
+                   <<"did">> => maps:get(did, State, <<>>),
+                   <<"msg_direction">> => <<"C2C">>},
+    %% 构造 payload bytes：重用 protobuf 子消息，交给 handle_protobuf_client_ack
+    EncodedPayload = imboy_codec:encode_payload(protobuf, <<"client_ack">>, AckPayload),
+    Data = #{<<"type">> => <<"CLIENT_ACK">>,
+             <<"payload">> => EncodedPayload},
+    handle_protobuf_client_ack(Data, <<>>, State);
+dispatch_v2_frame(?FRAME_TYPE_NACK, <<MsgIdInt:64/big-unsigned>>, State) ->
+    ok = ?WARN_LOG({v2_nack_received, MsgIdInt}),
+    {ok, State, hibernate};
+dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, <<"CLIENT_ACK,", Tail/binary>>, State) ->
+    %% msg_c2s 帧中的纯文本 CLIENT_ACK（Dart 客户端兼容路径）
+    %% 等价于老的 websocket_handle({text, <<"CLIENT_ACK,...">>}, State)
+    handle_client_ack(Tail, State);
+dispatch_v2_frame(Type, Payload, State)
+  when Type =:= ?FRAME_TYPE_MSG_C2C;
+       Type =:= ?FRAME_TYPE_MSG_C2G;
+       Type =:= ?FRAME_TYPE_MSG_C2S ->
+    CurrentUid = auth_ds:current_uid(State),
+    case throttle:check(msg_per_user, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
+            RateLimitMsg = ws_validation_error(<<>>, <<"rate_limited">>,
+                <<"消息发送过于频繁，请稍后再试"/utf8>>),
+            {reply, ws_reply(protobuf, v2, RateLimitMsg), State, hibernate};
+        _ ->
+            dispatch_v2_business_payload(Type, Payload, State)
     end;
-websocket_handle(_Frame, State) ->
+dispatch_v2_frame(Type, _Payload, State) ->
+    ok = ?WARN_LOG({v2_frame_unsupported_type, Type}),
     {ok, State, hibernate}.
+
+%% @doc 业务消息 payload 宽容解码：先尝试 JSON 文本，再回退 protobuf
+%% Dart 客户端当前使用 UTF-8(JSON string) 作为 v2 frame payload；
+%% 未来 protobuf 客户端直接发 protobuf 字节。两者共存由此函数桥接。
+-spec dispatch_v2_business_payload(0..255, binary(), map()) ->
+    {ok, map(), hibernate} |
+    {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
+dispatch_v2_business_payload(Type, Payload, State) ->
+    case try_decode_json_payload(Payload) of
+        {ok, JsonBin} ->
+            handle_json_message(JsonBin, State);
+        not_json ->
+            try imboy_codec:decode(protobuf, Payload) of
+                Data0 when is_map(Data0), map_size(Data0) > 0 ->
+                    handle_protobuf_message_decoded(Data0, State);
+                _ ->
+                    ok = ?WARN_LOG({v2_msg_decode_empty, Type, byte_size(Payload)}),
+                    {ok, State, hibernate}
+            catch Class:Reason ->
+                ok = ?WARN_LOG({v2_msg_decode_failed, Class, Reason, Type,
+                                byte_size(Payload)}),
+                {ok, State, hibernate}
+            end
+    end.
+
+%% @doc 尝试把 payload 当作 UTF-8(JSON) 文本解码
+%% 返回原始 JSON binary（交由 handle_json_message/2 再次解码并走完整流水线），
+%% 避免重复实现 validate/convert/route 流程。
+-spec try_decode_json_payload(binary()) -> {ok, binary()} | not_json.
+try_decode_json_payload(<<>>) ->
+    not_json;
+try_decode_json_payload(Payload) ->
+    try jsone:decode(Payload, [{object_format, map}]) of
+        Map when is_map(Map) ->
+            {ok, Payload};
+        _ ->
+            not_json
+    catch _:_ ->
+        not_json
+    end.
 
 
 %% ===================================================================
@@ -331,7 +442,8 @@ handle_json_message(Msg, State) ->
           {stop, map()}.
 websocket_info({reply, Msg}, State) when is_map(Msg) ->
     Protocol = maps:get(protocol, State, json),
-    {reply, ws_reply(Protocol, Msg), State, hibernate};
+    Framing = maps:get(framing, State, none),
+    {reply, ws_reply(Protocol, Framing, Msg), State, hibernate};
 websocket_info({reply, Msg}, State) when is_list(Msg) ->
     %% List (e.g., proplist/JSON array) — always JSON text frame
     {reply, {text, jsone:encode(Msg, [native_utf8])}, State, hibernate};
@@ -575,50 +687,102 @@ handle_protobuf_message_decoded(Data0, State) ->
     end.
 
 
-%% @doc 根据客户端子协议列表确定编码协议
+%% @doc 根据客户端子协议列表确定编码协议与 framing
 %% 复用 websocket_ds:select_subprotocol 的优先级逻辑，确保一致性
--spec negotiate_protocol([binary()] | undefined) -> imboy_codec:protocol().
+-spec negotiate_protocol([binary()] | undefined) ->
+    {imboy_codec:protocol(), imboy_codec:framing()}.
 negotiate_protocol(SubPt) when is_list(SubPt), length(SubPt) > 0 ->
     Selected = websocket_ds:select_subprotocol(SubPt),
-    imboy_codec:protocol_atom(Selected);
-negotiate_protocol(_) -> json.
+    {imboy_codec:protocol_atom(Selected), imboy_codec:framing_atom(Selected)};
+negotiate_protocol(_) -> {json, none}.
 
 
-%% @doc 根据协议编码并包装为 WebSocket 帧
+%% @doc 根据协议编码并包装为 WebSocket 帧（非 v2 framing）
 -spec ws_reply(imboy_codec:protocol(), map()) -> {text, binary()} | {binary, binary()}.
 ws_reply(Protocol, Msg) when is_map(Msg) ->
+    ws_reply(Protocol, none, Msg).
+
+%% @doc 根据协议与 framing 编码并包装为 WebSocket 帧
+%% v2 framing：protobuf 序列化后用 imboy_frame 包裹，类型默认 MSG_S2C
+-spec ws_reply(imboy_codec:protocol(), imboy_codec:framing(), map()) ->
+    {text, binary()} | {binary, binary()}.
+ws_reply(protobuf, v2, Msg) when is_map(Msg) ->
+    Encoded = imboy_codec:encode(protobuf, Msg),
+    FrameType = msg_to_v2_frame_type(Msg),
+    Frame = imboy_codec:wrap_v2_frame(FrameType, 0, Encoded),
+    {binary, Frame};
+ws_reply(Protocol, _Framing, Msg) when is_map(Msg) ->
     Encoded = imboy_codec:encode(Protocol, Msg),
     imboy_codec:encode_ws_frame(Protocol, Encoded).
+
+%% @doc 根据消息 type 字段映射到 v2 帧类型
+-spec msg_to_v2_frame_type(map()) -> 0..255.
+msg_to_v2_frame_type(Msg) ->
+    case maps:get(<<"type">>, Msg, <<>>) of
+        <<"C2C">> -> ?FRAME_TYPE_MSG_C2C;
+        <<"C2G">> -> ?FRAME_TYPE_MSG_C2G;
+        <<"C2S">> -> ?FRAME_TYPE_MSG_C2S;
+        <<"S2C">> -> ?FRAME_TYPE_MSG_S2C;
+        _ -> ?FRAME_TYPE_MSG_S2C
+    end.
 
 
 %% @doc 将投递管道的预编码消息转换为客户端协议帧
 %% 投递管道（send_next/timer）当前使用 JSON 预编码；
-%% protobuf 客户端需要 decode JSON -> reencode protobuf
+%% protobuf 客户端需要 decode JSON -> reencode protobuf；
+%% v2 framing 进一步把 protobuf 字节包裹为 imboy_frame。
 -spec encode_delivery_frame(binary() | term(), map()) -> {text, binary()} | {binary, binary()}.
 encode_delivery_frame(Msg, _State) when not is_binary(Msg) ->
     ok = ?WARN_LOG({encode_delivery_frame_not_binary, Msg}),
     {text, iolist_to_binary(io_lib:format("~p", [Msg]))};
 encode_delivery_frame(Msg, State) when is_binary(Msg) ->
     Protocol = maps:get(protocol, State, json),
-    case Protocol of
-        json ->
+    Framing = maps:get(framing, State, none),
+    case {Protocol, Framing} of
+        {_, v2} ->
+            encode_delivery_frame_v2(Msg);
+        {json, _} ->
             {text, Msg};
-        protobuf ->
-            try
-                Map = jsone:decode(Msg, [{object_format, map}]),
-                case imboy_codec:encode(protobuf, Map) of
-                    <<>> ->
-                        ok = ?WARN_LOG({encode_delivery_frame_pb_empty,
-                                        maps:get(<<"id">>, Map, unknown)}),
-                        {text, Msg};
-                    Encoded ->
-                        {binary, Encoded}
-                end
-            catch Class:Reason ->
-                ok = ?WARN_LOG({encode_delivery_frame_fallback,
-                                Class, Reason, byte_size(Msg)}),
-                {text, Msg}
-            end
+        {protobuf, _} ->
+            encode_delivery_frame_protobuf(Msg)
+    end.
+
+-spec encode_delivery_frame_protobuf(binary()) -> {text, binary()} | {binary, binary()}.
+encode_delivery_frame_protobuf(Msg) ->
+    try
+        Map = jsone:decode(Msg, [{object_format, map}]),
+        case imboy_codec:encode(protobuf, Map) of
+            <<>> ->
+                ok = ?WARN_LOG({encode_delivery_frame_pb_empty,
+                                maps:get(<<"id">>, Map, unknown)}),
+                {text, Msg};
+            Encoded ->
+                {binary, Encoded}
+        end
+    catch Class:Reason ->
+        ok = ?WARN_LOG({encode_delivery_frame_fallback,
+                        Class, Reason, byte_size(Msg)}),
+        {text, Msg}
+    end.
+
+-spec encode_delivery_frame_v2(binary()) -> {text, binary()} | {binary, binary()}.
+encode_delivery_frame_v2(Msg) ->
+    try
+        Map = jsone:decode(Msg, [{object_format, map}]),
+        case imboy_codec:encode(protobuf, Map) of
+            <<>> ->
+                ok = ?WARN_LOG({encode_delivery_frame_v2_empty,
+                                maps:get(<<"id">>, Map, unknown)}),
+                {text, Msg};
+            Encoded ->
+                FrameType = msg_to_v2_frame_type(Map),
+                Frame = imboy_codec:wrap_v2_frame(FrameType, 0, Encoded),
+                {binary, Frame}
+        end
+    catch Class:Reason ->
+        ok = ?WARN_LOG({encode_delivery_frame_v2_fallback,
+                        Class, Reason, byte_size(Msg)}),
+        {text, Msg}
     end.
 
 
