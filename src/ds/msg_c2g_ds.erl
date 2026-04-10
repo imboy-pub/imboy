@@ -25,7 +25,12 @@
 %% @param ToUids 接收消息的用户ID列表
 %% @param Gid 群组ID
 %% @returns any() 数据库操作结果
--spec write_msg(integer() | binary(), binary(), binary(), integer(), list(), integer()) -> ok.
+-spec write_msg(integer() | binary(), binary(), binary(), integer(), list(), integer()) -> ok;
+               (integer() | binary(), binary(), integer(), integer(), map(), binary()) -> ok.
+write_msg(CreatedAtRaw, Id, FromId, Gid, PayloadMap, _PayloadMd5)
+        when is_integer(FromId), is_integer(Gid), is_map(PayloadMap) ->
+    PayloadBin = jsone:encode(PayloadMap, [native_utf8]),
+    write_msg(CreatedAtRaw, Id, PayloadBin, FromId, [FromId], Gid);
 % msg_c2g_ds:write_msg(1707686743435, <<"msg_id_1">>,  <<"{}">>,  1, [2,3,4], 1).
 % msg_c2g_ds:write_msg(1707686743435, <<"msg_id_1">>,  <<"{\"a\":1}">>,  1, [2,3,107], 7).
 write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid) ->
@@ -159,26 +164,40 @@ edit_offline_msg(Payload, _NowTs, MsgId, FromId, _MemberUids, _Gid) ->
     end,
     ok.
 
-%% @doc 读取离线消息
+%% @doc 读取群消息
 %%
-%% 读取指定用户的离线群组消息，使用默认限制
-%%
-%% @param ToUid 接收消息的用户ID
-%% @returns list() 离线消息列表
--spec read_msg(integer()) -> [map()].
+%% 兼容两种历史入口：
+%% 1. `read_msg(MsgId)` 读取单条群消息；
+%% 2. `read_msg(ToUid)` 读取指定用户的离线群消息。
+-spec read_msg(integer()) -> [map()];
+              (binary()) -> {ok, map()} | {error, any()}.
+read_msg(MsgId) when is_binary(MsgId) ->
+    case find_msg_by_id(MsgId) of
+        {error, not_found} ->
+            {ok, #{}};
+        Result ->
+            Result
+    end;
 % msg_c2g_ds:read_msg(3).
-read_msg(ToUid) ->
+read_msg(ToUid) when is_integer(ToUid) ->
     read_msg(ToUid, 1000, undefined).
 
-%% @doc 读取离线消息 - 支持 last_msg_at 分页
+%% @doc 读取群消息
 %%
-%% 读取指定用户的离线群组消息，支持数量限制和时间戳过滤
-%%
-%% @param ToUid 接收消息的用户ID
-%% @param Limit 读取消息数量限制
-%% @param LastMsgAt 最后消息时间戳，undefined表示读取所有未确认消息
-%% @returns list() 离线消息列表，按时间顺序排列
--spec read_msg(integer(), integer(), undefined | integer() | binary()) -> [map()].
+%% 兼容两种历史入口：
+%% 1. `read_msg(ToUid, Limit, LastMsgAt)` 读取离线群消息；
+%% 2. `read_msg(GroupId, Columns, Limit)` 按群读取历史消息列。
+-spec read_msg(integer(), integer(), undefined | integer() | binary()) -> [map()];
+              (integer(), [binary()], integer()) -> {ok, list(map())} | {error, any()}.
+read_msg(GroupId, Columns, Limit)
+        when is_integer(GroupId), is_list(Columns), is_integer(Limit) ->
+    Tb = msg_c2g_repo:tablename(),
+    ColumnBin = legacy_group_columns(Columns),
+    Sql =
+        <<"SELECT ", ColumnBin/binary,
+          " FROM ", Tb/binary,
+          " WHERE to_id = $1 ORDER BY created_at ASC LIMIT $2">>,
+    elib_pg:query(Sql, [GroupId, Limit]);
 % msg_c2g_ds:read_msg(3, 1000, 1707686743435).
 read_msg(ToUid, Limit, undefined) ->
     % 获取用户未确认的消息
@@ -225,6 +244,25 @@ read_msg(ToUid, Limit, LastMsgAt) ->
 find_msg_by_id(MsgId) ->
     msg_c2g_repo:find_msg_by_id(MsgId).
 
+-spec legacy_group_columns([binary()]) -> binary().
+legacy_group_columns([]) ->
+    <<"id, from_id AS from_uid, to_id AS group_id, payload">>;
+legacy_group_columns(Columns) ->
+    iolist_to_binary(
+        lists:join(
+            <<", ">>,
+            [legacy_group_column(Column) || Column <- Columns]
+        )
+    ).
+
+-spec legacy_group_column(binary()) -> binary().
+legacy_group_column(<<"from_uid">>) ->
+    <<"from_id AS from_uid">>;
+legacy_group_column(<<"group_id">>) ->
+    <<"to_id AS group_id">>;
+legacy_group_column(Column) ->
+    Column.
+
 
 %% @doc 删除群组消息
 %%
@@ -232,9 +270,14 @@ find_msg_by_id(MsgId) ->
 %%
 %% @param Id 消息ID
 %% @returns any() 数据库删除操作结果
--spec delete_msg(any()) -> any().
+-spec delete_msg(any()) -> ok | {error, any()}.
 delete_msg(Id) ->
-    msg_c2g_repo:delete_msg(Id).
+    case msg_c2g_repo:delete_msg(Id) of
+        {ok, _Count} ->
+            ok;
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 %% ===================================================================
 %% 引用回复功能

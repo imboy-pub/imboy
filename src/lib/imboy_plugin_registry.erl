@@ -39,7 +39,19 @@ manifests() ->
 
 -spec plugin_names() -> [atom()].
 plugin_names() ->
-    maps:keys(raw_manifests()).
+    RawManifests = raw_manifests(),
+    DeclaredOrder = [channel, moment, location, group_collab],
+    OrderedKnown = [
+        PluginName
+     || PluginName <- DeclaredOrder,
+        maps:is_key(PluginName, RawManifests)
+    ],
+    Remaining = lists:sort([
+        PluginName
+     || PluginName <- maps:keys(RawManifests),
+        not lists:member(PluginName, DeclaredOrder)
+    ]),
+    OrderedKnown ++ Remaining.
 
 -spec enabled_app_entries(map()) -> [atom()].
 enabled_app_entries(EnabledFeatures) ->
