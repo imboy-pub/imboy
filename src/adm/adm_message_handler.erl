@@ -485,12 +485,13 @@ sanitize_row_by_audit_mode(Row, none) ->
 sanitize_rows_by_audit_mode(Rows, AuditMode) ->
     [sanitize_row_by_audit_mode(Row, AuditMode) || Row <- Rows].
 
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_row(map()) -> map().
 normalize_row(Row) ->
     CreatedAt = row_get(Row, <<"created_at">>, <<>>),
     ServerTs = row_get(Row, <<"server_ts">>, CreatedAt),
-    FromId = row_get(Row, <<"from_id">>, 0),
-    ToId = row_get(Row, <<"to_id">>, 0),
+    FromId = elib_id:tsid_to_bin(row_get(Row, <<"from_id">>, 0)),
+    ToId = elib_id:tsid_to_bin(row_get(Row, <<"to_id">>, 0)),
     #{
         scope => row_get(Row, <<"scope">>, <<>>),
         msg_id => row_get(Row, <<"msg_id">>, <<>>),

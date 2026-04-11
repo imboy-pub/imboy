@@ -43,7 +43,11 @@ do_throttle(Req, Env) ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
                     ?WARN_LOG([rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}]),
-                    reply_429(Req)
+                    reply_429(Req);
+                rate_not_set ->
+                    %% 速率规则未初始化，放行并告警（fail-open）
+                    ?WARN_LOG([throttle_rate_not_set, #{scope => api_per_ip, path => cowboy_req:path(Req)}]),
+                    {ok, Req, Env}
             end;
         Uid ->
             %% 已认证请求，基于 UID 限流
@@ -53,7 +57,11 @@ do_throttle(Req, Env) ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
                     ?WARN_LOG([rate_limited, #{key_type => uid, key => Uid, path => cowboy_req:path(Req)}]),
-                    reply_429(Req)
+                    reply_429(Req);
+                rate_not_set ->
+                    %% 速率规则未初始化，放行并告警（fail-open）
+                    ?WARN_LOG([throttle_rate_not_set, #{scope => api_per_user, uid => Uid, path => cowboy_req:path(Req)}]),
+                    {ok, Req, Env}
             end
     end.
 

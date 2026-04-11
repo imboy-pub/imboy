@@ -1,34 +1,57 @@
 -module(elib_id).
 
-%%% @doc ID 生成工具模块
-%%% 提供唯一标识符生成功能，支持带前缀和不带前缀的 ID 生成
+%%% @doc ID 工具模块
+%%% 提供唯一标识符生成和 TSID 字段序列化功能
 
 -export([gen/0, gen/1]).
+-export([tsid_to_bin/1, tsid_keys_to_bin/2]).
 
 %% @doc 生成唯一标识符（无前缀）
-%% @returns UID 二进制字符串
-%%
-%% @example
-%% Id = elib_id:gen().
-%% <<"...binary...">>
 -spec gen() -> binary().
 gen() ->
     gen("").
 
 %% @doc 生成带前缀的唯一标识符
-%% @param Prefix 前缀（integer、list 或 binary）
-%% @returns 带前缀的 UID 二进制字符串
-%%
-%% @example
-%% MsgId = elib_id:gen(<<"msg_">>).
-%% <<"msg_...binary...">>
-%%
-%% IntId = elib_id:gen(123).
-%% <<"123...binary...">>
-%%
-%% ListId = elib_id:gen("user_").
-%% <<"user_...binary...">>
 -spec gen(integer() | list() | binary()) -> binary().
 gen(Prefix) ->
     U1 = uid:encode64(uid:g()),
     iolist_to_binary([ec_cnv:to_binary(Prefix), U1]).
+
+%% @doc 将 TSID 整数转为 binary 字符串；非整数值原样返回。
+%%
+%% Admin API 返回 TSID 时使用此函数，避免 JS 精度丢失。
+%%
+%% @example
+%%   elib_id:tsid_to_bin(84442613760000001) => <<"84442613760000001">>
+%%   elib_id:tsid_to_bin(<<"already_bin">>) => <<"already_bin">>
+-spec tsid_to_bin(integer() | any()) -> binary() | any().
+tsid_to_bin(Id) when is_integer(Id) ->
+    integer_to_binary(Id);
+tsid_to_bin(Value) ->
+    Value.
+
+%% @doc 将 map 中指定键的 TSID 整数值批量转为 binary 字符串。
+%%
+%% Keys 支持 atom 或 binary，与 map 实际键类型一致即可。
+%% 非整数值或不存在的键跳过（不报错）。
+%%
+%% @example
+%%   elib_id:tsid_keys_to_bin(
+%%     #{<<"id">> => 84442613760000001, <<"name">> => <<"alice">>},
+%%     [<<"id">>]
+%%   ) => #{<<"id">> => <<"84442613760000001">>, <<"name">> => <<"alice">>}
+%%
+%%   elib_id:tsid_keys_to_bin(
+%%     #{from_id => 84442613760000002, to_id => 84442613760000003},
+%%     [from_id, to_id]
+%%   ) => #{from_id => <<"84442613760000002">>, to_id => <<"84442613760000003">>}
+-spec tsid_keys_to_bin(map(), [atom() | binary()]) -> map().
+tsid_keys_to_bin(Map, Keys) when is_map(Map) ->
+    lists:foldl(fun(Key, Acc) ->
+        case maps:find(Key, Acc) of
+            {ok, Value} when is_integer(Value) ->
+                maps:put(Key, integer_to_binary(Value), Acc);
+            _ ->
+                Acc
+        end
+    end, Map, Keys).

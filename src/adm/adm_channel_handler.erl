@@ -800,9 +800,10 @@ normalize_channel_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条频道数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_channel(map()) -> map().
 normalize_channel(Channel) ->
-    Channel.
+    elib_id:tsid_keys_to_bin(Channel, [<<"id">>, <<"owner_id">>]).
 
 %% @doc 规范化消息分页数据（编码ID字段）
 -spec normalize_message_payload(map()) -> map().
@@ -812,9 +813,10 @@ normalize_message_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条消息数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_message(map()) -> map().
 normalize_message(Message) ->
-    Message.
+    elib_id:tsid_keys_to_bin(Message, [<<"id">>, <<"author_id">>]).
 
 %% ===================================================================
 %% EUnit tests.

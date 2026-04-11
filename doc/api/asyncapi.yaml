@@ -1,0 +1,248 @@
+asyncapi: 3.0.0
+info:
+  title: IMBoy WebSocket API
+  version: 2.0.0
+  summary: IMBoy WebSocket 双向协议（v2 二进制帧封装）冻结契约
+  description: |
+    IMBoy 1.0.0-rc.1 起正式采用 **IMBoy v2 帧协议**：自托管二进制帧（frame header）
+    包裹 JSON/Protobuf payload，向前兼容 v1 JSON。本文件冻结 v2 协议对外可见的消息
+    类型与路由方向。
+
+    完整字节布局、字段位宽、错误码请参考权威文档：
+    `imboy/doc/api/websocket-api-2.md`（1600+ 行，含位图、示例）。
+
+    **本 schema 只冻结**：
+      - 消息类型枚举（type 字段取值）
+      - 主要业务载荷形状（C2C / C2G / ACK / syn）
+      - 方向（client→server / server→client）
+
+    **兼容策略**：v2 服务端收到 v1 JSON 帧时自动降级处理；客户端通过 handshake
+    协商能力后择优使用 v2。
+  license:
+    name: MulanPSL-2.0
+    url: https://license.coscl.org.cn/MulanPSL2
+
+servers:
+  production:
+    host: "{apiDomain}"
+    protocol: wss
+    pathname: /ws
+    variables:
+      apiDomain:
+        default: api.example.com
+    security:
+      - $ref: '#/components/securitySchemes/jwtQuery'
+
+  local:
+    host: localhost:9800
+    protocol: ws
+    pathname: /ws
+    security:
+      - $ref: '#/components/securitySchemes/jwtQuery'
+
+channels:
+  root:
+    address: /ws
+    title: IMBoy WebSocket 主通道
+    description: 所有业务消息通过同一个 WS 连接按 `type` 字段分发
+    messages:
+      C2CSend:        { $ref: '#/components/messages/C2CSend' }
+      C2CDeliver:     { $ref: '#/components/messages/C2CDeliver' }
+      C2GSend:        { $ref: '#/components/messages/C2GSend' }
+      C2GDeliver:     { $ref: '#/components/messages/C2GDeliver' }
+      AckClient:      { $ref: '#/components/messages/AckClient' }
+      AckServer:      { $ref: '#/components/messages/AckServer' }
+      Heartbeat:      { $ref: '#/components/messages/Heartbeat' }
+      TokenRefresh:   { $ref: '#/components/messages/TokenRefresh' }
+      RevokeMessage:  { $ref: '#/components/messages/RevokeMessage' }
+      EditMessage:    { $ref: '#/components/messages/EditMessage' }
+
+operations:
+  sendC2C:
+    action: send
+    channel: { $ref: '#/channels/root' }
+    summary: 客户端发送单聊消息
+    messages:
+      - $ref: '#/channels/root/messages/C2CSend'
+
+  receiveC2C:
+    action: receive
+    channel: { $ref: '#/channels/root' }
+    summary: 服务端下发单聊消息
+    messages:
+      - $ref: '#/channels/root/messages/C2CDeliver'
+
+  sendC2G:
+    action: send
+    channel: { $ref: '#/channels/root' }
+    summary: 客户端发送群聊消息
+    messages:
+      - $ref: '#/channels/root/messages/C2GSend'
+
+  receiveC2G:
+    action: receive
+    channel: { $ref: '#/channels/root' }
+    summary: 服务端下发群聊消息
+    messages:
+      - $ref: '#/channels/root/messages/C2GDeliver'
+
+  sendAck:
+    action: send
+    channel: { $ref: '#/channels/root' }
+    summary: 客户端 ACK（已收 / 已读）
+    messages:
+      - $ref: '#/channels/root/messages/AckClient'
+
+components:
+  securitySchemes:
+    jwtQuery:
+      type: httpApiKey
+      in: query
+      name: token
+      description: |
+        WS 握手时通过 query string 传入 JWT。连接建立后 token 过期不会立即断开，
+        服务端会下发 `token_refresh` 消息要求 8 秒内刷新，超时强制下线。
+
+  messages:
+    C2CSend:
+      name: C2CSend
+      title: 客户端发送单聊
+      payload:
+        $ref: '#/components/schemas/C2CEnvelope'
+
+    C2CDeliver:
+      name: C2CDeliver
+      title: 服务端下发单聊
+      payload:
+        $ref: '#/components/schemas/C2CEnvelope'
+
+    C2GSend:
+      name: C2GSend
+      title: 客户端发送群聊
+      payload:
+        $ref: '#/components/schemas/C2GEnvelope'
+
+    C2GDeliver:
+      name: C2GDeliver
+      title: 服务端下发群聊
+      payload:
+        $ref: '#/components/schemas/C2GEnvelope'
+
+    AckClient:
+      name: AckClient
+      title: 客户端 ACK
+      payload:
+        type: object
+        required: [type, msg_id]
+        properties:
+          type:   { type: string, enum: [ack] }
+          msg_id: { type: string }
+          state:  { type: string, enum: [received, read] }
+
+    AckServer:
+      name: AckServer
+      title: 服务端 ACK
+      payload:
+        type: object
+        required: [type, msg_id, state]
+        properties:
+          type:   { type: string, enum: [s_ack] }
+          msg_id: { type: string }
+          state:  { type: string, enum: [accepted, rejected, duplicated] }
+          reason: { type: string, nullable: true }
+
+    Heartbeat:
+      name: Heartbeat
+      title: 心跳
+      payload:
+        type: object
+        required: [type]
+        properties:
+          type: { type: string, enum: [ping, pong] }
+
+    TokenRefresh:
+      name: TokenRefresh
+      title: 服务端要求刷新 token
+      payload:
+        type: object
+        required: [type]
+        properties:
+          type:     { type: string, enum: [token_refresh] }
+          deadline: { type: integer, description: 8 秒后强制下线的时间戳（毫秒） }
+
+    RevokeMessage:
+      name: RevokeMessage
+      title: 撤回消息
+      payload:
+        type: object
+        required: [type, msg_id]
+        properties:
+          type:   { type: string, enum: [revoke] }
+          msg_id: { type: string }
+
+    EditMessage:
+      name: EditMessage
+      title: 编辑消息
+      payload:
+        type: object
+        required: [type, msg_id, content]
+        properties:
+          type:    { type: string, enum: [edit] }
+          msg_id:  { type: string }
+          content: { type: string }
+
+  schemas:
+    C2CEnvelope:
+      type: object
+      required: [type, msg_id, from, to, content_type]
+      properties:
+        type:
+          type: string
+          enum: [c2c]
+        msg_id:
+          type: string
+          description: 发送方 TSID 生成的消息 ID（近似时间有序，非全局单调）
+        conv_seq:
+          type: integer
+          description: 服务端回填，per-conversation 严格单调递增
+        from:
+          type: string
+          description: 发送方 TSID integer 字符串（不使用 from_id）
+        to:
+          type: string
+          description: 接收方 TSID integer 字符串（不使用 to_id）
+        content_type:
+          type: string
+          enum: [text, image, voice, video, file, location, contact]
+        content:
+          type: object
+          description: 类型相关业务字段（文本、URL、坐标等）
+        ciphertext:
+          type: string
+          nullable: true
+          description: E2EE 场景下由客户端加密，服务端不解密
+        created_at:
+          type: integer
+          description: 客户端生成时间戳（毫秒），仅作业务时间参考
+
+    C2GEnvelope:
+      type: object
+      required: [type, msg_id, from, to, content_type]
+      properties:
+        type:
+          type: string
+          enum: [c2g]
+        msg_id:      { type: string }
+        conv_seq:    { type: integer }
+        from:        { type: string, description: 发送方 TSID }
+        to:          { type: string, description: 群 TSID }
+        content_type:
+          type: string
+          enum: [text, image, voice, video, file, location, contact]
+        content:     { type: object }
+        ciphertext:  { type: string, nullable: true }
+        at_uids:
+          type: array
+          items: { type: string }
+          description: @ 提醒的用户 TSID 列表
+        created_at:  { type: integer }

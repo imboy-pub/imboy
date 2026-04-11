@@ -1,8 +1,64 @@
-# Imboy - AI 上下文文档
+# Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新**: 2026-01-20 08:48:18 CST
-> **版本**: 0.7.3
-> **架构**: 单应用 4 层架构 (Handler -> Logic -> DS -> Repo)
+> **最后更新 / Last updated**: 2026-04-11 CST
+> **版本 / Version**: 1.0.0-rc.1
+> **架构 / Architecture**: 单应用 4 层架构 (Handler -> Logic -> DS -> Repo)
+
+---
+
+## 📘 文档双语强制规则 / Bilingual Documentation Rule (MANDATORY)
+
+> **适用范围 / Scope**：本项目（imboy 后端）所有新增 / 修改的 Markdown 文档（README、CHANGELOG、doc/**、.github/**、CONTRIBUTING、SECURITY、migration notes、runbook 等）必须遵守本规则。
+> All new or modified Markdown docs in this project (imboy backend) — README, CHANGELOG, doc/**, .github/**, CONTRIBUTING, SECURITY, migration notes, runbooks, etc. — MUST follow this rule.
+
+### 1. 强制双语 / Bilingual mandatory
+
+- 面向用户 / 贡献者 / 运维的文档必须同时提供 **简体中文 + English** 两种语言。
+- User / contributor / ops-facing docs MUST provide both **Simplified Chinese** and **English**.
+
+### 2. 组织方式（二选一）/ Organization (pick one)
+
+- **方式 A — 单文件并排 / Pattern A — Side-by-side**
+  每个小节按 `中文 / English` 同节并排或上下段落对照。适合短文档（README hero 段、CHANGELOG 条目、issue/PR 模板、SECURITY 通告）。
+  Each section uses `中文 / English` side-by-side or stacked paragraphs. Use for short docs (README hero, CHANGELOG entries, issue/PR templates, SECURITY advisories).
+
+- **方式 B — 文件后缀分离 / Pattern B — Separate files by suffix**
+  `README.md`（中文权威）+ `README.en.md`（英文镜像）；两个文件顶部互加语言切换链接 `[English](README.en.md) | 简体中文`。适合长文档（architecture、upgrade-runbook、API doc、whitepaper、operations/*）。
+  `README.md` (Chinese authoritative) + `README.en.md` (English mirror); both files have a language switcher at the top. Use for long docs (architecture, upgrade-runbook, API doc, whitepaper, operations/*).
+
+### 3. 权威语言 / Source of truth
+
+- **简体中文为权威版本**；英文版基于中文翻译而来。**中文先改，英文在同一次 PR 内同步跟进**，禁止出现只改中文不改英文或反之。
+- **Simplified Chinese is the source of truth**; English mirrors Chinese. **Update Chinese first, then sync English within the same PR**. Never ship one language without the other.
+
+### 4. 代码块与命令行原样保留 / Code and CLI verbatim
+
+- 代码、命令、配置文件、错误信息、HTTP 报文、SQL、Erlang 模块名不翻译。
+- Code, commands, config files, error messages, HTTP payloads, SQL, Erlang module names are NOT translated.
+
+### 5. 术语一致性 / Terminology consistency
+
+- 关键术语首次出现时给出对照：`会话 (Conversation)`、`首启向导 (First-run Setup Wizard)`、`消息归档 (Message Archive)`、`游标 (Cursor)`、`幂等 (Idempotent)`、`连接 (Connection)`、`渠道 / 频道 (Channel)`、`权限分离 (Privilege Separation)`。
+- Key terms come with a translation pair on first occurrence.
+
+### 6. 例外（可仅保留中文）/ Exceptions (Chinese-only allowed)
+
+- `.claude/plan/*`、`.claude/memory/*`、`docs/meeting/*`、内部会议纪要、个人研发笔记
+- `.claude/plan/*`, `.claude/memory/*`, `docs/meeting/*`, internal meeting notes, personal dev notes
+
+### 7. AI 编码代理契约 / AI Coding Agent Contract
+
+当 AI 代理（Claude Code / Cursor / Copilot）收到「写文档 / 改文档 / 新建 .md」类任务时：
+1. **默认双语输出**，无需用户额外提示。
+2. 修改已有单语文档时，**主动补齐**缺失的语言。
+3. 新建文档时，短文档走方式 A，长文档走方式 B。
+4. 变更文档后，在 commit message 中注明 `docs(bilingual):` 前缀或在 PR 描述中勾选 "docs bilingual check"。
+
+When an AI agent (Claude Code / Cursor / Copilot) is asked to write, modify, or create Markdown docs:
+1. **Default to bilingual output**, no extra user prompt needed.
+2. When editing an existing single-language doc, **proactively add** the missing language.
+3. When creating new docs, use Pattern A for short docs and Pattern B for long docs.
+4. Prefix commit messages with `docs(bilingual):` or tick "docs bilingual check" in the PR description.
 
 ---
 
@@ -385,7 +441,7 @@ test/
 - **UTF-8 编码**: [doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
 - **错误码规范**: [doc/standards/error-codes.md](./doc/standards/error-codes.md)
 - **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **ID 规范**: TSID 分布式 ID（替代 HashID），客户端 ID 以 integer 传输
+- **ID 规范**: TSID 分布式 ID（替代 HashID），REST API 以 JSON integer 传输；前端 safeParseBigIntJson 转 string；详见 [doc/api/tsid-field-convention.md](./doc/api/tsid-field-convention.md)
 - **API 格式**: [doc/standards/api-format.md](./doc/standards/api-format.md)
 
 ### 快速参考
@@ -395,7 +451,7 @@ test/
 | **UTF-8 编码** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
 | **错误码** | 使用宏定义，如 `?ERR_OK`, `?ERR_NOT_FOUND` | [error-codes.md](./doc/standards/error-codes.md) |
 | **数据库访问** | 所有数据库操作必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **TSID** | 分布式 ID 生成，客户端以 integer 传输，DB 存 BIGINT | [elib_tsid 文档](./src/lib/CLAUDE.md) |
+| **TSID** | 分布式 ID，JSON integer 传输；前端 safeParseBigIntJson 转 string | [tsid-field-convention](./doc/api/tsid-field-convention.md) |
 | **API 格式** | HTTP JSON 响应，WebSocket 消息格式 | [api-format.md](./doc/standards/api-format.md) |
 
 ### 常用示例
@@ -814,7 +870,7 @@ observer_cli:start()
 | **UTF-8** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
 | **错误码** | 使用 `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏 | [error-codes.md](./doc/standards/error-codes.md) |
 | **数据库** | 必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **TSID** | 分布式 ID，客户端 integer 传输 | [elib_tsid](./src/lib/CLAUDE.md) |
+| **TSID** | 分布式 ID，JSON integer 传输；前端转 string | [tsid-field-convention](./doc/api/tsid-field-convention.md) |
 
 ### 代码生成模板
 

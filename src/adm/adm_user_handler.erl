@@ -360,6 +360,7 @@ normalize_user_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条用户数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_user(map()) -> map().
 normalize_user(User) ->
-    User.
+    elib_id:tsid_keys_to_bin(User, [<<"id">>]).

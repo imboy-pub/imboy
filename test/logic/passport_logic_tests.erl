@@ -235,6 +235,10 @@ verify_user_with_invalid_password_fails_test_() ->
         ?assertMatch({error, invalid_password, _}, Result)
     end).
 
+verify_user_with_empty_user_map_returns_account_not_found_test() ->
+    Result = passport_logic:verify_user(<<"Test@123456">>, #{}),
+    ?assertEqual({error, <<"账号不存在"/utf8>>}, Result).
+
 verify_user_with_nonexistent_user_fails_test_() ->
     ?WITH_MECK(user_repo, [
         {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}

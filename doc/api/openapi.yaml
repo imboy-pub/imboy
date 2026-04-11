@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+  title: IMBoy REST API
+  version: 1.0.0-rc.1
+  summary: IMBoy 后端 HTTP / REST 接口冻结版
+  description: |
+    本文件是 IMBoy 1.0.0-rc.1 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
+    管理后台首启向导）。完整路径清单以 `imboy/src/imboy_router.erl` 为权威；本文件只
+    冻结**对外稳定**的端点。
+
+    **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
+    [envelope.schema.json](./envelope.schema.json)。
+
+    **认证**：Bearer JWT，载荷中的 `sub` 为 TSID（integer 字符串）。`/adm/setup/*`
+    与少数白名单路径免鉴权（见 `imboy_router:open/0`）。
+
+    **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
+  license:
+    name: MulanPSL-2.0
+    url: https://license.coscl.org.cn/MulanPSL2
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境
+    variables:
+      apiDomain:
+        default: api.example.com
+  - url: http://localhost:9800
+    description: 本地开发
+
+tags:
+  - name: auth
+    description: 登录、注册、token 刷新
+  - name: user
+    description: 用户资料
+  - name: msg
+    description: 消息查询与历史
+  - name: admin-setup
+    description: 首启初始化向导（免鉴权，仅允许执行一次）
+  - name: admin
+    description: 管理后台鉴权端点
+
+paths:
+  /adm/setup/status:
+    get:
+      tags: [admin-setup]
+      summary: 查询首启向导状态
+      description: 免鉴权。用于前端在 `/login` 挂载时决定是否跳转 `/setup`。
+      operationId: getSetupStatus
+      security: []
+      responses:
+        '200':
+          description: 状态查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        required: [initialized]
+                        properties:
+                          initialized:
+                            type: boolean
+                            description: true 表示系统已初始化，不应再进入向导
+
+  /adm/setup/init:
+    post:
+      tags: [admin-setup]
+      summary: 执行首启初始化
+      description: |
+        创建 `role_id=1` 超级管理员。成功一次后后端会把 `adm.setup.completed_at`
+        写入 `config` 表，再次调用返回 `ERR_SETUP_ALREADY_COMPLETED`。
+      operationId: initSetup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password, nickname]
+              properties:
+                account:
+                  type: string
+                  description: 手机号（`1[3-9]\d{9}`）或邮箱
+                  examples: [admin@example.com]
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 64
+                  description: 必须同时包含字母与数字
+                  examples: [StrongPass123]
+                nickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                  examples: [Ops]
+      responses:
+        '200':
+          description: 初始化成功或已初始化（通过 code 区分）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+
+  /passport/login:
+    post:
+      tags: [auth]
+      summary: 账号密码登录
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password]
+              properties:
+                account: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: 登录结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          uid: { type: string, description: TSID（integer 字符串） }
+                          token: { type: string, description: JWT access token }
+                          refresh_token: { type: string }
+                          expires_in: { type: integer, description: 秒 }
+
+  /passport/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新 token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: 新的 token 对
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+
+  /user/current:
+    get:
+      tags: [user]
+      summary: 当前登录用户资料
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: 用户资料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/User'
+
+  /user/{uid}:
+    get:
+      tags: [user]
+      summary: 按 uid 查询用户
+      operationId: getUserById
+      parameters:
+        - in: path
+          name: uid
+          required: true
+          schema: { type: string }
+          description: TSID（integer 字符串）
+      responses:
+        '200':
+          description: 用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+
+  /msg/history:
+    get:
+      tags: [msg]
+      summary: 按 conv_seq 游标拉取历史消息
+      description: |
+        IMBoy 消息永久存储使用 `conv_seq` 游标（per-conversation 单调递增）保证严格顺序。
+        客户端持久化 `last_conv_seq`，每次请求传入以拉取增量。
+      operationId: getMsgHistory
+      parameters:
+        - in: query
+          name: conv_key
+          required: true
+          schema: { type: string }
+          description: 会话键，C2C 为 `c2c:{min_uid}:{max_uid}`，C2G 为 `c2g:{group_id}`
+        - in: query
+          name: since_seq
+          required: false
+          schema: { type: integer, default: 0 }
+          description: 从该 conv_seq 之后拉取
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 增量消息数组
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Message'
+
+  /adm/users:
+    get:
+      tags: [admin]
+      summary: 管理后台用户列表（分页）
+      description: 游标分页，默认 `size=10`。搜索 / 筛选变化时 `page` 必须重置为 1。
+      operationId: adminListUsers
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1, minimum: 1 }
+        - in: query
+          name: size
+          schema: { type: integer, default: 10, maximum: 100 }
+        - in: query
+          name: keyword
+          schema: { type: string }
+      responses:
+        '200':
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          list:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/User'
+                          total: { type: integer }
+                          page:  { type: integer }
+                          size:  { type: integer }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
+        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
+
+  schemas:
+    Envelope:
+      type: object
+      required: [code, msg, sv_ts, payload]
+      properties:
+        code:
+          type: integer
+          description: 0 成功，其余为业务错误码
+        msg:
+          type: string
+        sv_ts:
+          type: integer
+          description: 服务端时间戳（毫秒）
+        payload:
+          description: 业务载荷，形状因端点而异
+      example:
+        code: 0
+        msg: ok
+        sv_ts: 1771481621000
+        payload: { id: 1 }
+
+    User:
+      type: object
+      properties:
+        id:        { type: string, description: TSID integer 字符串 }
+        mobile:    { type: string, nullable: true }
+        account:   { type: string, nullable: true }
+        nickname:  { type: string }
+        avatar:    { type: string, nullable: true }
+        status:    { type: integer }
+        created_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        msg_id:     { type: string, description: TSID（近似时间有序但不保证全局单调） }
+        conv_seq:   { type: integer, description: per-conversation 严格单调递增，历史顺序依据 }
+        from:       { type: string, description: 发送者 TSID }
+        to:         { type: string, description: 接收者 TSID 或群 TSID }
+        type:       { type: string, enum: [text, image, voice, video, file, location, contact, revoke, edit] }
+        payload:    { type: object, description: 类型相关业务载荷 }
+        ciphertext: { type: string, nullable: true, description: E2EE 场景服务端不解密 }
+        created_at:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []

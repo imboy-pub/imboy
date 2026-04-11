@@ -28,6 +28,8 @@ start(_Type, _Args) ->
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
     _ = simple_captcha_ets:init(),
+    % 显式初始化 throttle 限流规则，防止 sys.config 加载时序问题导致 rate_not_set
+    ok = init_throttle_rates(),
     % khepri:start(),
     % begin handler
     Routes = imboy_router:get_routes(),
@@ -237,6 +239,18 @@ start_clear(ProtoOpts, Port) ->
     cowboy:start_clear(imboy_listener,
                        [{port, Port}],
                        ProtoOpts).
+
+%% @doc 显式初始化 API throttle 限流规则
+%% throttle 库通过 sys.config 的 {rates, [...]} 自动 setup，但在某些启动时序下
+%% 可能在 Cowboy 中间件就绪前未完成初始化，导致 throttle:check/2 返回 rate_not_set。
+%% 此处显式 setup 两个关键规则作为保障。
+-spec init_throttle_rates() -> ok.
+init_throttle_rates() ->
+    %% 每用户每分钟 API 调用上限（与 sys.config 保持一致）
+    ok = throttle:setup(api_per_user, 120, per_minute),
+    %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
+    ok = throttle:setup(api_per_ip, 60, per_minute),
+    ok.
 
 -spec validate_runtime_config() -> ok.
 validate_runtime_config() ->

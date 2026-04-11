@@ -220,9 +220,10 @@ normalize_feedback_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条反馈数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_feedback(map()) -> map().
 normalize_feedback(Feedback) ->
-    Feedback.
+    elib_id:tsid_keys_to_bin(Feedback, [<<"id">>, <<"uid">>]).
 
 %% ===================================================================
 %% Feedback Workflow Config

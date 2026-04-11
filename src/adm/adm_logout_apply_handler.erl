@@ -284,11 +284,12 @@ keyword_like(<<>>) ->
 keyword_like(Keyword) ->
     <<"%", Keyword/binary, "%">>.
 
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_row(map()) -> map().
 normalize_row(Row) ->
     BodyBin = row_get(Row, <<"body">>, <<"{}">>),
     BodyMap = decode_body(BodyBin),
-    Uid = row_get(Row, <<"uid">>, 0),
+    Uid = elib_id:tsid_to_bin(row_get(Row, <<"uid">>, 0)),
     #{
         uid => Uid,
         account => row_get(Row, <<"account">>, <<>>),

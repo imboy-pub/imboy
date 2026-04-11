@@ -60,7 +60,17 @@ api_init(Req0) ->
     % elib_response:success(Req0, Data, "success.").
     IV = config_ds:get(<<"solidified_key_iv">>),
     Key = elib_hasher:md5(SignKey),
-    % ?DEBUG_LOG([key, Key, iv, IV]),
+    %% AES-256-CBC 强约束：Key 必须 32 字节，IV 必须 16 字节
+    %% 配置缺失时 fail fast，避免 crypto_init 崩到 cowboy stream（Bad iv size）
+    case {byte_size(IV), iolist_size(Key)} of
+        {16, 32} -> ok;
+        {IvLen, KeyLen} ->
+            ?ERROR_LOG("index_handler api_init: bad crypto params, key_len=~p iv_len=~p (expect key=32, iv=16). "
+                       "Run config_ds:set(<<\"solidified_key\">>, <<32-bytes>>) and "
+                       "config_ds:set(<<\"solidified_key_iv\">>, <<16-bytes>>).",
+                       [KeyLen, IvLen]),
+            erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}})
+    end,
     Bin = elib_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
     Test = case elib_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []) of
         {ok, [Row]} -> Row;

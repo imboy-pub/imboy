@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public."user" (
     id bigserial NOT NULL, -- 主键 自增长ID
     level_id int8 DEFAULT 1 NOT NULL, -- 会员等级ID
     nickname varchar(80) DEFAULT ''::character varying NOT NULL, -- 用户昵称
-    "password" varchar(800) NOT NULL, -- 经过加盐的密码 elib_password:generate(elib_hasher:md5("admin888")).
+    "password" varchar(800) NOT NULL, -- 经过加盐的密码，首启向导或业务注册时由 elib_password:generate/1 生成
     account varchar(80) NOT NULL, -- 会员账号
     mobile varchar(40) NULL, -- 手机号码
     email varchar(80) NULL, -- 会员注册Email
@@ -37,7 +37,7 @@ COMMENT ON TABLE public."user" IS '用户表';
 COMMENT ON COLUMN public."user".id IS '主键 自增长ID';
 COMMENT ON COLUMN public."user".level_id IS '会员等级ID';
 COMMENT ON COLUMN public."user".nickname IS '用户昵称';
-COMMENT ON COLUMN public."user"."password" IS '经过加盐的密码 elib_password:generate(elib_hasher:md5("admin888")).';
+COMMENT ON COLUMN public."user"."password" IS '经过加盐的密码，由 elib_password:generate/1 生成（HMAC-SHA512）';
 COMMENT ON COLUMN public."user".account IS '会员账号';
 COMMENT ON COLUMN public."user".mobile IS '手机号码';
 COMMENT ON COLUMN public."user".email IS '会员注册Email';

@@ -6,6 +6,18 @@
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
 > Related docs: `doc/api/channel_api_contract_v1.md`, `doc/api/moment_api_contract_v1.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/api/websocket-api-2.md`
 
+## 0. TSID 字段约定
+
+所有 REST API 响应中，实体 ID 字段（`id`、`uid`、`from_id`、`to_id`、`group_id`、`peer_id` 等）均为 **TSID（64 位分布式 ID）**，以 **JSON integer（number）** 格式传输。
+
+客户端精度处理：
+- **Admin 前端（TypeScript）**：`axios` 的 `safeParseBigIntJson` 自动将 16 位以上整数转为 `string`，TypeScript 类型统一使用 `EntityId = string`
+- **Flutter 移动端（Dart）**：Dart `int` 为 64 位，直接接收无精度问题
+
+详见：[doc/api/tsid-field-convention.md](./tsid-field-convention.md)
+
+---
+
 ## 1. 文档定位
 
 本文档只保留通用 REST 入口、兼容性接口和基础契约。

@@ -2191,9 +2191,10 @@ normalize_group_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条群组数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_group(map()) -> map().
 normalize_group(Group) ->
-    Group.
+    elib_id:tsid_keys_to_bin(Group, [<<"id">>, <<"owner_uid">>, <<"creator_uid">>]).
 
 %% @doc 规范化群成员分页数据（编码ID字段）
 -spec normalize_member_payload(map()) -> map().
@@ -2203,11 +2204,13 @@ normalize_member_payload(Payload) ->
     maps:remove(items, Payload#{list => List2}).
 
 %% @doc 规范化单条群成员数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_member(map()) -> map().
 normalize_member(Member) ->
-    Member.
+    elib_id:tsid_keys_to_bin(Member, [<<"id">>, <<"group_id">>, <<"user_id">>]).
 
 %% @doc 规范化用户数据（编码ID字段）
+%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_user(map()) -> map().
 normalize_user(User) ->
-    User.
+    elib_id:tsid_keys_to_bin(User, [<<"id">>]).

@@ -486,6 +486,8 @@ find_password_by_email(Email, Pwd, _PostVals) ->
 -spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
 verify_user(<<>>, _) ->
     {error, <<"账号不存在"/utf8>>};
+verify_user(_Pwd, User) when map_size(User) =:= 0 ->
+    {error, <<"账号不存在"/utf8>>};
 verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中

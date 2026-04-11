@@ -114,6 +114,9 @@
 -define(ERR_ACCOUNT_NOT_EXIST, 908).              % 账号不存在
 -define(ERR_ACCOUNT_ALREADY_EXISTS, 909).         % 账号已存在
 -define(ERR_LOGIN_ELSEWHERE, 910).                % 在其他设备登录
+%% 首启初始化相关（911-919）
+-define(ERR_SETUP_ALREADY_COMPLETED, 911).         % 系统已完成首启初始化
+-define(ERR_SETUP_INVALID_PARAMS, 912).            % 首启参数无效
 %% 好友相关
 -define(ERR_NOT_FRIENDS, 920).                    % 不是好友
 -define(ERR_FRIEND_REQUEST_PENDING, 921).         % 好友请求待确认
@@ -283,6 +286,8 @@
     908 => <<"账号不存在"/utf8>>,
     909 => <<"账号已存在"/utf8>>,
     910 => <<"您的账号已在其他设备登录"/utf8>>,
+    911 => <<"系统已完成首启初始化"/utf8>>,
+    912 => <<"首启参数无效"/utf8>>,
     920 => <<"还不是好友"/utf8>>,
     921 => <<"好友请求待确认"/utf8>>,
     922 => <<"好友请求被拒绝"/utf8>>,

@@ -494,6 +494,9 @@ get_routes() ->
     AdmRoutes = [
         {"/adm", adm_index_handler, #{action => index}},
         {"/adm/index", adm_index_handler, #{action => index}},
+        % 首启初始化向导（P0-5）— 免鉴权，见 open/0
+        {"/adm/setup/status", adm_setup_handler, #{action => status}},
+        {"/adm/setup/init", adm_setup_handler, #{action => init_setup}},
         {"/adm/current", adm_index_handler, #{action => current}},
         {"/adm/rbac/me", adm_index_handler, #{action => rbac}},
         {"/adm/welcome", adm_index_handler, #{action => welcome}},
@@ -678,6 +681,10 @@ open() ->
 
      <<"/metrics">>,
      <<"/v1/metrics">>,
+
+     %% 首启初始化向导（P0-5）— 部署后首次访问必须免鉴权
+     <<"/adm/setup/status">>,
+     <<"/adm/setup/init">>,
 
      <<"/">>] ++ test_open_routes().
 
