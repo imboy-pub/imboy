@@ -253,7 +253,7 @@ ensure_table_exists() ->
     Tb = tablename(),
     case elib_pg:execute(
         <<"CREATE TABLE IF NOT EXISTS ", Tb/binary, " (
-            id BIGSERIAL PRIMARY KEY,
+            id BIGINT PRIMARY KEY,
             type VARCHAR(10) NOT NULL,
             msg_id VARCHAR(50) NOT NULL,
             msg_type VARCHAR(50),

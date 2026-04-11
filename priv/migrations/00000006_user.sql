@@ -28,8 +28,14 @@ CREATE TABLE IF NOT EXISTS public."user" (
     CONSTRAINT user_pkey PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uk_account ON public."user" USING btree (account);
-CREATE UNIQUE INDEX IF NOT EXISTS uk_email ON public."user" USING btree (email);
-CREATE UNIQUE INDEX IF NOT EXISTS uk_mobile ON public."user" USING btree (mobile);
+-- 去重：保留每组重复 email 中 id 最小的那条，其余置 NULL
+DELETE FROM public."user" a USING public."user" b
+WHERE a.email = b.email AND a.email IS NOT NULL AND a.email <> '' AND a.id > b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_email ON public."user" USING btree (email) WHERE email IS NOT NULL AND email <> '';
+-- 去重：保留每组重复 mobile 中 id 最小的那条，其余置 NULL
+DELETE FROM public."user" a USING public."user" b
+WHERE a.mobile = b.mobile AND a.mobile IS NOT NULL AND a.mobile <> '' AND a.id > b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_mobile ON public."user" USING btree (mobile) WHERE mobile IS NOT NULL AND mobile <> '';
 COMMENT ON TABLE public."user" IS '用户表';
 
 -- Column comments

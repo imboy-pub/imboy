@@ -47,7 +47,7 @@ init(Req0, State0) ->
 %%   did - 设备ID
 -spec report(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 report(<<"POST">>, Req0, _State) ->
-    {ok, Body0} = elib_req:body(Req0, []),
+    {ok, Body0, _Req1} = elib_req:body(Req0, []),
     Cos = cowboy_req:header(<<"cos">>, Req0, <<>>),
     DID = cowboy_req:header(<<"did">>, Req0, <<>>),
 

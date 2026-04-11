@@ -112,13 +112,11 @@ tsid_generator_names() ->
     [
         %% ── 用户相关 ──
         user,
-        user_setting,
         user_device,
         user_collect,
         user_denylist,
         user_tag,
         user_tag_relation,
-        user_log,
         %% ── 好友相关 ──
         friend,
         friend_category,
@@ -153,7 +151,6 @@ tsid_generator_names() ->
         msg_reaction,
         msg_pinned,
         %% ── 会话相关 ──
-        conversation,
         conversation_pin,
         conversation_delete,
         %% ── 附件 / 媒体 ──
@@ -195,15 +192,13 @@ tsid_generator_names() ->
         announcement,
         %% ── 合规 ──
         compliance_key,
-        %% ── 验证码 ──
-        verification_code,
         %% ── 管理员 ──
         adm_user,
         %% ── 应用配置 ──
         app_version,
         app_ddl,
-        %% ── 附近的人 ──
-        geo_people_nearby,
+        app_upgrade_log,
+        app_version_policy,
         %% ── 全文搜索 ──
         fts_user
     ].

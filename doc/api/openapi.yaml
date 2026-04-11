@@ -138,7 +138,7 @@ paths:
                       payload:
                         type: object
                         properties:
-                          uid: { type: string, description: TSID（integer 字符串） }
+                          uid: { type: integer, format: int64, description: 用户 TSID（JSON integer，前端 safeParseBigIntJson 转为 string） }
                           token: { type: string, description: JWT access token }
                           refresh_token: { type: string }
                           expires_in: { type: integer, description: 秒 }
@@ -312,7 +312,7 @@ components:
     User:
       type: object
       properties:
-        id:        { type: string, description: TSID integer 字符串 }
+        id:        { type: integer, format: int64, description: TSID（JSON integer，64-bit BIGINT） }
         mobile:    { type: string, nullable: true }
         account:   { type: string, nullable: true }
         nickname:  { type: string }
@@ -325,10 +325,10 @@ components:
     Message:
       type: object
       properties:
-        msg_id:     { type: string, description: TSID（近似时间有序但不保证全局单调） }
+        msg_id:     { type: integer, format: int64, description: 消息 TSID（近似时间有序但不保证全局单调） }
         conv_seq:   { type: integer, description: per-conversation 严格单调递增，历史顺序依据 }
-        from:       { type: string, description: 发送者 TSID }
-        to:         { type: string, description: 接收者 TSID 或群 TSID }
+        from:       { type: integer, format: int64, description: 发送者 TSID }
+        to:         { type: integer, format: int64, description: 接收者 TSID 或群 TSID }
         type:       { type: string, enum: [text, image, voice, video, file, location, contact, revoke, edit] }
         payload:    { type: object, description: 类型相关业务载荷 }
         ciphertext: { type: string, nullable: true, description: E2EE 场景服务端不解密 }

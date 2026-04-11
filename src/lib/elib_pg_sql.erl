@@ -13,6 +13,7 @@
 
 -export([
     public_tablename/1,
+    insert/2,
     insert/3,
     insert_with_params/4,
     update/4,
@@ -40,6 +41,16 @@ public_tablename(Tb) ->
         _ ->
             Tb
     end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% 构造 INSERT SQL（兼容旧调用，默认不带 RETURNING）
+%%--------------------------------------------------------------------
+-spec insert(binary(), map()) ->
+    {iodata(), [term()]}.
+insert(Table, Map) when is_map(Map) ->
+    {Sql, Params} = insert(Table, Map, <<>>),
+    {trim_trailing_space(Sql), Params}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -594,3 +605,18 @@ parse_result({ok, _, [{Id}]}) when is_integer(Id) -> {ok, Id, #{}}; % For epgsql
 parse_result({ok, _, [{ {Id} }]}) when is_integer(Id) -> {ok, Id, #{}}; % For epgsql result [{123}]
 parse_result({ok, _, [Id]}) when is_integer(Id) -> {ok, Id, #{}};
 parse_result({error, Reason}) -> {error, Reason}.
+
+-spec trim_trailing_space(iodata()) -> binary().
+trim_trailing_space(Sql) ->
+    SqlBin = iolist_to_binary(Sql),
+    case byte_size(SqlBin) of
+        0 ->
+            SqlBin;
+        Size ->
+            case binary:at(SqlBin, Size - 1) of
+                $\s ->
+                    binary:part(SqlBin, 0, Size - 1);
+                _ ->
+                    SqlBin
+            end
+    end.

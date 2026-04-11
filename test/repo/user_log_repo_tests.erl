@@ -28,13 +28,38 @@ tablename_returns_correct_table_test_() ->
 %% user_log_repo 仅导出 add/1 和 add/2，无查询函数
 
 add_log_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(_Table) -> <<"public.user_log">> end},
+            {'insert', 2, fun(Table, Data) ->
+                ?assertEqual(<<"public.user_log">>, Table),
+                ?assertEqual(#{
+                    uid => 1,
+                    action => <<"login">>,
+                    detail => <<"User logged in from iOS">>
+                }, Data),
+                {<<"INSERT INTO public.user_log (uid,action,detail) VALUES ($1,$2,$3)">>,
+                 [1, <<"login">>, <<"User logged in from iOS">>]}
+            end}
+        ]},
+        {elib_pg, [
+            {'with_tx', 1, fun(Fun) ->
+                ?assert(is_function(Fun, 1)),
+                Fun(mock_conn)
+            end},
+            {'execute', 3, fun(mock_conn, Sql, Params) ->
+                SqlBin = iolist_to_binary(Sql),
+                ?assert(binary:match(SqlBin, <<"INSERT INTO public.user_log">>) =/= nomatch),
+                ?assertEqual([1, <<"login">>, <<"User logged in from iOS">>], Params),
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
         Data = #{
             uid => 1,
             action => <<"login">>,
             detail => <<"User logged in from iOS">>
         },
         Result = user_log_repo:add(Data),
-        % 验证函数调用不会崩溃
-        ?assert(is_tuple(Result))
+        ?assertEqual({ok, 1}, Result)
     end).

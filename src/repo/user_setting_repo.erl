@@ -82,17 +82,16 @@ save(Uid, Key, Value) when is_binary(Uid) ->
 save(Uid, Key, Value) when is_integer(Uid) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    GenId = elib_tsid:generate(user_setting),
     Sql = <<
         "/* INSERT.*INTO.*user_setting ON CONFLICT.*DO UPDATE */ "
-        "INSERT INTO ", Tb/binary, " (id, user_id, setting, updated_at) "
-        "VALUES ($1, $2, jsonb_build_object($3, $4)::json, $5) "
+        "INSERT INTO ", Tb/binary, " (user_id, setting, updated_at) "
+        "VALUES ($1, jsonb_build_object($2, $3)::json, $4) "
         "ON CONFLICT (user_id) DO UPDATE SET "
         "setting = (COALESCE(", Tb/binary, ".setting, '{}'::json)::jsonb || "
-        "jsonb_build_object($3, $4))::json, "
+        "jsonb_build_object($2, $3))::json, "
         "updated_at = EXCLUDED.updated_at"
     >>,
-    _ = execute_compat(Sql, [GenId, Uid, Key, Value, Now]),
+    _ = execute_compat(Sql, [Uid, Key, Value, Now]),
     ok.
 
 %% @doc 根据用户ID查找用户设置
@@ -138,11 +137,8 @@ update(Uid, Setting) when is_integer(Uid) ->
         "  updated_at = EXCLUDED.updated_at"
     >>,
 
-    %% 预生成 TSID
-    Id = elib_tsid:generate(user_setting),
-    Data2 = Data#{<<"id">> => Id},
-    %% 构建带ON CONFLICT的INSERT SQL
-    {Sql, Params} = elib_pg_sql:insert(tablename(), Data2),
+    %% user_setting 以 user_id 为主键，不使用独立的 TSID 主键列
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
     FullSql = [Sql, <<" ">>, OnConflict],
     _ = elib_pg:execute(FullSql, Params),
     ok.

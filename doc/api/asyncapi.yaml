@@ -136,7 +136,7 @@ components:
         required: [type, msg_id]
         properties:
           type:   { type: string, enum: [ack] }
-          msg_id: { type: string }
+          msg_id: { type: integer, format: int64 }
           state:  { type: string, enum: [received, read] }
 
     AckServer:
@@ -147,7 +147,7 @@ components:
         required: [type, msg_id, state]
         properties:
           type:   { type: string, enum: [s_ack] }
-          msg_id: { type: string }
+          msg_id: { type: integer, format: int64 }
           state:  { type: string, enum: [accepted, rejected, duplicated] }
           reason: { type: string, nullable: true }
 
@@ -178,7 +178,7 @@ components:
         required: [type, msg_id]
         properties:
           type:   { type: string, enum: [revoke] }
-          msg_id: { type: string }
+          msg_id: { type: integer, format: int64 }
 
     EditMessage:
       name: EditMessage
@@ -188,7 +188,7 @@ components:
         required: [type, msg_id, content]
         properties:
           type:    { type: string, enum: [edit] }
-          msg_id:  { type: string }
+          msg_id:  { type: integer, format: int64 }
           content: { type: string }
 
   schemas:
@@ -200,17 +200,20 @@ components:
           type: string
           enum: [c2c]
         msg_id:
-          type: string
+          type: integer
+          format: int64
           description: 发送方 TSID 生成的消息 ID（近似时间有序，非全局单调）
         conv_seq:
           type: integer
           description: 服务端回填，per-conversation 严格单调递增
         from:
-          type: string
-          description: 发送方 TSID integer 字符串（不使用 from_id）
+          type: integer
+          format: int64
+          description: 发送方 TSID（JSON integer）
         to:
-          type: string
-          description: 接收方 TSID integer 字符串（不使用 to_id）
+          type: integer
+          format: int64
+          description: 接收方 TSID（JSON integer）
         content_type:
           type: string
           enum: [text, image, voice, video, file, location, contact]
@@ -232,10 +235,10 @@ components:
         type:
           type: string
           enum: [c2g]
-        msg_id:      { type: string }
+        msg_id:      { type: integer, format: int64 }
         conv_seq:    { type: integer }
-        from:        { type: string, description: 发送方 TSID }
-        to:          { type: string, description: 群 TSID }
+        from:        { type: integer, format: int64, description: 发送方 TSID }
+        to:          { type: integer, format: int64, description: 群 TSID }
         content_type:
           type: string
           enum: [text, image, voice, video, file, location, contact]
@@ -243,6 +246,6 @@ components:
         ciphertext:  { type: string, nullable: true }
         at_uids:
           type: array
-          items: { type: string }
-          description: @ 提醒的用户 TSID 列表
+          items: { type: integer, format: int64 }
+          description: '@ 提醒的用户 TSID 列表'
         created_at:  { type: integer }

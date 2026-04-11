@@ -34,15 +34,13 @@ add(Data) ->
 %% @doc 添加用户日志
 %% @param Conn 数据库连接
 %% @param Data 日志数据map
-%% @return {ok, Result} | {ok, Count, Result} | {error, Reason}
--spec add(epgsql:connection() | pid(), map()) -> {ok, integer()} | {error, term()}.
+%% @return {ok, Count} | {error, Reason}
+-spec add(epgsql:connection() | pid(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(user_log),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data),
     case elib_pg:execute(Conn, Sql, Params) of
-        {ok, _Count} -> {ok, Id};
+        {ok, Count} -> {ok, Count};
         {error, _} = Err -> Err
     end.
 
@@ -55,4 +53,3 @@ add(Conn, Data) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-
