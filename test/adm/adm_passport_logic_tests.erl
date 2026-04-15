@@ -17,7 +17,7 @@
 %% @doc 测试空密码登录失败
 do_login_with_empty_password_fails_test_() ->
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Mobile) -> true end}
         ]}
     ], fun() ->
@@ -34,7 +34,7 @@ do_login_with_mobile_and_mock_test_() ->
     % 这是一个伪造的哈希值，仅用于测试
     PwdHash = <<"fake_hash_for_testing_only">>,
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Mobile) -> true end}
         ]},
         {adm_user_repo, [
@@ -69,7 +69,7 @@ do_login_with_mobile_and_mock_test_() ->
 do_login_with_account_and_mock_test_() ->
     PwdHash = <<"fake_hash_for_testing_only">>,
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Account) -> false end}
         ]},
         {adm_user_repo, [
@@ -102,7 +102,7 @@ do_login_with_account_and_mock_test_() ->
 %% @doc 测试使用不存在账号登录失败
 do_login_with_nonexistent_account_test_() ->
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Account) -> false end}
         ]},
         {adm_user_repo, [
@@ -125,7 +125,7 @@ do_login_with_nonexistent_account_test_() ->
 %% @doc 测试使用错误密码登录失败
 do_login_with_wrong_password_test_() ->
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Mobile) -> true end}
         ]},
         {adm_user_repo, [
@@ -154,7 +154,7 @@ do_login_with_wrong_password_test_() ->
 do_login_with_disabled_account_test_() ->
     PwdHash = <<"fake_hash_for_testing_only">>,
     ?WITH_MECKS([
-        {imboy_func, [
+        {elib_type, [
             {'is_mobile', 1, fun(_Mobile) -> true end}
         ]},
         {adm_user_repo, [
