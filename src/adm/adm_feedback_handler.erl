@@ -62,8 +62,7 @@ index(<<"GET">>, _Ajax, Req0, _State) ->
           "client_operating_system_vsn, type, rating, contact_detail, "
           "body, attach, reply_count, status, updated_at, created_at, "
           "app_vsn">>,
-    Tb = feedback_repo:tablename(),
-    {ok, P} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
+    {ok, P} = feedback_ds:page(Column, Where, <<"id desc">>, Page, Size),
     P2 = normalize_feedback_payload(P),
     elib_response:success(Req0, P2);
 index(_, _Ajax, Req0, _State) ->

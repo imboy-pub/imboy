@@ -11,7 +11,7 @@ pay(OrderNo, Amount, Opts) ->
         true ->
             {error, <<"支付参数错误"/utf8>>};
         false ->
-            case wallet_repo:find_by_uid(Uid) of
+            case wallet_ds:find_by_uid(Uid) of
                 Wallet when is_map(Wallet), map_size(Wallet) > 0 ->
                     WalletId = maps:get(<<"id">>, Wallet, 0),
                     PayNo = iolist_to_binary([<<"WPY_">>, OrderNo]),
@@ -23,7 +23,7 @@ pay(OrderNo, Amount, Opts) ->
                         <<"remark">> => <<"频道订阅"/utf8>>,
                         <<"status">> => 1
                     },
-                    case wallet_repo:atomic_balance_change(-Amount, Uid, TxData, PayNo) of
+                    case wallet_ds:atomic_balance_change(-Amount, Uid, TxData, PayNo) of
                         {ok, _NewBalance} ->
                             {ok, PayNo};
                         {rollback, insufficient_balance} ->
@@ -38,7 +38,7 @@ pay(OrderNo, Amount, Opts) ->
     end.
 
 refund(PaymentNo, _Amount) ->
-    case wallet_repo:find_transaction_by_ref(PaymentNo) of
+    case wallet_ds:find_transaction_by_ref(PaymentNo) of
         Tx when is_map(Tx), map_size(Tx) > 0 ->
             Uid = maps:get(<<"user_id">>, Tx, 0),
             PaidAmount = abs(maps:get(<<"amount">>, Tx, 0)),
@@ -46,7 +46,7 @@ refund(PaymentNo, _Amount) ->
                 false ->
                     {error, <<"退款参数错误"/utf8>>};
                 true ->
-                    case wallet_repo:find_by_uid(Uid) of
+                    case wallet_ds:find_by_uid(Uid) of
                         Wallet when is_map(Wallet), map_size(Wallet) > 0 ->
                             WalletId = maps:get(<<"id">>, Wallet, 0),
                             RefNo = iolist_to_binary([<<"WRF_">>, PaymentNo]),
@@ -58,7 +58,7 @@ refund(PaymentNo, _Amount) ->
                                 <<"remark">> => <<"退款"/utf8>>,
                                 <<"status">> => 1
                             },
-                            case wallet_repo:atomic_balance_change(PaidAmount, Uid, TxData, RefNo) of
+                            case wallet_ds:atomic_balance_change(PaidAmount, Uid, TxData, RefNo) of
                                 {ok, _NewBalance} ->
                                     ok;
                                 {error, Reason} ->

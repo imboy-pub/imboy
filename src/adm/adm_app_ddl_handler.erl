@@ -62,8 +62,7 @@ index(<<"GET">>, _Ajax, Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
     Where = #{},
     Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
-    Tb = app_ddl_repo:tablename(),
-    {ok, Payload} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
+    {ok, Payload} = app_ddl_ds:page(Column, Where, <<"id desc">>, Page, Size),
     elib_response:success(Req0, Payload);
 index(_Method, _Ajax, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).

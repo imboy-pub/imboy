@@ -141,7 +141,7 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
                         CurrentUid, ToId, CreatedAtRfc, NowTs);
                 _ ->
                     % 有引用信息，需要先验证被引用的消息是否存在
-                    case msg_c2c_repo:find_msg_by_id(ReplyToMsgId) of
+                    case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
                         {ok, _OriginalMsg} ->
                             msg_store_ds:stage(
                                 <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
@@ -488,7 +488,7 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
 
     % 保存已读记录到数据库
     ReadAtRfc = elib_dt:to_rfc3339(ReadAt),
-    case msg_read_repo:save_read(MsgId, ToId, CurrentUid, ToDid, ReadAtRfc) of
+    case msg_read_ds:save_read(MsgId, ToId, CurrentUid, ToDid, ReadAtRfc) of
         ok ->
             % 构建已读回执消息（v2.0 格式）
             ReadPayload = #{
@@ -576,7 +576,7 @@ extract_reply_info(Data) ->
             ReplySnippet = case ReplyToMsgId of
                 <<>> -> <<>>;
                 _ ->
-                    case msg_c2c_repo:find_msg_by_id(ReplyToMsgId) of
+                    case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
                         {ok, OriginalMsg} ->
                             Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
                             % 尝试解析 JSON 并提取 content 字段
@@ -614,16 +614,7 @@ extract_reply_info(Data) ->
 %% @param ExpireAt 过期时间（RFC3339 binary）
 -spec set_c2c_expire_at(binary(), binary()) -> ok.
 set_c2c_expire_at(MsgId, ExpireAt) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-           " SET expire_at = $1"
-           " WHERE msg_id = $2">>,
-    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} -> ok;
-        {error, Reason} ->
-            _ = ?WARN_LOG({set_c2c_expire_at_failed, MsgId, Reason}),
-            ok
-    end.
+    msg_c2c_ds:set_expire_at(MsgId, ExpireAt).
 
 %% @doc 持久化 action ack payload 到原消息记录
 %% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
@@ -632,7 +623,7 @@ persist_action_payload(<<>>, _Payload) ->
     ok;
 persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
     PayloadJson = imboy_message_helper:encode_json(Payload),
-    case msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
+    case msg_c2c_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
         {ok, _} ->
             ok;
         {error, Reason} ->

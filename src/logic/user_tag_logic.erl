@@ -48,7 +48,7 @@ delete(Uid, Scene, Tag) ->
     case user_tag_ds:find_tag_id(Uid, Scene, Tag) of
         {ok, TagId} when TagId > 0 ->
             %% 先删除 user_tag_relation 中该标签的所有关联记录，防止孤立数据
-            user_tag_relation_repo:delete_by_tag_id(TagId);
+            user_tag_relation_ds:delete_by_tag_id(TagId);
         _ ->
             ok
     end,

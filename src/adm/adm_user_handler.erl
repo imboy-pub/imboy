@@ -47,7 +47,7 @@ list(<<"GET">>, Req0, _State) ->
     {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
 
     Where = build_where(Status, Keyword),
-    {ok, P} = user_repo:page(Page, Size, Where, <<"created_at DESC">>),
+    {ok, P} = user_ds:page(Page, Size, Where, <<"created_at DESC">>),
     P2 = normalize_user_payload(P),
     elib_response:success(Req0, P2).
 
@@ -58,15 +58,15 @@ detail(<<"GET">>, Req0, _State) ->
     case Uid > 0 of
         true ->
             Column = <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
-            User = user_repo:find_by_id(Uid, Column),
+            User = user_ds:find_by_id(Uid, Column),
             case map_size(User) > 0 of
                 true ->
                     % 获取用户设备数
-                    DeviceCount = user_device_repo:count_by_uid(Uid),
+                    DeviceCount = user_device_ds:count_by_uid(Uid),
                     % 获取用户好友数
-                    FriendCount = friend_repo:count_by_uid(Uid),
+                    FriendCount = friend_ds:count_by_uid(Uid),
                     % 获取用户群组数
-                    GroupCount = group_member_repo:count_by_uid(Uid),
+                    GroupCount = group_member_ds:count_by_uid(Uid),
                     Result = User#{
                         device_count => DeviceCount,
                         friend_count => FriendCount,
@@ -87,7 +87,7 @@ ban(<<"POST">>, Req0, _State) ->
     Uid = parse_uid_param(Req0),
     case Uid > 0 of
         true ->
-            case user_repo:update(Uid, #{status => 0}) of
+            case user_ds:update(Uid, #{status => 0}) of
                 {ok, _} ->
                     elib_response:success(Req0, #{}, "操作成功");
                 {error, Reason} ->
@@ -104,7 +104,7 @@ unban(<<"POST">>, Req0, _State) ->
     Uid = parse_uid_param(Req0),
     case Uid > 0 of
         true ->
-            case user_repo:update(Uid, #{status => 1}) of
+            case user_ds:update(Uid, #{status => 1}) of
                 {ok, _} ->
                     elib_response:success(Req0, #{}, "操作成功");
                 {error, Reason} ->
@@ -131,7 +131,7 @@ search(<<"GET">>, Req0, _State) ->
                     #{mobile => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
                 ]
             },
-            {ok, P} = user_repo:page(Page, Size, Where, <<"created_at DESC">>),
+            {ok, P} = user_ds:page(Page, Size, Where, <<"created_at DESC">>),
             P2 = normalize_user_payload(P),
             elib_response:success(Req0, P2);
         false ->
@@ -173,13 +173,7 @@ tag_delete(<<"POST">>, Req0, _State) ->
     Tag =
         case {TagFromBody, TagId > 0, Uid > 0, Scene > 0} of
             {<<>>, true, true, true} ->
-                Tb = user_tag_repo:tablename(),
-                elib_pg:pluck_value(
-                    Tb,
-                    <<"name">>,
-                    #{id => TagId, creator_user_id => Uid, scene => Scene},
-                    <<>>
-                );
+                user_tag_ds:find_name_by_id(TagId, Uid, Scene);
             _ ->
                 TagFromBody
         end,
@@ -242,8 +236,7 @@ collect_list(<<"GET">>, Req0, _State) ->
                 end,
             Info = elib_hasher:decoded_field(<<"info">>),
             Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-            Tb = user_collect_repo:tablename(),
-            case elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size) of
+            case user_collect_ds:page(Column, Where, Order, Page, Size) of
                 {ok, Payload0} ->
                     List = maps:get(list, Payload0, []),
                     Payload = maps:put(list, elib_response:json_decode_list_field(List, <<"info">>), Payload0),

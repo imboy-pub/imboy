@@ -2,7 +2,8 @@
 %%%
 % group_ds 是 group domain service 缩写
 %%%
-% -export ([find_by_id/2]).
+-export([find_by_id/2]).
+-export([update_owner_tx/3]).
 -export([check_avatar/1]).
 -export([gid/0]).
 -export([create_group/6]).
@@ -18,6 +19,17 @@
 -export([join/2]).
 -export([leave/2]).
 -export([dissolve/1]).
+-export([list_by_ids/2]).
+-export([page/4]).
+-export([update/1]).
+-export([get_user_id_sum/1]).
+-export([count_by_owner/1]).
+-export([exists/1]).
+-export([update_by_id/2]).
+-export([insert/1]).
+-export([page_by_owner/3]).
+-export([page_joined/3]).
+-export([page_managed/3]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -443,6 +455,100 @@ find_by_creator_and_sum(CreatorUid, UserIdSum) ->
         {ok, [#{<<"id">> := Gid}]} -> Gid;
         _ -> 0
     end.
+
+%% G3: group_logic 不应直调 group_repo / thin DS wrappers
+-spec find_by_id(integer() | binary(), binary()) -> map() | {error, any()}.
+find_by_id(Gid, Column) ->
+    group_repo:find_by_id(Gid, Column).
+
+-spec update_owner_tx(any(), integer(), integer()) -> ok | {error, any()}.
+update_owner_tx(Conn, Gid, NewOwnerUid) ->
+    group_repo:update_owner_tx(Conn, Gid, NewOwnerUid).
+
+%% G3: group_member_handler 不应直调 group_repo
+-spec list_by_ids(list(integer()), binary()) -> {ok, list(map())} | {error, any()}.
+list_by_ids(Ids, Column) -> group_repo:list_by_ids(Ids, Column).
+
+%% G3 thin wrappers for adm_group_handler
+-spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
+page(Page, Size, Where, OrderBy) -> group_repo:page(Page, Size, Where, OrderBy).
+
+-spec update(map()) -> {ok, non_neg_integer()} | {error, any()}.
+update(Data) -> group_repo:update(Data).
+
+%% @doc 获取群组 user_id_sum（群成员 uid 之和，用于判断唯一性）
+%% @param Gid 群组ID
+%% @return user_id_sum 值，不存在时返回0
+-spec get_user_id_sum(integer()) -> integer().
+get_user_id_sum(Gid) ->
+    Tb = group_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"user_id_sum">>, #{id => Gid}, #{}, 0).
+
+%% @doc 统计用户拥有的有效群组数
+%% @param OwnerUid 群主UID
+%% @return 群组数量
+-spec count_by_owner(integer()) -> integer().
+count_by_owner(OwnerUid) ->
+    Tb = group_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"count(*)">>, #{status => 1, owner_uid => OwnerUid}, 0).
+
+%% @doc 判断群组是否存在
+%% @param Gid 群组ID
+%% @return true | false
+-spec exists(integer()) -> boolean().
+exists(Gid) ->
+    Tb = group_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"count(*)">>, #{id => Gid}, 0) > 0.
+
+%% @doc 按 ID 更新群组
+%% @param Gid 群组ID
+%% @param Data 更新数据
+%% @return {ok, Count} | {error, Reason}
+-spec update_by_id(integer(), map()) -> {ok, integer()} | {error, any()}.
+update_by_id(Gid, Data) ->
+    Tb = group_repo:tablename(),
+    elib_pg:update(Tb, Data, <<"id = $1">>, [Gid]).
+
+%% @doc 插入群组记录
+%% @param Data 群组数据
+%% @return {ok, _} | {error, Reason}
+-spec insert(map()) -> {ok, any()} | {error, any()}.
+insert(Data) ->
+    Tb = group_repo:tablename(),
+    elib_pg:insert(Tb, Data).
+
+%% @doc 分页查询我拥有的群（attr=owner）
+-spec page_by_owner(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_by_owner(OwnerUid, Page, Size) ->
+    Tb = group_repo:tablename(),
+    Where = #{status => 1, owner_uid => OwnerUid},
+    elib_pg:page_with_total(Tb, Where, Page, Size).
+
+%% @doc 分页查询我加入的群（attr=join，排除自己是群主的）
+-spec page_joined(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_joined(Uid, Page, Size) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
+    Where = #{<<"g.status">> => 1,
+              <<"m.status">> => 1,
+              <<"m.user_id">> => Uid,
+              <<"g.owner_uid">> => {op, <<"!=">>, Uid}},
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
+
+%% @doc 分页查询我管理的群（attr=manager，群主/副群主/管理员）
+-spec page_managed(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_managed(Uid, Page, Size) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
+    Where = #{<<"g.status">> => 1,
+              <<"__or">> =>
+                  [#{<<"g.owner_uid">> => Uid},
+                   #{<<"m.status">> => 1,
+                     <<"m.user_id">> => Uid,
+                     <<"m.role">> => {op, <<">=">>, 3}}]},
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions

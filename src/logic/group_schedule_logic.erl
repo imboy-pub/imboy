@@ -77,7 +77,7 @@ do_create_schedule(GroupId, CreatorId, Title, Description, Location,
     },
 
     % 插入日程
-    case group_schedule_repo:insert(ScheduleData) of
+    case group_schedule_ds:insert_schedule(ScheduleData) of
         {ok, _ScheduleDbId, #{<<"id">> := ScheduleDbId}} ->
             % 插入创建者作为参与人
             CreatorParticipantData = #{
@@ -87,7 +87,7 @@ do_create_schedule(GroupId, CreatorId, Title, Description, Location,
                 created_at => Now,
                 updated_at => Now
             },
-            group_schedule_repo:insert_participant(CreatorParticipantData),
+            group_schedule_ds:insert_participant(CreatorParticipantData),
 
             % 插入其他参与人
             insert_participants(ScheduleId, ParticipantIds, Now),
@@ -109,7 +109,7 @@ do_create_schedule(GroupId, CreatorId, Title, Description, Location,
                      binary(), binary()) -> ok | {error, term()}.
 update_schedule(ScheduleId, CreatorId, Title, Description, Location,
                StartAt, EndAt) ->
-    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, not_found};
         Schedule ->
@@ -139,8 +139,8 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
         end_at => EndAt
     },
 
-    #{<<"id">> := ScheduleDbId} = group_schedule_repo:find_by_schedule_id(ScheduleId),
-    case group_schedule_repo:update(ScheduleDbId, UpdateData) of
+    #{<<"id">> := ScheduleDbId} = group_schedule_ds:find_by_schedule_id(ScheduleId),
+    case group_schedule_ds:update_schedule(ScheduleDbId, UpdateData) of
         {ok, 1} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -148,7 +148,7 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
 %% @doc 取消群组日程
 -spec cancel_schedule(binary(), integer()) -> ok | {error, term()}.
 cancel_schedule(ScheduleId, CreatorId) ->
-    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, not_found};
         Schedule ->
@@ -163,7 +163,7 @@ cancel_schedule(ScheduleId, CreatorId) ->
                         4 ->
                             {error, already_cancelled};
                         _ ->
-                            case group_schedule_repo:update_status(ScheduleDbId, 4) of
+                            case group_schedule_ds:update_status(ScheduleDbId, 4) of
                                 {ok, 1} -> ok;
                                 {error, Reason} -> {error, Reason}
                             end
@@ -174,13 +174,13 @@ cancel_schedule(ScheduleId, CreatorId) ->
 %% @doc 获取日程详情
 -spec get_schedule_detail(binary()) -> {ok, map()} | {error, term()}.
 get_schedule_detail(ScheduleId) ->
-    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, schedule_not_found};
         Schedule ->
-            case group_schedule_repo:list_participants(ScheduleId) of
+            case group_schedule_ds:list_participants(ScheduleId) of
                 {ok, Participants} ->
-                    {ok, Count} = group_schedule_repo:count_participants(ScheduleId),
+                    {ok, Count} = group_schedule_ds:count_participants(ScheduleId),
                     {ok, #{
                         schedule => schedule_transfer(Schedule),
                         participants => [participant_transfer(P) || P <- Participants],
@@ -201,9 +201,9 @@ list_group_schedules(GroupId, Page, Size) ->
 -spec list_group_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
     {ok, map()} | {error, term()}.
 list_group_schedules(GroupId, StartAt, EndAt, Page, Size) ->
-    case group_schedule_repo:list_by_group_id(GroupId, StartAt, EndAt, Page, Size) of
+    case group_schedule_ds:list_by_group_id(GroupId, StartAt, EndAt, Page, Size) of
         {ok, List} ->
-            {ok, Count} = group_schedule_repo:count_by_group_id(GroupId, StartAt, EndAt),
+            {ok, Count} = group_schedule_ds:count_by_group_id(GroupId, StartAt, EndAt),
             {ok, #{
                 list => [schedule_transfer(S) || S <- List],
                 total => Count,
@@ -224,7 +224,7 @@ list_my_schedules(UserId, Page, Size) ->
 -spec list_my_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
     {ok, list(map())} | {error, term()}.
 list_my_schedules(UserId, StartAt, EndAt, Page, Size) ->
-    case group_schedule_repo:list_by_user_id(UserId, StartAt, EndAt, Page, Size) of
+    case group_schedule_ds:list_by_user_id(UserId, StartAt, EndAt, Page, Size) of
         {ok, List} ->
             {ok, [schedule_transfer(S) || S <- List]};
         {error, Reason} ->
@@ -238,7 +238,7 @@ list_my_schedules(UserId, StartAt, EndAt, Page, Size) ->
 %% @doc 确认参与日程
 -spec confirm_participation(binary(), integer(), boolean()) -> ok | {error, term()}.
 confirm_participation(ScheduleId, UserId, Accept) ->
-    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, schedule_not_found};
         _Schedule ->
@@ -246,7 +246,7 @@ confirm_participation(ScheduleId, UserId, Accept) ->
                 true -> 1;  % 参加
                 false -> 2  % 不参加
             end,
-            case group_schedule_repo:update_participant_status(ScheduleId, UserId, Status) of
+            case group_schedule_ds:update_participant_status(ScheduleId, UserId, Status) of
                 {ok, 1} -> ok;
                 {ok, 0} -> {error, participant_not_found};
                 {error, Reason} -> {error, Reason}
@@ -263,7 +263,7 @@ add_participants(ScheduleId, UserIds) ->
 %% @doc 移除参与人
 -spec remove_participant(binary(), integer()) -> ok | {error, term()}.
 remove_participant(ScheduleId, UserId) ->
-    case group_schedule_repo:delete_participant(ScheduleId, UserId) of
+    case group_schedule_ds:delete_participant(ScheduleId, UserId) of
         {ok, 1} -> ok;
         {ok, 0} -> {error, participant_not_found};
         {error, Reason} -> {error, Reason}
@@ -276,7 +276,7 @@ remove_participant(ScheduleId, UserId) ->
 %% @doc 处理待发送的提醒
 -spec process_reminders() -> {ok, non_neg_integer()}.
 process_reminders() ->
-    case group_schedule_repo:list_pending_reminds() of
+    case group_schedule_ds:list_pending_reminds() of
         {ok, []} ->
             {ok, 0};
         {ok, Reminds} ->
@@ -296,7 +296,7 @@ process_remind_list([Remind | Rest], Acc) ->
     send_remind_notification(ScheduleId, UserId),
 
     % 标记为已发送
-    group_schedule_repo:update_remind_sent(RemindId),
+    group_schedule_ds:update_remind_sent(RemindId),
 
     process_remind_list(Rest, Acc + 1).
 
@@ -333,12 +333,12 @@ create_remind_records(ScheduleId, [UserId | Rest], RemindAt) ->
         remind_at => RemindAt,
         is_sent => false
     },
-    group_schedule_repo:insert_remind(RemindData),
+    group_schedule_ds:insert_remind(RemindData),
     create_remind_records(ScheduleId, Rest, RemindAt).
 
 %% @doc 发送提醒通知
 send_remind_notification(ScheduleId, UserId) ->
-    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, _} ->
             skip;
         Schedule ->
@@ -367,7 +367,7 @@ insert_participants(ScheduleId, [UserId | Rest], Now) ->
         created_at => Now,
         updated_at => Now
     },
-    group_schedule_repo:insert_participant(ParticipantData),
+    group_schedule_ds:insert_participant(ParticipantData),
     insert_participants(ScheduleId, Rest, Now).
 
 %% @doc 生成日程ID

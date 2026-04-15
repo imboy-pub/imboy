@@ -46,37 +46,15 @@ list(<<"GET">>, Req0, _State) ->
     Filters = extract_filters(Req0),
     {WhereSql, Params} = build_where_sql(Filters),
 
-    TbLog = user_log_repo:tablename(),
-    TbUser = user_repo:tablename(),
-    BaseFrom = iolist_to_binary([
-        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
-        <<"WHERE l.type = 102">>, WhereSql
-    ]),
-    CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
-    case elib_pg:one(CountSql, Params) of
-        {ok, CountRow} ->
-            Total = get_count(CountRow),
-            Offset = (Page - 1) * Size,
-            LimitPos = integer_to_binary(length(Params) + 1),
-            OffsetPos = integer_to_binary(length(Params) + 2),
-            DataSql = iolist_to_binary([
-                <<"SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at ">>,
-                BaseFrom,
-                <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
-            ]),
-            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
-                {ok, Rows} ->
-                    Items = [normalize_row(Row) || Row <- Rows],
-                    elib_response:success(Req0, #{
-                        list => Items,
-                        total => Total,
-                        page => Page,
-                        size => Size
-                    });
-                {error, _Reason} ->
-                    elib_response:error(Req0, "查询失败")
-            end;
+    case user_log_ds:page_logout_apply_log(WhereSql, Params, Page, Size) of
+        {ok, #{total := Total, list := Rows}} ->
+            Items = [normalize_row(Row) || Row <- Rows],
+            elib_response:success(Req0, #{
+                list => Items,
+                total => Total,
+                page => Page,
+                size => Size
+            });
         {error, _Reason} ->
             elib_response:error(Req0, "查询失败")
     end;
@@ -93,13 +71,7 @@ reject(<<"POST">>, Req0, _State) ->
     Reason = maps:get(<<"reason">>, Data, <<>>),
     case Uid > 0 of
         true ->
-            UserTb = user_repo:tablename(),
-            %% 仅当 status=2（申请注销中）时才允许驳回
-            Sql = <<"UPDATE ", UserTb/binary,
-                    " SET status = 1, updated_at = NOW()"
-                    " WHERE id = $1 AND status = 2"
-                    " RETURNING id">>,
-            case elib_pg:query(Sql, [Uid]) of
+            case user_ds:reject_logout_apply(Uid) of
                 {ok, [_]} ->
                     %% 记录驳回日志
                     ok = ?INFO_LOG([logout_apply_rejected, #{uid => Uid, reason => Reason}]),
@@ -119,12 +91,6 @@ reject(_, Req0, _State) ->
 export(<<"GET">>, Req0, _State) ->
     Filters = extract_filters(Req0),
     {WhereSql, Params} = build_where_sql(Filters),
-    TbLog = user_log_repo:tablename(),
-    TbUser = user_repo:tablename(),
-    BaseFrom = iolist_to_binary([
-        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
-        <<"WHERE l.type = 102">>, WhereSql
-    ]),
     Headers = #{
         <<"content-type">> => <<"text/csv; charset=utf-8">>,
         <<"content-disposition">> => <<"attachment; filename=\"logout_applications.csv\"">>,
@@ -132,21 +98,13 @@ export(<<"GET">>, Req0, _State) ->
     },
     Req1 = cowboy_req:stream_reply(200, Headers, Req0),
     ok = cowboy_req:stream_body(csv_header_with_bom(), nofin, Req1),
-    stream_export_rows(Req1, BaseFrom, Params, ?EXPORT_CHUNK_SIZE, 0);
+    stream_export_rows(Req1, WhereSql, Params, ?EXPORT_CHUNK_SIZE, 0);
 export(_, Req0, _State) ->
     Req0.
 
 -spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer()) -> ok.
-stream_export_rows(Req, BaseFrom, Params, Limit, Offset) ->
-    LimitPos = integer_to_binary(length(Params) + 1),
-    OffsetPos = integer_to_binary(length(Params) + 2),
-    DataSql = iolist_to_binary([
-        <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
-        BaseFrom,
-        <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
-    ]),
-    case elib_pg:query(DataSql, Params ++ [Limit, Offset]) of
+stream_export_rows(Req, WhereSql, Params, Limit, Offset) ->
+    case user_log_ds:list_logout_apply_log_chunk(WhereSql, Params, Limit, Offset) of
         {ok, []} ->
             cowboy_req:stream_body(<<>>, fin, Req);
         {ok, Rows} ->
@@ -157,7 +115,7 @@ stream_export_rows(Req, BaseFrom, Params, Limit, Offset) ->
                 true ->
                     cowboy_req:stream_body(<<>>, fin, Req);
                 false ->
-                    stream_export_rows(Req, BaseFrom, Params, Limit, Offset + Limit)
+                    stream_export_rows(Req, WhereSql, Params, Limit, Offset + Limit)
             end;
         {error, _Reason} ->
             cowboy_req:stream_body(<<>>, fin, Req)

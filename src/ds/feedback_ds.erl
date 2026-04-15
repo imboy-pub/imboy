@@ -17,7 +17,9 @@
 %% @param Body 反馈内容
 %% @param Attach 附件信息
 %% @returns ok | {ok, non_neg_integer()}
--export ([add/10]).
+-export([add/10]).
+-export([page/5]).
+-export([page_reply/5]).
 
 %% @doc 删除用户反馈
 %% 软删除反馈，将状态更新为 -1
@@ -104,6 +106,32 @@ add_reply(Data) ->
         {error, Reason2} -> ?ERROR_LOG([feedback_status_update_failed, FeedbackId, Reason2])
     end,
     ok.
+
+%% @doc 分页查询反馈列表
+%% @param Column 查询列
+%% @param Where 过滤条件
+%% @param Order 排序
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | {error, term()}
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, Where, Order, Page, Size) ->
+    Tb = feedback_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
+%% @doc 分页查询反馈回复列表
+%% @param Column 查询列
+%% @param Where 过滤条件
+%% @param Order 排序
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | {error, term()}
+-spec page_reply(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page_reply(Column, Where, Order, Page, Size) ->
+    Tb = feedback_reply_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -5,14 +5,14 @@
 -spec sync_channels(integer(), integer()) -> {ok, map()} | {error, binary()}.
 sync_channels(Uid, Since) ->
     Now = erlang:system_time(millisecond),
-    case channel_subscription_repo:list_by_uid(Uid) of
+    case channel_subscription_ds:list_by_uid(Uid) of
         {ok, Subscriptions} when is_list(Subscriptions) ->
             ChannelIds = extract_channel_ids(Subscriptions),
             case ChannelIds of
                 [] ->
                     {ok, #{channels => [], server_time => Now}};
                 _ ->
-                    case channel_repo:list_by_ids_since(ChannelIds, Since) of
+                    case channel_ds:list_by_ids_since(ChannelIds, Since) of
                         {ok, Channels} when is_list(Channels) ->
                             Transferred =
                                 [channel_logic_common:channel_transfer(C)

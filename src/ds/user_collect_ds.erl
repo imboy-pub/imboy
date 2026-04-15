@@ -10,6 +10,7 @@
 -export([count_by_uid_kind_id/2]).
 -export([delete/2]).
 -export([update/3]).
+-export([page/5]).
 
 %% ===================================================================
 %% API functions
@@ -39,6 +40,19 @@ delete(Uid, KindId) ->
 -spec update(integer(), binary(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 update(Uid, KindId, Data) ->
     user_collect_repo:update(Uid, KindId, Data).
+
+%% @doc 分页查询用户收藏列表
+%% @param Column 查询列
+%% @param WhereMap 过滤条件
+%% @param Order 排序
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | {error, term()}
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, WhereMap, Order, Page, Size) ->
+    Tb = user_collect_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions

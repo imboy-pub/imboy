@@ -18,6 +18,7 @@
 -export([delete/2]).
 -export([move_to_category/3]).
 -export([invalidate_cache/2]).
+-export([count_by_uid/1]).
 
 -include("log.hrl").
 -include("common.hrl").
@@ -430,3 +431,7 @@ invalidate_cache(FromUid, ToUid) ->
     imboy_cache:flush({check_relationship3, FromUid, ToUid}),
     imboy_cache:flush({check_relationship3, ToUid, FromUid}),
     ok.
+
+%% G3: adm_user_handler 不应直调 friend_repo
+-spec count_by_uid(integer()) -> non_neg_integer().
+count_by_uid(Uid) -> friend_repo:count_by_uid(Uid).

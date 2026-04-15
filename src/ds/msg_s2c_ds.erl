@@ -13,6 +13,8 @@
 -export([read_msg/3]).
 -export([delete_msg/1]).
 -export([send/7]).
+-export([delete_by_msg_ids_and_to_id/2]).
+-export([count_since/2]).
 
 
 %% @doc 发送服务端到客户端的消息（v2.0 格式，完整参数）
@@ -281,4 +283,27 @@ process_s2c_row(Row) ->
         false ->
             % 新数据格式：直接使用
             Row3c
+    end.
+
+%% G3: messaging_logic 不应直调 msg_s2c_repo
+-spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
+delete_by_msg_ids_and_to_id(MsgIds, Uid) ->
+    msg_s2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid).
+
+%% G3: messaging_logic 不应直调 msg_s2c_repo:tablename()
+-spec count_since(integer(), binary() | undefined) -> non_neg_integer().
+count_since(ToId, undefined) ->
+    Tb = msg_s2c_repo:tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1">>,
+    case elib_pg:query(Sql, [ToId]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end;
+count_since(ToId, Since) ->
+    Tb = msg_s2c_repo:tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary,
+            " WHERE to_id = $1 AND created_at >= $2">>,
+    case elib_pg:query(Sql, [ToId, Since]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
     end.

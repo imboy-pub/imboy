@@ -20,10 +20,10 @@
 -spec pin(binary(), integer()) -> ok | {error, any()}.
 pin(MsgId, CurrentUid) ->
     % 检查消息是否存在并验证权限
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, _} ->
             % C2C消息，更新置顶状态
-            case msg_c2c_repo:update_pinned(MsgId, CurrentUid, true) of
+            case msg_c2c_ds:update_pinned(MsgId, CurrentUid, true) of
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
@@ -31,10 +31,10 @@ pin(MsgId, CurrentUid) ->
             end;
         {error, _} ->
             % 检查是否是群消息
-            case msg_c2g_repo:find_msg_by_id(MsgId) of
+            case msg_c2g_ds:find_msg_by_id(MsgId) of
                 {ok, _} ->
                     % C2G消息，更新置顶状态
-                    case msg_c2g_repo:update_pinned(MsgId, CurrentUid, true) of
+                    case msg_c2g_ds:update_pinned(MsgId, CurrentUid, true) of
                         {ok, _} ->
                             ok;
                         {error, Reason} ->
@@ -52,10 +52,10 @@ pin(MsgId, CurrentUid) ->
 -spec unpin(binary(), integer()) -> ok | {error, any()}.
 unpin(MsgId, CurrentUid) ->
     % 检查消息是否存在并验证权限
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, _} ->
             % C2C消息，取消置顶状态
-            case msg_c2c_repo:update_pinned(MsgId, CurrentUid, false) of
+            case msg_c2c_ds:update_pinned(MsgId, CurrentUid, false) of
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
@@ -63,10 +63,10 @@ unpin(MsgId, CurrentUid) ->
             end;
         {error, _} ->
             % 检查是否是群消息
-            case msg_c2g_repo:find_msg_by_id(MsgId) of
+            case msg_c2g_ds:find_msg_by_id(MsgId) of
                 {ok, _} ->
                     % C2G消息，取消置顶状态
-                    case msg_c2g_repo:update_pinned(MsgId, CurrentUid, false) of
+                    case msg_c2g_ds:update_pinned(MsgId, CurrentUid, false) of
                         {ok, _} ->
                             ok;
                         {error, Reason} ->

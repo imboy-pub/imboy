@@ -90,7 +90,7 @@ do_create_transfer(Req0, State) ->
             elib_response:error(Req0, <<"不能给自己创建传输会话"/utf8>>, ?ERR_BAD_REQUEST);
         {ok, ToUid} ->
             % 验证接收方用户是否存在
-            case user_repo:may_exist(ToUid) of
+            case user_ds:may_exist(ToUid) of
                 false ->
                     elib_response:error(Req0, <<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND);
                 true ->
@@ -309,10 +309,10 @@ do_get_pending_transfers(Req0, State) ->
 %% @doc 获取发送方的私钥和设备 ID
 -spec get_sender_private_key(integer()) -> {ok, {binary(), binary()}} | {error, term()}.
 get_sender_private_key(Uid) ->
-    case user_device_repo:get_public_by_uid(Uid) of
+    case user_device_ds:get_public_by_uid(Uid) of
         {ok, [Device | _]} ->
             DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_repo:get_private_key(Uid, DeviceId) of
+            case user_device_ds:get_private_key(Uid, DeviceId) of
                 {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
                     {ok, {PrivateKeyPem, DeviceId}};
                 _ ->
@@ -325,7 +325,7 @@ get_sender_private_key(Uid) ->
 %% @doc 获取接收方的公钥
 -spec get_receiver_public_key(integer()) -> {ok, binary()} | {error, term()}.
 get_receiver_public_key(ToUid) ->
-    case user_device_repo:get_public_by_uid(ToUid) of
+    case user_device_ds:get_public_by_uid(ToUid) of
         {ok, [Device | _]} ->
             PublicKeyPem = maps:get(<<"public_key">>, Device, <<>>),
             case PublicKeyPem of

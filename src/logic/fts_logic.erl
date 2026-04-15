@@ -149,8 +149,8 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
 
     case TypeBin of
         <<"C2C">> when HasOptions ->
-            Total = fts_user_repo:search_c2c_msg_count_with_options(Keyword, Options),
-            case fts_user_repo:search_c2c_msg_with_options(Keyword, Size, Offset, Options) of
+            Total = fts_user_ds:search_c2c_msg_count_with_options(Keyword, Options),
+            case fts_user_ds:search_c2c_msg_with_options(Keyword, Size, Offset, Options) of
                 {ok, []} ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options};
                 {ok, Items} ->
@@ -160,8 +160,8 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options}
             end;
         <<"C2C">> ->
-            Total = fts_user_repo:search_c2c_msg_count(Keyword),
-            case fts_user_repo:search_c2c_msg(Keyword, Size, Offset, Uid) of
+            Total = fts_user_ds:search_c2c_msg_count(Keyword),
+            case fts_user_ds:search_c2c_msg(Keyword, Size, Offset, Uid) of
                 {ok, []} ->
                     #{total => Total, page => Page, size => Size, list => []};
                 {ok, Items} ->
@@ -171,8 +171,8 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
                     #{total => Total, page => Page, size => Size, list => []}
             end;
         <<"C2G">> when HasOptions ->
-            Total = fts_user_repo:search_c2g_msg_count_with_options(Keyword, Options),
-            case fts_user_repo:search_c2g_msg_with_options(Keyword, Size, Offset, Options) of
+            Total = fts_user_ds:search_c2g_msg_count_with_options(Keyword, Options),
+            case fts_user_ds:search_c2g_msg_with_options(Keyword, Size, Offset, Options) of
                 {ok, []} ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options};
                 {ok, Items} ->
@@ -182,8 +182,8 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options}
             end;
         <<"C2G">> ->
-            Total = fts_user_repo:search_c2g_msg_count(Keyword),
-            case fts_user_repo:search_c2g_msg(Keyword, Size, Offset, Uid) of
+            Total = fts_user_ds:search_c2g_msg_count(Keyword),
+            case fts_user_ds:search_c2g_msg(Keyword, Size, Offset, Uid) of
                 {ok, []} ->
                     #{total => Total, page => Page, size => Size, list => []};
                 {ok, Items} ->

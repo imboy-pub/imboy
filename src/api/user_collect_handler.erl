@@ -103,9 +103,8 @@ page(Req0, State) ->
     % Build column list
     Info = elib_hasher:decoded_field(<<"info">>),
     Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-    Tb = user_collect_repo:tablename(),
 
-    {ok, Payload} = elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size),
+    {ok, Payload} = user_collect_ds:page(Column, WhereMap, Order, Page, Size),
     % Parse info field JSON string to structured data
     List = maps:get(list, Payload, []),
     List2 = elib_response:json_decode_list_field(List, <<"info">>),

@@ -70,8 +70,7 @@ page(Req0, State) ->
           "ents_text(coalesce(attach::jsonb, '[]'::jsonb)) as item) as "
           "attach, ",
           "reply_count, status, updated_at, created_at, app_vsn">>,
-    Tb = feedback_repo:tablename(),
-    {ok, Payload} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
+    {ok, Payload} = feedback_ds:page(Column, Where, <<"id desc">>, Page, Size),
     elib_response:success(Req0, Payload).
 
 %% @doc 用户反馈回复分页列表
@@ -95,8 +94,7 @@ page_reply(Req0, _State) ->
             Column =
                 <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_us"
                   "er_id, replier_name, body, status, updated_at, created_at">>,
-            Tb = feedback_reply_repo:tablename(),
-            {ok, Payload} = elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size),
+            {ok, Payload} = feedback_ds:page_reply(Column, Where, <<"id desc">>, Page, Size),
             Payload2 = normalize_reply_payload(Payload),
             elib_response:success(Req0, Payload2)
     end.

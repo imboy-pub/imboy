@@ -34,7 +34,7 @@ decode_positive_id(Value) ->
 
 -spec resolve_custom_channel_id(binary()) -> integer().
 resolve_custom_channel_id(ChannelIdBin) ->
-    case catch channel_repo:find_by_custom_id(ChannelIdBin) of
+    case catch channel_ds:find_by_custom_id(ChannelIdBin) of
         Channel when is_map(Channel) ->
             case maps:get(<<"id">>, Channel, 0) of
                 ChannelId when is_integer(ChannelId), ChannelId > 0 ->
@@ -48,11 +48,11 @@ resolve_custom_channel_id(ChannelIdBin) ->
 
 -spec get_user_role(integer(), integer()) -> integer().
 get_user_role(ChannelId, Uid) ->
-    case channel_admin_repo:get_role(ChannelId, Uid) of
+    case channel_admin_ds:get_role(ChannelId, Uid) of
         Role when is_integer(Role), Role > 0 ->
             Role;
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"*">>) of
+            case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 #{<<"creator_uid">> := CreatorUid} when CreatorUid =:= Uid ->
                     3;
                 #{<<"owner_id">> := OwnerUid} when OwnerUid =:= Uid ->
@@ -64,7 +64,7 @@ get_user_role(ChannelId, Uid) ->
 
 -spec ensure_channel_content_access(integer(), integer()) -> ok | {error, binary()}.
 ensure_channel_content_access(Uid, ChannelId) ->
-    case channel_repo:find_by_id(ChannelId, <<"id,type,status">>) of
+    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
         {error, _} ->
             {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel), map_size(Channel) =:= 0 ->
@@ -93,12 +93,12 @@ ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
         0 ->
             ok;
         1 ->
-            case channel_subscription_repo:is_subscribed(ChannelId, Uid) of
+            case channel_subscription_ds:is_subscribed(ChannelId, Uid) of
                 true -> ok;
                 _ -> {error, <<"私有频道仅限订阅用户访问"/utf8>>}
             end;
         2 ->
-            IsSubscribed = channel_subscription_repo:is_subscribed(ChannelId, Uid),
+            IsSubscribed = channel_subscription_ds:is_subscribed(ChannelId, Uid),
             HasPurchased = channel_subscribe_ds:has_purchased(ChannelId, Uid),
             case IsSubscribed =:= true orelse HasPurchased =:= true of
                 true -> ok;

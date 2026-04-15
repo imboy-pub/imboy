@@ -17,6 +17,8 @@
 -export([change_scene_tag/5]).
 -export([flush_subtitle/1]).
 -export([merge_tag/4]).
+-export([find_name_by_id/2]).
+-export([find_name_by_id/3]).
 
 %% ===================================================================
 %% API functions
@@ -313,3 +315,18 @@ merge_tag(Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     TagBin = elib_cnv:implode(",", [ Name || {_, Name} <- Tag ]),
     MergedTag = binary:split(<<TagBin/binary, ",", TagOld/binary>>, <<",">>, [global]),
     elib_cnv:implode(",", elib_cnv:remove_dups(MergedTag)).
+
+%% G3: user_tag_relation_logic 不应直调 user_tag_repo:tablename()
+-spec find_name_by_id(integer(), integer()) -> binary().
+find_name_by_id(TagId, CreatorUid) ->
+    find_name_by_id(TagId, CreatorUid, 2).
+
+-spec find_name_by_id(integer(), integer(), integer()) -> binary().
+find_name_by_id(TagId, CreatorUid, Scene) ->
+    Tb = user_tag_repo:tablename(),
+    case elib_pg:pluck_value(Tb, <<"name">>,
+                             #{id => TagId, creator_user_id => CreatorUid, scene => Scene},
+                             #{}, <<>>) of
+        <<>> -> <<>>;
+        Name -> Name
+    end.

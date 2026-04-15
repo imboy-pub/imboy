@@ -97,17 +97,7 @@ get_created_at(Msg) when is_map(Msg) ->
 %% @end
 -spec get_c2c_msg_count(binary() | integer(), binary()) -> integer().
 get_c2c_msg_count(Uid, LastMsgAt) ->
-    % 使用安全的参数化查询，避免SQL注入
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_c2c_ds:count_unread_since(Uid, LastMsgAt).
 
 %% @doc 获取C2G消息总数
 %% 根据用户ID和最后消息时间戳计算群组消息总数
@@ -118,17 +108,7 @@ get_c2c_msg_count(Uid, LastMsgAt) ->
 %% @end
 -spec get_c2g_msg_count(integer(), binary()) -> integer().
 get_c2g_msg_count(Uid, LastMsgAt) ->
-    % 使用安全的参数化查询，避免SQL注入
-    Tb = msg_c2g_timeline_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND client_ack = 0 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_c2g_ds:count_unread_timeline_since(Uid, LastMsgAt).
 
 %% @doc 获取S2C消息总数
 %% 根据用户ID和最后消息时间戳计算系统消息总数
@@ -139,17 +119,7 @@ get_c2g_msg_count(Uid, LastMsgAt) ->
 %% @end
 -spec get_s2c_msg_count(integer(), binary()) -> integer().
 get_s2c_msg_count(Uid, LastMsgAt) ->
-    % 使用安全的参数化查询，避免SQL注入
-    Tb = msg_s2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_s2c_ds:count_since(Uid, LastMsgAt).
 
 %% @doc 处理单个消息
 %% 将 from_id 和 to_id 替换为编码后的 from 和 to

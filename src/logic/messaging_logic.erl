@@ -46,9 +46,9 @@ offline(Req0, State) ->
     {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
     {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
 
-    C2CLastMsgAt = elib_dt:to_rfc3339(C2CLastMsgAtInt, millisecond),
-    C2GLastMsgAt = elib_dt:to_rfc3339(C2GLastMsgAtInt, millisecond),
-    S2CLastMsgAt = elib_dt:to_rfc3339(S2CLastMsgAtInt, millisecond),
+    C2CLastMsgAt = ms_to_since_ts(C2CLastMsgAtInt),
+    C2GLastMsgAt = ms_to_since_ts(C2GLastMsgAtInt),
+    S2CLastMsgAt = ms_to_since_ts(S2CLastMsgAtInt),
 
     case maps:get(current_uid, State, undefined) of
         undefined ->
@@ -348,44 +348,24 @@ calculate_next_last_msg_at(Msgs, _LastMsgAt) when length(Msgs) > 0 ->
 get_created_at(Msg) when is_map(Msg) ->
     maps:get(<<"created_at">>, Msg, 0).
 
--spec get_c2c_msg_count(binary() | integer(), binary()) -> integer().
+%% @doc 将毫秒时间戳转换为 DS 层可接受的时间参数
+%%  0 → undefined（DS 层不加时间过滤，返回全量）
+%%  非零 → RFC3339 binary（DS 层用 created_at >= $2 过滤）
+-spec ms_to_since_ts(non_neg_integer()) -> binary() | undefined.
+ms_to_since_ts(0) -> undefined;
+ms_to_since_ts(Ms) -> elib_dt:to_rfc3339(Ms, millisecond).
+
+-spec get_c2c_msg_count(binary() | integer(), binary() | undefined) -> integer().
 get_c2c_msg_count(Uid, LastMsgAt) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_c2c_ds:count_unread_since(Uid, LastMsgAt).
 
--spec get_c2g_msg_count(integer(), binary()) -> integer().
+-spec get_c2g_msg_count(integer(), binary() | undefined) -> integer().
 get_c2g_msg_count(Uid, LastMsgAt) ->
-    Tb = msg_c2g_timeline_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND client_ack = 0 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_c2g_ds:count_unread_timeline_since(Uid, LastMsgAt).
 
--spec get_s2c_msg_count(integer(), binary()) -> integer().
+-spec get_s2c_msg_count(integer(), binary() | undefined) -> integer().
 get_s2c_msg_count(Uid, LastMsgAt) ->
-    Tb = msg_s2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ",
-            Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [Uid, LastMsgAt]) of
-        {ok, [#{<<"count">> := Count}]} ->
-            Count;
-        _ ->
-            0
-    end.
+    msg_s2c_ds:count_since(Uid, LastMsgAt).
 
 -spec process_message(map()) -> map().
 process_message(Msg) when is_map(Msg) ->
@@ -416,13 +396,13 @@ process_message(Msg) when is_map(Msg) ->
 process_offline_ack(Uid, Type, MsgIds) ->
     case Type of
         <<"c2c">> ->
-            Count = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            Count = msg_c2c_ds:delete_by_msg_ids_and_to_id(MsgIds, Uid),
             {ok, Count};
         <<"c2g">> ->
-            Count = msg_c2g_timeline_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            Count = msg_c2g_ds:timeline_delete_by_msg_ids_and_to_id(MsgIds, Uid),
             {ok, Count};
         <<"s2c">> ->
-            Count = msg_s2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+            Count = msg_s2c_ds:delete_by_msg_ids_and_to_id(MsgIds, Uid),
             {ok, Count};
         _ ->
             {error, <<"unsupported_message_type">>}

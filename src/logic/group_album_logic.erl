@@ -120,11 +120,11 @@ batch_upload_photos(Gid, CurrentUid, Photos) ->
 %% @return ok | {error, Reason}
 -spec delete_album(binary(), integer()) -> ok | {error, term()}.
 delete_album(AlbumId, CurrentUid) ->
-    case group_album_repo:find_album_by_album_id(AlbumId) of
+    case group_album_ds:find_album_by_album_id(AlbumId) of
         #{<<"id">> := Id, <<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
             case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
                 ok ->
-                    case group_album_repo:delete_album(Id) of
+                    case group_album_ds:delete_album(Id) of
                         {ok, _} ->
                             ok;
                         {error, Reason} ->
@@ -216,10 +216,10 @@ update_album_cover(AlbumId, PhotoId) ->
 %% @return ok | {error, Reason}
 -spec rename_album(binary(), binary()) -> ok | {error, term()}.
 rename_album(AlbumId, NewName) ->
-    case group_album_repo:find_album_by_album_id(AlbumId) of
+    case group_album_ds:find_album_by_album_id(AlbumId) of
         #{<<"id">> := Id} ->
             UpdateData = #{id => Id, album_name => NewName},
-            case group_album_repo:update_album(UpdateData) of
+            case group_album_ds:update_album(UpdateData) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end;
@@ -232,7 +232,7 @@ rename_album(AlbumId, NewName) ->
 check_album_delete_permission(CurrentUid, CreatorId, _Gid) when CurrentUid =:= CreatorId ->
     ok;
 check_album_delete_permission(CurrentUid, _CreatorId, Gid) ->
-    case group_member_repo:find(Gid, CurrentUid, <<"role">>) of
+    case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"role">>) of
         #{<<"role">> := Role} when Role >= 3 ->
             ok;
         _ ->

@@ -16,6 +16,8 @@
 -export ([unpin/1]).
 -export ([mark_as_read/1]).
 -export ([get_pinned_notices/1]).
+-export([page/5]).
+-export([latest_published/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -162,6 +164,32 @@ mark_as_read(NoticeId) ->
 -spec get_pinned_notices(integer()) -> {ok, [map()]} | {error, term()}.
 get_pinned_notices(GroupId) ->
     group_notice_repo:get_pinned_notices(GroupId).
+
+%% @doc 分页查询群公告列表
+%% @param Gid 群组ID
+%% @param Column 查询列
+%% @param Order 排序
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | {error, term()}
+-spec page(integer(), binary(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Gid, Column, Order, Page, Size) ->
+    Tb = group_notice_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, #{group_id => Gid}, Order, Page, Size).
+
+%% @doc 查询最新已发布公告
+%% @param Gid 群组ID
+%% @param Column 查询列
+%% @return {ok, [map()]} | {error, term()}
+-spec latest_published(integer(), binary()) -> {ok, [map()]} | {error, term()}.
+latest_published(Gid, Column) ->
+    Tb = group_notice_repo:tablename(),
+    Sql = <<"SELECT ", Column/binary,
+            " FROM ", Tb/binary,
+            " WHERE status = 1 AND group_id = $1"
+            " ORDER BY id desc">>,
+    elib_pg:query(Sql, [Gid]).
 
 %% ===================================================================
 %% Internal Function Definitions

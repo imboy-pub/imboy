@@ -74,16 +74,16 @@ search(Req0, State) ->
     IsMobile = elib_type:is_mobile(KwdBin),
     User =
         if IsEmail ->
-               user_repo:find_by_email(KwdBin, ?DEF_USER_COLUMN);
+               user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
            IsMobile ->
-               user_repo:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
+               user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
            true ->
-               user_repo:find_by_account(KwdBin, ?DEF_USER_COLUMN)
+               user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
         end,
     _ = User, % 消除未使用变量警告
     % ?DEBUG_LOG(['User ', User]),
     Uid2 = maps:get(<<"id">>, User, 0),
-    AllowSearch = fts_user_repo:allow_search(Uid2),
+    AllowSearch = fts_user_ds:allow_search(Uid2),
     Payload =
         if Uid2 == 0 ->
                #{total => 0,

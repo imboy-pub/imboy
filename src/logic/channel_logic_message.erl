@@ -34,7 +34,7 @@ message_transfer(Message) when is_map(Message) ->
 -spec create_channel(integer(), binary(), integer(), map(), integer()) ->
     {ok, map()} | {error, binary()}.
 create_channel(Uid, Name, Type, Opts, MaxChannels) ->
-    case channel_repo:list_managed(Uid) of
+    case channel_ds:list_managed(Uid) of
         {ok, Channels} when is_list(Channels) ->
             case length(Channels) >= MaxChannels of
                 true ->
@@ -44,7 +44,7 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
                         undefined ->
                             do_create_channel(Uid, Name, Type, Opts);
                         CustomId when is_binary(CustomId), CustomId =/= <<>> ->
-                            case channel_repo:find_by_custom_id(CustomId) of
+                            case channel_ds:find_by_custom_id(CustomId) of
                                 {error, _} ->
                                     do_create_channel(Uid, Name, Type, Opts);
                                 _ ->
@@ -65,7 +65,7 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
 do_create_channel(Uid, Name, Type, Opts) ->
     case channel_ds:create_channel(Uid, Name, Type, Opts) of
         {ok, ChannelId} ->
-            case channel_repo:find_by_id(ChannelId, <<"*">>) of
+            case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
                 Other -> {error, elib_cnv:safe_to_binary(Other)}
@@ -81,13 +81,13 @@ get_channel(ChannelIdBin, Uid) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"*">>) of
+            case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 {error, _} -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel), map_size(Channel) =:= 0 -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed = case UserRole of
-                        0 -> channel_subscription_repo:is_subscribed(ChannelId, Uid);
+                        0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
                         _ -> true
                     end,
                     Channel2 = Channel#{
@@ -102,7 +102,7 @@ get_channel(ChannelIdBin, Uid) ->
 
 -spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
 get_channel_by_custom_id(CustomId, Uid) ->
-    case channel_repo:find_by_custom_id(CustomId) of
+    case channel_ds:find_by_custom_id(CustomId) of
         {error, _} -> {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel), map_size(Channel) =:= 0 ->
             {error, <<"频道不存在"/utf8>>};
@@ -114,7 +114,7 @@ get_channel_by_custom_id(CustomId, Uid) ->
                 true ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed = case UserRole of
-                        0 -> channel_subscription_repo:is_subscribed(ChannelId, Uid);
+                        0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
                         _ -> true
                     end,
                     Channel2 = Channel#{
@@ -141,9 +141,9 @@ update_channel(Uid, ChannelIdBin, Data) ->
                 true ->
                     AllowedFields = [<<"name">>, <<"description">>, <<"avatar">>, <<"tags">>],
                     FilteredData = maps:filter(fun(K, _) -> lists:member(K, AllowedFields) end, Data),
-                    case channel_repo:update(ChannelId, FilteredData#{updated_at => elib_dt:now()}) of
+                    case channel_ds:update(ChannelId, FilteredData#{updated_at => elib_dt:now()}) of
                         {ok, _} ->
-                            case channel_repo:find_by_id(ChannelId, <<"*">>) of
+                            case channel_ds:find_by_id(ChannelId, <<"*">>) of
                                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                                 Channel when is_map(Channel) ->
                                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
@@ -170,7 +170,7 @@ delete_channel(Uid, ChannelIdBin) ->
                     {error, <<"只有创建者可以删除频道"/utf8>>};
                 true ->
                     SubscriberUids = safe_subscriber_uids(ChannelId),
-                        case channel_repo:delete(ChannelId) of
+                        case channel_ds:delete(ChannelId) of
                             {ok, _} ->
                                 channel_logic_notify:notify_channel_deleted(ChannelId, SubscriberUids),
                                 ok;
@@ -195,7 +195,7 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                 false ->
                     case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of
                         {ok, MessageId} ->
-                            case channel_message_repo:find_by_id(MessageId) of
+                            case channel_message_ds:find_by_id(MessageId) of
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
                                 Message when is_map(Message) ->
@@ -221,7 +221,7 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_message_repo:list_by_channel(ChannelId, Cursor, Limit) of
+                    case channel_message_ds:list_by_channel(ChannelId, Cursor, Limit) of
                         {ok, Messages} when is_list(Messages) ->
                             {ok, [message_transfer(M) || M <- Messages, is_map(M)]};
                         {ok, Reason} ->
@@ -245,7 +245,7 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_subscription_repo:clear_unread(ChannelId, Uid) of
+                    case channel_subscription_ds:clear_unread(ChannelId, Uid) of
                         {ok, _} -> ok;
                         {error, ClearReason} ->
                             ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
@@ -259,7 +259,7 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
 
 -spec search_channels(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 search_channels(Keyword, Limit) ->
-    case channel_repo:search(Keyword, Limit, <<"*">>) of
+    case channel_ds:search(Keyword, Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, Reason} ->
@@ -272,7 +272,7 @@ search_channels(Keyword, Limit) ->
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_discover_channels(Limit) ->
-    case channel_repo:list_discover(Limit, <<"*">>) of
+    case channel_ds:list_discover(Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, Reason} ->
@@ -302,7 +302,7 @@ add_admin(Uid, ChannelIdBin, NewAdminUid, Role) ->
                         role => Role,
                         created_at => Now
                     },
-                    case channel_admin_repo:add(Data) of
+                    case channel_admin_ds:add(Data) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end
@@ -321,7 +321,7 @@ remove_admin(Uid, ChannelIdBin, AdminUid) ->
                 false ->
                     {error, <<"只有创建者可以移除管理员"/utf8>>};
                 true ->
-                    case channel_admin_repo:delete(ChannelId, AdminUid) of
+                    case channel_admin_ds:delete(ChannelId, AdminUid) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end
@@ -335,7 +335,7 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
         0 ->
             {error, <<"消息不存在"/utf8>>};
         _ ->
-            case channel_message_repo:find_by_id(MessageId) of
+            case channel_message_ds:find_by_id(MessageId) of
                 {error, _} ->
                     {error, <<"消息不存在"/utf8>>};
                 Message when is_map(Message) ->
@@ -348,12 +348,12 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                                     {error, <<"只有管理员可以置顶消息"/utf8>>};
                                 false ->
                                     Now = elib_dt:now(),
-                                    case channel_message_repo:update(MessageId, #{
+                                    case channel_message_ds:update(MessageId, #{
                                         is_pinned => IsPinned,
                                         updated_at => Now
                                     }) of
                                         {ok, _} ->
-                                            case channel_message_repo:find_by_id(MessageId) of
+                                            case channel_message_ds:find_by_id(MessageId) of
                                                 {error, Reason} ->
                                                     {error, elib_cnv:safe_to_binary(Reason)};
                                                 Message2 when is_map(Message2) ->
@@ -380,7 +380,7 @@ delete_message(Uid, MessageIdBin) ->
         0 ->
             {error, <<"消息不存在"/utf8>>};
         _ ->
-            case channel_message_repo:find_by_id(MessageId) of
+            case channel_message_ds:find_by_id(MessageId) of
                 {error, _} ->
                     {error, <<"消息不存在"/utf8>>};
                 Message when is_map(Message) ->
@@ -398,7 +398,7 @@ delete_message(Uid, MessageIdBin) ->
                                 false ->
                                     {error, <<"无权限删除此消息"/utf8>>};
                                 true ->
-                                    case channel_message_repo:delete(MessageId) of
+                                    case channel_message_ds:delete(MessageId) of
                                         {ok, _} ->
                                             channel_logic_notify:notify_message_deleted(ChannelId, MessageId),
                                             ok;
@@ -423,7 +423,7 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
         _ when MessageId =:= 0 ->
             {error, <<"消息不存在"/utf8>>};
         _ ->
-            case channel_message_repo:find_by_id(MessageId) of
+            case channel_message_ds:find_by_id(MessageId) of
                 {error, _} ->
                     {error, <<"消息不存在"/utf8>>};
                 Message when is_map(Message) ->
@@ -455,7 +455,7 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                             {error, <<"撤回时间已超出限制"/utf8>>};
                                                         true ->
                                                             RevokedAt = elib_dt:now(),
-                                                            case channel_message_repo:revoke(MessageId, Uid, RevokedAt) of
+                                                            case channel_message_ds:revoke(MessageId, Uid, RevokedAt) of
                                                                 {ok, Affected} when Affected > 0 ->
                                                                     channel_logic_notify:notify_message_revoked(
                                                                         ChannelId,
@@ -493,7 +493,7 @@ get_admins(ChannelId) when is_binary(ChannelId) ->
 get_admins(ChannelId) when not is_integer(ChannelId); ChannelId =< 0 ->
     {error, <<"频道不存在"/utf8>>};
 get_admins(ChannelId) ->
-    case channel_admin_repo:list_by_channel(ChannelId) of
+    case channel_admin_ds:list_by_channel(ChannelId) of
         {ok, Admins} when is_list(Admins) ->
             {ok, [A || A <- Admins, is_map(A)]};
         {ok, Reason} ->
@@ -517,7 +517,7 @@ update_admin_role(_Uid, ChannelId, _TargetUid, _Role) when not is_integer(Channe
 update_admin_role(Uid, ChannelId, TargetUid, Role) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         3 ->
-            case channel_admin_repo:update_role(ChannelId, TargetUid, Role) of
+            case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
                 {ok, _} -> ok;
                 {error, _} -> {error, <<"更新角色失败"/utf8>>}
             end;
@@ -536,7 +536,7 @@ decode_positive_id(Value) ->
 
 -spec push_unread_updates(integer()) -> ok.
 push_unread_updates(ChannelId) ->
-    case channel_subscription_repo:list_unread_counts_by_channel(ChannelId) of
+    case channel_subscription_ds:list_unread_counts_by_channel(ChannelId) of
         {ok, Rows} when is_list(Rows) ->
             lists:foreach(fun(Row) ->
                 case {

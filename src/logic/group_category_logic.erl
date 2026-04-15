@@ -100,14 +100,14 @@ delete(Uid, CategoryId) ->
 -spec move_group(integer(), integer(), integer()) -> ok | {error, binary()}.
 move_group(Uid, Gid, CategoryId) ->
     %% 验证群组成员是否存在
-    case group_member_repo:find(Gid, Uid, <<"id">>) of
+    case group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"id">>) of
         #{<<"id">> := _} ->
             %% 验证分类是否存在（如果是0则跳过验证）
             ValidateResult = case CategoryId of
                 0 ->
                     ok;
                 _ ->
-                    case group_category_repo:list_by_uid(Uid, <<"id">>) of
+                    case group_category_ds:list_by_uid(Uid, <<"id">>) of
                         {ok, Categories} ->
                             CategoryIds = [Id || #{<<"id">> := Id} <- Categories],
                             case lists:member(CategoryId, CategoryIds) of
@@ -143,7 +143,7 @@ move_group(Uid, Gid, CategoryId) ->
 -spec update_sort_order(integer(), list({integer(), integer()})) -> ok | {error, binary()}.
 update_sort_order(Uid, SortOrders) when is_list(SortOrders) ->
     %% 验证所有分类是否属于该用户
-    case group_category_repo:list_by_uid(Uid, <<"id">>) of
+    case group_category_ds:list_by_uid(Uid, <<"id">>) of
         {ok, Categories} ->
             UserCategoryIds = lists:usort([Id || #{<<"id">> := Id} <- Categories]),
             UserCategoryIdsSet = sets:from_list(UserCategoryIds),

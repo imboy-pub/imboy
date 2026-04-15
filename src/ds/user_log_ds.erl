@@ -9,9 +9,13 @@
 
 %% ==================== API ====================
 
+-export([add/1]).
 -export([add_password_change_log/4]).
 -export([add_logout_apply_log/3]).
 -export([add_internal/5]).
+-export([page_group_governance_log/4]).
+-export([page_logout_apply_log/4]).
+-export([list_logout_apply_log_chunk/4]).
 
 %% ===================================================================
 %% API Functions
@@ -76,3 +80,105 @@ add_internal(Conn, Type, Uid, Body, CreatedAt) ->
         body => Body,
         created_at => CreatedAt
     }).
+
+%% G3: moment_logic 不应直调 user_log_repo / thin DS wrapper
+-spec add(map()) -> {ok, term()} | {error, term()}.
+add(Data) ->
+    user_log_repo:add(Data).
+
+%% @doc 分页查询群治理审计日志（JOIN adm_user）
+%% @param WhereSql 额外 WHERE 条件（二进制，以 AND 开头或空）
+%% @param Params WHERE 绑定参数列表
+%% @param Page 页码
+%% @param Size 每页大小
+-spec page_group_governance_log(binary(), list(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page_group_governance_log(WhereSql, Params, Page, Size) ->
+    TbLog = user_log_repo:tablename(),
+    TbAdmUser = adm_user_repo:tablename(),
+    BaseFrom = iolist_to_binary([
+        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbAdmUser, <<" u ON u.id = l.uid ">>,
+        <<"WHERE l.type = 902 AND l.remark = 'adm_group_governance'">>,
+        WhereSql
+    ]),
+    CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
+    case elib_pg:one(CountSql, Params) of
+        {ok, CountRow} ->
+            Total = case maps:get(<<"count">>, CountRow, 0) of
+                V when is_integer(V) -> V;
+                _ -> 0
+            end,
+            Offset = (Page - 1) * Size,
+            LimitPos = integer_to_binary(length(Params) + 1),
+            OffsetPos = integer_to_binary(length(Params) + 2),
+            DataSql = iolist_to_binary([
+                <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
+                BaseFrom,
+                <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
+                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+            ]),
+            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
+                {ok, Rows} ->
+                    {ok, #{total => Total, page => Page, size => Size, list => Rows}};
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 分页查询注销申请日志（JOIN user）
+-spec page_logout_apply_log(binary(), list(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page_logout_apply_log(WhereSql, Params, Page, Size) ->
+    TbLog = user_log_repo:tablename(),
+    TbUser = user_repo:tablename(),
+    BaseFrom = iolist_to_binary([
+        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
+        <<"WHERE l.type = 102">>, WhereSql
+    ]),
+    CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
+    case elib_pg:one(CountSql, Params) of
+        {ok, CountRow} ->
+            Total = case maps:get(<<"count">>, CountRow, 0) of
+                V when is_integer(V) -> V;
+                _ -> 0
+            end,
+            Offset = (Page - 1) * Size,
+            LimitPos = integer_to_binary(length(Params) + 1),
+            OffsetPos = integer_to_binary(length(Params) + 2),
+            DataSql = iolist_to_binary([
+                <<"SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at ">>,
+                BaseFrom,
+                <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
+                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+            ]),
+            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
+                {ok, Rows} ->
+                    {ok, #{total => Total, page => Page, size => Size, list => Rows}};
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 流式导出注销申请日志（按 offset+limit 分块）
+-spec list_logout_apply_log_chunk(binary(), list(), pos_integer(), non_neg_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_logout_apply_log_chunk(WhereSql, Params, Limit, Offset) ->
+    TbLog = user_log_repo:tablename(),
+    TbUser = user_repo:tablename(),
+    BaseFrom = iolist_to_binary([
+        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
+        <<"WHERE l.type = 102">>, WhereSql
+    ]),
+    LimitPos = integer_to_binary(length(Params) + 1),
+    OffsetPos = integer_to_binary(length(Params) + 2),
+    DataSql = iolist_to_binary([
+        <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
+        BaseFrom,
+        <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
+        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+    ]),
+    elib_pg:query(DataSql, Params ++ [Limit, Offset]).

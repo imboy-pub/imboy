@@ -11,6 +11,7 @@
     alias/4,
     update_role/4,         % 更新群成员角色
     mute/4,               % 群成员禁言
+    unmute/3,             % 群成员解禁
     check_mute/2,         % 检查禁言状态
     list_member/1,
     list_member/2,
@@ -183,6 +184,37 @@ mute(CurrentUid, Gid, UserId, Duration) ->
             end
     end.
 
+%% @doc 群成员解禁（slice-9b）
+%% 解除指定群成员的禁言状态。
+%%
+%% 语义：
+%%   - 将数据库 `group_member.mute_until` 置 NULL
+%%   - 复用 `mute_notice/4` 广播 S2C `group_member_mute` action，
+%%     但 payload `mute_until == 0` 作为解禁信号（客户端据此切到 Unmute 分支）
+%%   - 权限矩阵与 `mute/4` 一致（复用 `validate_mute_permission`）
+%%
+%% @param CurrentUid 当前操作用户ID
+%% @param Gid 群组ID
+%% @param UserId 要解禁的用户ID
+%% @return ok | {error, binary()}
+%% @end
+-spec unmute(integer(), integer(), integer()) -> ok | {error, binary()}.
+unmute(CurrentUid, Gid, UserId) ->
+    case validate_mute_permission(CurrentUid, Gid) of
+        {error, Reason} -> {error, Reason};
+        ok ->
+            case elib_pg:with_tx(
+                fun(Conn) -> group_member_ds:update_mute(Conn, Gid, UserId, null) end
+            ) of
+                ok ->
+                    % 广播解禁信号（mute_until = 0）
+                    mute_notice(CurrentUid, Gid, UserId, 0),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
 %% @doc 检查用户是否被禁言
 %%
 %% @param Gid 群组ID
@@ -244,21 +276,32 @@ validate_mute_permission(CurrentUid, Gid) ->
             {error, <<"你不是群成员"/utf8>>}
     end.
 
-%% @doc 发送禁言通知
+%% @doc 发送禁言 / 解禁通知。
+%%
+%% slice-1-finalize：Payload 新增 `user_id` 字段，客户端据此定位被禁成员行。
+%% slice-9b：`MuteUntil == 0` 为**解禁信号**，客户端据此将本地 `mute_until`
+%%          列置 NULL 并切换到 UnmutePayload 分支；`duration_text` 留空、
+%%          `remaining_seconds` 为 0。
 -spec mute_notice(integer(), integer(), integer(), integer()) -> ok.
-mute_notice(AdminUid, Gid, _UserId, MuteUntil) ->
+mute_notice(AdminUid, Gid, UserId, MuteUntil) ->
     % 获取群成员列表
     ToUidLi = group_ds:member_uids(Gid),
     Admin = user_ds:find_by_id(AdminUid, <<"nickname">>),
     Now = elib_dt:millisecond(),
 
-    % 计算剩余时间（转换为秒）
-    RemainingSec = round((MuteUntil - Now) / 1000),
-    DurationText = format_duration(RemainingSec),
+    % slice-9b：MuteUntil == 0 作为解禁信号，跳过时长计算
+    {RemainingSec, DurationText} =
+        case MuteUntil of
+            0 -> {0, <<>>};
+            _ ->
+                R = round((MuteUntil - Now) / 1000),
+                {R, format_duration(R)}
+        end,
 
     % 构建通知数据
     Payload = #{
         <<"gid">> => Gid,
+        <<"user_id">> => UserId,
         <<"mute_until">> => MuteUntil,
         <<"remaining_seconds">> => RemainingSec,
         <<"duration_text">> => DurationText,

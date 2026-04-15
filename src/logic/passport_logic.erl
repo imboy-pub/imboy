@@ -490,6 +490,8 @@ verify_user(_Pwd, User) when map_size(User) =:= 0 ->
     {error, <<"账号不存在"/utf8>>};
 verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
+    % DEBUG: 临时调试密码校验
+    ?DEBUG_LOG(#{verify_debug => #{input_pwd_len => byte_size(Pwd), input_pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32)), stored_hash_len => byte_size(Pwd2), stored_hash_preview => binary:part(Pwd2, 0, min(byte_size(Pwd2), 40))}}),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
     case elib_password:verify(Pwd, Pwd2) of
@@ -547,7 +549,7 @@ compat_signup_nickname(Mobile, PostVals) ->
     end.
 
 prepare_compat_mobile(Mobile) ->
-    case user_repo:find_by_mobile(Mobile, <<"id,status">>) of
+    case user_ds:find_by_mobile(Mobile, <<"id,status">>) of
         #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
             ok = user_ds:delete_all_related_data(Id),
             ok;
@@ -562,7 +564,7 @@ compat_signup_email(Email) ->
         false ->
             undefined;
         true ->
-            case user_repo:find_by_email(Email, <<"id,status">>) of
+            case user_ds:find_by_email(Email, <<"id,status">>) of
                 #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
                     ok = user_ds:delete_all_related_data(Id),
                     Email;

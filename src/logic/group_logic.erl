@@ -133,7 +133,7 @@ dissolve(Uid, Gid, OwnerUid, G) ->
 %% @return ok | {error, Reason}
 -spec transfer(integer(), integer(), integer()) -> ok | {error, binary()}.
 transfer(CurrentUid, Gid, NewOwnerUid) ->
-    case group_repo:find_by_id(Gid, <<"*">>) of
+    case group_ds:find_by_id(Gid, <<"*">>) of
         {error, _Reason} ->
             {error, "群组不存在"};
         G ->
@@ -159,15 +159,15 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
     case CurrentUid of
         OwnerUid ->
             % 验证新群主是群成员
-            case group_member_repo:find(Gid, NewOwnerUid, <<"id">>) of
+            case group_member_ds:find_by_gid_and_uid(Gid, NewOwnerUid, <<"id">>) of
                 #{id := _} ->
                     % 使用事务更新群主和双方角色
                     elib_pg:with_tx(fun(Conn) ->
-                        case group_repo:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
-                                case group_member_repo:update_role(Conn, Gid, OwnerUid, <<"normal">>) of
+                                case group_member_ds:update_role(Conn, Gid, OwnerUid, <<"normal">>) of
                                     ok ->
-                                        case group_member_repo:update_role(Conn, Gid, NewOwnerUid, <<"owner">>) of
+                                        case group_member_ds:update_role(Conn, Gid, NewOwnerUid, <<"owner">>) of
                                             ok ->
                                                 % 记录群转让日志
                                                 Now = elib_dt:now(),
@@ -181,7 +181,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                                                                                 <<"remark">> => <<"群转让"/utf8>>}),
                                                     <<"created_at">> => Now
                                                 },
-                                                _ = group_log_repo:add(Conn, LogData),
+                                                _ = group_log_ds:add(Conn, LogData),
                                                 ok;
                                             {error, Reason} -> {error, Reason}
                                         end;
@@ -227,7 +227,7 @@ nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
 %% @return ok | {error, Reason}
 -spec transfer(integer(), integer(), integer(), boolean()) -> ok | {error, binary()}.
 transfer(CurrentUid, Gid, NewOwnerUid, KeepAsAdmin) when is_boolean(KeepAsAdmin) ->
-    case group_repo:find_by_id(Gid, <<"*">>) of
+    case group_ds:find_by_id(Gid, <<"*">>) of
         {error, _Reason} ->
             {error, "群组不存在"};
         G ->
@@ -254,21 +254,21 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
     case CurrentUid of
         OwnerUid ->
             % 验证新群主是群成员
-            case group_member_repo:find(Gid, NewOwnerUid, <<"id, role">>) of
+            case group_member_ds:find_by_gid_and_uid(Gid, NewOwnerUid, <<"id, role">>) of
                 #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
                     elib_pg:with_tx(fun(Conn) ->
-                        case group_repo:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
                                 % 更新原群主角色
                                 OldOwnerRole = case KeepAsAdmin of
                                     true  -> ?ROLE_VICE_OWNER;  % 保留为副群主
                                     false -> ?ROLE_MEMBER       % 变为普通成员
                                 end,
-                                case group_member_repo:update_role(Conn, Gid, OwnerUid, OldOwnerRole) of
+                                case group_member_ds:update_role(Conn, Gid, OwnerUid, OldOwnerRole) of
                                     ok ->
                                         % 更新新群主角色
-                                        case group_member_repo:update_role(Conn, Gid, NewOwnerUid, ?ROLE_OWNER) of
+                                        case group_member_ds:update_role(Conn, Gid, NewOwnerUid, ?ROLE_OWNER) of
                                             ok ->
                                                 % 记录群转让日志
                                                 Now = elib_dt:now(),
@@ -283,7 +283,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                                                                                         <<"remark">> => <<"群转让"/utf8>>}),
                                                     <<"created_at">> => Now
                                                 },
-                                                _ = group_log_repo:add(Conn, LogData),
+                                                _ = group_log_ds:add(Conn, LogData),
                                                 ok;
                                             {error, Reason} -> {error, Reason}
                                         end;

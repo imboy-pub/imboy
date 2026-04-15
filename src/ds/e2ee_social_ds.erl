@@ -25,6 +25,7 @@
 -export([delete_restored_shards/2]).
 -export([clear_trusted_contacts_cache/1]).
 -export([clear_user_shards_cache/1]).
+-export([create_shard/1]).
 
 %%===================================================================
 %%% API Functions - 可信联系人管理
@@ -323,3 +324,7 @@ clear_user_shards_cache(Uid) ->
     CacheKey = {e2ee_user_shards, Uid, <<"latest">>},
     imboy_cache:delete(CacheKey),
     ok.
+
+%% G3: e2ee_social_logic 不应直调 e2ee_social_repo
+-spec create_shard(map()) -> {ok, integer()} | {error, term()}.
+create_shard(ShardRecord) -> e2ee_social_repo:create(ShardRecord).

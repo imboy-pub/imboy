@@ -226,14 +226,7 @@ page(Scene, Req0, State) ->
 
 -spec collect_page(integer(), integer(), integer(), integer(), binary()) -> map().
 collect_page(CurrentUid, Page, Size, TagId, Kwd) ->
-    TagName =
-        elib_pg:pluck_value(
-            <<"public.user_tag">>,
-            <<"name">>,
-            #{id => TagId, creator_user_id => CurrentUid, scene => 1},
-            #{},
-            <<>>
-        ),
+    TagName = user_tag_ds:find_name_by_id(TagId, CurrentUid, 1),
     case TagName of
         <<>> ->
             #{total => 0, page => Page, size => Size, list => []};
@@ -265,8 +258,7 @@ collect_page_by_tag(CurrentUid, Page, Size, TagName, Kwd) ->
         end,
     Info = elib_hasher:decoded_field(<<"info">>),
     Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-    Tb = user_collect_repo:tablename(),
-    case elib_pg:page_with_total(Tb, Column, WhereMap, <<"id desc">>, Page, Size) of
+    case user_collect_ds:page(Column, WhereMap, <<"id desc">>, Page, Size) of
         {ok, Payload} ->
             List = maps:get(list, Payload, []),
             Payload#{list => elib_response:json_decode_list_field(List, <<"info">>)};

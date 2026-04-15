@@ -69,7 +69,7 @@ get_post(Uid, PostIdRaw) ->
                 Post when is_map(Post), map_size(Post) > 0 ->
                     case moment_ds:can_view_post(Uid, Post) of
                         true ->
-                            Liked = moment_like_repo:has_liked(PostId, Uid),
+                            Liked = moment_ds:has_liked(PostId, Uid),
                             Payload = post_transfer(Post),
                             {ok, Payload#{<<"liked">> => Liked}};
                         false ->
@@ -186,7 +186,7 @@ add_comment(Uid, PostIdRaw, ContentRaw, ReplyToUidRaw) ->
         ok ->
             case moment_ds:add_comment(Uid, PostId, Content, ReplyToUid) of
                 {ok, CommentId} ->
-                    Comment = moment_comment_repo:find_by_id(CommentId),
+                    Comment = moment_ds:find_comment_by_id(CommentId),
                     Post = moment_ds:get_post(PostId),
                     AuthorUid = maps:get(<<"author_uid">>, Post, 0),
                     _ = moment_logic_notify:notify_post_commented(Uid, PostId, CommentId, AuthorUid),
@@ -279,7 +279,7 @@ admin_list_posts(Keyword, UidRaw, Status, Page, Size) ->
     Uid = decode_optional_positive_id(UidRaw),
     Page2 = clamp(Page, 1, 1000000),
     Size2 = clamp(Size, 1, 100),
-    case moment_post_repo:page_admin(Keyword, Uid, Status, Page2, Size2) of
+    case moment_ds:page_admin_posts(Keyword, Uid, Status, Page2, Size2) of
         {ok, Payload} ->
             List = maps:get(list, Payload, []),
             List2 = [admin_post_transfer(Post) || Post <- List],
@@ -298,7 +298,7 @@ admin_post_detail(PostIdRaw) ->
             case moment_ds:get_post_any(PostId) of
                 Post when is_map(Post), map_size(Post) > 0 ->
                     {AllowUids, DenyUids} = moment_ds:list_post_acl(PostId),
-                    Reports = case moment_report_repo:list_by_post(PostId, 50) of
+                    Reports = case moment_ds:list_reports_by_post(PostId, 50) of
                         {ok, Rows} -> [report_transfer(R) || R <- Rows];
                         _ -> []
                     end,
@@ -347,7 +347,7 @@ admin_delete_post(AdmUid, PostIdRaw, ReasonRaw) ->
 admin_list_reports(Status, Page, Size) ->
     Page2 = clamp(Page, 1, 1000000),
     Size2 = clamp(Size, 1, 100),
-    case moment_report_repo:page_admin(Status, Page2, Size2) of
+    case moment_ds:page_admin_reports(Status, Page2, Size2) of
         {ok, Payload} ->
             List = maps:get(list, Payload, []),
             List2 = [report_transfer(Item) || Item <- List],
@@ -364,10 +364,10 @@ admin_resolve_report(AdmUid, ReportIdRaw, Result, NoteRaw) ->
         false ->
             {error, <<"举报参数无效"/utf8>>};
         true ->
-            case moment_report_repo:find_by_id(ReportId) of
+            case moment_ds:find_report_by_id(ReportId) of
                 Report when is_map(Report), map_size(Report) > 0 ->
                     PostId = maps:get(<<"post_id">>, Report, 0),
-                    case moment_report_repo:resolve(ReportId, Result, Note, AdmUid) of
+                    case moment_ds:resolve_report(ReportId, Result, Note, AdmUid) of
                         {ok, _} ->
                             _ = maybe_delete_post_on_violation(AdmUid, PostId, Result),
                             _ = audit_admin_action(
@@ -646,7 +646,7 @@ audit_admin_action(AdmUid, Action, TargetId, Extra) ->
         <<"occurred_at">> => elib_dt:now()
     },
     try
-        _ = user_log_repo:add(#{
+        _ = user_log_ds:add(#{
             type => ?ADM_MOMENT_AUDIT_TYPE,
             uid => AdmUid,
             body => jsone:encode(Body, [native_utf8]),

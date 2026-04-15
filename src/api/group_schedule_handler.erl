@@ -366,7 +366,7 @@ normalize_schedule_id(_Value) ->
 
 -spec schedule_id_by_pk(integer()) -> binary() | undefined.
 schedule_id_by_pk(Id) when is_integer(Id), Id > 0 ->
-    case group_schedule_repo:find_by_id(Id, <<"schedule_id">>) of
+    case group_schedule_ds:find_by_id(Id, <<"schedule_id">>) of
         #{<<"schedule_id">> := ScheduleId} when is_binary(ScheduleId), ScheduleId =/= <<>> ->
             ScheduleId;
         _ ->

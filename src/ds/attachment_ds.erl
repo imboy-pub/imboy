@@ -11,6 +11,8 @@
 
 -export([tablename/0]).
 -export([save/4]).
+-export([stats/0]).
+-export([page/3]).
 
 %% ===================================================================
 %% API Functions
@@ -32,6 +34,13 @@ tablename() ->
 -spec save(pid(), binary(), integer(), [map()]) -> ok.
 save(Conn, CreatedAt, Uid, Attach) ->
     attachment_repo:save(Conn, CreatedAt, Uid, Attach).
+
+%% G3: adm_attach_handler 不应直调 attachment_repo
+-spec stats() -> map().
+stats() -> attachment_repo:stats().
+
+-spec page(pos_integer(), pos_integer(), map()) -> {ok, map()} | {error, term()}.
+page(Page, Size, Opts) -> attachment_repo:page(Page, Size, Opts).
 
 %% ===================================================================
 %% Internal Functions

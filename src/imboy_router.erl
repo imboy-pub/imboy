@@ -339,6 +339,7 @@ get_routes() ->
         {"/v1/group_member/alias", group_member_handler, #{action => alias}},
         {"/v1/group_member/same_group", group_member_handler, #{action => same_group}},
         {"/v1/group_member/mute", group_member_handler, #{action => mute}},
+        {"/v1/group_member/unmute", group_member_handler, #{action => unmute}},
         {"/v1/group_member/role", group_member_handler, #{action => role}},
         {"/v1/group/transfer", group_handler, #{action => transfer}},
         % 群组标签

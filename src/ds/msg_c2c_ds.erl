@@ -18,6 +18,12 @@
 -export([read_msg/3]).
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
+-export([update_pinned/3]).
+-export([update_payload_by_msg_id/2]).
+-export([delete_by_msg_ids_and_to_id/2]).
+-export([count_unread_since/2]).
+-export([set_expire_at/2]).
+-export([delete_expired/2]).
 
 %% ===================================================================
 %% API
@@ -318,3 +324,60 @@ write_msg_with_reply(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE,
     ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg_with_reply(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE,
                                       ReplyToMsgId, ReplyToFromId, ReplySnippet).
+
+%% G3: msg_reaction_logic / msg_pinned_logic 不应直调 msg_c2c_repo
+-spec update_pinned(binary(), integer(), boolean()) -> {ok, non_neg_integer()} | {error, term()}.
+update_pinned(MsgId, ToUid, Pinned) ->
+    msg_c2c_repo:update_pinned(MsgId, ToUid, Pinned).
+
+%% G3: msg_c2c_logic 不应直调 msg_c2c_repo / thin DS wrapper
+-spec update_payload_by_msg_id(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+update_payload_by_msg_id(MsgId, PayloadJson) ->
+    msg_c2c_repo:update_payload_by_msg_id(MsgId, PayloadJson).
+
+%% G3: messaging_logic wrapper
+-spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
+delete_by_msg_ids_and_to_id(MsgIds, Uid) -> msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid).
+
+%% G3: messaging_logic 不应直调 msg_c2c_repo:tablename()
+-spec count_unread_since(integer(), binary() | undefined) -> non_neg_integer().
+count_unread_since(ToId, undefined) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1">>,
+    case elib_pg:query(Sql, [ToId]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end;
+count_unread_since(ToId, Since) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary,
+            " WHERE to_id = $1 AND created_at >= $2">>,
+    case elib_pg:query(Sql, [ToId, Since]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end.
+
+%% G3: msg_c2c_logic 不应直调 msg_c2c_repo:tablename()
+-spec set_expire_at(binary(), binary()) -> ok.
+set_expire_at(MsgId, ExpireAt) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
+    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
+        {ok, _} -> ok;
+        {error, _Reason} -> ok
+    end.
+
+%% G3: msg_burn_logic 不应直调 msg_c2c_repo:tablename()
+%% 使用 NOW() 替代参数化时间戳，避免 epgsql 无法编码 RFC3339 binary 为 timestamptz
+-spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
+delete_expired(_Now, BatchSize) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary,
+            " WHERE id IN ("
+            "  SELECT id FROM ", Tb/binary,
+            "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"
+            "  ORDER BY expire_at ASC LIMIT $1)">>,
+    case elib_pg:execute(Sql, [BatchSize]) of
+        {ok, Count} when is_integer(Count) -> Count;
+        _ -> 0
+    end.

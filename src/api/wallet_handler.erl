@@ -44,12 +44,12 @@ init(Req0, State0) ->
 -spec balance(cowboy_req:req(), map()) -> cowboy_req:req().
 balance(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    Wallet = wallet_repo:find_by_uid(CurrentUid),
+    Wallet = wallet_ds:find_by_uid(CurrentUid),
     {Balance, Frozen} =
         case map_size(Wallet) =:= 0 of
             true ->
                 % 钱包不存在，自动创建
-                _ = wallet_repo:create(#{user_id => CurrentUid}),
+                _ = wallet_ds:create(#{user_id => CurrentUid}),
                 {0, 0};
             false ->
                 {maps:get(<<"balance">>, Wallet, 0),
@@ -68,7 +68,7 @@ balance(Req0, State) ->
 transactions(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-    {ok, Payload} = wallet_repo:page_transactions(Page, Size, CurrentUid),
+    {ok, Payload} = wallet_ds:page_transactions(Page, Size, CurrentUid),
     elib_response:success(Req0, Payload, "success.").
 
 %% @doc 模拟充值
@@ -102,7 +102,7 @@ do_topup(Req0, Uid, Amount) ->
         <<"remark">> => <<"充值"/utf8>>,
         <<"status">> => 1
     },
-    case wallet_repo:atomic_balance_change(Amount, Uid, TxData, RefNo) of
+    case wallet_ds:atomic_balance_change(Amount, Uid, TxData, RefNo) of
         {ok, NewBalance} ->
             Payload = #{
                 <<"balance">> => NewBalance,
@@ -119,11 +119,11 @@ do_topup(Req0, Uid, Amount) ->
 %% @doc 确保钱包存在，不存在则创建后返回
 -spec ensure_wallet(integer()) -> map().
 ensure_wallet(Uid) ->
-    Wallet = wallet_repo:find_by_uid(Uid),
+    Wallet = wallet_ds:find_by_uid(Uid),
     case map_size(Wallet) =:= 0 of
         true ->
-            _ = wallet_repo:create(#{user_id => Uid}),
-            wallet_repo:find_by_uid(Uid);
+            _ = wallet_ds:create(#{user_id => Uid}),
+            wallet_ds:find_by_uid(Uid);
         false ->
             Wallet
     end.

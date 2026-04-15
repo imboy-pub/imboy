@@ -267,7 +267,7 @@ encrypt_shard_for_proxy(Shard, ProxyPublicKeyPem) ->
 persist_shards(ShardRecords) ->
     try
         PersistedReversed = lists:foldl(fun(ShardRecord, Acc) ->
-            case e2ee_social_repo:create(ShardRecord) of
+            case e2ee_social_ds:create_shard(ShardRecord) of
                 {ok, Id} ->
                     [ShardRecord#{<<"id">> => Id, <<"status">> => <<"active">>} | Acc];
                 {error, Reason} ->

@@ -188,7 +188,7 @@ check_social_recovery_available(Uid) ->
 -spec check_local_backup_available(integer()) ->
     {ok, boolean(), map()} | {error, term()}.
 check_local_backup_available(Uid) ->
-    case e2ee_local_backup_repo:find_latest(Uid) of
+    case e2ee_local_backup_ds:find_latest(Uid) of
         {ok, []} ->
             {ok, false, #{}};
         {ok, Backup} ->

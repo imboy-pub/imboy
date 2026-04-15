@@ -131,7 +131,7 @@ get_original_message(MsgId) ->
             {ok, Msg, <<"c2c">>};
         {error, not_found} ->
             % 从 C2G 消息表查找
-            case msg_c2g_timeline_repo:find_by_msg_id(MsgId) of
+            case msg_c2g_ds:timeline_find_by_msg_id(MsgId) of
                 {ok, [Msg]} ->
                     {ok, Msg, <<"c2g">>};
                 {ok, []} ->

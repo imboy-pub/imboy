@@ -68,7 +68,7 @@ auth(_, Req0, _State) ->
 %% 返回总文件数、总大小、各类型文件计数、今日上传统计
 -spec stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 stats(<<"GET">>, Req0, _State) ->
-    Result = attachment_repo:stats(),
+    Result = attachment_ds:stats(),
     elib_response:success(Req0, Result, "success.");
 stats(_, Req0, _State) ->
     Req0.
@@ -82,7 +82,7 @@ index(<<"GET">>, Req0, _State) ->
     MimeType = proplists:get_value(<<"mime_type">>, Qs, undefined),
     Keyword = proplists:get_value(<<"keyword">>, Qs, undefined),
     Opts = #{mime_type => MimeType, keyword => Keyword},
-    case attachment_repo:page(Page, Size, Opts) of
+    case attachment_ds:page(Page, Size, Opts) of
         {ok, Result} ->
             elib_response:success(Req0, Result, "success.");
         {error, _Reason} ->

@@ -108,10 +108,10 @@ code_change(_OldVsn, State, _Extra) ->
 -spec do_cleanup_internal(#state{}) -> {{ok, non_neg_integer()} | {error, term()}, #state{}}.
 do_cleanup_internal(State) ->
     % 1. 清理过期会话
-    Result = e2ee_transfer_repo:cleanup_expired_sessions(),
+    Result = e2ee_transfer_ds:cleanup_expired_sessions(),
 
     % 2. 检查停滞会话
-    case e2ee_transfer_repo:get_stalled_sessions() of
+    case e2ee_transfer_ds:get_stalled_sessions() of
         {ok, []} ->
             ok;
         {ok, StalledSessions} ->

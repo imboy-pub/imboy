@@ -130,7 +130,7 @@ get_member_suggestions(Gid, Uid, Keyword) ->
             MemberUids = group_ds:member_uids(Gid),
             % 查询用户信息
             Column = <<"id, account, nickname, avatar">>,
-            case user_repo:list_by_ids(MemberUids, Column) of
+            case user_ds:list_by_ids(MemberUids, Column) of
                 {ok, Users} ->
                     % 根据关键字过滤
                     FilteredUsers = filter_users_by_keyword(Users, Keyword),

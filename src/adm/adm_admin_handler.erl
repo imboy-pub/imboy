@@ -268,47 +268,13 @@ extract_list_filters(Req0) ->
 -spec query_admin_page(pos_integer(), pos_integer(), map()) ->
     {ok, map()} | {error, term()}.
 query_admin_page(Page, Size, Filters) ->
-    Tb = adm_user_repo:tablename(),
-    BaseWhere = <<" WHERE status >= -1">>,
     {WhereSql, Params} = build_where_sql(Filters, 1, [], []),
-    CountSql = iolist_to_binary([
-        <<"SELECT COUNT(*) AS count FROM ">>, Tb, BaseWhere, WhereSql
-    ]),
-    case elib_pg:one(CountSql, Params) of
-        {ok, CountRow} when is_map(CountRow) ->
-            Total = get_count(CountRow),
-            Offset = (Page - 1) * Size,
-            LimitPos = integer_to_binary(length(Params) + 1),
-            OffsetPos = integer_to_binary(length(Params) + 2),
-            DataSql = iolist_to_binary([
-                <<"SELECT id,account,mobile,email,nickname,avatar,role_id,">>,
-                <<"login_count,last_login_ip,last_login_at,status,created_at ">>,
-                <<"FROM ">>,
-                Tb,
-                BaseWhere,
-                WhereSql,
-                <<" ORDER BY created_at DESC, id DESC LIMIT $">>,
-                LimitPos,
-                <<" OFFSET $">>,
-                OffsetPos
-            ]),
-            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
-                {ok, Rows} ->
-                    Items = [normalize_admin_row(Row) || Row <- Rows],
-                    {ok,
-                        #{
-                            list => Items,
-                            total => Total,
-                            page => Page,
-                            size => Size
-                        }};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
-        {ok, _} ->
-            {ok, #{list => [], total => 0, page => Page, size => Size}};
-        {error, Reason} ->
-            {error, Reason}
+    case adm_user_ds:page_with_where_sql(WhereSql, Params, Page, Size) of
+        {ok, #{list := Rows} = Result} ->
+            Items = [normalize_admin_row(Row) || Row <- Rows],
+            {ok, Result#{list => Items}};
+        Other ->
+            Other
     end.
 
 -spec build_where_sql(map(), pos_integer(), [binary()], list()) -> {binary(), list()}.
@@ -630,7 +596,7 @@ push_token_list_action(<<"GET">>, Req0, State) ->
     case ensure_permission(State, <<"settings:view">>, Req0) of
         ok ->
             {Page, Size} = elib_param:page(Req0),
-            case push_token_repo:list_page(Page, Size) of
+            case push_token_ds:list_page(Page, Size) of
                 {ok, #{list := Rows, total := Total}} ->
                     Items = Rows,
                     elib_response:success(Req0, #{
@@ -656,7 +622,7 @@ push_token_list_action(_, Req0, _State) ->
 compliance_key_list_action(<<"GET">>, Req0, State) ->
     case ensure_permission(State, <<"settings:view">>, Req0) of
         ok ->
-            case compliance_key_repo:list_all() of
+            case compliance_key_ds:list_all() of
                 {ok, Rows} ->
                     elib_response:success(Req0, #{<<"list">> => Rows});
                 {error, Reason} ->
@@ -679,7 +645,7 @@ compliance_key_create_action(<<"POST">>, Req0, State) ->
                 {true, true} ->
                     KeyId = elib_id:gen(<<"ck_">>),
                     AdmUserId = maps:get(adm_user_id, State, 0),
-                    case compliance_key_repo:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId) of
+                    case compliance_key_ds:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId) of
                         {ok, _} ->
                             elib_response:success(Req0, #{<<"key_id">> => KeyId});
                         {error, Reason} ->
@@ -711,7 +677,7 @@ compliance_key_revoke_handle(Req0, State) ->
             AdmUserId = maps:get(adm_user_id, State, 0),
             case byte_size(KeyId) > 0 of
                 true ->
-                    case compliance_key_repo:revoke(KeyId, AdmUserId) of
+                    case compliance_key_ds:revoke(KeyId, AdmUserId) of
                         {ok, N} when N > 0 ->
                             elib_response:success(Req0, #{});
                         {ok, 0} ->

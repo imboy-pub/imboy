@@ -33,7 +33,7 @@
     {ok, {integer(), [map()]}} | {error, term()}.
 list(CurrentUid, Gid, Page, Size) ->
     % 验证群成员身份
-    case group_member_repo:find(Gid, CurrentUid, <<"id">>) of
+    case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>) of
         GM when map_size(GM) > 0 ->
             % 查询公告列表
             case group_notice_ds:list_by_group_id(Gid, Page, Size) of
@@ -58,7 +58,7 @@ detail(CurrentUid, NoticeId) ->
         {ok, Notice} ->
             Gid = maps:get(<<"group_id">>, Notice),
             % 验证群成员身份
-            case group_member_repo:find(Gid, CurrentUid, <<"id">>) of
+            case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>) of
                 GM when map_size(GM) > 0 ->
                     % 处理用户ID编码
                     Notice2 = encode_notice_ids(Notice),
@@ -140,7 +140,7 @@ mark_as_read(CurrentUid, NoticeId) ->
         {ok, Notice} ->
             Gid = maps:get(<<"group_id">>, Notice),
             % 验证群成员身份
-            case group_member_repo:find(Gid, CurrentUid, <<"id">>) of
+            case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>) of
                 GM when map_size(GM) > 0 ->
                     group_notice_ds:mark_as_read(NoticeId);
                 _ ->

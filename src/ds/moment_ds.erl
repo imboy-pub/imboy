@@ -16,6 +16,13 @@
 -export([report_post/4]).
 -export([list_post_acl/1]).
 -export([list_post_likes/2]).
+-export([has_liked/2]).
+-export([find_comment_by_id/1]).
+-export([page_admin_posts/5]).
+-export([list_reports_by_post/2]).
+-export([page_admin_reports/3]).
+-export([find_report_by_id/1]).
+-export([resolve_report/4]).
 
 -include("log.hrl").
 
@@ -405,3 +412,29 @@ encode_json(Value, Default) ->
         _:_ ->
             Default
     end.
+
+%% G3: moment_logic 不应直调 moment_*_repo / thin DS wrappers
+
+-spec has_liked(integer(), integer()) -> boolean().
+has_liked(PostId, Uid) -> moment_like_repo:has_liked(PostId, Uid).
+
+-spec find_comment_by_id(integer()) -> map() | {error, any()}.
+find_comment_by_id(CommentId) -> moment_comment_repo:find_by_id(CommentId).
+
+-spec page_admin_posts(binary() | undefined, integer(), integer(), integer(), integer()) ->
+    {ok, map()} | {error, any()}.
+page_admin_posts(Keyword, Uid, Status, Page, Size) ->
+    moment_post_repo:page_admin(Keyword, Uid, Status, Page, Size).
+
+-spec list_reports_by_post(integer(), integer()) -> {ok, [map()]} | {error, any()}.
+list_reports_by_post(PostId, Limit) -> moment_report_repo:list_by_post(PostId, Limit).
+
+-spec page_admin_reports(integer(), integer(), integer()) -> {ok, map()} | {error, any()}.
+page_admin_reports(Status, Page, Size) -> moment_report_repo:page_admin(Status, Page, Size).
+
+-spec find_report_by_id(integer()) -> map() | {error, any()}.
+find_report_by_id(ReportId) -> moment_report_repo:find_by_id(ReportId).
+
+-spec resolve_report(integer(), integer(), binary() | undefined, integer()) -> ok | {error, any()}.
+resolve_report(ReportId, Result, Note, AdmUid) ->
+    moment_report_repo:resolve(ReportId, Result, Note, AdmUid).

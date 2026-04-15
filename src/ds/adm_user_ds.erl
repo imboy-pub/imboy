@@ -16,6 +16,7 @@
 -export([save/1, update/2, delete/1]).
 -export([count_by_role_id/1]).
 -export([select_by_where/4, select_by_where/5, select_by_where_safe/6]).
+-export([page_with_where_sql/4]).
 
 %% ===================================================================
 %% API Functions
@@ -104,6 +105,43 @@ select_by_where(Column, Where, Limit, Offset, OrderBy) ->
     {ok, [map()]} | {error, any()}.
 select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
     adm_user_repo:select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields).
+
+%% @doc 带动态 WHERE SQL 的分页查询管理员列表
+-spec page_with_where_sql(binary(), list(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page_with_where_sql(WhereSql, Params, Page, Size) ->
+    Tb = adm_user_repo:tablename(),
+    BaseWhere = <<" WHERE status >= -1">>,
+    CountSql = iolist_to_binary([
+        <<"SELECT COUNT(*) AS count FROM ">>, Tb, BaseWhere, WhereSql
+    ]),
+    case elib_pg:one(CountSql, Params) of
+        {ok, CountRow} when is_map(CountRow) ->
+            Total = case maps:get(<<"count">>, CountRow, 0) of
+                V when is_integer(V) -> V;
+                _ -> 0
+            end,
+            Offset = (Page - 1) * Size,
+            LimitPos = integer_to_binary(length(Params) + 1),
+            OffsetPos = integer_to_binary(length(Params) + 2),
+            DataSql = iolist_to_binary([
+                <<"SELECT id,account,mobile,email,nickname,avatar,role_id,">>,
+                <<"login_count,last_login_ip,last_login_at,status,created_at ">>,
+                <<"FROM ">>, Tb, BaseWhere, WhereSql,
+                <<" ORDER BY created_at DESC, id DESC LIMIT $">>,
+                LimitPos, <<" OFFSET $">>, OffsetPos
+            ]),
+            case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
+                {ok, Rows} ->
+                    {ok, #{list => Rows, total => Total, page => Page, size => Size}};
+                {error, _} = Err ->
+                    Err
+            end;
+        {ok, _} ->
+            {ok, #{list => [], total => 0, page => Page, size => Size}};
+        {error, _} = Err ->
+            Err
+    end.
 
 %% ===================================================================
 %% Internal Functions

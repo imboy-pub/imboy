@@ -12,7 +12,7 @@ create_order(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"id,type,status">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
                 {error, not_found} ->
                     {error, <<"频道不存在"/utf8>>};
                 {error, Reason} when is_binary(Reason) ->
@@ -30,7 +30,7 @@ create_order(Uid, ChannelIdBin) ->
                         true ->
                             case channel_subscribe_ds:create_order(ChannelId, Uid, #{}) of
                                 {ok, OrderNo} ->
-                                    case channel_order_repo:find_by_order_no(OrderNo) of
+                                    case channel_order_ds:find_by_order_no(OrderNo) of
                                         {ok, Order} when is_map(Order) ->
                                             Order2 = order_transfer(Order),
                                             {ok, Order2};
@@ -56,7 +56,7 @@ create_order(Uid, ChannelIdBin) ->
 
 -spec pay_order(integer(), binary()) -> ok | {error, binary()}.
 pay_order(Uid, OrderNo) ->
-    case channel_order_repo:find_by_order_no(OrderNo) of
+    case channel_order_ds:find_by_order_no(OrderNo) of
         {ok, Order} when is_map(Order) ->
             OrderUserId = maps:get(<<"user_id">>, Order, 0),
             ChannelId = maps:get(<<"channel_id">>, Order, 0),
@@ -114,7 +114,7 @@ pay_order(Uid, OrderNo) ->
 
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
 get_my_orders(Uid) ->
-    case channel_order_repo:list_by_user(Uid, 50) of
+    case channel_order_ds:list_by_user(Uid, 50) of
         {ok, Orders} when is_list(Orders) ->
             Orders2 = lists:map(fun order_transfer/1, [O || O <- Orders, is_map(O)]),
             {ok, Orders2};
@@ -130,7 +130,7 @@ get_my_orders(Uid) ->
 
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 get_order(Uid, OrderNo) ->
-    case channel_order_repo:find_by_order_no(OrderNo) of
+    case channel_order_ds:find_by_order_no(OrderNo) of
         {ok, Order} when is_map(Order) ->
             OrderUserId = maps:get(<<"user_id">>, Order, 0),
             case is_integer(OrderUserId) andalso OrderUserId > 0 of

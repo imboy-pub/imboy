@@ -90,7 +90,7 @@ list(<<"GET">>, Req0, State) ->
             {ok, Type} = elib_param:int(type, Req0, -1),
 
             Where = build_where(Status, Type),
-            {ok, P} = group_repo:page(Page, Size, Where, <<"created_at DESC">>),
+            {ok, P} = group_ds:page(Page, Size, Where, <<"created_at DESC">>),
             P2 = normalize_group_payload(P),
             elib_response:success(Req0, P2)
     end.
@@ -106,12 +106,12 @@ detail(<<"GET">>, Req0, State) ->
             case Gid > 0 of
                 true ->
                     Column = <<"id,title,avatar,introduction,owner_uid,creator_uid,member_count,member_max,type,join_limit,status,created_at">>,
-                    Group = group_repo:find_by_id(Gid, Column),
+                    Group = group_ds:find_by_id(Gid, Column),
                     case map_size(Group) > 0 of
                         true ->
                             % 获取群主信息
                             OwnerUid = maps:get(<<"owner_uid">>, Group),
-                            Owner = user_repo:find_by_id(OwnerUid, <<"id,nickname,avatar">>),
+                            Owner = user_ds:find_by_id(OwnerUid, <<"id,nickname,avatar">>),
                             Group2 = normalize_group(Group),
                             Result = Group2#{owner => normalize_user(Owner)},
                             elib_response:success(Req0, Result);
@@ -133,7 +133,7 @@ dissolve(<<"POST">>, Req0, State) ->
             Gid = parse_gid_param(Req0),
             case Gid > 0 of
                 true ->
-                    case group_repo:update(#{id => Gid, status => -1}) of
+                    case group_ds:update(#{id => Gid, status => -1}) of
                         {ok, _} ->
                             _ = audit_group_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -170,7 +170,7 @@ search(<<"GET">>, Req0, State) ->
                             #{introduction => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
                         ]
                     },
-                    {ok, P} = group_repo:page(Page, Size, Where, <<"created_at DESC">>),
+                    {ok, P} = group_ds:page(Page, Size, Where, <<"created_at DESC">>),
                     P2 = normalize_group_payload(P),
                     elib_response:success(Req0, P2);
                 false ->
@@ -191,7 +191,7 @@ members(<<"GET">>, Req0, State) ->
             case Gid > 0 of
                 true ->
                     Column = <<"user_id,nickname,avatar,role,joined_at">>,
-                    {ok, P} = group_member_repo:page_by_gid(Gid, Page, Size, Column),
+                    {ok, P} = group_member_ds:page_by_gid(Gid, Page, Size, Column),
                     P2 = normalize_member_payload(P),
                     elib_response:success(Req0, P2);
                 false ->
@@ -295,10 +295,10 @@ notice_list(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_notice_repo:list_by_group_id(Gid, Page, Size) of
+                    case group_notice_ds:list_by_group_id(Gid, Page, Size) of
                         {ok, List} ->
                             NoticeList = [normalize_notice_row(Item) || Item <- List],
-                            case group_notice_repo:count_by_group_id(Gid) of
+                            case group_notice_ds:count_by_group_id(Gid) of
                                 {ok, Total} ->
                                     elib_response:success(Req0, #{
                                         list => NoticeList,
@@ -338,7 +338,7 @@ notice_detail(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_notice_repo:find_by_id(NoticePk) of
+                    case group_notice_ds:find_by_id(NoticePk) of
                         {ok, Notice} ->
                             elib_response:success(Req0, normalize_notice_row(Notice));
                         {error, not_found} ->
@@ -364,10 +364,10 @@ notice_delete(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_notice_repo:find_by_id(NoticePk) of
+                    case group_notice_ds:find_by_id(NoticePk) of
                         {ok, Notice} ->
                             GroupId = maps:get(<<"group_id">>, Notice, 0),
-                            case group_notice_repo:soft_delete(NoticePk) of
+                            case group_notice_ds:soft_delete(NoticePk) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -477,9 +477,9 @@ tag_list(<<"GET">>, Req0, State) ->
                     elib_response:error(Req0, "参数错误");
                 true ->
                     Column = <<"id, group_id, tag_name, created_by, created_at">>,
-                    case group_tag_repo:list_by_group(Gid, Column) of
+                    case group_tag_ds:list_by_group(Gid, Column) of
                         {ok, List} ->
-                            case group_tag_repo:count_by_group(Gid) of
+                            case group_tag_ds:count_by_group(Gid) of
                                 {ok, Total} ->
                                     elib_response:success(Req0, #{
                                         list => List,
@@ -522,7 +522,7 @@ tag_delete(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_tag_repo:delete(GroupId, TagName) of
+                    case group_tag_ds:delete(GroupId, TagName) of
                         {ok, Affected} when Affected > 0 ->
                             _ = audit_group_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -581,7 +581,7 @@ file_detail(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_file_repo:find_by_id(FilePk) of
+                    case group_file_ds:find_by_id(FilePk) of
                         File when is_map(File), map_size(File) > 0 ->
                             elib_response:success(Req0, File);
                         _ ->
@@ -604,11 +604,11 @@ file_delete(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_file_repo:find_by_id(FilePk) of
+                    case group_file_ds:find_by_id(FilePk) of
                         File when is_map(File), map_size(File) > 0 ->
                             GroupId = maps:get(<<"group_id">>, File, 0),
                             FileUid = maps:get(<<"file_id">>, File, <<>>),
-                            case group_file_repo:soft_delete(FilePk) of
+                            case group_file_ds:soft_delete(FilePk) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -646,7 +646,7 @@ album_list(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_album_repo:list_albums(Gid, Page, Size) of
+                    case group_album_ds:list_albums(Gid, Page, Size) of
                         {ok, Payload0} ->
                             Payload = normalize_page_payload(Payload0, Page, Size),
                             elib_response:success(Req0, Payload);
@@ -670,7 +670,7 @@ album_detail(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_album_repo:find_album_by_id(AlbumPk) of
+                    case group_album_ds:find_album_by_id(AlbumPk) of
                         Album when is_map(Album), map_size(Album) > 0 ->
                             elib_response:success(Req0, Album);
                         _ ->
@@ -693,11 +693,11 @@ album_delete(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_album_repo:find_album_by_id(AlbumPk) of
+                    case group_album_ds:find_album_by_id(AlbumPk) of
                         Album when is_map(Album), map_size(Album) > 0 ->
                             GroupId = maps:get(<<"group_id">>, Album, 0),
                             AlbumUid = maps:get(<<"album_id">>, Album, <<>>),
-                            case group_album_repo:delete_album(AlbumPk) of
+                            case group_album_ds:delete_album(AlbumPk) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -784,11 +784,11 @@ schedule_cancel(<<"POST">>, Req0, State) ->
                 undefined ->
                     elib_response:error(Req0, "参数错误");
                 _ ->
-                    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+                    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
                         #{<<"status">> := 4} ->
                             elib_response:error(Req0, "日程已取消");
                         #{<<"id">> := SchedulePk, <<"group_id">> := GroupId} ->
-                            case group_schedule_repo:update_status(SchedulePk, 4) of
+                            case group_schedule_ds:update_status(SchedulePk, 4) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -827,9 +827,9 @@ schedule_restore(<<"POST">>, Req0, State) ->
                 undefined ->
                     elib_response:error(Req0, "参数错误");
                 _ ->
-                    case group_schedule_repo:find_by_schedule_id(ScheduleId) of
+                    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
                         #{<<"status">> := 4, <<"id">> := SchedulePk, <<"group_id">> := GroupId} ->
-                            case group_schedule_repo:update_status(SchedulePk, 1) of
+                            case group_schedule_ds:update_status(SchedulePk, 1) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -868,43 +868,18 @@ governance_log_list(<<"GET">>, Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             Filters = extract_governance_log_filters(Req0),
             {WhereSql, Params} = build_governance_log_where_sql(Filters),
-            TbLog = user_log_repo:tablename(),
-            TbAdmUser = adm_user_repo:tablename(),
-            BaseFrom = iolist_to_binary([
-                <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbAdmUser, <<" u ON u.id = l.uid ">>,
-                <<"WHERE l.type = ">>, integer_to_binary(?ADM_GROUP_AUDIT_TYPE),
-                <<" AND l.remark = 'adm_group_governance'">>,
-                WhereSql
-            ]),
-            CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
-            case elib_pg:one(CountSql, Params) of
-                {ok, CountRow} ->
-                    Total = governance_log_count(CountRow),
-                    Offset = (Page - 1) * Size,
-                    LimitPos = integer_to_binary(length(Params) + 1),
-                    OffsetPos = integer_to_binary(length(Params) + 2),
-                    DataSql = iolist_to_binary([
-                        <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
-                        BaseFrom,
-                        <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-                        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
-                    ]),
-                    case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
-                        {ok, Rows} ->
-                            Items = [normalize_governance_log_row(Row) || Row <- Rows],
-                            elib_response:success(Req0, #{
-                                list => Items,
-                                total => Total,
-                                page => Page,
-                                size => Size,
-                                total_pages => calc_total_pages(Total, Size)
-                            });
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm group governance log list error: ", Reason]),
-                            elib_response:error(Req0, "查询失败")
-                    end;
+            case user_log_ds:page_group_governance_log(WhereSql, Params, Page, Size) of
+                {ok, #{total := Total, list := Rows}} ->
+                    Items = [normalize_governance_log_row(Row) || Row <- Rows],
+                    elib_response:success(Req0, #{
+                        list => Items,
+                        total => Total,
+                        page => Page,
+                        size => Size,
+                        total_pages => calc_total_pages(Total, Size)
+                    });
                 {error, Reason} ->
-                    ?ERROR_LOG(["adm group governance log count error: ", Reason]),
+                    ?ERROR_LOG(["adm group governance log list error: ", Reason]),
                     elib_response:error(Req0, "查询失败")
             end
     end;
@@ -974,12 +949,12 @@ task_pending_review(<<"GET">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_task_repo:find_by_id(TaskPk) of
+                    case group_task_ds:find_by_id(TaskPk) of
                         {ok, Task} ->
                             TaskUid = maps:get(<<"task_id">>, Task, <<>>),
                             case group_task_logic:pending_review(TaskUid, Page, Size) of
                                 {ok, Assignments} ->
-                                    case group_task_assignment_repo:count_by_status(TaskUid, 2) of
+                                    case group_task_ds:assignment_count_by_status(TaskUid, 2) of
                                         {ok, Total} ->
                                             elib_response:success(Req0, #{
                                                 list => Assignments,
@@ -1032,7 +1007,7 @@ task_review(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_task_assignment_repo:find_by_id(AssignmentPk) of
+                    case group_task_ds:assignment_find_by_id(AssignmentPk) of
                         {ok, Assignment} ->
                             TaskUid = maps:get(<<"task_id">>, Assignment, <<>>),
                             GroupId = task_group_id_by_uid(TaskUid),
@@ -1095,7 +1070,7 @@ task_delete(<<"POST">>, Req0, State) ->
                     elib_response:error(Req0, "参数错误");
                 true ->
                     {GroupId, TaskUid} = resolve_task_audit_meta(TaskPk),
-                    case group_task_repo:soft_delete(TaskPk) of
+                    case group_task_ds:soft_delete(TaskPk) of
                         {ok, _} ->
                             _ = audit_group_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -1129,7 +1104,7 @@ task_restore(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_task_repo:find_any_by_id(TaskPk) of
+                    case group_task_ds:find_any_by_id(TaskPk) of
                         {ok, Task} ->
                             case task_is_deleted(Task) of
                                 false ->
@@ -1137,7 +1112,7 @@ task_restore(<<"POST">>, Req0, State) ->
                                 true ->
                                     GroupId = maps:get(<<"group_id">>, Task, 0),
                                     TaskUid = maps:get(<<"task_id">>, Task, <<>>),
-                                    case group_task_repo:restore(TaskPk) of
+                                    case group_task_ds:restore(TaskPk) of
                                         {ok, Affected} when Affected > 0 ->
                                             _ = audit_group_governance(
                                                 maps:get(adm_user_id, State, 0),
@@ -1180,14 +1155,14 @@ task_close(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, "参数错误");
                 true ->
-                    case group_task_repo:find_by_id(TaskPk) of
+                    case group_task_ds:find_by_id(TaskPk) of
                         {ok, #{<<"status">> := 3}} ->
                             elib_response:error(Req0, "任务已结束");
                         {ok, Task} ->
                             GroupId = maps:get(<<"group_id">>, Task, 0),
                             TaskUid = maps:get(<<"task_id">>, Task, <<>>),
                             PrevStatus = maps:get(<<"status">>, Task, 1),
-                            case group_task_repo:update(TaskPk, #{status => 3}) of
+                            case group_task_ds:update_task(TaskPk, #{status => 3}) of
                                 {ok, Affected} when Affected > 0 ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -1509,9 +1484,9 @@ build_where(_Status, _Type) ->
 list_tasks_with_total(Gid, Status, Deleted, Page, Size) when Deleted =:= 1 ->
     case Status of
         S when is_integer(S), S >= 1, S =< 3 ->
-            case group_task_repo:list_deleted_by_group_id(Gid, S, Page, Size) of
+            case group_task_ds:list_deleted_by_group_id(Gid, S, Page, Size) of
                 {ok, List} ->
-                    case group_task_repo:count_deleted_by_group_id(Gid, S) of
+                    case group_task_ds:count_deleted_by_group_id(Gid, S) of
                         {ok, Total} ->
                             {ok, #{
                                 list => List,
@@ -1527,9 +1502,9 @@ list_tasks_with_total(Gid, Status, Deleted, Page, Size) when Deleted =:= 1 ->
                     Error
             end;
         _ ->
-            case group_task_repo:list_deleted_by_group_id(Gid, Page, Size) of
+            case group_task_ds:list_deleted_by_group_id(Gid, Page, Size) of
                 {ok, List} ->
-                    case group_task_repo:count_deleted_by_group_id(Gid) of
+                    case group_task_ds:count_deleted_by_group_id(Gid) of
                         {ok, Total} ->
                             {ok, #{
                                 list => List,
@@ -1548,9 +1523,9 @@ list_tasks_with_total(Gid, Status, Deleted, Page, Size) when Deleted =:= 1 ->
 list_tasks_with_total(Gid, Status, _Deleted, Page, Size) ->
     case Status of
         S when is_integer(S), S >= 1, S =< 3 ->
-            case group_task_repo:list_by_group_id(Gid, S, Page, Size) of
+            case group_task_ds:list_by_group_id(Gid, S, Page, Size) of
                 {ok, List} ->
-                    case group_task_repo:count_by_group_id(Gid, S) of
+                    case group_task_ds:count_by_group_id(Gid, S) of
                         {ok, Total} ->
                             {ok, #{
                                 list => List,
@@ -1566,9 +1541,9 @@ list_tasks_with_total(Gid, Status, _Deleted, Page, Size) ->
                     Error
             end;
         _ ->
-            case group_task_repo:list_by_group_id(Gid, Page, Size) of
+            case group_task_ds:list_by_group_id(Gid, Page, Size) of
                 {ok, List} ->
-                    case group_task_repo:count_by_group_id(Gid) of
+                    case group_task_ds:count_by_group_id(Gid) of
                         {ok, Total} ->
                             {ok, #{
                                 list => List,
@@ -1694,7 +1669,7 @@ resolve_category_uid(UidRaw, Gid) ->
 
 -spec owner_uid_by_gid(integer()) -> integer().
 owner_uid_by_gid(Gid) when is_integer(Gid), Gid > 0 ->
-    case group_repo:find_by_id(Gid, <<"owner_uid">>) of
+    case group_ds:find_by_id(Gid, <<"owner_uid">>) of
         #{<<"owner_uid">> := OwnerUid} when is_integer(OwnerUid), OwnerUid > 0 ->
             OwnerUid;
         _ ->
@@ -1792,7 +1767,7 @@ normalize_category_pk(_) ->
 
 -spec list_group_files_with_total(integer(), binary(), binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
 list_group_files_with_total(Gid, _Category, Keyword, Page, Size) when Keyword =/= <<>> ->
-    case group_file_repo:search_by_name(Gid, Keyword, Page, Size) of
+    case group_file_ds:search_by_name(Gid, Keyword, Page, Size) of
         {ok, List} ->
             Total = length(List),
             {ok, #{
@@ -1806,7 +1781,7 @@ list_group_files_with_total(Gid, _Category, Keyword, Page, Size) when Keyword =/
             Error
     end;
 list_group_files_with_total(Gid, Category, _Keyword, Page, Size) when Category =/= <<>> ->
-    case group_file_repo:list_by_category(Gid, Category, Page, Size) of
+    case group_file_ds:list_by_category(Gid, Category, Page, Size) of
         {ok, List} ->
             Total = length(List),
             {ok, #{
@@ -1820,9 +1795,9 @@ list_group_files_with_total(Gid, Category, _Keyword, Page, Size) when Category =
             Error
     end;
 list_group_files_with_total(Gid, _Category, _Keyword, Page, Size) ->
-    case group_file_repo:list_by_group(Gid, Page, Size, #{}) of
+    case group_file_ds:list_by_group(Gid, Page, Size, #{}) of
         {ok, List} ->
-            case group_file_repo:count_by_group(Gid) of
+            case group_file_ds:count_by_group(Gid) of
                 {ok, Total} ->
                     {ok, #{
                         list => List,
@@ -1867,7 +1842,7 @@ normalize_schedule_id(Value) when is_binary(Value) ->
                 true ->
                     schedule_id_by_pk(ec_cnv:to_integer(Value));
                 false ->
-                    case group_schedule_repo:find_by_schedule_id(Value) of
+                    case group_schedule_ds:find_by_schedule_id(Value) of
                         #{<<"schedule_id">> := _} ->
                             Value;
                         _ ->
@@ -1941,7 +1916,7 @@ normalize_file_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case group_file_repo:find_by_file_id(Value) of
+                    case group_file_ds:find_by_file_id(Value) of
                         #{<<"id">> := Id} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -1975,7 +1950,7 @@ normalize_album_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case group_album_repo:find_album_by_album_id(Value) of
+                    case group_album_ds:find_album_by_album_id(Value) of
                         #{<<"id">> := Id} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -1993,7 +1968,7 @@ normalize_album_pk(_) ->
 
 -spec schedule_id_by_pk(integer()) -> binary() | undefined.
 schedule_id_by_pk(Id) when is_integer(Id), Id > 0 ->
-    case group_schedule_repo:find_by_id(Id, <<"schedule_id">>) of
+    case group_schedule_ds:find_by_id(Id, <<"schedule_id">>) of
         #{<<"schedule_id">> := ScheduleId} when is_binary(ScheduleId), ScheduleId =/= <<>> ->
             ScheduleId;
         _ ->
@@ -2020,7 +1995,7 @@ normalize_task_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case group_task_repo:find_by_task_id(Value) of
+                    case group_task_ds:find_by_task_id(Value) of
                         {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -2054,7 +2029,7 @@ normalize_restore_task_pk(Value) when is_binary(Value) ->
                 true ->
                     ec_cnv:to_integer(Value);
                 false ->
-                    case group_task_repo:find_any_by_task_id(Value) of
+                    case group_task_ds:find_any_by_task_id(Value) of
                         {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 ->
                             Id;
                         _ ->
@@ -2116,7 +2091,7 @@ task_is_deleted(_) ->
 
 -spec resolve_vote_group_id(binary()) -> integer().
 resolve_vote_group_id(VoteId) when is_binary(VoteId), VoteId =/= <<>> ->
-    case group_vote_repo:find_by_vote_id(VoteId) of
+    case group_vote_ds:find_by_vote_id(VoteId) of
         {ok, Vote} ->
             maps:get(<<"group_id">>, Vote, 0);
         _ ->
@@ -2127,7 +2102,7 @@ resolve_vote_group_id(_) ->
 
 -spec resolve_task_audit_meta(integer()) -> {integer(), binary()}.
 resolve_task_audit_meta(TaskPk) when is_integer(TaskPk), TaskPk > 0 ->
-    case group_task_repo:find_by_id(TaskPk) of
+    case group_task_ds:find_by_id(TaskPk) of
         {ok, Task} ->
             {
                 maps:get(<<"group_id">>, Task, 0),
@@ -2141,7 +2116,7 @@ resolve_task_audit_meta(_) ->
 
 -spec task_group_id_by_uid(binary()) -> integer().
 task_group_id_by_uid(TaskUid) when is_binary(TaskUid), TaskUid =/= <<>> ->
-    case group_task_repo:find_by_task_id(TaskUid) of
+    case group_task_ds:find_by_task_id(TaskUid) of
         {ok, Task} ->
             maps:get(<<"group_id">>, Task, 0);
         _ ->
@@ -2165,7 +2140,7 @@ audit_group_governance(AdmUserId, GroupId, Action, TargetId, Extra) ->
         <<"extra">> => Extra
     },
     try
-        _ = user_log_repo:add(#{
+        _ = user_log_ds:add(#{
             type => ?ADM_GROUP_AUDIT_TYPE,
             uid => AdmUserId,
             body => jsone:encode(AuditBody, [native_utf8]),

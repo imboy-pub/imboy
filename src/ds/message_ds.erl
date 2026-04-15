@@ -19,6 +19,7 @@
 -export([check_and_notify_offline_msgs/1]).
 -export([get_offline_msg_threshold/0]).
 -export([inject_sender_device/2]).
+-export([build_adm_union_sql/1]).
 
 
 %% ===================================================================
@@ -691,3 +692,62 @@ convert_v1_to_v2(Msg) when is_map(Msg) ->
     end;
 convert_v1_to_v2(Msg) ->
     Msg.
+
+%% @doc 构建管理后台消息多表 UNION SQL（用于跨 c2c/c2g/c2s/s2c 搜索）
+%% Scopes: [c2c | c2g | c2s | s2c]
+-spec build_adm_union_sql(list()) -> binary().
+build_adm_union_sql(Scopes) ->
+    Tbc2c = msg_c2c_repo:tablename(),
+    Tbc2g = msg_c2g_repo:tablename(),
+    Tbc2s = msg_c2s_repo:tablename(),
+    Tbs2c = msg_s2c_repo:tablename(),
+    TbTimeline = msg_c2g_timeline_repo:tablename(),
+    ScopeSqls = [adm_scope_sql(Scope, Tbc2c, Tbc2g, Tbc2s, Tbs2c, TbTimeline) || Scope <- Scopes],
+    iolist_to_binary(lists:join(<<" UNION ALL ">>, ScopeSqls)).
+
+adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
+    iolist_to_binary([
+        <<"SELECT 'c2c' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
+        <<"FROM ">>, Tbc2c, <<" m ">>,
+        <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
+        <<"AND ($2 = 0 OR ((from_id = $2 AND to_id = $3) OR (from_id = $3 AND to_id = $2))) ">>,
+        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
+        <<"AND ($8 = '' OR msg_id = $8)">>
+    ]);
+adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
+    iolist_to_binary([
+        <<"SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
+        <<"FROM ">>, Tbc2g, <<" m ">>,
+        <<"WHERE ($1 = 0 OR from_id = $1 OR EXISTS (">>,
+        <<"SELECT 1 FROM ">>, TbTimeline, <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
+        <<"AND ($4 = 0 OR to_id = $4) ">>,
+        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
+        <<"AND ($8 = '' OR msg_id = $8)">>
+    ]);
+adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
+    iolist_to_binary([
+        <<"SELECT 'c2s' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, COALESCE(server_ts, created_at) AS server_ts ">>,
+        <<"FROM ">>, Tbc2s, <<" m ">>,
+        <<"WHERE ($1 = 0 OR from_id = $1 OR EXISTS (">>,
+        <<"SELECT 1 FROM ">>, TbTimeline, <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
+        <<"AND ($4 = 0 OR to_id = $4) ">>,
+        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
+        <<"AND ($8 = '' OR msg_id = $8)">>
+    ]);
+adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
+    iolist_to_binary([
+        <<"SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
+        <<"FROM ">>, Tbs2c, <<" m ">>,
+        <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
+        <<"AND ($4 = 0 OR from_id = $4 OR to_id = $4) ">>,
+        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
+        <<"AND ($8 = '' OR msg_id = $8)">>
+    ]).

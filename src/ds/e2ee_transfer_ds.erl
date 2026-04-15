@@ -23,6 +23,14 @@
 -export([clear_session_cache/1]).
 -export([clear_all_session_cache/0]).
 -export([clear_pending_sessions_cache/1]).
+-export([get_stalled_sessions/0]).
+%% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
+-export([generate_session_id/0]).
+-export([create_raw/1]).
+-export([get_by_session_id/1]).
+-export([update_status_and_device/3]).
+-export([update_status/2]).
+-export([cancel_session_raw/2]).
 
 %% @doc 创建传输会话
 %% @param FromUid 发送方用户 ID
@@ -242,3 +250,28 @@ clear_pending_sessions_cache(ToUid) ->
     CacheKey = {e2ee_pending_sessions, ToUid},
     imboy_cache:delete(CacheKey),
     ok.
+
+%% G3: e2ee_cleanup_worker 不应直调 e2ee_transfer_repo
+-spec get_stalled_sessions() -> {ok, [map()]} | {error, term()}.
+get_stalled_sessions() -> e2ee_transfer_repo:get_stalled_sessions().
+
+%% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
+-spec generate_session_id() -> binary().
+generate_session_id() -> e2ee_transfer_repo:generate_session_id().
+
+-spec create_raw(map()) -> {ok, integer()} | {error, term()}.
+create_raw(SessionMap) -> e2ee_transfer_repo:create(SessionMap).
+
+-spec get_by_session_id(binary()) -> {ok, map()} | {error, not_found | term()}.
+get_by_session_id(SessionId) -> e2ee_transfer_repo:get_by_session_id(SessionId).
+
+-spec update_status_and_device(binary(), binary(), binary()) -> ok | {error, term()}.
+update_status_and_device(SessionId, Status, ToDeviceId) ->
+    e2ee_transfer_repo:update_status_and_device(SessionId, Status, ToDeviceId).
+
+-spec update_status(binary(), binary()) -> ok | {error, term()}.
+update_status(SessionId, Status) -> e2ee_transfer_repo:update_status(SessionId, Status).
+
+-spec cancel_session_raw(binary(), integer()) -> ok | {error, term()}.
+cancel_session_raw(SessionId, FromUid) ->
+    e2ee_transfer_repo:cancel_session(SessionId, FromUid).

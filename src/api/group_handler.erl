@@ -63,7 +63,7 @@ detail(Req0, _State) ->
     case imboy_error:validate_id(Req0, Gid) of
         {error, Req} -> Req;
         {ok, Gid2} ->
-            case group_repo:find_by_id(Gid2, <<"*">>) of
+            case group_ds:find_by_id(Gid2, <<"*">>) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");
                 G ->
@@ -98,7 +98,7 @@ face2face(Req0, State) ->
                         [] -> [Uid];
                         _ -> ToUidLi
                     end,
-                    User = user_repo:find_by_id(Uid, <<"account,avatar,nickname">>),
+                    User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
                     %% v2.0: 使用 send/7 API
                     Action = <<"group_member_join">>,
                     Payload =
@@ -110,7 +110,7 @@ face2face(Req0, State) ->
                     msg_s2c_ds:send(Uid, ToUidLi2, Action, <<>>, null, Payload, save),
 
                     MemberListRes =
-                        user_repo:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
+                        user_ds:list_by_ids(ToUidLi, <<"id as user_id,account,avatar,nickname">>),
                     MemberList =
                         case MemberListRes of
                             {ok, L} ->
@@ -148,7 +148,7 @@ face2face_save(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, Reason);
                 {ok, MemberList} ->
-                    case group_repo:find_by_id(Gid2, <<"*">>) of
+                    case group_ds:find_by_id(Gid2, <<"*">>) of
                         {error, Reason2} ->
                             elib_response:error(Req0, Reason2);
                         G2 ->
@@ -176,9 +176,7 @@ add(Req0, State) ->
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, "在处理中，请稍后重试");
         _ ->
-            Count =
-                elib_pg:pluck_value(
-                    group_repo:tablename(), <<"count(*)">>, #{status => 1, owner_uid => Uid}, 0),
+            Count = group_ds:count_by_owner(Uid),
             PostVals = elib_param:post(Req0),
             MemberUids = maps:get(<<"member_uids">>, PostVals, []),
             % 确保 MemberUids 是一个列表
@@ -188,7 +186,7 @@ add(Req0, State) ->
             end,
             case group_logic:add(Count, Uid, Type, MemberUids2) of
                 {ok, Gid} ->
-                    case group_repo:find_by_id(Gid, <<"*">>) of
+                    case group_ds:find_by_id(Gid, <<"*">>) of
                         {error, Reason} ->
                             elib_response:error(Req0, Reason);
                         GData ->
@@ -254,12 +252,10 @@ validate_gid(_) -> {error, "group id 格式有误"}.
 -spec process_group_edit(cowboy_req:req(), integer(), binary(), integer(), map()) -> cowboy_req:req().
 process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
     Now = elib_dt:now(),
-    Tb = group_repo:tablename(),
-    Count = elib_pg:pluck_value(Tb, <<"count(*)">>, #{id => Gid2}, 0),
-    case Count > 0 of
+    case group_ds:exists(Gid2) of
         true ->
             % 更新现有群组
-            case elib_pg:update(Tb, Data#{updated_at => Now}, <<"id = $1">>, [Gid2]) of
+            case group_ds:update_by_id(Gid2, Data#{updated_at => Now}) of
                 {ok, _} ->
                     ToUidLi = group_ds:member_uids(Gid2),
                     Action = <<"group_edit">>,
@@ -270,12 +266,12 @@ process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
             end;
         false ->
             % 创建新群组
-            M3 = group_random_code_repo:find_by_gid(Gid2, <<"user_id, created_at">>),
+            M3 = group_random_code_ds:find_by_gid(Gid2, <<"user_id, created_at">>),
             Data4 = Data#{owner_uid => maps:get(<<"user_id">>, M3, Uid),
                           creator_uid => maps:get(<<"user_id">>, M3, Uid),
                           created_at => maps:get(<<"created_at">>, M3, Now),
                           id => Gid2},
-            case elib_pg:insert(Tb, Data4) of
+            case group_ds:insert(Data4) of
                 {ok, _} -> ok;
                 {error, InsertReason} ->
                     ?ERROR_LOG({group_create_insert_failed, Gid2, InsertReason})
@@ -302,7 +298,7 @@ dissolve(Req0, State) ->
         _ when Gid2 == 0 ->
             elib_response:error(Req0, "group id 必须");
         _ when Gid2 > 0 ->
-            case group_repo:find_by_id(Gid2, <<"*">>) of
+            case group_ds:find_by_id(Gid2, <<"*">>) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");
                 G ->
@@ -330,12 +326,8 @@ dissolve(Req0, State) ->
 page(Req0, State, <<"owner">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-
-    Where = #{status => 1, owner_uid => CurrentUid},
-
-    Tb = group_repo:tablename(),
     Payload =
-        case elib_pg:page_with_total(Tb, Where, Page, Size) of
+        case group_ds:page_by_owner(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
                 #{total => Total,
                   page => Page,
@@ -352,23 +344,8 @@ page(Req0, State, <<"owner">>) ->
 page(Req0, State, <<"join">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-
-    Where =
-        #{<<"g.status">> => 1,
-          <<"m.status">> => 1,
-          <<"m.user_id">> => CurrentUid,
-          <<"g.owner_uid">> => {op, <<"!=">>, CurrentUid}},
-    GTb = group_repo:tablename(),
-    MTb = group_member_repo:tablename(),
-    Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
     Payload =
-        case elib_pg:page_with_total(Tb,
-                                     <<"g.*">>,
-                                     Where,
-                                     <<"g.id desc">>,
-                                     Page,
-                                     Size)
-        of
+        case group_ds:page_joined(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
                 #{total => Total,
                   page => Page,
@@ -385,25 +362,8 @@ page(Req0, State, <<"join">>) ->
 page(Req0, State, <<"manager">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-
-    Where =
-        #{<<"g.status">> => 1,
-          <<"__or">> =>
-              [#{<<"g.owner_uid">> => CurrentUid},
-               #{<<"m.status">> => 1,
-                 <<"m.user_id">> => CurrentUid,
-                 <<"m.role">> => {op, <<">=">>, 3}}]},
-    GTb = group_repo:tablename(),
-    MTb = group_member_repo:tablename(),
-    Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
     Payload =
-        case elib_pg:page_with_total(Tb,
-                                     <<"g.*">>,
-                                     Where,
-                                     <<"g.id desc">>,
-                                     Page,
-                                     Size)
-        of
+        case group_ds:page_managed(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
                 #{total => Total,
                   page => Page,
@@ -433,7 +393,7 @@ msg_page(Req0, State) ->
     Qs3 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs3, undefined),
     Gid2 = ec_cnv:to_integer(Gid),
-    GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     Where0 = #{to_groupid => Gid2},
     Where =
@@ -450,10 +410,8 @@ msg_page(Req0, State) ->
             elib_response:error(Req0, "你不是群成员");
         _ ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = msg_c2g_repo:tablename(),
-
             Payload =
-                case elib_pg:page_with_total(Tb, Where, Page, Size) of
+                case msg_c2g_ds:page(Where, Page, Size) of
                     {ok, #{total := Total, list := Rows}} ->
                         #{total => Total,
                           page => Page,
@@ -536,7 +494,7 @@ qrcode(Req0, State) ->
             Gid2 = ec_cnv:to_integer(Gid),
             % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
             Column = <<"id,title,avatar,member_count, member_max">>,
-            case group_repo:find_by_id(Gid2, Column) of
+            case group_ds:find_by_id(Gid2, Column) of
                 {error, Reason} ->
                     elib_response:error(Req0, Reason);
                 G ->
@@ -550,11 +508,11 @@ qrcode(Req0, State) ->
                     % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
                     case Res of
                         ok ->
-                            case group_repo:find_by_id(Gid2, Column) of
+                            case group_ds:find_by_id(Gid2, Column) of
                                 {error, Reason2} ->
                                     elib_response:error(Req0, Reason2);
                                 G2 ->
-                                    Gm = group_member_repo:find(Gid2, CurrentUid, <<"*">>),
+                                    Gm = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"*">>),
                                     [Gm2] = group_member_transfer:member_list([Gm]),
                                     G3 = G#{<<"member_count">> := maps:get(<<"member_count">>, G2),
                                             <<"type">> => <<"group">>,
@@ -588,7 +546,7 @@ remark(<<"GET">>, Req0, _State, CurrentUid) ->
         0 ->
             elib_response:error(Req0, <<"group id 必须"/utf8>>);
         _ ->
-            Member = group_member_repo:find(Gid2, CurrentUid, <<"remark">>),
+            Member = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"remark">>),
             Remark = maps:get(<<"remark">>, Member, <<"">>),
             elib_response:success(Req0, #{<<"remark">> => Remark, <<"gid">> => Gid}, "success.")
     end;
@@ -602,14 +560,12 @@ remark(<<"POST">>, Req0, _State, CurrentUid) ->
         _ ->
             Remark = maps:get(<<"remark">>, PostVals, <<"">>),
             % 验证是否为群成员
-            Member = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+            Member = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
             case maps:size(Member) of
                 0 ->
                     elib_response:error(Req0, <<"你不是该群成员"/utf8>>);
                 _ ->
-                    Tb = group_member_repo:tablename(),
-                    WhereSql = <<" WHERE group_id = $1 AND user_id = $2">>,
-                    case elib_pg:update(Tb, #{<<"remark">> => Remark}, WhereSql, [Gid2, CurrentUid]) of
+                    case group_member_ds:update_remark(Gid2, CurrentUid, Remark) of
                         {ok, _} ->
                             elib_response:success(Req0, #{<<"gid">> => Gid}, "success.");
                         {error, Reason} ->

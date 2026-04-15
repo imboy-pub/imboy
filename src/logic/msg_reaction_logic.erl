@@ -182,13 +182,13 @@ validate_emoji(Emoji) ->
 %% @return ok | {error, Reason}
 -spec verify_message_exists(binary(), binary()) -> ok | {error, term()}.
 verify_message_exists(MsgId, <<"c2c">>) ->
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, _} -> ok;
         {error, not_found} -> {error, msg_not_found};
         {error, _} -> {error, ?ERR_INTERNAL_SERVER_ERROR}
     end;
 verify_message_exists(MsgId, <<"c2g">>) ->
-    case msg_c2g_repo:find_msg_by_id(MsgId) of
+    case msg_c2g_ds:find_msg_by_id(MsgId) of
         {ok, _} -> ok;
         {error, not_found} -> {error, msg_not_found};
         {error, _} -> {error, ?ERR_INTERNAL_SERVER_ERROR}
@@ -204,7 +204,7 @@ verify_message_exists(_, _) ->
 -spec verify_permission(binary(), binary(), integer()) -> ok | {error, term()}.
 verify_permission(MsgId, <<"c2c">>, CurrentUid) ->
     % 单聊：必须是消息的发送者或接收者
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToId}} ->
             case CurrentUid =:= FromId orelse CurrentUid =:= ToId of
                 true -> ok;
@@ -215,7 +215,7 @@ verify_permission(MsgId, <<"c2c">>, CurrentUid) ->
     end;
 verify_permission(MsgId, <<"c2g">>, CurrentUid) ->
     % 群聊：必须是群成员
-    case msg_c2g_repo:find_msg_by_id(MsgId) of
+    case msg_c2g_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"to_id">> := Gid}} ->
             case group_member_ds:is_member(Gid, CurrentUid) of
                 true -> ok;
@@ -235,7 +235,7 @@ verify_permission(_, _, _) ->
 -spec notify_reaction_added(binary(), binary(), integer(), binary()) -> ok.
 notify_reaction_added(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
     % 单聊：通知对方
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToId}} ->
             % 确定接收者
             ToNotify = case CurrentUid of
@@ -263,7 +263,7 @@ notify_reaction_added(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
     end;
 notify_reaction_added(MsgId, <<"c2g">>, CurrentUid, Emoji) ->
     % 群聊：通知所有群成员（除了自己）
-    case msg_c2g_repo:find_msg_by_id(MsgId) of
+    case msg_c2g_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"to_id">> := Gid}} ->
             % 获取群成员列表
             MemberUids = group_ds:member_uids(Gid),
@@ -294,7 +294,7 @@ notify_reaction_added(_, _, _, _) ->
 -spec notify_reaction_removed(binary(), binary(), integer(), binary()) -> ok.
 notify_reaction_removed(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
     % 单聊：通知对方
-    case msg_c2c_repo:find_msg_by_id(MsgId) of
+    case msg_c2c_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToId}} ->
             % 确定接收者
             ToNotify = case CurrentUid of
@@ -322,7 +322,7 @@ notify_reaction_removed(MsgId, <<"c2c">>, CurrentUid, Emoji) ->
     end;
 notify_reaction_removed(MsgId, <<"c2g">>, CurrentUid, Emoji) ->
     % 群聊：通知所有群成员（除了自己）
-    case msg_c2g_repo:find_msg_by_id(MsgId) of
+    case msg_c2g_ds:find_msg_by_id(MsgId) of
         {ok, #{<<"to_id">> := Gid}} ->
             % 获取群成员列表
             MemberUids = group_ds:member_uids(Gid),

@@ -13,13 +13,13 @@ get_channel_stats(ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
                     case get_message_stats(ChannelId) of
                         {ok, TotalMessages, TotalViews} ->
-                            case channel_repo:get_reaction_count(ChannelId) of
+                            case channel_ds:get_reaction_count(ChannelId) of
                                 {ok, Reactions} ->
                                     Stats = #{
                                         <<"channel_id">> => ChannelIdBin,
@@ -45,19 +45,7 @@ get_channel_stats(ChannelIdBin) ->
 -spec get_message_stats(integer()) ->
     {ok, non_neg_integer(), non_neg_integer()} | {error, term()}.
 get_message_stats(ChannelId) ->
-    Tb = channel_message_repo:tablename(),
-    Sql = <<"SELECT COUNT(*) as total_messages, COALESCE(SUM(view_count), 0) as total_views "
-            "FROM ", Tb/binary, " WHERE channel_id = $1 AND status = 1">>,
-    case elib_pg:one(Sql, [ChannelId]) of
-        {ok, Row} when is_map(Row) ->
-            TotalMsgs = maps:get(<<"total_messages">>, Row, 0),
-            TotalViews = maps:get(<<"total_views">>, Row, 0),
-            {ok, TotalMsgs, TotalViews};
-        {error, Reason} ->
-            {error, Reason};
-        Other ->
-            {error, Other}
-    end.
+    channel_message_ds:get_stats(ChannelId).
 
 -spec record_message_view(integer(), binary(), binary()) -> ok | {error, binary()}.
 record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
@@ -71,12 +59,12 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_repo:has_viewed_message(MessageId, Uid) of
+                    case channel_ds:has_viewed_message(MessageId, Uid) of
                         true ->
                             ok;
                         false ->
                             Now = elib_dt:now(),
-                            case channel_repo:insert_message_view(ChannelId, MessageId, Uid, Now) of
+                            case channel_ds:insert_message_view(ChannelId, MessageId, Uid, Now) of
                                 {ok, _} -> ok;
                                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                                 Other -> {error, elib_cnv:safe_to_binary(Other)}
@@ -104,7 +92,7 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     Now = elib_dt:now(),
-                    case channel_repo:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
+                    case channel_ds:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                         Other -> {error, elib_cnv:safe_to_binary(Other)}
@@ -126,7 +114,7 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_repo:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
+                    case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                         Other -> {error, elib_cnv:safe_to_binary(Other)}
@@ -143,7 +131,7 @@ get_daily_stats(ChannelIdBin, Days) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:get_daily_stats(ChannelId, Days) of
+            case channel_ds:get_daily_stats(ChannelId, Days) of
                 {ok, Stats} when is_list(Stats) ->
                     {ok, [S || S <- Stats, is_map(S)]};
                 {ok, Other} ->

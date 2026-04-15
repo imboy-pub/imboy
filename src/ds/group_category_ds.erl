@@ -9,6 +9,7 @@
 
 %% 查询操作
 -export([find_by_uid/1]).
+-export([list_by_uid/2]).
 
 %% 增删改操作
 -export([add/2]).
@@ -161,6 +162,10 @@ move_group_to_category(Uid, Gid, CategoryId) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% G3: group_category_logic 不应直调 group_category_repo
+-spec list_by_uid(integer(), binary()) -> {ok, list(map())} | {error, term()}.
+list_by_uid(Uid, Column) -> group_category_repo:list_by_uid(Uid, Column).
 
 %% ===================================================================
 %% Internal Function Definitions

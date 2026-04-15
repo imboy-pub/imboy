@@ -94,7 +94,7 @@ list(Gid, CurrentUid, Page, Size, Options) ->
             end, Files),
 
             % 4. 查询总数
-            {ok, Total} = group_file_repo:count_by_group(Gid2),
+            {ok, Total} = group_file_ds:count_by_group(Gid2),
 
             % 5. 返回结果
             FileList = #{

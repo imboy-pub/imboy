@@ -63,9 +63,8 @@ index(<<"GET">>, _Ajax, Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
     Where = #{},
     Column = <<"*">>,
-    Tb = app_version_repo:tablename(),
     OrderBy = <<"sort desc, updated_at desc">>,
-    {ok, P} = elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size),
+    {ok, P} = app_version_ds:page(Column, Where, OrderBy, Page, Size),
     elib_response:success(Req0, P);
 index(_Method, _Ajax, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
@@ -140,14 +139,14 @@ delete(_, Req0, _State) ->
 %%   events       - 近7天升级事件统计
 -spec version_stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 version_stats(<<"GET">>, Req0, _State) ->
-    Distribution = app_upgrade_log_repo:version_distribution(),
+    Distribution = app_upgrade_log_ds:version_distribution(),
     %% 近7天事件统计
     Now = elib_dt:now(),
     SevenDaysAgo = elib_dt:to_binary(
         calendar:gregorian_seconds_to_datetime(
             calendar:datetime_to_gregorian_seconds(
                 elib_dt:to_datetime(Now)) - 7 * 86400)),
-    Events = app_upgrade_log_repo:event_stats(SevenDaysAgo, Now),
+    Events = app_upgrade_log_ds:event_stats(SevenDaysAgo, Now),
     elib_response:success(Req0, #{
         <<"distribution">> => Distribution,
         <<"events">> => Events

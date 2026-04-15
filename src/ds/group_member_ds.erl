@@ -22,6 +22,11 @@
 -export([find_by_gid_and_uid/3]).
 -export([is_member/2]).
 -export([check_admin/2]).
+-export([list_same_group/2]).
+-export([count_by_uid/1]).
+-export([page_by_gid/4]).
+-export([page_with_user_info/3]).
+-export([update_remark/3]).
 
 %% ===================================================================
 %% API functions
@@ -296,6 +301,45 @@ update_role(Conn, Gid, UserId, Role, UpdatedAt) ->
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% G3: group_member_handler 不应直调 group_member_repo
+-spec list_same_group(integer(), integer()) -> [integer()].
+list_same_group(UidA, UidB) -> group_member_repo:list_same_group(UidA, UidB).
+
+%% G3: adm_user_handler 不应直调 group_member_repo
+-spec count_by_uid(integer()) -> non_neg_integer().
+count_by_uid(Uid) -> group_member_repo:count_by_uid(Uid).
+
+%% G3: adm_group_handler 不应直调 group_member_repo
+-spec page_by_gid(integer(), pos_integer(), pos_integer(), binary()) -> {ok, map()} | {error, term()}.
+page_by_gid(Gid, Page, Size, Column) -> group_member_repo:page_by_gid(Gid, Page, Size, Column).
+
+%% @doc 更新群成员备注
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @param Remark 备注
+%% @return {ok, Count} | {error, Reason}
+-spec update_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
+update_remark(Gid, Uid, Remark) ->
+    Tb = group_member_repo:tablename(),
+    elib_pg:update(Tb, #{<<"remark">> => Remark}, <<" WHERE group_id = $1 AND user_id = $2">>, [Gid, Uid]).
+
+%% @doc 分页查询群成员（含用户基本信息 JOIN user 表）
+%% @param Gid 群组ID
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | _
+-spec page_with_user_info(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page_with_user_info(Gid, Page, Size) ->
+    UTb = user_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
+    Fields =
+        <<"u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
+          "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
+          "e, m.status, m.updated_at, m.created_at">>,
+    Where = #{<<"m.group_id">> => Gid},
+    elib_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions

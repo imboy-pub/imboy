@@ -36,6 +36,8 @@ init(Req0, State0) ->
                 same_group(Req0, State);
             mute ->
                 mute(Req0, State);
+            unmute ->
+                unmute(Req0, State);
             role ->
                 role(Req0, State);
             % alias -> % 设置群内昵称
@@ -64,12 +66,12 @@ same_group(Req0, State) ->
 
     {Count, Li4} =
         if CurrentUid == A1; CurrentUid == B1 ->
-               Li = group_member_repo:list_same_group(A1, B1),
+               Li = group_member_ds:list_same_group(A1, B1),
                Column =
                    <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, "
                      "member_max, member_count, introduction, avatar, title, updated_at, "
                      "created_at">>,
-               Li2 = case group_repo:list_by_ids(Li, Column) of
+               Li2 = case group_ds:list_by_ids(Li, Column) of
                          {ok, Rows} ->
                              Rows;
                          _ ->
@@ -115,7 +117,7 @@ join(Req0, State) ->
         _ when MemberUids == [] ->
             elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
         _ ->
-            case group_repo:find_by_id(Gid2, <<"member_max,member_count">>) of
+            case group_ds:find_by_id(Gid2, <<"member_max,member_count">>) of
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"群组不存在"/utf8>>);
                 G ->
@@ -147,12 +149,7 @@ join(Req0, State) ->
                                                     end),
                                    {ok, MemberListRes2} =
                                        group_member_logic:list_member(Gid2, MemberUids2),
-                                   Sum = elib_pg:pluck_value(
-                                             group_repo:tablename(),
-                                             <<"user_id_sum">>,
-                                             #{id => Gid2},
-                                             #{},
-                                             0),
+                                   Sum = group_ds:get_user_id_sum(Gid2),
                                    elib_response:success(Req0,
                                                             #{<<"gid">> => Gid,
                                                             <<"user_id_sum">> => Sum,
@@ -161,12 +158,7 @@ join(Req0, State) ->
                                                           "success.");
                                {ok, MemberList} ->
                                    % 已经是成员，直接使用查询结果
-                                   Sum = elib_pg:pluck_value(
-                                             group_repo:tablename(),
-                                             <<"user_id_sum">>,
-                                             #{id => Gid2},
-                                             #{},
-                                             0),
+                                   Sum = group_ds:get_user_id_sum(Gid2),
                                    elib_response:success(Req0,
                                                           #{<<"gid">> => Gid,
                                                             <<"user_id_sum">> => Sum,
@@ -244,7 +236,7 @@ page(Req0, State) ->
     Qs1 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs1, undefined),
     Gid2 = ec_cnv:to_integer(Gid),
-    GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
         0 ->
@@ -253,16 +245,8 @@ page(Req0, State) ->
             elib_response:error(Req0, <<"你不是群成员"/utf8>>);
         _ ->
             {Page, Size} = elib_param:page(Req0),
-            Where = #{<<"m.group_id">> => Gid2},
-            UTb = user_repo:tablename(),
-            MTb = group_member_repo:tablename(),
-            Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
-            Fields =
-                <<"u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
-                  "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
-                  "e, m.status, m.updated_at, m.created_at">>,
             Payload =
-                case elib_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size) of
+                case group_member_ds:page_with_user_info(Gid2, Page, Size) of
                     {ok, #{total := Total, list := Rows}} ->
                         Rows2 = group_member_transfer:member_list(Rows),
                         #{total => Total,
@@ -307,6 +291,40 @@ mute(Req0, State) ->
             elib_response:error(Req0, <<"禁言时长必须大于0"/utf8>>);
         _ ->
             case group_member_logic:mute(CurrentUid, Gid2, UserId2, Duration) of
+                ok ->
+                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                {error, Reason} ->
+                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+            end
+    end.
+
+%% @doc 解除群成员禁言（slice-9b）
+%% 对应 `POST /v1/group_member/unmute`，将目标成员的 `mute_until`
+%% 置为 NULL 并广播 `group_member_mute` 通知（payload `mute_until == 0`
+%% 作为解禁信号）。
+%%
+%% @param Req0 Cowboy请求对象，包含 gid / user_id
+%% @param State 状态映射，包含 current_uid
+%% @end
+-spec unmute(cowboy_req:req(), map()) -> cowboy_req:req().
+unmute(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Gid = maps:get(<<"gid">>, PostVals, 0),
+    UserId = maps:get(<<"user_id">>, PostVals, 0),
+
+    Gid2 = ec_cnv:to_integer(Gid),
+    UserId2 = ec_cnv:to_integer(UserId),
+
+    case throttle:check(three_second_once, {group_member_unmute, CurrentUid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ when Gid2 == 0 ->
+            elib_response:error(Req0, <<"群组ID格式有误"/utf8>>);
+        _ when UserId2 == 0 ->
+            elib_response:error(Req0, <<"用户ID格式有误"/utf8>>);
+        _ ->
+            case group_member_logic:unmute(CurrentUid, Gid2, UserId2) of
                 ok ->
                     elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
                 {error, Reason} ->

@@ -249,7 +249,7 @@ page(<<"GET">>, Req0, State) ->
     Qs2 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs2, undefined),
     Gid2 = ec_cnv:to_integer(Gid),
-    GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
         0 ->
@@ -261,10 +261,8 @@ page(<<"GET">>, Req0, State) ->
             Column =
                 <<"id as notice_id, user_id, edit_user_id, body, status, expired_at, "
                   "updated_at, created_at">>,
-            Where = #{group_id => Gid2},
-            Tb = group_notice_repo:tablename(),
             {ok, Payload} =
-                elib_pg:page_with_total(Tb, Column, Where, <<"expired_at desc">>, Page, Size),
+                group_notice_ds:page(Gid2, Column, <<"expired_at desc">>, Page, Size),
             List = maps:get(list, Payload, []),
             List2 =
                 List,
@@ -286,7 +284,7 @@ latest(<<"GET">>, Req0, State) ->
     Qs6 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs6, undefined),
     Gid2 = ec_cnv:to_integer(Gid),
-    GM = group_member_repo:find(Gid2, CurrentUid, <<"id">>),
+    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
         0 ->
@@ -297,16 +295,7 @@ latest(<<"GET">>, Req0, State) ->
             Column =
                 <<"id as notice_id, user_id, edit_user_id, body, status, expired_at, "
                   "updated_at, created_at">>,
-            Where = <<"status = 1 AND group_id = $1">>,
-            Tb = group_notice_repo:tablename(),
-            Sql = <<"SELECT ",
-                    Column/binary,
-                    " FROM ",
-                    Tb/binary,
-                    " WHERE ",
-                    Where/binary,
-                    " ORDER BY id desc">>,
-            {ok, Payload} = elib_pg:query(Sql, [Gid2]),
+            {ok, Payload} = group_notice_ds:latest_published(Gid2, Column),
             Payload2 =
                 case Payload of
                     [Item] ->

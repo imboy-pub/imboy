@@ -518,7 +518,7 @@ list_comments(Req0, _State) ->
         <<>> ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_album_repo:list_comments(PhotoId, Limit) of
+            case group_album_ds:list_comments(PhotoId, Limit) of
                 {ok, Comments} ->
                     % 编码用户ID
                     Comments2 = lists:map(fun(Comment) ->

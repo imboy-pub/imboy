@@ -14,6 +14,7 @@
 %% @param DownDdl 回滚 DDL 语句（base64 编码）
 %% @returns {ok, list(), list()} | {error, any()}
 -export ([save/6]).
+-export ([page/5]).
 
 %% @doc 根据 ID 删除 DDL 记录（仅删除 status=0 的记录）
 %% @param Id DDL 记录 ID
@@ -80,6 +81,12 @@ delete(Id) ->
 %% @param Column 要查询的列
 %% @returns DDL 语句列表
 -spec get_ddl(map(), binary(), binary()) -> [binary()].
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, Where, Order, Page, Size) ->
+    Tb = app_ddl_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
 get_ddl(WhereMap, OrderBy, Column) ->
     Tb = app_ddl_repo:tablename(),
     % -- 类型 1 升、降级  3 全量安装

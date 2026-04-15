@@ -28,14 +28,14 @@ check(ClientVsn, Cos, DID) ->
 -spec check(binary(), binary(), binary(), binary()) -> map().
 check(ClientVsn, Cos, DID, RegionCode) ->
     %% 1. 查询最新版本
-    VersionInfo = app_version_repo:find(Cos, RegionCode),
+    VersionInfo = app_version_ds:find(Cos, RegionCode),
     case maps:size(VersionInfo) of
         0 ->
             %% 没有版本记录，返回无需更新
             #{<<"updatable">> => false, <<"upgrade_type">> => <<"none">>};
         _ ->
             %% 2. 查询全局策略
-            Policy = app_version_policy_repo:find_by_type(Cos),
+            Policy = app_version_policy_ds:find_by_type(Cos),
             %% 3. 计算升级策略
             determine_upgrade(ClientVsn, DID, VersionInfo, Policy)
     end.

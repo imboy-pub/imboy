@@ -324,7 +324,7 @@ normalize_task_uid(TaskId) when is_binary(TaskId) ->
                 true ->
                     task_uid_by_pk(ec_cnv:to_integer(TaskId));
                 false ->
-                    case group_task_repo:find_by_task_id(TaskId) of
+                    case group_task_ds:find_by_task_id(TaskId) of
                         {ok, _Task} ->
                             TaskId;
                         _ ->
@@ -342,7 +342,7 @@ normalize_task_uid(_TaskId) ->
 
 -spec task_uid_by_pk(integer()) -> binary() | undefined.
 task_uid_by_pk(Id) when is_integer(Id), Id > 0 ->
-    case group_task_repo:find_by_id(Id) of
+    case group_task_ds:find_by_id(Id) of
         {ok, #{<<"task_id">> := TaskUid}} when is_binary(TaskUid), TaskUid =/= <<>> ->
             TaskUid;
         _ ->

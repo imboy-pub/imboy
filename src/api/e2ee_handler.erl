@@ -301,7 +301,7 @@ backup_list(Req0, State) ->
 -spec do_backup_list(cowboy_req:req(), map()) -> cowboy_req:req().
 do_backup_list(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    case e2ee_local_backup_repo:list_by_uid(CurrentUid) of
+    case e2ee_local_backup_ds:list_by_uid(CurrentUid) of
         {ok, Backups} ->
             elib_response:success(Req0, #{<<"list">> => Backups});
         {error, Reason} ->
@@ -331,7 +331,7 @@ do_backup_delete(Req0, State) ->
         false ->
             elib_response:error(Req0, <<"缺少或无效的 backup_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
         true ->
-            case e2ee_local_backup_repo:delete_by_id_and_uid(BackupId, CurrentUid) of
+            case e2ee_local_backup_ds:delete_by_id_and_uid(BackupId, CurrentUid) of
                 ok ->
                     elib_response:success(Req0, #{<<"deleted">> => true});
                 {error, not_found} ->
@@ -346,7 +346,7 @@ do_backup_delete(Req0, State) ->
 %% 返回合规密钥的 key_id 和 public_key，客户端用于 compliance_e2ee 模式的双密钥加密
 -spec compliance_key(cowboy_req:req(), map()) -> cowboy_req:req().
 compliance_key(Req0, _State) ->
-    case compliance_key_repo:find_active() of
+    case compliance_key_ds:find_active() of
         {ok, KeyId, PublicKey} ->
             elib_response:success(Req0, #{
                 <<"key_id">> => KeyId,

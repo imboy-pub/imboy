@@ -18,6 +18,8 @@
 -export([save/1]).
 -export([delete/1]).
 -export([delete_by_id/1]).
+-export([find/2]).
+-export([page/5]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -88,6 +90,16 @@ delete(Where) ->
 -spec delete_by_id(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_by_id(Id) when is_integer(Id), Id > 0 ->
     app_version_repo:delete_by_id(Id).
+
+%% G3: app_version_logic 不应直调 app_version_repo
+-spec find(binary(), binary()) -> map().
+find(Cos, RegionCode) -> app_version_repo:find(Cos, RegionCode).
+
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, Where, Order, Page, Size) ->
+    Tb = app_version_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions

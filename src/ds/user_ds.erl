@@ -24,12 +24,19 @@
 -export([delete_by_id/1]).
 -export([delete_all_related_data/1]).
 -export([insert_and_get_id/1]).
+-export([bind_email/2]).
+-export([get_status/1]).
 -export([find_id_by_email/1]).
 -export([find_id_by_mobile/1]).
 -export([update_password/2]).
 -export([update_status_in_tx/2]).
 -export([update_password_in_tx/2]).
 -export([update_allow_search/2]).
+-export([may_exist/1]).
+-export([reject_logout_apply/1]).
+-export([page/4]).
+-export([export_data/1]).
+-export([find_expired_logout_users/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -297,6 +304,23 @@ insert_and_get_id(Data) ->
             {error, Reason}
     end.
 
+%% @doc 绑定邮箱
+%% @param Uid 用户ID
+%% @param Email 邮箱地址
+%% @return {ok, Count} | {error, Reason}
+-spec bind_email(integer(), binary()) -> {ok, integer()} | {error, any()}.
+bind_email(Uid, Email) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(Tb, #{<<"email">> => Email}, <<"id = $1">>, [Uid]).
+
+%% @doc 获取用户状态
+%% @param Uid 用户ID
+%% @return 状态值（-2 表示不存在）
+-spec get_status(integer()) -> integer().
+get_status(Uid) ->
+    Tb = user_repo:tablename(),
+    elib_pg:pluck_value(Tb, <<"status">>, #{id => Uid}, #{}, -2).
+
 %% @doc 通过邮箱查找用户ID
 %% @param Email 邮箱地址
 %% @return 用户ID，不存在时返回0
@@ -316,6 +340,7 @@ find_id_by_mobile(Mobile) ->
 %% @doc 更新用户密码
 %% @param Uid 用户ID
 %% @param PasswordHash 密码哈希
+%% user_ds:update_password(1000000051, elib_hasher:md5(<<"admin888">>)).
 %% @return {ok, Count} | {error, Reason}
 -spec update_password(integer(), binary()) -> {ok, integer()} | {error, any()}.
 update_password(Uid, PasswordHash) ->
@@ -350,11 +375,77 @@ update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
     Tb = <<"fts_user">>,
     elib_pg:update(Tb, #{<<"allow_search">> => AllowSearch}, <<"user_id = $1">>, [Uid]).
 
+%% @doc G3: e2ee_transfer_logic 不应直调 user_repo
+-spec may_exist(integer()) -> boolean().
+may_exist(Uid) -> user_repo:may_exist(Uid).
+
+%% G3: adm_user_handler 不应直调 user_repo
+-spec page(integer(), integer(), binary(), binary()) -> {ok, map()} | {error, any()}.
+page(Page, Size, Where, OrderBy) -> user_repo:page(Page, Size, Where, OrderBy).
+
+%% G3: user_deletion_logic 不应直调 *_repo:tablename()
+-spec export_data(integer()) -> {ok, map()} | {error, term()}.
+export_data(Uid) ->
+    try
+        UserTb = user_repo:tablename(),
+        UserSql = <<"SELECT id, account, nickname, avatar, sign, region, gender, created_at "
+                    "FROM ", UserTb/binary, " WHERE id = $1">>,
+        UserInfo = case elib_pg:query(UserSql, [Uid]) of
+            {ok, [Row]} -> Row;
+            _ -> #{}
+        end,
+        FriendTb = friend_repo:tablename(),
+        FriendSql = <<"SELECT to_user_id, remark, created_at FROM ", FriendTb/binary,
+                      " WHERE from_user_id = $1 AND status = 1">>,
+        {ok, Friends} = elib_pg:query(FriendSql, [Uid]),
+        MemberTb = group_member_repo:tablename(),
+        GroupTb = group_repo:tablename(),
+        GroupSql = <<"SELECT g.id, g.title, gm.created_at FROM ", MemberTb/binary, " gm "
+                     "JOIN ", GroupTb/binary, " g ON g.id = gm.group_id "
+                     "WHERE gm.user_id = $1">>,
+        {ok, Groups} = elib_pg:query(GroupSql, [Uid]),
+        SettingTb = user_setting_repo:tablename(),
+        SettingSql = <<"SELECT * FROM ", SettingTb/binary, " WHERE user_id = $1">>,
+        Settings = case elib_pg:query(SettingSql, [Uid]) of
+            {ok, [S]} -> S;
+            _ -> #{}
+        end,
+        {ok, #{
+            <<"user_info">> => UserInfo,
+            <<"friends">> => Friends,
+            <<"groups">> => Groups,
+            <<"settings">> => Settings,
+            <<"exported_at">> => elib_dt:now()
+        }}
+    catch
+        _:Error -> {error, Error}
+    end.
+
+%% G3: user_deletion_logic 不应直调 user_repo:tablename()
+-spec find_expired_logout_users(pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+find_expired_logout_users(RetentionDays, BatchSize) ->
+    UserTb = user_repo:tablename(),
+    Sql = <<"SELECT id FROM ", UserTb/binary,
+            " WHERE status = 2"
+            " AND updated_at <= NOW() - ($1 || ' days')::INTERVAL"
+            " ORDER BY updated_at ASC LIMIT $2">>,
+    elib_pg:query(Sql, [RetentionDays, BatchSize]).
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
 
 %
+
+%% @doc 驳回注销申请：仅当 status=2 时将用户状态恢复为 1
+-spec reject_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
+reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
+    Tb = user_repo:tablename(),
+    Sql = <<"UPDATE ", Tb/binary,
+            " SET status = 1, updated_at = NOW()"
+            " WHERE id = $1 AND status = 2"
+            " RETURNING id">>,
+    elib_pg:query(Sql, [Uid]).
 
 %% ===================================================================
 %% EUnit tests.

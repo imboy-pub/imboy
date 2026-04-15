@@ -26,7 +26,7 @@ create(ReporterUid, TargetTypeRaw, TargetIdRaw, ReasonRaw, DescRaw) when is_inte
         {<<"moment">>, true, true} ->
             moment_logic:report_post(ReporterUid, TargetId, Reason, Desc);
         {Type, true, true} ->
-            case report_ticket_repo:create(Type, TargetId, ReporterUid, Reason, Desc) of
+            case report_ticket_ds:create(Type, TargetId, ReporterUid, Reason, Desc) of
                 {ok, ReportId} ->
                     {ok, #{
                         <<"report_id">> => safe_encode(ReportId),
@@ -65,7 +65,7 @@ admin_list(TargetTypeRaw, Status, Page, Size, Filter) ->
                 reporter_uid => ReporterUid,
                 keyword => Keyword
             },
-            case report_ticket_repo:page_admin(RepoFilter, Page2, Size2) of
+            case report_ticket_ds:page_admin(RepoFilter, Page2, Size2) of
                 {ok, Payload0} ->
                     List = maps:get(list, Payload0, []),
                     List2 = [report_transfer(Item) || Item <- List],
@@ -135,16 +135,16 @@ resolve_non_moment(AdmUid, TargetType, ReportIdRaw, Result, Note) ->
         false ->
             {error, <<"举报参数无效"/utf8>>};
         true ->
-            case report_ticket_repo:find_by_id(ReportId) of
+            case report_ticket_ds:find_by_id(ReportId) of
                 Row when is_map(Row), map_size(Row) > 0 ->
                     StoredType = normalize_target_type(maps:get(<<"target_type">>, Row, <<>>), undefined),
                     case TargetType =:= <<>> orelse TargetType =:= StoredType of
                         false ->
                             {error, <<"举报类型不匹配"/utf8>>};
                         true ->
-                            case report_ticket_repo:resolve(ReportId, Result, Note, AdmUid) of
+                            case report_ticket_ds:resolve(ReportId, Result, Note, AdmUid) of
                                 {ok, N} when N > 0 ->
-                                    case report_action_log_repo:create(ReportId, AdmUid, Result, Note) of
+                                    case report_action_log_ds:create(ReportId, AdmUid, Result, Note) of
                                         {ok, _} -> ok;
                                         {error, LogReason} ->
                                             ?ERROR_LOG(["report_action_log_failed", ReportId, AdmUid, LogReason])

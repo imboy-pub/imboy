@@ -21,6 +21,8 @@
 -export([tablename/0]).
 -export([flush_subtitle/1]).
 -export([tag_subtitle/3]).
+-export([select_user_tag_relation/3]).
+-export([delete_by_tag_id/1]).
 
 %% ===================================================================
 %% API Functions
@@ -90,6 +92,15 @@ flush_subtitle(TagId) ->
 tag_subtitle(Scene, TagId, Count) ->
     user_tag_relation_repo:tag_subtitle(Scene, TagId, Count).
 
+%% G3: user_tag_relation_logic 查询关系，不应直调 repo
+-spec select_user_tag_relation(binary(), list(), binary()) -> any().
+select_user_tag_relation(Where, WhereArgs, Column) ->
+    user_tag_relation_repo:select_user_tag_relation(Where, WhereArgs, Column).
+
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% G3: user_tag_logic 不应直调 user_tag_relation_repo
+-spec delete_by_tag_id(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_by_tag_id(TagId) -> user_tag_relation_repo:delete_by_tag_id(TagId).

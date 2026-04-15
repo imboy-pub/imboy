@@ -6,6 +6,7 @@
 -include("log.hrl").
 
 -export([save_mentions/4]).
+-export([find_by_msg_id/1]).
 -export([list_by_uid/2]).
 -export([list_by_uid/3]).
 -export([list_by_group_and_uid/3]).
@@ -192,3 +193,7 @@ delete_by_msg_id(MsgId) ->
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% G3: mention_handler 不应直调 mention_repo
+-spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
+find_by_msg_id(MsgId) -> mention_repo:find_by_msg_id(MsgId).

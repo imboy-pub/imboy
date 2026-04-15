@@ -70,7 +70,6 @@ list(<<"GET">>, Req0) ->
     Qs = cowboy_req:parse_qs(Req0),
     StatusFilter = proplists:get_value(<<"status">>, Qs, <<"-1">>),
 
-    Tb = channel_repo:tablename(),
     Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
                "subscriber_count, status, created_at, updated_at">>,
 
@@ -81,7 +80,7 @@ list(<<"GET">>, Req0) ->
         _ -> #{}
     end,
 
-    case elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size) of
+    case channel_ds:page(Column, Where, <<"id desc">>, Page, Size) of
         {ok, Payload} ->
             Payload2 = normalize_channel_payload(Payload),
             elib_response:success(Req0, Payload2);
@@ -101,7 +100,7 @@ detail(<<"GET">>, Req0) ->
         {ok, ChannelId} ->
             Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
                       "tags, subscriber_count, status, created_at, updated_at">>,
-            case channel_repo:find_by_id(ChannelId, Column) of
+            case channel_ds:find_by_id(ChannelId, Column) of
                 {error, _} ->
                     elib_response:error(Req0, <<"频道不存在"/utf8>>, ?ERR_NOT_FOUND);
                 Channel ->
@@ -119,7 +118,7 @@ detail(<<"PUT">>, Req0) ->
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
                 {ok, UpdateData} ->
-                    case channel_repo:update(ChannelId, UpdateData#{updated_at => elib_dt:now()}) of
+                    case channel_ds:update(ChannelId, UpdateData#{updated_at => elib_dt:now()}) of
                         {ok, _} ->
                             elib_response:success(Req0, #{}, <<"频道已更新"/utf8>>);
                         {error, Reason} ->
@@ -139,11 +138,10 @@ messages(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = channel_message_repo:tablename(),
             Column = <<"id, channel_id, author_id, author_name, content, msg_type, "
                        "is_pinned, view_count, created_at, updated_at">>,
             Where = #{channel_id => ChannelId},
-            case elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size) of
+            case channel_message_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
                     Payload2 = normalize_message_payload(Payload),
                     elib_response:success(Req0, Payload2);
@@ -163,11 +161,10 @@ subscribers(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = channel_subscription_repo:tablename(),
             Column = <<"id, channel_id, user_id, is_pinned, unread_count, "
                        "last_read_at, subscribed_at">>,
             Where = #{channel_id => ChannelId, status => 1},
-            case elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size) of
+            case channel_subscription_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
                     elib_response:success(Req0, enrich_payload_users(Payload, [<<"user_id">>]));
                 {error, Reason} ->
@@ -186,9 +183,9 @@ remove_subscriber_action(<<"DELETE">>, Req0, State) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId, UserId} ->
             Result = elib_pg:with_tx(fun(Conn) ->
-                case channel_subscription_repo:delete(Conn, ChannelId, UserId) of
+                case channel_subscription_ds:delete(Conn, ChannelId, UserId) of
                     {ok, Affected} when Affected > 0 ->
-                        case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
+                        case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
                             {ok, _} ->
                                 changed;
                             {error, Reason} ->
@@ -230,10 +227,9 @@ admins(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = channel_admin_repo:tablename(),
             Column = <<"id, channel_id, user_id, role, created_at">>,
             Where = #{channel_id => ChannelId},
-            case elib_pg:page_with_total(Tb, Column, Where, <<"role desc, id desc">>, Page, Size) of
+            case channel_admin_ds:page(Column, Where, <<"role desc, id desc">>, Page, Size) of
                 {ok, Payload} ->
                     elib_response:success(Req0, enrich_payload_users(Payload, [<<"user_id">>]));
                 {error, Reason} ->
@@ -257,7 +253,7 @@ update_admin_role_action(<<"PUT">>, Req0, State) ->
                 true ->
                     elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>, ?ERR_BAD_REQUEST);
                 false ->
-                    case channel_admin_repo:find(ChannelId, UserId) of
+                    case channel_admin_ds:find(ChannelId, UserId) of
                         AdminRow when map_size(AdminRow) =:= 0 ->
                             elib_response:error(Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST);
                         AdminRow ->
@@ -266,7 +262,7 @@ update_admin_role_action(<<"PUT">>, Req0, State) ->
                                 true ->
                                     elib_response:error(Req0, <<"创建者角色不可修改"/utf8>>, ?ERR_BAD_REQUEST);
                                 false ->
-                                    case channel_admin_repo:update_role(ChannelId, UserId, Role) of
+                                    case channel_admin_ds:update_role(ChannelId, UserId, Role) of
                                         {ok, _} ->
                                             _ = audit_channel_governance(
                                                 maps:get(adm_user_id, State, 0),
@@ -294,7 +290,7 @@ remove_admin_action(<<"DELETE">>, Req0, State) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId, UserId} ->
-            case channel_admin_repo:find(ChannelId, UserId) of
+            case channel_admin_ds:find(ChannelId, UserId) of
                 AdminRow when map_size(AdminRow) =:= 0 ->
                     elib_response:error(Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST);
                 AdminRow ->
@@ -303,7 +299,7 @@ remove_admin_action(<<"DELETE">>, Req0, State) ->
                         true ->
                             elib_response:error(Req0, <<"创建者不可移除"/utf8>>, ?ERR_BAD_REQUEST);
                         false ->
-                            case channel_admin_repo:delete(ChannelId, UserId) of
+                            case channel_admin_ds:delete(ChannelId, UserId) of
                                 {ok, _} ->
                                     _ = audit_channel_governance(
                                         maps:get(adm_user_id, State, 0),
@@ -331,11 +327,10 @@ invitations(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = channel_invitation_repo:tablename(),
             Column = <<"id, channel_id, inviter_uid, invitee_uid, invitation_code, status, "
                        "message, expires_at, accepted_at, created_at, updated_at">>,
             Where = #{channel_id => ChannelId},
-            case elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size) of
+            case channel_invitation_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload0} ->
                     Payload1 = enrich_payload_users(Payload0, [<<"inviter_uid">>]),
                     Payload2 = enrich_payload_users(Payload1, [<<"invitee_uid">>]),
@@ -356,12 +351,11 @@ orders(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Tb = channel_order_repo:tablename(),
             Column = <<"id, channel_id, user_id, order_no, amount, currency, status, payment_method, "
                        "payment_no, payment_at, subscription_start_at, subscription_end_at, expires_at, "
                        "refund_reason, refund_at, created_at, updated_at">>,
             Where = #{channel_id => ChannelId},
-            case elib_pg:page_with_total(Tb, Column, Where, <<"id desc">>, Page, Size) of
+            case channel_order_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
                     elib_response:success(Req0, enrich_payload_users(Payload, [<<"user_id">>]));
                 {error, Reason} ->
@@ -411,7 +405,7 @@ pin_message_action(<<"PUT">>, Req0, State) ->
             IsPinned = parse_pinned(maps:get(<<"pinned">>, PostVals, true)),
             case ensure_message_belongs_to_channel(ChannelId, MessageId) of
                 ok ->
-                    case channel_message_repo:update(
+                    case channel_message_ds:update(
                         MessageId,
                         #{is_pinned => IsPinned, updated_at => elib_dt:now()}
                     ) of
@@ -444,7 +438,7 @@ delete_message_action(<<"DELETE">>, Req0, State) ->
         {ok, ChannelId, MessageId} ->
             case ensure_message_belongs_to_channel(ChannelId, MessageId) of
                 ok ->
-                    case channel_message_repo:delete(MessageId) of
+                    case channel_message_ds:delete(MessageId) of
                         {ok, _} ->
                             _ = audit_channel_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -481,7 +475,7 @@ search(<<"GET">>, Req0) ->
         _ ->
             Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, "
                       "subscriber_count, status, created_at">>,
-            case channel_repo:search(Keyword, Limit, Column) of
+            case channel_ds:search(Keyword, Limit, Column) of
                 {ok, Channels} ->
                     Channels2 = [normalize_channel(Channel) || Channel <- Channels],
                     elib_response:success(Req0, #{list => Channels2, page => 1, size => Limit, total => length(Channels2)});
@@ -503,7 +497,7 @@ delete_action(<<"DELETE">>, Req0) ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             ChannelIdInt = ec_cnv:to_integer(ChannelId),
-            case channel_repo:delete(ChannelIdInt) of
+            case channel_ds:delete(ChannelIdInt) of
                 {ok, _} ->
                     elib_response:success(Req0, #{}, <<"频道已删除"/utf8>>);
                 {error, Reason} ->
@@ -656,7 +650,7 @@ fetch_users_map([]) ->
     #{};
 fetch_users_map(UserIds) ->
     Column = <<"id,account,nickname,avatar,status">>,
-    case user_repo:list_by_ids(UserIds, Column) of
+    case user_ds:list_by_ids(UserIds, Column) of
         {ok, Rows} ->
             lists:foldl(fun(Row, Acc) ->
                 Uid = maps:get(<<"id">>, Row, 0),
@@ -730,7 +724,7 @@ parse_id(_) ->
 
 -spec ensure_message_belongs_to_channel(integer(), integer()) -> ok | {error, binary()}.
 ensure_message_belongs_to_channel(ChannelId, MessageId) ->
-    case channel_message_repo:find_by_id(MessageId) of
+    case channel_message_ds:find_by_id(MessageId) of
         {error, _} ->
             {error, <<"消息不存在"/utf8>>};
         Message ->
@@ -778,7 +772,7 @@ audit_channel_governance(AdmUserId, ChannelId, Action, TargetId, Extra) ->
         <<"extra">> => Extra
     },
     try
-        _ = user_log_repo:add(#{
+        _ = user_log_ds:add(#{
             type => ?ADM_CHANNEL_AUDIT_TYPE,
             uid => AdmUserId,
             body => jsone:encode(AuditBody, [native_utf8]),

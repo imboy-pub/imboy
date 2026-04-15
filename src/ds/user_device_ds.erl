@@ -20,6 +20,10 @@
 -export([list_public_keys_by_uids/1]).
 -export([get_default_device/1]).
 -export([update_public_key/5]).
+%% G3 thin wrappers: e2ee handlers 不应直调 user_device_repo
+-export([get_public_by_uid/1]).
+-export([get_private_key/2]).
+-export([update_private_key/3]).
 
 %% ===================================================================
 %% API Functions
@@ -153,3 +157,14 @@ normalize_compat_device(Row) ->
         <<"dtype">> => maps:get(<<"device_type">>, Row, <<>>),
         <<"dname">> => maps:get(<<"device_name">>, Row, <<>>)
     }.
+
+%% G3 thin wrappers: e2ee handlers 不应直调 user_device_repo
+-spec get_public_by_uid(integer()) -> {ok, [map()]} | {error, term()}.
+get_public_by_uid(Uid) -> user_device_repo:get_public_by_uid(Uid).
+
+-spec get_private_key(integer(), binary()) -> {ok, binary()} | {error, term()}.
+get_private_key(Uid, DeviceId) -> user_device_repo:get_private_key(Uid, DeviceId).
+
+-spec update_private_key(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+update_private_key(Uid, DeviceId, PrivateKeyPem) ->
+    user_device_repo:update_private_key(Uid, DeviceId, PrivateKeyPem).

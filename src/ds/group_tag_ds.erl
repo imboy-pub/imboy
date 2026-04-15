@@ -14,6 +14,10 @@
 -export([search/1]).
 -export([hot_tags/1]).
 -export([count/1]).
+%% G3: adm_group_handler 不应直调 group_tag_repo
+-export([list_by_group/2]).
+-export([count_by_group/1]).
+-export([delete/2]).
 
 %% ===================================================================
 %% API functions
@@ -109,3 +113,13 @@ count(GroupId) ->
         {ok, Count} -> {ok, Count};
         {error, _Reason} -> {ok, 0}
     end.
+
+%% G3 thin wrappers for adm_group_handler
+-spec list_by_group(integer(), binary()) -> {ok, list(map())} | {error, term()}.
+list_by_group(Gid, Column) -> group_tag_repo:list_by_group(Gid, Column).
+
+-spec count_by_group(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+count_by_group(Gid) -> group_tag_repo:count_by_group(Gid).
+
+-spec delete(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+delete(GroupId, TagName) -> group_tag_repo:delete(GroupId, TagName).

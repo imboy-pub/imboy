@@ -19,7 +19,7 @@ subscribe(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"id,type">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,type">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
@@ -97,7 +97,7 @@ unsubscribe(Uid, ChannelIdBin) ->
 
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_subscribed_channels(Uid) ->
-    case channel_repo:list_subscribed(Uid, <<"*">>) of
+    case channel_ds:list_subscribed(Uid, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, Other} ->
@@ -110,7 +110,7 @@ get_subscribed_channels(Uid) ->
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_managed_channels(Uid) ->
-    case channel_repo:list_managed(Uid) of
+    case channel_ds:list_managed(Uid) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, Other} ->
@@ -123,9 +123,9 @@ get_managed_channels(Uid) ->
 
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
 get_unread_summary(Uid) ->
-    TotalUnread = channel_subscription_repo:count_unread(Uid),
-    UnreadChannels = channel_subscription_repo:count_unread_channels(Uid),
-    case channel_subscription_repo:list_unread_by_uid(Uid) of
+    TotalUnread = channel_subscription_ds:count_unread(Uid),
+    UnreadChannels = channel_subscription_ds:count_unread_channels(Uid),
+    case channel_subscription_ds:list_unread_by_uid(Uid) of
         {ok, Rows} when is_list(Rows) ->
             ChannelUnreadList = [
                 #{
@@ -159,7 +159,7 @@ get_subscribers(ChannelIdBin, Cursor, Limit) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_subscription_repo:list_by_channel(ChannelId, Cursor, Limit) of
+            case channel_subscription_ds:list_by_channel(ChannelId, Cursor, Limit) of
                 {ok, Subscribers} when is_list(Subscribers) ->
                     {ok, [S || S <- Subscribers, is_map(S)]};
                 {ok, Other} ->
@@ -184,9 +184,9 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         Role when Role >= 2 ->
             Result = elib_pg:with_tx(fun(Conn) ->
-                case channel_subscription_repo:delete(Conn, ChannelId, TargetUid) of
+                case channel_subscription_ds:delete(Conn, ChannelId, TargetUid) of
                     {ok, Affected} when Affected > 0 ->
-                        case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
+                        case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
                             {ok, _} ->
                                 changed;
                             {error, Reason} ->

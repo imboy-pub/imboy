@@ -12,6 +12,14 @@
 -export([allow_search/1]).
 -export([count_for_user_search_page/1]).
 -export([user_search_page/3]).
+-export([search_c2c_msg/4]).
+-export([search_c2c_msg_count/1]).
+-export([search_c2c_msg_with_options/4]).
+-export([search_c2c_msg_count_with_options/2]).
+-export([search_c2g_msg/4]).
+-export([search_c2g_msg_count/1]).
+-export([search_c2g_msg_with_options/4]).
+-export([search_c2g_msg_count_with_options/2]).
 
 %% ===================================================================
 %% API Functions
@@ -40,6 +48,36 @@ count_for_user_search_page(Keyword) ->
 -spec user_search_page(binary(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
 user_search_page(Keyword, Limit, Offset) ->
     fts_user_repo:user_search_page(Keyword, Limit, Offset).
+
+%% G3: fts_logic 不应直调 fts_user_repo / thin DS wrappers
+
+-spec search_c2c_msg(binary(), integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
+search_c2c_msg(Keyword, Size, Offset, Uid) -> fts_user_repo:search_c2c_msg(Keyword, Size, Offset, Uid).
+
+-spec search_c2c_msg_count(binary()) -> non_neg_integer().
+search_c2c_msg_count(Keyword) -> fts_user_repo:search_c2c_msg_count(Keyword).
+
+-spec search_c2c_msg_with_options(binary(), integer(), integer(), map()) -> {ok, list(map())} | {error, any()}.
+search_c2c_msg_with_options(Keyword, Size, Offset, Options) ->
+    fts_user_repo:search_c2c_msg_with_options(Keyword, Size, Offset, Options).
+
+-spec search_c2c_msg_count_with_options(binary(), map()) -> non_neg_integer().
+search_c2c_msg_count_with_options(Keyword, Options) ->
+    fts_user_repo:search_c2c_msg_count_with_options(Keyword, Options).
+
+-spec search_c2g_msg(binary(), integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
+search_c2g_msg(Keyword, Size, Offset, Uid) -> fts_user_repo:search_c2g_msg(Keyword, Size, Offset, Uid).
+
+-spec search_c2g_msg_count(binary()) -> non_neg_integer().
+search_c2g_msg_count(Keyword) -> fts_user_repo:search_c2g_msg_count(Keyword).
+
+-spec search_c2g_msg_with_options(binary(), integer(), integer(), map()) -> {ok, list(map())} | {error, any()}.
+search_c2g_msg_with_options(Keyword, Size, Offset, Options) ->
+    fts_user_repo:search_c2g_msg_with_options(Keyword, Size, Offset, Options).
+
+-spec search_c2g_msg_count_with_options(binary(), map()) -> non_neg_integer().
+search_c2g_msg_count_with_options(Keyword, Options) ->
+    fts_user_repo:search_c2g_msg_count_with_options(Keyword, Options).
 
 %% ===================================================================
 %% Internal Functions

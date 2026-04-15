@@ -21,7 +21,7 @@
 -spec register_token(integer(), binary(), binary(), binary(), binary()) ->
     ok | {error, term()}.
 register_token(Uid, DeviceId, DeviceType, Platform, Token) ->
-    case push_token_repo:upsert(Uid, DeviceId, DeviceType, Platform, Token) of
+    case push_token_ds:upsert(Uid, DeviceId, DeviceType, Platform, Token) of
         {ok, _} -> ok;
         {error, Reason} ->
             ?ERROR_LOG(["push token register failed", Uid, DeviceId, Reason]),
@@ -31,7 +31,7 @@ register_token(Uid, DeviceId, DeviceType, Platform, Token) ->
 %% @doc 注销推送 token（客户端登出时调用）
 -spec unregister_token(integer(), binary()) -> ok.
 unregister_token(Uid, DeviceId) ->
-    case push_token_repo:deactivate(Uid, DeviceId) of
+    case push_token_ds:deactivate(Uid, DeviceId) of
         {ok, _} -> ok;
         ok -> ok;
         {error, Reason} ->
@@ -107,7 +107,7 @@ maybe_push_for_c2g(FromUid, GroupId, MsgType, MemberUids) ->
 
 %% @doc 获取推送标题（发送者昵称）
 get_push_title(FromUid) ->
-    case user_repo:find_by_id(FromUid, <<"nickname">>) of
+    case user_ds:find_by_id(FromUid, <<"nickname">>) of
         #{<<"nickname">> := Nickname} when is_binary(Nickname), byte_size(Nickname) > 0 ->
             Nickname;
         _ ->
@@ -117,7 +117,7 @@ get_push_title(FromUid) ->
 %% @doc 获取群组推送标题
 get_group_push_title(FromUid, GroupId) ->
     SenderName = get_push_title(FromUid),
-    GroupName = case group_repo:find_by_id(GroupId, <<"title">>) of
+    GroupName = case group_ds:find_by_id(GroupId, <<"title">>) of
         #{<<"title">> := Name} when is_binary(Name), byte_size(Name) > 0 -> Name;
         _ -> <<"群聊"/utf8>>
     end,

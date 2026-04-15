@@ -71,7 +71,7 @@ report(<<"POST">>, Req0, _State) ->
                 <<"upgrade_type">> => maps:get(<<"upgrade_type">>, Body0, <<>>),
                 <<"extra">> => maps:get(<<"extra">>, Body0, #{})
             },
-            elib_async:async(fun() -> app_upgrade_log_repo:insert(Data) end),
+            elib_async:async(fun() -> app_upgrade_log_ds:insert(Data) end),
             elib_response:success(Req0, #{<<"ok">> => true})
     end;
 report(_, Req0, _State) ->

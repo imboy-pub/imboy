@@ -12,6 +12,24 @@
 -export([unsubscribe/2]).
 -export([publish_message/5]).
 -export([get_channel/1]).
+-export([list_by_ids_since/2]).
+%% G3 thin wrappers for channel_logic_*
+-export([find_by_id/2]).
+-export([list_managed/1]).
+-export([find_by_custom_id/1]).
+-export([update/2]).
+-export([delete/1]).
+-export([search/3]).
+-export([list_discover/2]).
+-export([list_subscribed/2]).
+-export([increment_subscribers/3]).
+-export([get_reaction_count/1]).
+-export([has_viewed_message/2]).
+-export([insert_message_view/4]).
+-export([insert_reaction/5]).
+-export([delete_reaction/4]).
+-export([get_daily_stats/2]).
+-export([page/5]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -264,3 +282,63 @@ normalize_error(Reason) when is_binary(Reason) ->
     Reason;
 normalize_error(Reason) ->
     elib_cnv:safe_to_binary(Reason).
+
+%% G3: channel_logic_sync 不应直调 channel_repo
+-spec list_by_ids_since(list(integer()), integer() | binary()) -> {ok, list(map())} | {error, any()}.
+list_by_ids_since(ChannelIds, Since) -> channel_repo:list_by_ids_since(ChannelIds, Since).
+
+%% G3 thin wrappers: channel_logic_* 不应直调 channel_repo
+-spec find_by_id(integer(), binary()) -> map() | {error, any()}.
+find_by_id(ChannelId, Column) -> channel_repo:find_by_id(ChannelId, Column).
+
+-spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
+list_managed(Uid) -> channel_repo:list_managed(Uid).
+
+-spec find_by_custom_id(binary()) -> map() | {error, any()}.
+find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).
+
+-spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
+update(ChannelId, Data) -> channel_repo:update(ChannelId, Data).
+
+-spec delete(integer()) -> {ok, integer()} | {error, any()}.
+delete(ChannelId) -> channel_repo:delete(ChannelId).
+
+-spec search(binary(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
+search(Keyword, Limit, Column) -> channel_repo:search(Keyword, Limit, Column).
+
+-spec list_discover(integer(), binary()) -> {ok, list(map())} | {error, any()}.
+list_discover(Limit, Column) -> channel_repo:list_discover(Limit, Column).
+
+-spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
+list_subscribed(Uid, Column) -> channel_repo:list_subscribed(Uid, Column).
+
+-spec increment_subscribers(epgsql:connection(), integer(), integer()) -> {ok, integer()} | {error, any()}.
+increment_subscribers(Conn, ChannelId, Delta) ->
+    channel_repo:increment_subscribers(Conn, ChannelId, Delta).
+
+-spec get_reaction_count(integer()) -> {ok, map()} | {error, any()}.
+get_reaction_count(ChannelId) -> channel_repo:get_reaction_count(ChannelId).
+
+-spec has_viewed_message(integer(), integer()) -> boolean().
+has_viewed_message(MessageId, UserId) -> channel_repo:has_viewed_message(MessageId, UserId).
+
+-spec insert_message_view(integer(), integer(), integer(), binary()) -> ok | {error, any()}.
+insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
+    channel_repo:insert_message_view(ChannelId, MessageId, UserId, ViewedAt).
+
+-spec insert_reaction(integer(), integer(), integer(), binary(), binary()) -> ok | {error, any()}.
+insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
+    channel_repo:insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt).
+
+-spec delete_reaction(integer(), integer(), integer(), binary()) -> ok | {error, any()}.
+delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
+    channel_repo:delete_reaction(ChannelId, MessageId, UserId, ReactionType).
+
+-spec get_daily_stats(integer(), integer()) -> {ok, list(map())} | {error, any()}.
+get_daily_stats(ChannelId, Days) -> channel_repo:get_daily_stats(ChannelId, Days).
+
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, Where, Order, Page, Size) ->
+    Tb = channel_repo:tablename(),
+    elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).

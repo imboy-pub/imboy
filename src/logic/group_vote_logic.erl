@@ -88,9 +88,9 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
     end, Options),
 
     % 插入投票和选项
-    case group_vote_repo:insert_vote(VoteData) of
+    case group_vote_ds:insert_vote(VoteData) of
         {ok, _VoteId, _} ->
-            case group_vote_repo:insert_options_batch(OptionsData) of
+            case group_vote_ds:insert_options_batch(OptionsData) of
                 {ok, _Count} ->
                     {ok, #{
                         <<"vote_id">> => VoteId,
@@ -115,7 +115,7 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
 -spec cast_vote(binary(), integer(), [binary()]) -> {ok, map()} | {error, term()}.
 cast_vote(VoteId, UserId, OptionIds) ->
     % 检查投票是否存在
-    case group_vote_repo:find_by_vote_id(VoteId) of
+    case group_vote_ds:find_by_vote_id(VoteId) of
         {error, not_found} ->
             {error, vote_not_found};
         {ok, Vote} ->
@@ -155,12 +155,12 @@ validate_and_cast_vote(Vote, VoteId, UserId, OptionIds) ->
 %% @doc 检查并执行投票
 check_and_cast(VoteId, UserId, OptionIds, VoteType) ->
     % 检查是否已投票
-    case group_vote_repo:find_record_by_vote_and_user(VoteId, UserId) of
+    case group_vote_ds:find_record_by_vote_and_user(VoteId, UserId) of
         {ok, _Record} ->
             {error, already_voted};
         {error, not_found} ->
             % 验证选项
-            case group_vote_repo:list_options_by_vote_id(VoteId) of
+            case group_vote_ds:list_options_by_vote_id(VoteId) of
                 {ok, Options} ->
                     ValidOptionIds = [maps:get(<<"option_id">>, O) || O <- Options],
                     validate_options(OptionIds, ValidOptionIds, VoteType, VoteId, UserId);
@@ -196,7 +196,7 @@ do_cast_vote(VoteId, UserId, OptionIds) ->
         user_id => UserId,
         option_ids => OptionIdsJson
     },
-    case group_vote_repo:insert_record(RecordData) of
+    case group_vote_ds:insert_record(RecordData) of
         {ok, _RecordId, _} ->
             {ok, #{<<"vote_id">> => VoteId}};
         {error, Reason} ->
@@ -211,12 +211,12 @@ do_cast_vote(VoteId, UserId, OptionIds) ->
 -spec update_vote(binary(), integer(), [binary()]) -> {ok, map()} | {error, term()}.
 update_vote(VoteId, UserId, OptionIds) ->
     % 检查是否已投票
-    case group_vote_repo:find_record_by_vote_and_user(VoteId, UserId) of
+    case group_vote_ds:find_record_by_vote_and_user(VoteId, UserId) of
         {error, not_found} ->
             {error, not_voted_yet};
         {ok, Record} ->
             % 检查投票是否有效
-            case group_vote_repo:find_by_vote_id(VoteId) of
+            case group_vote_ds:find_by_vote_id(VoteId) of
                 {error, not_found} ->
                     {error, vote_not_found};
                 {ok, Vote} ->
@@ -232,7 +232,7 @@ validate_and_update_vote(Vote, Record, VoteId, UserId, OptionIds) ->
     case Status of
         1 ->
             % 验证选项
-            case group_vote_repo:list_options_by_vote_id(VoteId) of
+            case group_vote_ds:list_options_by_vote_id(VoteId) of
                 {ok, Options} ->
                     ValidOptionIds = [maps:get(<<"option_id">>, O) || O <- Options],
                     case lists:all(fun(O) -> lists:member(O, ValidOptionIds) end, OptionIds) of
@@ -260,7 +260,7 @@ do_update_vote(Record, VoteId, _UserId, OptionIds) ->
     RecordId = maps:get(<<"id">>, Record),
     OptionIdsJson = jsone:encode(OptionIds),
     Data = #{option_ids => OptionIdsJson},
-    case group_vote_repo:update_record(RecordId, Data) of
+    case group_vote_ds:update_record(RecordId, Data) of
         {ok, _Count} ->
             {ok, #{<<"vote_id">> => VoteId}};
         {error, Reason} ->
@@ -273,12 +273,12 @@ do_update_vote(Record, VoteId, _UserId, OptionIds) ->
 %% @return ok | {error, Reason}
 -spec cancel_vote(binary(), integer()) -> ok | {error, term()}.
 cancel_vote(VoteId, UserId) ->
-    case group_vote_repo:find_record_by_vote_and_user(VoteId, UserId) of
+    case group_vote_ds:find_record_by_vote_and_user(VoteId, UserId) of
         {error, not_found} ->
             {error, not_voted_yet};
         {ok, Record} ->
             RecordId = maps:get(<<"id">>, Record),
-            case group_vote_repo:delete_record(RecordId) of
+            case group_vote_ds:delete_record(RecordId) of
                 {ok, _Count} ->
                     ok;
                 {error, Reason} ->
@@ -291,7 +291,7 @@ cancel_vote(VoteId, UserId) ->
 %% @return {ok, VoteDetail} | {error, Reason}
 -spec get_vote_detail(binary()) -> {ok, map()} | {error, term()}.
 get_vote_detail(VoteId) ->
-    case group_vote_repo:find_by_vote_id(VoteId) of
+    case group_vote_ds:find_by_vote_id(VoteId) of
         {error, not_found} ->
             {error, vote_not_found};
         {ok, Vote} ->
@@ -301,15 +301,15 @@ get_vote_detail(VoteId) ->
 %% @doc 构建投票详情
 build_vote_detail(Vote, VoteId) ->
     % 获取选项列表
-    case group_vote_repo:list_options_by_vote_id(VoteId) of
+    case group_vote_ds:list_options_by_vote_id(VoteId) of
         {ok, Options} ->
             % 获取总投票人数
-            {ok, TotalVotes} = group_vote_repo:count_total_votes_by_vote_id(VoteId),
+            {ok, TotalVotes} = group_vote_ds:count_total_votes_by_vote_id(VoteId),
 
             % 为每个选项添加得票数
             OptionsWithCount = lists:map(fun(Option) ->
                 OptionId = maps:get(<<"option_id">>, Option),
-                {ok, Count} = group_vote_repo:count_votes_by_option_id(OptionId),
+                {ok, Count} = group_vote_ds:count_votes_by_option_id(OptionId),
                 Option#{<<"vote_count">> => Count}
             end, Options),
 
@@ -329,9 +329,9 @@ build_vote_detail(Vote, VoteId) ->
 %% @return {ok, VotesMap} | {error, Reason}
 -spec list_votes(integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
 list_votes(Gid, Page, Size) ->
-    case group_vote_repo:list_votes_by_group_id(Gid, Page, Size) of
+    case group_vote_ds:list_votes_by_group_id(Gid, Page, Size) of
         {ok, Votes} ->
-            case group_vote_repo:count_votes_by_group_id(Gid) of
+            case group_vote_ds:count_votes_by_group_id(Gid) of
                 {ok, Total} ->
                     % 编码ID字段
                     {ok, #{
@@ -352,7 +352,7 @@ list_votes(Gid, Page, Size) ->
 %% @return ok | {error, Reason}
 -spec close_vote(binary()) -> ok | {error, term()}.
 close_vote(VoteId) ->
-    case group_vote_repo:find_by_vote_id(VoteId) of
+    case group_vote_ds:find_by_vote_id(VoteId) of
         {error, not_found} ->
             {error, vote_not_found};
         {ok, Vote} ->
@@ -361,7 +361,7 @@ close_vote(VoteId) ->
                 2 ->
                     {error, vote_already_closed};
                 1 ->
-                    case group_vote_repo:update_vote_status(VoteId, 2) of
+                    case group_vote_ds:update_vote_status(VoteId, 2) of
                         {ok, _Count} ->
                             ok;
                         {error, Reason} ->
@@ -378,7 +378,7 @@ close_vote(VoteId) ->
 %% @return {ok, MyVote} | {error, Reason}
 -spec get_my_vote(binary(), integer()) -> {ok, map()} | {error, term()}.
 get_my_vote(VoteId, UserId) ->
-    case group_vote_repo:find_record_by_vote_and_user(VoteId, UserId) of
+    case group_vote_ds:find_record_by_vote_and_user(VoteId, UserId) of
         {error, not_found} ->
             {error, not_voted_yet};
         {ok, Record} ->

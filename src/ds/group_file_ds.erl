@@ -11,6 +11,14 @@
 -export([list_files/5]).
 -export([search_files/4]).
 -export([get_file_categories/1]).
+-export([count_by_group/1]).
+%% G3 thin wrappers for adm_group_handler
+-export([find_by_id/1]).
+-export([find_by_file_id/1]).
+-export([soft_delete/1]).
+-export([search_by_name/4]).
+-export([list_by_category/4]).
+-export([list_by_group/4]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -198,3 +206,29 @@ check_delete_permission(CurrentUid, _UploaderId, Gid) ->
         _ ->
             {error, permission_denied}
     end.
+
+%% G3: group_file_logic 不应直调 group_file_repo
+-spec count_by_group(integer()) -> {ok, integer()} | {error, term()}.
+count_by_group(Gid) -> group_file_repo:count_by_group(Gid).
+
+%% G3 thin wrappers for adm_group_handler
+-spec find_by_id(integer()) -> map().
+find_by_id(FileId) -> group_file_repo:find_by_id(FileId).
+
+-spec find_by_file_id(binary()) -> map().
+find_by_file_id(FileId) -> group_file_repo:find_by_file_id(FileId).
+
+-spec soft_delete(integer()) -> {ok, integer()} | {error, term()}.
+soft_delete(FileId) -> group_file_repo:soft_delete(FileId).
+
+-spec search_by_name(integer(), binary(), pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+search_by_name(Gid, Keyword, Page, Size) ->
+    group_file_repo:search_by_name(Gid, Keyword, Page, Size).
+
+-spec list_by_category(integer(), binary(), pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+list_by_category(Gid, Category, Page, Size) ->
+    group_file_repo:list_by_category(Gid, Category, Page, Size).
+
+-spec list_by_group(integer(), pos_integer(), pos_integer(), map()) -> {ok, list(map())} | {error, term()}.
+list_by_group(Gid, Page, Size, Options) ->
+    group_file_repo:list_by_group(Gid, Page, Size, Options).

@@ -32,14 +32,14 @@
     {ok, map()} | {error, term()}.
 create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
     % 1. 验证接收方用户是否存在
-    case user_repo:may_exist(ToUid) of
+    case user_ds:may_exist(ToUid) of
         false ->
             {error, {<<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND}};
         true ->
             % 2. 直接尝试创建会话，依赖数据库唯一约束防止并发重复
             try
                 % 3. 生成会话 ID
-                SessionId = e2ee_transfer_repo:generate_session_id(),
+                SessionId = e2ee_transfer_ds:generate_session_id(),
 
                 % 4. 使用接收方公钥加密私钥
                 EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
@@ -60,7 +60,7 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
                     <<"status">> => <<"pending">>
                 },
 
-                case e2ee_transfer_repo:create(SessionMap) of
+                case e2ee_transfer_ds:create_raw(SessionMap) of
                     {ok, _SessionId} ->
                         {ok, SessionMap};
                     {error, unique_violation} ->
@@ -85,7 +85,7 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
     {ok, map()} | {error, term()}.
 accept_transfer(SessionId, ToUid, ToDeviceId) ->
     % 1. 获取会话信息
-    case e2ee_transfer_repo:get_by_session_id(SessionId) of
+    case e2ee_transfer_ds:get_by_session_id(SessionId) of
         {error, not_found} ->
             {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
         {ok, Session} ->
@@ -100,7 +100,7 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
                     case Status of
                         <<"pending">> ->
                             % 4. 更新状态为 accepted
-                            case e2ee_transfer_repo:update_status_and_device(
+                            case e2ee_transfer_ds:update_status_and_device(
                                 SessionId, <<"accepted">>, ToDeviceId
                             ) of
                                 ok ->
@@ -126,7 +126,7 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
 -spec confirm_transfer(binary(), integer()) -> ok | {error, term()}.
 confirm_transfer(SessionId, ToUid) ->
     % 1. 获取会话信息
-    case e2ee_transfer_repo:get_by_session_id(SessionId) of
+    case e2ee_transfer_ds:get_by_session_id(SessionId) of
         {error, not_found} ->
             {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
         {ok, Session} ->
@@ -143,7 +143,7 @@ confirm_transfer(SessionId, ToUid) ->
                             {error, {<<"会话状态错误"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}};
                         true ->
                             % 4. 更新状态为 confirmed
-                            case e2ee_transfer_repo:update_status(SessionId, <<"confirmed">>) of
+                            case e2ee_transfer_ds:update_status(SessionId, <<"confirmed">>) of
                                 ok -> ok;
                                 {error, UpdateReason} -> {error, UpdateReason}
                             end
@@ -159,7 +159,7 @@ confirm_transfer(SessionId, ToUid) ->
 -spec cancel_transfer(binary(), integer()) -> ok | {error, term()}.
 cancel_transfer(SessionId, FromUid) ->
     % 1. 获取会话信息验证权限
-    case e2ee_transfer_repo:get_by_session_id(SessionId) of
+    case e2ee_transfer_ds:get_by_session_id(SessionId) of
         {error, not_found} ->
             {error, {<<"会话不存在或已过期"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
         {ok, Session} ->
@@ -174,7 +174,7 @@ cancel_transfer(SessionId, FromUid) ->
                     case Status of
                         <<"pending">> ->
                             % 4. 执行取消
-                            case e2ee_transfer_repo:cancel_session(SessionId, FromUid) of
+                            case e2ee_transfer_ds:cancel_session_raw(SessionId, FromUid) of
                                 ok -> ok;
                                 {error, not_found_or_not_pending} ->
                                     {error, {<<"会话已不可取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
@@ -197,14 +197,14 @@ cancel_transfer(SessionId, FromUid) ->
 %% @returns {ok, SessionMap} | {error, not_found}
 -spec get_transfer_info(binary()) -> {ok, map()} | {error, not_found}.
 get_transfer_info(SessionId) ->
-    e2ee_transfer_repo:get_by_session_id(SessionId).
+    e2ee_transfer_ds:get_by_session_id(SessionId).
 
 %% @doc 获取用户的待处理传输列表
 %% @param Uid 用户 ID
 %% @returns {ok, [SessionMap]} | {error, Reason}
 -spec get_pending_transfers(integer()) -> {ok, list(map())} | {error, term()}.
 get_pending_transfers(Uid) ->
-    e2ee_transfer_repo:get_pending_sessions(Uid).
+    e2ee_transfer_ds:get_pending_sessions(Uid).
 
 %%===================================================================
 %%% Internal Functions

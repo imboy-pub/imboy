@@ -103,7 +103,7 @@ validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
 %% @doc 验证绑定邮箱缓存状态
 -spec validate_bind_mail_cache(term(), binary()) -> ok | {error, binary()}.
 validate_bind_mail_cache(undefined, Mail) ->
-    Id = elib_pg:pluck_value(user_repo:tablename(), <<"id">>, #{email => Mail}, #{}, 0),
+    Id = user_ds:find_id_by_email(Mail),
     case Id > 0 of
         true -> {error, "抱歉，该邮箱地址验证已失效\n造成此情况可能是您更改了邮箱，也可能是您已确认过该邮箱不是您的。"};
         false -> ok
@@ -115,7 +115,7 @@ validate_bind_mail_cache(_CacheVal, _Mail) ->
 -spec process_bind_mail(cowboy_req:req(), map()) -> cowboy_req:req().
 process_bind_mail(Req0, #{uid := Uid, mail := Mail, cache_key := CacheKey}) ->
     Uid2 = ec_cnv:to_integer(Uid),
-    case elib_pg:update(user_repo:tablename(), #{<<"email">> => Mail}, <<"id = $1">>, [Uid2]) of
+    case user_ds:bind_email(Uid2, Mail) of
         {ok, _} ->
             imboy_cache:set(CacheKey, 1, 86400),
             elib_response:success(Req0, #{});
@@ -139,6 +139,8 @@ login(Req0) ->
     Password = maps:get(<<"pwd">>, PostVals, <<>>),
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
+    % DEBUG: 临时调试登录密码问题
+    ?DEBUG_LOG(#{login_debug => #{account => Account, password_len => byte_size(Password), rsa_encrypt => RsaEncrypt, pwd_len => byte_size(Pwd), pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32))}}),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
 
     % 提取设备信息
@@ -217,10 +219,7 @@ refreshtoken(Req0) ->
             case token_ds:decrypt_token(Refreshtoken) of
                 {ok, Id, _ExpireDAt, <<"rtk">>} ->
                     % 状态: -1 删除  0 禁用  1 启用
-                    % 使用安全的参数化查询，避免SQL注入
-                    Status =
-                        elib_pg:pluck_value(
-                            user_repo:tablename(), <<"status">>, #{id => Id}, #{}, -2),
+                    Status = user_ds:get_status(Id),
                     case Status of
                         _Other when Status > -1 ->
                             elib_response:success(Req0,
@@ -254,9 +253,7 @@ getcode(Req0) ->
     Account = maps:get(<<"account">>, PostVals, <<>>),
     % ?DEBUG_LOG([Type, Account]),
     Id = if Type == <<"sms">>, Scene == <<"signup">> ->
-                % 使用安全的参数化查询，避免SQL注入
-                elib_pg:pluck_value(
-                    user_repo:tablename(), <<"id">>, #{mobile => Account}, #{}, 0);
+                user_ds:find_id_by_mobile(Account);
             % elib_response:error(Req0, "Msg1");
             true ->
                 0

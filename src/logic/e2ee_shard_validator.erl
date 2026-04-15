@@ -61,7 +61,7 @@ log_shard_transmission(FromUid, ToUid, ShardId, Action, Metadata) ->
         metadata => Metadata,
         created_at => elib_dt:now()
     },
-    case e2ee_shard_transmission_log_repo:insert(Data) of
+    case e2ee_shard_transmission_log_ds:insert(Data) of
         {ok, _} ->
             ok;
         {error, Reason} ->

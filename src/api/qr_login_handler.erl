@@ -403,6 +403,6 @@ log_device_login(Uid, DeviceId, DeviceName, Platform) ->
         <<"login_type">> => <<"qr_scan">>
     },
     % 记录到数据库
-    user_device_repo:save(Now, Uid, DeviceId, PostVals),
+    user_device_ds:save(Now, Uid, DeviceId, PostVals),
     ?INFO_LOG([qr_login_device, Uid, DeviceId, DeviceName]),
     ok.

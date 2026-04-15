@@ -63,52 +63,7 @@ get_status() ->
 %% @return {ok, ExportData} | {error, Reason}
 -spec export_user_data(integer()) -> {ok, map()} | {error, term()}.
 export_user_data(Uid) ->
-    try
-        UserTb = user_repo:tablename(),
-        %% 基本用户信息（脱敏）
-        UserSql = <<"SELECT id, account, nickname, avatar, sign, region, gender, created_at "
-                    "FROM ", UserTb/binary, " WHERE id = $1">>,
-        UserInfo = case elib_pg:query(UserSql, [Uid]) of
-            {ok, [Row]} -> Row;
-            _ -> #{}
-        end,
-
-        %% 好友列表
-        FriendTb = friend_repo:tablename(),
-        FriendSql = <<"SELECT to_user_id, remark, created_at "
-                      "FROM ", FriendTb/binary,
-                      " WHERE from_user_id = $1 AND status = 1">>,
-        {ok, Friends} = elib_pg:query(FriendSql, [Uid]),
-
-        %% 群组列表
-        MemberTb = group_member_repo:tablename(),
-        GroupTb = group_repo:tablename(),
-        GroupSql = <<"SELECT g.id, g.title, gm.created_at "
-                     "FROM ", MemberTb/binary, " gm "
-                     "JOIN ", GroupTb/binary, " g ON g.id = gm.group_id "
-                     "WHERE gm.user_id = $1">>,
-        {ok, Groups} = elib_pg:query(GroupSql, [Uid]),
-
-        %% 用户设置
-        SettingTb = user_setting_repo:tablename(),
-        SettingSql = <<"SELECT * FROM ", SettingTb/binary, " WHERE user_id = $1">>,
-        Settings = case elib_pg:query(SettingSql, [Uid]) of
-            {ok, [S]} -> S;
-            _ -> #{}
-        end,
-
-        ExportData = #{
-            <<"user_info">> => UserInfo,
-            <<"friends">> => Friends,
-            <<"groups">> => Groups,
-            <<"settings">> => Settings,
-            <<"exported_at">> => elib_dt:now()
-        },
-        {ok, ExportData}
-    catch
-        _:Error ->
-            {error, Error}
-    end.
+    user_ds:export_data(Uid).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -211,15 +166,7 @@ do_cleanup_internal(State) ->
 
 %% @doc 查找并删除超过保留期的注销申请用户
 delete_expired_users(RetentionDays, BatchSize) ->
-    UserTb = user_repo:tablename(),
-    %% 查找 status=2（申请注销）且注销申请超过 retention_days 天的用户
-    %% 使用 updated_at 作为注销申请时间（apply_logout 修改 status 时会更新 updated_at）
-    Sql = <<"SELECT id FROM ", UserTb/binary,
-            " WHERE status = 2"
-            " AND updated_at <= NOW() - ($1 || ' days')::INTERVAL"
-            " ORDER BY updated_at ASC"
-            " LIMIT $2">>,
-    case elib_pg:query(Sql, [integer_to_binary(RetentionDays), BatchSize]) of
+    case user_ds:find_expired_logout_users(integer_to_binary(RetentionDays), BatchSize) of
         {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
             lists:foldl(fun(#{<<"id">> := Uid}, Acc) ->
                 try

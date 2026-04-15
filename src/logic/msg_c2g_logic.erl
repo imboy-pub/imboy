@@ -188,7 +188,7 @@ do_stage_and_send_c2g(
                 CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc);
         _ ->
             % 有引用信息，需要先验证被引用的消息是否存在
-            case msg_c2g_repo:find_msg_by_id(ReplyToMsgId) of
+            case msg_c2g_ds:find_msg_by_id(ReplyToMsgId) of
                 {ok, _OriginalMsg} ->
                     msg_store_ds:stage(
                         <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
@@ -499,7 +499,7 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
 -spec read_stats(binary(), integer()) -> {ok, integer(), integer()} | {error, atom()}.
 read_stats(MsgId, CurrentUid) ->
     % 首先从 msg_c2g_timeline 表获取群组ID
-    case msg_c2g_timeline_repo:find_by_msg_id(MsgId) of
+    case msg_c2g_ds:timeline_find_by_msg_id(MsgId) of
         {ok, []} ->
             % 消息不存在
             {error, not_found};
@@ -511,7 +511,7 @@ read_stats(MsgId, CurrentUid) ->
                     TotalCount = length(group_ds:member_uids(Gid)),
 
                     % 获取已读人数
-                    ReadCount = msg_c2g_repo:count_read(MsgId),
+                    ReadCount = msg_c2g_ds:count_read(MsgId),
 
                     {ok, ReadCount, TotalCount};
                 false ->
@@ -544,7 +544,7 @@ extract_reply_info(Data) ->
             ReplySnippet = case ReplyToMsgId of
                 <<>> -> <<>>;
                 _ ->
-                    case msg_c2g_repo:find_msg_by_id(ReplyToMsgId) of
+                    case msg_c2g_ds:find_msg_by_id(ReplyToMsgId) of
                         {ok, OriginalMsg} ->
                             Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
                             % 尝试解析 JSON 并提取 content 字段
@@ -582,16 +582,7 @@ extract_reply_info(Data) ->
 %% @param ExpireAt 过期时间（RFC3339 binary）
 -spec set_c2g_expire_at(binary(), binary()) -> ok.
 set_c2g_expire_at(MsgId, ExpireAt) ->
-    Tb = msg_c2g_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-           " SET expire_at = $1"
-           " WHERE msg_id = $2">>,
-    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} -> ok;
-        {error, Reason} ->
-            _ = ?WARN_LOG({set_c2g_expire_at_failed, MsgId, Reason}),
-            ok
-    end.
+    msg_c2g_ds:set_expire_at(MsgId, ExpireAt).
 
 %% @doc 持久化 action ack payload 到原消息记录
 %% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
@@ -600,7 +591,7 @@ persist_action_payload(<<>>, _Payload) ->
     ok;
 persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
     PayloadJson = imboy_message_helper:encode_json(Payload),
-    case msg_c2g_repo:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
+    case msg_c2g_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
         {ok, _} ->
             ok;
         {error, Reason} ->

@@ -57,7 +57,7 @@ create(GroupId, CreatorId, Title, Data) when is_integer(GroupId), GroupId > 0,
         creator_id => CreatorId
     },
     TaskData2 = maps:merge(TaskData, Data),
-    case group_task_repo:insert(TaskData2) of
+    case group_task_ds:insert_task(TaskData2) of
         {ok, Id, _} ->
             {ok, Id};
         {error, {missing_field, _Field}} ->
@@ -78,7 +78,7 @@ create(_GroupId, _CreatorId, _Title, _Data) ->
 -spec update(integer(), integer(), map()) -> ok | {error, binary()}.
 update(TaskId, CreatorId, Data) when is_integer(TaskId), TaskId > 0,
                                      is_integer(CreatorId), CreatorId > 0 ->
-    case group_task_repo:find_by_id(TaskId) of
+    case group_task_ds:find_by_id(TaskId) of
         {ok, Task} ->
             CreatorId2 = maps:get(<<"creator_id">>, Task, 0),
             Status = maps:get(<<"status">>, Task, 1),
@@ -93,7 +93,7 @@ update(TaskId, CreatorId, Data) when is_integer(TaskId), TaskId > 0,
                                 0 ->
                                     {error, <<"没有要更新的字段"/utf8>>, ?ERR_BAD_REQUEST};
                                 _ ->
-                                    group_task_repo:update(TaskId, UpdateData),
+                                    group_task_ds:update_task(TaskId, UpdateData),
                                     ok
                             end
                     end;
@@ -116,14 +116,14 @@ assign(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(UserIds) ->
         0 ->
             {error, <<"成员列表不能为空"/utf8>>, ?ERR_BAD_REQUEST};
         _ ->
-            case group_task_repo:find_by_id(TaskId) of
+            case group_task_ds:find_by_id(TaskId) of
                 {ok, Task} ->
                     TaskIdStr = maps:get(<<"task_id">>, Task, <<>>),
                     % 批量插入作业分配
                     lists:foreach(fun(UserId) ->
-                        case group_task_assignment_repo:find_by_task_and_user(TaskIdStr, UserId) of
+                        case group_task_ds:assignment_find_by_task_and_user(TaskIdStr, UserId) of
                             {error, not_found} ->
-                                group_task_assignment_repo:insert(#{
+                                group_task_ds:assignment_insert(#{
                                     task_id => TaskIdStr,
                                     user_id => UserId,
                                     status => 0
@@ -149,7 +149,7 @@ assign(_TaskId, _UserIds) ->
 submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
                                   is_integer(UserId), UserId > 0 ->
     % 检查作业是否存在且未过期
-    case group_task_repo:find_by_task_id(TaskId) of
+    case group_task_ds:find_by_task_id(TaskId) of
         {ok, Task} ->
             Deadline = maps:get(<<"deadline">>, Task, undefined),
             case check_deadline(Deadline) of
@@ -157,7 +157,7 @@ submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
                     {error, imboy_error:error_msg(?ERR_TASK_DEADLINE_PASSED), ?ERR_TASK_DEADLINE_PASSED};
                 false ->
                     % 检查作业分配是否存在
-                    case group_task_assignment_repo:find_by_task_and_user(TaskId, UserId) of
+                    case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
                         {ok, Assignment} ->
                             Status = maps:get(<<"status">>, Assignment, 0),
                             case Status of
@@ -173,7 +173,7 @@ submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
                                         submitted_at => Now
                                     },
                                     SubmitData2 = maps:merge(SubmitData, Data),
-                                    group_task_assignment_repo:update(AssignmentId, SubmitData2),
+                                    group_task_ds:assignment_update(AssignmentId, SubmitData2),
                                     ok
                             end;
                         {error, not_found} ->
@@ -194,7 +194,7 @@ submit(_TaskId, _UserId, _Data) ->
 -spec review(integer(), integer(), map()) -> ok | {error, binary()}.
 review(AssignmentId, ReviewerId, Data) when is_integer(AssignmentId), AssignmentId > 0,
                                             is_integer(ReviewerId), ReviewerId > 0 ->
-    case group_task_assignment_repo:find_by_id(AssignmentId) of
+    case group_task_ds:assignment_find_by_id(AssignmentId) of
         {ok, Assignment} ->
             Status = maps:get(<<"status">>, Assignment, 0),
             case Status of
@@ -206,7 +206,7 @@ review(AssignmentId, ReviewerId, Data) when is_integer(AssignmentId), Assignment
                         reviewed_at => Now
                     },
                     ReviewData2 = maps:merge(ReviewData, Data),
-                    group_task_assignment_repo:update(AssignmentId, ReviewData2),
+                    group_task_ds:assignment_update(AssignmentId, ReviewData2),
                     ok;
                 3 ->
                     {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED), ?ERR_TASK_ALREADY_REVIEWED};
@@ -224,7 +224,7 @@ review(_AssignmentId, _ReviewerId, _Data) ->
 %% @return {ok, Task} | {error, Reason}
 -spec detail(integer()) -> {ok, map()} | {error, binary()}.
 detail(TaskId) when is_integer(TaskId), TaskId > 0 ->
-    case group_task_repo:find_by_id(TaskId) of
+    case group_task_ds:find_by_id(TaskId) of
         {ok, Task} ->
             {ok, Task};
         {error, not_found} ->
@@ -262,18 +262,18 @@ list(GroupId, Status, AssigneeId, Page, Size)
         undefined ->
             case Status of
                 undefined ->
-                    group_task_repo:list_by_group_id(GroupId, Page, Size);
+                    group_task_ds:list_by_group_id(GroupId, Page, Size);
                 S when is_integer(S), S >= 1, S =< 3 ->
-                    group_task_repo:list_by_group_id(GroupId, S, Page, Size);
+                    group_task_ds:list_by_group_id(GroupId, S, Page, Size);
                 _ ->
                     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
             end;
         A when is_integer(A), A > 0 ->
             case Status of
                 undefined ->
-                    group_task_repo:list_by_group_and_user(GroupId, A, Page, Size);
+                    group_task_ds:list_by_group_and_user(GroupId, A, Page, Size);
                 S when is_integer(S), S >= 0, S =< 3 ->
-                    group_task_repo:list_by_group_and_user(GroupId, A, S, Page, Size);
+                    group_task_ds:list_by_group_and_user(GroupId, A, S, Page, Size);
                 _ ->
                     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
             end;
@@ -304,9 +304,9 @@ my_tasks(UserId, Status, Page, Size) when is_integer(UserId), UserId > 0,
                                           is_integer(Size), Size > 0, Size =< 100 ->
     case Status of
         undefined ->
-            group_task_assignment_repo:list_by_user_id(UserId, undefined, Page, Size);
+            group_task_ds:assignment_list_by_user_id(UserId, undefined, Page, Size);
         S when is_integer(S), S >= 0, S =< 3 ->
-            group_task_assignment_repo:list_by_user_id(UserId, S, Page, Size);
+            group_task_ds:assignment_list_by_user_id(UserId, S, Page, Size);
         _ ->
             {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
     end;
@@ -323,7 +323,7 @@ pending_review(TaskId, Page, Size) when is_binary(TaskId), byte_size(TaskId) > 0
                                         is_integer(Page), Page > 0,
                                         is_integer(Size), Size > 0, Size =< 100 ->
     % 查询已提交但未批改的作业
-    case group_task_assignment_repo:list_by_task_id(TaskId, Page, Size) of
+    case group_task_ds:assignment_list_by_task_id(TaskId, Page, Size) of
         {ok, Assignments} ->
             % 过滤出状态为2（已提交）的作业
             Filtered = lists:filter(fun(A) ->

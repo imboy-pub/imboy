@@ -15,6 +15,12 @@
 -export([list_photos/4]).
 -export([get_photo_detail/2]).
 -export([update_album_cover/2]).
+-export([find_album_by_album_id/1]).
+-export([delete_album/1]).
+-export([update_album/1]).
+-export([list_comments/2]).
+-export([find_album_by_id/1]).
+-export([list_albums/3]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -417,3 +423,24 @@ guess_mime_type(FileName) ->
 generate_thumbnail_url(PhotoUrl) ->
     % 占位符实现：实际应该生成真实的缩略图
     <<PhotoUrl/binary, "?thumbnail=1">>.
+
+%% G3: group_album_logic 不应直调 group_album_repo
+-spec find_album_by_album_id(binary()) -> map().
+find_album_by_album_id(AlbumId) -> group_album_repo:find_album_by_album_id(AlbumId).
+
+-spec delete_album(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_album(Id) -> group_album_repo:delete_album(Id).
+
+-spec update_album(map()) -> {ok, non_neg_integer()} | {error, term()}.
+update_album(UpdateData) -> group_album_repo:update_album(UpdateData).
+
+%% G3: group_album_handler 不应直调 group_album_repo
+-spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
+list_comments(PhotoId, Limit) -> group_album_repo:list_comments(PhotoId, Limit).
+
+%% G3: adm_group_handler 不应直调 group_album_repo
+-spec find_album_by_id(integer()) -> map().
+find_album_by_id(AlbumPk) -> group_album_repo:find_album_by_id(AlbumPk).
+
+-spec list_albums(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+list_albums(Gid, Page, Size) -> group_album_repo:list_albums(Gid, Page, Size).

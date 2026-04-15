@@ -282,10 +282,10 @@ do_decrypt_shard(Req0, State) ->
 %% @doc 获取发送方的私钥
 -spec get_sender_private_key(integer()) -> {ok, {binary(), binary()}} | {error, term()}.
 get_sender_private_key(Uid) ->
-    case user_device_repo:get_public_by_uid(Uid) of
+    case user_device_ds:get_public_by_uid(Uid) of
         {ok, [Device | _]} ->
             DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_repo:get_private_key(Uid, DeviceId) of
+            case user_device_ds:get_private_key(Uid, DeviceId) of
                 {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
                     {ok, {PrivateKeyPem, DeviceId}};
                 _ ->
@@ -300,12 +300,12 @@ get_sender_private_key(Uid) ->
 save_restored_key(Uid, PrivateKeyPem) ->
     try
         % 获取当前用户的主设备
-        case user_device_repo:get_public_by_uid(Uid) of
+        case user_device_ds:get_public_by_uid(Uid) of
             {ok, [Device | _]} ->
                 DeviceId = maps:get(<<"device_id">>, Device),
 
                 % 更新设备的私钥
-                case user_device_repo:update_private_key(Uid, DeviceId, PrivateKeyPem) of
+                case user_device_ds:update_private_key(Uid, DeviceId, PrivateKeyPem) of
                     {ok, _} ->
                         ok;
                     {error, Reason} ->
@@ -437,10 +437,10 @@ format_error(_Reason) ->
 %% 用于解密为用户存储的分片
 -spec get_proxy_private_key(integer()) -> {ok, binary()} | {error, term()}.
 get_proxy_private_key(Uid) ->
-    case user_device_repo:get_public_by_uid(Uid) of
+    case user_device_ds:get_public_by_uid(Uid) of
         {ok, [Device | _]} ->
             DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_repo:get_private_key(Uid, DeviceId) of
+            case user_device_ds:get_private_key(Uid, DeviceId) of
                 {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
                     {ok, PrivateKeyPem};
                 _ ->

@@ -13,7 +13,7 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_repo:find_by_id(ChannelId, <<"id,type,status">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
@@ -27,7 +27,7 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                         true ->
                             case channel_subscribe_ds:create_invitation(ChannelId, Uid, InviteeUid) of
                                 {ok, InvitationId} ->
-                                    case channel_invitation_repo:find_by_id(InvitationId) of
+                                    case channel_invitation_ds:find_by_id(InvitationId) of
                                         {ok, Invitation} when is_map(Invitation) ->
                                             Invitation2 = invitation_transfer(Invitation),
                                             channel_logic_notify:notify_invitation_created(ChannelId, InviteeUid),
@@ -54,7 +54,7 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
 accept_invitation(Uid, InvitationId) ->
     case channel_subscribe_ds:accept_invitation(InvitationId, Uid) of
         ok ->
-            case channel_invitation_repo:find_by_id(InvitationId) of
+            case channel_invitation_ds:find_by_id(InvitationId) of
                 {ok, Invitation} when is_map(Invitation) ->
                     ChannelId = maps:get(<<"channel_id">>, Invitation, 0),
                     InviterUid = maps:get(<<"inviter_uid">>, Invitation, 0),
@@ -95,7 +95,7 @@ reject_invitation(Uid, InvitationId) ->
 
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
 get_my_invitations(Uid) ->
-    case channel_invitation_repo:list_pending_by_invitee(Uid) of
+    case channel_invitation_ds:list_pending_by_invitee(Uid) of
         {ok, Invitations} when is_list(Invitations) ->
             Invitations2 = lists:map(fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]),
             {ok, Invitations2};
@@ -109,7 +109,7 @@ get_my_invitations(Uid) ->
 
 -spec get_sent_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
 get_sent_invitations(Uid) ->
-    case channel_invitation_repo:list_by_inviter(Uid, 50) of
+    case channel_invitation_ds:list_by_inviter(Uid, 50) of
         {ok, Invitations} when is_list(Invitations) ->
             Invitations2 = lists:map(fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]),
             {ok, Invitations2};
