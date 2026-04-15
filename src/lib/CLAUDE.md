@@ -2,8 +2,8 @@
 
 [根目录](../CLAUDE.md) > **src/lib**
 
-> **最后更新**: 2026-02-01 04:35:00 CST
-> **模块数量**: 31 个
+> **最后更新**: 2026-04-15 CST
+> **模块数量**: 43 个
 > **职责**: 提供基础工具函数，封装数据库连接、缓存、加密等通用功能
 
 ---
@@ -97,7 +97,10 @@ Pid = elib_async:async(fun() -> ok end).
 | `elib_dt.erl` | 日期时间 |
 | `elib_cnv.erl` | 类型转换 |
 | `elib_type.erl` | 类型检查 |
-| `imboy_func.erl` | 函数工具 |
+| `elib_email.erl` | 邮箱验证和处理 |
+| `elib_id.erl` | ID 处理工具 |
+| `elib_metric.erl` | 指标统计 |
+| `elib_oss.erl` | 对象存储服务 |
 
 ### HTTP 相关
 
@@ -105,6 +108,23 @@ Pid = elib_async:async(fun() -> ok end).
 |-----|------|
 | `elib_req.erl` | 请求解析 |
 | `elib_response.erl` | 响应格式化 |
+
+### 编解码与协议
+
+| Lib | 说明 |
+|-----|------|
+| `imboy_codec.erl` | 消息编解码 |
+| `imboy_frame.erl` | 帧处理 |
+
+### 配置与功能管理
+
+| Lib | 说明 |
+|-----|------|
+| `imboy_env.erl` | 环境配置管理 |
+| `imboy_feature.erl` | 功能开关 |
+| `imboy_policy.erl` | 策略管理 |
+| `imboy_profile_preset.erl` | 配置预设 |
+| `imboy_plugin_registry.erl` | 插件注册表 |
 
 ### 其他工具
 
@@ -118,13 +138,12 @@ Pid = elib_async:async(fun() -> ok end).
 | `imboy_migrate.erl` | 数据库迁移 |
 | `imboy_dtl.erl` | 模板引擎 |
 
-### 测试工具
+### 测试和工具库
 
 | Lib | 说明 |
 |-----|------|
 | `eunit_runner.erl` | EUnit 运行器 |
 | `epgsql_codec_rfc3339_bin.erl` | RFC3339 编解码 |
-| `elib_tsid_tests.erl` | TSID 生成器测试 (15 个测试) |
 
 ### 其他
 
@@ -341,27 +360,20 @@ test/lib/
 
 ## 相关文件清单
 
-### Lib 文件 (30 个)
+### Lib 文件 (43 个)
 
 ```
 src/lib/
-├── epgsql_codec_rfc3339_bin.erl
-├── eunit_runner.erl
 ├── elib_async.erl
-├── imboy_cache.erl
-├── imboy_cache_sync.erl
 ├── elib_cipher.erl
-├── imboy_cluster.erl
 ├── elib_cnv.erl
 ├── elib_dt.erl
-├── imboy_dtl.erl
-├── imboy_error.erl
-├── imboy_func.erl
+├── elib_email.erl
 ├── elib_hasher.erl
-├── imboy_kv.erl
+├── elib_id.erl
 ├── elib_log.erl
-├── imboy_message_helper.erl
-├── imboy_migrate.erl
+├── elib_metric.erl
+├── elib_oss.erl
 ├── elib_param.erl
 ├── elib_password.erl
 ├── elib_pg.erl
@@ -370,19 +382,43 @@ src/lib/
 ├── elib_response.erl
 ├── elib_retry.erl
 ├── elib_retry_config.erl
-├── shamir_secret_sharing.erl
-├── imboy_sms.erl
 ├── elib_str.erl
-├── imboy_syn.erl
 ├── elib_tsid.erl
 ├── elib_type.erl
 ├── elib_uri.erl
-└── qianfan_api.erl
+├── epgsql_codec_rfc3339_bin.erl
+├── eunit_runner.erl
+├── imboy_cache.erl
+├── imboy_cache_sync.erl
+├── imboy_cluster.erl
+├── imboy_codec.erl
+├── imboy_dtl.erl
+├── imboy_env.erl
+├── imboy_error.erl
+├── imboy_feature.erl
+├── imboy_frame.erl
+├── imboy_kv.erl
+├── imboy_message_helper.erl
+├── imboy_migrate.erl
+├── imboy_plugin_registry.erl
+├── imboy_policy.erl
+├── imboy_profile_preset.erl
+├── imboy_sms.erl
+├── imboy_syn.erl
+├── qianfan_api.erl
+└── shamir_secret_sharing.erl
 ```
 
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-04-15
+- **文件列表同步更新**：实际文件 43 个，文档已更新
+- 新增 6 个文件：`elib_email.erl`、`elib_id.erl`、`elib_metric.erl`、`elib_oss.erl`、`imboy_codec.erl`、`imboy_env.erl`
+- 新增 5 个配置/功能管理模块：`imboy_feature.erl`、`imboy_frame.erl`、`imboy_policy.erl`、`imboy_profile_preset.erl`、`imboy_plugin_registry.erl`
+- 移除已删除文件：`imboy_func.erl`
+- 调整对外接口表格，补充新增模块分类
 
 ### 2026-04-07
 - **TSID 全量迁移完成**：60 repo + 95 清理 + 41 id_to_binary 移除

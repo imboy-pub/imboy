@@ -1,7 +1,7 @@
 # Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-04-11 CST
-> **版本 / Version**: 1.0.0-rc.1
+> **最后更新 / Last updated**: 2026-04-15 CST
+> **版本 / Version**: 1.0.0-rc.2
 > **架构 / Architecture**: 单应用 4 层架构 (Handler -> Logic -> DS -> Repo)
 
 ---
@@ -63,6 +63,13 @@ When an AI agent (Claude Code / Cursor / Copilot) is asked to write, modify, or 
 ---
 
 ## 变更记录 (Changelog)
+
+### 2026-04-15
+- 完整同步 DS 层文档及代码统计数据
+- DS 层模块数量调整：13 → 77（新增 64 个 G3 治理薄封装 DS 模块及其他功能模块）
+- 更新代码统计：总计 198 个源文件（从 134 个）
+- 更新覆盖率统计（DS 模块占比由 9.7% 升至 40.1%）
+- 重新分类 DS 层对外接口，按功能领域组织（用户、认证、好友、群组、消息、E2EE、频道、应用、对话、内容、推送、反馈、直播、钱包等）
 
 ### 2026-02-01
 - 完成 E2EE+ 密钥恢复方案后端实现
@@ -203,7 +210,7 @@ imboy/
 │   ├── api/              # HTTP REST API 处理器 (27 个)
 │   ├── adm/              # 管理后台 API 处理器 (7 个)
 │   ├── logic/            # 业务逻辑层 (26 个)
-│   ├── ds/               # 数据服务层 (13 个)
+│   ├── ds/               # 数据服务层 (77 个)
 │   ├── repo/             # 数据仓库层 (32 个)
 │   └── lib/              # 基础库函数 (29 个)
 ├── test/                 # EUnit 测试 (140+ 个测试文件)
@@ -224,7 +231,7 @@ graph TD
     ROOT --> API["src/api<br/>HTTP REST API<br/>27 个模块"]
     ROOT --> ADM["src/adm<br/>管理后台 API<br/>7 个模块"]
     ROOT --> LOGIC["src/logic<br/>业务逻辑<br/>26 个模块"]
-    ROOT --> DS["src/ds<br/>数据服务<br/>13 个模块"]
+    ROOT --> DS["src/ds<br/>数据服务<br/>77 个模块"]
     ROOT --> REPO["src/repo<br/>数据仓库<br/>32 个模块"]
     ROOT --> LIB["src/lib<br/>基础库<br/>29 个模块"]
     ROOT --> TEST["test<br/>测试<br/>140+ 文件"]
@@ -302,7 +309,7 @@ graph TD
 | **Handler** | `src/api/` | 27 个 | HTTP REST API 处理器 | [API 层](./src/api/CLAUDE.md) |
 | **Admin** | `src/adm/` | 7 个 | 管理后台 API 处理器 | [ADM 层](./src/adm/CLAUDE.md) |
 | **Logic** | `src/logic/` | 26 个 | 业务逻辑层 | [Logic 层](./src/logic/CLAUDE.md) |
-| **DS** | `src/ds/` | 13 个 | 数据服务层 | [DS 层](./src/ds/CLAUDE.md) |
+| **DS** | `src/ds/` | 77 个 | 数据服务层 | [DS 层](./src/ds/CLAUDE.md) |
 | **Repo** | `src/repo/` | 32 个 | 数据仓库层 | [Repo 层](./src/repo/CLAUDE.md) |
 | **Lib** | `src/lib/` | 29 个 | 基础库函数 | [Lib 层](./src/lib/CLAUDE.md) |
 
@@ -685,13 +692,13 @@ elib_retry:with_retry_and_timeout(Fun, TimeoutMs, RetryCount) -> {ok, Result} | 
 
 | 类别 | 数量 | 占比 |
 |------|------|------|
-| API Handler | 27 个 | 20.1% |
-| ADM Handler | 7 个 | 5.2% |
-| Logic 模块 | 26 个 | 19.4% |
-| DS 模块 | 13 个 | 9.7% |
-| Repo 模块 | 32 个 | 23.9% |
-| 基础库 | 29 个 | 21.6% |
-| **总计** | **134 个** | **100%** |
+| API Handler | 27 个 | 14.1% |
+| ADM Handler | 7 个 | 3.6% |
+| Logic 模块 | 26 个 | 13.5% |
+| DS 模块 | 77 个 | 40.1% |
+| Repo 模块 | 32 个 | 16.7% |
+| 基础库 | 29 个 | 15.1% |
+| **总计** | **198 个** | **100%** |
 | 测试文件 | 140+ 个 | - |
 
 ### 覆盖率
