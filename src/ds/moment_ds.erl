@@ -50,7 +50,7 @@ create_post(AuthorUid, Data) ->
             updated_at => Now
         },
         case moment_post_repo:add(Conn, PostData) of
-            {ok, PostId, _} ->
+            {ok, PostId} ->
                 case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
                     ok ->
                         Recipients = resolve_timeline_recipients(
@@ -245,7 +245,7 @@ add_comment(UserId, PostId, Content, ReplyToUid0) ->
                                     updated_at => Now
                                 },
                                 case moment_comment_repo:add(Conn, Data) of
-                                    {ok, CommentId, _} ->
+                                    {ok, CommentId} ->
                                         case moment_post_repo:increment_comment_count(Conn, PostId, 1) of
                                             {ok, _} ->
                                                 {ok, CommentId};
