@@ -239,7 +239,7 @@ build_login_meta() ->
     Csrf = elib_id:gen("csrf"),
     imboy_cache:set(Csrf, 1),
     PublicKey = re:replace(
-        config_ds:get(<<"login_rsa_pub_key">>),
+        config_ds:env(login_rsa_pub_key),
         "\\n",
         "",
         [global, {return, binary}]

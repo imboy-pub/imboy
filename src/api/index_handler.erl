@@ -55,7 +55,7 @@ api_init(Req0) ->
           <<"upload_key">> => config_ds:get(<<"upload_key">>),
           <<"upload_scene">> => config_ds:get(<<"upload_scene">>),
           <<"login_pwd_rsa_encrypt">> => config_ds:get(<<"login_pwd_rsa_encrypt">>),
-          <<"login_rsa_pub_key">> => config_ds:get(<<"login_rsa_pub_key">>)},
+          <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)},
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").
     IV = config_ds:env(solidified_key_iv),

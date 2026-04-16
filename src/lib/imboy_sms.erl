@@ -124,7 +124,7 @@ jverification(Tk) ->
     case maps:get(<<"code">>, RespMap, undefined) of
         8000 ->
             Phone = maps:get(<<"phone">>, RespMap),
-            PemBin = config_ds:get(<<"jverification_rsa_priv_key">>),
+            PemBin = config_ds:env(jverification_rsa_priv_key),
             Mobile = elib_cipher:rsa_decrypt(Phone, PemBin),
             {ok, Mobile};
         _ ->

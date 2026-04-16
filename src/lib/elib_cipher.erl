@@ -95,12 +95,12 @@ aes_decrypt(Type, Bin, Key, IV) ->
 -spec rsa_encrypt(binary() | list()) -> binary() | {error, term()}.
 rsa_encrypt(PlainText) when is_binary(PlainText) ->
     %%公钥加密
-    PemBin = config_ds:get(<<"login_rsa_pub_key">>),
+    PemBin = config_ds:env(login_rsa_pub_key),
     true = is_binary(PemBin),
     rsa_encrypt(PlainText, PemBin);
 rsa_encrypt(PlainText) when is_list(PlainText) ->
     %%公钥加密
-    PemBin = config_ds:get(<<"login_rsa_pub_key">>),
+    PemBin = config_ds:env(login_rsa_pub_key),
     true = is_binary(PemBin),
     BinData = list_to_binary(PlainText),
     rsa_encrypt(BinData, PemBin).
@@ -142,7 +142,7 @@ rsa_encrypt(BinData, PemBin) ->
 -spec rsa_decrypt(binary() | list()) -> binary() | term().
 rsa_decrypt(CipherText) ->
     %%私钥解密
-    case config_ds:get(<<"login_rsa_priv_key">>) of
+    case config_ds:env(login_rsa_priv_key) of
         PemBin when is_binary(PemBin) ->
             rsa_decrypt(CipherText, PemBin);
         Error ->

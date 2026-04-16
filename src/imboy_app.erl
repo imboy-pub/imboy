@@ -5,6 +5,7 @@
 -export([stop/1]).
 
 % -include("log.hrl").
+-include_lib("public_key/include/public_key.hrl").
 
 %% @doc 启动 application 回调
 -spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
@@ -13,6 +14,7 @@ start(_Type, _Args) ->
     ok = imboy_env:override_from_env(),
     ok = validate_runtime_config(),
     ok = ensure_solidified_keys(),
+    ok = ensure_rsa_keys(),
     ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
     % 初始化 TSID 分布式ID生成器
@@ -258,6 +260,8 @@ validate_runtime_config() ->
             ok = ensure_required_secret(adm_cookie_secret),
             ok = ensure_required_secret(solidified_key),
             ok = ensure_required_secret(solidified_key_iv),
+            ok = ensure_required_file(login_rsa_pub_key_file),
+            ok = ensure_required_file(login_rsa_priv_key_file),
             %% 验证数据库密码不是默认值
             ok = ensure_pg_password_not_default(),
             ok;
@@ -308,6 +312,62 @@ ensure_pg_password_not_default() ->
                 false ->
                     ok
             end;
+        _ ->
+            ok
+    end.
+
+%% @doc 确保 RSA 公私钥已就绪（PEM 二进制写入 application env）
+%% 生产环境：配置文件路径，启动时读取；validate_runtime_config 已 fail-fast
+%% 非生产环境：未配置则自动生成临时 RSA-2048 密钥对（重启后失效，仅供开发/测试）
+-spec ensure_rsa_keys() -> ok.
+ensure_rsa_keys() ->
+    PubFile  = normalize_secret(config_ds:env(login_rsa_pub_key_file, "")),
+    PrivFile = normalize_secret(config_ds:env(login_rsa_priv_key_file, "")),
+    case {PubFile, PrivFile} of
+        {<<>>, _} ->
+            %% 未配置文件路径 → 自动生成临时密钥对
+            {PubPem, PrivPem} = generate_rsa_keypair(),
+            ok = application:set_env(imboy, login_rsa_pub_key,  PubPem),
+            ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
+            %% jverification 共用 login 私钥（开发环境）
+            ok = application:set_env(imboy, jverification_rsa_priv_key, PrivPem),
+            logger:warning("[imboy] login_rsa_pub_key_file not configured — "
+                           "auto-generated ephemeral RSA-2048 keypair. "
+                           "Set login_rsa_pub_key_file / login_rsa_priv_key_file "
+                           "in sys.config for production.");
+        {PubF, PrivF} ->
+            {ok, PubPem}  = file:read_file(binary_to_list(PubF)),
+            {ok, PrivPem} = file:read_file(binary_to_list(PrivF)),
+            ok = application:set_env(imboy, login_rsa_pub_key,  PubPem),
+            ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
+            %% jverification 独立私钥（可选，未配置则复用 login 私钥）
+            JvFile = normalize_secret(config_ds:env(jverification_rsa_priv_key_file, "")),
+            JvPem = case JvFile of
+                <<>> -> PrivPem;
+                JvF  ->
+                    {ok, P} = file:read_file(binary_to_list(JvF)),
+                    P
+            end,
+            ok = application:set_env(imboy, jverification_rsa_priv_key, JvPem)
+    end,
+    ok.
+
+%% @doc 生成临时 RSA-2048 密钥对，返回 {PubPem, PrivPem}
+-spec generate_rsa_keypair() -> {binary(), binary()}.
+generate_rsa_keypair() ->
+    PrivKey = public_key:generate_key({rsa, 2048, 65537}),
+    #'RSAPrivateKey'{modulus = Mod, publicExponent = Exp} = PrivKey,
+    PubKey  = #'RSAPublicKey'{modulus = Mod, publicExponent = Exp},
+    PrivPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPrivateKey', PrivKey)]),
+    PubPem  = public_key:pem_encode([public_key:pem_entry_encode('RSAPublicKey', PubKey)]),
+    {PubPem, PrivPem}.
+
+%% @doc 生产环境：确保指定的文件路径配置项非空
+-spec ensure_required_file(atom()) -> ok.
+ensure_required_file(Key) ->
+    case normalize_secret(config_ds:env(Key, "")) of
+        <<>> ->
+            erlang:error({missing_required_config, Key});
         _ ->
             ok
     end.
