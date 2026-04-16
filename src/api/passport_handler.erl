@@ -78,7 +78,7 @@ bind_mail(Req0) ->
 validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
     CacheKey = {bind_mail, Mail, Ts},
     CacheVal = imboy_cache:get(CacheKey),
-    SolKey = config_ds:get(<<"solidified_key">>),
+    SolKey = config_ds:env(solidified_key),
     Args = #{ts => Ts, uin => Uid, mail => Mail},
     Tk2 = elib_str:replace(Tk, " ", "+"),
     Now = elib_dt:second(),

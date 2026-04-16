@@ -12,6 +12,7 @@ start(_Type, _Args) ->
     _ = inets:start(),
     ok = imboy_env:override_from_env(),
     ok = validate_runtime_config(),
+    ok = ensure_solidified_keys(),
     ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
     % 初始化 TSID 分布式ID生成器
@@ -255,11 +256,43 @@ validate_runtime_config() ->
             ok = ensure_required_secret(jwt_key),
             ok = ensure_required_secret(postgre_aes_key),
             ok = ensure_required_secret(adm_cookie_secret),
+            ok = ensure_required_secret(solidified_key),
+            ok = ensure_required_secret(solidified_key_iv),
             %% 验证数据库密码不是默认值
             ok = ensure_pg_password_not_default(),
             ok;
         false ->
             ok
+    end.
+
+%% @doc 确保 solidified_key / solidified_key_iv 已就绪
+%% 生产环境：validate_runtime_config 已 fail-fast，此处无需处理
+%% 非生产环境：未配置则自动生成随机值写入 application env（重启后失效，仅供开发/测试）
+-spec ensure_solidified_keys() -> ok.
+ensure_solidified_keys() ->
+    case normalize_secret(config_ds:env(solidified_key, <<>>)) of
+        <<>> ->
+            Key = crypto:strong_rand_bytes(32),
+            IV  = crypto:strong_rand_bytes(16),
+            ok = application:set_env(imboy, solidified_key, Key),
+            ok = application:set_env(imboy, solidified_key_iv, IV),
+            logger:warning("[imboy] solidified_key not configured — "
+                           "auto-generated random key/iv for this session. "
+                           "HMAC signatures (email binding, group invite) "
+                           "will be invalid after restart. "
+                           "Set solidified_key / solidified_key_iv in sys.config for production."),
+            ok;
+        _ ->
+            %% key 已配置；若 iv 单独缺失也补全
+            case normalize_secret(config_ds:env(solidified_key_iv, <<>>)) of
+                <<>> ->
+                    IV = crypto:strong_rand_bytes(16),
+                    ok = application:set_env(imboy, solidified_key_iv, IV),
+                    logger:warning("[imboy] solidified_key_iv not configured — auto-generated."),
+                    ok;
+                _ ->
+                    ok
+            end
     end.
 
 %% @doc 确保生产环境数据库密码不是常见弱密码

@@ -355,7 +355,7 @@ send_bind_email(Uid, Email) ->
     ExpireAt = elib_dt:to_rfc3339(ExpireAtS, second),
     {Title, Nickname} = user_ds:title(Uid, 2),
 
-    SolKey = config_ds:get(<<"solidified_key">>),
+    SolKey = config_ds:env(solidified_key),
     Args =
         #{ts => ExpireAtS,
           uin => Uid,

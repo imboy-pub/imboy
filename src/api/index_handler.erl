@@ -41,7 +41,7 @@ api_init(Req0) ->
     Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
     SignKeyVsn = cowboy_req:header(<<"sk">>, Req0, Vsn),
 
-    SolKey = config_ds:get(<<"solidified_key">>),
+    SolKey = config_ds:env(solidified_key),
     SignKey =
         case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
             <<>> ->
@@ -58,7 +58,7 @@ api_init(Req0) ->
           <<"login_rsa_pub_key">> => config_ds:get(<<"login_rsa_pub_key">>)},
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").
-    IV = config_ds:get(<<"solidified_key_iv">>),
+    IV = config_ds:env(solidified_key_iv),
     Key = elib_hasher:md5(SignKey),
     %% AES-256-CBC 强约束：Key 必须 32 字节，IV 必须 16 字节
     %% 配置缺失时 fail fast，避免 crypto_init 崩到 cowboy stream（Bad iv size）

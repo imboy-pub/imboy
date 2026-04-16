@@ -472,7 +472,7 @@ qrcode(Req0, State) ->
     ExpiredAt = proplists:get_value(<<"exp">>, Qs4, undefined),
     Tk = proplists:get_value(<<"tk">>, Qs4, undefined),
 
-    Key = config_ds:get(<<"solidified_key">>),
+    Key = config_ds:env(solidified_key),
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
     ExpiredAtInt = binary_to_integer(ExpiredAt2),
     Verified =
