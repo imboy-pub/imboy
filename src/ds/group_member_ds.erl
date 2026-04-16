@@ -115,7 +115,7 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
                 join_mode => elib_str:trunc(JoinMode, 100),
                 created_at => Now
             }) of
-                {ok, _, _} ->
+                {ok, _} ->
                     % 更新群组统计
                     case update_statistics(Conn, Gid) of
                         {ok, UidSum} ->

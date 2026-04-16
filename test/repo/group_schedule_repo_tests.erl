@@ -27,11 +27,12 @@ insert_success_test() ->
     _ = catch meck:unload(elib_pg_sql),
     meck:new(elib_pg_sql, [passthrough, no_link]),
     meck:expect(elib_pg_sql, public_tablename, fun(_Table) -> <<"public.group_schedule">> end),
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
-        {ok, [], [#{<<"id">> => 1001}]}
-    end),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         group_id => 123,
         schedule_id => <<"sched_123">>,
@@ -47,6 +48,7 @@ insert_success_test() ->
     Result = group_schedule_repo:insert(Data),
     ?assertMatch({ok, 1001, _}, Result),
     meck:unload(elib_pg),
+    meck:unload(elib_tsid),
     meck:unload(elib_pg_sql).
 
 insert_with_missing_required_field_test() ->
@@ -263,11 +265,12 @@ participant_tablename_test() ->
     ?assertEqual(<<"public.group_schedule_participant">>, Result).
 
 insert_participant_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 2001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
-        {ok, [], [#{<<"id">> => 2001}]}
-    end),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         schedule_id => <<"sched_123">>,
         user_id => 789,
@@ -275,7 +278,8 @@ insert_participant_success_test() ->
     },
     Result = group_schedule_repo:insert_participant(Data),
     ?assertMatch({ok, 2001, _}, Result),
-    meck:unload(elib_pg).
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid).
 
 update_participant_status_test() ->
     _ = catch meck:unload(elib_pg),
@@ -308,11 +312,12 @@ remind_tablename_test() ->
     ?assertEqual(<<"public.group_schedule_remind">>, Result).
 
 insert_remind_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 3001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, insert, fun(_Table, _Data, _Returning) ->
-        {ok, [], [#{<<"id">> => 3001}]}
-    end),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         schedule_id => <<"sched_123">>,
         user_id => 789,
@@ -321,7 +326,8 @@ insert_remind_success_test() ->
     },
     Result = group_schedule_repo:insert_remind(Data),
     ?assertMatch({ok, 3001, _}, Result),
-    meck:unload(elib_pg).
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid).
 
 list_pending_reminds_success_test() ->
     _ = catch meck:unload(elib_pg),

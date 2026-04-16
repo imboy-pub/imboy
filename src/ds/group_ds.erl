@@ -233,7 +233,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
         case elib_pg_sql:parse_result(
                  elib_pg:insert(Conn, group_repo:tablename(), GMap2, <<"RETURNING id">>))
         of
-            {ok, Id, _} ->
+            {ok, Id} ->
                 Id;
             _ ->
                 Gid

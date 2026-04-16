@@ -250,7 +250,7 @@ add_internal(Uid, Scene, Tag) ->
                 created_at => elib_dt:now()
             },
             case elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)) of
-                {ok, Id, _} ->
+                {ok, Id} ->
                     {ok, Id};
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                     TagId2 = elib_pg:pluck_value(Tb, <<"id">>,

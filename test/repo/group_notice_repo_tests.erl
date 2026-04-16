@@ -26,23 +26,25 @@ tablename_returns_correct_table_test_() ->
 %% insert/1 测试 - 插入公告
 %% ===================================================================
 
-insert_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 1001, [{<<"id">>, 1001}]}
-        end}
-    ], fun() ->
-        Data = #{
-            group_id => 123,
-            user_id => 456,
-            title => <<"公告标题"/utf8>>,
-            body => <<"公告内容"/utf8>>,
-            status => 1,
-            pinned => false
-        },
-        Result = group_notice_repo:insert(Data),
-        ?assertMatch({ok, 1001, _}, Result)
-    end).
+insert_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    Data = #{
+        group_id => 123,
+        user_id => 456,
+        title => <<"公告标题"/utf8>>,
+        body => <<"公告内容"/utf8>>,
+        status => 1,
+        pinned => false
+    },
+    Result = group_notice_repo:insert(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({ok, 1001}, Result).
 
 insert_with_missing_required_field_test_() ->
     ?WITH_MECK(elib_pg, [
@@ -222,7 +224,7 @@ list_by_group_id_pinned_first_test_() ->
 count_by_group_id_success_test_() ->
     ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{[{<<"count">>, 15}]}]}
+            {ok, [#{<<"count">> => 15}]}
         end}
     ], fun() ->
         Result = group_notice_repo:count_by_group_id(123),
@@ -232,7 +234,7 @@ count_by_group_id_success_test_() ->
 count_by_group_id_zero_test_() ->
     ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{[{<<"count">>, 0}]}]}
+            {ok, [#{<<"count">> => 0}]}
         end}
     ], fun() ->
         Result = group_notice_repo:count_by_group_id(999),
@@ -284,38 +286,46 @@ get_pinned_notices_empty_test_() ->
 %% 边界条件测试
 %% ===================================================================
 
-insert_with_long_title_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {error, {string_too_long, title}}
-        end}
-    ], fun() ->
-        LongTitle = binary:copy(<<"测试"/utf8>>, 100),
-        Data = #{
-            group_id => 123,
-            user_id => 456,
-            title => LongTitle,
-            body => <<"内容"/utf8>>
-        },
-        Result = group_notice_repo:insert(Data),
-        ?assertMatch({error, {string_too_long, _}}, Result)
-    end).
+insert_with_long_title_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1002 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) ->
+        {error, {string_too_long, title}}
+    end),
+    LongTitle = binary:copy(<<"测试"/utf8>>, 100),
+    Data = #{
+        group_id => 123,
+        user_id => 456,
+        title => LongTitle,
+        body => <<"内容"/utf8>>
+    },
+    Result = group_notice_repo:insert(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({error, {string_too_long, _}}, Result).
 
-insert_with_long_body_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {error, {string_too_long, body}}
-        end}
-    ], fun() ->
-        LongBody = binary:copy(<<"测试"/utf8>>, 3000),
-        Data = #{
-            group_id => 123,
-            user_id => 456,
-            body => LongBody
-        },
-        Result = group_notice_repo:insert(Data),
-        ?assertMatch({error, {string_too_long, _}}, Result)
-    end).
+insert_with_long_body_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1003 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) ->
+        {error, {string_too_long, body}}
+    end),
+    LongBody = binary:copy(<<"测试"/utf8>>, 3000),
+    Data = #{
+        group_id => 123,
+        user_id => 456,
+        body => LongBody
+    },
+    Result = group_notice_repo:insert(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({error, {string_too_long, _}}, Result).
 
 %% ===================================================================
 %% 注意

@@ -48,8 +48,7 @@ add(GroupId, Uid, TagName) ->
                 created_at => elib_dt:now()
             },
             case group_tag_repo:add(undefined, Data) of
-                {ok, TagId, _} -> {ok, TagId};
-                {ok, #{<<"id">> := TagId}} -> {ok, TagId};
+                {ok, TagId} -> {ok, TagId};
                 {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
             end
     end.

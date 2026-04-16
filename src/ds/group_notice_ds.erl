@@ -46,7 +46,7 @@ insert(Data) ->
                     {error, {string_too_long, field}};
                 true ->
                     case group_notice_repo:insert(Data) of
-                        {ok, NoticeId, _} ->
+                        {ok, NoticeId} ->
                             {ok, NoticeId};
                         {error, Reason} ->
                             {error, Reason}

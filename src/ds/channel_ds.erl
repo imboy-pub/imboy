@@ -84,7 +84,7 @@ create_channel(Uid, Name, Type, Opts) ->
     case elib_pg:with_tx(fun(Conn) ->
         % 创建频道
         case channel_repo:add(Conn, Data2) of
-            {ok, ChannelId, _} ->
+            {ok, ChannelId} ->
                 % 添加创建者为管理员（角色3）
                 AdminData = #{
                     channel_id => ChannelId,
@@ -93,7 +93,7 @@ create_channel(Uid, Name, Type, Opts) ->
                     created_at => Now
                 },
                 case channel_admin_repo:add(Conn, AdminData) of
-                    {ok, _, _} -> {ok, ChannelId};
+                    {ok, _} -> {ok, ChannelId};
                     {error, Reason} -> throw({abort_tx, Reason})
                 end;
             {error, Reason} ->
@@ -241,7 +241,7 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
     },
 
     case channel_message_repo:add(Data) of
-        {ok, MessageId, _} ->
+        {ok, MessageId} ->
             % 增加所有订阅者的未读计数
             increment_all_unread(ChannelId, AuthorId),
             {ok, MessageId};

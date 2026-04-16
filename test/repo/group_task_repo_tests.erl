@@ -26,23 +26,25 @@ tablename_returns_correct_table_test_() ->
 %% insert/1 测试 - 创建作业
 %% ===================================================================
 
-insert_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 1001, [{<<"id">>, 1001}]}
-        end}
-    ], fun() ->
-        Data = #{
-            group_id => 123,
-            task_id => <<"task123">>,
-            title => <<"完成第一章练习"/utf8>>,
-            description => <<"完成课本第一章的所有习题"/utf8>>,
-            creator_id => 456,
-            deadline => <<"2026-12-31 23:59:59">>
-        },
-        Result = group_task_repo:insert(Data),
-        ?assertMatch({ok, 1001, _}, Result)
-    end).
+insert_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    Data = #{
+        group_id => 123,
+        task_id => <<"task123">>,
+        title => <<"完成第一章练习"/utf8>>,
+        description => <<"完成课本第一章的所有习题"/utf8>>,
+        creator_id => 456,
+        deadline => <<"2026-12-31 23:59:59">>
+    },
+    Result = group_task_repo:insert(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({ok, 1001, _}, Result).
 
 insert_with_missing_required_field_test_() ->
     ?WITH_MECK(elib_pg, [

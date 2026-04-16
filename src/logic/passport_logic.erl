@@ -280,10 +280,7 @@ send_email_code(ToEmail) ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
             Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            case elib_email:send(ToEmail, Msg) of
-                ok -> ok;
-                {error, EmailErr} -> ?WARN_LOG({email_send_failed, ToEmail, EmailErr})
-            end,
+            _ = elib_email:send(ToEmail, Msg),
             {ok, <<"验证码已发送"/utf8>>};
         _ ->
             VerifyCode = elib_cipher:num_random(6),
@@ -293,10 +290,7 @@ send_email_code(ToEmail) ->
                 ValidityAt when is_binary(ValidityAt) ->
                     _ = verification_code_ds:save(ToEmail, VerifyCodeBinary, ValidityAt, Now),
                     Msg = <<"Code is ", VerifyCodeBinary/binary, " will expire in 10 minutes.">>,
-                    case elib_email:send(ToEmail, Msg) of
-                        ok -> ok;
-                        {error, EmailErr2} -> ?WARN_LOG({email_send_failed, ToEmail, EmailErr2})
-                    end,
+                    _ = elib_email:send(ToEmail, Msg),
                     {ok, <<"验证码已发送"/utf8>>};
                 _ ->
                     {error, <<"invalid_datetime"/utf8>>}

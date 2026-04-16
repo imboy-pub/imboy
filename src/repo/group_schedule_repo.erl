@@ -52,7 +52,7 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule">>).
 
 %% @doc 插入新日程
--spec insert(map()) -> {ok, integer()} | {error, term()}.
+-spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
     Tb = tablename(),
     % 验证必填字段
@@ -62,7 +62,7 @@ insert(Data) ->
             Data2 = Data#{<<"id">> => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
             case elib_pg:query(Sql, Params) of
-                {ok, _Count} -> {ok, Id};
+                {ok, _Count} -> {ok, Id, Data2};
                 {error, _} = Err -> Err
             end;
         {error, Reason} ->
@@ -230,14 +230,14 @@ participant_tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule_participant">>).
 
 %% @doc 插入参与人
--spec insert_participant(map()) -> {ok, integer()} | {error, term()}.
+-spec insert_participant(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_participant(Data) ->
     Tb = participant_tablename(),
     Id = elib_tsid:generate(group_schedule),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, Id};
+        {ok, _Count} -> {ok, Id, Data2};
         {error, _} = Err -> Err
     end.
 
@@ -292,14 +292,14 @@ remind_tablename() ->
     elib_pg_sql:public_tablename(<<"group_schedule_remind">>).
 
 %% @doc 插入提醒记录
--spec insert_remind(map()) -> {ok, integer()} | {error, term()}.
+-spec insert_remind(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_remind(Data) ->
     Tb = remind_tablename(),
     Id = elib_tsid:generate(group_schedule_reminder),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, Id};
+        {ok, _Count} -> {ok, Id, Data2};
         {error, _} = Err -> Err
     end.
 

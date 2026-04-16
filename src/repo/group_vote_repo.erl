@@ -61,7 +61,8 @@ tablename_record() ->
 
 %% @doc 插入群投票
 %% @param Data 投票数据映射
-%% @return {ok, VoteId, InsertResult} | {error, Reason}
+%% @return {ok, VoteId, Data3}（3-tuple，Data3 含完整插入数据）| {error, Reason}
+%% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_vote(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_vote(Data) ->
     Tb = tablename(),
@@ -92,7 +93,7 @@ insert_vote(Data) ->
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
             case elib_pg:query(Sql, Params) of
-                {ok, _Count} -> {ok, Id};
+                {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
         _ ->
@@ -219,7 +220,7 @@ insert_option(Data) ->
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
             case elib_pg:query(Sql, Params) of
-                {ok, _Count} -> {ok, Id};
+                {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
         _ ->
@@ -303,7 +304,8 @@ delete_vote_option_by_option_id(_OptionId) ->
 
 %% @doc 插入投票记录
 %% @param Data 记录数据映射
-%% @return {ok, RecordId, InsertResult} | {error, Reason}
+%% @return {ok, RecordId, Data3}（3-tuple，Data3 含完整插入数据）| {error, Reason}
+%% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_record(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_record(Data) ->
     Tb = tablename_record(),
@@ -323,7 +325,7 @@ insert_record(Data) ->
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
             case elib_pg:query(Sql, Params) of
-                {ok, _Count} -> {ok, Id};
+                {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
         _ ->

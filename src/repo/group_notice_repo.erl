@@ -34,8 +34,8 @@ tablename() ->
 
 %% @doc 插入群公告
 %% @param Data 公告数据映射
-%% @return {ok, NoticeId, InsertResult} | {error, Reason}
--spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
+%% @return {ok, NoticeId} | {error, Reason}
+-spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
     Tb = tablename(),
     % 验证必填字段

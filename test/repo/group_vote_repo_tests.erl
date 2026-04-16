@@ -26,25 +26,27 @@ tablename_returns_correct_table_test_() ->
 %% insert_vote/1 测试 - 插入投票
 %% ===================================================================
 
-insert_vote_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
-        end}
-    ], fun() ->
-        Data = #{
-            group_id => 123,
-            vote_id => <<"vote123">>,
-            title => <<"今天吃什么？"/utf8>>,
-            description => <<"投票选择今天午餐"/utf8>>,
-            creator_id => 456,
-            vote_type => 1,
-            is_anonymous => false,
-            status => 1
-        },
-        Result = group_vote_repo:insert_vote(Data),
-        ?assertMatch({ok, 1001, _}, Result)
-    end).
+insert_vote_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    Data = #{
+        group_id => 123,
+        vote_id => <<"vote123">>,
+        title => <<"今天吃什么？"/utf8>>,
+        description => <<"投票选择今天午餐"/utf8>>,
+        creator_id => 456,
+        vote_type => 1,
+        is_anonymous => false,
+        status => 1
+    },
+    Result = group_vote_repo:insert_vote(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({ok, 1001, _}, Result).
 
 insert_vote_with_missing_required_field_test_() ->
     ?WITH_MECK(elib_pg, [
@@ -91,21 +93,23 @@ find_by_vote_id_not_found_test_() ->
 %% insert_option/1 测试 - 插入投票选项
 %% ===================================================================
 
-insert_option_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 2001, [{<<"id">>, 2001}]}
-        end}
-    ], fun() ->
-        Data = #{
-            vote_id => <<"vote123">>,
-            option_id => <<"opt1">>,
-            option_text => <<"火锅"/utf8>>,
-            sort_order => 1
-        },
-        Result = group_vote_repo:insert_option(Data),
-        ?assertMatch({ok, 2001, _}, Result)
-    end).
+insert_option_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 2001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    Data = #{
+        vote_id => <<"vote123">>,
+        option_id => <<"opt1">>,
+        option_text => <<"火锅"/utf8>>,
+        sort_order => 1
+    },
+    Result = group_vote_repo:insert_option(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({ok, 2001, _}, Result).
 
 insert_option_batch_success_test_() ->
     ?WITH_MECK(elib_pg, [
@@ -144,20 +148,22 @@ list_options_by_vote_id_success_test_() ->
 %% insert_record/1 测试 - 插入投票记录
 %% ===================================================================
 
-insert_record_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 3001, [{<<"id">>, 3001}]}
-        end}
-    ], fun() ->
-        Data = #{
-            vote_id => <<"vote123">>,
-            user_id => 789,
-            option_ids => <<"[\"opt1\",\"opt2\"]">>
-        },
-        Result = group_vote_repo:insert_record(Data),
-        ?assertMatch({ok, 3001, _}, Result)
-    end).
+insert_record_success_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_Table) -> 3001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    Data = #{
+        vote_id => <<"vote123">>,
+        user_id => 789,
+        option_ids => <<"[\"opt1\",\"opt2\"]">>
+    },
+    Result = group_vote_repo:insert_record(Data),
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid),
+    ?assertMatch({ok, 3001, _}, Result).
 
 %% ===================================================================
 %% find_record_by_vote_and_user/2 测试 - 查询用户投票记录

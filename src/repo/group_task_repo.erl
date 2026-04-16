@@ -43,6 +43,8 @@ tablename() ->
 %% @doc 插入群作业
 %% @param Data 作业数据映射
 %% @return {ok, TaskId, InsertResult} | {error, Reason}
+%% 注意：此函数刻意返回 {ok, Id, Data3}（3-tuple），Data3 包含插入后的完整数据（含默认值）。
+%% 与其他 repo 的 {ok, Id}（2-tuple）约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
     Tb = tablename(),
@@ -69,7 +71,7 @@ insert(Data) ->
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
             case elib_pg:query(Sql, Params) of
-                {ok, _Count} -> {ok, Id};
+                {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
         _ ->
