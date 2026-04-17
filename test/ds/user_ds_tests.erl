@@ -71,9 +71,9 @@ title_mode2_keeps_empty_nickname_test_() ->
 webrtc_credential_returns_expected_payload_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'get', 1, fun(<<"eturnal_secret">>) -> <<"test_secret">>;
-                           (<<"turn_urls">>) -> [<<"turn:example.org">>];
-                           (<<"stun_urls">>) -> [<<"stun:example.org">>]
+            {'env', 2, fun(eturnal_turn_urls, _D) -> [<<"turn:example.org">>];
+                          (eturnal_stun_urls, _D) -> [<<"stun:example.org">>];
+                          (eturnal_secret,    _D) -> <<"test_secret">>
             end}
         ]},
         {elib_dt, [
@@ -94,7 +94,7 @@ webrtc_credential_returns_expected_payload_test_() ->
 
 auth_webrtc_credential_valid_credential_test_() ->
     ?WITH_MECK(config_ds, [
-        {'get', 1, fun(<<"eturnal_secret">>) -> <<"test_secret">> end}
+        {'env', 2, fun(eturnal_secret, _D) -> <<"test_secret">> end}
     ], fun() ->
         Username = <<"1728610200:12345">>,
         Credential = base64:encode(
@@ -105,7 +105,7 @@ auth_webrtc_credential_valid_credential_test_() ->
 
 auth_webrtc_credential_invalid_credential_test_() ->
     ?WITH_MECK(config_ds, [
-        {'get', 1, fun(<<"eturnal_secret">>) -> <<"test_secret">> end}
+        {'env', 2, fun(eturnal_secret, _D) -> <<"test_secret">> end}
     ], fun() ->
         ?assertEqual(
             false,
@@ -118,7 +118,7 @@ auth_webrtc_credential_invalid_credential_test_() ->
 
 auth_webrtc_credential_empty_username_test_() ->
     ?WITH_MECK(config_ds, [
-        {'get', 1, fun(<<"eturnal_secret">>) -> <<"test_secret">> end}
+        {'env', 2, fun(eturnal_secret, _D) -> <<"test_secret">> end}
     ], fun() ->
         ?assertEqual(false, user_ds:auth_webrtc_credential(<<>>, <<"whatever">>))
     end).

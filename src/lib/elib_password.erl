@@ -47,8 +47,8 @@ verify(Plaintext, Ciphertext) ->
         {ok, Salt, Ciphertext3} ->
             verify(Plaintext, hmac_sha512, Salt, Ciphertext3);
         _ ->
-            % 回退到旧的 md5 格式
-            verify(Plaintext, default_md5, config_ds:get(<<"password_salt">>), Ciphertext)
+            % 回退到旧的 md5 格式（仅用于存量旧密码，password_salt 从 sys.config 读取）
+            verify(Plaintext, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
     end.
 
 %% @private 尝试解码为 hmac_sha512 格式

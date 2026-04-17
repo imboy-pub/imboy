@@ -39,7 +39,7 @@ execute(Req, Env) ->
             InOptionLi = lists:member(Path, OptionLi),
             Switch =
                 ec_cnv:to_binary(
-                    config_ds:get(<<"api_auth_switch">>)),
+                    config_ds:env(api_auth_switch, <<"off">>)),
             Res1 =
                 if InOpenLi == false, Switch == <<"on">> ->
                        auth_ds:verify_sign(Req, Env);

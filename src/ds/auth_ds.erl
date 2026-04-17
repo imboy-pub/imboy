@@ -51,7 +51,7 @@ get_token(assets, _Scene, Num) ->
     % 使用配置的上传密钥生成 token
     % 当前使用 MD5 哈希，生产环境建议使用 HMAC-SHA256 等更安全的算法
     % 如需升级为公钥签名，可使用 crypto:sign/4 或 public_key:sign/2
-    Key = config_ds:get(<<"upload_key">>),
+    Key = config_ds:env(upload_key, <<>>),
     Num2 = ec_cnv:to_binary(Num),
     binary:part(elib_hasher:md5(<<Key/binary, Num2/binary>>), {8, 16}).
 

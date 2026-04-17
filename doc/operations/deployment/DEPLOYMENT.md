@@ -1,5 +1,7 @@
 # IMBoy 生产部署指南
 
+> 🆕 **5 分钟跑起来 / 5-min quickstart**：先看 [DAY1-QUICKSTART.md](./DAY1-QUICKSTART.md)（双语），本文是完整参考。
+
 ## 环境要求
 
 | 组件 | 最低版本 | 推荐版本 |
@@ -31,7 +33,13 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 |------|------|------|
 | `IMBOYENV` | 运行环境 | `pro` / `dev` / `local` |
 | `IMBOY_JWT_KEY` | JWT 签名密钥 (32 字节 binary) | `openssl rand -base64 32` |
-| `IMBOY_PG_AES_KEY` | PostgreSQL AES 加密密钥 (32 字节) | `openssl rand -base64 32` |
+| `IMBOY_POSTGRE_AES_KEY` | PostgreSQL 字段级 AES 密钥 (32 字节) | `openssl rand -base64 32` |
+| `IMBOY_SOLIDIFIED_KEY` | 客户端 init 加密密钥 (32 字节) | `openssl rand -base64 32` |
+| `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init AES IV (16 字节) | `openssl rand -base64 16` |
+| `IMBOY_PASSWORD_SALT` | 历史 MD5 密码盐（投产后不可改） | `openssl rand -hex 16` |
+| `IMBOY_LOGIN_RSA_PUB_KEY_FILE` | RSA 公钥 PEM 文件路径 | `/etc/imboy/keys/login_rsa_pub.pem` |
+| `IMBOY_LOGIN_RSA_PRIV_KEY_FILE` | RSA 私钥 PEM 文件路径 | `/etc/imboy/keys/login_rsa_priv.pem` |
+| `IMBOY_API_AUTH_SWITCH` | API 签名验证开关（生产必须 `on`） | `on` |
 | `IMBOY_PG_HOST` | 数据库主机 | `127.0.0.1` |
 | `IMBOY_PG_PORT` | 数据库端口 | `5432` |
 | `IMBOY_PG_DATABASE` | 数据库名 | `imboy` |

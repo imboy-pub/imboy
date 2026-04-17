@@ -3,10 +3,13 @@ PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一�
 PROJECT_VERSION = 1.0.0-rc.1
 export PROJECT_VERSION
 
-# usage: make TARGET IMBOYENV=...
-#    make run IMBOYENV=local
-#    make rel IMBOYENV=local
-RELX_CONFIG = $(CURDIR)/relx$(IMBOYENV).config
+# 单一 release 配置（5 → 1）：
+#   * 环境差异（local / dev / pro）走运行时 IMBOYENV 与 IMBOY_* 覆盖，
+#     不再拼成 relx<IMBOYENV>.config。
+#   * 出 tarball：make rel RELX_DEV_MODE=false RELX_INCLUDE_ERTS=true
+#   * 旧用法 `make rel IMBOYENV=pro` 已等价于 `make rel`，保留环境变量
+#     仅为 runtime 行为开关（参见 src/lib/imboy_env.erl）。
+RELX_CONFIG = $(CURDIR)/relx.config
 
 # APPS_DIR ?= $(CURDIR)/app
 # DEPS_DIR  = plugin/*/

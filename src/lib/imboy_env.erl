@@ -20,11 +20,45 @@
 %   IMBOY_REDIS_PASSWORD   -> redis_options 中的 password
 %   IMBOY_REDIS_HOST       -> redis_options 中的 host
 %   IMBOY_REDIS_PORT       -> redis_options 中的 port
+%   IMBOY_API_AUTH_SWITCH  -> {imboy, api_auth_switch}
+%   IMBOY_PASSWORD_SALT    -> {imboy, password_salt}
+%   IMBOY_ETURNAL_SECRET   -> {imboy, eturnal_secret}
+%   IMBOY_JPUSH_APP_KEY    -> {imboy, jpush_app_key}
+%   IMBOY_JPUSH_MASTER_SECRET -> {imboy, jpush_master_secret}
+%   IMBOY_YJSMS_ACCOUNT    -> {imboy, yjsms_account}
+%   IMBOY_YJSMS_SECRET     -> {imboy, yjsms_secret}
+%   IMBOY_SOLIDIFIED_KEY   -> {imboy, solidified_key}      (32 字节)
+%   IMBOY_SOLIDIFIED_KEY_IV -> {imboy, solidified_key_iv}  (16 字节)
+%   IMBOY_LOGIN_RSA_PUB_KEY_FILE  -> {imboy, login_rsa_pub_key_file}
+%   IMBOY_LOGIN_RSA_PRIV_KEY_FILE -> {imboy, login_rsa_priv_key_file}
+%   IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE -> {imboy, jverification_rsa_priv_key_file}
 %%%
 
 -export([override_from_env/0]).
+-export([current/0]).
 
 -include_lib("kernel/include/logger.hrl").
+
+%% @doc 返回当前运行环境（binary，已 normalize）。
+%% 优先 OS env `IMBOYENV`（部署期覆盖），其次 application env `imboy.env`
+%% （sys.config 默认值），最终空 binary（按生产环境严格对待）。
+%%
+%% 不做缓存：调用点都不在热路径（admin/router/passport），os:getenv 自身
+%% 是 ~50ns 量级。如未来出现热点，再迁 persistent_term。
+-spec current() -> binary().
+current() ->
+    case normalize(os:getenv("IMBOYENV")) of
+        <<>> -> normalize(application:get_env(imboy, env, undefined));
+        Bin  -> Bin
+    end.
+
+-spec normalize(term()) -> binary().
+normalize(undefined) -> <<>>;
+normalize(false)     -> <<>>;
+normalize(B) when is_binary(B) -> B;
+normalize(A) when is_atom(A)   -> atom_to_binary(A, utf8);
+normalize(L) when is_list(L)   -> unicode:characters_to_binary(L);
+normalize(_)                   -> <<>>.
 
 %% @doc 从环境变量覆盖 application config 中的敏感值。
 %% 在 imboy_app:start/2 中 validate_runtime_config() 之前调用。
@@ -49,6 +83,24 @@ override_from_env() ->
 
     %% 百度千帆 API 配置覆盖
     ok = override_qianfan(),
+
+    %% 新增敏感配置环境变量覆盖
+    ok = override_binary_key("IMBOY_API_AUTH_SWITCH",      api_auth_switch),
+    ok = override_binary_key("IMBOY_PASSWORD_SALT",        password_salt),
+    ok = override_binary_key("IMBOY_ETURNAL_SECRET",       eturnal_secret),
+    ok = override_binary_key("IMBOY_JPUSH_APP_KEY",        jpush_app_key),
+    ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET",  jpush_master_secret),
+    ok = override_binary_key("IMBOY_YJSMS_ACCOUNT",        yjsms_account),
+    ok = override_binary_key("IMBOY_YJSMS_SECRET",         yjsms_secret),
+
+    %% solidified_key / iv 必须是固定长度二进制（32 / 16）；用 binary 接收
+    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY",       solidified_key),
+    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY_IV",    solidified_key_iv),
+
+    %% RSA 密钥文件路径（string，不是 binary）
+    ok = override_string_key("IMBOY_LOGIN_RSA_PUB_KEY_FILE",         login_rsa_pub_key_file),
+    ok = override_string_key("IMBOY_LOGIN_RSA_PRIV_KEY_FILE",        login_rsa_priv_key_file),
+    ok = override_string_key("IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE", jverification_rsa_priv_key_file),
 
     ok.
 

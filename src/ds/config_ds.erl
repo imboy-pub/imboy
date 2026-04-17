@@ -84,7 +84,7 @@ reload() ->
 %% [config_ds:env(test), config_ds:local_reload(), config_ds:env(test)].
 -spec local_reload() -> ok.
 local_reload() ->
-    IMBoyEnv = os:getenv("IMBOYENV"),
+    IMBoyEnv = binary_to_list(imboy_env:current()),
     From = code:root_dir() ++ "/../../config/sys." ++ IMBoyEnv ++ ".config",
     To = config_file(),
     % Res1 = file:delete(To),

@@ -22,7 +22,7 @@ execute(Req, Env) ->
     OptionLi = imboy_router:option(),
     InOpenLi = lists:member(Path, OpenLi),
     InOptionLi = lists:member(Path, OptionLi),
-    Switch = ec_cnv:to_binary(config_ds:get(<<"api_auth_switch">>)),
+    Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"off">>)),
     Passport = string:sub_string(binary_to_list(Path), 1, 10),
     Res1 =
         if

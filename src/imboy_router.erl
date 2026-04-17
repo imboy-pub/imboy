@@ -697,15 +697,9 @@ open() ->
 %% @doc 判断当前是否为开发/测试环境
 -spec is_dev_env() -> boolean().
 is_dev_env() ->
-    Env = case config_ds:env(env, undefined) of
-        undefined ->
-            case os:getenv("IMBOYENV") of
-                false -> <<"pro">>;
-                Val -> list_to_binary(Val)
-            end;
-        V when is_atom(V) -> atom_to_binary(V, utf8);
-        V when is_binary(V) -> V;
-        _ -> <<"pro">>
+    Env = case imboy_env:current() of
+        <<>> -> <<"pro">>;  %% 缺省按生产环境对待，禁用测试路由
+        E    -> E
     end,
     not lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
 

@@ -31,9 +31,9 @@ filter_mobile(Mobile) ->
 %% imboy_sms:send(<<"13800138000">>, <<"123456">>, <<"jsms">>).
 -spec send(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()} | map().
 send(Mobile, Content, <<"yjsms">>) ->
-    Username = config_ds:get(<<"yjsms_account">>),
-    Password = config_ds:get(<<"yjsms_secret">>),
-    URL = config_ds:get(<<"yjsms_url">>),
+    Username = config_ds:env(yjsms_account, <<>>),
+    Password = config_ds:env(yjsms_secret, <<>>),
+    URL = config_ds:env(yjsms_url, <<>>),
     Ts = elib_dt:millisecond(),
     Headers = [
         {"Content-Type","application/json"}
@@ -74,8 +74,8 @@ send(Mobile, Content, <<"yjsms">>) ->
 % 发送单条模板短信 API
 % imboy_sms:send(<<"13692177080">>, <<"123456">>).
 send(Mobile, Code, <<"jsms">>) ->
-    Username = config_ds:get(<<"jpush_app_key">>),
-    Password = config_ds:get(<<"jpush_master_secret">>),
+    Username = config_ds:env(jpush_app_key, <<>>),
+    Password = config_ds:env(jpush_master_secret, <<>>),
     Base64Credentials = base64:encode(<<Username/binary, ":", Password/binary>>),
     URL = <<"https://api.sms.jpush.cn/v1/messages">>,
     Headers = [
@@ -107,8 +107,8 @@ send(Mobile, Code, <<"jsms">>) ->
 %% @see https://docs.jiguang.cn/jverification/server/rest_api/loginTokenVerify_api
 -spec jverification(binary()) -> {ok, binary()} | {error, binary()}.
 jverification(Tk) ->
-    Username = config_ds:get(<<"jpush_app_key">>),
-    Password = config_ds:get(<<"jpush_master_secret">>),
+    Username = config_ds:env(jpush_app_key, <<>>),
+    Password = config_ds:env(jpush_master_secret, <<>>),
     Base64Credentials = base64:encode(<<Username/binary, ":", Password/binary>>),
     URL = <<"https://api.verification.jpush.cn/v1/web/loginTokenVerify">>,
     Headers = [

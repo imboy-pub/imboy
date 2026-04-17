@@ -45,17 +45,17 @@ send_yjsms_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
-        meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
-                                            (<<"yjsms_secret">>) -> <<"test_secret">>;
-                                            (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
-        
+        meck:expect(config_ds, env, fun(yjsms_account, _) -> <<"test_account">>;
+                                            (yjsms_secret, _) -> <<"test_secret">>;
+                                            (yjsms_url, _) -> <<"https://test.sms.api">> end),
+
         % Mock时间戳
         meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
-        
+
         % Mock MD5计算
         meck:expect(elib_hasher, md5, fun(<<"test_secret">>) -> <<"hashed_secret">>;
                                             (Data) -> <<"md5_", Data/binary>> end),
-        
+
         % Mock HTTP请求
         meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"code">> => 0, <<"message">> => <<"success">>}}
@@ -87,16 +87,16 @@ send_yjsms_failure_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
-        meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
-                                            (<<"yjsms_secret">>) -> <<"test_secret">>;
-                                            (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
-        
+        meck:expect(config_ds, env, fun(yjsms_account, _) -> <<"test_account">>;
+                                            (yjsms_secret, _) -> <<"test_secret">>;
+                                            (yjsms_url, _) -> <<"https://test.sms.api">> end),
+
         % Mock时间戳
         meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
-        
+
         % Mock MD5计算
         meck:expect(elib_hasher, md5, fun(_) -> <<"hashed_secret">> end),
-        
+
         % Mock HTTP请求失败
         meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"code">> => 1, <<"message">> => <<"账号名为空">>}}
@@ -126,9 +126,9 @@ send_jsms_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
-        meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
-                                            (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
-        
+        meck:expect(config_ds, env, fun(jpush_app_key, _) -> <<"test_app_key">>;
+                                            (jpush_master_secret, _) -> <<"test_master_secret">> end),
+
         % Mock HTTP请求
         meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"msg_id">> => <<"123456789">>, <<"send_id">> => <<"987654321">>}}
@@ -156,9 +156,9 @@ jverification_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置获取
-        meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
-                                            (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
-        
+        meck:expect(config_ds, env, fun(jpush_app_key, _) -> <<"test_app_key">>;
+                                            (jpush_master_secret, _) -> <<"test_master_secret">> end),
+
         % Mock HTTP请求
         meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {ok, #{<<"phone">> => <<"13800138000">>, <<"code">> => 8001}}
@@ -232,10 +232,10 @@ sms_data_formatting_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
-        meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
-                                            (<<"yjsms_secret">>) -> <<"test_secret">>;
-                                            (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
-        
+        meck:expect(config_ds, env, fun(yjsms_account, _) -> <<"test_account">>;
+                                            (yjsms_secret, _) -> <<"test_secret">>;
+                                            (yjsms_url, _) -> <<"https://test.sms.api">> end),
+
         % Mock时间和哈希
         meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
         meck:expect(elib_hasher, md5, fun(_) -> <<"hashed_secret">> end),
@@ -287,10 +287,10 @@ signature_generation_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
-        meck:expect(config_ds, get, fun(<<"yjsms_account">>) -> <<"test_account">>;
-                                            (<<"yjsms_secret">>) -> <<"test_secret">>;
-                                            (<<"yjsms_url">>) -> <<"https://test.sms.api">> end),
-        
+        meck:expect(config_ds, env, fun(yjsms_account, _) -> <<"test_account">>;
+                                            (yjsms_secret, _) -> <<"test_secret">>;
+                                            (yjsms_url, _) -> <<"https://test.sms.api">> end),
+
         % Mock时间戳
         meck:expect(elib_dt, millisecond, fun() -> 1640995200000 end),
         
@@ -331,9 +331,9 @@ http_headers_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
-        meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
-                                            (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
-        
+        meck:expect(config_ds, env, fun(jpush_app_key, _) -> <<"test_app_key">>;
+                                            (jpush_master_secret, _) -> <<"test_master_secret">> end),
+
         % Mock HTTP请求并验证头
         meck:expect(elib_req, post, 3, fun(_URL, _Data, Headers) ->
             ?assertMatch([_|_], Headers),
@@ -370,9 +370,9 @@ error_handling_test_() ->
         meck:new(elib_req, [passthrough, no_link]),
         
         % Mock配置
-        meck:expect(config_ds, get, fun(<<"jpush_app_key">>) -> <<"test_app_key">>;
-                                            (<<"jpush_master_secret">>) -> <<"test_master_secret">> end),
-        
+        meck:expect(config_ds, env, fun(jpush_app_key, _) -> <<"test_app_key">>;
+                                            (jpush_master_secret, _) -> <<"test_master_secret">> end),
+
         % Mock HTTP错误
         meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
             {error, timeout}

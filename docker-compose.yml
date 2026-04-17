@@ -1,22 +1,42 @@
-# docker network create imboy-network
-# docker compose -f docker-compose.yml up -d
+# =====================================================
+# Imboy 单一 docker-compose（profiles 切换 dev / pro / turn）
+#
+# 历史：
+#   * docker-compose.yml          (dev 数据库)
+#   * docker-compose-pg18-pro.yml (生产数据库)
+#   * docker-compose-turn.yml     (TURN 服务)
+# 三份文件硬编码密码、容器名、端口分散在不同文件里，
+# 现在统一到本文件，通过 docker compose --profile 切换。
+#
+# 用法：
+#   1. 第一次：cp .env.example .env 并填写 IMBOY_PG_PASSWORD / IMBOY_PG_PRO_PASSWORD
+#   2. dev 数据库：    docker compose --profile dev up -d
+#   3. 生产数据库：    docker compose --profile pro up -d
+#   4. TURN 服务：     docker compose --profile turn up -d
+#   5. 多 profile 同启：docker compose --profile dev --profile turn up -d
+#
+# 注意：
+#   * pro 与 dev 容器名 / volume 路径 / 端口完全独立，可同机共存。
+#   * 不带 --profile 时 `docker compose up -d` 不启动任何服务（避免误操作）。
+# =====================================================
+
 services:
   imboy_pg18:
+    profiles: ["dev"]
     image: imboy/pg18:3.6.1-2
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
-    restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-    environment: # 设置环境变量,相当于docker run命令中的-e
+    restart: unless-stopped
+    environment:
       TZ: Asia/Shanghai
       LANG: en_US.UTF-8
-      POSTGRES_USER: imboy_user
-      POSTGRES_PASSWORD: V6uucUwhU9pUAYis
-      POSTGRES_DB: imboy_v1
-    volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-      # - "/data/docker/imboy_pg18:/var/lib/postgresql"
+      POSTGRES_USER: ${IMBOY_PG_USERNAME:-imboy_user}
+      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:?IMBOY_PG_PASSWORD required (see .env.example)}
+      POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
+    volumes:
       - "./docker/imboy_pg18:/var/lib/postgresql"
-    ports: # 映射端口
-      - "4323:5432"
+    ports:
+      - "${IMBOY_PG_HOST_PORT:-4323}:5432"
     deploy:
       resources:
         limits:
@@ -31,74 +51,48 @@ services:
         max-size: "10m"
         max-file: "10"
 
-  # imboy_fastdfs:
-  #   image: sjqzhang/go-fastdfs
-  #   container_name: imboy_fastdfs
-  #   hostname: i.imboy.pub
-  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-  #   environment: # 设置环境变量,相当于docker run命令中的-e
-  #     TZ: Asia/Shanghai
-  #     LANG: en_US.UTF-8
-  #     GO_FASTDFS_DIR: /data
-  #   volumes: # 数据卷挂载路径设置,将本机目录映射到容器目录
-  #     - "/data/docker/img_fastdfs_data:/data"
-  #   ports: # 映射端口
-  #     - "8080:8080"
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 800M
-  #       reservations:
-  #         memory: 800M
-  #   mem_limit: 800M
-  #   memswap_limit: 4g
+  pro_imboy_pg18:
+    profiles: ["pro"]
+    image: imboy/pg18:3.6.1-2
+    container_name: pro_imboy_pg18
+    hostname: pg18pro.docker.imboy.pub
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      LANG: en_US.UTF-8
+      POSTGRES_USER: ${IMBOY_PG_PRO_USERNAME:-imboy_user}
+      POSTGRES_PASSWORD: ${IMBOY_PG_PRO_PASSWORD:?IMBOY_PG_PRO_PASSWORD required (see .env.example)}
+      POSTGRES_DB: ${IMBOY_PG_PRO_DATABASE:-imboy_pro}
+    volumes:
+      - "/data/docker/pro_imboy_pg18:/var/lib/postgresql"
+    ports:
+      - "${IMBOY_PG_PRO_HOST_PORT:-5181}:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 4096M
+        reservations:
+          memory: 4096M
+    mem_limit: 4096M
+    memswap_limit: 4g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
 
-  # 比较耗费内存，暂时没有找到原因
-  # eturnalctl daemon /data/docker/eturnal/eturnal.yml
-  # eturnalctl remote_console
-  # imboy_eturnal:
-  #   # https://github.com/processone/eturnal/blob/master/examples/docker-compose/docker-compose.yml
-  #   image: ghcr.io/processone/eturnal:latest
-  #   container_name: imboy_eturnal # 容器名为'imboy_eturnal'
-  #   hostname: eturnal.docker.imboy.pub
-  #   restart: unless-stopped # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-  #   ### security options
-  #   read_only: true
-  #   cap_drop:
-  #     - ALL
-  #   cap_add:
-  #     - NET_BIND_SERVICE
-  #   ### Note: if eturnal binds to privileged ports (<1024) directly, the option "security_opt" below must be commented out.
-  #   security_opt:
-  #     - no-new-privileges:true
-  #   ### Environment variables - information on https://eturnal.net/doc/#Environment_Variables
-  #   # 设置环境变量,相当于docker run命令中的-e
-  #   environment:
-  #     TZ: Asia/Shanghai
-  #     LANG: en_US.UTF-8
-  #     ETURNAL_RELAY_MIN_PORT: 50000
-  #     ETURNAL_RELAY_MAX_PORT: 50500
-  #     # - ETURNAL_RELAY_IPV4_ADDR="203.0.113.4"
-  #     # - ETURNAL_RELAY_IPV6_ADDR="2001:db8::4"
-  #     # - STUN_SERVICE="false"
-  #   # env_file:
-  #   #   - eturnal.env
-  #   ### Volume mounts - Note: directories/files must be (at least) readable by the eturnal user (9000:9000)
-  #   volumes:
-  #     - /data/docker/eturnal/eturnal.yml:/etc/eturnal.yml:ro
-  #   ports: # 映射端口
-  #     - "3478:3478"
-  #     - "3478:3478/udp"
-  #     - "50000-50500:50000-50500/udp"
-  #   # network_mode: "host"
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 800M
-  #       reservations:
-  #         memory: 800M
-  #   mem_limit: 800M
-  #   memswap_limit: 4g
+  coturn:
+    profiles: ["turn"]
+    image: coturn/coturn:4.6
+    container_name: imboy-coturn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/turnserver.conf:/etc/turnserver.conf:ro
+    # 端口说明（host 网络，无需 ports 映射）:
+    #   3478          STUN/TURN (UDP+TCP)
+    #   5349          STUN/TURN over TLS
+    #   49152-65535   relay 端口范围
 
 networks:
   default:

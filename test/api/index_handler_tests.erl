@@ -25,15 +25,19 @@ init_success_test_() ->
             end}
         ]},
         {config_ds, [
-            {'get', 1, fun
-                (<<"solidified_key">>) -> <<"sol_key">>;
-                (<<"solidified_key_iv">>) -> <<"sol_iv">>;
-                (<<"ws_url">>) -> <<"wss://example.test/ws">>;
-                (<<"upload_url">>) -> <<"https://example.test/upload">>;
-                (<<"upload_key">>) -> <<"upload_key">>;
-                (<<"upload_scene">>) -> <<"upload_scene">>;
-                (<<"login_pwd_rsa_encrypt">>) -> false;
-                (<<"login_rsa_pub_key">>) -> <<"rsa_pub">>
+            %% env/1 — 无 default，用于 solidified_key、login_rsa_pub_key 等
+            {'env', 1, fun
+                (solidified_key)    -> <<"sol_key">>;
+                (solidified_key_iv) -> <<"sol_iv">>;
+                (login_rsa_pub_key) -> <<"rsa_pub">>
+            end},
+            %% env/2 — 带 default，用于客户端 init 配置项
+            {'env', 2, fun
+                (ws_url,              _D) -> <<"wss://example.test/ws">>;
+                (upload_url,          _D) -> <<"https://example.test/upload">>;
+                (upload_key,          _D) -> <<"upload_key">>;
+                (upload_scene,        _D) -> <<"upload_scene">>;
+                (login_pwd_rsa_encrypt, _D) -> false
             end}
         ]},
         {app_version_ds, [

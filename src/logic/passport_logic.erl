@@ -341,15 +341,11 @@ send_sms_code(Mobile) ->
 %% 校验验证码
 -spec verify_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
 verify_code(_Id, <<"666666">>) ->
-    % local 和 dev 环境的万能验证码
-    case os:getenv("IMBOYENV") of
-        "local" ->
-            {ok, <<"验证码有效（测试环境）"/utf8>>};
-        "dev" ->
-            {ok, <<"验证码有效（测试环境）"/utf8>>};
-        _ ->
-            % 生产环境或其他环境，验证码无效
-            {error, <<"验证码无效"/utf8>>}
+    %% local / dev 环境的万能验证码（生产环境严格拒绝）
+    case imboy_env:current() of
+        <<"local">> -> {ok, <<"验证码有效（测试环境）"/utf8>>};
+        <<"dev">>   -> {ok, <<"验证码有效（测试环境）"/utf8>>};
+        _           -> {error, <<"验证码无效"/utf8>>}
     end;
 verify_code(Id, Code) ->
     Now = elib_dt:now(),

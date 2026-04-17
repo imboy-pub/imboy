@@ -96,20 +96,26 @@ title(Uid, 2) when is_integer(Uid) ->
 %% @returns 包含WebRTC连接信息的map，包含ttl、服务器地址、用户名和凭据
 -spec webrtc_credential(pos_integer()) -> map().
 webrtc_credential(Uid) ->
-    Secret = config_ds:get(<<"eturnal_secret">>),
-    TurnUrls = config_ds:get(<<"turn_urls">>),
-    StunUrls = config_ds:get(<<"stun_urls">>),
-    UidBin = integer_to_binary(Uid),
-    TmBin = integer_to_binary(elib_dt:utc(second) + 86400),
-    Username = <<TmBin/binary, ":", UidBin/binary>>,
-    Credential =
-        base64:encode(
-            crypto:mac(hmac, sha, Secret, Username)),
-    #{<<"ttl">> => 86400,
-      <<"turn_urls">> => TurnUrls,
-      <<"stun_urls">> => StunUrls,
-      <<"username">> => Username,
-      <<"credential">> => Credential}.
+    TurnUrls = config_ds:env(eturnal_turn_urls, []),
+    StunUrls = config_ds:env(eturnal_stun_urls, []),
+    case {TurnUrls, config_ds:env(eturnal_secret, <<>>)} of
+        {[_|_], <<>>} ->
+            %% TURN 地址已配置但 secret 为空 — 拒绝生成可被伪造的凭据
+            #{<<"error">> => <<"eturnal_secret_not_configured">>,
+              <<"stun_urls">> => StunUrls};
+        {_, Secret} ->
+            UidBin = integer_to_binary(Uid),
+            TmBin = integer_to_binary(elib_dt:utc(second) + 86400),
+            Username = <<TmBin/binary, ":", UidBin/binary>>,
+            Credential =
+                base64:encode(
+                    crypto:mac(hmac, sha, Secret, Username)),
+            #{<<"ttl">> => 86400,
+              <<"turn_urls">> => TurnUrls,
+              <<"stun_urls">> => StunUrls,
+              <<"username">> => Username,
+              <<"credential">> => Credential}
+    end.
 
 %% @doc 验证WebRTC凭据
 %% 验证用户提供的WebRTC凭据是否有效。
@@ -122,11 +128,15 @@ webrtc_credential(Uid) ->
 %% @returns 验证结果：true表示凭据有效，false表示无效
 -spec auth_webrtc_credential(binary(), binary()) -> boolean().
 auth_webrtc_credential(Username, Credential) ->
-    % Secret = config_ds:env(eturnal_secret),
-    Secret = config_ds:get(<<"eturnal_secret">>),
-    Credential
-    == base64:encode(
-           crypto:mac(hmac, sha, Secret, Username)).
+    case config_ds:env(eturnal_secret, <<>>) of
+        <<>> ->
+            %% secret 未配置时拒绝所有凭据（空 key 的 HMAC 结果可被任意伪造）
+            false;
+        Secret ->
+            Credential
+            == base64:encode(
+                   crypto:mac(hmac, sha, Secret, Username))
+    end.
 
 %% @doc 根据ID查找用户
 -spec find_by_id(integer(), binary()) -> map().

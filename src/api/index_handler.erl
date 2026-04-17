@@ -50,11 +50,11 @@ api_init(Req0) ->
                 SK
         end,
     Data =
-        #{<<"ws_url">> => config_ds:get(<<"ws_url">>),
-          <<"upload_url">> => config_ds:get(<<"upload_url">>),
-          <<"upload_key">> => config_ds:get(<<"upload_key">>),
-          <<"upload_scene">> => config_ds:get(<<"upload_scene">>),
-          <<"login_pwd_rsa_encrypt">> => config_ds:get(<<"login_pwd_rsa_encrypt">>),
+        #{<<"ws_url">> => config_ds:env(ws_url, <<>>),
+          <<"upload_url">> => config_ds:env(upload_url, <<>>),
+          <<"upload_key">> => config_ds:env(upload_key, <<>>),
+          <<"upload_scene">> => config_ds:env(upload_scene, <<>>),
+          <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),
           <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)},
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").
@@ -66,8 +66,7 @@ api_init(Req0) ->
         {16, 32} -> ok;
         {IvLen, KeyLen} ->
             ?ERROR_LOG("index_handler api_init: bad crypto params, key_len=~p iv_len=~p (expect key=32, iv=16). "
-                       "Run config_ds:set(<<\"solidified_key\">>, <<32-bytes>>) and "
-                       "config_ds:set(<<\"solidified_key_iv\">>, <<16-bytes>>).",
+                       "Set {solidified_key, <<32-bytes>>} and {solidified_key_iv, <<16-bytes>>} in sys.config.",
                        [KeyLen, IvLen]),
             erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}})
     end,

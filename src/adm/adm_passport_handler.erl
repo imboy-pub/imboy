@@ -182,18 +182,8 @@ safe_captcha_check_real(CryptKey, Captcha) ->
 
 -spec admin_test_captcha_enabled() -> boolean().
 admin_test_captcha_enabled() ->
-    case os:getenv("IMBOYENV") of
-        "local" -> true;
-        "dev" -> true;
-        "test" -> true;
-        _ ->
-            case application:get_env(imboy, env) of
-                {ok, local} -> true;
-                {ok, dev} -> true;
-                {ok, test} -> true;
-                _ -> false
-            end
-    end.
+    %% imboy_env:current/0 已统一 OS env (IMBOYENV) > application env (imboy.env) 优先级
+    lists:member(imboy_env:current(), [<<"local">>, <<"dev">>, <<"test">>]).
 
 %% @doc 管理后台登录元数据
 -spec meta(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

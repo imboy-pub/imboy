@@ -6,7 +6,7 @@
 get_token_with_assets_resource_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'get', 1, fun(<<"upload_key">>) ->
+            {'env', 2, fun(upload_key, _Default) ->
                 <<"upload_key">>
             end}
         ]},

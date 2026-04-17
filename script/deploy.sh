@@ -3,6 +3,16 @@ set -Eeuo pipefail
 
 # =====================================================
 # Imboy 生产环境 全自动蓝绿部署脚本（单应用架构）
+#
+# 与历史版本的差异：
+#   * 不再 sed 修改 relxpro.config / sys.pro.config / vm.pro.args（这些
+#     文件早已 broken / 不存在），统一用单一 relx.config + sys.config。
+#   * 节点身份（NODE_NAME）、分发监听、cookie 在远端 release 目录里
+#     就地生成 vm.args（与 script/start_node.sh 一致）。
+#   * 蓝绿端口（HTTP_PORT）走环境变量 IMBOY_HTTP_PORT 注入，再由
+#     imboy_env.erl 在 application 启动期覆盖 sys.config 中的 http_port。
+#   * 生产强校验由 imboy_app:validate_runtime_config/0 在 IMBOYENV=pro
+#     启动时执行（密钥 / TURN / api_auth_switch / pg_password 等）。
 # =====================================================
 
 # ---------------- 静默控制 ----------------
@@ -44,6 +54,8 @@ if [ $# -ne 3 ]; then
   echo "  IMBOY_DEPLOY_NGINX_CONF    远端 nginx 配置路径"
   echo "  IMBOY_DEPLOY_BLUE_PORT     蓝环境端口，默认 9800"
   echo "  IMBOY_DEPLOY_GREEN_PORT    绿环境端口，默认 9801"
+  echo "  IMBOY_DEPLOY_NODE_HOST     节点 host，默认 127.0.0.1"
+  echo "  IMBOY_DEPLOY_COOKIE        节点 cookie，默认 imboy"
   exit 1
 fi
 
@@ -56,6 +68,9 @@ SERVER_PORT="${IMBOY_DEPLOY_PORT:-32}"
 
 PROJECT_DIR="${IMBOY_DEPLOY_PROJECT_DIR:-/www/wwwroot/imboy-api}"
 NGINX_CONF="${IMBOY_DEPLOY_NGINX_CONF:-/www/server/panel/vhost/nginx/pro.imboy.pub.conf}"
+
+NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
+COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
 
 # ---------------- 端口 ----------------
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
@@ -113,10 +128,6 @@ ok "目标部署环境：$TARGET_COLOR (port=$APP_PORT)"
 RELEASE_DIR="/usr/local/imboy-$VSN-$NODE_NAME"
 RELEASE_TARBALL="$PROJECT_DIR/_rel/imboy/imboy-$VSN.tar.gz"
 
-VM_ARGS="$PROJECT_DIR/config/vm.pro.args"
-SYS_CONFIG="$PROJECT_DIR/config/sys.pro.config"
-RELX_CONFIG="$PROJECT_DIR/relxpro.config"
-
 # =====================================================
 # 3️⃣ 检查部署目录
 # =====================================================
@@ -133,42 +144,64 @@ ssh_exec "mkdir -p $RELEASE_DIR"
 ok "部署目录准备完成"
 
 # =====================================================
-# 4️⃣ 更新配置
-# =====================================================
-ssh_exec "sed -i 's/{release, {[[:space:]]*imboy,[[:space:]]*\"[^\"]*\"}/{release, {imboy, \"${VSN}\"}/' $RELX_CONFIG"
-ssh_exec "sed -i 's/^-name .*/-name ${NODE_NAME}@127.0.0.1/' $VM_ARGS"
-ssh_exec "sed -i 's/{http_port, *[0-9]*}/{http_port, ${APP_PORT}}/' $SYS_CONFIG"
-ssh_exec "sed -i '/http_port_adm/d' $SYS_CONFIG || true"
-
-ok "配置文件已更新"
-
-# =====================================================
-# 5️⃣ 编译 release（⚠️ 已移除 make clean）
+# 4️⃣ 编译 release（统一 relx.config，VSN 由 PROJECT_VERSION 控制）
 # =====================================================
 log "编译 release（$( [ "$SILENT" -eq 1 ] && echo "静默" || echo "详细" )模式）"
 
+# RELX_REL_VSN 让 erlang.mk / relx 把 release 版本对齐到 $VSN，
+# 不必再 sed 修改 relx.config 的版本号字段。
 ssh_exec "
   set -e
   cd $PROJECT_DIR
   git pull origin dev --rebase
   make
-  make rel IMBOYENV=pro
+  IMBOYENV=pro RELX_REL_VSN=$VSN make rel
 "
 
 ok "release 编译完成"
 
 # =====================================================
-# 6️⃣ 部署 release
+# 5️⃣ 部署 release 并就地生成 vm.args（注入 NODE_NAME / COOKIE）
 # =====================================================
 ssh_exec "rm -rf $RELEASE_DIR && mkdir -p $RELEASE_DIR"
 ssh_exec "cd $RELEASE_DIR && tar -xzf $RELEASE_TARBALL"
 
-ok "release 已部署"
+# 找到 release 内 vm.args 的实际路径（dev_mode=true 用 releases/X/vm.args）
+ssh_exec "
+  set -e
+  REL_VSN_DIR=\$(find $RELEASE_DIR/releases -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+  cat > \$REL_VSN_DIR/vm.args <<EOF
+-name ${NODE_NAME}@${NODE_HOST}
+-setcookie ${COOKIE}
+-heart
+-kernel inet_dist_use_interface '{127,0,0,1}'
+-env ERL_EPMD_ADDRESS 127.0.0.1
++K true
++A 256
++S 4
++MSe true
++P 1048576
++Q 1048576
++sbwt none
++sbwtdcpu none
++sbwtdio none
++swt very_low
++stbt db
++zdbbl 81920
+EOF
+"
+
+ok "release 已部署，vm.args 已就地生成"
 
 # =====================================================
-# 7️⃣ 启动新节点
+# 6️⃣ 启动新节点（端口 / 环境通过环境变量注入，不再 sed sys.config）
 # =====================================================
-ssh_exec "$RELEASE_DIR/bin/imboy daemon"
+ssh_exec "
+  cd $RELEASE_DIR && \
+  IMBOYENV=pro \
+  IMBOY_HTTP_PORT=$APP_PORT \
+  ./bin/imboy daemon
+"
 sleep 5
 
 ssh_exec "lsof -i:$APP_PORT >/dev/null 2>&1" || fail "新节点启动失败"
@@ -176,7 +209,7 @@ ssh_exec "lsof -i:$APP_PORT >/dev/null 2>&1" || fail "新节点启动失败"
 ok "新节点启动成功（端口 ${APP_PORT}）"
 
 # =====================================================
-# 8️⃣ 切换 Nginx
+# 7️⃣ 切换 Nginx
 # =====================================================
 ssh_exec "
   sed -i '/upstream pro_imboy_api {/,/}/ s/server 127.0.0.1:[0-9]\\+/server 127.0.0.1:${APP_PORT}/' $NGINX_CONF
@@ -188,12 +221,12 @@ ssh_exec "
 ok "Nginx 请手动 nginx -t nginx -s reload"
 
 # =====================================================
-# 9️⃣ 停止旧节点
+# 8️⃣ 停止旧节点（手动操作，注释保留以便维护）
 # =====================================================
-# OLD_DIR=\"\$(ls -d /usr/local/imboy-*-* 2>/dev/null | grep -v '$RELEASE_DIR' | head -1)\"
-# if [ -n \"$OLD_DIR\" ]; then
-#   ssh_exec \"$OLD_DIR/bin/imboy stop || true\"
-#   ok \"旧节点已停止\"
+# OLD_DIR="$(ls -d /usr/local/imboy-*-* 2>/dev/null | grep -v '$RELEASE_DIR' | head -1)"
+# if [ -n "$OLD_DIR" ]; then
+#   ssh_exec "$OLD_DIR/bin/imboy stop || true"
+#   ok "旧节点已停止"
 # fi
 
 # =====================================================
@@ -203,9 +236,9 @@ echo
 ok "🎉 蓝绿部署完成"
 echo "----------------------------------"
 echo "版本       : ${VSN}"
-echo "节点名     : ${NODE_NAME}"
+echo "节点名     : ${NODE_NAME}@${NODE_HOST}"
 echo "运行环境   : ${TARGET_COLOR}"
 echo "应用端口   : ${APP_PORT}"
 echo "部署目录   : ${RELEASE_DIR}"
-echo "可执行命令: ${RELEASE_DIR}/bin/imboy daemon && nginx -s reload"
+echo "下一步     : ${RELEASE_DIR}/bin/imboy console（验证）后 nginx -s reload"
 echo "----------------------------------"

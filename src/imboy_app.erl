@@ -12,6 +12,8 @@
 start(_Type, _Args) ->
     _ = inets:start(),
     ok = imboy_env:override_from_env(),
+    %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
+    _ = imboy_env:current(),
     ok = validate_runtime_config(),
     ok = ensure_solidified_keys(),
     ok = ensure_rsa_keys(),
@@ -260,13 +262,110 @@ validate_runtime_config() ->
             ok = ensure_required_secret(adm_cookie_secret),
             ok = ensure_required_secret(solidified_key),
             ok = ensure_required_secret(solidified_key_iv),
+            ok = ensure_required_secret(password_salt),
             ok = ensure_required_file(login_rsa_pub_key_file),
             ok = ensure_required_file(login_rsa_priv_key_file),
-            %% 验证数据库密码不是默认值
+            %% API 签名验证开关在生产环境必须显式开启
+            ok = ensure_api_auth_switch_on(),
+            %% 若配置了 TURN 服务器，则 eturnal_secret 不可为空
+            ok = ensure_eturnal_secret_if_turn_configured(),
+            %% 若启用了推送通知，则极光凭据不可为空
+            ok = ensure_jpush_if_push_enabled(),
+            %% 若启用了短信，则平台凭据不可为空
+            ok = ensure_sms_if_enabled(),
+            %% 验证数据库密码不是默认值（pg_conf + super_account 同步检查）
             ok = ensure_pg_password_not_default(),
+            ok = ensure_super_account_password_not_default(),
             ok;
         false ->
             ok
+    end.
+
+%% @doc 若开启了 push.enabled = true，则 jpush_app_key/jpush_master_secret 必须配置
+-spec ensure_jpush_if_push_enabled() -> ok.
+ensure_jpush_if_push_enabled() ->
+    case config_ds:env([push, enabled], false) of
+        true ->
+            ok = ensure_required_secret(jpush_app_key),
+            ok = ensure_required_secret(jpush_master_secret),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 若开启了 sms.switch = <<"on">>，则平台凭据必须配置
+-spec ensure_sms_if_enabled() -> ok.
+ensure_sms_if_enabled() ->
+    case config_ds:env([sms, switch], <<"off">>) of
+        <<"on">> ->
+            Platform = config_ds:env([sms, platform], <<>>),
+            ensure_sms_platform_credentials(Platform);
+        _ ->
+            ok
+    end.
+
+ensure_sms_platform_credentials(<<"yjsms">>) ->
+    ok = ensure_required_secret(yjsms_account),
+    ok = ensure_required_secret(yjsms_secret);
+ensure_sms_platform_credentials(<<"aliyun">>) ->
+    AliyunCfg = config_ds:env([sms, <<"aliyun">>], []),
+    KeyId  = proplists:get_value(key_id, AliyunCfg, <<>>),
+    KeySec = proplists:get_value(key_secret, AliyunCfg, <<>>),
+    case {normalize_secret(KeyId), normalize_secret(KeySec)} of
+        {<<>>, _} -> erlang:error({missing_required_config, {sms, aliyun, key_id}});
+        {_, <<>>} -> erlang:error({missing_required_config, {sms, aliyun, key_secret}});
+        _         -> ok
+    end;
+ensure_sms_platform_credentials(_) ->
+    %% 未知平台或留空：sms.switch=on 的前提下视为配置错误
+    erlang:error({missing_required_config, {sms, platform}}).
+
+%% @doc 同步校验 super_account 密码不是常见弱密码
+-spec ensure_super_account_password_not_default() -> ok.
+ensure_super_account_password_not_default() ->
+    case application:get_env(imboy, super_account) of
+        {ok, #{password := Pwd}} ->
+            BlockedPasswords = ["123456", "password", "abc54321", ""],
+            case lists:member(Pwd, BlockedPasswords) of
+                true ->
+                    erlang:error({insecure_super_account_password,
+                        "Production super_account password is too weak or is a known default"});
+                false ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+%% @doc 生产环境要求 api_auth_switch 显式设置为 <<"on">>
+-spec ensure_api_auth_switch_on() -> ok.
+ensure_api_auth_switch_on() ->
+    case config_ds:env(api_auth_switch, <<"off">>) of
+        <<"on">> ->
+            ok;
+        _ ->
+            erlang:error({insecure_config,
+                "Production requires api_auth_switch = <<\"on\">>. "
+                "Set {api_auth_switch, <<\"on\">>} in sys.config or "
+                "export IMBOY_API_AUTH_SWITCH=on"})
+    end.
+
+%% @doc 若配置了 TURN 服务器则要求 eturnal_secret 非空
+-spec ensure_eturnal_secret_if_turn_configured() -> ok.
+ensure_eturnal_secret_if_turn_configured() ->
+    case config_ds:env(eturnal_turn_urls, []) of
+        [] ->
+            ok;
+        [_|_] ->
+            case normalize_secret(config_ds:env(eturnal_secret, <<>>)) of
+                <<>> ->
+                    erlang:error({missing_required_config,
+                        "eturnal_turn_urls is configured but eturnal_secret is empty. "
+                        "Set {eturnal_secret, <<\"your-turn-secret\">>} in sys.config or "
+                        "export IMBOY_ETURNAL_SECRET=<secret>"});
+                _ ->
+                    ok
+            end
     end.
 
 %% @doc 确保 solidified_key / solidified_key_iv 已就绪
@@ -383,31 +482,12 @@ ensure_required_secret(Key) ->
 
 -spec runtime_env() -> binary().
 runtime_env() ->
-    AppEnv = config_ds:env(env, undefined),
-    case normalize_env(AppEnv) of
-        <<>> ->
-            normalize_env(os:getenv("IMBOYENV"));
-        Env ->
-            Env
-    end.
+    %% 薄封装到 imboy_env:current/0，保留旧名以避免外部调用方破坏
+    imboy_env:current().
 
 -spec is_strict_env(binary()) -> boolean().
 is_strict_env(Env) ->
     lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
-
--spec normalize_env(term()) -> binary().
-normalize_env(undefined) ->
-    <<>>;
-normalize_env(false) ->
-    <<>>;
-normalize_env(Value) when is_binary(Value) ->
-    Value;
-normalize_env(Value) when is_atom(Value) ->
-    atom_to_binary(Value, utf8);
-normalize_env(Value) when is_list(Value) ->
-    unicode:characters_to_binary(Value);
-normalize_env(_) ->
-    <<>>.
 
 -spec normalize_secret(term()) -> binary().
 normalize_secret(undefined) ->
