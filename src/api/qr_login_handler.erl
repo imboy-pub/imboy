@@ -207,9 +207,15 @@ handle_scan(Req, State) ->
                                                         <<"scanned_at">> => erlang:system_time(millisecond)
                                                     },
                                                     cache_session(SessionToken, UpdatedSession),
+                                                    %% 回带设备信息便于手机端 UI 展示"哪台设备要登录"。
+                                                    %% 字段对齐 create/2 时存储的 device_name / platform。
+                                                    DeviceName = maps:get(<<"device_name">>, Session, <<>>),
+                                                    Platform = maps:get(<<"platform">>, Session, <<>>),
                                                     elib_response:success(
                                                         Req,
-                                                        #{<<"status">> => <<"scanned">>})
+                                                        #{<<"status">> => <<"scanned">>,
+                                                          <<"device_name">> => DeviceName,
+                                                          <<"platform">> => Platform})
                                             end
                                     end
                             end

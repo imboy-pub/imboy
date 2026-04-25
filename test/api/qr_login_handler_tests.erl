@@ -62,7 +62,9 @@ scan_updates_status_to_scanned_test_() ->
             {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
                 {ok, #{
                     <<"status">> => <<"waiting">>,
-                    <<"expires_at">> => future_ms()
+                    <<"expires_at">> => future_ms(),
+                    <<"device_name">> => <<"Chrome 120"/utf8>>,
+                    <<"platform">> => <<"web">>
                 }}
             end},
             {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when KeyToken =:= SessionToken ->
@@ -76,7 +78,39 @@ scan_updates_status_to_scanned_test_() ->
         Req0 = req(<<"POST">>, Body, []),
         State = #{action => scan, current_uid => 1001},
         {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-        ?assertEqual({success, #{<<"status">> => <<"scanned">>}}, response_result(Req1))
+        %% 响应携带设备信息（slice-5b：手机端 UI 展示"哪台设备要登录"）。
+        ?assertEqual(
+            {success, #{<<"status">> => <<"scanned">>,
+                        <<"device_name">> => <<"Chrome 120"/utf8>>,
+                        <<"platform">> => <<"web">>}},
+            response_result(Req1))
+    end).
+
+scan_returns_empty_device_fields_when_session_lacks_them_test_() ->
+    %% 老 session（在补丁前生成）可能缺 device_name / platform；
+    %% 此时响应字段以空 binary 兜底，前端解析层视为 deviceInfo=null。
+    SessionToken = <<"session-scan-legacy">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(common_mocks() ++ [
+        {imboy_cache, [
+            {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
+                {ok, #{
+                    <<"status">> => <<"waiting">>,
+                    <<"expires_at">> => future_ms()
+                }}
+            end},
+            {'set', 3, fun(_Key, _Data, 60) -> ok end}
+        ]}
+    ], fun() ->
+        Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+        Req0 = req(<<"POST">>, Body, []),
+        State = #{action => scan, current_uid => 1001},
+        {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+        ?assertEqual(
+            {success, #{<<"status">> => <<"scanned">>,
+                        <<"device_name">> => <<>>,
+                        <<"platform">> => <<>>}},
+            response_result(Req1))
     end).
 
 confirm_marks_session_confirmed_and_records_device_test_() ->
