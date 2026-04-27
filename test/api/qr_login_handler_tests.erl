@@ -254,6 +254,144 @@ scan_returns_invalid_qr_token_for_illegal_token_test_() ->
     end).
 
 %% ===================================================================
+%% PR-2β: handle_scan/handle_confirm 成功路径必须广播事件
+%% ===================================================================
+
+%% scan 成功后必须以 scanned 事件 broadcast 到 SessionToken 对应 group
+scan_broadcasts_scanned_event_on_success_test_() ->
+    SessionToken = <<"session-broadcast-scan">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(common_mocks() ++ [
+        {imboy_cache, [
+            {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
+                {ok, #{
+                    <<"status">> => <<"waiting">>,
+                    <<"expires_at">> => future_ms(),
+                    <<"device_name">> => <<"Chrome">>,
+                    <<"platform">> => <<"web">>
+                }}
+            end},
+            {'set', 3, fun(_Key, _Data, 60) -> ok end}
+        ]},
+        {qr_login_event_ds, [
+            {'event', 2, fun(scanned, undefined) ->
+                #{<<"status">> => <<"scanned">>}
+            end},
+            {'notify', 2, fun(_KeyToken, _Event) ->
+                {ok, 1}
+            end}
+        ]}
+    ], fun() ->
+        Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+        Req0 = req(<<"POST">>, Body, []),
+        State = #{action => scan, current_uid => 1001},
+        {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+        %% 使用 meck:history 跨进程验证 notify 调用（消息发送在 mock 闭包中
+        %% 跨进程不可达，必须走 meck 内置的 ETS 历史记录）。
+        ?assert(meck:called(qr_login_event_ds, notify, [SessionToken, '_']),
+                "qr_login_event_ds:notify/2 未被 scan 调用"),
+        Notifies = [Args || {_Pid, {qr_login_event_ds, notify, Args}, _Ret}
+                            <- meck:history(qr_login_event_ds),
+                            length(Args) =:= 2],
+        ?assertMatch([[SessionToken, #{<<"status">> := <<"scanned">>}]], Notifies)
+    end).
+
+%% scan 失败路径（如已过期）禁止 broadcast
+scan_does_not_broadcast_when_expired_test_() ->
+    SessionToken = <<"session-no-broadcast-expired">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(common_mocks() ++ [
+        {imboy_cache, [
+            {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
+                {ok, #{<<"status">> => <<"waiting">>, <<"expires_at">> => past_ms()}}
+            end},
+            {'delete', 1, fun(_) -> ok end}
+        ]},
+        {qr_login_event_ds, [
+            {'notify', 2, fun(_, _) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+        Req0 = req(<<"POST">>, Body, []),
+        State = #{action => scan, current_uid => 1001},
+        {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+        ?assertNot(meck:called(qr_login_event_ds, notify, ['_', '_']),
+                   "expired 路径不应调 notify/2")
+    end).
+
+%% confirm 成功后必须以 confirmed + login_token 事件 broadcast
+confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
+    SessionToken = <<"session-broadcast-confirm">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(common_mocks() ++ [
+        {imboy_cache, [
+            {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
+                {ok, #{
+                    <<"status">> => <<"scanned">>,
+                    <<"scanned_by">> => 1001,
+                    <<"expires_at">> => future_ms(),
+                    <<"device_id">> => <<"web-d1">>,
+                    <<"device_name">> => <<"Safari">>,
+                    <<"platform">> => <<"web">>
+                }}
+            end},
+            {'set', 3, fun(_Key, _Data, 60) -> ok end}
+        ]},
+        {token_ds, [
+            {'encrypt_token', 1, fun(1001) -> <<"login-token-1001">> end}
+        ]},
+        {user_device_repo, [
+            {'save', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {qr_login_event_ds, [
+            {'event', 2, fun(confirmed, <<"login-token-1001">>) ->
+                #{<<"status">> => <<"confirmed">>, <<"token">> => <<"login-token-1001">>}
+            end},
+            {'notify', 2, fun(_KeyToken, _Event) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+        Req0 = req(<<"POST">>, Body, []),
+        State = #{action => confirm, current_uid => 1001},
+        {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+        ?assert(meck:called(qr_login_event_ds, notify, [SessionToken, '_']),
+                "qr_login_event_ds:notify/2 未被 confirm 调用"),
+        Notifies = [Args || {_Pid, {qr_login_event_ds, notify, Args}, _Ret}
+                            <- meck:history(qr_login_event_ds),
+                            length(Args) =:= 2],
+        [[K, E] | _] = Notifies,
+        ?assertEqual(SessionToken, K),
+        ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, E)),
+        ?assertEqual(<<"login-token-1001">>, maps:get(<<"token">>, E))
+    end).
+
+%% confirm 失败（跨用户）禁止 broadcast
+confirm_does_not_broadcast_when_forbidden_test_() ->
+    SessionToken = <<"session-no-broadcast-forbidden">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(common_mocks() ++ [
+        {imboy_cache, [
+            {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
+                {ok, #{
+                    <<"status">> => <<"scanned">>,
+                    <<"scanned_by">> => 2002,
+                    <<"expires_at">> => future_ms()
+                }}
+            end}
+        ]},
+        {qr_login_event_ds, [
+            {'notify', 2, fun(_, _) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+        Req0 = req(<<"POST">>, Body, []),
+        State = #{action => confirm, current_uid => 1001},
+        {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+        ?assertNot(meck:called(qr_login_event_ds, notify, ['_', '_']),
+                   "跨用户 forbidden 路径不应调 notify/2")
+    end).
+
+%% ===================================================================
 %% Helpers
 %% ===================================================================
 
