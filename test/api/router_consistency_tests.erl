@@ -6,6 +6,21 @@ route_handler_modules_exist_test() ->
     MissingModules = missing_route_modules(),
     ?assertEqual([], MissingModules).
 
+%% PR-3β: SSE handler 路由必须注册到 v1 路由表
+qr_login_subscribe_route_registered_test() ->
+    Paths = [unicode:characters_to_binary(P) || {P, _H, _S} <- all_routes()],
+    ?assert(lists:member(<<"/v1/passport/qr_login/subscribe">>, Paths),
+            "SSE 路由 /v1/passport/qr_login/subscribe 未在 imboy_router 注册"),
+    %% 同时校验 handler 是 qr_login_sse_handler（不是误打到 qr_login_handler）
+    [Handler] = [H || {P, H, _S} <- all_routes(),
+                      unicode:characters_to_binary(P) =:= <<"/v1/passport/qr_login/subscribe">>],
+    ?assertEqual(qr_login_sse_handler, Handler).
+
+%% PR-3β: SSE 端点必须在 open 列表（无需登录态，否则 EventSource 跨域无法连）
+qr_login_subscribe_route_in_open_list_test() ->
+    ?assert(lists:member(<<"/v1/passport/qr_login/subscribe">>, imboy_router:open()),
+            "SSE 路由 /v1/passport/qr_login/subscribe 必须在 open 列表，否则被认证中间件拒绝").
+
 open_routes_map_to_route_table_test() ->
     RoutePathSet = route_path_set(),
     MissingPaths = missing_paths(imboy_router:open(), RoutePathSet),

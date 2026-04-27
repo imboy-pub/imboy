@@ -186,6 +186,9 @@ get_routes() ->
         {"/v1/passport/qr_login/scan", qr_login_handler, #{action => scan}},
         {"/v1/passport/qr_login/confirm", qr_login_handler, #{action => confirm}},
         {"/v1/passport/qr_login/cancel", qr_login_handler, #{action => cancel}},
+        %% PR-3β: SSE 推送端点（cowboy_loop），替代轮询 /status
+        %% Web 端 EventSource 长连接，scan/confirm 后实时推送状态
+        {"/v1/passport/qr_login/subscribe", qr_login_sse_handler, #{}},
 
         {"/v1/ws", websocket_handler, #{}},
         {"/v1/auth/assets", auth_handler, #{action => assets}}] ++
@@ -678,6 +681,8 @@ open() ->
      <<"/v1/passport/qr_login/scan">>,
      <<"/v1/passport/qr_login/confirm">>,
      <<"/v1/passport/qr_login/cancel">>,
+     %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
+     <<"/v1/passport/qr_login/subscribe">>,
      <<"/v1/auth/assets">>,
 
      <<"/metrics">>,
