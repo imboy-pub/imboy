@@ -35,6 +35,7 @@ init() ->
         % , ?GROUP_SCOPE
         , ?ROOM_SCOPE
         , ?CACHE_SCOPE
+        , ?QR_LOGIN_SCOPE
     ]),
     ok.
 

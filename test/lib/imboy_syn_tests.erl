@@ -11,6 +11,44 @@
 %%% 覆盖：进程注册、查找、消息发布、统计功能
 %%%===================================================================
 
+%% PR-2γ: init/0 必须把 ?QR_LOGIN_SCOPE (imboy_qr_login) 加入 syn scopes
+%% 否则 qr_login_event_ds:notify/2 在生产环境永远走兜底 {ok, 0} 路径
+init_registers_qr_login_scope_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        meck:new(syn, [passthrough, no_link]),
+        meck:expect(syn, add_node_to_scopes, 1, fun(_Scopes) -> ok end),
+
+        try
+            ok = imboy_syn:init(),
+            ?assert(meck:called(syn, add_node_to_scopes, 1)),
+            %% history 形如 [{Pid, {syn, add_node_to_scopes, [Scopes]}, ok}, ...]
+            History = meck:history(syn),
+            [{_, {syn, add_node_to_scopes, [Scopes]}, _} | _] = History,
+            ?assert(lists:member(imboy_qr_login, Scopes),
+                    "imboy_syn:init/0 必须把 imboy_qr_login 注册到 syn scopes")
+        after
+            meck:unload(syn)
+        end
+    end).
+
+init_keeps_existing_chat_scope_test_() ->
+    %% 防御性：新加 scope 不能误删 ?CHAT_SCOPE
+    ?TEST_WITH_APP(fun() ->
+        meck:new(syn, [passthrough, no_link]),
+        meck:expect(syn, add_node_to_scopes, 1, fun(_Scopes) -> ok end),
+
+        try
+            ok = imboy_syn:init(),
+            [{_, {syn, add_node_to_scopes, [Scopes]}, _} | _] = meck:history(syn),
+            ?assert(lists:member(?CHAT_SCOPE, Scopes),
+                    "imboy_syn:init/0 不能丢弃 ?CHAT_SCOPE"),
+            ?assert(lists:member(?ROOM_SCOPE, Scopes)),
+            ?assert(lists:member(?CACHE_SCOPE, Scopes))
+        after
+            meck:unload(syn)
+        end
+    end).
+
 %% 测试用户加入聊天会话
 join_chat_session_test_() ->
     ?TEST_WITH_APP(fun() ->
