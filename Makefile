@@ -229,3 +229,28 @@ feature-smoke:
 		for item in $(FEATURE_SMOKE_EXPECTS); do cmd="$$cmd --expect $$item"; done; \
 		echo "$$cmd"; \
 		eval "$$cmd"
+
+# -----------------------------------------------------------------------------
+# Tier-0 冒烟：C2C 端到端（RPC 发 + psql 校验 msg_store）
+# 用法：
+#   make smoke-c2c                                    # 默认 Alice(1000000051) -> Bob(1000000056)
+#   make smoke-c2c SMOKE_FROM=1000000051 SMOKE_TO=1000000056
+#   make smoke                                        # 跑所有 Tier-0 冒烟
+# 前置：imboy@127.0.0.1 节点已启动，本地 PG 可连。
+# -----------------------------------------------------------------------------
+SMOKE_FROM ?= 1000000051
+SMOKE_TO   ?= 1000000056
+
+.PHONY: smoke smoke-c2c smoke-ws
+smoke-c2c:
+	@./scripts/smoke/c2c_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
+
+# Tier-0 WS 冒烟：Bob 连 /ws 订阅 + Alice 发 C2C + 校验 Bob 收到帧
+#   make smoke-ws
+#   make smoke-ws SMOKE_FROM=1000000051 SMOKE_TO=1000000056
+# 前置：imboy@127.0.0.1 节点已启动，python3 + websockets 已安装。
+smoke-ws:
+	@./scripts/smoke/c2c_ws_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
+
+smoke: smoke-c2c smoke-ws
+	@echo "=== all Tier-0 smoke PASS ==="

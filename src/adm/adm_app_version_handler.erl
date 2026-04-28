@@ -110,7 +110,7 @@ save(<<"POST">>, Req0, _State) ->
           min_supported_vsn => MinSupportedVsn,
           grayscale_percent => ec_cnv:to_integer(GrayscalePercent),
           upgrade_type => UpgradeType,
-          changelog => Changelog,
+          changelog => jsone:encode(Changelog, [native_utf8, {float_format, [{decimals, 4}, compact]}]),
           file_size => ec_cnv:to_integer(FileSize),
           file_hash => FileHash},
     _ = adm_app_version_logic:save(Data),

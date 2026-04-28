@@ -11,6 +11,7 @@
 -export([unpin/2]).
 -export([delete/2]).
 -export([mark_as_read/2]).
+-export([publish_notice/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -149,6 +150,55 @@ mark_as_read(CurrentUid, NoticeId) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% @doc 发布公告后向群内所有成员广播 S2C `group_notice_published`
+%%
+%% W1.1：对齐客户端 `lib/service/group_notice_s2c.dart` 的解析契约：
+%%   Payload = #{
+%%     <<"gid">>                => Gid,           % int
+%%     <<"notice_id">>          => NoticeId,      % int
+%%     <<"publisher_id">>       => Uid,           % int
+%%     <<"publisher_nickname">> => <<"Alice">>,   % binary
+%%     <<"title">>              => <<"...">>,      % binary (or <<>>)
+%%     <<"body">>               => <<"...">>,      % binary (or <<>>)
+%%     <<"expired_at">>         => ExpiredAtMs,   % int ms or 0
+%%     <<"published_at">>       => Now            % int ms
+%%   }
+%%
+%% 客户端侧：
+%%   - expired_at = 0 / 缺失 → null（永不过期语义）
+%%   - published_at 缺失 → 0（"未知"标记）
+%%
+%% 本函数**仅做广播**，不负责持久化（持久化由 `group_notice_handler:publish/3`
+%% 调用 `group_notice_ds:update/2` 完成）。
+-spec publish_notice(integer(), integer(), integer()) -> ok.
+publish_notice(Uid, Gid, NoticeId) ->
+    ToUidLi = group_ds:member_uids(Gid),
+    Publisher = user_ds:find_by_id(Uid, <<"nickname">>),
+    Now = elib_dt:millisecond(),
+    {Title, Body, ExpiredAt} =
+        case group_notice_ds:find_by_id(NoticeId) of
+            {ok, Notice} ->
+                T = maps:get(<<"title">>, Notice, <<>>),
+                B = maps:get(<<"body">>, Notice, <<>>),
+                Exp = maps:get(<<"expired_at">>, Notice, 0),
+                {T, B, Exp};
+            _ ->
+                {<<>>, <<>>, 0}
+        end,
+    Payload = #{
+        <<"gid">> => Gid,
+        <<"notice_id">> => NoticeId,
+        <<"publisher_id">> => Uid,
+        <<"publisher_nickname">> => maps:get(<<"nickname">>, Publisher, <<>>),
+        <<"title">> => Title,
+        <<"body">> => Body,
+        <<"expired_at">> => ExpiredAt,
+        <<"published_at">> => Now
+    },
+    Action = <<"group_notice_published">>,
+    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
+    ok.
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -81,13 +81,32 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             auth_after(Uid, Req, State#{token_expire_at => ExpireDAt, token_type => Type}, Opt);
         {error, 705, _, _Map} ->
             %% 【安全修复】过期 Token 应该拒绝连接，要求客户端重新登录
+            %% 原本用 4401 是非法 HTTP 状态码，cowboy 会静默关闭不发 response；
+            %% 改为 401 Unauthorized + 业务码头 X-Token-Error 让客户端区分语义。
             ok = ?WARN_LOG([token_expired_rejected]),
-            Req2 = cowboy_req:reply(4401, #{
-                <<"content-type">> => <<"application/json">>
-            }, <<"{}">>, Req),
+            Req2 = cowboy_req:reply(401, #{
+                <<"content-type">> => <<"application/json">>,
+                <<"x-token-error">> => <<"expired">>
+            }, <<"{\"code\":705,\"msg\":\"token_expired\"}">>, Req),
             {ok, Req2, State#{error => 705, msg => <<"token_expired">>}};
+        %% 【修复】所有 decrypt 失败都必须显式 reply，否则 cowboy_handler
+        %% 默认合成 204 No Content，诊断极不友好。
+        %% 706（签名无效/解码崩溃）→ 401 Unauthorized
+        {error, 706, _Msg, _Map} ->
+            ok = ?WARN_LOG([token_invalid_rejected]),
+            Req2 = cowboy_req:reply(401, #{
+                <<"content-type">> => <<"application/json">>,
+                <<"x-token-error">> => <<"invalid">>
+            }, <<"{\"code\":706,\"msg\":\"token_invalid\"}">>, Req),
+            {ok, Req2, State#{error => 706, msg => <<"token_invalid">>}};
+        %% 其他未识别错误码也必须 reply，避免 204 回归
         {error, Code, Msg, _Map} ->
-            {ok, Req, State#{error => Code, msg => Msg}}
+            ok = ?WARN_LOG([token_rejected, Code, Msg]),
+            Req2 = cowboy_req:reply(401, #{
+                <<"content-type">> => <<"application/json">>,
+                <<"x-token-error">> => <<"rejected">>
+            }, <<"{\"code\":0,\"msg\":\"token_rejected\"}">>, Req),
+            {ok, Req2, State#{error => Code, msg => elib_cnv:safe_to_binary(Msg)}}
     end;
 auth(Auth, Req0, State0, _Opt) ->
     ok = ?DEBUG_LOG(["Auth", Auth]),

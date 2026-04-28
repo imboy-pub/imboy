@@ -58,6 +58,18 @@ decrypt_token(Token) ->
                true ->
                    {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
+        %% jwerl 在启用 exp_leeway 后仍会自验 exp，过期时返回 {error, [exp]}。
+        %% 语义上属于"可刷新的过期 token"，应返回 705 与上面手动分支一致，
+        %% 避免客户端把 expired 当作 invalid 处理。
+        {error, ClaimErrs} = JWT_ERR when is_list(ClaimErrs) ->
+            case lists:member(exp, ClaimErrs) of
+                true ->
+                    ok = ?DEBUG_LOG(['JWT_EXPIRED', JWT_ERR]),
+                    {error, 705, "Please refresh token", #{err => JWT_ERR}};
+                false ->
+                    ok = ?DEBUG_LOG(['JWT_ERR', JWT_ERR]),
+                    {error, 706, "Invalid token", #{err => JWT_ERR}}
+            end;
         JWT_ERR ->
             ok = ?DEBUG_LOG(['JWT_ERR', JWT_ERR]),
             {error, 706, "Invalid token", #{err => JWT_ERR}}

@@ -407,7 +407,7 @@ sent_offline_msg(_Uid, _Type, []) ->
 sent_offline_msg(Uid, Type, [Row | Tail]) ->
     ok = ?DEBUG_LOG([<<"Sending offline msg ">>, Type, <<" to Uid ">>, Uid]),
     % 统一从 from_id 和 to_id 获取（确保是 integer）
-    MsgId = maps:get(<<"msg_id">>, Row),
+    MsgId = maps:get(<<"id">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
     Payload = maps:get(<<"payload">>, Row),

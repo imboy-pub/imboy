@@ -69,7 +69,10 @@ report(<<"POST">>, Req0, _State) ->
                 <<"target_vsn">> => maps:get(<<"target_vsn">>, Body0, <<>>),
                 <<"event">> => Event,
                 <<"upgrade_type">> => maps:get(<<"upgrade_type">>, Body0, <<>>),
-                <<"extra">> => maps:get(<<"extra">>, Body0, #{})
+                <<"extra">> => jsone:encode(
+                    maps:get(<<"extra">>, Body0, #{}),
+                    [native_utf8, {float_format, [{decimals, 4}, compact]}]
+                )
             },
             elib_async:async(fun() -> app_upgrade_log_ds:insert(Data) end),
             elib_response:success(Req0, #{<<"ok">> => true})

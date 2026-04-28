@@ -104,8 +104,11 @@ migrate() ->
                     true->
                         ok;
                     _ ->
-                        logger:warning("Unexpected migration result: ~p~n", [Default]),
-                        Default
+                        %% Fail-fast: 任何迁移 SQL 失败都必须中断启动，
+                        %% 否则 DB 会停留在半应用状态 (e.g. user_collect 表缺失但
+                        %% migrations.version 已更新)，运行时才以 42P01/42703 暴露。
+                        logger:error("[imboy_migrate] Migration failed: ~p~n", [Default]),
+                        erlang:error({migration_failed, Default})
                 end
           end
         end),

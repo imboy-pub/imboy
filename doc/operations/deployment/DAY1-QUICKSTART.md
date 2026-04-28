@@ -165,7 +165,8 @@ upstream imboy {
 | `insecure_pg_password` | 数据库使用了弱密码（如 `password`、`123456`、空）/ weak DB password | 改强密码并 rotate / rotate to strong password |
 | `insecure_config: api_auth_switch` | 生产未开启 API 签名 / API sig disabled in prod | `IMBOY_API_AUTH_SWITCH=on` |
 | `eturnal_secret is empty` | 配了 TURN URL 但没 secret / TURN URL set without secret | `IMBOY_ETURNAL_SECRET=<secret>` |
-| `solidified_key not configured` (warning) | dev/local 自动生成 / auto-gen in dev | 生产请显式设置 / set explicitly in prod |
+| `solidified_key not configured` (warning) | dev/local 使用稳定默认值 / stable dev default | 生产请显式设置 `IMBOY_SOLIDIFIED_KEY*` / set explicitly in prod |
+| `login_rsa_*_key_file not configured` (warning) | dev/local 落盘到 `priv/dev_keys/` / persisted to priv/dev_keys | 生产请配置 `IMBOY_LOGIN_RSA_*_FILE` 指向 release 外路径 / point to path outside release |
 
 ---
 

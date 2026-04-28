@@ -370,28 +370,30 @@ ensure_eturnal_secret_if_turn_configured() ->
 
 %% @doc 确保 solidified_key / solidified_key_iv 已就绪
 %% 生产环境：validate_runtime_config 已 fail-fast，此处无需处理
-%% 非生产环境：未配置则自动生成随机值写入 application env（重启后失效，仅供开发/测试）
+%% 非生产环境：未配置则使用稳定的 dev 默认值（与 Flutter 客户端硬编码一致），
+%% 避免每次启动随机生成导致客户端 init 解密失败。
+%%
+%% Flutter 客户端硬编码值见 imboy/lib/service/encrypter.dart 中的 signKey/iv。
+%% 这两个值不是真正的 secret，仅是 dev/local 环境下客户端与服务端的共享约定。
 -spec ensure_solidified_keys() -> ok.
 ensure_solidified_keys() ->
+    DevDefaultKey = <<"pLV8yWGUUnd3Y2gaHP5aggZ7wnKT9DqL">>,
+    DevDefaultIV  = <<"e6Z8KuBnGCi2t7we">>,
     case normalize_secret(config_ds:env(solidified_key, <<>>)) of
         <<>> ->
-            Key = crypto:strong_rand_bytes(32),
-            IV  = crypto:strong_rand_bytes(16),
-            ok = application:set_env(imboy, solidified_key, Key),
-            ok = application:set_env(imboy, solidified_key_iv, IV),
+            ok = application:set_env(imboy, solidified_key, DevDefaultKey),
+            ok = application:set_env(imboy, solidified_key_iv, DevDefaultIV),
             logger:warning("[imboy] solidified_key not configured — "
-                           "auto-generated random key/iv for this session. "
-                           "HMAC signatures (email binding, group invite) "
-                           "will be invalid after restart. "
-                           "Set solidified_key / solidified_key_iv in sys.config for production."),
+                           "using dev default (matches Flutter client hardcoded value). "
+                           "Set IMBOY_SOLIDIFIED_KEY / IMBOY_SOLIDIFIED_KEY_IV "
+                           "in production (fail-fast will reject blank values)."),
             ok;
         _ ->
             %% key 已配置；若 iv 单独缺失也补全
             case normalize_secret(config_ds:env(solidified_key_iv, <<>>)) of
                 <<>> ->
-                    IV = crypto:strong_rand_bytes(16),
-                    ok = application:set_env(imboy, solidified_key_iv, IV),
-                    logger:warning("[imboy] solidified_key_iv not configured — auto-generated."),
+                    ok = application:set_env(imboy, solidified_key_iv, DevDefaultIV),
+                    logger:warning("[imboy] solidified_key_iv not configured — using dev default."),
                     ok;
                 _ ->
                     ok
@@ -417,23 +419,22 @@ ensure_pg_password_not_default() ->
 
 %% @doc 确保 RSA 公私钥已就绪（PEM 二进制写入 application env）
 %% 生产环境：配置文件路径，启动时读取；validate_runtime_config 已 fail-fast
-%% 非生产环境：未配置则自动生成临时 RSA-2048 密钥对（重启后失效，仅供开发/测试）
+%% 非生产环境：未配置则使用/生成 priv/dev_keys/login_rsa_{pub,priv}.pem
+%%   - 首次启动自动生成并落盘；后续启动复用，保证客户端缓存的公钥有效
+%%   - 仅 `make rel` 重建 release 时会丢失（release 目录整体重建）
+%%   - 需要跨 release 稳定：显式配置 login_rsa_*_key_file 指向 release 外路径
 -spec ensure_rsa_keys() -> ok.
 ensure_rsa_keys() ->
     PubFile  = normalize_secret(config_ds:env(login_rsa_pub_key_file, "")),
     PrivFile = normalize_secret(config_ds:env(login_rsa_priv_key_file, "")),
     case {PubFile, PrivFile} of
         {<<>>, _} ->
-            %% 未配置文件路径 → 自动生成临时密钥对
-            {PubPem, PrivPem} = generate_rsa_keypair(),
+            %% 未配置文件路径 → 走 dev_keys 持久化默认路径
+            {PubPem, PrivPem} = ensure_dev_rsa_keypair(),
             ok = application:set_env(imboy, login_rsa_pub_key,  PubPem),
             ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
             %% jverification 共用 login 私钥（开发环境）
-            ok = application:set_env(imboy, jverification_rsa_priv_key, PrivPem),
-            logger:warning("[imboy] login_rsa_pub_key_file not configured — "
-                           "auto-generated ephemeral RSA-2048 keypair. "
-                           "Set login_rsa_pub_key_file / login_rsa_priv_key_file "
-                           "in sys.config for production.");
+            ok = application:set_env(imboy, jverification_rsa_priv_key, PrivPem);
         {PubF, PrivF} ->
             {ok, PubPem}  = file:read_file(binary_to_list(PubF)),
             {ok, PrivPem} = file:read_file(binary_to_list(PrivF)),
@@ -451,7 +452,32 @@ ensure_rsa_keys() ->
     end,
     ok.
 
-%% @doc 生成临时 RSA-2048 密钥对，返回 {PubPem, PrivPem}
+%% @doc dev/local 环境 RSA 密钥对持久化逻辑
+%% 优先读取 priv/dev_keys/login_rsa_{pub,priv}.pem
+%% 若缺失则生成并落盘，保证重启后客户端缓存的公钥继续可用
+-spec ensure_dev_rsa_keypair() -> {binary(), binary()}.
+ensure_dev_rsa_keypair() ->
+    PrivDir = code:priv_dir(imboy),
+    DevDir  = filename:join(PrivDir, "dev_keys"),
+    PubPath  = filename:join(DevDir, "login_rsa_pub.pem"),
+    PrivPath = filename:join(DevDir, "login_rsa_priv.pem"),
+    case {file:read_file(PubPath), file:read_file(PrivPath)} of
+        {{ok, PubPem}, {ok, PrivPem}} ->
+            {PubPem, PrivPem};
+        _ ->
+            ok = filelib:ensure_dir(filename:join(DevDir, ".keep")),
+            {PubPem, PrivPem} = generate_rsa_keypair(),
+            ok = file:write_file(PubPath, PubPem),
+            ok = file:write_file(PrivPath, PrivPem),
+            logger:warning("[imboy] login_rsa_*_key_file not configured — "
+                           "generated stable dev RSA-2048 keypair at ~ts. "
+                           "Set IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE "
+                           "in production (fail-fast rejects blank values).",
+                           [DevDir]),
+            {PubPem, PrivPem}
+    end.
+
+%% @doc 生成 RSA-2048 密钥对，返回 {PubPem, PrivPem}
 -spec generate_rsa_keypair() -> {binary(), binary()}.
 generate_rsa_keypair() ->
     PrivKey = public_key:generate_key({rsa, 2048, 65537}),

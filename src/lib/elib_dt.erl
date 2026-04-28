@@ -234,7 +234,13 @@ datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
         _:_ -> {error, "invalid datetime tuple"}
     end.
 
--spec rfc3339_to(integer() | tuple() | list() | binary() | undefined) -> integer() | binary() | term().
+-spec rfc3339_to(integer() | tuple() | list() | binary() | undefined | atom()) -> integer() | binary() | null | term().
+%% 空值提前返回 null：避免 <<>>/[]/undefined/null 流入 /2 报错路径，
+%% 进而被 JSON 序列化为 "{error,empty_input}" 污染客户端数据（参见 friend list last_seen_at）。
+rfc3339_to(<<>>) -> null;
+rfc3339_to([]) -> null;
+rfc3339_to(undefined) -> null;
+rfc3339_to(null) -> null;
 rfc3339_to(Val) when is_integer(Val) ->
     Val;
 rfc3339_to(Val) when is_tuple(Val) ->
@@ -244,9 +250,12 @@ rfc3339_to(Val) when is_list(Val); is_binary(Val) ->
         true ->
             ec_cnv:to_integer(Val);
         false ->
-            rfc3339_to(Val, millisecond)
+            case rfc3339_to(Val, millisecond) of
+                {error, _} -> null;  %% 解析失败亦返回 null，防止 tuple 穿透到 JSON
+                Ms -> Ms
+            end
     end;
-rfc3339_to(Value) -> Value.  % 非时间字符串、空值保持原样
+rfc3339_to(Value) -> Value.  % 非时间字符串保持原样
 
 
 % Dt = elib_dt:now(),

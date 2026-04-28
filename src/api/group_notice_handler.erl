@@ -196,6 +196,10 @@ publish(<<"POST">>, Req0, State) ->
                   updated_at => Now},
             case group_notice_ds:update(Id2, Data) of
                 {ok, _} ->
+                    %% W1.1：持久化成功后向群内所有成员广播 S2C
+                    %% `group_notice_published`，客户端据此刷新公告列表或展示
+                    %% toast。广播失败不影响 HTTP 成功响应（`_ = ...`）。
+                    _ = group_notice_logic:publish_notice(Uid, Gid2, Id2),
                     elib_response:success(Req0, #{<<"notice_id">> => Id});
                 {error, not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);

@@ -53,23 +53,41 @@ init(Req0, State0) ->
 %% @param Req Cowboy 请求对象
 %% @param State 状态映射
 %% @return cowboy_req:req() 更新后的请求对象
+%%
+%% 容错：simple_captcha:create/0 依赖 ImageMagick 的 `convert` CLI；
+%% 未安装时 os:cmd 静默返回空串，导致 file:read_file 拿到 {error,enoent}
+%% 然后 badmatch 崩溃整个 cowboy stream。
+%% 这里包裹 try/catch，缺依赖时返回 503 + JSON，不阻塞 adm 进程。
 -spec captcha(cowboy_req:req(), map()) -> cowboy_req:req().
 captcha(Req, _State) ->
-    {CryptKey, BinPng} = simple_captcha:create(),
-    Req2 = cowboy_req:set_resp_cookie(
-        <<"captcha_key">>,
-        CryptKey,
-        Req,
-        #{
-            path => <<"/adm/passport">>,
-            http_only => true,
-            same_site => lax,
-            secure => cookie_secure()
-        }
-    ),
-    cowboy_req:reply(200, #{
-        <<"content-type">> => <<"image/png; charset=utf-8">>
-    }, BinPng, Req2).
+    try simple_captcha:create() of
+        {CryptKey, BinPng} ->
+            Req2 = cowboy_req:set_resp_cookie(
+                <<"captcha_key">>,
+                CryptKey,
+                Req,
+                #{
+                    path => <<"/adm/passport">>,
+                    http_only => true,
+                    same_site => lax,
+                    secure => cookie_secure()
+                }
+            ),
+            cowboy_req:reply(200, #{
+                <<"content-type">> => <<"image/png; charset=utf-8">>
+            }, BinPng, Req2)
+    catch
+        Class:Reason:Stack ->
+            ?ERROR_LOG("simple_captcha:create failed ~p:~p ~p",
+                [Class, Reason, Stack]),
+            cowboy_req:reply(503, #{
+                <<"content-type">> => <<"application/json; charset=utf-8">>
+            }, jsx:encode(#{
+                code => 503,
+                msg => <<"captcha_unavailable">>,
+                hint => <<"ImageMagick `convert` missing; run: brew install imagemagick"/utf8>>
+            }), Req)
+    end.
 
 %% @doc 处理登录页面请求
 %% 返回包含 CSRF 令牌和 RSA 公钥的登录页面
