@@ -291,56 +291,6 @@ rsa_decrypt_oaep_v21(BinData, PrivateKey) ->
     end.
 
 
-%% @private 使用 OAEP v2.0/v2.1 解密 - pointycastle 兼容
-%%
-%% 自动检测 OAEP 版本：
-%% - v2.0: EM = maskedSeed || maskedDB
-%% - v2.1: EM = 0x00 || maskedSeed || maskedDB (需要跳过第一个字节)
-%%
--spec rsa_decrypt_oaep_v20(binary(), term()) -> binary().
-rsa_decrypt_oaep_v20(BinData, PrivateKey) ->
-    io:format("OAEP v2.0 fallback: 尝试手动 OAEP 解密~n", []),
-    % 使用裸 RSA 解密（不处理填充）
-    RawEM = public_key:decrypt_private(
-        BinData,
-        PrivateKey,
-        [{rsa_padding, rsa_no_padding}]
-    ),
-
-    io:format("OAEP v2.0 fallback: RawEM 长度=~p, 第一个字节=~p~n",
-              [byte_size(RawEM), binary:part(RawEM, 0, 1)]),
-
-    % RSA 解密可能返回比模数短的字节数（如果有前导零）
-    KeySize = 256,  % 2048 位 RSA
-    EM = case byte_size(RawEM) of
-        KeySize -> RawEM;
-        Shorter when Shorter < KeySize ->
-            PadLen = KeySize - Shorter,
-            <<0:PadLen/unit:8, RawEM/binary>>
-    end,
-
-    % 检测 OAEP 版本：如果第一个字节是 0x00，使用 v2.1 格式
-    <<FirstByte:8, _/binary>> = EM,
-    io:format("OAEP v2.0 fallback: EM 第一个字节=~p~n", [FirstByte]),
-    case FirstByte of
-        0 -> decode_oaep_v21_format(EM);
-        _ -> decode_oaep_v20_format(EM)
-    end.
-
-
-%% @private 解码 OAEP v2.1 格式 (EM = 0x00 || maskedSeed || maskedDB)
--spec decode_oaep_v21_format(binary()) -> binary().
-decode_oaep_v21_format(EM) ->
-    <<0:8, RestEM/binary>> = EM,
-    decode_oaep_common(RestEM).
-
-
-%% @private 解码 OAEP v2.0 格式 (EM = maskedSeed || maskedDB)
--spec decode_oaep_v20_format(binary()) -> binary().
-decode_oaep_v20_format(EM) ->
-    decode_oaep_common(EM).
-
-
 %% @private 通用的 OAEP 解码逻辑
 -spec decode_oaep_common(binary()) -> binary().
 decode_oaep_common(EM) ->

@@ -1852,10 +1852,6 @@ normalize_feature_payload(Value) ->
             end
     end.
 
--spec normalize_plugin_payload(term()) -> {ok, map()} | {error, map()}.
-normalize_plugin_payload(Value) ->
-    normalize_plugin_payload(Value, saved_feature_overrides()).
-
 -spec normalize_plugin_payload(term(), map()) -> {ok, map()} | {error, map()}.
 normalize_plugin_payload(Value, ExistingFeatureOverrides) ->
     Map0 = normalize_map(Value),

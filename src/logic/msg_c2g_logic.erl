@@ -16,9 +16,6 @@
 -include("log.hrl").
 -include("error_code.hrl").
 
-% 抑制 Dialyzer 类型推断警告 - elib_dt:rfc3339_to 的返回类型复杂
--dialyzer({nowarn_function, [parse_timestamp_or_default/2, ensure_integer/1]}).
-
 -define(REVOKE_TIMEOUT_MS, 120000). % 2分钟
 
 %% ===================================================================
@@ -34,32 +31,6 @@ policy_violation_reply(MsgId, Reason) ->
         <<"payload">> => #{<<"reason">> => Reason},
         <<"server_ts">> => elib_dt:millisecond()
     }}.
-
-%% @private
-%% @doc 解析时间戳或返回默认值
-%% 使用 try-catch 来处理所有可能的返回类型
--spec parse_timestamp_or_default(binary() | list(), any()) -> integer().
-parse_timestamp_or_default(Val, Default) ->
-    try
-        Result = elib_dt:rfc3339_to(Val, millisecond),
-        case Result of
-            {error, _} -> ensure_integer(Default);
-            Val2 when is_integer(Val2) -> Val2;
-            _ -> ensure_integer(Default)
-        end
-    catch
-        _:_ -> ensure_integer(Default)
-    end.
-
-%% @private
-%% @doc 确保值是整数
-%% 使用条件表达式而不是 guard
--spec ensure_integer(any()) -> integer().
-ensure_integer(Val) ->
-    case is_integer(Val) of
-        true -> Val;
-        false -> elib_dt:millisecond()
-    end.
 
 -spec mentions_from_payload(term()) -> list().
 mentions_from_payload(Payload) when is_map(Payload) ->
