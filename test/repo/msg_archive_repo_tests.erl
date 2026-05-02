@@ -115,6 +115,9 @@ archive_c2c_success_test_() ->
         <<"server_ts">>  => <<"2024-01-01T00:00:01Z">>
     },
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 888888 end}
+        ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, _Params) ->
                 %% next_conv_seq 返回序列号 1
@@ -150,6 +153,9 @@ archive_c2c_idempotent_on_unique_violation_test_() ->
         <<"server_ts">>  => <<"2024-01-01T00:00:00Z">>
     },
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 888889 end}
+        ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, _Params) ->
                 {ok, [#{<<"seq">> => 5}]}
@@ -192,7 +198,6 @@ archive_c2c_seq_error_propagates_test_() ->
 
 archive_c2g_success_test_() ->
     %% C2G payload 中包含 group_id（TSID），需要能解析
-    %% binary_to_integer(<<"abc">>) 需要 mock
     Row = #{
         <<"type">>       => <<"c2g">>,
         <<"msg_id">>     => <<"msg-g001">>,
@@ -200,11 +205,14 @@ archive_c2g_success_test_() ->
         <<"from_id">>    => 100,
         <<"to_id_list">> => [200, 300, 400],
         <<"e2ee">>       => null,
-        <<"payload">>    => <<"{\"to\":\"grp123\",\"body\":\"hi group\"}">>,
+        <<"payload">>    => <<"{\"to\":\"9000\",\"body\":\"hi group\"}">>,
         <<"created_at">> => <<"2024-01-01T00:00:00Z">>,
         <<"server_ts">>  => <<"2024-01-01T00:00:01Z">>
     },
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 888890 end}
+        ]},
         {elib_pg, [
             {'query', 2, fun(_Sql, _Params) ->
                 {ok, [#{<<"seq">> => 1}]}

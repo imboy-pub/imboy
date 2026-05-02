@@ -85,48 +85,60 @@ delete_with_conn_soft_sets_status_zero_test_() ->
     end).
 
 upsert_active_returns_true_when_state_changes_test_() ->
-    ?WITH_MECKS([
-        {elib_dt, [
-            {'now', 0, fun() -> <<"2026-02-22T00:00:00Z">> end}
-        ]},
-        {elib_pg, [
-            {'query', 3, fun(fake_conn, Sql, [11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
+    ?_test(begin
+        [meck_helper:cleanup_mock(M) || M <- [elib_dt, elib_tsid, elib_pg]],
+        ok = meck:new(elib_dt, [no_link]),
+        ok = meck:new(elib_tsid, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(elib_dt, now, 0, fun() -> <<"2026-02-22T00:00:00Z">> end),
+            meck:expect(elib_tsid, generate, 1, fun(channel_subscription) -> 9001 end),
+            meck:expect(elib_pg, query, 3, fun(fake_conn, Sql, [9001, 11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
                 SqlBin = iolist_to_binary(Sql),
                 ?assert(re:run(SqlBin, <<"ON CONFLICT \\(channel_id, user_id\\) DO UPDATE">>) =/= nomatch),
                 ?assert(re:run(SqlBin, <<"status <> 1">>) =/= nomatch),
                 {ok, [#{<<"changed">> => 1}]}
-            end}
-        ]}
-    ], fun() ->
-        ?assertEqual({ok, true}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+            end),
+            ?assertEqual({ok, true}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+        after
+            meck:unload([elib_pg, elib_tsid, elib_dt])
+        end
     end).
 
 upsert_active_returns_true_when_driver_returns_counted_rows_test_() ->
-    ?WITH_MECKS([
-        {elib_dt, [
-            {'now', 0, fun() -> <<"2026-02-22T00:00:00Z">> end}
-        ]},
-        {elib_pg, [
-            {'query', 3, fun(fake_conn, _Sql, [11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
+    ?_test(begin
+        [meck_helper:cleanup_mock(M) || M <- [elib_dt, elib_tsid, elib_pg]],
+        ok = meck:new(elib_dt, [no_link]),
+        ok = meck:new(elib_tsid, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(elib_dt, now, 0, fun() -> <<"2026-02-22T00:00:00Z">> end),
+            meck:expect(elib_tsid, generate, 1, fun(channel_subscription) -> 9002 end),
+            meck:expect(elib_pg, query, 3, fun(fake_conn, _Sql, [9002, 11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
                 {ok, 1, [{column, <<"changed">>, int4, 23, 4, -1, 1, 0, 0}], [{1}]}
-            end}
-        ]}
-    ], fun() ->
-        ?assertEqual({ok, true}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+            end),
+            ?assertEqual({ok, true}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+        after
+            meck:unload([elib_pg, elib_tsid, elib_dt])
+        end
     end).
 
 upsert_active_returns_false_when_already_active_test_() ->
-    ?WITH_MECKS([
-        {elib_dt, [
-            {'now', 0, fun() -> <<"2026-02-22T00:00:00Z">> end}
-        ]},
-        {elib_pg, [
-            {'query', 3, fun(fake_conn, _Sql, [11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
+    ?_test(begin
+        [meck_helper:cleanup_mock(M) || M <- [elib_dt, elib_tsid, elib_pg]],
+        ok = meck:new(elib_dt, [no_link]),
+        ok = meck:new(elib_tsid, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(elib_dt, now, 0, fun() -> <<"2026-02-22T00:00:00Z">> end),
+            meck:expect(elib_tsid, generate, 1, fun(channel_subscription) -> 9003 end),
+            meck:expect(elib_pg, query, 3, fun(fake_conn, _Sql, [9003, 11, 1001, <<"2026-02-22T00:00:00Z">>]) ->
                 {ok, []}
-            end}
-        ]}
-    ], fun() ->
-        ?assertEqual({ok, false}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+            end),
+            ?assertEqual({ok, false}, channel_subscription_repo:upsert_active(fake_conn, 11, 1001))
+        after
+            meck:unload([elib_pg, elib_tsid, elib_dt])
+        end
     end).
 
 increment_unread_executes_and_returns_ok_test_() ->

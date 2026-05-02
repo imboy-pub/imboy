@@ -18,10 +18,17 @@ create_missing_group_id_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(create, req_mock(), #{current_uid => 200}),
@@ -34,16 +41,23 @@ create_missing_title_returns_title_required_code_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"group_id">> => <<"g_valid">>,
+                    <<"group_id">> => <<"101">>,
                     <<"title">> => <<>>
                 }
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(create, req_mock(), #{current_uid => 200}),
@@ -56,7 +70,7 @@ create_logic_error_propagates_code_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"group_id">> => <<"g_valid">>,
+                    <<"group_id">> => <<"101">>,
                     <<"title">> => <<"第 1 章作业"/utf8>>
                 }
             end}
@@ -67,10 +81,17 @@ create_logic_error_propagates_code_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(create, req_mock(), #{current_uid => 200}),
@@ -83,14 +104,14 @@ create_with_user_ids_assigns_members_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"group_id">> => <<"g_valid">>,
+                    <<"group_id">> => <<"101">>,
                     <<"title">> => <<"第 1 章作业"/utf8>>,
                     <<"user_ids">> => [101, 102]
                 }
             end}
         ]},
         {group_task_logic, [
-            {'create', 4, fun(12, 200, _Title, _Data) ->
+            {'create', 4, fun(101, 200, _Title, _Data) ->
                 {ok, 42}
             end},
             {'assign', 2, fun(42, [101, 102]) ->
@@ -98,9 +119,16 @@ create_with_user_ids_assigns_members_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(create, req_mock(), #{current_uid => 200}),
@@ -124,9 +152,16 @@ update_numeric_task_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(update, req_mock(), #{current_uid => 200}),
@@ -144,10 +179,17 @@ assign_invalid_task_id_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(assign, req_mock(), #{current_uid => 200}),
@@ -160,8 +202,8 @@ assign_legacy_task_id_and_user_ids_compatible_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"task_id">> => <<"task_hash_42">>,
-                    <<"user_ids">> => [<<"user_hash_1">>, <<"user_hash_2">>]
+                    <<"task_id">> => <<"42">>,
+                    <<"user_ids">> => [<<"101">>, <<"102">>]
                 }
             end}
         ]},
@@ -171,9 +213,16 @@ assign_legacy_task_id_and_user_ids_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(assign, req_mock(), #{current_uid => 200}),
@@ -188,10 +237,17 @@ submit_missing_task_id_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(submit, req_mock(), #{current_uid => 201}),
@@ -220,9 +276,16 @@ submit_numeric_task_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(submit, req_mock(), #{current_uid => 201}),
@@ -253,9 +316,16 @@ submit_attachments_array_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(submit, req_mock(), #{current_uid => 201}),
@@ -267,7 +337,7 @@ review_legacy_assignment_id_compatible_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"assignment_id">> => <<"assignment_hash_456">>,
+                    <<"assignment_id">> => <<"456">>,
                     <<"score">> => 95,
                     <<"comment">> => <<"很好"/utf8>>
                 }
@@ -281,9 +351,16 @@ review_legacy_assignment_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(review, req_mock(), #{current_uid => 200}),
@@ -301,10 +378,17 @@ review_invalid_assignment_id_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(review, req_mock(), #{current_uid => 200}),
@@ -315,7 +399,7 @@ review_invalid_assignment_id_returns_bad_request_test_() ->
 detail_legacy_task_id_compatible_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
-            {'parse_qs', 1, fun(_Req) -> [{<<"task_id">>, <<"task_hash_88">>}] end}
+            {'parse_qs', 1, fun(_Req) -> [{<<"task_id">>, <<"88">>}] end}
         ]},
         {group_task_logic, [
             {'detail', 1, fun(88) ->
@@ -323,9 +407,16 @@ detail_legacy_task_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(detail, req_mock(), #{current_uid => 200}),
@@ -341,10 +432,17 @@ pending_review_missing_task_id_returns_bad_request_test_() ->
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(pending_review, req_mock(), #{current_uid => 200}),
@@ -371,9 +469,16 @@ pending_review_numeric_task_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(pending_review, req_mock(), #{current_uid => 200}),
@@ -383,7 +488,7 @@ pending_review_numeric_task_id_compatible_test_() ->
 list_defaults_to_current_uid_assignee_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
-            {'parse_qs', 1, fun(_Req) -> [{<<"group_id">>, <<"gid_12">>}] end}
+            {'parse_qs', 1, fun(_Req) -> [{<<"group_id">>, <<"12">>}] end}
         ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 20} end}
@@ -394,9 +499,16 @@ list_defaults_to_current_uid_assignee_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(list, req_mock(), #{current_uid => 200}),
@@ -407,7 +519,7 @@ list_status_filter_uses_current_uid_assignee_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"group_id">>, <<"gid_12">>}, {<<"status">>, <<"1">>}]
+                [{<<"group_id">>, <<"12">>}, {<<"status">>, <<"1">>}]
             end}
         ]},
         {elib_param, [
@@ -419,9 +531,16 @@ list_status_filter_uses_current_uid_assignee_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(list, req_mock(), #{current_uid => 200}),
@@ -432,7 +551,7 @@ list_legacy_assignee_compatible_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"user_hash_321">>}]
+                [{<<"group_id">>, <<"12">>}, {<<"assignee_id">>, <<"321">>}]
             end}
         ]},
         {elib_param, [
@@ -444,9 +563,16 @@ list_legacy_assignee_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(list, req_mock(), #{current_uid => 200}),
@@ -457,7 +583,7 @@ list_assignee_all_uses_group_view_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"all">>}]
+                [{<<"group_id">>, <<"12">>}, {<<"assignee_id">>, <<"all">>}]
             end}
         ]},
         {elib_param, [
@@ -469,9 +595,16 @@ list_assignee_all_uses_group_view_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(list, req_mock(), #{current_uid => 200}),
@@ -482,17 +615,24 @@ list_invalid_assignee_returns_bad_request_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"group_id">>, <<"gid_12">>}, {<<"assignee_id">>, <<"bad_uid">>}]
+                [{<<"group_id">>, <<"12">>}, {<<"assignee_id">>, <<"bad_uid">>}]
             end}
         ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = group_task_handler:handle_action(list, req_mock(), #{current_uid => 200}),

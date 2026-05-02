@@ -28,7 +28,8 @@ send_with_subject_only_test_() ->
             {'encode', 1, fun(_Email) -> <<"encoded_email">> end}
         ]},
         {ec_cnv, [
-            {'to_binary', 1, fun(Input) -> Input end}
+            {'to_binary', 1, fun(Input) when is_list(Input) -> list_to_binary(Input);
+                (Input) -> Input end}
         ]}
     ], fun() ->
         Subject = <<"测试主题"/utf8>>,
@@ -50,7 +51,7 @@ send_with_list_subject_test_() ->
             {'encode', 1, fun(_Email) -> <<"encoded">> end}
         ]},
         {ec_cnv, [
-            {'to_binary', 1, fun(_Input) -> <<"converted"/utf8>> end}
+            {'to_binary', 1, fun(_Input) -> <<"test@example.com">> end}
         ]}
     ], fun() ->
         Result = elib_email:send(<<"recipient@example.com">>, "列表主题"),
@@ -107,7 +108,7 @@ send_with_subject_and_body_test_() ->
 send_with_empty_body_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'env', 1, fun(smtp_option) -> [{username, "test"}] end}
+            {'env', 1, fun(smtp_option) -> [{username, "test@example.com"}] end}
         ]},
         {gen_smtp_client, [
             {'send', 2, fun(_Email, _Option) -> ok end}
@@ -125,7 +126,7 @@ send_with_long_body_test_() ->
     LongBody = list_to_binary(lists:duplicate(1000, $x)),
     ?WITH_MECKS([
         {config_ds, [
-            {'env', 1, fun(smtp_option) -> [{username, "test"}] end}
+            {'env', 1, fun(smtp_option) -> [{username, "test@example.com"}] end}
         ]},
         {gen_smtp_client, [
             {'send', 2, fun(_Email, _Option) -> ok end}
@@ -184,7 +185,7 @@ send_with_empty_smtp_option_test_() ->
     ], fun() ->
         Subject = <<"主题"/utf8>>,
         Result = elib_email:send(<<"to@test.com">>, Subject),
-        ?assertEqual({ok, success}, Result)
+        ?assertMatch({error, _}, Result)
     end).
 
 send_without_username_in_option_test_() ->
@@ -203,7 +204,7 @@ send_without_username_in_option_test_() ->
     ], fun() ->
         Subject = <<"主题"/utf8>>,
         Result = elib_email:send(<<"to@test.com">>, Subject),
-        ?assertEqual({ok, success}, Result)
+        ?assertMatch({error, _}, Result)
     end).
 
 send_with_atom_username_test_() ->
@@ -302,7 +303,7 @@ send_validates_utf8_charset_test_() ->
 send_with_special_characters_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'env', 1, fun(smtp_option) -> [{username, "test"}] end}
+            {'env', 1, fun(smtp_option) -> [{username, "test@example.com"}] end}
         ]},
         {gen_smtp_client, [
             {'send', 2, fun(_Email, _Option) -> ok end}
@@ -320,7 +321,7 @@ send_with_special_characters_test_() ->
 send_with_mixed_utf8_content_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'env', 1, fun(smtp_option) -> [{username, "test"}] end}
+            {'env', 1, fun(smtp_option) -> [{username, "test@example.com"}] end}
         ]},
         {gen_smtp_client, [
             {'send', 2, fun(_Email, _Option) -> ok end}
@@ -342,7 +343,7 @@ send_with_mixed_utf8_content_test_() ->
 send_returns_ok_success_test_() ->
     ?WITH_MECKS([
         {config_ds, [
-            {'env', 1, fun(smtp_option) -> [{username, "test"}] end}
+            {'env', 1, fun(smtp_option) -> [{username, "test@example.com"}] end}
         ]},
         {gen_smtp_client, [
             {'send', 2, fun(_Email, _Option) -> ok end}
@@ -354,4 +355,43 @@ send_returns_ok_success_test_() ->
         Subject = <<"主题"/utf8>>,
         Result = elib_email:send(<<"to@example.com">>, Subject),
         ?assertMatch({ok, success}, Result)
+    end).
+
+%% ===================================================================
+%% mimemail:encode crash 防护测试
+%% ===================================================================
+
+send_handles_mimemail_encode_crash_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(smtp_option) ->
+                [{username, "sender@example.com"}]
+            end}
+        ]},
+        {mimemail, [
+            {'encode', 1, fun(_Email) ->
+                erlang:error(badmatch, {error, {999999, smtp_rfc5322_parse,
+                    ["syntax error before: ", []]}})
+            end}
+        ]}
+    ], fun() ->
+        Result = elib_email:send(<<"to@example.com">>, <<"Subject">>, <<"Body">>),
+        ?assertMatch({error, _}, Result)
+    end).
+
+send_handles_mimemail_encode_throw_test_() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(smtp_option) ->
+                [{username, "sender@example.com"}]
+            end}
+        ]},
+        {mimemail, [
+            {'encode', 1, fun(_Email) ->
+                throw({error, invalid_email_format})
+            end}
+        ]}
+    ], fun() ->
+        Result = elib_email:send(<<"to@example.com">>, <<"Subject">>, <<"Body">>),
+        ?assertMatch({error, _}, Result)
     end).

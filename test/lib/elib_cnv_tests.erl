@@ -394,7 +394,7 @@ convert_at_timestamps_invalid_time_test_() ->
     ?TEST_SIMPLE(fun() ->
         Input = #{<<"created_at">> => <<"invalid-date">>},
         Result = elib_cnv:convert_at_timestamps(Input),
-        ?assertMatch(#{<<"created_at">> := {error, empty_input}}, Result)
+        ?assertMatch(#{<<"created_at">> := null}, Result)
     end).
 
 %% @doc 测试空时间字符串
@@ -402,5 +402,5 @@ convert_at_timestamps_empty_time_test_() ->
     ?TEST_SIMPLE(fun() ->
         Input = #{<<"created_at">> => <<>>},
         Result = elib_cnv:convert_at_timestamps(Input),
-        ?assertMatch(#{<<"created_at">> := {error, empty_input}}, Result)
+        ?assertMatch(#{<<"created_at">> := null}, Result)
     end).

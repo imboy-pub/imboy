@@ -5,7 +5,7 @@
 %%%===================================================================
 %%% @doc
 %%% group_album_repo 模块的 EUnit 测试
-%%% 测试群相册数据仓库层功能
+%%% 测试群相册数据仓库层功能（使用 meck mock，不依赖真实数据库）
 %%%===================================================================
 
 %% ===================================================================
@@ -13,7 +13,11 @@
 %% ===================================================================
 
 tablename_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = group_album_repo:tablename(),
         ?assertEqual(<<"public.group_album">>, Result)
     end).
@@ -23,18 +27,26 @@ tablename_test_() ->
 %% ===================================================================
 
 create_album_valid_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 100001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
         Gid = 1,
         AlbumId = <<"album_test_001">>,
         AlbumName = <<"测试相册"/utf8>>,
         CreatorId = 1,
         Result = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-        case Result of
-            {ok, Id, _} when is_integer(Id) ->
-                ?assert(Id > 0, "Expected positive ID");
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason), "Expected atom or binary error reason")
-        end
+        ?assertEqual({ok, 100001}, Result)
     end).
 
 %% ===================================================================
@@ -42,21 +54,29 @@ create_album_valid_test_() ->
 %% ===================================================================
 
 find_album_by_id_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        Gid = 1,
-        AlbumId = <<"album_test_002">>,
-        AlbumName = <<"测试相册2"/utf8>>,
-        CreatorId = 1,
-        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-
-        % 查询测试
-        Result = group_album_repo:find_album_by_id(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"id">> => 100, <<"album_name">> => <<"测试相册"/utf8>>}}
+            end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:find_album_by_id(100),
         ?assertMatch(#{<<"id">> := _, <<"album_name">> := _}, Result)
     end).
 
 find_album_by_id_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {error, not_found} end}
+        ]}
+    ], fun() ->
         Result = group_album_repo:find_album_by_id(999999),
         ?assertEqual(#{}, Result)
     end).
@@ -66,7 +86,16 @@ find_album_by_id_not_existing_test_() ->
 %% ===================================================================
 
 list_albums_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'page_with_total', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Size) ->
+                {ok, #{<<"list">> => [], <<"total">> => 0}}
+            end}
+        ]}
+    ], fun() ->
         Gid = 1,
         Page = 1,
         Size = 10,
@@ -74,8 +103,6 @@ list_albums_test_() ->
         case Result of
             {ok, #{<<"list">> := List, <<"total">> := Total}} when is_list(List), is_integer(Total) ->
                 ?assert(Total >= 0);
-            {ok, List} when is_list(List) ->
-                ?assert(is_list(List));
             _ ->
                 ?assert(false, "Expected list result")
         end
@@ -86,7 +113,20 @@ list_albums_test_() ->
 %% ===================================================================
 
 insert_photo_valid_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 200001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
         PhotoData = #{
             group_id => 1,
             album_id => <<"album_test_003">>,
@@ -97,12 +137,7 @@ insert_photo_valid_test_() ->
             uploader_id => 1
         },
         Result = group_album_repo:insert_photo(PhotoData),
-        case Result of
-            {ok, Id, _} when is_integer(Id) ->
-                ?assert(Id > 0, "Expected positive ID");
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason), "Expected atom or binary error reason")
-        end
+        ?assertEqual({ok, 200001}, Result)
     end).
 
 %% ===================================================================
@@ -110,26 +145,29 @@ insert_photo_valid_test_() ->
 %% ===================================================================
 
 find_photo_by_id_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_004">>,
-            photo_id => <<"photo_test_002">>,
-            photo_name => <<"测试图片2.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo2.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-
-        % 查询测试
-        Result = group_album_repo:find_photo_by_id(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"id">> => 200, <<"photo_name">> => <<"测试图片.jpg"/utf8>>}}
+            end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:find_photo_by_id(200),
         ?assertMatch(#{<<"id">> := _, <<"photo_name">> := _}, Result)
     end).
 
 find_photo_by_id_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {error, not_found} end}
+        ]}
+    ], fun() ->
         Result = group_album_repo:find_photo_by_id(999999),
         ?assertEqual(#{}, Result)
     end).
@@ -139,7 +177,16 @@ find_photo_by_id_not_existing_test_() ->
 %% ===================================================================
 
 list_photos_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'page_with_total', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Size) ->
+                {ok, #{<<"list">> => [], <<"total">> => 0}}
+            end}
+        ]}
+    ], fun() ->
         AlbumId = <<"album_test_005">>,
         Page = 1,
         Size = 10,
@@ -147,8 +194,6 @@ list_photos_test_() ->
         case Result of
             {ok, #{<<"list">> := List, <<"total">> := Total}} when is_list(List), is_integer(Total) ->
                 ?assert(Total >= 0);
-            {ok, List} when is_list(List) ->
-                ?assert(is_list(List));
             _ ->
                 ?assert(false, "Expected list result")
         end
@@ -159,27 +204,25 @@ list_photos_test_() ->
 %% ===================================================================
 
 like_photo_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_006">>,
-            photo_id => <<"photo_test_003">>,
-            photo_name => <<"测试图片3.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo3.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-        PhotoId = integer_to_binary(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 300001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end},
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        PhotoId = <<"200">>,
         UserId = 1,
-
-        % 点赞测试
         Result = group_album_repo:like_photo(PhotoId, UserId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Like should succeed")
-        end
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -187,28 +230,18 @@ like_photo_test_() ->
 %% ===================================================================
 
 unlike_photo_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据并点赞
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_007">>,
-            photo_id => <<"photo_test_004">>,
-            photo_name => <<"测试图片4.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo4.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-        PhotoId = integer_to_binary(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        PhotoId = <<"200">>,
         UserId = 1,
-        group_album_repo:like_photo(PhotoId, UserId),
-
-        % 取消点赞测试
         Result = group_album_repo:unlike_photo(PhotoId, UserId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Unlike should succeed")
-        end
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -216,29 +249,29 @@ unlike_photo_test_() ->
 %% ===================================================================
 
 is_liked_true_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据并点赞
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_008">>,
-            photo_id => <<"photo_test_005">>,
-            photo_name => <<"测试图片5.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo5.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-        PhotoId = integer_to_binary(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {ok, #{<<"1">> => 1}} end}
+        ]}
+    ], fun() ->
+        PhotoId = <<"200">>,
         UserId = 1,
-        group_album_repo:like_photo(PhotoId, UserId),
-
-        % 检查是否点赞
         Result = group_album_repo:is_liked(PhotoId, UserId),
         ?assertEqual(true, Result)
     end).
 
 is_liked_false_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {error, not_found} end}
+        ]}
+    ], fun() ->
         PhotoId = <<"photo_not_exist">>,
         UserId = 1,
         Result = group_album_repo:is_liked(PhotoId, UserId),
@@ -250,28 +283,26 @@ is_liked_false_test_() ->
 %% ===================================================================
 
 add_comment_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_009">>,
-            photo_id => <<"photo_test_006">>,
-            photo_name => <<"测试图片6.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo6.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-        PhotoId = integer_to_binary(InsertId),
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 400001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end},
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        PhotoId = <<"200">>,
         UserId = 1,
         Content = <<"这是一条测试评论"/utf8>>,
-
-        % 添加评论测试
         Result = group_album_repo:add_comment(PhotoId, UserId, Content),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Add comment should succeed")
-        end
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -279,24 +310,17 @@ add_comment_test_() ->
 %% ===================================================================
 
 list_comments_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据和评论
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_010">>,
-            photo_id => <<"photo_test_007">>,
-            photo_name => <<"测试图片7.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo7.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-        PhotoId = integer_to_binary(InsertId),
-        UserId = 1,
-        Content = <<"测试评论"/utf8>>,
-        group_album_repo:add_comment(PhotoId, UserId, Content),
-
-        % 查询评论列表
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => 1, <<"content">> => <<"测试评论"/utf8>>}]}
+            end}
+        ]}
+    ], fun() ->
+        PhotoId = <<"200">>,
         Result = group_album_repo:list_comments(PhotoId, 10),
         case Result of
             {ok, List} when is_list(List) ->
@@ -311,21 +335,20 @@ list_comments_test_() ->
 %% ===================================================================
 
 update_album_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        Gid = 1,
-        AlbumId = <<"album_test_011">>,
-        AlbumName = <<"原相册名"/utf8>>,
-        CreatorId = 1,
-        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-
-        % 更新相册
-        UpdateData = #{id => InsertId, album_name => <<"新相册名"/utf8>>},
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'update', 4, fun(_Tb, _Data, _Where, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        UpdateData = #{<<"id">> => 100, <<"album_name">> => <<"新相册名"/utf8>>},
         Result = group_album_repo:update_album(UpdateData),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Update should succeed")
-        end
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -333,20 +356,19 @@ update_album_test_() ->
 %% ===================================================================
 
 delete_album_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        Gid = 1,
-        AlbumId = <<"album_test_012">>,
-        AlbumName = <<"要删除的相册"/utf8>>,
-        CreatorId = 1,
-        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-
-        % 删除相册
-        Result = group_album_repo:delete_album(InsertId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Delete should succeed")
-        end
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'update', 4, fun(_Tb, _Data, _Where, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:delete_album(100),
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -354,25 +376,16 @@ delete_album_test_() ->
 %% ===================================================================
 
 delete_photo_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        PhotoData = #{
-            group_id => 1,
-            album_id => <<"album_test_013">>,
-            photo_id => <<"photo_test_008">>,
-            photo_name => <<"要删除的图片.jpg"/utf8>>,
-            photo_url => <<"http://example.com/photo8.jpg">>,
-            photo_size => 102400,
-            uploader_id => 1
-        },
-        {ok, InsertId, _} = group_album_repo:insert_photo(PhotoData),
-
-        % 删除图片
-        Result = group_album_repo:delete_photo(InsertId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Delete should succeed")
-        end
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'update', 4, fun(_Tb, _Data, _Where, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:delete_photo(200),
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -380,20 +393,19 @@ delete_photo_test_() ->
 %% ===================================================================
 
 increment_photo_count_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        Gid = 1,
-        AlbumId = <<"album_test_014">>,
-        AlbumName = <<"测试相册14"/utf8>>,
-        CreatorId = 1,
-        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-
-        % 增加照片计数
-        Result = group_album_repo:increment_photo_count(InsertId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Increment should succeed")
-        end
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:increment_photo_count(100),
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================
@@ -401,18 +413,17 @@ increment_photo_count_test_() ->
 %% ===================================================================
 
 decrement_photo_count_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入测试数据
-        Gid = 1,
-        AlbumId = <<"album_test_015">>,
-        AlbumName = <<"测试相册15"/utf8>>,
-        CreatorId = 1,
-        {ok, InsertId, _} = group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId),
-
-        % 减少照片计数
-        Result = group_album_repo:decrement_photo_count(InsertId),
-        case Result of
-            {ok, _} -> ok;
-            {error, _} -> ?assert(false, "Decrement should succeed")
-        end
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        Result = group_album_repo:decrement_photo_count(100),
+        ?assertMatch({ok, _}, Result)
     end).

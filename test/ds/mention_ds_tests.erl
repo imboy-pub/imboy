@@ -34,7 +34,7 @@ save_mentions_with_single_user_test_() ->
     ], fun() ->
         MsgId = <<"test_msg_2">>,
         Gid = 100,
-        Mentions = [<<"hash1">>],
+        Mentions = [<<"101">>],
         FromUid = 300,
         Result = mention_ds:save_mentions(MsgId, Gid, Mentions, FromUid),
         ?assertEqual(ok, Result)
@@ -46,7 +46,7 @@ save_mentions_with_multiple_users_test_() ->
     ], fun() ->
         MsgId = <<"test_msg_3">>,
         Gid = 100,
-        Mentions = [<<"hash1">>, <<"hash2">>, <<"hash3">>],
+        Mentions = [<<"101">>, <<"102">>, <<"103">>],
         FromUid = 300,
         Result = mention_ds:save_mentions(MsgId, Gid, Mentions, FromUid),
         ?assertEqual(ok, Result)
@@ -165,7 +165,14 @@ delete_by_msg_id_calls_repo_test_() ->
 %% ===================================================================
 
 save_mentions_with_invalid_uid_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        {ec_cnv, [
+            {'to_integer', 1, fun(<<"invalid">>) -> 0 end}
+        ]},
+        {mention_repo, [
+            {'insert', 4, fun(_MsgId, _Gid, _Uid, _FromUid) -> ok end}
+        ]}
+    ], fun() ->
         MsgId = <<"test_msg_5">>,
         Gid = 100,
         Mentions = [<<"invalid">>],

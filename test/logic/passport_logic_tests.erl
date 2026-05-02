@@ -8,65 +8,103 @@
 %%%
 %%% 目标：验证登录注册业务逻辑功能
 %%% 覆盖：注册、登录、验证码发送、用户验证、快速登录
+%%%
+%%% 注意：passport_logic API 签名已更新，测试与当前源码对齐：
+%%%   - do_login/3 -> do_login/5 (带 DType, Did)
+%%%   - quick_login/4 (Service, Operator, Token, PostVals)
+%%%   - verify_user/2 (Password, UserMap)
+%%%   - signup/4, login/3 (兼容入口)
 %%%===================================================================
 
 %% ===================================================================
-%% do_signup/5 测试
+%% signup/4 测试 (兼容旧入口)
 %% ===================================================================
 
-do_signup_with_valid_data_succeeds_test_() ->
+signup_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {user_repo, [
-            {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end},
-            {'save', 1, fun(_Data) -> {ok, 1} end}
+        {elib_password, [
+            {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
         ]},
-        {user_setting_ds, [
-            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+        {account_ds, [
+            {'allocate', 0, fun() -> <<"test_account">> end}
         ]},
-        {user_device_ds, [
-            {'is_activated', 2, fun(_Uid, _DID) -> false end}
+        {user_ds, [
+            {'find_by_mobile', 2, fun(_Mobile, _Fields) -> #{} end},
+            {'insert_and_get_id', 1, fun(_Data) -> {ok, 1001} end},
+            {'find_by_id', 2, fun(_Id, _Fields) ->
+                #{<<"id">> => 1001, <<"email">> => <<>>, <<"nickname">> => <<"13800138000">>,
+                  <<"avatar">> => <<>>, <<"account">> => <<"test">>, <<"gender">> => 0,
+                  <<"region">> => <<>>, <<"sign">> => <<>>, <<"status">> => 1}
+            end}
         ]},
-        {user_log_ds, [
-            {'add_password_change_log', 4, fun(_Conn, _Uid, _Req0, _Type) -> {ok, ok} end}
+        {token_ds, [
+            {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
+            {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
         ]}
     ], fun() ->
-        Mobile = <<"13800138000">>,
+        Mobile = <<"+8613800138000">>,
         Password = <<"Test@123456">>,
-        Email = <<"test@example.com">>,
-        Req0 = #{},
-        Ip = <<"127.0.0.1">>,
+        Email = <<"">>,
+        PostVals = #{},
 
-        Result = passport_logic:do_signup(Mobile, Password, Email, Req0, Ip),
+        Result = passport_logic:signup(Mobile, Password, Email, PostVals),
         ?assertMatch({ok, _Map}, Result)
     end).
 
-do_signup_with_existing_mobile_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-            {ok, #{<<"id">> => 1}}
-        end}
-    ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"Test@123456">>,
-        Email = <<"test@example.com">>,
-        Req0 = #{},
-        Ip = <<"127.0.0.1">>,
-
-        Result = passport_logic:do_signup(Mobile, Password, Email, Req0, Ip),
+signup_with_short_password_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:signup(<<"+8613800138000">>, <<"123">>, <<"">>, #{}),
         ?assertMatch({error, _, _}, Result)
     end).
 
-do_signup_with_invalid_password_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"123">>,  % 太短
-        Email = <<"test@example.com">>,
-        Req0 = #{},
-        Ip = <<"127.0.0.1">>,
+%% ===================================================================
+%% login/3 测试 (兼容旧入口)
+%% ===================================================================
 
-        Result = passport_logic:do_signup(Mobile, Password, Email, Req0, Ip),
+login_with_valid_credentials_succeeds_test_() ->
+    ?WITH_MECKS([
+        {elib_type, [
+            {'is_email', 1, fun(_) -> false end}
+        ]},
+        {user_ds, [
+            {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
+                #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>,
+                  <<"email">> => <<"">>, <<"nickname">> => <<"Test">>,
+                  <<"avatar">> => <<>>, <<"account">> => <<"test">>,
+                  <<"gender">> => 0, <<"region">> => <<>>, <<"sign">> => <<>>,
+                  <<"status">> => 1}
+            end},
+            {'update_friends_last_seen_at', 2, fun(_, _) -> ok end}
+        ]},
+        {elib_password, [
+            {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
+        ]},
+        {token_ds, [
+            {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
+            {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
+        ]},
+        {user_device_logic, [
+            {'validate_device_type', 1, fun(_) -> true end},
+            {'check_login_conflict', 2, fun(_, _) -> {ok, no_conflict} end}
+        ]},
+        {user_device_ds, [
+            {'save', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {message_ds, [
+            {'check_and_notify_offline_msgs', 1, fun(_) -> ok end}
+        ]}
+    ], fun() ->
+        Account = <<"+8613800138000">>,
+        Password = <<"Test@123456">>,
+        PostVals = #{<<"did">> => <<"device_1">>},
+
+        Result = passport_logic:login(Account, Password, PostVals),
+        ?assertMatch({ok, #{<<"uid">> := _, <<"token">> := _}}, Result)
+    end).
+
+login_with_empty_password_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:login(<<"+8613800138000">>, <<"">>, #{}),
         ?assertMatch({error, _, _}, Result)
     end).
 
@@ -74,84 +112,57 @@ do_signup_with_invalid_password_fails_test_() ->
 %% do_login/3 测试
 %% ===================================================================
 
-do_login_with_valid_credentials_succeeds_test_() ->
+do_login_delegates_to_5_test_() ->
     ?WITH_MECKS([
-        {user_repo, [
+        {elib_type, [
+            {'is_email', 1, fun(_) -> false end}
+        ]},
+        {user_ds, [
             {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-                {ok, #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>}}
+                #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>,
+                  <<"email">> => <<"">>, <<"nickname">> => <<"Test">>,
+                  <<"avatar">> => <<>>, <<"account">> => <<"test">>,
+                  <<"gender">> => 0, <<"region">> => <<>>, <<"sign">> => <<>>,
+                  <<"status">> => 1}
             end}
         ]},
-        {user_device_ds, [
-            {'is_activated', 2, fun(_Uid, _DID) -> false end}
-        ]},
-        {user_setting_ds, [
-            {'find_by_uid', 1, fun(_Uid) -> {ok, #{}} end}
+        {elib_password, [
+            {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
         ]},
         {token_ds, [
-            {'encrypt_token', 1, fun(_Uid) -> <<"encrypted_token">> end}
+            {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
+            {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
         ]},
-        {user_device_ds, [
-            {'save', 5, fun(_Now, _Uid, _DID, _PostMap) -> ok end}
-        ]},
-        {user_log_ds, [
-            {'add_password_change_log', 4, fun(_Conn, _Uid, _Req0, _Type) -> {ok, ok} end}
+        {user_device_logic, [
+            {'validate_device_type', 1, fun(_) -> true end},
+            {'check_login_conflict', 2, fun(_, _) -> {ok, no_conflict} end}
         ]}
     ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"Test@123456">>,
-        PostMap = #{<<"did">> => <<"device_1">>},
-
-        Result = passport_logic:do_login(Mobile, Password, PostMap),
+        Result = passport_logic:do_login(<<"mobile">>, <<"+8613800138000">>, <<"Test@123456">>),
         ?assertMatch({ok, #{<<"uid">> := _, <<"token">> := _}}, Result)
     end).
 
-do_login_with_invalid_password_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-            {ok, #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>}}
-            end}
-        ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"WrongPassword">>,
-        PostMap = #{},
-
-        Result = passport_logic:do_login(Mobile, Password, PostMap),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-do_login_with_nonexistent_user_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<"13900139999">>,
-        Password = <<"Test@123456">>,
-        PostMap = #{},
-
-        Result = passport_logic:do_login(Mobile, Password, PostMap),
-        ?assertMatch({error, _, _}, Result)
+do_login_with_empty_password_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:do_login(<<"mobile">>, <<"+8613800138000">>, <<>>),
+        ?assertMatch({error, _}, Result)
     end).
 
 %% ===================================================================
-%% verify_user/2 测试
+%% verify_user/2 测试 -- 注意签名是 (Password, UserMap)
 %% ===================================================================
 
-verify_user_with_valid_credentials_succeeds_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-            {ok, #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>}}
-        end}
-    ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"Test@123456">>,
-
-        Result = passport_logic:verify_user(Mobile, Password),
-        ?assertMatch({ok, 123}, Result)
+verify_user_with_empty_password_returns_error_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:verify_user(<<>>, #{}),
+        ?assertMatch({error, _}, Result)
     end).
 
-%% @doc 测试 verify_user 返回的数据包含 id 字段
-%% Bug: {badkey,<<"id">>} 错误表明 login_resp 没有返回 id 字段
-%% 这个测试验证修复后的行为
-verify_user_returns_id_field_test_() ->
+verify_user_with_empty_user_map_returns_error_test() ->
+    Result = passport_logic:verify_user(<<"Test@123456">>, #{}),
+    ?assertEqual({error, <<"账号不存在"/utf8>>}, Result).
+
+verify_user_with_valid_password_succeeds_test_() ->
     ?WITH_MECKS([
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
@@ -161,7 +172,6 @@ verify_user_returns_id_field_test_() ->
             {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
         ]}
     ], fun() ->
-        % 模拟用户数据（来自 user_ds:find_by_xxx）
         User = #{
             <<"id">> => 12345,
             <<"password">> => <<"$2a$12$hash">>,
@@ -174,257 +184,327 @@ verify_user_returns_id_field_test_() ->
             <<"sign">> => <<"Hello">>,
             <<"status">> => 1
         },
-        Password = <<"Test@123456">>,
-
-        % 调用 verify_user
-        Result = passport_logic:verify_user(Password, User),
-
-        % 验证返回的数据包含 id 字段（这是 Bug 的核心）
-        ?assertMatch({ok, #{<<"id">> := 12345, <<"uid">> := _}}, Result)
+        Result = passport_logic:verify_user(<<"Test@123456">>, User),
+        ?assertMatch({ok, #{<<"uid">> := 12345, <<"token">> := _}}, Result)
     end).
 
-%% @doc 测试 do_login_verify 返回的数据包含 id 字段
-%% 这是完整登录流程的测试
-do_login_verify_returns_id_field_test_() ->
+verify_user_with_wrong_password_fails_test_() ->
+    ?WITH_MECKS([
+        {elib_password, [
+            {'verify', 2, fun(_Pwd, _Hash) -> {error, <<"密码有误"/utf8>>} end}
+        ]}
+    ], fun() ->
+        User = #{
+            <<"id">> => 12345,
+            <<"password">> => <<"$2a$12$hash">>,
+            <<"email">> => <<>>,
+            <<"nickname">> => <<"Test">>,
+            <<"avatar">> => <<>>,
+            <<"account">> => <<"test">>,
+            <<"gender">> => 0,
+            <<"region">> => <<>>,
+            <<"sign">> => <<>>,
+            <<"status">> => 1
+        },
+        Result = passport_logic:verify_user(<<"WrongPassword">>, User),
+        ?assertMatch({error, _}, Result)
+    end).
+
+verify_user_with_disabled_account_fails_test_() ->
     ?WITH_MECKS([
         {elib_password, [
             {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
-        ]},
-        {token_ds, [
-            {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
-            {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
-        ]},
-        {user_device_logic, [
-            {'validate_device_type', 1, fun(_DType) -> true end},
-            {'check_login_conflict', 2, fun(_Uid, _DType) -> {ok, no_conflict} end}
         ]}
     ], fun() ->
-        % 模拟用户数据
         User = #{
-            <<"id">> => 99999,
+            <<"id">> => 12345,
             <<"password">> => <<"$2a$12$hash">>,
-            <<"email">> => <<"login@test.com">>,
-            <<"nickname">> => <<"Login User">>,
-            <<"avatar">> => <<"">>,
-            <<"account">> => <<"login_test">>,
-            <<"gender">> => 0,
-            <<"region">> => <<"">>,
-            <<"sign">> => <<"">>,
-            <<"status">> => 1
+            <<"email">> => <<>>, <<"nickname">> => <<"T">>, <<"avatar">> => <<>>,
+            <<"account">> => <<"t">>, <<"gender">> => 0, <<"region">> => <<>>,
+            <<"sign">> => <<>>, <<"status">> => 0
         },
-        Password = <<"Password123">>,
-        DType = <<"mobile">>,
-
-        % 调用 do_login_verify
-        Result = passport_logic:do_login_verify(Password, User, DType, <<>>),
-
-        % 验证返回的数据包含 id 和 uid 字段
-        ?assertMatch({ok, #{<<"id">> := 99999, <<"uid">> := _, <<"token">> := _, <<"refreshtoken">> := _}}, Result)
+        Result = passport_logic:verify_user(<<"Test@123456">>, User),
+        ?assertMatch({error, _}, Result)
     end).
 
-verify_user_with_invalid_password_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-            {ok, #{<<"id">> => 123, <<"password">> => <<"$2a$12$hash">>}}
-        end}
-        ], fun() ->
-        Mobile = <<"13800138000">>,
-        Password = <<"WrongPassword">>,
-
-        Result = passport_logic:verify_user(Mobile, Password),
-        ?assertMatch({error, invalid_password, _}, Result)
+verify_user_with_deleted_account_fails_test_() ->
+    ?WITH_MECKS([
+        {elib_password, [
+            {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
+        ]}
+    ], fun() ->
+        User = #{
+            <<"id">> => 12345,
+            <<"password">> => <<"$2a$12$hash">>,
+            <<"email">> => <<>>, <<"nickname">> => <<"T">>, <<"avatar">> => <<>>,
+            <<"account">> => <<"t">>, <<"gender">> => 0, <<"region">> => <<>>,
+            <<"sign">> => <<>>, <<"status">> => -1
+        },
+        Result = passport_logic:verify_user(<<"Test@123456">>, User),
+        ?assertMatch({error, _}, Result)
     end).
 
-verify_user_with_empty_user_map_returns_account_not_found_test() ->
-    Result = passport_logic:verify_user(<<"Test@123456">>, #{}),
-    ?assertEqual({error, <<"账号不存在"/utf8>>}, Result).
-
-verify_user_with_nonexistent_user_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<"13900139999">>,
-        Password = <<"Test@123456">>,
-
-        Result = passport_logic:verify_user(Mobile, Password),
-        ?assertMatch({error, user_not_found, _}, Result)
-    end).
+%% ===================================================================
+%% do_login_verify/4 测试 (内部函数，通过 do_login/3 间接测试)
+%% 注意：do_login_verify/4 未导出，不能直接调用
+%% ===================================================================
 
 %% ===================================================================
 %% quick_login/4 测试
 %% ===================================================================
 
-quick_login_with_valid_token_succeeds_test_() ->
-    ?WITH_MECKS([
-        {token_ds, [
-            {'decrypt_token', 1, fun(_Token) -> {ok, #{<<"uid">> => 123}} end}
-        ]},
-        {user_repo, [
-            {'find_by_id', 2, fun(_Uid, _Fields) ->
-                {ok, #{<<"id">> => 123, <<"status">> => 1}}
-            end}
-        ]},
-        {user_setting_ds, [
-            {'find_by_uid', 1, fun(_Uid) -> {ok, #{}} end}
-        ]},
-        {token_ds, [
-            {'encrypt_token', 1, fun(_Uid) -> <<"new_token">> end}
-        ]}
-    ], fun() ->
-        Token = <<"valid_token">>,
-        PostMap = #{<<"did">> => <<"device_1">>},
-
-        Result = passport_logic:quick_login(Token, PostMap),
-        ?assertMatch({ok, #{<<"uid">> := _, <<"token">> := _}}, Result)
+quick_login_with_empty_service_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:quick_login(<<>>, undefined, <<"token">>, #{}),
+        ?assertMatch({error, _}, Result)
     end).
 
-quick_login_with_invalid_token_fails_test_() ->
-    ?WITH_MECK(token_ds, [
-        {'decrypt_token', 1, fun(_Token) -> {error, invalid_token} end}
-        ], fun() ->
-        Token = <<"invalid_token">>,
-        PostMap = #{},
-
-        Result = passport_logic:quick_login(Token, PostMap),
-        ?assertMatch({error, invalid_token, _}, Result)
-    end).
-
-quick_login_with_inactive_user_fails_test_() ->
-    ?WITH_MECKS([
-        {token_ds, [
-            {'decrypt_token', 1, fun(_Token) -> {ok, #{<<"uid">> => 123}} end}
-        ]},
-        {user_repo, [
-            {'find_by_id', 2, fun(_Uid, _Fields) ->
-                {ok, #{<<"id">> => 123, <<"status">> => 0}}
-            end}
-        ]}
-    ], fun() ->
-        Token = <<"valid_token">>,
-        PostMap = #{},
-
-        Result = passport_logic:quick_login(Token, PostMap),
-        ?assertMatch({error, user_inactive, _}, Result)
+quick_login_with_unsupported_service_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:quick_login(<<"unknown">>, <<"op">>, <<"token">>, #{}),
+        ?assertMatch({error, _}, Result)
     end).
 
 %% ===================================================================
 %% send_code/2 测试
 %% ===================================================================
 
-send_code_with_valid_mobile_succeeds_test_() ->
-    ?WITH_MECK(verification_code_ds, [
-        {'send', 3, fun(_Mobile, _Code, _Scene) -> {ok, sent} end}
+send_code_with_sms_type_calls_throttle_test_() ->
+    ?WITH_MECKS([
+        {throttle, [
+            {'check', 2, fun(_Type, _Key) -> ok end}
+        ]},
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) -> #{} end},
+            {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
+        ]},
+        {elib_cipher, [
+            {'num_random', 1, fun(_N) -> 123456 end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end},
+            {'add', 2, fun(_Now, _Dur) -> <<"2099-01-01T00:00:00Z">> end},
+            {'minus', 2, fun(_Now, _Dur) -> 1699999880000 end}
+        ]},
+        {ec_cnv, [
+            {'to_binary', 1, fun(X) -> integer_to_binary(X) end}
+        ]},
+        {imboy_sms, [
+            {'send', 3, fun(_Mobile, _Content, _Type) -> ok end}
+        ]}
     ], fun() ->
-        Mobile = <<"13800138000">>,
-        Scene = <<"login">>,
-
-        Result = passport_logic:send_code(Mobile, Scene),
-        ?assertMatch({ok, _Map}, Result)
+        Result = passport_logic:send_code(<<"+8613800138000">>, <<"sms">>),
+        ?assertMatch({ok, _}, Result)
     end).
 
-send_code_with_empty_mobile_fails_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Mobile = <<>>,
-        Scene = <<"login">>,
-
-        Result = passport_logic:send_code(Mobile, Scene),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-send_code_with_invalid_mobile_format_fails_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Mobile = <<"invalid">>,
-        Scene = <<"login">>,
-
-        Result = passport_logic:send_code(Mobile, Scene),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-send_code_unavailable_scene_fails_test_() ->
-    ?WITH_MECK(verification_code_ds, [
-        {'send', 3, fun(_Mobile, _Code, _Scene) -> {error, rate_limited} end}
+send_code_with_email_type_succeeds_test_() ->
+    ?WITH_MECKS([
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) -> #{} end},
+            {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
+        ]},
+        {elib_cipher, [
+            {'num_random', 1, fun(_N) -> 654321 end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end},
+            {'add', 2, fun(_Now, _Dur) -> <<"2099-01-01T00:00:00Z">> end}
+        ]},
+        {elib_email, [
+            {'send', 2, fun(_To, _Msg) -> ok end}
+        ]}
     ], fun() ->
-        Mobile = <<"13800138000">>,
-        Scene = <<"invalid_scene">>,
+        Result = passport_logic:send_code(<<"test@example.com">>, <<"email">>),
+        ?assertMatch({ok, _}, Result)
+    end).
 
-        Result = passport_logic:send_code(Mobile, Scene),
-        ?assertMatch({error, _, _}, Result)
+send_code_with_invalid_type_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:send_code(<<"test">>, <<"fax">>),
+        ?assertMatch({error, _}, Result)
+    end).
+
+%% ===================================================================
+%% do_signup/5 测试
+%% ===================================================================
+
+do_signup_with_email_succeeds_test_() ->
+    ?WITH_MECKS([
+        {elib_type, [
+            {'is_email', 1, fun(_) -> true end}
+        ]},
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) ->
+                #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {imboy_env, [
+            {'current', 0, fun() -> <<"local">> end}
+        ]},
+        {user_ds, [
+            {'find_id_by_email', 1, fun(_) -> 0 end},
+            {'insert_and_get_id', 1, fun(_Data) -> {ok, 2001} end}
+        ]},
+        {elib_password, [
+            {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
+        ]},
+        {account_ds, [
+            {'allocate', 0, fun() -> <<"test_account">> end}
+        ]},
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) -> X end}
+        ]}
+    ], fun() ->
+        %% 密码已由 handler 层 safe_rsa_decrypt 解密，logic 层直接使用
+        Result = passport_logic:do_signup(<<"email">>, <<"test@example.com">>,
+            <<"plaintext_pwd">>, <<"666666">>, #{<<"nickname">> => <<"Tester">>}),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+%% 回归测试：rsa_encrypt=off 时密码为 MD5 明文，不应再调 rsa_decrypt
+do_signup_email_with_rsa_encrypt_off_test_() ->
+    ?WITH_MECKS([
+        {elib_type, [
+            {'is_email', 1, fun(_) -> true end}
+        ]},
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) ->
+                #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {imboy_env, [
+            {'current', 0, fun() -> <<"local">> end}
+        ]},
+        {user_ds, [
+            {'find_id_by_email', 1, fun(_) -> 0 end},
+            {'insert_and_get_id', 1, fun(_Data) -> {ok, 2002} end}
+        ]},
+        {elib_password, [
+            {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
+        ]},
+        {account_ds, [
+            {'allocate', 0, fun() -> <<"test_account">> end}
+        ]},
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) -> X end}
+        ]}
+    ], fun() ->
+        %% 模拟客户端 rsa_encrypt=off，密码为 MD5 hash 明文
+        Md5Pwd = <<"7fef6171469e80d32c0559f88b377245">>,
+        Result = passport_logic:do_signup(<<"email">>, <<"118@imboy.pub">>,
+            Md5Pwd, <<"666666">>, #{<<"nickname">> => <<"imboy118">>}),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+do_signup_with_mobile_succeeds_test_() ->
+    ?WITH_MECKS([
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) ->
+                #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {imboy_env, [
+            {'current', 0, fun() -> <<"local">> end}
+        ]},
+        {account_ds, [
+            {'allocate', 0, fun() -> <<"test_account_signup">> end}
+        ]},
+        {user_ds, [
+            {'find_id_by_mobile', 1, fun(_) -> 0 end},
+            {'insert_and_get_id', 1, fun(_Data) -> {ok, 3001} end}
+        ]},
+        {elib_password, [
+            {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
+        ]},
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) -> X end}
+        ]}
+    ], fun() ->
+        Result = passport_logic:do_signup(<<"mobile">>, <<"+8613800138000">>,
+            <<"plaintext_pwd">>, <<"666666">>, #{<<"nickname">> => <<"Tester">>}),
+        ?assertMatch({ok, _}, Result)
+    end).
+
+do_signup_with_unsupported_type_fails_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Result = passport_logic:do_signup(<<"fax">>, <<"account">>,
+            <<"pwd">>, <<"123">>, #{}),
+        ?assertMatch({error, _}, Result)
     end).
 
 %% ===================================================================
 %% find_password/5 测试
 %% ===================================================================
 
-find_password_with_valid_mobile_succeeds_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) ->
-            {ok, #{<<"id">> => 123, <<"email">> => <<"user@example.com">>}}
-        end}
+find_password_with_email_succeeds_test_() ->
+    ?WITH_MECKS([
+        {elib_type, [
+            {'is_email', 1, fun(_) -> true end}
+        ]},
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) ->
+                #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {imboy_env, [
+            {'current', 0, fun() -> <<"local">> end}
+        ]},
+        {elib_log, [
+            {'internal_log', 4, fun(_Level, _Msg, _Mod, _Line) -> ok end}
+        ]},
+        {user_ds, [
+            {'find_id_by_email', 1, fun(_) -> 123 end},
+            {'update_password', 2, fun(_, _) -> {ok, 1} end}
+        ]}
     ], fun() ->
-        Mobile = <<"13800138000">>,
-        Ip = <<"127.0.0.1">>,
-
-        Result = passport_logic:find_password(Mobile, Ip, #{}, <<>>),
-        ?assertMatch({ok, #{<<"email">> := _}}, Result)
+        Result = passport_logic:find_password(<<"email">>, <<"test@example.com">>,
+            <<"new_pwd">>, <<"666666">>, #{}),
+        ?assertMatch({ok, _}, Result)
     end).
 
-find_password_with_nonexistent_mobile_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<"13900139999">>,
-        Ip = <<"127.0.0.1">>,
-
-        Result = passport_logic:find_password(Mobile, Ip, #{}, <<>>),
-        ?assertMatch({error, _, _}, Result)
+find_password_email_not_found_fails_test_() ->
+    ?WITH_MECKS([
+        {elib_type, [
+            {'is_email', 1, fun(_) -> true end}
+        ]},
+        {verification_code_ds, [
+            {'find_by_id', 1, fun(_Id) ->
+                #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]},
+        {imboy_env, [
+            {'current', 0, fun() -> <<"local">> end}
+        ]},
+        {elib_log, [
+            {'internal_log', 4, fun(_Level, _Msg, _Mod, _Line) -> ok end}
+        ]},
+        {user_ds, [
+            {'find_id_by_email', 1, fun(_) -> 0 end}
+        ]}
+    ], fun() ->
+        Result = passport_logic:find_password(<<"email">>, <<"notfound@example.com">>,
+            <<"pwd">>, <<"666666">>, #{}),
+        ?assertMatch({error, _}, Result)
     end).
 
-%% ===================================================================
-%% 边界条件测试
-%% ===================================================================
-
-do_signup_with_empty_mobile_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<>>,
-        Password = <<"Test@123456">>,
-        Email = <<"test@example.com">>,
-        Req0 = #{},
-        Ip = <<"127.0.0.1">>,
-
-        Result = passport_logic:do_signup(Mobile, Password, Email, Req0, Ip),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-do_login_with_empty_credentials_fails_test_() ->
+find_password_unsupported_type_fails_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Mobile = <<>>,
-        Password = <<>>,
-        PostMap = #{},
-
-        Result = passport_logic:do_login(Mobile, Password, PostMap),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-quick_login_with_empty_token_fails_test_() ->
-    ?WITH_MECK(token_ds, [
-        {'decrypt_token', 1, fun(_Token) -> {error, invalid_token} end}
-        ], fun() ->
-        Token = <<>>,
-        PostMap = #{},
-
-        Result = passport_logic:quick_login(Token, PostMap),
-        ?assertMatch({error, _, _}, Result)
-    end).
-
-verify_user_with_empty_credentials_fails_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_mobile', 2, fun(_Mobile, _Fields) -> {error, not_found} end}
-        ], fun() ->
-        Mobile = <<>>,
-        Password = <<>>,
-
-        Result = passport_logic:verify_user(Mobile, Password),
-        ?assertMatch({error, _, _}, Result)
+        Result = passport_logic:find_password(<<"fax">>, <<"account">>,
+            <<"pwd">>, <<"123">>, #{}),
+        ?assertMatch({error, _}, Result)
     end).

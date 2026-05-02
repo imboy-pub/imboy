@@ -13,25 +13,31 @@
 
 %% 测试夹具
 group_member_role_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"设置管理员", fun test_set_admin/0},
-      {"移除管理员", fun test_remove_admin/0},
-      {"转让群主", fun test_transfer_owner/0},
-      {"移除普通成员", fun test_remove_member/0},
-      {"禁言成员", fun test_mute_member/0},
-      {"取消禁言", fun test_unmute_member/0},
-      {"管理员权限验证", fun test_admin_permission/0},
-      {"普通成员权限限制", fun test_member_permission/0},
-      {"批量设置管理员", fun test_batch_set_admin/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"设置管理员", fun test_set_admin/0},
+              {"移除管理员", fun test_remove_admin/0},
+              {"转让群主", fun test_transfer_owner/0},
+              {"移除普通成员", fun test_remove_member/0},
+              {"禁言成员", fun test_mute_member/0},
+              {"取消禁言", fun test_unmute_member/0},
+              {"管理员权限验证", fun test_admin_permission/0},
+              {"普通成员权限限制", fun test_member_permission/0},
+              {"批量设置管理员", fun test_batch_set_admin/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     {ok, Owner} = create_test_user(<<"owner_role">>),
     {ok, Admin1} = create_test_user(<<"admin1_role">>),
     {ok, Admin2} = create_test_user(<<"admin2_role">>),

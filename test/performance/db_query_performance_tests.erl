@@ -16,23 +16,28 @@
 
 %% 测试夹具
 db_performance_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"用户查询性能", fun test_user_query_performance/0},
-      {"群组查询性能", fun test_group_query_performance/0},
-      {"好友列表查询性能", fun test_friend_list_performance/0},
-      {"群成员列表查询性能", fun test_group_member_list_performance/0},
-      {"消息历史查询性能", fun test_message_history_performance/0},
-      {"全文检索性能", fun test_fulltext_search_performance/0},
-      {"复杂连接查询性能", fun test_complex_join_performance/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"用户查询性能", fun test_user_query_performance/0},
+              {"群组查询性能", fun test_group_query_performance/0},
+              {"好友列表查询性能", fun test_friend_list_performance/0},
+              {"群成员列表查询性能", fun test_group_member_list_performance/0},
+              {"消息历史查询性能", fun test_message_history_performance/0},
+              {"全文检索性能", fun test_fulltext_search_performance/0},
+              {"复杂连接查询性能", fun test_complex_join_performance/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available", fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试数据
     {ok, User1} = create_test_user(<<"db_perf_user1">>),
 

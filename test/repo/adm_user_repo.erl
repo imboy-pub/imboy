@@ -9,6 +9,7 @@
 
 -export([tablename/0]).
 -export([save/1, update/2, delete/1]).
+-export([count_by_role_id/1]).
 
 -export([find_by_email/2,
          find_by_mobile/2,
@@ -17,6 +18,7 @@
 -export([list_by_ids/2]).
 -export([select_by_where/4]).
 -export([select_by_where/5]).
+-export([select_by_where_safe/6]).
 
 %% ===================================================================
 %% API functions
@@ -29,15 +31,31 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"adm_user">>).
 
 
+%% @doc 统计指定角色的用户数量
+%% @param RoleId 角色ID
+%% @return {ok, Count} 用户数量 | {error, Reason} 查询失败
+%% @example adm_user_repo:count_by_role_id(1).
+-spec count_by_role_id(integer()) -> {ok, integer()} | {error, any()}.
+count_by_role_id(RoleId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE role_id = $1 AND status >= 0">>,
+    case elib_pg:query(Sql, [RoleId]) of
+        {ok, [#{<<"count">> := Count}]} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+
 %% @doc 根据WHERE条件查询管理员用户列表（使用默认列）
 %% @param Where SQL WHERE子句条件
 %% @param Limit 查询结果数量限制
 %% @param Offset 查询结果偏移量
 %% @param OrderBy 排序字段
 %% @return {ok, [map()]} 查询成功返回map列表 | {error, Reason} 查询失败
--spec select_by_where(binary(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
-select_by_where(Where, Limit, Offset, OrderBy) ->
-    select_by_where(?DEF_USER_COLUMN, Where, Limit, Offset, OrderBy).
+-spec select_by_where(binary() | map(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
+select_by_where(Where, Limit, Offset, OrderBy) when is_binary(Where) ->
+    select_by_where(?DEF_USER_COLUMN, Where, Limit, Offset, OrderBy);
+select_by_where(WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
+    select_by_where(?DEF_USER_COLUMN, WhereMap, Limit, Offset, OrderBy).
 
 %% @doc 根据WHERE条件查询管理员用户列表（指定列）
 %% @param Column 要查询的列名
@@ -46,14 +64,45 @@ select_by_where(Where, Limit, Offset, OrderBy) ->
 %% @param Offset 查询结果偏移量
 %% @param OrderBy 排序字段
 %% @return {ok, [map()]} 查询成功返回map列表 | {error, Reason} 查询失败
--spec select_by_where(binary(), binary(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
-select_by_where(Column, Where, Limit, Offset, OrderBy) ->
+-spec select_by_where(binary(), binary() | map(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
+select_by_where(Column, Where, Limit, Offset, OrderBy) when is_binary(Where) ->
     case Limit > 0 of
         false -> {ok, []};
         true ->
             Tb = tablename(),
             Page = (Offset div Limit) + 1,
             elib_pg:page(Tb, Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit)
+    end;
+select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
+    case Limit > 0 of
+        false -> {ok, []};
+        true ->
+            Tb = tablename(),
+            Page = (Offset div Limit) + 1,
+            elib_pg:page(Tb, Column, WhereMap, OrderBy, Page, Limit)
+    end.
+
+%% @doc 根据WHERE条件查询（安全排序）
+%% @param Column 列集合
+%% @param WhereMap 参数化条件
+%% @param Limit 条数
+%% @param Offset 偏移
+%% @param OrderSpec 排序规范 [{Field, asc|desc}]
+%% @param ValidFields 白名单字段 [binary()]
+%% @return {ok, [map()]} | {error, Reason}
+-spec select_by_where_safe(binary(), map(), integer(), integer(), [{atom() | binary(), asc | desc}], [binary()]) ->
+    {ok, [map()]} | {error, any()}.
+select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
+    case Limit > 0 of
+        false -> {ok, []};
+        true ->
+            Tb = tablename(),
+            {Sql, Params} =
+                elib_pg_sql:build_select_safe(
+                    Tb, Column, WhereMap, OrderSpec, ValidFields,
+                    #{limit => Limit, offset => Offset}
+                ),
+            elib_pg:query(Sql, Params)
     end.
 
 
@@ -134,11 +183,16 @@ list_by_ids(Uids, Column) ->
 %% @param Data 包含管理员用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, 1} 保存成功 | {ok, 1, ReturnData} 保存成功并返回数据 | {error, Reason} 保存失败
 %% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
--spec save(map()) -> {ok, 1} | {error, any()}.
+-spec save(map()) -> {ok, integer()} | {error, any()}.
 save(Data) ->
     Tb = tablename(),
-    % 使用 elib_pg:insert/2 执行插入操作
-    elib_pg:insert(Tb, Data).
+    Id = elib_tsid:generate(adm_user),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
 
 
 %% @doc 更新管理员用户信息

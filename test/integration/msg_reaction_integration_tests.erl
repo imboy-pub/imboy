@@ -16,25 +16,31 @@
 
 %% 测试夹具
 msg_reaction_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"单聊添加表情回应", fun test_c2c_add_reaction/0},
-      {"群聊添加表情回应", fun test_c2g_add_reaction/0},
-      {"移除表情回应", fun test_remove_reaction/0},
-      {"重复添加表情（幂等性）", fun test_duplicate_reaction/0},
-      {"查询表情列表", fun test_list_reactions/0},
-      {"表情统计", fun test_reaction_stats/0},
-      {"多种表情组合", fun test_multiple_emojis/0},
-      {"多人回应同一消息", fun test_multiple_users_reaction/0},
-      {"检查用户是否已回应", fun test_is_reacted/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"单聊添加表情回应", fun test_c2c_add_reaction/0},
+              {"群聊添加表情回应", fun test_c2g_add_reaction/0},
+              {"移除表情回应", fun test_remove_reaction/0},
+              {"重复添加表情（幂等性）", fun test_duplicate_reaction/0},
+              {"查询表情列表", fun test_list_reactions/0},
+              {"表情统计", fun test_reaction_stats/0},
+              {"多种表情组合", fun test_multiple_emojis/0},
+              {"多人回应同一消息", fun test_multiple_users_reaction/0},
+              {"检查用户是否已回应", fun test_is_reacted/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_reaction">>),
     {ok, User2} = create_test_user(<<"user2_reaction">>),

@@ -6,15 +6,17 @@
 %%% @doc
 %%% app_version_repo 模块的 EUnit 测试
 %%%
-%%% 目标：验证 imboy_db → elib_pg 迁移的语义正确性
+%%% 目标：验证应用版本数据仓库层的语义正确性（纯 mock，不需要真实数据库）
 %%%===================================================================
 
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================
 
-tablename_public_prefix_test_() ->
-    ?TEST_WITH_APP(fun() ->
+tablename_test_() ->
+    ?WITH_MECK(elib_pg_sql, [
+        {'public_tablename', 1, fun(_Table) -> <<"public.app_version">> end}
+    ], fun() ->
         Result = app_version_repo:tablename(),
         ?assertEqual(<<"public.app_version">>, Result)
     end).
@@ -23,36 +25,63 @@ tablename_public_prefix_test_() ->
 %% find/2 测试
 %% ===================================================================
 
-find_valid_where_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Where = <<"type = 'ios'">>,
-        Column = <<"id">>,
-        Result = app_version_repo:find(Where, Column),
-        ?assertMatch({ok, _, _}, Result)
+find_by_type_with_region_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(_Sql, _Params) ->
+            {ok, #{<<"region_code">> => <<"cn">>,
+                   <<"type">> => <<"ios">>,
+                   <<"vsn">> => <<"1.0.0">>}}
+        end}
+    ], fun() ->
+        Result = app_version_repo:find(<<"ios">>, <<"cn">>),
+        ?assertMatch(#{<<"type">> := <<"ios">>, <<"vsn">> := <<"1.0.0">>}, Result)
     end).
 
-find_empty_result_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Where = <<"type = 'nonexistent_type'">>,
-        Column = <<"id">>,
-        Result = app_version_repo:find(Where, Column),
-        ?assertMatch({ok, _, _}, Result)
+find_by_type_without_region_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(_Sql, _Params) ->
+            {ok, #{<<"region_code">> => <<>>,
+                   <<"type">> => <<"android">>,
+                   <<"vsn">> => <<"2.0.0">>}}
+        end}
+    ], fun() ->
+        Result = app_version_repo:find(<<"android">>, <<>>),
+        ?assertMatch(#{<<"type">> := <<"android">>}, Result)
     end).
 
-find_all_columns_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Where = <<"1=1">>,
-        Column = <<"*">>,
-        Result = app_version_repo:find(Where, Column),
-        ?assertMatch({ok, _, _}, Result)
+find_not_found_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(_Sql, _Params) -> {error, not_found} end}
+    ], fun() ->
+        Result = app_version_repo:find(<<"nonexistent">>, <<"xx">>),
+        ?assertEqual(#{}, Result)
+    end).
+
+find_database_error_test_() ->
+    ?WITH_MECK(elib_pg, [
+        {'one', 2, fun(_Sql, _Params) -> {error, connection_lost} end}
+    ], fun() ->
+        Result = app_version_repo:find(<<"ios">>, <<"cn">>),
+        ?assertEqual(#{}, Result)
     end).
 
 %% ===================================================================
 %% add/1 测试
 %% ===================================================================
 
-add_valid_ios_app_test_() ->
-    ?TEST_WITH_DB(fun() ->
+add_success_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tb) -> <<"public.", Tb/binary>> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO test VALUES ($1)">>, [42]} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(app_version) -> 900001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         Data = #{
             <<"region_code">> => <<"cn">>,
             <<"type">> => <<"ios">>,
@@ -62,70 +91,74 @@ add_valid_ios_app_test_() ->
             <<"download_url">> => <<"https://test.com/download">>,
             <<"description">> => <<"Test app">>,
             <<"force_update">> => 1,
-            <<"created_at">> => elib_dt:now(),
+            <<"created_at">> => 1714521600,
             <<"sign_key">> => <<"test_key">>
         },
         Result = app_version_repo:add(Data),
-        ?assertMatch({ok, InsertedId} when is_integer(InsertedId), Result)
+        ?assertEqual({ok, 900001}, Result)
     end).
 
-add_valid_android_app_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Data = #{
-            <<"type">> => <<"android">>,
-            <<"package_name">> => <<"com.test.android">>,
-            <<"app_name">> => <<"TestAndroid">>,
-            <<"vsn">> => <<"1.0.0">>,
-            <<"download_url">> => <<"https://test.com/android.apk">>,
-            <<"description">> => <<"Test android app">>,
-            <<"force_update">> => 2,
-            <<"created_at">> => elib_dt:now(),
-            <<"sign_key">> => <<>>
-        },
-        Result = app_version_repo:add(Data),
-        ?assertMatch({ok, InsertedId} when is_integer(InsertedId), Result)
-    end).
-
-add_minimal_data_test_() ->
-    ?TEST_WITH_DB(fun() ->
+add_error_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tb) -> <<"public.", Tb/binary>> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO test VALUES ($1)">>, [42]} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(app_version) -> 900002 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {error, unique_violation} end}
+        ]}
+    ], fun() ->
         Data = #{
             <<"type">> => <<"ios">>,
-            <<"vsn">> => <<"1.0">>,
-            <<"created_at">> => elib_dt:now()
+            <<"vsn">> => <<"1.0.0">>,
+            <<"created_at">> => 1714521600
         },
         Result = app_version_repo:add(Data),
-        case Result of
-            {ok, Version} -> 
-                ?assertMatch(#{<<"id">> := _, <<"type">> := <<"ios">>, <<"vsn">> := <<"1.0">>}, Version);
-            {error, Reason} -> 
-                ?assert(is_atom(Reason), "Expected atom error reason")
-        end
+        ?assertEqual({error, unique_violation}, Result)
     end).
 
 %% ===================================================================
-%% find/2 测试（原 demo/3 已移除，改为测试 find/2）
+%% delete_by_id/1 测试
 %% ===================================================================
 
-find_valid_type_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Type = <<"android">>,
-        RegionCode = <<"CN">>,
-        Result = app_version_repo:find(Type, RegionCode),
-        case Result of
-            {ok, _, _} -> ?assert(true);
-            {ok, _} -> ?assert(true);
-            {error, _} -> ?assert(true)
-        end
+delete_by_id_success_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tb) -> <<"public.", Tb/binary>> end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Result = app_version_repo:delete_by_id(12345),
+        ?assertEqual({ok, 1}, Result)
     end).
 
-find_non_existing_type_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Type = <<"nonexistent">>,
-        RegionCode = <<"XX">>,
-        Result = app_version_repo:find(Type, RegionCode),
-        case Result of
-            {ok, _, _} -> ?assert(true);
-            {ok, _} -> ?assert(true);
-            {error, _} -> ?assert(true)
-        end
+delete_by_id_not_found_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tb) -> <<"public.", Tb/binary>> end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+        ]}
+    ], fun() ->
+        Result = app_version_repo:delete_by_id(99999),
+        ?assertEqual({ok, 0}, Result)
+    end).
+
+delete_by_id_error_test_() ->
+    ?WITH_MECKS([
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tb) -> <<"public.", Tb/binary>> end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {error, connection_lost} end}
+        ]}
+    ], fun() ->
+        Result = app_version_repo:delete_by_id(12345),
+        ?assertEqual({error, connection_lost}, Result)
     end).

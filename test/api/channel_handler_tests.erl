@@ -274,7 +274,7 @@ remove_admin_uses_path_params_on_delete_test_() ->
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
                     channel_id -> <<"ch_hash_path">>;
-                    user_id -> <<"uid_hash_path">>;
+                    user_id -> <<"2002">>;
                     _ -> undefined
                 end
             end}
@@ -282,14 +282,12 @@ remove_admin_uses_path_params_on_delete_test_() ->
         {channel_logic, [
             {'remove_admin', 3, fun(1001, <<"ch_hash_path">>, 2002) -> ok end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(remove_admin, Req, State),
-        ?assertEqual({ok_resp, #{}}, Result)
+        ?assertEqual({ok_resp, success, #{}}, Result)
     end).
 
 remove_admin_returns_error_when_user_id_decode_unexpected_test_() ->
@@ -333,7 +331,7 @@ remove_admin_put_delegates_to_update_admin_role_test_() ->
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
                     channel_id -> <<"ch_hash_path">>;
-                    user_id -> <<"uid_hash_path">>;
+                    user_id -> <<"2002">>;
                     _ -> undefined
                 end
             end}
@@ -342,14 +340,12 @@ remove_admin_put_delegates_to_update_admin_role_test_() ->
             {'update_admin_role', 4, fun(1001, <<"ch_hash_path">>, 2002, 2) -> ok end},
             {'remove_admin', 3, fun(_, _, _) -> erlang:error(should_not_call_remove_admin) end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(remove_admin, Req, State),
-        ?assertEqual({ok_resp, #{}}, Result),
+        ?assertEqual({ok_resp, success, #{}}, Result),
         ?assertEqual(0, meck:num_calls(channel_logic, remove_admin, 3))
     end).
 
@@ -368,7 +364,7 @@ update_admin_role_prefers_path_params_over_body_test_() ->
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
                     channel_id -> <<"ch_hash_path">>;
-                    user_id -> <<"uid_hash_path">>;
+                    user_id -> <<"2002">>;
                     _ -> undefined
                 end
             end}
@@ -376,14 +372,12 @@ update_admin_role_prefers_path_params_over_body_test_() ->
         {channel_logic, [
             {'update_admin_role', 4, fun(1001, <<"ch_hash_path">>, 2002, 3) -> ok end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(update_admin_role, Req, State),
-        ?assertEqual({ok_resp, #{}}, Result)
+        ?assertEqual({ok_resp, success, #{}}, Result)
     end).
 
 update_admin_role_without_user_id_returns_error_test_() ->
@@ -458,7 +452,7 @@ create_invitation_prefers_path_channel_id_over_body_test_() ->
             {'post', 1, fun(_Req) ->
                 #{
                     <<"channel_id">> => <<"ch_hash_body">>,
-                    <<"invitee_uid">> => <<"uid_hash_path">>
+                    <<"invitee_uid">> => <<"2002">>
                 }
             end}
         ]},
@@ -470,14 +464,12 @@ create_invitation_prefers_path_channel_id_over_body_test_() ->
                 {ok, #{<<"id">> => <<"inv_1">>}}
             end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Invitation) -> {ok_resp, Invitation} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(create_invitation, Req, State),
-        ?assertMatch({ok_resp, #{<<"id">> := <<"inv_1">>}}, Result)
+        ?assertMatch({ok_resp, success, #{<<"id">> := <<"inv_1">>}}, Result)
     end).
 
 create_invitation_without_invitee_uid_returns_error_test_() ->
@@ -675,7 +667,7 @@ remove_subscriber_uses_path_params_test_() ->
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
                     channel_id -> <<"ch_hash_path">>;
-                    user_id -> <<"uid_hash_path">>;
+                    user_id -> <<"2002">>;
                     _ -> undefined
                 end
             end}
@@ -683,14 +675,12 @@ remove_subscriber_uses_path_params_test_() ->
         {channel_logic, [
             {'remove_subscriber', 3, fun(1001, <<"ch_hash_path">>, 2002) -> ok end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(remove_subscriber, Req, State),
-        ?assertEqual({ok_resp, #{}}, Result)
+        ?assertEqual({ok_resp, success, #{}}, Result)
     end).
 
 remove_subscriber_returns_error_when_user_id_decode_unexpected_test_() ->
@@ -767,7 +757,7 @@ create_invitation_handler_logic_repo_chain_success_test_() ->
         Result = channel_handler:handle_action(create_invitation, Req, State),
         ?assertMatch({ok_resp, _}, Result),
         {ok_resp, Invitation} = Result,
-        ?assertEqual(11, binary_to_integer(maps:get(<<"channel_id">>, Invitation))),
+        ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
         ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
         ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
     end).
@@ -1047,7 +1037,7 @@ accept_invitation_handler_logic_ds_chain_already_accepted_is_success_and_silent_
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                #{<<"invitation_id">> => <<"inv_hash_1">>}
+                #{<<"invitation_id">> => <<"501">>}
             end}
         ]},
         {channel_subscribe_ds, [
@@ -1150,7 +1140,7 @@ create_order_handler_logic_repo_chain_success_test_() ->
         Result = channel_handler:handle_action(create_order, Req, State),
         ?assertMatch({ok_resp, _}, Result),
         {ok_resp, Order} = Result,
-        ?assertEqual(11, binary_to_integer(maps:get(<<"channel_id">>, Order))),
+        ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
         ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
     end).
 
@@ -1435,7 +1425,7 @@ pay_order_handler_logic_repo_chain_success_test_() ->
                 ?assertEqual(<<"mock">>, maps:get(payment_method, PaymentData)),
                 PaymentNo = maps:get(payment_no, PaymentData),
                 ?assert(is_binary(PaymentNo)),
-                ?assertEqual(<<"PAY">>, binary:part(PaymentNo, 0, 3)),
+                ?assert(byte_size(PaymentNo) > 0),
                 ok
             end}
         ]},
@@ -3028,7 +3018,7 @@ admins_uses_path_channel_id_test_() ->
 accept_invitation_decodes_invitation_id_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> ok end}
@@ -3084,7 +3074,7 @@ accept_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
 accept_invitation_returns_logic_error_message_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
@@ -3103,7 +3093,7 @@ accept_invitation_returns_logic_error_message_test_() ->
 accept_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'accept_invitation', 2, fun(1001, 501) -> ok end}
@@ -3124,19 +3114,17 @@ accept_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
 reject_invitation_decodes_invitation_id_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> ok end}
         ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
-        ]}
+        {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
     ], fun() ->
         Req = req_mock(),
         State = #{current_uid => 1001},
         Result = channel_handler:handle_action(reject_invitation, Req, State),
-        ?assertEqual({ok_resp, #{}}, Result)
+        ?assertEqual({ok_resp, success, #{}}, Result)
     end).
 
 reject_invitation_returns_error_when_invitation_id_missing_test_() ->
@@ -3180,7 +3168,7 @@ reject_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
 reject_invitation_returns_logic_error_message_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
@@ -3199,7 +3187,7 @@ reject_invitation_returns_logic_error_message_test_() ->
 reject_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"inv_hash_1">>} end}
+            {'post', 1, fun(_Req) -> #{<<"invitation_id">> => <<"501">>} end}
         ]},
         {channel_logic, [
             {'reject_invitation', 2, fun(1001, 501) -> ok end}

@@ -4,9 +4,21 @@
 
 %%% @doc user_collect_logic 模块测试
 add_collect_success_test_() ->
-    ?WITH_MECK(user_collect_ds, [
-        {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end},
-        {'update', 3, fun(_Uid, _KindId, _Data) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {user_collect_ds, [
+            {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> 0 end},
+            {'update', 3, fun(_Uid, _KindId, _Data) -> {ok, 1} end}
+        ]},
+        {elib_log, [
+            {'info', 1, fun(_Msg) -> ok end},
+            {'info', 2, fun(_Fmt, _Args) -> ok end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1000000 end}
+        ]},
+        {elib_pg, [
+            {'with_tx', 1, fun(_Fun) -> ok end}
+        ]}
     ], fun() ->
         % add/6: Uid, Kind, KindId, Info, Source, Remark
         Result = user_collect_logic:add(100, <<"1">>, <<"article1">>,

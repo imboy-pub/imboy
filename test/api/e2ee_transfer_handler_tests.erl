@@ -29,15 +29,18 @@ init_with_false_action_removes_action_from_state_test_() ->
 
 create_transfer_accepts_legacy_to_uid_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {cowboy_req, [
             {'read_body', 1, fun(_Req) ->
-                {ok, <<"{\"to_uid\":\"hash_to_uid\"}">>, req_after_body}
+                {ok, <<"{\"to_uid\":\"12345\"}">>, req_after_body}
             end}
         ]},
-        {user_repo, [
+        {user_ds, [
             {'may_exist', 1, fun(12345) -> true end}
         ]},
-        {user_device_repo, [
+        {user_device_ds, [
             {'get_public_by_uid', 1, fun(Uid) ->
                 case Uid of
                     100 ->

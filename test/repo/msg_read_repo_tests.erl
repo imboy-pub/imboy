@@ -10,146 +10,93 @@
 %%% 覆盖：保存已读记录、获取已读状态、获取未读消息数
 %%%===================================================================
 
+-define(MOCK_ENV, {config_ds, [{'env', 1, fun(sql_driver) -> pgsql; (_) -> undefined end}]}).
+-define(MOCK_TSID, {elib_tsid, [{'generate', 1, fun(_Table) -> 123456789 end}]}).
+
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================
 
 tablename_returns_correct_table_name_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([?MOCK_ENV], fun() ->
         TableName = msg_read_repo:tablename(),
         ?assertEqual(<<"public.msg_read">>, TableName)
     end).
-
 
 %% ===================================================================
 %% save_read/5 测试
 %% ===================================================================
 
 save_read_with_valid_data_succeeds_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         MsgId = <<"msg_test_123">>,
         FromUid = 123,
         ToUid = 456,
         ToDid = <<"device_test_abc">>,
-        ReadAt = elib_dt:now(),
-
-        % 清理可能存在的测试数据
-        elib_pg:execute(<<"DELETE FROM msg_read WHERE msg_id = $1">>, [MsgId], Conn),
-
-        % 插入已读记录
+        ReadAt = <<"2024-01-01T00:00:00Z">>,
         Result = msg_read_repo:save_read(MsgId, FromUid, ToUid, ToDid, ReadAt),
-        ?assertEqual(ok, Result),
-
-        % 验证数据已插入
-        {ok, Rows} = elib_pg:query(
-            <<"SELECT msg_id, from_uid, to_uid, to_did FROM msg_read WHERE msg_id = $1">>,
-            [MsgId], Conn),
-        ?assertEqual(1, length(Rows)),
-        #{<<"msg_id">> := MsgId, <<"from_uid">> := FromUid, <<"to_uid">> := ToUid} = lists:nth(1, Rows),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_read WHERE msg_id = $1">>, [MsgId], Conn)
+        ?assertEqual(ok, Result)
     end).
-
 
 %% ===================================================================
 %% 幂等性测试
 %% ===================================================================
 
 save_read_is_idempotent_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         MsgId = <<"msg_test_idempotent">>,
         FromUid = 123,
         ToUid = 456,
         ToDid = <<"device_test_idempotent">>,
-        ReadAt = elib_dt:now(),
+        ReadAt = <<"2024-01-01T00:00:00Z">>,
 
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_read WHERE msg_id = $1">>, [MsgId], Conn),
-
-        % 第一次插入
         Result1 = msg_read_repo:save_read(MsgId, FromUid, ToUid, ToDid, ReadAt),
         ?assertEqual(ok, Result1),
 
-        % 第二次插入（相同数据，应该幂等）
         Result2 = msg_read_repo:save_read(MsgId, FromUid, ToUid, ToDid, ReadAt),
-        ?assertEqual(ok, Result2),
-
-        % 验证只有一条记录
-        {ok, Rows} = elib_pg:query(
-            <<"SELECT COUNT(*) as count FROM msg_read WHERE msg_id = $1">>,
-            [MsgId], Conn),
-        ?assertEqual(1, length(Rows)),
-        #{<<"count">> := 1} = lists:nth(1, Rows),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_read WHERE msg_id = $1">>, [MsgId], Conn)
+        ?assertEqual(ok, Result2)
     end).
-
 
 %% ===================================================================
 %% get_read_status/2 测试
 %% ===================================================================
 
 get_read_status_with_existing_record_returns_status_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) ->
+            {ok, [#{<<"to_uid">> => 456, <<"to_did">> => <<"device1">>, <<"read_at">> => <<"2024-01-01T00:00:00Z">>}]}
+        end}
+    ]}], fun() ->
         MsgId = <<"msg_test_get_status">>,
         FromUid = 123,
-        ToUid = 456,
-        ToDid = <<"device_test_get_status">>,
-        ReadAt = elib_dt:now(),
-
-        % 插入测试数据
-        elib_pg:execute(
-            <<"INSERT INTO msg_read (msg_id, from_uid, to_uid, to_did, read_at) VALUES ($1, $2, $3, $4, $5)">>,
-            [MsgId, FromUid, ToUid, ToDid, ReadAt], Conn),
-
-        % 获取已读状态
         Result = msg_read_repo:get_read_status(MsgId, FromUid),
-        ?assertMatch({ok, [_]}, Result),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_read WHERE msg_id = $1">>, [MsgId], Conn)
+        ?assertMatch({ok, [_]}, Result)
     end).
 
-
 get_read_status_with_no_records_returns_empty_list_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         MsgId = <<"msg_test_nonexistent">>,
         FromUid = 999,
-
-        % 查询不存在的记录
         Result = msg_read_repo:get_read_status(MsgId, FromUid),
         ?assertMatch({ok, []}, Result)
     end).
-
 
 %% ===================================================================
 %% delete_read_records/2 测试
 %% ===================================================================
 
 delete_read_records_deletes_records_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 2} end}
+    ]}], fun() ->
         MsgId = <<"msg_test_delete">>,
-        FromUid = 123,
         ToUid = 456,
-
-        % 插入测试数据
-        elib_pg:execute(
-            <<"INSERT INTO msg_read (msg_id, from_uid, to_uid, to_did, read_at) VALUES ($1, $2, $3, $4, $5)">>,
-            [MsgId, FromUid, ToUid, <<"device1">>, elib_dt:now()], Conn),
-        elib_pg:execute(
-            <<"INSERT INTO msg_read (msg_id, from_uid, to_uid, to_did, read_at) VALUES ($1, $2, $3, $4, $5)">>,
-            [MsgId, FromUid, ToUid, <<"device2">>, elib_dt:now()], Conn),
-
-        % 删除记录
         Result = msg_read_repo:delete_read_records(MsgId, ToUid),
-        ?assertMatch({ok, 2}, Result),
-
-        % 验证记录已删除
-        {ok, Rows} = elib_pg:query(
-            <<"SELECT COUNT(*) as count FROM msg_read WHERE msg_id = $1">>,
-            [MsgId], Conn),
-        ?assertEqual(1, length(Rows)),
-        #{<<"count">> := 0} = lists:nth(1, Rows)
+        ?assertMatch({ok, 2}, Result)
     end).

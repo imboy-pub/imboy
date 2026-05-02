@@ -27,11 +27,13 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 pin_conversation_success_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv123">>,
+        ConversationId = 67890,
         Type = <<"c2c">>,
 
         Result = conversation_pin_repo:pin(Uid, ConversationId, Type),
@@ -39,7 +41,7 @@ pin_conversation_success_test_() ->
     end).
 
 pin_conversation_duplicate_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 2, fun(_Sql, _Params) ->
             % 模拟唯一性约束违反
             {error, #{
@@ -47,9 +49,11 @@ pin_conversation_duplicate_test_() ->
                 <<"message">> => <<"duplicate key value violates unique constraint">>
             }}
         end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv123">>,
+        ConversationId = 67890,
         Type = <<"c2c">>,
 
         Result = conversation_pin_repo:pin(Uid, ConversationId, Type),

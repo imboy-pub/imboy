@@ -63,6 +63,15 @@ join_group_success_test_() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]},
+        {group_ds, [
+            {'member_uids', 1, fun(_Gid) -> [100, 200] end}
+        ]},
+        {user_ds, [
+            {'find_by_id', 2, fun(_Uid, _Col) -> #{<<"nickname">> => <<"Test">>, <<"avatar">> => <<>>, <<"account">> => <<>>} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_From, _To, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
         ]}
     ], fun() ->
         JoinMode = <<"invite">>,
@@ -75,8 +84,10 @@ join_group_success_test_() ->
     end).
 
 join_group_with_max_members_limit_returns_error_test_() ->
-    ?WITH_MECK(group_member_ds, [
-        {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
+    ?WITH_MECKS([
+        {group_member_ds, [
+            {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
+        ]}
     ], fun() ->
         JoinMode = <<"invite">>,
         Uid = 100,
@@ -88,8 +99,10 @@ join_group_with_max_members_limit_returns_error_test_() ->
     end).
 
 join_group_with_zero_max_members_returns_error_test_() ->
-    ?WITH_MECK(group_member_ds, [
-        {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
+    ?WITH_MECKS([
+        {group_member_ds, [
+            {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
+        ]}
     ], fun() ->
         JoinMode = <<"invite">>,
         Uid = 100,
@@ -107,6 +120,15 @@ join_group_within_limit_test_() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]},
+        {group_ds, [
+            {'member_uids', 1, fun(_Gid) -> [100, 200] end}
+        ]},
+        {user_ds, [
+            {'find_by_id', 2, fun(_Uid, _Col) -> #{<<"nickname">> => <<"Test">>, <<"avatar">> => <<>>, <<"account">> => <<>>} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_From, _To, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
         ]}
     ], fun() ->
         JoinMode = <<"invite">>,
@@ -125,6 +147,15 @@ join_group_with_undefined_max_test_() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]},
+        {group_ds, [
+            {'member_uids', 1, fun(_Gid) -> [100, 200] end}
+        ]},
+        {user_ds, [
+            {'find_by_id', 2, fun(_Uid, _Col) -> #{<<"nickname">> => <<"Test">>, <<"avatar">> => <<>>, <<"account">> => <<>>} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_From, _To, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
         ]}
     ], fun() ->
         JoinMode = <<"invite">>,
@@ -276,6 +307,15 @@ join_group_with_empty_data_map_test_() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]},
+        {group_ds, [
+            {'member_uids', 1, fun(_Gid) -> [100, 200] end}
+        ]},
+        {user_ds, [
+            {'find_by_id', 2, fun(_Uid, _Col) -> #{<<"nickname">> => <<"Test">>, <<"avatar">> => <<>>, <<"account">> => <<>>} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_From, _To, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
         ]}
     ], fun() ->
         JoinMode = <<"invite">>,
@@ -493,6 +533,18 @@ update_role_to_vice_owner_test_() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+        ]},
+        {group_ds, [
+            {'member_uids', 1, fun(_Gid) -> [100, 101] end}
+        ]},
+        {user_ds, [
+            {'find_by_id', 2, fun(_Uid, _Col) -> #{<<"nickname">> => <<"Test">>} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_From, _To, _Action, _MsgId, _Code, _Payload, _Save) -> ok end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-01-01T00:00:00Z">> end}
         ]}
     ], fun() ->
         CurrentUid = 100,

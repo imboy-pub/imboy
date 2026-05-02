@@ -113,10 +113,10 @@ page_unknown_attr_falls_back_to_owner_test_() ->
 msg_page_preserves_atom_list_payload_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
-            {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"g_101">>}] end}
+            {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"101">>}] end}
         ]},
-        {group_member_repo, [
-            {'find', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end}
+        {group_member_ds, [
+            {'find_by_gid_and_uid', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end}
         ]},
         {elib_param, [
             {'int', 3, fun(last_time, req0, 0) -> {ok, 0} end},
@@ -125,9 +125,9 @@ msg_page_preserves_atom_list_payload_test_() ->
         {msg_c2g_repo, [
             {'tablename', 0, fun() -> <<"public.msg_c2g">> end}
         ]},
-        {elib_pg, [
-            {'page_with_total', 4, fun(Tb, Where, Page, Size) ->
-                self() ! {msg_query, Tb, Where, Page, Size},
+        {msg_c2g_ds, [
+            {'page', 3, fun(Where, Page, Size) ->
+                self() ! {msg_query, <<"public.msg_c2g">>, Where, Page, Size},
                 {ok, #{total => 1, list => [#{<<"msg_id">> => <<"m1">>}]}}
             end}
         ]},

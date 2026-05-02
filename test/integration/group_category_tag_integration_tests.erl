@@ -12,25 +12,31 @@
 
 %% 测试夹具
 group_category_tag_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"创建群分组", fun test_create_category/0},
-      {"更新群分组", fun test_update_category/0},
-      {"删除群分组", fun test_delete_category/0},
-      {"群分组排序", fun test_category_sort/0},
-      {"将群加入分组", fun test_add_group_to_category/0},
-      {"创建群标签", fun test_create_tag/0},
-      {"为群添加标签", fun test_add_tag_to_group/0},
-      {"按标签筛选群", fun test_filter_groups_by_tag/0},
-      {"批量操作", fun test_batch_operations/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"创建群分组", fun test_create_category/0},
+              {"更新群分组", fun test_update_category/0},
+              {"删除群分组", fun test_delete_category/0},
+              {"群分组排序", fun test_category_sort/0},
+              {"将群加入分组", fun test_add_group_to_category/0},
+              {"创建群标签", fun test_create_tag/0},
+              {"为群添加标签", fun test_add_tag_to_group/0},
+              {"按标签筛选群", fun test_filter_groups_by_tag/0},
+              {"批量操作", fun test_batch_operations/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_category">>),
     % 创建测试群组

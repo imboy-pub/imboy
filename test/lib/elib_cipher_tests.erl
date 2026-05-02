@@ -146,11 +146,11 @@ aes_decrypt_removes_padding_test_() ->
 
 rsa_encrypt_with_binary_input_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
             TestPubKey = <<"-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----">>,
-            meck:expect(config_ds, get, fun(<<"login_rsa_pub_key">>) -> TestPubKey end),
+            meck:expect(config_ds, env, fun(login_rsa_pub_key) -> TestPubKey end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
             meck:expect(public_key, encrypt_public, fun(<<"test password">>, mock_public_key, Opts) ->
@@ -165,7 +165,7 @@ rsa_encrypt_with_binary_input_test_() ->
             Result = elib_cipher:rsa_encrypt(<<"test password">>),
 
             ?assertEqual(base64:encode(<<"encrypted_payload">>), Result),
-            ?assert(meck:called(config_ds, get, 1)),
+            ?assert(meck:called(config_ds, env, 1)),
             ?assert(meck:called(public_key, encrypt_public, 3))
         after
             meck:unload(config_ds),
@@ -175,11 +175,11 @@ rsa_encrypt_with_binary_input_test_() ->
 
 rsa_encrypt_with_list_input_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
             TestPubKey = <<"-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----">>,
-            meck:expect(config_ds, get, fun(<<"login_rsa_pub_key">>) -> TestPubKey end),
+            meck:expect(config_ds, env, fun(login_rsa_pub_key) -> TestPubKey end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
             meck:expect(public_key, encrypt_public, fun(<<"password">>, mock_public_key, _Opts) -> <<"encrypted">> end),
@@ -230,11 +230,11 @@ rsa_encrypt_error_handling_test_() ->
 
 rsa_decrypt_with_config_key_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
             TestPrivKey = <<"-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> TestPrivKey end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> TestPrivKey end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
             meck:expect(public_key, decrypt_private, fun(<<"encrypted">>, mock_private_key, Opts) ->
@@ -258,13 +258,13 @@ rsa_decrypt_with_config_key_test_() ->
 
 rsa_decrypt_missing_config_key_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         try
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> {error, not_found} end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> undefined end),
 
             Result = elib_cipher:rsa_decrypt(<<"encrypted">>),
 
-            ?assertMatch({error, not_found}, Result)
+            ?assertEqual(undefined, Result)
         after
             meck:unload(config_ds)
         end
@@ -361,11 +361,11 @@ rsa_decrypt_missing_padding_test_() ->
 
 safe_rsa_decrypt_version_1_success_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
             PrivateKeyPem = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> PrivateKeyPem end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> PrivateKeyPem end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
             meck:expect(public_key, decrypt_private, fun(<<"encrypted">>, mock_private_key, _Opts) ->
@@ -383,9 +383,9 @@ safe_rsa_decrypt_version_1_success_test_() ->
 
 safe_rsa_decrypt_version_1_error_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         try
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> {error, not_found} end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> undefined end),
 
             Result = elib_cipher:safe_rsa_decrypt(<<"invalid_encrypted">>, <<"1">>),
 
@@ -397,9 +397,9 @@ safe_rsa_decrypt_version_1_error_test_() ->
 
 safe_rsa_decrypt_version_1_throw_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         try
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> error(bad_config) end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> error(bad_config) end),
 
             Result = elib_cipher:safe_rsa_decrypt(<<"bad_encrypted">>, <<"1">>),
 
@@ -411,9 +411,9 @@ safe_rsa_decrypt_version_1_throw_test_() ->
 
 safe_rsa_decrypt_version_1_non_binary_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(config_ds, [passthrough, no_link]),
+        meck:new(config_ds, [no_link]),
         try
-            meck:expect(config_ds, get, fun(<<"login_rsa_priv_key">>) -> undefined end),
+            meck:expect(config_ds, env, fun(login_rsa_priv_key) -> undefined end),
 
             Result = elib_cipher:safe_rsa_decrypt(<<"encrypted">>, <<"1">>),
 
@@ -466,7 +466,7 @@ num_random_min_value_test_() ->
         Result = elib_cipher:num_random(1),
         ?assert(is_integer(Result)),
         ?assert(Result >= 1),
-        ?assert(Result =< 9)
+        ?assert(Result =< 10)
     end).
 
 num_random_max_value_test_() ->

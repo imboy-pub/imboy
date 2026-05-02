@@ -86,7 +86,7 @@ init_detail_accepts_legacy_uid_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'int', 3, fun(uid, _Req, _Default) -> {ok, 0} end},
-            {'binary', 3, fun(uid, _Req, _Default) -> {ok, <<"uid_hash_1001">>} end}
+            {'binary', 3, fun(uid, _Req, _Default) -> {ok, <<"1001">>} end}
         ]},
         {user_repo, [
             {'find_by_id', 2, fun(1001, _Column) ->
@@ -109,6 +109,9 @@ init_detail_accepts_legacy_uid_test_() ->
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}
+            end},
+            {'error', 2, fun(Req, _Msg) ->
+                Req#{response_status => 400}
             end}
         ]}
     ], fun() ->

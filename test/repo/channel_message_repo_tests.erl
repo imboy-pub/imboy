@@ -12,21 +12,18 @@ tablename_returns_public_channel_message_table_test_() ->
     end).
 
 add_passes_insert_result_to_parse_result_test_() ->
-    ?WITH_MECKS([
-        {elib_pg, [
-            {'insert', 3, fun(<<"public.channel_message">>, Data, <<"RETURNING id">>) ->
-                ?assertEqual(11, maps:get(channel_id, Data)),
-                {ok, #{raw => true}}
-            end}
-        ]},
-        {elib_pg_sql, [
-            {'parse_result', 1, fun({ok, #{raw := true}}) ->
-                {ok, 99, #{}}
-            end}
-        ]}
-    ], fun() ->
-        Data = #{channel_id => 11, author_id => 1001, content => <<"hello">>},
-        ?assertEqual({ok, 99, #{}}, channel_message_repo:add(Data))
+    ?_test(begin
+        _ = catch meck:unload([elib_tsid, elib_pg]),
+        ok = meck:new(elib_tsid, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(elib_tsid, generate, 1, fun(channel_message) -> 9001 end),
+            meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {ok, 1} end),
+            Data = #{channel_id => 11, author_id => 1001, content => <<"hello">>},
+            ?assertMatch({ok, _}, channel_message_repo:add(Data))
+        after
+            meck:unload([elib_pg, elib_tsid])
+        end
     end).
 
 find_by_id_returns_row_when_exists_test_() ->

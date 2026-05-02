@@ -73,7 +73,7 @@ init_messages_accepts_legacy_channel_id_test_() ->
     ?WITH_MECKS(channel_admin_feature_enabled_mocks() ++ [
         {cowboy_req, [
             {'method', 1, fun(_Req) -> <<"GET">> end},
-            {'binding', 2, fun(channel_id, _Req) -> <<"6q58gm">> end}
+            {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
         ]},
         {elib_param, [
             {'page', 1, fun(_Req) -> {1, 10} end}
@@ -94,6 +94,9 @@ init_messages_accepts_legacy_channel_id_test_() ->
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}
+            end},
+            {'error', 3, fun(Req, _Msg, _Code) ->
+                Req#{response_status => 400}
             end}
         ]}
     ], fun() ->
@@ -315,8 +318,8 @@ init_remove_subscriber_accepts_legacy_path_params_test_() ->
             {'method', 1, fun(_Req) -> <<"DELETE">> end},
             {'binding', 2, fun(Key, _Req) ->
                 case Key of
-                    channel_id -> <<"ch_hash_11">>;
-                    user_id -> <<"uid_hash_22">>;
+                    channel_id -> <<"11">>;
+                    user_id -> <<"22">>;
                     _ -> undefined
                 end
             end}
@@ -765,9 +768,9 @@ init_stats_success_test_() ->
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
         ]},
         {channel_logic, [
-            {'get_channel_stats', 1, fun(<<"ch_hash_11">>) ->
+            {'get_channel_stats', 1, fun(11) ->
                 {ok, #{
-                    <<"channel_id">> => <<"ch_hash_11">>,
+                    <<"channel_id">> => 11,
                     <<"subscriber_count">> => 37,
                     <<"total_messages">> => 120,
                     <<"total_views">> => 899,
@@ -778,6 +781,9 @@ init_stats_success_test_() ->
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}
+            end},
+            {'error', 3, fun(Req, _Msg, _Code) ->
+                Req#{response_status => 400}
             end}
         ]}
     ], fun() ->
@@ -785,7 +791,7 @@ init_stats_success_test_() ->
         {ok, RespReq, _State} = adm_channel_handler:init(Req, #{action => stats}),
         ?assertEqual(200, maps:get(response_status, RespReq)),
         Payload = maps:get(payload, RespReq),
-        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"channel_id">>, Payload)),
+        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
         ?assertEqual(37, maps:get(<<"subscriber_count">>, Payload)),
         ?assertEqual(120, maps:get(<<"total_messages">>, Payload)),
         ?assertEqual(899, maps:get(<<"total_views">>, Payload)),
@@ -799,7 +805,7 @@ init_stats_not_found_test_() ->
             {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
         ]},
         {channel_logic, [
-            {'get_channel_stats', 1, fun(<<"ch_hash_11">>) ->
+            {'get_channel_stats', 1, fun(11) ->
                 {error, <<"频道不存在"/utf8>>}
             end}
         ]},
@@ -936,8 +942,8 @@ init_search_returns_list_with_normalized_ids_test_() ->
         ?assertEqual(1, maps:get(total, Payload)),
         [First | _] = maps:get(list, Payload),
         ?assertEqual(false, maps:is_key(items, Payload)),
-        ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, First)),
-        ?assertEqual(<<"uid_hash_99">>, maps:get(<<"owner_id">>, First))
+        ?assertEqual(<<"11">>, maps:get(<<"id">>, First)),
+        ?assertEqual(<<"99">>, maps:get(<<"owner_id">>, First))
     end).
 
 init_search_empty_keyword_returns_empty_list_test_() ->

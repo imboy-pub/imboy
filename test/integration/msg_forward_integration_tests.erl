@@ -13,26 +13,32 @@
 
 %% 测试夹具
 msg_forward_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
-      {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
-      {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
-      {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
-      {"批量转发消息", fun test_batch_forward/0},
-      {"转发记录溯源", fun test_forward_trace/0},
-      {"非好友转发失败", fun test_forward_to_non_friend/0},
-      {"非群成员转发失败", fun test_forward_to_non_group_member/0},
-      {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
-      {"批量转发数量限制", fun test_batch_forward_limit/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
+              {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
+              {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
+              {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
+              {"批量转发消息", fun test_batch_forward/0},
+              {"转发记录溯源", fun test_forward_trace/0},
+              {"非好友转发失败", fun test_forward_to_non_friend/0},
+              {"非群成员转发失败", fun test_forward_to_non_group_member/0},
+              {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
+              {"批量转发数量限制", fun test_batch_forward_limit/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_forward">>),
     {ok, User2} = create_test_user(<<"user2_forward">>),

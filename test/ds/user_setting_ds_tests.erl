@@ -59,11 +59,21 @@ chat_state_hide_true_when_chat_state_hide_test_() ->
 %% ===================================================================
 
 save_add_friend_type_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        TypeLi = [<<"qrcode">>, <<"visit_card">>],
-        Result = user_setting_ds:save(Uid, <<"add_friend_type">>, TypeLi),
-        ?assertEqual(ok, Result)
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_ds, [passthrough, no_link]),
+        ok = meck:new(user_setting_repo, [no_link]),
+        ok = meck:new(elib_dt, [no_link]),
+        try
+            meck:expect(user_setting_ds, find_by_uid, 1, #{}),
+            meck:expect(elib_dt, now, 0, <<"2026-01-01T00:00:00.000000Z">>),
+            meck:expect(user_setting_repo, update, 2, ok),
+            Uid = 1,
+            TypeLi = [<<"qrcode">>, <<"visit_card">>],
+            Result = user_setting_ds:save(Uid, <<"add_friend_type">>, TypeLi),
+            ?assertEqual(ok, Result)
+        after
+            meck:unload([user_setting_ds, user_setting_repo, elib_dt])
+        end
     end).
 
 save_people_nearby_visible_test_() ->

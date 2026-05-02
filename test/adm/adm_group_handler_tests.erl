@@ -144,7 +144,7 @@ init_detail_accepts_legacy_gid_test_() ->
             end}
         ]},
         {elib_param, [
-            {'binary', 3, fun(gid, _Req, _Default) -> {ok, <<"gid_hash_66">>} end}
+            {'binary', 3, fun(gid, _Req, _Default) -> {ok, <<"66">>} end}
         ]},
         {group_repo, [
             {'find_by_id', 2, fun(66, _Column) ->
@@ -163,6 +163,9 @@ init_detail_accepts_legacy_gid_test_() ->
         {elib_response, [
             {'success', 2, fun(Req, Payload) ->
                 Req#{response_status => 200, payload => Payload}
+            end},
+            {'error', 2, fun(Req, _Msg) ->
+                Req#{response_status => 400}
             end}
         ]}
     ], fun() ->
@@ -393,7 +396,7 @@ init_notice_list_success_test_() ->
             {'int', 3, fun(gid, _Req, _Default) -> {ok, 66} end},
             {'page', 1, fun(_Req) -> {1, 10} end}
         ]},
-        {group_notice_repo, [
+        {group_notice_ds, [
             {'list_by_group_id', 3, fun(66, 1, 10) ->
                 {ok, [#{<<"id">> => 123, <<"title">> => <<"群规公告">>}]}
             end},
@@ -427,7 +430,7 @@ init_notice_detail_success_test_() ->
         {elib_param, [
             {'binary', 3, fun(notice_id, _Req, _Default) -> {ok, <<"123">>} end}
         ]},
-        {group_notice_repo, [
+        {group_notice_ds, [
             {'find_by_id', 1, fun(123) ->
                 {ok, #{
                     <<"id">> => 123,
@@ -459,7 +462,7 @@ init_notice_delete_success_writes_audit_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) -> #{<<"notice_id">> => <<"123">>} end}
         ]},
-        {group_notice_repo, [
+        {group_notice_ds, [
             {'find_by_id', 1, fun(123) ->
                 {ok, #{<<"id">> => 123, <<"group_id">> => 66}}
             end},

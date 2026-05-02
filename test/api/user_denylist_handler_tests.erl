@@ -17,7 +17,7 @@ init_add_success_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                #{<<"denied_user_id">> => <<"u_hash_67890">>}
+                #{<<"denied_user_id">> => <<"67890">>}
             end}
         ]},
         {user_denylist_logic, [
@@ -35,15 +35,15 @@ init_add_success_test_() ->
         {ok, RespReq, _State} = user_denylist_handler:init(Req, #{action => add, current_uid => 12345}),
         Payload = maps:get(payload, RespReq),
         ?assertEqual(200, maps:get(response_status, RespReq)),
-        ?assertEqual(<<"u_hash_12345">>, maps:get(<<"user_id">>, Payload)),
-        ?assertEqual(<<"u_hash_67890">>, maps:get(<<"denied_user_id">>, Payload))
+        ?assertEqual(12345, maps:get(<<"user_id">>, Payload)),
+        ?assertEqual(67890, maps:get(<<"denied_user_id">>, Payload))
     end).
 
 init_remove_success_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                #{<<"denied_user_id">> => <<"u_hash_67890">>}
+                #{<<"denied_user_id">> => <<"67890">>}
             end}
         ]},
         {user_denylist_logic, [

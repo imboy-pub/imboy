@@ -15,12 +15,14 @@
 %% ===================================================================
 
 pin_c2c_conversation_success_test_() ->
-    ?WITH_MECK(conversation_pin_ds, [
+    ?WITH_MECKS([{conversation_pin_ds, [
         {'is_conversation_pinned', 3, fun(_Uid, _ConversationId, _Type) -> false end},
         {'pin_conversation', 3, fun(_Uid, _ConversationId, _Type) -> ok end}
-    ], fun() ->
+    ]}, {msg_s2c_ds, [
+        {'send', 7, fun(_Uid, _To, _Action, _MsgId, _Ref, _Payload, _Mode) -> ok end}
+    ]}], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv123">>,
+        ConversationId = 67890,
         Type = <<"c2c">>,
 
         Result = conversation_pin_logic:pin(Uid, ConversationId, Type),
@@ -32,7 +34,7 @@ pin_c2c_conversation_already_pinned_test_() ->
         {'is_conversation_pinned', 3, fun(_Uid, _ConversationId, _Type) -> true end}
     ], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv123">>,
+        ConversationId = 67890,
         Type = <<"c2c">>,
 
         Result = conversation_pin_logic:pin(Uid, ConversationId, Type),
@@ -44,12 +46,14 @@ pin_c2c_conversation_already_pinned_test_() ->
 %% ===================================================================
 
 pin_c2g_conversation_success_test_() ->
-    ?WITH_MECK(conversation_pin_ds, [
+    ?WITH_MECKS([{conversation_pin_ds, [
         {'is_conversation_pinned', 3, fun(_Uid, _ConversationId, _Type) -> false end},
         {'pin_conversation', 3, fun(_Uid, _ConversationId, _Type) -> ok end}
-    ], fun() ->
+    ]}, {msg_s2c_ds, [
+        {'send', 7, fun(_Uid, _To, _Action, _MsgId, _Ref, _Payload, _Mode) -> ok end}
+    ]}], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv456">>,
+        ConversationId = 67890,
         Type = <<"c2g">>,
 
         Result = conversation_pin_logic:pin(Uid, ConversationId, Type),
@@ -61,11 +65,13 @@ pin_c2g_conversation_success_test_() ->
 %% ===================================================================
 
 unpin_conversation_success_test_() ->
-    ?WITH_MECK(conversation_pin_ds, [
+    ?WITH_MECKS([{conversation_pin_ds, [
         {'unpin_conversation', 3, fun(_Uid, _ConversationId, _Type) -> ok end}
-    ], fun() ->
+    ]}, {msg_s2c_ds, [
+        {'send', 7, fun(_Uid, _To, _Action, _MsgId, _Ref, _Payload, _Mode) -> ok end}
+    ]}], fun() ->
         Uid = 12345,
-        ConversationId = <<"conv123">>,
+        ConversationId = 67890,
         Type = <<"c2c">>,
 
         Result = conversation_pin_logic:unpin(Uid, ConversationId, Type),
@@ -156,7 +162,7 @@ pin_with_invalid_type_test_() ->
 pin_with_empty_conversation_id_test_() ->
     fun() ->
         Uid = 12345,
-        ConversationId = <<>>,
+        ConversationId = 0,
         Type = <<"c2c">>,
 
         Result = conversation_pin_logic:pin(Uid, ConversationId, Type),

@@ -64,16 +64,13 @@ join_chat_session_test_() ->
 
             % 测试成功加入会话
             Result = imboy_syn:join(Uid, DType, Pid, DID),
-            case Result of
-                {ok, _} -> ?assert(true);
-                _ -> ?assert(false, "Expected {ok, _}")
-            end,
+            ?assertEqual(ok, Result),
 
             % 验证syn:join被正确调用
             ?assert(meck:called(syn, join, 4)),
 
             % 验证调用参数
-            [{_, {Scope, Uid2, Pid2, Meta}, _}] = meck:history(syn),
+            [{_, {syn, join, [Scope, Uid2, Pid2, Meta]}, _}] = meck:history(syn),
             ?assertEqual(?CHAT_SCOPE, Scope),
             ?assertEqual(Uid, Uid2),
             ?assertEqual(Pid, Pid2),
@@ -97,16 +94,13 @@ leave_chat_session_test_() ->
 
             % 测试成功离开会话
             Result = imboy_syn:leave(Uid, Pid),
-            case Result of
-                {ok, _} -> ?assert(true);
-                _ -> ?assert(false, "Expected {ok, _}")
-            end,
+            ?assertEqual(ok, Result),
             
             % 验证syn:leave被正确调用
             ?assert(meck:called(syn, leave, 3)),
             
             % 验证调用参数
-            [{_, {Scope, Uid2, Pid2}, _}] = meck:history(syn),
+            [{_, {syn, leave, [Scope, Uid2, Pid2]}, _}] = meck:history(syn),
             ?assertEqual(?CHAT_SCOPE, Scope),
             ?assertEqual(Uid, Uid2),
             ?assertEqual(Pid, Pid2)
@@ -135,9 +129,9 @@ list_by_uid_test_() ->
             
             % 验证syn:members被正确调用
             ?assert(meck:called(syn, members, 2)),
-            
+
             % 验证调用参数
-            [{_, {Scope, Uid2}, _}] = meck:history(syn),
+            [{_, {syn, members, [Scope, Uid2]}, _}] = meck:history(syn),
             ?assertEqual(?CHAT_SCOPE, Scope),
             ?assertEqual(Uid, Uid2)
         after
@@ -313,7 +307,7 @@ count_user_test_() ->
             ?assert(meck:called(syn, group_count, 1)),
             
             % 验证调用参数
-            [{_, {Scope}, _}] = meck:history(syn),
+            [{_, {syn, group_count, [Scope]}, _}] = meck:history(syn),
             ?assertEqual(?CHAT_SCOPE, Scope)
         after
             % 清理Mock
@@ -339,7 +333,7 @@ count_user_devices_test_() ->
             ?assert(meck:called(syn, member_count, 2)),
             
             % 验证调用参数
-            [{_, {Scope, Uid2}, _}] = meck:history(syn),
+            [{_, {syn, member_count, [Scope, Uid2]}, _}] = meck:history(syn),
             ?assertEqual(?CHAT_SCOPE, Scope),
             ?assertEqual(Uid, Uid2)
         after
@@ -351,61 +345,53 @@ count_user_devices_test_() ->
 %% 测试统计所有在线设备数
 count_all_test_() ->
     ?TEST_WITH_APP(fun() ->
-        % 设置Mock
-        meck:new(syn_backbone, [passthrough, no_link]),
-        meck:expect(syn_backbone, get_table_name, 2, fun(syn_pg_by_name, _Scope) -> 'test_table' end),
-        
-        % Mock ets表信息
-        meck:new(ets, [unstick, passthrough]),
-        meck:expect(ets, info, fun('test_table', size) -> 500 end),
-        
+        % 创建真实的 ETS 表来避免 mock builtin ets
+        Tid = ets:new(test_syn_count_table, [set, public]),
         try
+            % 插入 500 条记录
+            [ets:insert(Tid, {I, self(), {<<"macos">>, <<"did">>}, 0, ref, node()}) || I <- lists:seq(1, 500)],
+
+            % Mock syn_backbone 返回真实表名
+            meck:new(syn_backbone, [non_strict, no_link]),
+            meck:expect(syn_backbone, get_table_name, 2, fun(syn_pg_by_name, _Scope) -> Tid end),
+
             % 测试统计所有在线设备数
             Result = imboy_syn:count(),
             ?assertEqual(500, Result),
-            
+
             % 验证syn_backbone:get_table_name被正确调用
-            ?assert(meck:called(syn_backbone, get_table_name, 2)),
-            
-            % 验证ets:info被正确调用
-            ?assert(meck:called(ets, info, 2))
-        after
-            % 清理Mock
-            meck:unload(ets),
-            meck:unload(syn_backbone)
-        end
+            ?assert(meck:called(syn_backbone, get_table_name, 2))
+            after
+                meck:unload(syn_backbone),
+                ets:delete(Tid)
+            end
     end).
 
 %% 测试按限制获取列表
 list_by_limit_test_() ->
     ?TEST_WITH_APP(fun() ->
-        % 设置Mock
-        meck:new(syn_backbone, [passthrough, no_link]),
-        meck:expect(syn_backbone, get_table_name, 2, fun(syn_pg_by_name, _Scope) -> 'test_table' end),
-        
-        Limit = 10,
-        ExpectedResult = [{uid1, pid1}, {uid2, pid2}],
-        
-        % Mock ets:select返回结果
-        meck:new(ets, [unstick, passthrough]),
-        meck:expect(ets, select, fun('test_table', _MatchSpec, 10) -> 
-            {ExpectedResult, continuation} 
-        end),
-        
+        % 创建真实的 ETS 表
+        Tid = ets:new(test_syn_list_table, [bag, public]),
         try
+            Rows = [
+                {{1001, self()}, {<<"macos">>, <<"d1">>}, 1000, make_ref(), node()},
+                {{1002, self()}, {<<"ios">>, <<"d2">>}, 1001, make_ref(), node()}
+            ],
+            [ets:insert(Tid, Row) || Row <- Rows],
+
+            % Mock syn_backbone 返回真实表名
+            meck:new(syn_backbone, [non_strict, no_link]),
+            meck:expect(syn_backbone, get_table_name, 2, fun(syn_pg_by_name, _Scope) -> Tid end),
+
             % 测试按限制获取列表
-            Result = imboy_syn:list_by_limit(Limit),
-            ?assertEqual(ExpectedResult, Result),
-            
+            Result = imboy_syn:list_by_limit(10),
+            ?assertEqual(2, length(Result)),
+
             % 验证syn_backbone:get_table_name被正确调用
-            ?assert(meck:called(syn_backbone, get_table_name, 2)),
-            
-            % 验证ets:select被正确调用
-            ?assert(meck:called(ets, select, 3))
+            ?assert(meck:called(syn_backbone, get_table_name, 2))
         after
-            % 清理Mock
-            meck:unload(ets),
-            meck:unload(syn_backbone)
+            meck:unload(syn_backbone),
+            ets:delete(Tid)
         end
     end).
 
@@ -426,7 +412,7 @@ error_handling_test_() ->
             
             % 测试异常处理
             Result = imboy_syn:join(Uid, DType, Pid, DID),
-            ?assertMatch({error, test_error}, Result),
+            ?assertMatch({error, {error, test_error}}, Result),
             
             % 验证syn:join被调用
             ?assert(meck:called(syn, join, 4))

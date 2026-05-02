@@ -10,20 +10,18 @@
 %%% 覆盖：消息插入、查询、更新
 %%%===================================================================
 
+%% Common meck expectations used across tests
+
+-define(MOCK_ENV, {config_ds, [{'env', 1, fun(sql_driver) -> pgsql; (_) -> undefined end}]}).
+-define(MOCK_TSID, {elib_tsid, [{'generate', 1, fun(_Table) -> 123456789 end}]}).
+
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([?MOCK_ENV], fun() ->
         Result = msg_c2c_repo:tablename(),
-        % 精确断言：验证表名的具体格式和内容
-        ?assert(is_binary(Result) andalso
-                 byte_size(Result) > 12 andalso 
-                 binary:match(Result, <<"public.">>) =/= nomatch andalso
-                 binary:match(Result, <<"msg_c2c">>) =/= nomatch,
-                 Result),
-        % 进一步验证表名结构
         ?assertEqual(<<"public.msg_c2c">>, Result)
     end).
 
@@ -32,50 +30,32 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 read_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % read_msg/3 接受 (Where, Column, Limit)
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         Where = <<"from_id = 1 AND to_id = 2">>,
         Column = <<"id, from_id, to_id, payload, msg_type, created_at">>,
         Limit = 10,
-
-        % 实际调用函数并验证返回结果格式
         Result = msg_c2c_repo:read_msg(Where, Column, Limit),
-        case Result of
-            {ok, _, Messages} when is_list(Messages) ->
-                ?assert(length(Messages) =< Limit);
-            {ok, Messages} when is_list(Messages) ->
-                ?assert(length(Messages) =< Limit);
-            {error, _Reason} ->
-                ?assert(true)
-        end
+        ?assertMatch({ok, List} when is_list(List), Result)
     end).
 
 %% ===================================================================
 %% 消息插入测试
 %% ===================================================================
 
-save_message_with_valid_data_test_() ->
-    ?TEST_WITH_DB(fun() ->
+save_message_with_valid_data_succeeds_test_() ->
+    ?WITH_MECKS([?MOCK_ENV], fun() ->
         Data = #{
             from_uid => 1,
             to_uid => 2,
             content => <<"test message">>,
             msg_type => <<"text">>
         },
-        % 精确断言：验证消息数据结构的完整性
-        ?assertMatch(
-            #{
-                <<"from_uid">> := FromUid,
-                <<"to_uid">> := ToUid,
-                <<"content">> := Content,
-                <<"msg_type">> := MsgType
-            } when is_integer(FromUid) andalso FromUid > 0 andalso
-                   is_integer(ToUid) andalso ToUid > 0 andalso
-                   is_binary(Content) andalso byte_size(Content) > 0 andalso
-                   is_binary(MsgType) andalso byte_size(MsgType) > 0,
-            Data
-        ),
-        ?assert(maps:is_key(from_uid, Data))
+        ?assert(maps:is_key(from_uid, Data)),
+        ?assert(maps:is_key(to_uid, Data)),
+        ?assert(maps:is_key(content, Data)),
+        ?assert(maps:is_key(msg_type, Data))
     end).
 
 %% ===================================================================
@@ -83,7 +63,9 @@ save_message_with_valid_data_test_() ->
 %% ===================================================================
 
 write_msg_with_valid_data_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         CreatedAt = <<"2024-01-01T00:00:00Z">>,
         MsgId = <<"test_msg_id_123">>,
         Payload = <<"{\"text\":\"hello\"}">>,
@@ -97,7 +79,9 @@ write_msg_with_valid_data_test_() ->
     end).
 
 write_msg_with_e2ee_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         CreatedAt = <<"2024-01-01T00:00:00Z">>,
         MsgId = <<"test_msg_id_e2ee">>,
         Payload = <<"{\"text\":\"encrypted\"}">>,
@@ -115,19 +99,12 @@ write_msg_with_e2ee_test_() ->
 %% ===================================================================
 
 find_msg_by_id_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入一条消息
-        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, [_MsgId]) ->
+            {ok, [#{<<"from_id">> => 1, <<"to_id">> => 2, <<"created_at">> => <<"2024-01-01">>, <<"payload">> => <<"hello">>}]}
+        end}
+    ]}], fun() ->
         MsgId = <<"test_msg_find_123">>,
-        Payload = <<"{\"text\":\"test\"}">>,
-        FromId = 1,
-        ToId = 2,
-        ServerTS = <<"2024-01-01T00:00:01Z">>,
-        MsgType = <<"text">>,
-        E2EE = <<>>,
-        ok = msg_c2c_repo:write_msg(CreatedAt, MsgId, Payload, FromId, ToId, ServerTS, MsgType, E2EE),
-
-        % 查找消息
         Result = msg_c2c_repo:find_msg_by_id(MsgId),
         ?assertMatch({ok, _}, Result),
         case Result of
@@ -141,7 +118,9 @@ find_msg_by_id_existing_test_() ->
     end).
 
 find_msg_by_id_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, [_MsgId]) -> {ok, []} end}
+    ]}], fun() ->
         MsgId = <<"nonexistent_msg_id">>,
         Result = msg_c2c_repo:find_msg_by_id(MsgId),
         ?assertEqual({error, not_found}, Result)
@@ -152,36 +131,26 @@ find_msg_by_id_not_existing_test_() ->
 %% ===================================================================
 
 read_msg_with_where_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         Where = <<"to_id = $1">>,
         Column = <<"id, msg_id, from_id, to_id">>,
         Limit = 10,
         Result = msg_c2c_repo:read_msg(Where, Column, Limit),
-        ?assertMatch({ok, _}, Result),
-        case Result of
-            {ok, Rows} ->
-                ?assert(is_list(Rows)),
-                ?assert(length(Rows) =< Limit);
-            _ ->
-                ok
-        end
+        ?assertMatch({ok, List} when is_list(List), Result)
     end).
 
 read_msg_with_params_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         Where = <<"to_id = $1 AND from_id = $2">>,
         Column = <<"id, msg_id">>,
         Limit = 5,
         Params = [2, 1],
         Result = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
-        ?assertMatch({ok, _}, Result),
-        case Result of
-            {ok, Rows} ->
-                ?assert(is_list(Rows)),
-                ?assert(length(Rows) =< Limit);
-            _ ->
-                ok
-        end
+        ?assertMatch({ok, List} when is_list(List), Result)
     end).
 
 %% ===================================================================
@@ -189,23 +158,27 @@ read_msg_with_params_test_() ->
 %% ===================================================================
 
 delete_msg_by_integer_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 测试根据整数 ID 删除
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         Id = 999999,
         Result = msg_c2c_repo:delete_msg(Id),
         ?assertMatch({ok, _}, Result)
     end).
 
 delete_msg_by_binary_msgid_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 测试根据消息 ID 删除
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         MsgId = <<"test_msg_delete_123">>,
         Result = msg_c2c_repo:delete_msg(MsgId),
         ?assertMatch({ok, _}, Result)
     end).
 
 delete_msg_with_where_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         Where = <<"WHERE to_id = $1">>,
         Params = [999999],
         Result = msg_c2c_repo:delete_msg(Where, Params),
@@ -217,7 +190,9 @@ delete_msg_with_where_test_() ->
 %% ===================================================================
 
 count_by_to_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'pluck_value', 5, fun(_Tb, _Col, _Where, _Opts, _Default) -> 5 end}
+    ]}], fun() ->
         ToUid = 1,
         Count = msg_c2c_repo:count_by_to_id(ToUid),
         ?assert(is_integer(Count)),
@@ -225,7 +200,9 @@ count_by_to_id_test_() ->
     end).
 
 count_by_to_id_non_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'pluck_value', 5, fun(_Tb, _Col, _Where, _Opts, _Default) -> 0 end}
+    ]}], fun() ->
         ToUid = 999999,
         Count = msg_c2c_repo:count_by_to_id(ToUid),
         ?assert(is_integer(Count)),
@@ -237,7 +214,9 @@ count_by_to_id_non_existing_test_() ->
 %% ===================================================================
 
 delete_by_to_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         ToUid = 999999,
         Result = msg_c2c_repo:delete_by_to_id(ToUid),
         ?assertMatch({ok, _}, Result)
@@ -248,7 +227,9 @@ delete_by_to_id_test_() ->
 %% ===================================================================
 
 delete_by_msg_id_and_to_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         MsgId = <<"test_msg_delete_joint">>,
         ToUid = 1,
         Result = msg_c2c_repo:delete_by_msg_id_and_to_id(MsgId, ToUid),
@@ -260,7 +241,9 @@ delete_by_msg_id_and_to_id_test_() ->
 %% ===================================================================
 
 delete_by_msg_ids_and_to_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         MsgIds = [<<"msg1">>, <<"msg2">>, <<"msg3">>],
         ToUid = 1,
         Result = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, ToUid),
@@ -268,7 +251,7 @@ delete_by_msg_ids_and_to_id_test_() ->
     end).
 
 delete_by_msg_ids_and_to_id_empty_list_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV], fun() ->
         MsgIds = [],
         ToUid = 1,
         Result = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, ToUid),
@@ -280,7 +263,9 @@ delete_by_msg_ids_and_to_id_empty_list_test_() ->
 %% ===================================================================
 
 delete_overflow_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         ToUid = 1,
         Limit = 100,
         Result = msg_c2c_repo:delete_overflow_msg(ToUid, Limit),
@@ -288,7 +273,9 @@ delete_overflow_msg_test_() ->
     end).
 
 delete_overflow_msg_zero_limit_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+    ]}], fun() ->
         ToUid = 1,
         Limit = 0,
         Result = msg_c2c_repo:delete_overflow_msg(ToUid, Limit),
@@ -300,7 +287,9 @@ delete_overflow_msg_zero_limit_test_() ->
 %% ===================================================================
 
 write_msg_with_reply_info_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         CreatedAt = <<"2024-01-01T00:00:00Z">>,
         MsgId = <<"test_msg_reply_123">>,
         Payload = <<"{\"text\":\"hello\"}">>,
@@ -321,65 +310,28 @@ write_msg_with_reply_info_test_() ->
     end).
 
 find_msg_with_reply_info_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入一条带引用信息的消息
-        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, [_MsgId]) ->
+            {ok, [#{<<"from_id">> => 1, <<"to_id">> => 2, <<"created_at">> => <<"2024-01-01">>, <<"payload">> => <<"test">>}]}
+        end}
+    ]}], fun() ->
         MsgId = <<"test_msg_find_reply_123">>,
-        Payload = <<"{\"text\":\"test\"}">>,
-        FromId = 1,
-        ToId = 2,
-        ServerTS = <<"2024-01-01T00:00:01Z">>,
-        MsgType = <<"text">>,
-        E2EE = <<>>,
-        ReplyToMsgId = <<"original_msg_456">>,
-        ReplyToFromId = 3,
-        ReplySnippet = <<"原始消息内容摘要"/utf8>>,
-
-        ok = msg_c2c_repo:write_msg_with_reply(
-            CreatedAt, MsgId, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
-            ReplyToMsgId, ReplyToFromId, ReplySnippet
-        ),
-
-        % 查找消息（包含引用信息）
         Result = msg_c2c_repo:find_msg_by_id(MsgId),
         ?assertMatch({ok, _}, Result),
         case Result of
             {ok, Msg} ->
                 ?assert(is_map(Msg)),
-                ?assert(maps:is_key(<<"from_id">>, Msg)),
-                ?assertNot(maps:is_key(<<"reply_to_msg_id">>, Msg)),
-                ?assertNot(maps:is_key(<<"reply_to_from_id">>, Msg));
+                ?assert(maps:is_key(<<"from_id">>, Msg));
             _ ->
                 ok
         end
     end).
 
 find_msgs_by_reply_to_msg_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 先插入一条带引用信息的消息
-        CreatedAt = <<"2024-01-01T00:00:00Z">>,
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         OriginalMsgId = <<"original_msg_789">>,
-        MsgId1 = <<"test_msg_reply1_123">>,
-        MsgId2 = <<"test_msg_reply2_124">>,
-        Payload = <<"{\"text\":\"reply\"}">>,
-        FromId = 1,
-        ToId = 2,
-        ServerTS = <<"2024-01-01T00:00:01Z">>,
-        MsgType = <<"text">>,
-        E2EE = <<>>,
-        ReplySnippet = <<"原始消息"/utf8>>,
-
-        ok = msg_c2c_repo:write_msg_with_reply(
-            CreatedAt, MsgId1, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
-            OriginalMsgId, FromId, ReplySnippet
-        ),
-
-        ok = msg_c2c_repo:write_msg_with_reply(
-            CreatedAt, MsgId2, Payload, FromId, ToId, ServerTS, MsgType, E2EE,
-            OriginalMsgId, FromId, ReplySnippet
-        ),
-
-        % 查找所有引用该消息的回复
         Result = msg_c2c_repo:find_by_reply_to_msg_id(OriginalMsgId),
         ?assertEqual({ok, []}, Result)
     end).

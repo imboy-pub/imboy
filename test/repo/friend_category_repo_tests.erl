@@ -101,10 +101,15 @@ find_by_name_not_found_test_() ->
 %% ===================================================================
 
 add_category_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Sql, _Params) ->
-            {ok, 1, [{<<"id">>}]}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 8000001 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) ->
+                {ok, 1}
+            end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Name = <<"新分类"/utf8>>,
@@ -114,10 +119,15 @@ add_category_success_test_() ->
     end).
 
 add_category_with_string_name_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Sql, _Params) ->
-            {ok, 1, [{<<"id">>}]}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 8000002 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) ->
+                {ok, 1}
+            end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Name = "New Category",
@@ -127,10 +137,15 @@ add_category_with_string_name_test_() ->
     end).
 
 add_category_error_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Sql, _Params) ->
-            {error, duplicate_key}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 8000003 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) ->
+                {error, duplicate_key}
+            end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Name = <<"重复分类"/utf8>>,
@@ -181,16 +196,21 @@ delete_category_error_test_() ->
 %% ===================================================================
 
 add_and_delete_category_flow_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Sql, _Params) ->
-            {ok, 1, [{<<"id">>}]}
-        end},
-        {'one', 3, fun(_Sql, _Params, _Opts) ->
-            {ok, #{<<"id">> => 1, <<"name">> => <<"测试"/utf8>>, <<"owner_user_id">> => 12345}}
-        end},
-        {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{<<"id">>, <<"name">>}]}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 8000004 end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) ->
+                {ok, 1}
+            end},
+            {'one', 3, fun(_Sql, _Params, _Opts) ->
+                {ok, #{<<"id">> => 1, <<"name">> => <<"测试"/utf8>>, <<"owner_user_id">> => 12345}}
+            end},
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [{<<"id">>, <<"name">>}]}
+            end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Name = <<"测试"/utf8>>,

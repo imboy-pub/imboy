@@ -22,19 +22,42 @@
 
 c2s_with_qianfan_bot_succeeds_test_() ->
     ?WITH_MECKS([
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"c2s_unsupported">>}
+        {elib_dt, [
+            {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
+            {'millisecond', 0, fun() -> 1704067200000 end}
+        ]},
+        {msg_c2s_ds, [
+            {'write_topic', 6, fun(_Type, _TopicId, _Uid, _To, _Title, _CreatedAt) -> ok end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]},
+        {qianfan_api, [
+            {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
+                #{<<"result">> => <<"AI response">>}
             end}
+        ]},
+        {message_ds, [
+            {'send_next', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {elib_str, [
+            {'replace_single_quote', 1, fun(Text) -> Text end}
+        ]},
+        {jsone, [
+            {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
+        ]},
+        {elib_retry_config, [
+            {'intervals', 1, fun(_Type) -> [2000, 5000, 7000, 11000] end}
         ]}
     ], fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
-        Data = #{<<"to">> => <<"bot_qian_fan">>},
+        Data = #{<<"to">> => <<"bot_qian_fan">>,
+                 <<"payload">> => #{<<"text">> => <<"hello">>, <<"topic_id">> => 0, <<"topic_title">> => <<>>},
+                 <<"created_at">> => 1704067200000},
 
-        % 实际调用中会触发异步操作，这里只测试返回值
         Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
-        % 由于会调用外部 API 和异步操作，返回值可能是 ok 或 {reply, _}
         ?assert(is_atom(Result) orelse is_tuple(Result))
     end).
 
@@ -56,15 +79,40 @@ c2s_with_unsupported_bot_fails_test_() ->
 
 c2s_with_lowercase_bot_name_succeeds_test_() ->
     ?WITH_MECKS([
-        {message_ds, [
-            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                #{<<"type">> => <<"S2C">>, <<"code">> => <<"c2s_unsupported">>}
+        {elib_dt, [
+            {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
+            {'millisecond', 0, fun() -> 1704067200000 end}
+        ]},
+        {msg_c2s_ds, [
+            {'write_topic', 6, fun(_Type, _TopicId, _Uid, _To, _Title, _CreatedAt) -> ok end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> ok end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]},
+        {qianfan_api, [
+            {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
+                #{<<"result">> => <<"AI response">>}
             end}
+        ]},
+        {message_ds, [
+            {'send_next', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {elib_str, [
+            {'replace_single_quote', 1, fun(Text) -> Text end}
+        ]},
+        {jsone, [
+            {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
+        ]},
+        {elib_retry_config, [
+            {'intervals', 1, fun(_Type) -> [2000, 5000, 7000, 11000] end}
         ]}
     ], fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
-        Data = #{<<"to">> => <<"BOT_QIAN_FAN">>},  % 大写会被转小写
+        Data = #{<<"to">> => <<"BOT_QIAN_FAN">>,
+                 <<"payload">> => #{<<"text">> => <<"hello">>, <<"topic_id">> => 0, <<"topic_title">> => <<>>},
+                 <<"created_at">> => 1704067200000},
 
         Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
         ?assert(is_atom(Result) orelse is_tuple(Result))
@@ -359,6 +407,10 @@ c2s_to_external_with_valid_data_succeeds_test_() ->
 
 c2s_to_external_with_stage_failure_fails_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
         {elib_dt, [
             {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
             {'millisecond', 0, fun() -> 1704067200000 end}
@@ -497,22 +549,68 @@ c2s_to_external_without_topic_succeeds_test_() ->
 %% ===================================================================
 
 c2s_to_role_chat_routes_to_external_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {config_ds, [
+            {'env', 2, fun(ai_roles, _Default) -> #{} end}
+        ]},
+        {elib_dt, [
+            {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
+            {'millisecond', 0, fun() -> 1704067200000 end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> error end}
+        ]},
+        {message_ds, [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"internal_error">>}
+            end}
+        ]},
+        {jsone, [
+            {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
+        ]}
+    ], fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
-        Payload = #{<<"role_id">> => <<"doctor">>},
-        Data = #{<<"payload">> => Payload},
+        Payload = #{<<"role_id">> => <<"doctor">>, <<"text">> => <<"hello">>, <<"topic_id">> => 0, <<"topic_title">> => <<>>},
+        Data = #{<<"payload">> => Payload, <<"created_at">> => 1704067200000},
 
         Result = msg_c2s_logic:c2s_to_role_chat(MsgId, CurrentUid, Data),
         ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
     end).
 
 c2s_to_role_chat_with_default_role_id_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {config_ds, [
+            {'env', 2, fun(ai_roles, _Default) -> #{} end}
+        ]},
+        {elib_dt, [
+            {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
+            {'millisecond', 0, fun() -> 1704067200000 end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> error end}
+        ]},
+        {message_ds, [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"internal_error">>}
+            end}
+        ]},
+        {jsone, [
+            {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
+        ]}
+    ], fun() ->
         MsgId = <<"msg_123">>,
         CurrentUid = 123,
-        Payload = #{},  % 无 role_id，默认使用 <<"doctor">>
-        Data = #{<<"payload">> => Payload},
+        Payload = #{<<"text">> => <<"hello">>, <<"topic_id">> => 0, <<"topic_title">> => <<>>},
+        Data = #{<<"payload">> => Payload, <<"created_at">> => 1704067200000},
 
         Result = msg_c2s_logic:c2s_to_role_chat(MsgId, CurrentUid, Data),
         ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
@@ -666,12 +764,12 @@ c2s_with_invalid_data_structure_test_() ->
         CurrentUid = 123,
         Data = #{},  % 空数据，缺少 to 字段
 
-        % 由于缺少 to 字段，会抛出 badmatch 错误
+        % 由于缺少 to 字段，会抛出 badkey 错误
         try
             msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
-            ?assert(false, "Expected badmatch error")
+            ?assert(false, "Expected badkey error")
         catch
-            error:{badmatch, _} ->
+            error:{badkey, _} ->
                 ?assert(true)
         end
     end).

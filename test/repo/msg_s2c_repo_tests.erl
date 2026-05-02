@@ -11,10 +11,13 @@
 %%%===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = msg_s2c_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.msg_s2c">>, Result)
     end).
 
 read_by_to_uid_test_() ->

@@ -145,16 +145,15 @@ change_name_success_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(<<"user_collect">>) ->
-                <<"public.user_collect">>
-            end}
-        ]},
         {user_tag_relation_repo, [
             {'update_tag', 5, fun(_Conn, _TagId, _TagName, _Uid, _CreatedAt) ->
-                ok
+                {1, <<"新标签名"/utf8>>}
             end},
             {'flush_subtitle', 1, fun(_TagId) -> ok end}
+        ]},
+        {elib_cnv, [
+            {'implode', 2, fun(_Sep, _Parts) -> <<"tag1">> end},
+            {'remove_dups', 1, fun(List) -> List end}
         ]},
         {elib_pg, [
             {'query', 2, fun(Sql, _Params) ->
@@ -165,7 +164,7 @@ change_name_success_test_() ->
                         {ok, [#{<<"id">> => 9, <<"name">> => <<"旧标签"/utf8>>}]}
                 end
             end},
-            {'execute', 2, fun(_Sql, [_TagBin, 100, 1]) ->
+            {'execute', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end},
             {'with_tx', 1, fun(Fun) ->

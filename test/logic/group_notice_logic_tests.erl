@@ -16,7 +16,7 @@
 
 insert_success_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         Data = #{group_id => 1, user_id => 100, title => <<"公告标题"/utf8>>, body => <<"公告内容"/utf8>>},
         Result = group_notice_ds:insert(Data),
@@ -25,7 +25,7 @@ insert_success_test_() ->
 
 insert_with_empty_body_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         Data = #{group_id => 1, user_id => 100, title => <<"标题"/utf8>>, body => <<>>},
         Result = group_notice_ds:insert(Data),
@@ -34,7 +34,7 @@ insert_with_empty_body_test_() ->
 
 insert_with_long_content_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         LongBody = binary:copy(<<"测试"/utf8>>, 100),
         Data = #{group_id => 1, user_id => 100, title => <<"标题"/utf8>>, body => LongBody},
@@ -44,7 +44,7 @@ insert_with_long_content_test_() ->
 
 insert_with_extra_fields_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         Data = #{
             group_id => 1,
@@ -108,7 +108,7 @@ delete_without_permission_test_() ->
 
 insert_with_special_characters_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         Data = #{
             group_id => 1,
@@ -122,7 +122,7 @@ insert_with_special_characters_test_() ->
 
 insert_with_multiline_content_test_() ->
     ?WITH_MECK(group_notice_repo, [
-        {'insert', 1, fun(_Data) -> {ok, 1, #{}} end}
+        {'insert', 1, fun(_Data) -> {ok, 1} end}
     ], fun() ->
         Data = #{
             group_id => 1,

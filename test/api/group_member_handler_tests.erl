@@ -28,7 +28,7 @@ mute_accepts_string_duration_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"duration">> => <<"60">>}
+                #{<<"gid">> => <<"101">>, <<"user_id">> => <<"202">>, <<"duration">> => <<"60">>}
             end}
         ]},
         {throttle, [
@@ -43,14 +43,14 @@ mute_accepts_string_duration_test_() ->
     ], fun() ->
         {ok, Req, _State} = group_member_handler:init(#{}, #{action => mute, current_uid => 12345}),
         ?assertEqual(200, maps:get(response_status, Req)),
-        ?assertEqual(<<"g_101">>, maps:get(<<"gid">>, maps:get(payload, Req)))
+        ?assertEqual(<<"101">>, maps:get(<<"gid">>, maps:get(payload, Req)))
     end).
 
 role_accepts_string_role_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) ->
-                #{<<"gid">> => <<"g_101">>, <<"user_id">> => <<"u_202">>, <<"role">> => <<"3">>}
+                #{<<"gid">> => <<"101">>, <<"user_id">> => <<"202">>, <<"role">> => <<"3">>}
             end}
         ]},
         {throttle, [
@@ -65,13 +65,13 @@ role_accepts_string_role_test_() ->
     ], fun() ->
         {ok, Req, _State} = group_member_handler:init(#{}, #{action => role, current_uid => 12345}),
         ?assertEqual(200, maps:get(response_status, Req)),
-        ?assertEqual(<<"u_202">>, maps:get(<<"user_id">>, maps:get(payload, Req)))
+        ?assertEqual(<<"202">>, maps:get(<<"user_id">>, maps:get(payload, Req)))
     end).
 
 page_preserves_atom_list_payload_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
-            {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"g_101">>}] end}
+            {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"101">>}] end}
         ]},
         {group_member_repo, [
             {'find', 3, fun(101, 12345, <<"id">>) -> #{<<"id">> => 1} end},

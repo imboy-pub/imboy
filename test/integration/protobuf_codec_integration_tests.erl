@@ -10,13 +10,72 @@
 %%% - 验证完整的消息 roundtrip（encode → decode）
 %%% - 验证所有消息类型的 protobuf 兼容性
 %%% - 性能对比基准测试
+%%%
+%%% 注意：本测试依赖 imboy 应用已启动（需要 imboy_codec / imboy_pb
+%%% 等模块可用）。如果应用启动失败（如数据库不可用导致迁移报错），
+%%% 所有测试将被跳过。
 %%%===================================================================
+
+%% ===================================================================
+%% 测试夹具：启动应用，不可用时跳过全部测试
+%% ===================================================================
+
+protobuf_codec_integration_test_() ->
+    {setup,
+     fun setup/0,
+     fun cleanup/1,
+     fun
+         ({skip, Reason}) ->
+             {skip, Reason};
+         (_State) ->
+             all_tests()
+     end}.
+
+setup() ->
+    %% 尝试启动应用；如果应用已启动（already_started）也视为成功。
+    %% 数据库连接失败不应阻止纯编解码测试，但迁移 DDL 报错会导致
+    %% 应用启动崩溃，此时跳过全部测试。
+    case eunit_runner:eunit_setup() of
+        {app_started, _} -> started;
+        {app_already_started, _} -> started;
+        {app_not_started, test_continues} ->
+            %% 应用启动失败（通常是数据库/迁移问题），检查核心模块是否可用
+            case code:which(imboy_codec) of
+                non_existing ->
+                    {skip, "imboy app not started and imboy_codec not available"};
+                _ ->
+                    %% 模块已编译加载，尝试继续
+                    started
+            end
+    end.
+
+cleanup(_State) ->
+    ok.
+
+all_tests() ->
+    [
+     {"C2C message roundtrip", fun c2c_message_roundtrip/0},
+     {"S2C message roundtrip", fun s2c_message_roundtrip/0},
+     {"C2G message roundtrip", fun c2g_message_roundtrip/0},
+     {"SERVER_ACK roundtrip", fun server_ack_roundtrip/0},
+     {"CLIENT_ACK_CONFIRM roundtrip", fun client_ack_confirm_roundtrip/0},
+     {"PayloadText roundtrip", fun payload_text_roundtrip/0},
+     {"PayloadClientAck roundtrip", fun payload_client_ack_roundtrip/0},
+     {"PayloadClientAckConfirm roundtrip", fun payload_client_ack_confirm_roundtrip/0},
+     {"JSON/Protobuf equivalence", fun json_protobuf_equivalence/0},
+     {"WS frame JSON is text", fun ws_frame_json_is_text/0},
+     {"WS frame Protobuf is binary", fun ws_frame_protobuf_is_binary/0},
+     {"Protocol atom mapping", fun protocol_atom_mapping/0},
+     {"Performance comparison", fun performance_comparison/0},
+     {"Empty payload roundtrip", fun empty_payload_roundtrip/0},
+     {"Large ID roundtrip", fun large_id_roundtrip/0}
+    ].
 
 %% ===================================================================
 %% Roundtrip 测试：encode → decode 数据完整性
 %% ===================================================================
 
-c2c_message_roundtrip_test() ->
+c2c_message_roundtrip() ->
     Msg = #{
         <<"id">> => <<"msg-rt-001">>,
         <<"type">> => <<"C2C">>,
@@ -41,7 +100,7 @@ c2c_message_roundtrip_test() ->
     ?assertEqual(<<"C2C">>, maps:get(<<"type">>, PbDecoded)),
     ?assertEqual(1710000000000, maps:get(<<"server_ts">>, PbDecoded)).
 
-s2c_message_roundtrip_test() ->
+s2c_message_roundtrip() ->
     Msg = #{
         <<"id">> => <<"msg-s2c-001">>,
         <<"type">> => <<"S2C">>,
@@ -54,7 +113,7 @@ s2c_message_roundtrip_test() ->
     ?assertEqual(<<"S2C">>, maps:get(<<"type">>, PbDecoded)),
     ?assertEqual(<<"pull_offline_msg">>, maps:get(<<"action">>, PbDecoded)).
 
-c2g_message_roundtrip_test() ->
+c2g_message_roundtrip() ->
     Msg = #{
         <<"id">> => <<"msg-c2g-001">>,
         <<"type">> => <<"C2G">>,
@@ -69,7 +128,7 @@ c2g_message_roundtrip_test() ->
     ?assertEqual(<<"msg-c2g-001">>, maps:get(<<"id">>, PbDecoded)),
     ?assertEqual(<<"C2G">>, maps:get(<<"type">>, PbDecoded)).
 
-server_ack_roundtrip_test() ->
+server_ack_roundtrip() ->
     Msg = #{
         <<"id">> => <<"msg-ack-001">>,
         <<"type">> => <<"C2C_SERVER_ACK">>,
@@ -80,7 +139,7 @@ server_ack_roundtrip_test() ->
     PbDecoded = imboy_codec:decode(protobuf, PbBin),
     ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, PbDecoded)).
 
-client_ack_confirm_roundtrip_test() ->
+client_ack_confirm_roundtrip() ->
     Msg = #{
         <<"id">> => <<"msg-confirm-001">>,
         <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
@@ -96,13 +155,13 @@ client_ack_confirm_roundtrip_test() ->
 %% Payload 子消息 roundtrip
 %% ===================================================================
 
-payload_text_roundtrip_test() ->
+payload_text_roundtrip() ->
     TextPayload = #{body => <<"Hello, 你好"/utf8>>},
     Encoded = imboy_pb:encode_msg(TextPayload, 'PayloadText'),
     Decoded = imboy_pb:decode_msg(Encoded, 'PayloadText'),
     ?assertEqual(<<"Hello, 你好"/utf8>>, maps:get(body, Decoded)).
 
-payload_client_ack_roundtrip_test() ->
+payload_client_ack_roundtrip() ->
     AckPayload = #{msg_direction => 'C2C', msg_id => <<"msg-123">>, did => <<"did-456">>},
     Encoded = imboy_pb:encode_msg(AckPayload, 'PayloadClientAck'),
     Decoded = imboy_pb:decode_msg(Encoded, 'PayloadClientAck'),
@@ -110,7 +169,7 @@ payload_client_ack_roundtrip_test() ->
     ?assertEqual(<<"msg-123">>, maps:get(msg_id, Decoded)),
     ?assertEqual(<<"did-456">>, maps:get(did, Decoded)).
 
-payload_client_ack_confirm_roundtrip_test() ->
+payload_client_ack_confirm_roundtrip() ->
     ConfirmPayload = #{msg_id => <<"msg-789">>, server_ts => 1710000000000},
     Encoded = imboy_pb:encode_msg(ConfirmPayload, 'PayloadClientAckConfirm'),
     Decoded = imboy_pb:decode_msg(Encoded, 'PayloadClientAckConfirm'),
@@ -121,7 +180,7 @@ payload_client_ack_confirm_roundtrip_test() ->
 %% 双协议等价性测试
 %% ===================================================================
 
-json_protobuf_equivalence_test() ->
+json_protobuf_equivalence() ->
     Msg = #{
         <<"id">> => <<"equiv-001">>,
         <<"type">> => <<"C2C">>,
@@ -146,12 +205,12 @@ json_protobuf_equivalence_test() ->
 %% WebSocket 帧类型测试
 %% ===================================================================
 
-ws_frame_json_is_text_test() ->
+ws_frame_json_is_text() ->
     Msg = #{<<"id">> => <<"f1">>, <<"type">> => <<"S2C">>},
     Encoded = imboy_codec:encode(json, Msg),
     {text, _} = imboy_codec:encode_ws_frame(json, Encoded).
 
-ws_frame_protobuf_is_binary_test() ->
+ws_frame_protobuf_is_binary() ->
     Msg = #{<<"id">> => <<"f2">>, <<"type">> => <<"S2C">>, <<"server_ts">> => 1},
     Encoded = imboy_codec:encode(protobuf, Msg),
     {binary, _} = imboy_codec:encode_ws_frame(protobuf, Encoded).
@@ -160,7 +219,7 @@ ws_frame_protobuf_is_binary_test() ->
 %% 协议选择测试
 %% ===================================================================
 
-protocol_atom_mapping_test() ->
+protocol_atom_mapping() ->
     ?assertEqual(protobuf, imboy_codec:protocol_atom(<<"imboy-protobuf">>)),
     ?assertEqual(json, imboy_codec:protocol_atom(<<"imboy-json">>)),
     ?assertEqual(json, imboy_codec:protocol_atom(<<"text">>)),
@@ -170,7 +229,7 @@ protocol_atom_mapping_test() ->
 %% 性能对比基准测试
 %% ===================================================================
 
-performance_comparison_test() ->
+performance_comparison() ->
     Msg = #{
         <<"id">> => <<"perf-001">>,
         <<"type">> => <<"C2C">>,
@@ -227,7 +286,7 @@ performance_comparison_test() ->
 %% 边界条件测试
 %% ===================================================================
 
-empty_payload_roundtrip_test() ->
+empty_payload_roundtrip() ->
     Msg = #{
         <<"id">> => <<"empty-001">>,
         <<"type">> => <<"S2C">>,
@@ -238,7 +297,7 @@ empty_payload_roundtrip_test() ->
     PbDec = imboy_codec:decode(protobuf, PbBin),
     ?assertEqual(<<"empty-001">>, maps:get(<<"id">>, PbDec)).
 
-large_id_roundtrip_test() ->
+large_id_roundtrip() ->
     %% TSID 最大 19 位数字
     LargeId = 9223372036854775807,
     Msg = #{

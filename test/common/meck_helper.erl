@@ -28,6 +28,8 @@
     % Mock 模板
     mock_elib_param/1,
     mock_elib_response/1,
+    full_elib_response_mock/0,
+    full_elib_response_mock/1,
     mock_passport_logic/1,
     mock_user_repo/1,
     mock_elib_pg/1,
@@ -61,6 +63,7 @@ setup_mock(Module, Expectations) ->
             [passthrough, no_link, unstick],
             [no_link, unstick],
             [passthrough, no_link],
+            [non_strict, no_link],
             [no_link]
         ],
         []
@@ -250,6 +253,36 @@ mock_elib_response(Overrides) ->
         end}
     ],
     {ok, _} = setup_mock(elib_response, Expectations).
+
+%% @doc 返回覆盖所有 arity 的 elib_response mock expectations 列表
+%% 用于 ?WITH_MECKS 中替换 {elib_response, [...]} 部分，防止
+%% passthrough 到真实 elib_response 导致 cowboy_req:reply 崩溃。
+%%
+%% 用法：
+%%   ?WITH_MECKS([
+%%       {elib_response, meck_helper:full_elib_response_mock()},
+%%       {other_mod, [...]}
+%%   ], fun() -> ... end).
+%%
+%% 或带自定义 tag：
+%%   {elib_response, meck_helper:full_elib_response_mock(my_tag)}
+%%
+full_elib_response_mock() ->
+    full_elib_response_mock(resp_mock).
+
+full_elib_response_mock(Tag) ->
+    [
+        {'success', 1, fun(_Req) -> {Tag, success, #{}} end},
+        {'success', 2, fun(_Req, Payload) -> {Tag, success, Payload} end},
+        {'success', 3, fun(_Req, Payload, _Msg) -> {Tag, success, Payload} end},
+        {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {Tag, success, Payload} end},
+        {'error', 1, fun(_Req) -> {Tag, error, <<>>} end},
+        {'error', 2, fun(_Req, Msg) -> {Tag, error, Msg} end},
+        {'error', 3, fun(_Req, Msg, _Code) -> {Tag, error, Msg} end},
+        {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {Tag, error, Msg} end},
+        {'handle_logic_result', 2, fun(_Req, {ok, Data}) -> {Tag, success, Data};
+                                     (_Req, {error, Msg}) -> {Tag, error, Msg} end}
+    ].
 
 %% @doc Mock passport_logic 模块
 mock_passport_logic(Overrides) ->

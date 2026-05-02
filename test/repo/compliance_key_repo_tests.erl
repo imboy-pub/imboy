@@ -15,22 +15,34 @@ tablename_test() ->
     ?assert(is_binary(compliance_key_repo:tablename())).
 
 create_ok_test() ->
-    ?WITH_MECKS([elib_pg], fun() ->
-        meck:expect(elib_pg, insert, fun(_Tb, _Data, _Opts) -> {ok, 1} end),
+    _ = catch meck:unload([elib_pg, elib_tsid]),
+    ok = meck:new(elib_tsid, [no_link]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        meck:expect(elib_tsid, generate, 1, fun(compliance_key) -> 9001 end),
+        meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {ok, 1} end),
         ?assertEqual(
             {ok, <<"key-001">>},
             compliance_key_repo:create(<<"key-001">>, <<"-----BEGIN PUBLIC KEY-----">>, <<"encrypted">>, 1)
         )
-    end).
+    after
+        meck:unload([elib_pg, elib_tsid])
+    end.
 
 create_error_test() ->
-    ?WITH_MECKS([elib_pg], fun() ->
-        meck:expect(elib_pg, insert, fun(_Tb, _Data, _Opts) -> {error, unique_violation} end),
+    _ = catch meck:unload([elib_pg, elib_tsid]),
+    ok = meck:new(elib_tsid, [no_link]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        meck:expect(elib_tsid, generate, 1, fun(compliance_key) -> 9002 end),
+        meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {error, unique_violation} end),
         ?assertEqual(
             {error, unique_violation},
             compliance_key_repo:create(<<"key-dup">>, <<"pk">>, <<"enc">>, 1)
         )
-    end).
+    after
+        meck:unload([elib_pg, elib_tsid])
+    end.
 
 find_active_ok_test() ->
     ?WITH_MECKS([elib_pg], fun() ->

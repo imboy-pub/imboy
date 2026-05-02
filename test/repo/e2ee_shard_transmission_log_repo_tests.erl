@@ -4,12 +4,14 @@
 %%%-------------------------------------------------------------------
 -module(e2ee_shard_transmission_log_repo_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
 %% 测试数据
 -define(TEST_SHARD_ID, <<"test_shard_123">>).
 -define(TEST_KEY_VERSION, <<"v1">>).
 -define(TEST_UID, 12345).
 -define(TEST_PROXY_UID, 67890).
+-define(TEST_LOG_ID, 99887766).
 
 %%%===================================================================
 %%% 测试用例
@@ -17,85 +19,98 @@
 
 %% @doc 测试插入单条传输日志
 insert_test_() ->
-    LogMap = #{
-        shard_id => ?TEST_SHARD_ID,
-        key_version => ?TEST_KEY_VERSION,
-        uid => ?TEST_UID,
-        proxy_uid => ?TEST_PROXY_UID,
-        action => <<"shard_created">>,
-        direction => <<"server_to_proxy">>,
-        metadata => #{},
-        ip_address => <<"127.0.0.1">>,
-        user_agent => <<"test_agent">>
-    },
-
-    % 测试插入
-    case e2ee_shard_transmission_log_repo:insert(LogMap) of
-        {ok, _LogId} ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("插入失败: ~p~n", [Reason]),
-            ?assert(false)
-    end.
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> ?TEST_LOG_ID end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]}
+    ], fun() ->
+        LogMap = #{
+            shard_id => ?TEST_SHARD_ID,
+            key_version => ?TEST_KEY_VERSION,
+            uid => ?TEST_UID,
+            proxy_uid => ?TEST_PROXY_UID,
+            action => <<"shard_created">>,
+            direction => <<"server_to_proxy">>,
+            metadata => #{},
+            ip_address => <<"127.0.0.1">>,
+            user_agent => <<"test_agent">>
+        },
+        Result = e2ee_shard_transmission_log_repo:insert(LogMap),
+        ?assertEqual({ok, ?TEST_LOG_ID}, Result)
+    end).
 
 %% @doc 测试查询分片日志
 get_by_shard_id_test_() ->
-    % 先插入测试数据
-    LogMap = #{
-        shard_id => ?TEST_SHARD_ID,
-        key_version => ?TEST_KEY_VERSION,
-        uid => ?TEST_UID,
-        proxy_uid => ?TEST_PROXY_UID,
-        action => <<"shard_sent">>,
-        direction => <<"server_to_proxy">>,
-        metadata => #{},
-        ip_address => null,
-        user_agent => null
-    },
-    e2ee_shard_transmission_log_repo:insert(LogMap),
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> ?TEST_LOG_ID end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end},
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => ?TEST_LOG_ID, <<"shard_id">> => ?TEST_SHARD_ID}]}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> 1700000000000 end}
+        ]}
+    ], fun() ->
+        LogMap = #{
+            shard_id => ?TEST_SHARD_ID,
+            key_version => ?TEST_KEY_VERSION,
+            uid => ?TEST_UID,
+            proxy_uid => ?TEST_PROXY_UID,
+            action => <<"shard_sent">>,
+            direction => <<"server_to_proxy">>,
+            metadata => #{},
+            ip_address => null,
+            user_agent => null
+        },
+        {ok, _} = e2ee_shard_transmission_log_repo:insert(LogMap),
 
-    % 测试查询
-    case e2ee_shard_transmission_log_repo:list_by_shard_id(?TEST_SHARD_ID) of
-        {ok, Logs} when is_list(Logs) ->
-            ?assert(length(Logs) > 0);
-        {error, Reason} ->
-            ?debugFmt("查询失败: ~p~n", [Reason]),
-            ?assert(false)
-    end.
+        Result = e2ee_shard_transmission_log_repo:list_by_shard_id(?TEST_SHARD_ID),
+        ?assertMatch({ok, [_|_]}, Result)
+    end).
 
-%% @doc 测试按操作类型查询（原 get_by_key_version 已移除，改用 list_by_action/2）
+%% @doc 测试按操作类型查询
 list_by_action_test_() ->
-    % 测试查询
-    case e2ee_shard_transmission_log_repo:list_by_action(?TEST_SHARD_ID, <<"create">>) of
-        {ok, _, Logs} when is_list(Logs) ->
-            ?assert(true);
-        {ok, Logs} when is_list(Logs) ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("查询失败: ~p~n", [Reason]),
-            ?assert(false)
-    end.
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => ?TEST_LOG_ID, <<"action">> => <<"create">> }]}
+            end}
+        ]}
+    ], fun() ->
+        Result = e2ee_shard_transmission_log_repo:list_by_action(<<"create">>, 10),
+        ?assertMatch({ok, [_|_]}, Result)
+    end).
 
-%% @doc 测试获取统计数据（get_transmission_stats/1 仅需 ShardId）
+%% @doc 测试获取统计数据
 get_transmission_stats_test_() ->
-    % 测试统计
-    case e2ee_shard_transmission_log_repo:get_transmission_stats(?TEST_SHARD_ID) of
-        {ok, _, Stats} when is_list(Stats) ->
-            ?assert(true);
-        {ok, Stats} when is_list(Stats) ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("统计失败: ~p~n", [Reason]),
-            ?assert(false)
-    end.
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"shard_id">> => ?TEST_SHARD_ID, <<"created_count">> => 1}]}
+            end}
+        ]}
+    ], fun() ->
+        Result = e2ee_shard_transmission_log_repo:get_transmission_stats(?TEST_SHARD_ID),
+        ?assertMatch({ok, _}, Result)
+    end).
 
 %% @doc 测试异常检查
 check_anomaly_test_() ->
-    % 测试异常检查
-    case e2ee_shard_transmission_log_repo:check_anomaly(?TEST_KEY_VERSION, ?TEST_SHARD_ID) of
-        {ok, Anomalies} when is_list(Anomalies) ->
-            ?assert(true);
-        {error, Reason} ->
-            ?debugFmt("异常检查失败: ~p~n", [Reason]),
-            ?assert(false)
-    end.
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
+    ], fun() ->
+        Result = e2ee_shard_transmission_log_repo:check_anomaly(?TEST_KEY_VERSION, ?TEST_SHARD_ID),
+        ?assertMatch({ok, _}, Result)
+    end).

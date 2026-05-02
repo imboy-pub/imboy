@@ -22,10 +22,17 @@ init_create_missing_group_id_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
@@ -38,7 +45,7 @@ init_create_invalid_time_range_returns_bad_request_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"group_id">> => <<"gid_9">>,
+                    <<"group_id">> => <<"9">>,
                     <<"title">> => <<"周会"/utf8>>,
                     <<"start_at">> => <<"2026-02-22T11:00:00Z">>,
                     <<"end_at">> => <<"2026-02-22T10:00:00Z">>
@@ -51,10 +58,17 @@ init_create_invalid_time_range_returns_bad_request_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
@@ -67,7 +81,7 @@ init_create_epoch_time_compatible_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"group_id">> => <<"gid_9">>,
+                    <<"group_id">> => <<"9">>,
                     <<"title">> => <<"周会"/utf8>>,
                     <<"start_at">> => 1700000000,
                     <<"end_at">> => 1700003600
@@ -82,9 +96,16 @@ init_create_epoch_time_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => create, current_uid => 300}),
@@ -109,10 +130,17 @@ init_update_unauthorized_returns_forbidden_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => update, current_uid => 300}),
@@ -145,9 +173,16 @@ init_update_numeric_schedule_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => update, current_uid => 300}),
@@ -174,9 +209,16 @@ init_cancel_numeric_schedule_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => cancel, current_uid => 300}),
@@ -199,10 +241,17 @@ init_confirm_participant_not_found_returns_forbidden_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => confirm, current_uid => 300}),
@@ -231,9 +280,16 @@ init_confirm_numeric_schedule_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
             {'success', 3, fun(_Req, _Payload, _Msg) ->
                 req_ok
-            end}
+            end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => confirm, current_uid => 300}),
@@ -246,10 +302,17 @@ init_detail_missing_schedule_id_returns_bad_request_test_() ->
             {'parse_qs', 1, fun(_Req) -> [] end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => detail, current_uid => 300}),
@@ -260,7 +323,7 @@ init_detail_missing_schedule_id_returns_bad_request_test_() ->
 init_detail_legacy_schedule_id_compatible_test_() ->
     ?WITH_MECKS(feature_gate_bypass_mocks() ++ [
         {cowboy_req, [
-            {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"hash_66">>}] end}
+            {'parse_qs', 1, fun(_Req) -> [{<<"schedule_id">>, <<"66">>}] end}
         ]},
         {group_schedule_repo, [
             {'find_by_id', 2, fun(66, <<"schedule_id">>) ->
@@ -273,9 +336,16 @@ init_detail_legacy_schedule_id_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => detail, current_uid => 300}),
@@ -287,7 +357,7 @@ init_list_with_time_range_query_compatible_test_() ->
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
                 [
-                    {<<"group_id">>, <<"gid_9">>},
+                    {<<"group_id">>, <<"9">>},
                     {<<"start_at">>, <<"1700000000">>},
                     {<<"end_at">>, <<"1700003600">>},
                     {<<"page">>, <<"1">>},
@@ -309,9 +379,16 @@ init_list_with_time_range_query_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => list, current_uid => 300}),
@@ -341,9 +418,16 @@ init_my_list_with_time_range_query_compatible_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, _Payload) ->
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         {ok, Req1, _State} = group_schedule_handler:init(req_mock(), #{action => my_list, current_uid => 300}),

@@ -12,26 +12,32 @@
 
 %% 测试夹具
 conversation_pin_delete_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"置顶单聊会话", fun test_pin_c2c_conversation/0},
-      {"置顶群聊会话", fun test_pin_c2g_conversation/0},
-      {"取消置顶会话", fun test_unpin_conversation/0},
-      {"获取置顶列表", fun test_get_pinned_list/0},
-      {"删除单聊会话", fun test_delete_c2c_conversation/0},
-      {"删除群聊会话", fun test_delete_c2g_conversation/0},
-      {"恢复已删除会话", fun test_restore_deleted_conversation/0},
-      {"置顶后删除会话", fun test_pin_then_delete/0},
-      {"批量置顶操作", fun test_batch_pin/0},
-      {"会话列表排序（置顶优先）", fun test_conversation_list_with_pin/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"置顶单聊会话", fun test_pin_c2c_conversation/0},
+              {"置顶群聊会话", fun test_pin_c2g_conversation/0},
+              {"取消置顶会话", fun test_unpin_conversation/0},
+              {"获取置顶列表", fun test_get_pinned_list/0},
+              {"删除单聊会话", fun test_delete_c2c_conversation/0},
+              {"删除群聊会话", fun test_delete_c2g_conversation/0},
+              {"恢复已删除会话", fun test_restore_deleted_conversation/0},
+              {"置顶后删除会话", fun test_pin_then_delete/0},
+              {"批量置顶操作", fun test_batch_pin/0},
+              {"会话列表排序（置顶优先）", fun test_conversation_list_with_pin/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_conv">>),
     {ok, User2} = create_test_user(<<"user2_conv">>),

@@ -1,5 +1,6 @@
 -module(group_file_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -13,21 +14,26 @@
 %% ===================================================================
 
 upload_success_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'upload_file', 5, fun(_, _, _, _, _) ->
+                {ok, <<"file_123">>}
+            end}
+        ]},
+        {elib_oss, [
+            {'get_file_category', 1, fun(_) -> <<"document">> end}
+        ]},
+        {elib_dt, [
+            {'timestamp', 0, fun() -> 1700000000 end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
         FileName = <<"test.pdf"/utf8>>,
         FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
-            {ok, <<"file_123">>}
-        end),
-
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
-
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, FileData} when is_map(FileData) ->
@@ -35,65 +41,62 @@ upload_success_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 upload_not_member_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'upload_file', 5, fun(_, _, _, _, _) ->
+                {error, not_member}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 999,
         FileName = <<"test.pdf"/utf8>>,
         FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
-            {error, not_member}
-        end),
-
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, not_member}, Result)
-    end.
+    end).
 
 upload_file_too_large_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'upload_file', 5, fun(_, _, _, _, _) ->
+                {error, file_too_large}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
         FileName = <<"large.pdf"/utf8>>,
         FileBinary = <<0:100102400>>,
         FileType = <<"application/pdf">>,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, upload_file, fun(_, _, _, _, _) ->
-            {error, file_too_large}
-        end),
-
         Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, file_too_large}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% download/2 测试
 %% ===================================================================
 
 download_success_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'download_file', 2, fun(_, _) ->
+                {ok, <<"http://example.com/file.pdf">>}
+            end}
+        ]}
+    ], fun() ->
         FileId = 1,
         CurrentUid = 100,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, download_file, fun(_, _) ->
-            {ok, <<"http://example.com/file.pdf">>}
-        end),
-
         Result = group_file_logic:download(FileId, CurrentUid),
-
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, FileUrl} when is_binary(FileUrl) ->
@@ -101,120 +104,111 @@ download_success_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 download_not_member_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'download_file', 2, fun(_, _) ->
+                {error, not_member}
+            end}
+        ]}
+    ], fun() ->
         FileId = 1,
         CurrentUid = 999,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, download_file, fun(_, _) ->
-            {error, not_member}
-        end),
-
         Result = group_file_logic:download(FileId, CurrentUid),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, not_member}, Result)
-    end.
+    end).
 
 download_not_found_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'download_file', 2, fun(_, _) ->
+                {error, not_found}
+            end}
+        ]}
+    ], fun() ->
         FileId = 999999,
         CurrentUid = 100,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, download_file, fun(_, _) ->
-            {error, not_found}
-        end),
-
         Result = group_file_logic:download(FileId, CurrentUid),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, not_found}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% delete/2 测试
 %% ===================================================================
 
 delete_success_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'delete_file', 2, fun(_, _) -> ok end}
+        ]}
+    ], fun() ->
         FileId = 1,
         CurrentUid = 100,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, delete_file, fun(_, _) -> ok end),
-
         Result = group_file_logic:delete(FileId, CurrentUid),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch(ok, Result)
-    end.
+    end).
 
 delete_permission_denied_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'delete_file', 2, fun(_, _) ->
+                {error, permission_denied}
+            end}
+        ]}
+    ], fun() ->
         FileId = 1,
         CurrentUid = 999,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, delete_file, fun(_, _) ->
-            {error, permission_denied}
-        end),
-
         Result = group_file_logic:delete(FileId, CurrentUid),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, permission_denied}, Result)
-    end.
+    end).
 
 delete_not_found_test_() ->
-    fun() ->
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'delete_file', 2, fun(_, _) ->
+                {error, not_found}
+            end}
+        ]}
+    ], fun() ->
         FileId = 999999,
         CurrentUid = 100,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, delete_file, fun(_, _) ->
-            {error, not_found}
-        end),
-
         Result = group_file_logic:delete(FileId, CurrentUid),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, not_found}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% list/4 测试
 %% ===================================================================
 
 list_success_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'list_files', 5, fun(_, _, _, _, _) ->
+                {ok, [
+                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+                ]}
+            end},
+            {'count_by_group', 1, fun(_) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
         Page = 1,
         Size = 20,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
-            {ok, [
-                #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
-            ]}
-        end),
-
-        meck:new(group_file_repo, [passthrough]),
-        meck:expect(group_file_repo, count_by_group, fun(_) -> {ok, 1} end),
-
         Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
-
-        meck:unload(group_file_repo),
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, FileList} when is_map(FileList) ->
@@ -222,49 +216,44 @@ list_success_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 list_not_member_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'list_files', 5, fun(_, _, _, _, _) ->
+                {error, not_member}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 999,
         Page = 1,
         Size = 20,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
-            {error, not_member}
-        end),
-
         Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
 
-        meck:unload(group_file_ds),
-
         ?assertMatch({error, not_member}, Result)
-    end.
+    end).
 
 list_with_category_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'list_files', 5, fun(_, _, _, _, _) ->
+                {ok, [
+                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>, <<"file_category">> => <<"document">>}
+                ]}
+            end},
+            {'count_by_group', 1, fun(_) -> {ok, 1} end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
         Page = 1,
         Size = 20,
         Options = #{category => <<"document">>},
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, list_files, fun(_, _, _, _, _) ->
-            {ok, [
-                #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>, <<"file_category">> => <<"document">>}
-            ]}
-        end),
-
-        meck:new(group_file_repo, [passthrough]),
-        meck:expect(group_file_repo, count_by_group, fun(_) -> {ok, 1} end),
-
         Result = group_file_logic:list(Gid, CurrentUid, Page, Size, Options),
-
-        meck:unload(group_file_repo),
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, FileList} when is_map(FileList) ->
@@ -272,29 +261,28 @@ list_with_category_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 %% ===================================================================
 %% search/4 测试
 %% ===================================================================
 
 search_success_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'search_files', 4, fun(_, _, _, _) ->
+                {ok, [
+                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+                ]}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         Keyword = <<"test"/utf8>>,
         Page = 1,
         Size = 20,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, search_files, fun(_, _, _, _) ->
-            {ok, [
-                #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
-            ]}
-        end),
-
         Result = group_file_logic:search(Gid, Keyword, Page, Size),
-
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, Files} when is_list(Files) ->
@@ -302,23 +290,22 @@ search_success_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 search_empty_result_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_file_ds, [
+            {'search_files', 4, fun(_, _, _, _) ->
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         Keyword = <<"nonexistent"/utf8>>,
         Page = 1,
         Size = 20,
 
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, search_files, fun(_, _, _, _) ->
-            {ok, []}
-        end),
-
         Result = group_file_logic:search(Gid, Keyword, Page, Size),
-
-        meck:unload(group_file_ds),
 
         case Result of
             {ok, []} ->
@@ -328,34 +315,29 @@ search_empty_result_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 %% ===================================================================
 %% get_categories/2 测试
 %% ===================================================================
 
 get_categories_success_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_ds, [
+            {'is_member', 2, fun(100, 1) -> true end}
+        ]},
+        {group_file_ds, [
+            {'get_file_categories', 1, fun(_) ->
+                {ok, [
+                    {<<"document">>, 10, 1024000}
+                ]}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
 
-        _ = catch meck:unload(group_ds),
-        _ = catch meck:unload(group_file_ds),
-
-        meck:new(group_ds, [passthrough]),
-        meck:expect(group_ds, is_member, fun(100, 1) -> true end),
-
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, get_file_categories, fun(_) ->
-            {ok, [
-                {<<"document">>, 10, 1024000}
-            ]}
-        end),
-
         Result = group_file_logic:get_categories(Gid, CurrentUid),
-
-        meck:unload(group_file_ds),
-        meck:unload(group_ds),
 
         case Result of
             {ok, Stats} when is_list(Stats) ->
@@ -363,28 +345,23 @@ get_categories_success_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 get_categories_empty_test_() ->
-    fun() ->
-        Gid = <<"g1">>,
+    ?WITH_MECKS([
+        {group_ds, [
+            {'is_member', 2, fun(100, 1) -> true end}
+        ]},
+        {group_file_ds, [
+            {'get_file_categories', 1, fun(_) ->
+                {ok, []}
+            end}
+        ]}
+    ], fun() ->
+        Gid = <<"1">>,
         CurrentUid = 100,
 
-        _ = catch meck:unload(group_ds),
-        _ = catch meck:unload(group_file_ds),
-
-        meck:new(group_ds, [passthrough]),
-        meck:expect(group_ds, is_member, fun(100, 1) -> true end),
-
-        meck:new(group_file_ds, [passthrough]),
-        meck:expect(group_file_ds, get_file_categories, fun(_) ->
-            {ok, []}
-        end),
-
         Result = group_file_logic:get_categories(Gid, CurrentUid),
-
-        meck:unload(group_file_ds),
-        meck:unload(group_ds),
 
         case Result of
             {ok, []} ->
@@ -394,7 +371,7 @@ get_categories_empty_test_() ->
             {error, Reason} ->
                 assert_reason(Reason)
         end
-    end.
+    end).
 
 assert_reason(Reason) ->
     ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).

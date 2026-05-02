@@ -39,7 +39,14 @@ show_prefers_path_moment_id_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(show, req_mock(), #{current_uid => 1001}),
@@ -58,7 +65,14 @@ delete_prefers_path_moment_id_and_returns_success_test_() ->
             {'delete_post', 2, fun(1001, <<"m_hash_path">>) -> ok end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(delete, req_mock(), #{current_uid => 1001}),
@@ -69,7 +83,7 @@ feed_decodes_cursor_and_passes_limit_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"cursor">>, <<"6q58gm">>}, {<<"limit">>, <<"30">>}]
+                [{<<"cursor">>, <<"11">>}, {<<"limit">>, <<"30">>}]
             end}
         ]},
         {moment_logic, [
@@ -78,7 +92,14 @@ feed_decodes_cursor_and_passes_limit_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(feed, req_mock(), #{current_uid => 1001}),
@@ -91,7 +112,7 @@ user_posts_prefers_path_uid_over_query_and_decodes_cursor_test_() ->
             {'parse_qs', 1, fun(_Req) ->
                 [
                     {<<"uid">>, <<"uid_from_query">>},
-                    {<<"cursor">>, <<"6q58gm">>},
+                    {<<"cursor">>, <<"11">>},
                     {<<"limit">>, <<"30">>}
                 ]
             end},
@@ -103,7 +124,14 @@ user_posts_prefers_path_uid_over_query_and_decodes_cursor_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(user_posts, req_mock(), #{current_uid => 1001}),
@@ -122,7 +150,14 @@ like_prefers_path_moment_id_test_() ->
             {'like_post', 2, fun(1001, <<"m_hash_path">>) -> ok end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(like, req_mock(), #{current_uid => 1001}),
@@ -141,7 +176,14 @@ unlike_prefers_path_moment_id_test_() ->
             {'unlike_post', 2, fun(1001, <<"m_hash_path">>) -> ok end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(unlike, req_mock(), #{current_uid => 1001}),
@@ -167,7 +209,14 @@ add_comment_passes_content_and_reply_to_uid_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(add_comment, req_mock(), #{current_uid => 1001}),
@@ -182,7 +231,7 @@ comments_decodes_cursor_and_clamps_limit_test_() ->
         {cowboy_req, [
             {'binding', 2, fun(moment_id, _Req) -> <<"m_hash_path">> end},
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"cursor">>, <<"6q58gm">>}, {<<"limit">>, <<"500">>}]
+                [{<<"cursor">>, <<"11">>}, {<<"limit">>, <<"500">>}]
             end}
         ]},
         {moment_logic, [
@@ -191,7 +240,14 @@ comments_decodes_cursor_and_clamps_limit_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(comments, req_mock(), #{current_uid => 1001}),
@@ -218,7 +274,14 @@ report_uses_path_moment_id_and_reason_desc_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(report, req_mock(), #{current_uid => 1001}),
@@ -243,7 +306,14 @@ delete_comment_prefers_path_ids_and_returns_success_test_() ->
             {'delete_comment', 3, fun(1001, <<"m_hash_path">>, <<"c_hash_path">>) -> ok end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(delete_comment, req_mock(), #{current_uid => 1001}),
@@ -265,7 +335,14 @@ delete_comment_returns_error_when_comment_id_missing_test_() ->
             end}
         ]},
         {elib_response, [
-            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end}
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end},
+            {'success', 3, fun(_Req, Payload, _Msg) -> {ok_resp, Payload} end},
+            {'success', 4, fun(_Req, Payload, _Msg, _Opts) -> {ok_resp, Payload} end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end},
+            {'error', 3, fun(_Req, Msg, _Code) -> {error_resp, Msg} end},
+            {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {error_resp, Msg} end}
         ]}
     ], fun() ->
         Result = moment_handler:handle_action(delete_comment, req_mock(), #{current_uid => 1001}),

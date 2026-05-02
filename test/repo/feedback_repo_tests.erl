@@ -27,8 +27,13 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 add_feedback_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 9000001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Did = <<"device123">>,
@@ -47,8 +52,13 @@ add_feedback_success_test_() ->
     end).
 
 add_feedback_with_different_types_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 9000002 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
     ], fun() ->
         % 测试功能建议类型
         Uid = 12345,
@@ -68,8 +78,13 @@ add_feedback_with_different_types_test_() ->
     end).
 
 add_feedback_with_empty_attachments_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 9000003 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
     ], fun() ->
         Uid = 12345,
         Did = <<"device123">>,
@@ -93,7 +108,7 @@ add_feedback_with_empty_attachments_test_() ->
 
 delete_feedback_success_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Sql, _Params) -> {ok, 1} end}
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Uid = 12345,
         FeedbackId = <<"feedback123">>,
@@ -104,7 +119,7 @@ delete_feedback_success_test_() ->
 
 delete_feedback_error_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Sql, _Params) -> {error, connection_failed} end}
+        {'execute', 2, fun(_Sql, _Params) -> {error, connection_failed} end}
     ], fun() ->
         Uid = 12345,
         FeedbackId = <<"feedback123">>,
@@ -115,7 +130,7 @@ delete_feedback_error_test_() ->
 
 delete_feedback_not_found_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Sql, _Params) -> {ok, 0} end}
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
     ], fun() ->
         Uid = 12345,
         FeedbackId = <<"nonexistent">>,
@@ -129,9 +144,14 @@ delete_feedback_not_found_test_() ->
 %% ===================================================================
 
 add_and_delete_feedback_flow_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 2, fun(_Table, _Data) -> {ok, 1} end},
-        {'execute', 3, fun(_Sql, _Params) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 9000004 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end},
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
     ], fun() ->
         % 1. 添加反馈
         Uid = 12345,

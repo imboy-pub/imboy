@@ -11,10 +11,13 @@
 %%%===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = msg_c2g_timeline_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.msg_c2g_timeline">>, Result)
     end).
 
 list_by_uid_test_() ->

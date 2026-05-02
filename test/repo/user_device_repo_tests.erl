@@ -31,6 +31,7 @@ tablename_public_prefix_test_() ->
      fun cleanup_config/1,
      ?_test(begin
          Result = user_device_repo:tablename(),
+         %% sql_driver=pgsql → public_tablename adds "public." prefix
          ?assertEqual(<<"public.user_device">>, Result)
      end)}.
 
@@ -44,16 +45,16 @@ page_basic_test_() ->
         Limit = 10,
         Offset = 0,
         Result = user_device_repo:page(Uid, Limit, Offset),
-        ?assertMatch({ok, {_, [_|_]}}, Result)
+        ?assertMatch({ok, [_|_]}, Result)
     end).
 
 page_empty_result_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Uid = 999999,
+        Uid = 9999998,
         Limit = 10,
         Offset = 0,
         Result = user_device_repo:page(Uid, Limit, Offset),
-        ?assertMatch({ok, {_, []}}, Result)
+        ?assertMatch({ok, []}, Result)
     end).
 
 page_large_offset_test_() ->
@@ -62,7 +63,7 @@ page_large_offset_test_() ->
         Limit = 10,
         Offset = 1000,
         Result = user_device_repo:page(Uid, Limit, Offset),
-        ?assertMatch({ok, {_, []}}, Result)
+        ?assertMatch({ok, []}, Result)
     end).
 
 %% ===================================================================
@@ -79,7 +80,7 @@ count_by_uid_test_() ->
 
 count_by_uid_non_existing_test_() ->
     ?TEST_WITH_DB(fun() ->
-        Uid = 999999,
+        Uid = 9999997,
         Result = user_device_repo:count_by_uid(Uid),
         ?assertEqual(0, Result)
     end).
@@ -170,15 +171,15 @@ save_new_device_test_() ->
         Now = elib_dt:now(),
         Uid = 999999,
         DID = <<"test_save_device">>,
-        PostVals = [
-            {<<"cos">>, <<"ios">>},
-            {<<"dvsn">>, <<"1.0">>},
-            {<<"dname">>, <<"Test Device">>},
-            {<<"public_key">>, <<"test_key">>},
-            {<<"ip">>, <<"127.0.0.1">>}
-        ],
+        PostVals = #{
+            <<"cos">> => <<"ios">>,
+            <<"dvsn">> => <<"1.0">>,
+            <<"dname">> => <<"Test Device">>,
+            <<"public_key">> => <<"test_key">>,
+            <<"ip">> => <<"127.0.0.1">>
+        },
         Result = user_device_repo:save(Now, Uid, DID, PostVals),
-        ?assertEqual(ok, Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 save_existing_device_test_() ->
@@ -186,12 +187,12 @@ save_existing_device_test_() ->
         Now = elib_dt:now(),
         Uid = 1,
         DID = <<"test_existing_device">>,
-        PostVals = [
-            {<<"ip">>, <<"192.168.1.1">>},
-            {<<"public_key">>, <<"updated_key">>}
-        ],
+        PostVals = #{
+            <<"ip">> => <<"192.168.1.1">>,
+            <<"public_key">> => <<"updated_key">>
+        },
         Result = user_device_repo:save(Now, Uid, DID, PostVals),
-        ?assertEqual(ok, Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 save_empty_did_test_() ->
@@ -199,8 +200,8 @@ save_empty_did_test_() ->
         Now = elib_dt:now(),
         Uid = 1,
         DID = <<>>,
-        PostVals = [],
+        PostVals = #{},
         Result = user_device_repo:save(Now, Uid, DID, PostVals),
-        % 空 DID 应该返回 ok
-        ?assertEqual(ok, Result)
+        %% 空 DID 返回 {ok, 0}
+        ?assertEqual({ok, 0}, Result)
     end).

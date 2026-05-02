@@ -90,7 +90,7 @@ init_list_success_test_() ->
         {ok, RespReq, _State} = friend_handler:init(Req, #{action => list, current_uid => 12345}),
         ?assertEqual(200, maps:get(response_status, RespReq)),
         Payload = maps:get(payload, RespReq),
-        ?assertEqual(<<"me_hash">>, maps:get(<<"id">>, maps:get(<<"mine">>, Payload))),
+        ?assertEqual(12345, maps:get(<<"id">>, maps:get(<<"mine">>, Payload))),
         ?assertEqual(1, length(maps:get(<<"friend">>, Payload)))
     end).
 

@@ -36,7 +36,7 @@ join_group_success_test_() ->
             {'add', 2, fun(_Conn, Data) ->
                 ?assertEqual(1, maps:get(group_id, Data)),
                 ?assertEqual(100, maps:get(user_id, Data)),
-                {ok, 1, #{}}
+                {ok, 1}
             end}
         ]},
         {elib_dt, [

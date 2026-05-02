@@ -15,8 +15,13 @@
 %% ===================================================================
 
 save_location_success_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {user_setting_ds, [
+            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+        ]},
+        {geo_people_nearby_ds, [
+            {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+        ]}
     ], fun() ->
         Uid = 100,
         Lat = <<"39.9042">>,
@@ -26,8 +31,13 @@ save_location_success_test_() ->
     end).
 
 save_location_with_string_coordinates_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {user_setting_ds, [
+            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+        ]},
+        {geo_people_nearby_ds, [
+            {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+        ]}
     ], fun() ->
         Uid = 100,
         Lat = <<"39.9042">>,
@@ -37,8 +47,13 @@ save_location_with_string_coordinates_test_() ->
     end).
 
 save_location_with_number_coordinates_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {user_setting_ds, [
+            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+        ]},
+        {geo_people_nearby_ds, [
+            {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+        ]}
     ], fun() ->
         Uid = 100,
         Lat = <<"39.9042">>,
@@ -52,13 +67,18 @@ save_location_with_number_coordinates_test_() ->
 %% ===================================================================
 
 people_nearby_success_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, [
-                #{<<"id">> => 101, <<"distance">> => 100},
-                #{<<"id">> => 102, <<"distance">> => 200}
-            ]}
-        end}
+    ?WITH_MECKS([
+        {geo_people_nearby_ds, [
+            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {ok, [
+                    #{<<"id">> => 101, <<"distance">> => 100},
+                    #{<<"id">> => 102, <<"distance">> => 200}
+                ]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend_fields', 3, fun(_CurrentUid, _UserId, _Fields) -> {true, #{}} end}
+        ]}
     ], fun() ->
         CurrentUid = 1,
         Lng = <<"116.4074">>,
@@ -87,10 +107,15 @@ people_nearby_with_empty_result_test_() ->
     end).
 
 people_nearby_with_kilometer_unit_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, [#{<<"id">> => 101}]}
-        end}
+    ?WITH_MECKS([
+        {geo_people_nearby_ds, [
+            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {ok, [#{<<"id">> => 101}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend_fields', 3, fun(_CurrentUid, _UserId, _Fields) -> {true, #{}} end}
+        ]}
     ], fun() ->
         CurrentUid = 1,
         Lng = <<"116.4074">>,
@@ -103,10 +128,15 @@ people_nearby_with_kilometer_unit_test_() ->
     end).
 
 people_nearby_with_custom_limit_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, lists:duplicate(20, #{<<"id">> => 101})}
-        end}
+    ?WITH_MECKS([
+        {geo_people_nearby_ds, [
+            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {ok, lists:duplicate(20, #{<<"id">> => 101})}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend_fields', 3, fun(_CurrentUid, _UserId, _Fields) -> {true, #{}} end}
+        ]}
     ], fun() ->
         CurrentUid = 1,
         Lng = <<"116.4074">>,
@@ -139,10 +169,15 @@ people_nearby_with_zero_radius_test_() ->
     end).
 
 people_nearby_with_large_radius_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, [#{<<"id">> => 101}]}
-        end}
+    ?WITH_MECKS([
+        {geo_people_nearby_ds, [
+            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {ok, [#{<<"id">> => 101}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend_fields', 3, fun(_CurrentUid, _UserId, _Fields) -> {true, #{}} end}
+        ]}
     ], fun() ->
         CurrentUid = 1,
         Lng = <<"116.4074">>,
@@ -155,8 +190,13 @@ people_nearby_with_large_radius_test_() ->
     end).
 
 save_with_zero_coordinates_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {user_setting_ds, [
+            {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+        ]},
+        {geo_people_nearby_ds, [
+            {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+        ]}
     ], fun() ->
         Uid = 100,
         Lat = <<"0">>,
@@ -166,10 +206,15 @@ save_with_zero_coordinates_test_() ->
     end).
 
 people_nearby_with_negative_coordinates_test_() ->
-    ?WITH_MECK(geo_people_nearby_ds, [
-        {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
-            {ok, [#{<<"id">> => 101}]}
-        end}
+    ?WITH_MECKS([
+        {geo_people_nearby_ds, [
+            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {ok, [#{<<"id">> => 101}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend_fields', 3, fun(_CurrentUid, _UserId, _Fields) -> {true, #{}} end}
+        ]}
     ], fun() ->
         CurrentUid = 1,
         Lng = <<"-122.4194">>,

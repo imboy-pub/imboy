@@ -17,8 +17,14 @@
 %% @doc 测试版本更新检查 - 有更新可用
 handle_check_update_test_() ->
     ?WITH_MECKS([
-        {app_version_repo, [
-            {'find', 2, fun(_Where, _Column) ->
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end},
+            {'header', 3, fun(<<"cos">>, _Req, Default) -> <<"web">>;
+                             (_, _Req, Default) -> Default end},
+            {'parse_qs', 1, fun(_Req) -> [{<<"vsn">>, <<"1.0.0">>}, {<<"region_code">>, <<>>}] end}
+        ]},
+        {app_version_logic, [
+            {'check', 3, fun(_Vsn, _Cos, _DID) ->
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"cn">>,
@@ -28,7 +34,10 @@ handle_check_update_test_() ->
                     <<"vsn">> => <<"1.1.0">>,
                     <<"download_url">> => <<"https://example.com/download">>,
                     <<"description">> => <<"Bug fixes">>,
-                    <<"force_update">> => false
+                    <<"force_update">> => false,
+                    <<"updatable">> => true,
+                    <<"upgrade_type">> => <<"recommend">>,
+                    <<"check_interval_hours">> => 24
                 }
             end}
         ]},
@@ -38,11 +47,6 @@ handle_check_update_test_() ->
                     response_status => 200,
                     response_body => #{status => success, data => Data}
                 })
-            end}
-        ]},
-        {ec_semver, [
-            {'lt', 2, fun(_Vsn1, _Vsn2) ->
-                true
             end}
         ]}
     ], fun() ->
@@ -65,8 +69,14 @@ handle_check_update_test_() ->
 %% @doc 测试版本更新检查 - 无更新可用
 handle_check_no_update_test_() ->
     ?WITH_MECKS([
-        {app_version_repo, [
-            {'find', 2, fun(_Where, _Column) ->
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end},
+            {'header', 3, fun(<<"cos">>, _Req, Default) -> <<"web">>;
+                             (_, _Req, Default) -> Default end},
+            {'parse_qs', 1, fun(_Req) -> [{<<"vsn">>, <<"1.0.0">>}, {<<"region_code">>, <<>>}] end}
+        ]},
+        {app_version_logic, [
+            {'check', 3, fun(_Vsn, _Cos, _DID) ->
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"cn">>,
@@ -76,7 +86,10 @@ handle_check_no_update_test_() ->
                     <<"vsn">> => <<"1.0.0">>,
                     <<"download_url">> => <<"https://example.com/download">>,
                     <<"description">> => <<"Bug fixes">>,
-                    <<"force_update">> => false
+                    <<"force_update">> => false,
+                    <<"updatable">> => false,
+                    <<"upgrade_type">> => <<"none">>,
+                    <<"check_interval_hours">> => 24
                 }
             end}
         ]},
@@ -86,11 +99,6 @@ handle_check_no_update_test_() ->
                     response_status => 200,
                     response_body => #{status => success, data => Data}
                 })
-            end}
-        ]},
-        {ec_semver, [
-            {'lt', 2, fun(_Vsn1, _Vsn2) ->
-                false
             end}
         ]}
     ], fun() ->
@@ -113,10 +121,16 @@ handle_check_no_update_test_() ->
 %% @doc 测试版本更新检查 - 带区域码
 handle_check_with_region_test_() ->
     ?WITH_MECKS([
-        {app_version_repo, [
-            {'find', 2, fun(Cos, RegionCode) ->
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end},
+            {'header', 3, fun(<<"cos">>, _Req, Default) -> <<"web">>;
+                             (_, _Req, Default) -> Default end},
+            {'parse_qs', 1, fun(_Req) -> [{<<"vsn">>, <<"1.0.0">>}, {<<"region_code">>, <<"us">>}] end}
+        ]},
+        {app_version_logic, [
+            {'check', 3, fun(Vsn, Cos, _DID) ->
+                ?assertEqual(<<"1.0.0">>, Vsn),
                 ?assertEqual(<<"web">>, Cos),
-                ?assertEqual(<<"us">>, RegionCode),
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"us">>,
@@ -126,7 +140,10 @@ handle_check_with_region_test_() ->
                     <<"vsn">> => <<"1.1.0">>,
                     <<"download_url">> => <<"https://example.com/download">>,
                     <<"description">> => <<"Bug fixes">>,
-                    <<"force_update">> => false
+                    <<"force_update">> => false,
+                    <<"updatable">> => true,
+                    <<"upgrade_type">> => <<"recommend">>,
+                    <<"check_interval_hours">> => 24
                 }
             end}
         ]},
@@ -136,11 +153,6 @@ handle_check_with_region_test_() ->
                     response_status => 200,
                     response_body => #{status => success, data => Data}
                 })
-            end}
-        ]},
-        {ec_semver, [
-            {'lt', 2, fun(_Vsn1, _Vsn2) ->
-                true
             end}
         ]}
     ], fun() ->
@@ -163,10 +175,16 @@ handle_check_with_region_test_() ->
 %% @doc 测试版本更新检查 - 不同平台
 handle_check_different_platform_test_() ->
     ?WITH_MECKS([
-        {app_version_repo, [
-            {'find', 2, fun(Cos, RegionCode) ->
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end},
+            {'header', 3, fun(<<"cos">>, _Req, Default) -> <<"ios">>;
+                             (_, _Req, Default) -> Default end},
+            {'parse_qs', 1, fun(_Req) -> [{<<"vsn">>, <<"1.0.0">>}, {<<"region_code">>, <<>>}] end}
+        ]},
+        {app_version_logic, [
+            {'check', 3, fun(Vsn, Cos, _DID) ->
+                ?assertEqual(<<"1.0.0">>, Vsn),
                 ?assertEqual(<<"ios">>, Cos),
-                ?assertEqual(<<>>, RegionCode),
                 #{
                     <<"id">> => 1,
                     <<"region_code">> => <<"cn">>,
@@ -176,7 +194,10 @@ handle_check_different_platform_test_() ->
                     <<"vsn">> => <<"1.1.0">>,
                     <<"download_url">> => <<"https://apps.apple.com/app">>,
                     <<"description">> => <<"Bug fixes">>,
-                    <<"force_update">> => false
+                    <<"force_update">> => false,
+                    <<"updatable">> => true,
+                    <<"upgrade_type">> => <<"recommend">>,
+                    <<"check_interval_hours">> => 24
                 }
             end}
         ]},
@@ -186,11 +207,6 @@ handle_check_different_platform_test_() ->
                     response_status => 200,
                     response_body => #{status => success, data => Data}
                 })
-            end}
-        ]},
-        {ec_semver, [
-            {'lt', 2, fun(_Vsn1, _Vsn2) ->
-                true
             end}
         ]}
     ], fun() ->

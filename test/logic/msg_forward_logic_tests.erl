@@ -27,8 +27,14 @@ forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -56,8 +62,14 @@ forward_c2c_payload_contains_to_field_test_() ->
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -83,6 +95,12 @@ forward_c2c_reply_rejected_returns_error_test_() ->
         ]},
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -131,8 +149,14 @@ forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
         {group_ds, [
             {'is_member', 2, fun(_Uid, _Gid) -> true end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -170,10 +194,18 @@ forward_c2c_to_c2g_with_non_group_member_fails_test_() ->
 
 forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_timeline_repo, [
-            {'find_by_msg_id', 1, fun(_MsgId) ->
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {error, not_found}
+            end}
+        ]},
+        {msg_c2g_ds, [
+            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
                 {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
             end}
+        ]},
+        {group_ds, [
+            {'is_member', 2, fun(_Uid, _Gid) -> true end}
         ]},
         {msg_c2c_logic, [
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
@@ -181,8 +213,14 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -196,8 +234,13 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
 
 forward_c2g_to_c2c_without_group_membership_fails_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_timeline_repo, [
-            {'find_by_msg_id', 1, fun(_MsgId) ->
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {error, not_found}
+            end}
+        ]},
+        {msg_c2g_ds, [
+            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
                 {ok, [#{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
             end}
         ]},
@@ -227,8 +270,13 @@ forward_c2g_to_c2c_without_group_membership_fails_test_() ->
 
 forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
     ?WITH_MECKS([
-        {msg_c2g_timeline_repo, [
-            {'find_by_msg_id', 1, fun(_MsgId) ->
+        {msg_c2c_ds, [
+            {'find_msg_by_id', 1, fun(_MsgId) ->
+                {error, not_found}
+            end}
+        ]},
+        {msg_c2g_ds, [
+            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
                 {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
             end}
         ]},
@@ -238,8 +286,14 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
         {group_ds, [
             {'is_member', 2, fun(_Uid, _Gid) -> true end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
@@ -268,8 +322,14 @@ forward_batch_messages_succeeds_test_() ->
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
@@ -278,7 +338,7 @@ forward_batch_messages_succeeds_test_() ->
         ToType = <<"c2c">>,
 
         Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, MsgIds}, {ok, _} = Result)
+        ?assertMatch({ok, [_, _, _]}, Result)
     end).
 
 %% ===================================================================
@@ -289,13 +349,15 @@ forward_with_permission_denied_fails_test_() ->
     ?WITH_MECKS([
         {msg_c2c_ds, [
             {'find_msg_by_id', 1, fun(_MsgId) ->
-                % 消息不属于当前用户
                 {ok, #{<<"from_id">> => 999, <<"to_id">> => 888}}
             end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>],
-        FromUid = 123,  % 不是消息发送者或接收者
+        FromUid = 123,
         ToId = 789,
         ToType = <<"c2c">>,
 
@@ -309,6 +371,14 @@ forward_msg_not_found_fails_test_() ->
             {'find_msg_by_id', 1, fun(_MsgId) ->
                 {error, not_found}
             end}
+        ]},
+        {msg_c2g_ds, [
+            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                {ok, []}
+            end}
+        ]},
+        {friend_ds, [
+            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]}
     ], fun() ->
         MsgIds = [<<"non_existent_msg">>],
@@ -361,14 +431,23 @@ forward_partial_success_test_() ->
                 end
             end}
         ]},
+        {msg_c2g_ds, [
+            {'timeline_find_by_msg_id', 1, fun(<<"msg_124">>) -> {ok, []} end}
+        ]},
         {msg_c2c_logic, [
             {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
         ]},
         {friend_ds, [
             {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
         ]},
-        {msg_forward_repo, [
-            {'insert', 1, fun(_ForwardRecord) -> {ok, 1} end}
+        {elib_tsid, [
+            {'generate', 0, fun() -> 987654321 end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> 1700000000000 end}
+        ]},
+        {msg_forward_ds, [
+            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
@@ -377,6 +456,5 @@ forward_partial_success_test_() ->
         ToType = <<"c2c">>,
 
         Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        % 应该返回部分成功的结果
         ?assertMatch({ok, _}, Result)
     end).

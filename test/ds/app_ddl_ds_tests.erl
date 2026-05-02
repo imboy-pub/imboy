@@ -4,6 +4,10 @@
 
 save_add_success_test_() ->
     ?WITH_MECKS([
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) when is_integer(X) -> X;
+                                   (X) -> binary_to_integer(X) end}
+        ]},
         {elib_pg, [
             {'pluck_value', 5, fun(<<"public.app_ddl">>, <<"count(*)">>, _Where, #{}, 0) ->
                 0
@@ -28,6 +32,10 @@ save_add_success_test_() ->
 
 save_update_success_test_() ->
     ?WITH_MECKS([
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) when is_integer(X) -> X;
+                                   (X) -> binary_to_integer(X) end}
+        ]},
         {elib_pg, [
             {'pluck_value', 5, fun(<<"public.app_ddl">>, <<"count(*)">>, _Where, #{}, 0) ->
                 1
@@ -54,6 +62,10 @@ save_update_success_test_() ->
 
 delete_success_test_() ->
     ?WITH_MECKS([
+        {ec_cnv, [
+            {'to_integer', 1, fun(X) when is_integer(X) -> X;
+                                   (X) -> binary_to_integer(X) end}
+        ]},
         {app_ddl_repo, [
             {'tablename', 0, fun() ->
                 <<"app_ddl">>

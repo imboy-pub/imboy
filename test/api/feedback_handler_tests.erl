@@ -145,7 +145,7 @@ page_reply_normalizes_reply_ids_test_() ->
         Payload = maps:get(payload, Req),
         [Item] = maps:get(list, Payload),
         ?assertEqual(200, maps:get(response_status, Req)),
-        ?assertEqual(<<"fr_9">>, maps:get(<<"feedback_reply_id">>, Item)),
+        ?assertEqual(9, maps:get(<<"feedback_reply_id">>, Item)),
         ?assertEqual(false, maps:is_key(items, Payload))
     end).
 

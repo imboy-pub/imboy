@@ -10,15 +10,17 @@
 %%% 覆盖：黑名单查询、添加、删除
 %%%===================================================================
 
+-define(MOCK_ENV, {config_ds, [{'env', 1, fun(sql_driver) -> pgsql; (_) -> undefined end}]}).
+-define(MOCK_TSID, {elib_tsid, [{'generate', 1, fun(_Table) -> 999888777 end}]}).
+
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([?MOCK_ENV], fun() ->
         Result = user_denylist_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.user_denylist">>, Result)
     end).
 
 %% ===================================================================
@@ -26,33 +28,35 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 page_for_uid_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+    ]}], fun() ->
         Uid = 1,
         Limit = 10,
         Offset = 0,
-        % 测试函数调用不会崩溃
         Result = user_denylist_repo:page_for_uid(Uid, Limit, Offset),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, _, List} when is_list(List) ->
-                ?assert(true);
-            {ok, List} when is_list(List) ->
-                ?assert(true);
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        ?assertMatch({ok, List} when is_list(List), Result)
     end).
 
 in_denylist_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'pluck_value', 5, fun(_Tb, _Col, _Where, _Opts, _Default) -> 0 end}
+    ]}], fun() ->
         Uid = 1,
         DeniedUid = 2,
-        % 测试函数调用不会崩溃
         Result = user_denylist_repo:in_denylist(Uid, DeniedUid),
-        % 验证返回值格式：返回计数值（plain integer）
         ?assert(is_integer(Result)),
         ?assert(Result >= 0)
+    end).
+
+in_denylist_found_test_() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'pluck_value', 5, fun(_Tb, _Col, _Where, _Opts, _Default) -> 1 end}
+    ]}], fun() ->
+        Uid = 1,
+        DeniedUid = 2,
+        Result = user_denylist_repo:in_denylist(Uid, DeniedUid),
+        ?assertEqual(1, Result)
     end).
 
 %% ===================================================================
@@ -60,32 +64,22 @@ in_denylist_test_() ->
 %% ===================================================================
 
 add_to_denylist_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, ?MOCK_TSID, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+    ]}], fun() ->
         Uid = 1,
         BlockedUid = 2,
-        Now = elib_dt:now(),
-        % 测试函数调用不会崩溃
+        Now = <<"2024-01-01T00:00:00Z">>,
         Result = user_denylist_repo:add(Uid, BlockedUid, Now),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, _} -> ok;
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        ?assertMatch({ok, Id} when is_integer(Id), Result)
     end).
 
 remove_from_denylist_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([?MOCK_ENV, {elib_pg, [
+        {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+    ]}], fun() ->
         Uid = 1,
         BlockedUid = 2,
-        % 测试函数调用不会崩溃
         Result = user_denylist_repo:remove(Uid, BlockedUid),
-        % 验证返回值格式
-        ?assert(is_tuple(Result)),
-        case Result of
-            {ok, _} -> ok;
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason))
-        end
+        ?assertEqual(ok, Result)
     end).

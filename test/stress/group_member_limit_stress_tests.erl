@@ -27,6 +27,10 @@ group_limit_test_() ->
 setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} -> ok;
+        {error, _Reason} -> throw({skip, "Database not available"})
+    end,
     % 创建群主
     {ok, Owner} = create_test_user(<<"group_owner">>),
 

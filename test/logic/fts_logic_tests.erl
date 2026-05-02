@@ -15,17 +15,23 @@
 %% ===================================================================
 
 user_search_returns_results_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
-            {ok, [
-                #{<<"uid">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
-                #{<<"uid">> => 2, <<"nickname">> => <<"用户2"/utf8>>}
-            ]}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 2 end},
+            {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
+                {ok, [
+                    #{<<"uid">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
+                    #{<<"uid">> => 2, <<"nickname">> => <<"用户2"/utf8>>}
+                ]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"用户"/utf8>>,
         Limit = 10,
-        Result = fts_logic:user_search_page(1, 1, Limit, Keyword),
+        Result = fts_logic:user_search_page(999, 1, Limit, Keyword),
         ?assertMatch(#{list := [_, _]}, Result)
     end).
 
@@ -41,6 +47,7 @@ user_search_with_empty_keyword_test_() ->
 
 user_search_with_no_results_test_() ->
     ?WITH_MECK(fts_user_ds, [
+        {'count_for_user_search_page', 1, fun(_Keyword) -> 0 end},
         {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) -> {ok, []} end}
     ], fun() ->
         Keyword = <<"不存在的用户"/utf8>>,
@@ -50,17 +57,23 @@ user_search_with_no_results_test_() ->
     end).
 
 user_search_with_pagination_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, Limit, Offset) ->
-            % 返回第二页结果
-            Start = Offset + 1,
-            StartBin = integer_to_binary(Start),
-            StartBin2 = integer_to_binary(Start + 1),
-            {ok, [
-                #{<<"uid">> => Start, <<"nickname">> => StartBin},
-                #{<<"uid">> => Start + 1, <<"nickname">> => StartBin2}
-            ]}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 2 end},
+            {'user_search_page', 3, fun(_Keyword, Limit, Offset) ->
+                % 返回第二页结果
+                Start = Offset + 1,
+                StartBin = integer_to_binary(Start),
+                StartBin2 = integer_to_binary(Start + 1),
+                {ok, [
+                    #{<<"uid">> => Start, <<"nickname">> => StartBin},
+                    #{<<"uid">> => Start + 1, <<"nickname">> => StartBin2}
+                ]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"用户"/utf8>>,
         Limit = 10,
@@ -69,51 +82,75 @@ user_search_with_pagination_test_() ->
     end).
 
 user_search_with_custom_limit_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, Limit, _Offset) ->
-            {ok, lists:duplicate(Limit, #{<<"uid">> => 1, <<"nickname">> => <<"测试"/utf8>>})}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 20 end},
+            {'user_search_page', 3, fun(_Keyword, Limit, _Offset) ->
+                {ok, lists:duplicate(Limit, #{<<"uid">> => 1, <<"nickname">> => <<"测试"/utf8>>})}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"测试"/utf8>>,
         Limit = 20,
-        Result = fts_logic:user_search_page(1, 1, Limit, Keyword),
+        Result = fts_logic:user_search_page(999, 1, Limit, Keyword),
         #{list := Users} = Result,
         ?assertEqual(20, length(Users))
     end).
 
 user_search_with_special_characters_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
-            {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"用户@#$"/utf8>>}]}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 1 end},
+            {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
+                {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"用户@#$"/utf8>>}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"@#$"/utf8>>,
         Limit = 10,
-        Result = fts_logic:user_search_page(1, 1, Limit, Keyword),
+        Result = fts_logic:user_search_page(999, 1, Limit, Keyword),
         ?assertMatch(#{list := [_]}, Result)
     end).
 
 user_search_with_english_keyword_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
-            {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"Alice"/utf8>>}]}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 1 end},
+            {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
+                {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"Alice"/utf8>>}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"Alice">>,
         Limit = 10,
-        Result = fts_logic:user_search_page(1, 1, Limit, Keyword),
+        Result = fts_logic:user_search_page(999, 1, Limit, Keyword),
         ?assertMatch(#{list := [_]}, Result)
     end).
 
 user_search_with_mixed_language_keyword_test_() ->
-    ?WITH_MECK(fts_user_ds, [
-        {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
-            {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"测试Alice"/utf8>>}]}
-        end}
+    ?WITH_MECKS([
+        {fts_user_ds, [
+            {'count_for_user_search_page', 1, fun(_Keyword) -> 1 end},
+            {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) ->
+                {ok, [#{<<"uid">> => 1, <<"nickname">> => <<"测试Alice"/utf8>>}]}
+            end}
+        ]},
+        {friend_ds, [
+            {'is_friend', 3, fun(_Uid, _Uid2, _Field) -> {false, <<>>} end}
+        ]}
     ], fun() ->
         Keyword = <<"测试Alice"/utf8>>,
         Limit = 10,
-        Result = fts_logic:user_search_page(1, 1, Limit, Keyword),
+        Result = fts_logic:user_search_page(999, 1, Limit, Keyword),
         ?assertMatch(#{list := [_]}, Result)
     end).
 
@@ -123,6 +160,7 @@ user_search_with_mixed_language_keyword_test_() ->
 
 user_search_with_zero_limit_test_() ->
     ?WITH_MECK(fts_user_ds, [
+        {'count_for_user_search_page', 1, fun(_Keyword) -> 0 end},
         {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) -> {ok, []} end}
     ], fun() ->
         Keyword = <<"用户"/utf8>>,
@@ -133,6 +171,7 @@ user_search_with_zero_limit_test_() ->
 
 user_search_with_large_offset_test_() ->
     ?WITH_MECK(fts_user_ds, [
+        {'count_for_user_search_page', 1, fun(_Keyword) -> 0 end},
         {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) -> {ok, []} end}
     ], fun() ->
         Keyword = <<"用户"/utf8>>,
@@ -143,6 +182,7 @@ user_search_with_large_offset_test_() ->
 
 user_search_with_long_keyword_test_() ->
     ?WITH_MECK(fts_user_ds, [
+        {'count_for_user_search_page', 1, fun(_Keyword) -> 0 end},
         {'user_search_page', 3, fun(_Keyword, _Limit, _Offset) -> {ok, []} end}
     ], fun() ->
         % 创建一个超长的关键词
@@ -474,10 +514,10 @@ search_msg_with_empty_options_test_() ->
 
 search_msg_with_invalid_date_format_test_() ->
     ?WITH_MECK(fts_user_repo, [
-        {'search_c2c_msg_count', 1, fun(_Keyword) ->
+        {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
             0
         end},
-        {'search_c2c_msg', 4, fun(_Keyword, _Limit, _Offset, _Uid) ->
+        {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
             {ok, []}
         end}
     ], fun() ->

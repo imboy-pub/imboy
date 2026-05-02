@@ -48,7 +48,7 @@ init_remove_friend_success_test_() ->
                 #{
                     <<"scene">> => <<"friend">>,
                     <<"tagId">> => 7,
-                    <<"objectId">> => <<"friend_hash">>
+                    <<"objectId">> => <<"67890">>
                 }
             end}
         ]},

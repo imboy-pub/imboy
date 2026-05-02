@@ -26,8 +26,11 @@ invoke_group_member_keys(Req0, State0) ->
 
 init_with_user_keys_action_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {elib_param, [
-            {'get', 3, fun(_Key, _Req, _Default) -> <<"value">> end}
+            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">>; (_, _Req, Default) -> Default end}
         ]},
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
@@ -38,20 +41,24 @@ init_with_user_keys_action_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
         ]}
     ], fun() ->
         Req0 = cowboy_req_ok,
-        State0 = #{action => user_keys},
+        State = #{},
 
-        {ok, _Req1, State} = e2ee_handler:init(Req0, State0),
-        ?assert(is_map(State))
+        Result = invoke_user_keys(Req0, State),
+        ?assertEqual(cowboy_req_ok, Result)
     end).
 
 init_with_group_member_keys_action_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {elib_param, [
-            {'get', 3, fun(_Key, _Req, _Default) -> <<"value">> end}
+            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">>; (_, _Req, Default) -> Default end}
         ]},
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
@@ -62,14 +69,15 @@ init_with_group_member_keys_action_test_() ->
             end}
         ]},
         {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
         ]}
     ], fun() ->
         Req0 = cowboy_req_ok,
-        State0 = #{action => group_member_keys},
+        State = #{},
 
-        {ok, _Req1, State} = e2ee_handler:init(Req0, State0),
-        ?assert(is_map(State))
+        Result = invoke_group_member_keys(Req0, State),
+        ?assertEqual(cowboy_req_ok, Result)
     end).
 
 init_with_unknown_action_returns_404_test_() ->
@@ -89,6 +97,9 @@ init_with_unknown_action_returns_404_test_() ->
 
 user_keys_with_valid_uid_returns_success_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
@@ -113,6 +124,9 @@ user_keys_with_valid_uid_returns_success_test_() ->
 
 user_keys_with_invalid_uid_returns_400_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},
@@ -132,6 +146,9 @@ user_keys_with_invalid_uid_returns_400_test_() ->
 
 user_keys_with_forbidden_returns_403_test_() ->
     ?WITH_MECKS([
+        {imboy_policy, [
+            {'e2ee_enabled', 0, fun() -> true end}
+        ]},
         {auth_ds, [
             {'current_uid', 1, fun(_State) -> 123 end}
         ]},

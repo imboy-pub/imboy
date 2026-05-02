@@ -34,7 +34,7 @@ create_invalid_vote_type_returns_validation_error_test_() ->
         {elib_param, [
             {'post', 1, fun(_Req) ->
                 #{
-                    <<"gid">> => <<"g1">>,
+                    <<"gid">> => <<"1">>,
                     <<"title">> => <<"午餐投票"/utf8>>,
                     <<"options">> => [#{<<"option_text">> => <<"火锅"/utf8>>}],
                     <<"vote_type">> => 9

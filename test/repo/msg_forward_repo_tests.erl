@@ -25,8 +25,13 @@ tablename_returns_valid_table_name_test_() ->
 %% ===================================================================
 
 insert_with_valid_data_succeeds_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(msg_forward) -> 990001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
     ], fun() ->
         ForwardRecord = #{
             <<"original_msg_id">> => <<"msg_123">>,
@@ -44,8 +49,13 @@ insert_with_valid_data_succeeds_test_() ->
     end).
 
 insert_with_database_error_fails_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) -> {error, database_error} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(msg_forward) -> 990002 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {error, database_error} end}
+        ]}
     ], fun() ->
         ForwardRecord = #{
             <<"original_msg_id">> => <<"msg_123">>,
@@ -170,18 +180,15 @@ count_by_original_msg_id_with_non_existent_msg_id_returns_zero_test_() ->
 %% ===================================================================
 
 insert_with_missing_required_field_fails_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) -> {error, {constraint, <<"not_null_violation">>}} end}
-    ], fun() ->
-        % 缺少必需字段
+    ?TEST_SIMPLE(fun() ->
+        % 缺少必需字段，maps:get 会抛出 badkey 异常
         ForwardRecord = #{
             <<"original_msg_id">> => <<"msg_123">>,
             <<"original_from_id">> => 123
             % 缺少其他必需字段
         },
 
-        Result = msg_forward_repo:insert(ForwardRecord),
-        ?assertMatch({error, _}, Result)
+        ?assertError({badkey, _}, msg_forward_repo:insert(ForwardRecord))
     end).
 
 find_by_original_msg_id_with_empty_msg_id_returns_empty_test_() ->
@@ -199,8 +206,13 @@ find_by_original_msg_id_with_empty_msg_id_returns_empty_test_() ->
 %% ===================================================================
 
 insert_with_invalid_type_fails_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) -> {error, {invalid, <<"type_mismatch">>}} end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(msg_forward) -> 123456 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {error, {invalid, <<"type_mismatch">>}} end}
+        ]}
     ], fun() ->
         ForwardRecord = #{
             <<"original_msg_id">> => <<"msg_123">>,

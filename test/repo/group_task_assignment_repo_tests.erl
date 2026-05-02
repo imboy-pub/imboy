@@ -27,10 +27,19 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 insert_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {ok, 2001, [{<<"id">>, 2001}]}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(group_task_assignment) -> 2001 end}
+        ]},
+        {elib_pg_sql, [
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-01-01T00:00:00Z">> end}
+        ]}
     ], fun() ->
         Data = #{
             task_id => <<"task123">>,
@@ -38,7 +47,7 @@ insert_success_test_() ->
             status => 0
         },
         Result = group_task_assignment_repo:insert(Data),
-        ?assertMatch({ok, 2001, _}, Result)
+        ?assertEqual({ok, 2001}, Result)
     end).
 
 %% ===================================================================
@@ -176,7 +185,7 @@ list_by_user_id_empty_test_() ->
 count_by_status_success_test_() ->
     ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{[{<<"count">>, 5}]}]}
+            {ok, [[{<<"count">>, 5}]]}
         end}
     ], fun() ->
         Result = group_task_assignment_repo:count_by_status(<<"task123">>, 2),
@@ -186,7 +195,7 @@ count_by_status_success_test_() ->
 count_by_status_zero_test_() ->
     ?WITH_MECK(elib_pg, [
         {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{[{<<"count">>, 0}]}]}
+            {ok, [[{<<"count">>, 0}]]}
         end}
     ], fun() ->
         Result = group_task_assignment_repo:count_by_status(<<"task123">>, 2),
@@ -199,10 +208,21 @@ count_by_status_zero_test_() ->
 
 %% 测试重复分配
 insert_duplicate_assignment_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'insert', 3, fun(_Table, _Data, _Returning) ->
-            {error, {unique_violation, <<"group_task_assignment_task_id_user_id_key">>}}
-        end}
+    ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(group_task_assignment) -> 2002 end}
+        ]},
+        {elib_pg_sql, [
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {error, {unique_violation, <<"group_task_assignment_task_id_user_id_key">>}}
+            end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-01-01T00:00:00Z">> end}
+        ]}
     ], fun() ->
         Data = #{
             task_id => <<"task123">>,

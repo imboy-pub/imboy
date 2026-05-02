@@ -11,22 +11,28 @@
 
 %% 测试夹具
 msg_reply_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"单聊引用回复", fun test_c2c_reply/0},
-      {"群聊引用回复", fun test_c2g_reply/0},
-      {"引用消息摘要生成", fun test_reply_snippet/0},
-      {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
-      {"引用回复消息列表查询", fun test_get_reply_chain/0},
-      {"批量引用回复", fun test_batch_reply/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"单聊引用回复", fun test_c2c_reply/0},
+              {"群聊引用回复", fun test_c2g_reply/0},
+              {"引用消息摘要生成", fun test_reply_snippet/0},
+              {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
+              {"引用回复消息列表查询", fun test_get_reply_chain/0},
+              {"批量引用回复", fun test_batch_reply/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_reply">>),
     {ok, User2} = create_test_user(<<"user2_reply">>),

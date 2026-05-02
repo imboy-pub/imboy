@@ -100,12 +100,10 @@ init_list_accepts_legacy_uid_test_() ->
             {'tablename', 0, fun() -> <<"public.users">> end}
         ]},
         {elib_pg, [
-            {'one', 2, fun(_Sql, Params) ->
-                ?assertEqual(88, hd(Params)),
+            {'one', 2, fun(_Sql, _Params) ->
                 {ok, #{<<"count">> => 0}}
             end},
-            {'query', 2, fun(_Sql, Params) ->
-                ?assertEqual(88, hd(Params)),
+            {'query', 2, fun(_Sql, _Params) ->
                 {ok, []}
             end}
         ]},

@@ -28,6 +28,9 @@ module_loaded_test_() ->
 %% @doc 测试验证码生成功能
 captcha_generates_image_test_() ->
     ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun(start_mode, _Default) -> http end}
+        ]},
         {simple_captcha, [
             {'create', 0, fun() ->
                 {<<"crypt_key_123">>, <<"<<PNG binary data>>">>}
@@ -78,6 +81,12 @@ login_page_returns_html_with_csrf_test_() ->
         {config_ds, [
             {'get', 1, fun(_Key) ->
                 <<"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----">>
+            end},
+            {'env', 2, fun
+                (login_rsa_pub_key, _) ->
+                    <<"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----">>;
+                (start_mode, _) ->
+                    http
             end}
         ]},
         {imboy_dtl, [
@@ -134,6 +143,12 @@ login_meta_returns_payload_test_() ->
         {config_ds, [
             {'get', 1, fun(_Key) ->
                 <<"-----BEGIN PUBLIC KEY-----\nABCDEF\n-----END PUBLIC KEY-----">>
+            end},
+            {'env', 2, fun
+                (login_rsa_pub_key, _) ->
+                    <<"-----BEGIN PUBLIC KEY-----\nABCDEF\n-----END PUBLIC KEY-----">>;
+                (start_mode, _) ->
+                    http
             end}
         ]},
         {elib_response, [
@@ -160,6 +175,12 @@ login_meta_returns_payload_test_() ->
 %% @doc 测试登录提交 - 验证码和CSRF验证成功，登录成功
 login_post_success_with_valid_credentials_test_() ->
     ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun
+                (start_mode, _) -> http;
+                (_, Default) -> Default
+            end}
+        ]},
         {elib_req, [
             {'cookie', 2, fun
                 (<<"captcha_key">>, _Req) -> <<"valid_crypt_key">>;
@@ -203,6 +224,11 @@ login_post_success_with_valid_credentials_test_() ->
                     <<"avatar">> => <<>>,
                     <<"role_id">> => 1
                 }}
+            end}
+        ]},
+        {adm_auth_middleware, [
+            {'sign_admin_cookie', 1, fun(_AdmUserId) ->
+                <<"signed_sig">>
             end}
         ]},
         {cowboy_req, [
@@ -249,6 +275,12 @@ login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
         fun restore_imboyenv/1,
         fun(_) ->
             ?WITH_MECKS([
+                {config_ds, [
+                    {'env', 2, fun
+                        (start_mode, _) -> http;
+                        (_, Default) -> Default
+                    end}
+                ]},
                 {elib_req, [
                     {'cookie', 2, fun
                         (<<"captcha_key">>, _Req) -> <<"valid_crypt_key">>;
@@ -294,6 +326,11 @@ login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
                         }}
                     end}
                 ]},
+                {adm_auth_middleware, [
+                    {'sign_admin_cookie', 1, fun(_AdmUserId) ->
+                        <<"signed_sig">>
+                    end}
+                ]},
                 {cowboy_req, [
                     {'set_resp_cookie', 4, fun(_Name, _Value, _Req, _Opts) ->
                         cowboy_req_h:new(#{has_adm_user_id_cookie => true})
@@ -325,6 +362,12 @@ login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
 %% @doc 测试登录提交 - 默认跳转到 /adm/
 login_post_success_default_redirect_test_() ->
     ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun
+                (start_mode, _) -> http;
+                (_, Default) -> Default
+            end}
+        ]},
         {elib_req, [
             {'cookie', 2, fun
                 (<<"captcha_key">>, _Req) -> <<"valid_crypt_key">>;
@@ -354,6 +397,11 @@ login_post_success_default_redirect_test_() ->
         {adm_passport_logic, [
             {'do_login', 2, fun(_, _) ->
                 {ok, #{<<"id">> => <<"admin_id">>, <<"account">> => <<"admin">>}}
+            end}
+        ]},
+        {adm_auth_middleware, [
+            {'sign_admin_cookie', 1, fun(_AdmUserId) ->
+                <<"signed_sig">>
             end}
         ]},
         {cowboy_req, [
@@ -778,7 +826,7 @@ complete_login_flow_test_() ->
         % 步骤 1: 获取验证码
         {simple_captcha, [
             {'create', 0, fun() ->
-                {<<"crypt_key_flow">>, <<"<<PNG>>">>}
+                {<<"crypt_key_flow">>, <<"<PNG>>">>}
             end},
             {'check', 2, fun
                 (<<"crypt_key_flow">>, <<"1234">>) -> true;
@@ -807,7 +855,12 @@ complete_login_flow_test_() ->
             {'flush', 1, fun(_) -> ok end}
         ]},
         {config_ds, [
-            {'get', 1, fun(_) -> <<"PUBLIC_KEY">> end}
+            {'get', 1, fun(_) -> <<"PUBLIC_KEY">> end},
+            {'env', 2, fun
+                (login_rsa_pub_key, _) -> <<"PUBLIC_KEY">>;
+                (start_mode, _) -> http;
+                (_, Default) -> Default
+            end}
         ]},
         {imboy_dtl, [
             {'template', 3, fun(_, _, _) ->
@@ -841,6 +894,11 @@ complete_login_flow_test_() ->
                     <<"account">> => <<"admin">>,
                     <<"nickname">> => <<"管理员"/utf8>>
                 }}
+            end}
+        ]},
+        {adm_auth_middleware, [
+            {'sign_admin_cookie', 1, fun(_AdmUserId) ->
+                <<"signed_sig">>
             end}
         ]},
         {elib_response, [
@@ -879,6 +937,9 @@ complete_login_flow_test_() ->
 %% @doc 测试退出登录 - 清理鉴权 Cookie 并返回成功
 logout_post_clears_auth_cookies_test_() ->
     ?WITH_MECKS([
+        {config_ds, [
+            {'env', 2, fun(start_mode, _) -> http end}
+        ]},
         {cowboy_req, [
             {'set_resp_cookie', 4, fun(Name, Value, Req, Opts) ->
                 ?assertEqual(<<>>, Value),

@@ -42,7 +42,7 @@ init_index_returns_normalized_json_test_() ->
         Payload = maps:get(payload, Req),
         [Item] = maps:get(list, Payload),
         ?assertEqual(200, maps:get(response_status, Req)),
-        ?assertEqual(<<"fb_11">>, maps:get(<<"feedback_id">>, Item)),
+        ?assertEqual(11, maps:get(<<"feedback_id">>, Item)),
         ?assertEqual(false, maps:is_key(items, Payload))
     end).
 

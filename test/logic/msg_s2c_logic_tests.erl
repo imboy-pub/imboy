@@ -28,8 +28,11 @@ send_system_message_success_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
-        {elib_pg, [
-            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        {msg_s2c_repo, [
+            {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
+            {'write_msg', 9, fun(_CreatedAt, _Id, _Payload, _From, _To, _ServerTS, _Action, _MsgType, _E2EE) ->
+                {ok, 1}
+            end}
         ]}
     ], fun() ->
         FromId = 0,
@@ -58,8 +61,11 @@ send_with_action_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
-        {elib_pg, [
-            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        {msg_s2c_repo, [
+            {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
+            {'write_msg', 9, fun(_CreatedAt, _Id, _Payload, _From, _To, _ServerTS, _Action, _MsgType, _E2EE) ->
+                {ok, 1}
+            end}
         ]}
     ], fun() ->
         FromId = 0,
@@ -91,8 +97,11 @@ send_with_multiple_recipients_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
-        {elib_pg, [
-            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        {msg_s2c_repo, [
+            {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
+            {'write_msg', 9, fun(_CreatedAt, _Id, _Payload, _From, _To, _ServerTS, _Action, _MsgType, _E2EE) ->
+                {ok, 1}
+            end}
         ]}
     ], fun() ->
         FromId = 0,
@@ -121,8 +130,11 @@ send_with_empty_body_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
         ]},
-        {elib_pg, [
-            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        {msg_s2c_repo, [
+            {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
+            {'write_msg', 9, fun(_CreatedAt, _Id, _Payload, _From, _To, _ServerTS, _Action, _MsgType, _E2EE) ->
+                {ok, 1}
+            end}
         ]}
     ], fun() ->
         FromId = 0,
@@ -143,6 +155,9 @@ send_with_empty_body_test_() ->
 
 s2c_sends_to_user_test_() ->
     ?WITH_MECKS([
+        {elib_log, [
+            {'internal_log', 4, fun(_Level, _Msg, _Mod, _Line) -> ok end}
+        ]},
         {msg_operation_ds, [
             {'delete_c2c_msg', 2, fun(_OldMsgId, _Uid) -> ok end}
         ]},

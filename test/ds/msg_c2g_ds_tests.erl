@@ -26,16 +26,31 @@ module_loaded_test_() ->
 %% ===================================================================
 
 write_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        NowTs = elib_dt:now(millisecond),
-        MsgId = <<"msg_c2g_123">>,
-        FromUid = 1,
-        GroupId = 100,
-        Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Hello group">>},
-        PayloadMd5 = elib_hasher:md5(maps:get(<<"content">>, Payload)),
-        Result = msg_c2g_ds:write_msg(NowTs, MsgId, FromUid, GroupId, Payload, PayloadMd5),
-        ?assertEqual(ok, Result)
-    end).
+    {setup,
+     fun() ->
+         meck:new(elib_pg, [no_link, passthrough]),
+         meck:new(msg_c2g_repo, [no_link, passthrough]),
+         meck:expect(elib_pg, pluck_value, 5, 0),
+         meck:expect(msg_c2g_repo, write_msg, 8, ok),
+         meck:expect(msg_c2g_repo, write_msg, 9, ok),
+         ok
+     end,
+     fun(_) ->
+         meck:unload(msg_c2g_repo),
+         meck:unload(elib_pg)
+     end,
+     fun(_) ->
+         ?_test(fun() ->
+             NowTs = elib_dt:now(millisecond),
+             MsgId = <<"msg_c2g_123">>,
+             FromUid = 1,
+             GroupId = 100,
+             Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Hello group">>},
+             PayloadMd5 = elib_hasher:md5(maps:get(<<"content">>, Payload)),
+             Result = msg_c2g_ds:write_msg(NowTs, MsgId, FromUid, GroupId, Payload, PayloadMd5),
+             ?assertEqual(ok, Result)
+         end)
+     end}.
 
 read_msg_test_() ->
     ?TEST_WITH_DB(fun() ->

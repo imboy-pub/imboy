@@ -160,7 +160,7 @@ validate_required_with_list_validator_test_() ->
 validate_id_with_valid_legacy_id_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
-        Result = imboy_error:validate_id(Req, <<"5abc123">>),
+        Result = imboy_error:validate_id(Req, <<"100">>),
         ?assertMatch({ok, 100}, Result)
     end).
 
@@ -223,7 +223,7 @@ validate_id_with_atom_test_() ->
 validate_id_list_with_valid_ids_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
-        Result = imboy_error:validate_id_list(Req, [<<"abc">>, <<"def">>, <<"ghi">>]),
+        Result = imboy_error:validate_id_list(Req, [<<"1">>, <<"2">>, <<"3">>]),
         ?assertMatch({ok, [1, 2, 3]}, Result)
     end).
 
@@ -236,7 +236,7 @@ validate_id_list_with_one_invalid_id_test_() ->
         ]}
     ], fun() ->
         Req = mock_request(),
-        Result = imboy_error:validate_id_list(Req, [<<"valid">>, <<"invalid">>]),
+        Result = imboy_error:validate_id_list(Req, [<<"100">>, <<"invalid">>]),
         ?assertMatch({error, #{response_status := 400}}, Result)
     end).
 
@@ -250,7 +250,7 @@ validate_id_list_with_empty_list_test_() ->
 validate_id_list_with_single_valid_id_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
-        Result = imboy_error:validate_id_list(Req, [<<"single">>]),
+        Result = imboy_error:validate_id_list(Req, [<<"999">>]),
         ?assertMatch({ok, [999]}, Result)
     end).
 
@@ -426,7 +426,7 @@ validate_multiple_params_successfully_test_() ->
     ], fun() ->
         Req = mock_request(),
         ?assertMatch({ok, <<"user">>}, imboy_error:validate_required(Req, account)),
-        ?assertMatch({ok, 100}, imboy_error:validate_id(Req, <<"gid123">>))
+        ?assertMatch({ok, 100}, imboy_error:validate_id(Req, <<"100">>))
     end).
 
 validate_param_chain_fails_on_first_error_test_() ->

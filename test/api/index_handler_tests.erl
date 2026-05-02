@@ -28,7 +28,7 @@ init_success_test_() ->
             %% env/1 — 无 default，用于 solidified_key、login_rsa_pub_key 等
             {'env', 1, fun
                 (solidified_key)    -> <<"sol_key">>;
-                (solidified_key_iv) -> <<"sol_iv">>;
+                (solidified_key_iv) -> <<"0123456789abcdef">>;
                 (login_rsa_pub_key) -> <<"rsa_pub">>
             end},
             %% env/2 — 带 default，用于客户端 init 配置项
@@ -47,7 +47,8 @@ init_success_test_() ->
         ]},
         {elib_hasher, [
             {'md5', 1, fun(<<"sol_key">>) ->
-                <<"md5_key">>
+                % AES-256-CBC 需要 32 字节 key；返回恰好 32 字节二进制
+                <<"0123456789abcdef0123456789abcdef">>
             end}
         ]},
         {jsone, [
@@ -56,7 +57,7 @@ init_success_test_() ->
             end}
         ]},
         {elib_cipher, [
-            {'aes_encrypt', 4, fun(aes_256_cbc, <<"encoded_json">>, <<"md5_key">>, <<"sol_iv">>) ->
+            {'aes_encrypt', 4, fun(aes_256_cbc, <<"encoded_json">>, <<"0123456789abcdef0123456789abcdef">>, <<"0123456789abcdef">>) ->
                 <<"cipher_bin">>
             end}
         ]},

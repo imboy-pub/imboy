@@ -36,6 +36,9 @@ generate_invitation_code_supports_last_charset_position_test_() ->
 
 create_uses_default_pending_status_and_expiry_test_() ->
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(channel_invitation) -> 901 end}
+        ]},
         {elib_dt, [
             {'now', 0, fun() -> 1700000000000 end}
         ]},
@@ -44,11 +47,11 @@ create_uses_default_pending_status_and_expiry_test_() ->
                 SqlBin = iolist_to_binary(Sql),
                 ?assert(re:run(SqlBin, <<"INSERT INTO channel_invitation">>) =/= nomatch),
                 ?assertEqual(
-                    [11, 1001, 2002, <<"INVITE01">>, <<"hello">>, 0,
+                    [901, 11, 1001, 2002, <<"INVITE01">>, <<"hello">>, 0,
                      1700604800000, 1700000000000],
                     Params
                 ),
-                {ok, 1, [{901}]}
+                {ok, 1}
             end}
         ]}
     ], fun() ->
@@ -64,6 +67,9 @@ create_uses_default_pending_status_and_expiry_test_() ->
 
 create_maps_unique_violation_to_already_invited_test_() ->
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(channel_invitation) -> 902 end}
+        ]},
         {elib_dt, [
             {'now', 0, fun() -> 1700000000000 end}
         ]},

@@ -91,7 +91,7 @@ friend_remove_valid_object_id_success_test_() ->
                     #{
                         <<"scene">> => <<"friend">>,
                         <<"tagId">> => 7,
-                        <<"objectId">> => <<"hash_abc">>
+                        <<"objectId">> => <<"2233">>
                     }
                 end}
             ]},

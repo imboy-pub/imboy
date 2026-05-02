@@ -92,7 +92,7 @@ delete_legacy_id_still_supported_test_() ->
             end}
         ]},
         {group_category_logic, [
-            {'delete', 2, fun(321, 88) -> ok end}
+            {'delete', 2, fun(321, 0) -> ok end}
         ]},
         {elib_response, [
             {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end}

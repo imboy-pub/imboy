@@ -5,6 +5,9 @@
 
 init_returns_metrics_payload_test_() ->
     ?WITH_MECKS([
+        {cowboy_req, [
+            {'header', 3, fun(_Name, _Req, _Default) -> <<>> end}
+        ]},
         {elib_metric, [
             {'get_all_metrics', 0, fun() ->
                 #{connections => 2, queue_depth => 5}
@@ -25,6 +28,9 @@ init_returns_metrics_payload_test_() ->
 
 init_returns_error_when_metric_fetch_fails_test_() ->
     ?WITH_MECKS([
+        {cowboy_req, [
+            {'header', 3, fun(_Name, _Req, _Default) -> <<>> end}
+        ]},
         {elib_metric, [
             {'get_all_metrics', 0, fun() ->
                 erlang:error(metric_down)

@@ -20,11 +20,15 @@ c2c_ack_deletes_offline_msg_test_() ->
         Did = <<"device_ios_001">>,
         MsgId = <<"test_c2c_msg_001">>,
 
-        % 准备测试数据：插入离线消息
-        Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, NOW())">>,
+        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+
+        % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
+        Sql = <<"INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
         Payload = <<"{\"content\":\"test message\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, <<"text">>, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [9001, 999, Uid, MsgId, <<"text">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -38,7 +42,10 @@ c2c_ack_deletes_offline_msg_test_() ->
         ?assertEqual(0, Count),
 
         % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId])
+        elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
+
+        % 清理 Mock
+        meck:unload(elib_metric)
     end).
 
 c2c_ack_with_no_msg_test_() ->
@@ -91,11 +98,15 @@ s2c_ack_deletes_offline_msg_test_() ->
         Did = <<"device_ios_003">>,
         MsgId = <<"test_s2c_msg_001">>,
 
-        % 准备测试数据：插入离线消息
-        Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, action, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+
+        % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
+        Sql = <<"INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
         Payload = <<"{\"msg_type\":\"system\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [9002, 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -109,7 +120,10 @@ s2c_ack_deletes_offline_msg_test_() ->
         ?assertEqual(0, Count),
 
         % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_s2c WHERE msg_id = $1">>, [MsgId])
+        elib_pg:execute(<<"DELETE FROM msg_s2c WHERE msg_id = $1">>, [MsgId]),
+
+        % 清理 Mock
+        meck:unload(elib_metric)
     end).
 
 %% ===================================================================
@@ -122,11 +136,15 @@ c2s_ack_uses_parameterized_query_test_() ->
         Did = <<"device_web_001">>,
         MsgId = <<"test_c2s_msg_001">>,
 
-        % 准备测试数据：插入消息
-        Sql = <<"INSERT INTO msg_c2s (from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+
+        % 准备测试数据：插入消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
+        Sql = <<"INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
         Payload = <<"{\"text\":\"hello\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [Uid, 0, 123, MsgId, <<"text">>, Payload]),
+        {ok, _} = elib_pg:execute(Sql, [9003, Uid, 0, 123, MsgId, <<"text">>, Payload]),
 
         % Mock msg_store_ds:unstage
         meck:expect(msg_store_ds, unstage, 1, '_'),
@@ -140,7 +158,10 @@ c2s_ack_uses_parameterized_query_test_() ->
         ?assertEqual(0, Count),
 
         % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_c2s WHERE msg_id = $1">>, [MsgId])
+        elib_pg:execute(<<"DELETE FROM msg_c2s WHERE msg_id = $1">>, [MsgId]),
+
+        % 清理 Mock
+        meck:unload(elib_metric)
     end).
 
 c2s_ack_prevents_sql_injection_test_() ->

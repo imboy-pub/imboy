@@ -28,6 +28,12 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
         ]},
         {mention_logic, [
             {'create_mentions', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {user_logic, [
+            {'is_online', 1, fun(_Uid) -> true end}
+        ]},
+        {push_notification_logic, [
+            {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
         ]}
     ], fun() ->
         MsgId = <<"msg_c2g_ok_001">>,

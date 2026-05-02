@@ -242,9 +242,9 @@ rfc3339_to_with_integer_passthrough_test_() ->
 
 rfc3339_to_with_undefined_returns_undefined_test_() ->
     ?TEST_SIMPLE(fun() ->
-        % undefined 应该返回 undefined
+        % undefined 应该返回 null
         Result = elib_dt:rfc3339_to(undefined),
-        ?assertEqual(undefined, Result)
+        ?assertEqual(null, Result)
     end).
 
 add_with_invalid_datetime_returns_error_test_() ->

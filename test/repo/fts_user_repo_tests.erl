@@ -11,10 +11,13 @@
 %%%===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = fts_user_repo:tablename(),
-        ?assertMatch(<<_/binary>>, Result),
-        ?assert(<<>> =/= Result)
+        ?assertEqual(<<"public.fts_user">>, Result)
     end).
 
 %%%

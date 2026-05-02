@@ -61,17 +61,28 @@ find_by_uid_empty_when_no_categories_test_() ->
 %% ===================================================================
 
 rename_updates_category_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1,
-        Cid = 1,
-        NewName = <<"Renamed Category">>,
-        Result = friend_category_ds:rename(Uid, Cid, NewName),
-        case Result of
-            {ok, AffectedCount} when is_integer(AffectedCount) -> ?assert(AffectedCount >= 0);
-            {ok, _} -> ?assert(true);
-            _ -> ?assert(false, "Expected {ok, AffectedCount}")
-        end
-    end).
+    {setup,
+     fun() ->
+         meck:new(elib_pg, [no_link, passthrough]),
+         meck:expect(elib_pg, update, 4, {ok, 1}),
+         ok
+     end,
+     fun(_) ->
+         meck:unload(elib_pg)
+     end,
+     fun(_) ->
+         ?_test(fun() ->
+             Uid = 1,
+             Cid = 1,
+             NewName = <<"Renamed Category">>,
+             Result = friend_category_ds:rename(Uid, Cid, NewName),
+             case Result of
+                 {ok, AffectedCount} when is_integer(AffectedCount) -> ?assert(AffectedCount >= 0);
+                 {ok, _} -> ?assert(true);
+                 _ -> ?assert(false, "Expected {ok, AffectedCount}")
+             end
+         end)
+     end}.
 
 %% ===================================================================
 %% delete/2 测试

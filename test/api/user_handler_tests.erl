@@ -176,7 +176,7 @@ qrcode_user_exists_test_() ->
         {ok, Req, _State} = user_handler:init(MockReq, #{action => qrcode, current_uid => 67890}),
         {StatusCode, _, Body} = cowboy_req_h:response(Req),
         ?assertEqual(200, StatusCode),
-        ?assertEqual(<<"12345">>, maps:get(<<"id">>, Body)),
+        ?assertEqual(12345, maps:get(<<"id">>, Body)),
         ?assertEqual(true, maps:get(<<"isfriend">>, Body))
     end).
 

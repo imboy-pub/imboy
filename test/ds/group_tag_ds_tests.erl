@@ -16,7 +16,7 @@ add_success_test_() ->
             {'add', 2, fun(undefined, Data) ->
                 ?assertEqual(1, maps:get(group_id, Data)),
                 ?assertEqual(<<"tag-a">>, maps:get(tag_name, Data)),
-                {ok, 7, #{}}
+                {ok, 7}
             end}
         ]}
     ], fun() ->

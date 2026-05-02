@@ -435,8 +435,11 @@ parse_json_body_empty_test_() ->
 
 get_request_success_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/test">>,
             ResponseBody = <<"{\"status\":\"ok\",\"data\":123}">>,
             meck:expect(httpc, request, fun(get, _, _, _) ->
@@ -445,40 +448,55 @@ get_request_success_test_() ->
             {ok, Result} = elib_req:get(Url),
             ?assertEqual(<<"ok">>, maps:get(<<"status">>, Result)),
             ?assertEqual(123, maps:get(<<"data">>, Result)),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
 get_request_with_custom_headers_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
-        Url = <<"http://example.com/api/test">>,
-        Headers = [{"authorization", "Bearer token123"}],
-        ResponseBody = <<"{\"result\":\"success\"}">>,
-        meck:expect(httpc, request, fun(get, _, _, _) ->
-            {ok, {{'HTTP/1.1', 200, 'OK'}, [], ResponseBody}}
-        end),
-        {ok, Result} = elib_req:get(Url, Headers),
-        ?assertEqual(<<"success">>, maps:get(<<"result">>, Result)),
-        ?assert(meck:validate(httpc)),
-        meck:unload(httpc)
+        try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
+            Url = <<"http://example.com/api/test">>,
+            Headers = [{"authorization", "Bearer token123"}],
+            ResponseBody = <<"{\"result\":\"success\"}">>,
+            meck:expect(httpc, request, fun(get, _, _, _) ->
+                {ok, {{'HTTP/1.1', 200, 'OK'}, [], ResponseBody}}
+            end),
+            {ok, Result} = elib_req:get(Url, Headers),
+            ?assertEqual(<<"success">>, maps:get(<<"result">>, Result)),
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
+        after
+            meck:unload(httpc),
+            meck:unload(elib_log)
+        end
     end).
 
 get_request_error_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/error">>,
             meck:expect(httpc, request, fun(get, _, _, _) ->
                 {error, timeout}
             end),
             Result = elib_req:get(Url),
             ?assertMatch({error, timeout}, Result),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
@@ -488,8 +506,11 @@ get_request_error_test_() ->
 
 post_request_map_params_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/create">>,
             Params = #{name => <<"test">>, value => 123},
             ResponseBody = <<"{\"id\":456,\"status\":\"created\"}">>,
@@ -499,16 +520,21 @@ post_request_map_params_test_() ->
             {ok, Result} = elib_req:post(Url, Params),
             ?assertEqual(456, maps:get(<<"id">>, Result)),
             ?assertEqual(<<"created">>, maps:get(<<"status">>, Result)),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
 post_request_list_params_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/batch">>,
             Params = [1, 2, 3],
             ResponseBody = <<"{\"count\":3}">>,
@@ -517,16 +543,21 @@ post_request_list_params_test_() ->
             end),
             {ok, Result} = elib_req:post(Url, Params),
             ?assertEqual(3, maps:get(<<"count">>, Result)),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
 post_request_with_custom_headers_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/update">>,
             Params = #{id => 789, status => <<"active">>},
             Headers = [{"authorization", "Bearer token123"}, {"x-custom", "value"}],
@@ -536,16 +567,21 @@ post_request_with_custom_headers_test_() ->
             end),
             {ok, Result} = elib_req:post(Url, Params, Headers),
             ?assertEqual(true, maps:get(<<"updated">>, Result)),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
 post_request_error_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/error">>,
             Params = #{test => <<"data">>},
             meck:expect(httpc, request, fun(post, _, _, _) ->
@@ -553,9 +589,11 @@ post_request_error_test_() ->
             end),
             Result = elib_req:post(Url, Params),
             ?assertMatch({error, connection_refused}, Result),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
@@ -620,8 +658,11 @@ parse_body_text_plain_test_() ->
 
 get_request_non_200_status_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/unauthorized">>,
             ResponseBody = <<"{\"error\":\"Unauthorized\"}">>,
             meck:expect(httpc, request, fun(get, _, _, _) ->
@@ -629,16 +670,21 @@ get_request_non_200_status_test_() ->
             end),
             Result = elib_req:get(Url),
             ?assertMatch({error, 401, #{<<"error">> := <<"Unauthorized">>}}, Result),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 
 post_request_non_200_status_test_() ->
     ?TEST_WITH_APP(fun() ->
+        meck:new(elib_log, [no_link]),
         meck:new(httpc, [unstick, passthrough]),
         try
+            meck:expect(elib_log, internal_log, 4, ok),
+            meck:expect(elib_log, internal_log, 5, ok),
             Url = <<"http://example.com/api/error">>,
             Params = #{test => <<"data">>},
             ResponseBody = <<"{\"error\":\"Internal Server Error\"}">>,
@@ -647,9 +693,11 @@ post_request_non_200_status_test_() ->
             end),
             Result = elib_req:post(Url, Params),
             ?assertMatch({error, 500, #{<<"error">> := <<"Internal Server Error">>}}, Result),
-            ?assert(meck:validate(httpc))
+            ?assert(meck:validate(httpc)),
+            ?assert(meck:validate(elib_log))
         after
-            meck:unload(httpc)
+            meck:unload(httpc),
+            meck:unload(elib_log)
         end
     end).
 

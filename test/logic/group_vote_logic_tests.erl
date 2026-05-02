@@ -15,13 +15,18 @@
 %% ===================================================================
 
 create_vote_success_test_() ->
-    ?WITH_MECK(group_vote_repo, [
-        {'insert_vote', 1, fun(_Data) ->
-            {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
-        end},
-        {'insert_options_batch', 1, fun(_Options) ->
-            {ok, 2}
-        end}
+    ?WITH_MECKS([
+        {elib_id, [
+            {'gen', 1, fun(_Prefix) -> <<"vote_abc123">> end}
+        ]},
+        {group_vote_repo, [
+            {'insert_vote', 1, fun(_Data) ->
+                {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
+            end},
+            {'insert_options_batch', 1, fun(_Options) ->
+                {ok, 2}
+            end}
+        ]}
     ], fun() ->
         Gid = 123,
         CreatorId = 456,
@@ -43,13 +48,18 @@ create_vote_success_test_() ->
     end).
 
 create_vote_with_options_test_() ->
-    ?WITH_MECK(group_vote_repo, [
-        {'insert_vote', 1, fun(_Data) ->
-            {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
-        end},
-        {'insert_options_batch', 1, fun(_Options) ->
-            {ok, 3}
-        end}
+    ?WITH_MECKS([
+        {elib_id, [
+            {'gen', 1, fun(_Prefix) -> <<"vote_opt_xyz789">> end}
+        ]},
+        {group_vote_repo, [
+            {'insert_vote', 1, fun(_Data) ->
+                {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
+            end},
+            {'insert_options_batch', 1, fun(_Options) ->
+                {ok, 3}
+            end}
+        ]}
     ], fun() ->
         Options = [
             #{option_text => <<"选项1"/utf8>>, sort_order => 1},

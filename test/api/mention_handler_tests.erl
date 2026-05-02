@@ -29,10 +29,17 @@ list_mentions_with_is_read_true_passes_filter_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:list_mentions(req_mock(), #{current_uid => 100}),
@@ -54,10 +61,17 @@ list_mentions_logic_error_returns_generic_error_test_() ->
             {'list_mentions', 3, fun(_Uid, _IsRead, _Opt) -> {error, db_down} end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
             {'error', 2, fun(_Req, Msg) ->
                 self() ! {resp_msg, Msg},
                 req_error
-            end}
+            end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:list_mentions(req_mock(), #{current_uid => 100}),
@@ -71,10 +85,17 @@ mark_read_missing_msg_id_returns_validation_error_test_() ->
             {'post', 1, fun(_Req) -> #{} end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
             {'error', 2, fun(_Req, Msg) ->
                 self() ! {resp_msg, Msg},
                 req_error
-            end}
+            end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:mark_read(req_mock(), #{current_uid => 100}),
@@ -88,10 +109,17 @@ suggest_missing_gid_returns_bad_request_code_test_() ->
             {'parse_qs', 1, fun(_Req) -> [] end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:suggest(req_mock(), #{current_uid => 100}),
@@ -103,7 +131,7 @@ suggest_not_group_member_maps_permission_denied_code_test_() ->
     ?WITH_MECKS([
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) ->
-                [{<<"gid">>, <<"g_12">>}, {<<"keyword">>, <<"张"/utf8>>}]
+                [{<<"gid">>, <<"12">>}, {<<"keyword">>, <<"张"/utf8>>}]
             end}
         ]},
         {mention_logic, [
@@ -112,10 +140,17 @@ suggest_not_group_member_maps_permission_denied_code_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
+            {'success', 2, fun(_Req, _Payload) -> req_ok end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
             {'error', 3, fun(_Req, _Msg, Code) ->
                 self() ! {resp_code, Code},
                 req_error
-            end}
+            end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:suggest(req_mock(), #{current_uid => 100}),
@@ -126,7 +161,7 @@ suggest_not_group_member_maps_permission_denied_code_test_() ->
 list_mentions_accepts_group_id_in_post_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"group_id">> => <<"g_12">>, <<"page">> => 1, <<"size">> => 20} end},
+            {'post', 1, fun(_Req) -> #{<<"group_id">> => <<"12">>, <<"page">> => 1, <<"size">> => 20} end},
             {'page', 1, fun(_Req) -> {1, 20} end}
         ]},
         {cowboy_req, [
@@ -146,10 +181,17 @@ list_mentions_accepts_group_id_in_post_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:list_mentions(req_mock(), #{current_uid => 100}),
@@ -170,10 +212,17 @@ mark_read_with_mention_id_fallback_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:mark_read(req_mock(), #{current_uid => 100}),
@@ -187,7 +236,7 @@ suggest_accepts_group_id_in_post_and_returns_items_test_() ->
     ?WITH_MECKS([
         {elib_param, [
             {'post', 1, fun(_Req) -> #{
-                <<"group_id">> => <<"g_12">>,
+                <<"group_id">> => <<"12">>,
                 <<"keyword">> => <<"ab">>
             } end}
         ]},
@@ -200,10 +249,17 @@ suggest_accepts_group_id_in_post_and_returns_items_test_() ->
             end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:suggest(req_mock(), #{current_uid => 100}),
@@ -215,7 +271,7 @@ suggest_accepts_group_id_in_post_and_returns_items_test_() ->
 unread_supports_group_filter_test_() ->
     ?WITH_MECKS([
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"group_id">> => <<"g_12">>} end}
+            {'post', 1, fun(_Req) -> #{<<"group_id">> => <<"12">>} end}
         ]},
         {cowboy_req, [
             {'parse_qs', 1, fun(_Req) -> [] end}
@@ -224,10 +280,17 @@ unread_supports_group_filter_test_() ->
             {'count_group_unread', 2, fun(_Uid, _Gid) -> 3 end}
         ]},
         {elib_response, [
+            {'success', 1, fun(_Req) -> req_ok end},
             {'success', 2, fun(_Req, Data) ->
                 self() ! {resp_data, Data},
                 req_ok
-            end}
+            end},
+            {'success', 3, fun(_Req, _Payload, _Msg) -> req_ok end},
+            {'success', 4, fun(_Req, _Payload, _Msg, _Opts) -> req_ok end},
+            {'error', 1, fun(_Req) -> req_error end},
+            {'error', 2, fun(_Req, _Msg) -> req_error end},
+            {'error', 3, fun(_Req, _Msg, _Code) -> req_error end},
+            {'error', 4, fun(_Req, _Msg, _Code, _Opts) -> req_error end}
         ]}
     ], fun() ->
         Result = mention_handler:unread(req_mock(), #{current_uid => 100}),

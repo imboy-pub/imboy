@@ -47,7 +47,7 @@ feed_filters_invisible_posts_test_() ->
         List = maps:get(list, Payload, []),
         ?assertEqual(1, length(List)),
         [First | _] = List,
-        ?assertEqual(11, binary_to_integer(maps:get(<<"id">>, First)))
+        ?assertEqual(11, maps:get(<<"id">>, First))
     end).
 
 like_post_not_found_returns_error_test_() ->

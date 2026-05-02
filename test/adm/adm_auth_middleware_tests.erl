@@ -10,8 +10,19 @@
 %%% 覆盖：路径检查、Cookie 认证、重定向处理
 %%%===================================================================
 
+%% config_ds:env/2 mock — signing_key/cookie_secret/start_mode all depend on it
+config_ds_mock() ->
+    {config_ds, [
+        {'env', 2, fun
+            (jwt_key, <<>>) -> <<"test-jwt-secret-key-32-bytes!">>;
+            (start_mode, http) -> http;
+            (adm_cookie_secret, <<"imboy-adm-cookie">>) -> <<"test-cookie-secret">>;
+            (adm_auth_legacy_cookie_enabled, false) -> false;
+            (_, _) -> undefined
+        end}
+    ]}.
+
 %% 创建 Cowboy 2.x 模拟请求对象
-%% Cowboy 2.x 使用 Map 作为请求对象，而不是 mock_request()
 mock_request() ->
     #{
         method => <<"GET">>,
@@ -62,6 +73,7 @@ execute_with_passport_captcha_path_test_() ->
 
 execute_with_valid_uid_cookie_get_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'path', 1, fun(_Req) -> <<"/adm/dashboard">> end},
             {'method', 1, fun(_Req) -> <<"GET">> end}
@@ -84,15 +96,16 @@ execute_with_valid_uid_cookie_get_test_() ->
 
 execute_with_valid_uid_cookie_post_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'path', 1, fun(_Req) -> <<"/adm/api/action">> end},
             {'method', 1, fun(_Req) -> <<"POST">> end}
         ]},
         {elib_req, [
             {'cookie', 2, fun
-                (<<"adm_user_id">>, _Req) -> <<"uid_456">>;
+                (<<"adm_user_id">>, _Req) -> <<"200">>;
                 (<<"adm_user_sig">>, _Req) ->
-                    adm_auth_middleware:sign_admin_cookie(<<"uid_456">>);
+                    adm_auth_middleware:sign_admin_cookie(<<"200">>);
                 (_, _) ->
                     false
             end}
@@ -106,6 +119,7 @@ execute_with_valid_uid_cookie_post_test_() ->
 
 execute_without_uid_cookie_get_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'path', 1, fun(_Req) -> <<"/adm/">> end},
             {'method', 1, fun(_Req) -> <<"GET">> end},
@@ -129,6 +143,7 @@ execute_without_uid_cookie_get_test_() ->
 
 execute_without_uid_cookie_post_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'path', 1, fun(_Req) -> <<"/adm/api/data">> end},
             {'method', 1, fun(_Req) -> <<"POST">> end},
@@ -152,23 +167,28 @@ execute_without_uid_cookie_post_test_() ->
 %% ===================================================================
 
 condition_with_binary_uid_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        config_ds_mock()
+    ], fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{test_key => test_value}},
-        Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_123">>, Req, Env),
+        Result = adm_auth_middleware:condition(<<"GET">>, <<"100">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 100, test_key := test_value}}}, Result)
     end).
 
 condition_without_has_sent_resp_in_env_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        config_ds_mock()
+    ], fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{existing => data}},
-        Result = adm_auth_middleware:condition(<<"POST">>, <<"uid_abc">>, Req, Env),
+        Result = adm_auth_middleware:condition(<<"POST">>, <<"300">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 300, existing := data}}}, Result)
     end).
 
 condition_get_without_uid_redirects_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'path', 1, fun(_Req) -> <<"/adm/index">> end},
             {'uri', 1, fun(_Req) -> <<"https://example.com/adm/index">> end},
@@ -188,6 +208,7 @@ condition_get_without_uid_redirects_test_() ->
 
 condition_post_without_uid_returns_error_test_() ->
     ?WITH_MECKS([
+        config_ds_mock(),
         {cowboy_req, [
             {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) -> Req end},
             {'reply', 4, fun(Code, Headers, Body, Req) ->
@@ -282,9 +303,11 @@ execute_with_passport_do_login_path_test_() ->
     end).
 
 condition_preserves_existing_handler_opts_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        config_ds_mock()
+    ], fun() ->
         Req = mock_request(),
         Env = #{handler_opts => #{key1 => val1, key2 => val2}},
-        Result = adm_auth_middleware:condition(<<"GET">>, <<"uid_xyz">>, Req, Env),
+        Result = adm_auth_middleware:condition(<<"GET">>, <<"999">>, Req, Env),
         ?assertMatch({ok, _, #{handler_opts := #{adm_user_id := 999, key1 := val1, key2 := val2}}}, Result)
     end).

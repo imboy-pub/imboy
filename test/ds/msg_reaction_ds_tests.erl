@@ -36,7 +36,7 @@ add_reaction_returns_encoded_user_and_timestamp_test_() ->
         {ok, Result} = msg_reaction_ds:add_reaction(MsgId, MsgType, UserId, Emoji),
         ?assertEqual(MsgId, maps:get(<<"msg_id">>, Result)),
         ?assertEqual(MsgType, maps:get(<<"msg_type">>, Result)),
-        ?assertEqual(EncodedUid, maps:get(<<"user_id">>, Result)),
+        ?assertEqual(UserId, maps:get(<<"user_id">>, Result)),
         ?assertEqual(Emoji, maps:get(<<"emoji">>, Result)),
         ?assertEqual(CreatedAt, maps:get(<<"created_at">>, Result)),
         ?assert(meck:called(imboy_cache, delete, [CacheKey]))
@@ -83,7 +83,7 @@ get_reactions_groups_by_emoji_and_encodes_users_test_() ->
         HeartData = find_reaction_group(Heart, Reactions),
         ?assertEqual(2, maps:get(<<"count">>, ThumbsUpData)),
         ?assertEqual(
-            lists:sort([encoded_uid(999998), encoded_uid(999999)]),
+            lists:sort([999998, 999999]),
             lists:sort(maps:get(<<"users">>, ThumbsUpData))
         ),
         ?assertEqual(1, maps:get(<<"count">>, HeartData))
@@ -112,7 +112,7 @@ get_reaction_stats_returns_map_entries_test_() ->
         HeartStat = find_reaction_stat(Heart, Stats),
         ?assertEqual(2, maps:get(<<"count">>, ThumbsUpStat)),
         ?assertEqual(
-            lists:sort([encoded_uid(999998), encoded_uid(999999)]),
+            lists:sort([999998, 999999]),
             lists:sort(maps:get(<<"users">>, ThumbsUpStat))
         ),
         ?assertEqual(1, maps:get(<<"count">>, HeartStat))

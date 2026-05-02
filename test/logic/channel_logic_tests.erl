@@ -133,12 +133,10 @@ publish_message_with_non_admin_role_fails_test_() ->
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
         ]},
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(11, <<"*">>) ->
                 #{<<"id">> => 11, <<"creator_uid">> => 2002}
-            end}
-        ]},
-        {channel_ds, [
+            end},
             {'publish_message', 5, fun(_, _, _, _, _) ->
                 erlang:error(should_not_call_publish_message)
             end}
@@ -239,19 +237,17 @@ publish_message_returns_error_when_loading_new_message_fails_test_() ->
 
 publish_message_accepts_custom_id_fallback_test_() ->
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => 11}
-            end}
-        ]},
-        {channel_admin_repo, [
-            {'get_role', 2, fun(11, 1001) -> 2 end}
-        ]},
-        {channel_ds, [
+            end},
             {'publish_message', 5, fun(11, 1001, <<"hello"/utf8>>, <<"text">>, #{}) ->
                 {ok, 99}
             end},
             {'subscriber_uids', 1, fun(11) -> [2001, 2002] end}
+        ]},
+        {channel_admin_repo, [
+            {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_message_repo, [
             {'find_by_id', 1, fun(99) ->
@@ -286,7 +282,7 @@ publish_message_accepts_custom_id_fallback_test_() ->
                 ),
 
                 ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, find_by_custom_id, 1))
+                ?assertEqual(1, meck:num_calls(channel_ds, find_by_custom_id, 1))
             end)
         end
     }.
@@ -495,7 +491,7 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
-        {channel_repo, [
+        {channel_ds, [
             {'update', 2, fun(11, Data) ->
                 ?assertEqual(<<"Channel X">>, maps:get(<<"name">>, Data)),
                 ?assert(maps:is_key(updated_at, Data)),
@@ -508,9 +504,7 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
                     <<"name">> => <<"Channel X">>,
                     <<"description">> => <<"desc">>
                 }
-            end}
-        ]},
-        {channel_ds, [
+            end},
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
@@ -529,7 +523,7 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
                     <<"ignored">> => <<"noop">>
                 }),
                 ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, update, 2)),
+                ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
@@ -570,7 +564,7 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
-        {channel_repo, [
+        {channel_ds, [
             {'update', 2, fun(11, Data) ->
                 ?assertEqual(<<"Channel X">>, maps:get(<<"name">>, Data)),
                 ?assert(maps:is_key(updated_at, Data)),
@@ -583,9 +577,7 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
                     <<"name">> => <<"Channel X">>,
                     <<"description">> => <<"desc">>
                 }
-            end}
-        ]},
-        {channel_ds, [
+            end},
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
@@ -604,7 +596,7 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
                     <<"ignored">> => <<"noop">>
                 }),
                 ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, update, 2)),
+                ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
@@ -648,9 +640,7 @@ delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
             {'get_role', 2, fun(11, 1001) -> 3 end}
         ]},
         {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {channel_repo, [
+            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end},
             {'delete', 1, fun(11) -> {ok, 1} end}
         ]},
         {msg_s2c_ds, [
@@ -666,7 +656,7 @@ delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
             ?_test(begin
                 Result = channel_logic:delete_channel(1001, ChannelIdBin),
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, delete, 1)),
+                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
@@ -679,9 +669,7 @@ delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
             {'get_role', 2, fun(11, 1001) -> 3 end}
         ]},
         {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {channel_repo, [
+            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end},
             {'delete', 1, fun(11) -> {ok, 1} end}
         ]},
         {msg_s2c_ds, [
@@ -697,7 +685,7 @@ delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
             ?_test(begin
                 Result = channel_logic:delete_channel(1001, ChannelIdBin),
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, delete, 1)),
+                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
                 ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
@@ -710,9 +698,7 @@ delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
             {'get_role', 2, fun(11, 1001) -> 3 end}
         ]},
         {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> erlang:error(mock_subscriber_lookup_crash) end}
-        ]},
-        {channel_repo, [
+            {'subscriber_uids', 1, fun(11) -> erlang:error(mock_subscriber_lookup_crash) end},
             {'delete', 1, fun(11) -> {ok, 1} end}
         ]},
         {msg_s2c_ds, [
@@ -728,7 +714,7 @@ delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
             ?_test(begin
                 Result = channel_logic:delete_channel(1001, ChannelIdBin),
                 ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, delete, 1)),
+                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
                 ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
             end)
         end
@@ -3571,12 +3557,10 @@ subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
 subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(12, <<"id,type">>) ->
                 #{<<"id">> => 12, <<"type">> => 0}
-            end}
-        ]},
-        {channel_ds, [
+            end},
             {'subscribe', 2, fun(12, 2002) -> ok end}
         ]},
         {channel_logic_notify, [
@@ -3600,16 +3584,14 @@ subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
 subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
     ChannelIdBin = integer_to_binary(13),
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(13, <<"id,type">>) ->
                 #{<<"id">> => 13, <<"type">> => 2}
-            end}
+            end},
+            {'subscribe', 2, fun(13, 2002) -> ok end}
         ]},
         {channel_subscribe_ds, [
             {'has_purchased', 2, fun(13, 2002) -> true end}
-        ]},
-        {channel_ds, [
-            {'subscribe', 2, fun(13, 2002) -> ok end}
         ]},
         {channel_logic_notify, [
             {'notify_channel_subscribed', 2, fun(13, 2002) -> ok end}
@@ -3633,16 +3615,14 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
 subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(14, <<"id,type">>) ->
                 #{<<"id">> => 14, <<"type">> => 0}
-            end}
+            end},
+            {'subscribe', 2, fun(14, 2002) -> {error, db_down} end}
         ]},
         {channel_subscription_repo, [
             {'is_subscribed', 2, fun(14, 2002) -> false end}
-        ]},
-        {channel_ds, [
-            {'subscribe', 2, fun(14, 2002) -> {error, db_down} end}
         ]},
         {channel_logic_notify, [
             {'notify_channel_subscribed', 2, fun(_, _) ->
@@ -3665,17 +3645,15 @@ subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
 subscribe_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
-        {channel_repo, [
-            {'find_by_id', 2, fun(14, <<"id,type">>) -> [] end}
+        {channel_ds, [
+            {'find_by_id', 2, fun(14, <<"id,type">>) -> [] end},
+            {'subscribe', 2, fun(_, _) ->
+                erlang:error(should_not_subscribe_when_channel_payload_invalid)
+            end}
         ]},
         {channel_subscription_repo, [
             {'is_subscribed', 2, fun(_, _) ->
                 erlang:error(should_not_check_subscribe_state_when_channel_payload_invalid)
-            end}
-        ]},
-        {channel_ds, [
-            {'subscribe', 2, fun(_, _) ->
-                erlang:error(should_not_subscribe_when_channel_payload_invalid)
             end}
         ]}
     ],
@@ -3758,12 +3736,10 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
 subscribe_returns_error_when_ds_subscribe_fails_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(14, <<"id,type">>) ->
                 #{<<"id">> => 14, <<"type">> => 0}
-            end}
-        ]},
-        {channel_ds, [
+            end},
             {'subscribe', 2, fun(14, 2002) -> {error, unexpected_state} end}
         ]},
         {channel_logic_notify, [
@@ -4017,10 +3993,8 @@ mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpecte
 
 create_channel_returns_error_when_managed_query_fails_test_() ->
     MockConfigs = [
-        {channel_repo, [
-            {'list_managed', 1, fun(1001) -> {error, db_down} end}
-        ]},
         {channel_ds, [
+            {'list_managed', 1, fun(1001) -> {error, db_down} end},
             {'create_channel', 4, fun(_, _, _, _) ->
                 erlang:error(should_not_call_create_channel_when_managed_query_fails)
             end}
@@ -4040,10 +4014,8 @@ create_channel_returns_error_when_managed_query_fails_test_() ->
 
 create_channel_returns_error_when_managed_payload_not_list_test_() ->
     MockConfigs = [
-        {channel_repo, [
-            {'list_managed', 1, fun(1001) -> {ok, invalid_payload} end}
-        ]},
         {channel_ds, [
+            {'list_managed', 1, fun(1001) -> {ok, invalid_payload} end},
             {'create_channel', 4, fun(_, _, _, _) ->
                 erlang:error(should_not_call_create_channel_when_managed_payload_invalid)
             end}
@@ -4063,12 +4035,10 @@ create_channel_returns_error_when_managed_payload_not_list_test_() ->
 
 create_channel_returns_error_when_reload_payload_not_map_test_() ->
     MockConfigs = [
-        {channel_repo, [
-            {'list_managed', 1, fun(1001) -> {ok, []} end},
-            {'find_by_id', 2, fun(11, <<"*">>) -> invalid_payload end}
-        ]},
         {channel_ds, [
-            {'create_channel', 4, fun(1001, <<"my-channel">>, 0, #{}) -> {ok, 11} end}
+            {'list_managed', 1, fun(1001) -> {ok, []} end},
+            {'create_channel', 4, fun(1001, <<"my-channel">>, 0, #{}) -> {ok, 11} end},
+            {'find_by_id', 2, fun(11, <<"*">>) -> invalid_payload end}
         ]}
     ],
     {setup,
@@ -4079,7 +4049,7 @@ create_channel_returns_error_when_reload_payload_not_map_test_() ->
                 Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
                 ?assertEqual({error, <<"invalid_payload">>}, Result),
                 ?assertEqual(1, meck:num_calls(channel_ds, create_channel, 4)),
-                ?assertEqual(1, meck:num_calls(channel_repo, find_by_id, 2))
+                ?assertEqual(1, meck:num_calls(channel_ds, find_by_id, 2))
             end)
         end
     }.
@@ -4241,7 +4211,7 @@ get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
     ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"agg_err">>, <<"subscriber_count">> => 9}
             end},
@@ -4249,13 +4219,10 @@ get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
                 erlang:error(should_not_call_reaction_count_when_aggregation_fails)
             end}
         ]},
-        {elib_pg, [
-            {'one', 2, fun(_, _) ->
+        {channel_message_ds, [
+            {'get_stats', 1, fun(_) ->
                 {error, db_down}
             end}
-        ]},
-        {channel_message_repo, [
-            {'tablename', 0, fun() -> <<"public.channel_message">> end}
         ]}
     ],
     {setup,
@@ -4265,7 +4232,7 @@ get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
             ?_test(begin
                 Result = channel_logic:get_channel_stats(ChannelIdBin),
                 ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
+                ?assertEqual(0, meck:num_calls(channel_ds, get_reaction_count, 1))
             end)
         end
     }.
@@ -4613,8 +4580,9 @@ revoke_message_author_success_within_window_test_() ->
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
         ]},
-        {channel_repo, [
-            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"id">> => 11, <<"creator_uid">> => 3003} end}
+        {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"id">> => 11, <<"creator_uid">> => 3003} end},
+            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {application, [
             {'get_env', 2, fun(App, Key) ->
@@ -4628,9 +4596,6 @@ revoke_message_author_success_within_window_test_() ->
             {'rfc3339_to', 2, fun(<<"2026-02-22T10:00:00Z">>, millisecond) -> 1708596000000 end},
             {'millisecond', 0, fun() -> 1708596060000 end},
             {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
-        ]},
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save) ->
@@ -4676,8 +4641,9 @@ revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
         ]},
-        {channel_repo, [
-            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"id">> => 11, <<"creator_uid">> => 3003} end}
+        {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"id">> => 11, <<"creator_uid">> => 3003} end},
+            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {application, [
             {'get_env', 2, fun(App, Key) ->
@@ -4691,9 +4657,6 @@ revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
             {'rfc3339_to', 2, fun(<<"2026-02-22T10:00:00Z">>, millisecond) -> 1708596000000 end},
             {'millisecond', 0, fun() -> 1708596060000 end},
             {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
-        ]},
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, _Payload, save) ->

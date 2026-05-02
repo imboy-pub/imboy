@@ -893,8 +893,8 @@ preview_config_returns_plugin_adjustments_when_manifest_dependency_blocks_plugin
             end}
         ]},
         {imboy_plugin_registry, [
-            {'all', 0, fun() -> Registry end},
-            {'get', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
+            {'manifests', 0, fun() -> Registry end},
+            {'manifest', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
             {'plugin_names', 0, fun() -> maps:keys(Registry) end}
         ]}
     ], fun() ->
@@ -1498,8 +1498,8 @@ save_config_returns_feature_capability_adjustments_when_manifest_requirement_blo
             end}
         ]},
         {imboy_plugin_registry, [
-            {'all', 0, fun() -> Registry end},
-            {'get', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
+            {'manifests', 0, fun() -> Registry end},
+            {'manifest', 1, fun(Name) -> plugin_registry_lookup(Registry, Name) end},
             {'plugin_names', 0, fun() -> maps:keys(Registry) end}
         ]}
     ], fun() ->

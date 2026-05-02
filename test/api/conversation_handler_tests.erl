@@ -106,7 +106,7 @@ mine_action_returns_server_authoritative_conversation_list_test_() ->
         ?assertNotEqual(timeout, Data),
         ?assertEqual(2, length(Data)),
         [FirstItem | _] = Data,
-        ?assertEqual(<<"grp001">>, maps:get(<<"conversation_id">>, FirstItem)),
+        ?assertEqual(3001, maps:get(<<"conversation_id">>, FirstItem)),
         ?assertEqual(<<"c2g">>, maps:get(<<"conversation_type">>, FirstItem)),
         LastMsg = maps:get(<<"last_msg">>, FirstItem),
         ?assertEqual(<<"group-hi">>, maps:get(<<"content">>, LastMsg))

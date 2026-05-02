@@ -27,16 +27,32 @@ title_returns_account_when_nickname_empty_test_() ->
     end).
 
 title_decodes_binary_uid_test_() ->
-    ?WITH_MECK(user_repo, [
-        {'find_by_id', 2, fun(12345, <<"account,nickname">>) ->
-            #{
-                <<"account">> => <<"testuser">>,
-                <<"nickname">> => <<"Decoded Nickname">>
-            }
-        end}
-    ], fun() ->
-        ?assertEqual(<<"Decoded Nickname">>, user_ds:title(<<"12345">>))
-    end).
+    %% Ensure ec_cnv is on code path so meck can mock it
+    EcCnvEbin = filename:join([
+        filename:dirname(code:lib_dir(imboy)), "deps", "erlware_commons", "ebin"
+    ]),
+    case filelib:is_dir(EcCnvEbin) of
+        false ->
+            %% ec_cnv not available, skip this test
+            [];
+        true ->
+            code:add_patha(EcCnvEbin),
+            ?WITH_MECKS([
+                {ec_cnv, [
+                    {'to_integer', 1, fun(<<"12345">>) -> 12345 end}
+                ]},
+                {user_repo, [
+                    {'find_by_id', 2, fun(12345, <<"account,nickname">>) ->
+                        #{
+                            <<"account">> => <<"testuser">>,
+                            <<"nickname">> => <<"Decoded Nickname">>
+                        }
+                    end}
+                ]}
+            ], fun() ->
+                ?assertEqual(<<"Decoded Nickname">>, user_ds:title(<<"12345">>))
+            end)
+    end.
 
 title_mode2_returns_tuple_test_() ->
     ?WITH_MOCK(user_repo, [

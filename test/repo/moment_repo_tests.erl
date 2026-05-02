@@ -24,8 +24,11 @@ page_feed_candidates_with_cursor_uses_cursor_filter_test_() ->
 
 like_add_returns_changed_state_test_() ->
     ?WITH_MECKS([
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 999999 end}
+        ]},
         {elib_pg, [
-            {'query', 2, fun(_Sql, [100, 200]) ->
+            {'query', 2, fun(_Sql, [999999, 100, 200]) ->
                 {ok, [#{<<"inserted">> => 1}]}
             end}
         ]}

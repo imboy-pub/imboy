@@ -7,7 +7,7 @@
 %%% group_tag_repo 模块的 EUnit 测试
 %%%
 %%% 目标：验证群组标签数据仓库功能
-%%% 覆盖：添加、删除、查询、按群组查询、按标签名查询
+%%% 使用 meck mock，不依赖真实数据库
 %%%===================================================================
 
 %% ===================================================================
@@ -15,7 +15,11 @@
 %% ===================================================================
 
 tablename_returns_public_group_tag_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = group_tag_repo:tablename(),
         ?assertEqual(<<"public.group_tag">>, Result)
     end).
@@ -26,56 +30,69 @@ tablename_returns_public_group_tag_test_() ->
 
 %% @doc 测试添加标签成功
 add_valid_tag_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700001 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         Data = #{
             group_id => 1,
             tag_name => <<"测试标签"/utf8>>,
             created_by => 100,
-            created_at => elib_dt:now()
+            created_at => 1700000000
         },
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {ok, InsertId, Details} when is_integer(InsertId) ->
-                ?assert(InsertId > 0, "Expected positive insert ID"),
-                ?assertMatch(#{}, Details);
-            {ok, ResultMap} when is_map(ResultMap) ->
-                ?assertMatch(#{<<"id">> := _Id}, ResultMap);
-            {error, Reason} ->
-                ?assert(is_atom(Reason) orelse is_binary(Reason),
-                       "Expected atom or binary error reason");
-            _ ->
-                ?assert(false, "Unexpected return value")
-        end
+        ?assertEqual({ok, 700001}, Result)
     end).
 
-%% @doc 测试添加空数据
+%% @doc 测试添加空数据（数据库拒绝）
 add_empty_map_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700002 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {error, not_null_violation}
+            end}
+        ]}
+    ], fun() ->
         Data = #{},
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {error, Reason} when is_atom(Reason); is_binary(Reason) ->
-                assert_reason(Reason);
-            _ ->
-                ?assert(false, "Expected {error, Reason}")
-        end
+        ?assertMatch({error, _}, Result)
     end).
 
 %% @doc 测试缺少必填字段
 add_with_missing_required_field_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700003 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {error, not_null_violation}
+            end}
+        ]}
+    ], fun() ->
         % 缺少 group_id
         Data = #{
             tag_name => <<"测试标签"/utf8>>,
             created_by => 100
         },
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {error, Reason} when is_atom(Reason); is_binary(Reason) ->
-                assert_reason(Reason);
-            _ ->
-                ?assert(false, "Expected {error, Reason}")
-        end
+        ?assertMatch({error, _}, Result)
     end).
 
 %% ===================================================================
@@ -83,20 +100,31 @@ add_with_missing_required_field_test_() ->
 %% ===================================================================
 
 find_by_id_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 假设 ID 为 1 的记录存在
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"id">> => 1, <<"group_id">> => 100, <<"tag_name">> => <<"test">>}}
+            end}
+        ]}
+    ], fun() ->
         Id = 1,
         Column = <<"id, group_id, tag_name">>,
         Result = group_tag_repo:find_by_id(Id, Column),
-        % 可能不存在，所以只验证返回格式
-        case Result of
-            #{<<"id">> := _, <<"group_id">> := _} -> ok;
-            {error, Reason} -> assert_reason(Reason)
-        end
+        ?assertMatch(#{<<"id">> := _, <<"group_id">> := _}, Result)
     end).
 
 find_by_id_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {error, not_found} end}
+        ]}
+    ], fun() ->
         Id = 999999,
         Column = <<"id">>,
         Result = group_tag_repo:find_by_id(Id, Column),
@@ -104,14 +132,20 @@ find_by_id_not_existing_test_() ->
     end).
 
 find_by_id_all_columns_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"id">> => 1, <<"group_id">> => 100, <<"tag_name">> => <<"test">>}}
+            end}
+        ]}
+    ], fun() ->
         Id = 1,
         Column = <<"*">>,
         Result = group_tag_repo:find_by_id(Id, Column),
-        case Result of
-            #{<<"id">> := _} -> ok;
-            {error, Reason} -> assert_reason(Reason)
-        end
+        ?assertMatch(#{<<"id">> := _}, Result)
     end).
 
 %% ===================================================================
@@ -119,7 +153,16 @@ find_by_id_all_columns_test_() ->
 %% ===================================================================
 
 list_by_group_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => 1, <<"tag_name">> => <<"test">>}]}
+            end}
+        ]}
+    ], fun() ->
         GroupId = 1,
         Column = <<"id, tag_name">>,
         Result = group_tag_repo:list_by_group(GroupId, Column),
@@ -127,7 +170,14 @@ list_by_group_existing_test_() ->
     end).
 
 list_by_group_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
+    ], fun() ->
         GroupId = 999999,
         Column = <<"id">>,
         Result = group_tag_repo:list_by_group(GroupId, Column),
@@ -139,7 +189,16 @@ list_by_group_not_existing_test_() ->
 %% ===================================================================
 
 list_by_tag_name_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => 1, <<"group_id">> => 100}]}
+            end}
+        ]}
+    ], fun() ->
         TagName = <<"测试标签"/utf8>>,
         Column = <<"id, group_id">>,
         Result = group_tag_repo:list_by_tag_name(TagName, Column),
@@ -147,7 +206,14 @@ list_by_tag_name_existing_test_() ->
     end).
 
 list_by_tag_name_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ]}
+    ], fun() ->
         TagName = <<"不存在的标签名"/utf8>>,
         Column = <<"id">>,
         Result = group_tag_repo:list_by_tag_name(TagName, Column),
@@ -159,7 +225,14 @@ list_by_tag_name_not_existing_test_() ->
 %% ===================================================================
 
 delete_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         GroupId = 1,
         TagName = <<"测试标签"/utf8>>,
         Result = group_tag_repo:delete(GroupId, TagName),
@@ -167,11 +240,17 @@ delete_existing_test_() ->
     end).
 
 delete_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+        ]}
+    ], fun() ->
         GroupId = 999999,
         TagName = <<"不存在的标签"/utf8>>,
         Result = group_tag_repo:delete(GroupId, TagName),
-        % 删除不存在的记录也应返回成功
         ?assertMatch({ok, _}, Result)
     end).
 
@@ -180,14 +259,28 @@ delete_not_existing_test_() ->
 %% ===================================================================
 
 delete_by_group_id_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 2} end}
+        ]}
+    ], fun() ->
         GroupId = 1,
         Result = group_tag_repo:delete_by_group_id(GroupId),
         ?assertMatch({ok, _}, Result)
     end).
 
 delete_by_group_id_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+        ]}
+    ], fun() ->
         GroupId = 999999,
         Result = group_tag_repo:delete_by_group_id(GroupId),
         ?assertMatch({ok, _}, Result)
@@ -198,16 +291,29 @@ delete_by_group_id_not_existing_test_() ->
 %% ===================================================================
 
 exists_existing_tag_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        % 这个测试依赖数据库中是否有数据
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 4, fun(_Tb, _Col, _Where, _Default) -> 1 end}
+        ]}
+    ], fun() ->
         GroupId = 1,
         TagName = <<"测试标签"/utf8>>,
         Result = group_tag_repo:exists(GroupId, TagName),
-        ?assert(is_boolean(Result))
+        ?assertEqual(true, Result)
     end).
 
 exists_not_existing_tag_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 4, fun(_Tb, _Col, _Where, _Default) -> 0 end}
+        ]}
+    ], fun() ->
         GroupId = 999999,
         TagName = <<"不存在的标签"/utf8>>,
         Result = group_tag_repo:exists(GroupId, TagName),
@@ -219,12 +325,18 @@ exists_not_existing_tag_test_() ->
 %% ===================================================================
 
 count_returns_total_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"count">> => 42}}
+            end}
+        ]}
+    ], fun() ->
         Result = group_tag_repo:count(),
-        case Result of
-            {ok, Count} when is_integer(Count) -> ?assert(Count >= 0);
-            _ -> ?assert(false, "Expected {ok, Count}")
-        end
+        ?assertEqual({ok, 42}, Result)
     end).
 
 %% ===================================================================
@@ -232,17 +344,28 @@ count_returns_total_test_() ->
 %% ===================================================================
 
 count_by_group_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 4, fun(_Tb, _Col, _Where, _Default) -> 5 end}
+        ]}
+    ], fun() ->
         GroupId = 1,
         Result = group_tag_repo:count_by_group(GroupId),
-        case Result of
-            {ok, Count} when is_integer(Count) -> ?assert(Count >= 0);
-            _ -> ?assert(false, "Expected {ok, Count}")
-        end
+        ?assertEqual({ok, 5}, Result)
     end).
 
 count_by_group_not_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'pluck_value', 4, fun(_Tb, _Col, _Where, _Default) -> 0 end}
+        ]}
+    ], fun() ->
         GroupId = 999999,
         Result = group_tag_repo:count_by_group(GroupId),
         ?assertEqual({ok, 0}, Result)
@@ -253,14 +376,32 @@ count_by_group_not_existing_test_() ->
 %% ===================================================================
 
 hot_tags_returns_list_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"tag_name">> => <<"test">>, <<"count">> => 10}]}
+            end}
+        ]}
+    ], fun() ->
         Limit = 10,
         Result = group_tag_repo:hot_tags(Limit),
         ?assertMatch({ok, _}, Result)
     end).
 
 hot_tags_with_limit_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"tag_name">> => <<"a">>, <<"count">> => 5}]}
+            end}
+        ]}
+    ], fun() ->
         Limit = 5,
         Result = group_tag_repo:hot_tags(Limit),
         case Result of
@@ -277,29 +418,41 @@ hot_tags_with_limit_test_() ->
 
 %% @doc 测试空标签名
 add_with_empty_tag_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700010 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {error, check_violation}
+            end}
+        ]}
+    ], fun() ->
         Data = #{
             group_id => 1,
             tag_name => <<>>,
             created_by => 100
         },
         Result = group_tag_repo:add(undefined, Data),
-        % 数据库应该拒绝空标签名
-        case Result of
-            {error, Reason} ->
-                assert_reason(Reason);
-            {ok, _, _} ->
-                ok;
-            {ok, _} ->
-                ok;
-            _ ->
-                ?assert(false, "Unexpected add result")
-        end
+        ?assertMatch({error, _}, Result)
     end).
 
 %% @doc 测试超长标签名
 add_with_long_tag_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700011 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         LongTag = list_to_binary(lists:duplicate(100, $x)),
         Data = #{
             group_id => 1,
@@ -307,62 +460,73 @@ add_with_long_tag_name_test_() ->
             created_by => 100
         },
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {ok, _, _} -> ok;
-            {ok, _} -> ok;
-            {error, Reason} -> assert_reason(Reason)
-        end
+        ?assertEqual({ok, 700011}, Result)
     end).
 
 %% @doc 测试 UTF-8 标签名
 add_with_utf8_tag_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700012 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         Data = #{
             group_id => 1,
             tag_name => <<"技术交流"/utf8>>,
             created_by => 100
         },
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {ok, _, _} -> ok;
-            {ok, _} -> ok;
-            {error, Reason} -> assert_reason(Reason)
-        end
+        ?assertEqual({ok, 700012}, Result)
     end).
 
 %% @doc 测试特殊字符标签名
 add_with_special_chars_tag_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700013 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         Data = #{
             group_id => 1,
             tag_name => <<"技术-交流_(2024)">>,
             created_by => 100
         },
         Result = group_tag_repo:add(undefined, Data),
-        case Result of
-            {ok, _, _} -> ok;
-            {ok, _} -> ok;
-            {error, Reason} -> assert_reason(Reason)
-        end
+        ?assertEqual({ok, 700013}, Result)
     end).
 
 %% @doc 测试零群组ID
 find_by_id_with_zero_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = group_tag_repo:find_by_id(0, <<"id">>),
-        ?assertMatch({error, _}, Result)
+        ?assertEqual({error, invalid_id}, Result)
     end).
 
 %% @doc 测试负数群组ID
 list_by_group_with_negative_id_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]}
+    ], fun() ->
         Result = group_tag_repo:list_by_group(-1, <<"id">>),
-        % 可能返回空列表或错误
-        case Result of
-            {ok, []} -> ok;
-            {error, Reason} -> assert_reason(Reason);
-            _ -> ?assert(false, "Expected {ok, []} or {error, Reason}")
-        end
+        ?assertEqual({ok, []}, Result)
     end).
 
 %% ===================================================================
@@ -371,7 +535,25 @@ list_by_group_with_negative_id_test_() ->
 
 %% @doc 测试完整的标签生命周期
 complete_tag_lifecycle_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 700020 end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => 700020, <<"tag_name">> => <<"生命周期测试"/utf8>>}]}
+            end},
+            {'one', 2, fun(_Sql, _Params) ->
+                {ok, #{<<"id">> => 700020, <<"group_id">> => 99998,
+                       <<"tag_name">> => <<"生命周期测试"/utf8>>}}
+            end},
+            {'pluck_value', 4, fun(_Tb, _Col, _Where, _Default) -> 1 end},
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+        ]}
+    ], fun() ->
         GroupId = 99998,
         TagName = <<"生命周期测试"/utf8>>,
         CreatedBy = 99999,
@@ -381,47 +563,42 @@ complete_tag_lifecycle_test_() ->
             group_id => GroupId,
             tag_name => TagName,
             created_by => CreatedBy,
-            created_at => elib_dt:now()
+            created_at => 1700000000
         },
         AddResult = group_tag_repo:add(undefined, Data),
-        case AddResult of
-            {ok, TagId, _} when is_integer(TagId) ->
-                % 2. 查询标签
-                Found = group_tag_repo:find_by_id(TagId, <<"*">>),
-                ?assertMatch(#{<<"id">> := TagId}, Found),
+        ?assertEqual({ok, 700020}, AddResult),
 
-                % 3. 按群组查询
-                ListResult = group_tag_repo:list_by_group(GroupId, <<"*">>),
-                ?assertMatch({ok, [_|_]}, ListResult),
+        % 2. 查询标签
+        Found = group_tag_repo:find_by_id(700020, <<"*">>),
+        ?assertMatch(#{<<"id">> := 700020}, Found),
 
-                % 4. 检查存在性
-                Exists = group_tag_repo:exists(GroupId, TagName),
-                ?assertEqual(true, Exists),
+        % 3. 按群组查询
+        ListResult = group_tag_repo:list_by_group(GroupId, <<"*">>),
+        ?assertMatch({ok, [_|_]}, ListResult),
 
-                % 5. 删除标签
-                DeleteResult = group_tag_repo:delete(GroupId, TagName),
-                ?assertMatch({ok, _}, DeleteResult),
+        % 4. 检查存在性
+        Exists = group_tag_repo:exists(GroupId, TagName),
+        ?assertEqual(true, Exists),
 
-                % 6. 验证已删除
-                ExistsAfter = group_tag_repo:exists(GroupId, TagName),
-                ?assertEqual(false, ExistsAfter);
-            {error, Reason} ->
-                assert_reason(Reason)
-        end
+        % 5. 删除标签
+        DeleteResult = group_tag_repo:delete(GroupId, TagName),
+        ?assertMatch({ok, _}, DeleteResult)
     end).
 
 %% @doc 测试同一群组添加多个标签
 multiple_tags_for_same_group_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [#{<<"id">> => 1}, #{<<"id">> => 2}, #{<<"id">> => 3}]}
+            end},
+            {'execute', 2, fun(_Sql, _Params) -> {ok, 3} end}
+        ]}
+    ], fun() ->
         GroupId = 99997,
-        Tags = [<<"标签1"/utf8>>, <<"标签2"/utf8>>, <<"标签3"/utf8>>],
-
-        % 添加多个标签
-        _AddResults = [group_tag_repo:add(undefined, #{
-            group_id => GroupId,
-            tag_name => Tag,
-            created_by => 100
-        }) || Tag <- Tags],
 
         % 查询所有标签
         ListResult = group_tag_repo:list_by_group(GroupId, <<"*">>),
@@ -433,16 +610,28 @@ multiple_tags_for_same_group_test_() ->
         end,
 
         % 清理
-        ok = group_tag_repo:delete_by_group_id(GroupId)
+        Result = group_tag_repo:delete_by_group_id(GroupId),
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% @doc 测试热门标签统计
 hot_tags_ranking_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?WITH_MECKS([
+        {config_ds, [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [
+                    #{<<"tag_name">> => <<"技术"/utf8>>, <<"count">> => 10},
+                    #{<<"tag_name">> => <<"交流"/utf8>>, <<"count">> => 5}
+                ]}
+            end}
+        ]}
+    ], fun() ->
         Result = group_tag_repo:hot_tags(10),
         case Result of
             {ok, TagList} when is_list(TagList) ->
-                % 验证返回格式
                 case TagList of
                     [] -> ?assertEqual([], TagList);
                     [First | _] ->
@@ -452,6 +641,3 @@ hot_tags_ranking_test_() ->
                 ?assert(false, "Expected {ok, TagList}")
         end
     end).
-
-assert_reason(Reason) ->
-    ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).

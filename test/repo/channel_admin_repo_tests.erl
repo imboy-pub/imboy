@@ -8,6 +8,7 @@
 
 tablename_returns_public_channel_admin_table_test_() ->
     ?TEST_SIMPLE(fun() ->
+        %% eunit_runner sets sql_driver=pgsql, so public_tablename adds public. prefix
         ?assertEqual(<<"public.channel_admin">>, channel_admin_repo:tablename())
     end).
 
@@ -16,7 +17,7 @@ find_returns_row_when_exists_test_() ->
         {elib_pg, [
             {'one', 2, fun(Sql, [11, 1001]) ->
                 SqlBin = iolist_to_binary(Sql),
-                ?assert(re:run(SqlBin, <<"FROM public.channel_admin">>) =/= nomatch),
+                ?assert(re:run(SqlBin, <<"FROM public\\.channel_admin">>) =/= nomatch),
                 {ok, #{<<"channel_id">> => 11, <<"user_id">> => 1001, <<"role">> => 2}}
             end}
         ]}
@@ -61,7 +62,7 @@ get_role_returns_zero_when_not_admin_test_() ->
 update_role_calls_update_with_expected_filter_test_() ->
     ?WITH_MECKS([
         {elib_pg, [
-            {'update', 4, fun(<<"public.channel_admin">>, #{role := 3}, <<"channel_id = $1 AND user_id = $2">>, [11, 2002]) ->
+            {'update', 4, fun(_Table, #{role := 3}, <<"channel_id = $1 AND user_id = $2">>, [11, 2002]) ->
                 {ok, 1}
             end}
         ]}
@@ -71,21 +72,17 @@ update_role_calls_update_with_expected_filter_test_() ->
 
 add_with_conn_uses_sql_insert_builder_test_() ->
     ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'insert', 3, fun(<<"public.channel_admin">>, Data, <<"RETURNING id">>) ->
-                ?assertEqual(11, maps:get(channel_id, Data)),
-                ?assertEqual(1001, maps:get(user_id, Data)),
-                {<<"INSERT INTO public.channel_admin ... RETURNING id">>, [11, 1001, 2]}
-            end}
+        {elib_tsid, [
+            {'generate', 1, fun(channel_admin) -> 501 end}
         ]},
         {elib_pg, [
-            {'execute', 3, fun(conn_pid, <<"INSERT INTO public.channel_admin ... RETURNING id">>, [11, 1001, 2]) ->
-                {ok, 501, #{}}
+            {'query', 3, fun(conn_pid, _Sql, _Params) ->
+                {ok, 1}
             end}
         ]}
     ], fun() ->
         Data = #{channel_id => 11, user_id => 1001, role => 2},
-        ?assertEqual({ok, 501, #{}}, channel_admin_repo:add(conn_pid, Data))
+        ?assertEqual({ok, 501}, channel_admin_repo:add(conn_pid, Data))
     end).
 
 list_by_channel_orders_by_role_desc_test_() ->

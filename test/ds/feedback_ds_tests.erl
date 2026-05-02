@@ -35,7 +35,7 @@ add_creates_feedback_test_() ->
                 ?assertEqual(<<"Test feedback content">>, Body),
                 ?assertEqual(<<>>, Attach),
                 ?assertEqual(<<"feedback_md5">>, Md5),
-                ok
+                {ok, #{<<"id">> => 1}}
             end}
         ]}
     ], fun() ->
@@ -65,7 +65,7 @@ add_with_minimal_params_test_() ->
         ]},
         {feedback_repo, [
             {'add', 11, fun(_Uid, _Did, _COS, _COSV, _AppVsn, _Type, _Rating, _Contact, _Body, _Attach, _Md5) ->
-                ok
+                {ok, #{<<"id">> => 1}}
             end}
         ]}
     ], fun() ->

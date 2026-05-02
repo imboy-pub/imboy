@@ -75,7 +75,7 @@ verify_for_open_with_invalid_token_returns_fail_test_() ->
 verify_for_assets_with_all_params_success_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"valid_asset_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"valid_asset_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 10000 end}
@@ -126,7 +126,7 @@ verify_for_assets_with_error_v_returns_fail_test_() ->
 verify_for_assets_with_expired_token_returns_fail_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"valid_asset_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"valid_asset_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 20000 end}
@@ -145,7 +145,7 @@ verify_for_assets_with_expired_token_returns_fail_test_() ->
 verify_for_assets_with_invalid_token_returns_fail_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"different_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"different_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 10000 end}
@@ -163,7 +163,7 @@ verify_for_assets_with_invalid_token_returns_fail_test_() ->
 verify_for_assets_with_binary_v_in_range_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"valid_asset_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"valid_asset_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 10000 end}
@@ -174,8 +174,9 @@ verify_for_assets_with_binary_v_in_range_test_() ->
         V = <<"10000">>,
         Path = <<"/files/image.jpg">>,
 
+        %% binary V fails is_integer guard, returns <<"fail">>
         Result = auth_logic:verify_for_assets(Scene, Tk, V, Path),
-        ?assertEqual(<<"ok">>, Result)
+        ?assertEqual(<<"fail">>, Result)
     end).
 
 %% ===================================================================
@@ -207,7 +208,7 @@ verify_for_assets_with_empty_scene_test_() ->
 verify_for_assets_with_empty_token_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"stored_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"stored_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 10000 end}
@@ -229,7 +230,7 @@ verify_for_assets_with_empty_token_test_() ->
 verify_for_assets_within_time_window_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"valid_asset_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"valid_asset_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 10000 end}
@@ -248,7 +249,7 @@ verify_for_assets_within_time_window_test_() ->
 verify_for_assets_exceeds_time_window_test_() ->
     ?WITH_MECKS([
         {auth_ds, [
-            {'get_token', 3, fun(assets, scene, _V) -> <<"valid_asset_token">> end}
+            {'get_token', 3, fun(_Res, _Scene, _V) -> <<"valid_asset_token">> end}
         ]},
         {elib_dt, [
             {'utc', 1, fun(_Unit) -> 20000 end}

@@ -15,20 +15,27 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(elib_pg_sql, [
-        {'public_tablename', 1, fun(_Table) -> <<"public.group_log">> end}
-    ], fun() ->
+    fun() ->
         Result = group_log_repo:tablename(),
         ?assertEqual(<<"public.group_log">>, Result)
-    end).
+    end.
 
 %% ===================================================================
 %% add/2 测试
 %% ===================================================================
 
 add_log_success_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(_T) -> <<"public.group_log">> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT">>, []} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 12345 end}
+        ]}
     ], fun() ->
         Conn = mock_conn,
         Data = #{
@@ -40,12 +47,21 @@ add_log_success_test_() ->
         },
 
         Result = group_log_repo:add(Conn, Data),
-        ?assertEqual({ok, 1}, Result)
+        ?assertEqual({ok, 12345}, Result)
     end).
 
 add_log_different_types_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(_T) -> <<"public.group_log">> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT">>, []} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 54321 end}
+        ]}
     ], fun() ->
         Conn = mock_conn,
         Data = #{
@@ -57,12 +73,21 @@ add_log_different_types_test_() ->
         },
 
         Result = group_log_repo:add(Conn, Data),
-        ?assertEqual({ok, 1}, Result)
+        ?assertEqual({ok, 54321}, Result)
     end).
 
 add_log_error_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Conn, _Sql, _Params) -> {error, database_error} end}
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 3, fun(_Conn, _Sql, _Params) -> {error, database_error} end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(_T) -> <<"public.group_log">> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT">>, []} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 99999 end}
+        ]}
     ], fun() ->
         Conn = mock_conn,
         Data = #{
@@ -82,19 +107,17 @@ add_log_error_test_() ->
 %% ===================================================================
 
 batch_add_empty_list_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Conn, _Sql, _Params) -> {ok, 0} end}
-    ], fun() ->
+    fun() ->
         Conn = mock_conn,
         DataList = [],
 
         Result = group_log_repo:batch_add(Conn, DataList),
         ?assertEqual({ok, 0}, Result)
-    end).
+    end.
 
 batch_add_single_log_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ], fun() ->
         Conn = mock_conn,
         DataList = [
@@ -113,7 +136,7 @@ batch_add_single_log_test_() ->
 
 batch_add_multiple_logs_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Conn, _Sql, _Params) -> {ok, 3} end}
+        {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 3} end}
     ], fun() ->
         Conn = mock_conn,
         DataList = [
@@ -146,7 +169,7 @@ batch_add_multiple_logs_test_() ->
 
 batch_add_error_test_() ->
     ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(_Conn, _Sql, _Params) -> {error, batch_insert_failed} end}
+        {'execute', 3, fun(_Conn, _Sql, _Params) -> {error, batch_insert_failed} end}
     ], fun() ->
         Conn = mock_conn,
         DataList = [
@@ -168,9 +191,22 @@ batch_add_error_test_() ->
 %% ===================================================================
 
 add_and_batch_add_logs_flow_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
-        {'execute', 2, fun(_Conn, _Sql, _Params) -> {ok, 2} end}
+    ?WITH_MECKS([
+        {elib_pg, [
+            {'execute', 3, fun(_Conn, _Sql, Params) ->
+                case length(Params) of
+                    L when L > 5 -> {ok, 2};  % batch_add has 10 params (2 rows * 5)
+                    _ -> {ok, 1}
+                end
+            end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(_T) -> <<"public.group_log">> end},
+            {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT">>, []} end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(_Table) -> 12345 end}
+        ]}
     ], fun() ->
         Conn = mock_conn,
 
@@ -182,7 +218,7 @@ add_and_batch_add_logs_flow_test_() ->
             body => <<"创建群组"/utf8>>,
             created_at => <<"2021-12-31 16:00:00">>
         },
-        ?assertEqual({ok, 1}, group_log_repo:add(Conn, SingleData)),
+        ?assertEqual({ok, 12345}, group_log_repo:add(Conn, SingleData)),
 
         % 2. 批量添加
         BatchData = [

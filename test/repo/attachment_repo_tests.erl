@@ -38,9 +38,13 @@ save_with_empty_attachments_test_() ->
     end).
 
 save_with_single_attachment_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}, {elib_pg_sql, [
+        {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+    ]}], fun() ->
         Conn = mock_conn,
         CreatedAt = 1234567890,
         Uid = 12345,
@@ -52,15 +56,19 @@ save_with_single_attachment_test_() ->
             <<"url">> => <<"https://example.com/photo.jpg">>,
             <<"size">> => 102400
         }],
-        
+
         Result = attachment_repo:save(Conn, CreatedAt, Uid, Attachments),
         ?assertEqual(ok, Result)
     end).
 
 save_with_multiple_attachments_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}, {elib_pg_sql, [
+        {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+    ]}], fun() ->
         Conn = mock_conn,
         CreatedAt = 1234567890,
         Uid = 12345,
@@ -88,9 +96,13 @@ save_with_multiple_attachments_test_() ->
     end).
 
 save_with_image_mime_type_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}, {elib_pg_sql, [
+        {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+    ]}], fun() ->
         Conn = mock_conn,
         CreatedAt = 1234567890,
         Uid = 12345,
@@ -108,9 +120,13 @@ save_with_image_mime_type_test_() ->
     end).
 
 save_with_non_image_mime_type_test_() ->
-    ?WITH_MECK(elib_pg, [
+    ?WITH_MECKS([{elib_pg, [
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
-    ], fun() ->
+    ]}, {elib_tsid, [
+        {'generate', 1, fun(_Table) -> 123456789 end}
+    ]}, {elib_pg_sql, [
+        {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
+    ]}], fun() ->
         Conn = mock_conn,
         CreatedAt = 1234567890,
         Uid = 12345,

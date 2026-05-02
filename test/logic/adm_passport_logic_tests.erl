@@ -36,7 +36,7 @@ do_login_with_mobile_success_test_() ->
     ], fun() ->
         Result = adm_passport_logic:do_login(<<"13800138000">>, <<"password">>),
         ?assertEqual({ok, #{
-            <<"id">> => <<"encoded-1">>,
+            <<"id">> => 1,
             <<"mobile">> => <<"13800138000">>,
             <<"email">> => <<"admin@example.com">>,
             <<"nickname">> => <<"Admin">>,
@@ -71,7 +71,7 @@ do_login_with_account_success_and_default_role_test_() ->
     ], fun() ->
         Result = adm_passport_logic:do_login(<<"admin">>, <<"password">>),
         ?assertEqual({ok, #{
-            <<"id">> => <<"encoded-2">>,
+            <<"id">> => 2,
             <<"mobile">> => <<"13800138001">>,
             <<"email">> => <<"ops@example.com">>,
             <<"nickname">> => <<"Ops">>,

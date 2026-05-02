@@ -12,24 +12,30 @@
 
 %% 测试夹具
 group_notice_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"创建群公告", fun test_create_notice/0},
-      {"更新群公告", fun test_update_notice/0},
-      {"删除群公告", fun test_delete_notice/0},
-      {"获取群公告列表", fun test_list_notices/0},
-      {"置顶群公告", fun test_pin_notice/0},
-      {"普通成员无法创建公告", fun test_member_cannot_create/0},
-      {"公告内容长度限制", fun test_notice_length_limit/0},
-      {"批量操作公告", fun test_batch_notices/0}
-     ]
-    }.
-
-setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} ->
+            {foreach,
+             fun setup/0,
+             fun cleanup/1,
+             [
+              {"创建群公告", fun test_create_notice/0},
+              {"更新群公告", fun test_update_notice/0},
+              {"删除群公告", fun test_delete_notice/0},
+              {"获取群公告列表", fun test_list_notices/0},
+              {"置顶群公告", fun test_pin_notice/0},
+              {"普通成员无法创建公告", fun test_member_cannot_create/0},
+              {"公告内容长度限制", fun test_notice_length_limit/0},
+              {"批量操作公告", fun test_batch_notices/0}
+             ]
+            };
+        {error, _Reason} ->
+            {"Database not available",
+             fun() -> {skip, "Database not available"} end}
+    end.
+
+setup() ->
     % 创建测试用户
     {ok, Owner} = create_test_user(<<"owner_notice">>),
     {ok, Admin} = create_test_user(<<"admin_notice">>),

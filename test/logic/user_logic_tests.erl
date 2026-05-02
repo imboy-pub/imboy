@@ -121,8 +121,10 @@ batch_online_state_processes_multiple_users_test_() ->
     end).
 
 batch_online_state_with_empty_list_test_() ->
-    Result = user_logic:batch_online_state([]),
-    ?assertEqual([], Result).
+    ?_test(begin
+        Result = user_logic:batch_online_state([]),
+        ?assertEqual([], Result)
+    end).
 
 %% ===================================================================
 %% mine_state/1 测试
@@ -161,13 +163,13 @@ find_by_id_with_integer_returns_user_test_() ->
         ?assertMatch(#{<<"id">> := 1, <<"nickname">> := <<"测试用户"/utf8>>}, Result)
     end).
 
-find_by_id_with_binary_decodes_id_test_() ->
+find_by_id_with_integer_id_returns_user_test_() ->
     ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(_Uid, _Column) ->
+        {'find_by_id', 2, fun(123, _Column) ->
             #{<<"id">> => 123, <<"nickname">> => <<"测试用户"/utf8>>}
         end}
     ], fun() ->
-        Uid = <<"123">>,
+        Uid = 123,
         Result = user_logic:find_by_id(Uid),
         ?assertMatch(#{<<"id">> := 123}, Result)
     end).
@@ -218,8 +220,10 @@ find_by_ids_returns_users_test_() ->
     end).
 
 find_by_ids_with_empty_list_returns_empty_test_() ->
-    Result = user_logic:find_by_ids([]),
-    ?assertEqual([], Result).
+    ?_test(begin
+        Result = user_logic:find_by_ids([]),
+        ?assertEqual([], Result)
+    end).
 
 find_by_ids_when_not_found_returns_empty_test_() ->
     ?WITH_MECK(user_ds, [
@@ -315,10 +319,30 @@ update_allow_search_with_invalid_value_fails_test_() ->
 update_email_with_valid_format_test_() ->
     ?WITH_MECKS([
         {user_ds, [
-            {'find_by_email', 2, fun(_Email, _Column) -> #{} end}
+            {'find_by_email', 2, fun(_Email, _Column) -> #{} end},
+            {'title', 2, fun(_Uid, _N) -> {<<"Test">>, <<"Test">>} end}
         ]},
         {elib_type, [
             {'is_email', 1, fun(_Email) -> true end}
+        ]},
+        {config_ds, [
+            {'env', 1, fun(solidified_key) -> <<"test_key">>; (base_url) -> <<"http://localhost">>; (smtp_option) -> [] end}
+        ]},
+        {elib_dt, [
+            {'second', 0, fun() -> 1000000 end},
+            {'to_rfc3339', 2, fun(_Ts, _Fmt) -> <<"2026-01-01T00:00:00Z">> end}
+        ]},
+        {elib_hasher, [
+            {'hmac_sha512', 2, fun(_Data, _Key) -> <<"mock_hmac">> end}
+        ]},
+        {elib_cnv, [
+            {'map_to_query', 1, fun(_Map) -> <<"mock_query">> end}
+        ]},
+        {elib_uri, [
+            {'build_query', 3, fun(_Base, _Path, _Args) -> <<"http://localhost/mock">> end}
+        ]},
+        {elib_email, [
+            {'send', 3, fun(_To, _Subject, _Body) -> {ok, success} end}
         ]}
     ], fun() ->
         Uid = 1,

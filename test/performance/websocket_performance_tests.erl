@@ -30,6 +30,10 @@ ws_performance_test_() ->
 setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} -> ok;
+        {error, _Reason} -> throw({skip, "Database not available"})
+    end,
     % 创建测试用户
     UserIds = lists:map(fun(N) ->
         {ok, Uid} = create_test_user(<<"ws_user", N/integer>>),

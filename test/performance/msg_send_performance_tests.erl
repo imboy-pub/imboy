@@ -32,6 +32,10 @@ msg_performance_test_() ->
 setup() ->
     _ = eunit_runner:eunit_setup(),
     application:set_env(imboy, env, test),
+    case eunit_runner:eunit_try_db() of
+        {ok, _Driver, _Conn} -> ok;
+        {error, _Reason} -> throw({skip, "Database not available"})
+    end,
     % 创建测试用户
     {ok, User1} = create_test_user(<<"perf_user1">>),
     {ok, User2} = create_test_user(<<"perf_user2">>),
