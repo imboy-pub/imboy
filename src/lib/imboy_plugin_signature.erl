@@ -1,0 +1,95 @@
+-module(imboy_plugin_signature).
+
+%%%-------------------------------------------------------------------
+%%% @doc
+%%% imboy_plugin_signature - 插件 Ed25519 签名工具（P6-T4）
+%%% Plugin Ed25519 signature toolkit
+%%%
+%%% 用途 / Use cases:
+%%%   - install 时 loader 验证插件签名（防止恶意/篡改）
+%%%   - script/plugin_sign.escript 离线签名工具
+%%%
+%%% 算法 / Algorithm:
+%%%   - Ed25519（OTP crypto 模块内置，零依赖）
+%%%   - 签名长度固定 64 字节
+%%%   - 公钥 32 字节，私钥 32 字节
+%%%
+%%% 私钥管理 / Private key management:
+%%%   - 私钥**绝不**入库或入版本控制
+%%%   - 离线生成 + 离线签名（推荐 air-gapped 工作站）
+%%%   - 公钥分发：core 配置中预置可信公钥列表
+%%%
+%%% Source of truth: doc/plugin/contract.md §10 + roadmap P6-T4/T5
+%%%
+%%% @author Imboy Team
+%%% @copyright 2026 Imboy Project
+%%% @end
+%%%-------------------------------------------------------------------
+
+-export([
+    generate_keypair/0,
+    sign_data/2,
+    verify_data/3,
+    sign_file/2,
+    verify_file/3
+]).
+
+-type public_key()  :: binary().    %% 32 bytes
+-type private_key() :: binary().    %% 32 bytes
+-type signature()   :: binary().    %% 64 bytes
+
+-export_type([public_key/0, private_key/0, signature/0]).
+
+%% ===================================================================
+%% Public API
+%% ===================================================================
+
+%% @doc 生成 Ed25519 密钥对（仅供 dev / CLI 工具使用）。
+%% Generate Ed25519 keypair (dev / CLI tools only).
+%% **生产环境私钥应离线生成**。Production keys MUST be generated offline.
+-spec generate_keypair() -> {ok, public_key(), private_key()}.
+generate_keypair() ->
+    {Pub, Priv} = crypto:generate_key(eddsa, ed25519),
+    {ok, Pub, Priv}.
+
+%% @doc 用 Ed25519 私钥签名任意数据。
+%% Sign arbitrary data with Ed25519 private key.
+-spec sign_data(iodata(), private_key()) -> {ok, signature()}.
+sign_data(Data, PrivateKey) when is_binary(PrivateKey) ->
+    Sig = crypto:sign(eddsa, none, Data, [PrivateKey, ed25519]),
+    {ok, Sig}.
+
+%% @doc 用 Ed25519 公钥验证签名。
+%% Verify signature with Ed25519 public key.
+-spec verify_data(iodata(), public_key(), signature()) ->
+    ok | {error, signature_invalid}.
+verify_data(Data, PublicKey, Signature)
+        when is_binary(PublicKey), is_binary(Signature) ->
+    case crypto:verify(eddsa, none, Data, Signature, [PublicKey, ed25519]) of
+        true -> ok;
+        false -> {error, signature_invalid}
+    end.
+
+%% @doc 签名文件内容（按字节流，不规范化空白）。
+%% Sign file content (byte-stream, no whitespace normalization).
+-spec sign_file(file:filename_all(), private_key()) ->
+    {ok, signature()} | {error, term()}.
+sign_file(Path, PrivateKey) ->
+    case file:read_file(Path) of
+        {ok, Bin} ->
+            sign_data(Bin, PrivateKey);
+        {error, _} = E ->
+            E
+    end.
+
+%% @doc 验证文件签名。
+%% Verify file signature.
+-spec verify_file(file:filename_all(), public_key(), signature()) ->
+    ok | {error, term()}.
+verify_file(Path, PublicKey, Signature) ->
+    case file:read_file(Path) of
+        {ok, Bin} ->
+            verify_data(Bin, PublicKey, Signature);
+        {error, _} = E ->
+            E
+    end.

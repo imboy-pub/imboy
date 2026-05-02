@@ -117,10 +117,42 @@ init([]) ->
         , modules => [elib_metric]
     },
 
+    % 插件清单加载器（启动期扫描 priv/plugins/*/plugin.config，写入 persistent_term）
+    % Plugin manifest loader (scans priv/plugins/*/plugin.config at startup, writes persistent_term)
+    % 详见 doc/plugin/contract.md §10、.claude/plan/industrial-plugin-architecture-roadmap.md P0-T3
+    %
+    % restart=transient：loader 是可选基础设施，崩溃后正常退出（reason=normal/shutdown）
+    % 不重启；异常崩溃才重启。这与 loader "插件失败不影响 core" 的语义一致。
+    % V2 评审 MEDIUM-2 修复：原 permanent 在 priv_dir bad_name 等场景会拖垮 sup tree。
+    PluginLoader = #{
+        id => imboy_plugin_loader
+        , start => {imboy_plugin_loader, start_link, []}
+        , restart => transient
+        , shutdown => 5000
+        , type => worker
+        , modules => [imboy_plugin_loader]
+    },
+
+    % 插件总监督树（P1-T1）：监督 4 个生产插件的 supervisor
+    % Plugin top-level supervisor: supervises channel/moment/location/group_collab sups
+    % 启动顺序在 PluginLoader 之后：先 loader 把 manifest 写入 persistent_term，
+    % 再启动 plugin sup，确保插件 worker 启动时可安全查询 manifest。
+    % 详见 doc/plugin/contract.md §8、.claude/plan/industrial-plugin-architecture-roadmap.md P1-T1
+    PluginSup = #{
+        id => imboy_plugin_sup
+        , start => {imboy_plugin_sup, start_link, []}
+        , restart => permanent
+        , shutdown => infinity
+        , type => supervisor
+        , modules => [imboy_plugin_sup]
+    },
+
     Specs = [
         IMBoyCache
         % , PgoChildSpec
         , MetricWorker
+        , PluginLoader
+        , PluginSup
         , UserServer
         , MsgWriteQueueSup
         , E2eeCleanupWorker

@@ -9,7 +9,12 @@
     enabled_app_entries/1,
     enabled_admin_entries/1,
     required_feature/3,
-    required_feature_for_target/3
+    required_feature_for_target/3,
+    %% P0-T3.3 双轨过渡：v2 manifest 接口（从 persistent_term 读取，
+    %% 由 imboy_plugin_loader 在启动期注入）。旧 manifest/1 与 manifests/0
+    %% 保持不变以维持向后兼容。详见 .claude/plan/industrial-plugin-architecture-roadmap.md
+    manifest_v2/1,
+    manifests_v2/0
 ]).
 
 %% Deprecated compatibility wrapper.
@@ -216,6 +221,37 @@ raw_manifests() ->
             api_handlers => [group_vote_handler, group_schedule_handler, group_task_handler]
         }
     }.
+
+%% ===================================================================
+%% v2 manifest API (P0-T3.3 双轨过渡)
+%% Reads from persistent_term written by imboy_plugin_loader at startup.
+%% 旧 manifest/1 与 manifests/0 保持不变（向后兼容）；v2 接口提供 contract.md
+%% v1.0 完整 schema（含 limits/budget/degrade/circuit_breaker/audit/i18n
+%% 等工业级扩展位）。
+%% ===================================================================
+
+%% @doc 查询单个插件的 v2 manifest（来自 persistent_term）。
+%% 未在 priv/plugins/<name>/plugin.config 中声明的插件返回 undefined。
+-spec manifest_v2(atom()) -> map() | undefined.
+manifest_v2(Name) when is_atom(Name) ->
+    persistent_term:get({imboy_plugin_manifest, Name}, undefined).
+
+%% @doc 列出全部已加载的 v2 manifest，键为 plugin name。
+%% 仅 imboy_plugin_loader 已加载的插件出现在结果中；hardcoded 插件若无 .config
+%% 文件则不会出现在 v2 结果中（这是双轨语义的预期行为）。
+-spec manifests_v2() -> #{atom() => map()}.
+manifests_v2() ->
+    PluginNames = plugin_names(),
+    lists:foldl(
+        fun(Name, Acc) ->
+            case manifest_v2(Name) of
+                undefined -> Acc;
+                M -> Acc#{Name => M}
+            end
+        end,
+        #{},
+        PluginNames
+    ).
 
 -spec normalize_manifest(map()) -> map().
 normalize_manifest(RawManifest) ->
