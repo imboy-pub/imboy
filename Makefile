@@ -132,6 +132,9 @@ EUNIT_OPTS += {timeout, 30}
 EUNIT_CONFIG ?= config/sys.config
 EUNIT_CONFIG_BASE = $(patsubst %.config,%,$(EUNIT_CONFIG))
 TEST_HTTP_PORT ?= 19800
+# Override erlang.mk's -pa order: put ebin before test so stubs (config_ds)
+# with debug_info take precedence over test-compiled beams without it.
+EUNIT_ERL_OPTS := $(filter-out -pa %,$(EUNIT_ERL_OPTS)) -pa $(CURDIR)/ebin -pa $(TEST_DIR)
 EUNIT_ERL_OPTS += -config $(EUNIT_CONFIG_BASE)
 # eunit_runner 在 setup 阶段会读取 application:get_env，需要预先 load 应用
 EUNIT_ERL_OPTS += -eval 'application:load(imboy)'
@@ -151,9 +154,16 @@ EUNIT_MODS = $(foreach mod,$(EUNIT_EBIN_MODS) $(filter-out \
 # with modules that globally meck shared dependencies like elib_pg. Run the
 # suite module-by-module by default, while keeping `make eunit t=module_tests`
 # on erlang.mk's native single-module path.
+# Compile test stubs that must be in ebin/ for meck to work
+# (meck:new requires the module to be loaded or exist as a beam file)
+test-stubs:
+	$(verbose) erlc +debug_info -o ebin test/common/config_ds.erl
+	$(verbose) erlc +debug_info -o test test/common/config_ds.erl
+	$(verbose) erlc +debug_info -I include -pa ebin -o test test/lib/imboy_plugin_dummy.erl
+
 ifndef t
 .PHONY: eunit
-eunit: test-build cover-data-dir
+eunit: test-build test-stubs cover-data-dir
 ifneq ($(wildcard src/ $(TEST_DIR)),)
 	@set -e; \
 	failures=""; \
@@ -170,6 +180,10 @@ ifneq ($(wildcard src/ $(TEST_DIR)),)
 		exit $$ret; \
 	fi
 endif
+else
+# Single-module eunit (make eunit t=module): also compile stubs after test-build
+.PHONY: eunit
+eunit: test-build test-stubs cover-data-dir
 endif
 
 # 警告数量限制（用于 CI）
