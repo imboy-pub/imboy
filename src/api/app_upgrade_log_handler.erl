@@ -63,7 +63,7 @@ report(<<"POST">>, Req0, _State) ->
             %% 异步写入，不阻塞客户端
             Data = #{
                 <<"did">> => DID,
-                <<"uid">> => maps:get(<<"uid">>, Body0, 0),
+                <<"uid">> => ec_cnv:to_integer(maps:get(<<"uid">>, Body0, 0)),
                 <<"cos">> => Cos,
                 <<"client_vsn">> => ClientVsn,
                 <<"target_vsn">> => maps:get(<<"target_vsn">>, Body0, <<>>),

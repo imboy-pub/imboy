@@ -61,8 +61,8 @@ same_group(Req0, State) ->
     A = proplists:get_value(<<"uid1">>, Qs0, <<>>),
     B = proplists:get_value(<<"uid2">>, Qs0, <<>>),
 
-    A1 = ec_cnv:to_integer(A),
-    B1 = ec_cnv:to_integer(B),
+    A1 = elib_cnv:safe_to_integer(A),
+    B1 = elib_cnv:safe_to_integer(B),
 
     {Count, Li4} =
         if CurrentUid == A1; CurrentUid == B1 ->
@@ -98,7 +98,7 @@ join(Req0, State) ->
     MemberUids = maps:get(<<"member_uids">>, PostVals, []),
     JoinMode = maps:get(<<"join_mode">>, PostVals, <<>>),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     JoinMode2 =
         case JoinMode of
             <<>> ->
@@ -134,7 +134,7 @@ join(Req0, State) ->
                                                                    ec_cnv:to_binary(Diff),
                                                                    <<"名群成员"/utf8>>]));
                        true ->
-                           MemberUids2 = [ec_cnv:to_integer(Id) || Id <- MemberUids],
+                           MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
                            MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
                            % ?DEBUG_LOG([MemberListRes]),
                            case MemberListRes of
@@ -183,7 +183,7 @@ leave(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     MemberUids = maps:get(<<"member_uids">>, PostVals, []),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
@@ -191,7 +191,7 @@ leave(Req0, State) ->
             elib_response:error(Req0, <<"group id 格式有误"/utf8>>);
         _ ->
             [group_member_logic:leave(
-                 ec_cnv:to_integer(Uid), Gid2, CurrentUid)
+                 elib_cnv:safe_to_integer(Uid), Gid2, CurrentUid)
              || Uid <- MemberUids],
             elib_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
@@ -208,7 +208,7 @@ alias(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case Gid2 of
         0 ->
             elib_response:error(Req0, <<"group id 必须"/utf8>>);
@@ -235,7 +235,7 @@ page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Qs1 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs1, undefined),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
@@ -275,10 +275,10 @@ mute(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     UserId = maps:get(<<"user_id">>, PostVals, 0),
-    Duration = ec_cnv:to_integer(maps:get(<<"duration">>, PostVals, 0)),
+    Duration = elib_cnv:safe_to_integer(maps:get(<<"duration">>, PostVals, 0)),
 
-    Gid2 = ec_cnv:to_integer(Gid),
-    UserId2 = ec_cnv:to_integer(UserId),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
+    UserId2 = elib_cnv:safe_to_integer(UserId),
 
     case throttle:check(three_second_once, {group_member_mute, CurrentUid}) of
         {limit_exceeded, _, _} ->
@@ -313,8 +313,8 @@ unmute(Req0, State) ->
     Gid = maps:get(<<"gid">>, PostVals, 0),
     UserId = maps:get(<<"user_id">>, PostVals, 0),
 
-    Gid2 = ec_cnv:to_integer(Gid),
-    UserId2 = ec_cnv:to_integer(UserId),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
+    UserId2 = elib_cnv:safe_to_integer(UserId),
 
     case throttle:check(three_second_once, {group_member_unmute, CurrentUid}) of
         {limit_exceeded, _, _} ->
@@ -345,10 +345,10 @@ role(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
     UserId = maps:get(<<"user_id">>, PostVals, 0),
-    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 0)),
+    Role = elib_cnv:safe_to_integer(maps:get(<<"role">>, PostVals, 0)),
 
-    Gid2 = ec_cnv:to_integer(Gid),
-    UserId2 = ec_cnv:to_integer(UserId),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
+    UserId2 = elib_cnv:safe_to_integer(UserId),
 
     case throttle:check(three_second_once, {group_member_role, CurrentUid}) of
         {limit_exceeded, _, _} ->

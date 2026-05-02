@@ -99,12 +99,12 @@ create(Req0, State) ->
     EndAt0 = maps_get(<<"end_at">>, PostVals),
     StartAt = normalize_time_value(StartAt0),
     EndAt = normalize_time_value(EndAt0),
-    RemindBefore = ec_cnv:to_integer(maps:get(<<"remind_before">>, PostVals, 15)),
+    RemindBefore = elib_cnv:safe_to_integer(maps:get(<<"remind_before">>, PostVals, 15)),
     ParticipantIds0 = maps:get(<<"participant_ids">>, PostVals, []),
 
     % 解析 ID
-    GroupId2 = ec_cnv:to_integer(GroupId),
-    ParticipantIds = [ec_cnv:to_integer(Id) || Id <- ParticipantIds0],
+    GroupId2 = elib_cnv:safe_to_integer(GroupId),
+    ParticipantIds = [elib_cnv:safe_to_integer(Id) || Id <- ParticipantIds0],
 
     % 验证必填字段
     case {GroupId2, Title, StartAt, EndAt} of
@@ -230,7 +230,7 @@ list(Req0, _State) ->
     Page = elib_param:int(page, Qs, 1),
     Size = elib_param:int(size, Qs, 20),
 
-    GroupId2 = ec_cnv:to_integer(GroupId),
+    GroupId2 = elib_cnv:safe_to_integer(GroupId),
 
     case GroupId2 of
         0 ->
@@ -350,9 +350,9 @@ normalize_schedule_id(Value) when is_binary(Value) ->
         _ ->
             case elib_type:is_numeric(Value) of
                 true ->
-                    schedule_id_by_pk(ec_cnv:to_integer(Value));
+                    schedule_id_by_pk(elib_cnv:safe_to_integer(Value));
                 false ->
-                    case ec_cnv:to_integer(Value) of
+                    case elib_cnv:safe_to_integer(Value) of
                         0 ->
                             % 兼容历史非标准ID格式
                             Value;

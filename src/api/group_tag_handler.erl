@@ -50,7 +50,7 @@ add(Req0, State) ->
         {_, undefined} ->
             elib_response:error(Req0, <<"标签名不能为空"/utf8>>);
         {Gid2, TagName2} ->
-            Gid3 = ec_cnv:to_integer(Gid2),
+            Gid3 = elib_cnv:safe_to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);
@@ -80,7 +80,7 @@ remove(Req0, State) ->
         {_, undefined} ->
             elib_response:error(Req0, <<"标签名不能为空"/utf8>>);
         {Gid2, TagName2} ->
-            Gid3 = ec_cnv:to_integer(Gid2),
+            Gid3 = elib_cnv:safe_to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);
@@ -107,7 +107,7 @@ list(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"群组ID不能为空"/utf8>>);
         Gid2 ->
-            Gid3 = ec_cnv:to_integer(Gid2),
+            Gid3 = elib_cnv:safe_to_integer(Gid2),
             case Gid3 of
                 0 ->
                     elib_response:error(Req0, <<"无效的群组ID"/utf8>>);

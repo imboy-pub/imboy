@@ -246,12 +246,13 @@ cookie_secure() ->
 build_login_meta() ->
     Csrf = elib_id:gen("csrf"),
     imboy_cache:set(Csrf, 1),
-    PublicKey = re:replace(
-        config_ds:env(login_rsa_pub_key),
-        "\\n",
-        "",
-        [global, {return, binary}]
-    ),
+    PublicKey = case config_ds:env(login_rsa_pub_key) of
+        undefined -> <<"">>;
+        Key when is_binary(Key) ->
+            re:replace(Key, "\\n", "", [global, {return, binary}]);
+        Key ->
+            re:replace(ec_cnv:to_binary(Key), "\\n", "", [global, {return, binary}])
+    end,
     #{
         <<"system_name">> => <<"IMBoy Admin System">>,
         <<"csrf_token">> => Csrf,

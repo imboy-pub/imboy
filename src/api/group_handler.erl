@@ -141,7 +141,7 @@ face2face_save(Req0, State) ->
     Code = maps:get(<<"code">>, PostVals, []),
     Gid = maps:get(<<"gid">>, PostVals, []),
     Uid = maps:get(current_uid, State),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case group_logic:face2face_save(Code, Gid2, Uid) of
         {ok, _} ->
             case group_member_logic:list_member(Gid2) of
@@ -219,7 +219,7 @@ edit(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
 
     % 构建更新数据
     Data = build_group_update_data(PostVals),
@@ -291,7 +291,7 @@ dissolve(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case throttle:check(per_hour_once, {group, Gid2}) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, "在处理中，请稍后重试");
@@ -392,7 +392,7 @@ msg_page(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Qs3 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs3, undefined),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     Where0 = #{to_groupid => Gid2},
@@ -438,9 +438,9 @@ transfer(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     NewOwnerUid = maps:get(<<"new_owner_uid">>, PostVals, 0),
-    NewOwnerUid2 = ec_cnv:to_integer(NewOwnerUid),
+    NewOwnerUid2 = elib_cnv:safe_to_integer(NewOwnerUid),
 
     case throttle:check(per_hour_once, {group_transfer, Gid2}) of
         {limit_exceeded, _, _} ->
@@ -491,7 +491,7 @@ qrcode(Req0, State) ->
         {_, true} when NowInt > ExpiredAtInt ->
             elib_response:error(Req0, "验证码已过期");
         _ ->
-            Gid2 = ec_cnv:to_integer(Gid),
+            Gid2 = elib_cnv:safe_to_integer(Gid),
             % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
             Column = <<"id,title,avatar,member_count, member_max">>,
             case group_ds:find_by_id(Gid2, Column) of
@@ -541,7 +541,7 @@ remark(Req0, State) ->
 remark(<<"GET">>, Req0, _State, CurrentUid) ->
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case Gid2 of
         0 ->
             elib_response:error(Req0, <<"group id 必须"/utf8>>);
@@ -553,7 +553,7 @@ remark(<<"GET">>, Req0, _State, CurrentUid) ->
 remark(<<"POST">>, Req0, _State, CurrentUid) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, 0),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     case Gid2 of
         0 ->
             elib_response:error(Req0, <<"group id 必须"/utf8>>);

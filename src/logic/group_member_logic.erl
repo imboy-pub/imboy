@@ -358,16 +358,6 @@ group_member_join_notice(Gid, Uid, Sum) ->
 %% ===================================================================
 %% EUnit 测试示例
 %% ===================================================================
--ifdef(EUNIT).
-join_group_test_() ->
-    [
-        ?_test(fun() ->
-            % 模拟测试
-            Result = validate_group_limit(100, 50),
-            ?_assertEqual(ok, Result)
-        end)
-    ].
--endif.
 
 %% @doc 内部角色更新操作（事务内）
 -spec update_role_internal(pid(), integer(), integer(), integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.

@@ -71,7 +71,7 @@ add(Req0, State) ->
             <<"collect">> ->
                 {1, false};
             <<"friend">> ->
-                {2, friend_ds:is_friend(CurrentUid, ec_cnv:to_integer(ObjectId))};
+                {2, friend_ds:is_friend(CurrentUid, elib_cnv:safe_to_integer(ObjectId))};
             _ ->
                 {0, false}
         end,
@@ -128,7 +128,7 @@ set(Req0, State) ->
                 0
         end,
 
-    case {Scene2, string:length(TagName), ec_cnv:to_integer(TagId)} of
+    case {Scene2, string:length(TagName), elib_cnv:safe_to_integer(TagId)} of
         {0, _, _} ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         {_, Len, _} when Len > 14 ->
@@ -173,7 +173,7 @@ remove(Req0, State) ->
                 0
         end,
 
-    case {Scene2, ObjectId, ec_cnv:to_integer(TagId)} of
+    case {Scene2, ObjectId, elib_cnv:safe_to_integer(TagId)} of
         {0, _, _} ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         {_, <<>>, _} ->
@@ -184,7 +184,7 @@ remove(Req0, State) ->
             user_tag_relation_logic:remove(CurrentUid, <<"1">>, Obj, Id),
             elib_response:success(Req0, #{}, "success.");
         {2, Obj, Id} ->
-            ToUid = ec_cnv:to_integer(Obj),
+            ToUid = elib_cnv:safe_to_integer(Obj),
             if ToUid > 0 ->
                    user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
                    elib_response:success(Req0, #{}, "success.");

@@ -18,6 +18,8 @@
          count/0]).
 -export([list_by_uid/1,
          list_by_limit/1]).
+-export([is_online/2,
+         online_dids/1]).
 
 %% ACK 同步相关导出
 -export([broadcast_ack_cancel/3]).
@@ -118,6 +120,22 @@ list_by_uid(Uid) ->
     catch
         _:_ -> []
     end.
+
+%% @doc 检查用户是否在线（按条件过滤）
+%% Condition 可以是 {dtype, DType} 或 {did, DID}
+-spec is_online(integer(), {dtype | did, binary()}) -> boolean().
+is_online(Uid, {dtype, DType}) ->
+    Members = list_by_uid(Uid),
+    lists:any(fun({_Pid, {DT, _DID}}) -> DT =:= DType end, Members);
+is_online(Uid, {did, DID}) ->
+    Members = list_by_uid(Uid),
+    lists:any(fun({_Pid, {_DType, D}}) -> D =:= DID end, Members).
+
+%% @doc 获取用户在线设备ID列表
+-spec online_dids(integer()) -> [binary()].
+online_dids(Uid) ->
+    Members = list_by_uid(Uid),
+    [DID || {_Pid, {_DType, DID}} <- Members].
 
 %% @doc 发布消息到指定用户的所有设备
 -spec publish(integer(), term()) -> {ok, non_neg_integer()}.

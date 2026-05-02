@@ -369,9 +369,8 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             Id = user_ds:find_id_by_email(Email),
             case Id of
                 0 ->
-                    Password = elib_cipher:rsa_decrypt(Pwd),
                     Data = pick_data_for_insert(#{
-                        <<"password">> => elib_password:generate(Password)
+                        <<"password">> => elib_password:generate(Pwd)
                         , <<"email">> => Email
                         }, PostVals),
                     case user_ds:insert_and_get_id(Data) of
@@ -402,9 +401,8 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
             Id = user_ds:find_id_by_mobile(Mobile),
             case Id of
                 0 ->
-                    Password = elib_cipher:rsa_decrypt(Pwd),
                     Data = pick_data_for_insert(#{
-                        <<"password">> => elib_password:generate(Password)
+                        <<"password">> => elib_password:generate(Pwd)
                         , <<"mobile">> => Mobile
                         }, PostVals),
                     case user_ds:insert_and_get_id(Data) of

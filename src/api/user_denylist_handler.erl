@@ -68,7 +68,7 @@ add(Req0, State) ->
     PostVals = elib_param:post(Req0),
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
 
-    DeniedUserId2 = ec_cnv:to_integer(DeniedUserId),
+    DeniedUserId2 = elib_cnv:safe_to_integer(DeniedUserId),
     CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
     elib_response:success(Req0,
                            #{<<"user_id">> => CurrentUid,
@@ -88,7 +88,7 @@ remove(Req0, State) ->
 
     PostVals = elib_param:post(Req0),
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
-    DeniedUserId2 = ec_cnv:to_integer(DeniedUserId),
+    DeniedUserId2 = elib_cnv:safe_to_integer(DeniedUserId),
 
     user_denylist_logic:remove(CurrentUid, DeniedUserId2),
     elib_response:success(Req0).

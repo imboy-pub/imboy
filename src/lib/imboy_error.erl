@@ -92,7 +92,7 @@ validate_required(Req, Field, ValidateFun) ->
 -spec validate_id(cowboy_req:req(), binary()) ->
     {ok, integer()} | {error, cowboy_req:req()}.
 validate_id(Req, Id) when is_binary(Id) ->
-    case ec_cnv:to_integer(Id) of
+    case elib_cnv:safe_to_integer(Id) of
         0 -> {error, invalid_id(Req, Id)};
         DecodedId -> {ok, DecodedId}
     end;
@@ -115,7 +115,7 @@ validate_id(Req, _Id) ->
 -spec validate_id_list(cowboy_req:req(), [binary()]) ->
     {ok, [integer()]} | {error, cowboy_req:req()}.
 validate_id_list(Req, IdList) when is_list(IdList) ->
-    DecodedList = lists:map(fun(Id) -> ec_cnv:to_integer(Id) end, IdList),
+    DecodedList = lists:map(fun(Id) -> elib_cnv:safe_to_integer(Id) end, IdList),
     case lists:member(0, DecodedList) of
         true -> {error, invalid_id(Req, <<"invalid_id_in_list">>)};
         false -> {ok, DecodedList}

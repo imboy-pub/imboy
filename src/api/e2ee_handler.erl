@@ -75,7 +75,7 @@ user_keys(Req0, State) ->
 do_user_keys(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     TargetUidEnc = elib_param:get(<<"uid">>, Req0, <<"">>),
-    TargetUid = ec_cnv:to_integer(TargetUidEnc),
+    TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
     case is_integer(TargetUid) andalso TargetUid > 0 of
         false ->
             elib_response:error(Req0, <<"bad_request">>, 400);
@@ -101,7 +101,7 @@ group_member_keys(Req0, State) ->
 do_group_member_keys(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     GidEnc = elib_param:get(<<"gid">>, Req0, <<"">>),
-    Gid = ec_cnv:to_integer(GidEnc),
+    Gid = elib_cnv:safe_to_integer(GidEnc),
     case is_integer(Gid) andalso Gid > 0 of
         false ->
             elib_response:error(Req0, <<"bad_request">>, 400);

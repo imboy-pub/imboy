@@ -7,10 +7,7 @@
 -export([group_member_keys/2]).
 -export([report_device_key/6]).
 -export([pull_key_notifications/3]).
-
--ifdef(TEST).
 -export([group_by_uid/1]).
--endif.
 
 -include("log.hrl").
 

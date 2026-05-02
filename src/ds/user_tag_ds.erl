@@ -102,9 +102,11 @@ change_name(0, Uid, Scene, TagId, TagName) ->
             % 使用事务更新
             elib_pg:with_tx(fun(Conn) ->
                 % 更新 user_tag
-                case user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt) of
+                UpdateResult = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                case UpdateResult of
                     {ok, _} -> ok;
-                    {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason])
+                    {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason]);
+                    {_Count, _} -> ok
                 end,
 
                 % 更新所有关联对象的 tag
@@ -250,7 +252,7 @@ add_internal(Uid, Scene, Tag) ->
                 created_at => elib_dt:now()
             },
             case elib_pg_sql:parse_result(elib_pg:insert(Tb, Data, <<"RETURNING id">>)) of
-                {ok, Id} ->
+                {ok, Id, _} ->
                     {ok, Id};
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                     TagId2 = elib_pg:pluck_value(Tb, <<"id">>,

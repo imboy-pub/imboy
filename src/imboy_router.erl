@@ -3,6 +3,7 @@
 -export([get_routes/0]).
 -export([open/0]).
 -export([option/0]).
+-export([plugin_routes/0]).   %% Phase 2 切片 2：供测试与 admin introspection
 
 
 %% @doc 获取所有路由定义
@@ -617,7 +618,32 @@ get_routes() ->
         {"/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
         {"/static/admin/[...]", cowboy_static, {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],
-    [{Host, MainRoutes ++ ApiV1Routes ++ AdmRoutes}].
+    [{Host, MainRoutes ++ ApiV1Routes ++ AdmRoutes ++ plugin_routes()}].
+
+%% @doc Phase 2 切片 2：从 imboy_router_registry ETS 读取所有插件路由并转 cowboy 格式。
+%% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.
+%% registry 未启动时返回 []（dev/测试/启动早期友好，不阻塞 core 路由表构建）。
+%% Returns [] when registry is not started (dev/test/early-startup safe).
+%% 详见 doc/plugin/contract.md §3 / .claude/plan/industrial-plugin-architecture-roadmap.md P2-T2
+plugin_routes() ->
+    case erlang:whereis(imboy_router_registry) of
+        undefined ->
+            [];
+        _ ->
+            All = imboy_router_registry:all_routes(),
+            [route_spec_to_cowboy(R) || {_PluginName, R} <- All]
+    end.
+
+%% @doc 转换 contract.md v1.0 route_spec map → cowboy {Path, Handler, Opts} tuple。
+%% Convert v1.0 route_spec map to cowboy {Path, Handler, Opts} tuple.
+%% required_feature 字段透传到 Opts，供 auth_middleware 做 feature gate 判定。
+route_spec_to_cowboy(#{path := Path, handler := Handler, action := Action} = Spec) ->
+    BaseOpts = #{action => Action},
+    Opts = case maps:get(required_feature, Spec, undefined) of
+        undefined -> BaseOpts;
+        Feature -> BaseOpts#{required_feature => Feature}
+    end,
+    {binary_to_list(Path), Handler, Opts}.
 
 
 %% 因为 除去 option 和 open 的路由，就是必须要 auth 的路由了

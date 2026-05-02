@@ -180,9 +180,9 @@ normalize_id(Value) when is_binary(Value) ->
         _ ->
             case elib_type:is_numeric(Value) of
                 true ->
-                    ec_cnv:to_integer(Value);
+                    elib_cnv:safe_to_integer(Value);
                 false ->
-                    ec_cnv:to_integer(Value)
+                    elib_cnv:safe_to_integer(Value)
             end
     end;
 normalize_id(_Value) ->

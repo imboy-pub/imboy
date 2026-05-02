@@ -80,7 +80,7 @@ send(Mobile, Code, <<"jsms">>) ->
     URL = <<"https://api.sms.jpush.cn/v1/messages">>,
     Headers = [
         {"Content-Type","application/json"}
-        , {"Authorization", "Basic " ++ Base64Credentials}
+        , {"Authorization", "Basic " ++ binary_to_list(Base64Credentials)}
     ],
     % 您的手机验证码：{{code}}，有效期5分钟，请勿泄露。如非本人操作，请忽略此短信。谢谢！
     Data = #{
@@ -113,7 +113,7 @@ jverification(Tk) ->
     URL = <<"https://api.verification.jpush.cn/v1/web/loginTokenVerify">>,
     Headers = [
         {"Content-Type","application/json"}
-        , {"Authorization", "Basic " ++ Base64Credentials}
+        , {"Authorization", "Basic " ++ binary_to_list(Base64Credentials)}
     ],
     Data = #{
         <<"loginToken">> => Tk

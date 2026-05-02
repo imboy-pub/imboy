@@ -62,13 +62,13 @@ handle_action(false, Req, _State) -> Req.
 create(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, <<>>),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     Uid = maps:get(current_uid, State),
 
     Title = maps:get(<<"title">>, PostVals, <<>>),
     Description = maps:get(<<"description">>, PostVals, <<>>),
     Options = maps:get(<<"options">>, PostVals, []),
-    VoteType = ec_cnv:to_integer(maps:get(<<"vote_type">>, PostVals, 1)),
+    VoteType = elib_cnv:safe_to_integer(maps:get(<<"vote_type">>, PostVals, 1)),
     IsAnonymous = to_boolean(maps:get(<<"is_anonymous">>, PostVals, false), false),
     EndAt = maps:get(<<"end_at">>, PostVals, undefined),
 
@@ -112,7 +112,7 @@ create(Req0, State) ->
 list(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     {Page, Size} = elib_param:page(Req0),
 
     case Gid2 of

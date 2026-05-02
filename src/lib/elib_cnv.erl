@@ -17,6 +17,7 @@
 -export([map_to_query/1]).
 -export([list_to_binary_string/1]).
 -export([safe_to_binary/1]).
+-export([safe_to_integer/1]).
 
 % elib_cnv:convert_at_timestamps(List).
 -export([convert_at_timestamps/1]).
@@ -193,4 +194,21 @@ safe_to_binary(Term) ->
             error_logger:warning_msg("safe_to_binary unexpected error: ~p:~p~nStacktrace: ~p~nInput: ~p~n",
                                    [Class, Reason, Stacktrace, Term]),
             erlang:list_to_binary(lists:flatten(io_lib:format("~p", [Term])))
+    end.
+
+%% @doc 安全地将任意类型转换为 integer
+%% 对非数字字符串（如 <<"g_101">>）不会抛出 badarg，而是返回 0
+%% ec_cnv:to_integer 对非数字字符串会先尝试 list_to_integer 失败后
+%% 尝试 list_to_float 也失败而抛出 badarg，此函数捕获该异常
+%% @param Term 任意类型的数据
+%% @returns integer 或 0（无法转换时）
+-spec safe_to_integer(term()) -> integer().
+safe_to_integer(Term) ->
+    try
+        ec_cnv:to_integer(Term)
+    catch
+        error:badarg ->
+            0;
+        error:function_clause ->
+            0
     end.

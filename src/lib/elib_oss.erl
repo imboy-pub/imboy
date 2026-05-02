@@ -19,6 +19,7 @@
 -export([delete/1]).
 -export([get_url/1]).
 -export([generate_file_id/0]).
+-export([validate_file_id/1]).
 
 %% 文件分类
 -export([get_file_category/1]).

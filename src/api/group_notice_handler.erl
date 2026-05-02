@@ -82,10 +82,10 @@ add(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"gid">>, PostVals, ""),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     Title = maps:get(<<"title">>, PostVals, ""),
     Body = maps:get(<<"body">>, PostVals, ""),
-    Status = ec_cnv:to_integer(maps:get(<<"status">>, PostVals, 0)),
+    Status = elib_cnv:safe_to_integer(maps:get(<<"status">>, PostVals, 0)),
     ExpiredAt = maps:get(<<"expired_at">>, PostVals, <<>>),
     ExpiredAt2 = elib_dt:rfc3339_to(ExpiredAt, millisecond),
     Now = elib_dt:now(),
@@ -131,11 +131,11 @@ edit(<<"POST">>, Req0, State) ->
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
     Gid = maps:get(<<"gid">>, PostVals, ""),
-    Gid2 = ec_cnv:to_integer(Gid),
-    Id2 = ec_cnv:to_integer(Id),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     % 状态 0 待发布  1 已发布 2 取消发布
-    Status = ec_cnv:to_integer(maps:get(<<"status">>, PostVals, 0)),
+    Status = elib_cnv:safe_to_integer(maps:get(<<"status">>, PostVals, 0)),
     Title = maps:get(<<"title">>, PostVals, ""),
     Body = maps:get(<<"body">>, PostVals, ""),
     ExpiredAt = maps:get(<<"expired_at">>, PostVals, <<>>),
@@ -180,8 +180,8 @@ publish(<<"POST">>, Req0, State) ->
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
     Gid = maps:get(<<"gid">>, PostVals, ""),
-    Gid2 = ec_cnv:to_integer(Gid),
-    Id2 = ec_cnv:to_integer(Id),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     Now = elib_dt:now(),
     case throttle:check(three_second_once, Uid) of
@@ -221,7 +221,7 @@ delete(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
-    Id2 = ec_cnv:to_integer(Id),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     case Id2 of
         0 ->
@@ -252,7 +252,7 @@ page(<<"GET">>, Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Qs2 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs2, undefined),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
@@ -287,7 +287,7 @@ latest(<<"GET">>, Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Qs6 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs6, undefined),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
@@ -323,7 +323,7 @@ list(<<"GET">>, Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Qs2 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs2, ""),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     {Page, Size} = elib_param:page(Req0),
 
     case Gid2 of
@@ -359,7 +359,7 @@ detail(<<"GET">>, Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Qs2 = cowboy_req:parse_qs(Req0),
     Id = proplists:get_value(<<"notice_id">>, Qs2, ""),
-    Id2 = ec_cnv:to_integer(Id),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     case Id2 of
         0 ->
@@ -390,7 +390,7 @@ pin(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
-    Id2 = ec_cnv:to_integer(Id),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     case Id2 of
         0 ->
@@ -421,7 +421,7 @@ unpin(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
-    Id2 = ec_cnv:to_integer(Id),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     case Id2 of
         0 ->
@@ -452,7 +452,7 @@ mark_read(<<"POST">>, Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Id = maps:get(<<"notice_id">>, PostVals, 0),
-    Id2 = ec_cnv:to_integer(Id),
+    Id2 = elib_cnv:safe_to_integer(Id),
 
     case Id2 of
         0 ->

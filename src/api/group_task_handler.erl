@@ -54,7 +54,7 @@ create(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Gid = maps:get(<<"group_id">>, PostVals, <<>>),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     Title = maps:get(<<"title">>, PostVals, <<>>),
     UserIds = maps:get(<<"user_ids">>, PostVals, []),
 
@@ -127,7 +127,7 @@ assign(Req0, State) ->
             elib_response:error(Req0, <<"作业ID必填"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             % 解码用户ID列表
-            UserIds2 = [ec_cnv:to_integer(Uid) || Uid <- UserIds],
+            UserIds2 = [elib_cnv:safe_to_integer(Uid) || Uid <- UserIds],
             case group_task_logic:assign(TaskId2, UserIds2) of
                 ok ->
                     elib_response:success(Req0, #{<<"task_id">> => TaskId}, <<"作业分配成功"/utf8>>);
@@ -200,7 +200,7 @@ list(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"group_id">>, Qs, <<>>),
-    Gid2 = ec_cnv:to_integer(Gid),
+    Gid2 = elib_cnv:safe_to_integer(Gid),
     Status = normalize_optional_status(proplists:get_value(<<"status">>, Qs, undefined)),
     AssigneeId = normalize_assignee_id(proplists:get_value(<<"assignee_id">>, Qs, undefined), CurrentUid),
     {Page, Size} = elib_param:page(Req0),
@@ -322,13 +322,13 @@ normalize_task_uid(TaskId) when is_binary(TaskId) ->
         _ ->
             case elib_type:is_numeric(TaskId) of
                 true ->
-                    task_uid_by_pk(ec_cnv:to_integer(TaskId));
+                    task_uid_by_pk(elib_cnv:safe_to_integer(TaskId));
                 false ->
                     case group_task_ds:find_by_task_id(TaskId) of
                         {ok, _Task} ->
                             TaskId;
                         _ ->
-                            case ec_cnv:to_integer(TaskId) of
+                            case elib_cnv:safe_to_integer(TaskId) of
                                 0 ->
                                     undefined;
                                 Id ->
@@ -366,9 +366,9 @@ normalize_id(Value) when is_binary(Value) ->
         _ ->
             case elib_type:is_numeric(Value) of
                 true ->
-                    ec_cnv:to_integer(Value);
+                    elib_cnv:safe_to_integer(Value);
                 false ->
-                    ec_cnv:to_integer(Value)
+                    elib_cnv:safe_to_integer(Value)
             end
     end;
 normalize_id(_Value) ->
@@ -392,7 +392,7 @@ normalize_optional_status(Value) when is_binary(Value) ->
             undefined;
         _ ->
             case elib_type:is_numeric(Value) of
-                true -> normalize_optional_status(ec_cnv:to_integer(Value));
+                true -> normalize_optional_status(elib_cnv:safe_to_integer(Value));
                 false -> invalid
             end
     end;

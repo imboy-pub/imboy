@@ -103,7 +103,8 @@ safe_log(Level, Msg, Module, Line) ->
     catch
         _:_ ->
             ok
-    end.
+    end,
+    ok.
 
 safe_log(Level, Fmt, Args, Module, Line) ->
     Pid = self(),
@@ -118,7 +119,8 @@ safe_log(Level, Fmt, Args, Module, Line) ->
     catch
         _:_ ->
             ok
-    end.
+    end,
+    ok.
 
 ensure_string(Msg) when is_binary(Msg) ->
     unicode:characters_to_list(Msg);

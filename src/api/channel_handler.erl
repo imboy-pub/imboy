@@ -88,7 +88,7 @@ create(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Name = maps:get(<<"name">>, PostVals, <<>>),
-    Type = ec_cnv:to_integer(maps:get(<<"type">>, PostVals, 0)),
+    Type = elib_cnv:safe_to_integer(maps:get(<<"type">>, PostVals, 0)),
     Description = maps:get(<<"description">>, PostVals, <<>>),
     Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
     CustomId = maps:get(<<"custom_id">>, PostVals, undefined),
@@ -376,7 +376,7 @@ add_admin(Req0, State) ->
     PostVals = elib_param:post(Req0),
     ChannelId = resolve_channel_id(Req0, PostVals),
     NewAdminUid = decode_positive_id(maps:get(<<"user_id">>, PostVals, <<>>)),
-    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 1)),
+    Role = elib_cnv:safe_to_integer(maps:get(<<"role">>, PostVals, 1)),
 
     case ChannelId of
         <<>> ->
@@ -809,7 +809,7 @@ admins(Req0, _State) ->
 update_admin_role(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
-    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 1)),
+    Role = elib_cnv:safe_to_integer(maps:get(<<"role">>, PostVals, 1)),
     case Role < 1 orelse Role > 3 of
         true ->
             elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>);
@@ -964,7 +964,7 @@ safe_to_integer(_) ->
 decode_positive_id(Value) when is_integer(Value), Value > 0 ->
     Value;
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    case catch elib_cnv:safe_to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->

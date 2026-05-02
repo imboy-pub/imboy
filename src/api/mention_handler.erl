@@ -352,7 +352,7 @@ decode_optional_gid(Value) ->
 decode_gid(Gid) when is_integer(Gid), Gid > 0 ->
     Gid;
 decode_gid(Gid) when is_binary(Gid) ->
-    case ec_cnv:to_integer(Gid) of
+    case elib_cnv:safe_to_integer(Gid) of
         Decoded when is_integer(Decoded), Decoded > 0 ->
             Decoded;
         _ ->
