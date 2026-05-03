@@ -10,6 +10,7 @@ ebin
 *bak*
 *local*.config
 *prod*.config
+*runtime*.config
 *local*.args
 *prod*.args
 .imboy.plt
