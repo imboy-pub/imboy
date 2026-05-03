@@ -307,7 +307,9 @@ qualify_table(Table) ->
 -spec insert_and_get_id(map()) -> {ok, integer()} | {error, any()}.
 insert_and_get_id(Data) ->
     Tb = user_repo:tablename(),
-    case elib_pg:insert(Tb, Data, <<"RETURNING id">>) of
+    Id = elib_tsid:generate(user),
+    Data2 = Data#{<<"id">> => Id},
+    case elib_pg:insert(Tb, Data2, <<"RETURNING id">>) of
         {ok, _, [{Id}]} when is_integer(Id) ->
             {ok, Id};
         {error, Reason} ->

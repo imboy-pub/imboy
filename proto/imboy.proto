@@ -117,6 +117,7 @@ enum S2CAction {
   E2EE_KEY_CHANGED_ACK = 10;
   INVALID_MESSAGE_TYPE = 11;
   POLICY_VIOLATION = 12;
+  LOGGED_ANOTHER_DEVICE = 13;
 }
 
 // ============================================================
@@ -268,6 +269,12 @@ message PayloadAppUpgrade {
 // Device kicked notification
 message PayloadDeviceKicked {
   string reason = 1;
+}
+
+// Logged in from another device notification
+message PayloadLoggedAnotherDevice {
+  string did = 1;     // Device ID that triggered the notification
+  string dname = 2;   // Device name
 }
 
 // Message deleted notification

@@ -133,7 +133,7 @@ is_origin_allowed(Origin, AllowedOrigins) ->
 is_localhost_origin(Origin) ->
     OriginStr = ec_cnv:to_list(Origin),
     % 匹配 http://localhost:端口 或 https://localhost:端口
-    case re:run(OriginStr, "^https?://localhost(:[0-9]+)?$", [{capture, none}]) of
+    case re:run(OriginStr, "^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$", [{capture, none}]) of
         match -> true;
         _ -> false
     end.

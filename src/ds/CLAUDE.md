@@ -360,6 +360,14 @@ src/ds/
 
 ## 变更记录 (Changelog)
 
+### 2026-05-03
+- 修复 `user_ds.erl` `insert_and_get_id/1` 注册流程 TSID 遗漏 bug
+  - **根因**：BIGSERIAL→TSID 迁移后，DB 序列默认值已移除，但 `insert_and_get_id/1` 未调用 `elib_tsid:generate(user)` 生成 `id` 字段
+  - **现象**：PostgreSQL 23502 `not_null_violation`（`null value in column "id" of relation "user" violates not-null constraint`）
+  - **影响范围**：`passport_logic.erl` 4 处调用（lines 50, 106, 376, 408）全部受影响，注册功能完全不可用
+  - **修复**：在 `insert_and_get_id/1` 中 INSERT 前添加 `Id = elib_tsid:generate(user)` + `Data2 = Data#{<<"id">> => Id}`，与 `user_repo:save/1` 保持一致
+  - **排查**：全库 INSERT 路径 TSID 审计完成，确认注册相关 `user` 表路径已全部修复；其余 repo 层 INSERT 均已有 TSID
+
 ### 2026-04-15
 - 完整同步 DS 层文档，实际 77 个文件统计（从 13 个）
 - 新增多个 G3 治理薄封装 DS 模块和功能服务模块

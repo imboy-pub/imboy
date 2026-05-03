@@ -25,7 +25,7 @@
 %% @return ok | {error, ErrorCode, ErrorMsg}
 -spec add_friend(integer(),
                  binary(),
-                 map(),
+                 binary(),
                  binary() | integer()) -> ok | {error, binary(), binary()}.
 add_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"to">>};
@@ -39,28 +39,30 @@ add_friend(CurrentUid, To, Payload, CreatedAt) ->
     do_add_friend(CurrentUid, To, Payload, CreatedAt2).
 
 %% @doc 兼容旧入口：保留旧 MsgId 参数但复用当前实现
--spec add_friend(binary(), integer(), binary(), map(), binary() | integer()) ->
+-spec add_friend(binary(), integer(), binary(), binary(), binary() | integer()) ->
     ok | {error, binary(), binary()}.
 add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
     add_friend(CurrentUid, To, Payload, CreatedAt).
 
 
 %% @doc 内部函数：实际执行添加好友操作
--spec do_add_friend(integer(), binary(), map(), binary()) -> ok.
+-spec do_add_friend(integer(), binary(), binary(), binary()) -> ok.
 do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = ec_cnv:to_integer(To),
     NowTs = elib_dt:now(),
-    From = CurrentUid,
-    MsgId = <<"af_", From/binary, "_", To/binary>>,
-    % ?DEBUG_LOG([is_binary(Payload), Payload]),
+    FromBin = ec_cnv:to_binary(CurrentUid),
+    MsgId = <<"af_", FromBin/binary, "_", To/binary>>,
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend">>,
-    Payload2 = maps:without([<<"action">>], Payload),
+    PayloadMap = jsone:decode(Payload, [{object_format, map}]),
+    Payload2 = maps:without([<<"action">>], PayloadMap),
     % 存储消息（v2.0: 使用 write_msg/8 API）
-    _ = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload2, MsgId, <<>>, Action, null),
-    % ?DEBUG_LOG(Msg),
+    WriteResult = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
+    ok = ?INFO_LOG({do_add_friend_write, CurrentUid, ToId, MsgId, WriteResult}),
+    Msg = message_ds:assemble_msg(<<"S2C">>, CurrentUid, To, Payload2, MsgId, <<>>, Action, null),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
+    Members = imboy_syn:list_by_uid(ToId),
+    ok = ?INFO_LOG({do_add_friend_send, CurrentUid, ToId, MsgId, length(Members), MsLi}),
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 

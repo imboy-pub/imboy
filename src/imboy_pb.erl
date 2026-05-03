@@ -53,7 +53,7 @@
 %% enumerated types
 -type 'MsgDirection'() :: 'MSG_DIRECTION_UNSPECIFIED' | 'C2C' | 'C2G' | 'C2S' | 'S2C' | 'WEBRTC_OFFER' | 'WEBRTC_ANSWER' | 'WEBRTC_CANDIDATE' | 'WEBRTC_BYE' | 'C2C_SERVER_ACK' | 'C2G_SERVER_ACK' | 'CLIENT_ACK' | 'CLIENT_ACK_CONFIRM'.
 -type 'ContentType'() :: 'CONTENT_TYPE_UNSPECIFIED' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'LOCATION' | 'CUSTOM' | 'E2EE'.
--type 'S2CAction'() :: 'S2C_ACTION_UNSPECIFIED' | 'PULL_OFFLINE_MSG' | 'PLEASE_REFRESH_TOKEN' | 'DEVICE_KICKED' | 'APP_UPGRADE' | 'C2C_DEL_EVERYONE' | 'C2G_DEL_FOR_ME' | 'C2G_DEL_EVERYONE' | 'STORE_SHARD' | 'SHARD_STORED' | 'E2EE_KEY_CHANGED_ACK' | 'INVALID_MESSAGE_TYPE' | 'POLICY_VIOLATION'.
+-type 'S2CAction'() :: 'S2C_ACTION_UNSPECIFIED' | 'PULL_OFFLINE_MSG' | 'PLEASE_REFRESH_TOKEN' | 'DEVICE_KICKED' | 'APP_UPGRADE' | 'C2C_DEL_EVERYONE' | 'C2G_DEL_FOR_ME' | 'C2G_DEL_EVERYONE' | 'STORE_SHARD' | 'SHARD_STORED' | 'E2EE_KEY_CHANGED_ACK' | 'INVALID_MESSAGE_TYPE' | 'POLICY_VIOLATION' | 'LOGGED_ANOTHER_DEVICE'.
 -export_type(['MsgDirection'/0, 'ContentType'/0, 'S2CAction'/0]).
 
 %% message types
@@ -175,6 +175,11 @@
       #{reason                  => unicode:chardata() % = 1, optional
        }.
 
+-type 'PayloadLoggedAnotherDevice'() ::
+      #{did                     => unicode:chardata(), % = 1, optional
+        dname                   => unicode:chardata() % = 2, optional
+       }.
+
 -type 'PayloadMsgDeleted'() ::
       #{old_msg_id              => unicode:chardata() % = 1, optional
        }.
@@ -232,9 +237,9 @@
       #{messages                => ['IMBoyMessage'()] % = 1, repeated
        }.
 
--export_type(['IMBoyMessage'/0, 'E2EEMeta'/0, 'E2EEDeviceKey'/0, 'PayloadText'/0, 'ReplyRef'/0, 'PayloadImage'/0, 'PayloadVideo'/0, 'PayloadAudio'/0, 'PayloadFile'/0, 'PayloadLocation'/0, 'PayloadRevoke'/0, 'PayloadEdit'/0, 'PayloadRead'/0, 'PayloadRefreshToken'/0, 'PayloadAppUpgrade'/0, 'PayloadDeviceKicked'/0, 'PayloadMsgDeleted'/0, 'PayloadSync'/0, 'SyncCursor'/0, 'PayloadSyncResult'/0, 'PayloadClientAck'/0, 'PayloadClientAckConfirm'/0, 'PayloadWebRTCOffer'/0, 'PayloadWebRTCAnswer'/0, 'PayloadWebRTCCandidate'/0, 'PayloadWebRTCBye'/0, 'IMBoyBatch'/0]).
--type '$msg_name'() :: 'IMBoyMessage' | 'E2EEMeta' | 'E2EEDeviceKey' | 'PayloadText' | 'ReplyRef' | 'PayloadImage' | 'PayloadVideo' | 'PayloadAudio' | 'PayloadFile' | 'PayloadLocation' | 'PayloadRevoke' | 'PayloadEdit' | 'PayloadRead' | 'PayloadRefreshToken' | 'PayloadAppUpgrade' | 'PayloadDeviceKicked' | 'PayloadMsgDeleted' | 'PayloadSync' | 'SyncCursor' | 'PayloadSyncResult' | 'PayloadClientAck' | 'PayloadClientAckConfirm' | 'PayloadWebRTCOffer' | 'PayloadWebRTCAnswer' | 'PayloadWebRTCCandidate' | 'PayloadWebRTCBye' | 'IMBoyBatch'.
--type '$msg'() :: 'IMBoyMessage'() | 'E2EEMeta'() | 'E2EEDeviceKey'() | 'PayloadText'() | 'ReplyRef'() | 'PayloadImage'() | 'PayloadVideo'() | 'PayloadAudio'() | 'PayloadFile'() | 'PayloadLocation'() | 'PayloadRevoke'() | 'PayloadEdit'() | 'PayloadRead'() | 'PayloadRefreshToken'() | 'PayloadAppUpgrade'() | 'PayloadDeviceKicked'() | 'PayloadMsgDeleted'() | 'PayloadSync'() | 'SyncCursor'() | 'PayloadSyncResult'() | 'PayloadClientAck'() | 'PayloadClientAckConfirm'() | 'PayloadWebRTCOffer'() | 'PayloadWebRTCAnswer'() | 'PayloadWebRTCCandidate'() | 'PayloadWebRTCBye'() | 'IMBoyBatch'().
+-export_type(['IMBoyMessage'/0, 'E2EEMeta'/0, 'E2EEDeviceKey'/0, 'PayloadText'/0, 'ReplyRef'/0, 'PayloadImage'/0, 'PayloadVideo'/0, 'PayloadAudio'/0, 'PayloadFile'/0, 'PayloadLocation'/0, 'PayloadRevoke'/0, 'PayloadEdit'/0, 'PayloadRead'/0, 'PayloadRefreshToken'/0, 'PayloadAppUpgrade'/0, 'PayloadDeviceKicked'/0, 'PayloadLoggedAnotherDevice'/0, 'PayloadMsgDeleted'/0, 'PayloadSync'/0, 'SyncCursor'/0, 'PayloadSyncResult'/0, 'PayloadClientAck'/0, 'PayloadClientAckConfirm'/0, 'PayloadWebRTCOffer'/0, 'PayloadWebRTCAnswer'/0, 'PayloadWebRTCCandidate'/0, 'PayloadWebRTCBye'/0, 'IMBoyBatch'/0]).
+-type '$msg_name'() :: 'IMBoyMessage' | 'E2EEMeta' | 'E2EEDeviceKey' | 'PayloadText' | 'ReplyRef' | 'PayloadImage' | 'PayloadVideo' | 'PayloadAudio' | 'PayloadFile' | 'PayloadLocation' | 'PayloadRevoke' | 'PayloadEdit' | 'PayloadRead' | 'PayloadRefreshToken' | 'PayloadAppUpgrade' | 'PayloadDeviceKicked' | 'PayloadLoggedAnotherDevice' | 'PayloadMsgDeleted' | 'PayloadSync' | 'SyncCursor' | 'PayloadSyncResult' | 'PayloadClientAck' | 'PayloadClientAckConfirm' | 'PayloadWebRTCOffer' | 'PayloadWebRTCAnswer' | 'PayloadWebRTCCandidate' | 'PayloadWebRTCBye' | 'IMBoyBatch'.
+-type '$msg'() :: 'IMBoyMessage'() | 'E2EEMeta'() | 'E2EEDeviceKey'() | 'PayloadText'() | 'ReplyRef'() | 'PayloadImage'() | 'PayloadVideo'() | 'PayloadAudio'() | 'PayloadFile'() | 'PayloadLocation'() | 'PayloadRevoke'() | 'PayloadEdit'() | 'PayloadRead'() | 'PayloadRefreshToken'() | 'PayloadAppUpgrade'() | 'PayloadDeviceKicked'() | 'PayloadLoggedAnotherDevice'() | 'PayloadMsgDeleted'() | 'PayloadSync'() | 'SyncCursor'() | 'PayloadSyncResult'() | 'PayloadClientAck'() | 'PayloadClientAckConfirm'() | 'PayloadWebRTCOffer'() | 'PayloadWebRTCAnswer'() | 'PayloadWebRTCCandidate'() | 'PayloadWebRTCBye'() | 'IMBoyBatch'().
 -export_type(['$msg_name'/0, '$msg'/0]).
 
 -if(?OTP_RELEASE >= 24).
@@ -270,6 +275,7 @@ encode_msg(Msg, MsgName, Opts) ->
         'PayloadRefreshToken' -> encode_msg_PayloadRefreshToken(id(Msg, TrUserData), TrUserData);
         'PayloadAppUpgrade' -> encode_msg_PayloadAppUpgrade(id(Msg, TrUserData), TrUserData);
         'PayloadDeviceKicked' -> encode_msg_PayloadDeviceKicked(id(Msg, TrUserData), TrUserData);
+        'PayloadLoggedAnotherDevice' -> encode_msg_PayloadLoggedAnotherDevice(id(Msg, TrUserData), TrUserData);
         'PayloadMsgDeleted' -> encode_msg_PayloadMsgDeleted(id(Msg, TrUserData), TrUserData);
         'PayloadSync' -> encode_msg_PayloadSync(id(Msg, TrUserData), TrUserData);
         'SyncCursor' -> encode_msg_SyncCursor(id(Msg, TrUserData), TrUserData);
@@ -1091,6 +1097,33 @@ encode_msg_PayloadDeviceKicked(#{} = M, Bin, TrUserData) ->
         _ -> Bin
     end.
 
+encode_msg_PayloadLoggedAnotherDevice(Msg, TrUserData) -> encode_msg_PayloadLoggedAnotherDevice(Msg, <<>>, TrUserData).
+
+
+encode_msg_PayloadLoggedAnotherDevice(#{} = M, Bin, TrUserData) ->
+    B1 = case M of
+             #{did := F1} ->
+                 begin
+                     TrF1 = id(F1, TrUserData),
+                     case is_empty_string(TrF1) of
+                         true -> Bin;
+                         false -> e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
+                     end
+                 end;
+             _ -> Bin
+         end,
+    case M of
+        #{dname := F2} ->
+            begin
+                TrF2 = id(F2, TrUserData),
+                case is_empty_string(TrF2) of
+                    true -> B1;
+                    false -> e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
+                end
+            end;
+        _ -> B1
+    end.
+
 encode_msg_PayloadMsgDeleted(Msg, TrUserData) -> encode_msg_PayloadMsgDeleted(Msg, <<>>, TrUserData).
 
 
@@ -1659,6 +1692,7 @@ decode_msg_2_doit('PayloadRead', Bin, TrUserData) -> id(decode_msg_PayloadRead(B
 decode_msg_2_doit('PayloadRefreshToken', Bin, TrUserData) -> id(decode_msg_PayloadRefreshToken(Bin, TrUserData), TrUserData);
 decode_msg_2_doit('PayloadAppUpgrade', Bin, TrUserData) -> id(decode_msg_PayloadAppUpgrade(Bin, TrUserData), TrUserData);
 decode_msg_2_doit('PayloadDeviceKicked', Bin, TrUserData) -> id(decode_msg_PayloadDeviceKicked(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('PayloadLoggedAnotherDevice', Bin, TrUserData) -> id(decode_msg_PayloadLoggedAnotherDevice(Bin, TrUserData), TrUserData);
 decode_msg_2_doit('PayloadMsgDeleted', Bin, TrUserData) -> id(decode_msg_PayloadMsgDeleted(Bin, TrUserData), TrUserData);
 decode_msg_2_doit('PayloadSync', Bin, TrUserData) -> id(decode_msg_PayloadSync(Bin, TrUserData), TrUserData);
 decode_msg_2_doit('SyncCursor', Bin, TrUserData) -> id(decode_msg_SyncCursor(Bin, TrUserData), TrUserData);
@@ -2944,6 +2978,57 @@ skip_32_PayloadDeviceKicked(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, TrUserData) 
 
 skip_64_PayloadDeviceKicked(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, TrUserData) -> dfp_read_field_def_PayloadDeviceKicked(Rest, Z1, Z2, F, F@_1, TrUserData).
 
+decode_msg_PayloadLoggedAnotherDevice(Bin, TrUserData) -> dfp_read_field_def_PayloadLoggedAnotherDevice(Bin, 0, 0, 0, id(<<>>, TrUserData), id(<<>>, TrUserData), TrUserData).
+
+dfp_read_field_def_PayloadLoggedAnotherDevice(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> d_field_PayloadLoggedAnotherDevice_did(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+dfp_read_field_def_PayloadLoggedAnotherDevice(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> d_field_PayloadLoggedAnotherDevice_dname(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+dfp_read_field_def_PayloadLoggedAnotherDevice(<<>>, 0, 0, _, F@_1, F@_2, _) -> #{did => F@_1, dname => F@_2};
+dfp_read_field_def_PayloadLoggedAnotherDevice(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) -> dg_read_field_def_PayloadLoggedAnotherDevice(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
+
+dg_read_field_def_PayloadLoggedAnotherDevice(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 32 - 7 -> dg_read_field_def_PayloadLoggedAnotherDevice(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+dg_read_field_def_PayloadLoggedAnotherDevice(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData) ->
+    Key = X bsl N + Acc,
+    case Key of
+        10 -> d_field_PayloadLoggedAnotherDevice_did(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        18 -> d_field_PayloadLoggedAnotherDevice_dname(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        _ ->
+            case Key band 7 of
+                0 -> skip_varint_PayloadLoggedAnotherDevice(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                1 -> skip_64_PayloadLoggedAnotherDevice(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                2 -> skip_length_delimited_PayloadLoggedAnotherDevice(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                3 -> skip_group_PayloadLoggedAnotherDevice(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                5 -> skip_32_PayloadLoggedAnotherDevice(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData)
+            end
+    end;
+dg_read_field_def_PayloadLoggedAnotherDevice(<<>>, 0, 0, _, F@_1, F@_2, _) -> #{did => F@_1, dname => F@_2}.
+
+d_field_PayloadLoggedAnotherDevice_did(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> d_field_PayloadLoggedAnotherDevice_did(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+d_field_PayloadLoggedAnotherDevice_did(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_PayloadLoggedAnotherDevice(RestF, 0, 0, F, NewFValue, F@_2, TrUserData).
+
+d_field_PayloadLoggedAnotherDevice_dname(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> d_field_PayloadLoggedAnotherDevice_dname(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+d_field_PayloadLoggedAnotherDevice_dname(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_PayloadLoggedAnotherDevice(RestF, 0, 0, F, F@_1, NewFValue, TrUserData).
+
+skip_varint_PayloadLoggedAnotherDevice(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> skip_varint_PayloadLoggedAnotherDevice(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+skip_varint_PayloadLoggedAnotherDevice(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> dfp_read_field_def_PayloadLoggedAnotherDevice(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+
+skip_length_delimited_PayloadLoggedAnotherDevice(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> skip_length_delimited_PayloadLoggedAnotherDevice(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+skip_length_delimited_PayloadLoggedAnotherDevice(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) ->
+    Length = X bsl N + Acc,
+    <<_:Length/binary, Rest2/binary>> = Rest,
+    dfp_read_field_def_PayloadLoggedAnotherDevice(Rest2, 0, 0, F, F@_1, F@_2, TrUserData).
+
+skip_group_PayloadLoggedAnotherDevice(Bin, _, Z2, FNum, F@_1, F@_2, TrUserData) ->
+    {_, Rest} = read_group(Bin, FNum),
+    dfp_read_field_def_PayloadLoggedAnotherDevice(Rest, 0, Z2, FNum, F@_1, F@_2, TrUserData).
+
+skip_32_PayloadLoggedAnotherDevice(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> dfp_read_field_def_PayloadLoggedAnotherDevice(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+
+skip_64_PayloadLoggedAnotherDevice(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> dfp_read_field_def_PayloadLoggedAnotherDevice(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+
 decode_msg_PayloadMsgDeleted(Bin, TrUserData) -> dfp_read_field_def_PayloadMsgDeleted(Bin, 0, 0, 0, id(<<>>, TrUserData), TrUserData).
 
 dfp_read_field_def_PayloadMsgDeleted(<<10, Rest/binary>>, Z1, Z2, F, F@_1, TrUserData) -> d_field_PayloadMsgDeleted_old_msg_id(Rest, Z1, Z2, F, F@_1, TrUserData);
@@ -3649,6 +3734,7 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         'PayloadRefreshToken' -> merge_msg_PayloadRefreshToken(Prev, New, TrUserData);
         'PayloadAppUpgrade' -> merge_msg_PayloadAppUpgrade(Prev, New, TrUserData);
         'PayloadDeviceKicked' -> merge_msg_PayloadDeviceKicked(Prev, New, TrUserData);
+        'PayloadLoggedAnotherDevice' -> merge_msg_PayloadLoggedAnotherDevice(Prev, New, TrUserData);
         'PayloadMsgDeleted' -> merge_msg_PayloadMsgDeleted(Prev, New, TrUserData);
         'PayloadSync' -> merge_msg_PayloadSync(Prev, New, TrUserData);
         'SyncCursor' -> merge_msg_SyncCursor(Prev, New, TrUserData);
@@ -4082,6 +4168,20 @@ merge_msg_PayloadDeviceKicked(PMsg, NMsg, _) ->
         _ -> S1
     end.
 
+-compile({nowarn_unused_function,merge_msg_PayloadLoggedAnotherDevice/3}).
+merge_msg_PayloadLoggedAnotherDevice(PMsg, NMsg, _) ->
+    S1 = #{},
+    S2 = case {PMsg, NMsg} of
+             {_, #{did := NFdid}} -> S1#{did => NFdid};
+             {#{did := PFdid}, _} -> S1#{did => PFdid};
+             _ -> S1
+         end,
+    case {PMsg, NMsg} of
+        {_, #{dname := NFdname}} -> S2#{dname => NFdname};
+        {#{dname := PFdname}, _} -> S2#{dname => PFdname};
+        _ -> S2
+    end.
+
 -compile({nowarn_unused_function,merge_msg_PayloadMsgDeleted/3}).
 merge_msg_PayloadMsgDeleted(PMsg, NMsg, _) ->
     S1 = #{},
@@ -4271,6 +4371,7 @@ verify_msg(Msg, MsgName, Opts) ->
         'PayloadRefreshToken' -> v_msg_PayloadRefreshToken(Msg, [MsgName], TrUserData);
         'PayloadAppUpgrade' -> v_msg_PayloadAppUpgrade(Msg, [MsgName], TrUserData);
         'PayloadDeviceKicked' -> v_msg_PayloadDeviceKicked(Msg, [MsgName], TrUserData);
+        'PayloadLoggedAnotherDevice' -> v_msg_PayloadLoggedAnotherDevice(Msg, [MsgName], TrUserData);
         'PayloadMsgDeleted' -> v_msg_PayloadMsgDeleted(Msg, [MsgName], TrUserData);
         'PayloadSync' -> v_msg_PayloadSync(Msg, [MsgName], TrUserData);
         'SyncCursor' -> v_msg_SyncCursor(Msg, [MsgName], TrUserData);
@@ -4832,6 +4933,26 @@ v_msg_PayloadDeviceKicked(#{} = M, Path, TrUserData) ->
 v_msg_PayloadDeviceKicked(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'PayloadDeviceKicked'}, M, Path);
 v_msg_PayloadDeviceKicked(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'PayloadDeviceKicked'}, X, Path).
 
+-compile({nowarn_unused_function,v_msg_PayloadLoggedAnotherDevice/3}).
+-dialyzer({nowarn_function,v_msg_PayloadLoggedAnotherDevice/3}).
+v_msg_PayloadLoggedAnotherDevice(#{} = M, Path, TrUserData) ->
+    case M of
+        #{did := F1} -> v_type_string(F1, [did | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{dname := F2} -> v_type_string(F2, [dname | Path], TrUserData);
+        _ -> ok
+    end,
+    lists:foreach(fun (dname) -> ok;
+                      (did) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
+    ok;
+v_msg_PayloadLoggedAnotherDevice(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'PayloadLoggedAnotherDevice'}, M, Path);
+v_msg_PayloadLoggedAnotherDevice(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'PayloadLoggedAnotherDevice'}, X, Path).
+
 -compile({nowarn_unused_function,v_msg_PayloadMsgDeleted/3}).
 -dialyzer({nowarn_function,v_msg_PayloadMsgDeleted/3}).
 v_msg_PayloadMsgDeleted(#{} = M, Path, TrUserData) ->
@@ -5231,7 +5352,8 @@ get_msg_defs() ->
        {'SHARD_STORED', 9},
        {'E2EE_KEY_CHANGED_ACK', 10},
        {'INVALID_MESSAGE_TYPE', 11},
-       {'POLICY_VIOLATION', 12}]},
+       {'POLICY_VIOLATION', 12},
+       {'LOGGED_ANOTHER_DEVICE', 13}]},
      {{msg, 'IMBoyMessage'},
       [#{name => id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
        #{name => type, fnum => 2, rnum => 3, type => {enum, 'MsgDirection'}, occurrence => optional, opts => []},
@@ -5312,6 +5434,7 @@ get_msg_defs() ->
        #{name => file_size, fnum => 6, rnum => 7, type => int64, occurrence => optional, opts => []},
        #{name => file_hash, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []}]},
      {{msg, 'PayloadDeviceKicked'}, [#{name => reason, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}]},
+     {{msg, 'PayloadLoggedAnotherDevice'}, [#{name => did, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => dname, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []}]},
      {{msg, 'PayloadMsgDeleted'}, [#{name => old_msg_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}]},
      {{msg, 'PayloadSync'}, [#{name => cursors, fnum => 1, rnum => 2, type => {msg, 'SyncCursor'}, occurrence => repeated, opts => []}, #{name => limit, fnum => 2, rnum => 3, type => int32, occurrence => optional, opts => []}]},
      {{msg, 'SyncCursor'}, [#{name => conv_key, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => last_conv_seq, fnum => 2, rnum => 3, type => int64, occurrence => optional, opts => []}]},
@@ -5352,6 +5475,7 @@ get_msg_names() ->
      'PayloadRefreshToken',
      'PayloadAppUpgrade',
      'PayloadDeviceKicked',
+     'PayloadLoggedAnotherDevice',
      'PayloadMsgDeleted',
      'PayloadSync',
      'SyncCursor',
@@ -5385,6 +5509,7 @@ get_msg_or_group_names() ->
      'PayloadRefreshToken',
      'PayloadAppUpgrade',
      'PayloadDeviceKicked',
+     'PayloadLoggedAnotherDevice',
      'PayloadMsgDeleted',
      'PayloadSync',
      'SyncCursor',
@@ -5495,6 +5620,7 @@ find_msg_def('PayloadAppUpgrade') ->
      #{name => file_size, fnum => 6, rnum => 7, type => int64, occurrence => optional, opts => []},
      #{name => file_hash, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []}];
 find_msg_def('PayloadDeviceKicked') -> [#{name => reason, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}];
+find_msg_def('PayloadLoggedAnotherDevice') -> [#{name => did, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => dname, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []}];
 find_msg_def('PayloadMsgDeleted') -> [#{name => old_msg_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}];
 find_msg_def('PayloadSync') -> [#{name => cursors, fnum => 1, rnum => 2, type => {msg, 'SyncCursor'}, occurrence => repeated, opts => []}, #{name => limit, fnum => 2, rnum => 3, type => int32, occurrence => optional, opts => []}];
 find_msg_def('SyncCursor') -> [#{name => conv_key, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => last_conv_seq, fnum => 2, rnum => 3, type => int64, occurrence => optional, opts => []}];
@@ -5547,7 +5673,8 @@ find_enum_def('S2CAction') ->
      {'SHARD_STORED', 9},
      {'E2EE_KEY_CHANGED_ACK', 10},
      {'INVALID_MESSAGE_TYPE', 11},
-     {'POLICY_VIOLATION', 12}];
+     {'POLICY_VIOLATION', 12},
+     {'LOGGED_ANOTHER_DEVICE', 13}];
 find_enum_def(_) -> error.
 
 
@@ -5623,7 +5750,8 @@ enum_symbol_by_value_S2CAction(8) -> 'STORE_SHARD';
 enum_symbol_by_value_S2CAction(9) -> 'SHARD_STORED';
 enum_symbol_by_value_S2CAction(10) -> 'E2EE_KEY_CHANGED_ACK';
 enum_symbol_by_value_S2CAction(11) -> 'INVALID_MESSAGE_TYPE';
-enum_symbol_by_value_S2CAction(12) -> 'POLICY_VIOLATION'.
+enum_symbol_by_value_S2CAction(12) -> 'POLICY_VIOLATION';
+enum_symbol_by_value_S2CAction(13) -> 'LOGGED_ANOTHER_DEVICE'.
 
 
 enum_value_by_symbol_S2CAction('S2C_ACTION_UNSPECIFIED') -> 0;
@@ -5638,7 +5766,8 @@ enum_value_by_symbol_S2CAction('STORE_SHARD') -> 8;
 enum_value_by_symbol_S2CAction('SHARD_STORED') -> 9;
 enum_value_by_symbol_S2CAction('E2EE_KEY_CHANGED_ACK') -> 10;
 enum_value_by_symbol_S2CAction('INVALID_MESSAGE_TYPE') -> 11;
-enum_value_by_symbol_S2CAction('POLICY_VIOLATION') -> 12.
+enum_value_by_symbol_S2CAction('POLICY_VIOLATION') -> 12;
+enum_value_by_symbol_S2CAction('LOGGED_ANOTHER_DEVICE') -> 13.
 
 
 get_service_names() -> [].
@@ -5700,6 +5829,7 @@ fqbin_to_msg_name(<<"imboy.PayloadRead">>) -> 'PayloadRead';
 fqbin_to_msg_name(<<"imboy.PayloadRefreshToken">>) -> 'PayloadRefreshToken';
 fqbin_to_msg_name(<<"imboy.PayloadAppUpgrade">>) -> 'PayloadAppUpgrade';
 fqbin_to_msg_name(<<"imboy.PayloadDeviceKicked">>) -> 'PayloadDeviceKicked';
+fqbin_to_msg_name(<<"imboy.PayloadLoggedAnotherDevice">>) -> 'PayloadLoggedAnotherDevice';
 fqbin_to_msg_name(<<"imboy.PayloadMsgDeleted">>) -> 'PayloadMsgDeleted';
 fqbin_to_msg_name(<<"imboy.PayloadSync">>) -> 'PayloadSync';
 fqbin_to_msg_name(<<"imboy.SyncCursor">>) -> 'SyncCursor';
@@ -5730,6 +5860,7 @@ msg_name_to_fqbin('PayloadRead') -> <<"imboy.PayloadRead">>;
 msg_name_to_fqbin('PayloadRefreshToken') -> <<"imboy.PayloadRefreshToken">>;
 msg_name_to_fqbin('PayloadAppUpgrade') -> <<"imboy.PayloadAppUpgrade">>;
 msg_name_to_fqbin('PayloadDeviceKicked') -> <<"imboy.PayloadDeviceKicked">>;
+msg_name_to_fqbin('PayloadLoggedAnotherDevice') -> <<"imboy.PayloadLoggedAnotherDevice">>;
 msg_name_to_fqbin('PayloadMsgDeleted') -> <<"imboy.PayloadMsgDeleted">>;
 msg_name_to_fqbin('PayloadSync') -> <<"imboy.PayloadSync">>;
 msg_name_to_fqbin('SyncCursor') -> <<"imboy.SyncCursor">>;
@@ -5797,6 +5928,7 @@ get_msg_containment("imboy") ->
      'PayloadFile',
      'PayloadImage',
      'PayloadLocation',
+     'PayloadLoggedAnotherDevice',
      'PayloadMsgDeleted',
      'PayloadRead',
      'PayloadRefreshToken',
@@ -5844,6 +5976,7 @@ get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadDeviceKicked">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadWebRTCCandidate">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadWebRTCBye">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadRevoke">>) -> "imboy";
+get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadLoggedAnotherDevice">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadImage">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadFile">>) -> "imboy";
 get_proto_by_msg_name_as_fqbin(<<"imboy.PayloadAppUpgrade">>) -> "imboy";

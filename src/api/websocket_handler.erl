@@ -765,24 +765,23 @@ encode_delivery_frame_protobuf(Msg) ->
         {text, Msg}
     end.
 
--spec encode_delivery_frame_v2(binary()) -> {text, binary()} | {binary, binary()}.
+-spec encode_delivery_frame_v2(binary()) -> {binary, binary()}.
 encode_delivery_frame_v2(Msg) ->
     try
         Map = jsone:decode(Msg, [{object_format, map}]),
+        FrameType = msg_to_v2_frame_type(Map),
         case imboy_codec:encode(protobuf, Map) of
             <<>> ->
-                ok = ?WARN_LOG({encode_delivery_frame_v2_empty,
+                ok = ?WARN_LOG({encode_delivery_frame_v2_pb_empty,
                                 maps:get(<<"id">>, Map, unknown)}),
-                {text, Msg};
+                {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Msg)};
             Encoded ->
-                FrameType = msg_to_v2_frame_type(Map),
-                Frame = imboy_codec:wrap_v2_frame(FrameType, 0, Encoded),
-                {binary, Frame}
+                {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Encoded)}
         end
     catch Class:Reason ->
         ok = ?WARN_LOG({encode_delivery_frame_v2_fallback,
                         Class, Reason, byte_size(Msg)}),
-        {text, Msg}
+        {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
     end.
 
 
