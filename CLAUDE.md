@@ -77,6 +77,30 @@ When an AI agent (Claude Code / Cursor / Copilot) is asked to write, modify, or 
 
 Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18** 的高性能即时通讯（IM）系统。
 
+## 构建系统规则 / Build System Rules
+
+### 禁止修改 erlang.mk / Do NOT modify erlang.mk
+
+`erlang.mk` 是第三方构建工具（vendored），**禁止修改**。所有自定义构建逻辑必须在项目 `Makefile` 中通过覆盖变量、添加 target 或 `$(shell ...)` 钩子实现。
+
+`erlang.mk` is a third-party build tool (vendored). **Do NOT modify it.** All custom build logic must be implemented in the project `Makefile` via variable overrides, additional targets, or `$(shell ...)` hooks.
+
+### IMBOYENV=local 配置加载 / Config loading for IMBOYENV=local
+
+`IMBOYENV=local make run` 自动加载 `config/sys.local.config`。机制：
+
+1. Makefile 在 parse 阶段检测 `IMBOYENV`，若为 `local` 且 `sys.local.config` 存在，将其复制为 `config/sys.runtime.config`
+2. `relx.config` 的 `{sys_config, "config/sys.runtime.config"}` 指向该生成文件
+3. 非 `local` 环境默认使用 `config/sys.config` 作为基础
+4. 环境变量 `IMBOY_*` 仍由 `imboy_env.erl` 在运行时覆盖（优先级最高）
+
+`IMBOYENV=local make run` automatically loads `config/sys.local.config`. The mechanism:
+
+1. Makefile detects `IMBOYENV` at parse time; if `local` and `sys.local.config` exists, copies it to `config/sys.runtime.config`
+2. `relx.config` points to `config/sys.runtime.config` via `{sys_config, "config/sys.runtime.config"}`
+3. Non-local environments default to `config/sys.config`
+4. `IMBOY_*` env vars still override at runtime via `imboy_env.erl` (highest priority)
+
 ## Admin 前端分页规则
 
 适用范围：`imboy-admin-frontend` 所有使用分页的管理列表页面（如用户、群组、频道、反馈、消息、注销申请、审计日志等）。
@@ -351,6 +375,58 @@ make dialyze
 
 # 代码格式化
 ./efmt -w src/api/user_handler.erl
+```
+
+### CLI 管理工具 (imboy_ctl)
+
+```bash
+# 显示帮助
+make ctl
+# 或直接
+escript scripts/imboy_ctl help
+
+# 用户管理
+make ctl ARGS="user token 1000000051"
+make ctl ARGS="user detail 1000000051"
+make ctl ARGS="user create 1000000099 -a test@example.com -n TestUser -p pass123"
+make ctl ARGS="user list -P 2 -S 10"
+
+# 消息诊断
+make ctl ARGS="msg send 1000000051 1000000056 -T hello"
+make ctl ARGS="msg status msg_id_here"
+make ctl ARGS="msg archive -k c2c:1000000051:1000000056 -s 0 -l 20"
+
+# 节点运维
+make ctl ARGS="node status"
+make ctl ARGS="node routes"
+make ctl ARGS="node connections"
+make ctl ARGS="node pools"
+
+# 数据库运维
+make ctl ARGS="db ping"
+make ctl ARGS="db migrate"
+make ctl ARGS="db pool"
+
+# 诊断工具
+make ctl ARGS="diagnose config"
+make ctl ARGS="diagnose boundaries"
+
+# 冒烟测试
+make ctl ARGS="smoke c2c"
+make ctl ARGS="smoke ws"
+make ctl ARGS="smoke all"
+
+# 插件管理
+make ctl ARGS="plugin list"
+make ctl ARGS="plugin load channel"
+make ctl ARGS="plugin unload channel"
+```
+
+环境变量配置：
+```bash
+IMBOY_CTL_NODE=imboy@127.0.0.1  # 目标节点（默认）
+IMBOY_CTL_COOKIE=imboy           # Erlang cookie
+IMBOY_CTL_TIMEOUT=15000          # RPC 超时（毫秒）
 ```
 
 ### 远程调试
@@ -818,6 +894,11 @@ config_ds:local_reload()
 
 # 查看节点状态
 observer_cli:start()
+
+# CLI 管理工具
+make ctl ARGS="node status"
+make ctl ARGS="smoke all"
+make ctl ARGS="db ping"
 ```
 
 ### 关键文件位置
@@ -830,6 +911,7 @@ observer_cli:start()
 | **路由定义** | `src/imboy_router.erl` | HTTP 路由 |
 | **数据库迁移** | `priv/migrations/*.sql` | SQL 迁移 |
 | **测试文件** | `test/**/*.erl` | EUnit 测试 |
+| **CLI 工具** | `scripts/imboy_ctl` | 统一 CLI 管理工具 (escript) |
 
 ### 核心规范速查
 

@@ -4,7 +4,7 @@ c2c_ws_smoke.py — Tier-0 WebSocket round-trip 冒烟
 
 流程：
   1. Bob (env BOB_UID / BOB_TOKEN) 连 ws://127.0.0.1:9800/ws 订阅
-  2. 启动后作为子进程调用 c2c_smoke.escript，从 Alice (BOB 外的 FROM uid) 向 Bob 发 1 条 C2C
+  2. 启动后作为子进程调用 imboy_ctl msg send，从 Alice (BOB 外的 FROM uid) 向 Bob 发 1 条 C2C
   3. 在 TIMEOUT 秒内等 Bob WS 收到含 MSG_ID 的文本帧
   4. 退出码：
      0 PASS；非 0 表示 FAIL（详见 stderr）
@@ -13,7 +13,7 @@ c2c_ws_smoke.py — Tier-0 WebSocket round-trip 冒烟
   BOB_TOKEN      Bob 的 JWT
   BOB_UID        Bob 的 uid（目标）
   FROM_UID       Alice 的 uid（发送方）
-  ESCRIPT_PATH   c2c_smoke.escript 绝对路径
+  ESCRIPT_PATH   imboy_ctl 绝对路径
 
 可选环境变量：
   WS_URL         默认 ws://127.0.0.1:9800/ws
@@ -63,8 +63,8 @@ def headers_for(token: str, did: str):
 
 
 def send_via_escript(from_uid: str, to_uid: str) -> Optional[str]:
-    """Spawn c2c_smoke.escript to send one C2C. Return MSG_ID or None."""
-    cmd = [ESCRIPT_PATH, from_uid, to_uid]
+    """Spawn imboy_ctl msg send to send one C2C. Return MSG_ID or None."""
+    cmd = [ESCRIPT_PATH, "msg", "send", from_uid, to_uid]
     try:
         res = subprocess.run(
             cmd,
@@ -73,7 +73,7 @@ def send_via_escript(from_uid: str, to_uid: str) -> Optional[str]:
             timeout=10,
         )
     except subprocess.TimeoutExpired:
-        print("ERROR: c2c_smoke.escript timed out", file=sys.stderr)
+        print("ERROR: imboy_ctl msg send timed out", file=sys.stderr)
         return None
     if res.returncode != 0:
         print(f"ERROR: escript exit={res.returncode} stderr={res.stderr.strip()}",

@@ -4,12 +4,26 @@ PROJECT_VERSION = 1.0.0-rc.1
 export PROJECT_VERSION
 
 # 单一 release 配置（5 → 1）：
-#   * 环境差异（local / dev / pro）走运行时 IMBOYENV 与 IMBOY_* 覆盖，
-#     不再拼成 relx<IMBOYENV>.config。
+#   * relx.config 始终指向 config/sys.runtime.config（由下方逻辑生成）。
+#   * IMBOYENV=local 时，自动将 sys.local.config 覆盖到 sys.runtime.config；
+#     否则使用 sys.config 作为基础。
+#   * 环境变量 IMBOY_* 仍由 imboy_env.erl 在运行时覆盖（优先级更高）。
 #   * 出 tarball：make rel RELX_DEV_MODE=false RELX_INCLUDE_ERTS=true
-#   * 旧用法 `make rel IMBOYENV=pro` 已等价于 `make rel`，保留环境变量
-#     仅为 runtime 行为开关（参见 src/lib/imboy_env.erl）。
 RELX_CONFIG = $(CURDIR)/relx.config
+
+# --- 运行时配置生成（在 erlang.mk include 之前执行） ---
+# IMBOYENV=local 且 sys.local.config 存在时，用其覆盖 sys.runtime.config；
+# 否则用 sys.config 作为基础。relx 构建时读取 sys.runtime.config。
+ifeq ($(IMBOYENV),local)
+  ifneq ($(wildcard config/sys.local.config),)
+    _SYS_RUNTIME_SRC := config/sys.local.config
+  else
+    _SYS_RUNTIME_SRC := config/sys.config
+  endif
+else
+  _SYS_RUNTIME_SRC := config/sys.config
+endif
+$(shell mkdir -p config && cp $(_SYS_RUNTIME_SRC) config/sys.runtime.config)
 
 # APPS_DIR ?= $(CURDIR)/app
 # DEPS_DIR  = plugin/*/
@@ -255,7 +269,7 @@ feature-smoke:
 SMOKE_FROM ?= 1000000051
 SMOKE_TO   ?= 1000000056
 
-.PHONY: smoke smoke-c2c smoke-ws
+.PHONY: smoke smoke-c2c smoke-ws smoke-ctl
 smoke-c2c:
 	@./scripts/smoke/c2c_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
 
@@ -266,5 +280,21 @@ smoke-c2c:
 smoke-ws:
 	@./scripts/smoke/c2c_ws_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
 
-smoke: smoke-c2c smoke-ws
+smoke-ctl:
+	@./scripts/smoke/ctl_smoke.sh
+
+smoke: smoke-c2c smoke-ws smoke-ctl
 	@echo "=== all Tier-0 smoke PASS ==="
+
+# -----------------------------------------------------------------------------
+# imboy_ctl — 统一 CLI 管理工具
+# 用法：
+#   make ctl                          # 显示帮助
+#   make ctl ARGS="node status"       # 节点状态
+#   make ctl ARGS="user token 51"     # 生成 token
+#   make ctl ARGS="smoke all"         # 全部冒烟
+# 前置：imboy@127.0.0.1 节点已启动。
+# -----------------------------------------------------------------------------
+.PHONY: ctl
+ctl:
+	@escript scripts/imboy_ctl $(ARGS)

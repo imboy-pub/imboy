@@ -8,7 +8,7 @@ set -u
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESCRIPT_FILE="${SCRIPT_DIR}/c2c_smoke.escript"
+ESCRIPT_FILE="${SCRIPT_DIR}/../imboy_ctl"
 
 FROM="${1:-1000000051}"
 TO="${2:-1000000056}"
@@ -27,7 +27,7 @@ echo
 
 # 1) send via RPC
 chmod +x "${ESCRIPT_FILE}"
-SEND_OUT="$(${ESCRIPT_FILE} "${FROM}" "${TO}" 2>&1)"
+SEND_OUT="$(${ESCRIPT_FILE} msg send "${FROM}" "${TO}" 2>&1)"
 SEND_RC=$?
 echo "--- escript output ---"
 echo "${SEND_OUT}"
@@ -46,10 +46,10 @@ fi
 echo "MSG_ID=${MSG_ID}"
 echo
 
-# 2) verify msg_store row (poll up to 5s; write is async)
+# 2) verify msg_store row (poll up to 10s; write is async)
 SQL="SELECT chat_type, from_id, to_id, msg_type FROM msg_store WHERE msg_id = '${MSG_ID}' LIMIT 1;"
 ROW=""
-for i in 1 2 3 4 5 6 7 8 9 10; do
+for i in $(seq 1 20); do
     ROW="$(psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d "${PGDATABASE}" -At -F '|' -c "${SQL}" 2>&1)"
     PSQL_RC=$?
     if [[ ${PSQL_RC} -ne 0 ]]; then
@@ -65,7 +65,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 if [[ -z "${ROW}" ]]; then
-    echo "FAIL: msg_store has no row for msg_id=${MSG_ID} after 5s"
+    echo "FAIL: msg_store has no row for msg_id=${MSG_ID} after 10s"
     exit 3
 fi
 

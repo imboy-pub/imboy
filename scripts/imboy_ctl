@@ -1,0 +1,622 @@
+#!/usr/bin/env escript
+%%% -*- erlang -*-
+%%%
+%%% imboy_ctl — 统一 CLI 管理工具 / Unified CLI management tool
+%%%
+%%% 用法 / Usage:
+%%%   imboy_ctl <command> [subcommand] [options]
+%%%   imboy_ctl help
+%%%
+%%% 前置：imboy@127.0.0.1 节点已启动（或通过 --node 指定），cookie=imboy。
+
+-define(DEFAULT_NODE, 'imboy@127.0.0.1').
+-define(DEFAULT_COOKIE, imboy).
+-define(RPC_TIMEOUT, 15000).
+
+%% ---------------------------------------------------------------------------
+%% CLI 定义 (argparse 不支持 fun handler，用 CmdPath 手动派发)
+%% ---------------------------------------------------------------------------
+
+cli_spec() ->
+    #{
+        commands => #{
+            "user" => #{
+                help => "用户管理 / User management",
+                commands => #{
+                    "token" => #{
+                        help => "生成 JWT token",
+                        arguments => [uid_arg()]
+                    },
+                    "create" => #{
+                        help => "创建用户",
+                        arguments => [
+                            uid_arg(),
+                            #{name => account, long => "-account", short => $a,
+                              type => binary, help => "登录账号"},
+                            #{name => nickname, long => "-nickname", short => $n,
+                              type => binary, help => "昵称"},
+                            #{name => password, long => "-password", short => $p,
+                              type => binary, help => "密码"}
+                        ]
+                    },
+                    "detail" => #{
+                        help => "查看用户详情",
+                        arguments => [uid_arg()]
+                    },
+                    "list" => #{
+                        help => "列出用户",
+                        arguments => [
+                            #{name => page, long => "-page", short => $P,
+                              type => {integer, [{min, 1}]}, default => 1, help => "页码"},
+                            #{name => size, long => "-size", short => $S,
+                              type => {integer, [{min, 1}]}, default => 20, help => "每页数量"}
+                        ]
+                    }
+                }
+            },
+            "msg" => #{
+                help => "消息诊断 / Message diagnostics",
+                commands => #{
+                    "send" => #{
+                        help => "发送测试消息",
+                        arguments => [
+                            #{name => from, type => integer, help => "发送者 UID"},
+                            #{name => 'to', type => integer, help => "接收者 UID"},
+                            #{name => text, long => "-text", short => $T,
+                              type => binary,
+                              default => <<"hello from imboy_ctl">>,
+                              help => "消息文本"}
+                        ]
+                    },
+                    "status" => #{
+                        help => "查看消息状态",
+                        arguments => [
+                            #{name => msg_id, type => binary, help => "消息 ID"}
+                        ]
+                    },
+                    "archive" => #{
+                        help => "查看归档消息",
+                        arguments => [
+                            #{name => conv_key, long => "-conv-key", short => $k,
+                              type => binary, required => true,
+                              help => "会话键 (e.g. c2c:51:56)"},
+                            #{name => last_seq, long => "-last-seq", short => $s,
+                              type => integer, default => 0, help => "上次序列号"},
+                            #{name => limit, long => "-limit", short => $l,
+                              type => {integer, [{min, 1}]}, default => 50, help => "拉取数量"}
+                        ]
+                    }
+                }
+            },
+            "node" => #{
+                help => "节点运维 / Node operations",
+                commands => #{
+                    "status" => #{help => "节点健康状态"},
+                    "routes" => #{help => "列出 Cowboy 路由"},
+                    "connections" => #{help => "在线连接数"},
+                    "pools" => #{help => "连接池状态"}
+                }
+            },
+            "db" => #{
+                help => "数据库运维 / Database operations",
+                commands => #{
+                    "migrate" => #{help => "执行数据库迁移"},
+                    "ping" => #{help => "测试数据库连接"},
+                    "pool" => #{help => "连接池状态"}
+                }
+            },
+            "diagnose" => #{
+                help => "诊断工具 / Diagnostic tools",
+                commands => #{
+                    "config" => #{help => "显示运行时配置 (敏感值脱敏)"},
+                    "boundaries" => #{help => "检查模块边界"}
+                }
+            },
+            "smoke" => #{
+                help => "冒烟测试 / Smoke tests",
+                commands => #{
+                    "c2c" => #{
+                        help => "C2C 消息冒烟",
+                        arguments => [
+                            #{name => from, long => "-from", short => $f,
+                              type => integer, default => 1000000051,
+                              help => "发送者 UID"},
+                            #{name => 'to', long => "-to", short => $t,
+                              type => integer, default => 1000000056,
+                              help => "接收者 UID"}
+                        ]
+                    },
+                    "ws" => #{help => "WebSocket 冒烟"},
+                    "all" => #{help => "运行全部冒烟"}
+                }
+            },
+            "plugin" => #{
+                help => "插件管理 / Plugin management",
+                commands => #{
+                    "list" => #{help => "列出已加载插件"},
+                    "load" => #{
+                        help => "加载插件",
+                        arguments => [#{name => name, type => binary, help => "插件名"}]
+                    },
+                    "unload" => #{
+                        help => "卸载插件",
+                        arguments => [#{name => name, type => binary, help => "插件名"}]
+                    }
+                }
+            }
+        }
+    }.
+
+uid_arg() ->
+    #{name => uid, type => integer, help => "用户 ID"}.
+
+%% ---------------------------------------------------------------------------
+%% 入口 + CmdPath 派发
+%% ---------------------------------------------------------------------------
+
+main([]) ->
+    print_help();
+main(Argv) ->
+    case argparse:parse(Argv, cli_spec(), #{progname => "imboy_ctl"}) of
+        {ok, Args, [_Prog | CmdPath], _Spec} ->
+            dispatch(CmdPath, Args);
+        {error, {Reason, Details}} ->
+            io:format(standard_error, "Error: ~p ~p~n", [Reason, Details]),
+            print_help();
+        Other ->
+            io:format(standard_error, "Unexpected: ~p~n", [Other]),
+            print_help()
+    end.
+
+dispatch(["user", "token"], Args) -> handle_user_token(Args);
+dispatch(["user", "create"], Args) -> handle_user_create(Args);
+dispatch(["user", "detail"], Args) -> handle_user_detail(Args);
+dispatch(["user", "list"], Args) -> handle_user_list(Args);
+dispatch(["msg", "send"], Args) -> handle_msg_send(Args);
+dispatch(["msg", "status"], Args) -> handle_msg_status(Args);
+dispatch(["msg", "archive"], Args) -> handle_msg_archive(Args);
+dispatch(["node", "status"], Args) -> handle_node_status(Args);
+dispatch(["node", "routes"], Args) -> handle_node_routes(Args);
+dispatch(["node", "connections"], Args) -> handle_node_connections(Args);
+dispatch(["node", "pools"], Args) -> handle_node_pools(Args);
+dispatch(["db", "migrate"], Args) -> handle_db_migrate(Args);
+dispatch(["db", "ping"], Args) -> handle_db_ping(Args);
+dispatch(["db", "pool"], Args) -> handle_db_pool(Args);
+dispatch(["diagnose", "config"], Args) -> handle_diagnose_config(Args);
+dispatch(["diagnose", "boundaries"], Args) -> handle_diagnose_boundaries(Args);
+dispatch(["smoke", "c2c"], Args) -> handle_smoke_c2c(Args);
+dispatch(["smoke", "ws"], Args) -> handle_smoke_ws(Args);
+dispatch(["smoke", "all"], Args) -> handle_smoke_all(Args);
+dispatch(["plugin", "list"], Args) -> handle_plugin_list(Args);
+dispatch(["plugin", "load"], Args) -> handle_plugin_load(Args);
+dispatch(["plugin", "unload"], Args) -> handle_plugin_unload(Args);
+dispatch(CmdPath, _Args) ->
+    io:format(standard_error, "Unknown command: ~p~n", [CmdPath]),
+    print_help().
+
+print_help() ->
+    Help = argparse:help(cli_spec()),
+    io:format("~ts~n", [Help]),
+    halt(2).
+
+%% ---------------------------------------------------------------------------
+%% 公共函数
+%% ---------------------------------------------------------------------------
+
+connect_node(_Args) ->
+    NodeStr = os:getenv("IMBOY_CTL_NODE", atom_to_list(?DEFAULT_NODE)),
+    CookieStr = os:getenv("IMBOY_CTL_COOKIE", ""),
+    Cookie = case CookieStr of
+        "" -> ?DEFAULT_COOKIE;
+        _ -> list_to_atom(CookieStr)
+    end,
+    Node = list_to_atom(NodeStr),
+    SelfName = "ctl_" ++ integer_to_list(erlang:unique_integer([positive])),
+    SelfNode = list_to_atom(SelfName ++ "@127.0.0.1"),
+    case net_kernel:start([SelfNode, longnames]) of
+        {ok, _} -> ok;
+        {error, {already_started, _}} ->
+            io:format(standard_error,
+                      "ERROR: net_kernel already started~n", []),
+            halt(1);
+        {error, Reason} ->
+            io:format(standard_error,
+                      "ERROR: net_kernel start failed: ~p~n", [Reason]),
+            halt(1)
+    end,
+    erlang:set_cookie(node(), Cookie),
+    case net_adm:ping(Node) of
+        pong -> {ok, Node};
+        pang ->
+            io:format(standard_error,
+                      "ERROR: cannot reach ~p (is imboy node up?)~n", [Node]),
+            halt(1)
+    end.
+
+do_rpc(Node, _Args, Mod, Fun, CallArgs) ->
+    Timeout = case string:to_integer(os:getenv("IMBOY_CTL_TIMEOUT", "15000")) of
+        {Int, ""} when Int > 0 -> Int;
+        _ -> 15000
+    end,
+    case rpc:call(Node, Mod, Fun, CallArgs, Timeout) of
+        {badrpc, Reason} ->
+            io:format(standard_error,
+                      "ERROR: rpc ~p:~p/~p failed: ~p~n",
+                      [Mod, Fun, length(CallArgs), Reason]),
+            halt(1);
+        Result -> Result
+    end.
+
+print_kv(Map) when is_map(Map) ->
+    [io:format("~s=~p~n", [K, V]) || {K, V} <- lists:sort(maps:to_list(Map))],
+    ok;
+print_kv(Other) ->
+    io:format("~p~n", [Other]).
+
+format_val(V) when is_binary(V) -> binary_to_list(V);
+format_val(V) when is_atom(V) -> atom_to_list(V);
+format_val(V) when is_integer(V) -> integer_to_list(V);
+format_val(V) when is_float(V) -> float_to_list(V, [{decimals, 4}]);
+format_val(V) -> lists:flatten(io_lib:format("~p", [V])).
+
+maybe_mask(Key, Val) ->
+    KeyStr = string:lowercase(atom_to_list(Key)),
+    case is_sensitive(KeyStr) of
+        true -> "***MASKED***";
+        false -> Val
+    end.
+
+is_sensitive(Key) ->
+    lists:any(fun(P) -> string:find(Key, P) =/= nomatch end,
+              ["password", "secret", "token", "private", "cookie"]).
+
+%% ---------------------------------------------------------------------------
+%% User handlers
+%% ---------------------------------------------------------------------------
+
+handle_user_token(Args) ->
+    {ok, Node} = connect_node(Args),
+    Uid = maps:get(uid, Args),
+    case do_rpc(Node, Args, token_ds, encrypt_token, [Uid]) of
+        Token when is_binary(Token); is_list(Token) ->
+            io:format("~s~n", [Token]),
+            halt(0);
+        Other ->
+            io:format(standard_error, "ERROR: unexpected ~p~n", [Other]),
+            halt(1)
+    end.
+
+handle_user_create(Args) ->
+    {ok, Node} = connect_node(Args),
+    Uid = maps:get(uid, Args),
+    Account = maps:get(account, Args, <<>>),
+    Nickname = maps:get(nickname, Args, <<>>),
+    Password = maps:get(password, Args, <<>>),
+    case do_rpc(Node, Args, user_repo, detail, [Uid]) of
+        {ok, _} ->
+            io:format(standard_error, "用户 uid=~p 已存在~n", [Uid]),
+            halt(1);
+        _ -> ok
+    end,
+    PwdHash = do_rpc(Node, Args, elib_password, generate, [Password]),
+    Now = do_rpc(Node, Args, elib_dt, now, []),
+    UserData = #{
+        <<"id">> => Uid,
+        <<"account">> => Account,
+        <<"nickname">> => Nickname,
+        <<"password">> => PwdHash,
+        <<"mobile">> => Account,
+        <<"email">> => <<>>,
+        <<"region">> => <<>>,
+        <<"avatar">> => <<>>,
+        <<"sign">> => <<>>,
+        <<"gender">> => 0,
+        <<"status">> => 1,
+        <<"created_at">> => Now,
+        <<"reg_ip">> => <<"127.0.0.1">>,
+        <<"reg_cosv">> => <<"imboy_ctl">>,
+        <<"level_id">> => 1,
+        <<"experience">> => 0,
+        <<"ref_user_id">> => 0,
+        <<"ref_parent_user_id">> => 0,
+        <<"source">> => <<"ctl">>
+    },
+    case do_rpc(Node, Args, user_repo, save, [UserData]) of
+        {ok, Id} ->
+            io:format("UID=~p~nCREATED=true~n", [Id]),
+            halt(0);
+        {error, Err} ->
+            io:format(standard_error, "ERROR: ~p~n", [Err]),
+            halt(1)
+    end.
+
+handle_user_detail(Args) ->
+    {ok, Node} = connect_node(Args),
+    Uid = maps:get(uid, Args),
+    case do_rpc(Node, Args, user_ds, find_by_id, [Uid, <<"*">>]) of
+        User when is_map(User), map_size(User) > 0 ->
+            print_kv(User),
+            halt(0);
+        _ ->
+            io:format(standard_error, "用户 uid=~p 不存在~n", [Uid]),
+            halt(1)
+    end.
+
+handle_user_list(Args) ->
+    {ok, Node} = connect_node(Args),
+    Page = maps:get(page, Args, 1),
+    Size = maps:get(size, Args, 20),
+    Result = do_rpc(Node, Args, user_ds, page, [Page, Size, #{}, <<"created_at DESC">>]),
+    case Result of
+        {ok, Paginated} when is_map(Paginated) ->
+            Total = maps:get(total, Paginated, 0),
+            Users = maps:get(items, Paginated, maps:get(users, Paginated, [])),
+            io:format("TOTAL=~p PAGE=~p SIZE=~p~n", [Total, Page, Size]),
+            [print_kv(U) || U <- Users],
+            halt(0);
+        Other ->
+            io:format(standard_error, "ERROR: ~p~n", [Other]),
+            halt(1)
+    end.
+
+%% ---------------------------------------------------------------------------
+%% Msg handlers
+%% ---------------------------------------------------------------------------
+
+handle_msg_send(Args) ->
+    case do_msg_send(Args) of
+        {ok, MsgId} ->
+            io:format("MSG_ID=~s~n", [MsgId]),
+            halt(0);
+        {error, Reason} ->
+            io:format(standard_error, "ERROR: ~p~n", [Reason]),
+            halt(1)
+    end.
+
+do_msg_send(Args) ->
+    {ok, Node} = connect_node(Args),
+    From = maps:get(from, Args),
+    ToInt = maps:get('to', Args),
+    To = integer_to_binary(ToInt),
+    Text = maps:get(text, Args),
+    Now = do_rpc(Node, Args, erlang, system_time, [millisecond]),
+    MsgId = iolist_to_binary([<<"ctl_">>, integer_to_binary(Now)]),
+    Payload = #{<<"msg_type">> => <<"text">>,
+                <<"text">> => Text,
+                <<"body">> => Text},
+    PayloadJson = do_rpc(Node, Args, jsone, encode, [Payload, [native_utf8]]),
+    case do_rpc(Node, Args, msg_c2c_logic, c2c, [MsgId, From, To, PayloadJson]) of
+        ok -> {ok, MsgId};
+        Other -> {error, Other}
+    end.
+
+handle_msg_status(Args) ->
+    {ok, Node} = connect_node(Args),
+    MsgId = maps:get(msg_id, Args),
+    %% Query msg_store (archive) for the message
+    Sql = <<"SELECT chat_type, from_id, to_id, msg_type, conv_seq, "
+            "to_char(created_at, 'YYYY-MM-DD\"T\"HH24:MI:SS') as created_at "
+            "FROM msg_store WHERE msg_id = $1 LIMIT 1">>,
+    case do_rpc(Node, Args, elib_pg, one, [Sql, [MsgId]]) of
+        {ok, Row} when is_map(Row) ->
+            io:format("MSG_ID=~s~nSTATUS=ARCHIVED~n", [MsgId]),
+            print_kv(Row),
+            halt(0);
+        _ ->
+            %% Try C2C delivery table
+            case do_rpc(Node, Args, msg_c2c_ds, find_msg_by_id, [MsgId]) of
+                {ok, Msg} when is_map(Msg) ->
+                    io:format("MSG_ID=~s~nSTATUS=DELIVERING~n", [MsgId]),
+                    print_kv(Msg),
+                    halt(0);
+                _ ->
+                    io:format("MSG_ID=~s STATUS=NOT_FOUND~n", [MsgId]),
+                    halt(1)
+            end
+    end.
+
+handle_msg_archive(Args) ->
+    {ok, Node} = connect_node(Args),
+    ConvKey = maps:get(conv_key, Args),
+    LastSeq = maps:get(last_seq, Args, 0),
+    Limit = maps:get(limit, Args, 50),
+    case do_rpc(Node, Args, msg_archive_ds, history, [ConvKey, LastSeq, Limit]) of
+        {ok, Rows} when is_list(Rows) ->
+            io:format("COUNT=~p~n", [length(Rows)]),
+            [print_kv(Row) || Row <- Rows],
+            halt(0);
+        {error, Reason} ->
+            io:format(standard_error, "ERROR: ~p~n", [Reason]),
+            halt(1);
+        Other ->
+            io:format(standard_error, "ERROR: ~p~n", [Other]),
+            halt(1)
+    end.
+
+%% ---------------------------------------------------------------------------
+%% Node handlers
+%% ---------------------------------------------------------------------------
+
+handle_node_status(Args) ->
+    {ok, Node} = connect_node(Args),
+    Ver = case do_rpc(Node, Args, init, script_id, []) of
+        {_, V} -> V;
+        V when is_list(V) -> V;
+        _ -> "unknown"
+    end,
+    {UptimeMs, _} = do_rpc(Node, Args, erlang, statistics, [wall_clock]),
+    MemTotal = do_rpc(Node, Args, erlang, memory, [total]),
+    ProcCount = do_rpc(Node, Args, erlang, system_info, [process_count]),
+    ProcLimit = do_rpc(Node, Args, erlang, system_info, [process_limit]),
+    Tables = do_rpc(Node, Args, ets, all, []),
+    io:format("VERSION=~s~n", [Ver]),
+    io:format("UPTIME_MIN=~p~n", [UptimeMs div 60000]),
+    io:format("MEMORY_MB=~p~n", [MemTotal div (1024 * 1024)]),
+    io:format("PROCESSES=~p/~p~n", [ProcCount, ProcLimit]),
+    io:format("ETS_TABLES=~p~n", [length(Tables)]),
+    halt(0).
+
+handle_node_routes(Args) ->
+    {ok, Node} = connect_node(Args),
+    Routes = do_rpc(Node, Args, imboy_router, get_routes, []),
+    [io:format("~p~n", [R]) || R <- Routes],
+    halt(0).
+
+handle_node_connections(Args) ->
+    {ok, Node} = connect_node(Args),
+    %% syn scope 是 imboy_chat（定义在 include/chat.hrl）
+    RegCount = do_rpc(Node, Args, syn, registry_count, [imboy_chat]),
+    io:format("WS_ONLINE=~p~n", [RegCount]),
+    halt(0).
+
+handle_node_pools(Args) ->
+    {ok, Node} = connect_node(Args),
+    Stats = do_rpc(Node, Args, pooler, pool_stats, [pgsql]),
+    io:format("FREE=~p~nIN_USE=~p~n",
+              [proplists:get_value(free_count, Stats, 0),
+               proplists:get_value(in_use_count, Stats, 0)]),
+    halt(0).
+
+%% ---------------------------------------------------------------------------
+%% DB handlers
+%% ---------------------------------------------------------------------------
+
+handle_db_migrate(Args) ->
+    {ok, Node} = connect_node(Args),
+    case do_rpc(Node, Args, imboy_migrate, migrate, []) of
+        ok ->
+            io:format("MIGRATE_RESULT=OK~n"),
+            halt(0);
+        {error, Err} ->
+            io:format(standard_error, "MIGRATE_RESULT=ERROR ~p~n", [Err]),
+            halt(1);
+        Other ->
+            io:format("MIGRATE_RESULT=~p~n", [Other]),
+            halt(0)
+    end.
+
+handle_db_ping(Args) ->
+    {ok, Node} = connect_node(Args),
+    case do_rpc(Node, Args, elib_pg, query, [<<"SELECT 1">>, []]) of
+        {ok, _} ->
+            io:format("DB_PING=OK~n"),
+            halt(0);
+        {error, Err} ->
+            io:format(standard_error, "DB_PING=ERROR ~p~n", [Err]),
+            halt(1);
+        Other ->
+            io:format("DB_PING=~p~n", [Other]),
+            halt(0)
+    end.
+
+handle_db_pool(Args) ->
+    handle_node_pools(Args).
+
+%% ---------------------------------------------------------------------------
+%% Diagnose handlers
+%% ---------------------------------------------------------------------------
+
+handle_diagnose_config(Args) ->
+    {ok, Node} = connect_node(Args),
+    Env = do_rpc(Node, Args, application, get_all_env, [imboy]),
+    [io:format("~p=~s~n", [K, format_val(maybe_mask(K, V))])
+     || {K, V} <- lists:sort(Env)],
+    halt(0).
+
+handle_diagnose_boundaries(_Args) ->
+    io:format("=== Module Boundary Analysis ===~n"),
+    Layers = [
+        {"Handler (api)", "src/api/"},
+        {"Admin (adm)", "src/adm/"},
+        {"Logic", "src/logic/"},
+        {"DS", "src/ds/"},
+        {"Repo", "src/repo/"},
+        {"Lib", "src/lib/"}
+    ],
+    Total = lists:foldl(fun({Label, Dir}, Acc) ->
+        Files = filelib:wildcard(Dir ++ "*.erl"),
+        Count = length(Files),
+        io:format("  ~-20s ~3w modules~n", [Label, Count]),
+        Acc + Count
+    end, 0, Layers),
+    io:format("  ~-20s ~3w modules~n", ["TOTAL", Total]),
+    halt(0).
+
+%% ---------------------------------------------------------------------------
+%% Smoke handlers
+%% ---------------------------------------------------------------------------
+
+handle_smoke_c2c(Args) ->
+    case run_smoke_c2c(Args) of
+        ok -> halt(0);
+        error -> halt(1)
+    end.
+
+handle_smoke_ws(_Args) ->
+    io:format("SKIP: ws smoke not implemented, use make smoke-ws~n"),
+    halt(2).
+
+handle_smoke_all(Args) ->
+    io:format("=== Running all smoke tests ===~n"),
+    case run_smoke_c2c(Args) of
+        ok ->
+            io:format("=== All smoke tests passed ===~n"),
+            halt(0);
+        error ->
+            halt(1)
+    end.
+
+run_smoke_c2c(Args) ->
+    Merged = Args#{
+        from => maps:get(from, Args, 1000000051),
+        'to' => maps:get('to', Args, 1000000056),
+        text => <<"[smoke] C2C from imboy_ctl">>
+    },
+    case do_msg_send(Merged) of
+        {ok, MsgId} ->
+            io:format("SMOKE_C2C=OK MSG_ID=~s~n", [MsgId]),
+            ok;
+        {error, Reason} ->
+            io:format(standard_error, "SMOKE_C2C=FAIL ~p~n", [Reason]),
+            error
+    end.
+
+%% ---------------------------------------------------------------------------
+%% Plugin handlers
+%% ---------------------------------------------------------------------------
+
+handle_plugin_list(Args) ->
+    {ok, Node} = connect_node(Args),
+    Plugins = do_rpc(Node, Args, imboy_plugin_loader, list_plugins, []),
+    [io:format("~p~n", [P]) || P <- Plugins],
+    halt(0).
+
+handle_plugin_load(Args) ->
+    {ok, Node} = connect_node(Args),
+    Name = maps:get(name, Args),
+    case do_rpc(Node, Args, imboy_plugin_loader, load_plugin, [Name]) of
+        ok ->
+            io:format("LOAD_RESULT=OK~n"),
+            halt(0);
+        {error, Err} ->
+            io:format(standard_error, "LOAD_RESULT=ERROR ~p~n", [Err]),
+            halt(1);
+        Other ->
+            io:format("LOAD_RESULT=~p~n", [Other]),
+            halt(0)
+    end.
+
+handle_plugin_unload(Args) ->
+    {ok, Node} = connect_node(Args),
+    Name = maps:get(name, Args),
+    case do_rpc(Node, Args, imboy_plugin_loader, unload_plugin, [Name]) of
+        ok ->
+            io:format("UNLOAD_RESULT=OK~n"),
+            halt(0);
+        {error, Err} ->
+            io:format(standard_error, "UNLOAD_RESULT=ERROR ~p~n", [Err]),
+            halt(1);
+        Other ->
+            io:format("UNLOAD_RESULT=~p~n", [Other]),
+            halt(0)
+    end.
