@@ -31,7 +31,18 @@
     list_migration_files/1,
     parse_migration_filename/1,
     diff_pending/2,
-    plugin_dir/1
+    plugin_dir/1,
+    %% 切片 2：副作用层 / Side-effects layer
+    migration_table_name/1,
+    ensure_table_sql/1,
+    record_applied_sql/3,
+    applied_seqs_sql/1,
+    run_pending/2,
+    %% 切片 2 卸载支持 / Uninstall support
+    drop_schema_migrations_table_sql/1,
+    list_uninstall_file/1,
+    uninstall_sql_file_path/1,
+    run_uninstall/2
 ]).
 
 %% ===================================================================
@@ -121,3 +132,166 @@ diff_pending(DiskFiles, AppliedSeqs)
         end,
         Pending
     ).
+
+%% ===================================================================
+%% 切片 2：副作用层 / Side-effects layer
+%% ===================================================================
+
+%% @doc 生成 schema_migrations_<plugin> 追踪表名。
+-spec migration_table_name(atom()) -> binary().
+migration_table_name(PluginName) when is_atom(PluginName) ->
+    NameBin = atom_to_binary(PluginName, utf8),
+    <<"schema_migrations_", NameBin/binary>>.
+
+%% @doc 生成 CREATE TABLE IF NOT EXISTS schema_migrations_<plugin> SQL。
+-spec ensure_table_sql(atom()) -> binary().
+ensure_table_sql(PluginName) when is_atom(PluginName) ->
+    Tab = migration_table_name(PluginName),
+    <<"CREATE TABLE IF NOT EXISTS ", Tab/binary,
+      " (version INTEGER PRIMARY KEY, "
+      "description TEXT, "
+      "applied_at TIMESTAMPTZ DEFAULT now())">>.
+
+%% @doc 生成 INSERT 已执行 migration 记录的 SQL。
+-spec record_applied_sql(atom(), pos_integer(), binary()) -> binary().
+record_applied_sql(PluginName, Seq, Descr) when is_atom(PluginName), is_integer(Seq), is_binary(Descr) ->
+    Tab = migration_table_name(PluginName),
+    SeqBin = integer_to_binary(Seq),
+    <<"INSERT INTO ", Tab/binary, " (version, description) VALUES (",
+      SeqBin/binary, ", '", Descr/binary, "')">>.
+
+%% @doc 生成查询已执行 seq 列表的 SQL。
+-spec applied_seqs_sql(atom()) -> binary().
+applied_seqs_sql(PluginName) when is_atom(PluginName) ->
+    Tab = migration_table_name(PluginName),
+    <<"SELECT version FROM ", Tab/binary, " ORDER BY version">>.
+
+%% @doc 执行插件的 pending migration 文件。
+%% 1. 确保 schema_migrations 表存在
+%% 2. 查询已执行 seq
+%% 3. diff_pending 计算待执行列表
+%% 4. 逐文件执行 SQL，每文件独立事务
+%% 5. 成功后记录到 schema_migrations
+-spec run_pending(atom(), map()) -> {ok, [string()]} | {error, term()}.
+run_pending(PluginName, Manifest) when is_atom(PluginName), is_map(Manifest) ->
+    try
+        %% 1. ensure table
+        CreateSQL = ensure_table_sql(PluginName),
+        {ok, _} = elib_pg:query(CreateSQL, []),
+
+        %% 2. get applied seqs
+        SelectSQL = applied_seqs_sql(PluginName),
+        Applied = case elib_pg:query(SelectSQL, []) of
+            {ok, Rows} -> [V || #{version := V} <- Rows];
+            {error, {undefined_table, _}} -> []
+        end,
+
+        %% 3. list disk files & diff
+        {ok, DiskFiles} = list_migration_files(Manifest),
+        Pending = diff_pending(DiskFiles, Applied),
+
+        %% 4. execute each pending file
+        Dir = plugin_dir(Manifest),
+        Executed = execute_pending_files(PluginName, Dir, Pending),
+        {ok, Executed}
+    catch
+        error:{badmatch, {error, Reason}} ->
+            {error, Reason};
+        Class:Reason2 ->
+            {error, {Class, Reason2}}
+    end.
+
+%% @doc 逐文件执行 pending migration（每文件独立事务）。
+%% 执行成功则记录 seq，失败则停止并返回已执行列表。
+-spec execute_pending_files(atom(), string(), [string()]) -> [string()].
+execute_pending_files(_PluginName, _Dir, []) ->
+    [];
+execute_pending_files(PluginName, Dir, [File | Rest]) ->
+    FilePath = filename:join(Dir, File),
+    case file:read_file(FilePath) of
+        {ok, SQLBin} ->
+            case elib_pg:with_tx(fun(_Conn) ->
+                case elib_pg:query(SQLBin, []) of
+                    {ok, _} -> ok;
+                    {error, Reason} -> throw({migration_failed, File, Reason})
+                end
+            end) of
+                {atomic, ok} ->
+                    {ok, _, Seq, Descr} = parse_migration_filename(File),
+                    DescrBin = list_to_binary(Descr),
+                    RecSQL = record_applied_sql(PluginName, Seq, DescrBin),
+                    {ok, _} = elib_pg:query(RecSQL, []),
+                    [File | execute_pending_files(PluginName, Dir, Rest)];
+                {aborted, Reason} ->
+                    [{File, {error, Reason}} | [{R, skipped} || R <- Rest]]
+            end;
+        {error, Reason} ->
+            [{File, {error, {file_read, Reason}}}]
+    end.
+
+%% ===================================================================
+%% Uninstall 支持 / Uninstall support
+%% ===================================================================
+
+%% @doc 生成 DROP TABLE schema_migrations_<plugin> SQL。
+-spec drop_schema_migrations_table_sql(atom()) -> binary().
+drop_schema_migrations_table_sql(PluginName) when is_atom(PluginName) ->
+    Tab = migration_table_name(PluginName),
+    <<"DROP TABLE IF EXISTS ", Tab/binary>>.
+
+%% @doc 计算 uninstall.sql 文件路径。
+-spec uninstall_sql_file_path(map()) -> string().
+uninstall_sql_file_path(#{name := Name, migrations := #{dir := DirBin}})
+        when is_binary(DirBin) ->
+    filename:join([
+        "priv", "plugins",
+        atom_to_list(Name),
+        binary_to_list(DirBin),
+        "uninstall.sql"
+    ]).
+
+%% @doc 查找 uninstall.sql 文件是否存在。
+-spec list_uninstall_file(map()) -> {ok, string()} | {error, not_found}.
+list_uninstall_file(Manifest) when is_map(Manifest) ->
+    Path = uninstall_sql_file_path(Manifest),
+    case filelib:is_file(Path) of
+        true -> {ok, Path};
+        false -> {error, not_found}
+    end.
+
+%% @doc 执行插件卸载：
+%% 1. 可选执行 uninstall.sql（事务包裹）
+%% 2. 删除 schema_migrations_<plugin> 追踪表
+-spec run_uninstall(atom(), map()) -> ok | {error, term()}.
+run_uninstall(PluginName, Manifest) when is_atom(PluginName), is_map(Manifest) ->
+    try
+        %% 1. optional uninstall.sql
+        case list_uninstall_file(Manifest) of
+            {ok, Path} ->
+                {ok, SQLBin} = file:read_file(Path),
+                case elib_pg:with_tx(fun(_Conn) ->
+                    case elib_pg:query(SQLBin, []) of
+                        {ok, _} -> ok;
+                        {error, Reason} -> throw({uninstall_sql_failed, Reason})
+                    end
+                end) of
+                    {atomic, ok} -> ok;
+                    {aborted, Reason} -> throw({uninstall_sql_failed, Reason})
+                end;
+            {error, not_found} ->
+                ok
+        end,
+
+        %% 2. drop tracking table
+        DropSQL = drop_schema_migrations_table_sql(PluginName),
+        {ok, _} = elib_pg:query(DropSQL, []),
+
+        ok
+    catch
+        error:{badmatch, {error, R}} ->
+            {error, R};
+        throw:R ->
+            {error, R};
+        Class:R ->
+            {error, {Class, R}}
+    end.

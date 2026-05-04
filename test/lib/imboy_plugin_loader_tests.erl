@@ -281,3 +281,130 @@ loader_handles_unknown_message_test_() ->
              end)
          ]
      end}.
+
+%% ===================================================================
+%% 7. 签名校验 — SIGNATURE 文件存在且公钥配置正确时验证通过
+%% ===================================================================
+
+loader_signature_valid_passes_test_() ->
+    {setup,
+     fun() ->
+         Dir = unique_dir(),
+         mkdir_p(Dir),
+         write_valid_plugin(Dir, signed_plugin),
+         PluginDir = filename:join(Dir, "signed_plugin"),
+         ConfigPath = filename:join(PluginDir, "plugin.config"),
+         %% 生成密钥对 + 签名 plugin.config
+         {ok, Pub, Priv} = imboy_plugin_signature:generate_keypair(),
+         {ok, Sig} = imboy_plugin_signature:sign_file(ConfigPath, Priv),
+         SigPath = filename:join(PluginDir, "SIGNATURE"),
+         ok = file:write_file(SigPath, Sig),
+         %% 设置可信公钥
+         ok = application:set_env(imboy, plugin_trusted_public_keys, [Pub]),
+         {ok, Pid} = imboy_plugin_loader:start_link(Dir),
+         {Dir, Pid, Pub}
+     end,
+     fun({Dir, Pid, _Pub}) ->
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         stop_and_cleanup(Pid, Dir, [signed_plugin])
+     end,
+     fun(_) ->
+         [
+             ?_assertEqual([signed_plugin], imboy_plugin_loader:list_plugins()),
+             ?_assertMatch(#{name := signed_plugin},
+                           imboy_plugin_loader:get_manifest(signed_plugin)),
+             ?_assertEqual([], imboy_plugin_loader:list_failed())
+         ]
+     end}.
+
+%% ===================================================================
+%% 8. 签名校验 — SIGNATURE 存在但签名无效时拒绝加载
+%% ===================================================================
+
+loader_signature_invalid_rejects_test_() ->
+    {setup,
+     fun() ->
+         Dir = unique_dir(),
+         mkdir_p(Dir),
+         write_valid_plugin(Dir, bad_sig_plugin),
+         PluginDir = filename:join(Dir, "bad_sig_plugin"),
+         %% 写一个无效签名（随机 64 字节）
+         SigPath = filename:join(PluginDir, "SIGNATURE"),
+         ok = file:write_file(SigPath, crypto:strong_rand_bytes(64)),
+         %% 设置可信公钥
+         {ok, Pub, _Priv} = imboy_plugin_signature:generate_keypair(),
+         ok = application:set_env(imboy, plugin_trusted_public_keys, [Pub]),
+         {ok, Pid} = imboy_plugin_loader:start_link(Dir),
+         {Dir, Pid, Pub}
+     end,
+     fun({Dir, Pid, _Pub}) ->
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         stop_and_cleanup(Pid, Dir, [])
+     end,
+     fun(_) ->
+         [
+             ?_assertEqual([], imboy_plugin_loader:list_plugins()),
+             ?_assertEqual(undefined, imboy_plugin_loader:get_manifest(bad_sig_plugin)),
+             ?_assertMatch([{_, {signature_invalid, _}} | _],
+                           imboy_plugin_loader:list_failed())
+         ]
+     end}.
+
+%% ===================================================================
+%% 9. 签名校验 — 无可信公钥配置时跳过校验（向后兼容）
+%% ===================================================================
+
+loader_no_trusted_keys_skips_verification_test_() ->
+    {setup,
+     fun() ->
+         Dir = unique_dir(),
+         mkdir_p(Dir),
+         write_valid_plugin(Dir, unsigned_plugin),
+         %% 不写 SIGNATURE 文件
+         %% 确保无公钥配置
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         {ok, Pid} = imboy_plugin_loader:start_link(Dir),
+         {Dir, Pid}
+     end,
+     fun({Dir, Pid}) ->
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         stop_and_cleanup(Pid, Dir, [unsigned_plugin])
+     end,
+     fun(_) ->
+         [
+             ?_assertEqual([unsigned_plugin], imboy_plugin_loader:list_plugins()),
+             ?_assertMatch(#{name := unsigned_plugin},
+                           imboy_plugin_loader:get_manifest(unsigned_plugin))
+         ]
+     end}.
+
+%% ===================================================================
+%% 10. 签名校验 — SIGNATURE 文件存在但无公钥配置时仍加载（宽松模式）
+%% ===================================================================
+
+loader_has_signature_no_keys_still_loads_test_() ->
+    {setup,
+     fun() ->
+         Dir = unique_dir(),
+         mkdir_p(Dir),
+         write_valid_plugin(Dir, sig_no_keys_plugin),
+         PluginDir = filename:join(Dir, "sig_no_keys_plugin"),
+         %% 写 SIGNATURE 但不配公钥
+         SigPath = filename:join(PluginDir, "SIGNATURE"),
+         ok = file:write_file(SigPath, crypto:strong_rand_bytes(64)),
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         {ok, Pid} = imboy_plugin_loader:start_link(Dir),
+         {Dir, Pid}
+     end,
+     fun({Dir, Pid}) ->
+         application:unset_env(imboy, plugin_trusted_public_keys),
+         stop_and_cleanup(Pid, Dir, [sig_no_keys_plugin])
+     end,
+     fun(_) ->
+         %% 无公钥 = 不校验 = 正常加载
+         [
+             ?_assertEqual([sig_no_keys_plugin], imboy_plugin_loader:list_plugins()),
+             ?_assertMatch(#{name := sig_no_keys_plugin},
+                           imboy_plugin_loader:get_manifest(sig_no_keys_plugin))
+         ]
+     end}.

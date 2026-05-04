@@ -219,7 +219,10 @@ role_acl(1) ->
         <<"roles:view">>,
         <<"roles:create">>,
         <<"roles:update">>,
-        <<"logs:view">>
+        <<"logs:view">>,
+        <<"plugins:read">>, <<"plugins:install">>, <<"plugins:enable">>,
+        <<"plugins:disable">>, <<"plugins:upgrade">>, <<"plugins:uninstall">>,
+        <<"plugins:reset">>, <<"plugins:force_uninstall">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
@@ -233,7 +236,8 @@ role_acl(1) ->
         <<"/settings">>,
         <<"/admins">>,
         <<"/roles">>,
-        <<"/logs">>
+        <<"/logs">>,
+        <<"/plugins">>
     ],
     apply_role_acl_override(1, {RoleName, Permissions, MenuPaths});
 role_acl(2) ->
@@ -257,7 +261,10 @@ role_acl(2) ->
         <<"feedback:workflow:read">>, <<"feedback:workflow:write">>,
         <<"messages:read">>,
         <<"logout_applications:read">>,
-        <<"ux:events:ingest">>
+        <<"ux:events:ingest">>,
+        <<"plugins:read">>, <<"plugins:install">>, <<"plugins:enable">>,
+        <<"plugins:disable">>, <<"plugins:upgrade">>, <<"plugins:uninstall">>,
+        <<"plugins:reset">>, <<"plugins:force_uninstall">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
@@ -267,7 +274,8 @@ role_acl(2) ->
         <<"/logout-applications">>,
         <<"/channels">>,
         <<"/reports">>,
-        <<"/feedback">>
+        <<"/feedback">>,
+        <<"/plugins">>
     ],
     apply_role_acl_override(2, {RoleName, Permissions, MenuPaths});
 role_acl(3) ->
@@ -278,7 +286,8 @@ role_acl(3) ->
         <<"logout_applications:read">>,
         <<"ux:events:ingest">>,
         <<"roles:view">>,
-        <<"logs:view">>
+        <<"logs:view">>,
+        <<"plugins:read">>
     ],
     MenuPaths = [
         <<"/dashboard">>,

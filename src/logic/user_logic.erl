@@ -293,6 +293,8 @@ update(Uid, <<"avatar">>, Val) ->
     user_ds:update_field(Uid, <<"avatar">>, Val);
 update(Uid, <<"region">>, Val) ->
     user_ds:update_field(Uid, <<"region">>, Val);
+update(Uid, <<"birthday">>, Val) ->
+    user_ds:update_field(Uid, <<"birthday">>, Val);
 % 性别 1 男  2 女  3 保密
 update(Uid, <<"gender">>, Val) when Val =:= <<"1">>; Val =:= <<"2">>; Val =:= <<"3">> ->
     user_ds:update_field(Uid, <<"gender">>, binary_to_integer(Val));

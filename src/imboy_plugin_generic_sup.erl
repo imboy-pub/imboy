@@ -29,15 +29,14 @@
 
 -spec start_link(Name :: atom()) -> {ok, pid()} | {error, term()}.
 start_link(Name) when is_atom(Name) ->
-    supervisor:start_link({local, Name}, ?MODULE, []).
+    supervisor:start_link({local, Name}, ?MODULE, [Name]).
 
-init([]) ->
+init([Name]) ->
+    elib_metric:increment(plugin_sup_starts, 1, #{plugin => Name}),
     SupFlags = #{
         strategy => one_for_one,
         intensity => 5,
         period => 10
     },
-    %% Phase 1 切片 1：空 children list（插件骨架，无 worker）
-    %% Phase 1 slice 1: empty children list (skeleton, no workers yet)
     Children = [],
     {ok, {SupFlags, Children}}.

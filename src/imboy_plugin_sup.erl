@@ -23,6 +23,7 @@
 %%%-------------------------------------------------------------------
 
 -export([start_link/0, init/1]).
+-export([collect_metrics/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -54,3 +55,21 @@ plugin_sup_spec(Name) when is_atom(Name) ->
         type => supervisor,
         modules => [imboy_plugin_generic_sup]
     }.
+
+%% @doc 收集各插件 supervisor 的活跃 children 数并写入指标。
+%% 可由 metrics_handler 或定时任务调用。
+-spec collect_metrics() -> ok.
+collect_metrics() ->
+    PluginNames = [channel, moment, location, group_collab],
+    lists:foreach(fun(Plugin) ->
+        SupName = list_to_atom(atom_to_list(Plugin) ++ "_sup"),
+        case whereis(SupName) of
+            undefined -> ok;
+            _Pid ->
+                Children = supervisor:count_children(SupName),
+                Active = proplists:get_value(active, Children, 0),
+                elib_metric:increment(plugin_sup_active, Active,
+                    #{plugin => Plugin})
+        end
+    end, PluginNames),
+    ok.

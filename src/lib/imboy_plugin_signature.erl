@@ -31,6 +31,7 @@
     sign_data/2,
     verify_data/3,
     sign_file/2,
+    verify_file/2,
     verify_file/3
 ]).
 
@@ -82,6 +83,29 @@ sign_file(Path, PrivateKey) ->
             E
     end.
 
+%% @doc 验证文件签名（自动读取可信公钥列表）。
+%% Verify file signature using trusted public keys from app config.
+%% 策略与 imboy_plugin_loader:verify_plugin_signature/2 一致：
+%%   - 无可信公钥 → ok（向后兼容）
+%%   - 签名文件不存在 → ok（无签名 = 不强制）
+%%   - 任一公钥验证通过 → ok
+%%   - 全部失败 → {error, no_matching_key}
+-spec verify_file(file:filename_all(), file:filename_all()) ->
+    ok | {error, term()}.
+verify_file(FilePath, SigPath) ->
+    TrustedKeys = application:get_env(imboy, plugin_trusted_public_keys, []),
+    HasKeys = is_list(TrustedKeys) andalso TrustedKeys =/= [],
+    case {HasKeys, file:read_file(SigPath)} of
+        {false, _} ->
+            ok;
+        {_, {error, enoent}} ->
+            ok;
+        {true, {ok, Signature}} ->
+            verify_against_keys(FilePath, TrustedKeys, Signature);
+        {true, {error, _} = E} ->
+            E
+    end.
+
 %% @doc 验证文件签名。
 %% Verify file signature.
 -spec verify_file(file:filename_all(), public_key(), signature()) ->
@@ -92,4 +116,17 @@ verify_file(Path, PublicKey, Signature) ->
             verify_data(Bin, PublicKey, Signature);
         {error, _} = E ->
             E
+    end.
+
+%% ===================================================================
+%% Internal helpers
+%% ===================================================================
+
+%% @doc 逐一尝试可信公钥验证签名。
+verify_against_keys(_FilePath, [], _Signature) ->
+    {error, no_matching_key};
+verify_against_keys(FilePath, [PubKey | Rest], Signature) ->
+    case verify_file(FilePath, PubKey, Signature) of
+        ok -> ok;
+        {error, _} -> verify_against_keys(FilePath, Rest, Signature)
     end.

@@ -9,33 +9,16 @@
 %%%
 
 -export([json_maybe/1]).
--export([id_to_binary/1]).
 
 -export([implode/2]).
 -export([remove_dups/1]).
 -export([vsn_major/1]).
 -export([map_to_query/1]).
--export([list_to_binary_string/1]).
 -export([safe_to_binary/1]).
 -export([safe_to_integer/1]).
 
 % elib_cnv:convert_at_timestamps(List).
 -export([convert_at_timestamps/1]).
-
-%% @doc 将 ID 转换为 binary 字符串，用于 API 响应
-%%
-%% @deprecated 不再使用。ID 现在直接以 integer 返回客户端，不做字符串转换。
-%% 保留仅用于向后兼容。
-%%
--spec id_to_binary(integer() | binary()) -> binary().
-id_to_binary(Id) when is_integer(Id) ->
-    integer_to_binary(Id);
-id_to_binary(Id) when is_binary(Id) ->
-    Id;
-id_to_binary(Id) when is_list(Id) ->
-    list_to_binary(Id);
-id_to_binary(Id) ->
-    ec_cnv:to_binary(Id).
 
 %% @doc 将 map 转换为 URL 查询字符串
 %% @param Map 键值对映射
@@ -50,18 +33,6 @@ map_to_query(Map) ->
     Pairs = [[ec_cnv:to_list(Key), "=", ec_cnv:to_list(Value)] || {Key, Value} <- maps:to_list(Map)],
     list_to_binary(string:join(Pairs, "&")).
 
-
-%% @doc 将整数列表转换为逗号分隔的二进制字符串
-%% @param IntList 整数列表
-%% @returns 逗号分隔的二进制字符串（如 <<"513251,62829,62825">>）
--spec list_to_binary_string(list(integer())) -> binary().
-list_to_binary_string(IntList) ->
-    % 将整数列表转换为字符串列表
-    StringList = lists:map(fun(I) -> integer_to_list(I) end, IntList),
-    % 使用逗号连接字符串列表
-    JoinedString = lists:join(",", StringList),
-    % 将字符串转换为二进制
-    list_to_binary(JoinedString).
 
 %% @doc 如果是 JSON 类型的字符串则解码，否则保持原数据类型
 %% @param B 输入数据（binary、list 或其他类型）

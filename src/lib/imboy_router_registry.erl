@@ -36,7 +36,8 @@
     plugin_routes/1,
     all_routes/0,
     plugin_names/0,
-    clear/0
+    clear/0,
+    reload_dispatch/0
 ]).
 
 %% gen_server callbacks (full set per actor-model instinct)
@@ -102,6 +103,25 @@ plugin_names() ->
 clear() ->
     gen_server:call(?SERVER, clear).
 
+%% @doc 重新编译全部路由并热更新 cowboy dispatch。
+%% 供外部手动调用或由 register/unregister/clear 自动触发。
+%% 无 cowboy listener 时优雅降级返回 ok。
+-spec reload_dispatch() -> ok.
+reload_dispatch() ->
+    try
+        Routes = imboy_router:get_routes(),
+        Dispatch = cowboy_router:compile(Routes),
+        %% 对所有已知的 listener 执行热更
+        lists:foreach(fun(Listener) ->
+            try cowboy:set_env(Listener, dispatch, Dispatch)
+            catch _:_ -> ok
+            end
+        end, [imboy_listener, imboy_listener_tls]),
+        ok
+    catch
+        _:_ -> ok
+    end.
+
 %% ===================================================================
 %% gen_server callbacks
 %% ===================================================================
@@ -122,15 +142,18 @@ handle_call({register, PluginName, Routes}, _From, State) ->
     case validate_routes(PluginName, Routes) of
         ok ->
             true = ets:insert(?TAB, {PluginName, Routes}),
+            _ = reload_dispatch(),
             {reply, ok, State};
         {error, _} = E ->
             {reply, E, State}
     end;
 handle_call({unregister, PluginName}, _From, State) ->
     true = ets:delete(?TAB, PluginName),
+    _ = reload_dispatch(),
     {reply, ok, State};
 handle_call(clear, _From, State) ->
     true = ets:delete_all_objects(?TAB),
+    _ = reload_dispatch(),
     {reply, ok, State};
 handle_call(_Msg, _From, State) ->
     {reply, {error, unknown_call}, State}.

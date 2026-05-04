@@ -8,11 +8,6 @@
 %% API
 -export([log_shard_transmission/3]).
 -export([log_shard_transmission/5]).
--export([log_shard_created/3]).
--export([log_shard_sent/3]).
--export([log_shard_stored/3]).
--export([log_shard_decrypted/3]).
--export([log_shard_recovered/3]).
 
 -include("log.hrl").
 
@@ -71,49 +66,3 @@ log_shard_transmission(FromUid, ToUid, ShardId, Action, Metadata) ->
             ok
     end.
 
-%% @doc 记录分片创建日志
-%% @param Uid 密钥所有者用户ID
-%% @param ProxyUid 代理用户ID
-%% @param ShardId 分片ID
-%% @returns ok
--spec log_shard_created(integer(), integer(), binary()) -> ok.
-log_shard_created(Uid, ProxyUid, ShardId) ->
-    log_shard_transmission(Uid, ProxyUid, ShardId, ?ACTION_SHARD_CREATED, #{}).
-
-%% @doc 记录分片发送日志
-%% @param Uid 密钥所有者用户ID
-%% @param ProxyUid 代理用户ID
-%% @param ShardId 分片ID
-%% @returns ok
--spec log_shard_sent(integer(), integer(), binary()) -> ok.
-log_shard_sent(Uid, ProxyUid, ShardId) ->
-    log_shard_transmission(Uid, ProxyUid, ShardId, ?ACTION_SHARD_SENT, #{}).
-
-%% @doc 记录分片存储确认日志
-%% @param Uid 密钥所有者用户ID
-%% @param ProxyUid 代理用户ID
-%% @param ShardId 分片ID
-%% @returns ok
--spec log_shard_stored(integer(), integer(), binary()) -> ok.
-log_shard_stored(Uid, ProxyUid, ShardId) ->
-    log_shard_transmission(Uid, ProxyUid, ShardId, ?ACTION_SHARD_STORED, #{}).
-
-%% @doc 记录分片解密日志（恢复过程）
-%% @param Uid 密钥所有者用户ID
-%% @param ProxyUid 代理用户ID
-%% @param ShardId 分片ID
-%% @returns ok
--spec log_shard_decrypted(integer(), integer(), binary()) -> ok.
-log_shard_decrypted(Uid, ProxyUid, ShardId) ->
-    log_shard_transmission(Uid, ProxyUid, ShardId, ?ACTION_SHARD_DECRYPTED,
-                          #{direction => ?DIRECTION_PROXY_TO_USER}).
-
-%% @doc 记录分片用于密钥恢复日志
-%% @param Uid 密钥所有者用户ID
-%% @param ProxyUid 代理用户ID
-%% @param ShardId 分片ID
-%% @returns ok
--spec log_shard_recovered(integer(), integer(), binary()) -> ok.
-log_shard_recovered(Uid, ProxyUid, ShardId) ->
-    log_shard_transmission(Uid, ProxyUid, ShardId, ?ACTION_SHARD_RECOVERED,
-                          #{direction => ?DIRECTION_PROXY_TO_USER}).

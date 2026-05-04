@@ -23,6 +23,7 @@
 -export([start_link/0]).
 -export([increment/1]).
 -export([increment/2]).
+-export([increment/3]).
 -export([record/2]).
 -export([get_all_metrics/0]).
 -export([reset/0]).
@@ -54,6 +55,15 @@ increment(Name) ->
 -spec increment(atom(), integer()) -> ok.
 increment(Name, Delta) when is_atom(Name), is_integer(Delta), Delta > 0 ->
     gen_server:cast(?MODULE, {increment, Name, Delta}).
+
+%% @doc 增加带标签的计数器
+%% Labels 是 map，如 #{plugin => channel}
+%% Delta 固定为 1；自定义 delta 请用 increment/3
+-spec increment(atom(), integer(), map()) -> ok | {error, invalid_delta}.
+increment(Name, Delta, Labels) when is_atom(Name), is_integer(Delta), Delta > 0, is_map(Labels) ->
+    gen_server:cast(?MODULE, {increment_labeled, Name, Delta, Labels});
+increment(_Name, Delta, _Labels) when is_integer(Delta), Delta =< 0 ->
+    {error, invalid_delta}.
 
 %% @doc 记录直方图数据
 -spec record(atom(), number()) -> ok.
@@ -152,7 +162,7 @@ init([]) ->
 
 %% @private
 handle_call(get_all_metrics, _From, State) ->
-    % 获取所有计数器
+    % 获取所有计数器（无标签）
     Counters = ets:foldl(
         fun({{counter, Name}, Value}, Acc) ->
             Acc#{Name => Value};
@@ -162,6 +172,20 @@ handle_call(get_all_metrics, _From, State) ->
         #{},
         ?METRICS_ETS
     ),
+
+    % 获取所有带标签计数器（将排序列表转回 map 作为 key）
+    LabeledCounters = ets:foldl(
+        fun({{labeled_counter, Name, SortedLabels}, Value}, Acc) ->
+            LabelsMap = maps:from_list(SortedLabels),
+            Acc#{{Name, LabelsMap} => Value};
+           (_, Acc) ->
+            Acc
+        end,
+        #{},
+        ?METRICS_ETS
+    ),
+
+    AllCounters = maps:merge(Counters, LabeledCounters),
 
     % 获取所有直方图
     Histograms = ets:foldl(
@@ -174,7 +198,7 @@ handle_call(get_all_metrics, _From, State) ->
         ?METRICS_ETS
     ),
 
-    {reply, #{counters => Counters, histograms => Histograms}, State};
+    {reply, #{counters => AllCounters, histograms => Histograms}, State};
 
 handle_call(reset, _From, State) ->
     ets:delete_all_objects(?METRICS_ETS),
@@ -194,6 +218,15 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast({increment, Name, Delta}, State) ->
     Key = {counter, Name},
+    NewValue = case ets:lookup(?METRICS_ETS, Key) of
+        [{Key, Value}] -> Value + Delta;
+        [] -> Delta
+    end,
+    ets:insert(?METRICS_ETS, {Key, NewValue}),
+    {noreply, State};
+
+handle_cast({increment_labeled, Name, Delta, Labels}, State) ->
+    Key = {labeled_counter, Name, sort_labels(Labels)},
     NewValue = case ets:lookup(?METRICS_ETS, Key) of
         [{Key, Value}] -> Value + Delta;
         [] -> Delta
@@ -230,3 +263,12 @@ terminate(_Reason, _State) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
+%% @doc 将 labels map 排序为规范形式（用于 ETS key 的一致性）
+-spec sort_labels(map()) -> [{atom(), atom()}].
+sort_labels(Labels) ->
+    lists:sort(maps:to_list(Labels)).

@@ -239,31 +239,6 @@ map_to_query_single_test_() ->
     end).
 
 %% ===================================================================
-%% list_to_binary_string/1 测试
-%% ===================================================================
-
-%% @doc 测试整数列表转字符串
-list_to_binary_string_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Result = elib_cnv:list_to_binary_string([513251, 62829, 62825]),
-        ?assertEqual(<<"513251,62829,62825">>, Result)
-    end).
-
-%% @doc 测试单个元素
-list_to_binary_string_single_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Result = elib_cnv:list_to_binary_string([123]),
-        ?assertEqual(<<"123">>, Result)
-    end).
-
-%% @doc 测试空列表
-list_to_binary_string_empty_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Result = elib_cnv:list_to_binary_string([]),
-        ?assertEqual(<<>>, Result)
-    end).
-
-%% ===================================================================
 %% safe_to_binary/1 测试
 %% ===================================================================
 

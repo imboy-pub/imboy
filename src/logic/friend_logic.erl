@@ -25,7 +25,7 @@
 %% @return ok | {error, ErrorCode, ErrorMsg}
 -spec add_friend(integer(),
                  binary(),
-                 binary(),
+                 binary() | map(),
                  binary() | integer()) -> ok | {error, binary(), binary()}.
 add_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"to">>};
@@ -54,15 +54,13 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     MsgId = <<"af_", FromBin/binary, "_", To/binary>>,
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend">>,
-    PayloadMap = jsone:decode(Payload, [{object_format, map}]),
+    PayloadMap = if is_map(Payload) -> Payload; true -> jsone:decode(Payload, [{object_format, map}]) end,
     Payload2 = maps:without([<<"action">>], PayloadMap),
     % 存储消息（v2.0: 使用 write_msg/8 API）
-    WriteResult = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
-    ok = ?INFO_LOG({do_add_friend_write, CurrentUid, ToId, MsgId, WriteResult}),
-    Msg = message_ds:assemble_msg(<<"S2C">>, CurrentUid, To, Payload2, MsgId, <<>>, Action, null),
+    msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
+    %% FIX: 使用 FromBin (binary) 而非 CurrentUid (integer)，确保客户端收到字符串类型的 from
+    Msg = message_ds:assemble_msg(<<"S2C">>, FromBin, To, Payload2, MsgId, <<>>, Action, null),
     MsLi = elib_retry_config:intervals(<<"s2c">>),
-    Members = imboy_syn:list_by_uid(ToId),
-    ok = ?INFO_LOG({do_add_friend_send, CurrentUid, ToId, MsgId, length(Members), MsLi}),
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 
@@ -129,7 +127,9 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     _ = msg_s2c_ds:write_msg(NowTs, MsgId, Payload6, CurrentUid, FromID, NowTs, Action, <<>>),
 
     % 这里的From To 需要对调，离线消息需要对调
-    Msg = message_ds:assemble_msg(<<"S2C">>, To, From, Payload6, MsgId, <<>>, Action, null),
+    %% FIX: 将 To (integer) 转为 binary，确保客户端收到字符串类型
+    ToBin = ec_cnv:to_binary(To),
+    Msg = message_ds:assemble_msg(<<"S2C">>, ToBin, From, Payload6, MsgId, <<>>, Action, null),
 
     % ?DEBUG_LOG(Msg),
     MsLi = elib_retry_config:intervals(<<"s2c">>),

@@ -170,16 +170,48 @@ do_scan(#state{plugin_dir = Dir, loaded = OldLoaded} = State) ->
             State#state{loaded = [], failed = [{Dir, Reason}]}
     end.
 
-%% @doc 干跑加载：解析 + 校验，返回 {Name, Manifest} 或 acc 失败列表。
+%% @doc 干跑加载：解析 + 校验 + 签名验证，返回 {Name, Manifest} 或 acc 失败列表。
 %% 不写 persistent_term — 由 do_scan 阶段 2 统一原子写入。
 load_one_plugin_dryrun(PluginDir, {LAcc, FAcc}) ->
     ConfigPath = filename:join(PluginDir, "plugin.config"),
     case imboy_plugin_toml:load(ConfigPath) of
         {ok, Manifest} ->
-            Name = maps:get(name, Manifest),
-            {[{Name, Manifest} | LAcc], FAcc};
+            case verify_plugin_signature(PluginDir, ConfigPath) of
+                ok ->
+                    Name = maps:get(name, Manifest),
+                    {[{Name, Manifest} | LAcc], FAcc};
+                {error, SigReason} ->
+                    {LAcc, [{ConfigPath, {signature_invalid, SigReason}} | FAcc]}
+            end;
         {error, Reason} ->
             {LAcc, [{ConfigPath, Reason} | FAcc]}
+    end.
+
+%% @doc 校验插件签名。
+%% 策略 / Strategy:
+%%   - 无可信公钥配置（undefined / []）→ 跳过校验，返回 ok（向后兼容）
+%%   - SIGNATURE 文件不存在 → 跳过校验，返回 ok（无签名 = 不强制）
+%%   - SIGNATURE 存在 + 有公钥 → 逐一尝试，任一公钥验证通过即 ok
+%%   - SIGNATURE 存在 + 全部公钥验证失败 → {error, no_matching_key}
+verify_plugin_signature(PluginDir, ConfigPath) ->
+    TrustedKeys = application:get_env(imboy, plugin_trusted_public_keys, []),
+    HasKeys = is_list(TrustedKeys) andalso TrustedKeys =/= [],
+    case {HasKeys, file:read_file(filename:join(PluginDir, "SIGNATURE"))} of
+        {false, _} ->
+            ok;
+        {_, {error, enoent}} ->
+            ok;
+        {true, {ok, Signature}} ->
+            verify_against_keys(ConfigPath, TrustedKeys, Signature)
+    end.
+
+%% @doc 逐一尝试可信公钥验证签名
+verify_against_keys(_ConfigPath, [], _Signature) ->
+    {error, no_matching_key};
+verify_against_keys(ConfigPath, [PubKey | Rest], Signature) ->
+    case imboy_plugin_signature:verify_file(ConfigPath, PubKey, Signature) of
+        ok -> ok;
+        {error, _} -> verify_against_keys(ConfigPath, Rest, Signature)
     end.
 
 %% @doc 列出目录下所有子目录（仅一层深度）。

@@ -30,7 +30,9 @@
     parse_constraint/1,
     check_constraint/2,
     validate_constraints/1,
-    topological_sort/1
+    topological_sort/1,
+    check_enable_deps/1,
+    find_dependents/1
 ]).
 
 -type version() :: {non_neg_integer(), non_neg_integer(), non_neg_integer(), [string()]}.
@@ -257,3 +259,77 @@ kahn_loop([Node | Rest], AdjOut, InDegree, Acc, Total) ->
         Dependents
     ),
     kahn_loop(NewQueue, AdjOut, NewInDegree, [Node | Acc], Total).
+
+%% ===================================================================
+%% Cascade — 依赖联动 (lifecycle.md §8)
+%% ===================================================================
+
+%% @doc 检查 enable 前置依赖是否满足 (§8.1)。
+%% 返回 ok 或 {error, {deps_not_enabled, [Name]}}。
+-spec check_enable_deps(map()) -> ok | {error, {deps_not_enabled, [atom()]}}.
+check_enable_deps(Manifest) ->
+    Deps = maps:get(depends_on, Manifest, #{}),
+    NotEnabled = lists:filter(fun(DepName) ->
+        case get_plugin_state(DepName) of
+            enabled -> false;
+            _ -> true
+        end
+    end, maps:keys(Deps)),
+    case NotEnabled of
+        [] -> ok;
+        _ -> {error, {deps_not_enabled, NotEnabled}}
+    end.
+
+%% @doc 查找哪些已启用插件依赖当前插件 (§8.2)。
+%% 返回 [] 或 {error, {has_dependents, [Name]}}。
+-spec find_dependents(atom()) -> ok | {error, {has_dependents, [atom()]}}.
+find_dependents(PluginName) ->
+    AllManifests = get_all_manifests(),
+    Dependents = lists:filtermap(fun({Name, Manifest}) ->
+        Deps = maps:get(depends_on, Manifest, #{}),
+        case maps:is_key(PluginName, Deps) of
+            true ->
+                case get_plugin_state(Name) of
+                    enabled -> {true, Name};
+                    _ -> false
+                end;
+            false -> false
+        end
+    end, AllManifests),
+    case Dependents of
+        [] -> ok;
+        _ -> {error, {has_dependents, Dependents}}
+    end.
+
+%% @doc 从 persistent_term 获取所有已注册的插件 manifest。
+get_all_manifests() ->
+    PT = persistent_term:get(),
+    lists:filtermap(fun({Key, Val}) ->
+        case Key of
+            {imboy_plugin_manifest, Name} -> {true, {Name, Val}};
+            _ -> false
+        end
+    end, PT).
+
+%% @doc 获取插件 lifecycle 进程的当前状态（如果存在）。
+get_plugin_state(Name) ->
+    case persistent_term:get({imboy_plugin_lifecycle, Name}, undefined) of
+        undefined ->
+            case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
+                undefined -> unknown;
+                _ -> installed
+            end;
+        Pid when is_pid(Pid) ->
+            case erlang:is_process_alive(Pid) of
+                false ->
+                    catch persistent_term:erase({imboy_plugin_lifecycle, Name}),
+                    case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
+                        undefined -> unknown;
+                        _ -> installed
+                    end;
+                true ->
+                    try gen_statem:call(Pid, get_state, 1000)
+                    catch _:_ -> unknown
+                    end
+            end
+    end.

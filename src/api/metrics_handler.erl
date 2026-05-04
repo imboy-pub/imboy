@@ -3,6 +3,7 @@
 -behavior(cowboy_rest).
 
 -export([init/2]).
+-export([format_prometheus/1]).
 
 %% @doc Metrics endpoint for runtime observability.
 %% 支持两种格式：
@@ -91,15 +92,24 @@ collect_system_metrics() ->
     }, PoolStatus).
 
 %% @doc 将指标格式化为 Prometheus text exposition format
+%% 支持带标签的计数器：metric_name{plugin="channel"} 42
 -spec format_prometheus(map()) -> iodata().
 format_prometheus(Metrics) ->
     Counters = maps:get(counters, Metrics, #{}),
     Histograms = maps:get(histograms, Metrics, #{}),
 
-    CounterLines = maps:fold(fun(Name, Value, Acc) ->
-        NameBin = metric_name(Name),
-        [Acc, <<"# TYPE ">>, NameBin, <<" gauge\n">>,
-         NameBin, <<" ">>, integer_to_binary(Value), <<"\n">>]
+    %% 按 metric name 分组带标签的计数器，用于合并 TYPE 声明
+    CounterLines = maps:fold(fun
+        ({Name, Labels}, Value, Acc) when is_map(Labels) ->
+            %% 带标签的计数器: {Name, #{plugin => channel}} => metric_name{plugin="channel"}
+            NameBin = metric_name(Name),
+            LabelsBin = format_labels_map(Labels),
+            [Acc, NameBin, <<"{">>, LabelsBin, <<"} ">>,
+             integer_to_binary(Value), <<"\n">>];
+        (Name, Value, Acc) ->
+            NameBin = metric_name(Name),
+            [Acc, <<"# TYPE ">>, NameBin, <<" gauge\n">>,
+             NameBin, <<" ">>, integer_to_binary(Value), <<"\n">>]
     end, [], Counters),
 
     HistLines = maps:fold(fun(Name, Buckets, Acc) ->
@@ -113,6 +123,21 @@ format_prometheus(Metrics) ->
     end, [], Histograms),
 
     iolist_to_binary([CounterLines, HistLines]).
+
+%% @doc 格式化标签 map 为 Prometheus label 格式: plugin="channel",method="get"
+-spec format_labels_map(map()) -> iodata().
+format_labels_map(Labels) ->
+    SortedPairs = lists:sort(maps:to_list(Labels)),
+    Parts = [[atom_to_binary(K, utf8), <<"=\"">>,
+              format_label_value(V), <<"\"">>]
+             || {K, V} <- SortedPairs],
+    lists:join(<<",">>, Parts).
+
+-spec format_label_value(term()) -> binary().
+format_label_value(V) when is_atom(V) -> atom_to_binary(V, utf8);
+format_label_value(V) when is_binary(V) -> V;
+format_label_value(V) when is_integer(V) -> integer_to_binary(V);
+format_label_value(V) -> iolist_to_binary(io_lib:format("~p", [V])).
 
 %% @doc 将指标名转为合法的 Prometheus metric name
 -spec metric_name(atom() | tuple()) -> binary().
