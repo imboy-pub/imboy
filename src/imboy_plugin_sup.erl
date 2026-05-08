@@ -38,12 +38,24 @@ init([]) ->
         period => 10
     },
     Children = [
+        router_registry_spec(),
         plugin_sup_spec(channel_sup),
         plugin_sup_spec(moment_sup),
         plugin_sup_spec(location_sup),
         plugin_sup_spec(group_collab_sup)
     ],
     {ok, {SupFlags, Children}}.
+
+%% @doc 路由注册表 child spec：必须在插件 sup 之前启动，确保 register/unregister 可用。
+router_registry_spec() ->
+    #{
+        id => imboy_router_registry,
+        start => {imboy_router_registry, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [imboy_router_registry]
+    }.
 
 %% @doc 通用 plugin sup child spec：复用 imboy_plugin_generic_sup 注册不同 local name。
 plugin_sup_spec(Name) when is_atom(Name) ->

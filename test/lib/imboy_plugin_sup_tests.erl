@@ -52,7 +52,7 @@ wait_for_dead(Pid, N) ->
     end.
 
 %% ===================================================================
-%% 1. imboy_plugin_sup 启动后 4 个 plugin sup 全部注册
+%% 1. imboy_plugin_sup 启动后 router_registry + 4 个 plugin sup 全部注册
 %% ===================================================================
 
 sup_starts_with_4_plugin_sups_test_() ->
@@ -60,7 +60,8 @@ sup_starts_with_4_plugin_sups_test_() ->
      fun(Pid) ->
          Children = supervisor:which_children(Pid),
          [
-             ?_assertEqual(4, length(Children)),
+             ?_assertEqual(5, length(Children)),
+             ?_assert(lists:keymember(imboy_router_registry, 1, Children)),
              ?_assert(lists:keymember(channel_sup, 1, Children)),
              ?_assert(lists:keymember(moment_sup, 1, Children)),
              ?_assert(lists:keymember(location_sup, 1, Children)),

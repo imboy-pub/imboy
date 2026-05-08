@@ -1,125 +1,37 @@
 # Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-04-15 CST
-> **版本 / Version**: 1.0.0-rc.2
-> **架构 / Architecture**: 单应用 4 层架构 (Handler -> Logic -> DS -> Repo)
+> **最后更新 / Last updated**: 2026-04-15 CST | **版本**: 1.0.0-rc.2
+> **架构**: 单应用 4 层架构 Handler -> Logic -> DS -> Repo | **语言**: Erlang/OTP 28+ + PostgreSQL 18+
 
 ---
 
-## 📘 文档双语强制规则 / Bilingual Documentation Rule (MANDATORY)
+## 双语文档规则 / Bilingual Documentation Rule (MANDATORY)
 
-> **适用范围 / Scope**：本项目（imboy 后端）所有新增 / 修改的 Markdown 文档（README、CHANGELOG、doc/**、.github/**、CONTRIBUTING、SECURITY、migration notes、runbook 等）必须遵守本规则。
-> All new or modified Markdown docs in this project (imboy backend) — README, CHANGELOG, doc/**, .github/**, CONTRIBUTING, SECURITY, migration notes, runbooks, etc. — MUST follow this rule.
+所有面向用户/贡献者/运维的 Markdown 文档必须同时提供**简体中文 + English**。
+All user/contributor/ops-facing Markdown docs MUST provide **Simplified Chinese + English**.
 
-### 1. 强制双语 / Bilingual mandatory
-
-- 面向用户 / 贡献者 / 运维的文档必须同时提供 **简体中文 + English** 两种语言。
-- User / contributor / ops-facing docs MUST provide both **Simplified Chinese** and **English**.
-
-### 2. 组织方式（二选一）/ Organization (pick one)
-
-- **方式 A — 单文件并排 / Pattern A — Side-by-side**
-  每个小节按 `中文 / English` 同节并排或上下段落对照。适合短文档（README hero 段、CHANGELOG 条目、issue/PR 模板、SECURITY 通告）。
-  Each section uses `中文 / English` side-by-side or stacked paragraphs. Use for short docs (README hero, CHANGELOG entries, issue/PR templates, SECURITY advisories).
-
-- **方式 B — 文件后缀分离 / Pattern B — Separate files by suffix**
-  `README.md`（中文权威）+ `README.en.md`（英文镜像）；两个文件顶部互加语言切换链接 `[English](README.en.md) | 简体中文`。适合长文档（architecture、upgrade-runbook、API doc、whitepaper、operations/*）。
-  `README.md` (Chinese authoritative) + `README.en.md` (English mirror); both files have a language switcher at the top. Use for long docs (architecture, upgrade-runbook, API doc, whitepaper, operations/*).
-
-### 3. 权威语言 / Source of truth
-
-- **简体中文为权威版本**；英文版基于中文翻译而来。**中文先改，英文在同一次 PR 内同步跟进**，禁止出现只改中文不改英文或反之。
-- **Simplified Chinese is the source of truth**; English mirrors Chinese. **Update Chinese first, then sync English within the same PR**. Never ship one language without the other.
-
-### 4. 代码块与命令行原样保留 / Code and CLI verbatim
-
-- 代码、命令、配置文件、错误信息、HTTP 报文、SQL、Erlang 模块名不翻译。
-- Code, commands, config files, error messages, HTTP payloads, SQL, Erlang module names are NOT translated.
-
-### 5. 术语一致性 / Terminology consistency
-
-- 关键术语首次出现时给出对照：`会话 (Conversation)`、`首启向导 (First-run Setup Wizard)`、`消息归档 (Message Archive)`、`游标 (Cursor)`、`幂等 (Idempotent)`、`连接 (Connection)`、`渠道 / 频道 (Channel)`、`权限分离 (Privilege Separation)`。
-- Key terms come with a translation pair on first occurrence.
-
-### 6. 例外（可仅保留中文）/ Exceptions (Chinese-only allowed)
-
-- `.claude/plan/*`、`.claude/memory/*`、`docs/meeting/*`、内部会议纪要、个人研发笔记
-- `.claude/plan/*`, `.claude/memory/*`, `docs/meeting/*`, internal meeting notes, personal dev notes
-
-### 7. AI 编码代理契约 / AI Coding Agent Contract
-
-当 AI 代理（Claude Code / Cursor / Copilot）收到「写文档 / 改文档 / 新建 .md」类任务时：
-1. **默认双语输出**，无需用户额外提示。
-2. 修改已有单语文档时，**主动补齐**缺失的语言。
-3. 新建文档时，短文档走方式 A，长文档走方式 B。
-4. 变更文档后，在 commit message 中注明 `docs(bilingual):` 前缀或在 PR 描述中勾选 "docs bilingual check"。
-
-When an AI agent (Claude Code / Cursor / Copilot) is asked to write, modify, or create Markdown docs:
-1. **Default to bilingual output**, no extra user prompt needed.
-2. When editing an existing single-language doc, **proactively add** the missing language.
-3. When creating new docs, use Pattern A for short docs and Pattern B for long docs.
-4. Prefix commit messages with `docs(bilingual):` or tick "docs bilingual check" in the PR description.
+- **方式 A**（短文档）：同节并排。**方式 B**（长文档）：`README.md`（中文权威）+ `README.en.md`
+- **Pattern A** (short): side-by-side sections. **Pattern B** (long): `README.md` (CN authoritative) + `README.en.md`
+- 简体中文为权威版本，中文先改，英文同 PR 内同步。/ Simplified Chinese is source of truth; sync English in same PR.
+- 代码、命令、模块名不翻译。/ Code, commands, module names are NOT translated.
+- 例外（仅中文）：`.claude/plan/*`、`.claude/memory/*`、内部会议纪要
+- AI Agent 契约：收到"写/改/新建 .md"任务时默认双语输出，commit message 加 `docs(bilingual):` 前缀。
+- AI Agent contract: default bilingual output; prefix commits with `docs(bilingual):`.
 
 ---
-
-## 变更记录 (Changelog)
-
-### 2026-04-15
-- 完整同步 DS 层文档及代码统计数据
-- DS 层模块数量调整：13 → 77（新增 64 个 G3 治理薄封装 DS 模块及其他功能模块）
-- 更新代码统计：总计 198 个源文件（从 134 个）
-- 更新覆盖率统计（DS 模块占比由 9.7% 升至 40.1%）
-- 重新分类 DS 层对外接口，按功能领域组织（用户、认证、好友、群组、消息、E2EE、频道、应用、对话、内容、推送、反馈、直播、钱包等）
-
----
-
-## 项目愿景
-
-Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18** 的高性能即时通讯（IM）系统。
 
 ## 构建系统规则 / Build System Rules
 
-### 禁止修改 erlang.mk / Do NOT modify erlang.mk
+- **禁止修改 `erlang.mk`**（vendored 第三方工具）。自定义逻辑只能在 `Makefile` 中实现。
+- **Do NOT modify `erlang.mk`**. All custom build logic goes in `Makefile` only.
+- `IMBOYENV=local make run` 自动加载 `config/sys.local.config` → 复制为 `config/sys.runtime.config`
+- 非 local 环境使用 `config/sys.config`；`IMBOY_*` 环境变量运行时优先级最高。
+- Admin 前端分页：统一用 `DataTablePagination`，默认 `size:10`，分页/筛选变化时重置 `page=1`。
 
-`erlang.mk` 是第三方构建工具（vendored），**禁止修改**。所有自定义构建逻辑必须在项目 `Makefile` 中通过覆盖变量、添加 target 或 `$(shell ...)` 钩子实现。
+---
 
-`erlang.mk` is a third-party build tool (vendored). **Do NOT modify it.** All custom build logic must be implemented in the project `Makefile` via variable overrides, additional targets, or `$(shell ...)` hooks.
+## 技术栈
 
-### IMBOYENV=local 配置加载 / Config loading for IMBOYENV=local
-
-`IMBOYENV=local make run` 自动加载 `config/sys.local.config`。机制：
-
-1. Makefile 在 parse 阶段检测 `IMBOYENV`，若为 `local` 且 `sys.local.config` 存在，将其复制为 `config/sys.runtime.config`
-2. `relx.config` 的 `{sys_config, "config/sys.runtime.config"}` 指向该生成文件
-3. 非 `local` 环境默认使用 `config/sys.config` 作为基础
-4. 环境变量 `IMBOY_*` 仍由 `imboy_env.erl` 在运行时覆盖（优先级最高）
-
-`IMBOYENV=local make run` automatically loads `config/sys.local.config`. The mechanism:
-
-1. Makefile detects `IMBOYENV` at parse time; if `local` and `sys.local.config` exists, copies it to `config/sys.runtime.config`
-2. `relx.config` points to `config/sys.runtime.config` via `{sys_config, "config/sys.runtime.config"}`
-3. Non-local environments default to `config/sys.config`
-4. `IMBOY_*` env vars still override at runtime via `imboy_env.erl` (highest priority)
-
-## Admin 前端分页规则
-
-适用范围：`imboy-admin-frontend` 所有使用分页的管理列表页面（如用户、群组、频道、反馈、消息、注销申请、审计日志等）。
-
-统一要求：
-- 分页 UI 必须对齐 `/users` 页面交互与视觉效果。
-- 统一使用 `DataTablePagination` 组件，不允许自定义另一套分页样式。
-- 必须传入 `onPageSizeChange`，启用「每页条数」切换能力。
-- 默认分页大小统一为 `size: 10`（除非有明确业务例外并在代码注释中说明）。
-- 搜索条件变化、筛选变化、每页条数变化时，必须将 `page` 重置为 `1`。
-
-### 核心特性
-- 高并发：单机支持 100 万+ TCP 连接（阿里云 8 核 16G 压测验证）
-- 分布式：支持多节点集群部署
-- 实时通讯：WebSocket + HTTP/RESTful 双协议
-- 安全性：JWT 认证、RSA 加密、TSID 分布式 ID、端到端加密 (E2EE)
-- 可扩展：基于 PostgreSQL 18+ 的关系型数据库，支持全文检索、地理位置、时序数据
-
-### 技术栈
 | 层级 | 技术 |
 |------|------|
 | 语言 | Erlang/OTP 28+ |
@@ -131,174 +43,21 @@ Imboy 是一款基于 **Erlang/OTP 28+**、**Cowboy 2.10** 和 **PostgreSQL 18**
 
 ---
 
-## 架构总览
+## 4 层架构
 
-### 设计原则
+调用链：`Handler → Logic → DS → Repo → PostgreSQL`，横向 `Lib` 层提供基础设施。
 
-Imboy 遵循 **DDD（领域驱动设计）** 思想，采用 **单应用 4 层架构**：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Handler 层 (API)                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   HTTP REST  │  │   WebSocket  │  │   Admin API  │      │
-│  │    Handler   │  │    Handler   │  │    Handler   │      │
-│  │  (29 modules)│  │              │  │  (7 modules) │      │
-│  │  +2 E2EE     │  │              │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Logic 层 (业务逻辑)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Friend Logic │  │  Group Logic │  │   Msg Logic  │      │
-│  │              │  │              │  │  (28 modules)│      │
-│  │              │  │              │  │  +2 E2EE     │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    DS 层 (数据服务)                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   User DS    │  │   Auth DS    │  │   Config DS  │      │
-│  │  (15 modules)│  │              │  │              │      │
-│  │  +2 E2EE     │  │              │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Repo 层 (数据访问)                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  User Repo   │  │  Friend Repo │  │   Msg Repo   │      │
-│  │ (35 modules) │  │              │  │              │      │
-│  │  +3 E2EE     │  │              │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    PostgreSQL 数据库                          │
-└─────────────────────────────────────────────────────────────┘
-
-        ┌──────────────────────────────────────┐
-        │          Lib 层 (基础设施)            │
-        │  elib_pg | imboy_cache | imboy_syn  │
-        │  elib_async | elib_retry (30 mod)  │
-        │  +shamir_secret_sharing             │
-        └──────────────────────────────────────┘
-```
-
-### 目录结构
-
-```
-imboy/
-├── src/
-│   ├── api/              # HTTP REST API 处理器 (27 个)
-│   ├── adm/              # 管理后台 API 处理器 (7 个)
-│   ├── logic/            # 业务逻辑层 (26 个)
-│   ├── ds/               # 数据服务层 (77 个)
-│   ├── repo/             # 数据仓库层 (32 个)
-│   └── lib/              # 基础库函数 (29 个)
-├── test/                 # EUnit 测试 (140+ 个测试文件)
-├── doc/                  # 项目文档
-├── config/               # 配置文件
-├── priv/                 # 私有文件（静态资源、SSL 证书）
-└── Makefile              # 构建工具
-```
-
----
-
-## 模块结构图
-
-```mermaid
-graph TD
-    ROOT["(根) Imboy 项目<br/>v0.7.3"]
-
-    ROOT --> API["src/api<br/>HTTP REST API<br/>27 个模块"]
-    ROOT --> ADM["src/adm<br/>管理后台 API<br/>7 个模块"]
-    ROOT --> LOGIC["src/logic<br/>业务逻辑<br/>26 个模块"]
-    ROOT --> DS["src/ds<br/>数据服务<br/>77 个模块"]
-    ROOT --> REPO["src/repo<br/>数据仓库<br/>32 个模块"]
-    ROOT --> LIB["src/lib<br/>基础库<br/>29 个模块"]
-    ROOT --> TEST["test<br/>测试<br/>140+ 文件"]
-
-    API --> API_WS["websocket_handler.erl<br/>WebSocket 连接"]
-    API --> API_MSG["msg_handler.erl<br/>消息处理"]
-    API --> API_USER["user_handler.erl<br/>用户管理"]
-    API --> API_FRIEND["friend_handler.erl<br/>好友管理"]
-    API --> API_GROUP["group_handler.erl<br/>群组管理"]
-    API --> API_AUTH["passport_handler.erl<br/>认证登录"]
-    API --> API_E2EE["e2ee_handler.erl<br/>端到端加密"]
-
-    ADM --> ADM_PASS["adm_passport_handler.erl<br/>后台登录"]
-    ADM --> ADM_FEEDBACK["adm_feedback_handler.erl<br/>反馈管理"]
-    ADM --> ADM_VERSION["adm_app_version_handler.erl<br/>版本管理"]
-
-    LOGIC --> LOGIC_MSG["msg_c2c_logic.erl<br/>单聊逻辑"]
-    LOGIC --> LOGIC_GROUP["group_logic.erl<br/>群组逻辑"]
-    LOGIC --> LOGIC_WS["websocket_logic.erl<br/>WS 业务逻辑"]
-    LOGIC --> LOGIC_USER["user_logic.erl<br/>用户逻辑"]
-    LOGIC --> LOGIC_AUTH["auth_logic.erl<br/>认证逻辑"]
-    LOGIC --> LOGIC_E2EE["e2ee_logic.erl<br/>E2EE 逻辑"]
-    LOGIC --> LOGIC_MSG_ROUTER["message_router_logic.erl<br/>消息路由器"]
-
-    DS --> DS_USER["user_ds.erl<br/>用户数据服务"]
-    DS --> DS_AUTH["auth_ds.erl<br/>认证数据服务"]
-    DS --> DS_CONFIG["config_ds.erl<br/>配置数据服务"]
-    DS --> DS_MSG["message_ds.erl<br/>消息数据服务"]
-    DS --> DS_WS["websocket_ds.erl<br/>WebSocket DS"]
-    DS --> DS_MSG_STORE["msg_store_ds.erl<br/>消息存储服务"]
-    DS --> DS_MSG_WORKER["msg_store_worker.erl<br/>批量写入"]
-
-    REPO --> REPO_USER["user_repo.erl<br/>用户仓库"]
-    REPO --> REPO_MSG["msg_c2c_repo.erl<br/>消息仓库"]
-    REPO --> REPO_GROUP["group_repo.erl<br/>群组仓库"]
-    REPO --> REPO_FRIEND["friend_repo.erl<br/>好友仓库"]
-    REPO --> REPO_DEVICE["user_device_repo.erl<br/>设备仓库"]
-
-    LIB --> LIB_PG["elib_pg.erl<br/>数据库连接"]
-    LIB --> LIB_CACHE["imboy_cache.erl<br/>缓存封装"]
-    LIB --> LIB_SYN["imboy_syn.erl<br/>分布式同步"]
-    LIB --> LIB_ASYNC["elib_async.erl<br/>异步执行"]
-    LIB --> LIB_RETRY["elib_retry.erl<br/>重试机制"]
-    LIB --> LIB_TSID["elib_tsid.erl<br/>TSID 分布式 ID"]
-    LIB --> LIB_CIPHER["elib_cipher.erl<br/>加密/解密"]
-
-    click ROOT "./CLAUDE.md" "查看根目录文档"
-    click API "./src/api/CLAUDE.md" "查看 API 层文档"
-    click ADM "./src/adm/CLAUDE.md" "查看 ADM 层文档"
-    click LOGIC "./src/logic/CLAUDE.md" "查看 Logic 层文档"
-    click DS "./src/ds/CLAUDE.md" "查看 DS 层文档"
-    click REPO "./src/repo/CLAUDE.md" "查看 Repo 层文档"
-    click LIB "./src/lib/CLAUDE.md" "查看 Lib 层文档"
-
-    style ROOT fill:#e1f5fe,stroke:#01579b,stroke-width:3px
-    style API fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style ADM fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    style LOGIC fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    style DS fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style REPO fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    style LIB fill:#e0f2f1,stroke:#004d40,stroke-width:2px
-    style TEST fill:#efebe9,stroke:#3e2723,stroke-width:1px
-```
-
----
-
-## 模块索引
-
-详细的模块索引已拆分为独立文档，详见：[doc/modules/](./doc/modules/)
-
-### 快速查找
-
-| 层级 | 目录 | 数量 | 说明 | 文档 |
+| 层级 | 目录 | 数量 | 职责 | 文档 |
 |------|------|------|------|------|
-| **Handler** | `src/api/` | 27 个 | HTTP REST API 处理器 | [API 层](./src/api/CLAUDE.md) |
-| **Admin** | `src/adm/` | 7 个 | 管理后台 API 处理器 | [ADM 层](./src/adm/CLAUDE.md) |
-| **Logic** | `src/logic/` | 26 个 | 业务逻辑层 | [Logic 层](./src/logic/CLAUDE.md) |
-| **DS** | `src/ds/` | 77 个 | 数据服务层 | [DS 层](./src/ds/CLAUDE.md) |
-| **Repo** | `src/repo/` | 32 个 | 数据仓库层 | [Repo 层](./src/repo/CLAUDE.md) |
-| **Lib** | `src/lib/` | 29 个 | 基础库函数 | [Lib 层](./src/lib/CLAUDE.md) |
+| Handler (API+ADM) | `src/api/` + `src/adm/` | 27+7=34 个 | HTTP/WS 入口、参数验证 | [api](./src/api/CLAUDE.md) / [adm](./src/adm/CLAUDE.md) |
+| Logic | `src/logic/` | 26 个 | 业务逻辑 | [logic](./src/logic/CLAUDE.md) |
+| DS | `src/ds/` | 77 个 | 数据服务、缓存封装 | [ds](./src/ds/CLAUDE.md) |
+| Repo | `src/repo/` | 32 个 | SQL/PostgreSQL 访问 | [repo](./src/repo/CLAUDE.md) |
+| Lib | `src/lib/` | 29 个 | 基础库 (elib_pg, elib_async, elib_retry…) | [lib](./src/lib/CLAUDE.md) |
 
-### 按功能查找
+---
+
+## 按功能快查
 
 | 功能 | Handler | Logic | DS | Repo |
 |------|---------|-------|-----|------|
@@ -310,646 +69,94 @@ graph TD
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
 | E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
 
-详细索引以各层目录内 `CLAUDE.md` 为准（`src/api/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`）。
-
 ---
 
-## 运行与开发
-
-### 环境要求
-
-- **Erlang/OTP**: 28+
-- **PostgreSQL**: 18+
-- **扩展**: pg_jieba, postgis, timescaledb, pgcrypto, pg_trgm
-
-### 快速启动
+## 运行命令速查
 
 ```bash
-# 编译
-make compile
-
-# 运行 (local 环境)
-IMBOYENV=local make run
-
-# 运行 (dev 环境)
-IMBOYENV=dev make run
-
-# 指定端口运行
+make compile                          # 编译
+IMBOYENV=local make run               # 本地运行
 IMBOYENV=local make run HTTP_PORT=9800
-```
-
-### 构建发布
-
-```bash
-# 构建 local 版本
-IMBOYENV=local make rel
-
-# 构建 dev 版本
-IMBOYENV=dev make rel
-
-# 升级发布
-IMBOYENV=local make relup
-```
-
-### 分布式启动
-
-```bash
-# 启动 node1 (端口 9801)
-make start node=node1 port=9801
-
-# 启动 node2 (端口 9802)
-make start node=node2 port=9802 cookie=imboycookie
-```
-
-### 测试
-
-```bash
-# 运行所有测试
-make eunit
-
-# 运行特定测试
-erl -noshell -eval "eunit:test([user_repo_tests], [verbose])" -s init stop
-
-# 代码检查
-make dialyze
-
-# 代码格式化
-./efmt -w src/api/user_handler.erl
-```
-
-### CLI 管理工具 (imboy_ctl)
-
-```bash
-# 显示帮助
-make ctl
-# 或直接
-escript scripts/imboy_ctl help
-
-# 用户管理
-make ctl ARGS="user token 1000000051"
-make ctl ARGS="user detail 1000000051"
-make ctl ARGS="user create 1000000099 -a test@example.com -n TestUser -p pass123"
-make ctl ARGS="user list -P 2 -S 10"
-
-# 消息诊断
-make ctl ARGS="msg send 1000000051 1000000056 -T hello"
-make ctl ARGS="msg status msg_id_here"
-make ctl ARGS="msg archive -k c2c:1000000051:1000000056 -s 0 -l 20"
-
-# 节点运维
-make ctl ARGS="node status"
-make ctl ARGS="node routes"
-make ctl ARGS="node connections"
-make ctl ARGS="node pools"
-
-# 数据库运维
+IMBOYENV=local make rel               # 构建发布
+make eunit                            # 所有测试
+erl -noshell -eval "eunit:test([user_repo_tests],[verbose])" -s init stop
+make dialyze                          # 类型检查
+make ctl ARGS="node status"           # CLI 工具
+make ctl ARGS="smoke all"             # 冒烟测试
 make ctl ARGS="db ping"
-make ctl ARGS="db migrate"
-make ctl ARGS="db pool"
-
-# 诊断工具
-make ctl ARGS="diagnose config"
-make ctl ARGS="diagnose boundaries"
-
-# 冒烟测试
-make ctl ARGS="smoke c2c"
-make ctl ARGS="smoke ws"
-make ctl ARGS="smoke all"
-
-# 插件管理
 make ctl ARGS="plugin list"
-make ctl ARGS="plugin load channel"
-make ctl ARGS="plugin unload channel"
+_rel/imboy/bin/imboy remote_console   # 远程调试 shell
+lm()                                  # 热加载（在 shell 中）
+config_ds:local_reload()              # 重新加载配置
+observer_cli:start()                  # 节点监控
 ```
 
-环境变量配置：
+CLI 环境变量：`IMBOY_CTL_NODE`, `IMBOY_CTL_COOKIE`, `IMBOY_CTL_TIMEOUT`
+
+代码生成模板：
 ```bash
-IMBOY_CTL_NODE=imboy@127.0.0.1  # 目标节点（默认）
-IMBOY_CTL_COOKIE=imboy           # Erlang cookie
-IMBOY_CTL_TIMEOUT=15000          # RPC 超时（毫秒）
-```
-
-### 远程调试
-
-```bash
-# 连接到远程节点
-_rel/imboy/bin/imboy remote_console
-
-# 从外部连接
-erl -name debug@127.0.0.1 -setcookie imboy
-net_adm:ping('imboy@127.0.0.1').
-```
-
----
-
-## 测试策略
-
-### 测试文件组织
-
-```
-test/
-├── api/           # API 层测试 (50+)
-├── adm/           # 管理后台测试 (5+)
-├── logic/         # 业务逻辑测试 (20+)
-├── ds/            # 数据服务测试 (10+)
-├── repo/          # 数据仓库测试 (40+)
-├── lib/           # 基础库测试 (30+)
-└── common/        # 测试辅助模块 (5+)
-```
-
-### 测试配置
-
-- **超时**: 30 秒
-- **环境标记**: `application:set_env(imboy, env, test)`
-- **测试框架**: EUnit
-- **Mock 库**: meck
-
-### 关键测试模块
-
-| 测试模块 | 测试内容 |
-|---------|---------|
-| `user_repo_tests.erl` | 用户数据仓库测试 |
-| `msg_c2c_logic_tests.erl` | 单聊消息逻辑测试 |
-| `websocket_logic_tests.erl` | WS 业务逻辑测试 |
-| `auth_logic_tests.erl` | 认证逻辑测试 |
-| `group_logic_tests.erl` | 群组逻辑测试 |
-
----
-
-## 编码规范
-
-详细的编码规范已拆分为独立文档，详见：
-
-### 规范文档
-
-- **UTF-8 编码**: [doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
-- **错误码规范**: [doc/standards/error-codes.md](./doc/standards/error-codes.md)
-- **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **ID 规范**: TSID 分布式 ID（替代 HashID），REST API 以 JSON integer 传输；前端 safeParseBigIntJson 转 string；详见 [doc/api/tsid-field-convention.md](./doc/api/tsid-field-convention.md)
-- **API 格式**: [doc/standards/api-format.md](./doc/standards/api-format.md)
-
-### 快速参考
-
-| 规范 | 核心要点 | 文档 |
-|------|---------|------|
-| **UTF-8 编码** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
-| **错误码** | 使用宏定义，如 `?ERR_OK`, `?ERR_NOT_FOUND` | [error-codes.md](./doc/standards/error-codes.md) |
-| **数据库访问** | 所有数据库操作必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **TSID** | 分布式 ID，JSON integer 传输；前端 safeParseBigIntJson 转 string | [tsid-field-convention](./doc/api/tsid-field-convention.md) |
-| **API 格式** | HTTP JSON 响应，WebSocket 消息格式 | [api-format.md](./doc/standards/api-format.md) |
-
-### 常用示例
-
-#### UTF-8 编码
-```erlang
-% ✅ 正确
-<<"操作成功"/utf8>>
-
-% ❌ 错误
-<<"操作成功">>
-```
-
-#### 错误码
-```erlang
-% 使用宏定义
--include("error_code.hrl").
-elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
-```
-
-#### TSID ID 规范
-```erlang
-% 生成 TSID（Repo 层 insert 时）
-Id = elib_tsid:generate(table_name).
-
-% 客户端输入：binary → integer
-Uid2 = ec_cnv:to_integer(UidBin).
-
-% 客户端输出：直接返回 integer（不做字符串转换）
-From = CurrentUid.
-```
-
-### 代码生成建议
-
-1. **新建 Handler**:
-   ```bash
-   make new t=imboy.rest_handler n=demo_handler
-   ```
-
-2. **新建 Logic**:
-   ```bash
-   make new t=imboy.logic n=demo_logic
-   ```
-
-3. **新建 Repo**:
-   ```bash
-   make new t=imboy.repository n=demo_repo
-   ```
-
-4. **新建 DS**:
-   ```bash
-   make new t=imboy.ds n=demo_ds
-   ```
-
-### 常见任务
-
-#### 添加新的 API 端点
-
-1. 在 `src/api/` 创建 handler 文件
-2. 在 `src/imboy_router.erl` 添加路由
-3. 在 `src/logic/` 创建 logic 文件（如需要）
-4. 在 `src/repo/` 添加 repo 函数（如需要）
-5. 编写测试文件
-
-#### 添加数据库表
-
-1. 编写迁移 SQL
-2. 在 `src/repo/` 创建对应的 repo 模块
-3. 在 `src/ds/` 创建对应的 ds 模块（如需要）
-4. 编写测试
-
-#### 添加 WebSocket 消息类型
-
-1. 在 `src/logic/msg_xxx_logic.erl` 添加处理逻辑
-2. 在 `src/api/websocket_handler.erl` 添加消息分发
-3. 更新 `doc/api/websocket-api-2.md` 文档（完整规范）
-
-### 上下文文件
-
-- **DDD 架构**: [doc/architecture/overview.md](./doc/architecture/overview.md)
-- **数据库访问**: [doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- **WebSocket API**: [doc/api/websocket-api-2.md](./doc/api/websocket-api-2.md) - 完整的 WebSocket API 规范
-- **类型规范**: [doc/standards/api-format.md](./doc/standards/api-format.md)
-
-### 安全注意事项
-
-- 所有 SQL 必须使用参数化查询
-- 用户输入必须验证和转义
-- 敏感数据必须加密存储
-- API 必须进行 JWT 认证（除 open 路由）
-- WebSocket 必须验证 token
-
----
-
-## 关键特性说明
-
-### 消息投递机制 (QoS)
-
-1. 判断用户是否在线
-2. 用户在线时立即投递
-3. 未确认则重试：2s → 5s → 7s → 11s
-4. 4 次投递失败后存储为离线消息
-5. 客户端确认后清理定时器和数据库
-
-### 消息永久存储机制（方案 B：conv_seq 游标）
-
-> 配置开关：`{imboy, [{msg_archive_enabled, true}]}`（默认 false）
-
-消息存储分三层，各自职责不同：
-
-| 表 | 类型 | 生命周期 | 用途 |
-|----|------|---------|------|
-| `msg_store_staging` | 暂存缓冲 | 处理后 1 小时清理 | WAL 保证零丢失 |
-| `msg_c2c` / `msg_c2g` | 投递队列 | ACK 后删除 | 在线/离线投递 |
-| `msg_store` | 永久存储 | 运营商配置 retention | 历史查询 / 审计 |
-| `msg_store_seq` | 序列号计数器 | 永久保留 | per-conversation 单调递增 |
-
-**排序约束**：
-- `msg_id` / `TSID` 只承担唯一标识与近似时间有序，不保证跨数据中心、跨节点严格单调
-- 历史同步、会话游标、消息时间线的严格顺序以 `conv_seq` 为准，不以 `TSID` 为准
-- 客户端上传的 `created_at` 只能视为业务时间，不能替代服务端顺序字段
-
-**写入流程**（Worker 批量处理）：
-```
-msg_store_staging
-  → do_write → msg_c2c / msg_c2g（投递，不变）
-  → maybe_archive → msg_archive_repo:archive/1
-      → next_conv_seq → msg_store_seq（原子 +1）
-      → elib_pg:insert → msg_store（永久存储）
-```
-
-**conv_key 格式**：
-- C2C: `"c2c:{min_uid}:{max_uid}"` — 两端 uid 排序保证唯一
-- C2G: `"c2g:{group_id}"`
-
-**客户端增量同步**（类 Telegram PTS）：
-```erlang
-% 客户端保存 last_conv_seq，每次请求传入
-ConvKey = msg_archive_ds:conv_key_c2c(MyUid, PeerUid),
-{ok, Rows} = msg_archive_ds:history(ConvKey, LastConvSeq, 50).
-```
-
-> 结论：需要严格顺序的业务统一依赖 `conv_seq`，不要把 `msg_id` / `TSID` 当作全局顺序游标。
-
-**相关模块**：
-- `src/repo/msg_archive_repo.erl` — Repo 层（读写 msg_store / msg_store_seq）
-- `src/ds/msg_archive_ds.erl` — DS 层（历史查询接口）
-- `src/ds/msg_store_worker.erl` — Worker（写入触发点，含 maybe_archive/1）
-- `priv/migrations/00000075_msg_store.sql` — DDL
-
-### Token 刷新机制
-
-- WS 连接时即使 token 过期也响应成功
-- 过期后发送 S2C 消息要求客户端 8 秒内刷新
-- 刷新成功则保持连接，否则强制下线
-
-### 分布式架构
-
-- 基于 Erlang/OTP 分布式特性
-- 使用 `syn` 库实现进程注册和发现
-- 支持多节点水平扩展
-- 跨节点消息投递
-
-### 缓存策略
-
-- 使用 `depcache` 内存缓存
-- 可选启用 `imboy_cache_sync` 实现跨节点缓存同步
-- 缓存键格式: `{Table, Id}`, `{Uid, Did}`
-- 缓存过期策略: TTL + LRU
-
-### 异步执行与重试
-
-#### `elib_async.erl` - 异步任务执行
-
-```erlang
-% 简单异步执行（无重试）
-elib_async:async(Fun) -> pid()
-
-% 异步执行带超时
-elib_async:async(Fun, TimeoutMs) -> pid()
-
-% 异步执行带重试（默认 3 次，1 秒延迟）
-elib_async:async_retry(Fun) -> pid()
-
-% 异步执行带重试（自定义次数）
-elib_async:async_retry(Fun, RetryCount) -> pid()
-
-% 异步执行带重试（完整参数）
-elib_async:async_retry(Fun, RetryCount, DelayMs) -> pid()
-
-% 异步执行带回调
-elib_async:async_with_callback(Fun, CallbackPid) -> pid()
-```
-
-#### `elib_retry.erl` - 同步重试逻辑
-
-```erlang
-% 默认重试（3次，1秒延迟，指数退避）
-elib_retry:with_retry(Fun) -> {ok, Result} | {error, Reason}
-
-% 自定义重试次数
-elib_retry:with_retry(Fun, RetryCount) -> {ok, Result} | {error, Reason}
-
-% 自定义重试次数和延迟
-elib_retry:with_retry(Fun, RetryCount, DelayMs) -> {ok, Result} | {error, Reason}
-
-% 完整参数（退避策略：fixed | exponential | linear）
-elib_retry:with_retry(Fun, RetryCount, DelayMs, BackoffType) -> {ok, Result} | {error, Reason}
-
-% 带超时的重试
-elib_retry:with_retry_and_timeout(Fun, TimeoutMs, RetryCount) -> {ok, Result} | {error, Reason}
-```
-
-**使用场景**:
-- `elib_async`: 异步后台任务（如日志记录、统计更新）
-- `elib_retry`: 同步操作重试（如数据库连接、网络请求）
-- `msg_store_ds` + `msg_store_worker`: 消息队列处理
-
-### 端到端加密 (E2EE)
-
-- 支持 RSA-OAEP-256 + AES-256-GCM 加密套件
-- 设备公钥管理：`user_device.public_key`
-- 消息加密：服务端不解密 `ciphertext`，仅做路由和存储
-- API: `/v1/e2ee/user_keys` 和 `/v1/e2ee/group_member_keys`
-
----
-
-## 覆盖率统计
-
-### 代码统计
-
-| 类别 | 数量 | 占比 |
-|------|------|------|
-| API Handler | 27 个 | 14.1% |
-| ADM Handler | 7 个 | 3.6% |
-| Logic 模块 | 26 个 | 13.5% |
-| DS 模块 | 77 个 | 40.1% |
-| Repo 模块 | 32 个 | 16.7% |
-| 基础库 | 29 个 | 15.1% |
-| **总计** | **198 个** | **100%** |
-| 测试文件 | 140+ 个 | - |
-
-### 覆盖率
-
-| 层级 | 覆盖率 | 说明 |
-|------|--------|------|
-| **Handler 层** | 60% | API 层测试较完善，ADM 层待补充 |
-| **Logic 层** | 70% | 核心逻辑有测试，边缘情况待补充 |
-| **DS 层** | 50% | 部分 DS 有测试，缓存逻辑待完善 |
-| **Repo 层** | 80% | Repo 测试较完善，基本操作覆盖完整 |
-| **Lib 层** | 75% | 基础库测试较完善，新模块待补充 |
-| **整体** | **65%** | 持续改进中 |
-
-### 缺口分析
-
-1. **测试缺口**:
-   - 部分新建 Handler 的测试（如 `e2ee_handler`）
-   - 一些复杂 Logic 的完整测试（如 `msg_store_ds`）
-   - DS 层的集成测试
-   - 端到端测试
-
-2. **建议补充**:
-   - WebSocket 集成测试
-   - 消息投递完整流程测试
-   - 分布式场景测试
-   - 性能测试
-
-3. **文档缺口**:
-   - 部分 Repo 模块缺少详细文档
-   - 复杂业务流程的时序图
-   - 性能调优指南
-
----
-
-## 常见问题
-
-### Q: 如何调试 WebSocket 连接?
-
-A: 使用在线工具 http://coolaf.com/tool/chattest 或浏览器控制台。
-
-### Q: 如何查看数据库连接池状态?
-
-A: 在节点 shell 中执行 `pooler:status()`。
-
-### Q: 如何热加载代码?
-
-A: 在节点 shell 中执行 `lm()` 加载所有修改的模块。
-
-### Q: 如何重新加载配置?
-
-A: 执行 `config_ds:local_reload()` 或 `config_ds:reload()`。
-
-### Q: 如何查看节点状态?
-
-A: 执行 `observer_cli:start()` 启动命令行监控。
-
-### Q: 如何使用异步执行?
-
-A: 使用 `elib_async:async/1,2`、`elib_async:async_retry/1,2,3,4`、`elib_async:async_with_timeout/2` 或 `elib_async:async_with_callback/2`。
-
-### Q: 如何使用重试机制?
-
-A: 使用 `elib_retry:with_retry/1,2,3,4` 或 `elib_retry:with_retry_and_timeout/3`。
-
-### Q: 如何添加新模块?
-
-A:
-1. 使用 `make new` 生成模板
-2. 更新路由（Handler）
-3. 编写业务逻辑（Logic）
-4. 添加数据操作（DS/Repo）
-5. 编写测试
-
-### Q: 如何调试 Cowboy 路由问题?
-
-A: 在节点 shell 中执行：
-```erlang
-% 查看当前路由配置
-Routes = imboy_router:get_routes(),
-
-% 重新编译路由（热更新）
-Dispatch = cowboy_router:compile(Routes),
-cowboy:set_env(imboy_listener, dispatch, Dispatch).
-```
-
-### Q: 如何查看数据库连接池状态?
-
-A: 在节点 shell 中执行 `pooler:status()`。
-
-### Q: 如何处理 WebSocket 消息调试?
-
-A:
-1. 使用在线工具: http://coolaf.com/tool/chattest
-2. 生成 Token: `io:format("~p~n", [token_ds:encrypt_token(Uid)])`
-3. 获取 UID: 客户端直接使用 TSID 整数（以字符串形式传输）
-
-### Q: 如何查看进程信息?
-
-A:
-```erlang
-% 查看进程信息
-erlang:process_info(Pid).
-
-% 查看进程字典
-erlang:process_info(Pid, dictionary).
-
-% 查看消息队列
-erlang:process_info(Pid, messages).
-
-% 查看所有注册的进程
-registered().
-```
-
----
-
-## 相关资源
-
-- **项目仓库**: https://gitee.com/imboy-pub/imboy
-- **Erlang 文档**: https://www.erlang.org/doc/
-- **Cowboy 文档**: https://ninenines.eu/docs/en/cowboy/2.10/guide/
-- **PostgreSQL 文档**: https://www.postgresql.org/docs/
-
----
-
-## 快速参考卡片
-
-### 常用命令速查
-
-```bash
-# 开发环境运行
-IMBOYENV=local make run
-
-# 编译
-make compile
-
-# 运行测试
-make eunit
-
-# 单个测试
-erl -noshell -eval "eunit:test([user_repo_tests], [verbose])" -s init stop
-
-# 代码检查
-make dialyze
-
-# 构建发布
-IMBOYENV=local make rel
-
-# 远程调试
-_rel/imboy/bin/imboy remote_console
-
-# 热加载所有模块
-lm()  # 在 shell 中执行
-
-# 重新加载配置
-config_ds:local_reload()
-
-# 查看节点状态
-observer_cli:start()
-
-# CLI 管理工具
-make ctl ARGS="node status"
-make ctl ARGS="smoke all"
-make ctl ARGS="db ping"
-```
-
-### 关键文件位置
-
-| 类型 | 路径 | 说明 |
-|------|------|------|
-| **错误码定义** | `include/error_code.hrl` | 所有错误码宏 |
-| **常量定义** | `include/imboy_const.hrl` | 全局常量 |
-| **配置文件** | `config/sys.config` | 主配置 |
-| **路由定义** | `src/imboy_router.erl` | HTTP 路由 |
-| **数据库迁移** | `priv/migrations/*.sql` | SQL 迁移 |
-| **测试文件** | `test/**/*.erl` | EUnit 测试 |
-| **CLI 工具** | `scripts/imboy_ctl` | 统一 CLI 管理工具 (escript) |
-
-### 核心规范速查
-
-| 规范 | 要点 | 文档 |
-|------|------|------|
-| **UTF-8** | 中文字符串使用 `/utf8` 后缀 | [utf8-encoding.md](./doc/standards/utf8-encoding.md) |
-| **错误码** | 使用 `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏 | [error-codes.md](./doc/standards/error-codes.md) |
-| **数据库** | 必须使用 `elib_pg` 模块 | [database-access.md](./doc/architecture/database-access.md) |
-| **TSID** | 分布式 ID，JSON integer 传输；前端转 string | [tsid-field-convention](./doc/api/tsid-field-convention.md) |
-
-### 代码生成模板
-
-```bash
-# REST Handler
 make new t=imboy.rest_handler n=demo_handler
-
-# Logic
 make new t=imboy.logic n=demo_logic
-
-# Repository
 make new t=imboy.repository n=demo_repo
-
-# Data Service
 make new t=imboy.ds n=demo_ds
 ```
 
 ---
 
-## 下一步建议
+## 编码规范速查
 
-1. 补充缺失的测试文件
-2. 完善部分模块的文档
-3. 添加性能基准测试
-4. 完善错误处理和日志
-5. 优化数据库查询性能
-6. 添加更多集成测试
-7. 完善分布式场景测试
+| 规范 | 要点 |
+|------|------|
+| **UTF-8** | 中文字符串加 `/utf8` 后缀：`<<"操作成功"/utf8>>` |
+| **错误码** | `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏，include `error_code.hrl` |
+| **数据库** | 所有 SQL 必须通过 `elib_pg` 模块，参数化查询防注入 |
+| **TSID** | 分布式 ID，JSON 以 integer 传输；前端用 `safeParseBigIntJson` 转 string |
+| **安全** | 所有 SQL 参数化；API 必须 JWT 认证（除 open 路由）；WebSocket 必须验证 token |
+
+关键文件：`include/error_code.hrl`（错误码），`include/imboy_const.hrl`（常量），`src/imboy_router.erl`（路由），`priv/migrations/*.sql`（迁移）
 
 ---
 
-**文档维护**: 请在更新架构或添加新功能时同步更新此文档。
+## 测试策略
+
+- 框架：EUnit；Mock：meck；超时：30s；环境标记：`application:set_env(imboy, env, test)`
+- 目录：`test/api/`(50+)、`test/repo/`(40+)、`test/lib/`(30+)、`test/logic/`(20+)、`test/ds/`(10+)
+- 覆盖率目标：Repo 80%、Logic 70%、Handler 60%、整体 65%
+
+---
+
+## 关键特性
+
+**消息 QoS 投递**：在线立即投递 → 未确认重试 2s/5s/7s/11s → 4 次失败转离线消息 → 客户端 ACK 后清理。
+
+**消息永久存储（conv_seq 游标）**：配置 `{msg_archive_enabled, true}`（默认 false）。严格顺序以 `conv_seq` 为准，不用 `msg_id`/`TSID`。conv_key 格式：C2C=`"c2c:{min_uid}:{max_uid}"`，C2G=`"c2g:{group_id}"`。相关模块：`msg_archive_repo`, `msg_archive_ds`, `msg_store_worker`。
+
+**Token 刷新**：WS 连接时 token 过期仍响应成功 → 发 S2C 要求 8s 内刷新 → 失败则强制下线。
+
+**E2EE**：RSA-OAEP-256 + AES-256-GCM；服务端不解密 `ciphertext`，仅路由存储。API：`/v1/e2ee/user_keys`、`/v1/e2ee/group_member_keys`。
+
+**分布式**：基于 Erlang/OTP 分布式，`syn` 库进程注册发现，跨节点消息投递。
+
+**缓存**：depcache 内存缓存，缓存键格式 `{Table, Id}`；`IMBOY_*` 环境变量运行时覆盖。
+
+---
+
+## FAQ（精选）
+
+- **调试 WS**：`http://coolaf.com/tool/chattest`；Token：`token_ds:encrypt_token(Uid)`
+- **DB 连接池**：`pooler:status()`
+- **热加载**：`lm()`（shell 中）
+- **重新加载配置**：`config_ds:local_reload()`
+- **添加新端点**：`src/api/` 建 handler → `imboy_router.erl` 加路由 → `src/logic/` 建 logic → 写测试
+
+---
+
+## 相关文档
+
+- 架构：[doc/architecture/overview.md](./doc/architecture/overview.md)
+- 数据库访问：[doc/architecture/database-access.md](./doc/architecture/database-access.md)
+- WebSocket API：[doc/api/websocket-api-2.md](./doc/api/websocket-api-2.md)
+- UTF-8 规范：[doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
+- 错误码：[doc/standards/error-codes.md](./doc/standards/error-codes.md)
+- TSID 规范：[doc/api/tsid-field-convention.md](./doc/api/tsid-field-convention.md)
+- API 格式：[doc/standards/api-format.md](./doc/standards/api-format.md)

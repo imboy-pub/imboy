@@ -293,7 +293,9 @@ manifest_enabled(PluginManifest, EnabledFeatures) ->
         FeatureKeys
     ).
 
--spec feature_enabled(atom(), map()) -> boolean().
+-spec feature_enabled(atom() | binary(), map()) -> boolean().
+feature_enabled(FeatureKey, EnabledFeatures) when is_atom(FeatureKey) ->
+    feature_enabled(atom_to_binary(FeatureKey, utf8), EnabledFeatures);
 feature_enabled(FeatureKey, EnabledFeatures) ->
     case maps:find(FeatureKey, EnabledFeatures) of
         {ok, true} ->
