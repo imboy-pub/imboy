@@ -305,18 +305,21 @@ ctl:
 # 配置：imboy/elvis.config（v1.3 T2.1 已落地）
 # 关联：.claude/plans/quality-loop.md v1.3 T2.2
 # 用法：
-#   make elvis              # 跑 elvis lint（exit 0 = 通过；当前基线 239/349 .erl FAIL）
+#   make lint-erlang        # 跑 elvis lint（exit 0 = 通过；当前基线 239/349 .erl FAIL）
 #   make format-check       # 检查 erlfmt 格式（exit 1 = 有文件未格式化）
 #   make format             # 应用 erlfmt 格式化（修改文件，慎用）
 #   make xref-strict        # 调 erlang.mk 原生 xref（含 undefined_function_calls）
-# 备注：elvis-fix 暂未实现（elvis 5.x 无原生 fix 命令；如需统一格式化请用 erlfmt）
+# 备注：
+#   - elvis-fix 暂未实现（elvis 5.x 无原生 fix 命令；如需统一格式化请用 erlfmt）
+#   - target 名故意避开 'elvis' — 与可执行 elvis 同名时 GNU make 仅扫部分文件
+#     （make elvis 出 53 行 vs elvis rock 9954 行；2026-05-10 fix）
 # =============================================================================
 
 ERLFMT_FILES := 'src/*.erl' 'src/**/*.erl' 'include/*.hrl' 'src/*.hrl' 'src/**/*.hrl'
 
-.PHONY: elvis format format-check xref-strict
+.PHONY: lint-erlang format format-check xref-strict
 
-elvis:
+lint-erlang:
 	@elvis rock
 
 format:

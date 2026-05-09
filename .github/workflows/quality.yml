@@ -48,7 +48,7 @@ jobs:
       - name: Run elvis (ratchet — 当前 baseline 8824 violations)
         run: |
           set -euo pipefail
-          make elvis 2>&1 | tee elvis-output.txt
+          make lint-erlang 2>&1 | tee elvis-output.txt
           violations=$(grep -cE "FAIL" elvis-output.txt || true)
           echo "elvis_violations=$violations"
           if [ "$violations" -gt 8824 ]; then

@@ -28,7 +28,7 @@
 
 ### 质量门（自动跑，但请提前自查）
 
-- [ ] `make elvis` 通过 / 无新增违规（ratchet 上限 8824）
+- [ ] `make lint-erlang` 通过 / 无新增违规（ratchet 上限 8824）
 - [ ] `make dialyze` 通过 / 无新警告
 - [ ] `make xref-strict` 通过
 - [ ] `make eunit` 全绿
