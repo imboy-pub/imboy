@@ -1,0 +1,79 @@
+# imboy/api/redocly.yaml — Redocly CLI 配置
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.5
+# 用途：
+#   - redocly lint api/openapi.yaml      # CI 校验（T4.1 引用）
+#   - redocly build-docs api/openapi.yaml -o docs/api.html  # 静态文档生成
+#   - redocly preview-docs api/openapi.yaml                  # 本地预览
+# 工具：@redocly/cli（待装 — npm i -g @redocly/cli 或 bunx）
+# 创建：2026-05-09 / iteration 70 / T3.5
+
+apis:
+  imboy@v1:
+    root: ./openapi.yaml
+
+# ------------------------------------------------------------------
+# Lint 规则（同时被 CI 和本地 redocly lint 使用）
+# ------------------------------------------------------------------
+extends:
+  - recommended
+
+rules:
+  # 信息完整度
+  info-contact: error
+  info-license: warn
+  info-license-url: warn
+
+  # 操作安全
+  operation-2xx-response: error          # 每个端点必须有 2xx 响应
+  operation-4xx-response: warn           # 应有 4xx 错误响应
+  operation-operationId: error           # operationId 必填（codegen 需要）
+  operation-operationId-unique: error
+  operation-tag-defined: error           # tag 必须在 tags 顶层定义
+
+  # 描述
+  operation-description: warn
+  operation-summary: error
+  parameter-description: warn
+  tag-description: warn
+
+  # Schema 安全
+  no-unresolved-refs: error              # $ref 必须解析
+  no-identical-paths: error
+  no-ambiguous-paths: error
+  path-declaration-must-exist: error
+  path-not-include-query: error
+  path-parameters-defined: error
+
+  # 安全方案
+  security-defined: error                # 端点必须声明 security 或显式 security: []
+
+  # 命名约定（CONVENTIONS §6）
+  paths-kebab-case: error                # 路径段用 kebab-case
+  no-server-example.com: warn
+
+# ------------------------------------------------------------------
+# 文档生成主题（build-docs / preview-docs 使用）
+# ------------------------------------------------------------------
+theme:
+  openapi:
+    showObjectSchemaExamples: true       # 展示 schema 示例
+    expandDefaultServerVariables: true
+    expandResponses: '200,201'           # 默认展开 2xx
+    sortPropsAlphabetically: false
+    pathInMiddlePanel: false
+    requiredPropFirst: true
+    schemaExpansionLevel: 2
+    sideNavStyle: path-only
+    hideHostname: false
+    disableSearch: false
+    showExtensions: false
+  colors:
+    primary:
+      main: '#2474E5'                     # 与 imboyapp 品牌蓝（DESIGN.md AppColors.primary）一致
+
+# ------------------------------------------------------------------
+# Build 输出（CI 中用 -o 覆盖）
+# ------------------------------------------------------------------
+# 默认输出：docs/api.html（相对本配置文件位置 = imboy/docs/api.html）
+# CI 中可重定向到 GitHub Pages 或 docs site

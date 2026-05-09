@@ -1,0 +1,119 @@
+# imboy codemap 周更新提醒
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T4.4（v1.1 §303: 仅 imboy 仓维护 codemap）
+# 创建：2026-05-09 / iteration 79 / T4.4
+# 目的：每周一 09:00 UTC（北京时间 17:00）检查 codemap 是否过期；
+#       超期则创建 issue 提醒人工跑 claude doc-updater agent 更新
+# 备注：实际 codemap 内容更新需开发者本地用 Claude Code 的 doc-updater 跑，
+#       因 GitHub Actions 无法直接调用 Claude agent；本 workflow 仅做提醒
+
+name: imboy codemap freshness
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # 每周一 09:00 UTC = 17:00 北京时间
+  workflow_dispatch:     # 允许手动触发
+  pull_request:          # PR 时检查（不阻塞）
+    paths:
+      - 'src/**/*.erl'
+      - 'src/**/*.hrl'
+      - 'include/**/*.hrl'
+
+permissions:
+  contents: read
+  issues: write          # 创建 issue 需要
+
+jobs:
+  codemap-freshness:
+    name: Check codemap freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect stale codemaps（>14 天未更新视为过期）
+        id: stale
+        run: |
+          set -euo pipefail
+          STALE_DAYS=14
+          NOW=$(date +%s)
+          THRESHOLD=$((NOW - STALE_DAYS * 86400))
+
+          echo "Codemap freshness scan (threshold: ${STALE_DAYS} 天)"
+          stale_files=()
+          for f in docs/CODEMAPS/*.md; do
+            [ -f "$f" ] || continue
+            mtime=$(git log -1 --format=%ct -- "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")
+            age_days=$(( (NOW - mtime) / 86400 ))
+            echo "  $f → ${age_days} 天"
+            if [ "$mtime" -lt "$THRESHOLD" ]; then
+              stale_files+=("$f (${age_days}d)")
+            fi
+          done
+
+          if [ ${#stale_files[@]} -eq 0 ]; then
+            echo "stale_count=0" >> "$GITHUB_OUTPUT"
+            echo "✅ 所有 codemap 在 ${STALE_DAYS} 天内更新"
+          else
+            echo "stale_count=${#stale_files[@]}" >> "$GITHUB_OUTPUT"
+            {
+              echo "stale_list<<EOF"
+              printf '%s\n' "${stale_files[@]}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::发现 ${#stale_files[@]} 个 codemap 过期"
+            printf '  - %s\n' "${stale_files[@]}"
+          fi
+
+      - name: Create or update reminder issue（仅 cron 触发；PR/dispatch 不创建）
+        if: |
+          steps.stale.outputs.stale_count != '0' &&
+          github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STALE_LIST: ${{ steps.stale.outputs.stale_list }}
+        run: |
+          set -euo pipefail
+          TITLE="codemap 周更提醒：${{ steps.stale.outputs.stale_count }} 个文件超过 14 天未更新"
+
+          BODY=$(cat <<EOF
+          ## codemap 过期提醒
+
+          以下 codemap 文件 14+ 天未更新：
+
+          \`\`\`
+          $STALE_LIST
+          \`\`\`
+
+          ## 修复方式（开发者本地）
+
+          1. 在 Claude Code 中跑 \`doc-updater\` agent：
+
+             \`\`\`
+             /update-codemaps
+             \`\`\`
+
+             或 direct invoke doc-updater agent
+
+          2. 或手动 review \`src/\` 变化后改 \`docs/CODEMAPS/*.md\`
+          3. 提交 PR 让本 workflow 验证
+
+          ## 关联
+
+          - 主计划：\`.claude/plans/quality-loop.md\` v1.3 T4.4
+          - codemap 真源：\`imboy/docs/CODEMAPS/\`
+          - 触发：本 workflow（cron 周一 09:00 UTC）
+          EOF
+          )
+
+          # 查找已存在的 reminder issue（避免重复）
+          existing=$(gh issue list --state open --label codemap-stale --json number --jq '.[0].number' || echo "")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "本周再次检测到 stale codemap，详见最新 workflow run"
+          else
+            gh issue create \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label "codemap-stale,automated" || echo "::warning::创建 issue 失败（label 可能未预创建）"
+          fi

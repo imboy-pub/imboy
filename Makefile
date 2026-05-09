@@ -298,3 +298,32 @@ smoke: smoke-c2c smoke-ws smoke-ctl
 .PHONY: ctl
 ctl:
 	@escript scripts/imboy_ctl $(ARGS)
+
+# =============================================================================
+# v1.3 工程质量 target（新增于 2026-05-08，禁止改 erlang.mk，仅追加 Makefile）
+# 工具：elvis 5.0.3（brew install elvis）/ erlfmt 1.8.0（brew install erlfmt）
+# 配置：imboy/elvis.config（v1.3 T2.1 已落地）
+# 关联：.claude/plans/quality-loop.md v1.3 T2.2
+# 用法：
+#   make elvis              # 跑 elvis lint（exit 0 = 通过；当前基线 239/349 .erl FAIL）
+#   make format-check       # 检查 erlfmt 格式（exit 1 = 有文件未格式化）
+#   make format             # 应用 erlfmt 格式化（修改文件，慎用）
+#   make xref-strict        # 调 erlang.mk 原生 xref（含 undefined_function_calls）
+# 备注：elvis-fix 暂未实现（elvis 5.x 无原生 fix 命令；如需统一格式化请用 erlfmt）
+# =============================================================================
+
+ERLFMT_FILES := 'src/*.erl' 'src/**/*.erl' 'include/*.hrl' 'src/*.hrl' 'src/**/*.hrl'
+
+.PHONY: elvis format format-check xref-strict
+
+elvis:
+	@elvis rock
+
+format:
+	@erlfmt --write $(ERLFMT_FILES)
+
+format-check:
+	@erlfmt --check $(ERLFMT_FILES)
+
+xref-strict: xref
+	@echo "xref strict mode (erlang.mk 原生 xref 已含 undefined_function_calls)"

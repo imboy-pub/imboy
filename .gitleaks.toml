@@ -1,0 +1,92 @@
+# gitleaks config for imboy (Erlang/OTP backend)
+# 真源：imboy/.gitleaks.toml；imboyapp/imboy-admin-frontend 的同名文件按各仓特性独立维护
+# 关联：.claude/plans/quality-loop.md T1.4
+# 文档：https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+
+title = "imboy gitleaks config (Erlang)"
+
+[extend]
+# 复用 gitleaks 内置规则集（AWS/GCP/JWT/SSH/Slack/通用 API key 等）
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# 全局白名单
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "imboy 全局白名单：构建产物、依赖、二进制资产"
+
+paths = [
+    # Erlang/Rebar3 构建产物
+    '''_build/''',
+    '''ebin/''',
+    '''deps/''',
+    '''rel/''',
+    '''.rebar3/''',
+    '''logs/''',
+    '''log/''',
+    '''crash.dump''',
+    '''erl_crash.dump''',
+
+    # 二进制 / 媒体 / 文档资产（不可能含 secret）
+    '''(.*?)\.(jpg|jpeg|png|gif|webp|svg|ico|avif)$''',
+    '''(.*?)\.(woff|woff2|ttf|eot|otf)$''',
+    '''(.*?)\.(pdf|zip|tar|gz|bz2|7z|rar)$''',
+    '''(.*?)\.(mp3|mp4|wav|ogg|webm|mov)$''',
+    '''(.*?)\.(beam)$''',
+
+    # 测试 fixture / 示例数据（含合成密钥）
+    '''test/fixtures/''',
+    '''apps/.*/test/fixtures/''',
+    '''priv/test_data/''',
+
+    # 文档示例
+    '''docs/CONVENTIONS\.md''',
+    '''docs/CODEMAPS/''',
+    '''README\.md''',
+
+    # 编辑器/版本控制元数据
+    '''\.git/''',
+    '''\.idea/''',
+    '''\.vscode/''',
+    '''\.elixir_ls/''',
+]
+
+# 占位符 / 示例 token —— 避免在文档里报误检
+regexes = [
+    '''(?i)(your[_-]?(api[_-]?key|secret|token)|<changeme>|placeholder|example[_-]?key|xxxxxxxx)''',
+    '''(?i)(00000000|11111111|deadbeef|cafebabe|abcdef00)[a-f0-9]{8,}''',
+    # README / 文档中的 base64 演示串（< 32 字符的视为示例）
+    '''^[A-Za-z0-9+/]{8,31}={0,2}$''',
+]
+
+# ---------------------------------------------------------------------------
+# 项目特定规则（在内置规则之上叠加）
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "imboy-internal-jwt-secret"
+description = "imboy 内部 JWT 签名密钥模式"
+regex = '''(?i)(jwt[_-]?secret|jwt[_-]?signing[_-]?key)\s*[:=]\s*['"]?([A-Za-z0-9+/=]{32,})['"]?'''
+keywords = ["jwt_secret", "jwt-secret", "jwt_signing_key"]
+tags = ["key", "jwt", "imboy"]
+
+[[rules]]
+id = "imboy-db-conn-string"
+description = "明文数据库连接串（含密码）"
+regex = '''(?i)(postgres(?:ql)?|mysql)://[^:\s]+:[^@\s]{6,}@[a-z0-9.\-]+'''
+keywords = ["postgres://", "postgresql://", "mysql://"]
+tags = ["secret", "database", "imboy"]
+
+[[rules]]
+id = "imboy-erlang-cookie"
+description = "Erlang distribution cookie 硬编码（dev 文件除外）"
+regex = '''(?i)setcookie\s*['"]?[A-Za-z0-9]{16,}['"]?'''
+keywords = ["setcookie"]
+tags = ["secret", "erlang", "imboy"]
+
+[rules.allowlist]
+description = "本地 dev cookie 允许"
+paths = [
+    '''config/dev\.config''',
+    '''config/dev\.args''',
+    '''rel/dev\.args''',
+]

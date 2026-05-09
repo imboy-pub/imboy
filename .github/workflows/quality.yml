@@ -1,0 +1,168 @@
+# imboy 质量门 — Erlang lint + Contract + Secrets
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T4.1（v1.1 §301: 三仓各一份；v1.3 §490: erlang 用 make 链）
+# 与 backend-ci.yml 互补：本 workflow 仅跑质量门（lint/secrets/contract），不跑 build/eunit/dialyze
+# Ratchet 上限（debt-baseline-20260509.md）：elvis 8824 / gitleaks 8 / redocly 4 errors+9 warnings
+# 创建：2026-05-09 / iteration 74 / T4.1
+
+name: imboy Quality Gate
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------
+  # 1) Erlang lint — elvis 5.0.3 风格检查（不跑 dialyze/xref，那是业务 CI）
+  # ----------------------------------------------------------------
+  erlang-lint:
+    name: Erlang lint (elvis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28'
+
+      - name: Install elvis
+        run: |
+          # elvis 5.0.3 from brew formula source (escript build via rebar3)
+          set -euo pipefail
+          mkdir -p ~/bin
+          curl -fsSL https://github.com/inaka/elvis/releases/download/5.0.3/elvis -o ~/bin/elvis || \
+            (echo "fallback: build from source"; \
+             git clone --depth 1 -b 5.0.3 https://github.com/inaka/elvis /tmp/elvis && \
+             cd /tmp/elvis && rebar3 escriptize && cp _build/default/bin/elvis ~/bin/elvis)
+          chmod +x ~/bin/elvis
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          ~/bin/elvis --version || true
+
+      - name: Run elvis (ratchet — 当前 baseline 8824 violations)
+        run: |
+          set -euo pipefail
+          make elvis 2>&1 | tee elvis-output.txt
+          violations=$(grep -cE "FAIL" elvis-output.txt || true)
+          echo "elvis_violations=$violations"
+          if [ "$violations" -gt 8824 ]; then
+            echo "::error::Elvis violations $violations exceed baseline 8824 (ratchet)"
+            exit 1
+          fi
+
+  # ----------------------------------------------------------------
+  # 2) Contract — OpenAPI lint（imboy 是契约真源）
+  # ----------------------------------------------------------------
+  contract-lint:
+    name: Contract lint (redocly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Redocly CLI
+        run: npm i -g @redocly/cli@latest
+
+      - name: Lint OpenAPI (ratchet — 4 errors / 9 warnings baseline)
+        run: |
+          set -euo pipefail
+          if ! redocly lint api/openapi.yaml; then
+            echo "::warning::Redocly lint failed — see baseline ratchet (4 errors / 9 warnings)"
+            errors=$(redocly lint api/openapi.yaml 2>&1 | grep -oE "[0-9]+ errors" | head -1 | awk '{print $1}')
+            errors=${errors:-0}
+            if [ "$errors" -gt 4 ]; then
+              echo "::error::OpenAPI errors $errors exceed baseline 4 (ratchet)"
+              exit 1
+            fi
+          fi
+
+  # ----------------------------------------------------------------
+  # 3) oasdiff — OpenAPI breaking change 检测（仅 PR）
+  #    v1.1 §331: oasdiff job 仅放在 imboy（契约真源仓）
+  #    v1.3 T4.2: PR 提交时对比 base vs head 的 openapi.yaml，breaking 即 fail
+  # ----------------------------------------------------------------
+  oasdiff-breaking:
+    name: OpenAPI breaking change check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          path: head
+
+      - name: Checkout PR base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Install oasdiff
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/oasdiff/oasdiff/releases/download/v1.15.2/oasdiff_1.15.2_linux_amd64.tar.gz \
+            | tar -xz -C /tmp oasdiff
+          /tmp/oasdiff --version
+
+      - name: Diff base vs head openapi.yaml (changelog summary)
+        run: |
+          set -euo pipefail
+          /tmp/oasdiff diff \
+            base/api/openapi.yaml \
+            head/api/openapi.yaml \
+            --format markup || true
+
+      - name: Breaking changes (fail PR if any)
+        run: |
+          set -euo pipefail
+          if /tmp/oasdiff breaking \
+              base/api/openapi.yaml \
+              head/api/openapi.yaml \
+              --fail-on ERR; then
+            echo "::notice::No breaking changes detected"
+          else
+            echo "::error::Breaking change detected in api/openapi.yaml"
+            echo "::error::请在 PR 描述中说明影响范围 + 升 major version + 通知 imboyapp/admin 客户端"
+            exit 1
+          fi
+
+  # ----------------------------------------------------------------
+  # 4) Secrets — gitleaks
+  # ----------------------------------------------------------------
+  secrets-scan:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks 需要历史
+
+      - name: Run gitleaks (ratchet — baseline 8 leaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config-path: .gitleaks.toml
+        continue-on-error: true  # 当前接受 baseline；后续移除
+
+      - name: Verify no new leaks
+        run: |
+          set -euo pipefail
+          gitleaks detect --no-git --config .gitleaks.toml --redact --no-banner \
+            --report-format json --report-path /tmp/leaks.json || true
+          count=$(jq '. | length' /tmp/leaks.json 2>/dev/null || echo 0)
+          echo "leaks=$count"
+          if [ "$count" -gt 8 ]; then
+            echo "::error::Gitleaks found $count leaks, exceeds baseline 8 (ratchet)"
+            exit 1
+          fi

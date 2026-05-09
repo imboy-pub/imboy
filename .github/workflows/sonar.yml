@@ -1,0 +1,48 @@
+# imboy SonarCloud scan workflow
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T4.3（v1.1 §302 + §332: 三独立 SonarCloud 项目）
+# 创建：2026-05-09 / iteration 78 / T4.3
+# 配置文件：imboy/sonar-project.properties
+# 前置：用户在 SonarCloud 创建 imboy 项目 + 在 GitHub Secrets 配置 SONAR_TOKEN
+
+name: imboy SonarCloud
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sonarcloud:
+    name: SonarCloud scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # SonarCloud 需要完整历史做 blame
+
+      - name: Setup Erlang/OTP (for cover.coverdata)
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28'
+
+      - name: Run EUnit with coverage（best-effort，失败不阻塞 sonar）
+        run: |
+          set -euxo pipefail
+          make eunit || echo "::warning::eunit failed; sonar 仍上传源码 + lint baseline"
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # 配置文件位于仓库根（imboy/sonar-project.properties）
+          # action 自动检测，无需 args
+          projectBaseDir: .
