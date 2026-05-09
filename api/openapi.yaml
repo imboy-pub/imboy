@@ -38,12 +38,17 @@ info:
 
 servers:
   - url: https://{apiDomain}
-    description: 生产环境
+    description: 生产环境（部署方按实际域名替换 apiDomain）
     variables:
       apiDomain:
-        default: api.example.com
-  - url: http://localhost:9800
-    description: 本地开发
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
 
 tags:
   - name: auth
@@ -82,6 +87,12 @@ paths:
                           initialized:
                             type: boolean
                             description: true 表示系统已初始化，不应再进入向导
+        '4XX':
+          description: 查询异常（服务端内部错误，正常情况此端点不应返回 4xx）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /adm/setup/init:
     post:
@@ -122,11 +133,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Envelope'
+        '4XX':
+          description: 参数校验失败、密码强度不足或账号格式非法（系统已初始化的场景由 200 + ERR_SETUP_ALREADY_COMPLETED 表达，不在 4xx）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /passport/login:
     post:
       tags: [auth]
       summary: 账号密码登录
+      description: |
+        通过手机号或邮箱 + 密码换取 JWT access token 与 refresh_token。
+        副作用：服务端发放 token、记录登录审计、可能触发风控。
+        典型场景：客户端首次启动或 refresh_token 失效后回退至此端点重新登录。
       operationId: login
       security: []
       requestBody:
@@ -156,11 +177,21 @@ paths:
                           token: { type: string, description: JWT access token }
                           refresh_token: { type: string }
                           expires_in: { type: integer, description: 秒 }
+        '4XX':
+          description: 账号密码不匹配、账号被锁定/禁用或参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /passport/refresh:
     post:
       tags: [auth]
       summary: 刷新 token
+      description: |
+        用 refresh_token 换取新的 access token + refresh_token 对（refresh_token rotation）。
+        副作用：旧 refresh_token 立即失效；服务端记录刷新事件。
+        典型场景：access token 临期或在 401 拦截器内静默续期，避免用户感知重新登录。
       operationId: refreshToken
       security: []
       requestBody:
@@ -179,11 +210,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Envelope'
+        '4XX':
+          description: refresh_token 无效、已过期或与当前会话不匹配（客户端应清理本地凭据并跳回登录）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /user/current:
     get:
       tags: [user]
       summary: 当前登录用户资料
+      description: |
+        返回 token 解析出的当前用户完整资料（含手机号、昵称、头像、状态、注册时间）。
+        副作用：无（纯读，可能命中 depcache 缓存）。
+        典型场景：客户端启动后初始化用户态、Profile 页面渲染、接口拦截器维持用户上下文。
       operationId: getCurrentUser
       responses:
         '200':
@@ -197,11 +238,21 @@ paths:
                     properties:
                       payload:
                         $ref: '#/components/schemas/User'
+        '4XX':
+          description: 未鉴权或 token 失效（401）；客户端应触发 /passport/refresh 流程
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /user/{uid}:
     get:
       tags: [user]
       summary: 按 uid 查询用户
+      description: |
+        按目标用户 TSID 查询其公开资料（不含手机号等敏感字段；具体可见性由后端隐私设置决定）。
+        副作用：无（纯读，可能命中 depcache 缓存）。
+        典型场景：会话列表 / 群成员列表点击头像查看对方资料、消息渲染补全发送者信息。
       operationId: getUserById
       parameters:
         - in: path
@@ -212,6 +263,12 @@ paths:
       responses:
         '200':
           description: 用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        '4XX':
+          description: 未鉴权（401）、uid 格式非法或目标用户不存在（404）
           content:
             application/json:
               schema:
@@ -240,6 +297,7 @@ paths:
           name: limit
           required: false
           schema: { type: integer, default: 50, maximum: 200 }
+          description: 单次拉取上限（默认 50，最大 200）；超过 maximum 时后端会按 200 截断
       responses:
         '200':
           description: 增量消息数组
@@ -254,6 +312,12 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Message'
+        '4XX':
+          description: 未鉴权（401）、conv_key 格式非法或调用方无权访问该会话（403）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
   /adm/users:
     get:
@@ -265,12 +329,15 @@ paths:
         - in: query
           name: page
           schema: { type: integer, default: 1, minimum: 1 }
+          description: 当前页（1-based）；搜索/筛选条件变化时调用方必须重置为 1
         - in: query
           name: size
           schema: { type: integer, default: 10, maximum: 100 }
+          description: 每页条数（默认 10，最大 100）；超过 maximum 后端会按 100 截断
         - in: query
           name: keyword
           schema: { type: string }
+          description: 模糊匹配关键字（昵称 / 账号 / 手机号），空串或缺省为不过滤
       responses:
         '200':
           description: 分页结果
@@ -291,6 +358,12 @@ paths:
                           total: { type: integer }
                           page:  { type: integer }
                           size:  { type: integer }
+        '4XX':
+          description: 未鉴权（401）、当前用户非管理员（403）或分页参数越界
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
 
 components:
   securitySchemes:
