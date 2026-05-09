@@ -38,6 +38,13 @@ paths = [
     '''test/fixtures/''',
     '''apps/.*/test/fixtures/''',
     '''priv/test_data/''',
+    '''test/lib/''',                # elib_cipher_* 单元测试含合成 RSA fixture + meck mock
+    '''test/api/''',                # API 测试脚本含 TEST_PASSWORD 合成 hmac_sha512 串
+
+    # dev / demo 资源（非生产 secret，组织级路径约定）
+    '''priv/dev_keys/''',           # 前端 RSA 登录加密 dev 密钥（gitignored，不进 prod build）
+    '''priv/static/webrtc/''',      # WebRTC demo 含 JWT 注释示例
+    '''ssl/''',                     # 本地 dev SSL 证书（gitignored，prod 用 deploy/ssl/）
 
     # 文档示例
     '''docs/CONVENTIONS\.md''',
