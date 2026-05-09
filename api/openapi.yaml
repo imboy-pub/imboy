@@ -327,10 +327,10 @@ components:
       type: object
       properties:
         id:        { type: integer, format: int64, description: TSID（JSON integer，64-bit BIGINT） }
-        mobile:    { type: string, nullable: true }
-        account:   { type: string, nullable: true }
+        mobile:    { type: [string, "null"] }
+        account:   { type: [string, "null"] }
         nickname:  { type: string }
-        avatar:    { type: string, nullable: true }
+        avatar:    { type: [string, "null"] }
         status:    { type: integer }
         created_at:
           type: string
@@ -345,7 +345,7 @@ components:
         to:         { type: integer, format: int64, description: 接收者 TSID 或群 TSID }
         type:       { type: string, enum: [text, image, voice, video, file, location, contact, revoke, edit] }
         payload:    { type: object, description: 类型相关业务载荷 }
-        ciphertext: { type: string, nullable: true, description: E2EE 场景服务端不解密 }
+        ciphertext: { type: [string, "null"], description: E2EE 场景服务端不解密 }
         created_at:
           type: string
           format: date-time

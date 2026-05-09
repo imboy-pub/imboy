@@ -22,7 +22,6 @@ rules:
   # 信息完整度
   info-contact: error
   info-license: warn
-  info-license-url: warn
 
   # 操作安全
   operation-2xx-response: error          # 每个端点必须有 2xx 响应
@@ -55,22 +54,12 @@ rules:
 # ------------------------------------------------------------------
 # 文档生成主题（build-docs / preview-docs 使用）
 # ------------------------------------------------------------------
-theme:
-  openapi:
-    showObjectSchemaExamples: true       # 展示 schema 示例
-    expandDefaultServerVariables: true
-    expandResponses: '200,201'           # 默认展开 2xx
-    sortPropsAlphabetically: false
-    pathInMiddlePanel: false
-    requiredPropFirst: true
-    schemaExpansionLevel: 2
-    sideNavStyle: path-only
-    hideHostname: false
-    disableSearch: false
-    showExtensions: false
-  colors:
-    primary:
-      main: '#2474E5'                     # 与 imboyapp 品牌蓝（DESIGN.md AppColors.primary）一致
+# TODO: theme 字段在 redocly @latest 顶层 schema 不被识别（触发 config
+# warning）。原配置：showObjectSchemaExamples、expandResponses '200,201'、
+# schemaExpansionLevel 2、sideNavStyle path-only、品牌主色 '#2474E5'。
+# 暂用默认主题；待 redocly 文档明确新 theme 路径后独立 PR 加回。
+#
+# 参考：https://redocly.com/docs/cli/configuration
 
 # ------------------------------------------------------------------
 # Build 输出（CI 中用 -o 覆盖）
