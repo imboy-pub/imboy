@@ -9,7 +9,6 @@
            {nowarn_function, set_password/2},
            {nowarn_function, apply_logout/2},
            {nowarn_function, cancel_logout/2},
-           {nowarn_function, export_data/2},
            {nowarn_function, qrcode/2},
            {nowarn_function, change_state/2},
            {nowarn_function, show/2},
@@ -168,23 +167,6 @@ cancel_logout(Req0, State) ->
             elib_response:success(Req0);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
-    end.
-
-%% @doc 导出用户数据
-%% 在注销前允许用户导出自己的数据快照
-%%
-%% @param Req0 Cowboy请求对象
-%% @param State 状态映射，包含 current_uid
-%% @return 返回用户数据的 JSON 响应
-%% @end
--spec export_data(cowboy_req:req(), map()) -> cowboy_req:req().
-export_data(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    case user_deletion_logic:export_user_data(CurrentUid) of
-        {ok, Data} ->
-            elib_response:success(Req0, Data);
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"导出失败"/utf8>>)
     end.
 
 %% @doc 获取WebRTC凭证

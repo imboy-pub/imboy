@@ -19,7 +19,6 @@
 -export([count_read/1]).
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
--export([write_msg_with_mentions/9]).
 
 %% ===================================================================
 %% API functions

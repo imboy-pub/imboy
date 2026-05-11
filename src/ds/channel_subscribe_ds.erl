@@ -18,8 +18,6 @@
 -export([subscribe_paid/3]).
 -export([is_invited/2]).
 -export([has_purchased/2]).
--export([get_invitation_status/2]).
--export([get_purchase_status/2]).
 -export([create_invitation/3]).
 -export([accept_invitation/2]).
 -export([reject_invitation/2]).

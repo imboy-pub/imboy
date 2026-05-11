@@ -9,8 +9,6 @@
 -export([tablename/0]).
 -export([save_read/5]).
 -export([get_read_status/2]).
--export([get_unread_count/2]).
--export([mark_messages_read/3]).
 -export([delete_read_records/2]).
 
 %% ===================================================================
@@ -62,71 +60,6 @@ get_read_status(MsgId, FromUid) ->
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
-
-
-%% @doc 获取未读消息数量
-%% 统计从指定发送者发给当前用户的所有未读消息数量
-%% 注意：这里需要与 msg_c2c 表联合查询
-%% @param FromUid 发送者用户ID（整数）
-%% @param ToUid 接收者用户ID（整数）
-%% @return {ok, non_neg_integer()} | {error, Reason}
--spec get_unread_count(integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
-get_unread_count(FromUid, ToUid) ->
-    % 使用左连接找出未读消息
-    % 未读消息 = 在 msg_c2c 中存在但在 msg_read 中不存在的消息
-    TbRead = tablename(),
-    TbC2C = msg_c2c_repo:tablename(),
-    Sql = <<
-        "SELECT COUNT(*) as count FROM ", TbC2C/binary, " c",
-        " LEFT JOIN ", TbRead/binary, " r",
-        " ON c.msg_id = r.msg_id AND r.to_uid = $2",
-        " WHERE c.from_id = $1 AND c.to_id = $2 AND r.id IS NULL"
-    >>,
-    case elib_pg:query(Sql, [FromUid, ToUid]) of
-        {ok, [{#{<<"count">> := Count}}]} -> {ok, Count};
-        {ok, [#{<<"count">> := Count}]} -> {ok, Count};
-        {ok, [[{<<"count">>, Count}]]} -> {ok, Count};
-        {ok, []} -> {ok, 0};
-        {error, Reason} -> {error, Reason}
-    end.
-
-
-%% @doc 批量标记消息为已读
-%% 将指定消息列表标记为已读（用于多设备同步）
-%% @param MsgIds 消息ID列表
-%% @param ToUid 接收者用户ID（整数）
-%% @param ToDid 接收者设备ID（binary）
-%% @return {ok, non_neg_integer()} 插入的记录数 | {error, Reason}
--spec mark_messages_read(list(binary()), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
-mark_messages_read(MsgIds, ToUid, ToDid) when is_list(MsgIds), length(MsgIds) > 0 ->
-    Tb = tablename(),
-    ReadAt = elib_dt:now(),
-
-    % 为每条记录预生成 TSID，构建批量 INSERT VALUES
-    N = length(MsgIds),
-    {ValuesList, AllParams} = lists:foldl(fun(MsgId, {ValsAcc, ParamsAcc}) ->
-        GenId = elib_tsid:generate(msg_read),
-        Idx = length(ParamsAcc),
-        Placeholder = io_lib:format("($~p, $~p, 0, $~p, $~p, $~p, $~p)",
-            [Idx + 1, Idx + 2, Idx + 3, Idx + 4, Idx + 5, Idx + 5]),
-        {[Placeholder | ValsAcc],
-         ParamsAcc ++ [GenId, MsgId, ToUid, ToDid, ReadAt]}
-    end, {[], []}, MsgIds),
-
-    ValuesStr = lists:join(<<",">>, lists:reverse(ValuesList)),
-    Sql = [
-        <<"INSERT INTO ">>, Tb,
-        <<" (id, msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
-        <<" VALUES ">>, iolist_to_binary(ValuesStr),
-        <<" ON CONFLICT (msg_id, to_uid, to_did) DO NOTHING">>
-    ],
-
-    case elib_pg:query(Sql, AllParams) of
-        {ok, _} -> {ok, N};
-        {error, Reason} -> {error, Reason}
-    end;
-mark_messages_read([], _ToUid, _ToDid) ->
-    {ok, 0}.
 
 
 %% @doc 删除已读记录（用于清理或隐私保护）

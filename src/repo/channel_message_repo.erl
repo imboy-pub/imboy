@@ -10,12 +10,10 @@
 -export([add/2]).
 -export([find_by_id/1]).
 -export([list_by_channel/3]).
--export([list_pinned/1]).
 -export([update/2]).
 -export([delete/1]).
 -export([revoke/3]).
 -export([increment_view_count/1]).
--export([delete_by_channel/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").

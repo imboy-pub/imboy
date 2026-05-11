@@ -40,7 +40,6 @@
 -export([list_pending_reminds/0]).
 -export([list_pending_reminds/1]).
 -export([update_remind_sent/1]).
--export([delete_remind/1]).
 
 %% ===================================================================
 %% API functions - 日程表

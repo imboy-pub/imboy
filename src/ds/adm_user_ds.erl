@@ -10,12 +10,9 @@
 %% ==================== API ====================
 
 -export([find_by_id/1, find_by_id/2]).
--export([find_by_email/2, find_by_mobile/2, find_by_account/2]).
--export([list_by_ids/2]).
+-export([find_by_mobile/2, find_by_account/2]).
 -export([list/2, count/0]).
 -export([save/1, update/2, delete/1]).
--export([count_by_role_id/1]).
--export([select_by_where/4, select_by_where/5, select_by_where_safe/6]).
 -export([page_with_where_sql/4]).
 
 %% ===================================================================

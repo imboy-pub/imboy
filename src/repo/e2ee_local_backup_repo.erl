@@ -32,10 +32,7 @@
 %% API 函数
 -export([create/1]).
 -export([find_latest/1]).
--export([find_by_version/2]).
 -export([list_by_uid/1]).
--export([count_by_uid/1]).
--export([update_file_size/2]).
 -export([delete/1]).
 -export([delete_by_id_and_uid/2]).
 

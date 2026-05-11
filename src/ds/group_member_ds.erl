@@ -18,7 +18,6 @@
 -export([update_role/5]).
 -export([update_mute/4]).
 -export([get_member_info/3]).
--export([update_statistics/2]).
 -export([find_by_gid_and_uid/3]).
 -export([is_member/2]).
 -export([check_admin/2]).

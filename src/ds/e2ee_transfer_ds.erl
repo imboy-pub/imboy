@@ -20,10 +20,6 @@
 -export([cancel_session/2]).
 -export([cleanup_expired_sessions/0]).
 -export([is_valid_session/1]).
--export([clear_session_cache/1]).
--export([clear_all_session_cache/0]).
--export([clear_pending_sessions_cache/1]).
--export([get_stalled_sessions/0]).
 %% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
 -export([generate_session_id/0]).
 -export([create_raw/1]).

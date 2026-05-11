@@ -21,15 +21,11 @@
 
 %% 参与人管理
 -export([confirm_participation/3]).
--export([add_participants/2]).
--export([remove_participant/2]).
 
 %% 提醒管理
 -export([process_reminders/0]).
--export([schedule_reminders/4]).
 
 %% 数据转换
--export([schedule_transfer/1]).
 
 -define(MAX_PARTICIPANTS, 100).
 -define(DEFAULT_REMIND_BEFORE, 15).

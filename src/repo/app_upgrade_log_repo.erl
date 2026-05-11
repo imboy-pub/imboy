@@ -4,7 +4,6 @@
 % 升级事件日志表的数据访问层
 %%%
 
--export([tablename/0]).
 -export([insert/1]).
 -export([version_distribution/0]).
 -export([event_stats/2]).

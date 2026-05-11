@@ -12,8 +12,6 @@
 -export([list_by_uid/2, list_by_uid/3]).
 -export([page/2, page/4]).
 -export([update/1]).
--export([delete/1]).
--export([count/0]).
 -export([update_owner_tx/3]).
 
 -ifdef(EUNIT).

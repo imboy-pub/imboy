@@ -1,8 +1,6 @@
 -module(report_action_log_repo).
 
--export([tablename/0]).
 -export([create/4]).
--export([latest_by_report_id/1]).
 
 -spec tablename() -> binary().
 tablename() ->

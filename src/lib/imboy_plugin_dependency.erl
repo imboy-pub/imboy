@@ -38,7 +38,6 @@
 -type version() :: {non_neg_integer(), non_neg_integer(), non_neg_integer(), [string()]}.
 -type constraint() :: {caret | exact, version()}.
 
--export_type([version/0, constraint/0]).
 
 %% ===================================================================
 %% Public API — semver / constraint

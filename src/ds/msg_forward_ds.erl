@@ -9,9 +9,6 @@
 -include("log.hrl").
 
 -export([save_forward_record/8]).
--export([find_forward_records/1]).
--export([find_user_forward_history/2]).
--export([count_forward_records/1]).
 
 %% ===================================================================
 %% API
@@ -46,31 +43,6 @@ save_forward_record(OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
             ?LOG_ERROR("Failed to save forward record: ~p", [Reason]),
             {error, Reason}
     end.
-
-
-%% @doc 根据原始消息ID查找转发记录
-%% @param MsgId 原始消息ID
-%% @return {ok, Records} | {error, Reason}
--spec find_forward_records(binary()) -> {ok, list(map())} | {error, term()}.
-find_forward_records(MsgId) ->
-    msg_forward_repo:find_by_original_msg_id(MsgId).
-
-
-%% @doc 查找用户的转发历史记录
-%% @param FromUid 用户ID
-%% @param Limit 查询结果数量限制
-%% @return {ok, Records} | {error, Reason}
--spec find_user_forward_history(integer(), non_neg_integer()) -> {ok, list(map())} | {error, term()}.
-find_user_forward_history(FromUid, Limit) ->
-    msg_forward_repo:find_by_forward_from_id(FromUid, Limit).
-
-
-%% @doc 统计消息的转发次数
-%% @param MsgId 消息ID
-%% @return {ok, Count} | {error, Reason}
--spec count_forward_records(binary()) -> {ok, non_neg_integer()} | {error, term()}.
-count_forward_records(MsgId) ->
-    msg_forward_repo:count_by_original_msg_id(MsgId).
 
 
 %% ===================================================================

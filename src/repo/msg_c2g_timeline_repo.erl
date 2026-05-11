@@ -11,10 +11,8 @@
 -export([list_by_uid/2, list_by_uid/3]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
--export([delete_by_to_uid/1]).
 -export([delete_by_msg_id/1]).
 -export([delete_overflow_timeline/2]).
--export([delete_by_msg_id_and_to_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([find_by_msg_id/1]).
 

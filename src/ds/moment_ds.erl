@@ -15,7 +15,6 @@
 -export([add_comment/4, list_comments/3, delete_comment/3]).
 -export([report_post/4]).
 -export([list_post_acl/1]).
--export([list_post_likes/2]).
 -export([has_liked/2]).
 -export([find_comment_by_id/1]).
 -export([page_admin_posts/5]).

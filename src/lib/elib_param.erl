@@ -13,7 +13,6 @@
 
 -export([param/3]).
 
--export([parse/1]).
 
 -include("imboy_const.hrl").
 
@@ -199,20 +198,6 @@ param(Key, Req, Default) ->
                     Default
             end
     end.
-
-
-%% @doc 解析请求参数（合并GET和POST参数）
-%% @param Req cowboy请求对象
-%% @returns #{params => map()} 包含合并后的参数
--spec parse(cowboy_req:req()) -> #{params => map()}.
-parse(Req) ->
-    QsVals = qs_map(Req),
-    Method = cowboy_req:method(Req),
-    PostVals = case Method of
-        <<"POST">> -> post(Req);
-        _ -> #{}
-    end,
-    #{params => maps:merge(QsVals, PostVals)}.
 
 
 %% ===================================================================

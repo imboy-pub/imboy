@@ -18,7 +18,7 @@
 -ifdef(EUNIT).
 -export([normalize_scope/1, parse_conversation/1, normalize_ts/1, build_union_sql/1]).
 -export([csv_escape/1, row_to_csv_line/1]).
--export([sanitize_row_by_audit_mode/2, sanitize_rows_by_audit_mode/2]).
+-export([sanitize_row_by_audit_mode/2]).
 -endif.
 
 %% ===================================================================

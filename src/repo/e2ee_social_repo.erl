@@ -12,7 +12,6 @@
 -export([get_user_shards/2]).
 -export([get_proxy_shards/1]).
 -export([find_shard_by_id/1]).
--export([mark_shard_used/1]).
 -export([delete_restored_shards/2]).
 -export([can_recover/2]).
 -export([generate_shard_id/0]).

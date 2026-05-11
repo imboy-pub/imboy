@@ -6,7 +6,7 @@
 %%%
 
 -export([get/1, get/2]).
--export([set/2, set/4, save/2]).
+-export([set/2, set/4]).
 -export([aes_encrypt/1]).
 -export([env/1, env/2, env/3]).
 -export([reload/0, local_reload/0]).

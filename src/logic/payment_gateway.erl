@@ -15,21 +15,14 @@
     ok | {error, binary()}.
 
 %% 根据 payment_method 选择实现模块
--export([pay/3, refund/2, method_module/1]).
+
+-export([pay/3]).
 
 pay(Method, OrderNo, Opts) ->
     case method_module(Method) of
         {ok, Module} ->
             Amount = maps:get(amount, Opts, 0),
             Module:pay(OrderNo, Amount, Opts);
-        {error, _} = Err ->
-            Err
-    end.
-
-refund(Method, PaymentNo) ->
-    case method_module(Method) of
-        {ok, Module} ->
-            Module:refund(PaymentNo, 0);
         {error, _} = Err ->
             Err
     end.

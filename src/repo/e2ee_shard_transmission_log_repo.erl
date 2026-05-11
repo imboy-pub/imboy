@@ -14,14 +14,11 @@
 %%===================================================================
 
 %% 导出函数
--export([tablename/0]).
 -export([insert/1]).
--export([list_by_uid/2]).
 -export([list_by_shard_id/1]).
 -export([list_by_action/2]).
 -export([get_transmission_stats/1]).
 -export([check_anomaly/2]).
--export([cleanup_old_logs/0]).
 
 %%===================================================================
 %%% Constants

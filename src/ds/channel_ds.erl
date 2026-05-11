@@ -4,14 +4,12 @@
 % 频道领域服务层，提供缓存和复杂业务操作
 %%%
 
--export([channel_id/0]).
 -export([create_channel/4]).
 -export([is_subscribed/2]).
 -export([subscriber_uids/1]).
 -export([subscribe/2]).
 -export([unsubscribe/2]).
 -export([publish_message/5]).
--export([get_channel/1]).
 -export([list_by_ids_since/2]).
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
@@ -40,29 +38,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
-%% @doc 生成新的频道ID
--spec channel_id() -> integer().
-channel_id() ->
-    {ok, [#{<<"cid">> := Cid}]} = elib_pg:query(
-        "select nextval('public.channel_id_seq') as cid", []),
-    Cid.
-
-%% @doc 获取频道信息（带缓存）
--spec get_channel(integer()) -> map() | {error, any()}.
-get_channel(ChannelId) ->
-    CacheKey = ?CHANNEL_CACHE_KEY(ChannelId),
-    case imboy_cache:get(CacheKey) of
-        {ok, Channel} ->
-            Channel;
-        undefined ->
-            case channel_repo:find_by_id(ChannelId, <<"*">>) of
-                {error, Reason} -> {error, normalize_error(Reason)};
-                Channel ->
-                    imboy_cache:set(CacheKey, Channel, ?HOUR),
-                    Channel
-            end
-    end.
 
 %% @doc 创建频道（事务）
 %% @param Uid 创建者用户ID

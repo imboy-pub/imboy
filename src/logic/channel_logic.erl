@@ -67,8 +67,6 @@
 
 %% ==================== Exports ====================
 
--export([channel_transfer/1]).
--export([message_transfer/1]).
 -export([create_channel/5]).
 -export([get_channel/2]).
 -export([get_channel_by_custom_id/2]).

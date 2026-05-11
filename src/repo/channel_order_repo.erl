@@ -14,18 +14,11 @@
 
 -export([tablename/0]).
 -export([create_order/1]).
--export([find_by_id/1]).
 -export([find_by_order_no/1]).
--export([find_by_channel_and_user/2]).
 -export([pay/2]).
--export([cancel/1]).
--export([refund/3]).
 -export([list_by_user/2]).
--export([list_by_channel/2]).
 -export([has_purchased/2]).
 -export([get_active_subscription/2]).
--export([cleanup_expired/0]).
--export([generate_order_no/0]).
 
 %%===================================================================
 %%% Constants

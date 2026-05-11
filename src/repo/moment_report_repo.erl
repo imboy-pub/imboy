@@ -4,7 +4,6 @@
 %%%
 %% Internal persistence detail for the moment_social domain.
 
--export([tablename/0]).
 -export([upsert/4]).
 -export([find_by_id/1]).
 -export([list_by_post/2]).

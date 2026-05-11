@@ -7,8 +7,6 @@
 -export ([add/1]).
 -export ([add/2]).
 -export ([find/3]).
--export ([update_role/4]).
--export ([update_mute/4]).
 -export ([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).

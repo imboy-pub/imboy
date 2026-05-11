@@ -4,9 +4,7 @@
 % 版本策略配置表的数据访问层
 %%%
 
--export([tablename/0]).
 -export([find_by_type/1]).
--export([save/1]).
 
 -include("common.hrl").
 

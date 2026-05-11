@@ -12,11 +12,9 @@
 -export([change_name/5]).
 -export([add/3]).
 -export([find_tag_id/3]).
--export([update_tag/5]).
 -export([get_relation_objects/3]).
 -export([change_scene_tag/5]).
 -export([flush_subtitle/1]).
--export([merge_tag/4]).
 -export([find_name_by_id/2]).
 -export([find_name_by_id/3]).
 

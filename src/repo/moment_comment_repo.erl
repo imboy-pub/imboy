@@ -4,12 +4,10 @@
 %%%
 %% Internal persistence detail for the moment_social domain.
 
--export([tablename/0]).
 -export([add/1, add/2]).
 -export([find_by_id/1, find_any_by_id/1]).
 -export([page_by_post/3]).
 -export([soft_delete/1, soft_delete/2]).
--export([count_by_post/1]).
 
 -include("log.hrl").
 
@@ -82,15 +80,3 @@ soft_delete(Conn, CommentId) ->
     Tb = tablename(),
     Data = #{status => 0, updated_at => elib_dt:now()},
     elib_pg:update(Conn, Tb, Data, <<"id = $1 AND status = 1">>, [CommentId]).
-
--spec count_by_post(integer()) -> non_neg_integer().
-count_by_post(PostId) ->
-    Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
-            " WHERE post_id = $1 AND status = 1">>,
-    case elib_pg:one(Sql, [PostId]) of
-        {ok, #{<<"count">> := Count}} ->
-            ec_cnv:to_integer(Count);
-        _ ->
-            0
-    end.

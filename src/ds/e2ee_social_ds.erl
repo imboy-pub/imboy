@@ -23,8 +23,6 @@
 -export([recover_key/3]).
 -export([can_recover/2]).
 -export([delete_restored_shards/2]).
--export([clear_trusted_contacts_cache/1]).
--export([clear_user_shards_cache/1]).
 -export([create_shard/1]).
 
 %%===================================================================

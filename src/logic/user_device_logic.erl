@@ -20,16 +20,13 @@
 
 % 登录前检查
 -export([check_login_conflict/2]).
--export([check_device_can_login/2]).
 
 % 设备在线状态查询
 -export([is_online/2]).
 -export([online_dids/1]).
 
 % 会话管理
--export([register_device_session/4]).
 -export([kick_device/3]).
--export([kick_device_by_type/2]).
 -export([kick_all_other_devices/2]).
 -export([get_active_devices/1]).
 

@@ -1,7 +1,7 @@
 -module(epgsql_codec_rfc3339_bin).
 -dialyzer({nowarn_function, [encode/3]}).
 % -behaviour(epgsql_codec).
--export([init/2, names/0, encode/3, decode/3]).
+-export([init/2, encode/3, decode/3]).
 
 -define(UNIX_EPOCH_GREGORIAN, 62167219200). % 1970-01-01 00:00:00 的格里高利秒数
 -define(POSTGRESQL_GS_EPOCH, 63113904000). % calendar:datetime_to_gregorian_seconds({{2000,1,1}, {0,0,0}}).
@@ -10,12 +10,6 @@
 -spec init(any(), any()) -> undefined.
 init(_Opts, _Conn) ->
     undefined.
-
-%% @doc 声明编解码器处理的 PostgreSQL 类型
-%% @returns 类型列表，本模块处理 timestamptz 类型
--spec names() -> ['timestamptz'].
-names() ->
-    ['timestamptz'].
 
 %% @doc 编码 timestamptz 类型的数据
 %% @param Bin RFC3339 格式的时间戳二进制字符串

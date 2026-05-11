@@ -21,7 +21,6 @@
 -export([update_field/3]).
 -export([update_status/2]).
 -export([update_friends_last_seen_at/2]).
--export([delete_by_id/1]).
 -export([delete_all_related_data/1]).
 -export([insert_and_get_id/1]).
 -export([bind_email/2]).

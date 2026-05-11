@@ -6,8 +6,6 @@
 %% Internal persistence detail for the channel_content domain.
 
 -export([tablename/0]).
--export([add/1]).
--export([add/2]).
 -export([upsert_active/3]).
 -export([find/2]).
 -export([list_by_uid/1]).
@@ -15,7 +13,6 @@
 -export([list_by_channel/3]).
 -export([delete/2]).
 -export([delete/3]).
--export([update/3]).
 -export([increment_unread/1]).
 -export([clear_unread/1]).
 -export([clear_unread/2]).

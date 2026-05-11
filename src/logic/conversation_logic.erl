@@ -9,7 +9,6 @@
 -export([restore/3]).
 -export([list/2]).
 -export([is_deleted/3]).
--export([get_deleted_list/1]).
 -export([filter_deleted_conversations/2]).
 
 -include_lib("eunit/include/eunit.hrl").

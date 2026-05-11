@@ -12,7 +12,6 @@
 %%===================================================================
 
 %% 导出函数
--export([find_by_session_id/1]).
 -export([create/1]).
 -export([update_status/2]).
 -export([update_status_and_device/3]).
@@ -22,7 +21,6 @@
 -export([generate_session_id/0]).
 -export([cleanup_expired_sessions/0]).
 -export([get_stalled_sessions/0]).
--export([has_pending_session/2]).
 -export([cancel_session/2]).
 
 %%===================================================================

@@ -15,7 +15,6 @@
 -export ([pin/1]).
 -export ([unpin/1]).
 -export ([mark_as_read/1]).
--export ([get_pinned_notices/1]).
 -export([page/5]).
 -export([latest_published/2]).
 
@@ -157,13 +156,6 @@ unpin(NoticeId) ->
 -spec mark_as_read(integer()) -> {ok, map()} | {error, term()}.
 mark_as_read(NoticeId) ->
     group_notice_repo:increment_read_count(NoticeId).
-
-%% @doc 获取群组的置顶公告列表
-%% @param GroupId 群组ID
-%% @return {ok, [Notice]} | {error, Reason}
--spec get_pinned_notices(integer()) -> {ok, [map()]} | {error, term()}.
-get_pinned_notices(GroupId) ->
-    group_notice_repo:get_pinned_notices(GroupId).
 
 %% @doc 分页查询群公告列表
 %% @param Gid 群组ID

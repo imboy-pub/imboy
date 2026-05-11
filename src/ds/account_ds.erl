@@ -9,7 +9,6 @@
 %% API
 -export([init/0]).
 -export([allocate/0]).
--export([safe_get_max_account_id/0]).
 
 %% @doc 初始化账户ID序列
 %% 创建账户ID序列，如果序列不存在则创建并设置起始值为50000。

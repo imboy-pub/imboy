@@ -19,7 +19,6 @@
 -export([remove_last_forward_slash/1]).
 -export([strip_version_prefix/2]).
 -export([condition/5]).
--export([do_authorization/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 

@@ -1,11 +1,9 @@
 -module(report_ticket_repo).
 
--export([tablename/0]).
 -export([create/5]).
 -export([find_by_id/1]).
 -export([page_admin/3]).
 -export([resolve/4]).
--export([delete_by_id/1]).
 
 -spec tablename() -> binary().
 tablename() ->

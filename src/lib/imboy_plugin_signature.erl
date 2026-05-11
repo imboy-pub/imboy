@@ -39,7 +39,6 @@
 -type private_key() :: binary().    %% 32 bytes
 -type signature()   :: binary().    %% 64 bytes
 
--export_type([public_key/0, private_key/0, signature/0]).
 
 %% ===================================================================
 %% Public API

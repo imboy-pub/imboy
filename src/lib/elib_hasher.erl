@@ -1,6 +1,6 @@
 -module(elib_hasher).
 
--export([md5/1, hash/1]).
+-export([md5/1]).
 -export([hmac_sha256/2,
          hmac_sha512/2]).
 

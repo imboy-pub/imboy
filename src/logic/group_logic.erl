@@ -15,8 +15,6 @@
 -export([dissolve/4]).
 -export([transfer/3]).
 -export([transfer/4]).           % 增强的转让函数，支持保留管理员身份
--export([do_transfer/5]).
--export([do_transfer/6]).        % 增强的转让函数内部实现
 -export([nearby_gid/6]).
 
 -include("log.hrl").

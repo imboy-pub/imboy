@@ -6,8 +6,6 @@
 %%%
 
 -export ([tablename/0]).
--export ([tablename_option/0]).
--export ([tablename_record/0]).
 
 -export ([insert_vote/1]).
 -export ([find_by_vote_id/1]).
@@ -25,7 +23,6 @@
 -export ([find_record_by_vote_and_user/2]).
 -export ([update_record/2]).
 -export ([delete_record/1]).
--export ([delete_record_by_vote_and_user/2]).
 
 -export ([count_votes_by_option_id/1]).
 -export ([count_total_votes_by_vote_id/1]).
@@ -379,23 +376,6 @@ delete_record(RecordId) when is_integer(RecordId), RecordId > 0 ->
         {error, Reason} -> {error, Reason}
     end;
 delete_record(_RecordId) ->
-    {error, invalid_param}.
-
-%% @doc 删除用户在指定投票的记录
-%% @param VoteId 投票ID (字符串)
-%% @param UserId 用户ID (整数)
-%% @return {ok, Count} | {error, Reason}
--spec delete_record_by_vote_and_user(binary(), integer()) ->
-                                         {ok, integer()} | {error, term()}.
-delete_record_by_vote_and_user(VoteId, UserId)
-  when is_binary(VoteId), byte_size(VoteId) > 0, is_integer(UserId), UserId > 0 ->
-    Tb = tablename_record(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE vote_id = $1 AND user_id = $2">>,
-    case elib_pg:query(Sql, [VoteId, UserId]) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end;
-delete_record_by_vote_and_user(_VoteId, _UserId) ->
     {error, invalid_param}.
 
 %% ===================================================================

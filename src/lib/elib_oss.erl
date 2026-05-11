@@ -15,8 +15,6 @@
 %% API
 -export([upload/2]).
 -export([upload/3]).
--export([download/1]).
--export([delete/1]).
 -export([get_url/1]).
 -export([generate_file_id/0]).
 -export([validate_file_id/1]).
@@ -104,35 +102,6 @@ upload(FileBinary, FileName, Options) ->
                             {error, Reason}
                     end
             end
-    end.
-
-%% @doc 下载文件（本地文件系统）
-%% @param FileId 文件ID
-%% @return {ok, FileBinary} | {error, Reason}
--spec download(binary()) -> {ok, binary()} | {error, term()}.
-download(FileId) ->
-    case validate_file_id(FileId) of
-        ok ->
-            file:read_file(upload_path(FileId));
-        {error, _} = Err ->
-            Err
-    end.
-
-%% @doc 删除文件（本地文件系统）
-%% @param FileId 文件ID
-%% @return ok | {error, Reason}
--spec delete(binary()) -> ok | {error, term()}.
-delete(FileId) ->
-    case validate_file_id(FileId) of
-        ok ->
-            FilePath = upload_path(FileId),
-            case file:delete(FilePath) of
-                ok -> ok;
-                {error, enoent} -> ok;  % 文件不存在视为删除成功
-                {error, Reason} -> {error, Reason}
-            end;
-        {error, _} = Err ->
-            Err
     end.
 
 %% @doc 获取文件URL

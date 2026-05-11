@@ -5,7 +5,6 @@
 %%%
 
 -export ([find/3]).
--export ([list/2, count/0]).
 -export ([save/1, update/2, delete/1]).
 -export ([assign_roles/2, update_status/2, reset_password/2]).
 

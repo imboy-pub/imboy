@@ -15,7 +15,6 @@
 %% API functions
 %% ===================================================================
 
--export([tablename/0]).
 -export([insert/1]).
 -export([list/3]).
 

@@ -3,40 +3,14 @@
 % moment_post_acl repository
 %%%
 
--export([tablename/0]).
--export([add/1, add/2]).
 -export([replace_for_post/4]).
--export([list_by_post/1]).
 -export([list_uids_by_post/2]).
--export([delete_by_post/1, delete_by_post/2]).
 
 -include("log.hrl").
 
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"moment_post_acl">>).
-
--spec add(map()) -> {ok, integer()} | {error, term()}.
-add(Data) ->
-    Tb = tablename(),
-    Id = elib_tsid:generate(moment_post_acl),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, Id};
-        {error, _} = Err -> Err
-    end.
-
--spec add(any(), map()) -> {ok, integer()} | {error, term()}.
-add(Conn, Data) ->
-    Tb = tablename(),
-    Id = elib_tsid:generate(moment_post_acl),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, _Count} -> {ok, Id};
-        {error, _} = Err -> Err
-    end.
 
 -spec replace_for_post(any(), integer(), [integer()], [integer()]) -> ok | {error, any()}.
 replace_for_post(Conn, PostId, AllowUids0, DenyUids0) ->
@@ -54,15 +28,6 @@ replace_for_post(Conn, PostId, AllowUids0, DenyUids0) ->
             {error, Reason}
     end.
 
--spec list_by_post(integer()) -> {ok, [map()]} | {error, any()}.
-list_by_post(PostId) ->
-    Tb = tablename(),
-    Sql = <<"SELECT post_id, uid, acl_type, created_at"
-            " FROM ", Tb/binary,
-            " WHERE post_id = $1"
-            " ORDER BY id ASC">>,
-    elib_pg:query(Sql, [PostId]).
-
 -spec list_uids_by_post(integer(), integer()) -> [integer()].
 list_uids_by_post(PostId, AclType) ->
     Tb = tablename(),
@@ -74,12 +39,6 @@ list_uids_by_post(PostId, AclType) ->
         _ ->
             []
     end.
-
--spec delete_by_post(integer()) -> {ok, non_neg_integer()} | {error, any()}.
-delete_by_post(PostId) ->
-    Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE post_id = $1">>,
-    elib_pg:execute(Sql, [PostId]).
 
 -spec delete_by_post(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_by_post(Conn, PostId) ->

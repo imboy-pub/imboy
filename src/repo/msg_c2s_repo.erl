@@ -8,7 +8,6 @@
 -include("log.hrl").
 
 -export([tablename/0]).
--export([write_msg/8]).
 -export([list_by_ids/2]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
@@ -23,57 +22,6 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2s">>).
-
-
-%% @doc 写入机器人离线消息及时间线表
-%% 批量插入机器人消息表及时间线表
-%% @param CreatedAtRaw 创建时间（binary | integer毫秒时间戳）
-%% @param MsgId 消息ID
-%% @param Payload 消息载荷（binary | list）
-%% @param FromId 发送者用户ID
-%% @param ToUids 接收者用户ID列表
-%% @param Gid 群组ID
-%% @param MsgType 消息类型（text, image, audio, video, file 等）
-%% @param E2EE 端到端加密信息（JSON binary，可选）
-%% @return ok
-%% @details 注意：from_id 和 to_groupid 是 bigint 类型，必须传入 integer
--spec write_msg(binary() | integer(), binary(), binary() | list(), integer(), list(), integer(), binary(), map() | null) -> ok.
-write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
-    CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
-    Tb = tablename(),
-    % ?DEBUG_LOG([CreatedAt, Payload, FromId, ToUids, Gid]),
-    elib_pg:with_tx(fun(Conn) ->
-        %% ---------- 插入机器人离线消息 ----------
-        %% 使用 elib_pg:insert/4 在事务中插入，与其他 repo 保持一致的安全方式
-        GenId = elib_tsid:generate(msg_c2s),
-        C2sData = #{
-            id => GenId,
-            payload => Payload,
-            to_id => Gid,
-            from_id => FromId,
-            created_at => CreatedAt,
-            msg_id => MsgId,
-            msg_type => MsgType,
-            e2ee => case E2EE of
-                <<>> -> null;
-                null -> null;
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
-                Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
-                _ -> null
-            end
-        },
-        {C2sSql, C2sParams} = elib_pg_sql:insert(Tb, C2sData),
-        _ = elib_pg:execute(Conn, C2sSql, C2sParams),
-
-        %% ---------- 批量插入时间线表 ----------
-        %% 注意：时间线表的 to_uid 和 to_gid 是 bigint 类型，需要传入 integer
-        Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
-        {SqlTimeline, ParamsTimeline} =
-            elib_pg_sql:insert_batch(msg_c2g_timeline_repo:tablename(),
-                                      [msg_id, to_uid, to_gid, created_at], Vals),
-        {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
-        ok
-    end).
 
 
 %% @doc 根据消息ID列表查询机器人消息

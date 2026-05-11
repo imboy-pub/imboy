@@ -3,13 +3,9 @@
 % wallet 钱包数据仓库层，提供钱包及流水的基础数据库操作
 %%%
 
--export([tablename/0]).
 -export([find_by_uid/1]).
 -export([create/1]).
--export([update_balance/3]).
 -export([atomic_balance_change/4]).
--export([tx_tablename/0]).
--export([add_transaction/1]).
 -export([find_transaction_by_ref/1]).
 -export([page_transactions/3]).
 

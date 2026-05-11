@@ -17,16 +17,11 @@
 -export([find_by_id/1]).
 -export([find_by_channel_and_invitee/2]).
 -export([find_pending_by_channel_and_invitee/2]).
--export([find_by_code/1]).
 -export([accept/2]).
 -export([reject/2]).
--export([cancel/2]).
--export([expire/1]).
 -export([list_pending_by_invitee/1]).
--export([list_by_channel/2]).
 -export([list_by_inviter/2]).
 -export [is_invited/2].
--export([cleanup_expired/0]).
 -export([generate_invitation_code/0]).
 
 %%===================================================================

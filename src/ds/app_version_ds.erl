@@ -11,7 +11,6 @@
 %% @param Pkg 包名
 %% @returns 签名密钥（二进制）
 -export ([sign_key/3]).
--export ([set_sign_key/4]).
 -export ([get_sign_key/4]).
 
 %% 数据操作导出

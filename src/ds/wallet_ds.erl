@@ -16,10 +16,10 @@
 % This module consolidates wallet data services in 2026-04 (G2-a remediation).
 %%%
 
--export([find_by_uid/1, ensure_wallet/1, page_transactions/3, topup/3]).
+-export([find_by_uid/1, ensure_wallet/1, page_transactions/3]).
 -export([create/1]).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation
--export([atomic_balance_change/4, find_transaction_by_ref/1]).
+-export([atomic_balance_change/4]).
 
 -include("log.hrl").
 

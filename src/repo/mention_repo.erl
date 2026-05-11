@@ -18,7 +18,6 @@
 -export([count_unread/1]).
 -export([count_unread_in_group/2]).
 -export([delete_by_msg_id/1]).
--export([delete_by_uid/1]).
 
 %% ===================================================================
 %% API functions

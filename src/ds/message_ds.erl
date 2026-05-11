@@ -11,13 +11,11 @@
 
 -export([assemble_s2c/3]).
 -export([assemble_msg/5, assemble_msg/8]).
--export([encode_websocket_message/1]).
 -export([decode_websocket_message/1]).
 -export([validate_message/1]).
 -export([convert_v1_to_v2/1]).
 -export([send_next/4, send_next/6]).
 -export([check_and_notify_offline_msgs/1]).
--export([get_offline_msg_threshold/0]).
 -export([inject_sender_device/2]).
 -export([build_adm_union_sql/1]).
 

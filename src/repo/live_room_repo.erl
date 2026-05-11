@@ -4,7 +4,6 @@
 % 直播间数据仓库层，提供直播间数据的基础数据库操作
 %%%
 
--export([tablename/0]).
 -export([find_by_id/1]).
 -export([create/1]).
 -export([update/2]).

@@ -9,7 +9,6 @@
 -export([add/2]).
 -export([find/2]).
 -export([list_by_channel/1]).
--export([list_by_uid/1]).
 -export([delete/2]).
 -export([is_admin/2]).
 -export([get_role/2]).

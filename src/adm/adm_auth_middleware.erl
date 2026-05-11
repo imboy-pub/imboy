@@ -6,7 +6,7 @@
 -export([execute/2]).
 -export([condition/4]).
 -export([remove_last_forward_slash/1]).
--export([sign_admin_cookie/1, verify_admin_cookie/2]).
+-export([sign_admin_cookie/1]).
 
 
 %% 这个是回调函数

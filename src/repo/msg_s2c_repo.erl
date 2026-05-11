@@ -13,7 +13,6 @@
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
--export([delete_by_to_id/1]).
 -export([delete_by_msg_id_and_to_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([delete_overflow_msg/2]).

@@ -5,9 +5,6 @@
 %%%
 
 -export([tablename/0]).
--export([photo_tablename/0]).
--export([like_tablename/0]).
--export([comment_tablename/0]).
 
 %% 相册操作
 -export([create_album/4]).
@@ -33,7 +30,6 @@
 %% 评论操作
 -export([add_comment/3]).
 -export([list_comments/2]).
--export([delete_comment/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
