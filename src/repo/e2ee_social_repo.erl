@@ -72,17 +72,6 @@ get_proxy_shards(ProxyUid) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 标记分片已使用
--spec mark_shard_used(integer()) -> ok | {error, term()}.
-mark_shard_used(ShardId) ->
-    Sql1 = <<"UPDATE e2ee_social_shards ",
-             "SET status = 'used', used_at = NOW() ",
-             "WHERE id = $1">>,
-    case elib_pg:execute(Sql1, [ShardId]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
-
 %% @doc 删除已恢复的分片
 -spec delete_restored_shards(integer(), binary()) -> ok | {error, term()}.
 delete_restored_shards(Uid, KeyVersion) ->

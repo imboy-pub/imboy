@@ -38,30 +38,6 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"channel_subscription">>).
 
-%% @doc 添加订阅关系
--spec add(map()) -> {ok, integer()} | {error, term()}.
-add(Data) ->
-    Tb = tablename(),
-    Id = elib_tsid:generate(channel_subscription),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, Id};
-        {error, _} = Err -> Err
-    end.
-
-%% @doc 添加订阅关系（使用连接）
--spec add(any(), map()) -> {ok, integer()} | {error, term()}.
-add(Conn, Data) ->
-    Tb = tablename(),
-    Id = elib_tsid:generate(channel_subscription),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, _Count} -> {ok, Id};
-        {error, _} = Err -> Err
-    end.
-
 %% @doc 幂等激活订阅关系（插入或将 status 恢复为 1）
 %% @param Conn 事务连接
 %% @param ChannelId 频道ID
@@ -163,12 +139,6 @@ delete(Conn, ChannelId, Uid) ->
         <<"channel_id = $1 AND user_id = $2 AND status = 1">>,
         [ChannelId, Uid]
     ).
-
-%% @doc 更新订阅信息
--spec update(integer(), integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
-update(ChannelId, Uid, Data) ->
-    Tb = tablename(),
-    elib_pg:update(Tb, Data, <<"channel_id = $1 AND user_id = $2">>, [ChannelId, Uid]).
 
 %% @doc 增加未读计数
 -spec increment_unread(integer()) -> ok.
