@@ -90,8 +90,8 @@ unsubscribe(Uid, ChannelIdBin) ->
                     ok;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)};
-                Other ->
-                    {error, elib_cnv:safe_to_binary(Other)}
+                _Other ->
+                    {error, elib_cnv:safe_to_binary(_Other)}
             end
     end.
 
@@ -104,8 +104,8 @@ get_subscribed_channels(Uid) ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -117,8 +117,8 @@ get_managed_channels(Uid) ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
@@ -148,8 +148,8 @@ get_unread_summary(Uid) ->
             }};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec get_subscribers(binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
@@ -166,8 +166,8 @@ get_subscribers(ChannelIdBin, Cursor, Limit) ->
                     {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)};
-                Reason ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                _Reason ->
+                    {error, elib_cnv:safe_to_binary(_Reason)}
             end
     end.
 

@@ -95,9 +95,9 @@ subscribe(SessionToken, Pid) ->
     try syn:join(?QR_LOGIN_SCOPE, Topic, Pid) of
         ok -> ok;
         {error, _} = Err -> Err;
-        Other -> {error, Other}
+        _Other -> {error, _Other}
     catch
-        _:Reason -> {error, Reason}
+        _:_Reason -> {error, _Reason}
     end.
 
 %% @doc PR-3 SSE handler 在 terminate 时调用，离开 group 防止僵尸订阅。
@@ -108,9 +108,9 @@ unsubscribe(SessionToken, Pid) ->
     try syn:leave(?QR_LOGIN_SCOPE, Topic, Pid) of
         ok -> ok;
         {error, _} = Err -> Err;
-        Other -> {error, Other}
+        _Other -> {error, _Other}
     catch
-        _:Reason -> {error, Reason}
+        _:_Reason -> {error, _Reason}
     end.
 
 %% @doc qr_login_handler 在 scan/confirm 后调用，向所有订阅者广播事件。

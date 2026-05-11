@@ -45,8 +45,8 @@ create_order(Uid, ChannelIdBin) ->
                                     {error, Reason};
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                                _Other ->
+                                    {error, elib_cnv:safe_to_binary(_Other)}
                             end
                     end;
                 _ ->
@@ -108,8 +108,8 @@ pay_order(Uid, OrderNo) ->
             {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -124,8 +124,8 @@ get_my_orders(Uid) ->
             {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -152,8 +152,8 @@ get_order(Uid, OrderNo) ->
             {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec decode_positive_id(term()) -> integer().

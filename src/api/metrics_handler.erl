@@ -76,8 +76,8 @@ collect_system_metrics() ->
     WsConnections = try ranch:info(imboy_listener) of
         Info when is_map(Info) ->
             maps:get(active_connections, Info, 0);
-        Info when is_list(Info) ->
-            proplists:get_value(active_connections, Info, 0);
+        _Info when is_list(_Info) ->
+            proplists:get_value(active_connections, _Info, 0);
         _ -> 0
     catch _:_ -> 0
     end,

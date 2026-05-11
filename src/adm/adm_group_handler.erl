@@ -1733,8 +1733,8 @@ normalize_category_row(Row) when is_map(Row) ->
         _ ->
             Row
     end;
-normalize_category_row(Row) ->
-    Row.
+normalize_category_row(_Row) ->
+    _Row.
 
 -spec normalize_category_pk(term()) -> integer().
 normalize_category_pk(undefined) ->
@@ -1895,8 +1895,8 @@ normalize_notice_row(Notice) when is_map(Notice) ->
         _ ->
             Notice
     end;
-normalize_notice_row(Row) ->
-    Row.
+normalize_notice_row(_Row) ->
+    _Row.
 
 -spec normalize_file_pk(term()) -> integer().
 normalize_file_pk(undefined) ->

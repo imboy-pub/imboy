@@ -257,8 +257,8 @@ safe_post(Req0) ->
     try elib_param:post(Req0) of
         PostVals when is_map(PostVals) ->
             PostVals;
-        PostVals when is_list(PostVals) ->
-            maps:from_list(PostVals);
+        _PostVals when is_list(_PostVals) ->
+            maps:from_list(_PostVals);
         _ ->
             #{}
     catch

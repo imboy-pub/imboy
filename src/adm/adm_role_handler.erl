@@ -355,8 +355,8 @@ create_role_record(RoleName, Status) ->
             end;
         {error, Reason} ->
             {error, Reason};
-        Other ->
-            {error, Other}
+        _Other ->
+            {error, _Other}
     end.
 
 -spec next_role_sort() -> integer().

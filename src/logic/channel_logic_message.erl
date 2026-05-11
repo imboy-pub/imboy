@@ -58,8 +58,8 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 do_create_channel(Uid, Name, Type, Opts) ->
@@ -68,7 +68,7 @@ do_create_channel(Uid, Name, Type, Opts) ->
             case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
-                Other -> {error, elib_cnv:safe_to_binary(Other)}
+                _Other -> {error, elib_cnv:safe_to_binary(_Other)}
             end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
@@ -148,8 +148,8 @@ update_channel(Uid, ChannelIdBin, Data) ->
                                 Channel when is_map(Channel) ->
                                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
                                     {ok, channel_transfer(Channel)};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                                _Other ->
+                                    {error, elib_cnv:safe_to_binary(_Other)}
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -203,8 +203,8 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                                     channel_logic_notify:broadcast_channel_message(ChannelId, Message2),
                                     push_unread_updates(ChannelId),
                                     {ok, Message2};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                                _Other ->
+                                    {error, elib_cnv:safe_to_binary(_Other)}
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -228,8 +228,8 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                             {error, elib_cnv:safe_to_binary(Reason)};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)};
-                        Reason ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                        _Reason ->
+                            {error, elib_cnv:safe_to_binary(_Reason)}
                     end;
                 {error, Reason} ->
                     {error, Reason}
@@ -266,8 +266,8 @@ search_channels(Keyword, Limit) ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -279,8 +279,8 @@ get_discover_channels(Limit) ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
@@ -358,8 +358,8 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                                                     {error, elib_cnv:safe_to_binary(Reason)};
                                                 Message2 when is_map(Message2) ->
                                                     {ok, message_transfer(Message2)};
-                                                Other ->
-                                                    {error, elib_cnv:safe_to_binary(Other)}
+                                                _Other ->
+                                                    {error, elib_cnv:safe_to_binary(_Other)}
                                             end;
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -500,8 +500,8 @@ get_admins(ChannelId) ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec update_admin_role(integer(), integer() | binary(), integer(), integer()) -> ok | {error, binary()}.

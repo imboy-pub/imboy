@@ -22,16 +22,16 @@ sync_channels(Uid, Since) ->
                             {error, elib_cnv:safe_to_binary(Reason)};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)};
-                        Reason ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                        _Reason ->
+                            {error, elib_cnv:safe_to_binary(_Reason)}
                     end
             end;
         {ok, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec extract_channel_ids(list()) -> list(integer()).

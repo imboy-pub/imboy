@@ -41,8 +41,8 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                                     {error, Reason};
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                                _Other ->
+                                    {error, elib_cnv:safe_to_binary(_Other)}
                             end
                     end;
                 _ ->
@@ -76,8 +76,8 @@ accept_invitation(Uid, InvitationId) ->
             {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec reject_invitation(integer(), integer()) -> ok | {error, binary()}.
@@ -89,8 +89,8 @@ reject_invitation(Uid, InvitationId) ->
             {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Other ->
-            {error, elib_cnv:safe_to_binary(Other)}
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -103,8 +103,8 @@ get_my_invitations(Uid) ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec get_sent_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -117,8 +117,8 @@ get_sent_invitations(Uid) ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
-        Reason ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+        _Reason ->
+            {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
 -spec decode_positive_id(term()) -> integer().

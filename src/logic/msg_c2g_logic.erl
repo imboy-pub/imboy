@@ -175,9 +175,9 @@ do_stage_and_send_c2g(
                     msg_store_ds:stage(
                         <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
                         CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc);
-                Other ->
+                _Other ->
                     ok = ?ERROR_LOG("[C2G_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
-                               [MsgId, ReplyToMsgId, Other]),
+                               [MsgId, ReplyToMsgId, _Other]),
                     msg_store_ds:stage(
                         <<"c2g">>, MsgId, MsgType, Action, E2EE, Msg2,
                         CurrentUid, MemberUids, CreatedAtRfc, CreatedAtRfc)
