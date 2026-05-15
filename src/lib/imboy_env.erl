@@ -10,11 +10,13 @@
 %   IMBOY_JWT_KEY          -> {imboy, jwt_key}
 %   IMBOY_POSTGRE_AES_KEY  -> {imboy, postgre_aes_key}
 %   IMBOY_ADM_COOKIE_SECRET -> {imboy, adm_cookie_secret}
+%   IMBOY_BASE_URL         -> {imboy, base_url}  (e.g. https://api.example.com)
+%   IMBOY_WS_URL           -> {imboy, ws_url}    (e.g. wss://api.example.com/ws)
 %   IMBOY_PG_HOST          -> pg_conf 中的 host
 %   IMBOY_PG_PASSWORD      -> pg_conf 中的 password
-%   IMBOY_PG_DATABASE      -> pg_conf 中的 database
+%   IMBOY_PG_DATABASE / IMBOY_PG_DB -> pg_conf 中的 database（两者均接受）
 %   IMBOY_PG_PORT          -> pg_conf 中的 port
-%   IMBOY_PG_USERNAME      -> pg_conf 中的 username
+%   IMBOY_PG_USERNAME / IMBOY_PG_USER -> pg_conf 中的 username（两者均接受）
 %   IMBOY_SMTP_USERNAME    -> smtp_option 中的 username
 %   IMBOY_SMTP_PASSWORD    -> smtp_option 中的 password
 %   IMBOY_REDIS_PASSWORD   -> redis_options 中的 password
@@ -49,16 +51,16 @@
 current() ->
     case normalize(os:getenv("IMBOYENV")) of
         <<>> -> normalize(application:get_env(imboy, env, undefined));
-        Bin  -> Bin
+        Bin -> Bin
     end.
 
 -spec normalize(term()) -> binary().
 normalize(undefined) -> <<>>;
-normalize(false)     -> <<>>;
+normalize(false) -> <<>>;
 normalize(B) when is_binary(B) -> B;
-normalize(A) when is_atom(A)   -> atom_to_binary(A, utf8);
-normalize(L) when is_list(L)   -> unicode:characters_to_binary(L);
-normalize(_)                   -> <<>>.
+normalize(A) when is_atom(A) -> atom_to_binary(A, utf8);
+normalize(L) when is_list(L) -> unicode:characters_to_binary(L);
+normalize(_) -> <<>>.
 
 %% @doc 从环境变量覆盖 application config 中的敏感值。
 %% 在 imboy_app:start/2 中 validate_runtime_config() 之前调用。
@@ -68,6 +70,10 @@ override_from_env() ->
     ok = override_binary_key("IMBOY_JWT_KEY", jwt_key),
     ok = override_binary_key("IMBOY_POSTGRE_AES_KEY", postgre_aes_key),
     ok = override_string_key("IMBOY_ADM_COOKIE_SECRET", adm_cookie_secret),
+
+    %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）
+    ok = override_binary_key("IMBOY_BASE_URL", base_url),
+    ok = override_binary_key("IMBOY_WS_URL", ws_url),
 
     %% PostgreSQL 连接配置覆盖
     ok = override_pg_conf(),
@@ -85,22 +91,24 @@ override_from_env() ->
     ok = override_qianfan(),
 
     %% 新增敏感配置环境变量覆盖
-    ok = override_binary_key("IMBOY_API_AUTH_SWITCH",      api_auth_switch),
-    ok = override_binary_key("IMBOY_PASSWORD_SALT",        password_salt),
-    ok = override_binary_key("IMBOY_ETURNAL_SECRET",       eturnal_secret),
-    ok = override_binary_key("IMBOY_JPUSH_APP_KEY",        jpush_app_key),
-    ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET",  jpush_master_secret),
-    ok = override_binary_key("IMBOY_YJSMS_ACCOUNT",        yjsms_account),
-    ok = override_binary_key("IMBOY_YJSMS_SECRET",         yjsms_secret),
+    ok = override_binary_key("IMBOY_API_AUTH_SWITCH", api_auth_switch),
+    ok = override_binary_key("IMBOY_PASSWORD_SALT", password_salt),
+    ok = override_binary_key("IMBOY_ETURNAL_SECRET", eturnal_secret),
+    ok = override_binary_key("IMBOY_JPUSH_APP_KEY", jpush_app_key),
+    ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET", jpush_master_secret),
+    ok = override_binary_key("IMBOY_YJSMS_ACCOUNT", yjsms_account),
+    ok = override_binary_key("IMBOY_YJSMS_SECRET", yjsms_secret),
 
     %% solidified_key / iv 必须是固定长度二进制（32 / 16）；用 binary 接收
-    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY",       solidified_key),
-    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY_IV",    solidified_key_iv),
+    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY", solidified_key),
+    ok = override_binary_key("IMBOY_SOLIDIFIED_KEY_IV", solidified_key_iv),
 
     %% RSA 密钥文件路径（string，不是 binary）
-    ok = override_string_key("IMBOY_LOGIN_RSA_PUB_KEY_FILE",         login_rsa_pub_key_file),
-    ok = override_string_key("IMBOY_LOGIN_RSA_PRIV_KEY_FILE",        login_rsa_priv_key_file),
-    ok = override_string_key("IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE", jverification_rsa_priv_key_file),
+    ok = override_string_key("IMBOY_LOGIN_RSA_PUB_KEY_FILE", login_rsa_pub_key_file),
+    ok = override_string_key("IMBOY_LOGIN_RSA_PRIV_KEY_FILE", login_rsa_priv_key_file),
+    ok = override_string_key(
+        "IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE", jverification_rsa_priv_key_file
+    ),
 
     ok.
 
@@ -162,12 +170,20 @@ override_super_account() ->
     end.
 
 %% @doc 从环境变量覆盖 PG 连接选项 map
+%% 支持两套命名（IMBOY_PG_USERNAME / IMBOY_PG_USER，IMBOY_PG_DATABASE / IMBOY_PG_DB）
+%% 以兼容 docker-compose.prod.yml 的短名称风格
 -spec override_pg_conn_opts(map()) -> map().
 override_pg_conn_opts(Opts) ->
     Opts1 = maybe_override_map(Opts, host, "IMBOY_PG_HOST", fun(V) -> V end),
-    Opts2 = maybe_override_map(Opts1, username, "IMBOY_PG_USERNAME", fun(V) -> V end),
+    Opts2 = maybe_override_map_fallback(Opts1, username, "IMBOY_PG_USERNAME", "IMBOY_PG_USER", fun(
+        V
+    ) ->
+        V
+    end),
     Opts3 = maybe_override_map(Opts2, password, "IMBOY_PG_PASSWORD", fun(V) -> V end),
-    Opts4 = maybe_override_map(Opts3, database, "IMBOY_PG_DATABASE", fun(V) -> V end),
+    Opts4 = maybe_override_map_fallback(Opts3, database, "IMBOY_PG_DATABASE", "IMBOY_PG_DB", fun(V) ->
+        V
+    end),
     maybe_override_map(Opts4, port, "IMBOY_PG_PORT", fun list_to_integer/1).
 
 %% @doc 覆盖 SMTP 配置
@@ -203,14 +219,30 @@ override_redis() ->
 override_qianfan() ->
     case application:get_env(imboy, qianfan) of
         {ok, QfConf} when is_map(QfConf) ->
-            Qf1 = maybe_override_map(QfConf, api_key, "IMBOY_QIANFAN_API_KEY",
-                                     fun(V) -> unicode:characters_to_binary(V) end),
-            Qf2 = maybe_override_map(Qf1, secret_key, "IMBOY_QIANFAN_SECRET_KEY",
-                                     fun(V) -> unicode:characters_to_binary(V) end),
-            Qf3 = maybe_override_map(Qf2, auth_access_key, "IMBOY_QIANFAN_AUTH_ACCESS_KEY",
-                                     fun(V) -> unicode:characters_to_binary(V) end),
-            Qf4 = maybe_override_map(Qf3, auth_secret_key, "IMBOY_QIANFAN_AUTH_SECRET_KEY",
-                                     fun(V) -> unicode:characters_to_binary(V) end),
+            Qf1 = maybe_override_map(
+                QfConf,
+                api_key,
+                "IMBOY_QIANFAN_API_KEY",
+                fun(V) -> unicode:characters_to_binary(V) end
+            ),
+            Qf2 = maybe_override_map(
+                Qf1,
+                secret_key,
+                "IMBOY_QIANFAN_SECRET_KEY",
+                fun(V) -> unicode:characters_to_binary(V) end
+            ),
+            Qf3 = maybe_override_map(
+                Qf2,
+                auth_access_key,
+                "IMBOY_QIANFAN_AUTH_ACCESS_KEY",
+                fun(V) -> unicode:characters_to_binary(V) end
+            ),
+            Qf4 = maybe_override_map(
+                Qf3,
+                auth_secret_key,
+                "IMBOY_QIANFAN_AUTH_SECRET_KEY",
+                fun(V) -> unicode:characters_to_binary(V) end
+            ),
             application:set_env(imboy, qianfan, Qf4),
             ok;
         _ ->
@@ -251,4 +283,15 @@ maybe_override_proplist_int(PropList, Key, EnvVar) ->
             lists:keystore(Key, 1, PropList, {Key, list_to_integer(Value)});
         _ ->
             PropList
+    end.
+
+%% @doc 优先用 EnvVar1，不存在则回退 EnvVar2，都不存在则不覆盖
+-spec maybe_override_map_fallback(map(), atom(), string(), string(), fun((string()) -> term())) ->
+    map().
+maybe_override_map_fallback(Map, Key, EnvVar1, EnvVar2, Transform) ->
+    case os:getenv(EnvVar1) of
+        Val when is_list(Val), length(Val) > 0 ->
+            Map#{Key => Transform(Val)};
+        _ ->
+            maybe_override_map(Map, Key, EnvVar2, Transform)
     end.

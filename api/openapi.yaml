@@ -16,6 +16,7 @@ openapi: 3.1.0
 info:
   title: IMBoy REST API
   version: 1.0.0-rc.1
+  x-stability: stable
   summary: IMBoy 后端 HTTP / REST 接口冻结版
   description: |
     本文件是 IMBoy 1.0.0-rc.1 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
