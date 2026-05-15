@@ -119,7 +119,7 @@
 **`code` 字段约定**：
 - 全大写 + 下划线 + 业务域前缀
 - 格式：`{DOMAIN}_{REASON}`（如 `USER_NOT_FOUND`、`MSG_DUPLICATE`、`AUTH_TOKEN_EXPIRED`）
-- 在 `imboy/api/openapi.yaml` 的 `components.schemas.ErrorCode` 枚举中维护
+- 在 `include/error_code.hrl` 中以宏形式维护（如 `?ERR_USER_NOT_FOUND`、`?ERR_AUTH_TOKEN_EXPIRED`）
 - 客户端绝不基于 `message` 文本做分支判断（仅用于日志与展示）
 
 **禁止**：

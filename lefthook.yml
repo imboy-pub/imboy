@@ -7,7 +7,7 @@ pre-commit:
   commands:
     erlfmt:
       glob: "{src,apps,test}/**/*.{erl,hrl}"
-      run: rebar3 fmt --check {staged_files}
+      run: erlfmt --check {staged_files}
       stage_fixed: false
     gitleaks:
       run: gitleaks protect --staged --no-banner --redact

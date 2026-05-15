@@ -1,15 +1,20 @@
 -module(epgsql_codec_rfc3339_bin).
 -dialyzer({nowarn_function, [encode/3]}).
 % -behaviour(epgsql_codec).
--export([init/2, encode/3, decode/3]).
+-export([init/2, names/0, encode/3, decode/3]).
 
--define(UNIX_EPOCH_GREGORIAN, 62167219200). % 1970-01-01 00:00:00 的格里高利秒数
--define(POSTGRESQL_GS_EPOCH, 63113904000). % calendar:datetime_to_gregorian_seconds({{2000,1,1}, {0,0,0}}).
+% 1970-01-01 00:00:00 的格里高利秒数
+-define(UNIX_EPOCH_GREGORIAN, 62167219200).
+% calendar:datetime_to_gregorian_seconds({{2000,1,1}, {0,0,0}}).
+-define(POSTGRESQL_GS_EPOCH, 63113904000).
 
 %% 初始化编解码器（无需特殊操作）
 -spec init(any(), any()) -> undefined.
 init(_Opts, _Conn) ->
     undefined.
+
+-spec names() -> [epgsql:type_name()].
+names() -> [timestamptz].
 
 %% @doc 编码 timestamptz 类型的数据
 %% @param Bin RFC3339 格式的时间戳二进制字符串
@@ -42,8 +47,10 @@ decode(Bin, 'timestamptz', _CodecState) ->
     catch
         _:_ ->
             % 检测到损坏的时间戳值，记录错误并返回安全默认值
-            error_logger:warning_msg("Invalid timestamptz value detected: ~p (raw: ~p)~n",
-                                   [MS, MicroSecs]),
+            error_logger:warning_msg(
+                "Invalid timestamptz value detected: ~p (raw: ~p)~n",
+                [MS, MicroSecs]
+            ),
             % 返回 epoch 时间作为安全默认值，避免崩溃
             <<"1970-01-01T00:00:00Z">>
     end.

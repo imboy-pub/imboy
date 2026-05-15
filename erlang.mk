@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = f440744
+ERLANG_MK_VERSION = 0b549ff
 ERLANG_MK_WITHOUT = index
 
 # Make 3.81 and 3.82 are deprecated.
@@ -344,7 +344,7 @@ export REBAR_DEPS_DIR
 # When testing Erlang.mk and updating these, make sure
 # to delete test/test_rebar_git before running tests again.
 REBAR3_GIT ?= https://github.com/erlang/rebar3
-REBAR3_COMMIT ?= bde4b54248d16280b2c70a244aca3bb7566e2033 # 3.23.0
+REBAR3_COMMIT ?= 619df55d9dab109cbd1b5d9ed1d45c93f5450e24 # 3.27.0
 
 CACHE_DEPS ?= 0
 

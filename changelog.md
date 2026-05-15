@@ -1,7 +1,12 @@
 # HEAD
 
-- 当前未发布变更以近期 Git 提交记录为准。
-- 早期版本条目中提到的文件路径、脚本名和文档名按当时仓库状态记录；若与当前目录不一致，应按历史记录理解。
+- `api/openapi.yaml`：redocly content warnings 17→0（commit `607d943`，2026-05-09）
+  - 8 个 endpoint 补 `'4XX'` 错误响应（复用 `Envelope` schema）
+  - 4 个 operation descriptions + 4 个 param descriptions
+  - server URL `localhost` → `127.0.0.1`
+- `docs/CONVENTIONS.md` §4：移除陈旧 `components.schemas.ErrorCode` 引用，改为 `include/error_code.hrl` 宏（2026-05-12）
+
+> 历史注记：早期版本条目中提到的文件路径、脚本名和文档名按当时仓库状态记录；若与当前目录不一致，应按历史记录理解。
 
 # 0.7.3 refactor: 单应用架构重构与4层代码分层
 
