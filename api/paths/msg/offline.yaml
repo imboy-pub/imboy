@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/offline.yaml
+# POST /msg/offline — 拉取离线消息 / Fetch offline messages
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1msg~1offline
+# Handler: src/api/msg_handler.erl#offline/2 → messaging_logic:offline/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 客户端上线后拉取离线消息
+  description: |
+    ## 中文
+    客户端上线后调用，按 C2C / C2G / S2C 三类拉取自上次 ACK 后服务端为
+    当前 uid 累积的离线消息。
+    投递语义：服务端把消息标记为"已投递但待 ACK"，客户端收到后必须调用
+    `/msg/offline_ack` 显式确认；超时未 ACK 会按 2s/5s/7s/11s 重投递。
+    详见 doc/architecture/overview.md#消息 QoS 投递。
+    ## English
+    Called by the client after coming online to fetch offline messages
+    accumulated by the server for the current uid, bucketed into C2C /
+    C2G / S2C. The server marks them as "delivered, awaiting ACK"; the
+    client MUST follow up with `/msg/offline_ack` or the messages will
+    be re-delivered (2s/5s/7s/11s back-off).
+  operationId: getOfflineMessages
+  responses:
+    '200':
+      description: "离线消息桶 { c2c: [...], c2g: [...], s2c: [...] }"
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

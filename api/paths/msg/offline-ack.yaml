@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/offline-ack.yaml
+# POST /msg/offline_ack — 离线消息确认 / Acknowledge offline messages
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1msg~1offline_ack
+# Handler: src/api/msg_handler.erl#offline_ack/2 → messaging_logic:offline_ack/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 确认离线消息已投递
+  description: |
+    ## 中文
+    客户端处理完 /msg/offline 返回的消息后调用，按类型 (c2c/c2g/s2c) +
+    msg_id 列表上报 ACK。服务端清理"待确认"标记，停止重投递。
+    幂等：重复 ACK 同一 msg_id 无副作用。
+    ## English
+    Called after processing the batch returned by /msg/offline. ACK by
+    (type, msg_id list) so the server clears the pending-ack flag and
+    stops re-delivery. Idempotent for repeated ACKs.
+  operationId: ackOfflineMessages
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [type, msg_ids]
+          properties:
+            type:
+              type: string
+              enum: [c2c, c2g, s2c]
+              description: 消息类型桶 / Message type bucket.
+            msg_ids:
+              type: array
+              items:
+                type: string
+              description: 已处理的消息 TSID 列表（字符串）/ Processed message TSIDs.
+  responses:
+    '200':
+      description: ACK 已记录
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: type 非法 / msg_ids 为空
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/reaction-list.yaml
+# GET /v1/msg/reaction/list — 查询消息表情列表 / List message reactions
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1list
+# Handler: src/api/msg_handler.erl#reaction_list/2 → messaging_logic:reaction_list/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 列出某条消息的全部表情回应
+  description: |
+    ## 中文
+    返回 msg_id 上所有用户的 emoji 反应，按 emoji 聚合（每种 emoji 对应
+    一个 user_id 列表）。无鉴权额外限制——只要客户端能看到这条消息就能列。
+    ## English
+    Return all reactions on `msg_id`, aggregated per emoji (each emoji
+    maps to its list of `user_id`s). No special auth check beyond
+    visibility of the underlying message.
+  operationId: listMessageReactions
+  parameters:
+    - in: query
+      name: msg_id
+      required: true
+      schema: { type: string }
+      description: 消息 TSID / Message TSID.
+  responses:
+    '200':
+      description: 表情聚合列表
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: msg_id 缺失 / 消息不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

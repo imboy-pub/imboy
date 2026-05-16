@@ -196,6 +196,22 @@ paths:
     $ref: './paths/friend-category/rename.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
+  /msg/offline:
+    $ref: './paths/msg/offline.yaml'
+  /msg/offline_ack:
+    $ref: './paths/msg/offline-ack.yaml'
+  /v1/msg/read_stats:
+    $ref: './paths/msg/read-stats.yaml'
+  /v1/msg/pin:
+    $ref: './paths/msg/pin.yaml'
+  /v1/msg/forward:
+    $ref: './paths/msg/forward.yaml'
+  /v1/msg/reaction/add:
+    $ref: './paths/msg/reaction-add.yaml'
+  /v1/msg/reaction/remove:
+    $ref: './paths/msg/reaction-remove.yaml'
+  /v1/msg/reaction/list:
+    $ref: './paths/msg/reaction-list.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

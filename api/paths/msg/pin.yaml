@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/pin.yaml
+# POST /v1/msg/pin — 置顶/取消置顶消息 / Pin / unpin message
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1pin
+# Handler: src/api/msg_handler.erl#pin/2 → msg_pinned_logic:{pin,unpin}/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 置顶或取消置顶消息
+  description: |
+    ## 中文
+    把消息加入或移出会话置顶区域。pinned=true 置顶；pinned=false 取消。
+    群消息需具有相应权限（群主 / 管理员）；C2C 消息任一方可置顶。
+    ## English
+    Pin a message to (or unpin from) the conversation's pinned area.
+    For group messages, requires owner / admin role; either party may
+    pin a C2C message.
+  operationId: pinMessage
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [msg_id, pinned]
+          properties:
+            msg_id:
+              type: string
+              description: 消息 TSID / Message TSID.
+            pinned:
+              type: boolean
+              description: true=置顶 / false=取消置顶 / true to pin, false to unpin.
+  responses:
+    '200':
+      description: 操作成功；payload 含 msg_id + pinned 回显
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权 / msg_id 缺失 / pinned 缺失 / 消息不存在 / 无置顶权限
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

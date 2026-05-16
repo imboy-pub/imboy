@@ -1,0 +1,57 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/forward.yaml
+# POST /v1/msg/forward — 转发消息 / Forward messages
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1forward
+# Handler: src/api/msg_handler.erl#forward/2 → msg_forward_logic:forward/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 转发一条或多条消息到目标会话
+  description: |
+    ## 中文
+    把 msg_ids 列表中的消息批量转发到 (to_type, to) 标识的会话。
+    服务端会校验：好友关系 / 群成员身份 / denylist / 转发权限 / 源消息存在。
+    payload 返回新生成的 forward_msg_ids 与 forward_count。
+    ## English
+    Bulk-forward `msg_ids` to the conversation identified by
+    (to_type, to). The server validates friendship / group membership /
+    denylist / forward permission / source-message existence.
+  operationId: forwardMessages
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [msg_ids, to, to_type]
+          properties:
+            msg_ids:
+              type: array
+              items:
+                type: string
+              description: 要转发的源消息 TSID 列表 / Source message TSIDs.
+            to:
+              type: string
+              description: 目标会话 ID（user TSID for c2c / group TSID for c2g）/ Target id.
+            to_type:
+              type: string
+              enum: [c2c, c2g]
+              description: 目标类型 / Target type.
+  responses:
+    '200':
+      description: 转发成功；payload 含 forward_msg_ids / forward_count
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: |
+        参数非法 (invalid_param) / 非好友 (not_friends) / 非群成员
+        (not_group_member) / 被拉黑 (in_denylist) / 无权限
+        (permission_denied) / 源消息不存在 (msg_not_found)
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

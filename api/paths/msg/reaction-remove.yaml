@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/reaction-remove.yaml
+# POST /v1/msg/reaction/remove — 移除表情回应 / Remove emoji reaction
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1remove
+# Handler: src/api/msg_handler.erl#reaction_remove/2 → messaging_logic:reaction_remove/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 移除消息表情回应
+  description: |
+    ## 中文
+    移除当前用户对 msg_id 添加的 emoji 表情。幂等。
+    副作用：推送 reaction_removed 事件给其他成员。
+    ## English
+    Remove the current user's emoji reaction on `msg_id`. Idempotent.
+    Broadcasts a `reaction_removed` event.
+  operationId: removeMessageReaction
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [msg_id, emoji]
+          properties:
+            msg_id:
+              type: string
+            emoji:
+              type: string
+  responses:
+    '200':
+      description: 移除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: msg_id / emoji 缺失
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/reaction-add.yaml
+# POST /v1/msg/reaction/add — 添加表情回应 / Add emoji reaction
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1add
+# Handler: src/api/msg_handler.erl#reaction_add/2 → messaging_logic:reaction_add/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 给消息添加表情回应
+  description: |
+    ## 中文
+    在指定 msg_id 上添加 emoji 表情。
+    幂等：同一 (uid, msg_id, emoji) 重复添加无副作用。
+    副作用：推送 reaction 事件给会话内其他成员。
+    ## English
+    Attach an emoji reaction to `msg_id`. Idempotent for repeats on the
+    same (uid, msg_id, emoji) tuple. Broadcasts a reaction event to
+    other members of the conversation.
+  operationId: addMessageReaction
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [msg_id, emoji]
+          properties:
+            msg_id:
+              type: string
+              description: 消息 TSID / Message TSID.
+            emoji:
+              type: string
+              description: emoji 字符（Unicode）/ Emoji character(s).
+  responses:
+    '200':
+      description: 添加成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: msg_id / emoji 缺失或非法 / 无访问该消息权限
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
