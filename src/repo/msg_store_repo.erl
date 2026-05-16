@@ -71,16 +71,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         msg_id => MsgId,
         msg_type => MsgType,
         action => Action,
-        e2ee =>
-            case E2EE of
-                null -> null;
-                <<>> -> null;
-                % map 需要 encode
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-                % 已经是 JSON binary（可能是双重编码的源头）
-                Bin when is_binary(Bin) -> Bin;
-                _ -> null
-            end,
+        e2ee => msg_store_e2ee_to_jsonb(E2EE),
         %% payload 列是 JSONB：
         %%  - 普通消息：Payload 已经是合法 JSON binary（如 {"text":"..."}）
         %%  - E2EE 消息：Payload 是裸 base64 密文 binary，必须包装为 JSON 字符串
@@ -117,16 +108,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
         msg_id => MsgId,
         msg_type => MsgType,
         action => Action,
-        e2ee =>
-            case E2EE of
-                null -> null;
-                <<>> -> null;
-                % map 需要 encode
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-                % 已经是 JSON binary（可能是双重编码的源头）
-                Bin when is_binary(Bin) -> Bin;
-                _ -> null
-            end,
+        e2ee => msg_store_e2ee_to_jsonb(E2EE),
         %% payload 列是 JSONB：
         %%  - 普通消息：Payload 已经是合法 JSON binary（如 {"text":"..."}）
         %%  - E2EE 消息：Payload 是裸 base64 密文 binary，必须包装为 JSON 字符串
@@ -357,6 +339,30 @@ msg_store_payload_to_jsonb(Bin) when is_binary(Bin) ->
     end;
 msg_store_payload_to_jsonb(Other) ->
     jsone:encode(Other).
+
+%% @private
+%% @doc 把传入的 E2EE 元数据规范化为合法的 JSONB binary 或 null
+%% 上游可能传：map（标准 E2EE 元数据）、JSON binary、空 binary、null、
+%% 或者裸字符串（如某些上游路径只取了密文片段）。裸字符串必须包装为
+%% JSON 字符串，否则触发 "invalid input syntax for type json"。
+%% 复用与 payload 相同的 is_likely_json_binary/1 判断，行为保持一致。
+-spec msg_store_e2ee_to_jsonb(term()) -> binary() | null.
+msg_store_e2ee_to_jsonb(null) ->
+    null;
+msg_store_e2ee_to_jsonb(<<>>) ->
+    null;
+msg_store_e2ee_to_jsonb(Map) when is_map(Map) ->
+    jsone:encode(Map, [native_utf8]);
+msg_store_e2ee_to_jsonb(Bin) when is_binary(Bin) ->
+    %% is_likely_json_binary 只看首字符，会把 "4QuejM" 这类裸 base62 误判为 JSON 数字，
+    %% 因此 e2ee 这里改用 try-decode 真验证：能解码才原样传，否则按 JSON string 包装。
+    try jsone:decode(Bin, [{object_format, map}]) of
+        _ -> Bin
+    catch
+        _:_ -> jsone:encode(Bin, [native_utf8])
+    end;
+msg_store_e2ee_to_jsonb(_) ->
+    null.
 
 %% @private 粗略判断 binary 是否已经是 JSON 文本（首字符为 {/[/"/数字/字面量）
 -spec is_likely_json_binary(binary()) -> boolean().
