@@ -1,0 +1,21 @@
+# GET /group_album/photo/list — 照片列表 / List photos
+get:
+  tags: [user]
+  summary: 相册的照片列表（分页）
+  operationId: listGroupAlbumPhotos
+  parameters:
+    - in: query
+      name: album_id
+      required: true
+      schema: { type: string }
+    - $ref: '../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: album_id 必须 / 无访问权限
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

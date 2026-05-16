@@ -1,0 +1,51 @@
+# POST /group_album/photo/upload — 上传单张照片 / Upload single photo
+post:
+  tags: [user]
+  summary: 上传单张照片（multipart 或 JSON-base64 两种模式）
+  description: |
+    ## 中文 / English
+    支持两种请求体：
+    - `multipart/form-data`：标准文件上传（photo 字段）
+    - `application/json`：base64 编码的 photo 字段 + photo_name
+    Two content types supported: multipart file upload, or JSON with
+    base64-encoded `photo` field.
+  operationId: uploadGroupAlbumPhoto
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required: [gid, album_id, photo]
+          properties:
+            gid: { type: string }
+            album_id: { type: string }
+            photo:
+              type: string
+              format: binary
+              description: 图片文件 / Image file part.
+            photo_name: { type: string }
+      application/json:
+        schema:
+          type: object
+          required: [gid, album_id, photo]
+          properties:
+            gid: { type: string }
+            album_id: { type: string }
+            photo:
+              type: string
+              description: base64 编码图片 / Base64-encoded image.
+            photo_name: { type: string, default: photo.jpg }
+  responses:
+    '200':
+      description: 上传成功（payload 含 photo_id / URL）
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数缺失 / 图片解析失败 / 相册不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '413':
+      description: 文件过大 / Payload too large
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

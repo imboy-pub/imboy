@@ -1,0 +1,24 @@
+# POST /group_album/cover/update — 更新相册封面 / Update cover
+post:
+  tags: [user]
+  summary: 更新相册封面
+  operationId: updateGroupAlbumCover
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [album_id, photo_id]
+          properties:
+            album_id: { type: integer, minimum: 1 }
+            photo_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 更新成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 相册或照片不存在 / 照片不属于该相册
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

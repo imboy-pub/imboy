@@ -1,0 +1,24 @@
+# POST /group_album/rename — 重命名相册 / Rename album
+post:
+  tags: [user]
+  summary: 重命名相册
+  operationId: renameGroupAlbum
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [album_id, album_name]
+          properties:
+            album_id: { type: integer, minimum: 1 }
+            album_name: { type: string, maxLength: 60 }
+  responses:
+    '200':
+      description: 重命名成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 相册不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

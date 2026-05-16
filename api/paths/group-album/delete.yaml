@@ -1,0 +1,27 @@
+# POST /group_album/delete — 删除相册 / Delete album
+post:
+  tags: [user]
+  summary: 删除相册（连带相片）
+  description: |
+    ## 中文 / English
+    删除相册，相册下的照片一并归档/删除（按 logic 实现）。需有权限。
+    Delete album; contained photos are archived/removed by logic.
+  operationId: deleteGroupAlbum
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [album_id]
+          properties:
+            album_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 相册不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

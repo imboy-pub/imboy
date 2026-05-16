@@ -1,0 +1,23 @@
+# POST /group_album/photo/unlike — 取消点赞 / Unlike photo
+post:
+  tags: [user]
+  summary: 取消点赞照片（幂等）
+  operationId: unlikeGroupAlbumPhoto
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [photo_id]
+          properties:
+            photo_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 取消成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

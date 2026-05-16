@@ -1,0 +1,19 @@
+# GET /group_album/photo/detail — 照片详情 / Photo detail
+get:
+  tags: [user]
+  summary: 照片详情（含 like / comments 计数）
+  operationId: photoDetailGroupAlbum
+  parameters:
+    - in: query
+      name: photo_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 照片详情
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: photo 不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

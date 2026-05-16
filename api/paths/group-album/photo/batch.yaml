@@ -1,0 +1,37 @@
+# POST /group_album/photo/batch — 批量上传 / Batch upload
+post:
+  tags: [user]
+  summary: 批量上传照片（JSON 列表）
+  description: |
+    ## 中文 / English
+    `photos` 数组里每个元素是 base64 编码图片 + 元信息。
+    Each element of `photos` is a base64-encoded image with metadata.
+  operationId: batchUploadGroupAlbumPhotos
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, photos]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            album_id: { type: integer, minimum: 1 }
+            photos:
+              type: array
+              items:
+                type: object
+                properties:
+                  photo: { type: string, description: base64 数据 / Base64 data. }
+                  photo_name: { type: string }
+              minItems: 1
+              maxItems: 50
+  responses:
+    '200':
+      description: 上传完成（payload 含 successes/failures）
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: photos 数组为空 / 越界 / 单张超大
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

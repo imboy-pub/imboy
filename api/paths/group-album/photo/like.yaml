@@ -1,0 +1,23 @@
+# POST /group_album/photo/like — 点赞照片 / Like photo
+post:
+  tags: [user]
+  summary: 点赞照片（幂等）
+  operationId: likeGroupAlbumPhoto
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [photo_id]
+          properties:
+            photo_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 点赞成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

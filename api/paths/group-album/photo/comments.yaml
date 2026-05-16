@@ -1,0 +1,21 @@
+# GET /group_album/photo/comments — 评论列表 / Comments
+get:
+  tags: [user]
+  summary: 照片的评论列表
+  operationId: listGroupAlbumPhotoComments
+  parameters:
+    - in: query
+      name: photo_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+    - $ref: '../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: photo_id 必须 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

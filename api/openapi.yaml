@@ -316,6 +316,34 @@ paths:
     $ref: './paths/group-notice/unpin.yaml'
   /v1/group/notice/mark_read:
     $ref: './paths/group-notice/mark-read.yaml'
+  /group_album/create:
+    $ref: './paths/group-album/create.yaml'
+  /group_album/list:
+    $ref: './paths/group-album/list.yaml'
+  /group_album/rename:
+    $ref: './paths/group-album/rename.yaml'
+  /group_album/delete:
+    $ref: './paths/group-album/delete.yaml'
+  /group_album/photo/upload:
+    $ref: './paths/group-album/photo/upload.yaml'
+  /group_album/photo/batch:
+    $ref: './paths/group-album/photo/batch.yaml'
+  /group_album/photo/list:
+    $ref: './paths/group-album/photo/list.yaml'
+  /group_album/photo/detail:
+    $ref: './paths/group-album/photo/detail.yaml'
+  /group_album/photo/delete:
+    $ref: './paths/group-album/photo/delete.yaml'
+  /group_album/photo/like:
+    $ref: './paths/group-album/photo/like.yaml'
+  /group_album/photo/unlike:
+    $ref: './paths/group-album/photo/unlike.yaml'
+  /group_album/photo/comment:
+    $ref: './paths/group-album/photo/comment.yaml'
+  /group_album/photo/comments:
+    $ref: './paths/group-album/photo/comments.yaml'
+  /group_album/cover/update:
+    $ref: './paths/group-album/cover/update.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

@@ -1,0 +1,29 @@
+# POST /group_album/create — 创建相册 / Create album
+post:
+  tags: [user]
+  summary: 群相册 - 创建新相册
+  description: |
+    ## 中文 / English
+    创建群相册。需是群成员。`cover_photo_id` 可选。
+    Create a group photo album. Member only. Optional cover.
+  operationId: createGroupAlbum
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, album_name]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            album_name: { type: string, maxLength: 60 }
+            cover_photo_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 创建成功（payload 含 album_id）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
