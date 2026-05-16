@@ -1,0 +1,27 @@
+# POST (channel) payChannelOrder
+post:
+  tags: [user]
+  summary: 支付订单
+  description: |
+    ## 中文 / English
+    支付订单
+    Pay channel order
+  operationId: payChannelOrder
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            order_no: { type: string }
+            method: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

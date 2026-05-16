@@ -1,0 +1,25 @@
+# GET (channel) searchChannels
+get:
+  tags: [user]
+  summary: 频道搜索
+  description: |
+    ## 中文 / English
+    频道搜索
+    Search channels
+  operationId: searchChannels
+  parameters:
+    - in: query
+      name: kwd
+      required: false
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

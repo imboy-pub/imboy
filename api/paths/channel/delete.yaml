@@ -1,0 +1,29 @@
+# POST (channel) deleteChannel
+post:
+  tags: [user]
+  summary: 频道删除
+  description: |
+    ## 中文 / English
+    频道删除
+    Delete channel
+  operationId: deleteChannel
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

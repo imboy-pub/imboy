@@ -1,0 +1,33 @@
+# POST (channel) updateChannel
+post:
+  tags: [user]
+  summary: 频道修改
+  description: |
+    ## 中文 / English
+    频道修改
+    Update channel
+  operationId: updateChannel
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name: { type: string }
+            description: { type: string }
+            avatar: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

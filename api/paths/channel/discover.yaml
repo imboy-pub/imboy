@@ -1,0 +1,21 @@
+# GET (channel) discoverChannels
+get:
+  tags: [user]
+  summary: 频道发现
+  description: |
+    ## 中文 / English
+    频道发现
+    Discover channels
+  operationId: discoverChannels
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

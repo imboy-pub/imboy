@@ -1,0 +1,23 @@
+# GET (channel) getChannelOrder
+get:
+  tags: [user]
+  summary: 查询订单
+  description: |
+    ## 中文 / English
+    查询订单
+    Get order
+  operationId: getChannelOrder
+  parameters:
+    - in: path
+      name: order_no
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

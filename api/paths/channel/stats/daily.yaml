@@ -1,0 +1,31 @@
+# GET (channel) channelStatsDaily
+get:
+  tags: [user]
+  summary: 按日统计
+  description: |
+    ## 中文 / English
+    按日统计
+    Daily stats
+  operationId: channelStatsDaily
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+    - in: query
+      name: from
+      required: false
+      schema: { type: string }
+    - in: query
+      name: to
+      required: false
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

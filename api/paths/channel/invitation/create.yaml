@@ -1,0 +1,32 @@
+# POST (channel) createChannelInvitation
+post:
+  tags: [user]
+  summary: 生成邀请
+  description: |
+    ## 中文 / English
+    生成邀请
+    Create invitation
+  operationId: createChannelInvitation
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id: { type: string }
+            expires_in: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

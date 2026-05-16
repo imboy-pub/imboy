@@ -1,0 +1,21 @@
+# GET (channel) sentChannelInvitations
+get:
+  tags: [user]
+  summary: 我发出的邀请
+  description: |
+    ## 中文 / English
+    我发出的邀请
+    Sent invitations
+  operationId: sentChannelInvitations
+  parameters:
+    - $ref: '../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

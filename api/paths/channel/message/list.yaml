@@ -1,0 +1,25 @@
+# GET (channel) listChannelMessages
+get:
+  tags: [user]
+  summary: 频道消息列表
+  description: |
+    ## 中文 / English
+    频道消息列表
+    Channel messages
+  operationId: listChannelMessages
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+    - $ref: '../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

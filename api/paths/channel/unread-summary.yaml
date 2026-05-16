@@ -1,0 +1,18 @@
+# GET (channel) channelsUnreadSummary
+get:
+  tags: [user]
+  summary: 未读摘要
+  description: |
+    ## 中文 / English
+    未读摘要
+    Unread summary
+  operationId: channelsUnreadSummary
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

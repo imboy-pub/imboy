@@ -1,0 +1,23 @@
+# GET (channel) channelByCustomId
+get:
+  tags: [user]
+  summary: 按 custom_id 查频道
+  description: |
+    ## 中文 / English
+    按 custom_id 查频道
+    Lookup by custom_id
+  operationId: channelByCustomId
+  parameters:
+    - in: path
+      name: custom_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

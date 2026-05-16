@@ -1,0 +1,31 @@
+# POST (channel) markChannelRead
+post:
+  tags: [user]
+  summary: 标记已读
+  description: |
+    ## 中文 / English
+    标记已读
+    Mark channel read
+  operationId: markChannelRead
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message_id: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

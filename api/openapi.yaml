@@ -426,6 +426,84 @@ paths:
     $ref: './paths/group-task/my.yaml'
   /v1/group/task/pending:
     $ref: './paths/group-task/pending.yaml'
+  /v1/channel/create:
+    $ref: './paths/channel/create.yaml'
+  /v1/channel/{channel_id}:
+    $ref: './paths/channel/show.yaml'
+  /v1/channel/by_custom_id/{custom_id}:
+    $ref: './paths/channel/by-custom-id.yaml'
+  /v1/channel/{channel_id}/update:
+    $ref: './paths/channel/update.yaml'
+  /v1/channel/{channel_id}/delete:
+    $ref: './paths/channel/delete.yaml'
+  /v1/channel/{channel_id}/subscribe:
+    $ref: './paths/channel/subscribe.yaml'
+  /v1/channel/{channel_id}/unsubscribe:
+    $ref: './paths/channel/unsubscribe.yaml'
+  /v1/channels/subscribed:
+    $ref: './paths/channel/subscribed.yaml'
+  /v1/channels/managed:
+    $ref: './paths/channel/managed.yaml'
+  /v1/channels/unread/summary:
+    $ref: './paths/channel/unread-summary.yaml'
+  /v1/channels/search:
+    $ref: './paths/channel/search.yaml'
+  /v1/channels/discover:
+    $ref: './paths/channel/discover.yaml'
+  /v1/channels/sync:
+    $ref: './paths/channel/sync.yaml'
+  /v1/channel/{channel_id}/message:
+    $ref: './paths/channel/message/publish.yaml'
+  /v1/channel/{channel_id}/messages:
+    $ref: './paths/channel/message/list.yaml'
+  /v1/channel/{channel_id}/read:
+    $ref: './paths/channel/message/mark-read.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/view:
+    $ref: './paths/channel/message/view.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/reaction:
+    $ref: './paths/channel/message/reaction-add.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/reaction/{reaction_type}:
+    $ref: './paths/channel/message/reaction-remove.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/pin:
+    $ref: './paths/channel/message/pin.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/delete:
+    $ref: './paths/channel/message/delete.yaml'
+  /v1/channel/{channel_id}/message/{message_id}/revoke:
+    $ref: './paths/channel/message/revoke.yaml'
+  /v1/channel/{channel_id}/admin:
+    $ref: './paths/channel/admin/add.yaml'
+  /v1/channel/{channel_id}/admins:
+    $ref: './paths/channel/admin/list.yaml'
+  /v1/channel/{channel_id}/admin/{user_id}/role:
+    $ref: './paths/channel/admin/update-role.yaml'
+  /v1/channel/{channel_id}/admin/{user_id}:
+    $ref: './paths/channel/admin/remove.yaml'
+  /v1/channel/{channel_id}/stats:
+    $ref: './paths/channel/stats/overview.yaml'
+  /v1/channel/{channel_id}/stats/daily:
+    $ref: './paths/channel/stats/daily.yaml'
+  /v1/channel/{channel_id}/subscribers:
+    $ref: './paths/channel/subscriber/list.yaml'
+  /v1/channel/{channel_id}/subscriber/{user_id}:
+    $ref: './paths/channel/subscriber/remove.yaml'
+  /v1/channel/{channel_id}/invitation:
+    $ref: './paths/channel/invitation/create.yaml'
+  /v1/channel/invitation/accept:
+    $ref: './paths/channel/invitation/accept.yaml'
+  /v1/channel/invitation/reject:
+    $ref: './paths/channel/invitation/reject.yaml'
+  /v1/channel/invitations/my:
+    $ref: './paths/channel/invitation/my.yaml'
+  /v1/channel/invitations/sent:
+    $ref: './paths/channel/invitation/sent.yaml'
+  /v1/channel/{channel_id}/order:
+    $ref: './paths/channel/order/create.yaml'
+  /v1/channel/order/pay:
+    $ref: './paths/channel/order/pay.yaml'
+  /v1/channel/orders/my:
+    $ref: './paths/channel/order/my.yaml'
+  /v1/channel/order/{order_no}:
+    $ref: './paths/channel/order/get.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

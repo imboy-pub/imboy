@@ -1,0 +1,21 @@
+# GET (channel) myChannelOrders
+get:
+  tags: [user]
+  summary: 我的订单
+  description: |
+    ## 中文 / English
+    我的订单
+    My orders
+  operationId: myChannelOrders
+  parameters:
+    - $ref: '../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }

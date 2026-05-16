@@ -1,0 +1,30 @@
+# POST (channel) createChannel
+post:
+  tags: [user]
+  summary: 频道 - 创建
+  description: |
+    ## 中文 / English
+    频道 - 创建
+    Create channel
+  operationId: createChannel
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name: { type: string, maxLength: 80 }
+            custom_id: { type: string, description: '可选自定义 ID' }
+            description: { type: string }
+            avatar: { type: string }
+            type: { type: string, enum: [public, private] }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

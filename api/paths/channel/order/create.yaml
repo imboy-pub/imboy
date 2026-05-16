@@ -1,0 +1,31 @@
+# POST (channel) createChannelOrder
+post:
+  tags: [user]
+  summary: 创建订单（订阅付费频道）
+  description: |
+    ## 中文 / English
+    创建订单（订阅付费频道）
+    Create channel order
+  operationId: createChannelOrder
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            plan: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
