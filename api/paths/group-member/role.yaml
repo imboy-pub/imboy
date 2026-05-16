@@ -1,0 +1,42 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/role.yaml — POST /v1/group_member/role
+# Handler: group_member_handler.erl#role/2 → group_member_logic:update_role/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改群成员角色
+  description: |
+    ## 中文 / English
+    把目标成员角色改为 role (1-3)。role 语义参见 group_member_logic 实现。
+    限流：3 秒一次。仅群主/管理员有权限。
+    Change a member's role (1-3 enum, semantics in `group_member_logic`).
+    Rate-limited 3s. Owner / admin only.
+  operationId: groupMemberRole
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, user_id, role]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            user_id:
+              type: integer
+              minimum: 1
+            role:
+              type: integer
+              minimum: 1
+              maximum: 3
+              description: 角色值 (1-3) / Role enum (1-3).
+  responses:
+    '200':
+      description: 修改成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / 参数非法 / role 越界 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

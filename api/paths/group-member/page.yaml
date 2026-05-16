@@ -1,0 +1,29 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/page.yaml — GET /group_member/page
+# Handler: group_member_handler.erl#page/2 → group_member_ds:page_with_user_info/3
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 群成员分页
+  description: |
+    ## 中文 / English
+    返回指定群组的成员列表（分页 + 含用户基础信息）。调用方须为群成员。
+    Paginate group members (joined with basic user info). Caller must be
+    a group member.
+  operationId: groupMemberPage
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页 { total, page, size, list }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,40 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/mute.yaml — POST /v1/group_member/mute
+# Handler: group_member_handler.erl#mute/2 → group_member_logic:mute/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 禁言群成员
+  description: |
+    ## 中文 / English
+    把指定成员禁言 `duration` 秒。仅群主 / 管理员有权限。限流：3 秒一次。
+    Mute a member for `duration` seconds. Owner / admin only. Rate-limited 3s.
+  operationId: groupMemberMute
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, user_id, duration]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            user_id:
+              type: integer
+              minimum: 1
+              description: 被禁言用户 TSID / Target user TSID.
+            duration:
+              type: integer
+              minimum: 1
+              description: 禁言时长（秒）/ Mute duration in seconds.
+  responses:
+    '200':
+      description: 禁言成功；payload { gid, user_id }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid / user_id 格式有误 / duration ≤ 0 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

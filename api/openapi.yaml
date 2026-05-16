@@ -278,6 +278,22 @@ paths:
     $ref: './paths/group/remark.yaml'
   /v1/group/transfer:
     $ref: './paths/group/transfer.yaml'
+  /group_member/join:
+    $ref: './paths/group-member/join.yaml'
+  /group_member/leave:
+    $ref: './paths/group-member/leave.yaml'
+  /group_member/page:
+    $ref: './paths/group-member/page.yaml'
+  /group_member/alias:
+    $ref: './paths/group-member/alias.yaml'
+  /group_member/same_group:
+    $ref: './paths/group-member/same-group.yaml'
+  /v1/group_member/mute:
+    $ref: './paths/group-member/mute.yaml'
+  /v1/group_member/unmute:
+    $ref: './paths/group-member/unmute.yaml'
+  /v1/group_member/role:
+    $ref: './paths/group-member/role.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

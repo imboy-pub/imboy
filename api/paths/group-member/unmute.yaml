@@ -1,0 +1,37 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/unmute.yaml — POST /v1/group_member/unmute
+# Handler: group_member_handler.erl#unmute/2 → group_member_logic:unmute/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 解除群成员禁言
+  description: |
+    ## 中文 / English
+    把目标成员 `mute_until` 置为 NULL 并广播 group_member_mute 解禁通知
+    （payload mute_until == 0 作为信号）。限流：3 秒一次。
+    Reset `mute_until` to NULL and broadcast the un-mute notification.
+    Rate-limited 3s.
+  operationId: groupMemberUnmute
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, user_id]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            user_id:
+              type: integer
+              minimum: 1
+  responses:
+    '200':
+      description: 解除成功；payload { gid, user_id }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid / user_id 格式有误 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

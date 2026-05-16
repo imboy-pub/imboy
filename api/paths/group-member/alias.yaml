@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/alias.yaml — POST /group_member/alias
+# Handler: group_member_handler.erl#alias/2 → group_member_logic:alias/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 设置自己在群里的昵称 + 个性签名
+  description: |
+    ## 中文 / English
+    设置当前用户在群组内的群昵称与个性签名（仅对该群可见）。
+    Set the caller's per-group alias and tagline (visible only inside the
+    group).
+  operationId: groupMemberAlias
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            alias:
+              type: string
+              description: 群昵称 / Group alias.
+            description:
+              type: string
+              description: 群内个性签名 / Group tagline.
+  responses:
+    '200':
+      description: 设置成功；payload.gid 回显
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

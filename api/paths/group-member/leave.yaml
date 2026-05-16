@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/leave.yaml — POST /group_member/leave
+# Handler: group_member_handler.erl#leave/2 → group_member_logic:leave/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 退出群组或踢人
+  description: |
+    ## 中文 / English
+    `member_uids` 列表中的成员从群中退出/被踢。当 `member_uids` 仅含自己
+    则为主动退群；否则需要管理权限（实现层 group_member_logic:leave 校验）。
+    限流：3 秒一次。
+    Remove `member_uids` from the group. Self-only list = voluntary leave;
+    otherwise requires admin permissions. Rate-limited 3s.
+  operationId: groupMemberLeave
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, member_uids]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            member_uids:
+              type: array
+              items: { type: string }
+              minItems: 1
+  responses:
+    '200':
+      description: 退群/踢人成功；payload.gid 回显
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid 格式有误 / 无踢人权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,32 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/same-group.yaml — GET /group_member/same_group
+# Handler: group_member_handler.erl#same_group/2 → group_member_ds:list_same_group/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 与某用户的共同群组列表
+  description: |
+    ## 中文 / English
+    返回 uid1 与 uid2 都加入的群组列表 + 总数。调用方必须是 uid1 或 uid2
+    其中之一（否则返回 count=0 / list=[]）。
+    Return groups that both `uid1` and `uid2` have joined. The caller
+    must equal `uid1` or `uid2`; otherwise an empty result is returned.
+  operationId: groupMemberSameGroup
+  parameters:
+    - in: query
+      name: uid1
+      required: true
+      schema: { type: string }
+    - in: query
+      name: uid2
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 共同群组 { count, list }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: uid1 / uid2 缺失或非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

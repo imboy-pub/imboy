@@ -1,0 +1,42 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group-member/join.yaml — POST /group_member/join
+# Handler: group_member_handler.erl#join/2 → group_member_logic:join_group/5
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 邀请用户加入群组
+  description: |
+    ## 中文 / English
+    把 member_uids 列表加入到指定群组。`join_mode` 为空时服务端自动生成
+    `invite_<inviter>_<title>` 形式标记。限流：3 秒一次。
+    Invite users to a group; if `join_mode` is empty, server stamps an
+    `invite_<inviter>_<title>` marker. Rate-limited 3s per inviter.
+  operationId: groupMemberJoin
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, member_uids]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            member_uids:
+              type: array
+              items: { type: string }
+              minItems: 1
+              description: 拉入群的用户 TSID 列表 / Target user TSIDs.
+            join_mode:
+              type: string
+              description: 入群来源标记（空则自动生成）/ Join provenance tag (auto-generated when empty).
+  responses:
+    '200':
+      description: "加入成功；payload { gid, user_id_sum, member_list }"
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid 格式有误 / member_uids 非法 / 群成员已满 / 超出剩余席位
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
