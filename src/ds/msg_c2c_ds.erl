@@ -16,6 +16,7 @@
 -export([read_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
+-export([read_msg_for_conversation/3]).
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([update_pinned/3]).
@@ -40,7 +41,9 @@
 %% @param To 接收方用户ID
 %% @param ServerTS 服务器时间戳（integer 毫秒或 binary RFC3339）
 %% @returns {ok, Count} | {error, Reason} 数据库操作结果
--spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec write_msg(
+    binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer()
+) -> {ok, non_neg_integer()} | {error, term()}.
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
@@ -49,15 +52,17 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
 
     %% 从 Payload 中提取 msg_type 和 e2ee 字段
-    PayloadMap = try jsone:decode(Payload) of
-        Map when is_map(Map) -> Map;
-        _ -> #{}
-    catch
-        _:_ -> #{}
-    end,
+    PayloadMap =
+        try jsone:decode(Payload) of
+            Map when is_map(Map) -> Map;
+            _ -> #{}
+        catch
+            _:_ -> #{}
+        end,
 
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
-    E2EE = maps:get(<<"e2ee">>, PayloadMap, null), % map() | null
+    % map() | null
+    E2EE = maps:get(<<"e2ee">>, PayloadMap, null),
 
     % 检查并清理溢出消息
     ok = check_and_delete_overflow(To),
@@ -76,9 +81,22 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
 %% @param E2EE 端到端加密信息（JSON map，可选）
 %% @returns {ok, Count} | {error, Reason} 数据库操作结果
--spec write_msg(binary() | integer(), binary(), binary(), integer(), integer(), binary() | integer(), binary(), map() | null) -> ok | {error, term()}.
-write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) when is_map(Payload); is_list(Payload) ->
-    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS, MsgType, E2EE);
+-spec write_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null
+) -> ok | {error, term()}.
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) when
+    is_map(Payload); is_list(Payload)
+->
+    write_msg(
+        CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS, MsgType, E2EE
+    );
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
@@ -86,7 +104,6 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     % 检查并清理溢出消息
     ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
-
 
 %% @doc 读取点对点消息
 %%
@@ -121,6 +138,23 @@ read_msg(ToUid, Limit, Ts) ->
     Where = <<"to_id = $1 AND created_at >= $2">>,
     read_msg_filter(Where, Limit, [ToUid, FixedTs]).
 
+%% @doc 为会话列表读取消息：同时返回「自己收到」与「自己发出」的 c2c 消息。
+%%
+%% 与 read_msg/3 的区别：read_msg 只取 to_id = Uid（用于收件箱/离线暂存语义），
+%% 而会话列表需要双向聚合，否则一个仅发出过消息、未收到回复的用户的会话不会显示。
+%%
+%% @param Uid 当前用户 ID
+%% @param Limit 数量限制
+%% @param Ts undefined 或时间戳（毫秒 / RFC3339 binary）
+%% @returns list(map())
+-spec read_msg_for_conversation(integer(), integer(), undefined | integer() | binary()) -> [map()].
+read_msg_for_conversation(Uid, Limit, undefined) ->
+    Where = <<"(to_id = $1 OR from_id = $1)">>,
+    read_msg_filter(Where, Limit, [Uid]);
+read_msg_for_conversation(Uid, Limit, Ts) ->
+    FixedTs = elib_dt:to_rfc3339(Ts),
+    Where = <<"(to_id = $1 OR from_id = $1) AND created_at >= $2">>,
+    read_msg_filter(Where, Limit, [Uid, FixedTs]).
 
 %% @doc 删除指定的点对点消息
 %%
@@ -136,14 +170,12 @@ delete_msg(Id) ->
     end,
     ok.
 
-
 %% @doc 根据消息ID查找单条消息（用于撤回权限验证）
 %% @param MsgId 消息唯一ID
 %% @return {ok, MsgMap} | {error, Reason}
 -spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
 find_msg_by_id(MsgId) ->
     msg_c2c_repo:find_msg_by_id(MsgId).
-
 
 %% @doc 撤回离线消息
 %%
@@ -155,18 +187,22 @@ find_msg_by_id(MsgId) ->
 %% @param FromId 发送方用户ID
 %% @param ToId 接收方用户ID
 %% @returns ok | {error, Reason}
--spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+-spec revoke_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) ->
+    ok | {error, any()}.
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case elib_pg:update(
-        msg_c2c_repo:tablename(),
-        #{<<"payload">> => Payload},
-        <<"msg_id = $1">>,
-        [MsgId]
-    ) of
-        {ok, _} -> ok;
+    case
+        elib_pg:update(
+            msg_c2c_repo:tablename(),
+            #{<<"payload">> => Payload},
+            <<"msg_id = $1">>,
+            [MsgId]
+        )
+    of
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?LOG_ERROR("Failed to update msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
             {error, Reason}
@@ -185,7 +221,9 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
 %% @param Action 操作类型（message_revoke_ack 等）
 %% @param E2EE 端到端加密信息
 %% @returns ok | {error, Reason}
--spec revoke_offline_msg(map(), binary() | integer(), binary(), integer(), integer(), binary(), binary(), map() | null) -> ok | {error, any()}.
+-spec revoke_offline_msg(
+    map(), binary() | integer(), binary(), integer(), integer(), binary(), binary(), map() | null
+) -> ok | {error, any()}.
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) ->
     % 将 Action 包含在 Payload 中（因为 write_msg/8 不支持单独的 Action 参数）
     PayloadWithAction = Payload#{<<"action">> => Action},
@@ -193,13 +231,16 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) -
     % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case elib_pg:update(
-        msg_c2c_repo:tablename(),
-        #{<<"payload">> => Payload},
-        <<"msg_id = $1">>,
-        [MsgId]
-    ) of
-        {ok, _} -> ok;
+    case
+        elib_pg:update(
+            msg_c2c_repo:tablename(),
+            #{<<"payload">> => Payload},
+            <<"msg_id = $1">>,
+            [MsgId]
+        )
+    of
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?LOG_ERROR("Failed to update msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
             {error, Reason}
@@ -207,21 +248,24 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) -
 
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}
--spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) -> ok | {error, any()}.
+-spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), integer()) ->
+    ok | {error, any()}.
 edit_offline_msg(Payload, _NowTs, MsgId, FromId, ToId) ->
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case elib_pg:update(
-        msg_c2c_repo:tablename(),
-        #{payload => Payload},
-        <<"msg_id = $1 AND from_id = $2 AND to_id = $3">>,
-        [MsgId, FromId, ToId]
-    ) of
-        {ok, _} -> ok;
+    case
+        elib_pg:update(
+            msg_c2c_repo:tablename(),
+            #{payload => Payload},
+            <<"msg_id = $1 AND from_id = $2 AND to_id = $3">>,
+            [MsgId, FromId, ToId]
+        )
+    of
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?LOG_ERROR("Failed to edit msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
             {error, Reason}
     end.
-
 
 %% @doc 存储离线已读回执消息
 %%
@@ -312,18 +356,51 @@ read_msg_filter(Where, Limit, Params) ->
 %% @param ReplyToFromId 被引用消息的发送者ID
 %% @param ReplySnippet 被引用消息的摘要
 %% @returns ok | {error, Reason} 数据库操作结果
--spec write_msg_with_reply(binary() | integer(), binary(), binary(), integer(), integer(),
-                           binary() | integer(), binary(), map() | null, binary(), integer(), binary()) ->
+-spec write_msg_with_reply(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null,
+    binary(),
+    integer(),
+    binary()
+) ->
     ok | {error, term()}.
-write_msg_with_reply(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE,
-                     ReplyToMsgId, ReplyToFromId, ReplySnippet) ->
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    From,
+    To,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet
+) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
     % 检查并清理溢出消息
     ok = check_and_delete_overflow(To),
-    msg_c2c_repo:write_msg_with_reply(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE,
-                                      ReplyToMsgId, ReplyToFromId, ReplySnippet).
+    msg_c2c_repo:write_msg_with_reply(
+        CreatedAt2,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS2,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet
+    ).
 
 %% G3: msg_reaction_logic / msg_pinned_logic 不应直调 msg_c2c_repo
 -spec update_pinned(binary(), integer(), boolean()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -350,8 +427,7 @@ count_unread_since(ToId, undefined) ->
     end;
 count_unread_since(ToId, Since) ->
     Tb = msg_c2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ", Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2">>,
     case elib_pg:query(Sql, [ToId, Since]) of
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0
@@ -372,7 +448,8 @@ set_expire_at(MsgId, ExpireAt) ->
 -spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
 delete_expired(_Now, BatchSize) ->
     Tb = msg_c2c_repo:tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary,
+    Sql =
+        <<"DELETE FROM ", Tb/binary,
             " WHERE id IN ("
             "  SELECT id FROM ", Tb/binary,
             "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"

@@ -30,7 +30,7 @@ list(Uid, Opts) ->
     LastServerTs = maps:get(last_server_ts, Opts, undefined),
     C2cMsgs = safe_read_c2c(Uid, Limit, LastServerTs),
     C2gMsgs = safe_read_c2g(Uid, Limit, LastServerTs),
-    Unified = merge_latest_conversations(C2cMsgs, C2gMsgs),
+    Unified = merge_latest_conversations(Uid, C2cMsgs, C2gMsgs),
     Visible = filter_deleted_conversations(Uid, Unified),
     {ok, sort_conversations(attach_pin_state(Uid, Visible))}.
 
@@ -56,7 +56,9 @@ delete(Uid, ConversationId, Type) ->
             % 标记会话为已删除
             case conversation_delete_ds:delete_conversation(Uid, ConversationId, Type) of
                 ok ->
-                    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_deleted">>),
+                    notify_conversation_change(
+                        Uid, ConversationId, Type, <<"conversation_deleted">>
+                    ),
                     ok;
                 {error, Reason} ->
                     ?LOG(error, "删除会话失败: ~p", [Reason]),
@@ -97,27 +99,31 @@ get_deleted_list(Uid) ->
 %% @return 过滤后的消息列表
 -spec filter_deleted_conversations(integer(), list(map())) -> list(map()).
 filter_deleted_conversations(Uid, MsgList) ->
-    DeletedResult = try
-        get_deleted_list(Uid)
-    catch
-        _:Reason ->
-            ?LOG(error, "查询会话删除列表失败: ~p", [Reason]),
-            {error, Reason}
-    end,
+    DeletedResult =
+        try
+            get_deleted_list(Uid)
+        catch
+            _:Reason ->
+                ?LOG(error, "查询会话删除列表失败: ~p", [Reason]),
+                {error, Reason}
+        end,
     case DeletedResult of
         {ok, DeletedList} ->
             DeletedSet = sets:from_list([
                 {maps:get(<<"conversation_id">>, Item), maps:get(<<"conversation_type">>, Item)}
-                || Item <- DeletedList
+             || Item <- DeletedList
             ]),
-            lists:filter(fun(Item) ->
-                case resolve_conversation_key(Item) of
-                    {ok, ConversationKey} ->
-                        not sets:is_element(ConversationKey, DeletedSet);
-                    error ->
-                        true
-                end
-            end, MsgList);
+            lists:filter(
+                fun(Item) ->
+                    case resolve_conversation_key(Item) of
+                        {ok, ConversationKey} ->
+                            not sets:is_element(ConversationKey, DeletedSet);
+                        error ->
+                            true
+                    end
+                end,
+                MsgList
+            );
         {error, _Reason} ->
             MsgList
     end.
@@ -146,7 +152,9 @@ normalize_limit(_) ->
 -spec safe_read_c2c(integer(), integer(), term()) -> list(map()).
 safe_read_c2c(Uid, Limit, LastServerTs) ->
     try
-        msg_c2c_ds:read_msg(Uid, Limit, LastServerTs)
+        %% 注意：read_msg/3 只读 to_id = Uid 的消息（收件箱语义，被离线暂存等复用），
+        %% 这里需要双向（自己发/自己收）才能聚合出仅由自己发起、对端未回的会话。
+        msg_c2c_ds:read_msg_for_conversation(Uid, Limit, LastServerTs)
     catch
         _:Reason ->
             ?LOG(error, "读取 c2c 会话失败: ~p", [Reason]),
@@ -163,46 +171,73 @@ safe_read_c2g(Uid, Limit, LastServerTs) ->
             []
     end.
 
--spec merge_latest_conversations(list(map()), list(map())) -> list(map()).
-merge_latest_conversations(C2cMsgs, C2gMsgs) ->
-    Entries = lists:filtermap(fun normalize_c2c_conversation/1, C2cMsgs) ++
-        lists:filtermap(fun normalize_c2g_conversation/1, C2gMsgs),
-    ConversationsByKey = lists:foldl(fun(Entry, Acc) ->
-        Key = {
-            maps:get(<<"conversation_id">>, Entry, <<>>),
-            maps:get(<<"conversation_type">>, Entry, <<"c2c">>)
-        },
-        case maps:get(Key, Acc, undefined) of
-            undefined ->
-                maps:put(Key, Entry, Acc);
-            Existing ->
-                ExistingTs = maps:get(<<"server_ts">>, Existing, 0),
-                EntryTs = maps:get(<<"server_ts">>, Entry, 0),
-                case EntryTs >= ExistingTs of
-                    true -> maps:put(Key, Entry, Acc);
-                    false -> Acc
-                end
-        end
-    end, #{}, Entries),
+-spec merge_latest_conversations(integer(), list(map()), list(map())) -> list(map()).
+merge_latest_conversations(Uid, C2cMsgs, C2gMsgs) ->
+    Entries =
+        lists:filtermap(fun(Msg) -> normalize_c2c_conversation(Uid, Msg) end, C2cMsgs) ++
+            lists:filtermap(fun normalize_c2g_conversation/1, C2gMsgs),
+    ConversationsByKey = lists:foldl(
+        fun(Entry, Acc) ->
+            Key = {
+                maps:get(<<"conversation_id">>, Entry, <<>>),
+                maps:get(<<"conversation_type">>, Entry, <<"c2c">>)
+            },
+            case maps:get(Key, Acc, undefined) of
+                undefined ->
+                    maps:put(Key, Entry, Acc);
+                Existing ->
+                    ExistingTs = maps:get(<<"server_ts">>, Existing, 0),
+                    EntryTs = maps:get(<<"server_ts">>, Entry, 0),
+                    case EntryTs >= ExistingTs of
+                        true -> maps:put(Key, Entry, Acc);
+                        false -> Acc
+                    end
+            end
+        end,
+        #{},
+        Entries
+    ),
     maps:values(ConversationsByKey).
 
--spec normalize_c2c_conversation(map()) -> {true, map()} | false.
-normalize_c2c_conversation(Msg) ->
-    case maps:get(<<"from_id">>, Msg, 0) of
-        FromId when is_integer(FromId), FromId > 0 ->
-            ConversationId = FromId,
+-spec normalize_c2c_conversation(integer(), map()) -> {true, map()} | false.
+normalize_c2c_conversation(Uid, Msg) ->
+    FromId = maps:get(<<"from_id">>, Msg, 0),
+    ToId = maps:get(<<"to_id">>, Msg, 0),
+    case peer_uid(Uid, FromId, ToId) of
+        {ok, PeerId} ->
             Ts = extract_server_ts(Msg),
             LastMsg = normalize_payload(maps:get(<<"payload">>, Msg, #{})),
             {true, #{
-                <<"conversation_id">> => ConversationId,
+                <<"conversation_id">> => PeerId,
                 <<"conversation_type">> => <<"c2c">>,
                 <<"server_ts">> => Ts,
                 <<"last_msg_id">> => maps:get(<<"msg_id">>, Msg, <<>>),
                 <<"last_msg">> => LastMsg
             }};
-        _ ->
+        error ->
             false
     end.
+
+%% 根据当前 Uid 与消息的 from_id/to_id 推断对端 UID。
+%% 双向查询后，同一个 C2C 会话可能同时出现「自己发的」和「自己收的」两类消息：
+%%   - 自己发出的：from_id = Uid，对端 = to_id
+%%   - 自己收到的：to_id   = Uid，对端 = from_id
+%% 兜底过滤掉与当前用户无关的脏数据。
+-spec peer_uid(integer(), integer(), integer()) -> {ok, integer()} | error.
+peer_uid(Uid, FromId, ToId) when
+    is_integer(Uid),
+    is_integer(FromId),
+    FromId > 0,
+    is_integer(ToId),
+    ToId > 0
+->
+    if
+        Uid =:= ToId -> {ok, FromId};
+        Uid =:= FromId -> {ok, ToId};
+        true -> error
+    end;
+peer_uid(_, _, _) ->
+    error.
 
 -spec normalize_c2g_conversation(map()) -> {true, map()} | false.
 normalize_c2g_conversation(Msg) ->
@@ -232,15 +267,16 @@ to_millisecond(Value) when is_integer(Value), Value >= 0 ->
     Value;
 to_millisecond(Value) when is_binary(Value); is_list(Value) ->
     ValueBin = elib_cnv:safe_to_binary(Value),
-    Parsed = case catch elib_dt:rfc3339_to(ValueBin, millisecond) of
-        Ts when is_integer(Ts), Ts >= 0 ->
-            Ts;
-        _ ->
-            case catch binary_to_integer(ValueBin) of
-                Int when is_integer(Int), Int >= 0 -> Int;
-                _ -> 0
-            end
-    end,
+    Parsed =
+        case catch elib_dt:rfc3339_to(ValueBin, millisecond) of
+            Ts when is_integer(Ts), Ts >= 0 ->
+                Ts;
+            _ ->
+                case catch binary_to_integer(ValueBin) of
+                    Int when is_integer(Int), Int >= 0 -> Int;
+                    _ -> 0
+                end
+        end,
     Parsed;
 to_millisecond(_) ->
     0.
@@ -258,13 +294,18 @@ normalize_payload(_) ->
 
 -spec resolve_conversation_key(map()) -> {ok, {binary(), binary()}} | error.
 resolve_conversation_key(Item) ->
-    case {
-        maps:get(<<"conversation_id">>, Item, undefined),
-        maps:get(<<"conversation_type">>, Item, undefined)
-    } of
-        {ConversationId, ConversationType}
-            when is_binary(ConversationId), ConversationId =/= <<>>,
-            is_binary(ConversationType), ConversationType =/= <<>> ->
+    case
+        {
+            maps:get(<<"conversation_id">>, Item, undefined),
+            maps:get(<<"conversation_type">>, Item, undefined)
+        }
+    of
+        {ConversationId, ConversationType} when
+            is_binary(ConversationId),
+            ConversationId =/= <<>>,
+            is_binary(ConversationType),
+            ConversationType =/= <<>>
+        ->
             {ok, {ConversationId, ConversationType}};
         _ ->
             case maps:get(<<"from_id">>, Item, 0) of
@@ -277,33 +318,41 @@ resolve_conversation_key(Item) ->
 
 -spec attach_pin_state(integer(), list(map())) -> list(map()).
 attach_pin_state(Uid, Conversations) ->
-    [Conversation#{
-        <<"is_pinned">> =>
-            conversation_pin_logic:is_pinned(
-                Uid,
-                maps:get(<<"conversation_id">>, Conversation, <<>>),
-                maps:get(<<"conversation_type">>, Conversation, <<"c2c">>)
-            )
-    } || Conversation <- Conversations].
+    [
+        Conversation#{
+            <<"is_pinned">> =>
+                conversation_pin_logic:is_pinned(
+                    Uid,
+                    maps:get(<<"conversation_id">>, Conversation, <<>>),
+                    maps:get(<<"conversation_type">>, Conversation, <<"c2c">>)
+                )
+        }
+     || Conversation <- Conversations
+    ].
 
 -spec sort_conversations(list(map())) -> list(map()).
 sort_conversations(Conversations) ->
-    lists:sort(fun(A, B) ->
-        PinA = maps:get(<<"is_pinned">>, A, false),
-        PinB = maps:get(<<"is_pinned">>, B, false),
-        TsA = maps:get(<<"server_ts">>, A, 0),
-        TsB = maps:get(<<"server_ts">>, B, 0),
-        case {PinA, PinB} of
-            {true, false} -> true;
-            {false, true} -> false;
-            _ when TsA > TsB -> true;
-            _ when TsA < TsB -> false;
-            _ ->
-                IdA = maps:get(<<"conversation_id">>, A, <<>>),
-                IdB = maps:get(<<"conversation_id">>, B, <<>>),
-                IdA =< IdB
-        end
-    end, Conversations).
+    lists:sort(
+        fun(A, B) ->
+            PinA = maps:get(<<"is_pinned">>, A, false),
+            PinB = maps:get(<<"is_pinned">>, B, false),
+            TsA = maps:get(<<"server_ts">>, A, 0),
+            TsB = maps:get(<<"server_ts">>, B, 0),
+            case {PinA, PinB} of
+                {true, false} ->
+                    true;
+                {false, true} ->
+                    false;
+                _ when TsA > TsB -> true;
+                _ when TsA < TsB -> false;
+                _ ->
+                    IdA = maps:get(<<"conversation_id">>, A, <<>>),
+                    IdB = maps:get(<<"conversation_id">>, B, <<>>),
+                    IdA =< IdB
+            end
+        end,
+        Conversations
+    ).
 
 %% ===================================================================
 %% EUnit tests.
