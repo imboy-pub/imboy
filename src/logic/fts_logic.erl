@@ -19,7 +19,6 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 用户搜索（全文检索）
 %% 使用 PostgreSQL 全文索引搜索用户
 %% @param Uid 当前用户ID
@@ -38,19 +37,40 @@ user_search_page(Uid, Page, Size, Keyword) ->
         {ok, []} ->
             #{total => Total, page => Page, size => Size, list => []};
         {ok, Items0} ->
-            ColumnLi = [<<"uid">>, <<"nickname">>, <<"avatar">>, <<"gender">>, <<"signature">>, <<"created_at">>],
-            Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                     [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                     case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
-                                         {B1, Remark} ->
-                                             [B1, Remark]
-                                     end ++ [Uid2, maps:get(<<"nickname">>, Row, <<>>), maps:get(<<"avatar">>, Row, <<>>), maps:get(<<"gender">>, Row, 0), maps:get(<<"signature">>, Row, <<>>), maps:get(<<"created_at">>, Row, <<>>)])
-                       || #{<<"uid">> := Uid2} = Row <- Items0, Uid2 /= Uid ],
+            %% 输出字段名（客户端契约）保留 uid/signature
+            ColumnLi = [
+                <<"uid">>,
+                <<"nickname">>,
+                <<"avatar">>,
+                <<"gender">>,
+                <<"signature">>,
+                <<"created_at">>
+            ],
+            %% 修复：SQL 返回的 Row key 是 <<"id">>/<<"sign">>（见 ?DEF_USER_COLUMN）
+            %% 原代码匹配 <<"uid">>/<<"signature">> 永不命中，导致 list 始终为空（虽然 total>0）
+            Items2 = [
+                lists:zipwith(
+                    fun(X, Y) -> {X, Y} end,
+                    [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
+                    case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
+                        {B1, Remark} ->
+                            [B1, Remark]
+                    end ++
+                        [
+                            Uid2,
+                            maps:get(<<"nickname">>, Row, <<>>),
+                            maps:get(<<"avatar">>, Row, <<>>),
+                            maps:get(<<"gender">>, Row, 0),
+                            maps:get(<<"sign">>, Row, <<>>),
+                            maps:get(<<"created_at">>, Row, <<>>)
+                        ]
+                )
+             || #{<<"id">> := Uid2} = Row <- Items0, Uid2 /= Uid
+            ],
             #{total => Total, page => Page, size => Size, list => Items2};
         _ ->
             #{total => Total, page => Page, size => Size, list => []}
     end.
-
 
 %% @doc 最近用户搜索（全文检索）
 %% 搜索允许被搜索的用户，支持关键词过滤
@@ -70,16 +90,26 @@ recently_user_page(Uid, Page, Size, Keyword) ->
             OrderBy = <<"u.created_at desc">>,
             case elib_pg:page_with_total(Tb, Column, WhereMap, OrderBy, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
-                    ColumnLi = [re:replace(B, <<"^\\s+|\\s+$">>, <<>>, [global, {return, binary}]) || B <- binary:split(Column, <<",">>, [global])],
-                    Items0 = [ list_to_tuple([maps:get(Name, Row) || Name <- ColumnLi]) || Row <- Rows ],
-                    Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-                    Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                             [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                             case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
-                                                 {B1, Remark} ->
-                                                     [B1, Remark]
-                                             end ++ [Uid2 | Row])
-                               || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
+                    ColumnLi = [
+                        re:replace(B, <<"^\\s+|\\s+$">>, <<>>, [global, {return, binary}])
+                     || B <- binary:split(Column, <<",">>, [global])
+                    ],
+                    Items0 = [
+                        list_to_tuple([maps:get(Name, Row) || Name <- ColumnLi])
+                     || Row <- Rows
+                    ],
+                    Items1 = [tuple_to_list(Item) || Item <- Items0],
+                    Items2 = [
+                        lists:zipwith(
+                            fun(X, Y) -> {X, Y} end,
+                            [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
+                            case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
+                                {B1, Remark} ->
+                                    [B1, Remark]
+                            end ++ [Uid2 | Row]
+                        )
+                     || [Uid2 | Row] <- Items1, Uid2 /= Uid
+                    ],
                     #{total => Total, page => Page, size => Size, list => Items2};
                 {error, _} ->
                     #{total => 0, page => Page, size => Size, list => []}
@@ -95,20 +125,29 @@ recently_user_page(Uid, Page, Size, Keyword) ->
                 [] ->
                     #{total => Total, page => Page, size => Size, list => []};
                 _ ->
-                    ColumnLi = [re:replace(B, <<"^\\s+|\\s+$">>, <<>>, [global, {return, binary}]) || B <- binary:split(Column, <<",">>, [global])],
-                    Items0 = [ list_to_tuple([maps:get(Name, Row) || Name <- ColumnLi]) || Row <- Rows ],
-                    Items1 = [ tuple_to_list(Item) || Item <- Items0 ],
-                    Items2 = [ lists:zipwith(fun(X, Y) -> {X, Y} end,
-                                             [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
-                                             case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
-                                                 {B1, Remark} ->
-                                                     [B1, Remark]
-                                             end ++ [Uid2 | Row])
-                               || [Uid2 | Row] <- Items1, Uid2 /= Uid ],
+                    ColumnLi = [
+                        re:replace(B, <<"^\\s+|\\s+$">>, <<>>, [global, {return, binary}])
+                     || B <- binary:split(Column, <<",">>, [global])
+                    ],
+                    Items0 = [
+                        list_to_tuple([maps:get(Name, Row) || Name <- ColumnLi])
+                     || Row <- Rows
+                    ],
+                    Items1 = [tuple_to_list(Item) || Item <- Items0],
+                    Items2 = [
+                        lists:zipwith(
+                            fun(X, Y) -> {X, Y} end,
+                            [<<"is_friend">>, <<"remark">>] ++ ColumnLi,
+                            case friend_ds:is_friend(Uid, Uid2, <<"remark">>) of
+                                {B1, Remark} ->
+                                    [B1, Remark]
+                            end ++ [Uid2 | Row]
+                        )
+                     || [Uid2 | Row] <- Items1, Uid2 /= Uid
+                    ],
                     #{total => Total, page => Page, size => Size, list => Items2}
             end
     end.
-
 
 %% @doc 消息全文搜索
 %% 搜索私聊或群聊消息内容
@@ -155,7 +194,13 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options};
                 {ok, Items} ->
                     Items2 = [format_c2c_msg_item(Msg) || Msg <- Items],
-                    #{total => Total, page => Page, size => Size, list => Items2, filters => Options};
+                    #{
+                        total => Total,
+                        page => Page,
+                        size => Size,
+                        list => Items2,
+                        filters => Options
+                    };
                 {error, _} ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options}
             end;
@@ -177,7 +222,13 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options};
                 {ok, Items} ->
                     Items2 = [format_c2g_msg_item(Msg) || Msg <- Items],
-                    #{total => Total, page => Page, size => Size, list => Items2, filters => Options};
+                    #{
+                        total => Total,
+                        page => Page,
+                        size => Size,
+                        list => Items2,
+                        filters => Options
+                    };
                 {error, _} ->
                     #{total => Total, page => Page, size => Size, list => [], filters => Options}
             end;
@@ -196,7 +247,6 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
             #{total => 0, page => Page, size => Size, list => []}
     end.
 
-
 %% @doc 格式化私聊消息结果
 %% @param Msg 消息映射
 %% @return 格式化后的消息结果
@@ -213,13 +263,13 @@ format_c2c_msg_item(Msg) ->
         <<"status">> => maps:get(<<"status">>, Msg, 0)
     },
     % 添加高亮字段（如果存在）
-    BaseMap2 = case maps:get(<<"highlight">>, Msg, undefined) of
-        undefined -> BaseMap;
-        Highlight -> maps:put(<<"highlight">>, Highlight, BaseMap)
-    end,
+    BaseMap2 =
+        case maps:get(<<"highlight">>, Msg, undefined) of
+            undefined -> BaseMap;
+            Highlight -> maps:put(<<"highlight">>, Highlight, BaseMap)
+        end,
     % 添加会话类型
     maps:put(<<"conversation_type">>, <<"c2c">>, BaseMap2).
-
 
 %% @doc 格式化群聊消息结果
 %% @param Msg 消息映射
@@ -237,13 +287,13 @@ format_c2g_msg_item(Msg) ->
         <<"status">> => maps:get(<<"status">>, Msg, 0)
     },
     % 添加高亮字段（如果存在）
-    BaseMap2 = case maps:get(<<"highlight">>, Msg, undefined) of
-        undefined -> BaseMap;
-        Highlight -> maps:put(<<"highlight">>, Highlight, BaseMap)
-    end,
+    BaseMap2 =
+        case maps:get(<<"highlight">>, Msg, undefined) of
+            undefined -> BaseMap;
+            Highlight -> maps:put(<<"highlight">>, Highlight, BaseMap)
+        end,
     % 添加会话类型
     maps:put(<<"conversation_type">>, <<"c2g">>, BaseMap2).
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -254,4 +304,3 @@ format_c2g_msg_item(Msg) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

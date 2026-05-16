@@ -19,7 +19,6 @@
 -export([inject_sender_device/2]).
 -export([build_adm_union_sql/1]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -36,7 +35,6 @@ send_next(ToUid, MsgId, Msg, MsLi) ->
     % ?DEBUG_LOG(["message_ds:send_next/4", ToUid, MsgId, length(MsLi)]),
     send_next(ToUid, MsgId, Msg, MsLi, [], false).
 
-
 % 如果消息一直没有被客户端确认，
 % 那么它将按照 MillisecondList 定义的频率投递 length(MillisecondList) 次，
 % 除非投递期间收到客户端确认消息（ CLIENT_ACK,type,msgid,did ）才终止投递；
@@ -49,7 +47,9 @@ send_next(ToUid, MsgId, Msg, MsLi) ->
 %% @param MsLi 延迟时间列表
 %% @param DIDLi 设备ID过滤列表
 %% @param IncludeDIDLi true表示白名单模式，false表示黑名单模式
--spec send_next(pos_integer() | binary(), binary(), binary(), [non_neg_integer()], [binary()], boolean()) -> ok.
+-spec send_next(
+    pos_integer() | binary(), binary(), binary(), [non_neg_integer()], [binary()], boolean()
+) -> ok.
 send_next(_ToUid, _MsgId, _Msg, [], _, _) ->
     ok;
 send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
@@ -60,11 +60,12 @@ send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
     case lists:all(fun(T) -> is_integer(T) andalso T >= 0 end, MsLi) of
         false ->
             % ?DEBUG_LOG(["message_ds:send_next/6 invalid MsLi", MsLi]),
-            ok;  % 非法间隔直接忽略
+
+            % 非法间隔直接忽略
+            ok;
         true ->
             send_next_loop(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi)
     end.
-
 
 %% 实际消息分发和定时重发控制
 send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IncludeDIDLi) ->
@@ -81,8 +82,12 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                 Members;
             _ when IncludeDIDLi == true ->
                 [{Pid, {_Dtype, DID}} || {Pid, {_Dtype, DID}} <- Members, lists:member(DID, DIDLi)];
-            _ ->  % IncludeDIDLi == false
-                [{Pid, {_Dtype, DID}} || {Pid, {_Dtype, DID}} <- Members, not lists:member(DID, DIDLi)]
+            % IncludeDIDLi == false
+            _ ->
+                [
+                    {Pid, {_Dtype, DID}}
+                 || {Pid, {_Dtype, DID}} <- Members, not lists:member(DID, DIDLi)
+                ]
         end,
 
     ok = ?DEBUG_LOG({send_next_loop_filtered, MsgId, length(Filtered), length(Members)}),
@@ -93,17 +98,19 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
             ok;
         _ when Delay =:= 0 ->
             %% 【关键修复】过滤已 ACK 的设备，防止重复投递
-            Filtered2 = [{Pid, Info} ||
-                            {Pid, Info} <- Filtered,
-                            begin
-                                {_Dtype, DID} = Info,
-                                case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
-                                    {ok, true} ->
-                                        false;
-                                    _ ->
-                                        true
-                                end
-                            end],
+            Filtered2 = [
+                {Pid, Info}
+             || {Pid, Info} <- Filtered,
+                begin
+                    {_Dtype, DID} = Info,
+                    case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
+                        {ok, true} ->
+                            false;
+                        _ ->
+                            true
+                    end
+                end
+            ],
             case Filtered2 of
                 [] ->
                     ok = ?DEBUG_LOG({immediate_publish_all_acked, MsgId}),
@@ -117,34 +124,38 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
         _ when is_integer(Delay), Delay > 0 ->
             ok = ?DEBUG_LOG({delayed_publish, MsgId, Delay, length(Filtered)}),
             %% 【关键修复】延迟投递前也要检查 ACK，防止重复投递
-            Filtered3 = [{Pid, Info} ||
-                            {Pid, Info} <- Filtered,
-                            begin
-                                {_Dtype, DID} = Info,
-                                case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
-                                    {ok, true} ->
-                                        false;
-                                    _ ->
-                                        true
-                                end
-                            end],
-            [begin
-                 TimerKey = {ToUid, DID, MsgId},
-                 case imboy_cache:get(TimerKey) of
-                     {ok, OldRef} when is_reference(OldRef) ->
-                         _ = erlang:cancel_timer(OldRef),
-                         ok;
-                     _ ->
-                         ok
-                 end,
-                 Ref = erlang:start_timer(Delay, Pid, {Tail, TimerKey, Msg}),
-                 %% 【修复】延长缓存时间到 Delay + 5000，避免提前清除
-                 imboy_cache:set(TimerKey, Ref, Delay + 5000),
-                 ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID, Ref})
-             end || {Pid, {_Dtype, DID}} <- Filtered3],
+            Filtered3 = [
+                {Pid, Info}
+             || {Pid, Info} <- Filtered,
+                begin
+                    {_Dtype, DID} = Info,
+                    case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
+                        {ok, true} ->
+                            false;
+                        _ ->
+                            true
+                    end
+                end
+            ],
+            [
+                begin
+                    TimerKey = {ToUid, DID, MsgId},
+                    case imboy_cache:get(TimerKey) of
+                        {ok, OldRef} when is_reference(OldRef) ->
+                            _ = erlang:cancel_timer(OldRef),
+                            ok;
+                        _ ->
+                            ok
+                    end,
+                    Ref = erlang:start_timer(Delay, Pid, {Tail, TimerKey, Msg}),
+                    %% 【修复】延长缓存时间到 Delay + 5000，避免提前清除
+                    imboy_cache:set(TimerKey, Ref, Delay + 5000),
+                    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID, Ref})
+                end
+             || {Pid, {_Dtype, DID}} <- Filtered3
+            ],
             ok
     end.
-
 
 %% @doc 组装系统消息（v2.0 格式）
 %% 为系统到客户端的消息创建标准格式。
@@ -159,7 +170,6 @@ assemble_s2c(MsgId, Action, To) ->
     %% v2.0: S2C 消息使用 action 字段，直接使用 assemble_msg/8
     Payload = #{},
     assemble_msg(<<"S2C">>, <<>>, To, Payload, MsgId, <<>>, Action, null).
-
 
 %%% 系统消息 end
 
@@ -176,27 +186,30 @@ assemble_s2c(MsgId, Action, To) ->
 %% @param Action S2C消息的指令（仅S2C使用）
 %% @param E2EE 端到端加密信息（仅C2C/C2G使用）
 %% @returns v2.0 格式的消息数据（map格式）
--spec assemble_msg(binary(),
-                   pos_integer() | binary(),
-                   pos_integer() | binary() | [pos_integer() | binary()],
-                   map(),
-                   binary(),
-                   binary(),
-                   binary(),
-                   map() | null) -> map().
+-spec assemble_msg(
+    binary(),
+    pos_integer() | binary(),
+    pos_integer() | binary() | [pos_integer() | binary()],
+    map(),
+    binary(),
+    binary(),
+    binary(),
+    map() | null
+) -> map().
 assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) ->
     %% v2.0: MsgType/Action/E2EE 作为独立参数，直接使用
     %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
-    #{<<"id">> => MsgId,
-      <<"type">> => Type,
-      <<"from">> => From,
-      <<"to">> => To,
-      <<"msg_type">> => MsgType,
-      <<"action">> => Action,
-      <<"e2ee">> => E2EE,
-      <<"payload">> => Payload,
-      <<"server_ts">> => elib_dt:millisecond()}.
-
+    #{
+        <<"id">> => MsgId,
+        <<"type">> => Type,
+        <<"from">> => From,
+        <<"to">> => To,
+        <<"msg_type">> => MsgType,
+        <<"action">> => Action,
+        <<"e2ee">> => E2EE,
+        <<"payload">> => Payload,
+        <<"server_ts">> => elib_dt:millisecond()
+    }.
 
 %% @doc 组装标准IM消息（v2.0 格式，向后兼容版本）
 %% 创建标准格式的即时通讯消息，从 Payload 中提取 msg_type/action/e2ee。
@@ -208,11 +221,13 @@ assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) ->
 %% @param Payload 消息载荷数据（可包含 msg_type/action/e2ee，会被提取到顶层）
 %% @param MsgId 消息ID
 %% @returns v2.0 格式的消息数据（map格式）
--spec assemble_msg(binary(),
-                   pos_integer() | binary(),
-                   pos_integer() | binary() | [pos_integer() | binary()],
-                   map(),
-                   binary()) -> map().
+-spec assemble_msg(
+    binary(),
+    pos_integer() | binary(),
+    pos_integer() | binary() | [pos_integer() | binary()],
+    map(),
+    binary()
+) -> map().
 assemble_msg(Type, From, To, Payload, MsgId) ->
     %% v2.0: 从 Payload 中提取 msg_type/action/e2ee 到顶层（向后兼容）
     MsgType = maps:get(<<"msg_type">>, Payload, <<>>),
@@ -224,7 +239,6 @@ assemble_msg(Type, From, To, Payload, MsgId) ->
 
     %% 调用 assemble_msg/8
     assemble_msg(Type, From, To, Payload2, MsgId, MsgType, Action, E2EE).
-
 
 %% @doc 编码 WebSocket 消息（v2.0 格式）
 %% 将数据库消息或内部消息转换为 v2.0 WebSocket 格式。
@@ -272,16 +286,17 @@ encode_websocket_message(Msg) ->
 
     %% v2.0 格式：所有字段提升到顶层
     %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
-    #{<<"id">> => maps:get(<<"id">>, Msg),
-      <<"type">> => Type,
-      <<"from">> => From,
-      <<"to">> => To,
-      <<"msg_type">> => MsgType,
-      <<"action">> => Action,
-      <<"e2ee">> => E2EE,
-      <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
-      <<"server_ts">> => maps:get(<<"server_ts">>, Msg, elib_dt:millisecond())}.
-
+    #{
+        <<"id">> => maps:get(<<"id">>, Msg),
+        <<"type">> => Type,
+        <<"from">> => From,
+        <<"to">> => To,
+        <<"msg_type">> => MsgType,
+        <<"action">> => Action,
+        <<"e2ee">> => E2EE,
+        <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
+        <<"server_ts">> => maps:get(<<"server_ts">>, Msg, elib_dt:millisecond())
+    }.
 
 %% @doc 解码 WebSocket 消息（v2.0 格式）
 %% 从顶层读取 msg_type/action/e2ee 字段，转换为内部格式供后续处理使用。
@@ -297,27 +312,30 @@ decode_websocket_message(Data) ->
     %% v2.0: msg_type、action、e2ee 都在顶层（不需要根据 type 过滤）
     MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
     Action = maps:get(<<"action">>, Msg, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Msg, null), % map() | null
+    % map() | null
+    E2EE = maps:get(<<"e2ee">>, Msg, null),
 
     %% 保持客户端字段名：from/to（binary，TSID 字符串）
     %% Logic 层会使用 ec_cnv:to_integer/1 将其转换为 integer
     %% 消息自毁秒数（可选，0 或 undefined 表示不自毁）
-    ExpireSecs = case maps:get(<<"expire_secs">>, Msg, undefined) of
-        N when is_integer(N), N > 0 -> N;
-        _ -> undefined
-    end,
+    ExpireSecs =
+        case maps:get(<<"expire_secs">>, Msg, undefined) of
+            N when is_integer(N), N > 0 -> N;
+            _ -> undefined
+        end,
 
-    #{<<"id">> => maps:get(<<"id">>, Msg, <<>>),
-      <<"type">> => Type,
-      <<"from">> => maps:get(<<"from">>, Msg, <<>>),
-      <<"to">> => maps:get(<<"to">>, Msg, <<>>),
-      <<"msg_type">> => MsgType,
-      <<"action">> => Action,
-      <<"e2ee">> => E2EE,
-      <<"expire_secs">> => ExpireSecs,
-      <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
-      <<"created_at">> => maps:get(<<"created_at">>, Msg, elib_dt:millisecond())}.
-
+    #{
+        <<"id">> => maps:get(<<"id">>, Msg, <<>>),
+        <<"type">> => Type,
+        <<"from">> => maps:get(<<"from">>, Msg, <<>>),
+        <<"to">> => maps:get(<<"to">>, Msg, <<>>),
+        <<"msg_type">> => MsgType,
+        <<"action">> => Action,
+        <<"e2ee">> => E2EE,
+        <<"expire_secs">> => ExpireSecs,
+        <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
+        <<"created_at">> => maps:get(<<"created_at">>, Msg, elib_dt:millisecond())
+    }.
 
 %% @doc 检查并通知离线消息
 %% 检查用户的所有类型离线消息（C2C、C2G、S2C），根据消息数量决定
@@ -340,9 +358,11 @@ check_and_notify_offline_msgs(Uid) ->
     % ?DEBUG_LOG([<<"Offline msgs for Uid ">>, Uid,
     %             <<": C2C=">>, C2CCount, <<", C2G=">>, C2GCount, <<", S2C=">>, S2CCount]),
     % 处理各类型离线消息，收集是否需要发送pull通知
-    {NeedPull1, NeedPull2, NeedPull3} = {handle_offline_msgs(Uid, <<"C2C">>, C2CMsgs, C2CCount),
-                                         handle_offline_msgs(Uid, <<"C2G">>, C2GMsgs, C2GCount),
-                                         handle_offline_msgs(Uid, <<"S2C">>, S2CMsgs, S2CCount)},
+    {NeedPull1, NeedPull2, NeedPull3} = {
+        handle_offline_msgs(Uid, <<"C2C">>, C2CMsgs, C2CCount),
+        handle_offline_msgs(Uid, <<"C2G">>, C2GMsgs, C2GCount),
+        handle_offline_msgs(Uid, <<"S2C">>, S2CMsgs, S2CCount)
+    },
 
     % 如果任意类型需要发送pull通知，则只发送一次
     case NeedPull1 orelse NeedPull2 orelse NeedPull3 of
@@ -355,7 +375,6 @@ check_and_notify_offline_msgs(Uid) ->
 
     ok.
 
-
 %% @doc 处理离线消息的内部函数
 %% 根据消息数量决定是直接发送消息还是返回是否需要发送pull通知。
 %% 当消息数量超过阈值时返回true触发pull通知，否则直接推送消息。
@@ -364,7 +383,8 @@ check_and_notify_offline_msgs(Uid) ->
 %% @param Msgs 消息列表
 %% @param Count 消息数量
 %% @returns 是否需要发送pull通知
--spec handle_offline_msgs(pos_integer() | binary(), binary(), [map()], non_neg_integer()) -> boolean().
+-spec handle_offline_msgs(pos_integer() | binary(), binary(), [map()], non_neg_integer()) ->
+    boolean().
 handle_offline_msgs(_Uid, _Type, [], _Count) ->
     % 没有离线消息
     false;
@@ -382,7 +402,6 @@ handle_offline_msgs(Uid, Type, Msgs, Count) when Count > 0 ->
             false
     end.
 
-
 %% 检查并通知离线消息
 
 %% 发送pull_offline_msg通知（v2.0 格式）
@@ -396,7 +415,6 @@ send_pull_offline_msg(Uid) ->
     send_next(Uid, MsgId, MsgJson, MsLi),
     % ?DEBUG_LOG(["send_pull_offline_msg", Uid, MsgId]),
     ok.
-
 
 %% 发送离线消息（v2.0 格式）
 -spec sent_offline_msg(integer(), binary(), list()) -> ok.
@@ -415,20 +433,24 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
     CreatedAtRaw = maps:get(<<"created_at">>, Row, undefined),
     ServerTsRaw = maps:get(<<"server_ts">>, Row, undefined),
 
-    Row2 = elib_cnv:convert_at_timestamps(#{<<"created_at">> => CreatedAtRaw, <<"server_ts">> => ServerTsRaw}),
+    Row2 = elib_cnv:convert_at_timestamps(#{
+        <<"created_at">> => CreatedAtRaw, <<"server_ts">> => ServerTsRaw
+    }),
 
     % 发送给前端时使用 v2.0 格式
     %% 使用 encode_websocket_message/1 统一编码
-    Msg = encode_websocket_message(#{<<"id">> => MsgId,
-                                     <<"type">> => Type,
-                                     <<"from_id">> => FromId,
-                                     <<"to_id">> => ToId,
-                                     <<"msg_type">> => MsgType,
-                                     <<"action">> => Action,
-                                     <<"e2ee">> => E2EE,
-                                     <<"payload">> => Payload,
-                                     <<"created_at">> => maps:get(<<"created_at">>, Row2, CreatedAtRaw),
-                                     <<"server_ts">> => maps:get(<<"server_ts">>, Row2, ServerTsRaw)}),
+    Msg = encode_websocket_message(#{
+        <<"id">> => MsgId,
+        <<"type">> => Type,
+        <<"from_id">> => FromId,
+        <<"to_id">> => ToId,
+        <<"msg_type">> => MsgType,
+        <<"action">> => Action,
+        <<"e2ee">> => E2EE,
+        <<"payload">> => Payload,
+        <<"created_at">> => maps:get(<<"created_at">>, Row2, CreatedAtRaw),
+        <<"server_ts">> => maps:get(<<"server_ts">>, Row2, ServerTsRaw)
+    }),
 
     ok = ?DEBUG_LOG({sent_offline_msg, MsgId, FromId, ToId}),
 
@@ -436,7 +458,6 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
     MsLi = elib_retry_config:intervals(<<"pull">>),
     send_next(Uid, MsgId, MsgJson, MsLi),
     sent_offline_msg(Uid, Type, Tail).
-
 
 %% @doc 将发送者设备信息注入到消息 payload 中
 %%
@@ -455,7 +476,8 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
 %% @return 修改后的 payload（Map 或其他类型），包含 sender_did 和 sender_dtype 字段
 %%
 %% @end
--spec inject_sender_device(map() | binary() | [binary()] | term(), map()) -> map() | binary() | [binary()] | term().
+-spec inject_sender_device(map() | binary() | [binary()] | term(), map()) ->
+    map() | binary() | [binary()] | term().
 inject_sender_device(Payload, State) when is_map(Payload) ->
     %% 从 State 中提取设备 ID 和设备类型
     DID = maps:get(did, State, <<>>),
@@ -466,7 +488,6 @@ inject_sender_device(Payload, State) when is_map(Payload) ->
     %% sender_dtype: 发送者的设备类型（ios/android/web/desktop）
     Payload2 = maps:put(<<"sender_did">>, DID, Payload),
     maps:put(<<"sender_dtype">>, DType, Payload2);
-
 %% @doc 处理 JSON 格式的 payload（二进制 JSON 字符串）
 %%
 %% 当 payload 为 JSON 字符串时，先解码为 Map，然后递归调用 inject_sender_device/2
@@ -476,9 +497,7 @@ inject_sender_device(Payload, State) when is_map(Payload) ->
 %% @param State WebSocket 状态映射
 %% @return 解码并注入设备信息后的 payload（Map 或其他类型）
 inject_sender_device(Payload, State) when is_binary(Payload) ->
-    try
-        jsone:decode(Payload, [{object_format, map}])
-    of
+    try jsone:decode(Payload, [{object_format, map}]) of
         Map when is_map(Map) ->
             %% 解码成功，递归调用处理 Map
             inject_sender_device(Map, State);
@@ -490,7 +509,6 @@ inject_sender_device(Payload, State) when is_binary(Payload) ->
             %% JSON 解码异常，原样返回（保持向后兼容）
             Payload
     end;
-
 %% @doc 处理 iolist 格式的 payload
 %%
 %% 当 payload 为 iolist（Erlang 列表二进制格式）时，先转换为 binary，然后递归处理
@@ -502,7 +520,6 @@ inject_sender_device(Payload, State) when is_binary(Payload) ->
 inject_sender_device(Payload, State) when is_list(Payload) ->
     %% 将 iolist 转换为 binary，然后递归调用
     inject_sender_device(iolist_to_binary(Payload), State);
-
 %% @doc 其他类型的 payload（不处理）
 %%
 %% 对于其他类型（text、atom 等），直接原样返回，不做任何修改
@@ -513,7 +530,6 @@ inject_sender_device(Payload, State) when is_list(Payload) ->
 %% @return 原样返回的 payload
 inject_sender_device(Payload, _State) ->
     Payload.
-
 
 %% ===================================================================
 %% Internal functions
@@ -526,7 +542,6 @@ inject_sender_device(Payload, _State) ->
 -spec get_offline_msg_threshold() -> non_neg_integer().
 get_offline_msg_threshold() ->
     application:get_env(imboy, offline_msg_threshold, 10).
-
 
 %% ===================================================================
 %% 消息验证功能 (v2.0)
@@ -566,7 +581,6 @@ validate_base_required_fields(Msg) ->
         false -> {error, <<"missing_required_fields">>}
     end.
 
-
 %% @private
 %% @doc 根据消息类型验证特定字段
 -spec validate_message_by_type(binary(), map()) -> {ok, map()} | {error, binary()}.
@@ -583,7 +597,9 @@ validate_message_by_type(<<"S2C">>, Msg) ->
                 _ -> {error, <<"s2c_message_not_support_e2ee">>}
             end
     end;
-validate_message_by_type(Type, Msg) when Type =:= <<"C2C">>; Type =:= <<"C2G">>; Type =:= <<"C2S">> ->
+validate_message_by_type(Type, Msg) when
+    Type =:= <<"C2C">>; Type =:= <<"C2G">>; Type =:= <<"C2S">>
+->
     case validate_peer_fields(Msg) of
         {error, _} = Err ->
             Err;
@@ -613,14 +629,23 @@ validate_message_by_type(_Type, _Msg) ->
 
 %% @private
 %% @doc 验证消息发送方和接收方字段
+%% v2.0: TSID 通过 JSON 传输时是 integer（见根目录 CLAUDE.md TSID 规范），
+%% 同时本地代码可能用 binary 字符串形式，两者都视为合法。
 -spec validate_peer_fields(map()) -> ok | {error, binary()}.
 validate_peer_fields(Msg) ->
     From = maps:get(<<"from">>, Msg, <<>>),
     To = maps:get(<<"to">>, Msg, <<>>),
-    case is_non_empty_binary(From) andalso is_non_empty_binary(To) of
+    case is_valid_peer_id(From) andalso is_valid_peer_id(To) of
         true -> ok;
         false -> {error, <<"missing_required_fields">>}
     end.
+
+%% @private
+%% @doc TSID 在 JSON 线上格式为正整数，本地代码可能传 binary 字符串
+-spec is_valid_peer_id(term()) -> boolean().
+is_valid_peer_id(Id) when is_integer(Id), Id > 0 -> true;
+is_valid_peer_id(Id) when is_binary(Id), byte_size(Id) > 0 -> true;
+is_valid_peer_id(_) -> false.
 
 %% @private
 %% @doc 判断是否为 WebRTC 信令类型
@@ -640,7 +665,6 @@ is_non_empty_binary(Bin) when is_binary(Bin), byte_size(Bin) > 0 ->
     true;
 is_non_empty_binary(_) ->
     false.
-
 
 %% @doc 将 v1.0 格式消息转换为 v2.0 格式
 %% 自动检测消息版本并转换。如果已经是 v2.0 格式则直接返回。
@@ -706,7 +730,9 @@ build_adm_union_sql(Scopes) ->
 adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
     iolist_to_binary([
         <<"SELECT 'c2c' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
-        <<"FROM ">>, Tbc2c, <<" m ">>,
+        <<"FROM ">>,
+        Tbc2c,
+        <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
         <<"AND ($2 = 0 OR ((from_id = $2 AND to_id = $3) OR (from_id = $3 AND to_id = $2))) ">>,
         <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
@@ -717,9 +743,13 @@ adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
 adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
         <<"SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
-        <<"FROM ">>, Tbc2g, <<" m ">>,
+        <<"FROM ">>,
+        Tbc2g,
+        <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR EXISTS (">>,
-        <<"SELECT 1 FROM ">>, TbTimeline, <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
+        <<"SELECT 1 FROM ">>,
+        TbTimeline,
+        <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
         <<"AND ($4 = 0 OR to_id = $4) ">>,
         <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
@@ -729,9 +759,13 @@ adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
 adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
         <<"SELECT 'c2s' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, COALESCE(server_ts, created_at) AS server_ts ">>,
-        <<"FROM ">>, Tbc2s, <<" m ">>,
+        <<"FROM ">>,
+        Tbc2s,
+        <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR EXISTS (">>,
-        <<"SELECT 1 FROM ">>, TbTimeline, <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
+        <<"SELECT 1 FROM ">>,
+        TbTimeline,
+        <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
         <<"AND ($4 = 0 OR to_id = $4) ">>,
         <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
@@ -741,7 +775,9 @@ adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
 adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
     iolist_to_binary([
         <<"SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
-        <<"FROM ">>, Tbs2c, <<" m ">>,
+        <<"FROM ">>,
+        Tbs2c,
+        <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
         <<"AND ($4 = 0 OR from_id = $4 OR to_id = $4) ">>,
         <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
