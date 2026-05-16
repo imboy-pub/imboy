@@ -1,0 +1,21 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/PaginationPage.yaml
+# 管理后台分页 - page 参数 / Admin pagination - page parameter
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/PaginationPage
+# 复用范围：所有管理后台列表端点（adm/users, adm/groups, adm/channels,
+#           adm/announcements, adm/feedbacks 等 20+ 端点）。
+# ----------------------------------------------------------------------------
+in: query
+name: page
+schema:
+  type: integer
+  default: 1
+  minimum: 1
+description: |
+  ## 中文
+  当前页（1-based）；搜索/筛选条件变化时调用方必须重置为 1。
+  ## English
+  Current page (1-based). Callers MUST reset to 1 when search or filter
+  conditions change to avoid stale cursors.

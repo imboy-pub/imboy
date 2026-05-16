@@ -1,0 +1,17 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/PaginationKeyword.yaml
+# 管理后台分页 - keyword 模糊匹配 / Admin pagination - keyword filter
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/PaginationKeyword
+# ----------------------------------------------------------------------------
+in: query
+name: keyword
+schema:
+  type: string
+description: |
+  ## 中文
+  模糊匹配关键字（昵称 / 账号 / 手机号），空串或缺省为不过滤。
+  ## English
+  Fuzzy match keyword (nickname / account / mobile). Empty string or
+  omitted parameter means "no filter".

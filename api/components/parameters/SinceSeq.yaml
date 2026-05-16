@@ -1,0 +1,20 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/SinceSeq.yaml
+# 历史消息游标 / Historical message cursor
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/SinceSeq
+# ----------------------------------------------------------------------------
+in: query
+name: since_seq
+required: false
+schema:
+  type: integer
+  default: 0
+description: |
+  ## 中文
+  从该 conv_seq 之后拉取。客户端持久化 `last_conv_seq`，每次请求传入以
+  增量同步。
+  ## English
+  Fetch messages whose `conv_seq` is strictly greater than this value.
+  Clients persist `last_conv_seq` and pass it for incremental sync.

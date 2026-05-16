@@ -1,0 +1,20 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/ConvKey.yaml
+# 会话键 / Conversation key
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/ConvKey
+# 复用范围：msg/history, msg/search, conversation/* 等所有"按会话"端点。
+# ----------------------------------------------------------------------------
+in: query
+name: conv_key
+required: true
+schema:
+  type: string
+description: |
+  ## 中文
+  会话键，C2C 为 `c2c:{min_uid}:{max_uid}`，C2G 为 `c2g:{group_id}`。
+  ## English
+  Conversation key. Format: `c2c:{min_uid}:{max_uid}` for direct chats,
+  `c2g:{group_id}` for group chats. `min_uid`/`max_uid` are the two
+  participants' TSIDs sorted ascending.

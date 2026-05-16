@@ -1,0 +1,19 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/PaginationSize.yaml
+# 管理后台分页 - size 参数 / Admin pagination - size parameter
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/PaginationSize
+# ----------------------------------------------------------------------------
+in: query
+name: size
+schema:
+  type: integer
+  default: 10
+  maximum: 100
+description: |
+  ## 中文
+  每页条数（默认 10，最大 100）；超过 maximum 后端会按 100 截断。
+  ## English
+  Items per page (default 10, max 100). Values above the maximum are
+  silently clamped to 100 by the server.

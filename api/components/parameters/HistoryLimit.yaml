@@ -1,0 +1,20 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/HistoryLimit.yaml
+# 历史拉取上限 / Historical fetch page size
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 2)
+# 调用方：api/openapi.yaml#/components/parameters/HistoryLimit
+# ----------------------------------------------------------------------------
+in: query
+name: limit
+required: false
+schema:
+  type: integer
+  default: 50
+  maximum: 200
+description: |
+  ## 中文
+  单次拉取上限（默认 50，最大 200）；超过 maximum 时后端会按 200 截断。
+  ## English
+  Maximum messages per call (default 50, max 200). Values above the
+  maximum are silently clamped to 200 by the server.

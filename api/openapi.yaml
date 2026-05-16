@@ -284,21 +284,9 @@ paths:
         客户端持久化 `last_conv_seq`，每次请求传入以拉取增量。
       operationId: getMsgHistory
       parameters:
-        - in: query
-          name: conv_key
-          required: true
-          schema: { type: string }
-          description: 会话键，C2C 为 `c2c:{min_uid}:{max_uid}`，C2G 为 `c2g:{group_id}`
-        - in: query
-          name: since_seq
-          required: false
-          schema: { type: integer, default: 0 }
-          description: 从该 conv_seq 之后拉取
-        - in: query
-          name: limit
-          required: false
-          schema: { type: integer, default: 50, maximum: 200 }
-          description: 单次拉取上限（默认 50，最大 200）；超过 maximum 时后端会按 200 截断
+        - $ref: '#/components/parameters/ConvKey'
+        - $ref: '#/components/parameters/SinceSeq'
+        - $ref: '#/components/parameters/HistoryLimit'
       responses:
         '200':
           description: 增量消息数组
@@ -327,18 +315,9 @@ paths:
       description: 游标分页，默认 `size=10`。搜索 / 筛选变化时 `page` 必须重置为 1。
       operationId: adminListUsers
       parameters:
-        - in: query
-          name: page
-          schema: { type: integer, default: 1, minimum: 1 }
-          description: 当前页（1-based）；搜索/筛选条件变化时调用方必须重置为 1
-        - in: query
-          name: size
-          schema: { type: integer, default: 10, maximum: 100 }
-          description: 每页条数（默认 10，最大 100）；超过 maximum 后端会按 100 截断
-        - in: query
-          name: keyword
-          schema: { type: string }
-          description: 模糊匹配关键字（昵称 / 账号 / 手机号），空串或缺省为不过滤
+        - $ref: '#/components/parameters/PaginationPage'
+        - $ref: '#/components/parameters/PaginationSize'
+        - $ref: '#/components/parameters/PaginationKeyword'
       responses:
         '200':
           description: 分页结果
@@ -389,6 +368,26 @@ components:
       $ref: './components/schemas/User.yaml'
     Message:
       $ref: './components/schemas/Message.yaml'
+
+  parameters:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 2 (2026-05-16)：公共 query 参数抽出。
+    # 复用范围：分页参数 → admin 20+ 列表端点；会话/游标参数 → msg 多个端点。
+    # 文件名必须 PascalCase 与 components.parameters key 严格一致，
+    # 触发 redocly bundle 去重，避免 *ref_N YAML 锚点污染 codegen。
+    # ----------------------------------------------------------------------
+    PaginationPage:
+      $ref: './components/parameters/PaginationPage.yaml'
+    PaginationSize:
+      $ref: './components/parameters/PaginationSize.yaml'
+    PaginationKeyword:
+      $ref: './components/parameters/PaginationKeyword.yaml'
+    ConvKey:
+      $ref: './components/parameters/ConvKey.yaml'
+    SinceSeq:
+      $ref: './components/parameters/SinceSeq.yaml'
+    HistoryLimit:
+      $ref: './components/parameters/HistoryLimit.yaml'
 
 security:
   - bearerAuth: []
