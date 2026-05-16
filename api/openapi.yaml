@@ -78,6 +78,26 @@ paths:
     $ref: './paths/auth/login.yaml'
   /passport/refresh:
     $ref: './paths/auth/refresh.yaml'
+  /passport/quick_login:
+    $ref: './paths/auth/quick-login.yaml'
+  /passport/signup:
+    $ref: './paths/auth/signup.yaml'
+  /passport/getcode:
+    $ref: './paths/auth/getcode.yaml'
+  /passport/findpassword:
+    $ref: './paths/auth/findpassword.yaml'
+  /passport/bind_mail:
+    $ref: './paths/auth/bind-mail.yaml'
+  /v1/passport/qr_login/create:
+    $ref: './paths/auth/qr-create.yaml'
+  /v1/passport/qr_login/status:
+    $ref: './paths/auth/qr-status.yaml'
+  /v1/passport/qr_login/scan:
+    $ref: './paths/auth/qr-scan.yaml'
+  /v1/passport/qr_login/confirm:
+    $ref: './paths/auth/qr-confirm.yaml'
+  /v1/passport/qr_login/cancel:
+    $ref: './paths/auth/qr-cancel.yaml'
   /user/current:
     $ref: './paths/user/current.yaml'
   /user/{uid}:

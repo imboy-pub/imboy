@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-scan.yaml
+# POST /v1/passport/qr_login/scan — 扫码（手机端调用） / QR scan (mobile)
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1scan
+# Handler: src/api/qr_login_handler.erl#handle_scan/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 扫描二维码（手机端）
+  description: |
+    ## 中文
+    手机客户端扫描 Web 端二维码后调用，将会话状态从 waiting → scanned。
+    服务端通过 SSE 广播 scanned 事件给 Web 端，无需 Web 端继续轮询。
+    副作用：更新会话 scanned_by + scanned_at；广播 SSE 事件。
+    ## English
+    Called by the mobile client after scanning the web QR. Moves the
+    session state from waiting → scanned and broadcasts the event over
+    SSE so the web client can react immediately.
+  operationId: qrLoginScan
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [qr_token]
+          properties:
+            qr_token:
+              type: string
+              description: 二维码中编码的 token / Token encoded in the QR image.
+  responses:
+    '200':
+      description: 扫码成功，返回 scanned 状态 + Web 端设备名/平台
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: qr_token 无效 / 二维码已过期 / 已被确认 / 已取消 / 无权限
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

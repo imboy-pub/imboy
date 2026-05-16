@@ -1,0 +1,61 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/getcode.yaml
+# POST /passport/getcode — 发送验证码 / Send verification code
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方：api/openapi.yaml#/paths/~1passport~1getcode
+# Handler：src/api/passport_handler.erl#getcode/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 发送邮箱或短信验证码
+  description: |
+    ## 中文
+    向指定账号下发验证码，用于 signup / find_password 等场景。
+    SMS 场景在 `scene=signup` 时会先检查手机号是否已注册，已存在则直接返回错误，
+    避免发送多余验证码。
+    副作用：消耗短信 / 邮件配额；命中 throttle 限流可能直接 429。
+    ## English
+    Send a verification code for signup / find_password flows. When
+    `type=sms` and `scene=signup`, the server first checks whether the
+    mobile is already registered to avoid wasting SMS quota.
+  operationId: getCode
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [type, account]
+          properties:
+            type:
+              type: string
+              enum: [email, sms]
+              default: email
+            scene:
+              type: string
+              enum: [signup, forgot_pwd]
+              description: 业务场景 / Business scenario.
+            account:
+              type: string
+              description: 邮箱或手机号 / Email or mobile.
+  responses:
+    '200':
+      description: 验证码已发送
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 账号已存在（signup 场景）、格式非法或下游短信服务失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '429':
+      description: 验证码下发频率超限 / Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

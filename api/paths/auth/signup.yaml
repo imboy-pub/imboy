@@ -1,0 +1,66 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/signup.yaml
+# POST /passport/signup — 用户注册 / User signup
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方：api/openapi.yaml#/paths/~1passport~1signup
+# Handler：src/api/passport_handler.erl#signup/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 用户注册
+  description: |
+    ## 中文
+    使用邮箱或手机号 + 验证码 + 密码完成注册。验证码由 `/passport/getcode`
+    提前发起。密码可用 RSA-OAEP 加密传输（`rsa_encrypt=1`）。
+    副作用：创建用户记录、写入登录审计、可能下发欢迎消息。
+    ## English
+    Sign up with email or mobile + verification code + password. The
+    verification code must have been requested via `/passport/getcode`
+    beforehand. Password can be RSA-OAEP encrypted (`rsa_encrypt=1`).
+  operationId: signup
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [type, account, pwd, code]
+          properties:
+            type:
+              type: string
+              enum: [email, sms]
+              description: 账号类型 / Account type.
+            account:
+              type: string
+              description: 邮箱或手机号 / Email or mobile.
+            pwd:
+              type: string
+              description: |
+                密码；`rsa_encrypt=1` 时为 RSA 密文（base64），否则为明文。
+                Password; RSA ciphertext (base64) when `rsa_encrypt=1`, else plaintext.
+            code:
+              type: string
+              description: 验证码 / Verification code.
+            rsa_encrypt:
+              type: string
+              enum: ["0", "1"]
+              default: "1"
+              description: 是否 RSA 加密密码 / Whether `pwd` is RSA-encrypted.
+            sys_version:
+              type: string
+              description: 客户端系统版本 / Client OS version.
+  responses:
+    '200':
+      description: 注册成功，返回用户 ID 与 token
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 账号已存在、验证码错误、密码强度不足或参数校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

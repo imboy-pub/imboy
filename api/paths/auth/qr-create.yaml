@@ -1,0 +1,55 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-create.yaml
+# POST /v1/passport/qr_login/create — 创建扫码登录会话 / Create QR login session
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1create
+# Handler: src/api/qr_login_handler.erl#handle_create/1
+# 风格参考：WhatsApp Web 扫码登录。
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 创建扫码登录会话
+  description: |
+    ## 中文
+    Web / 桌面端调用，生成一个 60 秒有效的 QR token + session token。
+    Web 端用 QR token 渲染二维码，用 session token 轮询或订阅 SSE 状态。
+    副作用：服务端缓存会话信息 60 秒后自动过期。
+    ## English
+    Called by web / desktop clients. Returns a QR token + session token,
+    valid for 60 seconds. The client renders the QR with the QR token and
+    polls (or subscribes via SSE) for status using the session token.
+  operationId: qrLoginCreate
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_id]
+          properties:
+            device_id:
+              type: string
+              description: Web/桌面设备唯一标识 / Web/desktop device unique ID.
+            device_name:
+              type: string
+              default: Web Browser
+              description: 设备名（手机端 UI 展示）/ Device name shown on mobile UI.
+            platform:
+              type: string
+              default: web
+              description: 平台标签 (web | desktop | ...) / Platform tag.
+  responses:
+    '200':
+      description: 二维码会话创建成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 参数缺失（device_id 为空）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

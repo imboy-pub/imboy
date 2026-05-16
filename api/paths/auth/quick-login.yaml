@@ -1,0 +1,60 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/quick-login.yaml
+# POST /passport/quick_login — 运营商一键登录 / Carrier one-tap login
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方：api/openapi.yaml#/paths/~1passport~1quick_login
+# Handler：src/api/passport_handler.erl#quick_login/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 运营商一键登录
+  description: |
+    ## 中文
+    通过 JVerification / 华为快速认证等服务商签发的临时 token 完成登录。
+    服务端会再次向运营商验证 token，并按 mobile 自动注册或登录现有账号。
+    副作用：可能新建用户、发放 JWT、记录登录审计。
+    典型场景：客户端首次启动且本机持有运营商 SDK 时自动调用，跳过密码登录。
+    ## English
+    Login via a temporary token issued by carrier-side providers (JVerification,
+    Huawei Quick Auth, etc.). The server re-verifies the token with the carrier
+    and either auto-registers by mobile or signs into an existing account.
+  operationId: quickLogin
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [service, token]
+          properties:
+            service:
+              type: string
+              enum: [jverify, huawei]
+              description: 服务商 / Provider name.
+            operator:
+              type: [string, "null"]
+              enum: [CM, CU, CT, null]
+              description: |
+                运营商代号（CM 移动 / CU 联通 / CT 电信），失败时可能为 null。
+                Carrier code; may be null when the carrier callback failed.
+            token:
+              type: string
+              description: 运营商签发的一次性认证 token / One-time carrier auth token.
+            sys_version:
+              type: string
+              description: 客户端系统版本（用于设备审计）/ Client OS version.
+  responses:
+    '200':
+      description: 登录成功，返回 token 与用户资料
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: token 校验失败、被运营商拒绝或账号被冻结
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

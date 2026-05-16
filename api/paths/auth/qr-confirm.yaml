@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-confirm.yaml
+# POST /v1/passport/qr_login/confirm — 确认登录（手机端调用） / Confirm login
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1confirm
+# Handler: src/api/qr_login_handler.erl#handle_confirm/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 确认 Web 端登录（手机端）
+  description: |
+    ## 中文
+    手机客户端在扫码后点"确认登录"调用。服务端为 Web 端生成
+    login token 并通过 SSE 推送给订阅者，Web 端落地 token 完成登录。
+    必须由 scanned_by 与当前 uid 一致的用户调用，否则 403。
+    副作用：生成新的 login token + 广播 confirmed 事件。
+    ## English
+    Called by the mobile client after tapping "Confirm" on the scanned
+    QR. The server issues a login token for the web peer and pushes it
+    over SSE. Only the user who scanned (`scanned_by == current_uid`)
+    may confirm; otherwise 403.
+  operationId: qrLoginConfirm
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [qr_token]
+          properties:
+            qr_token:
+              type: string
+              description: 二维码 token / QR token.
+  responses:
+    '200':
+      description: 确认成功；Web 端会从 SSE 拿到 login token
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 二维码未扫码 / 已过期 / 已确认 / 已取消 / 非扫码者
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,41 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-status.yaml
+# GET /v1/passport/qr_login/status — 查询扫码状态 / Query QR login status
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1status
+# Handler: src/api/qr_login_handler.erl#handle_status/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 查询扫码登录状态（轮询）
+  description: |
+    ## 中文
+    Web 端轮询此端点获取扫码状态。优先建议改用 SSE
+    `/v1/passport/qr_login/subscribe` 实时订阅，本端点作为兜底。
+    状态机：waiting → scanned → confirmed | cancelled | (timeout 后 404)
+    ## English
+    Polled by the web client to obtain QR scan status. Prefer the SSE
+    endpoint `/v1/passport/qr_login/subscribe` for realtime updates;
+    this polling endpoint is a fallback.
+  operationId: qrLoginStatus
+  security: []
+  parameters:
+    - in: query
+      name: session_token
+      required: true
+      schema: { type: string }
+      description: 由 /qr_login/create 返回的 session_token / Session token from create.
+  responses:
+    '200':
+      description: 当前会话状态；status=confirmed 时附带 login token
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: session_token 缺失或会话已过期 / 不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

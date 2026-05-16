@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-cancel.yaml
+# POST /v1/passport/qr_login/cancel — 取消扫码登录 / Cancel QR login
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1cancel
+# Handler: src/api/qr_login_handler.erl#handle_cancel/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 取消扫码登录
+  description: |
+    ## 中文
+    手机客户端在扫码后点"取消"或 Web 端主动取消时调用。服务端将状态
+    置为 cancelled 并广播事件，Web 端二维码失效需重新刷新。
+    副作用：更新状态 + 广播 cancelled 事件。
+    ## English
+    Called when the mobile user taps "Cancel" after scanning, or when
+    the web side cancels actively. The session moves to `cancelled` and
+    the event is broadcast over SSE so the web client refreshes the QR.
+  operationId: qrLoginCancel
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [qr_token]
+          properties:
+            qr_token:
+              type: string
+  responses:
+    '200':
+      description: 取消成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 二维码无效 / 已过期 / 已确认
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

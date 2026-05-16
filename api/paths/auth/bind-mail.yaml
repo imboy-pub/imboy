@@ -1,0 +1,58 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/bind-mail.yaml
+# GET /passport/bind_mail — 邮箱绑定确认回调 / Email binding confirmation
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
+# 调用方：api/openapi.yaml#/paths/~1passport~1bind_mail
+# Handler：src/api/passport_handler.erl#bind_mail/1
+# 说明：此端点为邮件中确认链接的目标，所有参数走 query string；
+#       服务端通过 HMAC-SHA512 (uin+ts+mail × solidified_key) 验签。
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 邮箱绑定确认（邮件链接回调）
+  description: |
+    ## 中文
+    用户点击邮件中的绑定链接后触发。服务端按 `tk` HMAC 签名校验、`ts`
+    过期检查 + 缓存 KEY 校验通过后写入 `user.email` 字段。
+    副作用：修改用户邮箱、清除一次性缓存。
+    ## English
+    Hit when the user clicks the verification link in the binding email.
+    The server validates `tk` (HMAC-SHA512), `ts` expiry, and a one-shot
+    cache key before persisting the `user.email` field.
+  operationId: bindMail
+  security: []
+  parameters:
+    - in: query
+      name: uin
+      required: true
+      schema: { type: string }
+      description: 用户 TSID / User TSID.
+    - in: query
+      name: mail
+      required: true
+      schema: { type: string, format: email }
+      description: 要绑定的邮箱 / Email to bind.
+    - in: query
+      name: ts
+      required: true
+      schema: { type: integer }
+      description: 签名时间戳（秒）/ Signature timestamp (seconds).
+    - in: query
+      name: tk
+      required: true
+      schema: { type: string }
+      description: HMAC-SHA512 签名（hex） / HMAC-SHA512 signature (hex).
+  responses:
+    '200':
+      description: 邮箱绑定成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 签名过期、签名不匹配、绑定 URL 已使用或邮箱已被占用
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
