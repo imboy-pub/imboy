@@ -1,0 +1,57 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/mention/mark-read.yaml
+# POST /mention/mark_read — 标记 @ 已读 / Mark mention as read
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
+# 调用方:  api/openapi.yaml#/paths/~1mention~1mark_read
+# Handler: src/api/mention_handler.erl#mark_read/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 标记 @ 消息为已读
+  description: |
+    ## 中文
+    三种模式（互斥）：
+    1. `msg_id`     → 标记单条 msg 上的 @ 已读（按 mentioned_uid 校验所属）
+    2. `mention_id` → 按 mention 表主键标记（更精准）
+    3. `all: true`  → 全部标记已读（可选 gid 限定群组范围）
+    幂等：重复标记同一条无副作用。
+    ## English
+    Three mutually exclusive modes:
+    1. `msg_id`     → mark by message; validates `mentioned_uid` ownership
+    2. `mention_id` → mark by mention-table primary key (more precise)
+    3. `all: true`  → mark every mention as read (optionally scoped via `gid`)
+  operationId: markMentionRead
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            msg_id:
+              type: string
+              description: 消息 TSID（msg_id 与 mention_id 至少其一）
+            mention_id:
+              type: integer
+              minimum: 1
+              description: mention 表主键
+            all:
+              type: boolean
+              description: 全部标记已读（与单条互斥）
+            gid:
+              type: string
+              description: 配合 all=true 用于限定群范围
+  responses:
+    '200':
+      description: 标记成功；payload 含 msg_id / mention_id 回显
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: msg_id 与 mention_id 都缺失 / 无权操作 / mention 不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

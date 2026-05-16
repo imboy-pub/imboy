@@ -226,6 +226,14 @@ paths:
     $ref: './paths/conversation/delete.yaml'
   /conversation/restore:
     $ref: './paths/conversation/restore.yaml'
+  /mention/list:
+    $ref: './paths/mention/list.yaml'
+  /mention/unread:
+    $ref: './paths/mention/unread.yaml'
+  /mention/mark_read:
+    $ref: './paths/mention/mark-read.yaml'
+  /mention/suggest:
+    $ref: './paths/mention/suggest.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/mention/suggest.yaml
+# GET /mention/suggest — @ 输入建议 / @-input suggestions
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
+# 调用方:  api/openapi.yaml#/paths/~1mention~1suggest
+# Handler: src/api/mention_handler.erl#suggest/2 → mention_logic:get_member_suggestions/3
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 群内 @ 输入候选成员列表
+  description: |
+    ## 中文
+    用户在群聊输入框输入 `@` 后调用。返回群内成员候选列表（可按 keyword
+    模糊匹配 nickname / 群昵称）。
+    payload 同时含 `members` 与 `items` 两个别名。
+    权限：调用者必须是群成员。
+    ## English
+    Called after the user types `@` in a group input. Returns a list of
+    candidate group members; `keyword` fuzzy-matches nickname / group
+    alias. Payload exposes both `members` and `items` aliases. Caller
+    must be a group member.
+  operationId: suggestMentionMembers
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+      description: 群组 TSID / Group TSID.
+    - in: query
+      name: keyword
+      required: false
+      schema: { type: string }
+      description: 模糊匹配关键字 / Optional fuzzy keyword.
+  responses:
+    '200':
+      description: 成员候选列表 { members, items }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: gid 缺失或非法 / 调用者非群成员
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

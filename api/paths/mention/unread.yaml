@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/mention/unread.yaml
+# GET /mention/unread — 未读 @ 数量 / Unread mention count
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
+# 调用方:  api/openapi.yaml#/paths/~1mention~1unread
+# Handler: src/api/mention_handler.erl#unread/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 当前用户未读 @ 消息数量
+  description: |
+    ## 中文
+    返回未读 @ 数量（payload.count）。可选 `gid` 缩到单群范围。
+    用于会话列表 / TabBar 角标渲染。
+    ## English
+    Return the unread mention count (`payload.count`). Optional `gid`
+    scopes to a single group. Used for conversation-list and TabBar
+    badge rendering.
+  operationId: unreadMentionCount
+  parameters:
+    - in: query
+      name: gid
+      required: false
+      schema: { type: string }
+      description: 群组 TSID；缺省返回所有会话合计 / Group TSID; omit for global total.
+  responses:
+    '200':
+      description: 未读数量 { count }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: gid 格式有误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,49 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/mention/list.yaml
+# GET /mention/list — @我的消息列表 / Mentions of me
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
+# 调用方:  api/openapi.yaml#/paths/~1mention~1list
+# Handler: src/api/mention_handler.erl#list_mentions/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 查询当前用户被 @ 的消息列表
+  description: |
+    ## 中文
+    返回所有 @ 当前用户的消息（分页）。可选 `is_read` 过滤已读/未读，
+    可选 `gid` 把范围缩到指定群组。
+    payload 同时包含 `list` 与 `items` 两个数组别名（兼容历史 client）。
+    ## English
+    Paginated list of messages where the current user is mentioned.
+    `is_read` filters by read state; `gid` scopes to a single group.
+    Payload includes both `list` and `items` aliases for legacy clients.
+  operationId: listMentions
+  parameters:
+    - in: query
+      name: is_read
+      required: false
+      schema:
+        type: string
+        enum: ["true", "false", "1", "0"]
+      description: 已读过滤；缺省返回全部 / Read-state filter; omit for all.
+    - in: query
+      name: gid
+      required: false
+      schema: { type: string }
+      description: 群组 TSID；缺省查询所有会话 / Group TSID; omit to span all.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: "分页 @ 消息列表 { total, page, size, list, items }"
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: gid 格式有误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
