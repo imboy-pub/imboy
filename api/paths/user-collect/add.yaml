@@ -1,0 +1,62 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-collect/add.yaml
+# POST /user_collect/add — 添加收藏 / Add collection item
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
+# 调用方:  api/openapi.yaml#/paths/~1user_collect~1add
+# Handler: src/api/user_collect_handler.erl#add/2 → user_collect_logic:add/6
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 添加一条收藏
+  description: |
+    ## 中文
+    将一条对象（消息 / 名片 / 文件等）加入当前用户的收藏。`info` 是结构化
+    元数据（JSON 对象），服务端会按 elib_hasher 加密落地。
+    幂等：相同 kind + kind_id 重复添加会被合并/拒绝（由 logic 层决定）。
+    ## English
+    Add an object (message / contact card / file / etc.) to the user's
+    collection. `info` is a structured metadata blob that is encrypted
+    server-side via `elib_hasher` before persistence. Idempotent on
+    (kind, kind_id).
+  operationId: addUserCollect
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [kind, kind_id]
+          properties:
+            kind:
+              type: integer
+              enum: [1, 2, 3, 4, 5, 6, 7]
+              description: |
+                被收藏资源种类。1 文本 / 2 图片 / 3 语音 / 4 视频 / 5 文件 /
+                6 位置消息 / 7 个人名片。
+                Resource kind enum.
+            kind_id:
+              type: string
+              description: 资源的业务 ID / Business id of the resource.
+            source:
+              type: string
+              description: 来源描述（如发送者/消息 ID）/ Origin description.
+            remark:
+              type: string
+              description: 用户自定义备注 / User remark.
+            info:
+              type: object
+              description: 结构化元数据（JSON 对象）/ Structured metadata blob.
+  responses:
+    '200':
+      description: 添加成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: kind 非法 / kind_id 为空 / 重复收藏被拒绝
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

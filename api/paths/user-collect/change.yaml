@@ -1,0 +1,54 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-collect/change.yaml
+# POST /user_collect/change — 修改收藏 / Modify collection item
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
+# 调用方:  api/openapi.yaml#/paths/~1user_collect~1change
+# Handler: src/api/user_collect_handler.erl#change/2 → user_collect_logic:change/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改收藏（多种 action 复合接口）
+  description: |
+    ## 中文
+    通用变更入口。`action` 字段决定具体语义（更新 remark / 切换 tag /
+    刷新 updated_at 等），剩余字段由 user_collect_logic:change/4 按 action
+    解析。是历史"一个 endpoint 多 action"风格的接口。
+    建议新接入方按 action 分类调用：服务端可能在未来拆为独立端点。
+    ## English
+    Generic mutation endpoint. The `action` field dispatches to specific
+    behaviour (update remark, swap tag, refresh updated_at, …). Other
+    fields are parsed per-action inside `user_collect_logic:change/4`.
+    A legacy multi-action endpoint; future versions may split it.
+  operationId: changeUserCollect
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [action, kind_id]
+          additionalProperties: true
+          properties:
+            action:
+              type: string
+              description: |
+                动作类型；具体可选值由 user_collect_logic:change/4 模式匹配定义。
+                Action discriminator; allowed values are pattern-matched in
+                `user_collect_logic:change/4`.
+            kind_id:
+              type: string
+              description: 目标收藏的 kind_id / Target kind_id.
+  responses:
+    '200':
+      description: 修改成功（实际由 logic 层决定）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: action 未识别 / kind_id 为空
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

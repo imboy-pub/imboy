@@ -142,6 +142,14 @@ paths:
     $ref: './paths/user-tag-relation/set.yaml'
   /user_tag_relation/remove:
     $ref: './paths/user-tag-relation/remove.yaml'
+  /user_collect/page:
+    $ref: './paths/user-collect/page.yaml'
+  /user_collect/add:
+    $ref: './paths/user-collect/add.yaml'
+  /user_collect/remove:
+    $ref: './paths/user-collect/remove.yaml'
+  /user_collect/change:
+    $ref: './paths/user-collect/change.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:

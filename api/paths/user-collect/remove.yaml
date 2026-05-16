@@ -1,0 +1,43 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-collect/remove.yaml
+# POST /user_collect/remove — 删除收藏 / Remove collection item
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
+# 调用方:  api/openapi.yaml#/paths/~1user_collect~1remove
+# Handler: src/api/user_collect_handler.erl#remove/2 → user_collect_logic:remove/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除单条收藏
+  description: |
+    ## 中文
+    按 kind_id 删除当前用户的单条收藏。幂等：不存在时返回 200（无副作用）。
+    实际行为是软删除（status 置 0），不会从表中物理擦除。
+    ## English
+    Delete a collection item by `kind_id`. Idempotent. The underlying
+    implementation soft-deletes (`status=0`) rather than hard-deleting.
+  operationId: removeUserCollect
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [kind_id]
+          properties:
+            kind_id:
+              type: string
+              description: 要删除的收藏的 kind_id / Target kind_id.
+  responses:
+    '200':
+      description: 删除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

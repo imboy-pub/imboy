@@ -1,0 +1,71 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-collect/page.yaml
+# GET /user_collect/page — 收藏分页列表 / Paginated collection list
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
+# 调用方:  api/openapi.yaml#/paths/~1user_collect~1page
+# Handler: src/api/user_collect_handler.erl#page/2
+# 实现:    user_collect_ds:page/5，info 字段服务端 elib_hasher 解密
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 当前用户的收藏分页列表
+  description: |
+    ## 中文
+    返回收藏 (status=1) 的分页结果。支持按 kind 精确过滤、tag 精确包含、
+    kwd 同时模糊匹配 source / remark / info 三字段，以及 order=recent_use
+    切换按 updated_at 倒序排序。
+    info 字段会按 elib_hasher 解密后反序列化为结构化对象。
+    ## English
+    Return paginated collection items (status=1). Filter by `kind`,
+    `tag` (LIKE %tag,%), or `kwd` (fuzzy match on source / remark / info).
+    `order=recent_use` switches to `updated_at desc`. `info` is decoded
+    server-side via `elib_hasher` and parsed as JSON.
+  operationId: pageUserCollect
+  parameters:
+    - in: query
+      name: kind
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4, 5, 6, 7]
+        default: 0
+      description: |
+        资源种类过滤；0 表示不过滤。1 文本 / 2 图片 / 3 语音 / 4 视频 /
+        5 文件 / 6 位置消息 / 7 个人名片。
+        Filter by resource kind; 0 disables the filter. 1 text / 2 image
+        / 3 voice / 4 video / 5 file / 6 location / 7 contact card.
+    - in: query
+      name: tag
+      required: false
+      schema: { type: string }
+      description: 精确包含的标签名 / Tag containment filter.
+    - in: query
+      name: kwd
+      required: false
+      schema: { type: string }
+      description: source/remark/info 三字段模糊匹配 / Fuzzy keyword across source/remark/info.
+    - in: query
+      name: order
+      required: false
+      schema:
+        type: string
+        enum: [recent_use]
+      description: |
+        排序策略。`recent_use` → `updated_at desc, id desc`；缺省 → `id desc`。
+        Order strategy. `recent_use` sorts by last-used; default is by id.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: token 无效 / 参数格式非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
