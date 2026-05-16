@@ -1,0 +1,25 @@
+# POST /adm/user/ban — admin
+post:
+  tags: [admin]
+  summary: admin adm-user - ban
+  description: |
+    ## 中文 / English
+    管理后台 adm-user handler 的 `ban` 动作；路径 `/adm/user/ban`。
+    Admin handler `adm-user`, action `ban`. Path `/adm/user/ban`.
+  operationId: adm_user_ban
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

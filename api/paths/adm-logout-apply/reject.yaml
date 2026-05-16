@@ -1,0 +1,25 @@
+# POST /adm/user/logout_apply/reject — admin
+post:
+  tags: [admin]
+  summary: admin adm-logout-apply - reject
+  description: |
+    ## 中文 / English
+    管理后台 adm-logout-apply handler 的 `reject` 动作；路径 `/adm/user/logout_apply/reject`。
+    Admin handler `adm-logout-apply`, action `reject`. Path `/adm/user/logout_apply/reject`.
+  operationId: adm_logout_apply_reject
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

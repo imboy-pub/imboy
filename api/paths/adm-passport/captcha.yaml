@@ -1,0 +1,18 @@
+# GET /adm/passport/captcha — admin
+get:
+  tags: [admin]
+  summary: admin adm-passport - captcha
+  description: |
+    ## 中文 / English
+    管理后台 adm-passport handler 的 `captcha` 动作；路径 `/adm/passport/captcha`。
+    Admin handler `adm-passport`, action `captcha`. Path `/adm/passport/captcha`.
+  operationId: adm_passport_captcha
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

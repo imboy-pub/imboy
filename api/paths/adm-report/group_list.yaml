@@ -1,0 +1,21 @@
+# GET /adm/group/report/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-report - group_list
+  description: |
+    ## 中文 / English
+    管理后台 adm-report handler 的 `group_list` 动作；路径 `/adm/group/report/list`。
+    Admin handler `adm-report`, action `group_list`. Path `/adm/group/report/list`.
+  operationId: adm_report_group_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

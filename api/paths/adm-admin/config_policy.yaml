@@ -1,0 +1,18 @@
+# GET /adm/admin/config/policy — admin
+get:
+  tags: [admin]
+  summary: admin adm-admin - config_policy
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `config_policy` 动作；路径 `/adm/admin/config/policy`。
+    Admin handler `adm-admin`, action `config_policy`. Path `/adm/admin/config/policy`.
+  operationId: adm_admin_config_policy
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

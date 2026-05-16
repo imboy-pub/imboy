@@ -1,0 +1,30 @@
+# POST /adm/channel/{channel_id}/invitations — admin
+post:
+  tags: [admin]
+  summary: admin adm-channel - invitations
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `invitations` 动作；路径 `/adm/channel/{channel_id}/invitations`。
+    Admin handler `adm-channel`, action `invitations`. Path `/adm/channel/{channel_id}/invitations`.
+  operationId: adm_channel_invitations
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

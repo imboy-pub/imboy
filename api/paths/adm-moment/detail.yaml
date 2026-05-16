@@ -1,0 +1,23 @@
+# GET /adm/moment/detail/{moment_id} — admin
+get:
+  tags: [admin]
+  summary: admin adm-moment - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-moment handler 的 `detail` 动作；路径 `/adm/moment/detail/{moment_id}`。
+    Admin handler `adm-moment`, action `detail`. Path `/adm/moment/detail/{moment_id}`.
+  operationId: adm_moment_detail
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

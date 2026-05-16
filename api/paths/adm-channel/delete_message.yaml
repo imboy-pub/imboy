@@ -1,0 +1,27 @@
+# GET /adm/channel/{channel_id}/message/{message_id}/delete — admin
+get:
+  tags: [admin]
+  summary: admin adm-channel - delete_message
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `delete_message` 动作；路径 `/adm/channel/{channel_id}/message/{message_id}/delete`。
+    Admin handler `adm-channel`, action `delete_message`. Path `/adm/channel/{channel_id}/message/{message_id}/delete`.
+  operationId: adm_channel_delete_message
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+    - in: path
+      name: message_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,25 @@
+# POST /adm/stats/overview — admin
+post:
+  tags: [admin]
+  summary: admin adm-stats - overview
+  description: |
+    ## 中文 / English
+    管理后台 adm-stats handler 的 `overview` 动作；路径 `/adm/stats/overview`。
+    Admin handler `adm-stats`, action `overview`. Path `/adm/stats/overview`.
+  operationId: adm_stats_overview
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

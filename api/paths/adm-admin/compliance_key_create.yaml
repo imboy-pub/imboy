@@ -1,0 +1,25 @@
+# POST /adm/admin/compliance_key/create — admin
+post:
+  tags: [admin]
+  summary: admin adm-admin - compliance_key_create
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `compliance_key_create` 动作；路径 `/adm/admin/compliance_key/create`。
+    Admin handler `adm-admin`, action `compliance_key_create`. Path `/adm/admin/compliance_key/create`.
+  operationId: adm_admin_compliance_key_create
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

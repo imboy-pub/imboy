@@ -1,0 +1,25 @@
+# POST /adm/stats/user — admin
+post:
+  tags: [admin]
+  summary: admin adm-stats - user
+  description: |
+    ## 中文 / English
+    管理后台 adm-stats handler 的 `user` 动作；路径 `/adm/stats/user`。
+    Admin handler `adm-stats`, action `user`. Path `/adm/stats/user`.
+  operationId: adm_stats_user
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

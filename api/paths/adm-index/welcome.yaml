@@ -1,0 +1,18 @@
+# GET /adm/welcome — admin
+get:
+  tags: [admin]
+  summary: admin adm-index - welcome
+  description: |
+    ## 中文 / English
+    管理后台 adm-index handler 的 `welcome` 动作；路径 `/adm/welcome`。
+    Admin handler `adm-index`, action `welcome`. Path `/adm/welcome`.
+  operationId: adm_index_welcome
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

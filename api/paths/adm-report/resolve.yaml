@@ -1,0 +1,25 @@
+# POST /adm/report/resolve — admin
+post:
+  tags: [admin]
+  summary: admin adm-report - resolve
+  description: |
+    ## 中文 / English
+    管理后台 adm-report handler 的 `resolve` 动作；路径 `/adm/report/resolve`。
+    Admin handler `adm-report`, action `resolve`. Path `/adm/report/resolve`.
+  operationId: adm_report_resolve
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

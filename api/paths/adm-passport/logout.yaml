@@ -1,0 +1,25 @@
+# POST /adm/passport/logout — admin
+post:
+  tags: [admin]
+  summary: admin adm-passport - logout
+  description: |
+    ## 中文 / English
+    管理后台 adm-passport handler 的 `logout` 动作；路径 `/adm/passport/logout`。
+    Admin handler `adm-passport`, action `logout`. Path `/adm/passport/logout`.
+  operationId: adm_passport_logout
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,21 @@
+# GET /adm/admin/push_token/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-admin - push_token_list
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `push_token_list` 动作；路径 `/adm/admin/push_token/list`。
+    Admin handler `adm-admin`, action `push_token_list`. Path `/adm/admin/push_token/list`.
+  operationId: adm_admin_push_token_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

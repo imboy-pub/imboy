@@ -1,0 +1,18 @@
+# GET /adm/group/detail — admin
+get:
+  tags: [admin]
+  summary: admin adm-group - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-group handler 的 `detail` 动作；路径 `/adm/group/detail`。
+    Admin handler `adm-group`, action `detail`. Path `/adm/group/detail`.
+  operationId: adm_group_detail
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

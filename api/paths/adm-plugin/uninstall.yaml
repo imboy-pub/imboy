@@ -1,0 +1,25 @@
+# POST /adm/plugin/uninstall — admin
+post:
+  tags: [admin]
+  summary: admin adm-plugin - uninstall
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `uninstall` 动作；路径 `/adm/plugin/uninstall`。
+    Admin handler `adm-plugin`, action `uninstall`. Path `/adm/plugin/uninstall`.
+  operationId: adm_plugin_uninstall
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

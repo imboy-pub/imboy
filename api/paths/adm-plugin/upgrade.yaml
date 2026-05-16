@@ -1,0 +1,25 @@
+# POST /adm/plugin/upgrade — admin
+post:
+  tags: [admin]
+  summary: admin adm-plugin - upgrade
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `upgrade` 动作；路径 `/adm/plugin/upgrade`。
+    Admin handler `adm-plugin`, action `upgrade`. Path `/adm/plugin/upgrade`.
+  operationId: adm_plugin_upgrade
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

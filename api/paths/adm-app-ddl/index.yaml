@@ -1,0 +1,18 @@
+# GET /adm/app_ddl/index — admin
+get:
+  tags: [admin]
+  summary: admin adm-app-ddl - index
+  description: |
+    ## 中文 / English
+    管理后台 adm-app-ddl handler 的 `index` 动作；路径 `/adm/app_ddl/index`。
+    Admin handler `adm-app-ddl`, action `index`. Path `/adm/app_ddl/index`.
+  operationId: adm_app_ddl_index
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

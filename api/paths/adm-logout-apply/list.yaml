@@ -1,0 +1,21 @@
+# GET /adm/user/logout_apply/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-logout-apply - list
+  description: |
+    ## 中文 / English
+    管理后台 adm-logout-apply handler 的 `list` 动作；路径 `/adm/user/logout_apply/list`。
+    Admin handler `adm-logout-apply`, action `list`. Path `/adm/user/logout_apply/list`.
+  operationId: adm_logout_apply_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

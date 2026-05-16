@@ -610,6 +610,240 @@ paths:
     $ref: './paths/wallet/topup.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
+  /adm:
+    $ref: './paths/adm-index/index.yaml'
+  /adm/index:
+    $ref: './paths/adm-index/index.yaml'
+  /adm/current:
+    $ref: './paths/adm-index/current.yaml'
+  /adm/rbac/me:
+    $ref: './paths/adm-index/rbac.yaml'
+  /adm/welcome:
+    $ref: './paths/adm-index/welcome.yaml'
+  /adm/feedback/index:
+    $ref: './paths/adm-feedback/index.yaml'
+  /adm/admin/config/features:
+    $ref: './paths/adm-admin/config_features.yaml'
+  /adm/admin/config/policy/bootstrap:
+    $ref: './paths/adm-admin/config_policy_bootstrap.yaml'
+  /adm/admin/config/policy/meta:
+    $ref: './paths/adm-admin/config_policy_meta.yaml'
+  /adm/admin/config/policy/preview:
+    $ref: './paths/adm-admin/config_policy_preview.yaml'
+  /adm/admin/config/policy/saved:
+    $ref: './paths/adm-admin/config_policy_saved.yaml'
+  /adm/admin/config/policy:
+    $ref: './paths/adm-admin/config_policy.yaml'
+  /adm/admin/muted_users/list:
+    $ref: './paths/adm-admin/muted_users_list.yaml'
+  /adm/admin/muted_users/unmute:
+    $ref: './paths/adm-admin/muted_users_unmute.yaml'
+  /adm/admin/muted_users/unmute_batch:
+    $ref: './paths/adm-admin/muted_users_unmute_batch.yaml'
+  /adm/admin/push_token/list:
+    $ref: './paths/adm-admin/push_token_list.yaml'
+  /adm/admin/compliance_key/list:
+    $ref: './paths/adm-admin/compliance_key_list.yaml'
+  /adm/admin/compliance_key/create:
+    $ref: './paths/adm-admin/compliance_key_create.yaml'
+  /adm/admin/compliance_key/revoke:
+    $ref: './paths/adm-admin/compliance_key_revoke.yaml'
+  /adm/admin/list:
+    $ref: './paths/adm-admin/list.yaml'
+  /adm/admin/create:
+    $ref: './paths/adm-admin/create.yaml'
+  /adm/admin/assign_role:
+    $ref: './paths/adm-admin/assign_role.yaml'
+  /adm/feedback/reply:
+    $ref: './paths/adm-feedback/reply.yaml'
+  /adm/role/list:
+    $ref: './paths/adm-role/list.yaml'
+  /adm/roles/list:
+    $ref: './paths/adm-role/list.yaml'
+  /adm/role/create:
+    $ref: './paths/adm-role/create.yaml'
+  /adm/roles/create:
+    $ref: './paths/adm-role/create.yaml'
+  /adm/role/permissions/save:
+    $ref: './paths/adm-role/permissions_save.yaml'
+  /adm/role/permission/update:
+    $ref: './paths/adm-role/permissions_save.yaml'
+  /adm/roles/permissions/save:
+    $ref: './paths/adm-role/permissions_save.yaml'
+  /adm/app_ddl/index:
+    $ref: './paths/adm-app-ddl/index.yaml'
+  /adm/app_ddl/save:
+    $ref: './paths/adm-app-ddl/save.yaml'
+  /adm/app_ddl/delete:
+    $ref: './paths/adm-app-ddl/delete.yaml'
+  /adm/app_version/index:
+    $ref: './paths/adm-app-version/index.yaml'
+  /adm/app_version/save:
+    $ref: './paths/adm-app-version/save.yaml'
+  /adm/app_version/delete:
+    $ref: './paths/adm-app-version/delete.yaml'
+  /adm/app_version/version_stats:
+    $ref: './paths/adm-app-version/version_stats.yaml'
+  /adm/attach/auth:
+    $ref: './paths/adm-attach/auth.yaml'
+  /adm/storage/stats:
+    $ref: './paths/adm-attach/stats.yaml'
+  /adm/storage/index:
+    $ref: './paths/adm-attach/index.yaml'
+  /adm/passport/meta:
+    $ref: './paths/adm-passport/meta.yaml'
+  /adm/passport/login:
+    $ref: './paths/adm-passport/login.yaml'
+  /adm/passport/captcha:
+    $ref: './paths/adm-passport/captcha.yaml'
+  /adm/passport/do_login:
+    $ref: './paths/adm-passport/do_login.yaml'
+  /adm/passport/logout:
+    $ref: './paths/adm-passport/logout.yaml'
+  /adm/user/list:
+    $ref: './paths/adm-user/list.yaml'
+  /adm/user/detail:
+    $ref: './paths/adm-user/detail.yaml'
+  /adm/user/ban:
+    $ref: './paths/adm-user/ban.yaml'
+  /adm/user/unban:
+    $ref: './paths/adm-user/unban.yaml'
+  /adm/user/search:
+    $ref: './paths/adm-user/search.yaml'
+  /adm/user/logout_apply/list:
+    $ref: './paths/adm-logout-apply/list.yaml'
+  /adm/user/logout_apply/export:
+    $ref: './paths/adm-logout-apply/export.yaml'
+  /adm/user/logout_apply/reject:
+    $ref: './paths/adm-logout-apply/reject.yaml'
+  /adm/group/list:
+    $ref: './paths/adm-group/list.yaml'
+  /adm/group/detail:
+    $ref: './paths/adm-group/detail.yaml'
+  /adm/group/dissolve:
+    $ref: './paths/adm-group/dissolve.yaml'
+  /adm/group/search:
+    $ref: './paths/adm-group/search.yaml'
+  /adm/group/members:
+    $ref: './paths/adm-group/members.yaml'
+  /adm/message/list:
+    $ref: './paths/adm-message/list.yaml'
+  /adm/message/detail:
+    $ref: './paths/adm-message/detail.yaml'
+  /adm/message/export:
+    $ref: './paths/adm-message/export.yaml'
+  /adm/channel/list:
+    $ref: './paths/adm-channel/list.yaml'
+  /adm/channel/detail/{channel_id}:
+    $ref: './paths/adm-channel/detail.yaml'
+  /adm/channel/{channel_id}/messages:
+    $ref: './paths/adm-channel/messages.yaml'
+  /adm/channel/{channel_id}/subscribers:
+    $ref: './paths/adm-channel/subscribers.yaml'
+  /adm/channel/{channel_id}/subscriber/{user_id}:
+    $ref: './paths/adm-channel/remove_subscriber.yaml'
+  /adm/channel/{channel_id}/admins:
+    $ref: './paths/adm-channel/admins.yaml'
+  /adm/channel/{channel_id}/admin/{user_id}/role:
+    $ref: './paths/adm-channel/update_admin_role.yaml'
+  /adm/channel/{channel_id}/admin/{user_id}:
+    $ref: './paths/adm-channel/remove_admin.yaml'
+  /adm/channel/{channel_id}/invitations:
+    $ref: './paths/adm-channel/invitations.yaml'
+  /adm/channel/{channel_id}/orders:
+    $ref: './paths/adm-channel/orders.yaml'
+  /adm/channel/{channel_id}/stats:
+    $ref: './paths/adm-channel/stats.yaml'
+  /adm/channel/{channel_id}/message/{message_id}/pin:
+    $ref: './paths/adm-channel/pin_message.yaml'
+  /adm/channel/{channel_id}/message/{message_id}/delete:
+    $ref: './paths/adm-channel/delete_message.yaml'
+  /adm/channel/search:
+    $ref: './paths/adm-channel/search.yaml'
+  /adm/channel/delete:
+    $ref: './paths/adm-channel/delete.yaml'
+  /adm/moment/list:
+    $ref: './paths/adm-moment/list.yaml'
+  /adm/moment/detail/{moment_id}:
+    $ref: './paths/adm-moment/detail.yaml'
+  /adm/moment/delete:
+    $ref: './paths/adm-moment/delete.yaml'
+  /adm/moment/report/list:
+    $ref: './paths/adm-moment/report_list.yaml'
+  /adm/moment/report/resolve:
+    $ref: './paths/adm-moment/report_resolve.yaml'
+  /adm/moment/report/batch_resolve:
+    $ref: './paths/adm-moment/report_batch_resolve.yaml'
+  /adm/report/create:
+    $ref: './paths/adm-report/create.yaml'
+  /adm/report/list:
+    $ref: './paths/adm-report/list.yaml'
+  /adm/report/resolve:
+    $ref: './paths/adm-report/resolve.yaml'
+  /adm/report/batch_resolve:
+    $ref: './paths/adm-report/batch_resolve.yaml'
+  /adm/group/report/list:
+    $ref: './paths/adm-report/group_list.yaml'
+  /adm/group/report/resolve:
+    $ref: './paths/adm-report/group_resolve.yaml'
+  /adm/group/report/batch_resolve:
+    $ref: './paths/adm-report/group_batch_resolve.yaml'
+  /adm/channel/report/list:
+    $ref: './paths/adm-report/channel_list.yaml'
+  /adm/channel/report/resolve:
+    $ref: './paths/adm-report/channel_resolve.yaml'
+  /adm/channel/report/batch_resolve:
+    $ref: './paths/adm-report/channel_batch_resolve.yaml'
+  /adm/user/report/list:
+    $ref: './paths/adm-report/user_list.yaml'
+  /adm/user/report/resolve:
+    $ref: './paths/adm-report/user_resolve.yaml'
+  /adm/user/report/batch_resolve:
+    $ref: './paths/adm-report/user_batch_resolve.yaml'
+  /adm/announcement/index:
+    $ref: './paths/adm-announcement/index.yaml'
+  /adm/announcement/create:
+    $ref: './paths/adm-announcement/create.yaml'
+  /adm/announcement/update:
+    $ref: './paths/adm-announcement/update.yaml'
+  /adm/announcement/delete:
+    $ref: './paths/adm-announcement/delete.yaml'
+  /adm/announcement/publish:
+    $ref: './paths/adm-announcement/publish.yaml'
+  /adm/announcement/unpublish:
+    $ref: './paths/adm-announcement/unpublish.yaml'
+  /adm/plugin/list:
+    $ref: './paths/adm-plugin/list.yaml'
+  /adm/plugin/detail:
+    $ref: './paths/adm-plugin/detail.yaml'
+  /adm/plugin/state:
+    $ref: './paths/adm-plugin/state_query.yaml'
+  /adm/plugin/health:
+    $ref: './paths/adm-plugin/health.yaml'
+  /adm/plugin/install:
+    $ref: './paths/adm-plugin/install.yaml'
+  /adm/plugin/enable:
+    $ref: './paths/adm-plugin/enable.yaml'
+  /adm/plugin/disable:
+    $ref: './paths/adm-plugin/disable.yaml'
+  /adm/plugin/upgrade:
+    $ref: './paths/adm-plugin/upgrade.yaml'
+  /adm/plugin/uninstall:
+    $ref: './paths/adm-plugin/uninstall.yaml'
+  /adm/plugin/reset:
+    $ref: './paths/adm-plugin/reset.yaml'
+  /adm/plugin/force_uninstall:
+    $ref: './paths/adm-plugin/force_uninstall.yaml'
+  /adm/stats/overview:
+    $ref: './paths/adm-stats/overview.yaml'
+  /adm/stats/user:
+    $ref: './paths/adm-stats/user.yaml'
+  /adm/stats/message:
+    $ref: './paths/adm-stats/message.yaml'
+  /adm/stats/group:
+    $ref: './paths/adm-stats/group.yaml'
+  /adm/stats/ranking:
+    $ref: './paths/adm-stats/ranking.yaml'
 
 components:
   securitySchemes:

@@ -1,0 +1,25 @@
+# POST /adm/admin/assign_role — admin
+post:
+  tags: [admin]
+  summary: admin adm-admin - assign_role
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `assign_role` 动作；路径 `/adm/admin/assign_role`。
+    Admin handler `adm-admin`, action `assign_role`. Path `/adm/admin/assign_role`.
+  operationId: adm_admin_assign_role
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

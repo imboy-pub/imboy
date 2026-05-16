@@ -1,0 +1,23 @@
+# GET /adm/channel/detail/{channel_id} — admin
+get:
+  tags: [admin]
+  summary: admin adm-channel - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `detail` 动作；路径 `/adm/channel/detail/{channel_id}`。
+    Admin handler `adm-channel`, action `detail`. Path `/adm/channel/detail/{channel_id}`.
+  operationId: adm_channel_detail
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

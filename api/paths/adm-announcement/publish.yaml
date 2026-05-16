@@ -1,0 +1,25 @@
+# POST /adm/announcement/publish — admin
+post:
+  tags: [admin]
+  summary: admin adm-announcement - publish
+  description: |
+    ## 中文 / English
+    管理后台 adm-announcement handler 的 `publish` 动作；路径 `/adm/announcement/publish`。
+    Admin handler `adm-announcement`, action `publish`. Path `/adm/announcement/publish`.
+  operationId: adm_announcement_publish
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

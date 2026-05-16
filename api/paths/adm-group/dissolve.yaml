@@ -1,0 +1,25 @@
+# POST /adm/group/dissolve — admin
+post:
+  tags: [admin]
+  summary: admin adm-group - dissolve
+  description: |
+    ## 中文 / English
+    管理后台 adm-group handler 的 `dissolve` 动作；路径 `/adm/group/dissolve`。
+    Admin handler `adm-group`, action `dissolve`. Path `/adm/group/dissolve`.
+  operationId: adm_group_dissolve
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

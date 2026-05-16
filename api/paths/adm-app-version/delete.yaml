@@ -1,0 +1,25 @@
+# POST /adm/app_version/delete — admin
+post:
+  tags: [admin]
+  summary: admin adm-app-version - delete
+  description: |
+    ## 中文 / English
+    管理后台 adm-app-version handler 的 `delete` 动作；路径 `/adm/app_version/delete`。
+    Admin handler `adm-app-version`, action `delete`. Path `/adm/app_version/delete`.
+  operationId: adm_app_version_delete
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

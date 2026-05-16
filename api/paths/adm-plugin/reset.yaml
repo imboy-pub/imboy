@@ -1,0 +1,25 @@
+# POST /adm/plugin/reset — admin
+post:
+  tags: [admin]
+  summary: admin adm-plugin - reset
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `reset` 动作；路径 `/adm/plugin/reset`。
+    Admin handler `adm-plugin`, action `reset`. Path `/adm/plugin/reset`.
+  operationId: adm_plugin_reset
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

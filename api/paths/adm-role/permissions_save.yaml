@@ -1,0 +1,25 @@
+# POST /adm/role/permissions/save — admin
+post:
+  tags: [admin]
+  summary: admin adm-role - permissions_save
+  description: |
+    ## 中文 / English
+    管理后台 adm-role handler 的 `permissions_save` 动作；路径 `/adm/role/permissions/save`。
+    Admin handler `adm-role`, action `permissions_save`. Path `/adm/role/permissions/save`.
+  operationId: adm_role_permissions_save
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

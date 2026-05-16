@@ -1,0 +1,25 @@
+# POST /adm/attach/auth — admin
+post:
+  tags: [admin]
+  summary: admin adm-attach - auth
+  description: |
+    ## 中文 / English
+    管理后台 adm-attach handler 的 `auth` 动作；路径 `/adm/attach/auth`。
+    Admin handler `adm-attach`, action `auth`. Path `/adm/attach/auth`.
+  operationId: adm_attach_auth
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,25 @@
+# POST /adm/app_ddl/save — admin
+post:
+  tags: [admin]
+  summary: admin adm-app-ddl - save
+  description: |
+    ## 中文 / English
+    管理后台 adm-app-ddl handler 的 `save` 动作；路径 `/adm/app_ddl/save`。
+    Admin handler `adm-app-ddl`, action `save`. Path `/adm/app_ddl/save`.
+  operationId: adm_app_ddl_save
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

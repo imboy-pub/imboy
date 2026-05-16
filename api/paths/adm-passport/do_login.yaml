@@ -1,0 +1,25 @@
+# POST /adm/passport/do_login — admin
+post:
+  tags: [admin]
+  summary: admin adm-passport - do_login
+  description: |
+    ## 中文 / English
+    管理后台 adm-passport handler 的 `do_login` 动作；路径 `/adm/passport/do_login`。
+    Admin handler `adm-passport`, action `do_login`. Path `/adm/passport/do_login`.
+  operationId: adm_passport_do_login
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

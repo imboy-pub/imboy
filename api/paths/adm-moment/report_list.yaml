@@ -1,0 +1,21 @@
+# GET /adm/moment/report/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-moment - report_list
+  description: |
+    ## 中文 / English
+    管理后台 adm-moment handler 的 `report_list` 动作；路径 `/adm/moment/report/list`。
+    Admin handler `adm-moment`, action `report_list`. Path `/adm/moment/report/list`.
+  operationId: adm_moment_report_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

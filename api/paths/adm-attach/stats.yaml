@@ -1,0 +1,18 @@
+# GET /adm/storage/stats — admin
+get:
+  tags: [admin]
+  summary: admin adm-attach - stats
+  description: |
+    ## 中文 / English
+    管理后台 adm-attach handler 的 `stats` 动作；路径 `/adm/storage/stats`。
+    Admin handler `adm-attach`, action `stats`. Path `/adm/storage/stats`.
+  operationId: adm_attach_stats
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

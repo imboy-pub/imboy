@@ -1,0 +1,18 @@
+# GET /adm/plugin/detail — admin
+get:
+  tags: [admin]
+  summary: admin adm-plugin - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `detail` 动作；路径 `/adm/plugin/detail`。
+    Admin handler `adm-plugin`, action `detail`. Path `/adm/plugin/detail`.
+  operationId: adm_plugin_detail
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

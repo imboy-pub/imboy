@@ -1,0 +1,21 @@
+# GET /adm/plugin/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-plugin - list
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `list` 动作；路径 `/adm/plugin/list`。
+    Admin handler `adm-plugin`, action `list`. Path `/adm/plugin/list`.
+  operationId: adm_plugin_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

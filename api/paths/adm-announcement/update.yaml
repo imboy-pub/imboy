@@ -1,0 +1,25 @@
+# POST /adm/announcement/update — admin
+post:
+  tags: [admin]
+  summary: admin adm-announcement - update
+  description: |
+    ## 中文 / English
+    管理后台 adm-announcement handler 的 `update` 动作；路径 `/adm/announcement/update`。
+    Admin handler `adm-announcement`, action `update`. Path `/adm/announcement/update`.
+  operationId: adm_announcement_update
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

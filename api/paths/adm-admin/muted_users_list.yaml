@@ -1,0 +1,21 @@
+# GET /adm/admin/muted_users/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-admin - muted_users_list
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `muted_users_list` 动作；路径 `/adm/admin/muted_users/list`。
+    Admin handler `adm-admin`, action `muted_users_list`. Path `/adm/admin/muted_users/list`.
+  operationId: adm_admin_muted_users_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

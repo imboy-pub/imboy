@@ -1,0 +1,18 @@
+# GET /adm/channel/search — admin
+get:
+  tags: [admin]
+  summary: admin adm-channel - search
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `search` 动作；路径 `/adm/channel/search`。
+    Admin handler `adm-channel`, action `search`. Path `/adm/channel/search`.
+  operationId: adm_channel_search
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

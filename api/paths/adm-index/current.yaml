@@ -1,0 +1,18 @@
+# GET /adm/current — admin
+get:
+  tags: [admin]
+  summary: admin adm-index - current
+  description: |
+    ## 中文 / English
+    管理后台 adm-index handler 的 `current` 动作；路径 `/adm/current`。
+    Admin handler `adm-index`, action `current`. Path `/adm/current`.
+  operationId: adm_index_current
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

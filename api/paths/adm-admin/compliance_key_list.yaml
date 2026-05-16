@@ -1,0 +1,21 @@
+# GET /adm/admin/compliance_key/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-admin - compliance_key_list
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `compliance_key_list` 动作；路径 `/adm/admin/compliance_key/list`。
+    Admin handler `adm-admin`, action `compliance_key_list`. Path `/adm/admin/compliance_key/list`.
+  operationId: adm_admin_compliance_key_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

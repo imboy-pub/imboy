@@ -1,0 +1,34 @@
+# POST /adm/channel/{channel_id}/admin/{user_id}/role — admin
+post:
+  tags: [admin]
+  summary: admin adm-channel - update_admin_role
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `update_admin_role` 动作；路径 `/adm/channel/{channel_id}/admin/{user_id}/role`。
+    Admin handler `adm-channel`, action `update_admin_role`. Path `/adm/channel/{channel_id}/admin/{user_id}/role`.
+  operationId: adm_channel_update_admin_role
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+    - in: path
+      name: user_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

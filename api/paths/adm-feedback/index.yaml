@@ -1,0 +1,18 @@
+# GET /adm/feedback/index — admin
+get:
+  tags: [admin]
+  summary: admin adm-feedback - index
+  description: |
+    ## 中文 / English
+    管理后台 adm-feedback handler 的 `index` 动作；路径 `/adm/feedback/index`。
+    Admin handler `adm-feedback`, action `index`. Path `/adm/feedback/index`.
+  operationId: adm_feedback_index
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,25 @@
+# POST /adm/role/create — admin
+post:
+  tags: [admin]
+  summary: admin adm-role - create
+  description: |
+    ## 中文 / English
+    管理后台 adm-role handler 的 `create` 动作；路径 `/adm/role/create`。
+    Admin handler `adm-role`, action `create`. Path `/adm/role/create`.
+  operationId: adm_role_create
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

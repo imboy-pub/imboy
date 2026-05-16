@@ -1,0 +1,25 @@
+# POST /adm/plugin/force_uninstall — admin
+post:
+  tags: [admin]
+  summary: admin adm-plugin - force_uninstall
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `force_uninstall` 动作；路径 `/adm/plugin/force_uninstall`。
+    Admin handler `adm-plugin`, action `force_uninstall`. Path `/adm/plugin/force_uninstall`.
+  operationId: adm_plugin_force_uninstall
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

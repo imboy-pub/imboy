@@ -1,0 +1,21 @@
+# GET /adm/channel/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-channel - list
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `list` 动作；路径 `/adm/channel/list`。
+    Admin handler `adm-channel`, action `list`. Path `/adm/channel/list`.
+  operationId: adm_channel_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

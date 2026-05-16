@@ -1,0 +1,21 @@
+# GET /adm/message/list — admin
+get:
+  tags: [admin]
+  summary: admin adm-message - list
+  description: |
+    ## 中文 / English
+    管理后台 adm-message handler 的 `list` 动作；路径 `/adm/message/list`。
+    Admin handler `adm-message`, action `list`. Path `/adm/message/list`.
+  operationId: adm_message_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

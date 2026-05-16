@@ -1,0 +1,25 @@
+# POST /adm/channel/delete — admin
+post:
+  tags: [admin]
+  summary: admin adm-channel - delete
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `delete` 动作；路径 `/adm/channel/delete`。
+    Admin handler `adm-channel`, action `delete`. Path `/adm/channel/delete`.
+  operationId: adm_channel_delete
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

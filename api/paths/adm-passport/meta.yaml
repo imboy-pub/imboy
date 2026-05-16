@@ -1,0 +1,18 @@
+# GET /adm/passport/meta — admin
+get:
+  tags: [admin]
+  summary: admin adm-passport - meta
+  description: |
+    ## 中文 / English
+    管理后台 adm-passport handler 的 `meta` 动作；路径 `/adm/passport/meta`。
+    Admin handler `adm-passport`, action `meta`. Path `/adm/passport/meta`.
+  operationId: adm_passport_meta
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

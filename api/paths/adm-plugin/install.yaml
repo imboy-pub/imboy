@@ -1,0 +1,25 @@
+# POST /adm/plugin/install — admin
+post:
+  tags: [admin]
+  summary: admin adm-plugin - install
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `install` 动作；路径 `/adm/plugin/install`。
+    Admin handler `adm-plugin`, action `install`. Path `/adm/plugin/install`.
+  operationId: adm_plugin_install
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

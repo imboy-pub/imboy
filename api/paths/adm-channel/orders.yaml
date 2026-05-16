@@ -1,0 +1,30 @@
+# POST /adm/channel/{channel_id}/orders — admin
+post:
+  tags: [admin]
+  summary: admin adm-channel - orders
+  description: |
+    ## 中文 / English
+    管理后台 adm-channel handler 的 `orders` 动作；路径 `/adm/channel/{channel_id}/orders`。
+    Admin handler `adm-channel`, action `orders`. Path `/adm/channel/{channel_id}/orders`.
+  operationId: adm_channel_orders
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
