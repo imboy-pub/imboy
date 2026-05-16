@@ -1,0 +1,32 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/dissolve.yaml — POST /group/dissolve
+# Handler: src/api/group_handler.erl#dissolve/2 → group_logic:dissolve/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 解散群组
+  description: |
+    ## 中文 / English
+    群主调用解散群组。限流：每小时一次（per_hour_once）。
+    Only the group owner may dissolve a group. Rate-limited to once per hour.
+  operationId: dissolveGroup
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+  responses:
+    '200':
+      description: 解散成功；payload.gid 回显
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid 必须 / 群不存在 / 非群主
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

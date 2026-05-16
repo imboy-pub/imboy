@@ -256,6 +256,28 @@ paths:
     $ref: './paths/moment/delete-comment.yaml'
   /v1/moment/{moment_id}/report:
     $ref: './paths/moment/report.yaml'
+  /group/add:
+    $ref: './paths/group/add.yaml'
+  /group/edit:
+    $ref: './paths/group/edit.yaml'
+  /group/dissolve:
+    $ref: './paths/group/dissolve.yaml'
+  /group/detail:
+    $ref: './paths/group/detail.yaml'
+  /group/page:
+    $ref: './paths/group/page.yaml'
+  /group/msg_page:
+    $ref: './paths/group/msg-page.yaml'
+  /group/qrcode:
+    $ref: './paths/group/qrcode.yaml'
+  /group/face2face:
+    $ref: './paths/group/face2face.yaml'
+  /group/face2face_save:
+    $ref: './paths/group/face2face-save.yaml'
+  /group/remark:
+    $ref: './paths/group/remark.yaml'
+  /v1/group/transfer:
+    $ref: './paths/group/transfer.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

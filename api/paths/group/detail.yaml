@@ -1,0 +1,27 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/detail.yaml — GET /group/detail
+# Handler: src/api/group_handler.erl#detail/2 → group_ds:find_by_id/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 查询群组详情
+  description: |
+    ## 中文 / English
+    返回群组的完整资料。
+    Return the full group profile.
+  operationId: groupDetail
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+      description: 群组 TSID / Group TSID.
+  responses:
+    '200':
+      description: 群详情
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 缺失或非法 / 群不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

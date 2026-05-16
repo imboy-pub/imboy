@@ -1,0 +1,36 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/msg-page.yaml — GET /group/msg_page
+# Handler: src/api/group_handler.erl#msg_page/2 → msg_c2g_ds:page/3
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 群消息分页
+  description: |
+    ## 中文 / English
+    返回指定群组的消息分页。可选 `last_time`（秒级时间戳）只拉取该时间
+    之后的消息。
+    调用方必须是群成员，否则 403。
+    Paginate messages of a group. Optional `last_time` (seconds) filters
+    messages strictly after that timestamp. Caller must be a group member.
+  operationId: pageGroupMessages
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+    - in: query
+      name: last_time
+      required: false
+      schema: { type: integer, default: 0 }
+      description: 秒级时间戳；缺省 0 表示从头拉 / Unix seconds; 0 = from the start.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 群消息分页结果
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

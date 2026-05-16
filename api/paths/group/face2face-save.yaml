@@ -1,0 +1,35 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/face2face-save.yaml — POST /group/face2face_save
+# Handler: src/api/group_handler.erl#face2face_save/2 → group_logic:face2face_save/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 保存面对面建群的成员关系
+  description: |
+    ## 中文 / English
+    面对面建群匹配成功后，调用本接口完成入群登记。返回完整群资料 + 成员列表。
+    Finalize face-to-face group membership; returns full group + member list.
+  operationId: face2faceSave
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [code, gid]
+          properties:
+            code:
+              type: string
+              description: 同 face2face 的 4 位验证码 / Same 4-digit code.
+            gid:
+              type: integer
+              minimum: 1
+  responses:
+    '200':
+      description: 保存成功；payload { group, member_list }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: code 或 gid 不匹配 / 群不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

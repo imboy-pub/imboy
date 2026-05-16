@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/qrcode.yaml — GET /group/qrcode
+# Handler: src/api/group_handler.erl#qrcode/2 → group_member_logic:join_group/4
+# 路径用作群名片二维码的扫描目标；URL 内带 HMAC 校验。
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 扫描群二维码（自动加群）
+  description: |
+    ## 中文 / English
+    用户扫描群二维码后命中此端点。服务端校验 (exp, tk) HMAC 签名 + 未过期，
+    通过则自动把当前用户加入群组并返回新群成员卡片。未登录 / 校验失败 → 302
+    跳转到 redirect_url。
+    Hit by scanning a group QR. Server validates `(exp, tk)` HMAC +
+    expiry, then auto-joins the user. Unauthenticated or invalid → 302
+    redirect to `redirect_url`.
+  operationId: groupQrcodeScan
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: string }
+      description: 群 TSID / Group TSID.
+    - in: query
+      name: exp
+      required: true
+      schema: { type: integer }
+      description: 过期时间戳 (秒) / Expiry timestamp (seconds).
+    - in: query
+      name: tk
+      required: true
+      schema: { type: string }
+      description: md5 签名 / md5 HMAC signature.
+  responses:
+    '200':
+      description: 加群成功；payload 含群资料 + 自己作为新成员的资料
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '302':
+      description: 未登录 / 签名校验失败时重定向到官网
+    '4XX':
+      description: 验证码已过期 / 群不存在 / 已达成员上限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/transfer.yaml — POST /v1/group/transfer
+# Handler: src/api/group_handler.erl#transfer/2 → group_logic:transfer/3
+# 仅 V1 段路由暴露 (router 行 349)。
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 群主把群组转让给指定成员
+  description: |
+    ## 中文 / English
+    群主将群组所有权转让给新群主 (`new_owner_uid`)。限流：每小时一次。
+    Owner transfers ownership to `new_owner_uid`. Rate-limited to once
+    per hour per group.
+  operationId: transferGroup
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, new_owner_uid]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            new_owner_uid:
+              type: integer
+              minimum: 1
+              description: 新群主用户 TSID / New owner user TSID.
+  responses:
+    '200':
+      description: 转让成功；payload.gid 回显
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / gid 或 new_owner_uid 必须 / 非群主 / 目标用户非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

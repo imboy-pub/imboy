@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/edit.yaml — POST /group/edit
+# Handler: src/api/group_handler.erl#edit/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改群组资料
+  description: |
+    ## 中文 / English
+    修改群 title / avatar / introduction。只允许有管理权限的成员调用。
+    Edit group title / avatar / introduction. Requires admin permissions.
+  operationId: editGroup
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid:
+              type: integer
+              description: 群组 TSID / Group TSID.
+            title:
+              type: string
+            avatar:
+              type: string
+            introduction:
+              type: string
+  responses:
+    '200':
+      description: 修改成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / gid 格式有误 / 无管理权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

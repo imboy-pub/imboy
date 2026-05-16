@@ -1,0 +1,34 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/add.yaml — POST /group/add
+# Handler: src/api/group_handler.erl#add/2 → group_logic:add/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 创建新群组（私有群组）
+  description: |
+    ## 中文 / English
+    创建一个 type=2 私有群组。可选携带 member_uids 自动拉人入群。
+    限流：3 秒一次（throttle:check three_second_once）。
+    Create a private group (type=2). Optional `member_uids` bulk-adds
+    members. Rate-limited to once every 3 seconds.
+  operationId: addGroup
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            member_uids:
+              type: array
+              items: { type: string }
+              description: 要拉入群的初始成员 TSID 列表 / Initial member TSIDs.
+  responses:
+    '200':
+      description: 创建成功；payload { group, member_list }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / 超过用户创建群上限 / 字段非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

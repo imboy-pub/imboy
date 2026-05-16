@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/remark.yaml — GET + POST /group/remark
+# Handler: src/api/group_handler.erl#remark/2 (双 method 分发)
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 查询当前用户对群的备注（仅自己可见）
+  description: |
+    ## 中文 / English
+    返回 group_member.remark 字段，仅本人可见。
+    Return the per-user `group_member.remark`; visible only to the caller.
+  operationId: getGroupRemark
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 备注信息 { gid, remark }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+post:
+  tags: [user]
+  summary: 更新当前用户对群的备注
+  description: |
+    ## 中文 / English
+    更新 group_member.remark；仅群成员可调用。
+    Update the per-user `group_member.remark`. Group-member only.
+  operationId: setGroupRemark
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid:
+              type: integer
+              minimum: 1
+            remark:
+              type: string
+  responses:
+    '200':
+      description: 更新成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

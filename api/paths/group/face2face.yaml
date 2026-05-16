@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/face2face.yaml — GET /group/face2face
+# Handler: src/api/group_handler.erl#face2face/2 → group_logic:face2face/4
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 面对面建群（按地理位置 + 验证码匹配）
+  description: |
+    ## 中文 / English
+    面对面建群：附近的用户输入相同 4 位 code 即可被匹配到同一群。
+    限流：3 秒一次。第一个调用者创建群组，后续匹配者直接加入。
+    Face-to-face group creation: nearby users entering the same 4-digit
+    code join the same group. Rate-limited to once every 3 seconds.
+    The first caller creates; subsequent callers join.
+  operationId: face2faceGroup
+  parameters:
+    - in: query
+      name: code
+      required: true
+      schema: { type: string, minLength: 4, maxLength: 4 }
+      description: 4 位数字验证码 / 4-digit code.
+    - in: query
+      name: longitude
+      required: true
+      schema: { type: number, format: float }
+    - in: query
+      name: latitude
+      required: true
+      schema: { type: number, format: float }
+  responses:
+    '200':
+      description: 匹配成功；payload 含 gid + member_list
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 限流 / code 非法 / 经纬度缺失
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

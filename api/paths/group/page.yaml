@@ -1,0 +1,35 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/page.yaml — GET /group/page
+# Handler: src/api/group_handler.erl#page/3 (dispatches by attr)
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 我的群组列表（按 attr 切视图）
+  description: |
+    ## 中文 / English
+    根据 `attr` 返回不同视图的群组分页：
+    - `owner`   → 我创建的群（默认/兜底）
+    - `join`    → 我加入的群
+    - `manager` → 我管理的群（群主/副群主/管理员）
+    Switch view by `attr`: `owner` (default), `join`, or `manager`.
+  operationId: pageGroup
+  parameters:
+    - in: query
+      name: attr
+      required: false
+      schema:
+        type: string
+        enum: [owner, join, manager]
+        default: owner
+      description: 群组视图 / View attribute.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
