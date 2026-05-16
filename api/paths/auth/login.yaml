@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/login.yaml
+# POST /passport/login — 账号密码登录 / Account+password login
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1passport~1login
+# Handler：src/api/passport_handler.erl#login/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 账号密码登录
+  description: |
+    通过手机号或邮箱 + 密码换取 JWT access token 与 refresh_token。
+    副作用：服务端发放 token、记录登录审计、可能触发风控。
+    典型场景：客户端首次启动或 refresh_token 失效后回退至此端点重新登录。
+  operationId: login
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [account, password]
+          properties:
+            account: { type: string }
+            password: { type: string }
+  responses:
+    '200':
+      description: 登录结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      uid: { type: integer, format: int64, description: 用户 TSID（JSON integer，前端 safeParseBigIntJson 转为 string） }
+                      token: { type: string, description: JWT access token }
+                      refresh_token: { type: string }
+                      expires_in: { type: integer, description: 秒 }
+    '4XX':
+      description: 账号密码不匹配、账号被锁定/禁用或参数校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

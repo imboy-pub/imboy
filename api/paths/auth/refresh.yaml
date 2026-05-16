@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/refresh.yaml
+# POST /passport/refresh — 刷新 token / Refresh access token
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1passport~1refresh
+# Handler：src/api/passport_handler.erl#refresh/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 刷新 token
+  description: |
+    用 refresh_token 换取新的 access token + refresh_token 对（refresh_token rotation）。
+    副作用：旧 refresh_token 立即失效；服务端记录刷新事件。
+    典型场景：access token 临期或在 401 拦截器内静默续期，避免用户感知重新登录。
+  operationId: refreshToken
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [refresh_token]
+          properties:
+            refresh_token: { type: string }
+  responses:
+    '200':
+      description: 新的 token 对
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: refresh_token 无效、已过期或与当前会话不匹配（客户端应清理本地凭据并跳回登录）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

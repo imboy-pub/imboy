@@ -1,0 +1,52 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/adm/setup-init.yaml
+# POST /adm/setup/init — 执行首启初始化 / Execute setup
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1adm~1setup~1init
+# Handler：src/adm/adm_setup_handler.erl
+# ----------------------------------------------------------------------------
+post:
+  tags: [admin-setup]
+  summary: 执行首启初始化
+  description: |
+    创建 `role_id=1` 超级管理员。成功一次后后端会把 `adm.setup.completed_at`
+    写入 `config` 表，再次调用返回 `ERR_SETUP_ALREADY_COMPLETED`。
+  operationId: initSetup
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [account, password, nickname]
+          properties:
+            account:
+              type: string
+              description: 手机号（`1[3-9]\d{9}`）或邮箱
+              examples: [admin@example.com]
+            password:
+              type: string
+              minLength: 8
+              maxLength: 64
+              description: 必须同时包含字母与数字
+              examples: [StrongPass123]
+            nickname:
+              type: string
+              minLength: 1
+              maxLength: 80
+              examples: [Ops]
+  responses:
+    '200':
+      description: 初始化成功或已初始化（通过 code 区分）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 参数校验失败、密码强度不足或账号格式非法（系统已初始化的场景由 200 + ERR_SETUP_ALREADY_COMPLETED 表达，不在 4xx）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

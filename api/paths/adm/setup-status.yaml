@@ -1,0 +1,42 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/adm/setup-status.yaml
+# GET /adm/setup/status — 查询首启向导状态 / Get setup wizard status
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1adm~1setup~1status
+# Handler：src/adm/adm_setup_handler.erl
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin-setup]
+  summary: 查询首启向导状态
+  description: |
+    ## 中文
+    免鉴权。用于前端在 `/login` 挂载时决定是否跳转 `/setup`。
+    ## English
+    No auth. Called by the frontend on `/login` mount to decide whether
+    to redirect to `/setup`.
+  operationId: getSetupStatus
+  security: []
+  responses:
+    '200':
+      description: 状态查询成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [initialized]
+                    properties:
+                      initialized:
+                        type: boolean
+                        description: true 表示系统已初始化，不应再进入向导
+    '4XX':
+      description: 查询异常（服务端内部错误，正常情况此端点不应返回 4xx）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,43 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/adm/users.yaml
+# GET /adm/users — 管理后台用户列表（分页） / Admin user list (paginated)
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1adm~1users
+# Handler：src/adm/adm_user_handler.erl
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 管理后台用户列表（分页）
+  description: 游标分页，默认 `size=10`。搜索 / 筛选变化时 `page` 必须重置为 1。
+  operationId: adminListUsers
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+    - $ref: '../../components/parameters/PaginationKeyword.yaml'
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: '../../components/schemas/User.yaml'
+                      total: { type: integer }
+                      page:  { type: integer }
+                      size:  { type: integer }
+    '4XX':
+      description: 未鉴权（401）、当前用户非管理员（403）或分页参数越界
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

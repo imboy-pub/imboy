@@ -1,0 +1,39 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/msg/history.yaml
+# GET /msg/history — 按 conv_seq 游标拉取历史消息 / Fetch history by cursor
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi.yaml#/paths/~1msg~1history
+# Handler：src/api/msg_handler.erl#history/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 按 conv_seq 游标拉取历史消息
+  description: |
+    IMBoy 消息永久存储使用 `conv_seq` 游标（per-conversation 单调递增）保证严格顺序。
+    客户端持久化 `last_conv_seq`，每次请求传入以拉取增量。
+  operationId: getMsgHistory
+  parameters:
+    - $ref: '../../components/parameters/ConvKey.yaml'
+    - $ref: '../../components/parameters/SinceSeq.yaml'
+    - $ref: '../../components/parameters/HistoryLimit.yaml'
+  responses:
+    '200':
+      description: 增量消息数组
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    items:
+                      $ref: '../../components/schemas/Message.yaml'
+    '4XX':
+      description: 未鉴权（401）、conv_key 格式非法或调用方无权访问该会话（403）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
