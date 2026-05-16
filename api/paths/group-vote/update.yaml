@@ -1,0 +1,30 @@
+# POST /v1/group/vote/update
+post:
+  tags: [user]
+  summary: 更新投票 - 仅作者
+  description: |
+    ## 中文 / English
+    更新投票 - 仅作者
+    Update vote (author only, before any cast)
+  operationId: updateGroupVote
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [vote_id]
+          properties:
+            vote_id: { type: integer, minimum: 1 }
+            title: { type: string }
+            description: { type: string }
+            expired_at: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

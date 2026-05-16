@@ -1,0 +1,28 @@
+# POST /v1/group/category/rename
+post:
+  tags: [user]
+  summary: 重命名群分组
+  description: |
+    ## 中文 / English
+    重命名群分组
+    Rename group category
+  operationId: renameGroupCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: integer, minimum: 1 }
+            name: { type: string, maxLength: 60 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

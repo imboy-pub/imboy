@@ -1,0 +1,30 @@
+# POST /v1/group/task/update
+post:
+  tags: [user]
+  summary: 群任务 - 修改
+  description: |
+    ## 中文 / English
+    群任务 - 修改
+    Update task
+  operationId: updateGroupTask
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [task_id]
+          properties:
+            task_id: { type: integer, minimum: 1 }
+            title: { type: string }
+            description: { type: string }
+            deadline: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

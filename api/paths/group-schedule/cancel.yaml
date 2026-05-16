@@ -1,0 +1,27 @@
+# POST /v1/group_schedule/cancel
+post:
+  tags: [user]
+  summary: 群日程 - 取消
+  description: |
+    ## 中文 / English
+    群日程 - 取消
+    Cancel schedule
+  operationId: cancelGroupSchedule
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [schedule_id]
+          properties:
+            schedule_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

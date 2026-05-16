@@ -1,0 +1,23 @@
+# GET /v1/group/vote/detail
+get:
+  tags: [user]
+  summary: 投票详情
+  description: |
+    ## 中文 / English
+    投票详情
+    Vote detail (with option counts)
+  operationId: detailGroupVote
+  parameters:
+    - in: query
+      name: vote_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

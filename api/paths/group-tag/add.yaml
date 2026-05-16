@@ -1,0 +1,28 @@
+# POST /v1/group/tag/add
+post:
+  tags: [user]
+  summary: 群 - 添加标签
+  description: |
+    ## 中文 / English
+    群 - 添加标签
+    Add tag to group
+  operationId: addGroupTag
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, tag]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            tag: { type: string, maxLength: 20 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

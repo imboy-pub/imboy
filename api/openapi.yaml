@@ -344,6 +344,88 @@ paths:
     $ref: './paths/group-album/photo/comments.yaml'
   /group_album/cover/update:
     $ref: './paths/group-album/cover/update.yaml'
+  /v1/group/category/create:
+    $ref: './paths/group-category/create.yaml'
+  /v1/group/category/list:
+    $ref: './paths/group-category/list.yaml'
+  /v1/group/category/rename:
+    $ref: './paths/group-category/rename.yaml'
+  /v1/group/category/delete:
+    $ref: './paths/group-category/delete.yaml'
+  /v1/group/category/move_group:
+    $ref: './paths/group-category/move-group.yaml'
+  /v1/group/category/sort:
+    $ref: './paths/group-category/sort.yaml'
+  /v1/group/tag/add:
+    $ref: './paths/group-tag/add.yaml'
+  /v1/group/tag/remove:
+    $ref: './paths/group-tag/remove.yaml'
+  /v1/group/tag/list:
+    $ref: './paths/group-tag/list.yaml'
+  /v1/group/tag/search:
+    $ref: './paths/group-tag/search.yaml'
+  /v1/group/tag/hot:
+    $ref: './paths/group-tag/hot.yaml'
+  /v1/group/vote/create:
+    $ref: './paths/group-vote/create.yaml'
+  /v1/group/vote/list:
+    $ref: './paths/group-vote/list.yaml'
+  /v1/group/vote/detail:
+    $ref: './paths/group-vote/detail.yaml'
+  /v1/group/vote/cast:
+    $ref: './paths/group-vote/cast.yaml'
+  /v1/group/vote/update:
+    $ref: './paths/group-vote/update.yaml'
+  /v1/group/vote/cancel:
+    $ref: './paths/group-vote/cancel.yaml'
+  /v1/group/vote/close:
+    $ref: './paths/group-vote/close.yaml'
+  /v1/group/vote/my_vote:
+    $ref: './paths/group-vote/my-vote.yaml'
+  /v1/group_schedule/create:
+    $ref: './paths/group-schedule/create.yaml'
+  /v1/group_schedule/update:
+    $ref: './paths/group-schedule/update.yaml'
+  /v1/group_schedule/cancel:
+    $ref: './paths/group-schedule/cancel.yaml'
+  /v1/group_schedule/detail:
+    $ref: './paths/group-schedule/detail.yaml'
+  /v1/group_schedule/list:
+    $ref: './paths/group-schedule/list.yaml'
+  /v1/group_schedule/my_list:
+    $ref: './paths/group-schedule/my-list.yaml'
+  /v1/group_schedule/confirm:
+    $ref: './paths/group-schedule/confirm.yaml'
+  /v1/group/file/upload:
+    $ref: './paths/group-file/upload.yaml'
+  /v1/group/file/download:
+    $ref: './paths/group-file/download.yaml'
+  /v1/group/file/list:
+    $ref: './paths/group-file/list.yaml'
+  /v1/group/file/delete:
+    $ref: './paths/group-file/delete.yaml'
+  /v1/group/file/search:
+    $ref: './paths/group-file/search.yaml'
+  /v1/group/file/categories:
+    $ref: './paths/group-file/categories.yaml'
+  /v1/group/task/create:
+    $ref: './paths/group-task/create.yaml'
+  /v1/group/task/update:
+    $ref: './paths/group-task/update.yaml'
+  /v1/group/task/assign:
+    $ref: './paths/group-task/assign.yaml'
+  /v1/group/task/submit:
+    $ref: './paths/group-task/submit.yaml'
+  /v1/group/task/review:
+    $ref: './paths/group-task/review.yaml'
+  /v1/group/task/list:
+    $ref: './paths/group-task/list.yaml'
+  /v1/group/task/detail:
+    $ref: './paths/group-task/detail.yaml'
+  /v1/group/task/my:
+    $ref: './paths/group-task/my.yaml'
+  /v1/group/task/pending:
+    $ref: './paths/group-task/pending.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

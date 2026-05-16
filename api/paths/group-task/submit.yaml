@@ -1,0 +1,29 @@
+# POST /v1/group/task/submit
+post:
+  tags: [user]
+  summary: 提交任务
+  description: |
+    ## 中文 / English
+    提交任务
+    Submit task work
+  operationId: submitGroupTask
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [task_id]
+          properties:
+            task_id: { type: integer, minimum: 1 }
+            content: { type: string }
+            attachments: { type: array, items: { type: string } }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

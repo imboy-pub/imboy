@@ -1,0 +1,25 @@
+# GET /v1/group_schedule/list
+get:
+  tags: [user]
+  summary: 群下日程列表
+  description: |
+    ## 中文 / English
+    群下日程列表
+    List group schedules
+  operationId: listGroupSchedule
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

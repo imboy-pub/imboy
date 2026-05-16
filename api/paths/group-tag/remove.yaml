@@ -1,0 +1,28 @@
+# POST /v1/group/tag/remove
+post:
+  tags: [user]
+  summary: 群 - 移除标签
+  description: |
+    ## 中文 / English
+    群 - 移除标签
+    Remove tag from group
+  operationId: removeGroupTag
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, tag]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            tag: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

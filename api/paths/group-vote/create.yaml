@@ -1,0 +1,33 @@
+# POST /v1/group/vote/create
+post:
+  tags: [user]
+  summary: 群投票 - 创建
+  description: |
+    ## 中文 / English
+    群投票 - 创建
+    Create group vote
+  operationId: createGroupVote
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, title, options]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            title: { type: string, maxLength: 200 }
+            description: { type: string }
+            options: { type: array, items: { type: string }, minItems: 2, maxItems: 20 }
+            multi_choice: { type: boolean, default: false }
+            anonymous: { type: boolean, default: false }
+            expired_at: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

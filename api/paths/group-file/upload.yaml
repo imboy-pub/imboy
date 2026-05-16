@@ -1,0 +1,29 @@
+# POST /v1/group/file/upload
+post:
+  tags: [user]
+  summary: 群文件 - 上传
+  description: |
+    ## 中文 / English
+    群文件 - 上传
+    Upload group file (multipart)
+  operationId: uploadGroupFile
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid: { type: string }
+            category: { type: string }
+            file: { type: string, format: binary, description: '文件部分（multipart）' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

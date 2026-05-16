@@ -1,0 +1,27 @@
+# POST /v1/group/category/sort
+post:
+  tags: [user]
+  summary: 调整群分组排序
+  description: |
+    ## 中文 / English
+    调整群分组排序
+    Reorder categories
+  operationId: sortGroupCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [ids]
+          properties:
+            ids: { type: array, items: { type: integer }, minItems: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

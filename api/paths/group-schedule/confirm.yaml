@@ -1,0 +1,28 @@
+# POST /v1/group_schedule/confirm
+post:
+  tags: [user]
+  summary: 确认参加 / 不参加
+  description: |
+    ## 中文 / English
+    确认参加 / 不参加
+    Confirm RSVP
+  operationId: confirmGroupSchedule
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [schedule_id, status]
+          properties:
+            schedule_id: { type: integer, minimum: 1 }
+            status: { type: string, enum: [accept, decline, maybe] }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

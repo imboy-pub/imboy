@@ -1,0 +1,27 @@
+# POST /v1/group/vote/close
+post:
+  tags: [user]
+  summary: 提前结束投票
+  description: |
+    ## 中文 / English
+    提前结束投票
+    Close vote early
+  operationId: closeGroupVote
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [vote_id]
+          properties:
+            vote_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

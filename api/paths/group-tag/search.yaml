@@ -1,0 +1,25 @@
+# GET /v1/group/tag/search
+get:
+  tags: [user]
+  summary: 搜索带某标签的群
+  description: |
+    ## 中文 / English
+    搜索带某标签的群
+    Search groups by tag
+  operationId: searchGroupByTag
+  parameters:
+    - in: query
+      name: keyword
+      required: true
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

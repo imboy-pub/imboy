@@ -1,0 +1,23 @@
+# GET /v1/group/tag/hot
+get:
+  tags: [user]
+  summary: 热门群标签 TopN
+  description: |
+    ## 中文 / English
+    热门群标签 TopN
+    Hot tags TopN
+  operationId: hotGroupTag
+  parameters:
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, default: 20, maximum: 100 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

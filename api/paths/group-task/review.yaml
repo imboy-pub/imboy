@@ -1,0 +1,29 @@
+# POST /v1/group/task/review
+post:
+  tags: [user]
+  summary: 审核任务
+  description: |
+    ## 中文 / English
+    审核任务
+    Review submission
+  operationId: reviewGroupTask
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [task_id, decision]
+          properties:
+            task_id: { type: integer, minimum: 1 }
+            decision: { type: string, enum: [approve, reject] }
+            comment: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,27 @@
+# POST /v1/group/category/create
+post:
+  tags: [user]
+  summary: 创建群分组
+  description: |
+    ## 中文 / English
+    创建群分组
+    Create group category
+  operationId: createGroupCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 60 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

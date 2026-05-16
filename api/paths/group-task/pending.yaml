@@ -1,0 +1,21 @@
+# GET /v1/group/task/pending
+get:
+  tags: [user]
+  summary: 等待我审核的任务
+  description: |
+    ## 中文 / English
+    等待我审核的任务
+    Tasks pending my review
+  operationId: pendingReviewGroupTask
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,28 @@
+# POST /v1/group/vote/cast
+post:
+  tags: [user]
+  summary: 投票
+  description: |
+    ## 中文 / English
+    投票
+    Cast a vote
+  operationId: castGroupVote
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [vote_id, option_ids]
+          properties:
+            vote_id: { type: integer, minimum: 1 }
+            option_ids: { type: array, items: { type: integer }, minItems: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

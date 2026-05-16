@@ -1,0 +1,23 @@
+# GET /v1/group/vote/my_vote
+get:
+  tags: [user]
+  summary: 查询自己投了什么
+  description: |
+    ## 中文 / English
+    查询自己投了什么
+    My vote on a poll
+  operationId: myVoteGroupVote
+  parameters:
+    - in: query
+      name: vote_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

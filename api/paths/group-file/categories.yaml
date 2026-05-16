@@ -1,0 +1,23 @@
+# GET /v1/group/file/categories
+get:
+  tags: [user]
+  summary: 群文件分类列表
+  description: |
+    ## 中文 / English
+    群文件分类列表
+    Category list
+  operationId: categoriesGroupFile
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,21 @@
+# GET /v1/group/task/my
+get:
+  tags: [user]
+  summary: 我被指派的任务
+  description: |
+    ## 中文 / English
+    我被指派的任务
+    Tasks assigned to me
+  operationId: myGroupTask
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

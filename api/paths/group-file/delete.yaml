@@ -1,0 +1,27 @@
+# POST /v1/group/file/delete
+post:
+  tags: [user]
+  summary: 删除群文件
+  description: |
+    ## 中文 / English
+    删除群文件
+    Delete group file
+  operationId: deleteGroupFile
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [file_id]
+          properties:
+            file_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

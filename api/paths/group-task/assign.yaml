@@ -1,0 +1,28 @@
+# POST /v1/group/task/assign
+post:
+  tags: [user]
+  summary: 重新指派任务
+  description: |
+    ## 中文 / English
+    重新指派任务
+    Reassign task
+  operationId: assignGroupTask
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [task_id, assignees]
+          properties:
+            task_id: { type: integer, minimum: 1 }
+            assignees: { type: array, items: { type: string }, minItems: 1 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
