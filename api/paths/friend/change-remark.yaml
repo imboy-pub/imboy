@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/change-remark.yaml
+# POST /friend/change_remark — 修改好友备注 / Change friend remark
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1change_remark
+# Handler: src/api/friend_handler.erl#change_remark/2 → friend_ds:change_remark/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改对单个好友的备注
+  description: |
+    ## 中文
+    把当前用户对 `uid` 这位好友的备注名改为 `remark`。
+    备注是私有的（仅本人可见），不会同步给对方。
+    ## English
+    Update the **private** remark/nickname that the current user has
+    assigned to friend `uid`. Remarks are visible only to the assigner.
+  operationId: changeFriendRemark
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [uid, remark]
+          properties:
+            uid:
+              type: string
+              description: 好友 TSID / Friend TSID.
+            remark:
+              type: string
+              description: 新备注 / New remark (empty string clears it).
+  responses:
+    '200':
+      description: 修改成功；payload 含 remark 回显
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: uid 非法 / 非好友 / remark 校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

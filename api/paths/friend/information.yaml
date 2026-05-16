@@ -1,0 +1,49 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/information.yaml
+# GET /friend/information — 好友或群组详情 / Friend or group detail
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1information
+# Handler: src/api/friend_handler.erl#information/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 查询好友或群组的详细信息（双语义）
+  description: |
+    ## 中文
+    通过 `type` 区分查询语义：
+    - `friend` → 返回目标用户资料（id/nickname/account/gender/experience/
+      avatar/sign）+ user_setting + mine_uid
+    - `group`  → 当前实现返回空对象（占位，未来扩展）
+    场景：会话详情/好友资料卡片渲染。
+    ## English
+    Dual-purpose lookup keyed by `type`:
+    - `friend` → returns target user profile + their user_setting + mine_uid
+    - `group`  → currently returns an empty object (placeholder for future)
+  operationId: friendInformation
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: string }
+      description: 目标 ID（用户 TSID 或群 ID）/ Target id (user TSID or group id).
+    - in: query
+      name: type
+      required: true
+      schema:
+        type: string
+        enum: [friend, group]
+      description: 查询语义 / Lookup type.
+  responses:
+    '200':
+      description: 详情对象（type=group 时为空对象）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: id 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

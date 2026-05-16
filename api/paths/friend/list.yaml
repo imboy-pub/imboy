@@ -1,0 +1,35 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/list.yaml
+# GET /friend/list — 好友列表 / Friend list
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1list
+# Handler: src/api/friend_handler.erl#list/2 → friend_ds:page_by_uid/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 全量好友列表 + 自身资料
+  description: |
+    ## 中文
+    一次性返回当前用户的所有好友 + 自身基本资料（mine 字段）+ 在线状态。
+    payload 形如 `{ mine: <user with state>, friend: [...] }`。
+    注意：未分页 — 大账号客户端应考虑端侧缓存与增量同步。
+    ## English
+    Single-shot fetch of the user's entire friend roster plus the
+    current user's own profile (with presence state). Shape:
+    `{ mine: <user with state>, friend: [...] }`. NOT paginated;
+    large accounts should cache client-side and sync incrementally.
+  operationId: listFriends
+  responses:
+    '200':
+      description: 好友列表 + mine
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

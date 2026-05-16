@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/move.yaml
+# POST /friend/move — 移动好友到分组 / Move friend to category
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1move
+# Handler: src/api/friend_handler.erl#move/2 → friend_logic:move_to_category/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 把好友移动到指定分组
+  description: |
+    ## 中文
+    把 `uid` 对应的好友从当前分组移到 `category_id` 分组。
+    `category_id=0` 表示移回"我的好友"默认分组。
+    ## English
+    Move friend `uid` from the current category to `category_id`.
+    Passing `category_id=0` returns the friend to the default
+    "My Friends" bucket.
+  operationId: moveFriend
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [uid, category_id]
+          properties:
+            uid:
+              type: string
+              description: 好友 TSID / Friend TSID.
+            category_id:
+              type: integer
+              minimum: 0
+              description: |
+                目标分组 ID；0 表示默认分组。
+                Target category id; 0 = default bucket.
+  responses:
+    '200':
+      description: 移动成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: uid / category_id 缺失或非法 / 非好友 / 分组不属于当前用户
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

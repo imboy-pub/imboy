@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/delete.yaml
+# POST /friend/delete — 删除好友 / Delete friendship
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1delete
+# Handler: src/api/friend_handler.erl#delete_friend/2 → friend_logic:delete_friend/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除好友关系
+  description: |
+    ## 中文
+    双向解除：当前用户从自己的好友列表移除 `uid`，对方端的好友列表也同步移除。
+    与 /friend/denylist/add 不同：本接口直接断开关系，不保留任何遗留可见性。
+    副作用：删除双向 friend 表记录、推送 friend_deleted 事件、清理 user_tag 关系。
+    ## English
+    Unfriend in both directions. Both sides' friend lists drop each
+    other. Differs from /friend/denylist/add: this fully severs the
+    relationship rather than blocking-while-keeping.
+  operationId: deleteFriend
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [uid]
+          properties:
+            uid:
+              type: string
+              description: 要删除的好友 TSID / Target friend TSID.
+  responses:
+    '200':
+      description: 删除成功（幂等：非好友也返回 200）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: uid 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

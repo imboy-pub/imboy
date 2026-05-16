@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/add.yaml
+# POST /friend/add — 发起好友申请 / Send friend request
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1add
+# Handler: src/api/friend_handler.erl#add_friend/2 → friend_logic:add_friend/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 向目标用户发起好友申请
+  description: |
+    ## 中文
+    向 `to` 用户发起好友申请。`payload` 是申请附言（验证消息）；
+    `created_at` 由客户端传入用于幂等（同一对话短时间重复申请会被合并）。
+    副作用：写入 friend_apply 表 + 通过 WebSocket 推送给对方。
+    ## English
+    Send a friend request to user `to`. `payload` is the verification
+    message attached to the request. `created_at` is supplied by the
+    client for idempotency (rapid duplicates are coalesced).
+  operationId: addFriend
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [to]
+          properties:
+            to:
+              type: string
+              description: 目标用户 TSID / Target user TSID.
+            payload:
+              type: object
+              description: |
+                申请附言（验证消息）+ 来源等元数据。具体字段由 friend_logic
+                按业务定义。
+                Verification message + source metadata; concrete fields are
+                business-defined inside `friend_logic`.
+            created_at:
+              type: integer
+              format: int64
+              description: 客户端时间戳（毫秒）/ Client timestamp in milliseconds.
+  responses:
+    '200':
+      description: 申请已投递
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: to 缺失或非法 / 已是好友 / 被对方拉黑 / 申请字段校验失败 (含 field)
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,55 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend/confirm.yaml
+# POST /friend/confirm — 确认好友申请 / Confirm friend request
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1confirm
+# Handler: src/api/friend_handler.erl#confirm/2 → friend_logic:confirm_friend/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 接受或拒绝好友申请
+  description: |
+    ## 中文
+    接收方调用，根据 `payload` 决定接受或拒绝某条好友申请
+    （from → to 即申请方 → 接收方）。
+    成功返回 from 的资料 + to 对 from 的初始 remark + source（来源说明）。
+    副作用：写入 friend 关系表（双向）+ 推送好友新增事件给双方。
+    ## English
+    Invoked by the receiver to accept or reject a friend request (from
+    sender → to receiver). On accept, returns the sender's profile +
+    the receiver's initial remark + a `source` description.
+  operationId: confirmFriend
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              description: 申请方用户 TSID / Sender user TSID.
+            to:
+              type: string
+              description: 接收方用户 TSID（应为当前 uid）/ Receiver TSID (must be current uid).
+            payload:
+              type: object
+              description: |
+                业务字段（accept/reject 标志、备注、来源等）由 friend_logic 解析。
+                Business fields parsed by `friend_logic` (accept/reject flag,
+                remark, source, …).
+  responses:
+    '200':
+      description: 处理成功；payload 含 from 资料 + remark + source
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: from/to 缺失或非法 / 申请不存在或已过期 / 字段校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
