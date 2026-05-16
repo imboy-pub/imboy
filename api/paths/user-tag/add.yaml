@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag/add.yaml
+# POST /user_tag/add — 新建标签 / Create tag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag~1add
+# Handler: src/api/user_tag_handler.erl#add/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 创建新标签
+  description: |
+    ## 中文
+    在指定场景下创建标签。tag 名长度 ≤ 14 个字符。
+    ## English
+    Create a tag under the given scene. The tag name must be ≤ 14 chars.
+  operationId: addUserTag
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, tag]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            tag:
+              type: string
+              maxLength: 14
+              description: 标签名 / Tag name (max 14 chars).
+  responses:
+    '200':
+      description: 创建成功（payload 含 tagId）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene / 标签名超长 / 同名标签已存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

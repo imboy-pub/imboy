@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag/change-name.yaml
+# POST /user_tag/change_name — 修改标签名 / Rename tag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag~1change_name
+# Handler: src/api/user_tag_handler.erl#change_name/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改标签名称
+  description: |
+    ## 中文
+    把现有标签的 name 改为 tagName。同一 scene + 同一用户下不能与其他标签重名。
+    ## English
+    Rename an existing tag. The new name must be unique within the same
+    scene + user combination.
+  operationId: changeUserTagName
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, tagId, tagName]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            tagId:
+              type: integer
+              minimum: 1
+              description: 标签 ID / Tag ID to rename.
+            tagName:
+              type: string
+              maxLength: 14
+              description: 新名称 / New name (max 14 chars).
+  responses:
+    '200':
+      description: 重命名成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene / 标签名超长 / tagId 非法 / 同名标签已存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

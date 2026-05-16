@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag-relation/add.yaml
+# POST /user_tag_relation/add — 给对象打标签 / Tag an object
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1add
+# Handler: src/api/user_tag_relation_handler.erl#add/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 给收藏或好友打标签
+  description: |
+    ## 中文
+    把 ObjectId（kind_id for collect / user_id for friend）打上多个 tag。
+    friend 场景要求 ObjectId 必须是当前用户的好友（friend_ds:is_friend/2）。
+    每个 tag 长度 ≤ 14 字符。
+    ## English
+    Apply multiple tags to an object: kind_id for `collect`, user_id for
+    `friend`. For `friend` scene the ObjectId must be an existing friend.
+    Each tag must be ≤ 14 chars.
+  operationId: addUserTagRelation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, objectId, tag]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            objectId:
+              type: string
+              description: |
+                收藏类型 kind_id / 好友 user_id（TSID 字符串）.
+                Collection kind_id, or friend's user TSID (string).
+            tag:
+              type: array
+              items:
+                type: string
+                maxLength: 14
+              description: 多个 tag 名 / Multiple tag names.
+  responses:
+    '200':
+      description: 打标签成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene / tag 超长 / ObjectId 或 tag 为空 / 非好友
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

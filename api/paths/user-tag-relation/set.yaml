@@ -1,0 +1,54 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag-relation/set.yaml
+# POST /user_tag_relation/set — 批量设置对象标签 / Bulk set tag membership
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1set
+# Handler: src/api/user_tag_relation_handler.erl#set/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 批量设置某标签下的对象成员
+  description: |
+    ## 中文
+    把 objectIds 一次性设置为指定 tagId/tagName 的全部成员。语义是"覆盖"
+    而非"追加" — 未列入 objectIds 的对象将从该 tag 中移除。
+    ## English
+    Replace the full membership of tag (tagId+tagName) with objectIds.
+    Existing members not present in `objectIds` are removed.
+  operationId: setUserTagRelation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, tagId, tagName, objectIds]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            tagId:
+              type: integer
+              minimum: 1
+            tagName:
+              type: string
+              maxLength: 14
+            objectIds:
+              type: array
+              items:
+                type: string
+              description: 新成员对象 ID 列表 / Final member object IDs.
+  responses:
+    '200':
+      description: 批量设置成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene / tagName 超长 / tagId 非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

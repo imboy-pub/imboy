@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag/page.yaml
+# GET /user_tag/page — 标签分页列表 / Paginated tag list
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag~1page
+# Handler: src/api/user_tag_handler.erl#page/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 当前用户的标签列表（分页）
+  description: |
+    ## 中文
+    按 scene 列出当前用户创建的标签。可选 `kwd` 模糊匹配标签名。
+    scene 必填：`collect` (Scene=1, 收藏类标签) 或 `friend` (Scene=2, 好友类标签)。
+    ## English
+    List tags created by the current user, scoped by `scene`. Optional
+    `kwd` filters by tag name (LIKE %kwd%). Either `collect` (Scene=1)
+    or `friend` (Scene=2) is required.
+  operationId: pageUserTag
+  parameters:
+    - in: query
+      name: scene
+      required: true
+      schema:
+        type: string
+        enum: [collect, friend]
+      description: 标签场景 / Tag scene.
+    - in: query
+      name: kwd
+      required: false
+      schema: { type: string }
+      description: 标签名模糊匹配 / Optional tag name fuzzy filter.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页列表 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: token 无效 / 不支持的 Scene
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

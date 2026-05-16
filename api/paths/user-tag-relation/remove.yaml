@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag-relation/remove.yaml
+# POST /user_tag_relation/remove — 移除单个标签关系 / Remove single tag link
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1remove
+# Handler: src/api/user_tag_relation_handler.erl#remove/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 移除对象的某个标签
+  description: |
+    ## 中文
+    从单个 tag 中移除单个对象。不删除 tag 本身和对象本身。
+    friend 场景下 ObjectId 必须是合法的 user_id。
+    ## English
+    Remove a single object from a single tag. Neither the tag nor the
+    object is deleted. For `friend` scene the `objectId` must parse as
+    a valid user_id (TSID).
+  operationId: removeUserTagRelation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, objectId, tagId]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            objectId:
+              type: string
+              description: 收藏 kind_id / 好友 user TSID / Collection kind_id or friend TSID.
+            tagId:
+              type: integer
+              minimum: 1
+  responses:
+    '200':
+      description: 移除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene / ObjectId 为空 / tagId 非法 / friend 场景 ObjectId 格式有误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

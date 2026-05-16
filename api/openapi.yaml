@@ -124,6 +124,24 @@ paths:
     $ref: './paths/user/cancel-logout.yaml'
   /user/search:
     $ref: './paths/user/search.yaml'
+  /user_tag/page:
+    $ref: './paths/user-tag/page.yaml'
+  /user_tag/add:
+    $ref: './paths/user-tag/add.yaml'
+  /user_tag/change_name:
+    $ref: './paths/user-tag/change-name.yaml'
+  /user_tag/delete:
+    $ref: './paths/user-tag/delete.yaml'
+  /user_tag_relation/collect_page:
+    $ref: './paths/user-tag-relation/collect-page.yaml'
+  /user_tag_relation/friend_page:
+    $ref: './paths/user-tag-relation/friend-page.yaml'
+  /user_tag_relation/add:
+    $ref: './paths/user-tag-relation/add.yaml'
+  /user_tag_relation/set:
+    $ref: './paths/user-tag-relation/set.yaml'
+  /user_tag_relation/remove:
+    $ref: './paths/user-tag-relation/remove.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:

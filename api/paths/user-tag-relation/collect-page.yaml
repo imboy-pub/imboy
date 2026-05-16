@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag-relation/collect-page.yaml
+# GET /user_tag_relation/collect_page — 收藏标签下的对象分页 / Collection items by tag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1collect_page
+# Handler: src/api/user_tag_relation_handler.erl#page/3 (Scene=collect)
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 收藏标签下的收藏项分页
+  description: |
+    ## 中文
+    列出指定收藏标签下的所有收藏项。kwd 同时模糊匹配 source / remark / info。
+    info 字段会按 elib_hasher 解密；返回字段包含 kind / kind_id / source /
+    created_at / updated_at / tag / info。
+    ## English
+    Paginate collection items under a collect-scoped tag. `kwd` fuzzy-matches
+    `source`, `remark`, and `info`. The `info` field is decoded by
+    `elib_hasher` server-side.
+  operationId: collectPageByTag
+  parameters:
+    - in: query
+      name: tag_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+      description: 标签 ID / Tag ID.
+    - in: query
+      name: kwd
+      required: false
+      schema: { type: string }
+      description: 关键字模糊匹配 / Fuzzy keyword.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: token 无效 / tag_id 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

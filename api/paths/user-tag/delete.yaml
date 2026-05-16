@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-tag/delete.yaml
+# POST /user_tag/delete — 删除标签 / Delete tag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag~1delete
+# Handler: src/api/user_tag_handler.erl#delete/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除标签
+  description: |
+    ## 中文
+    删除指定 scene + tag 组合。**标签下的联系人/收藏不会被删除**，只解除
+    打标签关系。
+    ## English
+    Delete a tag by `scene` + `tag` name. **Tagged contacts / collections
+    are NOT removed**; only the tagging association is dropped.
+  operationId: deleteUserTag
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [scene, tag]
+          properties:
+            scene:
+              type: string
+              enum: [collect, friend]
+            tag:
+              type: string
+              description: 标签名 / Tag name.
+  responses:
+    '200':
+      description: 删除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不支持的 Scene
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
