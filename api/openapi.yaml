@@ -377,52 +377,18 @@ components:
         而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
 
   schemas:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
+    # 便于 review、按域演进、避免单文件膨胀至万行。
+    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
+    # 现有 paths 中的 $ref 无需调整。
+    # ----------------------------------------------------------------------
     Envelope:
-      type: object
-      required: [code, msg, sv_ts, payload]
-      properties:
-        code:
-          type: integer
-          description: 0 成功，其余为业务错误码
-        msg:
-          type: string
-        sv_ts:
-          type: integer
-          description: 服务端时间戳（毫秒）
-        payload:
-          description: 业务载荷，形状因端点而异
-      example:
-        code: 0
-        msg: ok
-        sv_ts: 1771481621000
-        payload: { id: 1 }
-
+      $ref: './components/schemas/Envelope.yaml'
     User:
-      type: object
-      properties:
-        id:        { type: integer, format: int64, description: TSID（JSON integer，64-bit BIGINT） }
-        mobile:    { type: [string, "null"] }
-        account:   { type: [string, "null"] }
-        nickname:  { type: string }
-        avatar:    { type: [string, "null"] }
-        status:    { type: integer }
-        created_at:
-          type: string
-          format: date-time
-
+      $ref: './components/schemas/User.yaml'
     Message:
-      type: object
-      properties:
-        msg_id:     { type: integer, format: int64, description: 消息 TSID（近似时间有序但不保证全局单调） }
-        conv_seq:   { type: integer, description: per-conversation 严格单调递增，历史顺序依据 }
-        from:       { type: integer, format: int64, description: 发送者 TSID }
-        to:         { type: integer, format: int64, description: 接收者 TSID 或群 TSID }
-        type:       { type: string, enum: [text, image, voice, video, file, location, contact, revoke, edit] }
-        payload:    { type: object, description: 类型相关业务载荷 }
-        ciphertext: { type: [string, "null"], description: E2EE 场景服务端不解密 }
-        created_at:
-          type: string
-          format: date-time
+      $ref: './components/schemas/Message.yaml'
 
 security:
   - bearerAuth: []

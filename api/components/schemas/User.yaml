@@ -1,0 +1,65 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/User.yaml
+# IMBoy 用户资料 / User profile
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 1)
+# 调用方：api/openapi.yaml#/components/schemas/User
+# TSID：id 字段为 64-bit BIGINT（JSON integer 传输），前端必须用
+#       safeParseBigIntJson 转 string，避免 JS Number 精度丢失。
+# ----------------------------------------------------------------------------
+type: object
+description: |
+  ## 中文
+  用户公开 / 半公开资料。`mobile` / `account` 在非本人视角下可能被后端
+  按隐私设置过滤为 null。
+  ## English
+  User profile (public / semi-public). `mobile` and `account` may be filtered
+  to null by the server when the viewer is not the user themself.
+properties:
+  id:
+    type: integer
+    format: int64
+    description: |
+      ## 中文
+      用户 TSID（64-bit BIGINT，JSON integer 传输；前端转 string）。
+      ## English
+      User TSID (64-bit BIGINT, transferred as JSON integer; clients convert
+      to string with `safeParseBigIntJson`).
+  mobile:
+    type: [string, "null"]
+    description: |
+      ## 中文
+      手机号；仅本人或后台可见。
+      ## English
+      Mobile number; visible to the user themself or admin only.
+  account:
+    type: [string, "null"]
+    description: |
+      ## 中文
+      登录账号（邮箱或手机号别名）。
+      ## English
+      Login account (email or mobile alias).
+  nickname:
+    type: string
+    description: |
+      ## 中文 / English
+      昵称 / Display name.
+  avatar:
+    type: [string, "null"]
+    description: |
+      ## 中文 / English
+      头像 URL / Avatar URL.
+  status:
+    type: integer
+    description: |
+      ## 中文
+      账户状态（1 正常，0 冻结，-1 注销，具体见 user_repo:status/0）。
+      ## English
+      Account status (1 active, 0 frozen, -1 deactivated; see
+      `user_repo:status/0`).
+  created_at:
+    type: string
+    format: date-time
+    description: |
+      ## 中文 / English
+      注册时间 (ISO 8601, UTC) / Registration time (ISO 8601, UTC).

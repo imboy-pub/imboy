@@ -1,0 +1,78 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/Message.yaml
+# IMBoy 消息实体 / Message entity
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 1)
+# 调用方：api/openapi.yaml#/components/schemas/Message
+# 顺序保证：以 conv_seq 为权威（per-conversation 严格单调递增），
+#           msg_id 仅为近似时间有序。
+# ----------------------------------------------------------------------------
+type: object
+description: |
+  ## 中文
+  IMBoy 通用消息实体。C2C 与 C2G 共用结构，通过 `conv_key`（外层）区分。
+  E2EE 场景 `ciphertext` 非空且 `payload` 为加密占位，服务端不解密。
+  ## English
+  Unified IMBoy message entity. C2C and C2G share this shape, disambiguated
+  by the surrounding `conv_key`. In E2EE flows `ciphertext` is non-null and
+  `payload` is an encrypted placeholder; the server never decrypts.
+properties:
+  msg_id:
+    type: integer
+    format: int64
+    description: |
+      ## 中文
+      消息 TSID。近似时间有序，但**不保证**严格全局单调。历史拉取请用 `conv_seq`。
+      ## English
+      Message TSID. Approximately time-ordered but **not** strictly monotonic
+      across nodes. Use `conv_seq` for historical pagination.
+  conv_seq:
+    type: integer
+    description: |
+      ## 中文
+      会话内严格单调递增序号，是历史顺序与游标分页的唯一依据。注：1.0.0-rc.1
+      历史契约未声明 format，保留原签名避免破坏性变更。
+      ## English
+      Strictly monotonic per-conversation sequence; the sole basis for
+      ordering and cursor-based pagination. The 1.0.0-rc.1 frozen contract
+      did not declare a `format`; kept as plain integer to avoid a break.
+  from:
+    type: integer
+    format: int64
+    description: |
+      ## 中文 / English
+      发送者 TSID / Sender TSID.
+  to:
+    type: integer
+    format: int64
+    description: |
+      ## 中文
+      接收者 TSID（C2C 为对端 user_id；C2G 为 group_id）。
+      ## English
+      Recipient TSID (peer user_id for C2C, group_id for C2G).
+  type:
+    type: string
+    enum: [text, image, voice, video, file, location, contact, revoke, edit]
+    description: |
+      ## 中文 / English
+      消息类型 / Message type.
+  payload:
+    type: object
+    description: |
+      ## 中文
+      与 `type` 关联的业务载荷；E2EE 场景为加密占位。
+      ## English
+      Type-specific business payload; an encrypted placeholder in E2EE flows.
+  ciphertext:
+    type: [string, "null"]
+    description: |
+      ## 中文
+      E2EE 密文（base64）。非 E2EE 会话此字段为 null。
+      ## English
+      E2EE ciphertext (base64). Null for non-E2EE conversations.
+  created_at:
+    type: string
+    format: date-time
+    description: |
+      ## 中文 / English
+      消息创建时间 (ISO 8601, UTC) / Creation time (ISO 8601, UTC).

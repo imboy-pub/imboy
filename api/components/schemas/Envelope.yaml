@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/Envelope.yaml
+# IMBoy 通用响应信封 / Common response envelope
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 1)
+# 抽离：从 api/openapi.yaml 内联 Envelope 抽离为独立组件文件
+# 调用方：api/openapi.yaml#/components/schemas/Envelope
+# ----------------------------------------------------------------------------
+type: object
+required: [code, msg, sv_ts, payload]
+properties:
+  code:
+    type: integer
+    description: |
+      ## 中文
+      业务状态码。0 表示成功，其余为业务错误码（见 `include/error_code.hrl`）。
+      ## English
+      Business status code. 0 = success; non-zero values map to error codes
+      defined in `include/error_code.hrl`.
+  msg:
+    type: string
+    description: |
+      ## 中文
+      人类可读的状态描述；成功时通常为 "ok"。
+      ## English
+      Human-readable status message; typically "ok" on success.
+  sv_ts:
+    type: integer
+    description: |
+      ## 中文
+      服务端时间戳（毫秒，UTC）。注：实际为 64-bit，但 1.0.0-rc.1 历史契约
+      未声明 format，保留原签名避免破坏性变更（codegen 仍按 integer 处理）。
+      ## English
+      Server timestamp in ms (UTC). Note: stored as 64-bit, but the 1.0.0-rc.1
+      frozen contract did not declare `format`; kept as plain integer here to
+      avoid a breaking change.
+  payload:
+    description: |
+      ## 中文
+      业务载荷，形状因端点而异；错误响应允许为 null 或 {}。
+      ## English
+      Endpoint-specific business payload; may be null or {} on error.
+example:
+  code: 0
+  msg: ok
+  sv_ts: 1771481621000
+  payload: { id: 1 }
