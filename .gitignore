@@ -89,3 +89,8 @@ temp_exports.txt
 
 # Environment secrets (never commit)
 .env
+
+# T3.2 split: redocly bundle 产物（CI 临时输出，给 oasdiff / codegen 消费）
+# 真源是 api/openapi.yaml + api/components/**；bundled 单文件按需生成。
+api/openapi.bundled.yaml
+api/openapi.bundled.json

@@ -96,6 +96,27 @@ jobs:
             fi
           fi
 
+      # T3.2 split (2026-05-16)：multi-file $ref bundle 验证
+      # 失败信号：跨文件 $ref 解析错误 / 文件缺失 / YAML 锚点污染（codegen 杀手）
+      - name: Bundle OpenAPI multi-file → single file
+        run: |
+          set -euo pipefail
+          redocly bundle api/openapi.yaml -o api/openapi.bundled.yaml
+          # 防御：bundle 后不应出现 YAML alias 锚点 (*ref_N / &ref_N)，
+          # 否则下游 openapi-generator (dart/ts) 会生成异名类型。
+          if grep -nE "(^|[[:space:]])\*ref_|&ref_" api/openapi.bundled.yaml; then
+            echo "::error::Bundle contains YAML aliases — component filename must match PascalCase key"
+            exit 1
+          fi
+          echo "::notice::Bundle clean — $(wc -l < api/openapi.bundled.yaml) lines"
+
+      - name: Upload bundled OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-bundled
+          path: api/openapi.bundled.yaml
+          retention-days: 14
+
   # ----------------------------------------------------------------
   # 3) oasdiff — OpenAPI breaking change 检测（仅 PR）
   #    v1.1 §331: oasdiff job 仅放在 imboy（契约真源仓）
@@ -124,21 +145,38 @@ jobs:
             | tar -xz -C /tmp oasdiff
           /tmp/oasdiff --version
 
+      # T3.2 split (2026-05-16)：multi-file 适配 — oasdiff 不会自动解析跨文件 $ref，
+      # 必须先用 redocly bundle 把 base/head 各自合并为单文件再做 diff，否则
+      # 跨文件 $ref 会被当作字符串比较，导致漏报或误报。
+      - name: Setup Node + Redocly for bundle
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Redocly CLI
+        run: npm i -g @redocly/cli@latest
+
+      - name: Bundle base & head OpenAPI
+        run: |
+          set -euo pipefail
+          # base 仓在 phase 1 之前可能没有 api/components/，bundle 失败时降级
+          # 为直接使用 base/api/openapi.yaml；head 总是新结构，必须 bundle 成功。
+          if [ -d base/api/components ]; then
+            redocly bundle base/api/openapi.yaml -o /tmp/oas.base.yaml
+          else
+            echo "::notice::Base lacks api/components/ — falling back to raw openapi.yaml"
+            cp base/api/openapi.yaml /tmp/oas.base.yaml
+          fi
+          redocly bundle head/api/openapi.yaml -o /tmp/oas.head.yaml
+
       - name: Diff base vs head openapi.yaml (changelog summary)
         run: |
           set -euo pipefail
-          /tmp/oasdiff diff \
-            base/api/openapi.yaml \
-            head/api/openapi.yaml \
-            --format markup || true
+          /tmp/oasdiff diff /tmp/oas.base.yaml /tmp/oas.head.yaml --format markup || true
 
       - name: Breaking changes (fail PR if any)
         run: |
           set -euo pipefail
-          if /tmp/oasdiff breaking \
-              base/api/openapi.yaml \
-              head/api/openapi.yaml \
-              --fail-on ERR; then
+          if /tmp/oasdiff breaking /tmp/oas.base.yaml /tmp/oas.head.yaml --fail-on ERR; then
             echo "::notice::No breaking changes detected"
           else
             echo "::error::Breaking change detected in api/openapi.yaml"
