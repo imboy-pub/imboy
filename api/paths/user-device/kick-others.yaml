@@ -1,0 +1,54 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/kick-others.yaml
+# POST /v1/user_device/kick-others — 踢出其他所有设备 / Kick all other sessions
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1kick-others
+# Handler: src/api/user_device_handler.erl#kick_others/2 → user_device_logic:kick_all_other_devices/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 踢出当前设备外的所有活跃会话
+  description: |
+    ## 中文
+    保留请求体中标识的"当前设备"，强制下线其他所有活跃会话。
+    用于"在所有其他设备退出登录"按钮。
+    副作用：批量断开 WS、清理 syn、写入审计。
+    ## English
+    Disconnect every active session except the one identified by
+    (device_type, device_id) in the request body. Powers the
+    "Log out of all other devices" affordance.
+  operationId: kickOtherDevices
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_type, device_id]
+          properties:
+            device_type:
+              type: string
+              description: 要保留的设备类型 / Device type to keep.
+            device_id:
+              type: string
+              description: 要保留的设备 ID / Device id to keep.
+  responses:
+    '200':
+      description: 其他设备已踢出
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: device_type / device_id 非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: 批量踢出失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

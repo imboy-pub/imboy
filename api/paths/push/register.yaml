@@ -1,0 +1,62 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/push/register.yaml
+# POST /v1/push/register — 注册推送 Token / Register push token
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1push~1register
+# Handler: src/api/user_device_handler.erl#push_register/2
+#          → push_notification_logic:register_token/5
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 注册推送 Token（FCM / APNs）
+  description: |
+    ## 中文
+    把客户端从 FCM (Android) 或 APNs (iOS) 拿到的推送 token 绑定到当前
+    用户 + 设备，用于离线消息推送。
+    幂等：相同 (uid, device_id) 重复注册会更新 token。
+    ## English
+    Bind the push token obtained from FCM (Android) or APNs (iOS) to the
+    current user + device for offline notifications.
+    Idempotent on (uid, device_id) — repeat registrations update the token.
+  operationId: pushRegister
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_id, platform, token]
+          properties:
+            device_id:
+              type: string
+              description: 设备唯一标识 / Device unique id.
+            device_type:
+              type: string
+              description: 设备类型（android / ios / desktop / web）/ Device type.
+            platform:
+              type: string
+              enum: [fcm, apns]
+              description: 推送服务提供商 / Push provider.
+            token:
+              type: string
+              description: FCM / APNs 设备 token / Provider-issued device token.
+  responses:
+    '200':
+      description: 注册成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: device_id / token / platform 任一缺失
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: 内部错误（push_notification_logic 失败）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

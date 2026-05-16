@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/kick.yaml
+# POST /v1/user_device/kick — 踢出指定设备 / Kick a specific device
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1kick
+# Handler: src/api/user_device_handler.erl#kick/2 → user_device_logic:kick_device/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 踢出指定设备的活跃会话
+  description: |
+    ## 中文
+    强制下线指定 (device_type, device_id) 对应的活跃 WebSocket 会话，
+    使该设备的 token 立即失效。
+    副作用：服务端断开 WebSocket、清理 syn 注册、写入审计。
+    ## English
+    Force-disconnect the active WebSocket session for the given
+    (device_type, device_id) tuple and invalidate the device's token.
+    Side effects: WS disconnect, syn registry cleanup, audit log.
+  operationId: kickDevice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_type, device_id]
+          properties:
+            device_type:
+              type: string
+              description: 设备类型 / Device type.
+            device_id:
+              type: string
+              description: 设备唯一标识 / Device unique id.
+  responses:
+    '200':
+      description: 设备已踢出
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: device_type 非法 / device_id 为空 / 设备未找到
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

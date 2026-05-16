@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/change-name.yaml
+# POST /user_device/change_name — 修改设备名 / Rename device
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1user_device~1change_name
+# Handler: src/api/user_device_handler.erl#change_name/2 → user_device_logic:change_name/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 修改设备显示名称
+  description: |
+    ## 中文
+    把指定 did 对应设备的显示名称改为 name（仅影响 UI 展示，不改变 did 本身）。
+    幂等。
+    ## English
+    Update the human-readable name for the device identified by `did`.
+    UI-only; `did` itself is not affected. Idempotent.
+  operationId: changeUserDeviceName
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [did, name]
+          properties:
+            did:
+              type: string
+              description: 设备唯一标识 / Device unique id.
+            name:
+              type: string
+              description: 新显示名 / New display name.
+  responses:
+    '200':
+      description: 修改成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: did 不存在或不属于当前用户
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

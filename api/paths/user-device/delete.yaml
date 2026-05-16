@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/delete.yaml
+# POST /user_device/delete — 删除设备档案 / Delete device record
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1user_device~1delete
+# Handler: src/api/user_device_handler.erl#delete/2 → user_device_logic:delete/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除设备档案（持久化）
+  description: |
+    ## 中文
+    从 user_device 表中删除指定设备记录。仅删除档案；如果该设备此时在线，
+    应配合 /v1/user_device/kick 主动踢出。
+    幂等：不存在的 did 也返回 200。
+    ## English
+    Delete a device record from the `user_device` table. Does NOT kick
+    an active session — combine with /v1/user_device/kick if needed.
+    Idempotent for non-existent `did`.
+  operationId: deleteUserDevice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [did]
+          properties:
+            did:
+              type: string
+  responses:
+    '200':
+      description: 删除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

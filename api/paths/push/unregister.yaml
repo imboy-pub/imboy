@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/push/unregister.yaml
+# POST /v1/push/unregister — 注销推送 Token / Unregister push token
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1push~1unregister
+# Handler: src/api/user_device_handler.erl#push_unregister/2
+#          → push_notification_logic:unregister_token/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 注销推送 Token
+  description: |
+    ## 中文
+    解绑 (current_uid, device_id) 的推送 token。客户端在用户主动登出
+    或关闭通知权限时调用。幂等。
+    ## English
+    Detach the push token for (current_uid, device_id). Clients call this
+    on explicit logout or when the user revokes notification permission.
+    Idempotent.
+  operationId: pushUnregister
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_id]
+          properties:
+            device_id:
+              type: string
+  responses:
+    '200':
+      description: 注销成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: device_id 为空
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

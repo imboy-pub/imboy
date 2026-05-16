@@ -150,6 +150,24 @@ paths:
     $ref: './paths/user-collect/remove.yaml'
   /user_collect/change:
     $ref: './paths/user-collect/change.yaml'
+  /user_device/page:
+    $ref: './paths/user-device/page.yaml'
+  /user_device/change_name:
+    $ref: './paths/user-device/change-name.yaml'
+  /user_device/delete:
+    $ref: './paths/user-device/delete.yaml'
+  /v1/user_device/sessions:
+    $ref: './paths/user-device/sessions.yaml'
+  /v1/user_device/check_login:
+    $ref: './paths/user-device/check-login.yaml'
+  /v1/user_device/kick:
+    $ref: './paths/user-device/kick.yaml'
+  /v1/user_device/kick-others:
+    $ref: './paths/user-device/kick-others.yaml'
+  /v1/push/register:
+    $ref: './paths/push/register.yaml'
+  /v1/push/unregister:
+    $ref: './paths/push/unregister.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:

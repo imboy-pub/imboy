@@ -1,0 +1,40 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/sessions.yaml
+# GET /v1/user_device/sessions — 活跃会话列表 / Active sessions (in-memory)
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1sessions
+# Handler: src/api/user_device_handler.erl#sessions/2 → user_device_logic:get_active_devices/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 当前用户的活跃会话（实时）
+  description: |
+    ## 中文
+    返回内存中（syn 注册表）当前用户的所有活跃登录会话。
+    与 /user_device/page 区分：此处仅含**当下在线**的会话，不含历史档案。
+    payload 形如 `{ devices: [...], count: N }`。
+    ## English
+    Return the user's currently active login sessions from the in-memory
+    syn registry. Distinct from /user_device/page which lists historical
+    records. Payload shape: `{ devices: [...], count: N }`.
+  operationId: listActiveSessions
+  responses:
+    '200':
+      description: 活跃会话列表
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: syn 注册表查询失败 / 内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

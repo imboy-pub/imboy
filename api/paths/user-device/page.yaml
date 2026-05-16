@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/page.yaml
+# GET /user_device/page — 设备档案分页 / Paginated device list (DB)
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1user_device~1page
+# Handler: src/api/user_device_handler.erl#page/2 → user_device_logic:page/3
+# 数据源：数据库 user_device 表（与 /sessions 的内存活跃会话区分）。
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 设备档案分页列表（持久化）
+  description: |
+    ## 中文
+    返回当前用户在数据库中登记过的设备档案，分页。
+    与 `/v1/user_device/sessions`（实时活跃会话，内存）区分：本端点只看
+    user_device 表，包含历史登录过的所有设备。
+    ## English
+    Paginate device records stored in the `user_device` table. Distinct
+    from `/v1/user_device/sessions`, which lists in-memory active sessions
+    only. This endpoint returns the full historical device roster.
+  operationId: pageUserDevice
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: token 无效
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

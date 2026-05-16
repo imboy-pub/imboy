@@ -1,0 +1,57 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user-device/check-login.yaml
+# POST /v1/user_device/check_login — 检查登录冲突 / Check login conflict
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
+# 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1check_login
+# Handler: src/api/user_device_handler.erl#check_login/2 → user_device_logic:check_login_conflict/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 检查同类型设备登录冲突
+  description: |
+    ## 中文
+    业务约束：同一 device_type（如 ios / android）只允许一个活跃会话。
+    本端点用于客户端登录前主动询问"会不会顶掉别人"。
+    返回 `conflict=false` 可直接登录；`conflict=true` 时附带
+    `conflict_device` 让客户端 UI 决定是否提示用户。
+    ## English
+    Business rule: only one active session per `device_type`. Used by
+    clients to ask "will I kick someone else?" before logging in.
+    `conflict=false` means safe to proceed; `conflict=true` includes
+    `conflict_device` so the UI can prompt the user.
+  operationId: checkDeviceLoginConflict
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [device_type]
+          properties:
+            device_type:
+              type: string
+              description: |
+                设备类型；接受值由 user_device_logic:validate_device_type/1 决定
+                （常见值：ios / android / web / desktop）。
+                Device type; valid values come from
+                `user_device_logic:validate_device_type/1`.
+  responses:
+    '200':
+      description: 已查询；payload 含 conflict 布尔 + 可选 conflict_device
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: device_type 非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: 内部冲突查询失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
