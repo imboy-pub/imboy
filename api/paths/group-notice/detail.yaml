@@ -1,0 +1,23 @@
+# GET /v1/group/notice/detail — 公告详情 / Notice detail
+get:
+  tags: [user]
+  summary: 公告详情
+  description: |
+    ## 中文 / English
+    根据 notice_id 返回公告详情。
+    Return notice detail by id.
+  operationId: detailGroupNotice
+  parameters:
+    - in: query
+      name: notice_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 公告详情
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: notice 不存在 / 无访问权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

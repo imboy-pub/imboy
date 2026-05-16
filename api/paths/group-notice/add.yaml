@@ -1,0 +1,35 @@
+# POST /group_notice/add — 新建群公告 / Create group notice
+# Handler: group_notice_handler.erl#add/3
+post:
+  tags: [user]
+  summary: 群公告 - 新建草稿
+  description: |
+    ## 中文 / English
+    新建群公告草稿。需有群管理权限。`status` 0=草稿 1=已发布；
+    新建时通常传 0，发布走 /publish。
+    Create a group-notice draft (admin only). `status` 0=draft, 1=published.
+  operationId: addGroupNotice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, title]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            title: { type: string }
+            body: { type: string }
+            status: { type: integer, enum: [0, 1], default: 0 }
+            expired_at:
+              type: string
+              description: 过期时间（ISO 8601 或时间戳，空表示不过期）/ Expiry; empty = never.
+  responses:
+    '200':
+      description: 创建成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

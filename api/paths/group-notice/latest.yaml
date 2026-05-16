@@ -1,0 +1,23 @@
+# GET /group_notice/latest — 最新公告 / Latest notice
+get:
+  tags: [user]
+  summary: 群最新已发布公告（用于聊天页头部展示）
+  description: |
+    ## 中文 / English
+    返回该群当前最新的已发布公告。
+    Return the most recent published notice for the group.
+  operationId: latestGroupNotice
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 最新公告（无则 payload 为空对象）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,32 @@
+# POST /group_notice/edit — 修改群公告 / Edit notice
+post:
+  tags: [user]
+  summary: 修改公告内容（含 status 切换）
+  description: |
+    ## 中文 / English
+    修改 title / body / status / expired_at；仅作者或群管理可调用。
+    Edit notice fields; author or admin only.
+  operationId: editGroupNotice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [notice_id, gid]
+          properties:
+            notice_id: { type: integer, minimum: 1 }
+            gid: { type: integer, minimum: 1 }
+            title: { type: string }
+            body: { type: string }
+            status: { type: integer, enum: [0, 1] }
+            expired_at: { type: string }
+  responses:
+    '200':
+      description: 修改成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: notice 不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

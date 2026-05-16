@@ -1,0 +1,23 @@
+# GET /v1/group/notice/list — 公告列表（成员视角）/ Notices list
+get:
+  tags: [user]
+  summary: 成员视角的群公告列表
+  description: |
+    ## 中文 / English
+    返回成员可见的全部已发布公告（不分页或简化分页，按 logic 实现）。
+    All published notices visible to a member.
+  operationId: listGroupNotice
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 公告列表
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

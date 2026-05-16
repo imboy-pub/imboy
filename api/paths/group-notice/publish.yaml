@@ -1,0 +1,28 @@
+# POST /group_notice/publish — 发布公告 / Publish notice
+post:
+  tags: [user]
+  summary: 发布草稿公告
+  description: |
+    ## 中文 / English
+    把指定草稿公告发布给全群（status: 0 → 1）。会触发群消息广播。
+    Move a draft notice to published; broadcasts to group.
+  operationId: publishGroupNotice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [notice_id, gid]
+          properties:
+            notice_id: { type: integer, minimum: 1 }
+            gid: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 发布成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 已发布 / 公告不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

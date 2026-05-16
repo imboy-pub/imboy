@@ -1,0 +1,27 @@
+# POST /v1/group/notice/mark_read — 标记公告已读 / Mark notice read
+post:
+  tags: [user]
+  summary: 标记群公告为已读
+  description: |
+    ## 中文 / English
+    标记当前用户对该公告已读。幂等。
+    Mark the notice as read for the current user. Idempotent.
+  operationId: markGroupNoticeRead
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [notice_id]
+          properties:
+            notice_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 标记成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: notice 不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

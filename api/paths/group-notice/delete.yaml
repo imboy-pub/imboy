@@ -1,0 +1,27 @@
+# POST /group_notice/delete — 删除公告 / Delete notice
+post:
+  tags: [user]
+  summary: 删除公告
+  description: |
+    ## 中文 / English
+    删除指定公告。仅作者或管理员可删。
+    Delete a notice; author or admin only.
+  operationId: deleteGroupNotice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [notice_id]
+          properties:
+            notice_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 公告不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

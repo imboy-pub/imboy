@@ -294,6 +294,28 @@ paths:
     $ref: './paths/group-member/unmute.yaml'
   /v1/group_member/role:
     $ref: './paths/group-member/role.yaml'
+  /group_notice/add:
+    $ref: './paths/group-notice/add.yaml'
+  /group_notice/edit:
+    $ref: './paths/group-notice/edit.yaml'
+  /group_notice/delete:
+    $ref: './paths/group-notice/delete.yaml'
+  /group_notice/page:
+    $ref: './paths/group-notice/page.yaml'
+  /group_notice/publish:
+    $ref: './paths/group-notice/publish.yaml'
+  /group_notice/latest:
+    $ref: './paths/group-notice/latest.yaml'
+  /v1/group/notice/list:
+    $ref: './paths/group-notice/list.yaml'
+  /v1/group/notice/detail:
+    $ref: './paths/group-notice/detail.yaml'
+  /v1/group/notice/pin:
+    $ref: './paths/group-notice/pin.yaml'
+  /v1/group/notice/unpin:
+    $ref: './paths/group-notice/unpin.yaml'
+  /v1/group/notice/mark_read:
+    $ref: './paths/group-notice/mark-read.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

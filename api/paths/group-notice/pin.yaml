@@ -1,0 +1,27 @@
+# POST /v1/group/notice/pin — 置顶公告 / Pin notice
+post:
+  tags: [user]
+  summary: 置顶群公告
+  description: |
+    ## 中文 / English
+    把公告置顶；同一群同一时间通常只有一个置顶公告（实现层决定）。
+    Pin a notice. Typically only one pinned notice per group.
+  operationId: pinGroupNotice
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [notice_id]
+          properties:
+            notice_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 置顶成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: notice 不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

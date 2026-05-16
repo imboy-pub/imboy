@@ -1,0 +1,26 @@
+# GET /group_notice/page — 公告分页 / Paginated notices
+get:
+  tags: [user]
+  summary: 群公告分页（管理后台视图）
+  description: |
+    ## 中文 / English
+    返回群公告分页列表（含草稿）；调用方须为该群成员（管理员可见草稿，
+    普通成员只见已发布）。
+    Paginate notices. Members see published only; admins see drafts too.
+  operationId: pageGroupNotice
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
