@@ -504,6 +504,52 @@ paths:
     $ref: './paths/channel/order/my.yaml'
   /v1/channel/order/{order_no}:
     $ref: './paths/channel/order/get.yaml'
+  /v1/e2ee/user_keys:
+    $ref: './paths/e2ee/user-keys.yaml'
+  /v1/e2ee/group_member_keys:
+    $ref: './paths/e2ee/group-member-keys.yaml'
+  /v1/e2ee/report_device_key:
+    $ref: './paths/e2ee/report-device-key.yaml'
+  /v1/e2ee/key/status:
+    $ref: './paths/e2ee/key-status.yaml'
+  /v1/e2ee/notifications/pull:
+    $ref: './paths/e2ee/pull-notifications.yaml'
+  /v1/e2ee/recovery/start:
+    $ref: './paths/e2ee/start-recovery.yaml'
+  /v1/e2ee/backup/list:
+    $ref: './paths/e2ee/backup-list.yaml'
+  /v1/e2ee/backup/delete:
+    $ref: './paths/e2ee/backup-delete.yaml'
+  /v1/e2ee/compliance_key:
+    $ref: './paths/e2ee/compliance-key.yaml'
+  /v1/e2ee/transfer/create:
+    $ref: './paths/e2ee-transfer/create.yaml'
+  /v1/e2ee/transfer/accept:
+    $ref: './paths/e2ee-transfer/accept.yaml'
+  /v1/e2ee/transfer/confirm:
+    $ref: './paths/e2ee-transfer/confirm.yaml'
+  /v1/e2ee/transfer/cancel:
+    $ref: './paths/e2ee-transfer/cancel.yaml'
+  /v1/e2ee/transfer/info:
+    $ref: './paths/e2ee-transfer/info.yaml'
+  /v1/e2ee/transfer/pending:
+    $ref: './paths/e2ee-transfer/pending.yaml'
+  /v1/e2ee/social/contacts:
+    $ref: './paths/e2ee-social/contacts.yaml'
+  /v1/e2ee/social/contacts/add:
+    $ref: './paths/e2ee-social/add-contact.yaml'
+  /v1/e2ee/social/contacts/remove:
+    $ref: './paths/e2ee-social/remove-contact.yaml'
+  /v1/e2ee/social/create_shards:
+    $ref: './paths/e2ee-social/create-shards.yaml'
+  /v1/e2ee/social/shards:
+    $ref: './paths/e2ee-social/get-shards.yaml'
+  /v1/e2ee/social/recover:
+    $ref: './paths/e2ee-social/recover.yaml'
+  /v1/e2ee/social/proxy_shards:
+    $ref: './paths/e2ee-social/proxy-shards.yaml'
+  /v1/e2ee/social/decrypt_shard:
+    $ref: './paths/e2ee-social/decrypt-shard.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

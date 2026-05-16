@@ -1,0 +1,23 @@
+# GET /v1/e2ee/group_member_keys
+get:
+  tags: [user]
+  summary: 查询群成员公钥
+  description: |
+    ## 中文 / English
+    查询群成员公钥
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeGroupMemberKeys
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

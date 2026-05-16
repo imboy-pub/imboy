@@ -1,0 +1,23 @@
+# GET /v1/e2ee/transfer/info
+get:
+  tags: [user]
+  summary: 迁移会话详情
+  description: |
+    ## 中文 / English
+    迁移会话详情
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeTransferInfo
+  parameters:
+    - in: query
+      name: transfer_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

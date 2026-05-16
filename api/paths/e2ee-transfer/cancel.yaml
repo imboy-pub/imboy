@@ -1,0 +1,26 @@
+# POST /v1/e2ee/transfer/cancel
+post:
+  tags: [user]
+  summary: 取消迁移会话
+  description: |
+    ## 中文 / English
+    取消迁移会话
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeTransferCancel
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            transfer_id: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,27 @@
+# POST /v1/e2ee/transfer/create
+post:
+  tags: [user]
+  summary: 新设备 - 创建迁移会话
+  description: |
+    ## 中文 / English
+    新设备 - 创建迁移会话
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeTransferCreate
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            new_device_id: { type: string }
+            challenge: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

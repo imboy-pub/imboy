@@ -1,0 +1,23 @@
+# GET /v1/e2ee/key/status
+get:
+  tags: [user]
+  summary: 公钥状态查询
+  description: |
+    ## 中文 / English
+    公钥状态查询
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeKeyStatus
+  parameters:
+    - in: query
+      name: uid
+      required: false
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

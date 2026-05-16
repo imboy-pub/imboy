@@ -1,0 +1,18 @@
+# GET /v1/e2ee/social/shards
+get:
+  tags: [user]
+  summary: 拉取自己保管的 shards
+  description: |
+    ## 中文 / English
+    拉取自己保管的 shards
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeSocialGetShards
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

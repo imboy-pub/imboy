@@ -1,0 +1,18 @@
+# GET /v1/e2ee/notifications/pull
+get:
+  tags: [user]
+  summary: 拉取 E2EE 系统通知
+  description: |
+    ## 中文 / English
+    拉取 E2EE 系统通知
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eePullNotifications
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

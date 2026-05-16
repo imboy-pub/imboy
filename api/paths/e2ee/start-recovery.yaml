@@ -1,0 +1,26 @@
+# POST /v1/e2ee/recovery/start
+post:
+  tags: [user]
+  summary: 启动 social-recovery 流程
+  description: |
+    ## 中文 / English
+    启动 social-recovery 流程
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeStartRecovery
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            method: { type: string, enum: [social, backup] }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,27 @@
+# POST /v1/e2ee/report_device_key
+post:
+  tags: [user]
+  summary: 上报本设备公钥
+  description: |
+    ## 中文 / English
+    上报本设备公钥
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeReportDeviceKey
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            device_id: { type: string }
+            public_key: { type: string, description: 'RSA-OAEP-256 公钥 PEM/JWK' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

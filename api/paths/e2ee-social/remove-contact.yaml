@@ -1,0 +1,26 @@
+# POST /v1/e2ee/social/contacts/remove
+post:
+  tags: [user]
+  summary: 移除联系人
+  description: |
+    ## 中文 / English
+    移除联系人
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeSocialRemoveContact
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            uid: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

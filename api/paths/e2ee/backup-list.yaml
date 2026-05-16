@@ -1,0 +1,18 @@
+# GET /v1/e2ee/backup/list
+get:
+  tags: [user]
+  summary: 服务端持久 shard 列表
+  description: |
+    ## 中文 / English
+    服务端持久 shard 列表
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeBackupList
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

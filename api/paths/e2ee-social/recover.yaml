@@ -1,0 +1,26 @@
+# POST /v1/e2ee/social/recover
+post:
+  tags: [user]
+  summary: 用 shards 恢复主密钥
+  description: |
+    ## 中文 / English
+    用 shards 恢复主密钥
+    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+  operationId: e2eeSocialRecover
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            shards: { type: array, items: { type: string } }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限 / shard 校验失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

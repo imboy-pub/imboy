@@ -1,0 +1,18 @@
+# GET /v1/e2ee/social/contacts
+get:
+  tags: [user]
+  summary: 我的社交恢复联系人
+  description: |
+    ## 中文 / English
+    我的社交恢复联系人
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeSocialContacts
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

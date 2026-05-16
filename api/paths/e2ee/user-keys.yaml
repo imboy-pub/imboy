@@ -1,0 +1,23 @@
+# GET /v1/e2ee/user_keys
+get:
+  tags: [user]
+  summary: 查询用户公钥（RSA-OAEP-256）
+  description: |
+    ## 中文 / English
+    查询用户公钥（RSA-OAEP-256）
+    See doc/api/e2ee_*.md for crypto invariants.
+  operationId: e2eeUserKeys
+  parameters:
+    - in: query
+      name: uids
+      required: true
+      schema: { type: string, description: '逗号分隔 TSID 列表' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
