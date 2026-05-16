@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend-denylist/remove.yaml
+# POST /friend/denylist/remove — 移除黑名单 / Remove from denylist
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 10 / D-user-denylist)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1denylist~1remove
+# Handler: src/api/user_denylist_handler.erl#remove/2 → user_denylist_logic:remove/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 把某用户从黑名单移除
+  description: |
+    ## 中文
+    把 denied_user_id 从当前用户黑名单中移除。如果原本是好友关系，对方的
+    消息 / moments / presence 立即恢复可见。
+    幂等：不在黑名单中也返回 200（无副作用）。
+    ## English
+    Remove `denied_user_id` from the current user's denylist. If the
+    pair were friends prior to blocking, the target's messages /
+    moments / presence become immediately visible again.
+    Idempotent.
+  operationId: removeDenylist
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [denied_user_id]
+          properties:
+            denied_user_id:
+              type: string
+              description: 目标用户 TSID / Target user TSID.
+  responses:
+    '200':
+      description: 移除成功（幂等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: denied_user_id 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

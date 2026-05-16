@@ -168,6 +168,12 @@ paths:
     $ref: './paths/push/register.yaml'
   /v1/push/unregister:
     $ref: './paths/push/unregister.yaml'
+  /friend/denylist/page:
+    $ref: './paths/friend-denylist/page.yaml'
+  /friend/denylist/add:
+    $ref: './paths/friend-denylist/add.yaml'
+  /friend/denylist/remove:
+    $ref: './paths/friend-denylist/remove.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:

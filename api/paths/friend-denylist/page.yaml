@@ -1,0 +1,36 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend-denylist/page.yaml
+# GET /friend/denylist/page — 黑名单分页 / Paginated denylist
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 10 / D-user-denylist)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1denylist~1page
+# Handler: src/api/user_denylist_handler.erl#page/2 → user_denylist_logic:page/3
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 当前用户的黑名单分页
+  description: |
+    ## 中文
+    返回当前用户拉黑的所有用户列表（分页）。被拉黑用户无法向当前用户
+    发送消息、添加好友、查看动态。
+    ## English
+    Return the paginated list of users blocked by the current user.
+    Blocked users cannot send messages to, add as a friend, or view
+    the moments of the current user.
+  operationId: pageDenylist
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
