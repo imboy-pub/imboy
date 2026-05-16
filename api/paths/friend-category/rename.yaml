@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend-category/rename.yaml
+# POST /friend/category/rename — 重命名分组 / Rename friend category
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 12 / D-friend-category)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1category~1rename
+# Handler: src/api/friend_category_handler.erl#rename/2 → friend_category_ds:rename/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 重命名好友分组
+  description: |
+    ## 中文
+    重命名当前用户的指定分组。同一用户名下不允许同名分组。
+    ## English
+    Rename a category owned by the current user. Names must be unique
+    per user.
+  operationId: renameFriendCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: integer
+              minimum: 1
+              description: 分组 ID / Category id.
+            name:
+              type: string
+              description: 新名称 / New name.
+  responses:
+    '200':
+      description: 重命名成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: id / name 缺失或非法 / 分组不属于当前用户 / 同名分组已存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

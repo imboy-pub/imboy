@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend-category/add.yaml
+# POST /friend/category/add — 新建好友分组 / Create friend category
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 12 / D-friend-category)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1category~1add
+# Handler: src/api/friend_category_handler.erl#add/2 → friend_category_ds:add/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 为当前用户创建好友分组
+  description: |
+    ## 中文
+    创建一个新分组，name 缺省为 "Unnamed"。返回 payload 含新分组 id 与 name。
+    分组用于在 /friend/list 中归类好友 + /friend/move 移动好友。
+    ## English
+    Create a new friend category for the current user. Default name is
+    "Unnamed". Returns `{ id, name }`. Categories drive the bucketing in
+    /friend/list and are the target of /friend/move.
+  operationId: addFriendCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              default: Unnamed
+              description: 分组名 / Category name.
+  responses:
+    '200':
+      description: 创建成功；payload 含 id / name
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 名称非法 / 同名分组已存在 / 超出每用户分组上限
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

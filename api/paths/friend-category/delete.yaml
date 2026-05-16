@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/friend-category/delete.yaml
+# POST /friend/category/delete — 删除好友分组 / Delete friend category
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 12 / D-friend-category)
+# 调用方:  api/openapi.yaml#/paths/~1friend~1category~1delete
+# Handler: src/api/friend_category_handler.erl#delete/2 → friend_category_logic:delete/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除好友分组
+  description: |
+    ## 中文
+    删除当前用户的指定分组。原分组下的好友会被移回默认分组（category_id=0）。
+    分组本身被删除，但好友关系不受影响。
+    ## English
+    Delete a category owned by the current user. Friends that lived in
+    the category are moved back to the default bucket (`category_id=0`).
+    Friendship records themselves are untouched.
+  operationId: deleteFriendCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              minimum: 1
+              description: 分组 ID / Category id.
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: id 非法 / 分组不存在 / 分组不属于当前用户 / 系统保留分组
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

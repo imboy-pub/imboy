@@ -188,6 +188,12 @@ paths:
     $ref: './paths/friend/information.yaml'
   /friend/change_remark:
     $ref: './paths/friend/change-remark.yaml'
+  /friend/category/add:
+    $ref: './paths/friend-category/add.yaml'
+  /friend/category/delete:
+    $ref: './paths/friend-category/delete.yaml'
+  /friend/category/rename:
+    $ref: './paths/friend-category/rename.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:
