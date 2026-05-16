@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/delete.yaml
+# POST /conversation/delete — 删除会话（软删除）/ Soft-delete conversation
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1delete
+# Handler: src/api/conversation_handler.erl#delete_conversation/2 → conversation_logic:delete/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 软删除会话
+  description: |
+    ## 中文
+    把 (conversation_id, type) 从当前用户的会话列表中移除。注意：
+    - 这是**软删除**，对方仍可继续发消息；后续新消息会重新创建会话。
+    - 历史消息记录不被删除（消息归档保留）。
+    - 可以通过 /conversation/restore 撤销。
+    ## English
+    Soft-delete a conversation from the current user's list. The peer
+    can still send messages; a new message resurrects the conversation.
+    Historical messages are NOT removed. Reversible via
+    /conversation/restore.
+  operationId: deleteConversation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [conversation_id]
+          properties:
+            conversation_id:
+              type: string
+            type:
+              type: string
+              enum: [c2c, c2g]
+              default: c2c
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: conversation_id 缺失 / 会话不属于当前用户
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

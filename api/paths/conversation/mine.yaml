@@ -1,0 +1,52 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/mine.yaml
+# GET /conversation/mine — 我的会话列表 / My conversation list
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1mine
+# Handler: src/api/conversation_handler.erl#mine/2 → conversation_logic:list/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 当前用户的会话列表（含已读位、置顶状态、未读数）
+  description: |
+    ## 中文
+    返回当前用户的会话列表（默认 limit=1000）。`last_server_ts` 用于增量
+    同步：只返回该时间戳之后服务端有变更的会话。已删除会话会被过滤掉。
+    payload 包含每个会话的 last_msg / unread_count / pinned / 对方信息 等。
+    ## English
+    Return the current user's conversation list (limit=1000 fixed).
+    `last_server_ts` enables incremental sync — only conversations
+    updated after the timestamp are returned. Soft-deleted conversations
+    are filtered out. Each item carries last_msg / unread_count /
+    pinned / peer info.
+  operationId: listMyConversations
+  parameters:
+    - in: query
+      name: last_server_ts
+      required: false
+      schema:
+        type: integer
+        format: int64
+      description: |
+        上次成功同步的服务端时间戳（毫秒）；缺省返回全量。
+        Last successfully-synced server timestamp (ms); omit for full sync.
+  responses:
+    '200':
+      description: 会话列表
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: conversation_logic 内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/online.yaml
+# GET /conversation/online — 在线统计 / Online stats
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1online
+# Handler: src/api/conversation_handler.erl#online/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 节点在线人数 / 设备数统计（含可选在线列表）
+  description: |
+    ## 中文
+    返回当前 imboy 节点的在线总人数 + 在线设备数（msg 字段，文本形式）。
+    可选 `type=list` 触发返回 limit 条在线设备明细（uid/pid/dtype/did/
+    time/ref/node）。
+    用于运维监控 / 客户端调试面板；非业务路径。
+    ## English
+    Returns total online users + device count on the current imboy node
+    (as `msg` string). Pass `type=list` to also include up to `limit`
+    detailed online device entries. Ops / debug surface, not a regular
+    user-facing path.
+  operationId: conversationOnline
+  parameters:
+    - in: query
+      name: type
+      required: false
+      schema:
+        type: string
+        enum: [list]
+      description: 传 `list` 触发返回详细列表 / Set to `list` to include details.
+    - in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        default: 10
+      description: type=list 时返回的最大条数 / Max rows when type=list.
+  responses:
+    '200':
+      description: 在线统计；msg 含文本摘要，payload 含可选详细列表
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

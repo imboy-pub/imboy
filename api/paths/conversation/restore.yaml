@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/restore.yaml
+# POST /conversation/restore — 恢复软删除的会话 / Restore conversation
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1restore
+# Handler: src/api/conversation_handler.erl#restore_conversation/2 → conversation_logic:restore/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 恢复被软删除的会话
+  description: |
+    ## 中文
+    把先前 /conversation/delete 软删除的会话从回收态恢复到列表中。
+    幂等：未被删除的会话也返回 200。
+    payload 含 `restored: true`。
+    ## English
+    Restore a soft-deleted conversation (re-added to the user's list).
+    Idempotent. Payload contains `restored: true`.
+  operationId: restoreConversation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [conversation_id]
+          properties:
+            conversation_id:
+              type: string
+            type:
+              type: string
+              enum: [c2c, c2g]
+              default: c2c
+  responses:
+    '200':
+      description: 恢复成功；payload.restored=true
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: conversation_id 缺失
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

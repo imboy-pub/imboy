@@ -212,6 +212,20 @@ paths:
     $ref: './paths/msg/reaction-remove.yaml'
   /v1/msg/reaction/list:
     $ref: './paths/msg/reaction-list.yaml'
+  /conversation/online:
+    $ref: './paths/conversation/online.yaml'
+  /conversation/mine:
+    $ref: './paths/conversation/mine.yaml'
+  /conversation/pin:
+    $ref: './paths/conversation/pin.yaml'
+  /conversation/unpin:
+    $ref: './paths/conversation/unpin.yaml'
+  /conversation/pinned:
+    $ref: './paths/conversation/pinned.yaml'
+  /conversation/delete:
+    $ref: './paths/conversation/delete.yaml'
+  /conversation/restore:
+    $ref: './paths/conversation/restore.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

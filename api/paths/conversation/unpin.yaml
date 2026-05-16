@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/unpin.yaml
+# POST /conversation/unpin — 取消置顶会话 / Unpin conversation
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1unpin
+# Handler: src/api/conversation_handler.erl#unpin_conversation/2 → conversation_pin_logic:unpin/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 取消置顶会话
+  description: |
+    ## 中文
+    取消 conversation_id 的置顶状态。幂等：未置顶也返回 200。
+    payload 含 `updated: true` 表示状态已落地。
+    ## English
+    Remove the pinned state from `conversation_id`. Idempotent.
+    Payload contains `updated: true` once persisted.
+  operationId: unpinConversation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [conversation_id]
+          properties:
+            conversation_id:
+              type: string
+            type:
+              type: string
+              enum: [c2c, c2g]
+              default: c2c
+  responses:
+    '200':
+      description: 取消置顶成功；payload.updated=true
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: conversation_id 缺失
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

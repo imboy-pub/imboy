@@ -1,0 +1,40 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/pinned.yaml
+# GET /conversation/pinned — 置顶会话列表 / Pinned conversations
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1pinned
+# Handler: src/api/conversation_handler.erl#pinned_list/2 → conversation_pin_logic:list/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: 当前用户的所有置顶会话
+  description: |
+    ## 中文
+    返回当前用户全部置顶的会话列表（C2C + C2G 混合）。
+    payload 形如 `{ items: [...] }`，每个条目含 conversation_id / type /
+    pinned_at 等。
+    ## English
+    Return all conversations the current user has pinned (C2C and C2G
+    mixed). Shape: `{ items: [...] }` where each entry contains
+    conversation_id / type / pinned_at.
+  operationId: listPinnedConversations
+  responses:
+    '200':
+      description: "置顶会话列表 { items: [...] }"
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '5XX':
+      description: 内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

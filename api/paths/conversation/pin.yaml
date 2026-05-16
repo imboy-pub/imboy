@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/conversation/pin.yaml
+# POST /conversation/pin — 置顶会话 / Pin conversation
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
+# 调用方:  api/openapi.yaml#/paths/~1conversation~1pin
+# Handler: src/api/conversation_handler.erl#pin_conversation/2 → conversation_pin_logic:pin/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [msg]
+  summary: 置顶会话（单聊或群聊）
+  description: |
+    ## 中文
+    把指定会话固定到列表顶部。注意：与 /v1/msg/pin（消息级置顶）不同 ——
+    本接口固定的是整个会话。
+    幂等：已置顶再次调用无副作用。
+    ## English
+    Pin a conversation (C2C or C2G) to the top of the list. Distinct
+    from /v1/msg/pin which pins a single message inside a conversation.
+    Idempotent.
+  operationId: pinConversation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [conversation_id]
+          properties:
+            conversation_id:
+              type: string
+              description: 会话 ID（对端 user TSID 或群 TSID）/ Conversation id.
+            type:
+              type: string
+              enum: [c2c, c2g]
+              default: c2c
+              description: 会话类型 / Conversation type.
+  responses:
+    '200':
+      description: 置顶成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: conversation_id 缺失或非法 / 类型不支持
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
