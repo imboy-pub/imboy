@@ -27,7 +27,6 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
-
 %% ==================== API ====================
 
 -export([start_link/0]).
@@ -42,13 +41,18 @@
 %% ==================== Macros & Records ====================
 
 -define(SERVER, msg_store_worker).
--define(BATCH_SIZE, 100).      % 每批处理的记录数
--define(BATCH_INTERVAL, 1000).  % 定时触发间隔（毫秒）
--define(LEASE_SECONDS, 30).     % 抢占记录的租约时间（秒）
--define(MAX_BACKOFF_SECONDS, 60). % 最大重试延迟（秒）
+% 每批处理的记录数
+-define(BATCH_SIZE, 100).
+% 定时触发间隔（毫秒）
+-define(BATCH_INTERVAL, 1000).
+% 抢占记录的租约时间（秒）
+-define(LEASE_SECONDS, 30).
+% 最大重试延迟（秒）
+-define(MAX_BACKOFF_SECONDS, 60).
 
 -record(state, {
-    tick_timer = undefined     % 定时器引用
+    % 定时器引用
+    tick_timer = undefined
 }).
 
 %% ==================== Types ====================
@@ -84,8 +88,8 @@ callback_mode() ->
 
 %% @private
 -spec idle(gen_statem:event_type(), term(), state()) ->
-    {next_state, state_name(), state(), [gen_statem:transition_action()]} |
-    {keep_state, state()}.
+    {next_state, state_name(), state(), [gen_statem:transition_action()]}
+    | {keep_state, state()}.
 idle({cast, kick}, _Content, State) ->
     {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
 idle(info, tick, State) ->
@@ -95,8 +99,8 @@ idle(_EventType, _Event, State) ->
 
 %% @private
 -spec draining(gen_statem:event_type(), term(), state()) ->
-    {next_state, state_name(), state(), [gen_statem:transition_action()]} |
-    {keep_state, state()}.
+    {next_state, state_name(), state(), [gen_statem:transition_action()]}
+    | {keep_state, state()}.
 draining(internal, drain, State) ->
     case claim_and_process_batch() of
         {ok, 0} ->
@@ -166,8 +170,10 @@ process_row(Row) ->
             BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
             case msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
-                {ok, _} -> ok;
-                {error, MarkReason} -> ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
+                {ok, _} ->
+                    ok;
+                {error, MarkReason} ->
+                    ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
             end,
             _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
     end.
@@ -197,7 +203,7 @@ maybe_archive(Row) ->
 
 %% v2.0: 使用 staging 表的独立字段，避免重复解析 payload
 do_write(c2c, Row) ->
-    PayloadBin = maps:get(<<"payload">>, Row),
+    PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
@@ -206,9 +212,8 @@ do_write(c2c, Row) ->
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
     msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE);
-
 do_write(c2g, Row) ->
-    PayloadBin = maps:get(<<"payload">>, Row),
+    PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
     ToIdList = maps:get(<<"to_id_list">>, Row, []),
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
@@ -220,9 +225,8 @@ do_write(c2g, Row) ->
     GidEnc = maps:get(<<"to">>, PayloadMap),
     Gid = ec_cnv:to_integer(GidEnc),
     msg_c2g_repo:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE);
-
 do_write(s2c, Row) ->
-    PayloadBin = maps:get(<<"payload">>, Row),
+    PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row, elib_dt:now()),
@@ -230,9 +234,8 @@ do_write(s2c, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     Action = maps:get(<<"action">>, Row, <<>>),
     msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>);
-
 do_write(c2s, Row) ->
-    PayloadBin = maps:get(<<"payload">>, Row),
+    PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
     PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
@@ -250,22 +253,26 @@ do_write(c2s, Row) ->
         created_at => CreatedAt
     },
     msg_c2s_ds:write_msg(MsgId, MsgData);
-
 do_write(Unknown, Row) ->
     {error, {unknown_msg_type, Unknown, maps:get(<<"msg_id">>, Row)}}.
 
-msg_type_atom(<<"c2c">>) -> c2c;
-msg_type_atom(<<"c2g">>) -> c2g;
-msg_type_atom(<<"s2c">>) -> s2c;
-msg_type_atom(<<"c2s">>) -> c2s;
+msg_type_atom(<<"c2c">>) ->
+    c2c;
+msg_type_atom(<<"c2g">>) ->
+    c2g;
+msg_type_atom(<<"s2c">>) ->
+    s2c;
+msg_type_atom(<<"c2s">>) ->
+    c2s;
 msg_type_atom(Bin) when is_binary(Bin) ->
     Bin.
 
 backoff_seconds(RetryCount) when is_integer(RetryCount), RetryCount >= 0 ->
-    Pow = case RetryCount > 10 of
-        true -> 10;
-        false -> RetryCount
-    end,
+    Pow =
+        case RetryCount > 10 of
+            true -> 10;
+            false -> RetryCount
+        end,
     Seconds0 = 1 bsl Pow,
     case Seconds0 > ?MAX_BACKOFF_SECONDS of
         true -> ?MAX_BACKOFF_SECONDS;
@@ -273,3 +280,21 @@ backoff_seconds(RetryCount) when is_integer(RetryCount), RetryCount >= 0 ->
     end;
 backoff_seconds(_Other) ->
     1.
+
+%% @private
+%% @doc 还原 staging.payload 中可能被 msg_store_repo:msg_store_payload_to_jsonb
+%% 包装过的裸 binary（E2EE 密文存为 JSON 字符串 `"\"base64...\""`）。
+%% 若为 JSON object（{...}）或 JSON 数组（[...]）等其他形式，原样返回。
+%% 客户端依赖 payload 的原始 binary 与 e2ee 元数据中的 nonce 严格匹配，
+%% 错误地把 JSON 引号留在前面会导致客户端报
+%% "Nonce mismatch between ciphertext and e2ee metadata"。
+-spec unwrap_staging_payload(term()) -> binary() | term().
+unwrap_staging_payload(<<"\"", _/binary>> = Bin) ->
+    try jsone:decode(Bin) of
+        Str when is_binary(Str) -> Str;
+        _ -> Bin
+    catch
+        _:_ -> Bin
+    end;
+unwrap_staging_payload(Other) ->
+    Other.
