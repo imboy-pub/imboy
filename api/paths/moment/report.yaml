@@ -1,0 +1,43 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/report.yaml
+# POST /v1/moment/{moment_id}/report — 举报动态 / Report moment
+# Handler: src/api/moment_handler.erl#report/2 → moment_logic:report_post/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 举报动态
+  description: |
+    ## 中文 / English
+    举报一条动态；reason 用枚举（违规类型），description 自由描述。
+    服务端写入审核工单供 admin 处理。
+    Report a moment. `reason` is a coarse category; `description` is
+    free-text. Persisted to the moderation queue for admin review.
+  operationId: reportMoment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              description: 举报原因类别 / Reason category.
+            description:
+              type: string
+              description: 详细描述 / Free-text description.
+  responses:
+    '200':
+      description: 举报已记录
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: moment_id 缺失 / reason 缺失 / 重复举报
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

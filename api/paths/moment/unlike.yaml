@@ -1,0 +1,27 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/unlike.yaml
+# POST /v1/moment/{moment_id}/unlike — 取消点赞 / Unlike moment
+# Handler: src/api/moment_handler.erl#unlike/2 → moment_logic:unlike_post/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 取消点赞
+  description: |
+    ## 中文 / English
+    取消对动态的点赞。幂等。
+    Remove a like. Idempotent.
+  operationId: unlikeMoment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 取消成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 动态不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,42 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/add-comment.yaml
+# POST /v1/moment/{moment_id}/comment — 发表评论 / Add comment
+# Handler: src/api/moment_handler.erl#add_comment/2 → moment_logic:add_comment/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 给动态发表评论或回复
+  description: |
+    ## 中文 / English
+    在动态下发表评论；reply_to_uid 非空时为楼中回复指定用户。
+    Comment on a moment. Set `reply_to_uid` to reply to a specific user
+    within the thread.
+  operationId: addMomentComment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [content]
+          properties:
+            content:
+              type: string
+              description: 评论文本 / Comment body.
+            reply_to_uid:
+              type: string
+              description: 被回复用户 TSID（可选）/ Optional target user TSID.
+  responses:
+    '200':
+      description: 评论成功；payload 含新 comment_id
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: content 为空 / 无权评论 / 动态不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,27 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/delete.yaml
+# POST /v1/moment/{moment_id}/delete — 删除动态 / Delete moment
+# Handler: src/api/moment_handler.erl#delete/2 → moment_logic:delete_post/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除自己发布的动态
+  description: |
+    ## 中文 / English
+    删除当前用户发布的动态。仅作者本人可删。
+    Delete a moment authored by the current user. Author-only.
+  operationId: deleteMoment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 非作者 / 动态不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

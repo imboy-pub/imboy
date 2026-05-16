@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/create.yaml
+# POST /v1/moment/create — 发布动态 / Create moment
+# Handler: src/api/moment_handler.erl#create/2 → moment_logic:create_post/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 发布一条动态（朋友圈风格）
+  description: |
+    ## 中文 / English
+    发布动态。具体字段（text/images/visibility 等）由 moment_logic:
+    create_post/2 解析；契约层用 additionalProperties 透传以兼容 logic
+    侧后续字段演进。
+    Post a moment (timeline-style). Field schema is logic-driven;
+    contract uses additionalProperties for forward-compat.
+  operationId: createMoment
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+          properties:
+            text:
+              type: string
+              description: 文本内容 / Text body.
+            images:
+              type: array
+              items: { type: string }
+              description: 图片 URL 列表 / Image URLs.
+            visibility:
+              type: string
+              enum: [public, friend, private]
+              description: 可见性 / Visibility scope.
+  responses:
+    '200':
+      description: 发布成功；payload 含新 moment_id
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 字段校验失败 / 限流 / feature 未启用
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

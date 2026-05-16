@@ -1,0 +1,35 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/comments.yaml
+# GET /v1/moment/{moment_id}/comments — 评论列表 / List comments
+# Handler: src/api/moment_handler.erl#comments/2 → moment_logic:list_comments/4
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 动态的评论列表（游标分页）
+  description: |
+    ## 中文 / English
+    游标分页返回某条动态的评论。
+    Cursor-paginate the comments on a moment.
+  operationId: listMomentComments
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+    - in: query
+      name: cursor
+      required: false
+      schema: { type: integer, default: 0 }
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+  responses:
+    '200':
+      description: 评论列表
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权查看 / 动态不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

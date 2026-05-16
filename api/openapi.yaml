@@ -234,6 +234,28 @@ paths:
     $ref: './paths/mention/mark-read.yaml'
   /mention/suggest:
     $ref: './paths/mention/suggest.yaml'
+  /v1/moment/create:
+    $ref: './paths/moment/create.yaml'
+  /v1/moment/{moment_id}:
+    $ref: './paths/moment/show.yaml'
+  /v1/moment/{moment_id}/delete:
+    $ref: './paths/moment/delete.yaml'
+  /v1/moments/feed:
+    $ref: './paths/moment/feed.yaml'
+  /v1/moments/user/{uid}:
+    $ref: './paths/moment/user-posts.yaml'
+  /v1/moment/{moment_id}/like:
+    $ref: './paths/moment/like.yaml'
+  /v1/moment/{moment_id}/unlike:
+    $ref: './paths/moment/unlike.yaml'
+  /v1/moment/{moment_id}/comment:
+    $ref: './paths/moment/add-comment.yaml'
+  /v1/moment/{moment_id}/comments:
+    $ref: './paths/moment/comments.yaml'
+  /v1/moment/{moment_id}/comment/{comment_id}/delete:
+    $ref: './paths/moment/delete-comment.yaml'
+  /v1/moment/{moment_id}/report:
+    $ref: './paths/moment/report.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

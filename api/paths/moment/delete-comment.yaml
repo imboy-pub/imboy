@@ -1,0 +1,31 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/delete-comment.yaml
+# POST /v1/moment/{moment_id}/comment/{comment_id}/delete — 删评论 / Delete comment
+# Handler: src/api/moment_handler.erl#delete_comment/2 → moment_logic:delete_comment/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 删除动态下的评论
+  description: |
+    ## 中文 / English
+    删除评论；评论作者或动态作者可删。
+    Delete a comment; allowed for either the commenter or the moment author.
+  operationId: deleteMomentComment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+    - in: path
+      name: comment_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 评论或动态不存在 / 无权删除
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

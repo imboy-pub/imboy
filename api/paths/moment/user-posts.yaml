@@ -1,0 +1,36 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/user-posts.yaml
+# GET /v1/moments/user/{uid} — 指定用户的动态列表 / User's moments
+# Handler: src/api/moment_handler.erl#user_posts/2 → moment_logic:user_posts/4
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 查看指定用户的动态列表
+  description: |
+    ## 中文 / English
+    返回目标用户的动态分页；服务端按可见性 + 好友关系过滤。
+    Paginate the target user's moments; server enforces visibility +
+    friendship filters.
+  operationId: userMoments
+  parameters:
+    - in: path
+      name: uid
+      required: true
+      schema: { type: string }
+    - in: query
+      name: cursor
+      required: false
+      schema: { type: integer, default: 0 }
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+  responses:
+    '200':
+      description: 动态列表
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: uid 非法 / 被对方拉黑 / 无权查看
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

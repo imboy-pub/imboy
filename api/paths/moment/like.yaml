@@ -1,0 +1,27 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/moment/like.yaml
+# POST /v1/moment/{moment_id}/like — 点赞 / Like moment
+# Handler: src/api/moment_handler.erl#like/2 → moment_logic:like_post/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 给动态点赞
+  description: |
+    ## 中文 / English
+    给指定动态点赞。幂等。
+    Like the moment. Idempotent.
+  operationId: likeMoment
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 点赞成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 动态不存在 / 无权访问
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
