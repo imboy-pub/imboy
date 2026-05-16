@@ -13,7 +13,6 @@
 -include("chat.hrl").
 -include("imboy_frame.hrl").
 
-
 %% @doc WebSocket握手
 %% 初始化WebSocket连接，验证设备限流和认证
 %%
@@ -22,7 +21,7 @@
 %% @return {ok, Req, State} 或 {cowboy_websocket, Req, State}
 %% @end
 -spec init(cowboy_req:req(), map()) ->
-          {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
+    {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
 init(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
     % DID device id
@@ -38,13 +37,17 @@ init(Req0, State0) ->
     % [<<"sip">>,<<"text">>] = Subprotocols
 
     % ?DEBUG_LOG([Env, DID, DType, Auth, SubPt]),
-    Opt0 = #{num_acceptors => infinity,
-             max_connections => infinity,
-             enable_connect_protocol => true,  % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
-             max_frame_size => 2097152,  % 2MB
-             % Cowboy关闭连接空闲128秒 默认值为 60000
-             % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
-             idle_timeout => 128000},
+    Opt0 = #{
+        num_acceptors => infinity,
+        max_connections => infinity,
+        % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
+        enable_connect_protocol => true,
+        % 2MB
+        max_frame_size => 2097152,
+        % Cowboy关闭连接空闲128秒 默认值为 60000
+        % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
+        idle_timeout => 128000
+    },
     State1 = State0#{dtype => DType, did => DID, vsn => AppVsn},
     case throttle:check(throttle_ws, DID) of
         {limit_exceeded, _, _} ->
@@ -64,7 +67,6 @@ init(Req0, State0) ->
                     websocket_ds:auth(Auth2, Req1, State2, Opt0)
             end
     end.
-
 
 %% @doc WebSocket连接初始化
 %% 连接建立后的初始化处理，用户上线
@@ -92,7 +94,6 @@ websocket_init(State) ->
             {ok, State, hibernate}
     end.
 
-
 %% @doc 处理WebSocket消息
 %% 处理客户端发送的WebSocket消息
 %%
@@ -100,9 +101,11 @@ websocket_init(State) ->
 %% @param State 状态映射
 %% @return {ok, State, hibernate} 或 {reply, ..., State, hibernate}
 %% @end
--spec websocket_handle(ping | pong | {ping, binary()} | {pong, binary()} | {text, binary()} | {binary, binary()},
-                       map()) ->
-          {ok, map(), hibernate} | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
+-spec websocket_handle(
+    ping | pong | {ping, binary()} | {pong, binary()} | {text, binary()} | {binary, binary()},
+    map()
+) ->
+    {ok, map(), hibernate} | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
 
 %% WebSocket 协议层 Ping 帧（RFC 6455 标准）
 %% Cowboy 会自动回复 Pong，这里仅用于监控/日志
@@ -110,20 +113,17 @@ websocket_init(State) ->
 websocket_handle(ping, State) ->
     ok = ?DEBUG_LOG({websocket_ping, no_payload}),
     {ok, State, hibernate};
-
 %% WebSocket 协议层 Ping 帧（带 payload）
 %% Cowboy 会自动回复 Pong，这里仅用于监控/日志
 websocket_handle({ping, Payload}, State) ->
     ok = ?DEBUG_LOG({websocket_ping, byte_size(Payload)}),
     {ok, State, hibernate};
-
 %% 应用层心跳消息（文本格式，用于业务层面的心跳检测）
 %% 支持大小写，但不建议混用，建议统一使用小写
 websocket_handle({text, <<"ping">>}, State) ->
     {reply, {text, <<"pong">>}, State, hibernate};
 websocket_handle({text, <<"PING">>}, State) ->
     {reply, {text, <<"PONG">>}, State, hibernate};
-
 % 客户端确认消息
 % CLIENT_ACK,type,msgid,did
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
@@ -134,8 +134,11 @@ websocket_handle({text, Msg}, State) ->
     case throttle:check(msg_per_user, CurrentUid) of
         {limit_exceeded, _, _} ->
             ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
-            RateLimitMsg = ws_validation_error(<<>>, <<"rate_limited">>,
-                <<"消息发送过于频繁，请稍后再试"/utf8>>),
+            RateLimitMsg = ws_validation_error(
+                <<>>,
+                <<"rate_limited">>,
+                <<"消息发送过于频繁，请稍后再试"/utf8>>
+            ),
             {reply, {text, jsone:encode(RateLimitMsg, [native_utf8])}, State, hibernate};
         _ ->
             handle_json_message(Msg, State)
@@ -166,16 +169,22 @@ handle_legacy_binary(Msg, Protocol, State) ->
                     case throttle:check(msg_per_user, CurrentUid) of
                         {limit_exceeded, _, _} ->
                             ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
-                            RateLimitMsg = ws_validation_error(<<>>, <<"rate_limited">>,
-                                <<"消息发送过于频繁，请稍后再试"/utf8>>),
+                            RateLimitMsg = ws_validation_error(
+                                <<>>,
+                                <<"rate_limited">>,
+                                <<"消息发送过于频繁，请稍后再试"/utf8>>
+                            ),
                             {reply, ws_reply(protobuf, RateLimitMsg), State, hibernate};
                         _ ->
                             handle_protobuf_message_decoded(Data0, State)
                     end
-            catch _:_ ->
-                ok = ?WARN_LOG({protobuf_decode_failed, byte_size(Msg)}),
-                ErrorMsg = ws_validation_error(<<>>, <<"invalid_protobuf">>, <<"decode_error">>),
-                {reply, ws_reply(protobuf, ErrorMsg), State, hibernate}
+            catch
+                _:_ ->
+                    ok = ?WARN_LOG({protobuf_decode_failed, byte_size(Msg)}),
+                    ErrorMsg = ws_validation_error(
+                        <<>>, <<"invalid_protobuf">>, <<"decode_error">>
+                    ),
+                    {reply, ws_reply(protobuf, ErrorMsg), State, hibernate}
             end;
         _ ->
             %% JSON 协议不应收到 binary 帧，忽略
@@ -185,8 +194,8 @@ handle_legacy_binary(Msg, Protocol, State) ->
 
 %% @doc v2 framing binary 帧处理：按 Type 分派
 -spec handle_v2_binary(binary(), map()) ->
-    {ok, map(), hibernate} |
-    {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
+    {ok, map(), hibernate}
+    | {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
 handle_v2_binary(Msg, State) ->
     case imboy_codec:unwrap_v2_frame(Msg) of
         {ok, Frame} ->
@@ -210,13 +219,17 @@ dispatch_v2_frame(?FRAME_TYPE_ACK, <<MsgIdInt:64/big-unsigned>>, State) ->
     ok = ?DEBUG_LOG({v2_ack, MsgIdInt}),
     %% 将 msg_id 适配为现有 protobuf ACK 处理管道
     MsgIdBin = integer_to_binary(MsgIdInt),
-    AckPayload = #{<<"msg_id">> => MsgIdBin,
-                   <<"did">> => maps:get(did, State, <<>>),
-                   <<"msg_direction">> => <<"C2C">>},
+    AckPayload = #{
+        <<"msg_id">> => MsgIdBin,
+        <<"did">> => maps:get(did, State, <<>>),
+        <<"msg_direction">> => <<"C2C">>
+    },
     %% 构造 payload bytes：重用 protobuf 子消息，交给 handle_protobuf_client_ack
     EncodedPayload = imboy_codec:encode_payload(protobuf, <<"client_ack">>, AckPayload),
-    Data = #{<<"type">> => <<"CLIENT_ACK">>,
-             <<"payload">> => EncodedPayload},
+    Data = #{
+        <<"type">> => <<"CLIENT_ACK">>,
+        <<"payload">> => EncodedPayload
+    },
     handle_protobuf_client_ack(Data, <<>>, State);
 dispatch_v2_frame(?FRAME_TYPE_NACK, <<MsgIdInt:64/big-unsigned>>, State) ->
     ok = ?WARN_LOG({v2_nack_received, MsgIdInt}),
@@ -225,16 +238,20 @@ dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, <<"CLIENT_ACK,", Tail/binary>>, State) ->
     %% msg_c2s 帧中的纯文本 CLIENT_ACK（Dart 客户端兼容路径）
     %% 等价于老的 websocket_handle({text, <<"CLIENT_ACK,...">>}, State)
     handle_client_ack(Tail, State);
-dispatch_v2_frame(Type, Payload, State)
-  when Type =:= ?FRAME_TYPE_MSG_C2C;
-       Type =:= ?FRAME_TYPE_MSG_C2G;
-       Type =:= ?FRAME_TYPE_MSG_C2S ->
+dispatch_v2_frame(Type, Payload, State) when
+    Type =:= ?FRAME_TYPE_MSG_C2C;
+    Type =:= ?FRAME_TYPE_MSG_C2G;
+    Type =:= ?FRAME_TYPE_MSG_C2S
+->
     CurrentUid = auth_ds:current_uid(State),
     case throttle:check(msg_per_user, CurrentUid) of
         {limit_exceeded, _, _} ->
             ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
-            RateLimitMsg = ws_validation_error(<<>>, <<"rate_limited">>,
-                <<"消息发送过于频繁，请稍后再试"/utf8>>),
+            RateLimitMsg = ws_validation_error(
+                <<>>,
+                <<"rate_limited">>,
+                <<"消息发送过于频繁，请稍后再试"/utf8>>
+            ),
             {reply, ws_reply(protobuf, v2, RateLimitMsg), State, hibernate};
         _ ->
             dispatch_v2_business_payload(Type, Payload, State)
@@ -247,8 +264,8 @@ dispatch_v2_frame(Type, _Payload, State) ->
 %% Dart 客户端当前使用 UTF-8(JSON string) 作为 v2 frame payload；
 %% 未来 protobuf 客户端直接发 protobuf 字节。两者共存由此函数桥接。
 -spec dispatch_v2_business_payload(0..255, binary(), map()) ->
-    {ok, map(), hibernate} |
-    {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
+    {ok, map(), hibernate}
+    | {reply, {binary, binary()} | {text, binary()}, map(), hibernate}.
 dispatch_v2_business_payload(Type, Payload, State) ->
     case try_decode_json_payload(Payload) of
         {ok, JsonBin} ->
@@ -260,10 +277,10 @@ dispatch_v2_business_payload(Type, Payload, State) ->
                 _ ->
                     ok = ?WARN_LOG({v2_msg_decode_empty, Type, byte_size(Payload)}),
                     {ok, State, hibernate}
-            catch Class:Reason ->
-                ok = ?WARN_LOG({v2_msg_decode_failed, Class, Reason, Type,
-                                byte_size(Payload)}),
-                {ok, State, hibernate}
+            catch
+                Class:Reason ->
+                    ok = ?WARN_LOG({v2_msg_decode_failed, Class, Reason, Type, byte_size(Payload)}),
+                    {ok, State, hibernate}
             end
     end.
 
@@ -279,10 +296,10 @@ try_decode_json_payload(Payload) ->
             {ok, Payload};
         _ ->
             not_json
-    catch _:_ ->
-        not_json
+    catch
+        _:_ ->
+            not_json
     end.
-
 
 %% ===================================================================
 %% 消息处理辅助函数
@@ -295,36 +312,40 @@ try_decode_json_payload(Payload) ->
 handle_client_ack(Tail, State) ->
     ok = ?DEBUG_LOG({client_ack, Tail}),
     CurrentUid = auth_ds:current_uid(State),
-    try
-        binary:split(Tail, <<",">>, [global])
-    of
+    try binary:split(Tail, <<",">>, [global]) of
         [Type, MsgId, DID] ->
             case validate_ack_params(Type, MsgId, DID, State) of
                 ok ->
                     ok = ?DEBUG_LOG({client_ack_received, Type, MsgId, DID}),
                     websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
-                    AckConfirmMsg = #{<<"id">> => MsgId,
-                                      <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
-                                      <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
-                                      <<"server_ts">> => elib_dt:millisecond()},
+                    AckConfirmMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
+                        <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
+                        <<"server_ts">> => elib_dt:millisecond()
+                    },
                     process_ack_type(Type, MsgId, CurrentUid, DID),
                     %% 协议感知的响应帧
                     Protocol = maps:get(protocol, State, json),
                     {reply, ws_reply(Protocol, AckConfirmMsg), State, hibernate};
                 {error, Reason} ->
                     ok = ?WARN_LOG({client_ack_invalid_params, Reason, Type, MsgId, DID}),
-                    ErrorMsg = #{<<"action">> => <<"CLIENT_ACK_ERROR">>,
-                                 <<"reason">> => Reason,
-                                 <<"server_ts">> => elib_dt:millisecond()},
+                    ErrorMsg = #{
+                        <<"action">> => <<"CLIENT_ACK_ERROR">>,
+                        <<"reason">> => Reason,
+                        <<"server_ts">> => elib_dt:millisecond()
+                    },
                     Protocol = maps:get(protocol, State, json),
                     {reply, ws_reply(Protocol, ErrorMsg), State, hibernate}
             end
     catch
         Class:CatchReason2:_Stacktrace ->
             ok = ?ERROR_LOG({client_ack_parse_error, Class, CatchReason2}),
-            ErrorMsg2 = #{<<"action">> => <<"CLIENT_ACK_ERROR">>,
-                          <<"reason">> => <<"parse_error">>,
-                          <<"server_ts">> => elib_dt:millisecond()},
+            ErrorMsg2 = #{
+                <<"action">> => <<"CLIENT_ACK_ERROR">>,
+                <<"reason">> => <<"parse_error">>,
+                <<"server_ts">> => elib_dt:millisecond()
+            },
             Protocol2 = maps:get(protocol, State, json),
             {reply, ws_reply(Protocol2, ErrorMsg2), State, hibernate}
     end.
@@ -342,12 +363,21 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
         AckPayload = imboy_codec:decode_payload(protobuf, <<"client_ack">>, PayloadBin),
 
         %% 提取 ACK 参数
-        MsgDirection = maps:get(msg_direction, AckPayload,
-                       maps:get(<<"msg_direction">>, AckPayload, <<>>)),
-        MsgId = maps:get(msg_id, AckPayload,
-                maps:get(<<"msg_id">>, AckPayload, <<>>)),
-        DID = maps:get(did, AckPayload,
-              maps:get(<<"did">>, AckPayload, <<>>)),
+        MsgDirection = maps:get(
+            msg_direction,
+            AckPayload,
+            maps:get(<<"msg_direction">>, AckPayload, <<>>)
+        ),
+        MsgId = maps:get(
+            msg_id,
+            AckPayload,
+            maps:get(<<"msg_id">>, AckPayload, <<>>)
+        ),
+        DID = maps:get(
+            did,
+            AckPayload,
+            maps:get(<<"did">>, AckPayload, <<>>)
+        ),
 
         %% 将 enum atom 转为 binary type string
         Type = ack_direction_to_type(MsgDirection),
@@ -356,25 +386,31 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
             ok ->
                 ok = ?DEBUG_LOG({protobuf_client_ack_received, Type, MsgId, DID}),
                 websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
-                AckConfirmMsg = #{<<"id">> => MsgId,
-                                  <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
-                                  <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
-                                  <<"server_ts">> => elib_dt:millisecond()},
+                AckConfirmMsg = #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
+                    <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
+                    <<"server_ts">> => elib_dt:millisecond()
+                },
                 process_ack_type(Type, MsgId, CurrentUid, DID),
                 {reply, ws_reply(protobuf, AckConfirmMsg), State, hibernate};
             {error, Reason} ->
                 ok = ?WARN_LOG({protobuf_client_ack_invalid, Reason, MsgId}),
-                ErrorMsg = #{<<"action">> => <<"CLIENT_ACK_ERROR">>,
-                             <<"reason">> => Reason,
-                             <<"server_ts">> => elib_dt:millisecond()},
+                ErrorMsg = #{
+                    <<"action">> => <<"CLIENT_ACK_ERROR">>,
+                    <<"reason">> => Reason,
+                    <<"server_ts">> => elib_dt:millisecond()
+                },
                 {reply, ws_reply(protobuf, ErrorMsg), State, hibernate}
         end
     catch
         Class:CatchReason:Stacktrace ->
             ok = ?ERROR_LOG({protobuf_client_ack_error, Class, CatchReason, Stacktrace}),
-            ErrorMsg2 = #{<<"action">> => <<"CLIENT_ACK_ERROR">>,
-                          <<"reason">> => <<"decode_error">>,
-                          <<"server_ts">> => elib_dt:millisecond()},
+            ErrorMsg2 = #{
+                <<"action">> => <<"CLIENT_ACK_ERROR">>,
+                <<"reason">> => <<"decode_error">>,
+                <<"server_ts">> => elib_dt:millisecond()
+            },
             {reply, ws_reply(protobuf, ErrorMsg2), State, hibernate}
     end.
 
@@ -387,9 +423,9 @@ ack_direction_to_type('C2S') -> <<"C2S">>;
 ack_direction_to_type(Bin) when is_binary(Bin) -> Bin;
 ack_direction_to_type(_) -> <<>>.
 
-
 %% @doc 处理 JSON 消息（包括普通消息和 action 消息）
--spec handle_json_message(binary(), map()) -> {ok, map(), hibernate} | {reply, {text, binary()}, map(), hibernate}.
+-spec handle_json_message(binary(), map()) ->
+    {ok, map(), hibernate} | {reply, {text, binary()}, map(), hibernate}.
 handle_json_message(Msg, State) ->
     ok = ?DEBUG_LOG({json_message, byte_size(Msg)}),
     try
@@ -434,12 +470,13 @@ handle_json_message(Msg, State) ->
             {reply, {text, jsone:encode(ErrorMsg2, [native_utf8])}, State, hibernate}
     end.
 
-
 %% @doc 处理从其他进程发送到 WebSocket 进程的消息
 -spec websocket_info(term(), map()) ->
-          {ok, map()} | {ok, map(), hibernate} |
-          {reply, {text, binary()} | {binary, binary()} | {close, integer(), binary()}, map(), hibernate} |
-          {stop, map()}.
+    {ok, map()}
+    | {ok, map(), hibernate}
+    | {reply, {text, binary()} | {binary, binary()} | {close, integer(), binary()}, map(),
+        hibernate}
+    | {stop, map()}.
 websocket_info({reply, Msg}, State) when is_map(Msg) ->
     Protocol = maps:get(protocol, State, json),
     Framing = maps:get(framing, State, none),
@@ -450,7 +487,6 @@ websocket_info({reply, Msg}, State) when is_list(Msg) ->
 websocket_info({reply, Msg}, State) ->
     %% Pre-encoded binary from delivery pipeline — adapt to client protocol
     {reply, encode_delivery_frame(Msg, State), State, hibernate};
-
 %% 处理消息重试超时
 websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
     ok = ?INFO_LOG({retry_timeout, stop_online_retry, Msg}),
@@ -471,7 +507,6 @@ websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
             message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
             {reply, encode_delivery_frame(Msg, State), State, hibernate}
     end;
-
 %% 处理其他超时消息
 websocket_info({timeout, _Ref, Msg}, State) ->
     ok = ?DEBUG_LOG({timeout, Msg}),
@@ -483,7 +518,6 @@ websocket_info({close, CloseCode, Reason}, State) ->
 websocket_info(stop, State) ->
     ok = ?DEBUG_LOG({stop}),
     {stop, State};
-
 %% 处理跨节点的 ACK 取消消息
 websocket_info({ack_cancel, Uid, DID, MsgId, Timestamp}, State) ->
     ok = ?DEBUG_LOG({ack_cancel_from_remote, MsgId, Uid, DID, Timestamp}),
@@ -495,7 +529,6 @@ websocket_info({ack_cancel, Uid, DID, MsgId, Timestamp}, State) ->
             ok
     end,
     {ok, State, hibernate};
-
 %% 处理设备踢出消息
 websocket_info({kick_device, ReasonMap}, State) ->
     ok = ?INFO_LOG({device_kicked, ReasonMap}),
@@ -507,12 +540,8 @@ websocket_info({kick_device, ReasonMap}, State) ->
         <<"server_ts">> => elib_dt:millisecond()
     },
     {reply, {text, jsone:encode(Msg, [native_utf8])}, {close, 4000, Reason}, State};
-
 websocket_info(_Info, State) ->
     {ok, State}.
-
-
-
 
 %% 断开socket onclose
 %% Rename websocket_terminate/3 to terminate/3
@@ -536,7 +565,6 @@ terminate(Reason, _Req, State) ->
         error ->
             ok
     end.
-
 
 %% ===================================================================
 %% Internal functions
@@ -568,7 +596,6 @@ ws_validation_error(MsgId, Action, Reason) ->
         <<"server_ts">> => elib_dt:millisecond()
     }.
 
-
 %% @doc 验证 CLIENT_ACK 参数
 %% 验证规则:
 %% 1. MsgId 长度: 1-128 字节
@@ -585,7 +612,13 @@ validate_ack_params(Type, MsgId, DID, State) ->
             CurrentDID = maps:get(did, State, <<>>),
             MsgIdSize = byte_size(MsgId),
             DIDSize = byte_size(DID),
-            case {MsgIdSize > 0 andalso MsgIdSize =< 128, DIDSize > 0 andalso DIDSize =< 64, DID =:= CurrentDID} of
+            case
+                {
+                    MsgIdSize > 0 andalso MsgIdSize =< 128,
+                    DIDSize > 0 andalso DIDSize =< 64,
+                    DID =:= CurrentDID
+                }
+            of
                 {true, true, true} ->
                     ok;
                 {false, _, _} ->
@@ -596,7 +629,6 @@ validate_ack_params(Type, MsgId, DID, State) ->
                     {error, <<"did_mismatch">>}
             end
     end.
-
 
 %% @doc WebSocket 版本保护：版本过低时发送 S2C 升级提醒
 %% 不断开连接，只发消息提醒，用户体验更好
@@ -686,7 +718,6 @@ handle_protobuf_message_decoded(Data0, State) ->
             {reply, ws_reply(Protocol2, ErrorMsg2), State, hibernate}
     end.
 
-
 %% @doc 根据客户端子协议列表确定编码协议与 framing
 %% 复用 websocket_ds:select_subprotocol 的优先级逻辑，确保一致性
 -spec negotiate_protocol([binary()] | undefined) ->
@@ -694,8 +725,8 @@ handle_protobuf_message_decoded(Data0, State) ->
 negotiate_protocol(SubPt) when is_list(SubPt), length(SubPt) > 0 ->
     Selected = websocket_ds:select_subprotocol(SubPt),
     {imboy_codec:protocol_atom(Selected), imboy_codec:framing_atom(Selected)};
-negotiate_protocol(_) -> {json, none}.
-
+negotiate_protocol(_) ->
+    {json, none}.
 
 %% @doc 根据协议编码并包装为 WebSocket 帧（非 v2 framing）
 -spec ws_reply(imboy_codec:protocol(), map()) -> {text, binary()} | {binary, binary()}.
@@ -726,7 +757,6 @@ msg_to_v2_frame_type(Msg) ->
         _ -> ?FRAME_TYPE_MSG_S2C
     end.
 
-
 %% @doc 将投递管道的预编码消息转换为客户端协议帧
 %% 投递管道（send_next/timer）当前使用 JSON 预编码；
 %% protobuf 客户端需要 decode JSON -> reencode protobuf；
@@ -753,37 +783,36 @@ encode_delivery_frame_protobuf(Msg) ->
         Map = jsone:decode(Msg, [{object_format, map}]),
         case imboy_codec:encode(protobuf, Map) of
             <<>> ->
-                ok = ?WARN_LOG({encode_delivery_frame_pb_empty,
-                                maps:get(<<"id">>, Map, unknown)}),
+                ok = ?WARN_LOG({encode_delivery_frame_pb_empty, maps:get(<<"id">>, Map, unknown)}),
                 {text, Msg};
             Encoded ->
                 {binary, Encoded}
         end
-    catch Class:Reason ->
-        ok = ?WARN_LOG({encode_delivery_frame_fallback,
-                        Class, Reason, byte_size(Msg)}),
-        {text, Msg}
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({encode_delivery_frame_fallback, Class, Reason, byte_size(Msg)}),
+            {text, Msg}
     end.
 
 -spec encode_delivery_frame_v2(binary()) -> {binary, binary()}.
 encode_delivery_frame_v2(Msg) ->
+    %% v2 frame 投递 payload 始终用 JSON binary，不再走 protobuf。
+    %% 原因：protobuf 的 `payload` 是 bytes 类型，protobuf-dart 解码后把 bytes
+    %% 当作 base64 字符串暴露给应用层（observed: 客户端 [E2EE_DEBUG] 看到
+    %% `bE8vQ0NXUmt...` 即 base64('lO/CCWRk...')），导致客户端 e2ee 解密时
+    %% `ciphertext.split('.')` 只得到 1 段（base64 无 dot），
+    %% 抛出 "Invalid ciphertext format"。
+    %% Dart 客户端 imboy_frame 解析同时支持 JSON / protobuf payload，
+    %% 这里保留 v2 frame wrap，把 payload 永远填为 JSON 原文。
     try
         Map = jsone:decode(Msg, [{object_format, map}]),
         FrameType = msg_to_v2_frame_type(Map),
-        case imboy_codec:encode(protobuf, Map) of
-            <<>> ->
-                ok = ?WARN_LOG({encode_delivery_frame_v2_pb_empty,
-                                maps:get(<<"id">>, Map, unknown)}),
-                {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Msg)};
-            Encoded ->
-                {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Encoded)}
-        end
-    catch Class:Reason ->
-        ok = ?WARN_LOG({encode_delivery_frame_v2_fallback,
-                        Class, Reason, byte_size(Msg)}),
-        {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
+        {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Msg)}
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({encode_delivery_frame_v2_fallback, Class, Reason, byte_size(Msg)}),
+            {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
     end.
-
 
 %% @doc 将 protobuf 解码后的 from/to integer ID 转为 binary
 %% 仅处理 from 和 to 字段，其他 ID 字段由各 Logic 模块按需处理
@@ -800,7 +829,6 @@ normalize_protobuf_ids(Data) ->
 to_id_binary(V) when is_integer(V), V > 0 -> integer_to_binary(V);
 to_id_binary(V) when is_binary(V), byte_size(V) > 0 -> V;
 to_id_binary(_) -> <<>>.
-
 
 %% @doc 处理 ACK 消息类型
 -spec process_ack_type(binary(), binary(), integer(), binary()) -> ok.
