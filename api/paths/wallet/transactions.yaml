@@ -1,0 +1,20 @@
+# GET /v1/wallet/transactions
+get:
+  tags: [user]
+  summary: 钱包交易流水
+  description: |
+    ## 中文 / English
+    钱包交易流水
+  operationId: walletTransactions
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,28 @@
+# POST /v1/app_upgrade/report
+post:
+  tags: [user]
+  summary: 客户端升级日志上报
+  description: |
+    ## 中文 / English
+    客户端升级日志上报
+  operationId: appUpgradeReport
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            from_ver: { type: string }
+            to_ver: { type: string }
+            status: { type: string }
+            log: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

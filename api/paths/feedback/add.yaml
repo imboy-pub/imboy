@@ -1,0 +1,27 @@
+# POST /feedback/add
+post:
+  tags: [user]
+  summary: 提交反馈
+  description: |
+    ## 中文 / English
+    提交反馈
+  operationId: feedbackAdd
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            type: { type: string }
+            content: { type: string }
+            attachments: { type: array, items: { type: string } }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

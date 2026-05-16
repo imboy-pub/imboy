@@ -1,0 +1,26 @@
+# GET /app_version/check
+get:
+  tags: [user]
+  summary: App 版本检查（用于强制升级提示）
+  description: |
+    ## 中文 / English
+    App 版本检查（用于强制升级提示）
+  operationId: appVersionCheck
+  parameters:
+    - in: query
+      name: cos
+      required: false
+      schema: { type: string, description: 操作系统 ios/android/web }
+    - in: query
+      name: ver
+      required: false
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

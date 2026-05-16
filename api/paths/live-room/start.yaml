@@ -1,0 +1,25 @@
+# POST /v1/live_room/start
+post:
+  tags: [user]
+  summary: 开播
+  description: |
+    ## 中文 / English
+    开播
+  operationId: liveRoomStart
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            room_id: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,17 @@
+# GET /v1/wallet/balance
+get:
+  tags: [user]
+  summary: 查询钱包余额
+  description: |
+    ## 中文 / English
+    查询钱包余额
+  operationId: walletBalance
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,23 @@
+# POST /location/makeMyselfUnvisible
+post:
+  tags: [user]
+  summary: 从附近列表中隐身
+  description: |
+    ## 中文 / English
+    从附近列表中隐身
+  operationId: locationMakeUnvisible
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

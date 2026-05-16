@@ -1,0 +1,17 @@
+# GET /v1/app/manifest
+get:
+  tags: [user]
+  summary: 客户端启动清单
+  description: |
+    ## 中文 / English
+    客户端启动清单
+  operationId: appManifest
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

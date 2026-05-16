@@ -1,0 +1,20 @@
+# GET /v1/live_room/my_list
+get:
+  tags: [user]
+  summary: 我的直播间列表
+  description: |
+    ## 中文 / English
+    我的直播间列表
+  operationId: liveRoomMyList
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

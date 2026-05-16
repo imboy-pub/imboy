@@ -1,0 +1,22 @@
+# GET /v1/live_room/detail
+get:
+  tags: [user]
+  summary: 直播间详情
+  description: |
+    ## 中文 / English
+    直播间详情
+  operationId: liveRoomDetail
+  parameters:
+    - in: query
+      name: room_id
+      required: true
+      schema: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,17 @@
+# GET /fts/recently_user
+get:
+  tags: [user]
+  summary: 最近联系人
+  description: |
+    ## 中文 / English
+    最近联系人
+  operationId: ftsRecentlyUser
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -550,6 +550,64 @@ paths:
     $ref: './paths/e2ee-social/proxy-shards.yaml'
   /v1/e2ee/social/decrypt_shard:
     $ref: './paths/e2ee-social/decrypt-shard.yaml'
+  /app_version/check:
+    $ref: './paths/app/version-check.yaml'
+  /v1/app/features:
+    $ref: './paths/app/features.yaml'
+  /v1/app/manifest:
+    $ref: './paths/app/manifest.yaml'
+  /v1/app/policy:
+    $ref: './paths/app/policy.yaml'
+  /v1/app/ice_servers:
+    $ref: './paths/app/ice-servers.yaml'
+  /v1/app_upgrade/report:
+    $ref: './paths/app/upgrade-report.yaml'
+  /feedback/page:
+    $ref: './paths/feedback/page.yaml'
+  /feedback/add:
+    $ref: './paths/feedback/add.yaml'
+  /feedback/change:
+    $ref: './paths/feedback/change.yaml'
+  /feedback/remove:
+    $ref: './paths/feedback/remove.yaml'
+  /feedback/reply:
+    $ref: './paths/feedback/reply.yaml'
+  /feedback/page_reply:
+    $ref: './paths/feedback/page-reply.yaml'
+  /fts/user_search:
+    $ref: './paths/fts/user-search.yaml'
+  /fts/recently_user:
+    $ref: './paths/fts/recently-user.yaml'
+  /v1/fts/msg:
+    $ref: './paths/fts/msg.yaml'
+  /location/makeMyselfVisible:
+    $ref: './paths/location/make-visible.yaml'
+  /location/makeMyselfUnvisible:
+    $ref: './paths/location/make-unvisible.yaml'
+  /location/peopleNearby:
+    $ref: './paths/location/people-nearby.yaml'
+  /v1/report/create:
+    $ref: './paths/report/create.yaml'
+  /v1/moment/report/create:
+    $ref: './paths/report/moment-create.yaml'
+  /v1/live_room/list:
+    $ref: './paths/live-room/list.yaml'
+  /v1/live_room/my_list:
+    $ref: './paths/live-room/my-list.yaml'
+  /v1/live_room/create:
+    $ref: './paths/live-room/create.yaml'
+  /v1/live_room/start:
+    $ref: './paths/live-room/start.yaml'
+  /v1/live_room/stop:
+    $ref: './paths/live-room/stop.yaml'
+  /v1/live_room/detail:
+    $ref: './paths/live-room/detail.yaml'
+  /v1/wallet/balance:
+    $ref: './paths/wallet/balance.yaml'
+  /v1/wallet/transactions:
+    $ref: './paths/wallet/transactions.yaml'
+  /v1/wallet/topup:
+    $ref: './paths/wallet/topup.yaml'
   /adm/users:
     $ref: './paths/adm/users.yaml'
 

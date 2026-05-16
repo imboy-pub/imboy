@@ -1,0 +1,28 @@
+# GET /v1/fts/msg
+get:
+  tags: [user]
+  summary: 消息全文搜索
+  description: |
+    ## 中文 / English
+    消息全文搜索
+  operationId: ftsMsg
+  parameters:
+    - in: query
+      name: keyword
+      required: true
+      schema: { type: string }
+    - in: query
+      name: conv_key
+      required: false
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,26 @@
+# POST /v1/wallet/topup
+post:
+  tags: [user]
+  summary: 充值
+  description: |
+    ## 中文 / English
+    充值
+  operationId: walletTopup
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            amount: { type: integer, minimum: 1 }
+            method: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

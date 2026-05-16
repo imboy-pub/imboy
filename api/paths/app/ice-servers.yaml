@@ -1,0 +1,17 @@
+# GET /v1/app/ice_servers
+get:
+  tags: [user]
+  summary: WebRTC ICE 服务器列表
+  description: |
+    ## 中文 / English
+    WebRTC ICE 服务器列表
+  operationId: appIceServers
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,25 @@
+# POST /feedback/remove
+post:
+  tags: [user]
+  summary: 删除反馈
+  description: |
+    ## 中文 / English
+    删除反馈
+  operationId: feedbackRemove
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

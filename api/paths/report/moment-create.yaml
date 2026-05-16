@@ -1,0 +1,27 @@
+# POST /v1/moment/report/create
+post:
+  tags: [user]
+  summary: 动态专用举报 (legacy alias)
+  description: |
+    ## 中文 / English
+    动态专用举报 (legacy alias)
+  operationId: reportMomentCreate
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            moment_id: { type: string }
+            reason: { type: string }
+            description: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

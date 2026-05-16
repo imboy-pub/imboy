@@ -1,0 +1,24 @@
+# GET /feedback/page_reply
+get:
+  tags: [user]
+  summary: 回复分页
+  description: |
+    ## 中文 / English
+    回复分页
+  operationId: feedbackPageReply
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: integer }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

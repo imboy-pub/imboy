@@ -1,0 +1,28 @@
+# POST /v1/report/create
+post:
+  tags: [user]
+  summary: 通用举报
+  description: |
+    ## 中文 / English
+    通用举报
+  operationId: reportCreate
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            target_type: { type: string }
+            target_id: { type: string }
+            reason: { type: string }
+            description: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

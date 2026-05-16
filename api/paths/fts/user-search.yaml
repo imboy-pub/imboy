@@ -1,0 +1,24 @@
+# GET /fts/user_search
+get:
+  tags: [user]
+  summary: 用户全文搜索
+  description: |
+    ## 中文 / English
+    用户全文搜索
+  operationId: ftsUserSearch
+  parameters:
+    - in: query
+      name: keyword
+      required: true
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

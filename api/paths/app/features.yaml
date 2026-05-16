@@ -1,0 +1,17 @@
+# GET /v1/app/features
+get:
+  tags: [user]
+  summary: 客户端可用功能开关
+  description: |
+    ## 中文 / English
+    客户端可用功能开关
+  operationId: appFeatures
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

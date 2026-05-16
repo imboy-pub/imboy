@@ -1,0 +1,26 @@
+# POST /feedback/reply
+post:
+  tags: [user]
+  summary: 反馈追加回复
+  description: |
+    ## 中文 / English
+    反馈追加回复
+  operationId: feedbackReply
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id: { type: integer }
+            content: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
