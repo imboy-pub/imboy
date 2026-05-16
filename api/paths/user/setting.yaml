@@ -1,0 +1,53 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/setting.yaml
+# POST /user/setting — 批量修改用户设置 / Batch update user settings
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1setting
+# Handler: src/api/user_handler.erl#setting/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 批量保存用户偏好设置
+  description: |
+    ## 中文
+    批量保存多条 key/value 设置到 user_setting 表。允许的 key 由
+    user_setting_ds:save/3 的模式匹配定义；未知 key 返回 "undefined setting key"。
+    ## English
+    Bulk upsert key/value preferences into the user_setting table. Allowed
+    keys are pattern-matched in `user_setting_ds:save/3`; unknown keys
+    return "undefined setting key".
+  operationId: saveUserSettings
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [setting]
+          properties:
+            setting:
+              type: array
+              description: 多条 [key, value] 二元组 / Array of [key, value] pairs.
+              items:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items:
+                  type: string
+              example:
+                - ["chat_state", "online"]
+                - ["allow_search", "1"]
+  responses:
+    '200':
+      description: 全部成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 存在未知 setting key 或部分保存失败
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

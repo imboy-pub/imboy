@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/change-state.yaml
+# POST /user/change_state — 切换在线状态 / Toggle chat presence
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1change_state
+# Handler: src/api/user_handler.erl#change_state/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 切换在线/隐身/勿扰状态
+  description: |
+    ## 中文
+    将 chat_state 写入 user_setting 表，并异步广播给所有好友（user_server:
+    cast_notice_friend/2）。好友的会话列表会收到状态变更事件。
+    副作用：持久化设置 + 广播 WebSocket 事件。
+    ## English
+    Persist `chat_state` into user_setting and asynchronously notify all
+    friends so their conversation lists reflect the new presence.
+  operationId: changeChatState
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [online, hide, busy, away]
+              default: hide
+              description: 在线状态枚举 / Presence state.
+  responses:
+    '200':
+      description: 状态更新成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: state 枚举值非法 / 未鉴权
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

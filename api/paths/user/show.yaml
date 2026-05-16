@@ -1,0 +1,40 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/show.yaml
+# GET /user/show — 获取用户公开信息 / Get user public profile
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1show
+# Handler: src/api/user_handler.erl#show/2
+# 公开路由：在 imboy_router:open/0 中列为白名单（行 695, 711），免鉴权。
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 查询用户公开资料
+  description: |
+    ## 中文
+    免鉴权。返回 id / nickname / avatar / account / sign 等公开字段。
+    用于二维码扫描后展示、未登录态预览用户信息等场景。
+    ## English
+    No auth required. Returns public fields (id / nickname / avatar /
+    account / sign). Used after QR scans or in pre-login previews.
+  operationId: showUser
+  security: []
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: string }
+      description: 用户 TSID / User TSID.
+  responses:
+    '200':
+      description: 用户公开资料
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 缺少 id 参数 / id 格式非法 / 用户不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

@@ -102,6 +102,28 @@ paths:
     $ref: './paths/user/current.yaml'
   /user/{uid}:
     $ref: './paths/user/by-id.yaml'
+  /user/update:
+    $ref: './paths/user/update.yaml'
+  /user/show:
+    $ref: './paths/user/show.yaml'
+  /user/qrcode:
+    $ref: './paths/user/qrcode.yaml'
+  /user/credential:
+    $ref: './paths/user/credential.yaml'
+  /user/change_state:
+    $ref: './paths/user/change-state.yaml'
+  /user/setting:
+    $ref: './paths/user/setting.yaml'
+  /user/change_password:
+    $ref: './paths/user/change-password.yaml'
+  /user/set_password:
+    $ref: './paths/user/set-password.yaml'
+  /user/apply_logout:
+    $ref: './paths/user/apply-logout.yaml'
+  /user/cancel_logout:
+    $ref: './paths/user/cancel-logout.yaml'
+  /user/search:
+    $ref: './paths/user/search.yaml'
   /msg/history:
     $ref: './paths/msg/history.yaml'
   /adm/users:

@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/qrcode.yaml
+# GET /user/qrcode — 扫描用户二维码 / Scan user QR code
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1qrcode
+# Handler: src/api/user_handler.erl#qrcode/2
+# 兼容：旧路由 /uqrcode 也映射到同一 handler（router 标注 2024-05-10 过两个版本可清除）。
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 扫描用户名片二维码
+  description: |
+    ## 中文
+    用户名片二维码内嵌的 URL 命中此端点。
+    - 未登录 → 302 跳转到 `redirect_url`（默认 https://www.imboy.pub）
+    - 已登录 → 返回目标用户公开资料 + is_friend / remark 等关系字段
+    用户状态：-1 删除 / 0 禁用 / 1 启用，仅 1 时返回完整资料。
+    ## English
+    The URL embedded in a user vCard QR hits this endpoint.
+    - Unauthenticated → 302 redirect to `redirect_url`.
+    - Authenticated → return target user profile plus friendship status.
+  operationId: scanUserQrcode
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: string }
+      description: 目标用户 TSID / Target user TSID.
+  responses:
+    '200':
+      description: 已登录态下返回用户资料 + 好友关系
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '302':
+      description: 未登录态重定向到官网/落地页
+      headers:
+        Location:
+          schema: { type: string }
+          description: 跳转目标 URL / Redirect target.
+    '4XX':
+      description: id 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

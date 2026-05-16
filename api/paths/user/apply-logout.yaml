@@ -1,0 +1,34 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/apply-logout.yaml
+# POST /user/apply_logout — 申请注销账号 / Apply account deactivation
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1apply_logout
+# Handler: src/api/user_handler.erl#apply_logout/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 提交账号注销申请
+  description: |
+    ## 中文
+    提交账号注销申请，进入等待期（业务侧定义，通常 15 天）。期间用户仍可
+    通过 /user/cancel_logout 撤销。冷静期满后由后台清理任务真正删除。
+    副作用：写入 user_logout_apply 表 + 触发审计事件。
+    ## English
+    Submit an account deactivation request entering a cooling-off period
+    (typically 15 days). The user can revoke via /user/cancel_logout
+    during the period. Permanent deletion is done by a cron job later.
+  operationId: applyLogout
+  responses:
+    '200':
+      description: 申请提交成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 未鉴权 / 已存在待处理的注销申请 / 账号已被冻结
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

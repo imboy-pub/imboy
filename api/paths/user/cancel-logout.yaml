@@ -1,0 +1,31 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/cancel-logout.yaml
+# POST /user/cancel_logout — 撤销注销申请 / Cancel deactivation request
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1cancel_logout
+# Handler: src/api/user_handler.erl#cancel_logout/2 → user_logic:cancel_logout/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 撤销账号注销申请
+  description: |
+    ## 中文
+    在冷静期内撤销 /user/apply_logout 提交的注销申请，账号恢复正常。
+    ## English
+    Revoke a deactivation request submitted via /user/apply_logout while
+    still in the cooling-off period. Account is fully restored.
+  operationId: cancelLogout
+  responses:
+    '200':
+      description: 撤销成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 不存在待撤销的申请 / 冷静期已过 / 账号已被删除
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

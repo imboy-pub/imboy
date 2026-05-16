@@ -1,0 +1,49 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/update.yaml
+# POST /user/update — 修改用户信息 / Update user profile field
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1update
+# Handler: src/api/user_handler.erl#update/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 单字段修改用户资料
+  description: |
+    ## 中文
+    单字段更新模式：传入字段名 + 新值，服务端按 user_logic:update/3 的允许字段
+    白名单（nickname / avatar / sign / region / gender 等）校验。
+    副作用：可能同步广播给好友（如 nickname / avatar 变更）。
+    ## English
+    Single-field update: pass the field name and new value. The server
+    validates the field against `user_logic:update/3`'s allowed list and
+    may broadcast to friends when public fields change.
+  operationId: updateUser
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [field, value]
+          properties:
+            field:
+              type: string
+              enum: [nickname, avatar, sign, region, gender, mobile, email]
+              description: 字段名 / Field name to update.
+            value:
+              type: string
+              description: 新值 / New value.
+  responses:
+    '200':
+      description: 更新成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: 字段名非法、值校验失败或目标字段被禁止修改
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

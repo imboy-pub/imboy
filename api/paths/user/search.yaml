@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/user/search.yaml
+# GET /user/search — 关键词搜索用户 / Search users by keyword
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
+# 调用方:  api/openapi.yaml#/paths/~1user~1search
+# Handler: src/api/user_handler.erl#search/2
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 按邮箱/手机号/账号搜索单个用户
+  description: |
+    ## 中文
+    根据 keyword 类型自动路由：识别为邮箱 → user_ds:find_by_email；识别为
+    手机号 → find_by_mobile；否则按 account 精确匹配。
+    隐私：目标用户须开启 fts_user_ds:allow_search/1，否则返回空列表。
+    返回最多 1 条结果（精确匹配，非模糊全文搜索）。
+    ## English
+    Routes by keyword type: email → find_by_email; mobile → find_by_mobile;
+    otherwise exact account match. The target user must have opted into
+    search (`fts_user_ds:allow_search/1`); otherwise returns empty list.
+    At most 1 result (exact match, not fuzzy full-text search).
+  operationId: searchUser
+  parameters:
+    - in: query
+      name: keyword
+      required: true
+      schema: { type: string }
+      description: 邮箱 / 手机号 / 账号 / Email / mobile / account.
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 命中（list 长度 0 或 1，含 is_friend / remark 关系字段）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: keyword 缺失
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
