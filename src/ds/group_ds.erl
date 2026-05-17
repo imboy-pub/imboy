@@ -13,7 +13,6 @@
 -export([dissolve_group/4]).
 -export([find_by_creator_and_sum/2]).
 
-
 -export([member_uids/1]).
 -export([is_member/2]).
 -export([join/2]).
@@ -213,43 +212,73 @@ check_avatar(_) ->
 %% @param Type 群组类型（1 公开 2 私有）
 %% @param JoinLimit 加入限制
 %% @return integer() 创建的群组ID
--spec create_group(pid(), integer() | binary(), integer(), binary(), integer(), integer()) -> integer().
+-spec create_group(pid(), integer() | binary(), integer(), binary(), integer(), integer()) ->
+    integer().
 create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
-    GMap =
-        #{type => Type,
-          join_limit => JoinLimit,
-          user_id_sum => Uid,
-          owner_uid => Uid,
-          creator_uid => Uid,
-          created_at => Now},
-    GMap2 =
-        if Gid > 0 ->
-               GMap#{id => Gid};
-           true ->
-               GMap
+    %% 【TSID 修复】group.id 是 BIGINT NOT NULL 且无 default。
+    %% BIGSERIAL→TSID 迁移后必须预生成 id；缺失 id 会触发 NOT NULL 违反，
+    %% 而原先静默 fallback(Gid2=0) 让后续 group_member INSERT 与同事务
+    %% 后续 SQL 全部撞 25P02 in_failed_sql_transaction。
+    %% TSID generator 注册名为 group_info（见 imboy_app:tsid_generator_names/0）。
+    Gid_for_insert =
+        case Gid of
+            N when is_integer(N), N > 0 -> N;
+            _ -> elib_tsid:generate(group_info)
         end,
-    % 使用 elib_pg:insert 的 RETURNING 功能获取插入的Gid
+    GMap = #{
+        id => Gid_for_insert,
+        type => Type,
+        join_limit => JoinLimit,
+        user_id_sum => Uid,
+        owner_uid => Uid,
+        creator_uid => Uid,
+        created_at => Now
+    },
+    %% 【一致性修复】INSERT 失败时 throw，让外层 with_tx 回滚事务，
+    %% 避免事务进入 aborted 状态导致后续 SQL 全部 25P02。
+    %% parse_result/1 返回 {ok, Id, ExtraMap} 三元组（见 elib_pg_sql.erl:602）。
+    %% 原先匹配 {ok, Id} 二元组从未命中，永远 fallback 到 Gid=0，
+    %% 这才是 group_member.group_id=0 与 25P02 链路的真正起点。
     Gid2 =
-        case elib_pg_sql:parse_result(
-                 elib_pg:insert(Conn, group_repo:tablename(), GMap2, <<"RETURNING id">>))
+        case
+            elib_pg_sql:parse_result(
+                elib_pg:insert(Conn, group_repo:tablename(), GMap, <<"RETURNING id">>)
+            )
         of
-            {ok, Id} ->
+            {ok, Id, _Extra} when is_integer(Id), Id > 0 ->
                 Id;
-            _ ->
-                Gid
+            {error, Reason} ->
+                ?ERROR_LOG([group_create_insert_failed, Gid_for_insert, Uid, Reason]),
+                throw({error, group_create_failed, Reason});
+            Other ->
+                ?ERROR_LOG([group_create_insert_unexpected, Gid_for_insert, Uid, Other]),
+                throw({error, group_create_failed, Other})
         end,
-    % 检查群成员是否已存在，不存在则插入
+    %% 检查群成员是否已存在，不存在则插入
+    %% 【TSID 修复】group_member.id 同样 NOT NULL 无 default，需预生成。
     case group_member_repo:find(Gid2, Uid, <<"id">>) of
         GM when map_size(GM) == 0 ->
-            case elib_pg:insert(Conn,
-                            group_member_repo:tablename(),
-                            #{group_id => Gid2,
-                              user_id => Uid,
-                              role => 4, % 群主
-                              created_at => Now},
-                            <<>>) of
-                {ok, _} -> ok;
-                {error, Reason} -> ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason])
+            GmId = elib_tsid:generate(group_member),
+            case
+                elib_pg:insert(
+                    Conn,
+                    group_member_repo:tablename(),
+                    #{
+                        id => GmId,
+                        group_id => Gid2,
+                        user_id => Uid,
+                        % 群主
+                        role => 4,
+                        created_at => Now
+                    },
+                    <<>>
+                )
+            of
+                {ok, _} ->
+                    ok;
+                {error, Reason2} ->
+                    ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason2]),
+                    throw({error, group_member_create_failed, Reason2})
             end;
         _ ->
             ok
@@ -264,24 +293,28 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
 %% @param Limit 返回数量限制
 %% @param Code 随机码
 %% @return {ok, list(map())} 附近群组列表
--spec nearby_gid(binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number()) ->
-                    {ok, list(map())} | {error, term()}.
+-spec nearby_gid(
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number()
+) ->
+    {ok, list(map())} | {error, term()}.
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     Now = elib_dt:now(),
-    Sql = <<"select\n        id,\n        group_id,\n        ST_AsText(location) "
-            "as location,\n        ST_Distance(\n            ST_SetSRID(ST_MakePo"
-            "int($1::float8, $2::float8), 4326)::geography,\n           "
-            " location\n        ) as distance\n    from public.group_random_code\n "
-            "   where code = $3\n      and validity_at > $4::timestamptz\n "
-            "     and ST_DWithin(\n            location::geography,\n   "
-            "         ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geo"
-            "graphy,\n            $5::int\n      )\n    order by distance "
-            "asc\n    limit $6::int;">>,
+    Sql = <<
+        "select\n        id,\n        group_id,\n        ST_AsText(location) "
+        "as location,\n        ST_Distance(\n            ST_SetSRID(ST_MakePo"
+        "int($1::float8, $2::float8), 4326)::geography,\n           "
+        " location\n        ) as distance\n    from public.group_random_code\n "
+        "   where code = $3\n      and validity_at > $4::timestamptz\n "
+        "     and ST_DWithin(\n            location::geography,\n   "
+        "         ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geo"
+        "graphy,\n            $5::int\n      )\n    order by distance "
+        "asc\n    limit $6::int;"
+    >>,
     LngFloat = ec_cnv:to_float(Lng),
     LatFloat = ec_cnv:to_float(Lat),
     RadiusInt = ec_cnv:to_integer(Radius),
@@ -295,23 +328,26 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
 %% @param Lng 经度
 %% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
--spec face2face_create(pid(), integer(), binary(), float(), float()) -> {ok, integer()} | {error, binary() | atom()}.
+-spec face2face_create(pid(), integer(), binary(), float(), float()) ->
+    {ok, integer()} | {error, binary() | atom()}.
 face2face_create(Conn, Uid, Code, Lng, Lat) ->
     Now = elib_dt:now(),
     Gid = gid(),
     {Sql, Params} =
         elib_pg_sql:insert_with_params(
             group_random_code_repo:tablename(),
-            #{group_id => Gid,
-              user_id => Uid,
-              code => Code,
-              location =>
-                  {raw,
-                   <<"ST_SetSRID(ST_MakePoint($1::float8,$2::float8),4326)">>},
-              validity_at => elib_dt:add(Now, {60, minute}),
-              created_at => Now},
+            #{
+                group_id => Gid,
+                user_id => Uid,
+                code => Code,
+                location =>
+                    {raw, <<"ST_SetSRID(ST_MakePoint($1::float8,$2::float8),4326)">>},
+                validity_at => elib_dt:add(Now, {60, minute}),
+                created_at => Now
+            },
             <<>>,
-            [Lng, Lat]),
+            [Lng, Lat]
+        ),
     case elib_pg:execute(Conn, Sql, Params) of
         {ok, _} ->
             join(Uid, Gid),
@@ -343,7 +379,8 @@ face2face_save(Code, Gid, Uid) ->
 
         % 群不存在就创建
         case group_repo:find_by_id(Gid, <<"id">>) of
-            #{<<"id">> := _} -> ok;
+            #{<<"id">> := _} ->
+                ok;
             {error, Reason1} ->
                 ?ERROR_LOG([group_find_by_id_failed, Gid, Reason1]),
                 Now = elib_dt:now(),
@@ -355,13 +392,16 @@ face2face_save(Code, Gid, Uid) ->
 
         % 不是群成员则加入
         case group_member_repo:find(Gid, Uid, <<"id">>) of
-            #{<<"id">> := _} -> ok;
+            #{<<"id">> := _} ->
+                ok;
             _ ->
-                group_member_ds:join_group(Conn,
-                      <<"face2face_join">>,
-                      Uid,
-                      Gid,
-                      #{})
+                group_member_ds:join_group(
+                    Conn,
+                    <<"face2face_join">>,
+                    Uid,
+                    Gid,
+                    #{}
+                )
         end,
         {ok, <<"success">>}
     end).
@@ -382,12 +422,18 @@ dissolve_group(Uid, Gid, _, G) ->
 
     elib_pg:with_tx(fun(Conn) ->
         % 添加群日志
-        case group_log_repo:add(Conn,
-                #{type => 101,
-                  option_uid => Uid,
-                  group_id => Gid,
-                  body => Body,
-                  created_at => Now}) of
+        case
+            group_log_repo:add(
+                Conn,
+                #{
+                    type => 101,
+                    option_uid => Uid,
+                    group_id => Gid,
+                    body => Body,
+                    created_at => Now
+                }
+            )
+        of
             {ok, _} -> ok;
             {error, LogReason} -> ?ERROR_LOG([group_log_add_failed, Gid, Uid, LogReason])
         end,
@@ -399,24 +445,32 @@ dissolve_group(Uid, Gid, _, G) ->
 
         % 批量添加成员日志
         case group_member_repo:list_by_gid(Gid, <<"*">>, 1_000_000) of
-            {ok, []} -> ok;
+            {ok, []} ->
+                ok;
             {ok, Li} ->
                 MemberLogs = [
-                    #{type => 201,
-                      option_uid => Uid,
-                      group_id => Gid,
-                      body => case jsone_encode:encode(V, [native_utf8]) of
-                                  {ok, Encoded} -> Encoded;
-                                  _ -> <<>>
-                              end,
-                      created_at => Now}
-                 || V <- Li],
+                    #{
+                        type => 201,
+                        option_uid => Uid,
+                        group_id => Gid,
+                        body =>
+                            case jsone_encode:encode(V, [native_utf8]) of
+                                {ok, Encoded} -> Encoded;
+                                _ -> <<>>
+                            end,
+                        created_at => Now
+                    }
+                 || V <- Li
+                ],
                 case MemberLogs of
-                    [] -> ok;
+                    [] ->
+                        ok;
                     _ ->
                         case group_log_repo:batch_add(Conn, MemberLogs) of
-                            {ok, _} -> ok;
-                            {error, BatchReason} -> ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
+                            {ok, _} ->
+                                ok;
+                            {error, BatchReason} ->
+                                ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
                         end,
                         ok
                 end;
@@ -449,8 +503,7 @@ dissolve_group(Uid, Gid, _, G) ->
 -spec find_by_creator_and_sum(integer(), integer()) -> integer().
 find_by_creator_and_sum(CreatorUid, UserIdSum) ->
     Tb = group_repo:tablename(),
-    Sql = <<"SELECT id FROM ", Tb/binary,
-            " WHERE creator_uid = $1 AND user_id_sum = $2">>,
+    Sql = <<"SELECT id FROM ", Tb/binary, " WHERE creator_uid = $1 AND user_id_sum = $2">>,
     case elib_pg:query(Sql, [CreatorUid, UserIdSum]) of
         {ok, [#{<<"id">> := Gid}]} -> Gid;
         _ -> 0
@@ -530,10 +583,12 @@ page_joined(Uid, Page, Size) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{<<"g.status">> => 1,
-              <<"m.status">> => 1,
-              <<"m.user_id">> => Uid,
-              <<"g.owner_uid">> => {op, <<"!=">>, Uid}},
+    Where = #{
+        <<"g.status">> => 1,
+        <<"m.status">> => 1,
+        <<"m.user_id">> => Uid,
+        <<"g.owner_uid">> => {op, <<"!=">>, Uid}
+    },
     elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
 
 %% @doc 分页查询我管理的群（attr=manager，群主/副群主/管理员）
@@ -542,12 +597,18 @@ page_managed(Uid, Page, Size) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{<<"g.status">> => 1,
-              <<"__or">> =>
-                  [#{<<"g.owner_uid">> => Uid},
-                   #{<<"m.status">> => 1,
-                     <<"m.user_id">> => Uid,
-                     <<"m.role">> => {op, <<">=">>, 3}}]},
+    Where = #{
+        <<"g.status">> => 1,
+        <<"__or">> =>
+            [
+                #{<<"g.owner_uid">> => Uid},
+                #{
+                    <<"m.status">> => 1,
+                    <<"m.user_id">> => Uid,
+                    <<"m.role">> => {op, <<">=">>, 3}
+                }
+            ]
+    },
     elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
 
 %% ===================================================================

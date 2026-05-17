@@ -32,21 +32,32 @@ init(Req0, State0) ->
 %% @doc Action 分发处理
 %% 将不同的 action 分发到对应的处理函数
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
-handle_action(face2face, Req, State) -> face2face(Req, State);
-handle_action(face2face_save, Req, State) -> face2face_save(Req, State);
-handle_action(add, Req, State) -> add(Req, State);
-handle_action(edit, Req, State) -> edit(Req, State);
-handle_action(dissolve, Req, State) -> dissolve(Req, State);
-handle_action(detail, Req, State) -> detail(Req, State);
-handle_action(transfer, Req, State) -> transfer(Req, State);
+handle_action(face2face, Req, State) ->
+    face2face(Req, State);
+handle_action(face2face_save, Req, State) ->
+    face2face_save(Req, State);
+handle_action(add, Req, State) ->
+    add(Req, State);
+handle_action(edit, Req, State) ->
+    edit(Req, State);
+handle_action(dissolve, Req, State) ->
+    dissolve(Req, State);
+handle_action(detail, Req, State) ->
+    detail(Req, State);
+handle_action(transfer, Req, State) ->
+    transfer(Req, State);
 handle_action(page, Req, State) ->
     Qs0 = cowboy_req:parse_qs(Req),
     Attr = proplists:get_value(<<"attr">>, Qs0, undefined),
     page(Req, State, Attr);
-handle_action(msg_page, Req, State) -> msg_page(Req, State);
-handle_action(qrcode, Req, State) -> qrcode(Req, State);
-handle_action(remark, Req, State) -> remark(Req, State);
-handle_action(false, Req, _State) -> Req.
+handle_action(msg_page, Req, State) ->
+    msg_page(Req, State);
+handle_action(qrcode, Req, State) ->
+    qrcode(Req, State);
+handle_action(remark, Req, State) ->
+    remark(Req, State);
+handle_action(false, Req, _State) ->
+    Req.
 
 %% @doc 获取群组详情
 %% 查询指定群组的详细信息
@@ -61,7 +72,8 @@ detail(Req0, _State) ->
     Gid = proplists:get_value(<<"gid">>, Qs1, <<>>),
     % 【优化】使用统一的 ID 验证函数
     case imboy_error:validate_id(Req0, Gid) of
-        {error, Req} -> Req;
+        {error, Req} ->
+            Req;
         {ok, Gid2} ->
             case group_ds:find_by_id(Gid2, <<"*">>) of
                 {error, _Reason} ->
@@ -94,19 +106,22 @@ face2face(Req0, State) ->
                     Gid2 = Gid,
                     ToUidLi = group_ds:member_uids(Gid),
                     % 修复：如果成员列表为空，至少包含创建者，确保通知能发送
-                    ToUidLi2 = case ToUidLi of
-                        [] -> [Uid];
-                        _ -> ToUidLi
-                    end,
+                    ToUidLi2 =
+                        case ToUidLi of
+                            [] -> [Uid];
+                            _ -> ToUidLi
+                        end,
                     User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
                     %% v2.0: 使用 send/7 API
                     Action = <<"group_member_join">>,
                     Payload =
-                        #{<<"gid">> => Gid2,
-                          <<"user_id_sum">> => lists:sum(ToUidLi2),
-                          <<"nickname">> => maps:get(<<"nickname">>, User),
-                          <<"avatar">> => maps:get(<<"avatar">>, User),
-                          <<"account">> => maps:get(<<"account">>, User)},
+                        #{
+                            <<"gid">> => Gid2,
+                            <<"user_id_sum">> => lists:sum(ToUidLi2),
+                            <<"nickname">> => maps:get(<<"nickname">>, User),
+                            <<"avatar">> => maps:get(<<"avatar">>, User),
+                            <<"account">> => maps:get(<<"account">>, User)
+                        },
                     msg_s2c_ds:send(Uid, ToUidLi2, Action, <<>>, null, Payload, save),
 
                     MemberListRes =
@@ -118,11 +133,15 @@ face2face(Req0, State) ->
                             _ ->
                                 []
                         end,
-                    elib_response:success(Req0,
-                                           #{gid => Gid2,
-                                             member_list =>
-                                                 group_member_transfer:member_list(MemberList)},
-                                           "success.");
+                    elib_response:success(
+                        Req0,
+                        #{
+                            gid => Gid2,
+                            member_list =>
+                                group_member_transfer:member_list(MemberList)
+                        },
+                        "success."
+                    );
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -152,11 +171,15 @@ face2face_save(Req0, State) ->
                         {error, Reason2} ->
                             elib_response:error(Req0, Reason2);
                         G2 ->
-                            elib_response:success(Req0,
-                                                   #{group => group_logic:group_transfer(G2),
-                                                     member_list =>
-                                                         group_member_transfer:member_list(MemberList)},
-                                                   "success.")
+                            elib_response:success(
+                                Req0,
+                                #{
+                                    group => group_logic:group_transfer(G2),
+                                    member_list =>
+                                        group_member_transfer:member_list(MemberList)
+                                },
+                                "success."
+                            )
                     end
             end
     end.
@@ -171,7 +194,8 @@ face2face_save(Req0, State) ->
 -spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    Type = 2, % 类型: 1 公开群组  2 私有群组
+    % 类型: 1 公开群组  2 私有群组
+    Type = 2,
     case throttle:check(three_second_once, Uid) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, "在处理中，请稍后重试");
@@ -180,10 +204,11 @@ add(Req0, State) ->
             PostVals = elib_param:post(Req0),
             MemberUids = maps:get(<<"member_uids">>, PostVals, []),
             % 确保 MemberUids 是一个列表
-            MemberUids2 = case MemberUids of
-                List when is_list(List) -> List;
-                _ -> []
-            end,
+            MemberUids2 =
+                case MemberUids of
+                    List when is_list(List) -> List;
+                    _ -> []
+                end,
             case group_logic:add(Count, Uid, Type, MemberUids2) of
                 {ok, Gid} ->
                     case group_ds:find_by_id(Gid, <<"*">>) of
@@ -195,15 +220,27 @@ add(Req0, State) ->
                                 {error, Reason2} ->
                                     elib_response:error(Req0, Reason2);
                                 {ok, MemberList} ->
-                                    elib_response:success(Req0,
-                                                           #{group => GData3,
-                                                             member_list =>
-                                                                 group_member_transfer:member_list(MemberList)},
-                                                           "success.")
+                                    elib_response:success(
+                                        Req0,
+                                        #{
+                                            group => GData3,
+                                            member_list =>
+                                                group_member_transfer:member_list(MemberList)
+                                        },
+                                        "success."
+                                    )
                             end
                     end;
                 {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+                    elib_response:error(Req0, Msg);
+                %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
+                %% 不让 handler crash，统一转成可读错误返回前端。
+                {error, throw, ThrowReason} ->
+                    ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
+                    elib_response:error(Req0, "group_create_failed");
+                Unexpected ->
+                    ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
+                    elib_response:error(Req0, "group_create_failed")
             end
     end.
 
@@ -235,12 +272,16 @@ edit(Req0, State) ->
 -spec build_group_update_data(map()) -> map().
 build_group_update_data(PostVals) ->
     Fields = [<<"title">>, <<"avatar">>, <<"introduction">>],
-    lists:foldl(fun(Field, Acc) ->
-        case maps:get(Field, PostVals, undefined) of
-            undefined -> Acc;
-            Val -> Acc#{Field => Val}
-        end
-    end, #{}, Fields).
+    lists:foldl(
+        fun(Field, Acc) ->
+            case maps:get(Field, PostVals, undefined) of
+                undefined -> Acc;
+                Val -> Acc#{Field => Val}
+            end
+        end,
+        #{},
+        Fields
+    ).
 
 %% @doc 验证群组 ID
 -spec validate_gid(integer()) -> ok | {error, binary()}.
@@ -249,7 +290,8 @@ validate_gid(Gid) when Gid > 0 -> ok;
 validate_gid(_) -> {error, "group id 格式有误"}.
 
 %% @doc 处理群组编辑
--spec process_group_edit(cowboy_req:req(), integer(), binary(), integer(), map()) -> cowboy_req:req().
+-spec process_group_edit(cowboy_req:req(), integer(), binary(), integer(), map()) ->
+    cowboy_req:req().
 process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
     Now = elib_dt:now(),
     case group_ds:exists(Gid2) of
@@ -267,12 +309,15 @@ process_group_edit(Req0, Uid, Gid, Gid2, Data) ->
         false ->
             % 创建新群组
             M3 = group_random_code_ds:find_by_gid(Gid2, <<"user_id, created_at">>),
-            Data4 = Data#{owner_uid => maps:get(<<"user_id">>, M3, Uid),
-                          creator_uid => maps:get(<<"user_id">>, M3, Uid),
-                          created_at => maps:get(<<"created_at">>, M3, Now),
-                          id => Gid2},
+            Data4 = Data#{
+                owner_uid => maps:get(<<"user_id">>, M3, Uid),
+                creator_uid => maps:get(<<"user_id">>, M3, Uid),
+                created_at => maps:get(<<"created_at">>, M3, Now),
+                id => Gid2
+            },
             case group_ds:insert(Data4) of
-                {ok, _} -> ok;
+                {ok, _} ->
+                    ok;
                 {error, InsertReason} ->
                     ?ERROR_LOG({group_create_insert_failed, Gid2, InsertReason})
             end
@@ -329,15 +374,19 @@ page(Req0, State, <<"owner">>) ->
     Payload =
         case group_ds:page_by_owner(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
-                #{total => Total,
-                  page => Page,
-                  size => Size,
-                  list => Rows};
+                #{
+                    total => Total,
+                    page => Page,
+                    size => Size,
+                    list => Rows
+                };
             _ ->
-                #{total => 0,
-                  page => Page,
-                  size => Size,
-                  list => []}
+                #{
+                    total => 0,
+                    page => Page,
+                    size => Size,
+                    list => []
+                }
         end,
     elib_response:success(Req0, page_transfer(Payload));
 %% 我加入的群
@@ -347,15 +396,19 @@ page(Req0, State, <<"join">>) ->
     Payload =
         case group_ds:page_joined(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
-                #{total => Total,
-                  page => Page,
-                  size => Size,
-                  list => Rows};
+                #{
+                    total => Total,
+                    page => Page,
+                    size => Size,
+                    list => Rows
+                };
             _ ->
-                #{total => 0,
-                  page => Page,
-                  size => Size,
-                  list => []}
+                #{
+                    total => 0,
+                    page => Page,
+                    size => Size,
+                    list => []
+                }
         end,
     elib_response:success(Req0, page_transfer(Payload));
 %% 我管理的群（群主/副群主/管理员）
@@ -365,15 +418,19 @@ page(Req0, State, <<"manager">>) ->
     Payload =
         case group_ds:page_managed(CurrentUid, Page, Size) of
             {ok, #{total := Total, list := Rows}} ->
-                #{total => Total,
-                  page => Page,
-                  size => Size,
-                  list => Rows};
+                #{
+                    total => Total,
+                    page => Page,
+                    size => Size,
+                    list => Rows
+                };
             _ ->
-                #{total => 0,
-                  page => Page,
-                  size => Size,
-                  list => []}
+                #{
+                    total => 0,
+                    page => Page,
+                    size => Size,
+                    list => []
+                }
         end,
     elib_response:success(Req0, page_transfer(Payload));
 %% 兜底：未传 attr 或传入未知 attr 时，默认返回 owner 视图
@@ -413,15 +470,19 @@ msg_page(Req0, State) ->
             Payload =
                 case msg_c2g_ds:page(Where, Page, Size) of
                     {ok, #{total := Total, list := Rows}} ->
-                        #{total => Total,
-                          page => Page,
-                          size => Size,
-                          list => Rows};
+                        #{
+                            total => Total,
+                            page => Page,
+                            size => Size,
+                            list => Rows
+                        };
                     _ ->
-                        #{total => 0,
-                          page => Page,
-                          size => Size,
-                          list => []}
+                        #{
+                            total => 0,
+                            page => Page,
+                            size => Size,
+                            list => []
+                        }
                 end,
             elib_response:success(Req0, msg_page_transfer(Payload))
     end.
@@ -483,10 +544,18 @@ qrcode(Req0, State) ->
     % ?DEBUG_LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
     case {CurrentUid, Verified} of
         {0, _} ->
-            Req = cowboy_req:reply(302, #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)}, Req0),
+            Req = cowboy_req:reply(
+                302,
+                #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)},
+                Req0
+            ),
             {ok, Req, State};
         {_, false} ->
-            Req = cowboy_req:reply(302, #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)}, Req0),
+            Req = cowboy_req:reply(
+                302,
+                #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)},
+                Req0
+            ),
             {ok, Req, State};
         {_, true} when NowInt > ExpiredAtInt ->
             elib_response:error(Req0, "验证码已过期");
@@ -498,13 +567,17 @@ qrcode(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, Reason);
                 G ->
-                    Res = group_member_logic:join_group(<<"scan_qr_code">>,
-                                                        CurrentUid,
-                                                        Gid2,
-                                                        #{max_members =>
-                                                              maps:get(<<"member_max">>, G, 10),
-                                                          current_count =>
-                                                              maps:get(<<"member_count">>, G, 0)}),
+                    Res = group_member_logic:join_group(
+                        <<"scan_qr_code">>,
+                        CurrentUid,
+                        Gid2,
+                        #{
+                            max_members =>
+                                maps:get(<<"member_max">>, G, 10),
+                            current_count =>
+                                maps:get(<<"member_count">>, G, 0)
+                        }
+                    ),
                     % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
                     case Res of
                         ok ->
@@ -512,11 +585,15 @@ qrcode(Req0, State) ->
                                 {error, Reason2} ->
                                     elib_response:error(Req0, Reason2);
                                 G2 ->
-                                    Gm = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"*">>),
+                                    Gm = group_member_ds:find_by_gid_and_uid(
+                                        Gid2, CurrentUid, <<"*">>
+                                    ),
                                     [Gm2] = group_member_transfer:member_list([Gm]),
-                                    G3 = G#{<<"member_count">> := maps:get(<<"member_count">>, G2),
-                                            <<"type">> => <<"group">>,
-                                            <<"group_member">> => Gm2},
+                                    G3 = G#{
+                                        <<"member_count">> := maps:get(<<"member_count">>, G2),
+                                        <<"type">> => <<"group">>,
+                                        <<"group_member">> => Gm2
+                                    },
                                     % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
                                     elib_response:success(Req0, group_logic:group_transfer(G3))
                             end
