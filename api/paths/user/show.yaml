@@ -20,11 +20,7 @@ get:
   operationId: showUser
   security: []
   parameters:
-    - in: query
-      name: id
-      required: true
-      schema: { type: string }
-      description: 用户 TSID / User TSID.
+    - $ref: '../../components/parameters/UserIdQuery.yaml'
   responses:
     '200':
       description: 用户公开资料

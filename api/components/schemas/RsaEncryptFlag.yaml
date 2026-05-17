@@ -1,0 +1,19 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/RsaEncryptFlag.yaml
+# RSA 加密标志位 / RSA encryption flag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / simplify)
+# 调用方：api/paths/auth/signup.yaml、api/paths/auth/findpassword.yaml、
+#         api/paths/user/change-password.yaml、api/paths/user/set-password.yaml
+# 抽离原因：4 处 inline 定义完全一致；codegen 下游避免生成 N 个独立 enum 类型。
+# ----------------------------------------------------------------------------
+type: string
+enum: ["0", "1"]
+default: "1"
+description: |
+  ## 中文
+  是否 RSA-OAEP 加密密码字段。`1` 表示 `pwd`/`new_pwd` 为 RSA 密文（base64
+  编码），`0` 表示明文（仅测试环境允许）。默认 `1`。
+  ## English
+  Whether the password field is RSA-OAEP encrypted. `1` = `pwd`/`new_pwd`
+  is RSA ciphertext (base64); `0` = plaintext (test only). Default `1`.

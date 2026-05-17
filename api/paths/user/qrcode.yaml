@@ -22,11 +22,7 @@ get:
     - Authenticated → return target user profile plus friendship status.
   operationId: scanUserQrcode
   parameters:
-    - in: query
-      name: id
-      required: true
-      schema: { type: string }
-      description: 目标用户 TSID / Target user TSID.
+    - $ref: '../../components/parameters/UserIdQuery.yaml'
   responses:
     '200':
       description: 已登录态下返回用户资料 + 好友关系

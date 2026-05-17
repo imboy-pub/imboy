@@ -44,10 +44,7 @@ post:
               type: string
               description: 验证码 / Verification code.
             rsa_encrypt:
-              type: string
-              enum: ["0", "1"]
-              default: "1"
-              description: 是否 RSA 加密密码 / Whether `pwd` is RSA-encrypted.
+              $ref: '../../components/schemas/RsaEncryptFlag.yaml'
             sys_version:
               type: string
               description: 客户端系统版本 / Client OS version.

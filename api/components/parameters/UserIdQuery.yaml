@@ -1,0 +1,19 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/parameters/UserIdQuery.yaml
+# 用户 TSID 查询参数 / User TSID query parameter
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / simplify)
+# 调用方：api/paths/user/qrcode.yaml、api/paths/user/show.yaml
+# 抽离原因：两处 inline `id` query 参数语义一致（"目标用户 TSID"）。
+# ----------------------------------------------------------------------------
+in: query
+name: id
+required: true
+schema:
+  type: string
+description: |
+  ## 中文
+  目标用户 TSID（64 位整数的十进制字符串形式，与 `User.id` 字段一致）。
+  ## English
+  Target user TSID (decimal string form of a 64-bit integer, matching the
+  `User.id` field).
