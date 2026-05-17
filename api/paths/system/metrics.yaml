@@ -1,0 +1,26 @@
+# ----------------------------------------------------------------------------
+# GET /metrics + /v1/metrics — Prometheus 文本格式
+# Handler: src/api/metrics_handler.erl
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: Prometheus 指标抓取端点
+  description: |
+    ## 中文
+    Prometheus text-based exposition format（v0.0.4）。
+    通常由 Prometheus server 周期性抓取；不直接面向客户端。
+    内容含 BEAM 进程数、内存、连接池、消息队列长度、RPS 等。
+    ## English
+    Prometheus text-based exposition format (v0.0.4). Polled by a
+    Prometheus server, not by user clients. Includes BEAM runtime
+    stats, pool sizes, message queue lengths, RPS, etc.
+  operationId: prometheusMetrics
+  security: []
+  responses:
+    '200':
+      description: Prometheus 格式文本
+      content:
+        text/plain:
+          schema:
+            type: string
+            description: 'Prometheus text exposition format (v0.0.4)'

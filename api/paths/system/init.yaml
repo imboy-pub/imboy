@@ -1,0 +1,31 @@
+# ----------------------------------------------------------------------------
+# GET /init + /v1/init — 系统初始化探针 / System init probe
+# Handler: src/api/index_handler.erl#init/1
+# 与 /adm/setup/status 区分：/init 面向所有客户端做服务可用性探测；
+# /adm/setup/status 面向 admin 前端判断是否进入首启向导。
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 服务初始化探针（客户端启动期调用）
+  description: |
+    ## 中文
+    客户端启动期调用，返回服务可用性 + 基础引导信息（如服务端 ts /
+    强制升级标记 / 远程开关）。
+    与 /adm/setup/status 区分：本端点面向所有客户端，setup/status
+    面向 admin 前端判断是否要走首启向导。
+    ## English
+    Probe endpoint called by clients at startup; returns service
+    availability + bootstrap hints (server ts, force-upgrade flags,
+    remote toggles). Distinct from /adm/setup/status, which is for the
+    admin frontend's first-run wizard.
+  operationId: serviceInit
+  security: []
+  responses:
+    '200':
+      description: 探针 OK
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '5XX':
+      description: 服务异常（DB / 内部初始化失败）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

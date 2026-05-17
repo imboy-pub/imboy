@@ -1,0 +1,33 @@
+# ----------------------------------------------------------------------------
+# GET /v1/user/export_data — 个人数据导出 (GDPR 类) / Personal data export
+# Router: 行 227 注册到 user_handler#export_data
+# 注意：截至本契约编写时（2026-05-17），user_handler:handle_action/3 中
+#       **未列出** export_data 分支——可能是 router 已注册但 handler 待实现。
+#       本契约描述目标行为；客户端调用可能短期内返回 false 兜底。
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 当前用户的个人数据全量导出（GDPR 合规）
+  description: |
+    ## 中文
+    异步触发当前用户全部数据的打包导出（账户资料、好友、群组、消息、
+    moment、设置等）。返回打包任务 ID + 下载短链。
+    法规背景：GDPR 第 20 条 "Right to data portability"。
+    实现状态：router 已挂载，handler 待补 export_data 分支；本契约描述
+    目标行为，客户端应处理 400 兜底。
+    ## English
+    Asynchronously trigger a complete data export for the current user
+    (profile, friends, groups, messages, moments, settings, ...).
+    Returns a job id + signed download URL. Background: GDPR Art. 20
+    Right to data portability. Implementation status: router-mounted,
+    handler dispatch pending.
+  operationId: exportUserData
+  responses:
+    '200':
+      description: 任务受理；payload 含 task_id / 预期 ETA / 通知方式
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: handler 待实现 / 配额超限 / 上次导出未过冷却期
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

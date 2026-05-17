@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/qr-subscribe.yaml
+# GET /v1/passport/qr_login/subscribe — SSE 推送扫码状态
+# Handler: src/api/qr_login_sse_handler.erl
+# 关联：与 /qr_login/status 轮询端点互补；推荐 Web 端用 SSE 实时订阅。
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 扫码登录状态 SSE 订阅
+  description: |
+    ## 中文
+    建立 `text/event-stream` 长连接，服务端在 session 状态变更时主动推送：
+    - `event: scanned`   — 手机已扫码
+    - `event: confirmed` — 手机确认登录，data 含 login_token
+    - `event: cancelled` — 手机取消
+    - `event: expired`   — 60s 超时
+    比 `/qr_login/status` 轮询更高效；客户端应优先使用本接口，轮询作为兜底。
+    实现：基于 cowboy_loop + qr_login_event_ds:notify/2 广播。
+    ## English
+    Establish a `text/event-stream` long connection. The server pushes:
+    - `scanned`   — phone has scanned the QR
+    - `confirmed` — login confirmed (data carries `login_token`)
+    - `cancelled` — phone cancelled
+    - `expired`   — 60 s timeout
+    Preferred over polling /qr_login/status; polling is the fallback.
+  operationId: qrLoginSubscribe
+  security: []
+  parameters:
+    - in: query
+      name: session_token
+      required: true
+      schema: { type: string }
+      description: 由 /qr_login/create 返回的 session_token
+  responses:
+    '200':
+      description: SSE 事件流
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            description: |
+              Server-Sent Events stream. Each frame:
+                event: <scanned|confirmed|cancelled|expired>
+                data: <JSON object, schema depends on event type>
+    '4XX':
+      description: session_token 缺失 / 会话不存在或已过期
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

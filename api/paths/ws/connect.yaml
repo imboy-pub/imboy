@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/ws/connect.yaml
+# GET /ws — WebSocket upgrade endpoint
+# Handler: src/api/websocket_handler.erl
+# 关联：消息协议契约见 api/proto/imboy_v2_frame.proto 与
+#       doc/api/websocket-api-2.md / api/asyncapi (TODO).
+# ----------------------------------------------------------------------------
+get:
+  tags: [msg]
+  summary: WebSocket 接入入口（HTTP→WS upgrade）
+  description: |
+    ## 中文
+    本端点是 WebSocket 升级入口。HTTP 层只做协议升级；真正的消息协议
+    与帧定义见：
+    - **api/proto/imboy_v2_frame.proto** — Protobuf 顶层封装帧（codegen 真源）
+    - **api/proto/imboy_s2c.proto** — Server→Client action payload
+    - **doc/api/websocket-api-2.md** — 人类可读的协议设计文档
+    认证：
+    - 主要：`Sec-WebSocket-Protocol` header 携带 `Bearer <jwt>`
+    - 备选：query string `?token=<jwt>` （仅用于浏览器无法设置 header 时）
+    - JWT 失效时服务端仍允许握手成功，并下发 S2C 要求 8s 内刷新 token；
+      失败则强制下线（详见 doc/api/websocket-api-2.md#token-refresh）。
+    Action 分发：
+    - 心跳 (`ping`/`pong`)、消息发送 (`c2c.msg`)、群消息 (`c2g.msg`)、
+      已读回执、reactions、presence 通知等所有实时交互均在本通道完成。
+    ## English
+    HTTP→WebSocket upgrade endpoint. The HTTP layer only performs the
+    upgrade handshake; the actual message protocol is defined in:
+    - **api/proto/imboy_v2_frame.proto** — Protobuf v2 frame envelope
+    - **api/proto/imboy_s2c.proto** — Server-to-Client action payloads
+    - **doc/api/websocket-api-2.md** — Human-readable protocol spec
+    Auth: pass `Bearer <jwt>` via `Sec-WebSocket-Protocol` header
+    (preferred) or `?token=<jwt>` query (browser fallback). Expired
+    tokens are still accepted at handshake; the server then sends an
+    S2C frame requiring the client to refresh within 8 s.
+  operationId: wsConnect
+  parameters:
+    - in: header
+      name: Sec-WebSocket-Protocol
+      required: false
+      schema: { type: string }
+      description: |
+        浏览器/桌面客户端用此 header 传 `Bearer <jwt>`。
+        Bearer JWT in this header for browser/desktop clients.
+    - in: query
+      name: token
+      required: false
+      schema: { type: string }
+      description: 备选鉴权方式 / Fallback auth method.
+  responses:
+    '101':
+      description: 协议升级成功，进入 WebSocket 帧通信 / Upgrade successful, switch to WS frames.
+    '4XX':
+      description: token 无效 / 不在白名单 / 协议升级失败
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -70,6 +70,44 @@ tags:
 # 对应子目录后在此 paths 段追加 $ref 桥接。
 # ----------------------------------------------------------------------------
 paths:
+  # --------------------------------------------------------------------------
+  # 系统级 / 基础端点（D-extras phase 26, 2026-05-17）
+  # 包含：根欢迎页、初始化探针、Prometheus 指标、auth-gated assets、WebSocket
+  #      升级、deprecated 旧 alias。
+  # --------------------------------------------------------------------------
+  /:
+    $ref: './paths/system/help.yaml'
+  /help:
+    $ref: './paths/system/help.yaml'
+  /init:
+    $ref: './paths/system/init.yaml'
+  /v1/init:
+    $ref: './paths/system/init.yaml'
+  /metrics:
+    $ref: './paths/system/metrics.yaml'
+  /v1/metrics:
+    $ref: './paths/system/metrics.yaml'
+  /auth/assets:
+    $ref: './paths/system/auth-assets.yaml'
+  /v1/auth/assets:
+    $ref: './paths/system/auth-assets.yaml'
+  /ws:
+    $ref: './paths/ws/connect.yaml'
+  /v1/ws:
+    $ref: './paths/ws/connect.yaml'
+  /refreshtoken:
+    $ref: './paths/auth/refreshtoken.yaml'
+  /v1/refreshtoken:
+    $ref: './paths/auth/refreshtoken.yaml'
+  /v1/passport/qr_login/subscribe:
+    $ref: './paths/auth/qr-subscribe.yaml'
+  /uqrcode:
+    $ref: './paths/user/uqrcode.yaml'
+  /v1/uqrcode:
+    $ref: './paths/user/uqrcode.yaml'
+  /v1/user/export_data:
+    $ref: './paths/user/export-data.yaml'
+
   /adm/setup/status:
     $ref: './paths/adm/setup-status.yaml'
   /adm/setup/init:

@@ -1,0 +1,45 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/refreshtoken.yaml
+# POST /refreshtoken — 刷新 access token / Refresh access token
+#
+# 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 26 / D-extras)
+# 调用方:  api/openapi.yaml#/paths/~1refreshtoken (主) + ~1v1~1refreshtoken (v1)
+# Handler: src/api/passport_handler.erl#refreshtoken/1
+# 注意：这是真实路由名。phase 1 历史契约把 path 写成 `/passport/refresh`，
+#       系 doc/api/openapi.yaml 历史 bug 带入；本文件是修正版的正确契约。
+#       /passport/refresh 的 contract（paths/auth/refresh.yaml）暂保留为
+#       deprecated alias，独立 PR 处理。
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 使用 refresh token 换取新 access token
+  description: |
+    ## 中文
+    用 `imboy-refreshtoken` 请求头里的 refresh token 换取新的 access token。
+    限流：throttle:check(refreshtoken, Refreshtoken)，超限返回 429。
+    用户状态非 -1 / 0（未删除/未禁用）时成功；否则 4XX。
+    ## English
+    Exchange the refresh token in the `imboy-refreshtoken` header for a
+    new access token. Rate-limited; 429 on excess. Requires the account
+    to be neither deleted (-1) nor disabled (0).
+  operationId: refreshAccessToken
+  security: []
+  parameters:
+    - in: header
+      name: imboy-refreshtoken
+      required: true
+      schema: { type: string }
+      description: refresh token（不通过 body / query）/ Pass in this header only.
+  responses:
+    '200':
+      description: 新 access token（payload.token）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: refresh token 无效 / 已过期 / 用户被禁用或删除
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '429':
+      description: 刷新频率超限 / Rate limit exceeded
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

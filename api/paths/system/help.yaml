@@ -1,0 +1,23 @@
+# ----------------------------------------------------------------------------
+# GET / + /help — 服务自检 / API 入口提示 / Service welcome
+# Handler: src/api/index_handler.erl#help/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 服务自检 / API 入口提示
+  description: |
+    ## 中文
+    根路径返回服务元信息（vsn / 文档入口 / 接入提示）。
+    免鉴权；可用于客户端探活或人类访问 API 域名时的引导。
+    ## English
+    Service welcome / metadata (version, docs links). No auth required;
+    useful as a health probe or human-facing landing.
+  operationId: serviceWelcome
+  security: []
+  responses:
+    '200':
+      description: 服务元信息（HTML 或 JSON，由 handler 决定）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        text/html:
+          schema: { type: string }

@@ -1,0 +1,25 @@
+# ----------------------------------------------------------------------------
+# GET /auth/assets — 鉴权后下发静态资源/凭证 / Issue auth-gated assets
+# Handler: src/api/auth_handler.erl#assets/1
+# ----------------------------------------------------------------------------
+get:
+  tags: [auth]
+  summary: 下发受鉴权保护的静态资源（HMAC 签名 URL / TURN 等）
+  description: |
+    ## 中文
+    返回当前用户可访问的鉴权资源清单（如 HMAC 签名的 CDN URL、TURN
+    凭证、文件下载短链等）。具体 payload 形态由 auth_handler 实现决定。
+    ## English
+    Return the auth-gated asset bundle (HMAC-signed CDN URLs, TURN
+    credentials, short-lived download links, ...). Concrete payload
+    shape is determined by `auth_handler:assets/1`.
+  operationId: getAuthAssets
+  responses:
+    '200':
+      description: 资源清单
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 未鉴权 / 用户被冻结
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

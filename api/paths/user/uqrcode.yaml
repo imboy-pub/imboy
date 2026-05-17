@@ -1,0 +1,37 @@
+# ----------------------------------------------------------------------------
+# GET /uqrcode + /v1/uqrcode — DEPRECATED alias of /user/qrcode
+# Handler: src/api/user_handler.erl#qrcode/2
+# Router 已标注：// 2024-05-10 过两个版本可以清除该路由
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: "[DEPRECATED] 用户二维码 — 请改用 /user/qrcode"
+  deprecated: true
+  description: |
+    ## 中文 / English
+    与 /user/qrcode 行为完全一致；router 中保留作向后兼容 alias，
+    计划在两个客户端版本之后清理（router 行 47 / 216 内注释）。
+    新接入方请使用 /user/qrcode。
+    Behaves identically to /user/qrcode; kept as a backward-compat alias.
+    Slated for removal after two client release cycles. New integrations
+    should use /user/qrcode.
+  operationId: userQrcodeAlias
+  parameters:
+    - in: query
+      name: id
+      required: true
+      schema: { type: string }
+  responses:
+    '200':
+      description: 同 /user/qrcode
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '302':
+      description: 未登录态重定向
+      headers:
+        Location:
+          schema: { type: string }
+    '4XX':
+      description: id 缺失或非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
