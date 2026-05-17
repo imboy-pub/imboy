@@ -5,10 +5,9 @@
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 26 / D-extras)
 # 调用方:  api/openapi.yaml#/paths/~1refreshtoken (主) + ~1v1~1refreshtoken (v1)
 # Handler: src/api/passport_handler.erl#refreshtoken/1
-# 注意：这是真实路由名。phase 1 历史契约把 path 写成 `/passport/refresh`，
-#       系 doc/api/openapi.yaml 历史 bug 带入；本文件是修正版的正确契约。
-#       /passport/refresh 的 contract（paths/auth/refresh.yaml）暂保留为
-#       deprecated alias，独立 PR 处理。
+# 注意：这是真实路由名。phase 1 历史契约误写为 `/passport/refresh`（系
+#       doc/api/openapi.yaml 历史 bug 带入），已于 D-cleanup phase 27
+#       (commit 待补) 从 openapi.yaml 移除；本文件是修正版的正确契约。
 # ----------------------------------------------------------------------------
 post:
   tags: [auth]

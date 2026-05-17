@@ -108,25 +108,25 @@ imboy/api/
 
 ---
 
-## 历史契约缺陷（待独立 PR 修复）
+## 历史契约缺陷（已于 D-cleanup phase 27 修复）
 
-phase 1 从 `doc/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之前的手写版）迁移时带入的虚构端点，**router 中不存在**：
+phase 1 从 `doc/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之前的手写版）迁移时带入的虚构端点，**router 中不存在**，已在 D-cleanup 中删除：
 
-| 当前契约路径 | router 实际路径 | 状态 |
+| 已删除契约路径 | router 实际路径 | 替代方案 |
 |---|---|---|
-| `/passport/refresh` (`paths/auth/refresh.yaml`) | `/refreshtoken` (paths/auth/refreshtoken.yaml, D-extras) | 真实路径已契约化；虚构路径待删 |
-| `/user/current` (`paths/user/current.yaml`) | 无对应；客户端通过 token 解析自身 ID 后调 `/user/show?id=...` | 虚构，待删 |
-| `/user/{uid}` (`paths/user/by-id.yaml`) | 无对应；router 中是 `/user/show?id=...` | 虚构，待删 |
+| ~~`/passport/refresh`~~ | `/refreshtoken` + `/v1/refreshtoken` | 使用 `paths/auth/refreshtoken.yaml`（D-extras） |
+| ~~`/user/current`~~ | 不存在 | 客户端从 JWT 解出自身 uid 后调 `/user/show?id=...` |
+| ~~`/user/{uid}`~~ | 不存在 | 使用 `/user/show?id=...`（`paths/user/show.yaml`） |
 
-删除属破坏性 path 变更，需独立 PR + 客户端协调通知。
+注：删除属破坏性 path 变更（oasdiff 会报 ERR），但本质上是 contract bug fix —— 这些 path 在后端不存在，client SDK 调用必然 404。删除前若有 client 已按 phase 1 契约生成代码并实际调用过这些 path，应在收到 404 时回退到上表"替代方案"。
 
 ---
 
-## 路由覆盖统计 (截至 D-extras 2026-05-17)
+## 路由覆盖统计 (截至 D-cleanup 2026-05-17)
 
 - Router 路径总数：**512**
-- OpenAPI 已挂载：**404**
+- OpenAPI 已挂载：**401**（D-extras 404 - 删除 3 个虚构）
 - V1 段重复路径（已等价覆盖）：**107**
-- 业务路径覆盖率：**404 / (512 - 6 排除) = 100%**
+- 业务路径覆盖率：**100%**（506 真实业务 path 全覆盖；6 个有意排除）
 
-历史 commit 系列：见 `changelog.md` "T3.2 split phase 1–26"。
+历史 commit 系列：见 `changelog.md` "T3.2 split phase 1–27"。

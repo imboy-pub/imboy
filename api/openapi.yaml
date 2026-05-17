@@ -114,8 +114,6 @@ paths:
     $ref: './paths/adm/setup-init.yaml'
   /passport/login:
     $ref: './paths/auth/login.yaml'
-  /passport/refresh:
-    $ref: './paths/auth/refresh.yaml'
   /passport/quick_login:
     $ref: './paths/auth/quick-login.yaml'
   /passport/signup:
@@ -136,10 +134,6 @@ paths:
     $ref: './paths/auth/qr-confirm.yaml'
   /v1/passport/qr_login/cancel:
     $ref: './paths/auth/qr-cancel.yaml'
-  /user/current:
-    $ref: './paths/user/current.yaml'
-  /user/{uid}:
-    $ref: './paths/user/by-id.yaml'
   /user/update:
     $ref: './paths/user/update.yaml'
   /user/show:
