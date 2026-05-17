@@ -15,13 +15,16 @@
 
 ---
 
-## 目录结构（T3.1 骨架）
+## 目录结构（T3.1 骨架 + D-cleanup 2026-05-17 更新）
 
 ```
 imboy/api/
 ├── README.md           # 本文件（总览）
-├── openapi.yaml        # T3.2 产出 — HTTP REST API（OpenAPI 3.1）
-├── proto/              # T3.3 产出 — 实时通讯 Protobuf
+├── openapi.yaml        # T3.2 产出 — HTTP REST API（OpenAPI 3.1，含 paths/ + components/ 多文件 $ref）
+├── asyncapi.yaml       # D-cleanup 产出 — WebSocket / 实时通讯（AsyncAPI 3.0，机器消费真源）
+├── paths/              # OpenAPI path item 文件（按业务域子目录）
+├── components/         # 共享 schemas / parameters
+├── proto/              # T3.3 产出 — 实时通讯 Protobuf（asyncapi.yaml 的字节级真源）
 │   ├── imboy_v2_frame.proto    # WS 顶层封装帧
 │   ├── imboy_s2c.proto         # Server→Client action payload
 │   └── ...
@@ -39,6 +42,7 @@ imboy/api/
 | 工件 | 协议 | 消费方 | 工具链 |
 |------|------|-------|--------|
 | `openapi.yaml` | HTTP REST | 后端实现校验 + 前端 axios client + 文档 | Redocly + openapi-generator |
+| `asyncapi.yaml` | WebSocket / 实时事件 | 客户端 WS 消息分发 codegen + 文档 | AsyncAPI Generator + Studio |
 | `proto/*.proto` | WebSocket（imboy.v2 frame）| Erlang gpb / Dart protoc / TypeScript ts-proto | protoc + plugins |
 | `codegen/*.sh` | 调用 | Makefile / npm scripts / pubspec 依赖 | shell + 各 plugin |
 | `redocly.yaml` | OpenAPI 静态文档 | docs.imboy.com / GitHub Pages | redocly cli |

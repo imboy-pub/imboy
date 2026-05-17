@@ -4,15 +4,17 @@
 
 -behavior(cowboy_rest).
 
--dialyzer([{nowarn_function, search/2},
-           {nowarn_function, change_password/2},
-           {nowarn_function, set_password/2},
-           {nowarn_function, apply_logout/2},
-           {nowarn_function, cancel_logout/2},
-           {nowarn_function, qrcode/2},
-           {nowarn_function, change_state/2},
-           {nowarn_function, show/2},
-           {nowarn_function, handle_action/3}]).
+-dialyzer([
+    {nowarn_function, search/2},
+    {nowarn_function, change_password/2},
+    {nowarn_function, set_password/2},
+    {nowarn_function, apply_logout/2},
+    {nowarn_function, cancel_logout/2},
+    {nowarn_function, qrcode/2},
+    {nowarn_function, change_state/2},
+    {nowarn_function, show/2},
+    {nowarn_function, handle_action/3}
+]).
 
 -export([init/2]).
 -export([handle_action/3]).
@@ -53,6 +55,7 @@ handle_action(set_password, Req, State) -> set_password(Req, State);
 handle_action(apply_logout, Req, State) -> apply_logout(Req, State);
 handle_action(cancel_logout, Req, State) -> cancel_logout(Req, State);
 handle_action(search, Req, State) -> search(Req, State);
+handle_action(export_data, Req, State) -> export_data(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %% @doc 搜索用户
@@ -72,36 +75,45 @@ search(Req0, State) ->
     IsEmail = elib_type:is_email(KwdBin),
     IsMobile = elib_type:is_mobile(KwdBin),
     User =
-        if IsEmail ->
-               user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
-           IsMobile ->
-               user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
-           true ->
-               user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
+        if
+            IsEmail ->
+                user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
+            IsMobile ->
+                user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
+            true ->
+                user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
         end,
-    _ = User, % 消除未使用变量警告
+    % 消除未使用变量警告
+    _ = User,
     % ?DEBUG_LOG(['User ', User]),
     Uid2 = maps:get(<<"id">>, User, 0),
     AllowSearch = fts_user_ds:allow_search(Uid2),
     Payload =
-        if Uid2 == 0 ->
-               #{total => 0,
-                 page => Page,
-                 size => Size,
-                 list => []};
-           AllowSearch == false ->
-               #{total => 0,
-                 page => Page,
-                 size => Size,
-                 list => []};
-           true ->
-               {IsF, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
-               User2 = User#{<<"is_friend">> => IsF, <<"remark">> => Remark},
-               User3 = convert_user_id(User2),
-               #{total => 1,
-                 page => Page,
-                 size => Size,
-                 list => [User3]}
+        if
+            Uid2 == 0 ->
+                #{
+                    total => 0,
+                    page => Page,
+                    size => Size,
+                    list => []
+                };
+            AllowSearch == false ->
+                #{
+                    total => 0,
+                    page => Page,
+                    size => Size,
+                    list => []
+                };
+            true ->
+                {IsF, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
+                User2 = User#{<<"is_friend">> => IsF, <<"remark">> => Remark},
+                User3 = convert_user_id(User2),
+                #{
+                    total => 1,
+                    page => Page,
+                    size => Size,
+                    list => [User3]
+                }
         end,
     elib_response:success(Req0, Payload).
 
@@ -225,10 +237,12 @@ qrcode_transfer(CurrentUid, 1, User) ->
     Uid2 = maps:get(<<"id">>, User),
     User2 = maps:remove(<<"status">>, User),
     {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
-    User2#{<<"type">> => <<"user">>,
-           <<"id">> => Uid2,
-           <<"isfriend">> => Isfriend,
-           <<"remark">> => Remark};
+    User2#{
+        <<"type">> => <<"user">>,
+        <<"id">> => Uid2,
+        <<"isfriend">> => Isfriend,
+        <<"remark">> => Remark
+    };
 qrcode_transfer(_, _, _) ->
     % 状态: -1 删除  0 禁用  1 启用
     #{<<"result">> => <<"user_is_disabled_or_deleted">>, <<"msg">> => <<"用户被禁用或已删除"/utf8>>}.
@@ -313,7 +327,8 @@ show(Req0, _State) ->
             elib_response:error(Req0, <<"缺少ID参数"/utf8>>);
         _ ->
             case imboy_error:validate_id(Req0, Uid) of
-                {error, Req} -> Req;
+                {error, Req} ->
+                    Req;
                 {ok, DecodedUid} ->
                     Column = <<"id, nickname, avatar, account, sign">>,
                     User = user_logic:find_by_id(DecodedUid, Column),
@@ -332,3 +347,29 @@ convert_user_id(User) ->
         _ ->
             User
     end.
+
+%% @doc 个人数据全量导出（GDPR 第 20 条 - Right to data portability）
+%% POST /v1/user/export_data
+%%
+%% 实现状态：占位（D-cleanup phase 27, 2026-05-17）。
+%% router 早已注册到 export_data action，但 user_logic 尚未实现真正的
+%% 异步打包逻辑。本占位返回 501 ERR_NOT_IMPLEMENTED 让客户端能感知"功能
+%% 已契约化但服务侧未就绪"，而不是返回 false 兜底掩盖问题。
+%%
+%% 真正实现时需要：
+%% - 异步任务：扫描 user / friend / group / msg_archive / moment / setting
+%%   等表，打包为加密 zip → 写入对象存储
+%% - 返回 task_id + 预期 ETA + 完成后的下载短链通知方式
+%% - 配额：单用户冷却期、并发限制
+%%
+%% @param Req0 Cowboy请求对象
+%% @param _State 状态映射，包含 current_uid
+%% @return 501 ERR_NOT_IMPLEMENTED 响应
+%% @end
+-spec export_data(cowboy_req:req(), map()) -> cowboy_req:req().
+export_data(Req0, _State) ->
+    elib_response:error(
+        Req0,
+        <<"个人数据导出功能正在开发中，敬请期待"/utf8>>,
+        ?ERR_NOT_IMPLEMENTED
+    ).
