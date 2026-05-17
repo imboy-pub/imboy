@@ -37,29 +37,46 @@ tablename() ->
 %% 支持 CreatedAt: binary() | integer() (毫秒时间戳)
 %%====================================================================
 -spec write_msg(
-        binary() | integer(), %% CreatedAt
-        binary(),             %% MsgId
-        binary(),             %% Payload
-        integer(),            %% FromId
-        [integer()],          %% ToUids
-        integer(),            %% Gid
-        binary(),             %% MsgType
-        map() | null       %% E2EE (可选)
-      ) -> ok.
+    %% CreatedAt
+    binary() | integer(),
+    %% MsgId
+    binary(),
+    %% Payload
+    binary(),
+    %% FromId
+    integer(),
+    %% ToUids
+    [integer()],
+    %% Gid
+    integer(),
+    %% MsgType
+    binary(),
+    %% E2EE (可选)
+    map() | null
+) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, null).
 
 %% @doc 写入群离线消息（支持 expire_at 自毁时间）
 -spec write_msg(
-        binary() | integer(), binary(), binary(), integer(),
-        [integer()], integer(), binary(), map() | null, binary() | null
-      ) -> ok.
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    binary() | null
+) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
 
-    TbMsg = tablename(),           %% 群离线消息表
-    TbTimeline = msg_c2g_timeline_repo:tablename(), %% 群消息时间线表
+    %% 群离线消息表
+    TbMsg = tablename(),
+    %% 群消息时间线表
+    TbTimeline = msg_c2g_timeline_repo:tablename(),
 
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入群离线消息 ----------
@@ -72,41 +89,47 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
             topic_id => 0,
             msg_id => MsgId,
             msg_type => MsgType,
-            e2ee => case E2EE of
-                <<>> -> null;
-                null -> null;
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-                Bin when is_binary(Bin) -> Bin;
-                _ -> null
-            end
+            e2ee =>
+                case E2EE of
+                    <<>> -> null;
+                    null -> null;
+                    Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+                    Bin when is_binary(Bin) -> Bin;
+                    _ -> null
+                end
         },
         %% 仅当 ExpireAt 非 null 时添加字段
-        MsgData2 = case ExpireAt of
-            null -> MsgData;
-            _ -> MsgData#{expire_at => ExpireAt}
-        end,
+        MsgData2 =
+            case ExpireAt of
+                null -> MsgData;
+                _ -> MsgData#{expire_at => ExpireAt}
+            end,
         GenId = elib_tsid:generate(msg_c2g),
         MsgData3 = MsgData2#{id => GenId},
         {MsgSql, MsgParams} = elib_pg_sql:insert(TbMsg, MsgData3),
         case elib_pg:execute(Conn, MsgSql, MsgParams) of
-            {ok, _} -> ok;
+            {ok, _} ->
+                ok;
             {error, InsertReason} ->
                 ?ERROR_LOG({msg_c2g_insert_failed, MsgId, InsertReason}),
                 error({msg_c2g_insert_failed, InsertReason})
         end,
 
         %% ---------- 批量插入时间线表 ----------
-        Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
+        Vals = [[MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids],
         {SqlTimeline0, ParamsTimeline} =
             elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
+        %% 【ON CONFLICT 修复】表上唯一约束是 uk_c2g_timeline_touid_msgid_createdat
+        %% (to_uid, msg_id, created_at)，原 SQL 只列 (to_uid, msg_id) → PG 42P10
+        %% invalid_column_reference，导致 msg_store_worker 在群消息批写时反复 crash，
+        %% msg_c2g 写不进库、群消息无法投递。列必须与索引完全一致。
         SqlTimeline = iolist_to_binary([
             SqlTimeline0,
-            <<" ON CONFLICT (to_uid, msg_id) DO NOTHING">>
+            <<" ON CONFLICT (to_uid, msg_id, created_at) DO NOTHING">>
         ]),
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
     end).
-
 
 %% @doc 根据消息ID列表查询群离线消息
 %% @param Ids 消息ID列表
@@ -119,15 +142,19 @@ list_by_ids([], _Column) ->
 list_by_ids(Ids, Column) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
-    Placeholders = iolist_to_binary(lists:join(<<",">>,
-        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))])),
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))]
+        )
+    ),
     Where = <<" WHERE msg_id IN (", Placeholders/binary, ")">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary, " ORDER BY created_at ASC">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary, " ORDER BY created_at ASC">>,
     % 将Ids转换为参数列表
     Params = [Id || Id <- Ids],
     % ?DEBUG_LOG(Sql),
     elib_pg:query(Sql, Params).
-
 
 %% @doc 根据消息ID查找群聊消息
 %% @param Id 消息ID
@@ -144,7 +171,6 @@ find_msg_by_id(Id) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
 %% @doc 删除群离线消息（根据消息ID）
 %% @param Id 消息ID
 %% @return {ok, Count} 删除成功 | {error, Reason} 删除失败
@@ -153,7 +179,6 @@ find_msg_by_id(Id) ->
 delete_msg(Id) ->
     Where = <<"WHERE msg_id = $1">>,
     delete_msg(Where, [Id]).
-
 
 %% @doc 根据WHERE条件删除群离线消息
 %% @param Where SQL WHERE子句
@@ -164,7 +189,6 @@ delete_msg(Where, Params) when is_list(Params) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
     elib_pg:execute(Sql, Params).
-
 
 %% @doc 统计已读消息人数
 %% 统计指定消息的已读用户数量（去重）
@@ -187,9 +211,10 @@ count_read(MsgId) ->
 -spec update_pinned(binary(), integer(), boolean()) -> {ok, non_neg_integer()} | {error, term()}.
 update_pinned(MsgId, ToUid, Pinned) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-           " SET pinned = $1, updated_at = CURRENT_TIMESTAMP "
-           " WHERE msg_id = $2 AND to_id = $3">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET pinned = $1, updated_at = CURRENT_TIMESTAMP "
+            " WHERE msg_id = $2 AND to_id = $3">>,
     case elib_pg:execute(Sql, [Pinned, MsgId, ToUid]) of
         {ok, AffectedRows} ->
             {ok, AffectedRows};
@@ -204,9 +229,10 @@ update_pinned(MsgId, ToUid, Pinned) ->
 -spec update_payload_by_msg_id(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 update_payload_by_msg_id(MsgId, PayloadJson) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-           " SET payload = $1, server_ts = CURRENT_TIMESTAMP "
-           " WHERE msg_id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET payload = $1, server_ts = CURRENT_TIMESTAMP "
+            " WHERE msg_id = $2">>,
     case elib_pg:execute(Sql, [PayloadJson, MsgId]) of
         {ok, AffectedRows} ->
             {ok, AffectedRows};
@@ -230,10 +256,32 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
 %% @param _ReplyToFromId 被引用消息的发送者ID（暂不支持）
 %% @param _ReplySnippet 被引用消息的摘要（暂不支持）
 %% @return ok | {error, Reason}
--spec write_msg_with_reply(binary(), binary(), binary(), integer(), [integer()], integer(),
-                           binary(), map() | null, binary(), integer(), binary()) -> ok | {error, term()}.
-write_msg_with_reply(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE,
-                     _ReplyToMsgId, _ReplyToFromId, _ReplySnippet) ->
+-spec write_msg_with_reply(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    binary(),
+    integer(),
+    binary()
+) -> ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    _ReplyToMsgId,
+    _ReplyToFromId,
+    _ReplySnippet
+) ->
     % 当前数据库表不支持 reply_to_msg_id 等字段
     % 直接调用 write_msg/9 忽略回复信息
     write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE).
@@ -259,15 +307,24 @@ find_by_reply_to_msg_id(_ReplyToMsgId) ->
 %% @param Mentions 被@的用户ID列表（integer）
 %% @return ok
 -spec write_msg_with_mentions(
-        binary() | integer(), binary(), binary(), integer(), [integer()],
-        integer(), binary(), map() | null, [integer()]
-      ) -> ok.
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    [integer()]
+) -> ok.
 write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Mentions) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
 
-    TbMsg = tablename(),           %% 群离线消息表
-    TbTimeline = msg_c2g_timeline_repo:tablename(), %% 群消息时间线表
+    %% 群离线消息表
+    TbMsg = tablename(),
+    %% 群消息时间线表
+    TbTimeline = msg_c2g_timeline_repo:tablename(),
 
     elib_pg:with_tx(fun(Conn) ->
         %% ---------- 插入群离线消息（带@信息）----------
@@ -282,33 +339,40 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
             topic_id => 0,
             msg_id => MsgId,
             msg_type => MsgType,
-            e2ee => case E2EE of
-                <<>> -> null;
-                null -> null;
-                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-                Bin when is_binary(Bin) -> Bin;
-                _ -> null
-            end,
-            mentions => case Mentions of
-                [] -> null;
-                _ -> jsone:encode(Mentions, [native_utf8])
-            end
+            e2ee =>
+                case E2EE of
+                    <<>> -> null;
+                    null -> null;
+                    Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+                    Bin when is_binary(Bin) -> Bin;
+                    _ -> null
+                end,
+            mentions =>
+                case Mentions of
+                    [] -> null;
+                    _ -> jsone:encode(Mentions, [native_utf8])
+                end
         },
         {MentionSql, MentionParams} = elib_pg_sql:insert(TbMsg, MentionMsgData),
         case elib_pg:execute(Conn, MentionSql, MentionParams) of
-            {ok, _} -> ok;
+            {ok, _} ->
+                ok;
             {error, InsertReason} ->
                 ?ERROR_LOG({msg_c2g_mention_insert_failed, MsgId, InsertReason}),
                 error({msg_c2g_insert_failed, InsertReason})
         end,
 
         %% ---------- 批量插入时间线表 ----------
-        Vals = [ [MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids ],
+        Vals = [[MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids],
         {SqlTimeline0, ParamsTimeline} =
             elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
+        %% 【ON CONFLICT 修复】表上唯一约束是 uk_c2g_timeline_touid_msgid_createdat
+        %% (to_uid, msg_id, created_at)，原 SQL 只列 (to_uid, msg_id) → PG 42P10
+        %% invalid_column_reference，导致 msg_store_worker 在群消息批写时反复 crash，
+        %% msg_c2g 写不进库、群消息无法投递。列必须与索引完全一致。
         SqlTimeline = iolist_to_binary([
             SqlTimeline0,
-            <<" ON CONFLICT (to_uid, msg_id) DO NOTHING">>
+            <<" ON CONFLICT (to_uid, msg_id, created_at) DO NOTHING">>
         ]),
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
