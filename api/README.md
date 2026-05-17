@@ -88,3 +88,45 @@ imboy/api/
 
 > **警告**：禁止在本目录之外写新的 API/协议结构定义。任何 PR 添加新端点 → 必须先改 `openapi.yaml` 或 `proto/*.proto`，CI 校验通过后才允许实现。
 > 设计层文档可继续写到 `imboy/doc/api/`。
+
+---
+
+## 已排除路由 / Explicitly excluded routes
+
+下列路由在 `src/imboy_router.erl` 中存在，但**有意不挂载**到 `openapi.yaml`：
+
+| 路由 | Handler | 排除原因 / Exclusion rationale |
+|------|---------|--------------------------------|
+| `/account-deletion` | `index_handler` (HTML) | 合规需要的账号注销页，HTML 响应而非 JSON API |
+| `/privacy-policy` | `index_handler` (HTML) | 隐私政策页，HTML 响应 |
+| `/static/[...]` | `cowboy_static` | 静态资源中间件，不属于业务契约 |
+| `/static/admin/[...]` | `cowboy_static` | 管理后台前端 SPA 资源 |
+| `/test/req_get` | `test_handler` | 开发调试端点，不暴露给客户端 codegen |
+| `/test/req_post` | `test_handler` | 同上 |
+
+如未来需要把这些挂入 OpenAPI（例如静态资源需 SDK 化、或测试端点需契约化），可参考 `paths/system/help.yaml` 的 `text/html` content type 模式。
+
+---
+
+## 历史契约缺陷（待独立 PR 修复）
+
+phase 1 从 `doc/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之前的手写版）迁移时带入的虚构端点，**router 中不存在**：
+
+| 当前契约路径 | router 实际路径 | 状态 |
+|---|---|---|
+| `/passport/refresh` (`paths/auth/refresh.yaml`) | `/refreshtoken` (paths/auth/refreshtoken.yaml, D-extras) | 真实路径已契约化；虚构路径待删 |
+| `/user/current` (`paths/user/current.yaml`) | 无对应；客户端通过 token 解析自身 ID 后调 `/user/show?id=...` | 虚构，待删 |
+| `/user/{uid}` (`paths/user/by-id.yaml`) | 无对应；router 中是 `/user/show?id=...` | 虚构，待删 |
+
+删除属破坏性 path 变更，需独立 PR + 客户端协调通知。
+
+---
+
+## 路由覆盖统计 (截至 D-extras 2026-05-17)
+
+- Router 路径总数：**512**
+- OpenAPI 已挂载：**404**
+- V1 段重复路径（已等价覆盖）：**107**
+- 业务路径覆盖率：**404 / (512 - 6 排除) = 100%**
+
+历史 commit 系列：见 `changelog.md` "T3.2 split phase 1–26"。
