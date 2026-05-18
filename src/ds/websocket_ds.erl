@@ -22,8 +22,8 @@
 %% @param Req0 Cowboy请求对象
 %% @returns {ok, any()} | {cowboy_websocket, any()} 处理结果
 -spec check_subprotocols(undefined | [binary()], cowboy_req:req()) ->
-                            {ok, cowboy_req:req()} |
-                            {cowboy_websocket, cowboy_req:req(), map(), map()}.
+    {ok, cowboy_req:req()}
+    | {cowboy_websocket, cowboy_req:req(), map(), map()}.
 check_subprotocols(undefined, Req0) ->
     % HTTP 400 - 请求无效
     Req = cowboy_req:reply(400, Req0),
@@ -32,7 +32,7 @@ check_subprotocols([], Req0) ->
     % HTTP 406 - 无法接受
     Req = cowboy_req:reply(406, Req0),
     {ok, Req};
-check_subprotocols([_|_] = SubPt, Req0) ->
+check_subprotocols([_ | _] = SubPt, Req0) ->
     case select_subprotocol(SubPt) of
         undefined ->
             Req = cowboy_req:reply(406, Req0),
@@ -41,7 +41,6 @@ check_subprotocols([_|_] = SubPt, Req0) ->
             Req = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, Selected, Req0),
             {cowboy_websocket, Req, #{}, #{}}
     end.
-
 
 %% @doc 从客户端支持的子协议列表中选择最佳协议
 %% 优先级：imboy.v2 > imboy-protobuf > imboy-json > text
@@ -54,7 +53,8 @@ select_subprotocol(_) ->
 
 %% @private
 -spec select_first_match([binary()], [binary()]) -> binary() | undefined.
-select_first_match([], _) -> undefined;
+select_first_match([], _) ->
+    undefined;
 select_first_match([P | Rest], Subprotocols) ->
     case lists:member(P, Subprotocols) of
         true -> P;
@@ -71,7 +71,7 @@ select_first_match([P | Rest], Subprotocols) ->
 %% @param Opt 额外选项
 %% @returns any() 认证结果
 -spec auth(binary(), cowboy_req:req(), map(), map()) ->
-              {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
+    {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
 auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
@@ -84,28 +84,43 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             %% 原本用 4401 是非法 HTTP 状态码，cowboy 会静默关闭不发 response；
             %% 改为 401 Unauthorized + 业务码头 X-Token-Error 让客户端区分语义。
             ok = ?WARN_LOG([token_expired_rejected]),
-            Req2 = cowboy_req:reply(401, #{
-                <<"content-type">> => <<"application/json">>,
-                <<"x-token-error">> => <<"expired">>
-            }, <<"{\"code\":705,\"msg\":\"token_expired\"}">>, Req),
+            Req2 = cowboy_req:reply(
+                401,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"x-token-error">> => <<"expired">>
+                },
+                <<"{\"code\":705,\"msg\":\"token_expired\"}">>,
+                Req
+            ),
             {ok, Req2, State#{error => 705, msg => <<"token_expired">>}};
         %% 【修复】所有 decrypt 失败都必须显式 reply，否则 cowboy_handler
         %% 默认合成 204 No Content，诊断极不友好。
         %% 706（签名无效/解码崩溃）→ 401 Unauthorized
         {error, 706, _Msg, _Map} ->
             ok = ?WARN_LOG([token_invalid_rejected]),
-            Req2 = cowboy_req:reply(401, #{
-                <<"content-type">> => <<"application/json">>,
-                <<"x-token-error">> => <<"invalid">>
-            }, <<"{\"code\":706,\"msg\":\"token_invalid\"}">>, Req),
+            Req2 = cowboy_req:reply(
+                401,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"x-token-error">> => <<"invalid">>
+                },
+                <<"{\"code\":706,\"msg\":\"token_invalid\"}">>,
+                Req
+            ),
             {ok, Req2, State#{error => 706, msg => <<"token_invalid">>}};
         %% 其他未识别错误码也必须 reply，避免 204 回归
         {error, Code, Msg, _Map} ->
             ok = ?WARN_LOG([token_rejected, Code, Msg]),
-            Req2 = cowboy_req:reply(401, #{
-                <<"content-type">> => <<"application/json">>,
-                <<"x-token-error">> => <<"rejected">>
-            }, <<"{\"code\":0,\"msg\":\"token_rejected\"}">>, Req),
+            Req2 = cowboy_req:reply(
+                401,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"x-token-error">> => <<"rejected">>
+                },
+                <<"{\"code\":0,\"msg\":\"token_rejected\"}">>,
+                Req
+            ),
             {ok, Req2, State#{error => Code, msg => elib_cnv:safe_to_binary(Msg)}}
     end;
 auth(Auth, Req0, State0, _Opt) ->
@@ -128,8 +143,8 @@ auth(Auth, Req0, State0, _Opt) ->
 %% @param Opt 额外选项
 %% @returns {ok, any(), map()} | {cowboy_websocket, any(), map(), map()} WebSocket连接设置
 -spec auth_after(non_neg_integer(), cowboy_req:req(), map(), map()) ->
-                    {ok, cowboy_req:req(), map()} |
-                    {cowboy_websocket, cowboy_req:req(), map(), map()}.
+    {ok, cowboy_req:req(), map()}
+    | {cowboy_websocket, cowboy_req:req(), map(), map()}.
 % auth_after(true, _Uid, Req0, State0, _Opt) ->
 %     % elib_log:warning("DeviceID ~p is online", [State0]),
 %     % 429 Too Many Requests
@@ -146,7 +161,7 @@ auth_after(Uid, Req, State, Opt) ->
 %% @param Uid 用户ID
 %% @returns integer() 超时时间（毫秒）
 % 设置用户websocket超时时间，默认60秒
-% Cowboy关闭连接空闲128秒 默认值为 60000
+% Cowboy关闭连接空闲180秒（客户端心跳60秒，3倍余量） 默认值为 60000
 -spec idle_timeout(integer()) -> integer().
 idle_timeout(_Uid) ->
-    128000.
+    180000.

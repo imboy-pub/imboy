@@ -44,9 +44,9 @@ init(Req0, State0) ->
         enable_connect_protocol => true,
         % 2MB
         max_frame_size => 2097152,
-        % Cowboy关闭连接空闲128秒 默认值为 60000
+        % Cowboy关闭连接空闲180秒（客户端心跳60秒，3倍余量） 默认值为 60000
         % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
-        idle_timeout => 128000
+        idle_timeout => 180000
     },
     State1 = State0#{dtype => DType, did => DID, vsn => AppVsn},
     case throttle:check(throttle_ws, DID) of
