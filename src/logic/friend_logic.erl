@@ -23,10 +23,12 @@
 %% @param Payload 消息内容映射
 %% @param CreatedAt 创建时间（RFC3339格式或时间戳）
 %% @return ok | {error, ErrorCode, ErrorMsg}
--spec add_friend(integer(),
-                 binary(),
-                 binary() | map(),
-                 binary() | integer()) -> ok | {error, binary(), binary()}.
+-spec add_friend(
+    integer(),
+    binary(),
+    binary() | map(),
+    binary() | integer()
+) -> ok | {error, binary(), binary()}.
 add_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"to">>};
 add_friend(_, _, undefined, _) ->
@@ -34,16 +36,17 @@ add_friend(_, _, undefined, _) ->
 add_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"created_at">>};
 add_friend(CurrentUid, To, Payload, CreatedAt) ->
+    %% 统一转换 To 为 binary（JSON 解析可能返回 integer）
+    ToBin = ec_cnv:to_binary(To),
     %% 统一转换时间戳为 RFC3339 binary 格式
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
-    do_add_friend(CurrentUid, To, Payload, CreatedAt2).
+    do_add_friend(CurrentUid, ToBin, Payload, CreatedAt2).
 
 %% @doc 兼容旧入口：保留旧 MsgId 参数但复用当前实现
 -spec add_friend(binary(), integer(), binary(), binary(), binary() | integer()) ->
     ok | {error, binary(), binary()}.
 add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
     add_friend(CurrentUid, To, Payload, CreatedAt).
-
 
 %% @doc 内部函数：实际执行添加好友操作
 -spec do_add_friend(integer(), binary(), binary(), binary()) -> ok.
@@ -54,7 +57,11 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     MsgId = <<"af_", FromBin/binary, "_", To/binary>>,
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend">>,
-    PayloadMap = if is_map(Payload) -> Payload; true -> jsone:decode(Payload, [{object_format, map}]) end,
+    PayloadMap =
+        if
+            is_map(Payload) -> Payload;
+            true -> jsone:decode(Payload, [{object_format, map}])
+        end,
     Payload2 = maps:without([<<"action">>], PayloadMap),
     % 存储消息（v2.0: 使用 write_msg/8 API）
     msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
@@ -64,7 +71,6 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     message_ds:send_next(ToId, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
 
-
 %% @doc 确认好友请求
 %% 接受好友请求，建立双向好友关系
 %% @param CurrentUid 当前用户ID
@@ -72,22 +78,30 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
 %% @param To 接收方用户ID（整数）
 %% @param Payload 包含好友设置信息的映射
 %% @return {ok, FromID, Remark2, Source} | {error, ErrorCode, ErrorMsg}
--spec confirm_friend(integer(), binary(), binary(), binary()) -> {ok, integer(), binary(), binary()} | {error, binary(), binary()}.
+-spec confirm_friend(integer(), binary(), binary(), binary()) ->
+    {ok, integer(), binary(), binary()} | {error, binary(), binary()}.
 confirm_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"from">>};
 confirm_friend(_, _, undefined, _) ->
     {error, <<"Parameter error">>, <<"to">>};
 confirm_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"payload">>};
-confirm_friend(_MsgId, CurrentUid, From, Payload)
-    when is_integer(CurrentUid), is_binary(From), is_binary(Payload) ->
+confirm_friend(_MsgId, CurrentUid, From, Payload) when
+    is_integer(CurrentUid), is_binary(From), is_binary(Payload)
+->
     To = CurrentUid,
     confirm_friend(CurrentUid, From, To, Payload);
 confirm_friend(CurrentUid, From, To, Payload) ->
+    FromBin = ec_cnv:to_binary(From),
+    ToBin = ec_cnv:to_binary(To),
     FromID = ec_cnv:to_integer(From),
     ToID = ec_cnv:to_integer(To),
     NowTs = elib_dt:now(),
-    Payload2 = jsone:decode(Payload, [{object_format, map}]),
+    Payload2 =
+        if
+            is_map(Payload) -> Payload;
+            true -> jsone:decode(Payload, [{object_format, map}])
+        end,
 
     FromSetting = maps:get(<<"from">>, Payload2, #{}),
     % Remark1 为 from 对 to 定义的 remark
@@ -97,7 +111,9 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     Source = maps:get(<<"source">>, FromSetting, <<>>),
     FromToIsFriend = friend_ds:is_friend(FromID, ToID),
     % 使用 DS 层接口写入好友关系
-    friend_ds:confirm_friend(FromToIsFriend, FromID, ToID, Remark1, FromSetting#{<<"is_from">> => 1}, ToTag, NowTs),
+    friend_ds:confirm_friend(
+        FromToIsFriend, FromID, ToID, Remark1, FromSetting#{<<"is_from">> => 1}, ToTag, NowTs
+    ),
 
     ToSetting = maps:get(<<"to">>, Payload2, #{}),
     ToFromIsFriend = friend_ds:is_friend(ToID, FromID),
@@ -106,16 +122,18 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     % FromTag 为 to 对 from 定义的 tag
     FromTag = maps:get(<<"tag">>, ToSetting, <<>>),
     % 使用 DS 层接口写入好友关系
-    friend_ds:confirm_friend(ToFromIsFriend,
-                               ToID,
-                               FromID,
-                               Remark2,
-                               ToSetting#{<<"source">> => Source},
-                               FromTag,
-                               NowTs),
+    friend_ds:confirm_friend(
+        ToFromIsFriend,
+        ToID,
+        FromID,
+        Remark2,
+        ToSetting#{<<"source">> => Source},
+        FromTag,
+        NowTs
+    ),
 
     % 因为是 ToID 通过API确认的，所以只需要给FromID 发送消息
-    MsgId = <<"afc_", From/binary, "_", To/binary>>,
+    MsgId = <<"afc_", FromBin/binary, "_", ToBin/binary>>,
     %% v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend_confirm">>,
     Payload6 = Payload2#{
@@ -139,7 +157,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         ToTag == <<>> ->
             ok;
         true ->
-            ToTag2 = [ I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>> ],
+            ToTag2 = [I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>>],
             _ = user_tag_relation_logic:add(FromID, 2, ToID, ToTag2),
             ok
     end,
@@ -147,7 +165,7 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         FromTag == <<>> ->
             ok;
         true ->
-            FromTag2 = [ I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>> ],
+            FromTag2 = [I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>>],
             _ = user_tag_relation_logic:add(ToID, 2, FromID, FromTag2),
             ok
     end,
@@ -156,7 +174,6 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     imboy_cache:flush({is_friend, FromID, ToID}),
     imboy_cache:flush({is_friend, ToID, FromID}),
     {ok, FromID, Remark2, Source}.
-
 
 %% @doc 生成确认好友响应
 -spec confirm_friend_resp(integer(), binary()) -> map().
@@ -167,7 +184,6 @@ confirm_friend_resp(Uid, Remark) ->
         <<"id">> => Uid,
         <<"remark">> => Remark
     }.
-
 
 %% @doc 删除好友
 %% 删除好友关系，清理相关缓存
@@ -185,7 +201,6 @@ delete_friend(CurrentUid, Uid) ->
     imboy_cache:flush({is_friend, Uid, CurrentUid}),
     ok.
 
-
 %% @doc 移动好友到分组
 -spec move_to_category(integer(), binary() | integer(), integer()) -> ok.
 move_to_category(CurrentUid, Uid, CategoryId) when is_binary(Uid) ->
@@ -194,7 +209,6 @@ move_to_category(CurrentUid, Uid, CategoryId) when is_binary(Uid) ->
 move_to_category(CurrentUid, Uid, CategoryId) ->
     _ = friend_ds:move_to_category(CurrentUid, Uid, CategoryId),
     ok.
-
 
 %% @doc 获取好友详细信息
 %% @param CurrentUid 当前用户ID
@@ -220,7 +234,6 @@ information(CurrentUid, Uid) ->
             % 不是好友关系
             #{}
     end.
-
 
 %% ===================================================================
 %% Internal Function Definitions

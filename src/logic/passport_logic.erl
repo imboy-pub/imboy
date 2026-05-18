@@ -11,11 +11,11 @@
 -export([login/3]).
 -export([do_login/3]).
 -export([do_login/5]).
+-export([do_login_by_code/5]).
 -export([do_signup/5]).
 -export([find_password/5]).
 -export([verify_user/2]).
 -export([quick_login/4]).
-
 
 -include("log.hrl").
 -include("common.hrl").
@@ -29,7 +29,6 @@
 -spec quick_login(binary(), binary() | undefined, binary(), map()) ->
     {ok, map()} | {error, binary() | map()}.
 
-
 quick_login(<<>>, _, _, _) ->
     {error, <<"未指定登录服务"/utf8>>};
 quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
@@ -42,11 +41,14 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
             Uid = maps:get(<<"id">>, User, 0),
             case Uid of
                 0 ->
-                    Data = pick_data_for_insert(#{
-                        <<"source">> => <<"jverify">>
-                        , <<"mobile">> => Mobile2
-                        , <<"password">> => <<>>
-                        }, PostVals),
+                    Data = pick_data_for_insert(
+                        #{
+                            <<"source">> => <<"jverify">>,
+                            <<"mobile">> => Mobile2,
+                            <<"password">> => <<>>
+                        },
+                        PostVals
+                    ),
                     case user_ds:insert_and_get_id(Data) of
                         {ok, Uid2} ->
                             User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
@@ -60,7 +62,6 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
     end;
 quick_login(_, _, _, _) ->
     {error, <<"不支持的登录服务"/utf8>>}.
-
 
 % passport_logic:send_code(<<>>, <<"sms">>).
 % passport_logic:send_code(<<>>, <<"email">>).
@@ -81,7 +82,9 @@ send_code(_, _) ->
 
 %% @doc 兼容旧测试入口：明文手机号注册，并直接返回登录态数据
 -spec signup(binary(), binary(), binary(), map()) -> {ok, map()} | {error, binary(), integer()}.
-signup(Mobile, Pwd, Email, PostVals) when is_binary(Mobile), is_binary(Pwd), is_binary(Email), is_map(PostVals) ->
+signup(Mobile, Pwd, Email, PostVals) when
+    is_binary(Mobile), is_binary(Pwd), is_binary(Email), is_map(PostVals)
+->
     case validate_compat_password(Pwd) of
         ok ->
             case prepare_compat_mobile(Mobile) of
@@ -96,12 +99,13 @@ signup(Mobile, Pwd, Email, PostVals) when is_binary(Mobile), is_binary(Pwd), is_
                         <<"mobile">> => Mobile,
                         <<"account">> => Mobile
                     },
-                    BaseData = case Email2 of
-                        undefined ->
-                            BaseData0;
-                        _ ->
-                            BaseData0#{<<"email">> => Email2}
-                    end,
+                    BaseData =
+                        case Email2 of
+                            undefined ->
+                                BaseData0;
+                            _ ->
+                                BaseData0#{<<"email">> => Email2}
+                        end,
                     Data = pick_data_for_insert(BaseData, PostVals2),
                     case user_ds:insert_and_get_id(Data) of
                         {ok, Uid} ->
@@ -144,7 +148,6 @@ login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(Po
             {error, compat_error_message(Msg), 400}
     end.
 
-
 -spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.
 do_login(Type, Account, Pwd) ->
     do_login(Type, Account, Pwd, <<>>, <<>>).
@@ -167,14 +170,60 @@ do_login(Type, Email, Pwd, DType, Did) when Type == <<"email">> ->
             {error, <<"Email格式有误."/utf8>>}
     end;
 do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
-    User = case elib_type:is_email(Account) of
-        true ->
-            user_ds:find_by_email(Account, ?LOGIN_COLUMN);
-        false ->
-            user_ds:find_by_account(Account, ?LOGIN_COLUMN)
-    end,
+    User =
+        case elib_type:is_email(Account) of
+            true ->
+                user_ds:find_by_email(Account, ?LOGIN_COLUMN);
+            false ->
+                user_ds:find_by_account(Account, ?LOGIN_COLUMN)
+        end,
     do_login_verify(Pwd, User, DType, Did).
 
+%% @doc 验证码登录（mobile/email）
+%% 客户端发送 code 字段代替 pwd
+-spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
+do_login_by_code(Type, Account, Code, DType, Did) ->
+    case verify_code(Account, Code) of
+        {ok, _} ->
+            User =
+                case Type of
+                    <<"mobile">> -> user_ds:find_by_mobile(Account, ?LOGIN_COLUMN);
+                    <<"email">> -> user_ds:find_by_email(Account, ?LOGIN_COLUMN);
+                    <<"account">> -> user_ds:find_by_account(Account, ?LOGIN_COLUMN);
+                    _ -> #{}
+                end,
+            do_login_by_code_verify(User, DType, Did);
+        {error, Msg} ->
+            {error, Msg}
+    end.
+
+%% @doc 验证码登录后的用户验证
+-spec do_login_by_code_verify(map(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
+do_login_by_code_verify(User, _DType, _Did) when map_size(User) =:= 0 ->
+    {error, <<"账号不存在"/utf8>>};
+do_login_by_code_verify(User, DType, _Did) ->
+    Status = maps:get(<<"status">>, User, -2),
+    case Status of
+        -2 ->
+            {error, <<"账号不存在"/utf8>>};
+        -1 ->
+            {error, <<"账号不存在或者已删除"/utf8>>};
+        0 ->
+            {error, <<"账号被禁用"/utf8>>};
+        1 ->
+            Data = login_resp(User, #{}),
+            UidHashed = maps:get(<<"uid">>, Data),
+            Uid = ec_cnv:to_integer(UidHashed),
+            case user_device_logic:check_login_conflict(Uid, DType) of
+                {ok, no_conflict} -> {ok, Data};
+                {ok, conflict, ConflictInfo} -> {{error, conflict}, ConflictInfo};
+                {error, _} -> {ok, Data}
+            end;
+        2 ->
+            {ok, login_resp(User, #{})}
+    end.
 
 %% @doc 登录验证（带设备冲突检查）
 %% 先认证用户，成功后检查设备冲突
@@ -209,9 +258,14 @@ do_login_verify(Pwd, User, DType, _Did) ->
             {error, Reason}
     end.
 
-
--spec do_signup(Type :: binary(), EmailOrMobile :: binary(), Pwd :: binary(), Code :: binary(), PostVals :: map()) ->
-          {ok, map()} | {error, binary()}.
+-spec do_signup(
+    Type :: binary(),
+    EmailOrMobile :: binary(),
+    Pwd :: binary(),
+    Code :: binary(),
+    PostVals :: map()
+) ->
+    {ok, map()} | {error, binary()}.
 do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     case elib_type:is_email(Email) of
         true ->
@@ -236,13 +290,14 @@ do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
 do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, <<"不支持的注册类型"/utf8>>}.
 
-
--spec find_password(Type :: binary(),
-                    EmailOrMobile :: binary(),
-                    Pwd :: binary(),
-                    Code :: binary(),
-                    PostVals :: map()) ->
-          {ok, map()} | {error, binary()}.
+-spec find_password(
+    Type :: binary(),
+    EmailOrMobile :: binary(),
+    Pwd :: binary(),
+    Code :: binary(),
+    PostVals :: map()
+) ->
+    {ok, map()} | {error, binary()}.
 find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
     ok = ?DEBUG_LOG(["Email ", Email, elib_type:is_email(Email)]),
     case elib_type:is_email(Email) of
@@ -260,11 +315,9 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
 find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, <<"不支持的注册类型"/utf8>>}.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 -spec send_email_code(binary() | undefined) -> {error, binary()} | {ok, binary()}.
 send_email_code(undefined) ->
@@ -310,7 +363,9 @@ send_sms_code(Mobile) ->
         #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
         #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-            Content = <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
+            Content =
+                <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary,
+                    " ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
             case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
                 ok -> ok;
                 {error, SmsErr} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr})
@@ -323,7 +378,8 @@ send_sms_code(Mobile) ->
             try elib_dt:add(Now, {10, minute}) of
                 ValidityAt when is_binary(ValidityAt) ->
                     _ = verification_code_ds:save(Mobile, CodeBinary, ValidityAt, Now),
-                    Content = <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary ," ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
+                    Content =
+                        <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary, " ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
                     case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
                         ok -> ok;
                         {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2})
@@ -337,15 +393,14 @@ send_sms_code(Mobile) ->
             end
     end.
 
-
 %% 校验验证码
 -spec verify_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
 verify_code(_Id, <<"666666">>) ->
     %% local / dev 环境的万能验证码（生产环境严格拒绝）
     case imboy_env:current() of
         <<"local">> -> {ok, <<"验证码有效（测试环境）"/utf8>>};
-        <<"dev">>   -> {ok, <<"验证码有效（测试环境）"/utf8>>};
-        _           -> {error, <<"验证码无效"/utf8>>}
+        <<"dev">> -> {ok, <<"验证码有效（测试环境）"/utf8>>};
+        _ -> {error, <<"验证码无效"/utf8>>}
     end;
 verify_code(Id, Code) ->
     Now = elib_dt:now(),
@@ -356,9 +411,8 @@ verify_code(Id, Code) ->
             {error, <<"验证码无效"/utf8>>}
     end.
 
-
 -spec do_signup_by_email(binary(), binary(), map()) ->
-          {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.
+    {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.
 do_signup_by_email(Email, Pwd, PostVals) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
@@ -369,10 +423,13 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             Id = user_ds:find_id_by_email(Email),
             case Id of
                 0 ->
-                    Data = pick_data_for_insert(#{
-                        <<"password">> => elib_password:generate(Pwd)
-                        , <<"email">> => Email
-                        }, PostVals),
+                    Data = pick_data_for_insert(
+                        #{
+                            <<"password">> => elib_password:generate(Pwd),
+                            <<"email">> => Email
+                        },
+                        PostVals
+                    ),
                     case user_ds:insert_and_get_id(Data) of
                         {ok, _} ->
                             % 注册成功
@@ -388,9 +445,8 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             end
     end.
 
-
 -spec do_signup_by_mobile(binary(), binary(), map()) ->
-          {ok, map()} | {error, binary() | any()}.
+    {ok, map()} | {error, binary() | any()}.
 do_signup_by_mobile(Mobile, Pwd, PostVals) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
@@ -401,10 +457,13 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
             Id = user_ds:find_id_by_mobile(Mobile),
             case Id of
                 0 ->
-                    Data = pick_data_for_insert(#{
-                        <<"password">> => elib_password:generate(Pwd)
-                        , <<"mobile">> => Mobile
-                        }, PostVals),
+                    Data = pick_data_for_insert(
+                        #{
+                            <<"password">> => elib_password:generate(Pwd),
+                            <<"mobile">> => Mobile
+                        },
+                        PostVals
+                    ),
                     case user_ds:insert_and_get_id(Data) of
                         {ok, _} ->
                             % 注册成功
@@ -425,35 +484,39 @@ pick_data_for_insert(Data, PostVals) ->
     Cosv = maps:get(<<"cosv">>, PostVals, <<>>),
     RefUid = maps:get(<<"ref_uid">>, PostVals, <<>>),
 
-    [RefUid2, ParentRefUid2] = case is_binary(RefUid) andalso bit_size(RefUid) > 5 of
-        true ->
-            RefUid2_in = ec_cnv:to_integer(RefUid),
-            P = user_ds:find_by_id(RefUid2_in, <<"ref_user_id">>),
-            [RefUid2_in, maps:get(<<"ref_user_id">>, P, 0)];
-        _ ->
-            [0, 0]
-    end,
+    [RefUid2, ParentRefUid2] =
+        case is_binary(RefUid) andalso bit_size(RefUid) > 5 of
+            true ->
+                RefUid2_in = ec_cnv:to_integer(RefUid),
+                P = user_ds:find_by_id(RefUid2_in, <<"ref_user_id">>),
+                [RefUid2_in, maps:get(<<"ref_user_id">>, P, 0)];
+            _ ->
+                [0, 0]
+        end,
     % ?DEBUG_LOG(["RefUid2", RefUid2]),
     % ?DEBUG_LOG(["Email", Email]),
     % ?DEBUG_LOG(["Pwd2", Pwd2]),
     % ?DEBUG_LOG(["PostVals", PostVals]),
     % ?DEBUG_LOG(["Ip", Ip]),
     % ?DEBUG_LOG(["Cosv", Cosv]),
-    maps:merge(#{
-        <<"account">> => account_ds:allocate()
-        , <<"nickname">> => Nickname
-        , <<"avatar">> => Avatar
-        , <<"ref_user_id">> => RefUid2
-        , <<"ref_parent_user_id">> => ParentRefUid2
-        , <<"reg_ip">> => Ip
-        , <<"reg_cosv">> => Cosv
-        , <<"source">> => Source
-        , <<"status">> => 1
-        , <<"created_at">> => elib_dt:now()
-    }, Data).
+    maps:merge(
+        #{
+            <<"account">> => account_ds:allocate(),
+            <<"nickname">> => Nickname,
+            <<"avatar">> => Avatar,
+            <<"ref_user_id">> => RefUid2,
+            <<"ref_parent_user_id">> => ParentRefUid2,
+            <<"reg_ip">> => Ip,
+            <<"reg_cosv">> => Cosv,
+            <<"source">> => Source,
+            <<"status">> => 1,
+            <<"created_at">> => elib_dt:now()
+        },
+        Data
+    ).
 
 -spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: map()) ->
-          {ok, map()} | {error, Msg :: list()}.
+    {ok, map()} | {error, Msg :: list()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
     Id = user_ds:find_id_by_email(Email),
     case Id of
@@ -470,7 +533,6 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             end
     end.
 
-
 -spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
 verify_user(<<>>, _) ->
     {error, <<"账号不存在"/utf8>>};
@@ -479,7 +541,14 @@ verify_user(_Pwd, User) when map_size(User) =:= 0 ->
 verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % DEBUG: 临时调试密码校验
-    ?DEBUG_LOG(#{verify_debug => #{input_pwd_len => byte_size(Pwd), input_pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32)), stored_hash_len => byte_size(Pwd2), stored_hash_preview => binary:part(Pwd2, 0, min(byte_size(Pwd2), 40))}}),
+    ?DEBUG_LOG(#{
+        verify_debug => #{
+            input_pwd_len => byte_size(Pwd),
+            input_pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32)),
+            stored_hash_len => byte_size(Pwd2),
+            stored_hash_preview => binary:part(Pwd2, 0, min(byte_size(Pwd2), 40))
+        }
+    }),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
     case elib_password:verify(Pwd, Pwd2) of
@@ -497,20 +566,23 @@ verify_user(Pwd, User) ->
 
 login_resp(User, Resp) ->
     Id = maps:get(<<"id">>, User),
-    maps:merge(#{
-       <<"uid">> => Id,
-       <<"token">> => token_ds:encrypt_token(Id),
-       <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
-       <<"email">> => maps:get(<<"email">>, User),
-       <<"nickname">> => maps:get(<<"nickname">>, User),
-       <<"avatar">> => maps:get(<<"avatar">>, User),
-       <<"account">> => maps:get(<<"account">>, User),
-       <<"gender">> => maps:get(<<"gender">>, User),
-       <<"region">> => maps:get(<<"region">>, User),
-       <<"sign">> => maps:get(<<"sign">>, User),
-       <<"status">> => maps:get(<<"status">>, User),
-       <<"role">> => 1
-      }, Resp).
+    maps:merge(
+        #{
+            <<"uid">> => Id,
+            <<"token">> => token_ds:encrypt_token(Id),
+            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
+            <<"email">> => maps:get(<<"email">>, User),
+            <<"nickname">> => maps:get(<<"nickname">>, User),
+            <<"avatar">> => maps:get(<<"avatar">>, User),
+            <<"account">> => maps:get(<<"account">>, User),
+            <<"gender">> => maps:get(<<"gender">>, User),
+            <<"region">> => maps:get(<<"region">>, User),
+            <<"sign">> => maps:get(<<"sign">>, User),
+            <<"status">> => maps:get(<<"status">>, User),
+            <<"role">> => 1
+        },
+        Resp
+    ).
 
 validate_compat_password(<<>>) ->
     {error, <<"密码不能为空"/utf8>>};
@@ -520,7 +592,9 @@ validate_compat_password(Pwd) when is_binary(Pwd) ->
     HasAlpha = lists:any(
         fun(C) ->
             (C >= $a andalso C =< $z) orelse (C >= $A andalso C =< $Z)
-        end, binary_to_list(Pwd)),
+        end,
+        binary_to_list(Pwd)
+    ),
     case Len >= 8 andalso HasDigit andalso HasAlpha of
         true ->
             ok;
@@ -573,8 +647,14 @@ compat_login_type(Account) ->
 
 compat_device_type(PostVals, Did) ->
     case maps:get(<<"dtype">>, PostVals, maps:get(<<"cos">>, PostVals, <<>>)) of
-        DType when DType == <<"ios">>; DType == <<"android">>; DType == <<"macos">>;
-                    DType == <<"windows">>; DType == <<"linux">>; DType == <<"web">> ->
+        DType when
+            DType == <<"ios">>;
+            DType == <<"android">>;
+            DType == <<"macos">>;
+            DType == <<"windows">>;
+            DType == <<"linux">>;
+            DType == <<"web">>
+        ->
             DType;
         _ ->
             infer_device_type(Did)

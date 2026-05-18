@@ -2,7 +2,9 @@
 %% Thin HTTP adapter for the identity passport boundary.
 %% Keep request parsing here and delegate auth/account flows to passport_logic.
 
--dialyzer({nowarn_function, [validate_bind_mail_params/4, validate_bind_mail_cache/2, bind_mail/1]}).
+-dialyzer(
+    {nowarn_function, [validate_bind_mail_params/4, validate_bind_mail_cache/2, bind_mail/1]}
+).
 
 -behavior(cowboy_handler).
 
@@ -91,11 +93,12 @@ validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
             Error;
         ok ->
             % 检查签名过期和签名匹配
-            if Now > Ts2 ->
+            if
+                Now > Ts2 ->
                     {error, "签名已过期"};
-               ExpectedTk == Tk2 ->
+                ExpectedTk == Tk2 ->
                     {ok, #{uid => Uid, mail => Mail, cache_key => CacheKey}};
-               true ->
+                true ->
                     {error, "签名有误"}
             end
     end.
@@ -140,7 +143,15 @@ login(Req0) ->
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     % DEBUG: 临时调试登录密码问题
-    ?DEBUG_LOG(#{login_debug => #{account => Account, password_len => byte_size(Password), rsa_encrypt => RsaEncrypt, pwd_len => byte_size(Pwd), pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32))}}),
+    ?DEBUG_LOG(#{
+        login_debug => #{
+            account => Account,
+            password_len => byte_size(Password),
+            rsa_encrypt => RsaEncrypt,
+            pwd_len => byte_size(Pwd),
+            pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32))
+        }
+    }),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
 
     % 提取设备信息
@@ -150,7 +161,16 @@ login(Req0) ->
 
     Post2 = PostVals#{<<"ip">> => Ip, <<"dtype">> => DType, <<"did">> => Did, <<"dname">> => DName},
 
-    case passport_logic:do_login(Type, Account, Pwd, DType, Did) of
+    %% 验证码登录：客户端发送 code 字段（无 pwd）
+    Code = maps:get(<<"code">>, PostVals, <<>>),
+    LoginResult =
+        case Code of
+            <<>> ->
+                passport_logic:do_login(Type, Account, Pwd, DType, Did);
+            _ ->
+                passport_logic:do_login_by_code(Type, Account, Code, DType, Did)
+        end,
+    case LoginResult of
         {ok, Data} ->
             Uid = maps:get(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
@@ -222,8 +242,10 @@ refreshtoken(Req0) ->
                     Status = user_ds:get_status(Id),
                     case Status of
                         _Other when Status > -1 ->
-                            elib_response:success(Req0,
-                                                   #{<<"token">> => token_ds:encrypt_token(Id)});
+                            elib_response:success(
+                                Req0,
+                                #{<<"token">> => token_ds:encrypt_token(Id)}
+                            );
                         _ ->
                             elib_response:error(Req0, "用户被禁用或已删除")
                     end;
@@ -252,24 +274,27 @@ getcode(Req0) ->
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Account = maps:get(<<"account">>, PostVals, <<>>),
     % ?DEBUG_LOG([Type, Account]),
-    Id = if Type == <<"sms">>, Scene == <<"signup">> ->
+    Id =
+        if
+            Type == <<"sms">>, Scene == <<"signup">> ->
                 user_ds:find_id_by_mobile(Account);
             % elib_response:error(Req0, "Msg1");
             true ->
                 0
-         end,
+        end,
     % elib_response:error(Req0, "Msg2")
     % ?DEBUG_LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
-    if Id > 0 ->
-           elib_response:error(Req0, "paramAlreadyExist");
-       true ->
-           % elib_response:success(Req0, #{}, "success.")
-           case passport_logic:send_code(Account, Type) of
-               {ok, _} ->
-                   elib_response:success(Req0, #{}, "success.");
-               {error, Msg} ->
-                   elib_response:error(Req0, Msg)
-           end
+    if
+        Id > 0 ->
+            elib_response:error(Req0, "paramAlreadyExist");
+        true ->
+            % elib_response:success(Req0, #{}, "success.")
+            case passport_logic:send_code(Account, Type) of
+                {ok, _} ->
+                    elib_response:success(Req0, #{}, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
     end.
 
 %% @doc 用户注册
@@ -294,7 +319,8 @@ signup(Req0) ->
     % 使用统一的结果处理函数
     elib_response:handle_logic_result(
         Req0,
-        passport_logic:do_signup(Type, Account, Pwd, Code, Post2)).
+        passport_logic:do_signup(Type, Account, Pwd, Code, Post2)
+    ).
 
 %% @doc 找回密码
 %% 通过验证码重置用户密码
@@ -318,4 +344,5 @@ find_password(Req0) ->
     % 使用统一的结果处理函数
     elib_response:handle_logic_result(
         Req0,
-        passport_logic:find_password(Type, Account, Pwd, Code, Post2)).
+        passport_logic:find_password(Type, Account, Pwd, Code, Post2)
+    ).
