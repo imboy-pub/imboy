@@ -160,9 +160,9 @@ process_row(Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     RetryCount = maps:get(<<"retry_count">>, Row, 0),
     TypeAtom = msg_type_atom(TypeBin),
-    case do_write(TypeAtom, Row) of
+    WriteResult = do_write(TypeAtom, Row),
+    case WriteResult of
         ok ->
-            %% 归档到永久存储（受 msg_archive_enabled 配置开关控制）
             maybe_archive(Row),
             msg_store_ds:unstage(MsgId),
             _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
