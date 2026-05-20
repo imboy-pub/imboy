@@ -202,4 +202,4 @@ dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 
 # gpb - Google Protocol Buffers compiler for Erlang
 # https://github.com/tomas-abrahamsson/gpb
-dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.2
+dep_gpb = git https://gitee.com/imboy-tripartite-deps/gpb.git 4.21.7
