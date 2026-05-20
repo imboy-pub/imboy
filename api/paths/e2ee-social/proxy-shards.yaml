@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     代理 shards 查询
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeSocialProxyShards
   responses:
     '200':

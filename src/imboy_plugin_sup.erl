@@ -15,7 +15,7 @@
 %%% Phase 1 切片 1：4 个 plugin sup 当前均无 children worker，骨架先就位；
 %%% Phase 1 切片 2+ 当真实 plugin worker 实施时，挂载到对应 sup 下。
 %%%
-%%% Source of truth: doc/plugin/contract.md §8 + roadmap P1-T1/T2
+%%% Source of truth: docs/plugin/contract.md §8 + roadmap P1-T1/T2
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

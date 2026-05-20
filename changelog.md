@@ -225,7 +225,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 优化面对面建群功能，使用 rabbitmq/khepri 存储群成员信息；
 * 新增 C2S 消息类型，调整相关数据库表结构；
 * 新增 C2S 消息、 C2G 消息话题功能，以支持机器人聊天功能；
-* 新增 重新部署流程文档 ./doc/redeployment_process.md
+* 新增 重新部署流程文档 ./docs/redeployment_process.md
 * 更新 ./docker/pg15_Dockerfile_dev
 
 # 0.3.4
@@ -236,7 +236,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 * 新增 imboy_db/find/2 方法；
 * user_repo/find_by_xxx 方法响应数据类型调整为 map，修改相关代码；
 * 删除 /friend/find 接口，有 /fts/user_search 替代功能；
-* 新增 5个 S2C 消息，具体细节参考 . /doc/api/消息类型.md S2C 消息介绍
+* 新增 5个 S2C 消息，具体细节参考 . /docs/api/消息类型.md S2C 消息介绍
 
 
 # 0.3.2
@@ -314,7 +314,7 @@ feat: - 消息编辑/撤销功能与PostgreSQL 18升级
 # 0.2.6
 * 引入 samovar library ，调整 auth_middleware 相关代码 VsnXY = samovar:major_minor(Vsn)
 * 新增 app_version_repo.erl ,实现 app/version API
-* 现在 ./doc/app_sqlite3/db_vsn_5.sql 文件等
+* 现在 ./docs/app_sqlite3/db_vsn_5.sql 文件等
 
 # 0.2.5
 * 添加 imboy.appup 文件

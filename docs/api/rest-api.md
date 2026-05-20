@@ -4,7 +4,7 @@
 > Status: 长期协议契约文档  
 > Scope: 通用 REST 入口、兼容性接口与基础 envelope 约定  
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
-> Related docs: `doc/api/channel_api_contract_v1.md`, `doc/api/moment_api_contract_v1.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/api/websocket-api-2.md`
+> Related docs: `docs/api/channel_api_contract_v1.md`, `docs/api/moment_api_contract_v1.md`, `docs/api/e2ee_server_persisted_shard_contract_v1.md`, `docs/api/websocket-api-2.md`
 
 ## 0. TSID 字段约定
 
@@ -14,7 +14,7 @@
 - **Admin 前端（TypeScript）**：`axios` 的 `safeParseBigIntJson` 自动将 16 位以上整数转为 `string`，TypeScript 类型统一使用 `EntityId = string`
 - **Flutter 移动端（Dart）**：Dart `int` 为 64 位，直接接收无精度问题
 
-详见：[doc/api/tsid-field-convention.md](./tsid-field-convention.md)
+详见：[docs/api/tsid-field-convention.md](./tsid-field-convention.md)
 
 ---
 
@@ -24,11 +24,11 @@
 
 以下模块使用独立契约文档维护，不再在本文件重复展开：
 
-- 频道：`doc/api/channel_api_contract_v1.md`
-- 朋友圈：`doc/api/moment_api_contract_v1.md`
-- E2EE 社交恢复分片：`doc/api/e2ee_server_persisted_shard_contract_v1.md`
-- WebSocket：`doc/api/websocket-api-2.md`
-- 通用响应包：`doc/api/envelope.schema.json`
+- 频道：`docs/api/channel_api_contract_v1.md`
+- 朋友圈：`docs/api/moment_api_contract_v1.md`
+- E2EE 社交恢复分片：`docs/api/e2ee_server_persisted_shard_contract_v1.md`
+- WebSocket：`docs/api/websocket-api-2.md`
+- 通用响应包：`docs/api/envelope.schema.json`
 
 ## 2. 通用响应约定
 
@@ -268,16 +268,16 @@ Query：
 
 以下接口已迁移到独立文档维护：
 
-- 频道主契约与邀请 / 订单 / 未读同步：`doc/api/channel_api_contract_v1.md`
-- 朋友圈主契约：`doc/api/moment_api_contract_v1.md`
-- E2EE 社交恢复分片：`doc/api/e2ee_server_persisted_shard_contract_v1.md`
-- WebSocket 消息协议：`doc/api/websocket-api-2.md`
+- 频道主契约与邀请 / 订单 / 未读同步：`docs/api/channel_api_contract_v1.md`
+- 朋友圈主契约：`docs/api/moment_api_contract_v1.md`
+- E2EE 社交恢复分片：`docs/api/e2ee_server_persisted_shard_contract_v1.md`
+- WebSocket 消息协议：`docs/api/websocket-api-2.md`
 
 ## 9. Related Docs
 
-- `doc/api/channel_api_contract_v1.md`
-- `doc/api/moment_api_contract_v1.md`
-- `doc/api/e2ee_server_persisted_shard_contract_v1.md`
-- `doc/api/websocket-api-2.md`
-- `doc/api/envelope.schema.json`
-- `doc/standards/error-codes.md`
+- `docs/api/channel_api_contract_v1.md`
+- `docs/api/moment_api_contract_v1.md`
+- `docs/api/e2ee_server_persisted_shard_contract_v1.md`
+- `docs/api/websocket-api-2.md`
+- `docs/api/envelope.schema.json`
+- `docs/standards/error-codes.md`

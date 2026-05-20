@@ -24,7 +24,7 @@
 %%% be renamed to imboy_plugin_manifest in Phase 1+ when tomerl is added
 %%% for plugin.toml support).
 %%%
-%%% Source of truth: doc/plugin/contract.md §3.3
+%%% Source of truth: docs/plugin/contract.md §3.3
 %%% Contract version: 1.0
 %%%
 %%% @author Imboy Team
@@ -71,7 +71,7 @@ load(Path) ->
 
 %% @doc 解析契约版本字符串 / Parse contract version string.
 %% 形如 <<"1.0">> -> {1, 0}；非法输入返回 {error, invalid_format}。
-%% 见 doc/plugin/contract.md §9.1 Loader compatibility matrix.
+%% 见 docs/plugin/contract.md §9.1 Loader compatibility matrix.
 -spec parse_contract_version(binary()) ->
     contract_version() | {error, invalid_format}.
 parse_contract_version(Bin) when is_binary(Bin) ->

@@ -19,7 +19,7 @@
 %%%   - 离线生成 + 离线签名（推荐 air-gapped 工作站）
 %%%   - 公钥分发：core 配置中预置可信公钥列表
 %%%
-%%% Source of truth: doc/plugin/contract.md §10 + roadmap P6-T4/T5
+%%% Source of truth: docs/plugin/contract.md §10 + roadmap P6-T4/T5
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

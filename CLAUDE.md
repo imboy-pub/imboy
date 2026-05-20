@@ -153,10 +153,10 @@ make new t=imboy.ds n=demo_ds
 
 ## 相关文档
 
-- 架构：[doc/architecture/overview.md](./doc/architecture/overview.md)
-- 数据库访问：[doc/architecture/database-access.md](./doc/architecture/database-access.md)
-- WebSocket API：[doc/api/websocket-api-2.md](./doc/api/websocket-api-2.md)
-- UTF-8 规范：[doc/standards/utf8-encoding.md](./doc/standards/utf8-encoding.md)
-- 错误码：[doc/standards/error-codes.md](./doc/standards/error-codes.md)
-- TSID 规范：[doc/api/tsid-field-convention.md](./doc/api/tsid-field-convention.md)
-- API 格式：[doc/standards/api-format.md](./doc/standards/api-format.md)
+- 架构：[docs/architecture/overview.md](./docs/architecture/overview.md)
+- 数据库访问：[docs/architecture/database-access.md](./docs/architecture/database-access.md)
+- WebSocket API：[docs/api/websocket-api-2.md](./docs/api/websocket-api-2.md)
+- UTF-8 规范：[docs/standards/utf8-encoding.md](./docs/standards/utf8-encoding.md)
+- 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
+- TSID 规范：[docs/api/tsid-field-convention.md](./docs/api/tsid-field-convention.md)
+- API 格式：[docs/standards/api-format.md](./docs/standards/api-format.md)

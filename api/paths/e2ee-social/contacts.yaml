@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     我的社交恢复联系人
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeSocialContacts
   responses:
     '200':

@@ -18,7 +18,7 @@
 %%%   - intensity=5/period=10: 10 秒内 5 次重启即终止本 sup
 %%%   - 与 contract.md §8.1 + roadmap §5 设计原则对齐
 %%%
-%%% Source of truth: doc/plugin/contract.md §8 + roadmap P1
+%%% Source of truth: docs/plugin/contract.md §8 + roadmap P1
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

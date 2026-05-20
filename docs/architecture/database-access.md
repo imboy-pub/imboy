@@ -4,7 +4,7 @@
 > Status: 长期架构文档  
 > Scope: `src/repo/`、`src/ds/` 与 `elib_pg` / `elib_pg_sql` 的数据库访问约束  
 > Source of truth: `src/repo/`, `src/ds/`, `src/lib/elib_pg.erl`, `src/lib/elib_pg_sql.erl`  
-> Related docs: `doc/architecture/overview.md`, `doc/standards/migration_naming.md`
+> Related docs: `docs/architecture/overview.md`, `docs/standards/migration_naming.md`
 
 ## 1. 文档定位
 

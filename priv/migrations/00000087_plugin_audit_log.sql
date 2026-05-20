@@ -8,7 +8,7 @@
 --   因为审计场景需要精确毫秒级对比计算 duration_ms
 --   created_at 遵循项目规范使用 TIMESTAMPTZ
 --
--- Source of truth: doc/plugin/lifecycle.md §11
+-- Source of truth: docs/plugin/lifecycle.md §11
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.plugin_audit_log (

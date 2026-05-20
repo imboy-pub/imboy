@@ -14,7 +14,7 @@
 %%%   - load/1 (切片 2): 5 个 file I/O case (合法/缺失/多 term/非 map/校验失败)
 %%%
 %%% Mock baseline: imboy_plugin_dummy:manifest()
-%%% Source of truth: doc/plugin/contract.md §3.3
+%%% Source of truth: docs/plugin/contract.md §3.3
 %%% @end
 %%%-------------------------------------------------------------------
 

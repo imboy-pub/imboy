@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     迁移会话详情
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeTransferInfo
   parameters:
     - in: query

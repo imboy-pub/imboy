@@ -3,7 +3,7 @@
 %%% imboy_plugin behaviour 类型定义文件
 %%% imboy_plugin behaviour type definitions
 %%%
-%%% Source of truth: doc/plugin/contract.md §4.2
+%%% Source of truth: docs/plugin/contract.md §4.2
 %%% Behaviour module: src/lib/imboy_plugin.erl
 %%% Contract version: 1.0
 %%%

@@ -2,7 +2,7 @@
 
 > Last Updated: 2026-03-08  
 > Scope: `priv/migrations/` 新增 SQL 迁移文件命名规则  
-> Related docs: `doc/architecture/database-access.md`, `doc/operations/dependencies.md`
+> Related docs: `docs/architecture/database-access.md`, `docs/operations/dependencies.md`
 
 ## 1. 适用范围
 

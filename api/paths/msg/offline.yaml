@@ -15,7 +15,7 @@ post:
     当前 uid 累积的离线消息。
     投递语义：服务端把消息标记为"已投递但待 ACK"，客户端收到后必须调用
     `/msg/offline_ack` 显式确认；超时未 ACK 会按 2s/5s/7s/11s 重投递。
-    详见 doc/architecture/overview.md#消息 QoS 投递。
+    详见 docs/architecture/overview.md#消息 QoS 投递。
     ## English
     Called by the client after coming online to fetch offline messages
     accumulated by the server for the current uid, bucketed into C2C /

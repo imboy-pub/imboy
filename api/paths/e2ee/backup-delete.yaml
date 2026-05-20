@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     删除某个 shard 备份
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeBackupDelete
   requestBody:
     required: true

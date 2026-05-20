@@ -2,9 +2,9 @@
 # imboy/api/openapi.yaml — IMBoy REST API 代码生成驱动真源
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2
-# 起源：从 imboy/doc/api/openapi.yaml（340L 手写冻结契约，2026-04-15）迁移
+# 起源：从 imboy/docs/api/openapi.yaml（340L 手写冻结契约，2026-04-15）迁移
 # 角色变化：
-#   - 旧位置 imboy/doc/api/openapi.yaml → 降级为人类可读参考（保留不删）
+#   - 旧位置 imboy/docs/api/openapi.yaml → 降级为人类可读参考（保留不删）
 #   - 本文件 imboy/api/openapi.yaml → 升级为代码生成真源（机器消费）
 # 修改流程：
 #   - 任何端点变更必须先改本文件

@@ -19,7 +19,7 @@
 %%%   - 所有 route 的 path 必须以 /v{n}/<plugin_name>/ 开头（contract.md §3.3）
 %%%   - 违反则 register 拒绝并返回 {error, {invalid_route_namespace, Path}}
 %%%
-%%% Source of truth: doc/plugin/contract.md §3.2 / §6 + roadmap P2
+%%% Source of truth: docs/plugin/contract.md §3.2 / §6 + roadmap P2
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

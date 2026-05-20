@@ -58,7 +58,7 @@ imboy/api/proto/imboy.proto  →  ../../src/imboy.proto  (360 行 / 31 messages)
 
 详见：
 - `imboy/proto/README.md` — 业务设计文档（171L，含 JSON→protobuf 替换思路、使用例）
-- `imboy/doc/api/websocket-api-2.md` — WS 协议人类可读规约
+- `imboy/docs/api/websocket-api-2.md` — WS 协议人类可读规约
 
 ---
 

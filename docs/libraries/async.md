@@ -4,7 +4,7 @@
 > Status: 长期组件文档  
 > Scope: 异步执行、重试、超时与回调场景的统一使用约定  
 > Source of truth: `src/lib/elib_async.erl`  
-> Related docs: `src/lib/elib_retry.erl`, `doc/architecture/overview.md`, `doc/operations/security.md`
+> Related docs: `src/lib/elib_retry.erl`, `docs/architecture/overview.md`, `docs/operations/security.md`
 
 ## 1. 文档目的
 

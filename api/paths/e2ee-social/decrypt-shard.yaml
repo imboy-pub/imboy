@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     请求联系人解密 shard
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeSocialDecryptShard
   requestBody:
     required: true

@@ -4,7 +4,7 @@
 > Status: 长期架构文档  
 > Scope: 当前仓库的分层职责、调用链路与设计边界  
 > Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
-> Related docs: `doc/architecture/database-access.md`, `doc/standards/api-format.md`, `doc/README.md`
+> Related docs: `docs/architecture/database-access.md`, `docs/standards/api-format.md`, `docs/README.md`
 
 ## 相关 ADR / Related Decisions
 
@@ -161,7 +161,7 @@ WebSocket 路径本质也遵循同样思路：连接与协议入口在 `Handler`
 
 ## 7. 相关文档
 
-- `doc/architecture/database-access.md`
-- `doc/standards/api-format.md`
-- `doc/standards/error-codes.md`
-- `doc/operations/dependencies.md`
+- `docs/architecture/database-access.md`
+- `docs/standards/api-format.md`
+- `docs/standards/error-codes.md`
+- `docs/operations/dependencies.md`

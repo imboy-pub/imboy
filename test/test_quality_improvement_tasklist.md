@@ -157,5 +157,5 @@
 ## 8. 相关文档
 
 - `test/README.md`
-- `test/doc/test1.md`
-- `doc/operations/three-end-delivery-plan-2026Q2.md`
+- `test/docs/test1.md`
+- `docs/operations/three-end-delivery-plan-2026Q2.md`

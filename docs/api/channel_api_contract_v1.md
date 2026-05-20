@@ -5,7 +5,7 @@
 > Scope: Channel public and admin contract across server, app, and admin frontend  
 > Source of truth: `src/imboy_router.erl` + `src/api/channel_handler.erl`  
 > Note: `v1` refers to the contract version, not the application release version.  
-> Related docs: `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`, `doc/api/envelope.schema.json`
+> Related docs: `docs/api/rest-api.md`, `docs/api/websocket-api-2.md`, `docs/api/envelope.schema.json`
 
 ## 1. Scope
 
@@ -30,7 +30,7 @@ All responses must follow the canonical envelope schema:
 }
 ```
 
-Reference: `doc/api/envelope.schema.json`.
+Reference: `docs/api/envelope.schema.json`.
 
 ### 2.2 ID Rules (TSID)
 
@@ -214,8 +214,8 @@ Any channel API contract change must update all:
 
 ## 10. Related Docs
 
-- `doc/api/rest-api.md`
-- `doc/api/websocket-api-2.md`
-- `doc/api/envelope.schema.json`
-- ~~`doc/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
-- `doc/operations/security.md`
+- `docs/api/rest-api.md`
+- `docs/api/websocket-api-2.md`
+- `docs/api/envelope.schema.json`
+- ~~`docs/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
+- `docs/operations/security.md`

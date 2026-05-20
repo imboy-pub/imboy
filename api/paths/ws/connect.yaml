@@ -3,7 +3,7 @@
 # GET /ws — WebSocket upgrade endpoint
 # Handler: src/api/websocket_handler.erl
 # 关联：消息协议契约见 api/proto/imboy_v2_frame.proto、api/asyncapi.yaml 与
-#       doc/api/websocket-api-2.md (人类可读设计文档).
+#       docs/api/websocket-api-2.md (人类可读设计文档).
 # ----------------------------------------------------------------------------
 get:
   tags: [msg]
@@ -14,12 +14,12 @@ get:
     与帧定义见：
     - **api/proto/imboy_v2_frame.proto** — Protobuf 顶层封装帧（codegen 真源）
     - **api/proto/imboy_s2c.proto** — Server→Client action payload
-    - **doc/api/websocket-api-2.md** — 人类可读的协议设计文档
+    - **docs/api/websocket-api-2.md** — 人类可读的协议设计文档
     认证：
     - 主要：`Sec-WebSocket-Protocol` header 携带 `Bearer <jwt>`
     - 备选：query string `?token=<jwt>` （仅用于浏览器无法设置 header 时）
     - JWT 失效时服务端仍允许握手成功，并下发 S2C 要求 8s 内刷新 token；
-      失败则强制下线（详见 doc/api/websocket-api-2.md#token-refresh）。
+      失败则强制下线（详见 docs/api/websocket-api-2.md#token-refresh）。
     Action 分发：
     - 心跳 (`ping`/`pong`)、消息发送 (`c2c.msg`)、群消息 (`c2g.msg`)、
       已读回执、reactions、presence 通知等所有实时交互均在本通道完成。
@@ -28,7 +28,7 @@ get:
     upgrade handshake; the actual message protocol is defined in:
     - **api/proto/imboy_v2_frame.proto** — Protobuf v2 frame envelope
     - **api/proto/imboy_s2c.proto** — Server-to-Client action payloads
-    - **doc/api/websocket-api-2.md** — Human-readable protocol spec
+    - **docs/api/websocket-api-2.md** — Human-readable protocol spec
     Auth: pass `Bearer <jwt>` via `Sec-WebSocket-Protocol` header
     (preferred) or `?token=<jwt>` query (browser fallback). Expired
     tokens are still accepted at handshake; the server then sends an

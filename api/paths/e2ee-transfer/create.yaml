@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     新设备 - 创建迁移会话
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeTransferCreate
   requestBody:
     required: true

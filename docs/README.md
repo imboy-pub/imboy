@@ -2,7 +2,7 @@
 
 > Last Updated: 2026-03-13  
 > Scope: 当前仓库文档索引与维护规则  
-> Related docs: `README.md`, `doc/changelog.md`
+> Related docs: `README.md`, `docs/changelog.md`
 
 ## 目标
 

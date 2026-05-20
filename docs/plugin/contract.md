@@ -4,7 +4,7 @@
 > **Status**: 长期插件架构契约文档（Phase 0 立项版，contract_version=1.0）
 > **Scope**: 定义 IMBoy 后端"插件"的形态、清单格式、behaviour 接口、命名约定与通信规则
 > **Source of truth**: `src/lib/imboy_plugin.erl`（待 P0-T1 实现）、`include/imboy_plugin.hrl`、`priv/plugins/*/plugin.toml`
-> **Related docs**: `.claude/plan/industrial-plugin-architecture-roadmap.md`、`doc/architecture/overview.md`、`doc/architecture/adr/2026-03-15-modular-monolith-boundaries.md`、`priv/plugin-examples/example/plugin.config`（P0-T5 教学样板，第三方插件作者参考）
+> **Related docs**: `.claude/plan/industrial-plugin-architecture-roadmap.md`、`docs/architecture/overview.md`、`docs/architecture/adr/2026-03-15-modular-monolith-boundaries.md`、`priv/plugin-examples/example/plugin.config`（P0-T5 教学样板，第三方插件作者参考）
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; bilingual sections side-by-side**
 
 ---
@@ -849,7 +849,7 @@ is_compatible(PluginContractVer, CoreContractVer) ->
 ### 9.4 破坏性变更政策 / Breaking change policy
 
 破坏性变更必须满足 / Breaking changes MUST:
-1. 撰写 ADR（`doc/architecture/adr/YYYY-MM-DD-<topic>.md`）
+1. 撰写 ADR（`docs/architecture/adr/YYYY-MM-DD-<topic>.md`）
 2. major bump `contract_version`
 3. 提供至少一个 minor 版本的迁移期，旧契约继续受支持
 

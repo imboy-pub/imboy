@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     添加恢复联系人
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeSocialAddContact
   requestBody:
     required: true

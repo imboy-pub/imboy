@@ -4,7 +4,7 @@
 > **Status**: 长期协议设计文档（Phase 5 前置）
 > **Scope**: 后端 `/v1/app/manifest` + WS push + Flutter / Vue 双端集成
 > **Source of truth**: `src/api/app_handler.erl`（待 Phase 5 扩展）、`src/lib/imboy_plugin_loader.erl`、`imboy_plugin_registry.erl#manifest_v2/1`
-> **Related docs**: `doc/plugin/contract.md` §3.2 entries / i18n、`.claude/plan/industrial-plugin-architecture-roadmap.md` Phase 5
+> **Related docs**: `docs/plugin/contract.md` §3.2 entries / i18n、`.claude/plan/industrial-plugin-architecture-roadmap.md` Phase 5
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; Pattern A bilingual**
 
 ---

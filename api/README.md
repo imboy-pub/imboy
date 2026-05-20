@@ -49,9 +49,9 @@ imboy/api/
 
 ---
 
-## 与 `imboy/doc/api/`（人类可读契约）的关系
+## 与 `imboy/docs/api/`（人类可读契约）的关系
 
-**`imboy/doc/api/`**（已存在 10+ 文件）：
+**`imboy/docs/api/`**（已存在 10+ 文件）：
 - 含 **手写设计文档**：`websocket-api-2.md` / `channel_api_contract_v1.md` / `moment_api_contract_v1.md` / `e2ee_server_persisted_shard_contract_v1.md` / `tsid-field-convention.md` / `tsid-field-matrix.md` / `rest-api.md`
 - 含 **历史 yaml**：`openapi.yaml`（340 行）/ `asyncapi.yaml` / `envelope.schema.json`
 - 角色：**人类可读的设计与决策记录**（叙述性、含背景与权衡）
@@ -61,9 +61,9 @@ imboy/api/
 - 角色：**代码生成驱动真源**（结构化、由工具消费）
 
 **T3.2 / T3.3 迁移策略**：
-- T3.2 把 `doc/api/openapi.yaml`（340 行手写）改写到 `api/openapi.yaml` 作为代码生成真源；旧位置降级为参考链接
+- T3.2 把 `docs/api/openapi.yaml`（340 行手写）改写到 `api/openapi.yaml` 作为代码生成真源；旧位置降级为参考链接
 - T3.3 把 `imboy/proto/imboy.proto` + `imboy/src/imboy.proto`（已存在 360 行 v2 frame proto）拆分整理至 `api/proto/`
-- 手写设计文档（websocket-api-2.md 等）**保留** 在 `doc/api/`，与本目录并存
+- 手写设计文档（websocket-api-2.md 等）**保留** 在 `docs/api/`，与本目录并存
 
 ---
 
@@ -73,7 +73,7 @@ imboy/api/
 - **TSID**：所有 ID 字段在 OpenAPI 用 `string`（避免 JS Number 精度丢失），见 `imboy/docs/CONVENTIONS.md` §1
 - **错误响应**：统一信封 `{code, message, details, traceId}`，见 §4
 - **分页**：cursor-based 默认，offset 仅限管理后台，见 §5
-- **TSID 字段映射**：参考 `imboy/doc/api/tsid-field-matrix.md`（哪些字段是 TSID）
+- **TSID 字段映射**：参考 `imboy/docs/api/tsid-field-matrix.md`（哪些字段是 TSID）
 
 ---
 
@@ -91,7 +91,7 @@ imboy/api/
 ---
 
 > **警告**：禁止在本目录之外写新的 API/协议结构定义。任何 PR 添加新端点 → 必须先改 `openapi.yaml` 或 `proto/*.proto`，CI 校验通过后才允许实现。
-> 设计层文档可继续写到 `imboy/doc/api/`。
+> 设计层文档可继续写到 `imboy/docs/api/`。
 
 ---
 
@@ -114,7 +114,7 @@ imboy/api/
 
 ## 历史契约缺陷（已于 D-cleanup phase 27 修复）
 
-phase 1 从 `doc/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之前的手写版）迁移时带入的虚构端点，**router 中不存在**，已在 D-cleanup 中删除：
+phase 1 从 `docs/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之前的手写版）迁移时带入的虚构端点，**router 中不存在**，已在 D-cleanup 中删除：
 
 | 已删除契约路径 | router 实际路径 | 替代方案 |
 |---|---|---|

@@ -18,7 +18,7 @@
 %%%   NOT gen_server. Plugin-internal gen_server workers are supervised
 %%%   by <name>_sup directly, unrelated to this behaviour.
 %%%
-%%% Source of truth: doc/plugin/contract.md
+%%% Source of truth: docs/plugin/contract.md
 %%% Contract version: 1.0
 %%%
 %%% @author Imboy Team
@@ -52,7 +52,7 @@
 
 %% ===================================================================
 %% Behaviour callbacks (7)
-%% Source of truth: doc/plugin/contract.md §4.1
+%% Source of truth: docs/plugin/contract.md §4.1
 %% ===================================================================
 
 %% @doc 插件清单 / Plugin manifest.
@@ -108,8 +108,8 @@
 
 %% @doc 当前 core 支持的契约版本（major, minor）。
 %% Current core-supported contract version (major, minor).
-%% 见 doc/plugin/contract.md §9.1 兼容矩阵。
-%% See doc/plugin/contract.md §9.1 compatibility matrix.
+%% 见 docs/plugin/contract.md §9.1 兼容矩阵。
+%% See docs/plugin/contract.md §9.1 compatibility matrix.
 -spec contract_version() -> contract_version().
 contract_version() ->
     {1, 0}.

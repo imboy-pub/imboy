@@ -13,7 +13,7 @@
 %%%   2. 通过 mock plugin (imboy_plugin_dummy) 验证 behaviour 可被合规实现
 %%%   3. 验证 contract_version/0 返回值
 %%%
-%%% Source of truth: doc/plugin/contract.md §4.1
+%%% Source of truth: docs/plugin/contract.md §4.1
 %%% Mock implementation: test/lib/imboy_plugin_dummy.erl
 %%% @end
 %%%-------------------------------------------------------------------

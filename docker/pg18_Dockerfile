@@ -130,7 +130,7 @@ RUN set -ex \
         libboost-date-time${BOOST_VER} \
         libboost-atomic${BOOST_VER} \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/docs/*
 
 # ---------- 从 Builder 阶段复制文件 (修正 tsearch_data 缺失) ----------
 # 1. 复制 .so 动态库

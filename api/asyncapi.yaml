@@ -9,7 +9,7 @@
 # 真源链：
 #   - 帧封装与字段位宽真源 → api/proto/imboy_v2_frame.proto
 #   - S2C action payload  → api/proto/imboy_s2c.proto
-#   - 人类可读设计文档    → doc/api/websocket-api-2.md（1600+ 行，含位图）
+#   - 人类可读设计文档    → docs/api/websocket-api-2.md（1600+ 行，含位图）
 # ----------------------------------------------------------------------------
 asyncapi: 3.0.0
 info:
@@ -24,7 +24,7 @@ info:
     完整字节布局、字段位宽、错误码请参考权威文档：
     - **api/proto/imboy_v2_frame.proto** — 帧封装真源（codegen 消费）
     - **api/proto/imboy_s2c.proto** — Server→Client action payload
-    - **doc/api/websocket-api-2.md** — 人类可读设计文档（1600+ 行，含位图、示例）
+    - **docs/api/websocket-api-2.md** — 人类可读设计文档（1600+ 行，含位图、示例）
 
     **本 schema 只冻结**：
       - 消息类型枚举（type 字段取值）

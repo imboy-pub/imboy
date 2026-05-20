@@ -637,7 +637,7 @@ get_routes() ->
 %% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.
 %% registry 未启动时返回 []（dev/测试/启动早期友好，不阻塞 core 路由表构建）。
 %% Returns [] when registry is not started (dev/test/early-startup safe).
-%% 详见 doc/plugin/contract.md §3 / .claude/plan/industrial-plugin-architecture-roadmap.md P2-T2
+%% 详见 docs/plugin/contract.md §3 / .claude/plan/industrial-plugin-architecture-roadmap.md P2-T2
 plugin_routes() ->
     case erlang:whereis(imboy_router_registry) of
         undefined ->

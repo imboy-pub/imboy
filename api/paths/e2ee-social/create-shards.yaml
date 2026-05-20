@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     Shamir 分片并下发
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeSocialCreateShards
   requestBody:
     required: true

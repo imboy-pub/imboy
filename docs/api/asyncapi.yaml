@@ -9,7 +9,7 @@ info:
     类型与路由方向。
 
     完整字节布局、字段位宽、错误码请参考权威文档：
-    `imboy/doc/api/websocket-api-2.md`（1600+ 行，含位图、示例）。
+    `imboy/docs/api/websocket-api-2.md`（1600+ 行，含位图、示例）。
 
     **本 schema 只冻结**：
       - 消息类型枚举（type 字段取值）

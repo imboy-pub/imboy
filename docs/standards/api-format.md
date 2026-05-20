@@ -3,8 +3,8 @@
 > Last Updated: 2026-03-08  
 > Status: 长期接口规范文档  
 > Scope: HTTP/REST 与 WebSocket 的通用消息格式约定  
-> Source of truth: `src/lib/elib_response.erl`, `doc/api/envelope.schema.json`, `doc/api/websocket-api-2.md`  
-> Related docs: `doc/api/rest-api.md`, `doc/api/envelope.schema.json`, `doc/api/websocket-api-2.md`
+> Source of truth: `src/lib/elib_response.erl`, `docs/api/envelope.schema.json`, `docs/api/websocket-api-2.md`
+> Related docs: `docs/api/rest-api.md`, `docs/api/envelope.schema.json`, `docs/api/websocket-api-2.md`
 
 
 ## HTTP API 响应格式

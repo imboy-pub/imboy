@@ -18,7 +18,7 @@ test/
 ├── adm/                           # 后台 Handler / Middleware / Logic 测试
 ├── api/                           # App 侧 HTTP / WebSocket Handler 测试
 ├── common/                        # 测试辅助模块
-├── doc/                           # 历史压测图文资料与现场记录
+├── docs/                           # 历史压测图文资料与现场记录
 ├── ds/                            # DS 层测试
 ├── integration/                   # 端到端 / 集成场景测试（EUnit 风格）
 ├── lib/                           # 公共库测试
@@ -44,7 +44,7 @@ test/
 
 仓库保留了少量历史资料，便于容量评估、问题回溯和测试方法复用：
 
-- `test/doc/test1.md`：100 万级 WebSocket 在线连接压测记录，含服务端 / 客户端监控截图
+- `test/docs/test1.md`：100 万级 WebSocket 在线连接压测记录，含服务端 / 客户端监控截图
 - `test/test_quality_improvement_tasklist.md`：早期测试质量专项记录，适合作为治理背景材料，不作为当前实时统计口径
 
 说明：历史资料属于归档保留内容，不直接作为 2026 年对外交付 SLA、容量承诺或当前门禁覆盖率口径。

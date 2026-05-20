@@ -9,7 +9,7 @@
 %%% 仅用于 imboy_plugin_tests.erl，**不**在生产环境加载。
 %%% Used only by imboy_plugin_tests.erl; NOT loaded in production.
 %%%
-%%% Source of truth: doc/plugin/contract.md §4.3 implementation example
+%%% Source of truth: docs/plugin/contract.md §4.3 implementation example
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

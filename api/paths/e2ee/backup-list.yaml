@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     服务端持久 shard 列表
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeBackupList
   responses:
     '200':

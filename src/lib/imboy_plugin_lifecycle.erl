@@ -12,7 +12,7 @@
 %%% - state_timeout 配置就绪（同步执行模式下实际不触发，
 %%%   异步步骤执行引入后生效）
 %%%
-%%% Source of truth: doc/plugin/lifecycle.md
+%%% Source of truth: docs/plugin/lifecycle.md
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     拉取 E2EE 系统通知
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eePullNotifications
   responses:
     '200':

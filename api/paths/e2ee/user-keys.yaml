@@ -5,7 +5,7 @@ get:
   description: |
     ## 中文 / English
     查询用户公钥（RSA-OAEP-256）
-    See doc/api/e2ee_*.md for crypto invariants.
+    See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeUserKeys
   parameters:
     - in: query

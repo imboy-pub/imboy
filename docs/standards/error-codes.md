@@ -4,7 +4,7 @@
 > Status: 长期接口规范文档  
 > Scope: 错误码定义、引用方式与响应使用约定  
 > Source of truth: `include/error_code.hrl`  
-> Related docs: `doc/standards/api-format.md`, `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`
+> Related docs: `docs/standards/api-format.md`, `docs/api/rest-api.md`, `docs/api/websocket-api-2.md`
 
 ## 概述
 

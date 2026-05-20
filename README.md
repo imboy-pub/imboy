@@ -8,12 +8,12 @@
 
 ## 核心入口
 
-- 架构概览：`doc/architecture/overview.md`
-- 数据访问：`doc/architecture/database-access.md`
-- 文档索引：`doc/README.md`
+- 架构概览：`docs/architecture/overview.md`
+- 数据访问：`docs/architecture/database-access.md`
+- 文档索引：`docs/README.md`
 - 测试说明：`test/README.md`
-- REST API：`doc/api/rest-api.md`
-- WebSocket API：`doc/api/websocket-api-2.md`
+- REST API：`docs/api/rest-api.md`
+- WebSocket API：`docs/api/websocket-api-2.md`
 
 ## 环境依赖
 
@@ -22,7 +22,7 @@
 - 依赖管理：`Makefile` + `include/deps.mk` + `erlang.mk`
 - 示例配置：`config/sys.config.example`
 
-依赖与运行说明详见 `doc/operations/dependencies.md`。
+依赖与运行说明详见 `docs/operations/dependencies.md`。
 
 ## 常用开发命令
 
@@ -42,7 +42,7 @@ IMBOYENV=local make relup
 说明：
 
 - `make eunit` 默认使用 `config/sys.config`，可通过 `EUNIT_CONFIG=config/sys.local.config` 指定配置。
-- 提交迁移前，按 `doc/standards/migration_naming.md` 做命名自检。
+- 提交迁移前，按 `docs/standards/migration_naming.md` 做命名自检。
 - 功能开关 smoke 校验可直接使用 `script/run_feature_flag_smoke.sh`，或通过 `make feature-smoke` 触发。
 
 ## Architecture Gates / 架构门禁
@@ -169,7 +169,7 @@ bin/imboy stop
 ./bin/imboy uninstall <old_version>
 ```
 
-具体部署约束与环境变量说明见 `doc/guides/deployment.md`。
+具体部署约束与环境变量说明见 `docs/guides/deployment.md`。
 
 ## 相关仓库
 

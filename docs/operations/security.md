@@ -4,7 +4,7 @@
 > Status: 长期运维与交付文档  
 > Scope: 交付、部署、联调、上线阶段的最小安全基线  
 > Source of truth: `config/sys.config.example`, `src/api/auth_middleware.erl`, `src/adm/adm_auth_middleware.erl`, `src/lib/elib_cipher.erl`, `priv/static/legal/`  
-> Related docs: `doc/guides/deployment.md`, `doc/guides/module-feature-flag-config.md`, `config/sys.config.example`
+> Related docs: `docs/guides/deployment.md`, `docs/guides/module-feature-flag-config.md`, `config/sys.config.example`
 
 ## 1. 文档定位
 
@@ -258,8 +258,8 @@
 ## 8. 相关文档
 
 - `config/sys.config.example`
-- `doc/guides/deployment.md`
-- `doc/guides/module-feature-flag-config.md`
-- `doc/api/rest-api.md`
+- `docs/guides/deployment.md`
+- `docs/guides/module-feature-flag-config.md`
+- `docs/api/rest-api.md`
 - `priv/static/legal/privacy_policy.html`
 - `priv/static/legal/account_deletion.html`

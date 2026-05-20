@@ -7,7 +7,7 @@
 %%% @doc
 %%% imboy.v2 分层二进制帧协议端到端集成测试
 %%%
-%%% 覆盖点（与 doc/api/websocket-api-2.md 规范、imboy_frame.hrl 字节 fixture 对齐）：
+%%% 覆盖点（与 docs/api/websocket-api-2.md 规范、imboy_frame.hrl 字节 fixture 对齐）：
 %%%   1. v2 握手协商 —— 子协议 "imboy.v2" 被 negotiate_protocol/1 映射为 {protobuf, v2}
 %%%   2. v2 heartbeat ping→pong 完整回路 + seq 回显
 %%%   3. v2 MSG_C2C + JSON payload 走 message_router_logic:route/5

@@ -22,7 +22,7 @@
 %%%   - list_plugins/0: 已加载插件列表
 %%%   - list_failed/0: 失败列表（路径 + 原因）
 %%%
-%%% Source of truth: doc/plugin/contract.md §10
+%%% Source of truth: docs/plugin/contract.md §10
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

@@ -284,7 +284,7 @@ metrics_all_pass(Metrics) ->
 
 -spec resolve_report_path(undefined | string() | binary()) -> string().
 resolve_report_path(undefined) ->
-    "doc/operations/channel_performance_baseline_" ++ date_string() ++ ".md";
+    "docs/operations/channel_performance_baseline_" ++ date_string() ++ ".md";
 resolve_report_path(Path) when is_binary(Path) ->
     binary_to_list(Path);
 resolve_report_path(Path) when is_list(Path) ->

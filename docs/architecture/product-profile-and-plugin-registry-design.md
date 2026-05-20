@@ -252,7 +252,7 @@ product_profile
 
 这里把 `storage_mode` 先设为 `archived`，不是因为目标不是“更安全”，而是因为当前仓库还不能对外笼统承诺“所有消息默认真正端到端加密且服务端不可见”。
 
-这与 `doc/operations/security.md` 中的口径保持一致。
+这与 `docs/operations/security.md` 中的口径保持一致。
 
 #### `enterprise`
 

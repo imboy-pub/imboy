@@ -159,7 +159,7 @@ to_rfc3339(Bin) when is_binary(Bin) ->
             end
     end.
 
-%% link https://www.erlang.org/doc/man/calendar.html#system_time_to_rfc3339-2
+%% link https://www.erlang.org/docs/man/calendar.html#system_time_to_rfc3339-2
 %
 % elib_dt:to_rfc3339(elib_dt:second(), second).
 % elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond).
@@ -301,8 +301,8 @@ rfc3339_to(Dt, Unit) when is_list(Dt); is_binary(Dt) ->
 rfc3339_to(_Dt, _Unit) ->
     {error, empty_input}.
 
-% https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-1
-% https://www.erlang.org/doc/man/calendar#rfc3339_to_system_time-2
+% https://www.erlang.org/docs/man/calendar#rfc3339_to_system_time-1
+% https://www.erlang.org/docs/man/calendar#rfc3339_to_system_time-2
 % 1> calendar:rfc3339_to_system_time("2018-02-01T16:17:58+01:00").
 % 1517498278
 % 2> calendar:rfc3339_to_system_time("2018-02-01 15:18:02.088Z",

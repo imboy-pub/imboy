@@ -16,7 +16,7 @@
 %%%   - 仅支持 ^X.Y.Z 与精确版本（不支持 ~> >= < ||）
 %%%   - prerelease 字段记录但不参与 caret 比较语义（KISS）
 %%%
-%%% Source of truth: doc/plugin/contract.md §3 §9 / roadmap P4-T2
+%%% Source of truth: docs/plugin/contract.md §3 §9 / roadmap P4-T2
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

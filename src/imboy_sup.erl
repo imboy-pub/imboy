@@ -119,7 +119,7 @@ init([]) ->
 
     % 插件清单加载器（启动期扫描 priv/plugins/*/plugin.config，写入 persistent_term）
     % Plugin manifest loader (scans priv/plugins/*/plugin.config at startup, writes persistent_term)
-    % 详见 doc/plugin/contract.md §10、.claude/plan/industrial-plugin-architecture-roadmap.md P0-T3
+    % 详见 docs/plugin/contract.md §10、.claude/plan/industrial-plugin-architecture-roadmap.md P0-T3
     %
     % restart=transient：loader 是可选基础设施，崩溃后正常退出（reason=normal/shutdown）
     % 不重启；异常崩溃才重启。这与 loader "插件失败不影响 core" 的语义一致。
@@ -137,7 +137,7 @@ init([]) ->
     % Plugin top-level supervisor: supervises channel/moment/location/group_collab sups
     % 启动顺序在 PluginLoader 之后：先 loader 把 manifest 写入 persistent_term，
     % 再启动 plugin sup，确保插件 worker 启动时可安全查询 manifest。
-    % 详见 doc/plugin/contract.md §8、.claude/plan/industrial-plugin-architecture-roadmap.md P1-T1
+    % 详见 docs/plugin/contract.md §8、.claude/plan/industrial-plugin-architecture-roadmap.md P1-T1
     PluginSup = #{
         id => imboy_plugin_sup
         , start => {imboy_plugin_sup, start_link, []}

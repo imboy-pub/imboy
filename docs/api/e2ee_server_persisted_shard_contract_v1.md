@@ -5,7 +5,7 @@
 > Scope: Social recovery shard persistence and retrieval contract  
 > Source of truth: `src/imboy_router.erl` + `src/api/e2ee_social_handler.erl` + `src/logic/e2ee_social_logic.erl`  
 > Note: `v1` refers to the contract version, not the application release version.  
-> Related docs: `doc/api/rest-api.md`, `doc/api/websocket-api-2.md`, `doc/operations/security.md`
+> Related docs: `docs/api/rest-api.md`, `docs/api/websocket-api-2.md`, `docs/operations/security.md`
 
 ## 1. Scope
 
@@ -107,7 +107,7 @@ Any E2EE social shard contract change must update all:
 
 ## 8. Related Docs
 
-- `doc/api/rest-api.md`
-- `doc/api/websocket-api-2.md`
-- `doc/operations/security.md`
-- `doc/standards/error-codes.md`
+- `docs/api/rest-api.md`
+- `docs/api/websocket-api-2.md`
+- `docs/operations/security.md`
+- `docs/standards/error-codes.md`

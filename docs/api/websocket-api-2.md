@@ -5,7 +5,7 @@
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
 > Note: 本文中的 `v2.0` 指消息结构版本，`imboy.v2` 指分层二进制帧协议版本，二者相互独立。  
-> Related docs: `doc/api/rest-api.md`, `doc/api/e2ee_server_persisted_shard_contract_v1.md`, `doc/operations/security.md`, `proto/imboy.proto`, `.claude/plans/imboy-frame-protocol.md`
+> Related docs: `docs/api/rest-api.md`, `docs/api/e2ee_server_persisted_shard_contract_v1.md`, `docs/operations/security.md`, `proto/imboy.proto`, `.claude/plans/imboy-frame-protocol.md`
 
 ## 变更记录 (Changelog)
 
@@ -928,7 +928,7 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 ### 通用约定
 
-- 通用业务错误码、envelope 语义与字段口径以 `doc/standards/error-codes.md`、`doc/api/rest-api.md` 为准。
+- 通用业务错误码、envelope 语义与字段口径以 `docs/standards/error-codes.md`、`docs/api/rest-api.md` 为准。
 - 本节仅补充 WebSocket 场景下的连接期 / 消息期错误表现与客户端处理建议。
 
 ### 顶层错误消息
@@ -986,7 +986,7 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 ## 安全规范
 
-WebSocket 的通用安全基线以 `doc/operations/security.md` 为准；本节只保留协议特有约束。
+WebSocket 的通用安全基线以 `docs/operations/security.md` 为准；本节只保留协议特有约束。
 
 ### 认证
 
@@ -1624,11 +1624,11 @@ v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。
 
 ### 相关文档
 
-- `doc/api/rest-api.md`
-- `doc/standards/error-codes.md`
-- ~~`doc/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
-- `doc/operations/security.md`
-- `doc/api/e2ee_server_persisted_shard_contract_v1.md`
+- `docs/api/rest-api.md`
+- `docs/standards/error-codes.md`
+- ~~`docs/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
+- `docs/operations/security.md`
+- `docs/api/e2ee_server_persisted_shard_contract_v1.md`
 - `CLAUDE.md`
 
 ---

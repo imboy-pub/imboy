@@ -20,7 +20,7 @@
 %%%   - 表名前缀：<plugin>_<entity>（强约束，loader 启动期校验）
 %%%   - 追踪表：schema_migrations_<plugin>（每插件独立）
 %%%
-%%% Source of truth: doc/plugin/contract.md §3 / roadmap P3
+%%% Source of truth: docs/plugin/contract.md §3 / roadmap P3
 %%%
 %%% @author Imboy Team
 %%% @copyright 2026 Imboy Project

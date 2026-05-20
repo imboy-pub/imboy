@@ -5,7 +5,7 @@ post:
   description: |
     ## 中文 / English
     合规密钥上报（监管侧）
-    See doc/api/e2ee_*.md for crypto invariants and shard policy.
+    See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeComplianceKey
   requestBody:
     required: true
