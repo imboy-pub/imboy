@@ -330,3 +330,9 @@ format-check:
 
 xref-strict: xref
 	@echo "xref strict mode (erlang.mk 原生 xref 已含 undefined_function_calls)"
+
+# 清理当前目录及子目录下所有 .beam 文件（跳过 deps/）
+.PHONY: clear_beam
+clear_beam:
+	@find . -path ./deps -prune -o -name '*.beam' -print -delete
+	@echo "clear_beam done"
