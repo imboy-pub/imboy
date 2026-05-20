@@ -5,23 +5,20 @@ export PROJECT_VERSION
 
 # 单一 release 配置（5 → 1）：
 #   * relx.config 始终指向 config/sys.runtime.config（由下方逻辑生成）。
-#   * IMBOYENV=local 时，自动将 sys.local.config 覆盖到 sys.runtime.config；
-#     否则使用 sys.config 作为基础。
+#   * IMBOYENV={env} 时，自动匹配 config/sys.{env}.config（如 dev → sys.dev.config）；
+#     不存在则回退 sys.config。
 #   * 环境变量 IMBOY_* 仍由 imboy_env.erl 在运行时覆盖（优先级更高）。
 #   * 出 tarball：make rel RELX_DEV_MODE=false RELX_INCLUDE_ERTS=true
 RELX_CONFIG = $(CURDIR)/relx.config
 
 # --- 运行时配置生成（在 erlang.mk include 之前执行） ---
-# IMBOYENV=local 且 sys.local.config 存在时，用其覆盖 sys.runtime.config；
-# 否则用 sys.config 作为基础。relx 构建时读取 sys.runtime.config。
-ifeq ($(IMBOYENV),local)
-  ifneq ($(wildcard config/sys.local.config),)
-    _SYS_RUNTIME_SRC := config/sys.local.config
-  else
-    _SYS_RUNTIME_SRC := config/sys.config
+# IMBOYENV 匹配 config/sys.{env}.config；不存在则回退 sys.config。
+# relx 构建时读取 sys.runtime.config。
+_SYS_RUNTIME_SRC := config/sys.config
+ifneq ($(IMBOYENV),)
+  ifneq ($(wildcard config/sys.$(IMBOYENV).config),)
+    _SYS_RUNTIME_SRC := config/sys.$(IMBOYENV).config
   endif
-else
-  _SYS_RUNTIME_SRC := config/sys.config
 endif
 $(shell mkdir -p config && cp $(_SYS_RUNTIME_SRC) config/sys.runtime.config)
 
@@ -293,11 +290,14 @@ smoke: smoke-c2c smoke-ws smoke-ctl
 #   make ctl ARGS="node status"       # 节点状态
 #   make ctl ARGS="user token 51"     # 生成 token
 #   make ctl ARGS="smoke all"         # 全部冒烟
-# 前置：imboy@127.0.0.1 节点已启动。
+#   make ctl NODE=001@127.0.0.1 ARGS="node status"  # 指定节点
+# 前置：目标节点已启动。默认连接 imboy@127.0.0.1。
+# 生产服务器：修改下方 CTL_NODE 默认值即可一劳永逸。
+CTL_NODE ?= imboy@127.0.0.1
 # -----------------------------------------------------------------------------
 .PHONY: ctl
 ctl:
-	@escript scripts/imboy_ctl $(ARGS)
+	@IMBOY_CTL_NODE=$(CTL_NODE) escript scripts/imboy_ctl $(ARGS)
 
 # =============================================================================
 # v1.3 工程质量 target（新增于 2026-05-08，禁止改 erlang.mk，仅追加 Makefile）

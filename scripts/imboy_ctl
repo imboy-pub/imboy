@@ -7,6 +7,61 @@
 %%%   imboy_ctl <command> [subcommand] [options]
 %%%   imboy_ctl help
 %%%
+%%% 命令一览
+%%%
+%%%  用户管理 user
+%%%
+%%%  # 生成 JWT token
+%%%  escript scripts/imboy_ctl user token <uid>
+%%%
+%%%  # 创建用户
+%%%  escript scripts/imboy_ctl user create <uid> -a <account> -n <nickname> -p <password>
+%%%
+%%%  # 查看用户详情
+%%%  escript scripts/imboy_ctl user detail <uid>
+%%%
+%%%  # 列出用户（默认 page=1, size=20）
+%%%  escript scripts/imboy_ctl user list -P 2 -S 50
+%%%
+%%%  消息诊断 msg
+%%%
+%%%  # 发送测试消息
+%%%  escript scripts/imboy_ctl msg send <from_uid> <to_uid> -T "hello"
+%%%
+%%%  # 查看消息状态
+%%%  escript scripts/imboy_ctl msg status <msg_id>
+%%%
+%%%  # 查看归档消息
+%%%  escript scripts/imboy_ctl msg archive -k "c2c:51:56" -s 0 -l 50
+%%%
+%%%  节点运维 node
+%%%
+%%%  escript scripts/imboy_ctl node status       # 版本、内存、进程数、ETS表数
+%%%  escript scripts/imboy_ctl node routes       # Cowboy 路由列表
+%%%  escript scripts/imboy_ctl node connections  # WebSocket 在线连接数
+%%%  escript scripts/imboy_ctl node pools        # 连接池状态（free/in_use）
+%%%
+%%%  数据库 db
+%%%
+%%%  escript scripts/imboy_ctl db ping       # 测试数据库连接
+%%%  escript scripts/imboy_ctl db migrate    # 执行迁移
+%%%  escript scripts/imboy_ctl db pool       # 连接池状态
+%%%
+%%%  诊断 diagnose
+%%%
+%%%  escript scripts/imboy_ctl diagnose config     # 运行时配置（敏感值脱敏）
+%%%  escript scripts/imboy_ctl diagnose boundaries  # 模块边界统计
+%%%
+%%%  冒烟测试 smoke
+%%%
+%%%  escript scripts/imboy_ctl smoke c2c -f 1000000051 -t 1000000056
+%%%  escript scripts/imboy_ctl smoke all
+%%%
+%%%  插件管理 plugin
+%%%
+%%%  escript scripts/imboy_ctl plugin list
+%%%  escript scripts/imboy_ctl plugin load <name>
+%%%  escript scripts/imboy_ctl plugin unload <name>
 %%% 前置：imboy@127.0.0.1 节点已启动（或通过 --node 指定），cookie=imboy。
 
 -define(DEFAULT_NODE, 'imboy@127.0.0.1').
