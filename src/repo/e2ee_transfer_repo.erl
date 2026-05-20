@@ -30,12 +30,11 @@
 %% @doc 根据 session_id 查询传输会话
 -spec find_by_session_id(binary()) -> {ok, map()} | {error, term()}.
 find_by_session_id(SessionId) ->
-    Sql1 = <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
-             "status, encrypted_key_bundle, expires_at, created_at ",
-             "FROM e2ee_transfer_sessions ",
-             "WHERE session_id = $1 ",
-             "AND expires_at > NOW() ",
-             "AND status IN ('pending', 'accepted')">>,
+    Sql1 =
+        <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
+            "status, encrypted_key_bundle, expires_at, created_at ", "FROM e2ee_transfer_sessions ",
+            "WHERE session_id = $1 ", "AND expires_at > NOW() ",
+            "AND status IN ('pending', 'accepted')">>,
     case elib_pg:query(Sql1, [SessionId]) of
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
@@ -53,11 +52,16 @@ create(Params) ->
     ExpiresAt = maps:get(<<"expires_at">>, Params),
 
     Id = elib_tsid:generate(e2ee_transfer),
-    Sql1 = <<"INSERT INTO e2ee_transfer_sessions ",
-             "(id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
-             "status, encrypted_key_bundle, expires_at) ",
-             "VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)">>,
-    case elib_pg:execute(Sql1, [Id, SessionId, FromUid, FromDeviceId, ToUid, <<>>, KeyBundle, ExpiresAt]) of
+    Sql1 =
+        <<"INSERT INTO e2ee_transfer_sessions ",
+            "(id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
+            "status, encrypted_key_bundle, expires_at) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)">>,
+    case
+        elib_pg:execute(Sql1, [
+            Id, SessionId, FromUid, FromDeviceId, ToUid, <<>>, KeyBundle, ExpiresAt
+        ])
+    of
         {ok, _Count} ->
             {ok, Id};
         {error, {pgsql_error, #{code := <<"23505">>}}} ->
@@ -70,10 +74,9 @@ create(Params) ->
 %% @doc 更新会话状态
 -spec update_status(binary(), binary()) -> ok | {error, term()}.
 update_status(SessionId, Status) ->
-    Sql1 = <<"UPDATE e2ee_transfer_sessions ",
-             "SET status = $1 ",
-             "WHERE session_id = $2 ",
-             "AND expires_at > NOW()">>,
+    Sql1 =
+        <<"UPDATE e2ee_transfer_sessions ", "SET status = $1 ", "WHERE session_id = $2 ",
+            "AND expires_at > NOW()">>,
     case elib_pg:execute(Sql1, [Status, SessionId]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -82,10 +85,9 @@ update_status(SessionId, Status) ->
 %% @doc 更新会话状态（同时设置 to_device_id）
 -spec update_status_and_device(binary(), binary(), binary()) -> ok | {error, term()}.
 update_status_and_device(SessionId, Status, ToDeviceId) ->
-    Sql1 = <<"UPDATE e2ee_transfer_sessions ",
-             "SET status = $1, to_device_id = $2 ",
-             "WHERE session_id = $3 ",
-             "AND expires_at > NOW()">>,
+    Sql1 =
+        <<"UPDATE e2ee_transfer_sessions ", "SET status = $1, to_device_id = $2 ",
+            "WHERE session_id = $3 ", "AND expires_at > NOW()">>,
     case elib_pg:execute(Sql1, [Status, ToDeviceId, SessionId]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -94,12 +96,10 @@ update_status_and_device(SessionId, Status, ToDeviceId) ->
 %% @doc 获取传输会话信息
 -spec get_by_session_id(binary()) -> {ok, map()} | {error, not_found}.
 get_by_session_id(SessionId) ->
-    Sql1 = <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
-             "status, encrypted_key_bundle, expires_at, created_at ",
-             "FROM e2ee_transfer_sessions ",
-             "WHERE session_id = $1 ",
-             "AND expires_at > NOW() ",
-             "LIMIT 1">>,
+    Sql1 =
+        <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
+            "status, encrypted_key_bundle, expires_at, created_at ", "FROM e2ee_transfer_sessions ",
+            "WHERE session_id = $1 ", "AND expires_at > NOW() ", "LIMIT 1">>,
     case elib_pg:query(Sql1, [SessionId]) of
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
@@ -117,14 +117,11 @@ is_valid_session(SessionId) ->
 %% @doc 获取用户的待处理会话列表
 -spec get_pending_sessions(integer()) -> {ok, list(map())} | {error, term()}.
 get_pending_sessions(Uid) ->
-    Sql1 = <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
-             "status, expires_at, created_at ",
-             "FROM e2ee_transfer_sessions ",
-             "WHERE to_uid = $1 ",
-             "AND status = 'pending' ",
-             "AND expires_at > NOW() ",
-             "ORDER BY created_at DESC ",
-             "LIMIT 10">>,
+    Sql1 =
+        <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
+            "status, expires_at, created_at ", "FROM e2ee_transfer_sessions ", "WHERE to_uid = $1 ",
+            "AND status = 'pending' ", "AND expires_at > NOW() ", "ORDER BY created_at DESC ",
+            "LIMIT 10">>,
     case elib_pg:query(Sql1, [Uid]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -134,24 +131,16 @@ get_pending_sessions(Uid) ->
 %%% Utility Functions
 %%===================================================================
 
-%% @doc 生成会话 ID（UUID v4）
+%% @doc 生成会话 ID（UUIDv7 时序 UUID）
 -spec generate_session_id() -> binary().
 generate_session_id() ->
-    % 使用 crypto 生成 UUID v4
-    <<A:32, B:16, C:16, D:16, E:48>> = crypto:strong_rand_bytes(16),
-    % 设置版本位和变体位（UUID v4）
-    C4 = (C band 16#0FFF) bor 16#4000,
-    D4 = (D band 16#3FFF) bor 16#8000,
-    % 格式化为标准 UUID 格式
-    Str = lists:flatten(io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b",
-        [A, B, C4, D4, E])),
-    list_to_binary(Str).
+    imboy_uuid:gen_v7().
 
 %% @doc 检查会话是否过期
 -spec is_expired(map()) -> boolean().
 is_expired(Session) ->
     ExpiresAt = maps:get(<<"expires_at">>, Session),
-    case catch(calendar:rfc3339_to_system_time(ExpiresAt)) of
+    case catch (calendar:rfc3339_to_system_time(ExpiresAt)) of
         ExpTime when is_integer(ExpTime) ->
             Now = erlang:system_time(second),
             Now > ExpTime;
@@ -164,10 +153,9 @@ is_expired(Session) ->
 %% @returns {ok, DeletedCount} | {error, Reason}
 -spec cleanup_expired_sessions() -> {ok, non_neg_integer()} | {error, term()}.
 cleanup_expired_sessions() ->
-    Sql1 = <<"DELETE FROM e2ee_transfer_sessions ",
-             "WHERE expires_at < NOW() ",
-             "AND status IN ('pending', 'accepted') ",
-             "RETURNING id">>,
+    Sql1 =
+        <<"DELETE FROM e2ee_transfer_sessions ", "WHERE expires_at < NOW() ",
+            "AND status IN ('pending', 'accepted') ", "RETURNING id">>,
     case elib_pg:execute(Sql1, []) of
         {ok, Count, _Rows} ->
             ok = ?INFO_LOG([e2ee_transfer_cleanup, deleted_sessions, Count]),
@@ -184,12 +172,11 @@ cleanup_expired_sessions() ->
 %% @returns {ok, [Session]} | {error, Reason}
 -spec get_stalled_sessions() -> {ok, [map()]} | {error, term()}.
 get_stalled_sessions() ->
-    Sql1 = <<"SELECT id, session_id, from_uid, to_uid, status, created_at ",
-             "FROM e2ee_transfer_sessions ",
-             "WHERE status = 'pending' ",
-             "AND created_at < NOW() - INTERVAL '10 minutes' ",
-             "ORDER BY created_at ASC ",
-             "LIMIT 100">>,
+    Sql1 =
+        <<"SELECT id, session_id, from_uid, to_uid, status, created_at ",
+            "FROM e2ee_transfer_sessions ", "WHERE status = 'pending' ",
+            "AND created_at < NOW() - INTERVAL '10 minutes' ", "ORDER BY created_at ASC ",
+            "LIMIT 100">>,
     case elib_pg:query(Sql1, []) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -202,10 +189,10 @@ get_stalled_sessions() ->
 %% @returns true | false
 -spec has_pending_session(integer(), integer()) -> boolean().
 has_pending_session(FromUid, ToUid) ->
-    Sql1 = <<"SELECT COUNT(*) as cnt FROM e2ee_transfer_sessions ",
-             "WHERE from_uid = $1 AND to_uid = $2 ",
-             "AND status IN ('pending', 'accepted') ",
-             "AND expires_at > NOW()">>,
+    Sql1 =
+        <<"SELECT COUNT(*) as cnt FROM e2ee_transfer_sessions ",
+            "WHERE from_uid = $1 AND to_uid = $2 ", "AND status IN ('pending', 'accepted') ",
+            "AND expires_at > NOW()">>,
     case elib_pg:query(Sql1, [FromUid, ToUid]) of
         {ok, [#{<<"cnt">> := 0}]} -> false;
         {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
@@ -218,11 +205,10 @@ has_pending_session(FromUid, ToUid) ->
 %% @returns ok | {error, Reason}
 -spec cancel_session(binary(), integer()) -> ok | {error, term()}.
 cancel_session(SessionId, FromUid) ->
-    Sql1 = <<"UPDATE e2ee_transfer_sessions ",
-             "SET status = 'cancelled' ",
-             "WHERE session_id = $1 AND from_uid = $2 ",
-             "AND status = 'pending' ",
-             "AND expires_at > NOW()">>,
+    Sql1 =
+        <<"UPDATE e2ee_transfer_sessions ", "SET status = 'cancelled' ",
+            "WHERE session_id = $1 AND from_uid = $2 ", "AND status = 'pending' ",
+            "AND expires_at > NOW()">>,
     case elib_pg:execute(Sql1, [SessionId, FromUid]) of
         {ok, 0} -> {error, not_found_or_not_pending};
         {ok, _} -> ok;
