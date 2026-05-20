@@ -393,23 +393,11 @@ send_sms_code(Mobile) ->
             end
     end.
 
-%% 校验验证码
+%% 校验验证码，委托给 verification_code_ds:verify_code/2
+%% 万能码通过 {imboy, verification_master_code} 配置，不再硬编码
 -spec verify_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
-verify_code(_Id, <<"666666">>) ->
-    %% local / dev 环境的万能验证码（生产环境严格拒绝）
-    case imboy_env:current() of
-        <<"local">> -> {ok, <<"验证码有效（测试环境）"/utf8>>};
-        <<"dev">> -> {ok, <<"验证码有效（测试环境）"/utf8>>};
-        _ -> {error, <<"验证码无效"/utf8>>}
-    end;
 verify_code(Id, Code) ->
-    Now = elib_dt:now(),
-    case verification_code_ds:find_by_id(Id) of
-        #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-            {ok, <<"验证码有效"/utf8>>};
-        _ ->
-            {error, <<"验证码无效"/utf8>>}
-    end.
+    verification_code_ds:verify_code(Id, Code).
 
 -spec do_signup_by_email(binary(), binary(), map()) ->
     {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.
