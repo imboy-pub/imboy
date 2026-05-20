@@ -110,6 +110,9 @@ override_from_env() ->
         "IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE", jverification_rsa_priv_key_file
     ),
 
+    %% 万能验证码（仅开发/测试环境；生产环境不设置此变量）
+    ok = override_binary_key("IMBOY_VERIFICATION_MASTER_CODE", verification_master_code),
+
     ok.
 
 %% ===================================================================
