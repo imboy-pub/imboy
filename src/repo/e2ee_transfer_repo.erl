@@ -18,7 +18,6 @@
 -export([get_by_session_id/1]).
 -export([get_pending_sessions/1]).
 -export([is_valid_session/1]).
--export([generate_session_id/0]).
 -export([cleanup_expired_sessions/0]).
 -export([get_stalled_sessions/0]).
 -export([cancel_session/2]).
@@ -26,20 +25,6 @@
 %%===================================================================
 %%% Query Functions
 %%===================================================================
-
-%% @doc 根据 session_id 查询传输会话
--spec find_by_session_id(binary()) -> {ok, map()} | {error, term()}.
-find_by_session_id(SessionId) ->
-    Sql1 =
-        <<"SELECT id, session_id, from_uid, from_device_id, to_uid, to_device_id, ",
-            "status, encrypted_key_bundle, expires_at, created_at ", "FROM e2ee_transfer_sessions ",
-            "WHERE session_id = $1 ", "AND expires_at > NOW() ",
-            "AND status IN ('pending', 'accepted')">>,
-    case elib_pg:query(Sql1, [SessionId]) of
-        {ok, []} -> {error, not_found};
-        {ok, [Row | _]} -> {ok, Row};
-        {error, Reason} -> {error, Reason}
-    end.
 
 %% @doc 创建传输会话
 -spec create(map()) -> {ok, integer()} | {error, term()}.
@@ -109,8 +94,11 @@ get_by_session_id(SessionId) ->
 %% @doc 检查会话是否存在且有效
 -spec is_valid_session(binary()) -> boolean().
 is_valid_session(SessionId) ->
-    case get_by_session_id(SessionId) of
-        {ok, _} -> true;
+    Sql1 =
+        <<"SELECT 1 FROM e2ee_transfer_sessions ",
+            "WHERE session_id = $1 AND expires_at > NOW() LIMIT 1">>,
+    case elib_pg:query(Sql1, [SessionId]) of
+        {ok, [_ | _]} -> true;
         _ -> false
     end.
 
@@ -131,19 +119,13 @@ get_pending_sessions(Uid) ->
 %%% Utility Functions
 %%===================================================================
 
-%% @doc 生成会话 ID（UUIDv7 时序 UUID）
--spec generate_session_id() -> binary().
-generate_session_id() ->
-    imboy_uuid:gen_v7().
-
 %% @doc 检查会话是否过期
 -spec is_expired(map()) -> boolean().
 is_expired(Session) ->
     ExpiresAt = maps:get(<<"expires_at">>, Session),
-    case catch (calendar:rfc3339_to_system_time(ExpiresAt)) of
+    case elib_dt:rfc3339_to(ExpiresAt, second) of
         ExpTime when is_integer(ExpTime) ->
-            Now = erlang:system_time(second),
-            Now > ExpTime;
+            erlang:system_time(second) > ExpTime;
         _ ->
             true
     end.
@@ -154,14 +136,14 @@ is_expired(Session) ->
 -spec cleanup_expired_sessions() -> {ok, non_neg_integer()} | {error, term()}.
 cleanup_expired_sessions() ->
     Sql1 =
-        <<"DELETE FROM e2ee_transfer_sessions ", "WHERE expires_at < NOW() ",
-            "AND status IN ('pending', 'accepted') ", "RETURNING id">>,
+        <<"DELETE FROM e2ee_transfer_sessions ", "WHERE id IN (",
+            "  SELECT id FROM e2ee_transfer_sessions ",
+            "  WHERE expires_at < NOW() AND status IN ('pending', 'accepted') LIMIT 1000",
+            ") RETURNING id">>,
     case elib_pg:execute(Sql1, []) of
         {ok, Count, _Rows} ->
             ok = ?INFO_LOG([e2ee_transfer_cleanup, deleted_sessions, Count]),
             {ok, Count};
-        {ok, 0} ->
-            {ok, 0};
         {error, Reason} ->
             ok = ?ERROR_LOG([e2ee_transfer_cleanup, failed, Reason]),
             {error, Reason}
@@ -190,12 +172,11 @@ get_stalled_sessions() ->
 -spec has_pending_session(integer(), integer()) -> boolean().
 has_pending_session(FromUid, ToUid) ->
     Sql1 =
-        <<"SELECT COUNT(*) as cnt FROM e2ee_transfer_sessions ",
-            "WHERE from_uid = $1 AND to_uid = $2 ", "AND status IN ('pending', 'accepted') ",
-            "AND expires_at > NOW()">>,
+        <<"SELECT EXISTS(", "SELECT 1 FROM e2ee_transfer_sessions ",
+            "WHERE from_uid = $1 AND to_uid = $2 ",
+            "AND status IN ('pending', 'accepted') AND expires_at > NOW()", ")">>,
     case elib_pg:query(Sql1, [FromUid, ToUid]) of
-        {ok, [#{<<"cnt">> := 0}]} -> false;
-        {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
+        {ok, [#{<<"exists">> := true}]} -> true;
         _ -> false
     end.
 

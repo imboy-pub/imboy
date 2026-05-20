@@ -1,11 +1,11 @@
--module(imboy_uuid).
+-module(elib_uuid).
 
 %%% @doc UUIDv7 生成器（时序 UUID，RFC 9562）
 %%% 格式：48-bit unix_ts_ms | ver=7 | 12-bit rand_a | var=10 | 62-bit rand_b
 
 -export([gen_v7/0, gen_v7_bin/0]).
 
-%% @doc 生成 UUIDv7 字符串（36 字节，连字符格式）
+%% @doc 生成 UUIDv7 字符串（时序 UUID，36 字节）
 -spec gen_v7() -> binary().
 gen_v7() ->
     <<U0:32, U1:16, U2:16, U3:16, U4:48>> = gen_v7_bin(),

@@ -92,9 +92,12 @@ list_trusted_contacts(Uid) ->
 is_trusted_contact(Uid, ContactUid) ->
     case list_trusted_contacts(Uid) of
         {ok, Contacts} ->
-            lists:any(fun(C) ->
-                maps:get(<<"contact_uid">>, C) =:= ContactUid
-            end, Contacts);
+            lists:any(
+                fun(C) ->
+                    maps:get(<<"contact_uid">>, C) =:= ContactUid
+                end,
+                Contacts
+            );
         _ ->
             false
     end.
@@ -109,7 +112,9 @@ is_trusted_contact(Uid, ContactUid) ->
 %% @param PrivateKeyPem 私钥 PEM 格式
 %% @param TotalShards 总分片数（默认 3）
 %% @param Threshold 恢复阈值（默认 2）
--spec create_key_shares(integer(), list({integer(), binary()}), binary(), pos_integer(), pos_integer()) ->
+-spec create_key_shares(
+    integer(), list({integer(), binary()}), binary(), pos_integer(), pos_integer()
+) ->
     {ok, list(map())} | {error, term()}.
 create_key_shares(Uid, Proxies, PrivateKeyPem, TotalShards, Threshold) ->
     try
@@ -128,37 +133,40 @@ create_key_shares(Uid, Proxies, PrivateKeyPem, TotalShards, Threshold) ->
         Shares = shamir_secret_sharing:create_shares(PrivateKeyPem, Threshold, TotalShards),
 
         % 3. 为每个分片创建加密记录
-        ShardRecords = lists:map(fun({ShareMap, Index}) ->
-            {ProxyUid, _Nickname} = lists:nth(Index, Proxies),
+        ShardRecords = lists:map(
+            fun({ShareMap, Index}) ->
+                {ProxyUid, _Nickname} = lists:nth(Index, Proxies),
 
-            % 获取代理的公钥
-            {ok, ProxyDevice} = user_device_ds:get_default_device(ProxyUid),
-            ProxyPublicKey = maps:get(<<"public_key">>, ProxyDevice),
+                % 获取代理的公钥
+                {ok, ProxyDevice} = user_device_ds:get_default_device(ProxyUid),
+                ProxyPublicKey = maps:get(<<"public_key">>, ProxyDevice),
 
-            % 使用代理公钥加密分片
-            ShareJson = jsx:encode(ShareMap),
-            {ok, EncryptedShard} = elib_cipher:encrypt_rsa_oaep(ShareJson, ProxyPublicKey),
+                % 使用代理公钥加密分片
+                ShareJson = jsx:encode(ShareMap),
+                {ok, EncryptedShard} = elib_cipher:encrypt_rsa_oaep(ShareJson, ProxyPublicKey),
 
-            ShardId = e2ee_social_repo:generate_shard_id(),
+                ShardId = elib_uuid:gen_v7(),
 
-            ShardRecord = #{
-                <<"uid">> => Uid,
-                <<"key_version">> => <<"latest">>,
-                <<"shard_index">> => Index - 1,
-                <<"total_shards">> => TotalShards,
-                <<"threshold">> => Threshold,
-                <<"encrypted_shard">> => EncryptedShard,
-                <<"proxy_uid">> => ProxyUid,
-                <<"shard_id">> => ShardId
-            },
+                ShardRecord = #{
+                    <<"uid">> => Uid,
+                    <<"key_version">> => <<"latest">>,
+                    <<"shard_index">> => Index - 1,
+                    <<"total_shards">> => TotalShards,
+                    <<"threshold">> => Threshold,
+                    <<"encrypted_shard">> => EncryptedShard,
+                    <<"proxy_uid">> => ProxyUid,
+                    <<"shard_id">> => ShardId
+                },
 
-            case e2ee_social_repo:create(ShardRecord) of
-                {ok, Id} ->
-                    ShardRecord#{<<"id">> => Id};
-                {error, Reason} ->
-                    throw({error, Reason})
-            end
-        end, lists:zip(Shares, lists:seq(1, length(Shares)))),
+                case e2ee_social_repo:create(ShardRecord) of
+                    {ok, Id} ->
+                        ShardRecord#{<<"id">> => Id};
+                    {error, Reason} ->
+                        throw({error, Reason})
+                end
+            end,
+            lists:zip(Shares, lists:seq(1, length(Shares)))
+        ),
 
         % 4. 清除用户分片缓存
         clear_user_shards_cache(Uid),
@@ -264,16 +272,20 @@ recover_key(Uid, KeyVersion, ShardIds) ->
         {ok, AllShards} = get_user_shards(Uid, KeyVersion),
 
         % 2. 过滤出要使用的分片
-        SelectedShards = lists:filter(fun(Shard) ->
-            ShardId = maps:get(<<"shard_id">>, Shard),
-            lists:member(ShardId, ShardIds)
-        end, AllShards),
+        SelectedShards = lists:filter(
+            fun(Shard) ->
+                ShardId = maps:get(<<"shard_id">>, Shard),
+                lists:member(ShardId, ShardIds)
+            end,
+            AllShards
+        ),
 
         % 3. 验证分片数量
-        Threshold = case AllShards of
-            [S | _] -> maps:get(<<"threshold">>, S);
-            [] -> throw({error, no_shares})
-        end,
+        Threshold =
+            case AllShards of
+                [S | _] -> maps:get(<<"threshold">>, S);
+                [] -> throw({error, no_shares})
+            end,
 
         case length(SelectedShards) < Threshold of
             true -> throw({error, insufficient_shares});

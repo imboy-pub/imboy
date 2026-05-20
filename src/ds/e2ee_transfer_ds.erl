@@ -36,7 +36,7 @@
 -spec create_session(integer(), binary(), integer(), binary()) -> {ok, map()} | {error, term()}.
 create_session(FromUid, FromDeviceId, ToUid, EncryptedKeyBundle) ->
     % 生成会话 ID（UUID v4）
-    SessionId = e2ee_transfer_repo:generate_session_id(),
+    SessionId = elib_uuid:gen_v7(),
 
     % 计算过期时间（5 分钟后）
     Now = elib_dt:now(),
@@ -199,10 +199,12 @@ cancel_session(SessionId, FromUid) ->
 %% @doc 清理过期的传输会话（定时任务调用）
 -spec cleanup_expired_sessions() -> {ok, integer()} | {error, term()}.
 cleanup_expired_sessions() ->
-    Sql = <<"DELETE FROM e2ee_transfer_sessions
-              WHERE expires_at < CURRENT_TIMESTAMP
-              AND status != 'confirmed'
-              RETURNING id">>,
+    Sql = <<
+        "DELETE FROM e2ee_transfer_sessions\n"
+        "              WHERE expires_at < CURRENT_TIMESTAMP\n"
+        "              AND status != 'confirmed'\n"
+        "              RETURNING id"
+    >>,
     case elib_pg:execute(Sql, []) of
         {ok, Count, _Rows} ->
             % 清除所有会话缓存
@@ -253,7 +255,7 @@ get_stalled_sessions() -> e2ee_transfer_repo:get_stalled_sessions().
 
 %% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
 -spec generate_session_id() -> binary().
-generate_session_id() -> e2ee_transfer_repo:generate_session_id().
+generate_session_id() -> elib_uuid:gen_v7().
 
 -spec create_raw(map()) -> {ok, integer()} | {error, term()}.
 create_raw(SessionMap) -> e2ee_transfer_repo:create(SessionMap).

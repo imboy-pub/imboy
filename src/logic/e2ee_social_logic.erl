@@ -13,9 +13,13 @@
 -include("error_code.hrl").
 
 %% 安全限制常量
--define(MAX_SHARDS, 5).        % 最大分片数（防止 DOS）
--define(MIN_THRESHOLD, 2).     % 最小阈值
--define(MAX_THRESHOLD, 3).     % 最大阈值（实际需要的分片数）
+
+% 最大分片数（防止 DOS）
+-define(MAX_SHARDS, 5).
+% 最小阈值
+-define(MIN_THRESHOLD, 2).
+% 最大阈值（实际需要的分片数）
+-define(MAX_THRESHOLD, 3).
 
 %% API 导出
 -export([create_shards/6]).
@@ -89,36 +93,43 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
         ),
 
         % 4. 服务端持久化分片记录（仅加密态）
-        PersistedShardRecords = case persist_shards(ShardRecords) of
-            {ok, Records} ->
-                Records;
-            {error, PersistReason} ->
-                throw({error, PersistReason})
-        end,
+        PersistedShardRecords =
+            case persist_shards(ShardRecords) of
+                {ok, Records} ->
+                    Records;
+                {error, PersistReason} ->
+                    throw({error, PersistReason})
+            end,
 
         % 5. 记录分片创建日志
-        lists:foreach(fun(ShardRecord) ->
-            ShardId = maps:get(<<"shard_id">>, ShardRecord),
-            ProxyUid = maps:get(<<"proxy_uid">>, ShardRecord),
-            e2ee_shard_validator:log_shard_transmission(
-                shard_created,
-                ShardId,
-                #{
-                    <<"uid">> => Uid,
-                    <<"proxy_uid">> => ProxyUid,
-                    <<"key_version">> => KeyVersion,
-                    <<"shard_index">> => maps:get(<<"shard_index">>, ShardRecord),
-                    <<"total_shards">> => TotalShards,
-                    <<"threshold">> => Threshold
-                }
-            )
-        end, PersistedShardRecords),
+        lists:foreach(
+            fun(ShardRecord) ->
+                ShardId = maps:get(<<"shard_id">>, ShardRecord),
+                ProxyUid = maps:get(<<"proxy_uid">>, ShardRecord),
+                e2ee_shard_validator:log_shard_transmission(
+                    shard_created,
+                    ShardId,
+                    #{
+                        <<"uid">> => Uid,
+                        <<"proxy_uid">> => ProxyUid,
+                        <<"key_version">> => KeyVersion,
+                        <<"shard_index">> => maps:get(<<"shard_index">>, ShardRecord),
+                        <<"total_shards">> => TotalShards,
+                        <<"threshold">> => Threshold
+                    }
+                )
+            end,
+            PersistedShardRecords
+        ),
 
         % 转换 ID 为 binary（客户端安全传输）
-        ClientShards = [S#{
-            <<"uid">> => maps:get(<<"uid">>, S),
-            <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S)
-        } || S <- PersistedShardRecords],
+        ClientShards = [
+            S#{
+                <<"uid">> => maps:get(<<"uid">>, S),
+                <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S)
+            }
+         || S <- PersistedShardRecords
+        ],
         {ok, ClientShards}
     catch
         {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
@@ -135,10 +146,13 @@ create_shards(Uid, KeyVersion, TotalShards, Threshold, PrivateKeyPem, Proxies) -
 get_user_shards(Uid, KeyVersion) ->
     case e2ee_social_ds:get_user_shards(Uid, KeyVersion) of
         {ok, Shards} ->
-            ClientShards = [S#{
-                <<"uid">> => maps:get(<<"uid">>, S, 0),
-                <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S, 0)
-            } || S <- Shards],
+            ClientShards = [
+                S#{
+                    <<"uid">> => maps:get(<<"uid">>, S, 0),
+                    <<"proxy_uid">> => maps:get(<<"proxy_uid">>, S, 0)
+                }
+             || S <- Shards
+            ],
             {ok, ClientShards};
         Error ->
             Error
@@ -204,41 +218,45 @@ can_recover(Uid, KeyVersion) ->
 ) -> {ok, list(map())}.
 encrypt_shards_for_proxies(Uid, KeyVersion, Shards, Proxies, TotalShards, Threshold) ->
     % 为每个分片分配代理并加密
-    EncryptedShardList = lists:map(fun({ShardJson, Index}) ->
-        ShardIndex = Index - 1,
-        Proxy = lists:nth(Index, Proxies),
-        {ProxyUid, EncryptedPublicKey} = normalize_proxy(Proxy),
-        ShardPayload = encode_shard_payload(ShardJson),
+    EncryptedShardList = lists:map(
+        fun({ShardJson, Index}) ->
+            ShardIndex = Index - 1,
+            Proxy = lists:nth(Index, Proxies),
+            {ProxyUid, EncryptedPublicKey} = normalize_proxy(Proxy),
+            ShardPayload = encode_shard_payload(ShardJson),
 
-        % 使用代理的公钥加密分片
-        EncryptedShard = encrypt_shard_for_proxy(ShardPayload, EncryptedPublicKey),
+            % 使用代理的公钥加密分片
+            EncryptedShard = encrypt_shard_for_proxy(ShardPayload, EncryptedPublicKey),
 
-        % 生成分片 ID（用于后续恢复时识别）
-        ShardId = generate_shard_id(),
+            ShardId = elib_uuid:gen_v7(),
 
-        #{
-            <<"uid">> => Uid,
-            <<"key_version">> => KeyVersion,
-            <<"shard_index">> => ShardIndex,
-            <<"total_shards">> => TotalShards,
-            <<"threshold">> => Threshold,
-            <<"encrypted_shard">> => EncryptedShard,
-            <<"proxy_uid">> => ProxyUid,
-            <<"shard_id">> => ShardId,
-            <<"status">> => <<"active">>
-        }
-    end, lists:zip(Shards, lists:seq(1, length(Shards)))),
+            #{
+                <<"uid">> => Uid,
+                <<"key_version">> => KeyVersion,
+                <<"shard_index">> => ShardIndex,
+                <<"total_shards">> => TotalShards,
+                <<"threshold">> => Threshold,
+                <<"encrypted_shard">> => EncryptedShard,
+                <<"proxy_uid">> => ProxyUid,
+                <<"shard_id">> => ShardId,
+                <<"status">> => <<"active">>
+            }
+        end,
+        lists:zip(Shards, lists:seq(1, length(Shards)))
+    ),
     {ok, EncryptedShardList}.
 
 %% @doc 兼容代理参数协议（map 和 tuple）
 -spec normalize_proxy(map() | {term(), term()}) -> {term(), binary()} | no_return().
 normalize_proxy({ProxyUid, EncryptedPublicKey}) when is_binary(EncryptedPublicKey) ->
     {ProxyUid, EncryptedPublicKey};
-normalize_proxy(#{<<"proxy_uid">> := ProxyUid, <<"encrypted_public_key">> := EncryptedPublicKey})
-when is_binary(EncryptedPublicKey) ->
+normalize_proxy(#{<<"proxy_uid">> := ProxyUid, <<"encrypted_public_key">> := EncryptedPublicKey}) when
+    is_binary(EncryptedPublicKey)
+->
     {ProxyUid, EncryptedPublicKey};
-normalize_proxy(#{proxy_uid := ProxyUid, encrypted_public_key := EncryptedPublicKey})
-when is_binary(EncryptedPublicKey) ->
+normalize_proxy(#{proxy_uid := ProxyUid, encrypted_public_key := EncryptedPublicKey}) when
+    is_binary(EncryptedPublicKey)
+->
     {ProxyUid, EncryptedPublicKey};
 normalize_proxy(_) ->
     throw({error, {<<"代理参数格式错误"/utf8>>, ?ERR_BAD_REQUEST}}).
@@ -257,7 +275,8 @@ encode_shard_payload(_) ->
 encrypt_shard_for_proxy(Shard, ProxyPublicKeyPem) ->
     % 使用 elib_cipher 中的 RSA-OAEP 加密
     case elib_cipher:encrypt_rsa_oaep(Shard, ProxyPublicKeyPem) of
-        {ok, Encrypted} -> Encrypted;
+        {ok, Encrypted} ->
+            Encrypted;
         {error, Reason} ->
             throw({error, {elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}})
     end.
@@ -266,26 +285,22 @@ encrypt_shard_for_proxy(Shard, ProxyPublicKeyPem) ->
 -spec persist_shards(list(map())) -> {ok, list(map())} | {error, term()}.
 persist_shards(ShardRecords) ->
     try
-        PersistedReversed = lists:foldl(fun(ShardRecord, Acc) ->
-            case e2ee_social_ds:create_shard(ShardRecord) of
-                {ok, Id} ->
-                    [ShardRecord#{<<"id">> => Id, <<"status">> => <<"active">>} | Acc];
-                {error, Reason} ->
-                    throw({error, {elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}})
-            end
-        end, [], ShardRecords),
+        PersistedReversed = lists:foldl(
+            fun(ShardRecord, Acc) ->
+                case e2ee_social_ds:create_shard(ShardRecord) of
+                    {ok, Id} ->
+                        [ShardRecord#{<<"id">> => Id, <<"status">> => <<"active">>} | Acc];
+                    {error, Reason} ->
+                        throw(
+                            {error, {elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}}
+                        )
+                end
+            end,
+            [],
+            ShardRecords
+        ),
         {ok, lists:reverse(PersistedReversed)}
     catch
         {error, Reason} ->
             {error, Reason}
     end.
-
-%% @doc 生成分片 ID
--spec generate_shard_id() -> binary().
-generate_shard_id() ->
-    <<A:32, B:16, C:16, D:16, E:48>> = crypto:strong_rand_bytes(16),
-    C4 = (C band 16#0FFF) bor 16#4000,
-    D4 = (D band 16#3FFF) bor 16#8000,
-    Str = lists:flatten(io_lib:format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b",
-        [A, B, C4, D4, E])),
-    list_to_binary(Str).
