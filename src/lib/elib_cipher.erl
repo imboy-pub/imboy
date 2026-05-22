@@ -188,13 +188,8 @@ rsa_decrypt(CipherText, PrivKey) ->
 
 %% @private OAEP v2.0/v2.1 兼容解密（历史兼容路径）
 -spec rsa_decrypt_oaep_compat(binary(), term(), binary()) -> binary().
-rsa_decrypt_oaep_compat(BinData, PrivateKey, DecodedText) ->
-    io:format(
-        "OAEP 解密: Base64 密文长度=~p, 二进制长度=~p~n",
-        [byte_size(DecodedText), byte_size(BinData)]
-    ),
-
-    % 🔧 修复：先进行裸 RSA 解密
+rsa_decrypt_oaep_compat(BinData, PrivateKey, _DecodedText) ->
+    % 先进行裸 RSA 解密
     % pointycastle (OAEP v2.0): EM = maskedSeed || maskedDB (256 字节)
     % Erlang public_key (OAEP v2.1): EM = 0x00 || maskedSeed || maskedDB (256 字节)
     RawEM = public_key:decrypt_private(
@@ -203,45 +198,25 @@ rsa_decrypt_oaep_compat(BinData, PrivateKey, DecodedText) ->
         [{rsa_padding, rsa_no_padding}]
     ),
 
-    % RSA 解密可能返回比模数短的字节数（如果有前导零被去除）
-
+    % RSA 解密可能返回比模数短的字节数（前导零被去除）
     % 2048 位 RSA
     KeySize = 256,
     RawEMLen = byte_size(RawEM),
-
-    % 打印原始 EM 的前 10 字节用于调试
-    First10Bytes =
-        case RawEMLen >= 10 of
-            true -> binary:part(RawEM, 0, 10);
-            false -> RawEM
-        end,
-    io:format("OAEP 解密: RawEM 长度=~p, 前10字节=~p~n", [RawEMLen, First10Bytes]),
-
-    % 🔧 关键修复：根据第一个字节判断 OAEP 版本
-    % - 第一个字节非 0：OAEP v2.0 (pointycastle)，直接解码
-    % - 第一个字节是 0：可能是 v2.0（maskedSeed 恰好以 0 开头）或 v2.1
     <<FirstByte:8, RestEM/binary>> = RawEM,
-    io:format("OAEP 解密: 第一个字节=~p~n", [FirstByte]),
 
     case FirstByte of
         0 ->
-            % 第一个字节是 0，需要判断是 v2.0 还是 v2.1
-            % 尝试 v2.0（pointycastle 可能产生以 0 开头的 maskedSeed）
-            io:format("OAEP 解密: 第一个字节=0，尝试两种格式~n", []),
+            % 第一个字节是 0：尝试 v2.0（pointycastle 可能产生以 0 开头的 maskedSeed），失败则降级 v2.1
             try
-                io:format("OAEP 尝试 v2.0: 使用完整 256 字节~n", []),
-                % 对于 v2.0，使用完整的 256 字节
                 decode_oaep_common(RawEM)
             catch
-                Type:Error:_Stack ->
-                    io:format("OAEP v2.0 失败: ~p:~p~n", [Type, Error]),
-                    % v2.0 失败，尝试 v2.1（跳过第一个 0x00 字节）
-                    io:format("OAEP 尝试 v2.1: 跳过第一个字节~n", []),
+                _:_:_ ->
+                    % v2.0 失败，跳过第一个 0x00 字节尝试 v2.1
                     case RawEMLen of
                         KeySize ->
                             decode_oaep_common(RestEM);
                         _ ->
-                            % 如果长度不足，先补齐再跳过第一个字节
+                            % 长度不足时先补齐再跳过第一个字节
                             PadLen = KeySize - RawEMLen,
                             PaddedEM = <<0:PadLen/unit:8, RawEM/binary>>,
                             <<0:8, FinalRest/binary>> = PaddedEM,
@@ -250,7 +225,6 @@ rsa_decrypt_oaep_compat(BinData, PrivateKey, DecodedText) ->
             end;
         _ ->
             % 第一个字节非 0，一定是 OAEP v2.0 (pointycastle)
-            io:format("OAEP v2.0: 第一个字节=~p (非0)，使用 pointycastle 格式~n", [FirstByte]),
             decode_oaep_common(RawEM)
     end.
 
@@ -261,7 +235,7 @@ decode_base64_text(CipherText) ->
     DecodedText0 =
         case binary:match(CipherText, <<"%">>) of
             nomatch -> CipherText;
-            _ -> list_to_binary(uri_string:unquote(binary_to_list(CipherText)))
+            _ -> uri_string:unquote(CipherText)
         end,
     % 某些 form-urlencoded 请求会把 '+' 还原为空格，需转回标准 Base64
     DecodedText = binary:replace(DecodedText0, <<" ">>, <<"+">>, [global]),
@@ -284,7 +258,6 @@ decode_base64_text(CipherText) ->
 -spec rsa_decrypt_oaep_v21(binary(), term()) -> {ok, binary()} | {error, term()}.
 rsa_decrypt_oaep_v21(BinData, PrivateKey) ->
     try
-        io:format("OAEP v2.1: 尝试标准 OAEP 解密, 数据长度=~p~n", [byte_size(BinData)]),
         Result = public_key:decrypt_private(
             BinData,
             PrivateKey,
@@ -293,10 +266,6 @@ rsa_decrypt_oaep_v21(BinData, PrivateKey) ->
                 {rsa_oaep_md, sha256},
                 {rsa_mgf1_md, sha256}
             ]
-        ),
-        io:format(
-            "OAEP v2.1: 解密成功, 结果长度=~p, 前20字节=~p~n",
-            [byte_size(Result), binary:part(Result, 0, min(20, byte_size(Result)))]
         ),
         {ok, Result}
     catch

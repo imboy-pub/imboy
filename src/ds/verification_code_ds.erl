@@ -38,10 +38,10 @@ save(Id, Code, ValidityAt, CreatedAt) ->
 %% @return {ok, binary()} | {error, binary()}
 -spec verify_code(binary(), binary()) -> {ok, binary()} | {error, binary()}.
 verify_code(Id, Code) ->
-    case application:get_env(imboy, verification_master_code, undefined) of
-        MasterCode when is_binary(MasterCode), MasterCode =:= Code, byte_size(MasterCode) > 0 ->
+    case is_master_code(Code) of
+        true ->
             {ok, <<"验证码有效"/utf8>>};
-        _ ->
+        false ->
             Now = elib_dt:now(),
             case verification_code_repo:find_by_id(Id) of
                 #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
@@ -54,3 +54,13 @@ verify_code(Id, Code) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% 检查是否为万能验证码；空配置视为禁用，防止空码绕过验证
+-spec is_master_code(binary()) -> boolean().
+is_master_code(Code) ->
+    case application:get_env(imboy, verification_master_code, undefined) of
+        MasterCode when is_binary(MasterCode), byte_size(MasterCode) > 0 ->
+            MasterCode =:= Code;
+        _ ->
+            false
+    end.
