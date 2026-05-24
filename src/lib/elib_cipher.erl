@@ -400,25 +400,15 @@ safe_rsa_decrypt(Password, _) ->
 %% 随机数生成
 %% ===================================================================
 
-%% @doc 生成指定位数的随机数
-%% 用于生成安全相关的随机值，如密码盐值、验证码等
-%% @param Len 随机数的位数
-%% @returns 生成的随机数
-%%
-%% @example
-%% Salt = elib_cipher:num_random(40).  %% 生成 40 位随机数（盐值）
-%% Code = elib_cipher:num_random(6).   %% 生成 6 位随机数（验证码）
+%% @doc 生成指定位数的密码学安全随机整数
+%% @param Len 位数（如 6 → 100000..999999）
+%% @returns Len 位随机正整数
 -spec num_random(pos_integer()) -> pos_integer().
 num_random(Len) ->
-    Prefix = rand:uniform(9),
-    MinNum = round(math:pow(10, Len - 1)),
-    Num = rand:uniform(MinNum),
-    case Num > MinNum of
-        true ->
-            Num;
-        _ ->
-            MinNum * Prefix + Num
-    end.
+    Min = round(math:pow(10, Len - 1)),
+    Range = Min * 9,
+    <<RandInt:64/unsigned-big>> = crypto:strong_rand_bytes(8),
+    Min + (RandInt rem Range).
 
 %% ===================================================================
 %% 密钥备份相关功能

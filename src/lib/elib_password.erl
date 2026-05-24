@@ -26,11 +26,9 @@ generate(Plaintext) ->
 %% @returns Base64 编码的密码哈希
 -spec generate(iodata(), hmac_sha512) -> binary().
 generate(Plaintext, hmac_sha512) ->
-    Salt1 = elib_cipher:num_random(40),
-    Salt2 = integer_to_binary(Salt1),
+    Salt2 = base64:encode(crypto:strong_rand_bytes(16)),
     Ciphertext = elib_hasher:hmac_sha512(Plaintext, Salt2),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
-
 
 %% @doc 验证密码
 %% @param Plaintext 明文密码
@@ -74,23 +72,22 @@ try_decode_hmac_sha512(Ciphertext) ->
 
 md5_test_() ->
     ?TEST_WITH_APP(fun() ->
-                      Plaintext = "abc",
-                      Ciphertext = generate(Plaintext),
-                      Resp = verify(Plaintext, Ciphertext),
+        Plaintext = "abc",
+        Ciphertext = generate(Plaintext),
+        Resp = verify(Plaintext, Ciphertext),
 
-                      ?assert(Resp =:= {ok, []}),
-                      ?DEBUG_LOG(Resp)
-                   end).
+        ?assert(Resp =:= {ok, []}),
+        ?DEBUG_LOG(Resp)
+    end).
 
 hmac_sha512_test_() ->
     ?TEST_WITH_APP(fun() ->
-                      Plaintext = "abc",
-                      Ciphertext = generate(Plaintext),
-                      Resp = verify(Plaintext, Ciphertext),
-                      ?assert(Resp =:= {ok, []}),
-                      ?DEBUG_LOG(Resp)
-                   end).
-
+        Plaintext = "abc",
+        Ciphertext = generate(Plaintext),
+        Resp = verify(Plaintext, Ciphertext),
+        ?assert(Resp =:= {ok, []}),
+        ?DEBUG_LOG(Resp)
+    end).
 
 -endif.
 
@@ -115,11 +112,7 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
 
 -spec eq(binary(), binary()) -> {ok, []} | {error, binary()}.
 eq(Ciphertext, Ciphertext2) ->
-    % ?DEBUG_LOG([admin_pwd, Ciphertext2, Ciphertext]),
-    case Ciphertext2 == Ciphertext of
-        true ->
-            {ok, []};
-        _ ->
-            % errorPassword 为APP端的多语言吗
-            {error, <<"errorPassword">>}
+    case crypto:hash(sha256, Ciphertext) =:= crypto:hash(sha256, Ciphertext2) of
+        true -> {ok, []};
+        false -> {error, <<"errorPassword">>}
     end.
