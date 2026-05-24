@@ -42,6 +42,8 @@ init(Req0, State0) ->
                 reply(Method, Req0, State);
             workflow_config ->
                 workflow_config(Method, Req0, State);
+            delete ->
+                delete(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -58,10 +60,12 @@ index(<<"GET">>, _Ajax, Req0, _State) ->
     % Where2 = <<"status > 0 AND ", Where/binary>>,
     Where = #{status => {op, <<">">>, -2}},
     Column =
-        <<"id as feedback_id, user_id, device_id, client_operating_system, "
-          "client_operating_system_vsn, type, rating, contact_detail, "
-          "body, attach, reply_count, status, updated_at, created_at, "
-          "app_vsn">>,
+        <<
+            "id as feedback_id, user_id, device_id, client_operating_system, "
+            "client_operating_system_vsn, type, rating, contact_detail, "
+            "body, attach, reply_count, status, updated_at, created_at, "
+            "app_vsn"
+        >>,
     {ok, P} = feedback_ds:page(Column, Where, <<"id desc">>, Page, Size),
     P2 = normalize_feedback_payload(P),
     elib_response:success(Req0, P2);
@@ -85,9 +89,12 @@ reply(<<"POST">>, Req0, State) ->
     % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
     % FeedbackId = elib_param:int(<<"FeedbackId">>, Req0, 0),
     {ok, FeedbackId} =
-        case string:to_integer(
-                 ec_cnv:to_list(
-                     maps:get(<<"feedback_id">>, PostVals, <<"0">>)))
+        case
+            string:to_integer(
+                ec_cnv:to_list(
+                    maps:get(<<"feedback_id">>, PostVals, <<"0">>)
+                )
+            )
         of
             {error, _} ->
                 {ok, 0};
@@ -95,18 +102,62 @@ reply(<<"POST">>, Req0, State) ->
                 {ok, Val2}
         end,
     % ?DEBUG_LOG(["FeedbackId", FeedbackId, PostVals]),
-    if is_integer(FeedbackId), FeedbackId > 0 ->
-           ReplyPid = ec_cnv:to_integer(maps:get(<<"feedback_reply_pid">>, PostVals, 0)),
-           feedback_ds:add_reply(#{<<"feedback_id">> => FeedbackId,
-                                   <<"feedback_reply_pid">> => ReplyPid,
-                                   <<"replier_user_id">> => AdmUserId,
-                                   <<"replier_name">> => Nickname,
-                                   <<"body">> => maps:get(<<"body">>, PostVals, ""),
-                                   <<"created_at">> => elib_dt:now()}),
-           elib_response:success(Req0, PostVals, "success.");
-       true ->
-           elib_response:error(Req0)
+    if
+        is_integer(FeedbackId), FeedbackId > 0 ->
+            ReplyPid = ec_cnv:to_integer(maps:get(<<"feedback_reply_pid">>, PostVals, 0)),
+            feedback_ds:add_reply(#{
+                <<"feedback_id">> => FeedbackId,
+                <<"feedback_reply_pid">> => ReplyPid,
+                <<"replier_user_id">> => AdmUserId,
+                <<"replier_name">> => Nickname,
+                <<"body">> => maps:get(<<"body">>, PostVals, ""),
+                <<"created_at">> => elib_dt:now()
+            }),
+            elib_response:success(Req0, PostVals, "success.");
+        true ->
+            elib_response:error(Req0)
     end.
+
+%% @doc 软删除反馈（status => -1）
+-spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+delete(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"feedback:delete">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            FeedbackIdRaw = maps:get(<<"feedback_id">>, PostVals, 0),
+            {ok, FeedbackId} =
+                case string:to_integer(ec_cnv:to_list(FeedbackIdRaw)) of
+                    {error, _} -> {ok, 0};
+                    {Val, _} -> {ok, Val}
+                end,
+            case FeedbackId > 0 of
+                true ->
+                    case
+                        elib_pg:update(
+                            feedback_repo:tablename(),
+                            #{
+                                <<"status">> => -1,
+                                <<"updated_at">> => elib_dt:now()
+                            },
+                            <<"id = $1">>,
+                            [FeedbackId]
+                        )
+                    of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{});
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req0, ec_cnv:to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end;
+                false ->
+                    elib_response:error(Req0, <<"feedback_id 无效"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+delete(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 读取/保存反馈流程配置
 -spec workflow_config(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -149,7 +200,9 @@ ensure_permission(State, Permission, Req0) ->
     end.
 
 -spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
+has_permission(AdmUserId, Permission) when
+    is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission)
+->
     Permissions = resolve_permissions_by_adm_user_id(AdmUserId),
     lists:member(Permission, Permissions);
 has_permission(_, _) ->
@@ -323,12 +376,13 @@ normalize_sla_hours(Value, Default) ->
             error ->
                 Default
         end,
-    if Base < 1 ->
-           1;
-       Base > 720 ->
-           720;
-       true ->
-           Base
+    if
+        Base < 1 ->
+            1;
+        Base > 720 ->
+            720;
+        true ->
+            Base
     end.
 
 -spec safe_to_integer(term()) -> {ok, integer()} | error.

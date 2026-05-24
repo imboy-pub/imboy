@@ -32,6 +32,7 @@ init(Req0, State0) ->
             list -> list(Method, Req0, State);
             export -> export(Method, Req0, State);
             reject -> reject(Method, Req0, State);
+            approve -> approve(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -87,6 +88,30 @@ reject(<<"POST">>, Req0, _State) ->
 reject(_, Req0, _State) ->
     Req0.
 
+%% @doc 审批通过注销申请：将用户状态设为 -1（已注销）
+-spec approve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+approve(<<"POST">>, Req0, _State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Data = jsone:decode(Body, [{object_format, map}]),
+    UidRaw = maps:get(<<"uid">>, Data, <<>>),
+    Uid = parse_id(UidRaw),
+    case Uid > 0 of
+        true ->
+            case user_ds:approve_logout_apply(Uid) of
+                {ok, [_]} ->
+                    ok = ?INFO_LOG([logout_apply_approved, #{uid => Uid}]),
+                    elib_response:success(Req1, #{uid => Uid, status => <<"approved">>});
+                {ok, []} ->
+                    elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
+                {error, _Reason} ->
+                    elib_response:error(Req1, <<"操作失败"/utf8>>)
+            end;
+        false ->
+            elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+    end;
+approve(_, Req0, _State) ->
+    Req0.
+
 -spec export(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 export(<<"GET">>, Req0, _State) ->
     Filters = extract_filters(Req0),
@@ -102,7 +127,8 @@ export(<<"GET">>, Req0, _State) ->
 export(_, Req0, _State) ->
     Req0.
 
--spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer()) -> ok.
+-spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer()) ->
+    ok.
 stream_export_rows(Req, WhereSql, Params, Limit, Offset) ->
     case user_log_ds:list_logout_apply_log_chunk(WhereSql, Params, Limit, Offset) of
         {ok, []} ->
@@ -141,19 +167,23 @@ build_where_sql(Filters) ->
     FromTs = maps:get(from_ts, Filters, <<>>),
     ToTs = maps:get(to_ts, Filters, <<>>),
     {Idx1, Parts1, Params1} = maybe_add_uid(Uid > 0, Uid, 1, [], []),
-    {Idx2, Parts2, Params2} = maybe_add_keyword(KeywordLike =/= <<>>, KeywordLike, Idx1, Parts1, Params1),
+    {Idx2, Parts2, Params2} = maybe_add_keyword(
+        KeywordLike =/= <<>>, KeywordLike, Idx1, Parts1, Params1
+    ),
     {Idx3, Parts3, Params3} = maybe_add_from_ts(FromTs =/= <<>>, FromTs, Idx2, Parts2, Params2),
     {_Idx4, Parts4, Params4} = maybe_add_to_ts(ToTs =/= <<>>, ToTs, Idx3, Parts3, Params3),
     {iolist_to_binary(Parts4), Params4}.
 
--spec maybe_add_uid(boolean(), integer(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_uid(boolean(), integer(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_uid(false, _Uid, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_uid(true, Uid, Index, Parts, Params) ->
     Cond = <<" AND l.uid = $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Uid]}.
 
--spec maybe_add_keyword(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_keyword(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_keyword(false, _KeywordLike, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_keyword(true, KeywordLike, Index, Parts, Params) ->
@@ -161,14 +191,16 @@ maybe_add_keyword(true, KeywordLike, Index, Parts, Params) ->
     Cond = <<" AND (u.account ILIKE $", Pos/binary, " OR u.nickname ILIKE $", Pos/binary, ")">>,
     {Index + 1, Parts ++ [Cond], Params ++ [KeywordLike]}.
 
--spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_from_ts(false, _FromTs, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_from_ts(true, FromTs, Index, Parts, Params) ->
     Cond = <<" AND l.created_at >= $", (integer_to_binary(Index))/binary, "::timestamptz">>,
     {Index + 1, Parts ++ [Cond], Params ++ [FromTs]}.
 
--spec maybe_add_to_ts(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_to_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_to_ts(false, _ToTs, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_to_ts(true, ToTs, Index, Parts, Params) ->
@@ -286,7 +318,8 @@ row_get(Row, Key, Default) ->
 -spec get_count(map()) -> integer().
 get_count(Row) ->
     case maps:find(<<"count">>, Row) of
-        {ok, Val} -> ec_cnv:to_integer(Val);
+        {ok, Val} ->
+            ec_cnv:to_integer(Val);
         error ->
             case maps:find(count, Row) of
                 {ok, Val2} -> ec_cnv:to_integer(Val2);
@@ -319,14 +352,15 @@ row_to_csv_line(Row) ->
 
 -spec csv_escape(term()) -> binary().
 csv_escape(Value) ->
-    Bin = case Value of
-        V when is_binary(V) -> V;
-        V when is_integer(V) -> integer_to_binary(V);
-        V when is_float(V) -> ec_cnv:to_binary(V);
-        null -> <<>>;
-        undefined -> <<>>;
-        _ -> ec_cnv:to_binary(Value)
-    end,
+    Bin =
+        case Value of
+            V when is_binary(V) -> V;
+            V when is_integer(V) -> integer_to_binary(V);
+            V when is_float(V) -> ec_cnv:to_binary(V);
+            null -> <<>>;
+            undefined -> <<>>;
+            _ -> ec_cnv:to_binary(Value)
+        end,
     Escaped = binary:replace(Bin, <<"\"">>, <<"\"\"">>, [global]),
     case needs_quote(Escaped) of
         true -> <<"\"", Escaped/binary, "\"">>;
@@ -336,6 +370,6 @@ csv_escape(Value) ->
 -spec needs_quote(binary()) -> boolean().
 needs_quote(Bin) ->
     binary:match(Bin, <<",">>) =/= nomatch orelse
-    binary:match(Bin, <<"\"">>) =/= nomatch orelse
-    binary:match(Bin, <<"\n">>) =/= nomatch orelse
-    binary:match(Bin, <<"\r">>) =/= nomatch.
+        binary:match(Bin, <<"\"">>) =/= nomatch orelse
+        binary:match(Bin, <<"\n">>) =/= nomatch orelse
+        binary:match(Bin, <<"\r">>) =/= nomatch.

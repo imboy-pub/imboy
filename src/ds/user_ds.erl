@@ -33,6 +33,7 @@
 -export([update_allow_search/2]).
 -export([may_exist/1]).
 -export([reject_logout_apply/1]).
+-export([approve_logout_apply/1]).
 -export([page/4]).
 -export([export_data/1]).
 -export([find_expired_logout_users/2]).
@@ -98,22 +99,27 @@ webrtc_credential(Uid) ->
     TurnUrls = config_ds:env(eturnal_turn_urls, []),
     StunUrls = config_ds:env(eturnal_stun_urls, []),
     case {TurnUrls, config_ds:env(eturnal_secret, <<>>)} of
-        {[_|_], <<>>} ->
+        {[_ | _], <<>>} ->
             %% TURN 地址已配置但 secret 为空 — 拒绝生成可被伪造的凭据
-            #{<<"error">> => <<"eturnal_secret_not_configured">>,
-              <<"stun_urls">> => StunUrls};
+            #{
+                <<"error">> => <<"eturnal_secret_not_configured">>,
+                <<"stun_urls">> => StunUrls
+            };
         {_, Secret} ->
             UidBin = integer_to_binary(Uid),
             TmBin = integer_to_binary(elib_dt:utc(second) + 86400),
             Username = <<TmBin/binary, ":", UidBin/binary>>,
             Credential =
                 base64:encode(
-                    crypto:mac(hmac, sha, Secret, Username)),
-            #{<<"ttl">> => 86400,
-              <<"turn_urls">> => TurnUrls,
-              <<"stun_urls">> => StunUrls,
-              <<"username">> => Username,
-              <<"credential">> => Credential}
+                    crypto:mac(hmac, sha, Secret, Username)
+                ),
+            #{
+                <<"ttl">> => 86400,
+                <<"turn_urls">> => TurnUrls,
+                <<"stun_urls">> => StunUrls,
+                <<"username">> => Username,
+                <<"credential">> => Credential
+            }
     end.
 
 %% @doc 验证WebRTC凭据
@@ -132,9 +138,10 @@ auth_webrtc_credential(Username, Credential) ->
             %% secret 未配置时拒绝所有凭据（空 key 的 HMAC 结果可被任意伪造）
             false;
         Secret ->
-            Credential
-            == base64:encode(
-                   crypto:mac(hmac, sha, Secret, Username))
+            Credential ==
+                base64:encode(
+                    crypto:mac(hmac, sha, Secret, Username)
+                )
     end.
 
 %% @doc 根据ID查找用户
@@ -240,18 +247,28 @@ delete_all_related_data(Conn, Uid) ->
     ok = delete_from_table_if_exists(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_setting_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_tag_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]
+    ),
     ok = delete_from_table_if_exists(Conn, <<"public.user_token">>, <<"uid = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, <<"public.user_group">>, <<"user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, group_category_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, group_category_repo:tablename(), <<"user_id = $1">>, [
+        Uid
+    ]),
     ok = delete_from_table_if_exists(Conn, <<"public.fts_user">>, <<"user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, geo_people_nearby_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, geo_people_nearby_repo:tablename(), <<"user_id = $1">>, [Uid]
+    ),
     ok = delete_from_table_if_exists(Conn, friend_repo:tablename(), <<"from_user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, friend_repo:tablename(), <<"to_user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, <<"public.user_friend_category">>, <<"owner_user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.user_friend_category">>, <<"owner_user_id = $1">>, [Uid]
+    ),
     ok = delete_from_table_if_exists(Conn, group_repo:tablename(), <<"owner_uid = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, group_member_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]
+    ),
     ok = delete_from_table_if_exists(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
     ok.
 
@@ -399,28 +416,38 @@ page(Page, Size, Where, OrderBy) -> user_repo:page(Page, Size, Where, OrderBy).
 export_data(Uid) ->
     try
         UserTb = user_repo:tablename(),
-        UserSql = <<"SELECT id, account, nickname, avatar, sign, region, gender, created_at "
-                    "FROM ", UserTb/binary, " WHERE id = $1">>,
-        UserInfo = case elib_pg:query(UserSql, [Uid]) of
-            {ok, [Row]} -> Row;
-            _ -> #{}
-        end,
+        UserSql = <<
+            "SELECT id, account, nickname, avatar, sign, region, gender, created_at "
+            "FROM ",
+            UserTb/binary,
+            " WHERE id = $1"
+        >>,
+        UserInfo =
+            case elib_pg:query(UserSql, [Uid]) of
+                {ok, [Row]} -> Row;
+                _ -> #{}
+            end,
         FriendTb = friend_repo:tablename(),
-        FriendSql = <<"SELECT to_user_id, remark, created_at FROM ", FriendTb/binary,
-                      " WHERE from_user_id = $1 AND status = 1">>,
+        FriendSql =
+            <<"SELECT to_user_id, remark, created_at FROM ", FriendTb/binary,
+                " WHERE from_user_id = $1 AND status = 1">>,
         {ok, Friends} = elib_pg:query(FriendSql, [Uid]),
         MemberTb = group_member_repo:tablename(),
         GroupTb = group_repo:tablename(),
-        GroupSql = <<"SELECT g.id, g.title, gm.created_at FROM ", MemberTb/binary, " gm "
-                     "JOIN ", GroupTb/binary, " g ON g.id = gm.group_id "
-                     "WHERE gm.user_id = $1">>,
+        GroupSql =
+            <<"SELECT g.id, g.title, gm.created_at FROM ", MemberTb/binary,
+                " gm "
+                "JOIN ", GroupTb/binary,
+                " g ON g.id = gm.group_id "
+                "WHERE gm.user_id = $1">>,
         {ok, Groups} = elib_pg:query(GroupSql, [Uid]),
         SettingTb = user_setting_repo:tablename(),
         SettingSql = <<"SELECT * FROM ", SettingTb/binary, " WHERE user_id = $1">>,
-        Settings = case elib_pg:query(SettingSql, [Uid]) of
-            {ok, [S]} -> S;
-            _ -> #{}
-        end,
+        Settings =
+            case elib_pg:query(SettingSql, [Uid]) of
+                {ok, [S]} -> S;
+                _ -> #{}
+            end,
         {ok, #{
             <<"user_info">> => UserInfo,
             <<"friends">> => Friends,
@@ -433,10 +460,12 @@ export_data(Uid) ->
     end.
 
 %% G3: user_deletion_logic 不应直调 user_repo:tablename()
--spec find_expired_logout_users(pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+-spec find_expired_logout_users(pos_integer(), pos_integer()) ->
+    {ok, list(map())} | {error, term()}.
 find_expired_logout_users(RetentionDays, BatchSize) ->
     UserTb = user_repo:tablename(),
-    Sql = <<"SELECT id FROM ", UserTb/binary,
+    Sql =
+        <<"SELECT id FROM ", UserTb/binary,
             " WHERE status = 2"
             " AND updated_at <= NOW() - ($1 || ' days')::INTERVAL"
             " ORDER BY updated_at ASC LIMIT $2">>,
@@ -452,8 +481,20 @@ find_expired_logout_users(RetentionDays, BatchSize) ->
 -spec reject_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
 reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET status = 1, updated_at = NOW()"
+            " WHERE id = $1 AND status = 2"
+            " RETURNING id">>,
+    elib_pg:query(Sql, [Uid]).
+
+%% @doc 审批通过注销申请：仅当 status=2 时将用户状态设为 -1（已注销）
+-spec approve_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
+approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
+    Tb = user_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = -1, updated_at = NOW()"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
     elib_pg:query(Sql, [Uid]).

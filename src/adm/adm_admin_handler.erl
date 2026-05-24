@@ -45,6 +45,8 @@ init(Req0, State0) ->
                 compliance_key_create_action(Method, Req0, State);
             compliance_key_revoke ->
                 compliance_key_revoke_action(Method, Req0, State);
+            disable ->
+                disable_action(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -307,7 +309,7 @@ build_where_sql(Filters, Index0, Parts0, Params0) ->
             Pos = integer_to_binary(Index2),
             KeywordCond =
                 <<" AND (account ILIKE $", Pos/binary, " OR nickname ILIKE $", Pos/binary,
-                  " OR email ILIKE $", Pos/binary, " OR mobile ILIKE $", Pos/binary, ")">>,
+                    " OR email ILIKE $", Pos/binary, " OR mobile ILIKE $", Pos/binary, ")">>,
             {iolist_to_binary(Parts2 ++ [KeywordCond]), Params2 ++ [Like]};
         false ->
             {iolist_to_binary(Parts2), Params2}
@@ -460,7 +462,9 @@ ensure_permission(State, Permission, Req0) ->
     end.
 
 -spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
+has_permission(AdmUserId, Permission) when
+    is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission)
+->
     UserPermissions = resolve_permissions_by_adm_user_id(AdmUserId),
     lists:member(Permission, UserPermissions);
 has_permission(_, _) ->
@@ -513,21 +517,32 @@ muted_users_list_action(<<"GET">>, Req0, State) ->
     case ensure_permission(State, <<"settings:view">>, Req0) of
         ok ->
             Now = erlang:system_time(millisecond),
-            MutedList = case ets:whereis(msg_rate_muted) of
-                undefined -> [];
-                _ ->
-                    ets:foldl(fun({Uid, MuteUntil}, Acc) ->
-                        case MuteUntil > Now of
-                            true ->
-                                RemainingMs = MuteUntil - Now,
-                                [#{<<"uid">> => Uid,
-                                   <<"mute_until">> => MuteUntil,
-                                   <<"remaining_seconds">> => RemainingMs div 1000} | Acc];
-                            false ->
-                                Acc
-                        end
-                    end, [], msg_rate_muted)
-            end,
+            MutedList =
+                case ets:whereis(msg_rate_muted) of
+                    undefined ->
+                        [];
+                    _ ->
+                        ets:foldl(
+                            fun({Uid, MuteUntil}, Acc) ->
+                                case MuteUntil > Now of
+                                    true ->
+                                        RemainingMs = MuteUntil - Now,
+                                        [
+                                            #{
+                                                <<"uid">> => Uid,
+                                                <<"mute_until">> => MuteUntil,
+                                                <<"remaining_seconds">> => RemainingMs div 1000
+                                            }
+                                            | Acc
+                                        ];
+                                    false ->
+                                        Acc
+                                end
+                            end,
+                            [],
+                            msg_rate_muted
+                        )
+                end,
             elib_response:success(Req0, #{<<"list">> => MutedList});
         {error, Req1} ->
             Req1
@@ -563,16 +578,19 @@ muted_users_unmute_batch_action(<<"POST">>, Req0, State) ->
             Uids = maps:get(<<"uids">>, PostVals, []),
             case is_list(Uids) andalso length(Uids) > 0 of
                 true ->
-                    Results = lists:map(fun(UidRaw) ->
-                        Uid = parse_id(UidRaw),
-                        case Uid > 0 of
-                            true ->
-                                msg_rate_logic:unmute(Uid),
-                                #{<<"uid">> => UidRaw, <<"ok">> => true};
-                            false ->
-                                #{<<"uid">> => UidRaw, <<"ok">> => false}
-                        end
-                    end, Uids),
+                    Results = lists:map(
+                        fun(UidRaw) ->
+                            Uid = parse_id(UidRaw),
+                            case Uid > 0 of
+                                true ->
+                                    msg_rate_logic:unmute(Uid),
+                                    #{<<"uid">> => UidRaw, <<"ok">> => true};
+                                false ->
+                                    #{<<"uid">> => UidRaw, <<"ok">> => false}
+                            end
+                        end,
+                        Uids
+                    ),
                     SuccessCount = length([1 || #{<<"ok">> := true} <- Results]),
                     elib_response:success(Req0, #{
                         <<"total">> => length(Uids),
@@ -640,19 +658,27 @@ compliance_key_create_action(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             PublicKey = normalize_binary(maps:get(<<"public_key">>, PostVals, <<>>)),
-            PrivateKeyEncrypted = normalize_binary(maps:get(<<"private_key_encrypted">>, PostVals, <<>>)),
+            PrivateKeyEncrypted = normalize_binary(
+                maps:get(<<"private_key_encrypted">>, PostVals, <<>>)
+            ),
             case {byte_size(PublicKey) > 0, byte_size(PrivateKeyEncrypted) > 0} of
                 {true, true} ->
                     KeyId = elib_id:gen(<<"ck_">>),
                     AdmUserId = maps:get(adm_user_id, State, 0),
-                    case compliance_key_ds:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId) of
+                    case
+                        compliance_key_ds:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId)
+                    of
                         {ok, _} ->
                             elib_response:success(Req0, #{<<"key_id">> => KeyId});
                         {error, Reason} ->
-                            elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                            elib_response:error(
+                                Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end;
                 _ ->
-                    elib_response:error(Req0, <<"public_key 和 private_key_encrypted 不能为空"/utf8>>, ?ERR_BAD_REQUEST)
+                    elib_response:error(
+                        Req0, <<"public_key 和 private_key_encrypted 不能为空"/utf8>>, ?ERR_BAD_REQUEST
+                    )
             end;
         {error, Req1} ->
             Req1
@@ -666,6 +692,34 @@ compliance_key_revoke_action(<<"POST">>, Req0, State) ->
 compliance_key_revoke_action(<<"PUT">>, Req0, State) ->
     compliance_key_revoke_handle(Req0, State);
 compliance_key_revoke_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec disable_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+disable_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"admins:delete">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            AdminId = parse_id(
+                maps:get(<<"admin_id">>, PostVals, maps:get(<<"uid">>, PostVals, 0))
+            ),
+            case AdminId > 0 of
+                true ->
+                    case adm_user_ds:update(AdminId, #{<<"status">> => 0}) of
+                        {ok, _} ->
+                            flush_admin_permission_cache(AdminId),
+                            elib_response:success(Req0, #{});
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end;
+                false ->
+                    elib_response:error(Req0, <<"admin_id 无效"/utf8>>, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+disable_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec compliance_key_revoke_handle(cowboy_req:req(), map()) -> cowboy_req:req().
@@ -683,7 +737,9 @@ compliance_key_revoke_handle(Req0, State) ->
                         {ok, 0} ->
                             elib_response:error(Req0, <<"密钥不存在或已撤销"/utf8>>, ?ERR_NOT_FOUND);
                         {error, Reason} ->
-                            elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+                            elib_response:error(
+                                Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end;
                 false ->
                     elib_response:error(Req0, <<"key_id 不能为空"/utf8>>, ?ERR_BAD_REQUEST)

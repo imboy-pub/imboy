@@ -45,6 +45,7 @@ init(Req0, State0) ->
 -spec dispatch(atom(), binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 dispatch(list, Method, Req0, State) -> list(Method, Req0, State);
 dispatch(detail, Method, Req0, State) -> detail(Method, Req0, State);
+dispatch(update, Method, Req0, State) -> update(Method, Req0, State);
 dispatch(dissolve, Method, Req0, State) -> dissolve(Method, Req0, State);
 dispatch(search, Method, Req0, State) -> search(Method, Req0, State);
 dispatch(members, Method, Req0, State) -> members(Method, Req0, State);
@@ -76,6 +77,7 @@ dispatch(task_review, Method, Req0, State) -> task_review(Method, Req0, State);
 dispatch(task_restore, Method, Req0, State) -> task_restore(Method, Req0, State);
 dispatch(task_close, Method, Req0, State) -> task_close(Method, Req0, State);
 dispatch(task_delete, Method, Req0, State) -> task_delete(Method, Req0, State);
+dispatch(kick_member, Method, Req0, State) -> kick_member(Method, Req0, State);
 dispatch(_, _Method, Req0, _State) -> Req0.
 
 %% @doc 群组列表
@@ -105,7 +107,8 @@ detail(<<"GET">>, Req0, State) ->
             Gid = parse_gid_param(Req0),
             case Gid > 0 of
                 true ->
-                    Column = <<"id,title,avatar,introduction,owner_uid,creator_uid,member_count,member_max,type,join_limit,status,created_at">>,
+                    Column =
+                        <<"id,title,avatar,introduction,owner_uid,creator_uid,member_count,member_max,type,join_limit,status,created_at">>,
                     Group = group_ds:find_by_id(Gid, Column),
                     case map_size(Group) > 0 of
                         true ->
@@ -122,6 +125,47 @@ detail(<<"GET">>, Req0, State) ->
                     elib_response:error(Req0, "参数错误")
             end
     end.
+
+%% @doc 更新群组信息
+-spec update(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+update(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"groups:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Gid = parse_gid_param(Req0),
+            case Gid > 0 of
+                true ->
+                    PostVals = elib_param:post(Req0),
+                    Data0 = #{id => Gid},
+                    Data1 = maybe_put(Data0, title, maps:get(<<"title">>, PostVals, undefined)),
+                    Data2 = maybe_put(
+                        Data1, introduction, maps:get(<<"introduction">>, PostVals, undefined)
+                    ),
+                    Data3 = maybe_put(
+                        Data2, join_limit, maps:get(<<"join_limit">>, PostVals, undefined)
+                    ),
+                    Data4 = maybe_put(
+                        Data3, member_max, maps:get(<<"member_max">>, PostVals, undefined)
+                    ),
+                    case map_size(Data4) > 1 of
+                        true ->
+                            case group_ds:update(Data4) of
+                                {ok, _} ->
+                                    elib_response:success(Req0, #{}, "操作成功");
+                                {error, Reason} ->
+                                    ?ERROR_LOG(["update group error: ", Reason]),
+                                    elib_response:error(Req0, "操作失败")
+                            end;
+                        false ->
+                            elib_response:error(Req0, "无有效更新字段")
+                    end;
+                false ->
+                    elib_response:error(Req0, "参数错误")
+            end
+    end;
+update(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 解散群组
 -spec dissolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -161,13 +205,16 @@ search(<<"GET">>, Req0, State) ->
         ok ->
             {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
             {Page, Size} = elib_param:page(Req0),
-            
+
             case byte_size(Keyword) > 0 of
                 true ->
                     Where = #{
                         'or' => [
                             #{title => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-                            #{introduction => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
+                            #{
+                                introduction =>
+                                    {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                            }
                         ]
                     },
                     {ok, P} = group_ds:page(Page, Size, Where, <<"created_at DESC">>),
@@ -187,7 +234,7 @@ members(<<"GET">>, Req0, State) ->
         ok ->
             Gid = parse_gid_param(Req0),
             {Page, Size} = elib_param:page(Req0),
-            
+
             case Gid > 0 of
                 true ->
                     Column = <<"user_id,nickname,avatar,role,joined_at">>,
@@ -431,10 +478,11 @@ category_delete(<<"POST">>, Req0, State) ->
             PostVals = elib_param:post(Req0),
             UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
             GidRaw = maps:get(<<"gid">>, PostVals, 0),
-            CategoryIdRaw = case maps:find(<<"category_id">>, PostVals) of
-                {ok, Value} -> Value;
-                error -> maps:get(<<"id">>, PostVals, <<>>)
-            end,
+            CategoryIdRaw =
+                case maps:find(<<"category_id">>, PostVals) of
+                    {ok, Value} -> Value;
+                    error -> maps:get(<<"id">>, PostVals, <<>>)
+                end,
             Uid = normalize_user_pk(UidRaw),
             Gid = normalize_positive_int(GidRaw),
             CategoryId = normalize_category_pk(CategoryIdRaw),
@@ -509,14 +557,15 @@ tag_delete(<<"POST">>, Req0, State) ->
             PostVals = elib_param:post(Req0),
             Gid = maps:get(<<"gid">>, PostVals, 0),
             TagName0 = maps:get(<<"tag_name">>, PostVals, <<>>),
-            TagName = case TagName0 of
-                V when is_binary(V), V =/= <<>> ->
-                    V;
-                V when is_list(V), V =/= [] ->
-                    ec_cnv:to_binary(V);
-                _ ->
-                    <<>>
-            end,
+            TagName =
+                case TagName0 of
+                    V when is_binary(V), V =/= <<>> ->
+                        V;
+                    V when is_list(V), V =/= [] ->
+                        ec_cnv:to_binary(V);
+                    _ ->
+                        <<>>
+                end,
             GroupId = normalize_positive_int(Gid),
             case GroupId > 0 andalso TagName =/= <<>> of
                 false ->
@@ -964,7 +1013,9 @@ task_pending_review(<<"GET">>, Req0, State) ->
                                                 total_pages => calc_total_pages(Total, Size)
                                             });
                                         {error, Reason} ->
-                                            ?ERROR_LOG(["adm task pending_review count error: ", Reason]),
+                                            ?ERROR_LOG([
+                                                "adm task pending_review count error: ", Reason
+                                            ]),
                                             FallbackTotal = length(Assignments),
                                             elib_response:success(Req0, #{
                                                 list => Assignments,
@@ -1024,7 +1075,9 @@ task_review(<<"POST">>, Req0, State) ->
                                         #{
                                             <<"scope">> => <<"task_assignment">>,
                                             <<"task_id">> => TaskUid,
-                                            <<"assignee_uid">> => maps:get(<<"user_id">>, Assignment, 0),
+                                            <<"assignee_uid">> => maps:get(
+                                                <<"user_id">>, Assignment, 0
+                                            ),
                                             <<"previous_status">> => PrevStatus,
                                             <<"target_status">> => 3,
                                             <<"score">> => Score
@@ -1221,34 +1274,49 @@ build_governance_log_where_sql(Filters) ->
     FromTs = maps:get(from_ts, Filters, <<>>),
     ToTs = maps:get(to_ts, Filters, <<>>),
     {Idx1, Parts1, Params1} = maybe_add_uid(Uid > 0, Uid, 1, [], []),
-    {Idx2, Parts2, Params2} = maybe_add_governance_keyword(KeywordLike =/= <<>>, KeywordLike, Idx1, Parts1, Params1),
-    {Idx3, Parts3, Params3} = maybe_add_governance_action(Action =/= <<>>, Action, Idx2, Parts2, Params2),
-    {Idx4, Parts4, Params4} = maybe_add_governance_group_id(GroupId > 0, GroupId, Idx3, Parts3, Params3),
-    {Idx5, Parts5, Params5} = maybe_add_governance_target_id(TargetId =/= <<>>, TargetId, Idx4, Parts4, Params4),
+    {Idx2, Parts2, Params2} = maybe_add_governance_keyword(
+        KeywordLike =/= <<>>, KeywordLike, Idx1, Parts1, Params1
+    ),
+    {Idx3, Parts3, Params3} = maybe_add_governance_action(
+        Action =/= <<>>, Action, Idx2, Parts2, Params2
+    ),
+    {Idx4, Parts4, Params4} = maybe_add_governance_group_id(
+        GroupId > 0, GroupId, Idx3, Parts3, Params3
+    ),
+    {Idx5, Parts5, Params5} = maybe_add_governance_target_id(
+        TargetId =/= <<>>, TargetId, Idx4, Parts4, Params4
+    ),
     {Idx6, Parts6, Params6} = maybe_add_from_ts(FromTs =/= <<>>, FromTs, Idx5, Parts5, Params5),
     {_Idx7, Parts7, Params7} = maybe_add_to_ts(ToTs =/= <<>>, ToTs, Idx6, Parts6, Params6),
     {iolist_to_binary(Parts7), Params7}.
 
--spec maybe_add_uid(boolean(), integer(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_uid(boolean(), integer(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_uid(false, _Uid, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_uid(true, Uid, Index, Parts, Params) ->
     Cond = <<" AND l.uid = $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Uid]}.
 
--spec maybe_add_governance_keyword(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_governance_keyword(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_governance_keyword(false, _KeywordLike, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_keyword(true, KeywordLike, Index, Parts, Params) ->
     Pos = integer_to_binary(Index),
     Cond = <<
-        " AND (u.account ILIKE $", Pos/binary,
-        " OR u.nickname ILIKE $", Pos/binary,
-        " OR l.body ILIKE $", Pos/binary, ")"
+        " AND (u.account ILIKE $",
+        Pos/binary,
+        " OR u.nickname ILIKE $",
+        Pos/binary,
+        " OR l.body ILIKE $",
+        Pos/binary,
+        ")"
     >>,
     {Index + 1, Parts ++ [Cond], Params ++ [KeywordLike]}.
 
--spec maybe_add_governance_action(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_governance_action(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_governance_action(false, _Action, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_action(true, Action, Index, Parts, Params) ->
@@ -1256,7 +1324,8 @@ maybe_add_governance_action(true, Action, Index, Parts, Params) ->
     Cond = <<" AND l.body ILIKE $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Pattern]}.
 
--spec maybe_add_governance_group_id(boolean(), integer(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_governance_group_id(boolean(), integer(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_governance_group_id(false, _GroupId, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_group_id(true, GroupId, Index, Parts, Params) ->
@@ -1264,7 +1333,8 @@ maybe_add_governance_group_id(true, GroupId, Index, Parts, Params) ->
     Cond = <<" AND l.body ILIKE $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Pattern]}.
 
--spec maybe_add_governance_target_id(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_governance_target_id(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_governance_target_id(false, _TargetId, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_target_id(true, TargetId, Index, Parts, Params) ->
@@ -1275,14 +1345,16 @@ maybe_add_governance_target_id(true, TargetId, Index, Parts, Params) ->
     Cond = <<" AND (l.body ILIKE $", Pos1/binary, " OR l.body ILIKE $", Pos2/binary, ")">>,
     {Index + 2, Parts ++ [Cond], Params ++ [PatternAsNumber, PatternAsString]}.
 
--spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_from_ts(false, _FromTs, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_from_ts(true, FromTs, Index, Parts, Params) ->
     Cond = <<" AND l.created_at >= $", (integer_to_binary(Index))/binary, "::timestamptz">>,
     {Index + 1, Parts ++ [Cond], Params ++ [FromTs]}.
 
--spec maybe_add_to_ts(boolean(), binary(), pos_integer(), [binary()], list()) -> {pos_integer(), [binary()], list()}.
+-spec maybe_add_to_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->
+    {pos_integer(), [binary()], list()}.
 maybe_add_to_ts(false, _ToTs, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_to_ts(true, ToTs, Index, Parts, Params) ->
@@ -1403,15 +1475,18 @@ ensure_any_permission(State, Permissions, Req0) ->
     end.
 
 -spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
+has_permission(AdmUserId, Permission) when
+    is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission)
+->
     Permissions = resolve_permissions_by_adm_user_id(AdmUserId),
     lists:member(Permission, Permissions);
 has_permission(_, _) ->
     false.
 
 -spec has_any_permission(term(), [binary()]) -> boolean().
-has_any_permission(AdmUserId, Permissions)
-    when is_integer(AdmUserId), AdmUserId > 0, is_list(Permissions) ->
+has_any_permission(AdmUserId, Permissions) when
+    is_integer(AdmUserId), AdmUserId > 0, is_list(Permissions)
+->
     UserPermissions = resolve_permissions_by_adm_user_id(AdmUserId),
     lists:any(fun(Permission) -> lists:member(Permission, UserPermissions) end, Permissions);
 has_any_permission(_, _) ->
@@ -1480,7 +1555,8 @@ build_where(_Status, Type) when Type >= 0 ->
 build_where(_Status, _Type) ->
     #{}.
 
--spec list_tasks_with_total(integer(), integer(), integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
+-spec list_tasks_with_total(integer(), integer(), integer(), integer(), integer()) ->
+    {ok, map()} | {error, term()}.
 list_tasks_with_total(Gid, Status, Deleted, Page, Size) when Deleted =:= 1 ->
     case Status of
         S when is_integer(S), S >= 1, S =< 3 ->
@@ -1587,7 +1663,8 @@ normalize_page_payload(_, Page, Size) ->
         total_pages => 0
     }.
 
--spec list_user_categories_with_total(integer(), binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
+-spec list_user_categories_with_total(integer(), binary(), integer(), integer()) ->
+    {ok, map()} | {error, term()}.
 list_user_categories_with_total(Uid, Keyword, Page, Size) ->
     case group_category_logic:list(Uid) of
         {ok, Categories0} when is_list(Categories0) ->
@@ -1619,14 +1696,16 @@ category_name_contains(Category, Keyword) ->
 
 -spec paginate_items(list(), integer(), integer()) -> list().
 paginate_items(Items, Page, Size) ->
-    SafePage = case Page of
-        P when is_integer(P), P > 0 -> P;
-        _ -> 1
-    end,
-    SafeSize = case Size of
-        S when is_integer(S), S > 0 -> S;
-        _ -> 10
-    end,
+    SafePage =
+        case Page of
+            P when is_integer(P), P > 0 -> P;
+            _ -> 1
+        end,
+    SafeSize =
+        case Size of
+            S when is_integer(S), S > 0 -> S;
+            _ -> 10
+        end,
     Offset = (SafePage - 1) * SafeSize,
     lists:sublist(drop_items(Items, Offset), SafeSize).
 
@@ -1765,7 +1844,8 @@ normalize_category_pk(Value) when is_binary(Value) ->
 normalize_category_pk(_) ->
     0.
 
--spec list_group_files_with_total(integer(), binary(), binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
+-spec list_group_files_with_total(integer(), binary(), binary(), integer(), integer()) ->
+    {ok, map()} | {error, term()}.
 list_group_files_with_total(Gid, _Category, Keyword, Page, Size) when Keyword =/= <<>> ->
     case group_file_ds:search_by_name(Gid, Keyword, Page, Size) of
         {ok, List} ->
@@ -2126,8 +2206,9 @@ task_group_id_by_uid(_) ->
     0.
 
 -spec audit_group_governance(integer(), integer(), binary(), term(), map()) -> ok.
-audit_group_governance(AdmUserId, _GroupId, _Action, _TargetId, _Extra)
-    when not is_integer(AdmUserId); AdmUserId =< 0 ->
+audit_group_governance(AdmUserId, _GroupId, _Action, _TargetId, _Extra) when
+    not is_integer(AdmUserId); AdmUserId =< 0
+->
     ok;
 audit_group_governance(AdmUserId, GroupId, Action, TargetId, Extra) ->
     Now = elib_dt:now(),
@@ -2189,3 +2270,39 @@ normalize_member(Member) ->
 -spec normalize_user(map()) -> map().
 normalize_user(User) ->
     elib_id:tsid_keys_to_bin(User, [<<"id">>]).
+
+%% @doc 管理员踢出群成员
+-spec kick_member(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+kick_member(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"groups:delete">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            GidRaw = maps:get(<<"gid">>, PostVals, <<>>),
+            UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
+            Gid = normalize_positive_int(GidRaw),
+            Uid = normalize_positive_int(UidRaw),
+            AdminUid = maps:get(adm_user_id, State, 0),
+            case Gid > 0 andalso Uid > 0 of
+                false ->
+                    elib_response:error(Req0, <<"参数错误"/utf8>>);
+                true ->
+                    ok = group_member_logic:leave(Uid, Gid, AdminUid),
+                    _ = audit_group_governance(
+                        AdminUid,
+                        Gid,
+                        <<"kick_member">>,
+                        Uid,
+                        #{<<"scope">> => <<"member">>}
+                    ),
+                    elib_response:success(Req0, #{gid => Gid, uid => Uid}, "操作成功")
+            end
+    end;
+kick_member(_, Req0, _State) ->
+    Req0.
+
+-spec maybe_put(map(), atom(), term()) -> map().
+maybe_put(Data, _Key, undefined) -> Data;
+maybe_put(Data, _Key, <<>>) -> Data;
+maybe_put(Data, Key, Value) -> Data#{Key => Value}.
