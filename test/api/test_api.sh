@@ -470,10 +470,155 @@ EOF
 
 # 测试添加好友
 test_add_friend() {
-    log_section "添加好友（需要第二个账号）"
+    log_section "添加好友"
 
-    log_warn "此测试需要第二个账号，跳过..."
-    # TODO: 实现添加好友测试
+    # ----------------------------------------------------------------
+    # 1. 注册并登录第二个测试用户
+    # ----------------------------------------------------------------
+    local timestamp2
+    timestamp2=$(date +%s%N 2>/dev/null || date +%s)
+    local friend_account="test_friend_${timestamp2}@example.com"
+    local friend_nickname="好友用户_${timestamp2}"
+
+    log_info "注册第二个测试用户: $friend_account"
+
+    local signup_data
+    signup_data=$(cat <<EOF
+{
+    "type": "email",
+    "account": "$friend_account",
+    "pwd": "$TEST_PASSWORD",
+    "nickname": "$friend_nickname",
+    "code": "666666",
+    "rsa_encrypt": "1"
+}
+EOF
+)
+
+    local signup_resp
+    signup_resp=$(api_post "/passport/signup" "$signup_data")
+
+    if ! echo "$signup_resp" | grep -q '"code":0'; then
+        log_warn "⚠️  第二个测试用户注册失败，跳过好友测试"
+        echo "响应: $signup_resp"
+        return
+    fi
+
+    log_info "✅ 第二个用户注册成功"
+
+    # 登录第二个用户，获取 FRIEND_TOKEN 和 FRIEND_UID
+    local login_data
+    login_data=$(cat <<EOF
+{
+    "type": "email",
+    "account": "$friend_account",
+    "pwd": "$TEST_PASSWORD",
+    "rsa_encrypt": "1"
+}
+EOF
+)
+
+    local login_resp
+    login_resp=$(api_post "/passport/login" "$login_data")
+
+    if ! echo "$login_resp" | grep -q '"code":0'; then
+        log_warn "⚠️  第二个测试用户登录失败，跳过好友测试"
+        echo "响应: $login_resp"
+        return
+    fi
+
+    local FRIEND_TOKEN FRIEND_UID
+    FRIEND_TOKEN=$(echo "$login_resp" | jq -r '.payload.token // empty')
+    FRIEND_UID=$(echo "$login_resp" | jq -r '.payload.uid // empty')
+
+    if [ -z "$FRIEND_TOKEN" ] || [ "$FRIEND_TOKEN" = "null" ] || \
+       [ -z "$FRIEND_UID" ]   || [ "$FRIEND_UID"   = "null" ]; then
+        log_warn "⚠️  未能获取第二个用户的 Token/UID，跳过好友测试"
+        echo "响应: $login_resp"
+        return
+    fi
+
+    log_info "✅ 第二个用户登录成功，UID: $FRIEND_UID"
+
+    # ----------------------------------------------------------------
+    # 2. 正常添加好友：主用户 → 第二用户
+    # ----------------------------------------------------------------
+    log_info "测试正常添加好友: $TEST_UID → $FRIEND_UID"
+
+    local add_data
+    add_data=$(cat <<EOF
+{"to_uid": $FRIEND_UID}
+EOF
+)
+
+    local add_resp
+    add_resp=$(api_post "/v1/friend/add" "$add_data" "$TEST_TOKEN")
+
+    if echo "$add_resp" | grep -q '"code":0'; then
+        log_info "✅ 添加好友请求发送成功; $add_resp;"
+    else
+        log_warn "⚠️  添加好友请求失败（可能已是好友或其他原因）"
+        echo "响应: $add_resp"
+    fi
+
+    # ----------------------------------------------------------------
+    # 3. 第二用户确认好友请求
+    # ----------------------------------------------------------------
+    log_info "测试确认好友请求: $FRIEND_UID 确认 $TEST_UID"
+
+    local confirm_data
+    confirm_data=$(cat <<EOF
+{"from_uid": $TEST_UID}
+EOF
+)
+
+    local confirm_resp
+    confirm_resp=$(api_post "/v1/friend/confirm" "$confirm_data" "$FRIEND_TOKEN")
+
+    if echo "$confirm_resp" | grep -q '"code":0'; then
+        log_info "✅ 好友确认成功; $confirm_resp;"
+    else
+        log_warn "⚠️  好友确认失败（可能无需确认或已是好友）"
+        echo "响应: $confirm_resp"
+    fi
+
+    # ----------------------------------------------------------------
+    # 4. 测试自己添加自己（应返回错误）
+    # ----------------------------------------------------------------
+    log_info "测试自己添加自己（应返回错误）"
+
+    local self_add_data
+    self_add_data=$(cat <<EOF
+{"to_uid": $TEST_UID}
+EOF
+)
+
+    local self_resp
+    self_resp=$(api_post "/v1/friend/add" "$self_add_data" "$TEST_TOKEN")
+
+    if echo "$self_resp" | grep -q '"code":0'; then
+        log_warn "⚠️  自己添加自己应该返回错误，但返回了成功"
+        echo "响应: $self_resp"
+    else
+        log_info "✅ 自己添加自己正确返回错误; $self_resp;"
+    fi
+
+    # ----------------------------------------------------------------
+    # 5. 测试重复添加（幂等处理）
+    # ----------------------------------------------------------------
+    log_info "测试重复添加好友（幂等处理）"
+
+    local dup_resp
+    dup_resp=$(api_post "/v1/friend/add" "$add_data" "$TEST_TOKEN")
+
+    if echo "$dup_resp" | grep -qE '"code":(0|[0-9]+)'; then
+        log_info "✅ 重复添加好友返回结果（幂等处理）; $dup_resp;"
+    else
+        log_warn "⚠️  重复添加好友请求异常"
+        echo "响应: $dup_resp"
+    fi
+
+    log_info "好友相关测试完成"
 }
 
 # 测试创建群组

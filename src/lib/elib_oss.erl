@@ -118,6 +118,7 @@ delete_object(ObjectKey) ->
 
     Headers = [
         {"x-amz-date", binary_to_list(AmzDate)},
+        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"},
         {"authorization", binary_to_list(AuthHeader)}
     ],
     case httpc:request(delete, {binary_to_list(Url), Headers}, [{timeout, 10000}], []) of
@@ -193,6 +194,7 @@ upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
     Headers = [
         {"content-type", binary_to_list(MimeType)},
         {"x-amz-date", binary_to_list(AmzDate)},
+        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"},
         {"authorization", binary_to_list(AuthHeader)}
     ],
     case

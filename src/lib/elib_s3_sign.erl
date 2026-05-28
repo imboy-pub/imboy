@@ -78,10 +78,12 @@ authorization_header(Method, Bucket, ObjectKey, ContentType, AmzDate, AccessKey,
     Region = maps:get(region, Cfg, <<"garage">>),
     DateStr = binary:part(AmzDate, 0, 8),
 
+    %% x-amz-content-sha256 必须在 SignedHeaders 中（Garage 要求）
+    %% Canonical headers 按字典序：content-type < host < x-amz-content-sha256 < x-amz-date
     SignedHeaders =
         case ContentType of
-            <<>> -> <<"host;x-amz-date">>;
-            _ -> <<"content-type;host;x-amz-date">>
+            <<>> -> <<"host;x-amz-content-sha256;x-amz-date">>;
+            _ -> <<"content-type;host;x-amz-content-sha256;x-amz-date">>
         end,
 
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
@@ -91,10 +93,11 @@ authorization_header(Method, Bucket, ObjectKey, ContentType, AmzDate, AccessKey,
     CanonicalHeaders =
         case ContentType of
             <<>> ->
-                <<"host:", Host/binary, "\nx-amz-date:", AmzDate/binary, "\n">>;
+                <<"host:", Host/binary, "\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:",
+                    AmzDate/binary, "\n">>;
             _ ->
-                <<"content-type:", ContentType/binary, "\nhost:", Host/binary, "\nx-amz-date:",
-                    AmzDate/binary, "\n">>
+                <<"content-type:", ContentType/binary, "\nhost:", Host/binary,
+                    "\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:", AmzDate/binary, "\n">>
         end,
 
     CanonicalRequest = iolist_to_binary([

@@ -637,19 +637,22 @@ psql -U imboy_user -d imboy_v1 -c "
 [ ] 连接池状态正常（available > 20）
 [ ] 旧版本 release 路径已备份记录
 [ ] 流量已切走（多节点）或维护窗口已通知（单节点）
-[ ] 所有 IMBOY_* 必需环境变量已准备
+[ ] 所有 IMBOY_* 必需环境变量已准备（含 IMBOY_GARAGE_* 四项）
+[ ] Garage S3 服务可达（curl ${IMBOY_GARAGE_ENDPOINT}/health 或等效检查）
 
 升级中 / During upgrade:
 [ ] 新 release 编译通过（make compile 无错误）
 [ ] 版本号确认为 1.0.0
 [ ] 节点停止成功（BEAM 进程已退出）
 [ ] 新节点启动成功（ping 返回 pong）
-[ ] 迁移日志无错误
+[ ] 迁移日志无错误（000065/000066 迁移成功执行）
 
 升级后 / Post-upgrade:
 [ ] make ctl ARGS="node status" 通过
 [ ] make ctl ARGS="db ping" 通过
 [ ] make smoke 全部通过
+[ ] /v1/app/init 返回 attach_presign_endpoint 字段（Garage 直传入口）
+[ ] 附件上传端到端测试（Flutter presign → PUT Garage → 可访问）
 [ ] Grafana 5xx 错误率 < 0.1%
 [ ] 连接池 available > 20
 [ ] 无 CRITICAL/ERROR 级别日志（启动后 5 分钟内）
