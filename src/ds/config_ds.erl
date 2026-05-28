@@ -66,11 +66,15 @@ ice_servers() ->
 
 %% @doc 将 ICE server 配置中的 atom key 转为 binary key（用于 JSON 序列化）
 normalize_ice_server(S) when is_map(S) ->
-    maps:fold(fun(K, V, Acc) ->
-        BinK = elib_cnv:to_binary(K),
-        BinV = elib_cnv:to_binary(V),
-        Acc#{BinK => BinV}
-    end, #{}, S);
+    maps:fold(
+        fun(K, V, Acc) ->
+            BinK = elib_cnv:to_binary(K),
+            BinV = elib_cnv:to_binary(V),
+            Acc#{BinK => BinV}
+        end,
+        #{},
+        S
+    );
 normalize_ice_server(_) ->
     #{}.
 
@@ -131,25 +135,34 @@ set(Key, Val) ->
 set(Key, Val, Title, Remark) ->
     Key2 = ec_cnv:to_binary(Key),
     imboy_cache:flush(cache_key(Key2)),
-    save(Key2,
-         #{% value 的值在 do_aes_encrypt/2 放里面处理加密，这里给明文
-           <<"value">> => jsone:encode(Val, [native_utf8]),
-           <<"tab">> => <<"sys">>,
-           <<"system">> => 1,
-           <<"title">> => ec_cnv:to_binary(Title),
-           <<"remark">> => ec_cnv:to_binary(Remark)}).
+    save(
+        Key2,
+        % value 的值在 do_aes_encrypt/2 放里面处理加密，这里给明文
+        #{
+            <<"value">> => jsone:encode(Val, [native_utf8]),
+            <<"tab">> => <<"sys">>,
+            <<"system">> => true,
+            <<"title">> => ec_cnv:to_binary(Title),
+            <<"remark">> => ec_cnv:to_binary(Remark)
+        }
+    ).
 
 -spec save(binary(), map()) -> ok.
 save(Key, Data) ->
     Now = elib_dt:now(),
     % 使用安全的参数化查询，避免SQL注入
     Field = <<"count(*) as count">>,
-    _ = case elib_pg:pluck(<<"config">>, Field, #{key => Key}, #{}) of
+    _ =
+        case elib_pg:pluck(<<"config">>, Field, #{key => Key}, #{}) of
             {ok, 0} ->
-                elib_pg:insert(<<"config">>,
-                                Data#{<<"key">> => Key,
-                                      <<"updated_at">> => null,
-                                      <<"created_at">> => Now});
+                elib_pg:insert(
+                    <<"config">>,
+                    Data#{
+                        <<"key">> => Key,
+                        <<"updated_at">> => null,
+                        <<"created_at">> => Now
+                    }
+                );
             {ok, _Count} ->
                 elib_pg:update(<<"config">>, Data#{<<"updated_at">> => Now}, <<"key = $1">>, [Key])
         end,
@@ -198,9 +211,11 @@ do_aes_encrypt(Key, Val) ->
     AesKey = config_ds:env(postgre_aes_key),
     % 与 elib_hasher:encoded_val 保持一致：先 base64 编码再加密
     % encrypt() 需要 bytea 类型，所以需要 ::bytea 转换
-    Sql = <<"UPDATE config SET value = 'aes_cbc_' || encode(encrypt(encode($1, "
-            "'base64')::bytea, $2, 'aes-cbc/pad:pkcs'), 'base64') WHERE "
-            "key = $3">>,
+    Sql = <<
+        "UPDATE config SET value = 'aes_cbc_' || encode(encrypt(encode($1, "
+        "'base64')::bytea, $2, 'aes-cbc/pad:pkcs'), 'base64') WHERE "
+        "key = $3"
+    >>,
     case elib_pg:execute(Sql, [Val, AesKey, Key]) of
         {ok, _} ->
             elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
