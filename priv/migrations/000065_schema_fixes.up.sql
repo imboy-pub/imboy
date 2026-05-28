@@ -640,11 +640,11 @@ ALTER TABLE public.conversation_delete
 -- ─────────────────────────────────────────────────────────────────
 -- 28. user_log 字段修复
 -- ─────────────────────────────────────────────────────────────────
--- type: int4 → smallint（值域 100/102/110，int4 过宽）
+-- type: int4 → smallint（用户操作 100/102/110；管理审计 901/902/903）
 ALTER TABLE public.user_log
     ALTER COLUMN type TYPE smallint;
 ALTER TABLE public.user_log
-    ADD CONSTRAINT chk_user_log_type CHECK (type IN (100, 102, 110));
+    ADD CONSTRAINT chk_user_log_type CHECK (type IN (100, 102, 110, 901, 902, 903));
 
 -- body: 存储 JSON 文本，改用 jsonb 支持运算符查询
 ALTER TABLE public.user_log

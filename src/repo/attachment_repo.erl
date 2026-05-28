@@ -35,11 +35,9 @@
 %% API
 %% ===================================================================
 
-
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"attachment">>).
-
 
 %%% 保存附近信息，不存在就新增，存在就递增应用次数
 -spec save(epgsql:connection() | pid(), binary(), integer() | binary(), [map()]) -> ok.
@@ -55,7 +53,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     Ext = filename:extension(Path),
 
     Ext2 = ec_cnv:to_binary(Ext),
-    Size2 = ec_cnv:to_binary(Size),
+    Size2 = ec_cnv:to_integer(Size),
     Path2 = ec_cnv:to_binary(Path),
     % Path2 = ec_cnv:to_binary(Path),
     Attach2 = jsone:encode(Attach),
@@ -87,9 +85,12 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"url">> => Url,
         <<"size">> => Size2,
         <<"info">> => Attach2,
-        <<"referer_time">> => 1,                % 初始引用次数
-        <<"last_referer_user_id">> => Uid,      % 使用绑定变量
-        <<"last_referer_at">> => CreatedAt, % 使用原生时间格式
+        % 初始引用次数
+        <<"referer_time">> => 1,
+        % 使用绑定变量
+        <<"last_referer_user_id">> => Uid,
+        % 使用原生时间格式
+        <<"last_referer_at">> => CreatedAt,
         <<"creator_user_id">> => Uid,
         <<"updated_at">> => CreatedAt,
         <<"created_at">> => CreatedAt,
@@ -108,7 +109,6 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 递归保存附近信息
     save(Conn, CreatedAt, Uid, Tail),
     ok.
-
 
 %% ===================================================================
 %% Admin Query Functions
@@ -132,13 +132,13 @@ stats() ->
         "    AND mime_type NOT LIKE 'application/msword%' AND mime_type NOT LIKE 'application/vnd%') AS other_count, "
         "  COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS today_uploads, "
         "  COALESCE(SUM(size) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_size "
-        "FROM ">>,
+        "FROM "
+    >>,
     FullSql = [Sql, Tb, <<" WHERE status = 1">>],
     case elib_pg:one(FullSql, []) of
         {ok, Row} -> Row;
         _ -> #{}
     end.
-
 
 %% @doc 分页查询附件列表
 %% @param Page 页码（从1开始）
@@ -155,10 +155,11 @@ page(Page, Size, Opts) ->
     BaseWhere = [<<" WHERE status = 1">>, WhereExtra],
 
     CountSql = [<<"SELECT COUNT(*) AS count FROM ">>, Tb, BaseWhere],
-    Total = case elib_pg:one(CountSql, FilterParams) of
-        {ok, #{<<"count">> := C}} -> C;
-        _ -> 0
-    end,
+    Total =
+        case elib_pg:one(CountSql, FilterParams) of
+            {ok, #{<<"count">> := C}} -> C;
+            _ -> 0
+        end,
 
     ParamN = length(FilterParams),
     LimitN = ParamN + 1,
@@ -168,21 +169,26 @@ page(Page, Size, Opts) ->
 
     DataSql = [
         <<"SELECT id, md5, mime_type, name, path, url, size, referer_time, status, created_at FROM ">>,
-        Tb, BaseWhere,
-        <<" ORDER BY created_at DESC LIMIT ">>, LimitRef,
-        <<" OFFSET ">>, OffsetRef
+        Tb,
+        BaseWhere,
+        <<" ORDER BY created_at DESC LIMIT ">>,
+        LimitRef,
+        <<" OFFSET ">>,
+        OffsetRef
     ],
     AllParams = FilterParams ++ [Size, Offset],
 
-    Items = case elib_pg:query(DataSql, AllParams) of
-        {ok, Rows} -> Rows;
-        _ -> []
-    end,
+    Items =
+        case elib_pg:query(DataSql, AllParams) of
+            {ok, Rows} -> Rows;
+            _ -> []
+        end,
 
-    TotalPage = case Total > 0 of
-        true -> ((Total - 1) div Size) + 1;
-        false -> 0
-    end,
+    TotalPage =
+        case Total > 0 of
+            true -> ((Total - 1) div Size) + 1;
+            false -> 0
+        end,
 
     {ok, #{
         <<"list">> => Items,
@@ -192,7 +198,6 @@ page(Page, Size, Opts) ->
         <<"total_page">> => TotalPage
     }}.
 
-
 %% @doc 构建动态 WHERE 条件
 -spec build_filter(binary() | undefined, binary() | undefined) -> {iodata(), list()}.
 build_filter(undefined, undefined) ->
@@ -201,13 +206,17 @@ build_filter(MimeType, undefined) when MimeType =/= undefined, MimeType =/= <<>>
     {<<" AND mime_type LIKE $1">>, [<<MimeType/binary, "%">>]};
 build_filter(undefined, Keyword) when Keyword =/= undefined, Keyword =/= <<>> ->
     {<<" AND (name ILIKE $1 OR md5 LIKE $1)">>, [<<"%", Keyword/binary, "%">>]};
-build_filter(MimeType, Keyword) when MimeType =/= undefined, MimeType =/= <<>>,
-                                     Keyword =/= undefined, Keyword =/= <<>> ->
-    {<<" AND mime_type LIKE $1 AND (name ILIKE $2 OR md5 LIKE $2)">>,
-     [<<MimeType/binary, "%">>, <<"%", Keyword/binary, "%">>]};
+build_filter(MimeType, Keyword) when
+    MimeType =/= undefined,
+    MimeType =/= <<>>,
+    Keyword =/= undefined,
+    Keyword =/= <<>>
+->
+    {<<" AND mime_type LIKE $1 AND (name ILIKE $2 OR md5 LIKE $2)">>, [
+        <<MimeType/binary, "%">>, <<"%", Keyword/binary, "%">>
+    ]};
 build_filter(_, _) ->
     {<<>>, []}.
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -218,4 +227,3 @@ build_filter(_, _) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-
