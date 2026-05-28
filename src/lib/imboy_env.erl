@@ -34,6 +34,10 @@
 %   IMBOY_LOGIN_RSA_PUB_KEY_FILE  -> {imboy, login_rsa_pub_key_file}
 %   IMBOY_LOGIN_RSA_PRIV_KEY_FILE -> {imboy, login_rsa_priv_key_file}
 %   IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE -> {imboy, jverification_rsa_priv_key_file}
+%   IMBOY_GARAGE_ENDPOINT  -> garage.endpoint  (e.g. http://s3.example.com)
+%   IMBOY_GARAGE_BUCKET    -> garage.bucket
+%   IMBOY_GARAGE_ACCESS_KEY -> garage.access_key
+%   IMBOY_GARAGE_SECRET_KEY -> garage.secret_key
 %%%
 
 -export([override_from_env/0]).
@@ -112,6 +116,9 @@ override_from_env() ->
 
     %% 万能验证码（仅开发/测试环境；生产环境不设置此变量）
     ok = override_binary_key("IMBOY_VERIFICATION_MASTER_CODE", verification_master_code),
+
+    %% Garage S3 对象存储凭证
+    ok = override_garage(),
 
     ok.
 
@@ -212,6 +219,29 @@ override_redis() ->
             NewOpts2 = maybe_override_proplist(NewOpts1, host, "IMBOY_REDIS_HOST"),
             NewOpts3 = maybe_override_proplist_int(NewOpts2, port, "IMBOY_REDIS_PORT"),
             application:set_env(imboy, redis_options, NewOpts3),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 Garage S3 配置
+-spec override_garage() -> ok.
+override_garage() ->
+    case application:get_env(imboy, garage) of
+        {ok, Cfg} when is_map(Cfg) ->
+            Cfg1 = maybe_override_map(Cfg, endpoint, "IMBOY_GARAGE_ENDPOINT", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            Cfg2 = maybe_override_map(Cfg1, bucket, "IMBOY_GARAGE_BUCKET", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            Cfg3 = maybe_override_map(Cfg2, access_key, "IMBOY_GARAGE_ACCESS_KEY", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            Cfg4 = maybe_override_map(Cfg3, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            application:set_env(imboy, garage, Cfg4),
             ok;
         _ ->
             ok

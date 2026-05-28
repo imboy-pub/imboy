@@ -161,9 +161,12 @@ get_file_category_msword_is_document_test_() ->
 
 get_file_category_docx_is_document_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(document, elib_oss:get_file_category(
-            <<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>
-        ))
+        ?assertEqual(
+            document,
+            elib_oss:get_file_category(
+                <<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>
+            )
+        )
     end).
 
 get_file_category_text_plain_is_document_test_() ->
@@ -247,8 +250,115 @@ get_url_contains_file_id_test_() ->
         ?assert(binary:match(Url, FileId) =/= nomatch)
     end).
 
-get_url_has_static_files_prefix_test_() ->
+get_url_has_garage_path_format_test_() ->
     ?TEST_SIMPLE(fun() ->
+        %% get_url 现在返回 Garage path-style URL（使用默认配置）
         {ok, Url} = elib_oss:get_url(<<"file_999_888">>),
-        ?assertEqual(<<"/static/files/file_999_888">>, Url)
+        ?assert(binary:match(Url, <<"file_999_888">>) =/= nomatch),
+        ?assert(binary:match(Url, <<"imboy">>) =/= nomatch)
     end).
+
+%% ===================================================================
+%% delete_object/1 测试（mock httpc）
+%% ===================================================================
+
+delete_object_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [
+                {'format_amz_date', 1, fun(_) -> <<"20260528T103000Z">> end},
+                {'authorization_header', 7, fun(_, _, _, _, _, _, _) ->
+                    <<"AWS4-HMAC-SHA256 Cred=..., Sig=abc">>
+                end}
+            ]},
+            {httpc, [
+                {'request', 4, fun(delete, _Url, _Opts, _HttpOpts) ->
+                    {ok, {{<<"HTTP/1.1">>, 204, <<"No Content">>}, [], <<>>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>,
+                access_key => <<"GKtest">>,
+                secret_key => <<"testsecret">>
+            }),
+            ?assertEqual(ok, elib_oss:delete_object(<<"file_1/test.jpg">>))
+        end
+    ).
+
+delete_object_http_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [
+                {'format_amz_date', 1, fun(_) -> <<"20260528T103000Z">> end},
+                {'authorization_header', 7, fun(_, _, _, _, _, _, _) ->
+                    <<"AWS4-HMAC-SHA256 Cred=..., Sig=abc">>
+                end}
+            ]},
+            {httpc, [
+                {'request', 4, fun(delete, _Url, _Opts, _HttpOpts) ->
+                    {ok, {{<<"HTTP/1.1">>, 404, <<"Not Found">>}, [], <<"NoSuchKey">>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>,
+                access_key => <<"GKtest">>,
+                secret_key => <<"testsecret">>
+            }),
+            Result = elib_oss:delete_object(<<"file_1/missing.jpg">>),
+            ?assertMatch({error, {http_error, 404, _}}, Result)
+        end
+    ).
+
+delete_object_network_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [
+                {'format_amz_date', 1, fun(_) -> <<"20260528T103000Z">> end},
+                {'authorization_header', 7, fun(_, _, _, _, _, _, _) -> <<"AWS4 Sig=abc">> end}
+            ]},
+            {httpc, [
+                {'request', 4, fun(delete, _Url, _Opts, _HttpOpts) ->
+                    {error, econnrefused}
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>,
+                access_key => <<"GKtest">>,
+                secret_key => <<"testsecret">>
+            }),
+            ?assertEqual({error, econnrefused}, elib_oss:delete_object(<<"file_1/test.jpg">>))
+        end
+    ).
+
+%% ===================================================================
+%% presign_put_for_key/3 测试
+%% ===================================================================
+
+presign_put_for_key_returns_url_test_() ->
+    ?WITH_MECK(
+        elib_s3_sign,
+        [
+            {'presign_put', 5, fun(Endpoint, Bucket, Key, _Mime, _Exp) ->
+                <<Endpoint/binary, "/", Bucket/binary, "/", Key/binary, "?X-Amz-Signature=abc">>
+            end}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>
+            }),
+            Url = elib_oss:presign_put_for_key(<<"file_1/photo.jpg">>, <<"image/jpeg">>, 3600),
+            ?assert(is_binary(Url)),
+            ?assert(binary:match(Url, <<"file_1/photo.jpg">>) =/= nomatch),
+            ?assert(binary:match(Url, <<"X-Amz-Signature">>) =/= nomatch)
+        end
+    ).

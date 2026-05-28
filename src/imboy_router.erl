@@ -493,7 +493,10 @@ get_routes() ->
         % 钱包 API
         {"/v1/wallet/balance", wallet_handler, #{action => balance}},
         {"/v1/wallet/transactions", wallet_handler, #{action => transactions}},
-        {"/v1/wallet/topup", wallet_handler, #{action => topup}}
+        {"/v1/wallet/topup", wallet_handler, #{action => topup}},
+
+        % 附件 presign API（需 JWT 认证）
+        {"/v1/attachment/presign", attach_handler, #{action => presign}}
     ],
 
     % Admin routes (原 imadm)
@@ -544,9 +547,14 @@ get_routes() ->
         {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
         {"/adm/app_version/version_stats", adm_app_version_handler, #{action => version_stats}},
         {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
-        % 存储管理 API（附件统计和列表）
+        % 存储管理 API
         {"/adm/storage/stats", adm_attach_handler, #{action => stats}},
         {"/adm/storage/index", adm_attach_handler, #{action => index}},
+        {"/adm/storage/disable", adm_attach_handler, #{action => disable}},
+        {"/adm/storage/enable", adm_attach_handler, #{action => enable}},
+        {"/adm/storage/delete", adm_attach_handler, #{action => delete}},
+        {"/adm/storage/orphan", adm_attach_handler, #{action => orphan}},
+        {"/adm/storage/orphan/cleanup", adm_attach_handler, #{action => orphan_cleanup}},
         {"/adm/passport/meta", adm_passport_handler, #{action => meta}},
         {"/adm/passport/login", adm_passport_handler, #{action => login}},
         {"/adm/passport/captcha", adm_passport_handler, #{action => captcha}},

@@ -50,12 +50,17 @@ api_init(Req0) ->
                 SK
         end,
     Data =
-        #{<<"ws_url">> => config_ds:env(ws_url, <<>>),
-          <<"upload_url">> => config_ds:env(upload_url, <<>>),
-          <<"upload_key">> => config_ds:env(upload_key, <<>>),
-          <<"upload_scene">> => config_ds:env(upload_scene, <<>>),
-          <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),
-          <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)},
+        #{
+            <<"ws_url">> => config_ds:env(ws_url, <<>>),
+            %% 旧字段保留空值，供旧版 Flutter 客户端过渡期使用
+            <<"upload_url">> => config_ds:env(upload_url, <<>>),
+            <<"upload_key">> => <<>>,
+            <<"upload_scene">> => <<>>,
+            %% 新附件直传接口（Garage S3 presigned URL）
+            <<"attach_presign_endpoint">> => <<"/v1/attachment/presign">>,
+            <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),
+            <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)
+        },
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").
     IV = config_ds:env(solidified_key_iv),
@@ -63,18 +68,22 @@ api_init(Req0) ->
     %% AES-256-CBC 强约束：Key 必须 32 字节，IV 必须 16 字节
     %% 配置缺失时 fail fast，避免 crypto_init 崩到 cowboy stream（Bad iv size）
     case {byte_size(IV), iolist_size(Key)} of
-        {16, 32} -> ok;
+        {16, 32} ->
+            ok;
         {IvLen, KeyLen} ->
-            ?ERROR_LOG("index_handler api_init: bad crypto params, key_len=~p iv_len=~p (expect key=32, iv=16). "
-                       "Set {solidified_key, <<32-bytes>>} and {solidified_key_iv, <<16-bytes>>} in sys.config.",
-                       [KeyLen, IvLen]),
+            ?ERROR_LOG(
+                "index_handler api_init: bad crypto params, key_len=~p iv_len=~p (expect key=32, iv=16). "
+                "Set {solidified_key, <<32-bytes>>} and {solidified_key_iv, <<16-bytes>>} in sys.config.",
+                [KeyLen, IvLen]
+            ),
             erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}})
     end,
     Bin = elib_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
-    Test = case elib_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []) of
-        {ok, [Row]} -> Row;
-        _ -> #{}
-    end,
+    Test =
+        case elib_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []) of
+            {ok, [Row]} -> Row;
+            _ -> #{}
+        end,
     elib_response:success(Req0, #{test => Test, res => Bin}, "success.").
 
 %% ===================================================================
@@ -96,7 +105,9 @@ get_help(Req0) ->
         "it  GET</a></li>\n            <li><a href=\"/conversation/online\" "
         "target=\"_blank\">\n                /conversation/online  GET</a></l"
         "i>\n        </ol>\n    ",
-    cowboy_req:reply(200,
-                     #{<<"content-type">> => <<"text/html">>},
-                     unicode:characters_to_binary(Body, utf8),
-                     Req0).
+    cowboy_req:reply(
+        200,
+        #{<<"content-type">> => <<"text/html">>},
+        unicode:characters_to_binary(Body, utf8),
+        Req0
+    ).

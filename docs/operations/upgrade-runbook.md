@@ -1,7 +1,7 @@
 # IMBoy 升级手册：1.0.0-rc.1 → 1.0.0
 # IMBoy Upgrade Runbook: 1.0.0-rc.1 → 1.0.0
 
-> **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-05-27
+> **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-05-28
 > **适用范围 / Scope**: 从 `1.0.0-rc.1` 升级至 `1.0.0` 正式版
 > **预计停机时间 / Estimated Downtime**: 冷重启 ≤ 5 分钟；热升级（relup）≤ 30 秒
 > **回滚时间 / Rollback Window**: ≤ 15 分钟（PITR + 切回旧 release）
@@ -104,48 +104,75 @@ git -C . rev-parse HEAD
 ## 2. 数据库 Schema 变更
 ## 2. Database Schema Changes
 
-### 2.1 rc.1 → 1.0.0 新增迁移文件
+### 2.1 rc.1 → 1.0.0 迁移文件
 
-rc.1（最后迁移：`00000088_uuid_v7_type.sql`）到 1.0.0 期间**没有新增**需要人工执行的 schema 迁移。以下是 rc.1 阶段包含的关键迁移，确认它们在目标数据库已执行：
+> **迁移系统已重构**：自提交 `8634ddf` 起，迁移文件从 `00000XXX_name.sql` 单文件格式
+> 迁移为 `XXXXXX_name.up.sql` / `XXXXXX_name.down.sql` 双文件格式，并重新编号（6位）。
+>
+> **Migration system refactored**: Since commit `8634ddf`, migration files use the new
+> `XXXXXX_name.up.sql` / `XXXXXX_name.down.sql` format with 6-digit numbering.
 
-There are **no new** schema migrations between rc.1 and 1.0.0 that require manual execution. The following key migrations were part of rc.1 — verify they have been applied:
+rc.1 → 1.0.0 期间**新增了 2 个迁移**，将在应用启动时自动执行：
+
+There are **2 new migrations** between rc.1 and 1.0.0, applied automatically on startup:
+
+| 迁移文件 | 说明 | 影响范围 |
+|---------|------|---------|
+| `000065_schema_fixes.up.sql` | 综合 schema 修复：boolean 列类型修正、json→jsonb、auto updated_at 触发器、FTS 触发器、缺失 FK 索引、varchar→text | 多个表，45KB，变更广泛 |
+| `000066_attachment_cleanup_index.up.sql` | 附件清理复合索引（`referer_time, created_at`） | `attachment` 表 |
+
+以下是 rc.1 阶段已包含的关键历史迁移，确认它们在目标数据库已执行：
+
+The following are key historical migrations from rc.1 — verify they have been applied:
 
 ```sql
--- 检查已执行的迁移版本
+-- 检查已执行的迁移版本（erlang_migrate 记录表）
 -- Check applied migration versions
-SELECT version, filename, applied_at
+SELECT version, applied_at
 FROM schema_migrations
 ORDER BY version DESC
 LIMIT 10;
 ```
 
-| 迁移文件 | 说明 | 状态检查 |
-|---------|------|---------|
-| `00000080_tsid_migration.sql` | TSID 全量迁移（BIGSERIAL → BIGINT） | `SELECT id FROM users LIMIT 1;` 类型应为 bigint |
-| `00000083_hypertable_timeseries.sql` | TimescaleDB hypertable 覆盖审计日志 | `SELECT * FROM timescaledb_information.hypertables;` |
-| `00000084_conversation_varchar_to_bigint.sql` | conversation.id varchar→bigint | `\d conversation` |
-| `00000085_role_separation.sql` | DB 角色权限分离（DBA 手动） | `\du imboy_app imboy_admin imboy_readonly` |
-| `00000088_uuid_v7_type.sql` | e2ee_transfer_sessions.session_id → uuid | `\d e2ee_transfer_sessions` |
+| 新格式迁移文件（现用） | 对应旧文件（已删除） | 说明 | 状态检查 |
+|---|---|------|---------|
+| `000010_tsid_migration.up.sql` | `00000080_tsid_migration.sql` | TSID 全量迁移（BIGSERIAL → BIGINT） | `SELECT id FROM users LIMIT 1;` 类型应为 bigint |
+| `000064_hypertable_timeseries.up.sql` | `00000083_hypertable_timeseries.sql` | TimescaleDB hypertable 覆盖审计日志 | `SELECT * FROM timescaledb_information.hypertables;` |
+| `000065_schema_fixes.up.sql` | `00000084_conversation_varchar_to_bigint.sql`（合并） | conversation.id varchar→bigint 及综合修复 | `\d conversation` |
+| `000057_e2ee.up.sql` | `00000088_uuid_v7_type.sql`（合并） | e2ee_transfer_sessions.session_id → uuid | `\d e2ee_transfer_sessions` |
+
+> **⚠️ DBA 角色分离**：旧的 `00000085_role_separation.sql` 已从迁移目录移除（该文件原标记为"DBA 手动执行"，
+> 不纳入自动迁移）。如尚未在生产数据库中创建 `imboy_app` / `imboy_admin` / `imboy_readonly` 角色，
+> 需由 DBA 在升级前参照 [security.md](security.md) 手动执行角色分离脚本：
+>
+> **⚠️ DB Role Separation**: The old `00000085_role_separation.sql` has been removed from the
+> migrations directory (it was always marked manual-DBA-only). If the roles `imboy_app` /
+> `imboy_admin` / `imboy_readonly` have not been created in the target database, a DBA must
+> run the role separation script manually before upgrading. See [security.md](security.md).
+>
+> ```sql
+> \du imboy_app imboy_admin imboy_readonly
+> ```
 
 ### 2.2 迁移自动执行（应用启动时）/ Auto-migration on Startup
 
-imboy 使用 `pure_migrations` 库在应用启动时自动扫描并执行 `priv/migrations/` 目录中未执行的 `.sql` 文件。
+imboy 使用 `erlang_migrate` 库（`imboy_migrate:migrate/0`）在应用启动时自动扫描并执行
+`priv/migrations/` 目录中未执行的 `.up.sql` 文件。
 
-imboy uses `pure_migrations` to automatically execute unapplied `.sql` files from `priv/migrations/` at startup.
+imboy uses `erlang_migrate` (`imboy_migrate:migrate/0`) to automatically execute unapplied
+`.up.sql` files from `priv/migrations/` at startup.
+
+**迁移文件格式 / Migration file format**：
+- `XXXXXX_name.up.sql` — 正向迁移 / forward migration
+- `XXXXXX_name.down.sql` — 回滚脚本 / rollback script
 
 ```bash
 # 确认迁移路径配置（sys.config 中）：
 # {scripts_path, "$PROJECT_DIR/migrations"}
 
 # 部署后在日志中确认迁移执行：
-grep -i "migration\|migrate" _rel/imboy/log/debug.log | tail -20
+grep -i "\[imboy_migrate\]\|migration" _rel/imboy/log/debug.log | tail -20
 ```
-
-> **注意**：`00000085_role_separation.sql` 头部注明 `⚠️ 不要纳入自动迁移管道！由 DBA 手动执行`。
-> 如果该角色分离尚未执行，需在升级前由 DBA 手动执行并设置密码。
->
-> **Note**: `00000085_role_separation.sql` is marked `⚠️ Manual DBA execution only`.
-> If role separation has not yet been applied, a DBA must run it manually before upgrading.
 
 ---
 
@@ -248,11 +275,15 @@ rc.1 → 1.0.0 在 `config/sys.config`（或 `config/sys.pro.config`）中需要
 | 配置项 | rc.1 默认值 | 1.0.0 建议值 | 说明 |
 |--------|------------|-------------|------|
 | `api_auth_switch` | `<<"off">>` | `<<"on">>` | 生产环境**必须**开启 API 签名验证 |
-| `msg_archive_enabled` | `false` | `true` | 消息永久存储（conv_seq 方案 B）按需开启 |
+| `msg_archive_enabled` | `true` | `true` | 消息永久存储（conv_seq 方案 B），**默认已开启**，无需修改 |
 | `tsid_dc_id` | `1` | 按数据中心编号 | 多节点/多DC 时每节点必须唯一 |
 | `tsid_node_id` | `1` | 按节点编号 | 多节点时每节点必须唯一（0–127） |
 | `dsync_enabled` | `true` | `true` | 分布式缓存同步，单节点也保持 true |
 | `verification_master_code` | `<<"6666">>` | `<<>>` | 生产环境**必须**清空此万能验证码 |
+| `garage.endpoint` | `<<"http://127.0.0.1:3900">>` | Garage 服务地址 | **1.0.0 新增**，附件对象存储后端 |
+| `garage.bucket` | `<<"imboy">>` | 按实际 bucket 名 | **1.0.0 新增** |
+| `garage.access_key` | `<<"GKxxxx">>` | 真实 Access Key | **1.0.0 新增**，生产**必须**替换占位符 |
+| `garage.secret_key` | `<<"xxxx...">>` | 真实 Secret Key | **1.0.0 新增**，生产**必须**替换占位符 |
 
 ### 4.2 必须通过环境变量注入的凭据 / Secrets via Environment Variables
 
@@ -273,6 +304,11 @@ export IMBOY_PG_PORT=5432
 export IMBOY_PG_DATABASE=imboy_v1
 export IMBOY_PG_USERNAME=imboy_app
 export IMBOY_PG_PASSWORD=<你的数据库密码>
+# 1.0.0 新增 — Garage S3 对象存储凭证 / 1.0.0 New — Garage S3 credentials
+export IMBOY_GARAGE_ENDPOINT=https://s3.your-garage-host.com
+export IMBOY_GARAGE_BUCKET=imboy-prod
+export IMBOY_GARAGE_ACCESS_KEY=<Garage Access Key>
+export IMBOY_GARAGE_SECRET_KEY=<Garage Secret Key>
 ```
 
 > **重要 / Important**: `IMBOY_PASSWORD_SALT` 一旦投产后**不可更改**，否则已存储的旧格式密码永久失效。
@@ -332,8 +368,14 @@ BASE=https://api.imboy.pub
 # 健康检查
 curl -s "${BASE}/health" | jq .
 
-# 应用初始化（返回 ws_url / upload_url 等）
-curl -s "${BASE}/v1/app/init" | jq .
+# 应用初始化 — 1.0.0 字段变化：
+#   - upload_key / upload_scene 现在始终返回 "" (旧 go-fastdfs 字段已废弃)
+#   - 新增 attach_presign_endpoint: "/v1/attachment/presign"（Garage S3 直传入口）
+curl -s "${BASE}/v1/app/init" | jq '{ws_url, attach_presign_endpoint, upload_key}'
+# 预期: attach_presign_endpoint = "/v1/attachment/presign", upload_key = ""
+
+# Presign 接口可用性（需有效 JWT）
+# curl -s -H "Authorization: Bearer <token>" "${BASE}/v1/attachment/presign?filename=test.png" | jq .
 
 # Feature flags
 curl -s "${BASE}/v1/app/features" | jq .
@@ -562,7 +604,7 @@ grep "jwt.*invalid\|token.*expired\|401" _rel/imboy/log/debug.log | tail -20
 
 ### 7.5 迁移执行超时 / Migration Timeout
 
-**症状 / Symptom**: 含大表的 migration（如 `00000080_tsid_migration.sql`）在高并发下锁等待超时
+**症状 / Symptom**: 含大表的 migration（如 `000010_tsid_migration.up.sql`、`000065_schema_fixes.up.sql`）在高并发下锁等待超时
 
 ```bash
 # 检查数据库锁等待

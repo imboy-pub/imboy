@@ -13,6 +13,8 @@
 -export([save/4]).
 -export([stats/0]).
 -export([page/3]).
+-export([disable/1, enable/1, soft_delete/1]).
+-export([orphan_stats/1, orphan_cleanup/1]).
 
 %% ===================================================================
 %% API Functions
@@ -41,6 +43,48 @@ stats() -> attachment_repo:stats().
 
 -spec page(pos_integer(), pos_integer(), map()) -> {ok, map()} | {error, term()}.
 page(Page, Size, Opts) -> attachment_repo:page(Page, Size, Opts).
+
+-spec disable(integer() | binary()) -> ok | {error, term()}.
+disable(Id) -> attachment_repo:update_status(Id, 0).
+
+-spec enable(integer() | binary()) -> ok | {error, term()}.
+enable(Id) -> attachment_repo:update_status(Id, 1).
+
+-spec soft_delete(integer() | binary()) -> ok | {error, term()}.
+soft_delete(Id) -> attachment_repo:update_status(Id, -1).
+
+-spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
+orphan_stats(Opts) -> attachment_repo:orphan_stats(Opts).
+
+%% @doc 批量物理删除孤儿附件（先删 S3，再删 DB）
+-spec orphan_cleanup(map()) -> {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
+orphan_cleanup(Opts) ->
+    case attachment_repo:orphan_list_for_delete(Opts) of
+        {ok, []} ->
+            {ok, #{cleaned => 0, errors => 0}};
+        {ok, Rows} ->
+            {OkIds, ErrorCount} = lists:foldl(
+                fun(Row, {Acc, ErrCnt}) ->
+                    Key = maps:get(<<"path">>, Row),
+                    Id = maps:get(<<"id">>, Row),
+                    case elib_oss:delete_object(Key) of
+                        ok -> {[Id | Acc], ErrCnt};
+                        {error, _Rsn} -> {Acc, ErrCnt + 1}
+                    end
+                end,
+                {[], 0},
+                Rows
+            ),
+            case attachment_repo:hard_delete_by_ids(OkIds) of
+                ok ->
+                    {ok, #{cleaned => length(OkIds), errors => ErrorCount}};
+                {error, DbReason} ->
+                    ?ERROR_LOG(["orphan_cleanup hard_delete_by_ids failed: ", DbReason]),
+                    {error, DbReason}
+            end;
+        {error, R} ->
+            {error, R}
+    end.
 
 %% ===================================================================
 %% Internal Functions

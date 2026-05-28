@@ -26,6 +26,19 @@
 %% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary()}
 -export([page/3]).
 
+%% @doc 更新附件状态（禁用/启用/软删除）
+%% Status: 1=正常 0=禁用 -1=软删除
+-export([update_status/2]).
+
+%% @doc 孤儿附件统计（预览用）
+-export([orphan_stats/1]).
+
+%% @doc 获取孤儿附件列表（供物理删除）
+-export([orphan_list_for_delete/1]).
+
+%% @doc 物理删除数据库行（S3 删除成功后调用）
+-export([hard_delete_by_ids/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -217,6 +230,81 @@ build_filter(MimeType, Keyword) when
     ]};
 build_filter(_, _) ->
     {<<>>, []}.
+
+%% ===================================================================
+%% Admin Write Functions
+%% ===================================================================
+
+-spec update_status(integer() | binary(), integer()) -> ok | {error, term()}.
+update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
+    Tb = tablename(),
+    case
+        elib_pg:update(
+            Tb,
+            #{<<"status">> => Status, <<"updated_at">> => elib_dt:now()},
+            <<"id = $1">>,
+            [Id]
+        )
+    of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
+orphan_stats(Opts) ->
+    Tb = tablename(),
+    AgeDays = maps:get(age_days, Opts, 30),
+    Sql = [
+        <<"SELECT COUNT(*) AS count, COALESCE(SUM(size), 0) AS total_size FROM ">>,
+        Tb,
+        <<
+            " WHERE status = 1 AND referer_time = 0"
+            " AND created_at < NOW() - ($1 * INTERVAL '1 day')"
+            " AND (last_referer_at IS NULL"
+            " OR last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
+        >>
+    ],
+    case elib_pg:one(Sql, [AgeDays]) of
+        {ok, Row} -> {ok, Row};
+        {error, R} -> {error, R}
+    end.
+
+-spec orphan_list_for_delete(map()) -> {ok, [map()]} | {error, term()}.
+orphan_list_for_delete(Opts) ->
+    Tb = tablename(),
+    AgeDays = maps:get(age_days, Opts, 30),
+    Sql = [
+        <<"SELECT id, path FROM ">>,
+        Tb,
+        <<
+            " WHERE status = 1 AND referer_time = 0"
+            " AND created_at < NOW() - ($1 * INTERVAL '1 day')"
+            " AND (last_referer_at IS NULL"
+            " OR last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
+            " LIMIT 500"
+        >>
+    ],
+    case elib_pg:query(Sql, [AgeDays]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, R} -> {error, R}
+    end.
+
+-spec hard_delete_by_ids([integer()]) -> ok | {error, term()}.
+hard_delete_by_ids([]) ->
+    ok;
+hard_delete_by_ids(Ids) ->
+    Tb = tablename(),
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))]
+        )
+    ),
+    Sql = [<<"DELETE FROM ">>, Tb, <<" WHERE id = ANY(ARRAY[">>, Placeholders, <<"]::bigint[])">>],
+    case elib_pg:execute(Sql, Ids) of
+        {ok, _} -> ok;
+        {error, R} -> {error, R}
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
