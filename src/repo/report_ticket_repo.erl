@@ -9,16 +9,22 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"report_ticket">>).
 
--spec create(binary(), integer(), integer(), binary(), binary()) -> {ok, integer()} | {error, any()}.
+-spec create(binary(), integer(), integer(), binary(), binary()) ->
+    {ok, integer()} | {error, already_reported | any()}.
 create(TargetType, TargetId, ReporterUid, Reason, Desc) ->
     Tb = tablename(),
     Id = elib_tsid:generate(report_ticket),
-    Sql = <<"INSERT INTO ", Tb/binary,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
             " (id, target_type, target_id, reporter_uid, reason, description, status, created_at, updated_at)"
-            " VALUES ($1, $2, $3, $4, $5, $6, 0, NOW(), NOW())">>,
-    case elib_pg:execute(Sql, [Id, TargetType, TargetId, ReporterUid, Reason, Desc]) of
-        {ok, _Count} ->
-            {ok, Id};
+            " VALUES ($1, $2, $3, $4, $5, $6, 0, NOW(), NOW())"
+            " ON CONFLICT (target_type, target_id, reporter_uid) DO NOTHING"
+            " RETURNING id">>,
+    case elib_pg:query(Sql, [Id, TargetType, TargetId, ReporterUid, Reason, Desc]) of
+        {ok, [#{<<"id">> := RetId}]} ->
+            {ok, RetId};
+        {ok, []} ->
+            {error, already_reported};
         {error, ReasonErr} ->
             {error, ReasonErr}
     end.
@@ -43,12 +49,15 @@ page_admin(Filter, Page, Size) ->
 
     LimitArgN = length(Params) + 1,
     OffsetArgN = length(Params) + 2,
-    Column = <<"id, target_type, target_id, reporter_uid, reason, description,"
-               " status, handled_by, handled_at, created_at, updated_at">>,
-    ListSql = <<"SELECT ", Column/binary, BaseSql/binary,
-                " ORDER BY id DESC"
-                " LIMIT $", (integer_to_binary(LimitArgN))/binary,
-                " OFFSET $", (integer_to_binary(OffsetArgN))/binary>>,
+    Column = <<
+        "id, target_type, target_id, reporter_uid, reason, description,"
+        " status, handled_by, handled_at, created_at, updated_at"
+    >>,
+    ListSql =
+        <<"SELECT ", Column/binary, BaseSql/binary,
+            " ORDER BY id DESC"
+            " LIMIT $", (integer_to_binary(LimitArgN))/binary, " OFFSET $",
+            (integer_to_binary(OffsetArgN))/binary>>,
     CountSql = <<"SELECT COUNT(*) AS count", BaseSql/binary>>,
 
     ListParams = Params ++ [Size, Offset],
@@ -68,10 +77,12 @@ page_admin(Filter, Page, Size) ->
             {error, Reason}
     end.
 
--spec resolve(integer(), integer(), binary(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+-spec resolve(integer(), integer(), binary(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
 resolve(ReportId, Result, _Note, AdmUid) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET status = $1, handled_by = $2, handled_at = NOW(), updated_at = NOW()"
             " WHERE id = $3">>,
     elib_pg:execute(Sql, [Result, AdmUid, ReportId]).
@@ -91,9 +102,20 @@ build_where(Filter) ->
     Keyword = maps:get(keyword, Filter, <<>>),
 
     {Conds1, Params1, N1} = maybe_add_int_cond(Status >= 0, <<"status">>, Status, [], [], 1),
-    {Conds2, Params2, N2} = maybe_add_bin_cond(is_binary(TargetType) andalso TargetType =/= <<>>, <<"target_type">>, TargetType, Conds1, Params1, N1),
-    {Conds3, Params3, N3} = maybe_add_int_cond(TargetId > 0, <<"target_id">>, TargetId, Conds2, Params2, N2),
-    {Conds4, Params4, N4} = maybe_add_int_cond(ReporterUid > 0, <<"reporter_uid">>, ReporterUid, Conds3, Params3, N3),
+    {Conds2, Params2, N2} = maybe_add_bin_cond(
+        is_binary(TargetType) andalso TargetType =/= <<>>,
+        <<"target_type">>,
+        TargetType,
+        Conds1,
+        Params1,
+        N1
+    ),
+    {Conds3, Params3, N3} = maybe_add_int_cond(
+        TargetId > 0, <<"target_id">>, TargetId, Conds2, Params2, N2
+    ),
+    {Conds4, Params4, N4} = maybe_add_int_cond(
+        ReporterUid > 0, <<"reporter_uid">>, ReporterUid, Conds3, Params3, N3
+    ),
     {Conds5, Params5, _N5} = maybe_add_keyword_cond(Keyword, Conds4, Params4, N4),
 
     case Conds5 of
@@ -103,21 +125,24 @@ build_where(Filter) ->
             {<<" WHERE ", (join_binary(lists:reverse(Conds5), <<" AND ">>))/binary>>, Params5}
     end.
 
--spec maybe_add_int_cond(boolean(), binary(), integer(), [binary()], list(), integer()) -> {[binary()], list(), integer()}.
+-spec maybe_add_int_cond(boolean(), binary(), integer(), [binary()], list(), integer()) ->
+    {[binary()], list(), integer()}.
 maybe_add_int_cond(false, _Field, _Value, Conds, Params, N) ->
     {Conds, Params, N};
 maybe_add_int_cond(true, Field, Value, Conds, Params, N) ->
     Cond = <<Field/binary, " = $", (integer_to_binary(N))/binary>>,
     {[Cond | Conds], Params ++ [Value], N + 1}.
 
--spec maybe_add_bin_cond(boolean(), binary(), binary(), [binary()], list(), integer()) -> {[binary()], list(), integer()}.
+-spec maybe_add_bin_cond(boolean(), binary(), binary(), [binary()], list(), integer()) ->
+    {[binary()], list(), integer()}.
 maybe_add_bin_cond(false, _Field, _Value, Conds, Params, N) ->
     {Conds, Params, N};
 maybe_add_bin_cond(true, Field, Value, Conds, Params, N) ->
     Cond = <<Field/binary, " = $", (integer_to_binary(N))/binary>>,
     {[Cond | Conds], Params ++ [Value], N + 1}.
 
--spec maybe_add_keyword_cond(term(), [binary()], list(), integer()) -> {[binary()], list(), integer()}.
+-spec maybe_add_keyword_cond(term(), [binary()], list(), integer()) ->
+    {[binary()], list(), integer()}.
 maybe_add_keyword_cond(Keyword, Conds, Params, N) ->
     Kw = normalize_keyword(Keyword),
     case Kw of
@@ -125,8 +150,9 @@ maybe_add_keyword_cond(Keyword, Conds, Params, N) ->
             {Conds, Params, N};
         _ ->
             Like = <<"%", Kw/binary, "%">>,
-            Cond = <<"(reason ILIKE $", (integer_to_binary(N))/binary,
-                     " OR description ILIKE $", (integer_to_binary(N + 1))/binary, ")">>,
+            Cond =
+                <<"(reason ILIKE $", (integer_to_binary(N))/binary, " OR description ILIKE $",
+                    (integer_to_binary(N + 1))/binary, ")">>,
             {[Cond | Conds], Params ++ [Like, Like], N + 2}
     end.
 
