@@ -362,3 +362,97 @@ presign_put_for_key_returns_url_test_() ->
             ?assert(binary:match(Url, <<"X-Amz-Signature">>) =/= nomatch)
         end
     ).
+
+%% ===================================================================
+%% upload/2,3 测试
+%% ===================================================================
+
+upload_rejects_oversized_file_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 超过 100MB 的文件直接拒绝，不调用网络
+        HugeBin = binary:copy(<<0>>, 101 * 1024 * 1024),
+        ?assertEqual({error, file_too_large}, elib_oss:upload(HugeBin, <<"big.jpg">>))
+    end).
+
+upload_rejects_invalid_mime_type_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 不在白名单的 MIME 类型被拒绝
+        ?assertEqual(
+            {error, invalid_file_type},
+            elib_oss:upload(<<"data">>, <<"file.exe">>, #{
+                mime_type => <<"application/x-msdownload">>
+            })
+        )
+    end).
+
+upload_success_returns_url_and_file_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [
+                {'format_amz_date', 1, fun(_) -> <<"20260528T103000Z">> end},
+                {'authorization_header', 7, fun(_, _, _, _, _, _, _) ->
+                    <<"AWS4-HMAC-SHA256 Cred=test, Sig=abc">>
+                end}
+            ]},
+            {httpc, [
+                {'request', 4, fun(put, _Url, _Opts, _HttpOpts) ->
+                    {ok, {{<<"HTTP/1.1">>, 200, <<"OK">>}, [], <<>>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>,
+                access_key => <<"GKtest">>,
+                secret_key => <<"testsecret">>
+            }),
+            Result = elib_oss:upload(<<"hello">>, <<"test.txt">>, #{mime_type => <<"text/plain">>}),
+            ?assertMatch({ok, _, _}, Result),
+            {ok, Url, FileId} = Result,
+            ?assert(is_binary(Url)),
+            ?assert(is_binary(FileId)),
+            ?assert(binary:match(Url, <<"imboy">>) =/= nomatch),
+            ?assertMatch(match, re:run(FileId, <<"^file_[0-9]+_[0-9]+$">>, [{capture, none}]))
+        end
+    ).
+
+upload_s3_error_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [
+                {'format_amz_date', 1, fun(_) -> <<"20260528T103000Z">> end},
+                {'authorization_header', 7, fun(_, _, _, _, _, _, _) -> <<"AWS4 Sig=x">> end}
+            ]},
+            {httpc, [
+                {'request', 4, fun(put, _Url, _Opts, _HttpOpts) ->
+                    {ok, {{<<"HTTP/1.1">>, 403, <<"Forbidden">>}, [], <<"AccessDenied">>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, garage, #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                bucket => <<"imboy">>,
+                access_key => <<"GKtest">>,
+                secret_key => <<"testsecret">>
+            }),
+            Result = elib_oss:upload(<<"data">>, <<"photo.jpg">>, #{mime_type => <<"image/jpeg">>}),
+            ?assertMatch({error, {http_error, 403}}, Result)
+        end
+    ).
+
+upload_garage_not_configured_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% access_key 为空时 assert_garage_configured 抛出 error
+        application:set_env(imboy, garage, #{
+            endpoint => <<"http://127.0.0.1:3900">>,
+            bucket => <<"imboy">>,
+            access_key => <<>>,
+            secret_key => <<>>
+        }),
+        ?assertError(
+            {garage_not_configured, access_key_missing},
+            elib_oss:upload(<<"data">>, <<"photo.jpg">>, #{mime_type => <<"image/jpeg">>})
+        )
+    end).
