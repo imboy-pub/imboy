@@ -20,23 +20,20 @@
 %% API
 %% ===================================================================
 
-
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2g_timeline">>).
-
 
 % msg_c2g_timeline_repo:list_by_uid(2, <<"msg_id">>, 10).
 -spec list_by_uid(integer(), binary()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, Column) ->
     list_by_uid(Uid, Column, 10000000).
 
-
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
-    % use index idx_c2g_timeline_ToUid_ClientAck
-    Where = <<" WHERE to_uid = $1 AND client_ack = 0 LIMIT $2">>,
+    % use index idx_c2g_timeline_to_uid_pending
+    Where = <<" WHERE to_uid = $1 AND client_ack = false LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Uid, Limit]).
 
@@ -46,7 +43,7 @@ client_ack(ToUid, MsgId) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"UPDATE ", Tb/binary, " SET client_ack = 1 WHERE to_uid = $1 AND msg_id = $2">>,
+    Sql = <<"UPDATE ", Tb/binary, " SET client_ack = true WHERE to_uid = $1 AND msg_id = $2">>,
     elib_pg:execute(Sql, [ToUid, MsgId]).
 
 % msg_c2g_timeline_repo:delete_timeline(6).
@@ -57,7 +54,6 @@ delete_timeline(ToUid, MsgId) ->
     Where = <<" WHERE to_uid = $1 AND  msg_id = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     elib_pg:execute(Sql, [ToUid, MsgId]).
-
 
 % msg_c2g_timeline_repo:check_msg(1).
 -spec check_msg(binary()) -> non_neg_integer().
@@ -72,7 +68,6 @@ check_msg(MsgId) ->
         _ ->
             0
     end.
-
 
 % msg_c2g_timeline_repo:count_by_to_id(1).
 -spec count_by_to_id(integer()) -> non_neg_integer().
@@ -93,8 +88,8 @@ delete_overflow_timeline(ToUid, Limit) ->
         {ok, []} ->
             ok;
         {ok, Rows} ->
-            _ = [ delete_timeline(ToUid, MsgId) || #{<<"msg_id">> := MsgId} <- Rows ],
-            {msg_ids, [ MsgId || #{<<"msg_id">> := MsgId} <- Rows ]}
+            _ = [delete_timeline(ToUid, MsgId) || #{<<"msg_id">> := MsgId} <- Rows],
+            {msg_ids, [MsgId || #{<<"msg_id">> := MsgId} <- Rows]}
     end.
 
 % 删除用户的所有群消息时间线记录
@@ -115,11 +110,10 @@ delete_by_msg_id(MsgId) ->
         {ok, _Count, _Rows} ->
             {ok, 1};
         {ok, _Count} ->
-             {ok, 1};
+            {ok, 1};
         {error, Reason} ->
             {error, Reason}
     end.
-
 
 % 根据消息ID和接收者ID删除特定群消息
 -spec delete_by_msg_id_and_to_id(binary(), integer()) -> {ok, 1} | {error, term()}.
@@ -131,7 +125,7 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
         {ok, _Count, _Rows} ->
             {ok, 1};
         {ok, _Count} ->
-             {ok, 1};
+            {ok, 1};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -144,13 +138,18 @@ delete_by_msg_id_and_to_id(MsgId, ToUid) ->
 delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) > 0 ->
     Tb = tablename(),
     % 手动构建参数化占位符和参数
-    Placeholders = iolist_to_binary(lists:join(<<",">>,
-        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))])),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id IN (", Placeholders/binary, ") AND to_uid = $", (integer_to_binary(length(MsgIds) + 1))/binary>>,
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]
+        )
+    ),
+    Sql =
+        <<"DELETE FROM ", Tb/binary, " WHERE msg_id IN (", Placeholders/binary, ") AND to_uid = $",
+            (integer_to_binary(length(MsgIds) + 1))/binary>>,
     elib_pg:execute(Sql, MsgIds ++ [ToUid]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
-
 
 %% @doc 根据消息ID查询群消息时间线
 %% 返回指定消息的群组ID
@@ -166,8 +165,6 @@ find_by_msg_id(MsgId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-

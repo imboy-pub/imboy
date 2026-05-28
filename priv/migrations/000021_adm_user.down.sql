@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS public."adm_user" CASCADE;
+DROP INDEX IF EXISTS uk_Adm_Account;
+DROP INDEX IF EXISTS uk_Adm_Mobile;
+DROP INDEX IF EXISTS uk_Adm_Email;

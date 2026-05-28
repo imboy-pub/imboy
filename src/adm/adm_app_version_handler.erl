@@ -94,25 +94,29 @@ save(<<"POST">>, Req0, _State) ->
     FileSize = maps:get(<<"file_size">>, PostVals, 0),
     FileHash = maps:get(<<"file_hash">>, PostVals, <<>>),
     Data =
-        #{id => Id,
-          region_code => RCode,
-          type => Type,
-          package_name => PkgName,
-          app_name => AppName,
-          vsn => Vsn,
-          sort => adm_app_version_logic:vsn_sort(Vsn),
-          sign_key => SKey,
-          download_url => DUrl,
-          description => Desc,
-          force_update => ec_cnv:to_integer(ForceUpdate),
-          status => ec_cnv:to_integer(Status),
-          %% 升级策略字段
-          min_supported_vsn => MinSupportedVsn,
-          grayscale_percent => ec_cnv:to_integer(GrayscalePercent),
-          upgrade_type => UpgradeType,
-          changelog => jsone:encode(Changelog, [native_utf8, {float_format, [{decimals, 4}, compact]}]),
-          file_size => ec_cnv:to_integer(FileSize),
-          file_hash => FileHash},
+        #{
+            id => Id,
+            region_code => RCode,
+            type => Type,
+            package_name => PkgName,
+            app_name => AppName,
+            vsn => Vsn,
+            sort => adm_app_version_logic:vsn_sort(Vsn),
+            sign_key => SKey,
+            download_url => DUrl,
+            description => Desc,
+            force_update => ec_cnv:to_integer(ForceUpdate) =:= 1,
+            status => ec_cnv:to_integer(Status),
+            %% 升级策略字段
+            min_supported_vsn => MinSupportedVsn,
+            grayscale_percent => ec_cnv:to_integer(GrayscalePercent),
+            upgrade_type => UpgradeType,
+            changelog => jsone:encode(Changelog, [
+                native_utf8, {float_format, [{decimals, 4}, compact]}
+            ]),
+            file_size => ec_cnv:to_integer(FileSize),
+            file_hash => FileHash
+        },
     _ = adm_app_version_logic:save(Data),
     elib_response:success(Req0, PostVals, <<"success."/utf8>>);
 save(_, Req0, _State) ->
@@ -145,7 +149,10 @@ version_stats(<<"GET">>, Req0, _State) ->
     SevenDaysAgo = elib_dt:to_binary(
         calendar:gregorian_seconds_to_datetime(
             calendar:datetime_to_gregorian_seconds(
-                elib_dt:to_datetime(Now)) - 7 * 86400)),
+                elib_dt:to_datetime(Now)
+            ) - 7 * 86400
+        )
+    ),
     Events = app_upgrade_log_ds:event_stats(SevenDaysAgo, Now),
     elib_response:success(Req0, #{
         <<"distribution">> => Distribution,

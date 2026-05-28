@@ -25,27 +25,34 @@ migrate_to_msg_v2() ->
     ?LOG_INFO("开始迁移到消息表 v2.0 格式..."),
     ?LOG_INFO("警告：此操作将删除所有消息数据，不可恢复！"),
     elib_pg:with_tx(fun(Conn) ->
-
         %% 删除旧表
         % elib_pg:query("DROP TABLE IF EXISTS msg_c2c CASCADE"),
         % elib_pg:query("DROP TABLE IF EXISTS msg_c2g CASCADE"),
         % elib_pg:query("DROP TABLE IF EXISTS msg_c2s CASCADE"),
         % elib_pg:query("DROP TABLE IF EXISTS msg_s2c CASCADE"),
         %% 步骤 1: 删除旧表（分别执行，因为 prepared statement 不支持多条语句）
-        Tables = [<<"public.\"msg_c2c\"">>, <<"public.\"msg_c2g\"">>, <<"public.\"msg_c2s\"">>, <<"public.\"msg_s2c\"">>],
+        Tables = [
+            <<"public.\"msg_c2c\"">>,
+            <<"public.\"msg_c2g\"">>,
+            <<"public.\"msg_c2s\"">>,
+            <<"public.\"msg_s2c\"">>
+        ],
         ?LOG_INFO("正在删除旧表..."),
-        lists:foreach(fun(Table) ->
-            Sql = <<"DROP TABLE IF EXISTS ", Table/binary>>,
-            case epgsql:squery(Conn, Sql) of
-                {ok, _, _} ->
-                    ?LOG_INFO("  表已删除: ~s", [Table]);
-                {ok, _} ->
-                    ?LOG_INFO("  表已删除: ~s", [Table]);
-                {error, Reason} ->
-                    ?LOG_ERROR("删除表失败 ~s: ~p", [Table, Reason]),
-                    throw({drop_table_failed, Table, Reason})
-            end
-        end, Tables),
+        lists:foreach(
+            fun(Table) ->
+                Sql = <<"DROP TABLE IF EXISTS ", Table/binary>>,
+                case epgsql:squery(Conn, Sql) of
+                    {ok, _, _} ->
+                        ?LOG_INFO("  表已删除: ~s", [Table]);
+                    {ok, _} ->
+                        ?LOG_INFO("  表已删除: ~s", [Table]);
+                    {error, Reason} ->
+                        ?LOG_ERROR("删除表失败 ~s: ~p", [Table, Reason]),
+                        throw({drop_table_failed, Table, Reason})
+                end
+            end,
+            Tables
+        ),
 
         %% 步骤 2: 读取并执行 4 个 SQL 文件
         MigrationsPath = get_scripts_path(),
@@ -71,55 +78,24 @@ migrate_to_msg_v2() ->
 migrate() ->
     Conf = config_ds:env(super_account),
     Path = get_scripts_path(),
-    ok = elib_log:info(Path),
+    ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     {ok, Conn} = epgsql:connect(Conf),
-    MigrationCall =
-      pure_migrations:migrate(
-        Path,
-        fun(F) -> epgsql:with_transaction(Conn, fun(_) -> F() end) end,
-        fun(Q) ->
-          case epgsql:squery(Conn, Q) of
-            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
-                   {column, <<"filename">>, _, _, _, _, _, _, _}], []} ->
-                    [];
-            {ok, [{column, <<"version">>, _, _, _, _, _, _, _},
-                   {column, <<"filename">>, _, _, _, _, _, _, _}], Data} ->
-                [{list_to_integer(binary_to_list(BinV)), binary_to_list(BinF)} || {BinV, BinF} <- Data];
-            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{null}]} ->
-                % It has to be -1 or it will get an error during initialization
-                -1;
-            {ok, [{column, <<"max">>, _, _, _, _, _, _, _}], [{N}]} ->
-                % The version number is stored in the int4 type and ranges from -2,147,483,648 to 2,147,483,647
-              list_to_integer(binary_to_list(N));
-            % 新增：处理 COALESCE(MAX(version), -1) 查询，列名为 "coalesce"
-            {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{null}]} -> -1;
-            {ok, [{column, <<"coalesce">>, _, _, _, _, _, _, _}], [{N}]} ->
-              list_to_integer(binary_to_list(N));
-            {ok, _, _} -> ok;
-            {ok, _} -> ok;
-            Default ->
-                % Match multiple SQL statements in a script
-                Res = priv_is_valid(Default),
-                case Res of
-                    true->
-                        ok;
-                    _ ->
-                        %% Fail-fast: 任何迁移 SQL 失败都必须中断启动，
-                        %% 否则 DB 会停留在半应用状态 (e.g. user_collect 表缺失但
-                        %% migrations.version 已更新)，运行时才以 42P01/42703 暴露。
-                        logger:error("[imboy_migrate] Migration failed: ~p~n", [Default]),
-                        erlang:error({migration_failed, Default})
-                end
-          end
-        end),
-    % ...
-    %% more preparation steps if needed
-    % ...
-    %% migration call
-    Res = MigrationCall(),
-    % elib_log:debug(io:format("~p~n", [Res])),
-    ok = epgsql:close(Conn),
-    Res.
+    Config = #{conn => Conn, dir => Path},
+    try
+        case erlang_migrate:up(Config) of
+            ok ->
+                ?LOG_INFO("[imboy_migrate] all migrations applied"),
+                ok;
+            {error, {dirty_state, Hint}} ->
+                ?LOG_ERROR("[imboy_migrate] dirty state — run force/2 to recover: ~s", [Hint]),
+                erlang:error({migration_dirty, Hint});
+            {error, Reason} ->
+                ?LOG_ERROR("[imboy_migrate] migration failed: ~p", [Reason]),
+                erlang:error({migration_failed, Reason})
+        end
+    after
+        epgsql:close(Conn)
+    end.
 
 migrate_msg_payload_plaintext() ->
     Key = config_ds:env(postgre_aes_key),
@@ -141,8 +117,8 @@ migrate_msg_payload_plaintext() ->
 migrate_msg_payload_plaintext(Tb, Key) ->
     Sql =
         <<"UPDATE ", Tb/binary,
-          " SET payload = convert_from(decode(encode(decrypt(decode(replace(payload,'aes_cbc_',''),'base64'), $1::text, 'aes-cbc/pad:pkcs') , 'escape'), 'base64'), 'UTF8')",
-          " WHERE payload IS NOT NULL AND payload <> '' AND payload ~ '^(aes_cbc_)?[A-Za-z0-9+/=]+$'">>,
+            " SET payload = convert_from(decode(encode(decrypt(decode(replace(payload,'aes_cbc_',''),'base64'), $1::text, 'aes-cbc/pad:pkcs') , 'escape'), 'base64'), 'UTF8')",
+            " WHERE payload IS NOT NULL AND payload <> '' AND payload ~ '^(aes_cbc_)?[A-Za-z0-9+/=]+$'">>,
     elib_pg:execute(Sql, [Key]).
 
 %% @doc 设置序列的最大值
@@ -167,11 +143,14 @@ set_max_id_seq() ->
     SqlStatements = lists:filtermap(
         fun(Stmt) ->
             case binary_to_list(Stmt) of
-                "" -> false;
-                [First|_] = Line ->
+                "" ->
+                    false;
+                [First | _] = Line ->
                     case First of
-                        $# -> false;  % Skip shell-style comments
-                        $- when length(Line) > 1, hd(tl(Line)) =:= $- -> false; % Skip SQL comments
+                        % Skip shell-style comments
+                        $# -> false;
+                        % Skip SQL comments
+                        $- when length(Line) > 1, hd(tl(Line)) =:= $- -> false;
                         _ -> {true, Line}
                     end
             end
@@ -181,20 +160,24 @@ set_max_id_seq() ->
 
     % Execute each statement and collect results
     {SuccessCount, FailCount} =
-        lists:foldl(fun(Sql, {S, F}) ->
-            logger:info("Executing: ~s~n", [Sql]),
-            case epgsql:squery(Conn, Sql) of
-                {ok, _, _} = Success ->
-                    logger:info("Success: ~p~n", [Success]),
-                    {S + 1, F};
-                {error, Error} ->
-                    logger:error("Error: ~p~n", [Error]),
-                    {S, F + 1};
-                Other ->
-                    logger:warning("Unexpected result: ~p~n", [Other]),
-                    {S, F + 1}
-            end
-        end, {0, 0}, SqlStatements),
+        lists:foldl(
+            fun(Sql, {S, F}) ->
+                logger:info("Executing: ~s~n", [Sql]),
+                case epgsql:squery(Conn, Sql) of
+                    {ok, _, _} = Success ->
+                        logger:info("Success: ~p~n", [Success]),
+                        {S + 1, F};
+                    {error, Error} ->
+                        logger:error("Error: ~p~n", [Error]),
+                        {S, F + 1};
+                    Other ->
+                        logger:warning("Unexpected result: ~p~n", [Other]),
+                        {S, F + 1}
+                end
+            end,
+            {0, 0},
+            SqlStatements
+        ),
 
     ok = epgsql:close(Conn),
     #{success => SuccessCount, fail => FailCount}.
@@ -231,11 +214,14 @@ expand_project_dir(Path) ->
         [_, Relative] ->
             % $PROJECT_DIR/相对路径
             % 去掉前导斜杠，避免 filename:join 将其视为绝对路径
-            Trimmed = case Relative of
-                [$/ | Rest] -> Rest;  % Unix 风格
-                [$\\ | Rest] -> Rest; % Windows 风格
-                _ -> Relative
-            end,
+            Trimmed =
+                case Relative of
+                    % Unix 风格
+                    [$/ | Rest] -> Rest;
+                    % Windows 风格
+                    [$\\ | Rest] -> Rest;
+                    _ -> Relative
+                end,
             filename:join(code:priv_dir(imboy), Trimmed);
         _ ->
             % 没有 $PROJECT_DIR，直接返回
@@ -244,15 +230,19 @@ expand_project_dir(Path) ->
 
 -spec priv_is_valid(list()) -> boolean().
 priv_is_valid(List) ->
-    lists:all(fun(E) ->
-        case E of
-            {ok, _} -> true;
-            {ok, _, _} -> true;  % Handle results with 2 elements
-            {ok, _, _, _} -> true;  % Handle results with 3 elements
-            _ -> false
-        end
-    end, List).
-
+    lists:all(
+        fun(E) ->
+            case E of
+                {ok, _} -> true;
+                % Handle results with 2 elements
+                {ok, _, _} -> true;
+                % Handle results with 3 elements
+                {ok, _, _, _} -> true;
+                _ -> false
+            end
+        end,
+        List
+    ).
 
 %% @private 执行多个 SQL 文件
 %% 读取并逐个执行 SQL 文件，如果任何一个失败则回滚事务
@@ -282,7 +272,6 @@ execute_sql_files(Conn, [FilePath | Rest]) ->
             {error, {read_file_failed, FilePath, Reason}}
     end.
 
-
 %% @private 读取 SQL 文件内容
 %% @param FilePath 文件路径
 %% @returns {ok, Content} | {error, Reason}
@@ -294,7 +283,6 @@ read_sql_file(FilePath) ->
         {error, Reason} ->
             {error, {file_read_error, FilePath, Reason}}
     end.
-
 
 %% @private 分割 SQL 语句
 %% 将 SQL 文件内容按分号分割成多条语句，过滤掉注释和空行
@@ -309,14 +297,17 @@ split_sql_statements(SqlContent) ->
     %% 按分号分割
     RawStatements = binary:split(NoSingleLineComments, <<";">>, [global]),
     %% 过滤掉空语句
-    lists:filtermap(fun(Stmt) ->
-        %% 去除两端空白
-        Trimmed = trim_sql_whitespace(Stmt),
-        case Trimmed of
-            <<>> -> false;
-            _ when byte_size(Trimmed) > 0 -> {true, Trimmed}
-        end
-    end, RawStatements).
+    lists:filtermap(
+        fun(Stmt) ->
+            %% 去除两端空白
+            Trimmed = trim_sql_whitespace(Stmt),
+            case Trimmed of
+                <<>> -> false;
+                _ when byte_size(Trimmed) > 0 -> {true, Trimmed}
+            end
+        end,
+        RawStatements
+    ).
 
 %% @private 去除 SQL 语句两端的空白字符
 %% @param Sql SQL 语句
@@ -327,7 +318,6 @@ trim_sql_whitespace(Sql) ->
     Trimmed = re:replace(Sql, <<"^[\\s\\n\\r]+">>, <<>>, [{return, binary}]),
     %% 去除尾部空白
     re:replace(Trimmed, <<"[\\s\\n\\r]+$">>, <<>>, [{return, binary}]).
-
 
 %% @private 执行 SQL 语句列表
 %% 逐个执行 SQL 语句，如果任何一个失败则返回错误

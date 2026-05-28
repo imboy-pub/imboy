@@ -1,0 +1,14 @@
+DROP TABLE IF EXISTS public."group_schedule" CASCADE;
+DROP TABLE IF EXISTS public."group_schedule_participant" CASCADE;
+DROP TABLE IF EXISTS public."group_schedule_remind" CASCADE;
+DROP INDEX IF EXISTS idx_group_schedule_group_id;
+DROP INDEX IF EXISTS idx_group_schedule_creator_id;
+DROP INDEX IF EXISTS idx_group_schedule_start_at;
+DROP INDEX IF EXISTS idx_group_schedule_status;
+DROP INDEX IF EXISTS idx_group_schedule_participant_schedule_id;
+DROP INDEX IF EXISTS idx_group_schedule_participant_user_id;
+DROP INDEX IF EXISTS idx_group_schedule_participant_status;
+DROP INDEX IF EXISTS idx_group_schedule_remind_schedule_id;
+DROP INDEX IF EXISTS idx_group_schedule_remind_user_id;
+DROP INDEX IF EXISTS idx_group_schedule_remind_remind_at;
+DROP INDEX IF EXISTS idx_group_schedule_remind_is_sent;

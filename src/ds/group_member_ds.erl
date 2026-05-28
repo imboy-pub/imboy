@@ -52,9 +52,11 @@ is_member(Gid, Uid) ->
 %% @doc 兼容旧测试接口：添加群成员（事务内复用 join_group）
 -spec add_member(integer(), integer()) -> ok | {error, any()}.
 add_member(Gid, Uid) ->
-    case elib_pg:with_tx(fun(Conn) ->
-        join_group(Conn, <<"invite">>, Uid, Gid, #{role => 1})
-    end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            join_group(Conn, <<"invite">>, Uid, Gid, #{role => 1})
+        end)
+    of
         {ok, _UidSum} ->
             ok;
         {error, Reason} ->
@@ -70,8 +72,8 @@ list_member(Gid, []) ->
     GMTb = group_member_repo:tablename(),
     UserTb = user_repo:tablename(),
     Column = <<"u.nickname,u.account,u.avatar,u.sign, gm.*">>,
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", GMTb/binary," gm LEFT JOIN ", UserTb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
             " u ON u.id = gm.user_id WHERE gm.group_id = $1 ORDER BY id DESC LIMIT $2">>,
     elib_pg:query(Sql, [Gid, 50000]);
 list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
@@ -79,8 +81,8 @@ list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
     UserTb = user_repo:tablename(),
     Column = <<"u.nickname,u.account,u.avatar,u.sign, gm.*">>,
     Placeholders = elib_pg_sql:placeholders(length(MemberUids)),
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", GMTb/binary," gm LEFT JOIN ", UserTb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
             " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.user_id IN (",
             Placeholders/binary, ")">>,
     elib_pg:query(Sql, [Gid | MemberUids]);
@@ -94,7 +96,8 @@ list_member(_Gid, _) ->
 %% @param Gid 群组ID
 %% @param OptData 选项数据
 %% @return {ok, UidSum} | {error, Reason}
--spec join_group(pid(), binary(), integer(), integer(), map()) -> {ok, integer()} | {error, binary()}.
+-spec join_group(pid(), binary(), integer(), integer(), map()) ->
+    {ok, integer()} | {error, binary()}.
 join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     Role = maps:get(role, OptData, 1),
     _GMTb = group_member_repo:tablename(),
@@ -102,18 +105,21 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     % 检查是否已是成员
     case group_member_repo:find(Gid, Uid, <<"id">>) of
         #{<<"id">> := _Id} ->
-            {ok, 0}; % 已是成员，幂等返回
+            % 已是成员，幂等返回
+            {ok, 0};
         _ ->
             Now = elib_dt:now(),
             % 插入群成员
-            case group_member_repo:add(Conn, #{
-                group_id => Gid,
-                user_id => Uid,
-                role => Role,
-                is_join => 1,
-                join_mode => elib_str:trunc(JoinMode, 100),
-                created_at => Now
-            }) of
+            case
+                group_member_repo:add(Conn, #{
+                    group_id => Gid,
+                    user_id => Uid,
+                    role => Role,
+                    is_join => true,
+                    join_mode => elib_str:trunc(JoinMode, 100),
+                    created_at => Now
+                })
+            of
                 {ok, _} ->
                     % 更新群组统计
                     case update_statistics(Conn, Gid) of
@@ -153,7 +159,11 @@ leave(Conn, Uid, Gid, CurrentUid) ->
 
             % 写日志
             {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
-            Type = if CurrentUid == Uid -> 200; true -> 202 end,
+            Type =
+                if
+                    CurrentUid == Uid -> 200;
+                    true -> 202
+                end,
             _ = group_log_repo:add(Conn, #{
                 type => Type,
                 option_uid => CurrentUid,
@@ -196,19 +206,24 @@ update_statistics(undefined, Gid) ->
     elib_pg:with_tx(fun(Conn) -> update_statistics(Conn, Gid) end);
 update_statistics(Conn, Gid) ->
     GMTb = group_member_repo:tablename(),
-    SqlSum = <<"SELECT COALESCE(SUM(user_id), 0) as user_id_sum, COUNT(*) as member_count ",
-               "FROM ", GMTb/binary,
-               " WHERE group_id = $1 AND status > -1">>,
+    SqlSum =
+        <<"SELECT COALESCE(SUM(user_id), 0) as user_id_sum, COUNT(*) as member_count ", "FROM ",
+            GMTb/binary, " WHERE group_id = $1 AND status > -1">>,
     case elib_pg:query(Conn, SqlSum, [Gid]) of
         {ok, [#{<<"user_id_sum">> := UidSum0, <<"member_count">> := MemberCount}]} ->
             UidSum = ec_cnv:to_integer(UidSum0),
             GroupTb = group_repo:tablename(),
-            {ok, _} = elib_pg:update(Conn, GroupTb,
+            {ok, _} = elib_pg:update(
+                Conn,
+                GroupTb,
                 #{
                     member_count => ec_cnv:to_integer(MemberCount),
-                    user_id_sum  => UidSum,
-                    updated_at   => elib_dt:now()
-                }, <<"id = $1">>, [Gid]),
+                    user_id_sum => UidSum,
+                    updated_at => elib_dt:now()
+                },
+                <<"id = $1">>,
+                [Gid]
+            ),
             {ok, UidSum};
         {error, Reason} ->
             {error, Reason}
@@ -246,11 +261,12 @@ update_mute(undefined, Gid, UserId, MuteUntil) ->
 update_mute(Conn, Gid, UserId, MuteUntil) ->
     GMTb = group_member_repo:tablename(),
     Now = elib_dt:now(),
-    FixedMuteUntil = case MuteUntil of
-        null -> null;
-        Value when is_integer(Value), Value >= 0 -> elib_dt:to_rfc3339(Value, millisecond);
-        Value -> Value
-    end,
+    FixedMuteUntil =
+        case MuteUntil of
+            null -> null;
+            Value when is_integer(Value), Value >= 0 -> elib_dt:to_rfc3339(Value, millisecond);
+            Value -> Value
+        end,
     Data = #{mute_until => FixedMuteUntil, updated_at => Now},
 
     case elib_pg:update(Conn, GMTb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
@@ -310,7 +326,8 @@ list_same_group(UidA, UidB) -> group_member_repo:list_same_group(UidA, UidB).
 count_by_uid(Uid) -> group_member_repo:count_by_uid(Uid).
 
 %% G3: adm_group_handler 不应直调 group_member_repo
--spec page_by_gid(integer(), pos_integer(), pos_integer(), binary()) -> {ok, map()} | {error, term()}.
+-spec page_by_gid(integer(), pos_integer(), pos_integer(), binary()) ->
+    {ok, map()} | {error, term()}.
 page_by_gid(Gid, Page, Size, Column) -> group_member_repo:page_by_gid(Gid, Page, Size, Column).
 
 %% @doc 更新群成员备注
@@ -321,7 +338,9 @@ page_by_gid(Gid, Page, Size, Column) -> group_member_repo:page_by_gid(Gid, Page,
 -spec update_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 update_remark(Gid, Uid, Remark) ->
     Tb = group_member_repo:tablename(),
-    elib_pg:update(Tb, #{<<"remark">> => Remark}, <<" WHERE group_id = $1 AND user_id = $2">>, [Gid, Uid]).
+    elib_pg:update(Tb, #{<<"remark">> => Remark}, <<" WHERE group_id = $1 AND user_id = $2">>, [
+        Gid, Uid
+    ]).
 
 %% @doc 分页查询群成员（含用户基本信息 JOIN user 表）
 %% @param Gid 群组ID
@@ -334,9 +353,11 @@ page_with_user_info(Gid, Page, Size) ->
     MTb = group_member_repo:tablename(),
     Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
     Fields =
-        <<"u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
-          "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
-          "e, m.status, m.updated_at, m.created_at">>,
+        <<
+            "u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
+            "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
+            "e, m.status, m.updated_at, m.created_at"
+        >>,
     Where = #{<<"m.group_id">> => Gid},
     elib_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size).
 

@@ -29,7 +29,7 @@ DEPS = ranch cowlib cowboy gun
 DEPS += erlware_commons jwerl gen_smtp throttle qdate qdate_localtime
 DEPS += goldrush datum jsone
 # Database / Cache / ID
-DEPS += epgsql pooler pure_migrations depcache syn fuse ecron aho_corasick uid
+DEPS += epgsql pooler erlang_migrate depcache syn fuse ecron aho_corasick uid
 # Ops / Observability
 DEPS += telemetry lager observer_cli recon redbug
 # Template / Captcha

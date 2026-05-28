@@ -88,13 +88,13 @@ calculate_upgrade_type(ClientVsn, DID, VersionInfo, Policy) ->
 %% @doc 检查强制标记和灰度
 -spec check_force_and_grayscale(binary(), binary(), map(), map()) -> binary().
 check_force_and_grayscale(_ClientVsn, DID, VersionInfo, Policy) ->
-    %% 兼容旧的 force_update 字段：1=强制
-    ForceUpdate = ec_cnv:to_integer(maps:get(<<"force_update">>, VersionInfo, 2)),
+    %% force_update 为 boolean 列（Section 19 迁移后）
+    ForceUpdate = maps:get(<<"force_update">>, VersionInfo, false),
     %% 新的 upgrade_type 字段
     ConfiguredType = maps:get(<<"upgrade_type">>, VersionInfo, <<"recommend">>),
 
-    %% 检查 2：旧字段标记为强制 或 新字段标记为强制 → 强制升级
-    case ForceUpdate =:= 1 orelse ConfiguredType =:= <<"force">> of
+    %% 检查 2：force_update=true 或 upgrade_type=force → 强制升级
+    case ForceUpdate =:= true orelse ConfiguredType =:= <<"force">> of
         true ->
             <<"force">>;
         false ->
@@ -105,10 +105,10 @@ check_force_and_grayscale(_ClientVsn, DID, VersionInfo, Policy) ->
 %% @doc 灰度判断
 -spec check_grayscale(binary(), map(), map(), binary()) -> binary().
 check_grayscale(DID, VersionInfo, Policy, ConfiguredType) ->
-    GrayscaleEnabled = ec_cnv:to_integer(maps:get(<<"grayscale_enabled">>, Policy, 0)),
+    GrayscaleEnabled = maps:get(<<"grayscale_enabled">>, Policy, false),
     GrayscalePercent = ec_cnv:to_integer(maps:get(<<"grayscale_percent">>, VersionInfo, 100)),
 
-    case GrayscaleEnabled =:= 1 andalso GrayscalePercent < 100 of
+    case GrayscaleEnabled =:= true andalso GrayscalePercent < 100 of
         true ->
             %% 灰度启用且不是全量
             case is_in_grayscale(DID, GrayscalePercent) of

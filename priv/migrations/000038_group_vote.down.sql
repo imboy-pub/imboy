@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS public."group_vote" CASCADE;
+DROP TABLE IF EXISTS public."group_vote_option" CASCADE;
+DROP TABLE IF EXISTS public."group_vote_record" CASCADE;
+DROP INDEX IF EXISTS idx_group_vote_group_id;
+DROP INDEX IF EXISTS idx_group_vote_creator_id;
+DROP INDEX IF EXISTS idx_group_vote_status;
+DROP INDEX IF EXISTS idx_group_vote_vote_id;
+DROP INDEX IF EXISTS idx_group_vote_option_vote_id;
+DROP INDEX IF EXISTS idx_group_vote_option_option_id;
+DROP INDEX IF EXISTS idx_group_vote_record_vote_id;
+DROP INDEX IF EXISTS idx_group_vote_record_user_id;
