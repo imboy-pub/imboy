@@ -13,7 +13,7 @@
 %% @return 中间件执行结果
 %% @end
 -spec execute(cowboy_req:req(), map()) ->
-                 {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req0, Env) ->
     Method = cowboy_req:method(Req0),
     Origin = cowboy_req:header(<<"origin">>, Req0),
@@ -21,21 +21,22 @@ execute(Req0, Env) ->
     IsAllowedOrigin = is_origin_allowed(Origin, AllowedOrigins),
 
     % 设置 CORS 响应头
-    Req1 = case {Origin, IsAllowedOrigin} of
-        {undefined, _} ->
-            % 没有 Origin 头，可能是同源请求或非浏览器请求
-            Req0;
-        {_Origin, true} ->
-            % 只允许白名单中的来源
-            ReqA = cowboy_req:set_resp_header(
-                <<"access-control-allow-origin">>,
-                Origin,
+    Req1 =
+        case {Origin, IsAllowedOrigin} of
+            {undefined, _} ->
+                % 没有 Origin 头，可能是同源请求或非浏览器请求
+                Req0;
+            {_Origin, true} ->
+                % 只允许白名单中的来源
+                ReqA = cowboy_req:set_resp_header(
+                    <<"access-control-allow-origin">>,
+                    Origin,
+                    Req0
+                ),
+                cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, ReqA);
+            {_Origin, false} ->
                 Req0
-            ),
-            cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, ReqA);
-        {_Origin, false} ->
-            Req0
-    end,
+        end,
 
     Req2 = cowboy_req:set_resp_header(
         <<"access-control-allow-methods">>,
@@ -45,11 +46,13 @@ execute(Req0, Env) ->
 
     Req3 = cowboy_req:set_resp_header(
         <<"access-control-allow-headers">>,
-        <<"Content-Type, Authorization, Accept, Origin, X-Requested-With, "
-          "cos, vsn, pkg, did, tz_offset, method, sk, sign, token, x-refresh-token, "
-          "imboy-refreshtoken, "
-          "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
-          "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy">>,
+        <<
+            "Content-Type, Authorization, Accept, Origin, X-Requested-With, "
+            "cos, vsn, pkg, did, tz_offset, method, sk, sign, token, x-refresh-token, "
+            "imboy-refreshtoken, "
+            "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
+            "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy"
+        >>,
         Req2
     ),
 
@@ -65,16 +68,35 @@ execute(Req0, Env) ->
         Req4
     ),
 
-    Req6 = case IsAllowedOrigin of
-        true ->
-            cowboy_req:set_resp_header(
-                <<"access-control-allow-credentials">>,
-                <<"true">>,
+    Req6 =
+        case IsAllowedOrigin of
+            true ->
+                cowboy_req:set_resp_header(
+                    <<"access-control-allow-credentials">>,
+                    <<"true">>,
+                    Req5
+                );
+            false ->
                 Req5
-            );
-        false ->
-            Req5
-    end,
+        end,
+
+    % 安全响应头（防止 MIME 嗅探、点击劫持、XSS）
+    % 注意：Strict-Transport-Security (HSTS) 应在 Caddy/Nginx 层配置，不在此处设置
+    Req7 = cowboy_req:set_resp_header(
+        <<"x-content-type-options">>,
+        <<"nosniff">>,
+        Req6
+    ),
+    Req8 = cowboy_req:set_resp_header(
+        <<"x-frame-options">>,
+        <<"DENY">>,
+        Req7
+    ),
+    Req9 = cowboy_req:set_resp_header(
+        <<"x-xss-protection">>,
+        <<"1; mode=block">>,
+        Req8
+    ),
 
     % 处理 OPTIONS 预检请求
     case Method of
@@ -83,16 +105,16 @@ execute(Req0, Env) ->
                 403,
                 #{<<"content-type">> => <<"application/json; charset=utf-8">>},
                 <<"{\"msg\":\"CORS origin not allowed\"}">>,
-                Req6
+                Req9
             ),
             {stop, ReqDenied};
         <<"OPTIONS">> ->
             % 预检请求直接返回 204 No Content
-            ReqFinal = cowboy_req:reply(204, Req6),
+            ReqFinal = cowboy_req:reply(204, Req9),
             {stop, ReqFinal};
         _ ->
             % 其他请求继续处理
-            {ok, Req6, Env}
+            {ok, Req9, Env}
     end.
 
 %% @doc 获取允许的 CORS 来源列表
@@ -118,7 +140,8 @@ is_origin_allowed(undefined, _AllowedOrigins) ->
 is_origin_allowed(Origin, AllowedOrigins) ->
     % 首先检查精确匹配
     case lists:member(Origin, AllowedOrigins) of
-        true -> true;
+        true ->
+            true;
         false ->
             % 检查是否允许 localhost 任意端口（开发环境）
             AllowLocalhost = config_ds:env(cors_allow_localhost, false),

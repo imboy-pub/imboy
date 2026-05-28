@@ -27,22 +27,22 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-               captcha ->
-                   captcha(Req0, State);
-               meta ->
-                   meta(Method, Req0, State);
-               login ->
-                   login(Method, Req0, State);
-               do_login ->
-                   login(Method, Req0, State);
-               logout ->
-                   logout(Method, Req0, State);
-               false ->
-                   Req0
-           end,
+    Req1 =
+        case Action of
+            captcha ->
+                captcha(Req0, State);
+            meta ->
+                meta(Method, Req0, State);
+            login ->
+                login(Method, Req0, State);
+            do_login ->
+                login(Method, Req0, State);
+            logout ->
+                logout(Method, Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -73,20 +73,32 @@ captcha(Req, _State) ->
                     secure => cookie_secure()
                 }
             ),
-            cowboy_req:reply(200, #{
-                <<"content-type">> => <<"image/png; charset=utf-8">>
-            }, BinPng, Req2)
+            cowboy_req:reply(
+                200,
+                #{
+                    <<"content-type">> => <<"image/png; charset=utf-8">>
+                },
+                BinPng,
+                Req2
+            )
     catch
         Class:Reason:Stack ->
-            ?ERROR_LOG("simple_captcha:create failed ~p:~p ~p",
-                [Class, Reason, Stack]),
-            cowboy_req:reply(503, #{
-                <<"content-type">> => <<"application/json; charset=utf-8">>
-            }, jsx:encode(#{
-                code => 503,
-                msg => <<"captcha_unavailable">>,
-                hint => <<"ImageMagick `convert` missing; run: brew install imagemagick"/utf8>>
-            }), Req)
+            ?ERROR_LOG(
+                "simple_captcha:create failed ~p:~p ~p",
+                [Class, Reason, Stack]
+            ),
+            cowboy_req:reply(
+                503,
+                #{
+                    <<"content-type">> => <<"application/json; charset=utf-8">>
+                },
+                jsx:encode(#{
+                    code => 503,
+                    msg => <<"captcha_unavailable">>,
+                    hint => <<"ImageMagick `convert` missing; run: brew install imagemagick"/utf8>>
+                }),
+                Req
+            )
     end.
 
 %% @doc 处理登录页面请求
@@ -100,10 +112,14 @@ login(<<"GET">>, Req0, _State) ->
         {public_key, binary_to_list(maps:get(<<"public_key">>, Meta, <<>>))}
     ],
     {ok, Body} = imboy_dtl:template(login_dtl, Data, imboy),
-    cowboy_req:reply(200, #{
-        <<"content-type">> => <<"text/html; charset=utf-8">>
-    }, Body, Req0);
-
+    cowboy_req:reply(
+        200,
+        #{
+            <<"content-type">> => <<"text/html; charset=utf-8">>
+        },
+        Body,
+        Req0
+    );
 %% @doc 处理登录表单提交
 %% 验证用户名密码、验证码和 CSRF 令牌，完成用户认证
 login(<<"POST">>, Req0, _State) ->
@@ -125,9 +141,10 @@ login(<<"POST">>, Req0, _State) ->
                                 {ok, AdmUser} ->
                                     imboy_cache:flush(Csrf),
                                     #{<<"id">> := AdmUserId} = AdmUser,
+                                    AdmUserIdBin = ec_cnv:to_binary(AdmUserId),
                                     Req1 = cowboy_req:set_resp_cookie(
                                         <<"adm_user_id">>,
-                                        AdmUserId,
+                                        AdmUserIdBin,
                                         Req0,
                                         #{
                                             path => <<"/adm">>,
@@ -136,7 +153,9 @@ login(<<"POST">>, Req0, _State) ->
                                             secure => cookie_secure()
                                         }
                                     ),
-                                    AdmUserSig = adm_auth_middleware:sign_admin_cookie(AdmUserId),
+                                    AdmUserSig = adm_auth_middleware:sign_admin_cookie(
+                                        AdmUserIdBin
+                                    ),
                                     Req2 = cowboy_req:set_resp_cookie(
                                         <<"adm_user_sig">>,
                                         AdmUserSig,
@@ -148,12 +167,13 @@ login(<<"POST">>, Req0, _State) ->
                                             secure => cookie_secure()
                                         }
                                     ),
-                                    Next = case elib_req:cookie(<<"back_uri">>, Req0) of
-                                        BackUri when is_binary(BackUri) ->
-                                            BackUri;
-                                        _ ->
-                                            <<"/adm/">>
-                                    end,
+                                    Next =
+                                        case elib_req:cookie(<<"back_uri">>, Req0) of
+                                            BackUri when is_binary(BackUri) ->
+                                                BackUri;
+                                            _ ->
+                                                <<"/adm/">>
+                                        end,
                                     Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/adm">>),
                                     RespData = maps:put(<<"next">>, Next, AdmUser),
                                     elib_response:success(Req3, RespData, "操作成功.");
@@ -246,13 +266,15 @@ cookie_secure() ->
 build_login_meta() ->
     Csrf = elib_id:gen("csrf"),
     imboy_cache:set(Csrf, 1),
-    PublicKey = case config_ds:env(login_rsa_pub_key) of
-        undefined -> <<"">>;
-        Key when is_binary(Key) ->
-            re:replace(Key, "\\n", "", [global, {return, binary}]);
-        Key ->
-            re:replace(ec_cnv:to_binary(Key), "\\n", "", [global, {return, binary}])
-    end,
+    PublicKey =
+        case config_ds:env(login_rsa_pub_key) of
+            undefined ->
+                <<"">>;
+            Key when is_binary(Key) ->
+                re:replace(Key, "\\n", "", [global, {return, binary}]);
+            Key ->
+                re:replace(ec_cnv:to_binary(Key), "\\n", "", [global, {return, binary}])
+        end,
     #{
         <<"system_name">> => <<"IMBoy Admin System">>,
         <<"csrf_token">> => Csrf,
@@ -264,25 +286,19 @@ build_login_meta() ->
 %% ===================================================================
 
 safe_captcha_check_allows_fixed_code_in_local_env_test_() ->
-    {setup,
-        fun snapshot_runtime_env/0,
-        fun restore_runtime_env/1,
-        fun() ->
-            os:putenv("IMBOYENV", "local"),
-            application:set_env(imboy, env, prod),
-            ?assertEqual(true, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA)),
-            ?assertEqual(false, safe_captcha_check(undefined, <<"wrong">>))
-        end}.
+    {setup, fun snapshot_runtime_env/0, fun restore_runtime_env/1, fun() ->
+        os:putenv("IMBOYENV", "local"),
+        application:set_env(imboy, env, prod),
+        ?assertEqual(true, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA)),
+        ?assertEqual(false, safe_captcha_check(undefined, <<"wrong">>))
+    end}.
 
 safe_captcha_check_respects_prod_env_without_bypass_test_() ->
-    {setup,
-        fun snapshot_runtime_env/0,
-        fun restore_runtime_env/1,
-        fun() ->
-            os:putenv("IMBOYENV", "prod"),
-            application:set_env(imboy, env, prod),
-            ?assertEqual(false, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA))
-        end}.
+    {setup, fun snapshot_runtime_env/0, fun restore_runtime_env/1, fun() ->
+        os:putenv("IMBOYENV", "prod"),
+        application:set_env(imboy, env, prod),
+        ?assertEqual(false, safe_captcha_check(undefined, ?ADM_TEST_CAPTCHA))
+    end}.
 
 snapshot_runtime_env() ->
     {os:getenv("IMBOYENV"), application:get_env(imboy, env)}.

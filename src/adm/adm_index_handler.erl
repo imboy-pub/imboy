@@ -30,18 +30,19 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        index ->
-            index(Method, Req0, State);
-        current ->
-            current(Method, Req0, State);
-        rbac ->
-            rbac(Method, Req0, State);
-        welcome ->
-            welcome(Method, Req0, State);
-        false ->
-            Req0
-    end,
+    Req1 =
+        case Action of
+            index ->
+                index(Method, Req0, State);
+            current ->
+                current(Method, Req0, State);
+            rbac ->
+                rbac(Method, Req0, State);
+            welcome ->
+                welcome(Method, Req0, State);
+            false ->
+                Req0
+        end,
     {ok, Req1, State}.
 
 %% ===================================================================
@@ -58,7 +59,6 @@ index(<<"GET">>, Req0, _State) ->
     elib_response:success(Req0, overview_payload());
 index(_Method, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
-
 
 %% @doc 处理欢迎页面请求（JSON）
 %% @param Method HTTP 方法
@@ -137,7 +137,9 @@ rbac_payload(RoleValue) ->
         _ ->
             Acls = [role_acl(RoleId) || RoleId <- RoleIds],
             RoleNames = lists:usort([RoleName || {RoleName, _Permissions, _MenuPaths} <- Acls]),
-            Permissions = lists:usort(lists:append([Perms || {_RoleName, Perms, _MenuPaths} <- Acls])),
+            Permissions = lists:usort(
+                lists:append([Perms || {_RoleName, Perms, _MenuPaths} <- Acls])
+            ),
             MenuPaths = lists:usort(lists:append([Paths || {_RoleName, _Perms, Paths} <- Acls])),
             #{
                 <<"role_id">> => hd(RoleIds),
@@ -191,28 +193,61 @@ role_acl(1) ->
     RoleName = <<"super_admin">>,
     Permissions = [
         <<"dashboard:view">>,
-        <<"users:read">>, <<"users:create">>, <<"users:update">>, <<"users:delete">>,
-        <<"groups:read">>, <<"groups:create">>, <<"groups:update">>, <<"groups:delete">>,
-        <<"groups:vote:read">>, <<"groups:vote:close">>,
-        <<"groups:notice:read">>, <<"groups:notice:delete">>,
-        <<"groups:category:read">>, <<"groups:category:delete">>,
-        <<"groups:tag:read">>, <<"groups:tag:delete">>,
-        <<"groups:file:read">>, <<"groups:file:delete">>,
-        <<"groups:album:read">>, <<"groups:album:delete">>,
-        <<"groups:schedule:read">>, <<"groups:schedule:restore">>, <<"groups:schedule:cancel">>,
-        <<"groups:task:read">>, <<"groups:task:restore">>, <<"groups:task:review">>, <<"groups:task:close">>, <<"groups:task:delete">>,
-        <<"channels:read">>, <<"channels:create">>, <<"channels:update">>, <<"channels:delete">>,
-        <<"moments:read">>, <<"moments:delete">>, <<"moments:report:read">>, <<"moments:report:handle">>,
-        <<"reports:read">>, <<"reports:handle">>,
-        <<"feedback:read">>, <<"feedback:reply">>,
-        <<"feedback:workflow:read">>, <<"feedback:workflow:write">>,
+        <<"users:read">>,
+        <<"users:create">>,
+        <<"users:update">>,
+        <<"users:delete">>,
+        <<"groups:read">>,
+        <<"groups:create">>,
+        <<"groups:update">>,
+        <<"groups:delete">>,
+        <<"groups:vote:read">>,
+        <<"groups:vote:close">>,
+        <<"groups:notice:read">>,
+        <<"groups:notice:delete">>,
+        <<"groups:category:read">>,
+        <<"groups:category:delete">>,
+        <<"groups:tag:read">>,
+        <<"groups:tag:delete">>,
+        <<"groups:file:read">>,
+        <<"groups:file:delete">>,
+        <<"groups:album:read">>,
+        <<"groups:album:delete">>,
+        <<"groups:schedule:read">>,
+        <<"groups:schedule:restore">>,
+        <<"groups:schedule:cancel">>,
+        <<"groups:task:read">>,
+        <<"groups:task:restore">>,
+        <<"groups:task:review">>,
+        <<"groups:task:close">>,
+        <<"groups:task:delete">>,
+        <<"channels:read">>,
+        <<"channels:create">>,
+        <<"channels:update">>,
+        <<"channels:delete">>,
+        <<"moments:read">>,
+        <<"moments:delete">>,
+        <<"moments:report:read">>,
+        <<"moments:report:handle">>,
+        <<"reports:read">>,
+        <<"reports:handle">>,
+        <<"feedback:read">>,
+        <<"feedback:reply">>,
+        <<"feedback:workflow:read">>,
+        <<"feedback:workflow:write">>,
         <<"messages:read">>,
         <<"logout_applications:read">>,
         <<"ux:events:ingest">>,
         <<"settings:view">>,
         <<"settings:update">>,
-        <<"settings:version:read">>, <<"settings:version:create">>, <<"settings:version:update">>, <<"settings:version:delete">>,
-        <<"settings:ddl:read">>, <<"settings:ddl:create">>, <<"settings:ddl:update">>, <<"settings:ddl:delete">>,
+        <<"settings:version:read">>,
+        <<"settings:version:create">>,
+        <<"settings:version:update">>,
+        <<"settings:version:delete">>,
+        <<"settings:ddl:read">>,
+        <<"settings:ddl:create">>,
+        <<"settings:ddl:update">>,
+        <<"settings:ddl:delete">>,
         <<"admins:read">>,
         <<"admins:create">>,
         <<"admins:assign_role">>,
@@ -220,14 +255,21 @@ role_acl(1) ->
         <<"roles:create">>,
         <<"roles:update">>,
         <<"logs:view">>,
-        <<"plugins:read">>, <<"plugins:install">>, <<"plugins:enable">>,
-        <<"plugins:disable">>, <<"plugins:upgrade">>, <<"plugins:uninstall">>,
-        <<"plugins:reset">>, <<"plugins:force_uninstall">>
+        <<"plugins:read">>,
+        <<"plugins:install">>,
+        <<"plugins:enable">>,
+        <<"plugins:disable">>,
+        <<"plugins:upgrade">>,
+        <<"plugins:uninstall">>,
+        <<"plugins:reset">>,
+        <<"plugins:force_uninstall">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
         <<"/users">>,
         <<"/groups">>,
+        <<"/groups/context">>,
+        <<"/moments">>,
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/channels">>,
@@ -244,32 +286,66 @@ role_acl(2) ->
     RoleName = <<"ops_admin">>,
     Permissions = [
         <<"dashboard:view">>,
-        <<"users:read">>, <<"users:create">>, <<"users:update">>, <<"users:delete">>,
-        <<"groups:read">>, <<"groups:create">>, <<"groups:update">>, <<"groups:delete">>,
-        <<"groups:vote:read">>, <<"groups:vote:close">>,
-        <<"groups:notice:read">>, <<"groups:notice:delete">>,
-        <<"groups:category:read">>, <<"groups:category:delete">>,
-        <<"groups:tag:read">>, <<"groups:tag:delete">>,
-        <<"groups:file:read">>, <<"groups:file:delete">>,
-        <<"groups:album:read">>, <<"groups:album:delete">>,
-        <<"groups:schedule:read">>, <<"groups:schedule:restore">>, <<"groups:schedule:cancel">>,
-        <<"groups:task:read">>, <<"groups:task:restore">>, <<"groups:task:review">>, <<"groups:task:close">>, <<"groups:task:delete">>,
-        <<"channels:read">>, <<"channels:create">>, <<"channels:update">>, <<"channels:delete">>,
-        <<"moments:read">>, <<"moments:delete">>, <<"moments:report:read">>, <<"moments:report:handle">>,
-        <<"reports:read">>, <<"reports:handle">>,
-        <<"feedback:read">>, <<"feedback:reply">>,
-        <<"feedback:workflow:read">>, <<"feedback:workflow:write">>,
+        <<"users:read">>,
+        <<"users:create">>,
+        <<"users:update">>,
+        <<"users:delete">>,
+        <<"groups:read">>,
+        <<"groups:create">>,
+        <<"groups:update">>,
+        <<"groups:delete">>,
+        <<"groups:vote:read">>,
+        <<"groups:vote:close">>,
+        <<"groups:notice:read">>,
+        <<"groups:notice:delete">>,
+        <<"groups:category:read">>,
+        <<"groups:category:delete">>,
+        <<"groups:tag:read">>,
+        <<"groups:tag:delete">>,
+        <<"groups:file:read">>,
+        <<"groups:file:delete">>,
+        <<"groups:album:read">>,
+        <<"groups:album:delete">>,
+        <<"groups:schedule:read">>,
+        <<"groups:schedule:restore">>,
+        <<"groups:schedule:cancel">>,
+        <<"groups:task:read">>,
+        <<"groups:task:restore">>,
+        <<"groups:task:review">>,
+        <<"groups:task:close">>,
+        <<"groups:task:delete">>,
+        <<"channels:read">>,
+        <<"channels:create">>,
+        <<"channels:update">>,
+        <<"channels:delete">>,
+        <<"moments:read">>,
+        <<"moments:delete">>,
+        <<"moments:report:read">>,
+        <<"moments:report:handle">>,
+        <<"reports:read">>,
+        <<"reports:handle">>,
+        <<"feedback:read">>,
+        <<"feedback:reply">>,
+        <<"feedback:workflow:read">>,
+        <<"feedback:workflow:write">>,
         <<"messages:read">>,
         <<"logout_applications:read">>,
         <<"ux:events:ingest">>,
-        <<"plugins:read">>, <<"plugins:install">>, <<"plugins:enable">>,
-        <<"plugins:disable">>, <<"plugins:upgrade">>, <<"plugins:uninstall">>,
-        <<"plugins:reset">>, <<"plugins:force_uninstall">>
+        <<"plugins:read">>,
+        <<"plugins:install">>,
+        <<"plugins:enable">>,
+        <<"plugins:disable">>,
+        <<"plugins:upgrade">>,
+        <<"plugins:uninstall">>,
+        <<"plugins:reset">>,
+        <<"plugins:force_uninstall">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
         <<"/users">>,
         <<"/groups">>,
+        <<"/groups/context">>,
+        <<"/moments">>,
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/channels">>,
@@ -291,6 +367,7 @@ role_acl(3) ->
     ],
     MenuPaths = [
         <<"/dashboard">>,
+        <<"/groups/context">>,
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/roles">>,

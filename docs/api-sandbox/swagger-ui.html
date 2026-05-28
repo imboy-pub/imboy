@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IMBoy API Sandbox</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css">
+  <style>
+    body { margin: 0; padding: 0; }
+    #swagger-ui .topbar { background-color: #1a1a2e; }
+    #swagger-ui .topbar .download-url-wrapper .select-label select { border: 2px solid #4a90e2; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function() {
+      SwaggerUIBundle({
+        url: "../openapi.yaml",
+        dom_id: '#swagger-ui',
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout",
+        // 本地开发服务器
+        requestInterceptor: function(request) {
+          return request;
+        },
+        // 默认展开第一层
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        // 显示请求耗时
+        displayRequestDuration: true,
+        // 启用 Try it out
+        tryItOutEnabled: true
+      })
+    }
+  </script>
+</body>
+</html>

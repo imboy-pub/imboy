@@ -153,3 +153,12 @@ xref-strict: xref
 clear_beam:
 	@find . -path ./deps -prune -o -name '*.beam' -print -delete
 	@echo "clear_beam done"
+
+## 启动 API 文档服务器（需要 Docker）
+.PHONY: docs-serve docs-stop
+docs-serve:
+	docker compose -f docs/api-sandbox/docker-compose.yml up -d
+	@echo "API Docs: http://localhost:8080"
+
+docs-stop:
+	docker compose -f docs/api-sandbox/docker-compose.yml down

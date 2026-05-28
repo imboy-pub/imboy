@@ -1,0 +1,195 @@
+# SBOM 差异报告
+#
+# 触发：push to main 或手动 workflow_dispatch
+# 步骤：
+#   1. Trivy 生成当前 SBOM（CycloneDX JSON）
+#   2. 下载上一次 artifact（如有）
+#   3. 对比差异（新增 / 删除 / 版本变更的依赖）
+#   4. 将差异报告写入 Job Summary
+#   5. 上传当前 SBOM artifact（保留 30 天）
+#
+# 创建：2026-05-27
+
+name: SBOM Diff Report
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom-diff:
+    name: Generate SBOM & diff
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 1. 安装 Trivy ─────────────────────────────────────────────
+      - name: Install Trivy
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.52.2
+          trivy --version
+
+      # ── 2. 生成当前 SBOM（CycloneDX JSON）──────────────────────────
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --format cyclonedx \
+            --output /tmp/sbom-current.json \
+            --quiet
+          echo "当前 SBOM 组件数：$(jq '.components | length' /tmp/sbom-current.json)"
+
+      # ── 3. 下载上一次 SBOM artifact（如有）────────────────────────
+      - name: Download previous SBOM artifact
+        id: prev-sbom
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: sbom-cyclonedx
+          path: /tmp/sbom-prev/
+          workflow: sbom-diff.yml
+          branch: main
+          # 找最新一次成功的 run，不含本次
+          run_id: ${{ github.run_id }}
+          search_artifacts: true
+          if_no_artifact_found: warn
+        continue-on-error: true
+
+      # ── 4. 对比差异并写入 Job Summary ─────────────────────────────
+      - name: Diff SBOM and write summary
+        run: |
+          set -euo pipefail
+
+          PREV="/tmp/sbom-prev/sbom-cyclonedx.json"
+          CURR="/tmp/sbom-current.json"
+
+          # 如果没有上一次 SBOM，输出全量列表后退出
+          if [ ! -f "$PREV" ]; then
+            echo "## SBOM 报告（首次生成，无基线可比对）" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "当前依赖总数：**$(jq '.components | length' "$CURR")**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "<details><summary>完整依赖列表</summary>" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| 名称 | 版本 | 类型 |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|------|------|" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.components[] | "| \(.name) | \(.version // "N/A") | \(.type // "library") |"' "$CURR" \
+              >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # 提取 "name@version" 集合，用于集合运算
+          jq -r '.components[] | "\(.name)@\(.version // "unknown")"' "$PREV" | sort > /tmp/prev_set.txt
+          jq -r '.components[] | "\(.name)@\(.version // "unknown")"' "$CURR" | sort > /tmp/curr_set.txt
+
+          # 新增（在 curr 但不在 prev）
+          comm -13 /tmp/prev_set.txt /tmp/curr_set.txt > /tmp/added.txt   || true
+          # 删除（在 prev 但不在 curr）
+          comm -23 /tmp/prev_set.txt /tmp/curr_set.txt > /tmp/removed.txt || true
+
+          ADDED_COUNT=$(wc -l < /tmp/added.txt | tr -d ' ')
+          REMOVED_COUNT=$(wc -l < /tmp/removed.txt | tr -d ' ')
+
+          # 版本变更：同名但版本不同
+          jq -r '.components[] | "\(.name)\t\(.version // "unknown")"' "$PREV" | sort > /tmp/prev_ver.txt
+          jq -r '.components[] | "\(.name)\t\(.version // "unknown")"' "$CURR" | sort > /tmp/curr_ver.txt
+
+          # 找出两边都有、但版本不同的包
+          python3 - <<'PYEOF' > /tmp/changed.txt
+          import sys
+
+          prev = {}
+          with open('/tmp/prev_ver.txt') as f:
+              for line in f:
+                  line = line.strip()
+                  if '\t' in line:
+                      name, ver = line.split('\t', 1)
+                      prev[name] = ver
+
+          with open('/tmp/curr_ver.txt') as f:
+              for line in f:
+                  line = line.strip()
+                  if '\t' in line:
+                      name, ver = line.split('\t', 1)
+                      if name in prev and prev[name] != ver:
+                          print(f"{name}\t{prev[name]}\t→\t{ver}")
+          PYEOF
+
+          CHANGED_COUNT=$(wc -l < /tmp/changed.txt | tr -d ' ')
+
+          # ── 写入 Job Summary ──────────────────────────────────────
+          {
+            echo "## SBOM 差异报告"
+            echo ""
+            echo "| 类型 | 数量 |"
+            echo "|------|------|"
+            echo "| ✅ 新增依赖 | $ADDED_COUNT |"
+            echo "| ❌ 删除依赖 | $REMOVED_COUNT |"
+            echo "| 🔄 版本变更 | $CHANGED_COUNT |"
+            echo ""
+
+            if [ "$ADDED_COUNT" -gt 0 ]; then
+              echo "<details><summary>✅ 新增依赖（$ADDED_COUNT）</summary>"
+              echo ""
+              echo "| 包名 | 版本 |"
+              echo "|------|------|"
+              while IFS='@' read -r name ver; do
+                echo "| $name | $ver |"
+              done < /tmp/added.txt
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
+
+            if [ "$REMOVED_COUNT" -gt 0 ]; then
+              echo "<details><summary>❌ 删除依赖（$REMOVED_COUNT）</summary>"
+              echo ""
+              echo "| 包名 | 版本 |"
+              echo "|------|------|"
+              while IFS='@' read -r name ver; do
+                echo "| $name | $ver |"
+              done < /tmp/removed.txt
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
+
+            if [ "$CHANGED_COUNT" -gt 0 ]; then
+              echo "<details><summary>🔄 版本变更（$CHANGED_COUNT）</summary>"
+              echo ""
+              echo "| 包名 | 旧版本 | 新版本 |"
+              echo "|------|--------|--------|"
+              while IFS=$'\t' read -r name old_ver arrow new_ver; do
+                echo "| $name | $old_ver | $new_ver |"
+              done < /tmp/changed.txt
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
+
+            if [ "$ADDED_COUNT" -eq 0 ] && [ "$REMOVED_COUNT" -eq 0 ] && [ "$CHANGED_COUNT" -eq 0 ]; then
+              echo "> 无依赖变更，SBOM 与上一次构建一致。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "sbom_added=$ADDED_COUNT"   >> "$GITHUB_OUTPUT"
+          echo "sbom_removed=$REMOVED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "sbom_changed=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
+
+      # ── 5. 上传当前 SBOM artifact（保留 30 天）────────────────────
+      - name: Upload current SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: /tmp/sbom-current.json
+          retention-days: 30
+          overwrite: true
