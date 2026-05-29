@@ -78,57 +78,31 @@ index(_, Req0, _State) ->
 
 -spec disable(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 disable(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"storage:disable">>, Req0) of
-        ok ->
-            case parse_id(Req0) of
-                {ok, Id} ->
-                    case attachment_ds:disable(Id) of
-                        ok ->
-                            elib_response:success(Req0, #{});
-                        {error, R} ->
-                            elib_response:error(
-                                Req0, ec_cnv:to_binary(R), ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end;
-                {error, Req1} ->
-                    Req1
-            end;
-        {error, Req1} ->
-            Req1
-    end;
+    handle_id_action(State, <<"storage:disable">>, fun attachment_ds:disable/1, Req0);
 disable(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec enable(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 enable(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"storage:enable">>, Req0) of
-        ok ->
-            case parse_id(Req0) of
-                {ok, Id} ->
-                    case attachment_ds:enable(Id) of
-                        ok ->
-                            elib_response:success(Req0, #{});
-                        {error, R} ->
-                            elib_response:error(
-                                Req0, ec_cnv:to_binary(R), ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end;
-                {error, Req1} ->
-                    Req1
-            end;
-        {error, Req1} ->
-            Req1
-    end;
+    handle_id_action(State, <<"storage:enable">>, fun attachment_ds:enable/1, Req0);
 enable(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"storage:delete">>, Req0) of
+    handle_id_action(State, <<"storage:delete">>, fun attachment_ds:soft_delete/1, Req0);
+delete(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc disable/enable/delete 的公共流程：鉴权 → 解析 id → 执行 DS 操作 → 标准响应
+-spec handle_id_action(map(), binary(), fun((integer()) -> ok | {error, term()}), cowboy_req:req()) ->
+    cowboy_req:req().
+handle_id_action(State, Permission, DsFun, Req0) ->
+    case ensure_permission(State, Permission, Req0) of
         ok ->
             case parse_id(Req0) of
                 {ok, Id} ->
-                    case attachment_ds:soft_delete(Id) of
+                    case DsFun(Id) of
                         ok ->
                             elib_response:success(Req0, #{});
                         {error, R} ->
@@ -141,9 +115,7 @@ delete(<<"POST">>, Req0, State) ->
             end;
         {error, Req1} ->
             Req1
-    end;
-delete(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 -spec orphan(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 orphan(<<"GET">>, Req0, State) ->

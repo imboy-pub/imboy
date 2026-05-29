@@ -141,7 +141,7 @@ get_url(ObjectKey) ->
     Cfg = garage_config(),
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
-    {ok, <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>}.
+    {ok, public_url(Endpoint, Bucket, ObjectKey)}.
 
 -spec generate_file_id() -> binary().
 generate_file_id() ->
