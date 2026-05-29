@@ -33,7 +33,7 @@ presign(<<"GET">>, Req0, _State) ->
     FileName = proplists:get_value(<<"filename">>, Qs, <<"file">>),
     MimeType = proplists:get_value(<<"mime_type">>, Qs, <<"application/octet-stream">>),
     ExpiresRaw = proplists:get_value(<<"expires">>, Qs, <<"3600">>),
-    Expires = min(86400, max(60, binary_to_integer(ExpiresRaw))),
+    Expires = min(86400, max(60, safe_int(ExpiresRaw, 3600))),
     case elib_oss:validate_file_type(MimeType) of
         false ->
             elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
@@ -55,3 +55,16 @@ presign(<<"GET">>, Req0, _State) ->
     end;
 presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 安全解析整数，非法输入回退默认值（避免 binary_to_integer badarg 崩溃）
+-spec safe_int(binary() | integer(), integer()) -> integer().
+safe_int(V, _Default) when is_integer(V) ->
+    V;
+safe_int(V, Default) when is_binary(V) ->
+    try
+        binary_to_integer(V)
+    catch
+        _:_ -> Default
+    end;
+safe_int(_, Default) ->
+    Default.

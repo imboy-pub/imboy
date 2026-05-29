@@ -109,7 +109,10 @@ delete_object(ObjectKey) ->
     AccessKey = maps:get(access_key, Cfg, <<>>),
     SecretKey = maps:get(secret_key, Cfg, <<>>),
 
-    Url = <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>,
+    %% 请求 URL 的对象路径必须与签名 Canonical URI 编码方式一致
+    Url =
+        <<Endpoint/binary, "/", Bucket/binary, "/",
+            (elib_s3_sign:uri_encode_path(ObjectKey))/binary>>,
     Now = calendar:universal_time(),
     AmzDate = elib_s3_sign:format_amz_date(Now),
     AuthHeader = elib_s3_sign:authorization_header(
@@ -183,7 +186,10 @@ upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
 
     SafeName = filename:basename(FileName),
     ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
-    Url = <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>,
+    %% 请求 URL 的对象路径必须与签名 Canonical URI 编码方式一致
+    Url =
+        <<Endpoint/binary, "/", Bucket/binary, "/",
+            (elib_s3_sign:uri_encode_path(ObjectKey))/binary>>,
 
     Now = calendar:universal_time(),
     AmzDate = elib_s3_sign:format_amz_date(Now),

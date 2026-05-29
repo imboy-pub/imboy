@@ -9,6 +9,7 @@
 
 -export([presign_put/5, presign_get/4, authorization_header/7]).
 -export([format_date/1, format_amz_date/1]).
+-export([uri_encode_path/1]).
 
 %% @doc 生成 presigned PUT URL（Flutter 直传用）
 %% Expires 单位：秒，最大 604800（7天）
@@ -42,7 +43,10 @@ presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     QueryStr = lists:join(<<"&">>, QueryParts),
     QueryBin = iolist_to_binary(QueryStr),
 
-    CanonicalUri = <<"/", Bucket/binary, "/", ObjectKey/binary>>,
+    %% SigV4 规范：Canonical URI 的路径段必须 URI 编码（保留 '/' 分隔符）。
+    %% 否则含空格/中文等字符的文件名签名与实际请求路径不一致 → 403 SignatureDoesNotMatch。
+    EncObjectKey = uri_encode_path(ObjectKey),
+    CanonicalUri = <<"/", Bucket/binary, "/", EncObjectKey/binary>>,
     CanonicalHeaders = <<"host:", Host/binary, "\n">>,
 
     CanonicalRequest = iolist_to_binary([
@@ -62,7 +66,7 @@ presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     SignKey = signing_key(SecretKey, DateStr, Region, <<"s3">>),
     Sig = binary_to_hex(hmac_sha256(SignKey, StringToSign)),
 
-    <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary, "?", QueryBin/binary,
+    <<Endpoint/binary, "/", Bucket/binary, "/", EncObjectKey/binary, "?", QueryBin/binary,
         "&X-Amz-Signature=", Sig/binary>>.
 
 %% @doc 生成 presigned GET URL（附件查看用）
@@ -89,7 +93,7 @@ authorization_header(Method, Bucket, ObjectKey, ContentType, AmzDate, AccessKey,
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
     Host = host_from_endpoint(Endpoint),
 
-    CanonicalUri = <<"/", Bucket/binary, "/", ObjectKey/binary>>,
+    CanonicalUri = <<"/", Bucket/binary, "/", (uri_encode_path(ObjectKey))/binary>>,
     CanonicalHeaders =
         case ContentType of
             <<>> ->
@@ -170,6 +174,16 @@ binary_to_hex(Bin) ->
 -spec uri_encode(binary()) -> binary().
 uri_encode(Bin) ->
     iolist_to_binary([encode_char(C) || <<C>> <= Bin]).
+
+%% @doc 对象 Key 路径编码：逐字节百分号编码，但保留 '/' 分隔符。
+%% 用于 SigV4 Canonical URI 与实际请求 URL 的对象路径。
+%% ASCII 安全字符（字母/数字/-_.~ 与 '/'）保持原样，对纯 ASCII Key 无任何变化。
+-spec uri_encode_path(binary()) -> binary().
+uri_encode_path(Bin) ->
+    iolist_to_binary([encode_path_char(C) || <<C>> <= Bin]).
+
+encode_path_char($/) -> $/;
+encode_path_char(C) -> encode_char(C).
 
 encode_char(C) when C >= $A, C =< $Z -> C;
 encode_char(C) when C >= $a, C =< $z -> C;

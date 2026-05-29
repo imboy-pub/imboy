@@ -151,7 +151,7 @@ orphan(<<"GET">>, Req0, State) ->
         ok ->
             Qs = cowboy_req:parse_qs(Req0),
             AgeDaysRaw = proplists:get_value(<<"age_days">>, Qs, <<"30">>),
-            AgeDays = max(7, ec_cnv:to_integer(AgeDaysRaw)),
+            AgeDays = max(7, safe_int(AgeDaysRaw, 30)),
             case attachment_ds:orphan_stats(#{age_days => AgeDays}) of
                 {ok, Stats} ->
                     elib_response:success(Req0, Stats, "success.");
@@ -169,7 +169,7 @@ orphan_cleanup(<<"POST">>, Req0, State) ->
     case ensure_permission(State, <<"storage:cleanup">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            AgeDays = max(7, ec_cnv:to_integer(maps:get(<<"age_days">>, PostVals, 30))),
+            AgeDays = max(7, safe_int(maps:get(<<"age_days">>, PostVals, 30), 30)),
             case attachment_ds:orphan_cleanup(#{age_days => AgeDays}) of
                 {ok, Stats} ->
                     elib_response:success(Req0, Stats, "success.");
@@ -256,11 +256,20 @@ normalize_role_id(_) ->
 parse_id(Req0) ->
     PostVals = elib_param:post(Req0),
     IdRaw = maps:get(<<"id">>, PostVals, 0),
-    case ec_cnv:to_integer(IdRaw) of
+    case safe_int(IdRaw, 0) of
         Id when is_integer(Id), Id > 0 ->
             {ok, Id};
         _ ->
             {error, elib_response:error(Req0, <<"id 无效"/utf8>>, ?ERR_BAD_REQUEST)}
+    end.
+
+%% @doc 安全解析整数，非法输入回退默认值（ec_cnv:to_integer 对非数字会抛 badarg）
+-spec safe_int(term(), integer()) -> integer().
+safe_int(V, Default) ->
+    try
+        ec_cnv:to_integer(V)
+    catch
+        _:_ -> Default
     end.
 
 %% ===================================================================

@@ -34,7 +34,8 @@
 %% @param FileBinary 文件二进制数据
 %% @param FileType MIME类型
 %% @return {ok, FileId} | {error, Reason}
--spec upload_file(integer(), integer(), binary(), binary(), binary()) -> {ok, binary()} | {error, term()}.
+-spec upload_file(integer(), integer(), binary(), binary(), binary()) ->
+    {ok, binary()} | {error, term()}.
 upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
     % 1. 验证群成员身份
     case group_ds:is_member(UploaderId, Gid) of
@@ -84,7 +85,9 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
                                     {ok, FileId};
                                 {error, Reason} ->
                                     {error, Reason}
-                            end
+                            end;
+                        {error, UploadErr} ->
+                            {error, UploadErr}
                     end
             end
     end.
@@ -156,7 +159,8 @@ list_files(Gid, CurrentUid, Page, Size) ->
 %% @param Size 每页数量
 %% @param Options 选项 #{category => binary()}
 %% @return {ok, [FileMap]} | {error, Reason}
--spec list_files(integer(), integer(), integer(), integer(), map()) -> {ok, list(map())} | {error, term()}.
+-spec list_files(integer(), integer(), integer(), integer(), map()) ->
+    {ok, list(map())} | {error, term()}.
 list_files(Gid, CurrentUid, Page, Size, Options) ->
     % 1. 验证群成员身份
     case group_ds:is_member(CurrentUid, Gid) of
@@ -173,7 +177,8 @@ list_files(Gid, CurrentUid, Page, Size, Options) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, [FileMap]} | {error, Reason}
--spec search_files(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec search_files(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 search_files(Gid, Keyword, Page, Size) ->
     % 1. 验证群成员身份（这里需要CurrentUid，暂时跳过）
     % 2. 搜索文件
@@ -182,7 +187,8 @@ search_files(Gid, Keyword, Page, Size) ->
 %% @doc 获取群文件分类统计
 %% @param Gid 群组ID
 %% @return {ok, [{Category, Count, TotalSize}]} | {error, Reason}
--spec get_file_categories(integer()) -> {ok, list({binary(), integer(), integer()})} | {error, term()}.
+-spec get_file_categories(integer()) ->
+    {ok, list({binary(), integer(), integer()})} | {error, term()}.
 get_file_categories(Gid) ->
     group_file_repo:category_stats(Gid).
 
@@ -201,7 +207,8 @@ check_delete_permission(CurrentUid, UploaderId, _Gid) when CurrentUid =:= Upload
 check_delete_permission(CurrentUid, _UploaderId, Gid) ->
     % 检查是否为群主或管理员
     case group_member_repo:find(Gid, CurrentUid, <<"role">>) of
-        #{<<"role">> := Role} when Role >= 3 -> % 管理员或群主
+        % 管理员或群主
+        #{<<"role">> := Role} when Role >= 3 ->
             {ok, true};
         _ ->
             {error, permission_denied}
@@ -221,14 +228,17 @@ find_by_file_id(FileId) -> group_file_repo:find_by_file_id(FileId).
 -spec soft_delete(integer()) -> {ok, integer()} | {error, term()}.
 soft_delete(FileId) -> group_file_repo:soft_delete(FileId).
 
--spec search_by_name(integer(), binary(), pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+-spec search_by_name(integer(), binary(), pos_integer(), pos_integer()) ->
+    {ok, list(map())} | {error, term()}.
 search_by_name(Gid, Keyword, Page, Size) ->
     group_file_repo:search_by_name(Gid, Keyword, Page, Size).
 
--spec list_by_category(integer(), binary(), pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_category(integer(), binary(), pos_integer(), pos_integer()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_category(Gid, Category, Page, Size) ->
     group_file_repo:list_by_category(Gid, Category, Page, Size).
 
--spec list_by_group(integer(), pos_integer(), pos_integer(), map()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_group(integer(), pos_integer(), pos_integer(), map()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_group(Gid, Page, Size, Options) ->
     group_file_repo:list_by_group(Gid, Page, Size, Options).
