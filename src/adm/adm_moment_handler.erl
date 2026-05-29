@@ -44,7 +44,7 @@ init(Req0, State0) ->
 
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:read">>, Req0) of
         ok ->
             {Page, Size} = elib_param:page(Req0),
             Qs = cowboy_req:parse_qs(Req0),
@@ -65,7 +65,7 @@ list(_, Req0, _State) ->
 
 -spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:read">>, Req0) of
         ok ->
             MomentId = cowboy_req:binding(moment_id, Req0),
             case MomentId of
@@ -87,7 +87,7 @@ detail(_, Req0, _State) ->
 
 -spec delete_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete_action(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:delete">>, Req0) of
         ok ->
             AdmUid = maps:get(adm_user_id, State, 0),
             PostVals = elib_param:post(Req0),
@@ -107,7 +107,7 @@ delete_action(_, Req0, _State) ->
 
 -spec report_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 report_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:report:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:report:read">>, Req0) of
         ok ->
             {Page, Size} = elib_param:page(Req0),
             Qs = cowboy_req:parse_qs(Req0),
@@ -126,7 +126,7 @@ report_list(_, Req0, _State) ->
 
 -spec report_resolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 report_resolve(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:report:handle">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:report:handle">>, Req0) of
         ok ->
             AdmUid = maps:get(adm_user_id, State, 0),
             PostVals = elib_param:post(Req0),
@@ -147,7 +147,7 @@ report_resolve(_, Req0, _State) ->
 
 -spec report_batch_resolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 report_batch_resolve(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"moments:report:handle">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"moments:report:handle">>, Req0) of
         ok ->
             AdmUid = maps:get(adm_user_id, State, 0),
             PostVals = elib_param:post(Req0),
@@ -164,7 +164,11 @@ report_batch_resolve(<<"POST">>, Req0, State) ->
                     {SuccessCount, FailedIds0} =
                         lists:foldl(
                             fun(ReportId, {Succ, FailedAcc}) ->
-                                case moment_logic:admin_resolve_report(AdmUid, ReportId, Result, Note) of
+                                case
+                                    moment_logic:admin_resolve_report(
+                                        AdmUid, ReportId, Result, Note
+                                    )
+                                of
                                     ok ->
                                         {Succ + 1, FailedAcc};
                                     {error, _} ->
@@ -187,75 +191,6 @@ report_batch_resolve(<<"POST">>, Req0, State) ->
     end;
 report_batch_resolve(_, Req0, _State) ->
     Req0.
-
--spec ensure_permission(map(), binary(), cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
-ensure_permission(State, Permission, Req0) ->
-    AdmUserId = maps:get(adm_user_id, State, 0),
-    case has_permission(AdmUserId, Permission) of
-        true ->
-            ok;
-        false ->
-            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
-    end.
-
--spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
-    Permissions = resolve_permissions_by_adm_user_id(AdmUserId),
-    lists:member(Permission, Permissions);
-has_permission(_, _) ->
-    false.
-
--spec resolve_permissions_by_adm_user_id(integer()) -> list(binary()).
-resolve_permissions_by_adm_user_id(AdmUserId) ->
-    Key = {adm_user_moment_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
-        AdmUser when is_map(AdmUser) ->
-            RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
-            lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
-        _ ->
-            []
-    end.
-
--spec role_permissions(integer()) -> list(binary()).
-role_permissions(RoleId) ->
-    try adm_index_handler:role_acl(RoleId) of
-        {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
-            Permissions;
-        _ ->
-            []
-    catch
-        _:_ ->
-            []
-    end.
-
--spec normalize_role_ids(term()) -> list(integer()).
-normalize_role_ids(RoleId) when is_integer(RoleId), RoleId > 0 ->
-    [RoleId];
-normalize_role_ids(RoleIds) when is_list(RoleIds) ->
-    lists:usort([Id || Value <- RoleIds, Id <- [normalize_role_id(Value)], Id > 0]);
-normalize_role_ids(RoleValue) ->
-    case normalize_role_id(RoleValue) of
-        Id when Id > 0 ->
-            [Id];
-        _ ->
-            []
-    end.
-
--spec normalize_role_id(term()) -> integer().
-normalize_role_id(Value) when is_integer(Value), Value > 0 ->
-    Value;
-normalize_role_id(Value) when is_binary(Value); is_list(Value) ->
-    try ec_cnv:to_integer(Value) of
-        Id when is_integer(Id), Id > 0 ->
-            Id;
-        _ ->
-            0
-    catch
-        _:_ ->
-            0
-    end;
-normalize_role_id(_) ->
-    0.
 
 -spec parse_qs_int(term(), integer(), integer(), integer()) -> integer().
 parse_qs_int(undefined, Default, _Min, _Max) ->
