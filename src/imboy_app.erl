@@ -512,8 +512,10 @@ runtime_env() ->
     imboy_env:current().
 
 -spec is_strict_env(binary()) -> boolean().
+%% 默认严格：仅显式的 dev/local/test 宽松；空或未知 env 一律按生产严格对待，
+%% 与 current/0 的文档约定一致，避免漏设环境标识时静默跳过 fail-fast 校验。
 is_strict_env(Env) ->
-    lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
+    not lists:member(Env, [<<"dev">>, <<"local">>, <<"test">>]).
 
 -spec normalize_secret(term()) -> binary().
 normalize_secret(undefined) ->
