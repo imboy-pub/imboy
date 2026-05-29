@@ -83,7 +83,7 @@ dispatch(_, _Method, Req0, _State) -> Req0.
 %% @doc 群组列表
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -100,7 +100,7 @@ list(<<"GET">>, Req0, State) ->
 %% @doc 群组详情
 -spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -129,7 +129,7 @@ detail(<<"GET">>, Req0, State) ->
 %% @doc 更新群组信息
 -spec update(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 update(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:update">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:update">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -170,7 +170,7 @@ update(_, Req0, _State) ->
 %% @doc 解散群组
 -spec dissolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 dissolve(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -199,7 +199,7 @@ dissolve(<<"POST">>, Req0, State) ->
 %% @doc 搜索群组
 -spec search(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 search(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -228,7 +228,7 @@ search(<<"GET">>, Req0, State) ->
 %% @doc 群组成员列表
 -spec members(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 members(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -249,7 +249,7 @@ members(<<"GET">>, Req0, State) ->
 %% @doc 群投票列表
 -spec vote_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 vote_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:vote:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:vote:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -272,7 +272,7 @@ vote_list(<<"GET">>, Req0, State) ->
 %% @doc 群投票详情
 -spec vote_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 vote_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:vote:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:vote:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -297,7 +297,7 @@ vote_detail(<<"GET">>, Req0, State) ->
 %% @doc 结束群投票
 -spec vote_close(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 vote_close(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:vote:close">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:vote:close">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -332,7 +332,7 @@ vote_close(<<"POST">>, Req0, State) ->
 %% @doc 群公告列表
 -spec notice_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 notice_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:notice:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:notice:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -375,7 +375,7 @@ notice_list(<<"GET">>, Req0, State) ->
 %% @doc 群公告详情
 -spec notice_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 notice_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:notice:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:notice:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -400,7 +400,7 @@ notice_detail(<<"GET">>, Req0, State) ->
 %% @doc 删除群公告（软删除）
 -spec notice_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 notice_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:notice:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:notice:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -442,7 +442,7 @@ notice_delete(<<"POST">>, Req0, State) ->
 %% @doc 群分组（分类）列表（按用户维度）
 -spec category_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 category_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:category:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:category:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -471,7 +471,7 @@ category_list(<<"GET">>, Req0, State) ->
 %% @doc 删除群分组（分类）
 -spec category_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 category_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:category:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:category:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -515,7 +515,7 @@ category_delete(<<"POST">>, Req0, State) ->
 %% @doc 群标签列表
 -spec tag_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 tag_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:tag:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:tag:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -550,7 +550,7 @@ tag_list(<<"GET">>, Req0, State) ->
 %% @doc 删除群标签
 -spec tag_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 tag_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:tag:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:tag:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -593,7 +593,7 @@ tag_delete(<<"POST">>, Req0, State) ->
 %% @doc 群文件列表
 -spec file_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 file_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:file:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:file:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -620,7 +620,7 @@ file_list(<<"GET">>, Req0, State) ->
 %% @doc 群文件详情
 -spec file_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 file_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:file:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:file:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -642,7 +642,7 @@ file_detail(<<"GET">>, Req0, State) ->
 %% @doc 删除群文件（软删除）
 -spec file_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 file_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:file:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:file:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -685,7 +685,7 @@ file_delete(<<"POST">>, Req0, State) ->
 %% @doc 群相册列表
 -spec album_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 album_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:album:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:album:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -709,7 +709,7 @@ album_list(<<"GET">>, Req0, State) ->
 %% @doc 群相册详情
 -spec album_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 album_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:album:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:album:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -731,7 +731,7 @@ album_detail(<<"GET">>, Req0, State) ->
 %% @doc 删除群相册（软删除）
 -spec album_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 album_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:album:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:album:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -774,7 +774,7 @@ album_delete(<<"POST">>, Req0, State) ->
 %% @doc 群日程列表
 -spec schedule_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 schedule_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:schedule:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:schedule:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -797,7 +797,7 @@ schedule_list(<<"GET">>, Req0, State) ->
 %% @doc 群日程详情
 -spec schedule_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 schedule_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:schedule:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:schedule:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -822,7 +822,7 @@ schedule_detail(<<"GET">>, Req0, State) ->
 %% @doc 取消群日程
 -spec schedule_cancel(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 schedule_cancel(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:schedule:cancel">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:schedule:cancel">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -865,7 +865,7 @@ schedule_cancel(<<"POST">>, Req0, State) ->
 %% @doc 恢复已取消群日程
 -spec schedule_restore(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 schedule_restore(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:schedule:restore">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:schedule:restore">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -910,7 +910,7 @@ schedule_restore(<<"POST">>, Req0, State) ->
 %% @doc 群治理审计日志列表
 -spec governance_log_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 governance_log_list(<<"GET">>, Req0, State) ->
-    case ensure_any_permission(State, [<<"groups:read">>, <<"logs:view">>], Req0) of
+    case adm_acl:ensure_any_permission(State, [<<"groups:read">>, <<"logs:view">>], Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -938,7 +938,7 @@ governance_log_list(_, Req0, _State) ->
 %% @doc 群任务列表
 -spec task_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_list(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -963,7 +963,7 @@ task_list(<<"GET">>, Req0, State) ->
 %% @doc 群任务详情
 -spec task_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_detail(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -987,7 +987,7 @@ task_detail(<<"GET">>, Req0, State) ->
 %% @doc 群任务待批改列表（状态=已提交）
 -spec task_pending_review(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_pending_review(<<"GET">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:read">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -1045,7 +1045,7 @@ task_pending_review(_, Req0, _State) ->
 %% @doc 批改群任务分配
 -spec task_review(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_review(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:review">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:review">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -1111,7 +1111,7 @@ task_review(_, Req0, _State) ->
 %% @doc 删除群任务（软删除）
 -spec task_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_delete(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -1146,7 +1146,7 @@ task_delete(<<"POST">>, Req0, State) ->
 %% @doc 恢复已删除群任务
 -spec task_restore(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_restore(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:restore">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:restore">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -1197,7 +1197,7 @@ task_restore(<<"POST">>, Req0, State) ->
 %% @doc 强制结束群任务
 -spec task_close(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 task_close(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:task:close">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:task:close">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
@@ -1453,96 +1453,6 @@ maybe_existing_atom(Key) ->
         _:_ ->
             undefined
     end.
-
--spec ensure_permission(map(), binary(), cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
-ensure_permission(State, Permission, Req0) ->
-    AdmUserId = maps:get(adm_user_id, State, 0),
-    case has_permission(AdmUserId, Permission) of
-        true ->
-            ok;
-        false ->
-            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
-    end.
-
--spec ensure_any_permission(map(), [binary()], cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
-ensure_any_permission(State, Permissions, Req0) ->
-    AdmUserId = maps:get(adm_user_id, State, 0),
-    case has_any_permission(AdmUserId, Permissions) of
-        true ->
-            ok;
-        false ->
-            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
-    end.
-
--spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when
-    is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission)
-->
-    Permissions = resolve_permissions_by_adm_user_id(AdmUserId),
-    lists:member(Permission, Permissions);
-has_permission(_, _) ->
-    false.
-
--spec has_any_permission(term(), [binary()]) -> boolean().
-has_any_permission(AdmUserId, Permissions) when
-    is_integer(AdmUserId), AdmUserId > 0, is_list(Permissions)
-->
-    UserPermissions = resolve_permissions_by_adm_user_id(AdmUserId),
-    lists:any(fun(Permission) -> lists:member(Permission, UserPermissions) end, Permissions);
-has_any_permission(_, _) ->
-    false.
-
--spec resolve_permissions_by_adm_user_id(integer()) -> list(binary()).
-resolve_permissions_by_adm_user_id(AdmUserId) ->
-    Key = {adm_user_group_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
-        AdmUser when is_map(AdmUser) ->
-            RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
-            lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
-        _ ->
-            []
-    end.
-
--spec role_permissions(integer()) -> list(binary()).
-role_permissions(RoleId) ->
-    try adm_index_handler:role_acl(RoleId) of
-        {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
-            Permissions;
-        _ ->
-            []
-    catch
-        _:_ ->
-            []
-    end.
-
--spec normalize_role_ids(term()) -> list(integer()).
-normalize_role_ids(RoleId) when is_integer(RoleId), RoleId > 0 ->
-    [RoleId];
-normalize_role_ids(RoleIds) when is_list(RoleIds) ->
-    lists:usort([Id || Value <- RoleIds, Id <- [normalize_role_id(Value)], Id > 0]);
-normalize_role_ids(RoleId) ->
-    case normalize_role_id(RoleId) of
-        Id when Id > 0 ->
-            [Id];
-        _ ->
-            []
-    end.
-
--spec normalize_role_id(term()) -> integer().
-normalize_role_id(Value) when is_integer(Value), Value > 0 ->
-    Value;
-normalize_role_id(Value) when is_binary(Value); is_list(Value) ->
-    try ec_cnv:to_integer(Value) of
-        Id when is_integer(Id), Id > 0 ->
-            Id;
-        _ ->
-            0
-    catch
-        _:_ ->
-            0
-    end;
-normalize_role_id(_) ->
-    0.
 
 %% @doc 构建查询条件
 -spec build_where(integer(), integer()) -> map().
@@ -2274,7 +2184,7 @@ normalize_user(User) ->
 %% @doc 管理员踢出群成员
 -spec kick_member(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 kick_member(<<"POST">>, Req0, State) ->
-    case ensure_permission(State, <<"groups:delete">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"groups:delete">>, Req0) of
         {error, RespReq} ->
             RespReq;
         ok ->
