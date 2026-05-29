@@ -32,7 +32,7 @@
 %% @param ExtConfig 扩展配置
 %% @return {ok, VoteMap} | {error, Reason}
 -spec create_vote(integer(), integer(), binary(), [map()], map(), map()) ->
-                     {ok, map()} | {error, term()}.
+    {ok, map()} | {error, term()}.
 create_vote(Gid, CreatorId, Title, Options, Extra, _ExtConfig) ->
     % 验证必填参数
     case Title of
@@ -75,17 +75,22 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
     },
 
     % 准备选项数据
-    OptionsData = lists:map(fun(Option) ->
-        OptionText = maps:get(option_text, Option),
-        SortOrder = maps:get(sort_order, Option, 0),
-        OptionId = elib_id:gen(<<"opt">>),
-        #{
-            vote_id => VoteId,
-            option_id => OptionId,
-            option_text => OptionText,
-            sort_order => SortOrder
-        }
-    end, Options),
+    OptionsData = lists:map(
+        fun(Option) ->
+            %% 前端经 JSON 提交的 option 为二进制键(<<"option_text">>)，
+            %% 而 logic 单测构造的为原子键(option_text)，两者均需兼容。
+            OptionText = maps:get(<<"option_text">>, Option, maps:get(option_text, Option, <<>>)),
+            SortOrder = maps:get(<<"sort_order">>, Option, maps:get(sort_order, Option, 0)),
+            OptionId = elib_id:gen(<<"opt">>),
+            #{
+                vote_id => VoteId,
+                option_id => OptionId,
+                option_text => OptionText,
+                sort_order => SortOrder
+            }
+        end,
+        Options
+    ),
 
     % 插入投票和选项
     case group_vote_ds:insert_vote(VoteData) of
@@ -307,11 +312,14 @@ build_vote_detail(Vote, VoteId) ->
             {ok, TotalVotes} = group_vote_ds:count_total_votes_by_vote_id(VoteId),
 
             % 为每个选项添加得票数
-            OptionsWithCount = lists:map(fun(Option) ->
-                OptionId = maps:get(<<"option_id">>, Option),
-                {ok, Count} = group_vote_ds:count_votes_by_option_id(OptionId),
-                Option#{<<"vote_count">> => Count}
-            end, Options),
+            OptionsWithCount = lists:map(
+                fun(Option) ->
+                    OptionId = maps:get(<<"option_id">>, Option),
+                    {ok, Count} = group_vote_ds:count_votes_by_option_id(OptionId),
+                    Option#{<<"vote_count">> => Count}
+                end,
+                Options
+            ),
 
             % 编码ID字段
             {ok, Vote#{
