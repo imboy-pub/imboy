@@ -34,7 +34,11 @@ init(Req0, State0) ->
 create_action(<<"POST">>, Req0, State, TargetOverride) ->
     PostVals = elib_param:post(Req0),
     TargetType = target_type_from_body(PostVals, TargetOverride),
-    case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
+    case
+        adm_acl:ensure_any_permission(
+            State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0
+        )
+    of
         ok ->
             case ensure_target_feature(Req0, TargetType) of
                 ok ->
@@ -61,7 +65,9 @@ create_action(_, Req0, _State, _TargetOverride) ->
 list_action(<<"GET">>, Req0, State, TargetOverride) ->
     Qs = cowboy_req:parse_qs(Req0),
     TargetType = target_type_from_qs(Qs, TargetOverride),
-    case ensure_any_permission(State, [<<"reports:read">>, <<"moments:report:read">>], Req0) of
+    case
+        adm_acl:ensure_any_permission(State, [<<"reports:read">>, <<"moments:report:read">>], Req0)
+    of
         ok ->
             case ensure_target_feature(Req0, TargetType) of
                 ok ->
@@ -94,7 +100,11 @@ list_action(_, Req0, _State, _TargetOverride) ->
 resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
     PostVals = elib_param:post(Req0),
     TargetType = target_type_from_body(PostVals, TargetOverride),
-    case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
+    case
+        adm_acl:ensure_any_permission(
+            State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0
+        )
+    of
         ok ->
             case ensure_target_feature(Req0, TargetType) of
                 ok ->
@@ -121,7 +131,11 @@ resolve_action(_, Req0, _State, _TargetOverride) ->
 batch_resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
     PostVals = elib_param:post(Req0),
     TargetType = target_type_from_body(PostVals, TargetOverride),
-    case ensure_any_permission(State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0) of
+    case
+        adm_acl:ensure_any_permission(
+            State, [<<"reports:handle">>, <<"moments:report:handle">>], Req0
+        )
+    of
         ok ->
             case ensure_target_feature(Req0, TargetType) of
                 ok ->
@@ -132,9 +146,15 @@ batch_resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
                     ReportIds = normalize_report_ids(RawIds, #{}, []),
                     case {ReportIds, lists:member(Result, [1, 2])} of
                         {[], _} ->
-                            elib_response:error(Req0, <<"report_ids is empty"/utf8>>, ?ERR_BAD_REQUEST);
+                            elib_response:error(
+                                Req0, <<"report_ids is empty"/utf8>>, ?ERR_BAD_REQUEST
+                            );
                         _ ->
-                            case report_logic:admin_batch_resolve(AdmUid, TargetType, ReportIds, Result, Note) of
+                            case
+                                report_logic:admin_batch_resolve(
+                                    AdmUid, TargetType, ReportIds, Result, Note
+                                )
+                            of
                                 {ok, Payload} ->
                                     elib_response:success(Req0, Payload);
                                 {error, Msg} ->
@@ -195,79 +215,6 @@ ensure_target_feature(Req0, TargetType) ->
         Feature ->
             imboy_feature:ensure_enabled(Req0, Feature)
     end.
-
--spec ensure_any_permission(map(), [binary()], cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
-ensure_any_permission(State, Permissions, Req0) ->
-    AdmUserId = maps:get(adm_user_id, State, 0),
-    case has_any_permission(AdmUserId, Permissions) of
-        true ->
-            ok;
-        false ->
-            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
-    end.
-
--spec has_any_permission(term(), [binary()]) -> boolean().
-has_any_permission(AdmUserId, PermissionsToCheck) when
-    is_integer(AdmUserId),
-    AdmUserId > 0,
-    is_list(PermissionsToCheck)
-->
-    UserPermissions = resolve_permissions_by_adm_user_id(AdmUserId),
-    lists:any(fun(Permission) -> lists:member(Permission, UserPermissions) end, PermissionsToCheck);
-has_any_permission(_, _) ->
-    false.
-
--spec resolve_permissions_by_adm_user_id(integer()) -> list(binary()).
-resolve_permissions_by_adm_user_id(AdmUserId) ->
-    Key = {adm_user_report_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
-        AdmUser when is_map(AdmUser) ->
-            RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
-            lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
-        _ ->
-            []
-    end.
-
--spec role_permissions(integer()) -> list(binary()).
-role_permissions(RoleId) ->
-    try adm_index_handler:role_acl(RoleId) of
-        {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
-            Permissions;
-        _ ->
-            []
-    catch
-        _:_ ->
-            []
-    end.
-
--spec normalize_role_ids(term()) -> list(integer()).
-normalize_role_ids(RoleId) when is_integer(RoleId), RoleId > 0 ->
-    [RoleId];
-normalize_role_ids(RoleIds) when is_list(RoleIds) ->
-    lists:usort([Id || Value <- RoleIds, Id <- [normalize_role_id(Value)], Id > 0]);
-normalize_role_ids(RoleValue) ->
-    case normalize_role_id(RoleValue) of
-        Id when Id > 0 ->
-            [Id];
-        _ ->
-            []
-    end.
-
--spec normalize_role_id(term()) -> integer().
-normalize_role_id(Value) when is_integer(Value), Value > 0 ->
-    Value;
-normalize_role_id(Value) when is_binary(Value); is_list(Value) ->
-    try ec_cnv:to_integer(Value) of
-        Id when is_integer(Id), Id > 0 ->
-            Id;
-        _ ->
-            0
-    catch
-        _:_ ->
-            0
-    end;
-normalize_role_id(_) ->
-    0.
 
 -spec parse_qs_int(term(), integer(), integer(), integer()) -> integer().
 parse_qs_int(undefined, Default, _Min, _Max) ->
