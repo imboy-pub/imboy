@@ -230,7 +230,7 @@ orphan_stats_returns_map_test_() ->
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
             {elib_pg, [
-                {'one', 2, fun(_Sql, []) ->
+                {'one', 2, fun(_Sql, [_AgeDays]) ->
                     {ok, #{<<"count">> => 5, <<"total_size">> => 1024000}}
                 end}
             ]}
@@ -251,7 +251,7 @@ orphan_list_for_delete_returns_rows_test_() ->
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, []) ->
+                {'query', 2, fun(_Sql, [_AgeDays]) ->
                     {ok, [
                         #{<<"id">> => 1, <<"path">> => <<"file_1/a.jpg">>},
                         #{<<"id">> => 2, <<"path">> => <<"file_2/b.png">>}
