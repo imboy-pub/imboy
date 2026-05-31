@@ -535,7 +535,8 @@ qrcode(Req0, State) ->
 
     Key = config_ds:env(solidified_key),
     ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
-    ExpiredAtInt = binary_to_integer(ExpiredAt2),
+    % 非法/缺失 exp 参数时安全返回 0，避免 binary_to_integer badarg 崩溃
+    ExpiredAtInt = elib_cnv:safe_to_integer(ExpiredAt2),
     Verified =
         elib_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
     Now = elib_dt:now(),

@@ -87,7 +87,7 @@ download(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
         _ ->
-            FileId = binary_to_integer(FileIdStr),
+            FileId = elib_cnv:safe_to_integer(FileIdStr),
             % 调用 Logic 层下载文件
             case group_file_logic:download(FileId, CurrentUid) of
                 {ok, FileUrl} ->
@@ -118,12 +118,13 @@ list(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
         _ ->
-            Page = binary_to_integer(PageStr),
-            Size = binary_to_integer(SizeStr),
-            Options = case Category of
-                undefined -> #{};
-                _ -> #{category => Category}
-            end,
+            Page = safe_page(PageStr, 1),
+            Size = safe_page(SizeStr, 20),
+            Options =
+                case Category of
+                    undefined -> #{};
+                    _ -> #{category => Category}
+                end,
 
             % 调用 Logic 层查询文件列表
             case group_file_logic:list(Gid, CurrentUid, Page, Size, Options) of
@@ -184,8 +185,8 @@ search(Req0, _State) ->
         {_, <<>>} ->
             elib_response:error(Req0, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
         {_, _} ->
-            Page = binary_to_integer(PageStr),
-            Size = binary_to_integer(SizeStr),
+            Page = safe_page(PageStr, 1),
+            Size = safe_page(SizeStr, 20),
 
             % 调用 Logic 层搜索文件
             case group_file_logic:search(Gid, Keyword, Page, Size) of
@@ -232,11 +233,12 @@ parse_multipart(Parts) ->
     parse_multipart(Parts, undefined, undefined, undefined, undefined).
 
 parse_multipart([], Gid, FileName, FileBinary, FileType) ->
-    FinalType = case FileType of
-        undefined -> <<"application/octet-stream">>;
-        <<>> -> <<"application/octet-stream">>;
-        _ -> FileType
-    end,
+    FinalType =
+        case FileType of
+            undefined -> <<"application/octet-stream">>;
+            <<>> -> <<"application/octet-stream">>;
+            _ -> FileType
+        end,
     {Gid, FileName, FileBinary, FinalType};
 parse_multipart([Part | Rest], Gid, FileName, FileBinary, FileType) ->
     case Part of
@@ -271,3 +273,13 @@ choose_binary(Value, _Default) when is_binary(Value), Value =/= <<>> ->
     Value;
 choose_binary(_Value, Default) ->
     Default.
+
+%% @doc 安全解析分页参数，非法或小于 1 时回退默认值，避免 binary_to_integer badarg 崩溃
+-spec safe_page(binary(), pos_integer()) -> pos_integer().
+safe_page(Bin, Default) ->
+    case elib_cnv:safe_to_integer(Bin) of
+        N when N >= 1 ->
+            N;
+        _ ->
+            Default
+    end.

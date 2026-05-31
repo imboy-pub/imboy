@@ -78,29 +78,43 @@ bind_mail(Req0) ->
 -spec validate_bind_mail_params(binary(), binary(), binary(), binary()) ->
     {ok, map()} | {error, binary()}.
 validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
-    CacheKey = {bind_mail, Mail, Ts},
-    CacheVal = imboy_cache:get(CacheKey),
-    SolKey = config_ds:env(solidified_key),
-    Args = #{ts => Ts, uin => Uid, mail => Mail},
-    Tk2 = elib_str:replace(Tk, " ", "+"),
-    Now = elib_dt:second(),
-    Ts2 = binary_to_integer(Ts),
-    ExpectedTk = elib_hasher:hmac_sha512(elib_cnv:map_to_query(Args), SolKey),
+    case parse_ts(Ts) of
+        error ->
+            {error, "签名有误"};
+        {ok, Ts2} ->
+            CacheKey = {bind_mail, Mail, Ts},
+            CacheVal = imboy_cache:get(CacheKey),
+            SolKey = config_ds:env(solidified_key),
+            Args = #{ts => Ts, uin => Uid, mail => Mail},
+            Tk2 = elib_str:replace(Tk, " ", "+"),
+            Now = elib_dt:second(),
+            ExpectedTk = elib_hasher:hmac_sha512(elib_cnv:map_to_query(Args), SolKey),
 
-    % 检查缓存
-    case validate_bind_mail_cache(CacheVal, Mail) of
-        {error, _} = Error ->
-            Error;
-        ok ->
-            % 检查签名过期和签名匹配
-            if
-                Now > Ts2 ->
-                    {error, "签名已过期"};
-                ExpectedTk == Tk2 ->
-                    {ok, #{uid => Uid, mail => Mail, cache_key => CacheKey}};
-                true ->
-                    {error, "签名有误"}
+            % 检查缓存
+            case validate_bind_mail_cache(CacheVal, Mail) of
+                {error, _} = Error ->
+                    Error;
+                ok ->
+                    % 检查签名过期和签名匹配
+                    if
+                        Now > Ts2 ->
+                            {error, "签名已过期"};
+                        ExpectedTk == Tk2 ->
+                            {ok, #{uid => Uid, mail => Mail, cache_key => CacheKey}};
+                        true ->
+                            {error, "签名有误"}
+                    end
             end
+    end.
+
+%% @doc 安全解析时间戳，非法二进制返回 error 而非崩溃
+-spec parse_ts(binary()) -> {ok, integer()} | error.
+parse_ts(Ts) ->
+    try
+        {ok, binary_to_integer(Ts)}
+    catch
+        error:badarg ->
+            error
     end.
 
 %% @doc 验证绑定邮箱缓存状态
@@ -142,16 +156,6 @@ login(Req0) ->
     Password = maps:get(<<"pwd">>, PostVals, <<>>),
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
-    % DEBUG: 临时调试登录密码问题
-    ?DEBUG_LOG(#{
-        login_debug => #{
-            account => Account,
-            password_len => byte_size(Password),
-            rsa_encrypt => RsaEncrypt,
-            pwd_len => byte_size(Pwd),
-            pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32))
-        }
-    }),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
 
     % 提取设备信息

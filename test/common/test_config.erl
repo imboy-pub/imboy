@@ -22,7 +22,7 @@ get_test_db_config() ->
         port => application:get_env(imboy, test_db_port, 4323),
         database => application:get_env(imboy, test_db_name, "imboy_v1"),
         username => application:get_env(imboy, test_db_user, "imboy_user"),
-        password => application:get_env(imboy, test_db_password, "V6uucUwhU9pUAYis"),
+        password => application:get_env(imboy, test_db_password, "abc54321"),
         pool_size => application:get_env(imboy, test_db_pool_size, 5),
         timeout => get_test_timeout()
     }.
@@ -38,7 +38,7 @@ get_test_batch_size() ->
 %% @doc 检查是否为测试环境
 is_test_env() ->
     application:get_env(imboy, env, development) =:= test orelse
-    os:getenv("IMBOY_ENV") =:= "test".
+        os:getenv("IMBOY_ENV") =:= "test".
 
 %% @doc 获取测试表前缀
 test_table_prefix() ->
@@ -67,7 +67,9 @@ test_user_data() ->
 test_user_data(Id) ->
     (test_user_data())#{
         id => Id,
-        mobile => <<(binary:copy(<<"1">>, 8))/binary, (integer_to_binary(Id rem 100000000))/binary>>,
+        mobile => <<
+            (binary:copy(<<"1">>, 8))/binary, (integer_to_binary(Id rem 100000000))/binary
+        >>,
         email => <<"test", (integer_to_binary(Id))/binary, "@example.com">>,
         nickname => <<"Test User ", (integer_to_binary(Id))/binary>>
     }.
