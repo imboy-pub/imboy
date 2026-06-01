@@ -35,7 +35,9 @@ start_link() ->
 %% 单条事件可用 publish/2 或传入单元素列表。
 -spec publish([event()]) -> ok.
 publish(Events) when is_list(Events) ->
-    lists:foreach(fun(E) -> gen_event:notify(?MGR, E) end, Events),
+    %% best-effort：通知为副作用，总线未启动/不可达时静默（catch），
+    %% 不让 gen_event:notify 的 badarg 阻断聚合外壳的核心业务流程（如 join/leave）。
+    lists:foreach(fun(E) -> catch gen_event:notify(?MGR, E) end, Events),
     ok.
 
 %% @doc 派发单条事件（语法糖）。

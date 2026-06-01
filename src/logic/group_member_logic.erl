@@ -5,21 +5,32 @@
 
 %% API 导出
 -export([
-    join_group/4,          % 获取 Conn 并调用事务版本
-    join_group/5,          % 事务内部核心逻辑
+    % 获取 Conn 并调用事务版本
+    join_group/4,
+    % 事务内部核心逻辑
+    join_group/5,
     leave/3,
     alias/4,
-    update_role/4,         % 更新群成员角色
-    mute/4,               % 群成员禁言
-    unmute/3,             % 群成员解禁
-    check_mute/2,         % 检查禁言状态
+    % 更新群成员角色
+    update_role/4,
+    % 群成员禁言
+    mute/4,
+    % 群成员解禁
+    unmute/3,
+    % 检查禁言状态
+    check_mute/2,
     list_member/1,
     list_member/2,
     % 新增权限验证函数
-    has_admin_permission/2,        % 检查是否有管理权限
-    has_senior_admin_permission/2, % 检查是否有高级管理权限
-    is_owner_or_vice_owner/2,      % 检查是否是群主或副群主
-    role_name/1              % 获取角色名称
+
+    % 检查是否有管理权限
+    has_admin_permission/2,
+    % 检查是否有高级管理权限
+    has_senior_admin_permission/2,
+    % 检查是否是群主或副群主
+    is_owner_or_vice_owner/2,
+    % 获取角色名称
+    role_name/1
 ]).
 
 -include("log.hrl").
@@ -50,15 +61,19 @@ join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
     Max = maps:get(max_members, OptData, undefined),
     Count = maps:get(current_count, OptData, undefined),
     case validate_group_limit(Max, Count) of
-        {error, Reason} -> {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
         ok ->
             % 使用事务执行加入操作
-            case elib_pg:with_tx(
-                fun(Conn) -> join_group(Conn, JoinMode, Uid, Gid, OptData) end
-            ) of
-                {ok, UidSum} ->
-                    % 发送加入通知
-                    group_member_join_notice(Gid, Uid, UidSum),
+            case
+                elib_pg:with_tx(
+                    fun(Conn) -> join_group(Conn, JoinMode, Uid, Gid, OptData) end
+                )
+            of
+                {ok, _UidSum} ->
+                    %% T2.3: 成员变更产出领域事件，由 group_event_handler 投递通知
+                    %% （替代原 group_member_join_notice 直调，逻辑已迁 handler）
+                    imboy_domain_event:publish([{member_added, Gid, Uid}]),
                     ok;
                 {error, Reason} ->
                     {error, Reason}
@@ -70,7 +85,8 @@ join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
 %% @doc 用户加入群组（事务内部版本）
 %% 调用 DS 层执行数据操作
 %% ===================================================================
--spec join_group(epgsql:connection(), binary(), integer(), integer(), map()) -> {ok, integer()} | {error, binary()}.
+-spec join_group(epgsql:connection(), binary(), integer(), integer(), map()) ->
+    {ok, integer()} | {error, binary()}.
 join_group(Conn, JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
     % 使用 DS 层接口
     group_member_ds:join_group(Conn, JoinMode, Uid, Gid, OptData).
@@ -82,25 +98,20 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
 leave(Uid, Gid, CurrentUid) ->
     % 使用事务执行离开操作
     case elib_pg:with_tx(fun(Conn) -> leave_internal(Conn, Uid, Gid, CurrentUid) end) of
-        {ok, UidSum, _GM} ->
+        {ok, _UidSum, _GM} ->
             % 更新内存缓存
             group_ds:leave(Uid, Gid),
-            % 通知其他成员
-            ToUidLi = group_ds:member_uids(Gid),
-            Action = <<"group_member_leave">>,
-            Payload = #{
-                <<"gid">>        => Gid,
-                <<"user_id_sum">> => UidSum,
-                <<"leave_uid">>   => Uid
-            },
-            _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
+            %% T2.3: 成员变更产出领域事件，由 group_event_handler 投递通知
+            %% （替代原 msg_s2c_ds:send 直调，逻辑已迁 handler）
+            imboy_domain_event:publish([{member_removed, Gid, Uid}]),
             ok;
         _ ->
             ok
     end.
 
 %% @doc 内部离开操作（事务内）
--spec leave_internal(pid(), integer(), integer(), integer()) -> {ok, integer(), map()} | {error, any()}.
+-spec leave_internal(pid(), integer(), integer(), integer()) ->
+    {ok, integer(), map()} | {error, any()}.
 leave_internal(Conn, Uid, Gid, CurrentUid) ->
     % 使用 DS 层接口
     group_member_ds:leave(Conn, Uid, Gid, CurrentUid).
@@ -139,12 +150,17 @@ alias(Uid, Gid, Alias, Description) ->
 update_role(CurrentUid, Gid, UserId, Role) ->
     % 验证操作权限
     case validate_role_permission(CurrentUid, Gid) of
-        {error, Reason} -> {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
         ok ->
             % 获取当前时间
             Now = elib_dt:now(),
             % 使用事务执行角色更新操作
-            case elib_pg:with_tx(fun(Conn) -> update_role_internal(Conn, CurrentUid, Gid, UserId, Role, Now) end) of
+            case
+                elib_pg:with_tx(fun(Conn) ->
+                    update_role_internal(Conn, CurrentUid, Gid, UserId, Role, Now)
+                end)
+            of
                 ok ->
                     % 发送角色变更通知
                     role_change_notice(CurrentUid, Gid, UserId, Role),
@@ -167,7 +183,8 @@ update_role(CurrentUid, Gid, UserId, Role) ->
 mute(CurrentUid, Gid, UserId, Duration) ->
     % 验证操作权限
     case validate_mute_permission(CurrentUid, Gid) of
-        {error, Reason} -> {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
         ok ->
             % 获取当前时间
             Now = elib_dt:millisecond(),
@@ -201,11 +218,14 @@ mute(CurrentUid, Gid, UserId, Duration) ->
 -spec unmute(integer(), integer(), integer()) -> ok | {error, binary()}.
 unmute(CurrentUid, Gid, UserId) ->
     case validate_mute_permission(CurrentUid, Gid) of
-        {error, Reason} -> {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
         ok ->
-            case elib_pg:with_tx(
-                fun(Conn) -> group_member_ds:update_mute(Conn, Gid, UserId, null) end
-            ) of
+            case
+                elib_pg:with_tx(
+                    fun(Conn) -> group_member_ds:update_mute(Conn, Gid, UserId, null) end
+                )
+            of
                 ok ->
                     % 广播解禁信号（mute_until = 0）
                     mute_notice(CurrentUid, Gid, UserId, 0),
@@ -227,7 +247,8 @@ check_mute(Gid, UserId) ->
         {ok, MemberInfo} ->
             MuteUntilRaw = maps:get(<<"mute_until">>, MemberInfo, null),
             case to_millisecond(MuteUntilRaw) of
-                null -> false;
+                null ->
+                    false;
                 MuteUntil when is_integer(MuteUntil) ->
                     % 如果未到期则返回 true
                     MuteUntil >= elib_dt:millisecond()
@@ -292,7 +313,8 @@ mute_notice(AdminUid, Gid, UserId, MuteUntil) ->
     % slice-9b：MuteUntil == 0 作为解禁信号，跳过时长计算
     {RemainingSec, DurationText} =
         case MuteUntil of
-            0 -> {0, <<>>};
+            0 ->
+                {0, <<>>};
             _ ->
                 R = round((MuteUntil - Now) / 1000),
                 {R, format_duration(R)}
@@ -338,29 +360,13 @@ validate_group_limit(0, _Count) -> {error, <<"群不存在或群ID有误"/utf8>>
 validate_group_limit(Max, Count) when is_integer(Max), Max =< Count -> {error, <<"群成员已满"/utf8>>};
 validate_group_limit(_, _) -> ok.
 
-%% 发送加入通知
--spec group_member_join_notice(integer(), integer(), integer()) -> ok.
-group_member_join_notice(Gid, Uid, Sum) ->
-    ToUidLi = group_ds:member_uids(Gid),
-    User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
-    %% v2.0: 使用 send/7 API
-    Action = <<"group_member_join">>,
-    Payload = #{
-        <<"gid">>          => Gid,
-        <<"user_id_sum">>  => Sum,
-        <<"nickname">>     => maps:get(<<"nickname">>, User, <<>>),
-        <<"avatar">>       => maps:get(<<"avatar">>, User, <<>>),
-        <<"account">>      => maps:get(<<"account">>, User, <<>>)
-    },
-    _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, nosave),
-    ok.
-
 %% ===================================================================
 %% EUnit 测试示例
 %% ===================================================================
 
 %% @doc 内部角色更新操作（事务内）
--spec update_role_internal(pid(), integer(), integer(), integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.
+-spec update_role_internal(pid(), integer(), integer(), integer(), integer(), integer()) ->
+    {ok, integer()} | {error, any()}.
 update_role_internal(Conn, _CurrentUid, Gid, UserId, Role, Now) ->
     % 使用 DS 层接口执行角色更新
     group_member_ds:update_role(Conn, Gid, UserId, Role, Now).
