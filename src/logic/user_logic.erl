@@ -198,19 +198,26 @@ online_state(User) when is_map(User) ->
 -spec batch_online_state([map()]) -> [map()].
 batch_online_state(Users) when is_list(Users) ->
     % 提取所有 Uid 并查询在线状态
-    UidStatusMap = lists:foldl(fun(User, Acc) ->
-        Uid = maps:get(<<"id">>, User),
-        Status = check_online_status(Uid),
-        maps:put(Uid, Status, Acc)
-    end, #{}, Users),
+    UidStatusMap = lists:foldl(
+        fun(User, Acc) ->
+            Uid = maps:get(<<"id">>, User),
+            Status = check_online_status(Uid),
+            maps:put(Uid, Status, Acc)
+        end,
+        #{},
+        Users
+    ),
 
     % 合并在线状态到用户信息
-    lists:map(fun(User) ->
-        Uid = maps:get(<<"id">>, User),
-        LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
-        Status = maps:get(Uid, UidStatusMap, offline),
-        User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
-    end, Users).
+    lists:map(
+        fun(User) ->
+            Uid = maps:get(<<"id">>, User),
+            LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
+            Status = maps:get(Uid, UidStatusMap, offline),
+            User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
+        end,
+        Users
+    ).
 
 %% @private
 %% @doc 检查单个用户的在线状态
@@ -268,45 +275,42 @@ find_by_ids(Ids, Column) ->
     end.
 
 -spec update(integer(), binary(), list() | binary()) ->
-                ok | {ok, integer() | binary()} | {error, any()}.
-update(Uid, <<"email">>, Val) when is_binary(Val) ->
-    IsEmail = elib_type:is_email([Val]),
-    User =
-        if IsEmail ->
-               user_ds:find_by_email(Val, <<"id">>);
-           true ->
-               #{}
-        end,
-    case {IsEmail, maps:size(User)} of
-        {true, 0} ->
-            send_bind_email(Uid, Val);
-        {true, _} ->
-            {error, {1, <<"">>, <<"Email 被占用"/utf8>>}};
-        {false, _} ->
-            {error, {1, <<"">>, <<"Email 格式有误"/utf8>>}}
-    end;
-update(Uid, <<"sign">>, Val) ->
-    user_ds:update_field(Uid, <<"sign">>, Val);
-update(Uid, <<"nickname">>, Val) ->
-    user_ds:update_field(Uid, <<"nickname">>, Val);
-update(Uid, <<"avatar">>, Val) ->
-    user_ds:update_field(Uid, <<"avatar">>, Val);
-update(Uid, <<"region">>, Val) ->
-    user_ds:update_field(Uid, <<"region">>, Val);
-update(Uid, <<"birthday">>, Val) ->
-    user_ds:update_field(Uid, <<"birthday">>, Val);
-% 性别 1 男  2 女  3 保密
-update(Uid, <<"gender">>, Val) when Val =:= <<"1">>; Val =:= <<"2">>; Val =:= <<"3">> ->
-    user_ds:update_field(Uid, <<"gender">>, binary_to_integer(Val));
-update(_Uid, <<"gender">>, _Val) ->
-    {error, {1, <<"">>, <<"性别值必须是 1、2 或 3"/utf8>>}};
-update(Uid, <<"allow_search">>, Val) when Val =:= <<"1">>; Val =:= <<"2">> ->
-    %% allow_search 字段在 fts_user 表中，需要特殊处理
-    user_ds:update_allow_search(Uid, binary_to_integer(Val));
-update(_Uid, <<"allow_search">>, _Val) ->
-    {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
-update(_Uid, _Field, _Val) ->
-    {error, {1, <<"">>, <<"Unsupported field">>}}.
+    ok | {ok, integer() | binary()} | {error, any()}.
+%% T3.2 退化外壳：资料字段校验委托 user_agg:validate_update/2（纯决策），
+%% 本函数仅执行 I/O（落库 / email 占用查询 / 绑定邮件）与 reject→线格式映射。
+%% 行为逐字保持 T3.1 前实现（含 email 非 binary 落 unsupported、gender/
+%% allow_search 非法各自专属错误、性别/allow_search 转 integer 落库）。
+update(Uid, Field, Val) ->
+    case user_agg:validate_update(Field, Val) of
+        {ok, {check_email, Email}} ->
+            bind_email_if_available(Uid, Email);
+        {ok, {set_gender, N}} ->
+            user_ds:update_field(Uid, <<"gender">>, N);
+        {ok, {set_allow_search, N}} ->
+            %% allow_search 字段在 fts_user 表中，需要特殊处理
+            user_ds:update_allow_search(Uid, N);
+        {ok, {set_field, F, V}} ->
+            user_ds:update_field(Uid, F, V);
+        {error, bad_email_format} ->
+            {error, {1, <<"">>, <<"Email 格式有误"/utf8>>}};
+        {error, bad_gender} ->
+            {error, {1, <<"">>, <<"性别值必须是 1、2 或 3"/utf8>>}};
+        {error, bad_allow_search} ->
+            {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
+        {error, unsupported_field} ->
+            {error, {1, <<"">>, <<"Unsupported field">>}}
+    end.
+
+%% @doc email 占用查询 + 绑定（I/O 外壳）。格式已由 user_agg 裁定为合法，
+%% 此处仅查占用：无占用则发绑定邮件，已占用返回错误。
+%% @private
+bind_email_if_available(Uid, Email) ->
+    case maps:size(user_ds:find_by_email(Email, <<"id">>)) of
+        0 ->
+            send_bind_email(Uid, Email);
+        _ ->
+            {error, {1, <<"">>, <<"Email 被占用"/utf8>>}}
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -359,26 +363,24 @@ send_bind_email(Uid, Email) ->
 
     SolKey = config_ds:env(solidified_key),
     Args =
-        #{ts => ExpireAtS,
-          uin => Uid,
-          mail => Email},
+        #{
+            ts => ExpireAtS,
+            uin => Uid,
+            mail => Email
+        },
 
     Tk = elib_hasher:hmac_sha512(
-             elib_cnv:map_to_query(Args), SolKey),
+        elib_cnv:map_to_query(Args), SolKey
+    ),
     Url = elib_uri:build_query(
-              config_ds:env(base_url), <<"/passport/bind_mail">>, Args#{tk => Tk}),
+        config_ds:env(base_url), <<"/passport/bind_mail">>, Args#{tk => Tk}
+    ),
     Body =
-        <<"Hi, ",
-          Title/binary,
-          "：<br/><br/>IMBoy正在尝试绑定邮件地址 "/utf8,
-          (elib_cnv:safe_to_binary(Email))/binary,
-          " 到你的账号（昵称："/utf8,
-          Nickname/binary,
-          " )。<br/><br/>如果这是你的操作，请 <a href=\""/utf8,
-          Url/binary,
-          "\" target=\"_blank\">点击确认</a> 完成邮箱绑定，截止之"/utf8,
-          ExpireAt/binary,
-          "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：ht"/utf8,
-          "tps://www.imboy.pub/"/utf8>>,
+        <<"Hi, ", Title/binary, "：<br/><br/>IMBoy正在尝试绑定邮件地址 "/utf8,
+            (elib_cnv:safe_to_binary(Email))/binary, " 到你的账号（昵称："/utf8, Nickname/binary,
+            " )。<br/><br/>如果这是你的操作，请 <a href=\""/utf8, Url/binary,
+            "\" target=\"_blank\">点击确认</a> 完成邮箱绑定，截止之"/utf8, ExpireAt/binary,
+            "前链接有效。<br/>如果你没有操作绑定此邮箱，请忽略此邮件。<br/><br/> 如果需要了解更多信息，请访问IMBoy官方网站：ht"/utf8,
+            "tps://www.imboy.pub/"/utf8>>,
     _ = elib_email:send(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
     {ok, <<"success">>}.
