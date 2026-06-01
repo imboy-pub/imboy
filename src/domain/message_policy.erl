@@ -1,0 +1,69 @@
+%%% @doc 消息策略纯函数 / Message Policy (pure functions)
+%%%
+%%% DDD 充血改造 Phase 1 / T1.1：从 msg_c2c_logic:c2c/3 与
+%%% stage_and_send_c2c/11 中抽离「可发 / 暂存 / 构建」三类**纯决策**，
+%%% 使其零副作用、可 eunit 独测；I/O 时序保留在 logic 外壳（T1.2 接线）。
+%%%
+%%% Pure decision core extracted from the C2C send transaction script.
+%%% No I/O, no process messaging — just deterministic decisions the
+%%% imperative shell consumes. Enables zero-mock unit testing.
+-module(message_policy).
+
+-export([send_decision/2, encode_payload/1, reply_mode/1, build_server_ack/2]).
+
+-export_type([send_decision/0, reply_mode/0]).
+
+%% 可发决策结果。
+-type send_decision() ::
+    allow
+    | {reject, not_a_friend}
+    | {reject, in_denylist}.
+
+%% 暂存/存储路径：无引用 vs 带引用。
+-type reply_mode() ::
+    none
+    | {reply, MsgId :: binary(), FromId :: integer(), Snippet :: binary()}.
+
+%% @doc 【可发】基于好友关系与黑名单状态裁决能否发送。
+%%
+%% 精确镜像 msg_c2c_logic:c2c/3 现有 case 语义（行为不变是回归契约）。
+%% ⚠️ 语义留痕：原实现用 `InDenylist > 0` 比较，而 friend_ds:check_relationship/2
+%% 的 spec 为 {boolean(), boolean()}；Erlang term 序中 atom > number，故
+%% `false > 0` =:= true。即「非好友且未拉黑」({false,false}) 会落入
+%% in_denylist 分支（第三子句对纯布尔输入实为 dead code）。此处**原样保留**，
+%% 不在 T1.1 修正——任何语义修复须单独评审 + 回归（见迭代报告标记）。
+-spec send_decision(
+    IsFriend :: boolean(),
+    InDenylist :: boolean() | integer()
+) -> send_decision().
+send_decision(true, false) ->
+    allow;
+send_decision(_, InDenylist) when InDenylist > 0 ->
+    {reject, in_denylist};
+send_decision(false, _) ->
+    {reject, not_a_friend}.
+
+%% @doc 【构建】payload 归一化：map 编码为 JSON binary，binary 原样透传。
+%% 镜像 stage_and_send_c2c/11 中的 PayloadJson 编码分支。
+-spec encode_payload(map() | binary()) -> binary().
+encode_payload(P) when is_map(P) ->
+    jsone:encode(P, [native_utf8]);
+encode_payload(P) when is_binary(P) ->
+    P.
+
+%% @doc 【暂存】从 extract_reply_info/1 的三元组裁决存储路径。
+%% {<<>>, 0, <<>>} 表示无引用；否则带引用（需校验被引用消息存在性）。
+-spec reply_mode({binary(), integer(), binary()}) -> reply_mode().
+reply_mode({<<>>, 0, <<>>}) ->
+    none;
+reply_mode({MsgId, FromId, Snippet}) ->
+    {reply, MsgId, FromId, Snippet}.
+
+%% @doc 【构建】组装 C2C_SERVER_ACK 响应 map（纯，时间戳由外壳注入）。
+-spec build_server_ack(MsgId :: binary(), ServerTs :: integer()) -> map().
+build_server_ack(MsgId, ServerTs) ->
+    #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"C2C_SERVER_ACK">>,
+        <<"server_ts">> => ServerTs
+    }.
