@@ -18,7 +18,8 @@
 -include("log.hrl").
 -include("error_code.hrl").
 
--define(REVOKE_TIMEOUT_MS, 120000). % 2分钟
+% 2分钟
+-define(REVOKE_TIMEOUT_MS, 120000).
 
 %% 抑制 Dialyzer 警告 - 内部辅助函数
 -dialyzer({nowarn_function, [c2c/3, prepare_c2c_data/2, stage_and_send_c2c/11]}).
@@ -36,14 +37,29 @@ c2c(MsgId, CurrentUid, Data) ->
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
     elib_log:info([<<"msg_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
-    case {IsFriend, InDenylist} of
-        {true, false} ->
-            {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(CurrentUid, Data),
-            stage_and_send_c2c(MsgId, To, ToId, From, PayloadJson, MsgType, Action, E2EE, Timestamps, CurrentUid, Data);
-        {_, InDenylist2} when InDenylist2 > 0 ->
+    %% T1.2：可发决策退化为外壳调用纯函数 message_policy:send_decision/2
+    case message_policy:send_decision(IsFriend, InDenylist) of
+        allow ->
+            {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(
+                CurrentUid, Data
+            ),
+            stage_and_send_c2c(
+                MsgId,
+                To,
+                ToId,
+                From,
+                PayloadJson,
+                MsgType,
+                Action,
+                E2EE,
+                Timestamps,
+                CurrentUid,
+                Data
+            );
+        {reject, in_denylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
             {reply, Msg};
-        {false, _InDenylist} ->
+        {reject, not_a_friend} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, To),
             % elib_log:info(Msg),
             {reply, Msg}
@@ -105,7 +121,8 @@ prepare_c2c_data(CurrentUid, Data) ->
     % v2.0: 从顶层提取字段
     MsgType = maps:get(<<"msg_type">>, Data, <<>>),
     Action = maps:get(<<"action">>, Data, <<>>),
-    E2EE = maps:get(<<"e2ee">>, Data, null), % map() | null
+    % map() | null
+    E2EE = maps:get(<<"e2ee">>, Data, null),
 
     Timestamps = #{
         now_ts => NowTs,
@@ -116,16 +133,28 @@ prepare_c2c_data(CurrentUid, Data) ->
 
 %% @doc 备份并发送单聊消息
 %% @private
--spec stage_and_send_c2c(binary(), binary(), integer(), binary(), binary() | map(), binary(), binary(), map(), map(), integer(), map()) ->
-          ok | {reply, map()}.
-stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid, Data) ->
+-spec stage_and_send_c2c(
+    binary(),
+    binary(),
+    integer(),
+    binary(),
+    binary() | map(),
+    binary(),
+    binary(),
+    map(),
+    map(),
+    integer(),
+    map()
+) ->
+    ok | {reply, map()}.
+stage_and_send_c2c(
+    MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid, Data
+) ->
     #{now_ts := NowTs, now_ms := NowMS, created_at_rfc := CreatedAtRfc} = Timestamps,
 
     % 【修复】将 Payload map 编码成 JSON binary
-    PayloadJson = case Payload of
-        Map when is_map(Map) -> jsone:encode(Payload, [native_utf8]);
-        Bin when is_binary(Bin) -> Payload
-    end,
+    % T1.2：构建决策退化为外壳调用 message_policy:encode_payload/1
+    PayloadJson = message_policy:encode_payload(Payload),
 
     case imboy_policy:validate_message_write(<<"C2C">>, MsgType, Action, E2EE, PayloadJson) of
         ok ->
@@ -133,87 +162,154 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
             {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
 
             % 【关键修复】先备份到 staging 表（同步，确保消息安全）
-            StageResult = case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
-                {<<>>, 0, <<>>} ->
-                    % 没有引用信息，使用常规方式
-                    msg_store_ds:stage(
-                        <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
-                        CurrentUid, ToId, CreatedAtRfc, NowTs);
-                _ ->
-                    % 有引用信息，需要先验证被引用的消息是否存在
-                    case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
-                        {ok, _OriginalMsg} ->
-                            msg_store_ds:stage(
-                                <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
-                                CurrentUid, ToId, CreatedAtRfc, NowTs);
-                        {error, not_found} ->
-                            % 被引用的消息不存在，返回错误
-                            self() ! {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)},
-                            error;
-                        {error, Reason} ->
-                            % 兼容旧库结构：回复校验查询失败时降级为“跳过严格校验”，避免消息发送流程崩溃
-                            ok = ?ERROR_LOG("[C2C_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
-                                       [MsgId, ReplyToMsgId, Reason]),
-                            msg_store_ds:stage(
-                                <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
-                                CurrentUid, ToId, CreatedAtRfc, NowTs);
-                        Other ->
-                            ok = ?ERROR_LOG("[C2C_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
-                                       [MsgId, ReplyToMsgId, Other]),
-                            msg_store_ds:stage(
-                                <<"c2c">>, MsgId, MsgType, Action, E2EE, PayloadJson,
-                                CurrentUid, ToId, CreatedAtRfc, NowTs)
-                    end
-            end,
+            % T1.2：暂存路径决策退化为外壳调用 message_policy:reply_mode/1
+            StageResult =
+                case message_policy:reply_mode({ReplyToMsgId, ReplyToFromId, ReplySnippet}) of
+                    none ->
+                        % 没有引用信息，使用常规方式
+                        msg_store_ds:stage(
+                            <<"c2c">>,
+                            MsgId,
+                            MsgType,
+                            Action,
+                            E2EE,
+                            PayloadJson,
+                            CurrentUid,
+                            ToId,
+                            CreatedAtRfc,
+                            NowTs
+                        );
+                    {reply, _, _, _} ->
+                        % 有引用信息，需要先验证被引用的消息是否存在
+                        case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
+                            {ok, _OriginalMsg} ->
+                                msg_store_ds:stage(
+                                    <<"c2c">>,
+                                    MsgId,
+                                    MsgType,
+                                    Action,
+                                    E2EE,
+                                    PayloadJson,
+                                    CurrentUid,
+                                    ToId,
+                                    CreatedAtRfc,
+                                    NowTs
+                                );
+                            {error, not_found} ->
+                                % 被引用的消息不存在，返回错误
+                                self() !
+                                    {reply,
+                                        message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)},
+                                error;
+                            {error, Reason} ->
+                                % 兼容旧库结构：回复校验查询失败时降级为“跳过严格校验”，避免消息发送流程崩溃
+                                ok = ?ERROR_LOG(
+                                    "[C2C_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
+                                    [MsgId, ReplyToMsgId, Reason]
+                                ),
+                                msg_store_ds:stage(
+                                    <<"c2c">>,
+                                    MsgId,
+                                    MsgType,
+                                    Action,
+                                    E2EE,
+                                    PayloadJson,
+                                    CurrentUid,
+                                    ToId,
+                                    CreatedAtRfc,
+                                    NowTs
+                                );
+                            Other ->
+                                ok = ?ERROR_LOG(
+                                    "[C2C_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
+                                    [MsgId, ReplyToMsgId, Other]
+                                ),
+                                msg_store_ds:stage(
+                                    <<"c2c">>,
+                                    MsgId,
+                                    MsgType,
+                                    Action,
+                                    E2EE,
+                                    PayloadJson,
+                                    CurrentUid,
+                                    ToId,
+                                    CreatedAtRfc,
+                                    NowTs
+                                )
+                        end
+                end,
 
             elib_log:info(["stage_and_send_c2c", StageResult]),
             case StageResult of
                 ok ->
                     % 立即响应和投递
-                    self() ! {reply, #{
-                        <<"id">> => MsgId,
-                        <<"type">> => <<"C2C_SERVER_ACK">>,
-                        <<"server_ts">> => NowMS
-                    }},
+                    % T1.2：ACK 构建退化为外壳调用 message_policy:build_server_ack/2
+                    self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
 
                     % 异步处理：入队 + 投递消息（带重试）
-                    elib_async:async_retry(fun() ->
-                        % ① 先入队（异步，立即返回）
-                        EnqueueData = #{
-                            payload => Payload,
-                            from_id => CurrentUid,
-                            to_id => ToId,
-                            created_at => CreatedAtRfc,
-                            server_ts => NowTs
-                        },
-                        msg_store_ds:enqueue(<<"c2c">>, MsgId, EnqueueData),
+                    elib_async:async_retry(
+                        fun() ->
+                            % ① 先入队（异步，立即返回）
+                            EnqueueData = #{
+                                payload => Payload,
+                                from_id => CurrentUid,
+                                to_id => ToId,
+                                created_at => CreatedAtRfc,
+                                server_ts => NowTs
+                            },
+                            msg_store_ds:enqueue(<<"c2c">>, MsgId, EnqueueData),
 
-                        % ② 如果有引用信息，使用 write_msg_with_reply 存储
-                        case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
-                            {<<>>, 0, <<>>} ->
-                                % 没有引用信息，使用常规入队
-                                ok;
-                            _ ->
-                                % 有引用信息，存储到数据库
-                                msg_c2c_ds:write_msg_with_reply(
-                                    NowTs, MsgId, PayloadJson, CurrentUid, ToId, CreatedAtRfc,
-                                    MsgType, E2EE, ReplyToMsgId, ReplyToFromId, ReplySnippet)
-                        end,
+                            % ② 如果有引用信息，使用 write_msg_with_reply 存储
+                            % T1.2：复用纯函数 message_policy:reply_mode/1 判定
+                            case
+                                message_policy:reply_mode(
+                                    {ReplyToMsgId, ReplyToFromId, ReplySnippet}
+                                )
+                            of
+                                none ->
+                                    % 没有引用信息，使用常规入队
+                                    ok;
+                                {reply, _, _, _} ->
+                                    % 有引用信息，存储到数据库
+                                    msg_c2c_ds:write_msg_with_reply(
+                                        NowTs,
+                                        MsgId,
+                                        PayloadJson,
+                                        CurrentUid,
+                                        ToId,
+                                        CreatedAtRfc,
+                                        MsgType,
+                                        E2EE,
+                                        ReplyToMsgId,
+                                        ReplyToFromId,
+                                        ReplySnippet
+                                    )
+                            end,
 
-                        % ③ 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
-                        Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE),
-                        imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
-                        % ④ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
-                        ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
-                        case msg_burn_logic:valid_expire_secs(ExpireSecs) of
-                            true when is_integer(ExpireSecs), ExpireSecs > 0 ->
-                                ExpireAt = msg_burn_logic:calc_expire_at(CreatedAtRfc, ExpireSecs),
-                                set_c2c_expire_at(MsgId, ExpireAt);
-                            _ -> ok
+                            % ③ 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
+                            Msg = message_ds:assemble_msg(
+                                <<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE
+                            ),
+                            imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
+                            % ④ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
+                            ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
+                            case msg_burn_logic:valid_expire_secs(ExpireSecs) of
+                                true when is_integer(ExpireSecs), ExpireSecs > 0 ->
+                                    ExpireAt = msg_burn_logic:calc_expire_at(
+                                        CreatedAtRfc, ExpireSecs
+                                    ),
+                                    set_c2c_expire_at(MsgId, ExpireAt);
+                                _ ->
+                                    ok
+                            end,
+                            % ⑤ 离线推送（异步，不阻塞消息投递）
+                            push_notification_logic:maybe_push_for_c2c(
+                                CurrentUid, ToId, MsgType, Payload
+                            )
                         end,
-                        % ⑤ 离线推送（异步，不阻塞消息投递）
-                        push_notification_logic:maybe_push_for_c2c(CurrentUid, ToId, MsgType, Payload)
-                    end, 3, 1000),
+                        3,
+                        1000
+                    ),
                     ok;
                 error ->
                     % 已经在上面处理了错误响应
@@ -223,12 +319,10 @@ stage_and_send_c2c(MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timest
             policy_violation_reply(MsgId, Reason)
     end.
 
-
 %% 客户端确认C2C投递消息
 -spec c2c_client_ack(binary(), integer(), binary()) -> ok.
 c2c_client_ack(MsgId, CurrentUid, DID) ->
     msg_ack_logic:client_ack(<<"c2c">>, MsgId, CurrentUid, DID).
-
 
 %% 客户端撤回消息 for c2c
 -spec c2c_revoke(binary(), integer(), Data :: map()) -> ok | {reply, Msg :: map()}.
@@ -300,11 +394,25 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                     % 判断对方是否在线
                                     case user_logic:is_online(ToId) of
                                         true ->
-                                            imboy_message_helper:encode_and_send(ToId, MsgId, RevokeMsg, <<"c2s">>),
+                                            imboy_message_helper:encode_and_send(
+                                                ToId, MsgId, RevokeMsg, <<"c2s">>
+                                            ),
                                             ok;
-                                        false ->  % 对端离线处理
+                                        % 对端离线处理
+                                        false ->
                                             % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
-                                            case msg_c2c_ds:revoke_offline_msg(RevokePayload, NowTs, MsgId, FromId, ToId, <<"custom">>, <<"message_revoke_ack">>, null) of
+                                            case
+                                                msg_c2c_ds:revoke_offline_msg(
+                                                    RevokePayload,
+                                                    NowTs,
+                                                    MsgId,
+                                                    FromId,
+                                                    ToId,
+                                                    <<"custom">>,
+                                                    <<"message_revoke_ack">>,
+                                                    null
+                                                )
+                                            of
                                                 ok -> ok;
                                                 {error, _} -> ok
                                             end
@@ -354,7 +462,7 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     ToId = ec_cnv:to_integer(To),
     FromId = ec_cnv:to_integer(From),
     ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
-    
+
     % 验证权限：只能编辑自己发送的消息
     case CurrentUid =:= FromId of
         true ->
@@ -381,21 +489,28 @@ c2c_edit(MsgId, CurrentUid, Data) ->
             },
 
             EditPayloadJson = imboy_message_helper:encode_json(EditPayload),
-            case imboy_policy:validate_message_write(
-                <<"C2C">>,
-                MsgType,
-                <<"message_edit">>,
-                E2EE,
-                EditPayloadJson
-            ) of
+            case
+                imboy_policy:validate_message_write(
+                    <<"C2C">>,
+                    MsgType,
+                    <<"message_edit">>,
+                    E2EE,
+                    EditPayloadJson
+                )
+            of
                 ok ->
                     % 判断对方是否在线
                     case user_logic:is_online(ToId) of
                         true ->
                             imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
                             ok;
-                        false ->  % 对端离线处理
-                            case msg_c2c_ds:edit_offline_msg(EditPayloadJson, NowTs, MsgId, FromId, ToId) of
+                        % 对端离线处理
+                        false ->
+                            case
+                                msg_c2c_ds:edit_offline_msg(
+                                    EditPayloadJson, NowTs, MsgId, FromId, ToId
+                                )
+                            of
                                 ok ->
                                     ok;
                                 {error, _Reason} ->
@@ -429,7 +544,6 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
     persist_action_payload(OriginalMsgId, AckPayload),
     ok.
 
-
 %% ===================================================================
 %% 消息已读回执功能
 %% ===================================================================
@@ -444,8 +558,10 @@ c2c_edit_ack(MsgId, CurrentUid, Data) ->
 c2c_read(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
-    ToId = ec_cnv:to_integer(To),  % 发送者ID
-    FromId = ec_cnv:to_integer(From),  % 接收者ID（自己）
+    % 发送者ID
+    ToId = ec_cnv:to_integer(To),
+    % 接收者ID（自己）
+    FromId = ec_cnv:to_integer(From),
 
     % 检查是否是发给自己的消息（不能对自己发送已读回执）
     case CurrentUid =:= FromId of
@@ -473,11 +589,10 @@ c2c_read(MsgId, CurrentUid, Data) ->
             {reply, ErrorMsg}
     end.
 
-
 %% @doc 处理已读回执的内部逻辑
 %% @private
 -spec handle_read_receipt(binary(), binary(), integer(), binary(), integer(), integer(), map()) ->
-          ok | {reply, map()}.
+    ok | {reply, map()}.
 handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
     NowMs = elib_dt:millisecond(),
     ReadAt = maps:get(<<"read_at">>, maps:get(<<"payload">>, Data, #{}), NowMs),
@@ -510,8 +625,10 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
             ReadNotifyMsg = #{
                 <<"id">> => MsgId,
                 <<"type">> => <<"C2C">>,
-                <<"from">> => From,  % 发送者
-                <<"to">> => From,   % 发送给发送者
+                % 发送者
+                <<"from">> => From,
+                % 发送给发送者
+                <<"to">> => From,
                 <<"msg_type">> => <<"custom">>,
                 <<"action">> => <<"message_read">>,
                 <<"payload">> => ReadPayload,
@@ -527,19 +644,24 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
                 false ->
                     % 离线：存储离线已读通知
                     _ = jsone:encode(ReadNotifyMsg, [native_utf8]),
-                    case msg_c2c_ds:read_offline_msg(MsgId, ToId, CurrentUid, ReadAtRfc, <<"message_read">>) of
+                    case
+                        msg_c2c_ds:read_offline_msg(
+                            MsgId, ToId, CurrentUid, ReadAtRfc, <<"message_read">>
+                        )
+                    of
                         ok -> ok;
                         {error, _} -> ok
                     end,
                     {reply, ReadAckMsg}
             end;
         {error, Reason} ->
-            ok = ?ERROR_LOG("[C2C_READ_FAILED] MsgId=~s, FromUid=~p, ToUid=~p, Reason=~p~n",
-                       [MsgId, CurrentUid, ToId, Reason]),
+            ok = ?ERROR_LOG(
+                "[C2C_READ_FAILED] MsgId=~s, FromUid=~p, ToUid=~p, Reason=~p~n",
+                [MsgId, CurrentUid, ToId, Reason]
+            ),
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
             {reply, ErrorMsg}
     end.
-
 
 %% @doc 客户端确认已读回执
 %% 发送者确认收到已读回执
@@ -573,37 +695,43 @@ extract_reply_info(Data) ->
             ReplyToFromId = ec_cnv:to_integer(ReplyToFromIdBin),
 
             % 从被引用的消息中提取摘要
-            ReplySnippet = case ReplyToMsgId of
-                <<>> -> <<>>;
-                _ ->
-                    case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
-                        {ok, OriginalMsg} ->
-                            Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
-                            % 尝试解析 JSON 并提取 content 字段
-                            try jsone:decode(Payload) of
-                                PayloadMap when is_map(PayloadMap) ->
-                                    Content = maps:get(<<"content">>, PayloadMap, <<>>),
-                                    % 截取前50个字符作为摘要
-                                    Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
-                                    case byte_size(Content) > 50 of
-                                        true -> <<Snippet/binary, "..."/utf8>>;
-                                        false -> Snippet
-                                    end;
-                                _ ->
-                                    <<>>
-                            catch
-                                _:_ ->
-                                    % 如果解析失败，截取原始 payload 的前50个字符
-                                    Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
-                                    case byte_size(Payload) > 50 of
-                                        true -> <<Snippet/binary, "..."/utf8>>;
-                                        false -> Snippet
-                                    end
-                            end;
-                        _ ->
-                            <<>>
-                    end
-            end,
+            ReplySnippet =
+                case ReplyToMsgId of
+                    <<>> ->
+                        <<>>;
+                    _ ->
+                        case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
+                            {ok, OriginalMsg} ->
+                                Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
+                                % 尝试解析 JSON 并提取 content 字段
+                                try jsone:decode(Payload) of
+                                    PayloadMap when is_map(PayloadMap) ->
+                                        Content = maps:get(<<"content">>, PayloadMap, <<>>),
+                                        % 截取前50个字符作为摘要
+                                        Snippet = binary:part(
+                                            Content, {0, min(byte_size(Content), 50)}
+                                        ),
+                                        case byte_size(Content) > 50 of
+                                            true -> <<Snippet/binary, "..."/utf8>>;
+                                            false -> Snippet
+                                        end;
+                                    _ ->
+                                        <<>>
+                                catch
+                                    _:_ ->
+                                        % 如果解析失败，截取原始 payload 的前50个字符
+                                        Snippet = binary:part(
+                                            Payload, {0, min(byte_size(Payload), 50)}
+                                        ),
+                                        case byte_size(Payload) > 50 of
+                                            true -> <<Snippet/binary, "..."/utf8>>;
+                                            false -> Snippet
+                                        end
+                                end;
+                            _ ->
+                                <<>>
+                        end
+                end,
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
