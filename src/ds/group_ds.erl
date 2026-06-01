@@ -29,6 +29,7 @@
 -export([page_by_owner/3]).
 -export([page_joined/3]).
 -export([page_managed/3]).
+-export([load_aggregate/1, save_aggregate/1]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -612,5 +613,58 @@ page_managed(Uid, Page, Size) ->
     elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
 
 %% ===================================================================
+%% 聚合加载/保存（T2.2：group_agg 聚合根 DS 接线）
+%% SERVICE_PATTERN 的 I/O 外壳：load=读、save=写，经 Repo 层落库。
+%% ===================================================================
+
+%% @doc 加载群组聚合根：读 group 行 → 字段映射 → group_agg:rehydrate。
+%% 群组不存在（空 map）返回 {error, group_not_found}。
+-spec load_aggregate(integer()) -> {ok, group_agg:t()} | {error, group_not_found}.
+load_aggregate(Gid) ->
+    case group_repo:find_by_id(Gid, <<"id,owner_uid,member_count,type,status">>) of
+        Row when is_map(Row), map_size(Row) > 0 ->
+            {ok, group_agg:rehydrate(row_to_agg_map(Row))};
+        _ ->
+            {error, group_not_found}
+    end.
+
+%% @doc 保存群组聚合根：聚合状态 → group 更新行 → group_repo:update。
+%% DS 层经 Repo 落库，不直调 elib_pg。
+-spec save_aggregate(group_agg:t()) -> {ok, non_neg_integer()} | {error, any()}.
+save_aggregate(Agg) ->
+    group_repo:update(agg_to_row(Agg)).
+
+%% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 纯映射：group 行 → group_agg:rehydrate 入参（列名归一 + status 码→atom）。
+-spec row_to_agg_map(map()) -> map().
+row_to_agg_map(Row) ->
+    #{
+        <<"group_id">> => maps:get(<<"id">>, Row),
+        <<"owner">> => maps:get(<<"owner_uid">>, Row, 0),
+        <<"member_count">> => maps:get(<<"member_count">>, Row, 0),
+        <<"type">> => maps:get(<<"type">>, Row, undefined),
+        <<"status">> => status_code_to_atom(maps:get(<<"status">>, Row, 1))
+    }.
+
+%% @doc 纯映射：group_agg 聚合 → group 更新行（id 主键 + status atom→码）。
+-spec agg_to_row(group_agg:t()) -> map().
+agg_to_row(Agg) ->
+    #{
+        <<"id">> => group_agg:id(Agg),
+        <<"owner_uid">> => group_agg:owner(Agg),
+        <<"member_count">> => group_agg:member_count(Agg),
+        <<"status">> => status_atom_to_code(group_agg:status(Agg))
+    }.
+
+%% group 表 status 语义：1=active（有效）/ 0=dissolved（软删除）。
+-spec status_code_to_atom(integer() | binary()) -> active | dissolved.
+status_code_to_atom(0) -> dissolved;
+status_code_to_atom(<<"0">>) -> dissolved;
+status_code_to_atom(_) -> active.
+
+-spec status_atom_to_code(active | dissolved) -> 0 | 1.
+status_atom_to_code(dissolved) -> 0;
+status_atom_to_code(active) -> 1.
