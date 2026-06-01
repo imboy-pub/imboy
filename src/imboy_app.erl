@@ -41,46 +41,60 @@ start(_Type, _Args) ->
     % cowboy_router:dispatch_rules()
     Dispatch = cowboy_router:compile(Routes),
     StartMode = config_ds:env(start_mode, http),
-    _ = if
-        StartMode == quic ->
-            start_quic(Dispatch);
-        true ->
-            ProtoOpts = #{
-                env => #{dispatch => Dispatch},
-                middlewares => [
-                    cowboy_router % 必须是第一个元素
-                    , cors_middleware % CORS 中间件，处理跨域请求
-                    , security_headers_middleware % 安全响应头中间件
-                    , auth_middleware % 认证中间件
-                    , throttle_middleware % 限流中间件
-                    , cowboy_handler
-                ],
-                % metrics_callback => do_metrics_callback(),
-                stream_handlers => [
-                    cowboy_compress_h
-                    , cowboy_stream_h
-                    % , cowboy_metrics_h
-                ],
-                tcp_opts => [
-                    % 【关键修复】禁用 Nagle 算法，消除小消息延迟
-                    {nodelay, true}
-                ]
-            },
-            Port = case os:getenv("HTTP_PORT") of
-                P when is_list(P) ->
-                    list_to_integer(P);
-                false ->
-                    config_ds:env(http_port)
-            end,
-            case StartMode of
-                tls ->
-                    start_tls(ProtoOpts, Port);
-                _ ->
-                    start_clear(ProtoOpts, Port)
-            end
-    end,
-    imboy_sup:start_link().
-
+    _ =
+        if
+            StartMode == quic ->
+                start_quic(Dispatch);
+            true ->
+                ProtoOpts = #{
+                    env => #{dispatch => Dispatch},
+                    middlewares => [
+                        % 必须是第一个元素
+                        cowboy_router,
+                        % CORS 中间件，处理跨域请求
+                        cors_middleware,
+                        % 安全响应头中间件
+                        security_headers_middleware,
+                        % 认证中间件
+                        auth_middleware,
+                        % 限流中间件
+                        throttle_middleware,
+                        cowboy_handler
+                    ],
+                    % metrics_callback => do_metrics_callback(),
+                    stream_handlers => [
+                        cowboy_compress_h,
+                        cowboy_stream_h
+                        % , cowboy_metrics_h
+                    ],
+                    tcp_opts => [
+                        % 【关键修复】禁用 Nagle 算法，消除小消息延迟
+                        {nodelay, true}
+                    ]
+                },
+                Port =
+                    case os:getenv("HTTP_PORT") of
+                        P when is_list(P) ->
+                            list_to_integer(P);
+                        false ->
+                            config_ds:env(http_port)
+                    end,
+                case StartMode of
+                    tls ->
+                        start_tls(ProtoOpts, Port);
+                    _ ->
+                        start_clear(ProtoOpts, Port)
+                end
+        end,
+    case imboy_sup:start_link() of
+        {ok, Sup} ->
+            %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
+            %% 容错：挂载失败不阻断 app 启动（总线为 sup child，通常已就绪）。
+            _ = group_event_handler:attach(),
+            {ok, Sup};
+        Other ->
+            Other
+    end.
 
 % do_metrics_callback() ->
 %    fun(Metrics) ->
@@ -101,7 +115,6 @@ stop(_State) ->
         _ ->
             _ = cowboy:stop_listener(imboy_listener)
     end.
-
 
 %% ===================================================================
 %% TSID 命名生成器配置
@@ -214,31 +227,35 @@ tsid_generator_names() ->
 -spec start_quic(cowboy_router:dispatch_rules()) -> {ok, pid()} | {error, any()}.
 start_quic(_Dispatch) ->
     {error, <<"调整中的功能"/utf8>>}.
-    % PrivDir = code:priv_dir(imboy),
-    % cowboy:start_quic(#{socket_opts => [
-    %                                     % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
-    %                                     % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
-    %                                     {cert, PrivDir ++ config_ds:env(certfile)},
-    %                                     {key, PrivDir ++ config_ds:env(keyfile)}]},
-    %                   #{env => #{dispatch => Dispatch}}).
-
+% PrivDir = code:priv_dir(imboy),
+% cowboy:start_quic(#{socket_opts => [
+%                                     % {cert, "deps/quicer/test/quicer_SUITE_data/cert.pem"},
+%                                     % {key, "deps/quicer/test/quicer_SUITE_data/key.pem"}
+%                                     {cert, PrivDir ++ config_ds:env(certfile)},
+%                                     {key, PrivDir ++ config_ds:env(keyfile)}]},
+%                   #{env => #{dispatch => Dispatch}}).
 
 -spec start_tls(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_tls(ProtoOpts, Port) ->
     PrivDir = code:priv_dir(imboy),
-    cowboy:start_tls(imboy_listener_tls,
-                     [{port, Port},
-                      {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
-                      {certfile, PrivDir ++ config_ds:env(certfile)},
-                      {keyfile, PrivDir ++ config_ds:env(keyfile)}],
-                     ProtoOpts).
-
+    cowboy:start_tls(
+        imboy_listener_tls,
+        [
+            {port, Port},
+            {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
+            {certfile, PrivDir ++ config_ds:env(certfile)},
+            {keyfile, PrivDir ++ config_ds:env(keyfile)}
+        ],
+        ProtoOpts
+    ).
 
 -spec start_clear(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_clear(ProtoOpts, Port) ->
-    cowboy:start_clear(imboy_listener,
-                       [{port, Port}],
-                       ProtoOpts).
+    cowboy:start_clear(
+        imboy_listener,
+        [{port, Port}],
+        ProtoOpts
+    ).
 
 %% @doc 显式初始化 API throttle 限流规则
 %% throttle 库通过 sys.config 的 {rates, [...]} 自动 setup，但在某些启动时序下
@@ -309,12 +326,12 @@ ensure_sms_platform_credentials(<<"yjsms">>) ->
     ok = ensure_required_secret(yjsms_secret);
 ensure_sms_platform_credentials(<<"aliyun">>) ->
     AliyunCfg = config_ds:env([sms, <<"aliyun">>], []),
-    KeyId  = proplists:get_value(key_id, AliyunCfg, <<>>),
+    KeyId = proplists:get_value(key_id, AliyunCfg, <<>>),
     KeySec = proplists:get_value(key_secret, AliyunCfg, <<>>),
     case {normalize_secret(KeyId), normalize_secret(KeySec)} of
         {<<>>, _} -> erlang:error({missing_required_config, {sms, aliyun, key_id}});
         {_, <<>>} -> erlang:error({missing_required_config, {sms, aliyun, key_secret}});
-        _         -> ok
+        _ -> ok
     end;
 ensure_sms_platform_credentials(_) ->
     %% 未知平台或留空：sms.switch=on 的前提下视为配置错误
@@ -328,8 +345,10 @@ ensure_super_account_password_not_default() ->
             BlockedPasswords = ["123456", "password", "abc54321", ""],
             case lists:member(Pwd, BlockedPasswords) of
                 true ->
-                    erlang:error({insecure_super_account_password,
-                        "Production super_account password is too weak or is a known default"});
+                    erlang:error(
+                        {insecure_super_account_password,
+                            "Production super_account password is too weak or is a known default"}
+                    );
                 false ->
                     ok
             end;
@@ -344,10 +363,12 @@ ensure_api_auth_switch_on() ->
         <<"on">> ->
             ok;
         _ ->
-            erlang:error({insecure_config,
-                "Production requires api_auth_switch = <<\"on\">>. "
-                "Set {api_auth_switch, <<\"on\">>} in sys.config or "
-                "export IMBOY_API_AUTH_SWITCH=on"})
+            erlang:error(
+                {insecure_config,
+                    "Production requires api_auth_switch = <<\"on\">>. "
+                    "Set {api_auth_switch, <<\"on\">>} in sys.config or "
+                    "export IMBOY_API_AUTH_SWITCH=on"}
+            )
     end.
 
 %% @doc 若配置了 TURN 服务器则要求 eturnal_secret 非空
@@ -356,13 +377,15 @@ ensure_eturnal_secret_if_turn_configured() ->
     case config_ds:env(eturnal_turn_urls, []) of
         [] ->
             ok;
-        [_|_] ->
+        [_ | _] ->
             case normalize_secret(config_ds:env(eturnal_secret, <<>>)) of
                 <<>> ->
-                    erlang:error({missing_required_config,
-                        "eturnal_turn_urls is configured but eturnal_secret is empty. "
-                        "Set {eturnal_secret, <<\"your-turn-secret\">>} in sys.config or "
-                        "export IMBOY_ETURNAL_SECRET=<secret>"});
+                    erlang:error(
+                        {missing_required_config,
+                            "eturnal_turn_urls is configured but eturnal_secret is empty. "
+                            "Set {eturnal_secret, <<\"your-turn-secret\">>} in sys.config or "
+                            "export IMBOY_ETURNAL_SECRET=<secret>"}
+                    );
                 _ ->
                     ok
             end
@@ -378,15 +401,17 @@ ensure_eturnal_secret_if_turn_configured() ->
 -spec ensure_solidified_keys() -> ok.
 ensure_solidified_keys() ->
     DevDefaultKey = <<"pLV8yWGUUnd3Y2gaHP5aggZ7wnKT9DqL">>,
-    DevDefaultIV  = <<"e6Z8KuBnGCi2t7we">>,
+    DevDefaultIV = <<"e6Z8KuBnGCi2t7we">>,
     case normalize_secret(config_ds:env(solidified_key, <<>>)) of
         <<>> ->
             ok = application:set_env(imboy, solidified_key, DevDefaultKey),
             ok = application:set_env(imboy, solidified_key_iv, DevDefaultIV),
-            logger:warning("[imboy] solidified_key not configured — "
-                           "using dev default (matches Flutter client hardcoded value). "
-                           "Set IMBOY_SOLIDIFIED_KEY / IMBOY_SOLIDIFIED_KEY_IV "
-                           "in production (fail-fast will reject blank values)."),
+            logger:warning(
+                "[imboy] solidified_key not configured — "
+                "using dev default (matches Flutter client hardcoded value). "
+                "Set IMBOY_SOLIDIFIED_KEY / IMBOY_SOLIDIFIED_KEY_IV "
+                "in production (fail-fast will reject blank values)."
+            ),
             ok;
         _ ->
             %% key 已配置；若 iv 单独缺失也补全
@@ -408,8 +433,10 @@ ensure_pg_password_not_default() ->
             BlockedPasswords = ["123456", "password", "abc54321", ""],
             case lists:member(Pwd, BlockedPasswords) of
                 true ->
-                    erlang:error({insecure_pg_password,
-                        "Production database password is too weak or is a known default"});
+                    erlang:error(
+                        {insecure_pg_password,
+                            "Production database password is too weak or is a known default"}
+                    );
                 false ->
                     ok
             end;
@@ -425,29 +452,31 @@ ensure_pg_password_not_default() ->
 %%   - 需要跨 release 稳定：显式配置 login_rsa_*_key_file 指向 release 外路径
 -spec ensure_rsa_keys() -> ok.
 ensure_rsa_keys() ->
-    PubFile  = normalize_secret(config_ds:env(login_rsa_pub_key_file, "")),
+    PubFile = normalize_secret(config_ds:env(login_rsa_pub_key_file, "")),
     PrivFile = normalize_secret(config_ds:env(login_rsa_priv_key_file, "")),
     case {PubFile, PrivFile} of
         {<<>>, _} ->
             %% 未配置文件路径 → 走 dev_keys 持久化默认路径
             {PubPem, PrivPem} = ensure_dev_rsa_keypair(),
-            ok = application:set_env(imboy, login_rsa_pub_key,  PubPem),
+            ok = application:set_env(imboy, login_rsa_pub_key, PubPem),
             ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
             %% jverification 共用 login 私钥（开发环境）
             ok = application:set_env(imboy, jverification_rsa_priv_key, PrivPem);
         {PubF, PrivF} ->
-            {ok, PubPem}  = file:read_file(binary_to_list(PubF)),
+            {ok, PubPem} = file:read_file(binary_to_list(PubF)),
             {ok, PrivPem} = file:read_file(binary_to_list(PrivF)),
-            ok = application:set_env(imboy, login_rsa_pub_key,  PubPem),
+            ok = application:set_env(imboy, login_rsa_pub_key, PubPem),
             ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
             %% jverification 独立私钥（可选，未配置则复用 login 私钥）
             JvFile = normalize_secret(config_ds:env(jverification_rsa_priv_key_file, "")),
-            JvPem = case JvFile of
-                <<>> -> PrivPem;
-                JvF  ->
-                    {ok, P} = file:read_file(binary_to_list(JvF)),
-                    P
-            end,
+            JvPem =
+                case JvFile of
+                    <<>> ->
+                        PrivPem;
+                    JvF ->
+                        {ok, P} = file:read_file(binary_to_list(JvF)),
+                        P
+                end,
             ok = application:set_env(imboy, jverification_rsa_priv_key, JvPem)
     end,
     ok.
@@ -458,8 +487,8 @@ ensure_rsa_keys() ->
 -spec ensure_dev_rsa_keypair() -> {binary(), binary()}.
 ensure_dev_rsa_keypair() ->
     PrivDir = code:priv_dir(imboy),
-    DevDir  = filename:join(PrivDir, "dev_keys"),
-    PubPath  = filename:join(DevDir, "login_rsa_pub.pem"),
+    DevDir = filename:join(PrivDir, "dev_keys"),
+    PubPath = filename:join(DevDir, "login_rsa_pub.pem"),
     PrivPath = filename:join(DevDir, "login_rsa_priv.pem"),
     case {file:read_file(PubPath), file:read_file(PrivPath)} of
         {{ok, PubPem}, {ok, PrivPem}} ->
@@ -469,11 +498,13 @@ ensure_dev_rsa_keypair() ->
             {PubPem, PrivPem} = generate_rsa_keypair(),
             ok = file:write_file(PubPath, PubPem),
             ok = file:write_file(PrivPath, PrivPem),
-            logger:warning("[imboy] login_rsa_*_key_file not configured — "
-                           "generated stable dev RSA-2048 keypair at ~ts. "
-                           "Set IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE "
-                           "in production (fail-fast rejects blank values).",
-                           [DevDir]),
+            logger:warning(
+                "[imboy] login_rsa_*_key_file not configured — "
+                "generated stable dev RSA-2048 keypair at ~ts. "
+                "Set IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE "
+                "in production (fail-fast rejects blank values).",
+                [DevDir]
+            ),
             {PubPem, PrivPem}
     end.
 
@@ -482,9 +513,9 @@ ensure_dev_rsa_keypair() ->
 generate_rsa_keypair() ->
     PrivKey = public_key:generate_key({rsa, 2048, 65537}),
     #'RSAPrivateKey'{modulus = Mod, publicExponent = Exp} = PrivKey,
-    PubKey  = #'RSAPublicKey'{modulus = Mod, publicExponent = Exp},
+    PubKey = #'RSAPublicKey'{modulus = Mod, publicExponent = Exp},
     PrivPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPrivateKey', PrivKey)]),
-    PubPem  = public_key:pem_encode([public_key:pem_entry_encode('RSAPublicKey', PubKey)]),
+    PubPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPublicKey', PubKey)]),
     {PubPem, PrivPem}.
 
 %% @doc 生产环境：确保指定的文件路径配置项非空
