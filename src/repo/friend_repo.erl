@@ -11,6 +11,7 @@
 -export([friend_field/3]).
 -export([friend_fields/3]).
 -export([confirm_friend/7]).
+-export([insert_pending/4, find_pending/2, delete_pending/2]).
 -export([delete/2]).
 -export([move_to_category/3]).
 -export([change_remark/3]).
@@ -27,7 +28,6 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"user_friend">>).
 
-
 %% @doc 确认好友关系
 %% @param IsConfirmed 是否已确认，true表示已存在好友关系，false需要创建新关系
 %% @param FromID 发起好友请求的用户ID
@@ -37,31 +37,83 @@ tablename() ->
 %% @param Tag 好友标签
 %% @param NowTs 当前时间戳（timestamptz格式）
 %% @return ok
--spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()) -> ok.
+-spec confirm_friend(
+    boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()
+) -> ok.
 confirm_friend(true, _, _, _, _, _, _) ->
     ok;
 confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     Tb = tablename(),
     Id = elib_tsid:generate(friend),
-    Data = #{
-        id => Id,
-        from_user_id => FromID,
-        to_user_id => ToID,
-        status => 1,
-        category_id => 0,
-        remark => Remark,
-        created_at => NowTs,
-        setting => jsone:encode(filter_friend_setting(Setting), [native_utf8]),
-        tag => Tag
-    },
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data),
+    SettingJson = jsone:encode(filter_friend_setting(Setting), [native_utf8]),
+    %% T3.4 余项：upsert 替代纯 INSERT。无 (from,to) 行→插 status=1；
+    %% 存在 pending(status=0) 行→promote 0→1。兼容 uk_fromuid_touid 唯一约束，
+    %% 避免引入 pending 行后纯 INSERT 因唯一冲突静默失败。
+    Sql = <<
+        "INSERT INTO ",
+        Tb/binary,
+        " (id, from_user_id, to_user_id, status, category_id, remark, setting, tag, created_at)"
+        " VALUES ($1, $2, $3, 1, 0, $4, $5, $6, $7)"
+        " ON CONFLICT (from_user_id, to_user_id) DO UPDATE SET"
+        " status = 1, remark = EXCLUDED.remark, setting = EXCLUDED.setting,"
+        " tag = EXCLUDED.tag, updated_at = $7"
+    >>,
+    Params = [Id, FromID, ToID, Remark, SettingJson, Tag, NowTs],
     case elib_pg:query(Sql, Params) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            ok;
         {error, Reason} ->
-            ?ERROR_LOG({friend_insert_failed, FromID, ToID, Reason}),
+            ?ERROR_LOG({friend_upsert_failed, FromID, ToID, Reason}),
             ok
     end.
 
+%% @doc 插入 pending 好友申请行（status=0，单向 from→to）。
+%% 已存在 (from,to) 行（任意 status）则 DO NOTHING（幂等，由 uk_fromuid_touid 保证）。
+-spec insert_pending(integer(), integer(), map() | binary() | undefined, binary()) -> ok.
+insert_pending(FromID, ToID, Setting, NowTs) ->
+    Tb = tablename(),
+    Id = elib_tsid:generate(friend),
+    SettingJson = jsone:encode(filter_friend_setting(Setting), [native_utf8]),
+    Sql = <<
+        "INSERT INTO ",
+        Tb/binary,
+        " (id, from_user_id, to_user_id, status, category_id, setting, created_at)"
+        " VALUES ($1, $2, $3, 0, 0, $4, $5)"
+        " ON CONFLICT (from_user_id, to_user_id) DO NOTHING"
+    >>,
+    case elib_pg:query(Sql, [Id, FromID, ToID, SettingJson, NowTs]) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG({pending_insert_failed, FromID, ToID, Reason}),
+            ok
+    end.
+
+%% @doc 是否存在 from→to 的 pending(status=0) 申请行。
+-spec find_pending(integer(), integer()) -> boolean().
+find_pending(FromID, ToID) ->
+    Tb = tablename(),
+    Sql = <<
+        "SELECT id FROM ",
+        Tb/binary,
+        " WHERE from_user_id = $1 AND to_user_id = $2 AND status = 0 LIMIT 1"
+    >>,
+    case elib_pg:query(Sql, [FromID, ToID]) of
+        {ok, [_ | _]} -> true;
+        _ -> false
+    end.
+
+%% @doc 删除 from→to 的 pending(status=0) 申请行（reject 用，不影响 status=1 好友行）。
+-spec delete_pending(integer(), integer()) -> ok.
+delete_pending(FromID, ToID) ->
+    Tb = tablename(),
+    Sql = <<
+        "DELETE FROM ",
+        Tb/binary,
+        " WHERE from_user_id = $1 AND to_user_id = $2 AND status = 0"
+    >>,
+    _ = elib_pg:query(Sql, [FromID, ToID]),
+    ok.
 
 %% @doc 查询好友关系的字段值（单字段）
 %% @param FromID 发起好友关系的用户ID
@@ -71,7 +123,9 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
 -spec friend_field(integer(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
 friend_field(FromID, ToID, Field) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    {Sql, Params} = elib_pg_sql:build_select(
+        Tb, Field, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}
+    ),
     elib_pg:query(Sql, Params).
 
 %% @doc 查询好友关系的多个字段
@@ -83,10 +137,11 @@ friend_field(FromID, ToID, Field) ->
 -spec friend_fields(integer(), integer(), [binary()]) -> {ok, [map()]} | {error, any()}.
 friend_fields(FromID, ToID, Fields) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Fields, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}),
+    {Sql, Params} = elib_pg_sql:build_select(
+        Tb, Fields, #{from_user_id => FromID, to_user_id => ToID, status => 1}, #{}
+    ),
     ?DEBUG_LOG([Sql, Params]),
     elib_pg:query(Sql, Params).
-
 
 %% @doc 查询指定用户的好友列表（使用默认限制10000）
 %% @param UID 用户ID
@@ -104,9 +159,10 @@ list_by_uid(UID, Column) ->
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(UID, Column, Limit) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{from_user_id => UID, status => 1}, #{limit => Limit}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{from_user_id => UID, status => 1}, #{
+        limit => Limit
+    }),
     elib_pg:query(Sql, Params).
-
 
 %% @doc 统计用户的好友数量
 %% @param UID 用户ID
@@ -114,12 +170,12 @@ list_by_uid(UID, Column, Limit) ->
 -spec count_by_uid(integer()) -> non_neg_integer().
 count_by_uid(UID) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE from_user_id = $1 AND status = 1">>,
+    Sql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE from_user_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [UID]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
     end.
-
 
 %% @doc 删除好友关系（双向，单条 SQL 原子操作）
 %% @param FromID 发起好友关系的用户ID
@@ -129,7 +185,8 @@ count_by_uid(UID) ->
 delete(FromID, ToID) ->
     Tb = tablename(),
     Sql = <<
-        "DELETE FROM ", Tb/binary,
+        "DELETE FROM ",
+        Tb/binary,
         " WHERE (from_user_id = $1 AND to_user_id = $2)"
         "    OR (from_user_id = $2 AND to_user_id = $1)"
     >>,
@@ -163,8 +220,10 @@ move_to_category(FromUID, ToUID, CategoryID) ->
 change_remark(FromUid, ToUid, Remark) ->
     Tb = tablename(),
     Dt = elib_dt:now(),
-    Sql = <<"UPDATE ", Tb/binary, " SET remark = $1, updated_at = $2
-        WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET remark = $1, updated_at = $2\n"
+            "        WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
     elib_pg:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).
 
 %% @doc 批量按分类变更好友分类ID
@@ -175,10 +234,11 @@ change_remark(FromUid, ToUid, Remark) ->
 -spec set_category_by_cid(integer(), integer(), integer()) -> {ok, integer()} | {error, any()}.
 set_category_by_cid(Uid, CategoryId, NewCid) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2
-        WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET category_id = $1, updated_at = $2\n"
+            "        WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
     elib_pg:execute(Sql, [NewCid, elib_dt:now(), 1, Uid, CategoryId]).
-
 
 %% ===================================================================
 %% Internal Function Definitions

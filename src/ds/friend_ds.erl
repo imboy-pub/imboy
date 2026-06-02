@@ -5,7 +5,8 @@
 -export([is_friend/2]).
 -export([is_friend/3]).
 -export([is_friend_fields/3]).
--export([check_relationship/2]).  %% 新增：联合查询函数
+%% 新增：联合查询函数
+-export([check_relationship/2]).
 -export([list_by_uid/1]).
 -export([page_by_uid/1, page_by_uid/3]).
 -export([page_by_cid/4]).
@@ -15,6 +16,7 @@
 -export([find_by_users/2]).
 -export([set_category_id/3]).
 -export([confirm_friend/7]).
+-export([insert_pending/4, delete_pending/2, pending_status/2]).
 -export([delete/2]).
 -export([move_to_category/3]).
 -export([invalidate_cache/2]).
@@ -73,16 +75,16 @@ is_friend(FromUid, ToUid) ->
 is_friend(FromUid, ToUid, Field) ->
     Key = {is_friend2, FromUid, ToUid},
     Fun = fun() ->
-                  case friend_repo:friend_field(FromUid, ToUid, Field) of
-                      {ok, [#{Field := Val} |_]} ->
-                          {true, Val};
-                      {ok, _} ->
-                          % 没有好友记录
-                          {false, <<>>};
-                      {error, _Reason} ->
-                          {false, <<>>}
-                  end
-          end,
+        case friend_repo:friend_field(FromUid, ToUid, Field) of
+            {ok, [#{Field := Val} | _]} ->
+                {true, Val};
+            {ok, _} ->
+                % 没有好友记录
+                {false, <<>>};
+            {error, _Reason} ->
+                {false, <<>>}
+        end
+    end,
     imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
 
 %% @doc 检查好友关系并获取多个字段值
@@ -98,16 +100,16 @@ is_friend(FromUid, ToUid, Field) ->
 is_friend_fields(FromUid, ToUid, Fields) ->
     Key = {is_friend_fields2, FromUid, ToUid, Fields},
     Fun = fun() ->
-                  case friend_repo:friend_fields(FromUid, ToUid, Fields) of
-                      {ok, [Row |_]} when is_map(Row) ->
-                          {true, Row};
-                      {ok, _} ->
-                          % 没有好友记录
-                          {false, #{}};
-                      {error, _Reason} ->
-                          {false, #{}}
-                  end
-          end,
+        case friend_repo:friend_fields(FromUid, ToUid, Fields) of
+            {ok, [Row | _]} when is_map(Row) ->
+                {true, Row};
+            {ok, _} ->
+                % 没有好友记录
+                {false, #{}};
+            {error, _Reason} ->
+                {false, #{}}
+        end
+    end,
     imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
 %% @doc 分页获取用户好友列表
 %%
@@ -146,10 +148,10 @@ page_by_uid(Uid, Limit, Offset) ->
 % friend_ds:page_by_cid(1, 1, 10, 0).
 -spec page_by_cid(integer(), integer(), integer(), integer()) -> [map()].
 page_by_cid(Cid, Uid, Limit, Offset) ->
-    Where = <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.category_id = $2 LIMIT $3 OFFSET $4">>,
+    Where =
+        <<"WHERE f.status = 1 AND f.from_user_id = $1 AND f.category_id = $2 LIMIT $3 OFFSET $4">>,
     WhereArgs = [Uid, Cid, Limit, Offset],
     page(Where, WhereArgs, fields(Uid)).
-
 
 %% @doc 按标签分页获取好友列表
 %%
@@ -171,7 +173,8 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
         _ ->
             UserTable = elib_pg_sql:public_tablename(<<"user">>),
             UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
-            Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
+            Join1 =
+                <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
             Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
             BaseFrom = <<(friend_repo:tablename())/binary, " as f ", Join1/binary, Join2/binary>>,
             TagNamePattern = <<TagName/binary, ",%">>,
@@ -180,21 +183,29 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                 case bit_size(Kwd) > 0 of
                     true ->
                         KwdPattern = <<"%", Kwd/binary, ",%">>,
-                        #{<<"__and">> => [
-                            #{<<"f.status">> => 1,
-                              <<"f.from_user_id">> => Uid,
-                              <<"f.tag">> => {op, <<"LIKE">>, TagNamePattern}},
-                            #{<<"__or">> => [
-                                #{<<"f.tag">> => {op, <<"LIKE">>, KwdPattern}},
-                                #{<<"f.remark">> => {op, <<"LIKE">>, KwdPattern}},
-                                #{<<"u.nickname">> => {op, <<"LIKE">>, KwdPattern}},
-                                #{<<"u.sign">> => {op, <<"LIKE">>, KwdPattern}}
-                            ]}
-                        ]};
+                        #{
+                            <<"__and">> => [
+                                #{
+                                    <<"f.status">> => 1,
+                                    <<"f.from_user_id">> => Uid,
+                                    <<"f.tag">> => {op, <<"LIKE">>, TagNamePattern}
+                                },
+                                #{
+                                    <<"__or">> => [
+                                        #{<<"f.tag">> => {op, <<"LIKE">>, KwdPattern}},
+                                        #{<<"f.remark">> => {op, <<"LIKE">>, KwdPattern}},
+                                        #{<<"u.nickname">> => {op, <<"LIKE">>, KwdPattern}},
+                                        #{<<"u.sign">> => {op, <<"LIKE">>, KwdPattern}}
+                                    ]
+                                }
+                            ]
+                        };
                     false ->
-                        #{<<"f.status">> => 1,
-                          <<"f.from_user_id">> => Uid,
-                          <<"f.tag">> => {op, <<"LIKE">>, TagNamePattern}}
+                        #{
+                            <<"f.status">> => 1,
+                            <<"f.from_user_id">> => Uid,
+                            <<"f.tag">> => {op, <<"LIKE">>, TagNamePattern}
+                        }
                 end,
             case elib_pg:page_with_total(BaseFrom, fields(Uid), WhereMap, OrderBy, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
@@ -208,8 +219,6 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                     #{total => 0, page => Page, size => Size, list => []}
             end
     end.
-
-
 
 %% @doc 执行分页查询
 %%
@@ -226,7 +235,9 @@ page(Where, WhereArgs, Fields) ->
     Join1 = <<"left join ", UserDTable/binary, " as d on d.denied_user_id = f.to_user_id ">>,
     Join2 = <<"inner join ", UserTable/binary, " as u on u.id = f.to_user_id ">>,
     Tb = friend_repo:tablename(),
-    Sql = <<"SELECT ", Fields/binary, " FROM ", Tb/binary, " as f ", Join1/binary, Join2/binary, Where/binary>>,
+    Sql =
+        <<"SELECT ", Fields/binary, " FROM ", Tb/binary, " as f ", Join1/binary, Join2/binary,
+            Where/binary>>,
     % ?DEBUG_LOG([Sql, WhereArgs]),
     case elib_pg:query(Sql, WhereArgs) of
         {ok, Rows} when Fields == <<"count(*) count">> ->
@@ -240,7 +251,6 @@ page(Where, WhereArgs, Fields) ->
         {error, _Reason} ->
             []
     end.
-
 
 %% @doc 修改好友备注
 %%
@@ -293,7 +303,6 @@ find_by_users(FromUid, ToUid) ->
 set_category_id(Uid, CategoryId, NewCid) ->
     friend_repo:set_category_by_cid(Uid, CategoryId, NewCid).
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -308,28 +317,30 @@ set_category_id(Uid, CategoryId, NewCid) ->
 fields(Uid) when is_integer(Uid) ->
     fields(integer_to_binary(Uid));
 fields(Uid) ->
-    C_IsFriend = <<" case when d.user_id = ", Uid/binary,
-                   " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
+    C_IsFriend =
+        <<" case when d.user_id = ", Uid/binary,
+            " and d.denied_user_id = u.id then 0 else 1 end as is_friend,">>,
     C_IsFrom = <<"f.setting::jsonb->>'is_from' AS is_from,">>,
     C_Source = <<"f.setting::jsonb->>'source' AS source,">>,
-    C2 = <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary, "f.remark, f.tag, f.category_id,f.created_at">>,
+    C2 =
+        <<C_IsFrom/binary, C_Source/binary, C_IsFriend/binary,
+            "f.remark, f.tag, f.category_id,f.created_at">>,
     <<"id,", F2/binary>> = ?DEF_USER_COLUMN,
     <<"u.id,", F2/binary, ",", C2/binary>>.
-
 
 %% @doc 转换好友记录中的 ID 字段为 binary 字符串
 %% TSID 大整数超过 JS 安全范围，发送给客户端时必须转为 binary
 -spec convert_friend_ids(map()) -> map().
 convert_friend_ids(Row) ->
-    Row2 = case maps:find(<<"id">>, Row) of
-        {ok, Id} -> Row#{<<"id">> => Id};
-        error -> Row
-    end,
+    Row2 =
+        case maps:find(<<"id">>, Row) of
+            {ok, Id} -> Row#{<<"id">> => Id};
+            error -> Row
+        end,
     case maps:find(<<"uid">>, Row2) of
         {ok, Uid} -> Row2#{<<"uid">> => Uid};
         error -> Row2
     end.
-
 
 %% ===================================================================
 %% 优化函数：联合查询
@@ -355,10 +366,14 @@ check_relationship(FromUid, ToUid) ->
         UserDTable = elib_pg_sql:public_tablename(<<"user_denylist">>),
         Sql = <<
             "SELECT "
-            "EXISTS(SELECT 1 FROM ", (friend_repo:tablename())/binary, " "
+            "EXISTS(SELECT 1 FROM ",
+            (friend_repo:tablename())/binary,
+            " "
             "WHERE ((from_user_id = $1 AND to_user_id = $2 AND status = 1) OR "
             "(from_user_id = $2 AND to_user_id = $1 AND status = 1))) as is_friend, "
-            "EXISTS(SELECT 1 FROM ", UserDTable/binary, " "
+            "EXISTS(SELECT 1 FROM ",
+            UserDTable/binary,
+            " "
             "WHERE user_id = $1 AND denied_user_id = $2) as in_denylist"
         >>,
         % elib_log:info([<<"check_relationship">>, Sql]),
@@ -382,10 +397,41 @@ check_relationship(FromUid, ToUid) ->
 %% @param Tag 标签
 %% @param NowTs 时间戳
 %% @return ok
--spec confirm_friend(boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()) -> ok.
+-spec confirm_friend(
+    boolean(), integer(), integer(), binary(), map() | binary() | undefined, binary(), binary()
+) -> ok.
 confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs) ->
     friend_repo:confirm_friend(IsFriend, FromID, ToID, Remark, Setting, Tag, NowTs),
     invalidate_cache(FromID, ToID).
+
+%% @doc 插入 pending 好友申请行（status=0），并失效关系缓存。
+-spec insert_pending(integer(), integer(), map() | binary() | undefined, binary()) -> ok.
+insert_pending(FromID, ToID, Setting, NowTs) ->
+    ok = friend_repo:insert_pending(FromID, ToID, Setting, NowTs),
+    invalidate_cache(FromID, ToID).
+
+%% @doc 删除 pending 好友申请行（reject 用），并失效关系缓存。
+-spec delete_pending(integer(), integer()) -> ok.
+delete_pending(FromID, ToID) ->
+    ok = friend_repo:delete_pending(FromID, ToID),
+    invalidate_cache(FromID, ToID).
+
+%% @doc 派生 from→to 的 friend_agg 状态：blocked > friends > pending > none。
+%% 供 friend_logic 接线领域聚合（request/accept/reject 状态机）。
+-spec pending_status(integer(), integer()) -> none | pending | friends | blocked.
+pending_status(FromID, ToID) ->
+    {IsFriend, InDenylist} = check_relationship(FromID, ToID),
+    if
+        InDenylist ->
+            blocked;
+        IsFriend ->
+            friends;
+        true ->
+            case friend_repo:find_pending(FromID, ToID) of
+                true -> pending;
+                false -> none
+            end
+    end.
 
 %% @doc 删除好友
 %% @param FromID 源用户ID

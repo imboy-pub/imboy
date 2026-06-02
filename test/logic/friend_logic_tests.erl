@@ -89,8 +89,13 @@ add_friend_success_test_() ->
                                             ?WITH_MECK(
                                                 friend_ds,
                                                 [
-                                                    {'check_relationship', 2, fun(_From, _To) ->
-                                                        {false, false}
+                                                    {'pending_status', 2, fun(_From, _To) ->
+                                                        none
+                                                    end},
+                                                    {'insert_pending', 4, fun(
+                                                        _From, _To, _Setting, _NowTs
+                                                    ) ->
+                                                        ok
                                                     end}
                                                 ],
                                                 fun() ->
@@ -159,8 +164,13 @@ add_friend_with_map_payload_test_() ->
                                             ?WITH_MECK(
                                                 friend_ds,
                                                 [
-                                                    {'check_relationship', 2, fun(_From, _To) ->
-                                                        {false, false}
+                                                    {'pending_status', 2, fun(_From, _To) ->
+                                                        none
+                                                    end},
+                                                    {'insert_pending', 4, fun(
+                                                        _From, _To, _Setting, _NowTs
+                                                    ) ->
+                                                        ok
                                                     end}
                                                 ],
                                                 fun() ->
@@ -198,7 +208,7 @@ add_friend_already_friends_returns_error_test_() ->
     ?WITH_MECK(
         friend_ds,
         [
-            {'check_relationship', 2, fun(_From, _To) -> {true, false} end}
+            {'pending_status', 2, fun(_From, _To) -> friends end}
         ],
         fun() ->
             CurrentUid = 1,
@@ -215,7 +225,7 @@ add_friend_when_blocked_returns_error_test_() ->
     ?WITH_MECK(
         friend_ds,
         [
-            {'check_relationship', 2, fun(_From, _To) -> {false, true} end}
+            {'pending_status', 2, fun(_From, _To) -> blocked end}
         ],
         fun() ->
             CurrentUid = 1,
@@ -227,12 +237,12 @@ add_friend_when_blocked_returns_error_test_() ->
         end
     ).
 
-%% 拉黑优先于好友：既是好友又被拉黑时，仍按 blocked 拒绝
-add_friend_blocked_takes_precedence_over_friends_test_() ->
+%% 已发送过申请（pending）→ friend_agg:request 拒绝 already_requested（T3.4 余项）
+add_friend_already_requested_returns_error_test_() ->
     ?WITH_MECK(
         friend_ds,
         [
-            {'check_relationship', 2, fun(_From, _To) -> {true, true} end}
+            {'pending_status', 2, fun(_From, _To) -> pending end}
         ],
         fun() ->
             CurrentUid = 1,
@@ -240,7 +250,7 @@ add_friend_blocked_takes_precedence_over_friends_test_() ->
             Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
             CreatedAt = 1640995200,
             Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
-            ?assertMatch({error, <<"blocked">>, _}, Result)
+            ?assertMatch({error, <<"already_requested">>, _}, Result)
         end
     ).
 
@@ -300,6 +310,7 @@ confirm_friend_success_test_() ->
                     ?WITH_MECK(
                         friend_ds,
                         [
+                            {'pending_status', 2, fun(_From, _To) -> pending end},
                             {'is_friend', 2, fun(_FromId, _ToId) -> false end},
                             {'confirm_friend', 7, fun(
                                 _IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs
@@ -423,6 +434,7 @@ confirm_friend_with_tags_test_() ->
                     ?WITH_MECK(
                         friend_ds,
                         [
+                            {'pending_status', 2, fun(_From, _To) -> pending end},
                             {'is_friend', 2, fun(_FromId, _ToId) -> false end},
                             {'confirm_friend', 7, fun(
                                 _IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs
@@ -732,5 +744,57 @@ information_with_nonexistent_user_test_() ->
                     ?assertEqual(#{}, Result)
                 end
             )
+        end
+    ).
+
+%% ===================================================================
+%% T3.4 余项 pending-store：accept/reject gating 测试
+%% ===================================================================
+
+%% confirm_friend：无 pending 申请（none）→ friend_agg:accept 拒 no_pending_request
+confirm_friend_without_pending_returns_error_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'pending_status', 2, fun(_From, _To) -> none end}
+        ],
+        fun() ->
+            CurrentUid = 2,
+            From = <<"1">>,
+            To = <<"2">>,
+            Payload = <<"{}">>,
+            Result = friend_logic:confirm_friend(CurrentUid, From, To, Payload),
+            ?assertMatch({error, <<"no_pending_request">>, _}, Result)
+        end
+    ).
+
+%% reject_friend：存在 pending → friend_agg:reject ok，删 pending 行
+reject_friend_with_pending_returns_ok_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'pending_status', 2, fun(_From, _To) -> pending end},
+            {'delete_pending', 2, fun(_From, _To) -> ok end}
+        ],
+        fun() ->
+            CurrentUid = 2,
+            From = <<"1">>,
+            Result = friend_logic:reject_friend(CurrentUid, From),
+            ?assertEqual(ok, Result)
+        end
+    ).
+
+%% reject_friend：无 pending（none）→ friend_agg:reject 拒 no_pending_request
+reject_friend_without_pending_returns_error_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'pending_status', 2, fun(_From, _To) -> none end}
+        ],
+        fun() ->
+            CurrentUid = 2,
+            From = <<"1">>,
+            Result = friend_logic:reject_friend(CurrentUid, From),
+            ?assertMatch({error, <<"no_pending_request">>, _}, Result)
         end
     ).

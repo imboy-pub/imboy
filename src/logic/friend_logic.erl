@@ -6,6 +6,7 @@
 -export([add_friend/5]).
 -export([confirm_friend/4]).
 -export([confirm_friend_resp/2]).
+-export([reject_friend/2]).
 -export([delete_friend/2]).
 -export([move_to_category/3]).
 -export([information/2]).
@@ -50,37 +51,32 @@ add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
 
 %% @doc 内部函数：实际执行添加好友操作
 %%
-%% T3.4：委托 friend_agg 守护好友申请状态机不变量（state-gating）。
-%% 现状为无状态消息流；接线后由领域聚合拒绝「对方已是好友」「您已拉黑对方」
-%% 的重复申请。pending 态在现状为瞬态 S2C 消息（未持久化），故 already_requested
-%% 不在本层判定——待 pending-store 落地后补 accept/reject 接线（见 T3.4 后续）。
+%% T3.4（含余项 pending-store）：委托 friend_agg 守护好友申请状态机不变量。
+%% friend_ds:pending_status/2 派生 none|pending|friends|blocked（拉黑>好友>申请中）。
+%% 接线后拒绝「对方已是好友」「您已拉黑对方」「已发送过申请」的重复申请；
+%% ok 路径持久化 pending 行（status=0）供后续 accept/reject gating。
 -spec do_add_friend(integer(), binary(), binary(), binary()) ->
     ok | {error, binary(), binary()}.
 do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = ec_cnv:to_integer(To),
     FromBin = ec_cnv:to_binary(CurrentUid),
-    %% 由现状联合查询（好友 + 黑名单）派生 friend_agg 初始状态
-    {IsFriend, InDenylist} = friend_ds:check_relationship(CurrentUid, ToId),
     Friendship = friend_agg:rehydrate(#{
         <<"from_user_id">> => FromBin,
         <<"to_user_id">> => To,
-        <<"status">> => add_friend_status(IsFriend, InDenylist)
+        <<"status">> => friend_ds:pending_status(CurrentUid, ToId)
     }),
     case friend_agg:request(Friendship) of
+        {error, already_requested} ->
+            {error, <<"already_requested">>, <<"您已发送过好友申请，请等待对方确认"/utf8>>};
         {error, already_friends} ->
             {error, <<"already_friends">>, <<"对方已是您的好友"/utf8>>};
         {error, blocked} ->
             {error, <<"blocked">>, <<"您已拉黑对方，无法发起好友申请"/utf8>>};
         {ok, _Friendship2, _Events} ->
+            %% 先持久化 pending 行（供 accept/reject gating + 去重），再发申请消息
+            _ = friend_ds:insert_pending(CurrentUid, ToId, Payload, elib_dt:now()),
             send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt)
     end.
-
-%% @doc 由现状联合查询派生 friend_agg 初始状态：拉黑优先于好友。
-%% check_relationship/2 的 InDenylist 表达「from 已拉黑 to」，对应 from→to 关系 blocked。
--spec add_friend_status(boolean(), boolean()) -> friend_agg:status().
-add_friend_status(_IsFriend, true) -> blocked;
-add_friend_status(true, false) -> friends;
-add_friend_status(false, false) -> none.
 
 %% @doc 发送好友申请 S2C 消息（行为逐字保留自原 do_add_friend 尾部）。
 -spec send_apply_friend(integer(), binary(), integer(), binary(), binary() | map(), binary()) ->
@@ -129,6 +125,27 @@ confirm_friend(CurrentUid, From, To, Payload) ->
     ToBin = ec_cnv:to_binary(To),
     FromID = ec_cnv:to_integer(From),
     ToID = ec_cnv:to_integer(To),
+    %% T3.4 余项：accept gating — 仅当存在 From→To pending(status=0) 申请时可确认；
+    %% 否则拒 no_pending_request（落地「无 pending 申请时拒绝 accept」语义）。
+    Pending = friend_agg:rehydrate(#{
+        <<"from_user_id">> => FromBin,
+        <<"to_user_id">> => ToBin,
+        <<"status">> => friend_ds:pending_status(FromID, ToID)
+    }),
+    case friend_agg:accept(Pending) of
+        {error, no_pending_request} ->
+            {error, <<"no_pending_request">>, <<"无待确认的好友申请"/utf8>>};
+        {ok, _AccF, _AccEv} ->
+            confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID)
+    end.
+
+%% @doc confirm_friend 主体（accept gating 通过后执行）：写双向好友关系 +
+%% 发确认消息 + tag + cache flush。From→To 行经 confirm_friend upsert 由
+%% pending(0) promote 为 friends(1)；To→From 行新插 status=1。
+-spec confirm_friend_do(
+    integer(), binary(), binary(), binary(), binary(), binary(), integer(), integer()
+) -> {ok, integer(), binary(), binary()}.
+confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) ->
     NowTs = elib_dt:now(),
     Payload2 =
         if
@@ -217,6 +234,24 @@ confirm_friend_resp(Uid, Remark) ->
         <<"id">> => Uid,
         <<"remark">> => Remark
     }.
+
+%% @doc 拒绝好友申请（T3.4 余项）：仅当存在 From→CurrentUid 的 pending(status=0)
+%% 申请时可拒绝，删除该 pending 行；否则拒 no_pending_request。
+%% From 为申请发起方，CurrentUid 为接收方（拒绝者）。
+-spec reject_friend(integer(), binary() | integer()) -> ok | {error, binary(), binary()}.
+reject_friend(CurrentUid, From) ->
+    FromID = ec_cnv:to_integer(From),
+    Pending = friend_agg:rehydrate(#{
+        <<"from_user_id">> => ec_cnv:to_binary(FromID),
+        <<"to_user_id">> => ec_cnv:to_binary(CurrentUid),
+        <<"status">> => friend_ds:pending_status(FromID, CurrentUid)
+    }),
+    case friend_agg:reject(Pending) of
+        {error, no_pending_request} ->
+            {error, <<"no_pending_request">>, <<"无待拒绝的好友申请"/utf8>>};
+        {ok, _F, _Ev} ->
+            friend_ds:delete_pending(FromID, CurrentUid)
+    end.
 
 %% @doc 删除好友
 %% 删除好友关系，清理相关缓存
