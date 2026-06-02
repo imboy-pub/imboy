@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@neverinfamous/postgres-mcp", "--tool-filter", "codemode"],
+      "env": {
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "4323",
+        "POSTGRES_USER": "imboy_user",
+        "POSTGRES_PASSWORD": "abc54321",
+        "POSTGRES_DATABASE": "imboy_v1"
+      }
+    }
+  }
+}

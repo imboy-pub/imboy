@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 0b549ff
+ERLANG_MK_VERSION = 4ad89c9
 ERLANG_MK_WITHOUT = index
 
 # Make 3.81 and 3.82 are deprecated.
@@ -638,7 +638,7 @@ define maybe_flock
 	if command -v flock >/dev/null; then \
 		flock $1 sh -c "$2"; \
 	elif command -v lockf >/dev/null; then \
-		lockf $1 sh -c "$2"; \
+		lockf -k $1 sh -c "$2"; \
 	else \
 		$2; \
 	fi
