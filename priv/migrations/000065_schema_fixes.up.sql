@@ -20,6 +20,8 @@ BEGIN;
 -- 1. msg_c2c 补充 compress_segmentby（与其他消息表保持一致）
 -- ─────────────────────────────────────────────────────────────────
 SELECT remove_compression_policy('msg_c2c', if_exists => true);
+-- 关闭压缩前须先解压全部 chunk（TimescaleDB 2.23 columnstore 限制）
+SELECT decompress_chunk(c, true) FROM show_chunks('msg_c2c') c;
 ALTER TABLE IF EXISTS msg_c2c SET (timescaledb.compress = false);
 ALTER TABLE IF EXISTS msg_c2c SET (
     timescaledb.compress,
@@ -56,14 +58,14 @@ ALTER TABLE public.feedback
 -- ─────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_user_device_uid        ON public.user_device (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_tag_creator_uid   ON public.user_tag (creator_user_id);
-CREATE INDEX IF NOT EXISTS idx_ufc_uid                ON public.user_friend_category (user_id);
+-- idx_ufc_uid 删除：user_friend_category 无 user_id 列；owner_user_id 索引已由下方 idx_user_friend_category_owner_uid 创建
 CREATE INDEX IF NOT EXISTS idx_user_denylist_uid      ON public.user_denylist (user_id);
 CREATE INDEX IF NOT EXISTS idx_group_random_code_uid  ON public.group_random_code (user_id);
 CREATE INDEX IF NOT EXISTS idx_group_notice_group_id  ON public.group_notice (group_id);
 CREATE INDEX IF NOT EXISTS idx_push_token_uid         ON public.push_token (user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_uid           ON public.feedback (user_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_reply_uid     ON public.feedback_reply (user_id);
-CREATE INDEX IF NOT EXISTS idx_group_album_uid        ON public.group_album (user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_reply_uid     ON public.feedback_reply (replier_user_id);
+CREATE INDEX IF NOT EXISTS idx_group_album_uid        ON public.group_album (creator_id);
 
 -- ─────────────────────────────────────────────────────────────────
 -- 5. 删除低区分度 status 单列索引，替换为复合索引
@@ -193,6 +195,30 @@ CREATE TRIGGER trg_user_fts
 -- ─────────────────────────────────────────────────────────────────
 -- 9. varchar → text（无业务上限的大字段）
 -- ─────────────────────────────────────────────────────────────────
+-- 前置：PostgreSQL 禁止 ALTER 被视图引用的列类型（0A000 feature_not_supported）。
+--       v_group_admins / v_group_senior_admins 引用 user.avatar，须先删除；
+--       两视图由 000068 末尾以 ALTER 后的最终列类型 CREATE OR REPLACE 重建。
+DROP VIEW IF EXISTS v_group_admins;
+DROP VIEW IF EXISTS v_group_senior_admins;
+-- 前置：删除依赖 user.sign / user_collect.attach_md5 的 UPDATE OF 触发器
+--   （PostgreSQL 禁止 ALTER 被触发器列依赖引用的列类型）
+--   imboy_for_fts_user：由本迁移 section 18 以增强版 trg_user_fts 取代，不重建
+--   imboy_for_user_collect：维护 attachment 引用计数，于 section 9 末原样重建
+DROP TRIGGER IF EXISTS imboy_for_fts_user ON public."user";
+DROP TRIGGER IF EXISTS imboy_for_user_collect ON public.user_collect;
+-- 前置：DROP 所有"将被 ALTER 到不兼容类型(boolean/jsonb) 且当前有 default"列的默认值。
+--   PostgreSQL 无法把旧 default(整数 0 / text '{}') 自动 cast 到新类型；
+--   类型转换完成后，下方各 section 的 SET DEFAULT 会重新设定正确默认值。
+ALTER TABLE public.config              ALTER COLUMN system            DROP DEFAULT;
+ALTER TABLE public.announcement        ALTER COLUMN pinned            DROP DEFAULT;
+ALTER TABLE public.group_member        ALTER COLUMN is_join           DROP DEFAULT;
+ALTER TABLE public.app_version         ALTER COLUMN force_update      DROP DEFAULT;
+ALTER TABLE public.app_version_policy  ALTER COLUMN grayscale_enabled DROP DEFAULT;
+ALTER TABLE public.msg_c2g_timeline    ALTER COLUMN client_ack        DROP DEFAULT;
+ALTER TABLE public.attachment          ALTER COLUMN info              DROP DEFAULT;
+ALTER TABLE public.channel             ALTER COLUMN tags              DROP DEFAULT;
+ALTER TABLE public.channel_message     ALTER COLUMN payload           DROP DEFAULT;
+ALTER TABLE public.channel_message     ALTER COLUMN reaction_summary  DROP DEFAULT;
 ALTER TABLE public.attachment ALTER COLUMN path TYPE text;
 ALTER TABLE public.attachment ALTER COLUMN url  TYPE text;
 ALTER TABLE public.attachment ALTER COLUMN name TYPE text;
@@ -212,6 +238,11 @@ ALTER TABLE public.group_member ALTER COLUMN description  TYPE text;
 ALTER TABLE public.group_log    ALTER COLUMN remark       TYPE text;
 ALTER TABLE public.adm_user     ALTER COLUMN "password"   TYPE text;
 ALTER TABLE public.app_version  ALTER COLUMN download_url TYPE text;
+
+-- 重建 imboy_for_user_collect（attach_md5 类型变更后恢复，功能不变；函数 imboy_user_collect_fun 未删除）
+CREATE TRIGGER imboy_for_user_collect
+    AFTER INSERT OR DELETE OR UPDATE OF attach_md5 ON public.user_collect
+    FOR EACH ROW EXECUTE FUNCTION imboy_user_collect_fun();
 
 -- ─────────────────────────────────────────────────────────────────
 -- 10. 补充缺失的时间戳列
@@ -249,11 +280,17 @@ CREATE INDEX IF NOT EXISTS idx_group_log_group_id             ON public.group_lo
 CREATE INDEX IF NOT EXISTS idx_conversation_client_id         ON public.conversation (client_id);
 
 -- ─────────────────────────────────────────────────────────────────
--- 12. msg_c2g_timeline: UNIQUE INDEX 提升为 PRIMARY KEY（零额外开销）
+-- 12. msg_c2g_timeline: 原计划 UNIQUE INDEX 提升为 PRIMARY KEY —— 已移除
 -- ─────────────────────────────────────────────────────────────────
-ALTER TABLE public.msg_c2g_timeline
-    ADD CONSTRAINT pk_msg_c2g_timeline
-    PRIMARY KEY USING INDEX uk_c2g_timeline_ToUid_MsgId;
+-- 移除原因：
+--   (1) 该表为 TimescaleDB hypertable，唯一索引分布于各 chunk，
+--       不支持 ADD CONSTRAINT ... PRIMARY KEY USING INDEX；
+--   (2) 原引用索引名 uk_c2g_timeline_ToUid_MsgId 在当前 schema 不存在
+--       （实际为 uk_c2g_timeline_touid_msgid_createdat，含分区列 created_at）；
+--   (3) 唯一性已由现有唯一索引保证，主键仅元数据收益（YAGNI）。
+-- ALTER TABLE public.msg_c2g_timeline
+--     ADD CONSTRAINT pk_msg_c2g_timeline
+--     PRIMARY KEY USING INDEX uk_c2g_timeline_touid_msgid_createdat;
 
 -- ─────────────────────────────────────────────────────────────────
 -- 13. smallint → boolean（纯 0/1 布尔标志列）
@@ -406,7 +443,10 @@ ALTER TABLE public.app_version_policy
 ALTER TABLE public.app_version_policy
     ALTER COLUMN grayscale_enabled SET DEFAULT false;
 
--- msg_c2g_timeline.client_ack（section-12 已将 UNIQUE→PK）
+-- msg_c2g_timeline.client_ack：压缩 hypertable，ALTER COLUMN 前须解压并关闭压缩
+SELECT remove_compression_policy('msg_c2g_timeline', if_exists => true);
+SELECT decompress_chunk(c, true) FROM show_chunks('msg_c2g_timeline') c;
+ALTER TABLE public.msg_c2g_timeline SET (timescaledb.compress = false);
 ALTER TABLE public.msg_c2g_timeline
     ALTER COLUMN client_ack TYPE boolean USING (client_ack = 1);
 ALTER TABLE public.msg_c2g_timeline
@@ -414,6 +454,12 @@ ALTER TABLE public.msg_c2g_timeline
 DROP INDEX IF EXISTS idx_c2g_timeline_ToUid_ClientAck;
 CREATE INDEX IF NOT EXISTS idx_c2g_timeline_to_uid_pending
     ON public.msg_c2g_timeline (to_uid) WHERE client_ack = false;
+ALTER TABLE public.msg_c2g_timeline SET (
+    timescaledb.compress,
+    timescaledb.compress_orderby   = 'created_at DESC',
+    timescaledb.compress_segmentby = 'to_gid'
+);
+SELECT add_compression_policy('msg_c2g_timeline', INTERVAL '3 days', if_not_exists => true);
 
 -- ─────────────────────────────────────────────────────────────────
 -- 20. 补充业务 CHECK 约束
@@ -638,17 +684,25 @@ ALTER TABLE public.conversation_delete
     ADD CONSTRAINT chk_conversation_delete_type CHECK (conversation_type IN ('c2c', 'c2g'));
 
 -- ─────────────────────────────────────────────────────────────────
--- 28. user_log 字段修复
+-- 28. user_log 字段修复（压缩 hypertable，ALTER COLUMN 前须解压并关闭压缩）
 -- ─────────────────────────────────────────────────────────────────
+SELECT remove_compression_policy('user_log', if_exists => true);
+SELECT decompress_chunk(c, true) FROM show_chunks('user_log') c;
+ALTER TABLE public.user_log SET (timescaledb.compress = false);
 -- type: int4 → smallint（用户操作 100/102/110；管理审计 901/902/903）
 ALTER TABLE public.user_log
     ALTER COLUMN type TYPE smallint;
 ALTER TABLE public.user_log
     ADD CONSTRAINT chk_user_log_type CHECK (type IN (100, 102, 110, 901, 902, 903));
-
 -- body: 存储 JSON 文本，改用 jsonb 支持运算符查询
 ALTER TABLE public.user_log
     ALTER COLUMN body TYPE jsonb USING body::jsonb;
+ALTER TABLE public.user_log SET (
+    timescaledb.compress,
+    timescaledb.compress_orderby   = 'created_at DESC',
+    timescaledb.compress_segmentby = 'uid'
+);
+SELECT add_compression_policy('user_log', INTERVAL '3 days', if_not_exists => true);
 
 -- ─────────────────────────────────────────────────────────────────
 -- 29. adm_role 约束补全
@@ -671,7 +725,8 @@ DROP INDEX IF EXISTS i_s2c_e2ee;
 
 -- 30b. payload text → jsonb（超表：需先解压，改完再压）
 SELECT remove_compression_policy('msg_s2c', if_exists => true);
-SELECT decompress_chunk(c) FROM show_chunks('msg_s2c') c;
+SELECT decompress_chunk(c, true) FROM show_chunks('msg_s2c') c;
+ALTER TABLE public.msg_s2c SET (timescaledb.compress = false);
 ALTER TABLE public.msg_s2c ALTER COLUMN payload TYPE jsonb USING payload::jsonb;
 ALTER TABLE public.msg_s2c SET (
     timescaledb.compress,
@@ -762,7 +817,8 @@ DROP INDEX IF EXISTS i_c2g_e2ee;
 
 -- 35c. msg_c2g.payload text → jsonb（超表：先解压，改类型，重新压缩）
 SELECT remove_compression_policy('msg_c2g', if_exists => true);
-SELECT decompress_chunk(c) FROM show_chunks('msg_c2g') c;
+SELECT decompress_chunk(c, true) FROM show_chunks('msg_c2g') c;
+ALTER TABLE public.msg_c2g SET (timescaledb.compress = false);
 ALTER TABLE public.msg_c2g ALTER COLUMN payload TYPE jsonb USING payload::jsonb;
 ALTER TABLE public.msg_c2g SET (
     timescaledb.compress,

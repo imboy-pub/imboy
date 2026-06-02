@@ -210,8 +210,8 @@ SELECT add_compression_policy('msg_s2c', INTERVAL '3 days', if_not_exists => tru
 ALTER TABLE IF EXISTS msg_store SET (timescaledb.compress, timescaledb.compress_orderby = 'created_at DESC', timescaledb.compress_segmentby = 'conv_key');
 SELECT add_compression_policy('msg_store', INTERVAL '3 days', if_not_exists => true);
 
-ALTER TABLE IF EXISTS public.msg_read ALTER COLUMN id DROP DEFAULT;
-ALTER TABLE IF EXISTS public.msg_read ALTER COLUMN id SET DATA TYPE BIGINT;
+-- msg_read 使用复合主键，无 id 列（ALTER COLUMN id 会报 column does not exist，
+-- IF EXISTS 仅保护表不存在、不保护列不存在），跳过列变更，仅清理可能遗留的序列
 DROP SEQUENCE IF EXISTS public.msg_read_id_seq;
 
 ALTER TABLE IF EXISTS public.msg_mention ALTER COLUMN id DROP DEFAULT;
