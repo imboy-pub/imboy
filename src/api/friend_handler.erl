@@ -31,6 +31,7 @@ init(Req0, State0) ->
 handle_action(list, Req, State) -> list(Req, State);
 handle_action(add_friend, Req, State) -> add_friend(Req, State);
 handle_action(confirm, Req, State) -> confirm(Req, State);
+handle_action(reject, Req, State) -> reject(Req, State);
 handle_action(delete_friend, Req, State) -> delete_friend(Req, State);
 handle_action(move, Req, State) -> move(Req, State);
 handle_action(information, Req, State) -> information(Req, State);
@@ -81,6 +82,29 @@ confirm(Req0, State) ->
             elib_response:success(Req0, Payload3);
         {error, Msg, Param} ->
             elib_response:error(Req0, Msg, 1, #{<<"field">> => Param})
+    end.
+
+%% @doc 拒绝好友申请（T3.4 余项）
+%% 拒绝来自 From 的好友申请，删除 pending 申请记录
+%%
+%% @param Req0 Cowboy请求对象，包含申请发起方 from
+%% @param State 状态映射，包含 current_uid（拒绝者）
+%% @return 返回成功或错误响应
+%% @end
+-spec reject(cowboy_req:req(), map()) -> cowboy_req:req().
+reject(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    case maps:get(<<"from">>, PostVals, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"Parameter error">>, 1, #{<<"field">> => <<"from">>});
+        From ->
+            case friend_logic:reject_friend(CurrentUid, From) of
+                ok ->
+                    elib_response:success(Req0, #{}, "success.");
+                {error, Msg, Param} ->
+                    elib_response:error(Req0, Msg, 1, #{<<"field">> => Param})
+            end
     end.
 
 %% @doc 删除好友关系
@@ -188,9 +212,11 @@ information(Req0, State) ->
 %% @end
 -spec information_transfer(integer(), binary(), map(), map()) -> map().
 information_transfer(CurrentUid, Type, User, UserSetting) ->
-    User#{<<"mine_uid">> => CurrentUid,
-           <<"type">> => Type,
-           <<"user_setting">> => UserSetting}.
+    User#{
+        <<"mine_uid">> => CurrentUid,
+        <<"type">> => Type,
+        <<"user_setting">> => UserSetting
+    }.
 
 %% @doc 修改好友备注
 %% 修改好友的备注名称
@@ -207,7 +233,8 @@ change_remark(Req0, State) ->
     Remark = maps:get(<<"remark">>, PostVals, ""),
     % 【优化】使用统一的 ID 验证函数
     case imboy_error:validate_id(Req0, Uid) of
-        {error, Req} -> Req;
+        {error, Req} ->
+            Req;
         {ok, Uid2} ->
             case friend_ds:change_remark(CurrentUid, Uid2, Remark) of
                 {error, ErrorMsg} ->
@@ -231,11 +258,15 @@ convert_user_id(User) ->
 -spec convert_friend_ids(map()) -> map().
 convert_friend_ids(F) ->
     Fields = [<<"id">>, <<"from_user_id">>, <<"to_user_id">>],
-    lists:foldl(fun(Field, Acc) ->
-        case maps:find(Field, Acc) of
-            {ok, V} when is_integer(V) ->
-                maps:put(Field, V, Acc);
-            _ ->
-                Acc
-        end
-    end, F, Fields).
+    lists:foldl(
+        fun(Field, Acc) ->
+            case maps:find(Field, Acc) of
+                {ok, V} when is_integer(V) ->
+                    maps:put(Field, V, Acc);
+                _ ->
+                    Acc
+            end
+        end,
+        F,
+        Fields
+    ).
