@@ -49,11 +49,44 @@ add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
     add_friend(CurrentUid, To, Payload, CreatedAt).
 
 %% @doc 内部函数：实际执行添加好友操作
--spec do_add_friend(integer(), binary(), binary(), binary()) -> ok.
+%%
+%% T3.4：委托 friend_agg 守护好友申请状态机不变量（state-gating）。
+%% 现状为无状态消息流；接线后由领域聚合拒绝「对方已是好友」「您已拉黑对方」
+%% 的重复申请。pending 态在现状为瞬态 S2C 消息（未持久化），故 already_requested
+%% 不在本层判定——待 pending-store 落地后补 accept/reject 接线（见 T3.4 后续）。
+-spec do_add_friend(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary(), binary()}.
 do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = ec_cnv:to_integer(To),
-    NowTs = elib_dt:now(),
     FromBin = ec_cnv:to_binary(CurrentUid),
+    %% 由现状联合查询（好友 + 黑名单）派生 friend_agg 初始状态
+    {IsFriend, InDenylist} = friend_ds:check_relationship(CurrentUid, ToId),
+    Friendship = friend_agg:rehydrate(#{
+        <<"from_user_id">> => FromBin,
+        <<"to_user_id">> => To,
+        <<"status">> => add_friend_status(IsFriend, InDenylist)
+    }),
+    case friend_agg:request(Friendship) of
+        {error, already_friends} ->
+            {error, <<"already_friends">>, <<"对方已是您的好友"/utf8>>};
+        {error, blocked} ->
+            {error, <<"blocked">>, <<"您已拉黑对方，无法发起好友申请"/utf8>>};
+        {ok, _Friendship2, _Events} ->
+            send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt)
+    end.
+
+%% @doc 由现状联合查询派生 friend_agg 初始状态：拉黑优先于好友。
+%% check_relationship/2 的 InDenylist 表达「from 已拉黑 to」，对应 from→to 关系 blocked。
+-spec add_friend_status(boolean(), boolean()) -> friend_agg:status().
+add_friend_status(_IsFriend, true) -> blocked;
+add_friend_status(true, false) -> friends;
+add_friend_status(false, false) -> none.
+
+%% @doc 发送好友申请 S2C 消息（行为逐字保留自原 do_add_friend 尾部）。
+-spec send_apply_friend(integer(), binary(), integer(), binary(), binary() | map(), binary()) ->
+    ok.
+send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt) ->
+    NowTs = elib_dt:now(),
     MsgId = <<"af_", FromBin/binary, "_", To/binary>>,
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend">>,

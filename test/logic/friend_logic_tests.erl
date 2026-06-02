@@ -45,68 +45,204 @@ add_friend_with_undefined_created_at_returns_error_test_() ->
     end).
 
 add_friend_success_test_() ->
-    ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(
+        elib_dt,
+        [
             {'to_rfc3339', 1, fun(_Timestamp) -> <<"2023-01-01T00:00:00Z">> end},
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ], fun() ->
-            ?WITH_MECK(msg_s2c_ds, [
-                {'write_msg', 8, fun(_CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE) -> ok end}
-            ], fun() ->
-                ?WITH_MECK(message_ds, [
-                    {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext) ->
-                        #{<<"type">> => <<"S2C">>, <<"msg_id">> => <<"test_msg_123">>}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                msg_s2c_ds,
+                [
+                    {'write_msg', 8, fun(
+                        _CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE
+                    ) ->
+                        ok
                     end}
-                ], fun() ->
-                    ?WITH_MECK(message_ds, [
-                        {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
-                    ], fun() ->
-                        ?WITH_MECK(elib_retry_config, [
-                            {'intervals', 1, fun(<<"s2c">>) -> [2000, 5000, 7000, 11000] end}
-                        ], fun() ->
-                            CurrentUid = 1,
-                            To = <<"test_to_2">>,
-                            Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
-                            CreatedAt = 1640995200,
+                ],
+                fun() ->
+                    ?WITH_MECK(
+                        message_ds,
+                        [
+                            {'assemble_msg', 8, fun(
+                                _Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext
+                            ) ->
+                                #{<<"type">> => <<"S2C">>, <<"msg_id">> => <<"test_msg_123">>}
+                            end}
+                        ],
+                        fun() ->
+                            ?WITH_MECK(
+                                message_ds,
+                                [
+                                    {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
+                                ],
+                                fun() ->
+                                    ?WITH_MECK(
+                                        elib_retry_config,
+                                        [
+                                            {'intervals', 1, fun(<<"s2c">>) ->
+                                                [2000, 5000, 7000, 11000]
+                                            end}
+                                        ],
+                                        fun() ->
+                                            ?WITH_MECK(
+                                                friend_ds,
+                                                [
+                                                    {'check_relationship', 2, fun(_From, _To) ->
+                                                        {false, false}
+                                                    end}
+                                                ],
+                                                fun() ->
+                                                    CurrentUid = 1,
+                                                    To = <<"test_to_2">>,
+                                                    Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
+                                                    CreatedAt = 1640995200,
 
-                            Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
-                            ?assertEqual(ok, Result)
-                        end)
-                    end)
-                end)
-            end)
-        end).
+                                                    Result = friend_logic:add_friend(
+                                                        CurrentUid, To, Payload, CreatedAt
+                                                    ),
+                                                    ?assertEqual(ok, Result)
+                                                end
+                                            )
+                                        end
+                                    )
+                                end
+                            )
+                        end
+                    )
+                end
+            )
+        end
+    ).
 
 add_friend_with_map_payload_test_() ->
-    ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(
+        elib_dt,
+        [
             {'to_rfc3339', 1, fun(_Timestamp) -> <<"2023-01-01T00:00:00Z">> end},
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ], fun() ->
-            ?WITH_MECK(msg_s2c_ds, [
-                {'write_msg', 8, fun(_CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE) -> ok end}
-            ], fun() ->
-                ?WITH_MECK(message_ds, [
-                    {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext) ->
-                        #{<<"type">> => <<"S2C">>}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                msg_s2c_ds,
+                [
+                    {'write_msg', 8, fun(
+                        _CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE
+                    ) ->
+                        ok
                     end}
-                ], fun() ->
-                    ?WITH_MECK(message_ds, [
-                        {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
-                    ], fun() ->
-                        ?WITH_MECK(elib_retry_config, [
-                            {'intervals', 1, fun(_) -> [2000] end}
-                        ], fun() ->
-                            CurrentUid = 1,
-                            To = <<"test_to_2">>,
-                            Payload = #{<<"msg">> => <<"你好"/utf8>>, <<"source">> => <<"search">>},
-                            CreatedAt = <<"2023-01-01T00:00:00Z">>,
+                ],
+                fun() ->
+                    ?WITH_MECK(
+                        message_ds,
+                        [
+                            {'assemble_msg', 8, fun(
+                                _Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext
+                            ) ->
+                                #{<<"type">> => <<"S2C">>}
+                            end}
+                        ],
+                        fun() ->
+                            ?WITH_MECK(
+                                message_ds,
+                                [
+                                    {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
+                                ],
+                                fun() ->
+                                    ?WITH_MECK(
+                                        elib_retry_config,
+                                        [
+                                            {'intervals', 1, fun(_) -> [2000] end}
+                                        ],
+                                        fun() ->
+                                            ?WITH_MECK(
+                                                friend_ds,
+                                                [
+                                                    {'check_relationship', 2, fun(_From, _To) ->
+                                                        {false, false}
+                                                    end}
+                                                ],
+                                                fun() ->
+                                                    CurrentUid = 1,
+                                                    To = <<"test_to_2">>,
+                                                    Payload = #{
+                                                        <<"msg">> => <<"你好"/utf8>>,
+                                                        <<"source">> => <<"search">>
+                                                    },
+                                                    CreatedAt = <<"2023-01-01T00:00:00Z">>,
 
-                            Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
-                            ?assertEqual(ok, Result)
-                        end)
-                    end)
-                end)
-            end)
-        end).
+                                                    Result = friend_logic:add_friend(
+                                                        CurrentUid, To, Payload, CreatedAt
+                                                    ),
+                                                    ?assertEqual(ok, Result)
+                                                end
+                                            )
+                                        end
+                                    )
+                                end
+                            )
+                        end
+                    )
+                end
+            )
+        end
+    ).
+
+%% ===================================================================
+%% add_friend/4 state-gating 测试（T3.4：委托 friend_agg 守护申请不变量）
+%% ===================================================================
+
+%% 对方已是好友 → friend_agg:request 拒绝 already_friends，不发送申请消息
+add_friend_already_friends_returns_error_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'check_relationship', 2, fun(_From, _To) -> {true, false} end}
+        ],
+        fun() ->
+            CurrentUid = 1,
+            To = <<"2">>,
+            Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
+            CreatedAt = 1640995200,
+            Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
+            ?assertMatch({error, <<"already_friends">>, _}, Result)
+        end
+    ).
+
+%% 已拉黑对方 → friend_agg:request 拒绝 blocked，不发送申请消息
+add_friend_when_blocked_returns_error_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'check_relationship', 2, fun(_From, _To) -> {false, true} end}
+        ],
+        fun() ->
+            CurrentUid = 1,
+            To = <<"2">>,
+            Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
+            CreatedAt = 1640995200,
+            Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
+            ?assertMatch({error, <<"blocked">>, _}, Result)
+        end
+    ).
+
+%% 拉黑优先于好友：既是好友又被拉黑时，仍按 blocked 拒绝
+add_friend_blocked_takes_precedence_over_friends_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'check_relationship', 2, fun(_From, _To) -> {true, true} end}
+        ],
+        fun() ->
+            CurrentUid = 1,
+            To = <<"2">>,
+            Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
+            CreatedAt = 1640995200,
+            Result = friend_logic:add_friend(CurrentUid, To, Payload, CreatedAt),
+            ?assertMatch({error, <<"blocked">>, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% confirm_friend/4 测试
@@ -143,246 +279,458 @@ confirm_friend_with_undefined_payload_returns_error_test_() ->
     end).
 
 confirm_friend_success_test_() ->
-    ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(
+        elib_dt,
+        [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ], fun() ->
-            ?WITH_MECK(jsone, [
-                {'decode', 2, fun(_Payload, _Opts) ->
-                    {ok, #{<<"from">> => #{<<"remark">> => <<"好友A"/utf8>>, <<"tag">> => <<>>},
-                           <<"to">> => #{<<"remark">> => <<"好友B"/utf8>>, <<"tag">> => <<>>},
-                           <<"source">> => <<"search">>}}
-                end}
-            ], fun() ->
-                ?WITH_MECK(friend_ds, [
-                    {'is_friend', 2, fun(_FromId, _ToId) -> false end},
-                    {'confirm_friend', 7, fun(_IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs) -> ok end}
-                ], fun() ->
-                    ?WITH_MECK(msg_s2c_ds, [
-                        {'write_msg', 8, fun(_CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE) -> ok end}
-                    ], fun() ->
-                        ?WITH_MECK(message_ds, [
-                            {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext) ->
-                                #{<<"type">> => <<"S2C">>}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                jsone,
+                [
+                    {'decode', 2, fun(_Payload, _Opts) ->
+                        {ok, #{
+                            <<"from">> => #{<<"remark">> => <<"好友A"/utf8>>, <<"tag">> => <<>>},
+                            <<"to">> => #{<<"remark">> => <<"好友B"/utf8>>, <<"tag">> => <<>>},
+                            <<"source">> => <<"search">>
+                        }}
+                    end}
+                ],
+                fun() ->
+                    ?WITH_MECK(
+                        friend_ds,
+                        [
+                            {'is_friend', 2, fun(_FromId, _ToId) -> false end},
+                            {'confirm_friend', 7, fun(
+                                _IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs
+                            ) ->
+                                ok
                             end}
-                        ], fun() ->
-                            ?WITH_MECK(message_ds, [
-                                {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
-                            ], fun() ->
-                                ?WITH_MECK(elib_retry_config, [
-                                    {'intervals', 1, fun(_) -> [2000] end}
-                                ], fun() ->
-                                    ?WITH_MECK(imboy_cache, [
-                                        {'flush', 1, fun(_Key) -> ok end}
-                                    ], fun() ->
-                                        CurrentUid = 200,
-                                        From = <<"test_from_2">>,
-                                        To = <<"test_to_2">>,
-                                        Payload = <<"{}">>,
+                        ],
+                        fun() ->
+                            ?WITH_MECK(
+                                msg_s2c_ds,
+                                [
+                                    {'write_msg', 8, fun(
+                                        _CreatedAt,
+                                        _MsgId,
+                                        _Payload,
+                                        _FromId,
+                                        _ToId,
+                                        _NowTs,
+                                        _Action,
+                                        _E2EE
+                                    ) ->
+                                        ok
+                                    end}
+                                ],
+                                fun() ->
+                                    ?WITH_MECK(
+                                        message_ds,
+                                        [
+                                            {'assemble_msg', 8, fun(
+                                                _Type,
+                                                _From,
+                                                _To,
+                                                _Payload,
+                                                _MsgId,
+                                                _Body,
+                                                _Action,
+                                                _Ext
+                                            ) ->
+                                                #{<<"type">> => <<"S2C">>}
+                                            end}
+                                        ],
+                                        fun() ->
+                                            ?WITH_MECK(
+                                                message_ds,
+                                                [
+                                                    {'send_next', 3, fun(
+                                                        _ToId, _MsgId, _Message, _MsLi
+                                                    ) ->
+                                                        ok
+                                                    end}
+                                                ],
+                                                fun() ->
+                                                    ?WITH_MECK(
+                                                        elib_retry_config,
+                                                        [
+                                                            {'intervals', 1, fun(_) -> [2000] end}
+                                                        ],
+                                                        fun() ->
+                                                            ?WITH_MECK(
+                                                                imboy_cache,
+                                                                [
+                                                                    {'flush', 1, fun(_Key) ->
+                                                                        ok
+                                                                    end}
+                                                                ],
+                                                                fun() ->
+                                                                    CurrentUid = 200,
+                                                                    From = <<"test_from_2">>,
+                                                                    To = <<"test_to_2">>,
+                                                                    Payload = <<"{}">>,
 
-                                        Result = friend_logic:confirm_friend(CurrentUid, From, To, Payload),
-                                        ?assertMatch({ok, _FromID, _Remark, _Source}, Result)
-                                    end)
-                                end)
-                            end)
-                        end)
-                    end)
-                end)
-            end)
-        end).
+                                                                    Result = friend_logic:confirm_friend(
+                                                                        CurrentUid,
+                                                                        From,
+                                                                        To,
+                                                                        Payload
+                                                                    ),
+                                                                    ?assertMatch(
+                                                                        {ok, _FromID, _Remark,
+                                                                            _Source},
+                                                                        Result
+                                                                    )
+                                                                end
+                                                            )
+                                                        end
+                                                    )
+                                                end
+                                            )
+                                        end
+                                    )
+                                end
+                            )
+                        end
+                    )
+                end
+            )
+        end
+    ).
 
 confirm_friend_with_tags_test_() ->
-    ?WITH_MECK(elib_dt, [
+    ?WITH_MECK(
+        elib_dt,
+        [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
-        ], fun() ->
-            ?WITH_MECK(jsone, [
-                {'decode', 2, fun(_Payload, _Opts) ->
-                    {ok, #{<<"from">> => #{<<"remark">> => <<"朋友"/utf8>>, <<"tag">> => <<"tag1,tag2">>},
-                           <<"to">> => #{<<"remark">> => <<"同事"/utf8>>, <<"tag">> => <<"tag3">>},
-                           <<"source">> => <<"qrcode">>}}
-                end}
-            ], fun() ->
-                ?WITH_MECK(friend_ds, [
-                    {'is_friend', 2, fun(_FromId, _ToId) -> false end},
-                    {'confirm_friend', 7, fun(_IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs) -> ok end}
-                ], fun() ->
-                    ?WITH_MECK(msg_s2c_ds, [
-                        {'write_msg', 8, fun(_CreatedAt, _MsgId, _Payload, _FromId, _ToId, _NowTs, _Action, _E2EE) -> ok end}
-                    ], fun() ->
-                        ?WITH_MECK(message_ds, [
-                            {'assemble_msg', 8, fun(_Type, _From, _To, _Payload, _MsgId, _Body, _Action, _Ext) ->
-                                #{<<"type">> => <<"S2C">>}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                jsone,
+                [
+                    {'decode', 2, fun(_Payload, _Opts) ->
+                        {ok, #{
+                            <<"from">> => #{
+                                <<"remark">> => <<"朋友"/utf8>>, <<"tag">> => <<"tag1,tag2">>
+                            },
+                            <<"to">> => #{<<"remark">> => <<"同事"/utf8>>, <<"tag">> => <<"tag3">>},
+                            <<"source">> => <<"qrcode">>
+                        }}
+                    end}
+                ],
+                fun() ->
+                    ?WITH_MECK(
+                        friend_ds,
+                        [
+                            {'is_friend', 2, fun(_FromId, _ToId) -> false end},
+                            {'confirm_friend', 7, fun(
+                                _IsFriend, _FromId, _ToId, _Remark, _Setting, _Tag, _NowTs
+                            ) ->
+                                ok
                             end}
-                        ], fun() ->
-                            ?WITH_MECK(message_ds, [
-                                {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
-                            ], fun() ->
-                                ?WITH_MECK(elib_retry_config, [
-                                    {'intervals', 1, fun(_) -> [2000] end}
-                                ], fun() ->
-                                    ?WITH_MECK(user_tag_relation_logic, [
-                                        {'add', 4, fun(_Uid, _Scene, _TargetUid, _Tags) -> ok end}
-                                    ], fun() ->
-                                        ?WITH_MECK(imboy_cache, [
-                                            {'flush', 1, fun(_Key) -> ok end}
-                                        ], fun() ->
-                                            CurrentUid = 200,
-                                            From = <<"test_from_2">>,
-                                            To = <<"test_to_2">>,
-                                            Payload = <<"{}">>,
+                        ],
+                        fun() ->
+                            ?WITH_MECK(
+                                msg_s2c_ds,
+                                [
+                                    {'write_msg', 8, fun(
+                                        _CreatedAt,
+                                        _MsgId,
+                                        _Payload,
+                                        _FromId,
+                                        _ToId,
+                                        _NowTs,
+                                        _Action,
+                                        _E2EE
+                                    ) ->
+                                        ok
+                                    end}
+                                ],
+                                fun() ->
+                                    ?WITH_MECK(
+                                        message_ds,
+                                        [
+                                            {'assemble_msg', 8, fun(
+                                                _Type,
+                                                _From,
+                                                _To,
+                                                _Payload,
+                                                _MsgId,
+                                                _Body,
+                                                _Action,
+                                                _Ext
+                                            ) ->
+                                                #{<<"type">> => <<"S2C">>}
+                                            end}
+                                        ],
+                                        fun() ->
+                                            ?WITH_MECK(
+                                                message_ds,
+                                                [
+                                                    {'send_next', 3, fun(
+                                                        _ToId, _MsgId, _Message, _MsLi
+                                                    ) ->
+                                                        ok
+                                                    end}
+                                                ],
+                                                fun() ->
+                                                    ?WITH_MECK(
+                                                        elib_retry_config,
+                                                        [
+                                                            {'intervals', 1, fun(_) -> [2000] end}
+                                                        ],
+                                                        fun() ->
+                                                            ?WITH_MECK(
+                                                                user_tag_relation_logic,
+                                                                [
+                                                                    {'add', 4, fun(
+                                                                        _Uid,
+                                                                        _Scene,
+                                                                        _TargetUid,
+                                                                        _Tags
+                                                                    ) ->
+                                                                        ok
+                                                                    end}
+                                                                ],
+                                                                fun() ->
+                                                                    ?WITH_MECK(
+                                                                        imboy_cache,
+                                                                        [
+                                                                            {'flush', 1, fun(_Key) ->
+                                                                                ok
+                                                                            end}
+                                                                        ],
+                                                                        fun() ->
+                                                                            CurrentUid = 200,
+                                                                            From =
+                                                                                <<"test_from_2">>,
+                                                                            To = <<"test_to_2">>,
+                                                                            Payload = <<"{}">>,
 
-                                            Result = friend_logic:confirm_friend(CurrentUid, From, To, Payload),
-                                            ?assertMatch({ok, _FromID, _Remark, _Source}, Result)
-                                        end)
-                                    end)
-                                end)
-                            end)
-                        end)
-                    end)
-                end)
-            end)
-        end).
+                                                                            Result = friend_logic:confirm_friend(
+                                                                                CurrentUid,
+                                                                                From,
+                                                                                To,
+                                                                                Payload
+                                                                            ),
+                                                                            ?assertMatch(
+                                                                                {ok, _FromID,
+                                                                                    _Remark,
+                                                                                    _Source},
+                                                                                Result
+                                                                            )
+                                                                        end
+                                                                    )
+                                                                end
+                                                            )
+                                                        end
+                                                    )
+                                                end
+                                            )
+                                        end
+                                    )
+                                end
+                            )
+                        end
+                    )
+                end
+            )
+        end
+    ).
 
 %% ===================================================================
 %% confirm_friend_resp/2 测试
 %% ===================================================================
 
 confirm_friend_resp_test_() ->
-    ?WITH_MECK(user_logic, [
-        {'find_by_id', 2, fun(_Uid, _Column) ->
-            #{
-                <<"id">> => 123,
-                <<"account">> => <<"test_account">>,
-                <<"nickname">> => <<"测试用户"/utf8>>,
-                <<"avatar">> => <<"https://example.com/avatar.jpg">>,
-                <<"gender">> => 1,
-                <<"sign">> => <<"个性签名"/utf8>>,
-                <<"region">> => <<"北京"/utf8>>,
-                <<"status">> => 1
-            }
-        end}
-    ], fun() ->
-        Uid = 123,
-        Remark = <<"备注名"/utf8>>,
+    ?WITH_MECK(
+        user_logic,
+        [
+            {'find_by_id', 2, fun(_Uid, _Column) ->
+                #{
+                    <<"id">> => 123,
+                    <<"account">> => <<"test_account">>,
+                    <<"nickname">> => <<"测试用户"/utf8>>,
+                    <<"avatar">> => <<"https://example.com/avatar.jpg">>,
+                    <<"gender">> => 1,
+                    <<"sign">> => <<"个性签名"/utf8>>,
+                    <<"region">> => <<"北京"/utf8>>,
+                    <<"status">> => 1
+                }
+            end}
+        ],
+        fun() ->
+            Uid = 123,
+            Remark = <<"备注名"/utf8>>,
 
-        Result = friend_logic:confirm_friend_resp(Uid, Remark),
-        ?assertMatch(#{
-            <<"id">> := 123,
-            <<"remark">> := <<"备注名"/utf8>>,
-            <<"account">> := <<"test_account">>,
-            <<"nickname">> := <<"测试用户"/utf8>>
-        }, Result)
-    end).
+            Result = friend_logic:confirm_friend_resp(Uid, Remark),
+            ?assertMatch(
+                #{
+                    <<"id">> := 123,
+                    <<"remark">> := <<"备注名"/utf8>>,
+                    <<"account">> := <<"test_account">>,
+                    <<"nickname">> := <<"测试用户"/utf8>>
+                },
+                Result
+            )
+        end
+    ).
 
 %% ===================================================================
 %% delete_friend/2 测试
 %% ===================================================================
 
 delete_friend_with_binary_uid_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
-    ], fun() ->
-        ?WITH_MECK(imboy_cache, [
-            {'flush', 1, fun(_Key) -> ok end}
-        ], fun() ->
-            CurrentUid = 1,
-            Uid = <<"2">>,
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                imboy_cache,
+                [
+                    {'flush', 1, fun(_Key) -> ok end}
+                ],
+                fun() ->
+                    CurrentUid = 1,
+                    Uid = <<"2">>,
 
-            Result = friend_logic:delete_friend(CurrentUid, Uid),
-            ?assertEqual(ok, Result)
-        end)
-    end).
+                    Result = friend_logic:delete_friend(CurrentUid, Uid),
+                    ?assertEqual(ok, Result)
+                end
+            )
+        end
+    ).
 
 delete_friend_with_integer_uid_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
-    ], fun() ->
-        ?WITH_MECK(imboy_cache, [
-            {'flush', 1, fun(_Key) -> ok end}
-        ], fun() ->
-            CurrentUid = 1,
-            Uid = 2,
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                imboy_cache,
+                [
+                    {'flush', 1, fun(_Key) -> ok end}
+                ],
+                fun() ->
+                    CurrentUid = 1,
+                    Uid = 2,
 
-            Result = friend_logic:delete_friend(CurrentUid, Uid),
-            ?assertEqual(ok, Result)
-        end)
-    end).
+                    Result = friend_logic:delete_friend(CurrentUid, Uid),
+                    ?assertEqual(ok, Result)
+                end
+            )
+        end
+    ).
 
 %% ===================================================================
 %% move_to_category/3 测试
 %% ===================================================================
 
 move_to_category_success_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
-    ], fun() ->
-        CurrentUid = 1,
-        Uid = 2,
-        CategoryId = 5,
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
+        ],
+        fun() ->
+            CurrentUid = 1,
+            Uid = 2,
+            CategoryId = 5,
 
-        Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-        ?assertEqual(ok, Result)
-    end).
+            Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 move_to_category_with_binary_uid_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
-    ], fun() ->
-        CurrentUid = 1,
-        Uid = <<"2">>,
-        CategoryId = 3,
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'move_to_category', 3, fun(_CurrentUid, _TargetUid, _CategoryId) -> ok end}
+        ],
+        fun() ->
+            CurrentUid = 1,
+            Uid = <<"2">>,
+            CategoryId = 3,
 
-        Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
-        ?assertEqual(ok, Result)
-    end).
+            Result = friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% information/2 测试
 %% ===================================================================
 
 information_with_valid_friend_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
-    ], fun() ->
-        ?WITH_MECK(user_logic, [
-            {'find_by_id', 2, fun(_Uid, _Column) ->
-                #{
-                    <<"id">> => 2,
-                    <<"account">> => <<"test_account">>,
-                    <<"nickname">> => <<"测试用户"/utf8>>,
-                    <<"avatar">> => <<"https://example.com/avatar.jpg">>
-                }
-            end}
-        ], fun() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                user_logic,
+                [
+                    {'find_by_id', 2, fun(_Uid, _Column) ->
+                        #{
+                            <<"id">> => 2,
+                            <<"account">> => <<"test_account">>,
+                            <<"nickname">> => <<"测试用户"/utf8>>,
+                            <<"avatar">> => <<"https://example.com/avatar.jpg">>
+                        }
+                    end}
+                ],
+                fun() ->
+                    CurrentUid = 1,
+                    Uid = 2,
+
+                    Result = friend_logic:information(CurrentUid, Uid),
+                    ?assertMatch(#{<<"is_friend">> := true}, Result)
+                end
+            )
+        end
+    ).
+
+information_with_non_friend_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {false, #{}} end}
+        ],
+        fun() ->
             CurrentUid = 1,
             Uid = 2,
 
             Result = friend_logic:information(CurrentUid, Uid),
-            ?assertMatch(#{<<"is_friend">> := true}, Result)
-        end)
-    end).
-
-information_with_non_friend_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {false, #{}} end}
-    ], fun() ->
-        CurrentUid = 1,
-        Uid = 2,
-
-        Result = friend_logic:information(CurrentUid, Uid),
-        ?assertEqual(#{}, Result)
-    end).
+            ?assertEqual(#{}, Result)
+        end
+    ).
 
 information_with_nonexistent_user_test_() ->
-    ?WITH_MECK(friend_ds, [
-        {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
-    ], fun() ->
-        ?WITH_MECK(user_logic, [
-            {'find_by_id', 2, fun(_Uid, _Column) -> #{} end}
-        ], fun() ->
-            CurrentUid = 1,
-            Uid = 999,
+    ?WITH_MECK(
+        friend_ds,
+        [
+            {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
+        ],
+        fun() ->
+            ?WITH_MECK(
+                user_logic,
+                [
+                    {'find_by_id', 2, fun(_Uid, _Column) -> #{} end}
+                ],
+                fun() ->
+                    CurrentUid = 1,
+                    Uid = 999,
 
-            Result = friend_logic:information(CurrentUid, Uid),
-            ?assertEqual(#{}, Result)
-        end)
-    end).
+                    Result = friend_logic:information(CurrentUid, Uid),
+                    ?assertEqual(#{}, Result)
+                end
+            )
+        end
+    ).
