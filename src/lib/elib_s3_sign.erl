@@ -15,6 +15,11 @@
 %% Expires 单位：秒，最大 604800（7天）
 -spec presign_put(binary(), binary(), binary(), binary(), pos_integer()) -> binary().
 presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
+    presign_url(<<"PUT">>, Endpoint, Bucket, ObjectKey, MimeType, Expires).
+
+%% @doc presigned URL 生成核心，按 HTTP 方法签名（PUT 上传 / GET 下载）
+-spec presign_url(binary(), binary(), binary(), binary(), binary(), pos_integer()) -> binary().
+presign_url(Method, Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     Now = calendar:universal_time(),
     DateStr = format_date(Now),
     AmzDate = format_amz_date(Now),
@@ -50,7 +55,8 @@ presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     CanonicalHeaders = <<"host:", Host/binary, "\n">>,
 
     CanonicalRequest = iolist_to_binary([
-        "PUT\n",
+        Method,
+        "\n",
         CanonicalUri,
         "\n",
         QueryBin,
@@ -72,7 +78,7 @@ presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
 %% @doc 生成 presigned GET URL（附件查看用）
 -spec presign_get(binary(), binary(), binary(), pos_integer()) -> binary().
 presign_get(Endpoint, Bucket, ObjectKey, Expires) ->
-    presign_put(Endpoint, Bucket, ObjectKey, <<>>, Expires).
+    presign_url(<<"GET">>, Endpoint, Bucket, ObjectKey, <<>>, Expires).
 
 %% @doc 生成 Authorization Header（服务端 PUT/DELETE 用）
 -spec authorization_header(binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->

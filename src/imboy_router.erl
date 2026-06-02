@@ -546,7 +546,11 @@ get_routes() ->
                 {"/v1/wallet/topup", wallet_handler, #{action => topup}},
 
                 % 附件 presign API（需 JWT 认证）
-                {"/v1/attachment/presign", attach_handler, #{action => presign}}
+                {"/v1/attachment/presign", attach_handler, #{action => presign}},
+                % 附件直传成功回调落库（需 JWT 认证）
+                {"/v1/attachment/confirm", attach_handler, #{action => confirm}},
+                % 附件下载短时签发 URL，替代 bucket 公开读（需 JWT 认证）
+                {"/v1/attachment/view_url", attach_handler, #{action => view_url}}
             ],
 
     % Admin routes (原 imadm)

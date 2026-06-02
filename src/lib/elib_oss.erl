@@ -15,6 +15,8 @@
 -export([upload/2, upload/3]).
 -export([get_url/1]).
 -export([presign_put/3, presign_put_for_key/3]).
+-export([presign_get_for_key/2]).
+-export([build_object_key/2, owner_of_key/1]).
 -export([delete_object/1]).
 -export([generate_file_id/0]).
 -export([validate_file_id/1]).
@@ -98,6 +100,45 @@ presign_put_for_key(ObjectKey, MimeType, ExpiresSeconds) ->
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, ExpiresSeconds).
+
+%% @doc 生成绑定 uid 的 ObjectKey：u<Uid>/<FileId>/<SafeName>
+%% FileId 使用加密强随机，避免可预测/碰撞；前缀 u<Uid> 用于归属判定与命名空间隔离
+-spec build_object_key(integer() | binary(), binary()) -> binary().
+build_object_key(Uid, FileName) ->
+    Ts = integer_to_binary(erlang:system_time(millisecond)),
+    Rand = binary:encode_hex(crypto:strong_rand_bytes(8)),
+    FileId = <<?FILE_ID_PREFIX, "_", Ts/binary, "_", Rand/binary>>,
+    SafeName = filename:basename(FileName),
+    UidBin =
+        if
+            is_integer(Uid) -> integer_to_binary(Uid);
+            is_binary(Uid) -> Uid
+        end,
+    <<"u", UidBin/binary, "/", FileId/binary, "/", SafeName/binary>>.
+
+%% @doc 从 ObjectKey 反解归属 uid（u<Uid>/... → Uid），用于 confirm 防越权
+-spec owner_of_key(binary()) -> {ok, integer()} | {error, invalid_key}.
+owner_of_key(<<"u", Rest/binary>>) ->
+    case binary:split(Rest, <<"/">>) of
+        [UidBin, _] ->
+            try
+                {ok, binary_to_integer(UidBin)}
+            catch
+                _:_ -> {error, invalid_key}
+            end;
+        _ ->
+            {error, invalid_key}
+    end;
+owner_of_key(_) ->
+    {error, invalid_key}.
+
+%% @doc 生成短时下载 presigned GET URL（替代 bucket 公开读直链）
+-spec presign_get_for_key(binary(), pos_integer()) -> binary().
+presign_get_for_key(ObjectKey, ExpiresSeconds) ->
+    Cfg = garage_config(),
+    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
+    elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, ExpiresSeconds).
 
 %% @doc 物理删除存储桶中的对象
 -spec delete_object(binary()) -> ok | {error, term()}.

@@ -48,6 +48,22 @@ http://<host>:3900/<bucket>/<object-key>
 
 ---
 
+## 部署方式选择 / Deployment Options
+
+本项目提供两种 Garage 部署方式，按场景择一 / Two methods are provided; pick one:
+
+| 方式 / Method | 脚本 / Script | 适用 / Use case |
+|---|---|---|
+| 二进制 + systemd | `script/garage-install.sh` | **生产推荐**；自动识别 macOS(开发)/Linux(生产)，二进制安装，无 docker 依赖 |
+| Docker | `script/garage-local-setup.sh` | 快速本地试用；依赖 docker 运行时 |
+
+> 生产服务器优先二进制方式（`garage-install.sh`），避免引入 docker 运行时依赖；该脚本自动随机生成 `rpc_secret`/`admin_token`，默认不开放整桶公开读。
+> Production prefers the binary installer to avoid a docker runtime dependency; it auto-generates secrets and never enables bucket-wide public-read.
+
+下面手动步骤适用于不使用脚本、需逐步理解配置的场景 / The manual steps below apply when not using the script.
+
+---
+
 ## 安装
 
 ### 下载二进制
@@ -83,9 +99,8 @@ metadata_dir = "/var/lib/garage/meta"
 data_dir     = "/var/lib/garage/data"
 db_engine    = "lmdb"           # lmdb 性能最佳
 replication_factor = 1          # 单节点固定为 1
-
-[rpc_bind_addr]
-addr = "127.0.0.1:3901"         # 单节点只绑 loopback
+rpc_bind_addr = "127.0.0.1:3901"  # 顶层字段，非 section / top-level field, NOT a section
+rpc_secret    = "<openssl rand -hex 32 生成 / generate with openssl rand -hex 32>"
 
 [s3_api]
 # 必须与 Erlang sys.config 和 Flutter 中的 region 完全一致
@@ -103,9 +118,8 @@ metadata_dir = "/tmp/garage/meta"
 data_dir     = "/tmp/garage/data"
 db_engine    = "lmdb"
 replication_factor = 1
-
-[rpc_bind_addr]
-addr = "127.0.0.1:3901"
+rpc_bind_addr = "127.0.0.1:3901"
+rpc_secret    = "<openssl rand -hex 32>"
 
 [s3_api]
 s3_region     = "garage"
@@ -184,16 +198,23 @@ gg key create imboy-key
 #   Key ID:     GKxxxxxxxxxxxxxxxxxx
 #   Secret key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
 
-# 6. 授权
+# 6. 授权（仅服务端密钥可读写，不开放匿名访问）
+#    Authorize (server key only; NO anonymous public access)
 gg bucket allow imboy --read --write --owner --key imboy-key
 
-# 7. 设置 bucket 公开读（附件 URL 无需签名，Flutter 可直接访问）
-gg bucket allow imboy --read --public
+# 注意：不要设置 bucket 公开读。私有附件（聊天图片/文件）必须保密，
+# 下载一律经后端 GET /v1/attachment/view_url 按需签发短时 presigned GET URL。
+# DO NOT enable public-read. Private attachments must stay confidential;
+# downloads are served via short-lived presigned GET URLs issued by the backend
+# endpoint GET /v1/attachment/view_url. Never run `bucket allow imboy --read --public`.
 
-# 验证
+# 验证 / Verify
 gg bucket list
 gg key list
 ```
+
+> ⚠️ **安全 / Security**：整桶公开读会让任何人凭 URL（且 ObjectKey 含时间戳可被推测）匿名读取私有聊天附件。本方案改为后端签发短时（默认 600s）presigned GET，配合 `u<Uid>/` 命名空间前缀做归属隔离。
+> Bucket-wide public-read would expose private chat attachments to anyone holding (or guessing) the URL. This design instead issues short-lived (default 600s) presigned GET URLs from the backend, combined with a `u<Uid>/` key-prefix namespace for ownership isolation.
 
 ---
 

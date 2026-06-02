@@ -23,48 +23,62 @@ init(Req0, State0) ->
     Req1 =
         case Action of
             presign -> presign(Method, Req0, State);
+            confirm -> confirm(Method, Req0, State);
+            view_url -> view_url(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
 
+%% @doc GET /v1/attachment/presign?filename=x.jpg&mime_type=image/jpeg
+%% 生成绑定当前 uid 的上传 presigned PUT URL
 -spec presign(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-presign(<<"GET">>, Req0, _State) ->
+presign(<<"GET">>, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
     Qs = cowboy_req:parse_qs(Req0),
     FileName = proplists:get_value(<<"filename">>, Qs, <<"file">>),
     MimeType = proplists:get_value(<<"mime_type">>, Qs, <<"application/octet-stream">>),
-    ExpiresRaw = proplists:get_value(<<"expires">>, Qs, <<"3600">>),
-    Expires = min(86400, max(60, safe_int(ExpiresRaw, 3600))),
-    case elib_oss:validate_file_type(MimeType) of
-        false ->
-            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
-        true ->
-            FileId = elib_oss:generate_file_id(),
-            SafeName = filename:basename(FileName),
-            ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
-            PutUrl = elib_oss:presign_put_for_key(ObjectKey, MimeType, Expires),
-            ExpiresAt = erlang:system_time(second) + Expires,
-            elib_response:success(
-                Req0,
-                #{
-                    <<"put_url">> => PutUrl,
-                    <<"object_key">> => ObjectKey,
-                    <<"expires_at">> => ExpiresAt
-                },
-                "success."
-            )
+    case attach_logic:presign(Uid, FileName, MimeType) of
+        {ok, Data} ->
+            elib_response:success(Req0, Data, "success.");
+        {error, invalid_file_type} ->
+            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST)
     end;
 presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc 安全解析整数，非法输入回退默认值（避免 binary_to_integer badarg 崩溃）
--spec safe_int(binary() | integer(), integer()) -> integer().
-safe_int(V, _Default) when is_integer(V) ->
-    V;
-safe_int(V, Default) when is_binary(V) ->
-    try
-        binary_to_integer(V)
-    catch
-        _:_ -> Default
+%% @doc POST /v1/attachment/confirm
+%% body: { object_key, md5, mime_type, size }
+%% 客户端 PUT 直传成功后回调，落库附件元数据
+-spec confirm(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+confirm(<<"POST">>, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    ObjectKey = maps:get(<<"object_key">>, PostVals, <<>>),
+    case attach_logic:confirm(Uid, ObjectKey, PostVals) of
+        {ok, Data} ->
+            elib_response:success(Req0, Data, "success.");
+        {error, forbidden_key} ->
+            elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, invalid_key} ->
+            elib_response:error(Req0, <<"非法对象键"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"附件落库失败"/utf8>>, ?ERR_BAD_REQUEST)
     end;
-safe_int(_, Default) ->
-    Default.
+confirm(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc GET /v1/attachment/view_url?object_key=xxx
+%% 签发短时下载 presigned GET URL（替代 bucket 公开读）
+-spec view_url(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+view_url(<<"GET">>, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    Qs = cowboy_req:parse_qs(Req0),
+    case proplists:get_value(<<"object_key">>, Qs, <<>>) of
+        <<>> ->
+            elib_response:error(Req0, <<"缺少 object_key"/utf8>>, ?ERR_BAD_REQUEST);
+        ObjectKey ->
+            {ok, Url} = attach_logic:view_url(Uid, ObjectKey),
+            elib_response:success(Req0, #{<<"url">> => Url}, "success.")
+    end;
+view_url(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
