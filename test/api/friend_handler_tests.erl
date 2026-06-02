@@ -14,111 +14,218 @@ init_false_action_passthrough_test_() ->
     end).
 
 init_add_friend_success_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{
-                    <<"to">> => <<"u_hash_67890">>,
-                    <<"payload">> => #{<<"hello">> => <<"world">>},
-                    <<"created_at">> => <<"2026-03-16T00:00:00Z">>
-                }
-            end}
-        ]},
-        {friend_logic, [
-            {'add_friend', 4, fun(12345, <<"u_hash_67890">>, #{<<"hello">> := <<"world">>}, <<"2026-03-16T00:00:00Z">>) ->
-                ok
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(Req, Payload, "success.") ->
-                Req#{response_status => 200, payload => Payload}
-            end}
-        ]}
-    ], fun() ->
-        Req = mock_request(),
-        {ok, RespReq, _State} = friend_handler:init(Req, #{action => add_friend, current_uid => 12345}),
-        ?assertEqual(200, maps:get(response_status, RespReq)),
-        ?assertEqual(#{}, maps:get(payload, RespReq))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"to">> => <<"u_hash_67890">>,
+                        <<"payload">> => #{<<"hello">> => <<"world">>},
+                        <<"created_at">> => <<"2026-03-16T00:00:00Z">>
+                    }
+                end}
+            ]},
+            {friend_logic, [
+                {'add_friend', 4, fun(
+                    12345,
+                    <<"u_hash_67890">>,
+                    #{<<"hello">> := <<"world">>},
+                    <<"2026-03-16T00:00:00Z">>
+                ) ->
+                    ok
+                end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, "success.") ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => add_friend, current_uid => 12345
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(#{}, maps:get(payload, RespReq))
+        end
+    ).
 
 init_delete_friend_success_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{<<"uid">> => <<"u_hash_67890">>}
-            end}
-        ]},
-        {friend_logic, [
-            {'delete_friend', 2, fun(12345, <<"u_hash_67890">>) ->
-                ok
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(Req, Payload) ->
-                Req#{response_status => 200, payload => Payload}
-            end}
-        ]}
-    ], fun() ->
-        Req = mock_request(),
-        {ok, RespReq, _State} = friend_handler:init(Req, #{action => delete_friend, current_uid => 12345}),
-        ?assertEqual(200, maps:get(response_status, RespReq)),
-        ?assertEqual(#{}, maps:get(payload, RespReq))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"uid">> => <<"u_hash_67890">>}
+                end}
+            ]},
+            {friend_logic, [
+                {'delete_friend', 2, fun(12345, <<"u_hash_67890">>) ->
+                    ok
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => delete_friend, current_uid => 12345
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(#{}, maps:get(payload, RespReq))
+        end
+    ).
 
 init_list_success_test_() ->
-    ?WITH_MECKS([
-        {user_logic, [
-            {'find_by_id', 1, fun(12345) ->
-                #{<<"id">> => 12345, <<"nickname">> => <<"me">>}
-            end},
-            {'mine_state', 1, fun(12345) ->
-                {<<"status">>, <<"online">>}
-            end}
-        ]},
-        {friend_ds, [
-            {'page_by_uid', 1, fun(12345) ->
-                [#{<<"uid">> => 67890, <<"remark">> => <<"好友">>}]
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(Req, Payload) ->
-                Req#{response_status => 200, payload => Payload}
-            end}
-        ]}
-    ], fun() ->
-        Req = mock_request(),
-        {ok, RespReq, _State} = friend_handler:init(Req, #{action => list, current_uid => 12345}),
-        ?assertEqual(200, maps:get(response_status, RespReq)),
-        Payload = maps:get(payload, RespReq),
-        ?assertEqual(12345, maps:get(<<"id">>, maps:get(<<"mine">>, Payload))),
-        ?assertEqual(1, length(maps:get(<<"friend">>, Payload)))
-    end).
+    ?WITH_MECKS(
+        [
+            {user_logic, [
+                {'find_by_id', 1, fun(12345) ->
+                    #{<<"id">> => 12345, <<"nickname">> => <<"me">>}
+                end},
+                {'mine_state', 1, fun(12345) ->
+                    {<<"status">>, <<"online">>}
+                end}
+            ]},
+            {friend_ds, [
+                {'page_by_uid', 1, fun(12345) ->
+                    [#{<<"uid">> => 67890, <<"remark">> => <<"好友">>}]
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{action => list, current_uid => 12345}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            Payload = maps:get(payload, RespReq),
+            ?assertEqual(12345, maps:get(<<"id">>, maps:get(<<"mine">>, Payload))),
+            ?assertEqual(1, length(maps:get(<<"friend">>, Payload)))
+        end
+    ).
 
 init_change_remark_success_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{<<"uid">> => <<"u_hash_67890">>, <<"remark">> => <<"新备注"/utf8>>}
-            end}
-        ]},
-        {imboy_error, [
-            {'validate_id', 2, fun(_Req, <<"u_hash_67890">>) ->
-                {ok, 67890}
-            end}
-        ]},
-        {friend_ds, [
-            {'change_remark', 3, fun(12345, 67890, <<"新备注"/utf8>>) ->
-                {ok, 1}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 3, fun(Req, Payload, "success.") ->
-                Req#{response_status => 200, payload => Payload}
-            end}
-        ]}
-    ], fun() ->
-        Req = mock_request(),
-        {ok, RespReq, _State} = friend_handler:init(Req, #{action => change_remark, current_uid => 12345}),
-        ?assertEqual(200, maps:get(response_status, RespReq)),
-        ?assertEqual(<<"新备注"/utf8>>, maps:get(<<"remark">>, maps:get(payload, RespReq)))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"uid">> => <<"u_hash_67890">>, <<"remark">> => <<"新备注"/utf8>>}
+                end}
+            ]},
+            {imboy_error, [
+                {'validate_id', 2, fun(_Req, <<"u_hash_67890">>) ->
+                    {ok, 67890}
+                end}
+            ]},
+            {friend_ds, [
+                {'change_remark', 3, fun(12345, 67890, <<"新备注"/utf8>>) ->
+                    {ok, 1}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, "success.") ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => change_remark, current_uid => 12345
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"新备注"/utf8>>, maps:get(<<"remark">>, maps:get(payload, RespReq)))
+        end
+    ).
+
+%% T3.4 reject endpoint（8aec28e）：拒绝好友申请 HTTP 入口
+init_reject_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"from">> => <<"u_hash_67890">>}
+                end}
+            ]},
+            {friend_logic, [
+                {'reject_friend', 2, fun(12345, <<"u_hash_67890">>) ->
+                    ok
+                end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, "success.") ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => reject, current_uid => 12345
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(#{}, maps:get(payload, RespReq))
+        end
+    ).
+
+init_reject_no_pending_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"from">> => <<"u_hash_67890">>}
+                end}
+            ]},
+            {friend_logic, [
+                {'reject_friend', 2, fun(12345, <<"u_hash_67890">>) ->
+                    {error, <<"no_pending_request">>, <<"from">>}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 4, fun(Req, Msg, 1, #{<<"field">> := Field}) ->
+                    Req#{response_status => 400, msg => Msg, field => Field}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => reject, current_uid => 12345
+            }),
+            ?assertEqual(400, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"no_pending_request">>, maps:get(msg, RespReq)),
+            ?assertEqual(<<"from">>, maps:get(field, RespReq))
+        end
+    ).
+
+init_reject_missing_from_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 4, fun(Req, Msg, 1, #{<<"field">> := Field}) ->
+                    Req#{response_status => 400, msg => Msg, field => Field}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = mock_request(),
+            {ok, RespReq, _State} = friend_handler:init(Req, #{
+                action => reject, current_uid => 12345
+            }),
+            ?assertEqual(400, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"from">>, maps:get(field, RespReq))
+        end
+    ).
