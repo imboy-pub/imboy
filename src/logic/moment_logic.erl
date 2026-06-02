@@ -107,7 +107,7 @@ feed(Uid, Cursor, Limit) ->
     case moment_ds:list_feed_candidates(Cursor, CandidateLimit) of
         {ok, Posts} ->
             VisiblePosts = take_visible_posts(Uid, Posts, Limit2),
-            List = [post_transfer(P) || P <- VisiblePosts],
+            List = enrich_posts(Uid, VisiblePosts),
             NextCursor = next_cursor_from_posts(VisiblePosts),
             {ok, #{list => List, cursor => NextCursor, limit => Limit2}};
         {error, Reason} ->
@@ -126,7 +126,7 @@ user_posts(Uid, TargetUidRaw, Cursor, Limit) ->
             case moment_ds:list_user_candidates(TargetUid, Cursor, CandidateLimit) of
                 {ok, Posts} ->
                     VisiblePosts = take_visible_posts(Uid, Posts, Limit2),
-                    List = [post_transfer(P) || P <- VisiblePosts],
+                    List = enrich_posts(Uid, VisiblePosts),
                     NextCursor = next_cursor_from_posts(VisiblePosts),
                     {ok, #{list => List, cursor => NextCursor, limit => Limit2}};
                 {error, Reason} ->
@@ -189,7 +189,9 @@ add_comment(Uid, PostIdRaw, ContentRaw, ReplyToUidRaw) ->
                     Comment = moment_ds:find_comment_by_id(CommentId),
                     Post = moment_ds:get_post(PostId),
                     AuthorUid = maps:get(<<"author_uid">>, Post, 0),
-                    _ = moment_logic_notify:notify_post_commented(Uid, PostId, CommentId, AuthorUid),
+                    _ = moment_logic_notify:notify_post_commented(
+                        Uid, PostId, CommentId, AuthorUid
+                    ),
                     {ok, comment_transfer(Comment)};
                 {error, forbidden} ->
                     {error, <<"无权限查看该动态"/utf8>>};
@@ -220,7 +222,7 @@ list_comments(Uid, PostIdRaw, Cursor, Limit) ->
                             Limit2 = clamp(Limit, 1, 100),
                             case moment_ds:list_comments(PostId, Cursor, Limit2) of
                                 {ok, Comments} ->
-                                    List = [comment_transfer(C) || C <- Comments],
+                                    List = enrich_comments(Comments),
                                     NextCursor = next_cursor_from_comments(Comments),
                                     {ok, #{list => List, cursor => NextCursor, limit => Limit2}};
                                 {error, Reason} ->
@@ -298,10 +300,11 @@ admin_post_detail(PostIdRaw) ->
             case moment_ds:get_post_any(PostId) of
                 Post when is_map(Post), map_size(Post) > 0 ->
                     {AllowUids, DenyUids} = moment_ds:list_post_acl(PostId),
-                    Reports = case moment_ds:list_reports_by_post(PostId, 50) of
-                        {ok, Rows} -> [report_transfer(R) || R <- Rows];
-                        _ -> []
-                    end,
+                    Reports =
+                        case moment_ds:list_reports_by_post(PostId, 50) of
+                            {ok, Rows} -> [report_transfer(R) || R <- Rows];
+                            _ -> []
+                        end,
                     PostPayload = admin_post_transfer(Post),
                     Payload = PostPayload#{
                         <<"acl">> => #{
@@ -426,16 +429,103 @@ post_transfer(Post) ->
 admin_post_transfer(Post) ->
     post_transfer(Post).
 
+%% @doc 批量富化动态列表：补作者昵称/头像 + 当前用户点赞状态（避免 N+1）
+%% remark（好友备注）属调用方私有数据，由客户端用 author_uid 查本地联系人填充
+-spec enrich_posts(integer(), [map()]) -> [map()].
+enrich_posts(_Uid, []) ->
+    [];
+enrich_posts(Uid, Posts) ->
+    AuthorIds = [
+        I
+     || P <- Posts,
+        (I = maps:get(<<"author_uid">>, P, 0)) =/= 0,
+        is_integer(I),
+        I > 0
+    ],
+    UserMap = build_user_map(lists:usort(AuthorIds)),
+    PostIds = [maps:get(<<"id">>, P, 0) || P <- Posts],
+    LikedSet =
+        case moment_ds:liked_post_ids(PostIds, Uid) of
+            {ok, Ids} -> Ids;
+            _ -> []
+        end,
+    [
+        begin
+            AuthorUid = maps:get(<<"author_uid">>, P, 0),
+            PostId = maps:get(<<"id">>, P, 0),
+            {Nickname, Avatar} = maps:get(AuthorUid, UserMap, {<<>>, <<>>}),
+            Base = post_transfer(P),
+            Base#{
+                <<"author_nickname">> => Nickname,
+                <<"author_avatar">> => Avatar,
+                <<"liked">> => lists:member(PostId, LikedSet)
+            }
+        end
+     || P <- Posts
+    ].
+
+%% @doc 批量富化评论列表：补评论者与被回复者昵称/头像（reply_to 仅昵称）
+-spec enrich_comments([map()]) -> [map()].
+enrich_comments([]) ->
+    [];
+enrich_comments(Comments) ->
+    Ids = lists:flatten([
+        [
+            maps:get(<<"user_id">>, C, 0),
+            maps:get(<<"reply_to_uid">>, C, 0)
+        ]
+     || C <- Comments
+    ]),
+    Ids2 = [I || I <- Ids, is_integer(I), I > 0],
+    UserMap = build_user_map(lists:usort(Ids2)),
+    [
+        begin
+            UserId = maps:get(<<"user_id">>, C, 0),
+            ReplyToUid = maps:get(<<"reply_to_uid">>, C, 0),
+            {Nick, Ava} = maps:get(UserId, UserMap, {<<>>, <<>>}),
+            {ReplyNick, _} = maps:get(ReplyToUid, UserMap, {<<>>, <<>>}),
+            Base = comment_transfer(C),
+            Base#{
+                <<"user_nickname">> => Nick,
+                <<"user_avatar">> => Ava,
+                <<"reply_to_nickname">> => ReplyNick
+            }
+        end
+     || C <- Comments
+    ].
+
+%% @doc 按 uid 列表批量查用户基础资料，返回 #{Uid => {Nickname, Avatar}}
+-spec build_user_map([integer()]) -> map().
+build_user_map([]) ->
+    #{};
+build_user_map(Ids) ->
+    case user_ds:list_by_ids(Ids, <<"id, nickname, avatar">>) of
+        {ok, Users} ->
+            lists:foldl(
+                fun(U, Acc) ->
+                    Id = maps:get(<<"id">>, U, 0),
+                    Nick = maps:get(<<"nickname">>, U, <<>>),
+                    Ava = maps:get(<<"avatar">>, U, <<>>),
+                    Acc#{Id => {Nick, Ava}}
+                end,
+                #{},
+                Users
+            );
+        _ ->
+            #{}
+    end.
+
 -spec comment_transfer(map()) -> map().
 comment_transfer(Comment) ->
     CommentId = maps:get(<<"id">>, Comment, 0),
     PostId = maps:get(<<"post_id">>, Comment, 0),
     UserId = maps:get(<<"user_id">>, Comment, 0),
     ReplyToUid0 = maps:get(<<"reply_to_uid">>, Comment, 0),
-    ReplyToUid = case ReplyToUid0 of
-        Uid when is_integer(Uid), Uid > 0 -> safe_encode(Uid);
-        _ -> <<>>
-    end,
+    ReplyToUid =
+        case ReplyToUid0 of
+            Uid when is_integer(Uid), Uid > 0 -> safe_encode(Uid);
+            _ -> <<>>
+        end,
     #{
         <<"id">> => safe_encode(CommentId),
         <<"moment_id">> => safe_encode(PostId),
@@ -452,10 +542,11 @@ report_transfer(Report) ->
     PostId = maps:get(<<"post_id">>, Report, 0),
     ReporterUid = maps:get(<<"reporter_uid">>, Report, 0),
     HandledBy0 = maps:get(<<"handled_by">>, Report, 0),
-    HandledBy = case HandledBy0 of
-        Uid when is_integer(Uid), Uid > 0 -> safe_encode(Uid);
-        _ -> <<>>
-    end,
+    HandledBy =
+        case HandledBy0 of
+            Uid when is_integer(Uid), Uid > 0 -> safe_encode(Uid);
+            _ -> <<>>
+        end,
     Report#{
         <<"id">> => safe_encode(ReportId),
         <<"post_id">> => safe_encode(PostId),
@@ -470,8 +561,9 @@ validate_create(Content, _Media, _Visibility) when byte_size(Content) > 5000 ->
     {error, <<"内容长度不能超过5000"/utf8>>};
 validate_create(_Content, Media, _Visibility) when length(Media) > 9 ->
     {error, <<"媒体数量不能超过9个"/utf8>>};
-validate_create(_Content, _Media, Visibility)
-    when Visibility < 0; Visibility > 4 ->
+validate_create(_Content, _Media, Visibility) when
+    Visibility < 0; Visibility > 4
+->
     {error, <<"可见性参数无效"/utf8>>};
 validate_create(_Content, _Media, _Visibility) ->
     ok.
@@ -584,7 +676,10 @@ decode_positive_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             Int = ec_cnv:to_integer(Value),
-            case Int > 0 of true -> Int; false -> 0 end;
+            case Int > 0 of
+                true -> Int;
+                false -> 0
+            end;
         false ->
             case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;

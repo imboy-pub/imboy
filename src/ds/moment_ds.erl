@@ -16,6 +16,7 @@
 -export([report_post/4]).
 -export([list_post_acl/1]).
 -export([has_liked/2]).
+-export([liked_post_ids/2]).
 -export([find_comment_by_id/1]).
 -export([page_admin_posts/5]).
 -export([list_reports_by_post/2]).
@@ -35,42 +36,48 @@ create_post(AuthorUid, Data) ->
     DenyUids = maps:get(deny_uids, Data, []),
     MediaJson = encode_json(Media, <<"[]">>),
     Now = elib_dt:now(),
-    case elib_pg:with_tx(fun(Conn) ->
-        PostData = #{
-            author_uid => AuthorUid,
-            content => Content,
-            media => MediaJson,
-            visibility => Visibility,
-            allow_comment => AllowComment,
-            like_count => 0,
-            comment_count => 0,
-            status => 1,
-            created_at => Now,
-            updated_at => Now
-        },
-        case moment_post_repo:add(Conn, PostData) of
-            {ok, PostId} ->
-                case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
-                    ok ->
-                        Recipients = resolve_timeline_recipients(
-                            AuthorUid,
-                            Visibility,
-                            AllowUids,
-                            DenyUids
-                        ),
-                        case moment_timeline_repo:upsert_batch(Conn, Recipients, PostId, AuthorUid, Now) of
-                            {ok, _} ->
-                                {ok, PostId};
-                            {error, Reason2} ->
-                                throw({abort_tx, Reason2})
-                        end;
-                    {error, Reason1} ->
-                        throw({abort_tx, Reason1})
-                end;
-            {error, Reason0} ->
-                throw({abort_tx, Reason0})
-        end
-    end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            PostData = #{
+                author_uid => AuthorUid,
+                content => Content,
+                media => MediaJson,
+                visibility => Visibility,
+                allow_comment => AllowComment,
+                like_count => 0,
+                comment_count => 0,
+                status => 1,
+                created_at => Now,
+                updated_at => Now
+            },
+            case moment_post_repo:add(Conn, PostData) of
+                {ok, PostId} ->
+                    case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
+                        ok ->
+                            Recipients = resolve_timeline_recipients(
+                                AuthorUid,
+                                Visibility,
+                                AllowUids,
+                                DenyUids
+                            ),
+                            case
+                                moment_timeline_repo:upsert_batch(
+                                    Conn, Recipients, PostId, AuthorUid, Now
+                                )
+                            of
+                                {ok, _} ->
+                                    {ok, PostId};
+                                {error, Reason2} ->
+                                    throw({abort_tx, Reason2})
+                            end;
+                        {error, Reason1} ->
+                            throw({abort_tx, Reason1})
+                    end;
+                {error, Reason0} ->
+                    throw({abort_tx, Reason0})
+            end
+        end)
+    of
         {ok, PostId} ->
             {ok, PostId};
         {error, Reason} ->
@@ -87,21 +94,23 @@ get_post_any(PostId) ->
 
 -spec delete_post(integer(), integer()) -> ok | {error, any()}.
 delete_post(AuthorUid, PostId) ->
-    case elib_pg:with_tx(fun(Conn) ->
-        case moment_post_repo:soft_delete(PostId, AuthorUid) of
-            {ok, Count} when Count > 0 ->
-                case moment_timeline_repo:hide_by_post(Conn, PostId) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason1} ->
-                        throw({abort_tx, Reason1})
-                end;
-            {ok, _} ->
-                throw({abort_tx, no_permission});
-            {error, Reason0} ->
-                throw({abort_tx, Reason0})
-        end
-    end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case moment_post_repo:soft_delete(PostId, AuthorUid) of
+                {ok, Count} when Count > 0 ->
+                    case moment_timeline_repo:hide_by_post(Conn, PostId) of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason1} ->
+                            throw({abort_tx, Reason1})
+                    end;
+                {ok, _} ->
+                    throw({abort_tx, no_permission});
+                {error, Reason0} ->
+                    throw({abort_tx, Reason0})
+            end
+        end)
+    of
         ok ->
             ok;
         {error, Reason} ->
@@ -110,21 +119,23 @@ delete_post(AuthorUid, PostId) ->
 
 -spec delete_post_by_admin(integer()) -> ok | {error, any()}.
 delete_post_by_admin(PostId) ->
-    case elib_pg:with_tx(fun(Conn) ->
-        case moment_post_repo:soft_delete_by_admin(PostId) of
-            {ok, Count} when Count > 0 ->
-                case moment_timeline_repo:hide_by_post(Conn, PostId) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason1} ->
-                        throw({abort_tx, Reason1})
-                end;
-            {ok, _} ->
-                throw({abort_tx, not_found});
-            {error, Reason0} ->
-                throw({abort_tx, Reason0})
-        end
-    end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case moment_post_repo:soft_delete_by_admin(PostId) of
+                {ok, Count} when Count > 0 ->
+                    case moment_timeline_repo:hide_by_post(Conn, PostId) of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason1} ->
+                            throw({abort_tx, Reason1})
+                    end;
+                {ok, _} ->
+                    throw({abort_tx, not_found});
+                {error, Reason0} ->
+                    throw({abort_tx, Reason0})
+            end
+        end)
+    of
         ok ->
             ok;
         {error, Reason} ->
@@ -164,19 +175,21 @@ like_post(UserId, PostId) ->
         Post when is_map(Post), map_size(Post) > 0 ->
             case can_view_post(UserId, Post) of
                 true ->
-                    case elib_pg:with_tx(fun(Conn) ->
-                        case moment_like_repo:add(Conn, PostId, UserId) of
-                            {ok, true} ->
-                                case moment_post_repo:increment_like_count(Conn, PostId, 1) of
-                                    {ok, _} -> changed;
-                                    {error, Reason1} -> throw({abort_tx, Reason1})
-                                end;
-                            {ok, false} ->
-                                noop;
-                            {error, Reason0} ->
-                                throw({abort_tx, Reason0})
-                        end
-                    end) of
+                    case
+                        elib_pg:with_tx(fun(Conn) ->
+                            case moment_like_repo:add(Conn, PostId, UserId) of
+                                {ok, true} ->
+                                    case moment_post_repo:increment_like_count(Conn, PostId, 1) of
+                                        {ok, _} -> changed;
+                                        {error, Reason1} -> throw({abort_tx, Reason1})
+                                    end;
+                                {ok, false} ->
+                                    noop;
+                                {error, Reason0} ->
+                                    throw({abort_tx, Reason0})
+                            end
+                        end)
+                    of
                         changed -> {ok, changed};
                         noop -> {ok, noop};
                         {error, Reason2} -> {error, Reason2}
@@ -194,19 +207,21 @@ unlike_post(UserId, PostId) ->
         Post when is_map(Post), map_size(Post) > 0 ->
             case can_view_post(UserId, Post) of
                 true ->
-                    case elib_pg:with_tx(fun(Conn) ->
-                        case moment_like_repo:remove(Conn, PostId, UserId) of
-                            {ok, true} ->
-                                case moment_post_repo:increment_like_count(Conn, PostId, -1) of
-                                    {ok, _} -> changed;
-                                    {error, Reason1} -> throw({abort_tx, Reason1})
-                                end;
-                            {ok, false} ->
-                                noop;
-                            {error, Reason0} ->
-                                throw({abort_tx, Reason0})
-                        end
-                    end) of
+                    case
+                        elib_pg:with_tx(fun(Conn) ->
+                            case moment_like_repo:remove(Conn, PostId, UserId) of
+                                {ok, true} ->
+                                    case moment_post_repo:increment_like_count(Conn, PostId, -1) of
+                                        {ok, _} -> changed;
+                                        {error, Reason1} -> throw({abort_tx, Reason1})
+                                    end;
+                                {ok, false} ->
+                                    noop;
+                                {error, Reason0} ->
+                                    throw({abort_tx, Reason0})
+                            end
+                        end)
+                    of
                         changed -> {ok, changed};
                         noop -> {ok, noop};
                         {error, Reason2} -> {error, Reason2}
@@ -233,28 +248,34 @@ add_comment(UserId, PostId, Content, ReplyToUid0) ->
                         true ->
                             ReplyToUid = normalize_optional_uid(ReplyToUid0),
                             Now = elib_dt:now(),
-                            case elib_pg:with_tx(fun(Conn) ->
-                                Data = #{
-                                    post_id => PostId,
-                                    user_id => UserId,
-                                    reply_to_uid => ReplyToUid,
-                                    content => Content,
-                                    status => 1,
-                                    created_at => Now,
-                                    updated_at => Now
-                                },
-                                case moment_comment_repo:add(Conn, Data) of
-                                    {ok, CommentId} ->
-                                        case moment_post_repo:increment_comment_count(Conn, PostId, 1) of
-                                            {ok, _} ->
-                                                {ok, CommentId};
-                                            {error, Reason1} ->
-                                                throw({abort_tx, Reason1})
-                                        end;
-                                    {error, Reason0} ->
-                                        throw({abort_tx, Reason0})
-                                end
-                            end) of
+                            case
+                                elib_pg:with_tx(fun(Conn) ->
+                                    Data = #{
+                                        post_id => PostId,
+                                        user_id => UserId,
+                                        reply_to_uid => ReplyToUid,
+                                        content => Content,
+                                        status => 1,
+                                        created_at => Now,
+                                        updated_at => Now
+                                    },
+                                    case moment_comment_repo:add(Conn, Data) of
+                                        {ok, CommentId} ->
+                                            case
+                                                moment_post_repo:increment_comment_count(
+                                                    Conn, PostId, 1
+                                                )
+                                            of
+                                                {ok, _} ->
+                                                    {ok, CommentId};
+                                                {error, Reason1} ->
+                                                    throw({abort_tx, Reason1})
+                                            end;
+                                        {error, Reason0} ->
+                                            throw({abort_tx, Reason0})
+                                    end
+                                end)
+                            of
                                 {ok, CommentId} ->
                                     {ok, CommentId};
                                 {error, Reason2} ->
@@ -288,19 +309,25 @@ delete_comment(UserId, PostId, CommentId) ->
                         false ->
                             {error, no_permission};
                         true ->
-                            case elib_pg:with_tx(fun(Conn) ->
-                                case moment_comment_repo:soft_delete(Conn, CommentId) of
-                                    {ok, Count} when Count > 0 ->
-                                        case moment_post_repo:increment_comment_count(Conn, PostId, -1) of
-                                            {ok, _} -> ok;
-                                            {error, Reason1} -> throw({abort_tx, Reason1})
-                                        end;
-                                    {ok, _} ->
-                                        ok;
-                                    {error, Reason0} ->
-                                        throw({abort_tx, Reason0})
-                                end
-                            end) of
+                            case
+                                elib_pg:with_tx(fun(Conn) ->
+                                    case moment_comment_repo:soft_delete(Conn, CommentId) of
+                                        {ok, Count} when Count > 0 ->
+                                            case
+                                                moment_post_repo:increment_comment_count(
+                                                    Conn, PostId, -1
+                                                )
+                                            of
+                                                {ok, _} -> ok;
+                                                {error, Reason1} -> throw({abort_tx, Reason1})
+                                            end;
+                                        {ok, _} ->
+                                            ok;
+                                        {error, Reason0} ->
+                                            throw({abort_tx, Reason0})
+                                    end
+                                end)
+                            of
                                 ok ->
                                     ok;
                                 {error, Reason2} ->
@@ -371,12 +398,13 @@ resolve_timeline_recipients(AuthorUid, Visibility, AllowUids0, DenyUids0) ->
     Friends = normalize_uid_list(friend_ds:list_by_uid(AuthorUid)),
     AllowUids = normalize_uid_list(AllowUids0),
     DenyUids = normalize_uid_list(DenyUids0),
-    Base = case Visibility of
-        2 -> [AuthorUid];
-        3 -> [AuthorUid | AllowUids];
-        4 -> [AuthorUid | [Uid || Uid <- Friends, not lists:member(Uid, DenyUids)]];
-        _ -> [AuthorUid | Friends]
-    end,
+    Base =
+        case Visibility of
+            2 -> [AuthorUid];
+            3 -> [AuthorUid | AllowUids];
+            4 -> [AuthorUid | [Uid || Uid <- Friends, not lists:member(Uid, DenyUids)]];
+            _ -> [AuthorUid | Friends]
+        end,
     lists:usort([Uid || Uid <- Base, Uid > 0, not is_denied_between(AuthorUid, Uid)]).
 
 -spec normalize_uid_list(term()) -> [integer()].
@@ -399,8 +427,8 @@ normalize_optional_uid(_) ->
 is_denied_between(UidA, UidB) when UidA =< 0; UidB =< 0 ->
     true;
 is_denied_between(UidA, UidB) ->
-    user_denylist_repo:in_denylist(UidA, UidB) > 0
-        orelse user_denylist_repo:in_denylist(UidB, UidA) > 0.
+    user_denylist_repo:in_denylist(UidA, UidB) > 0 orelse
+        user_denylist_repo:in_denylist(UidB, UidA) > 0.
 
 -spec encode_json(term(), binary()) -> binary().
 encode_json(Value, Default) ->
@@ -416,6 +444,9 @@ encode_json(Value, Default) ->
 
 -spec has_liked(integer(), integer()) -> boolean().
 has_liked(PostId, Uid) -> moment_like_repo:has_liked(PostId, Uid).
+
+-spec liked_post_ids([integer()], integer()) -> {ok, [integer()]} | {error, any()}.
+liked_post_ids(PostIds, Uid) -> moment_like_repo:liked_post_ids(PostIds, Uid).
 
 -spec find_comment_by_id(integer()) -> map() | {error, any()}.
 find_comment_by_id(CommentId) -> moment_comment_repo:find_by_id(CommentId).

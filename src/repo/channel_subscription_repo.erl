@@ -50,12 +50,14 @@ upsert_active(Conn, ChannelId, Uid) ->
     Tb = tablename(),
     Now = elib_dt:now(),
     GenId = elib_tsid:generate(channel_subscription),
-    Sql = <<"INSERT INTO ", Tb/binary,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
             " (id, channel_id, user_id, subscribed_at, status) "
             "VALUES ($1, $2, $3, $4, 1) "
             "ON CONFLICT (channel_id, user_id) DO UPDATE "
             "SET status = 1, subscribed_at = EXCLUDED.subscribed_at "
-            "WHERE ", Tb/binary, ".status <> 1 "
+            "WHERE ", Tb/binary,
+            ".status <> 1 "
             "RETURNING 1 AS changed">>,
     case elib_pg:query(Conn, Sql, [GenId, ChannelId, Uid, Now]) of
         {ok, []} ->
@@ -79,7 +81,8 @@ upsert_active(Conn, ChannelId, Uid) ->
 -spec find(integer(), integer()) -> map().
 find(ChannelId, Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE channel_id = $1 AND user_id = $2 AND status = 1 LIMIT 1">>,
     case elib_pg:one(Sql, [ChannelId, Uid]) of
         {ok, Row} -> Row;
@@ -90,7 +93,8 @@ find(ChannelId, Uid) ->
 -spec list_by_uid(integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE user_id = $1 AND status = 1 "
             "ORDER BY is_pinned DESC, subscribed_at DESC">>,
     elib_pg:query(Sql, [Uid]).
@@ -99,8 +103,7 @@ list_by_uid(Uid) ->
 -spec list_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_by_channel(ChannelId) ->
     Tb = tablename(),
-    Sql = <<"SELECT user_id FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND status = 1">>,
+    Sql = <<"SELECT user_id FROM ", Tb/binary, " WHERE channel_id = $1 AND status = 1">>,
     elib_pg:query(Sql, [ChannelId]).
 
 %% @doc 分页查询频道的订阅者列表
@@ -110,24 +113,42 @@ list_by_channel(ChannelId) ->
 -spec list_by_channel(integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_channel(ChannelId, 0, Limit) ->
     Tb = tablename(),
-    Sql = <<"SELECT id, user_id, is_pinned, subscribed_at, last_read_at, unread_count "
-            "FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND status = 1 "
-            "ORDER BY is_pinned DESC, subscribed_at DESC LIMIT $2">>,
+    UTb = user_repo:tablename(),
+    Sql = <<
+        "SELECT cs.id, cs.user_id, cs.is_pinned, cs.subscribed_at, cs.last_read_at, "
+        "cs.unread_count, cs.is_muted, u.nickname, u.avatar "
+        "FROM ",
+        Tb/binary,
+        " cs LEFT JOIN ",
+        UTb/binary,
+        " u ON u.id = cs.user_id "
+        "WHERE cs.channel_id = $1 AND cs.status = 1 "
+        "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC LIMIT $2"
+    >>,
     elib_pg:query(Sql, [ChannelId, Limit]);
 list_by_channel(ChannelId, Cursor, Limit) ->
     Tb = tablename(),
-    Sql = <<"SELECT id, user_id, is_pinned, subscribed_at, last_read_at, unread_count "
-            "FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND status = 1 AND id < $2 "
-            "ORDER BY is_pinned DESC, subscribed_at DESC LIMIT $3">>,
+    UTb = user_repo:tablename(),
+    Sql = <<
+        "SELECT cs.id, cs.user_id, cs.is_pinned, cs.subscribed_at, cs.last_read_at, "
+        "cs.unread_count, cs.is_muted, u.nickname, u.avatar "
+        "FROM ",
+        Tb/binary,
+        " cs LEFT JOIN ",
+        UTb/binary,
+        " u ON u.id = cs.user_id "
+        "WHERE cs.channel_id = $1 AND cs.status = 1 AND cs.id < $2 "
+        "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC LIMIT $3"
+    >>,
     elib_pg:query(Sql, [ChannelId, Cursor, Limit]).
 
 %% @doc 删除订阅关系（软删除）
 -spec delete(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete(ChannelId, Uid) ->
     Tb = tablename(),
-    elib_pg:update(Tb, #{status => 0}, <<"channel_id = $1 AND user_id = $2 AND status = 1">>, [ChannelId, Uid]).
+    elib_pg:update(Tb, #{status => 0}, <<"channel_id = $1 AND user_id = $2 AND status = 1">>, [
+        ChannelId, Uid
+    ]).
 
 -spec delete(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete(Conn, ChannelId, Uid) ->
@@ -144,7 +165,8 @@ delete(Conn, ChannelId, Uid) ->
 -spec increment_unread(integer()) -> ok.
 increment_unread(ChannelId) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET unread_count = unread_count + 1 "
             "WHERE channel_id = $1 AND status = 1">>,
     _ = elib_pg:execute(Sql, [ChannelId]),
@@ -154,10 +176,12 @@ increment_unread(ChannelId) ->
 -spec clear_unread(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 clear_unread(ChannelId) ->
     Tb = tablename(),
-    elib_pg:update(Tb,
+    elib_pg:update(
+        Tb,
         #{unread_count => 0, last_read_at => elib_dt:now()},
         <<"channel_id = $1 AND status = 1">>,
-        [ChannelId]).
+        [ChannelId]
+    ).
 
 %% @doc 清除指定用户在指定频道的未读计数
 %% @param ChannelId 频道ID
@@ -166,16 +190,19 @@ clear_unread(ChannelId) ->
 -spec clear_unread(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 clear_unread(ChannelId, Uid) ->
     Tb = tablename(),
-    elib_pg:update(Tb,
+    elib_pg:update(
+        Tb,
         #{unread_count => 0, last_read_at => elib_dt:now()},
         <<"channel_id = $1 AND user_id = $2 AND status = 1">>,
-        [ChannelId, Uid]).
+        [ChannelId, Uid]
+    ).
 
 %% @doc 获取用户在所有频道的未读总数
 -spec count_unread(integer()) -> non_neg_integer().
 count_unread(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COALESCE(SUM(unread_count), 0) as total FROM ", Tb/binary,
+    Sql =
+        <<"SELECT COALESCE(SUM(unread_count), 0) as total FROM ", Tb/binary,
             " WHERE user_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"total">> := Total}} -> Total;
@@ -186,7 +213,8 @@ count_unread(Uid) ->
 -spec get_unread_count(integer(), integer()) -> non_neg_integer().
 get_unread_count(ChannelId, Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT unread_count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT unread_count FROM ", Tb/binary,
             " WHERE channel_id = $1 AND user_id = $2 AND status = 1 LIMIT 1">>,
     case elib_pg:one(Sql, [ChannelId, Uid]) of
         {ok, #{<<"unread_count">> := Count}} when is_integer(Count), Count >= 0 ->
@@ -199,7 +227,8 @@ get_unread_count(ChannelId, Uid) ->
 -spec count_unread_channels(integer()) -> non_neg_integer().
 count_unread_channels(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary,
             " WHERE user_id = $1 AND status = 1 AND unread_count > 0">>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"count">> := Count}} -> Count;
@@ -210,7 +239,8 @@ count_unread_channels(Uid) ->
 -spec list_unread_by_uid(integer()) -> {ok, list(map())} | {error, any()}.
 list_unread_by_uid(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT channel_id, unread_count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT channel_id, unread_count FROM ", Tb/binary,
             " WHERE user_id = $1 AND status = 1 AND unread_count > 0 ",
             "ORDER BY unread_count DESC, channel_id ASC">>,
     elib_pg:query(Sql, [Uid]).
@@ -219,7 +249,8 @@ list_unread_by_uid(Uid) ->
 -spec list_unread_counts_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_unread_counts_by_channel(ChannelId) ->
     Tb = tablename(),
-    Sql = <<"SELECT user_id, unread_count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT user_id, unread_count FROM ", Tb/binary,
             " WHERE channel_id = $1 AND status = 1 ORDER BY user_id ASC">>,
     elib_pg:query(Sql, [ChannelId]).
 
@@ -227,7 +258,8 @@ list_unread_counts_by_channel(ChannelId) ->
 -spec is_subscribed(integer(), integer()) -> boolean().
 is_subscribed(ChannelId, Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT 1 FROM ", Tb/binary,
+    Sql =
+        <<"SELECT 1 FROM ", Tb/binary,
             " WHERE channel_id = $1 AND user_id = $2 AND status = 1 LIMIT 1">>,
     case elib_pg:one(Sql, [ChannelId, Uid]) of
         {ok, _} -> true;

@@ -354,9 +354,9 @@ page_with_user_info(Gid, Page, Size) ->
     Tb = <<UTb/binary, " u LEFT JOIN ", MTb/binary, " m ON u.id = m.user_id">>,
     Fields =
         <<
-            "u.nickname, u.avatar, u.account, u.sign, m.user_id, m.group_id, "
+            "u.nickname, u.avatar, u.account, u.sign, m.id, m.user_id, m.group_id, "
             "m.alias, m.invite_code, m.description, m.role, m.is_join, m.join_mod"
-            "e, m.status, m.updated_at, m.created_at"
+            "e, m.status, m.mute_until, m.updated_at, m.created_at"
         >>,
     Where = #{<<"m.group_id">> => Gid},
     elib_pg:page_with_total(Tb, Fields, Where, <<"m.id desc">>, Page, Size).

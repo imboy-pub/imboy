@@ -36,13 +36,14 @@ save(Uid, Lat, Lng) ->
     Tb = tablename(),
     % EPSG:4326 就是 WGS84 的代码。GPS 是基于 WGS84 的，所以通常我们得到的坐标数据都是 WGS84 的
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"INSERT INTO ", Tb/binary, " (user_id, location) "
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (user_id, location) "
             "VALUES ($1, ST_GeomFromText('POINT(' || $2 || ' ' || $3 || ')', 4326)) "
             "ON CONFLICT (user_id) DO UPDATE SET "
             "location = EXCLUDED.location">>,
     % ?DEBUG_LOG(Sql),
     elib_pg:execute(Sql, [Uid, Lng, Lat]).
-
 
 %% @doc 删除用户地理位置信息
 %% @param Uid 用户ID
@@ -54,7 +55,6 @@ delete(Uid) ->
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     elib_pg:execute(Sql, [Uid]).
 
-
 %% @doc 查询附近的人
 %% 使用 PostgreSQL PostGIS 插件的地理空间查询功能
 %% @param Lng 中心点经度
@@ -64,20 +64,20 @@ delete(Uid) ->
 %% @param Limit 查询结果数量限制
 %% @return {ok, Rows} 查询成功返回附近用户列表（按距离排序） | {error, Reason} 查询失败
 -spec people_nearby(binary(), binary(), integer(), binary(), integer()) ->
-          {ok, [map()]} | {error, term()}.
+    {ok, [map()]} | {error, term()}.
 people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,
-                    ST_AsText(location) as location,
-                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'), location) as distance
-             FROM public.geo_people_nearby gpn
-             LEFT JOIN public.user u ON u.id = gpn.user_id
-             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'), $3)
-             ORDER BY distance ASC
-             LIMIT $4">>,
+    Sql = <<
+        "SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,\n"
+        "                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'), location) as distance\n"
+        "             FROM public.geo_people_nearby gpn\n"
+        "             LEFT JOIN public.user u ON u.id = gpn.user_id\n"
+        "             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'), $3)\n"
+        "             ORDER BY distance ASC\n"
+        "             LIMIT $4"
+    >>,
     % ?DEBUG_LOG(Sql),
     elib_pg:query(Sql, [Lng, Lat, Radius, Limit]).
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -88,4 +88,3 @@ people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

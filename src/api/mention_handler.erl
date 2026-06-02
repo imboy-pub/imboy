@@ -57,14 +57,15 @@ list_mentions(Req0, State) ->
     IsRead = normalize_is_read(IsReadRaw),
     GidRaw = get_param([<<"gid">>, <<"group_id">>], PostVals, Qs, undefined),
     Options = #{page => Page, size => Size},
-    MentionRes = case decode_optional_gid(GidRaw) of
-        undefined ->
-            mention_logic:list_mentions(CurrentUid, IsRead, Options);
-        {ok, Gid2} ->
-            mention_logic:list_group_mentions(Gid2, CurrentUid, IsRead, Options);
-        invalid ->
-            {error, invalid_gid}
-    end,
+    MentionRes =
+        case decode_optional_gid(GidRaw) of
+            undefined ->
+                mention_logic:list_mentions(CurrentUid, IsRead, Options);
+            {ok, Gid2} ->
+                mention_logic:list_group_mentions(Gid2, CurrentUid, IsRead, Options);
+            invalid ->
+                {error, invalid_gid}
+        end,
     case MentionRes of
         {ok, Mentions} ->
             % 编码ID并返回
@@ -73,7 +74,6 @@ list_mentions(Req0, State) ->
                 total => length(EncodedMentions),
                 page => Page,
                 size => Size,
-                list => EncodedMentions,
                 items => EncodedMentions
             },
             elib_response:success(Req0, ResponseData);
@@ -129,9 +129,12 @@ mark_read(Req0, State) ->
                     %% 验证该 mention 记录确实属于当前用户（mentioned_uid = CurrentUid）
                     case mention_ds:find_by_msg_id(MsgId2) of
                         {ok, Mentions} ->
-                            BelongsToUser = lists:any(fun(M) ->
-                                maps:get(<<"mentioned_uid">>, M, 0) =:= CurrentUid
-                            end, Mentions),
+                            BelongsToUser = lists:any(
+                                fun(M) ->
+                                    maps:get(<<"mentioned_uid">>, M, 0) =:= CurrentUid
+                                end,
+                                Mentions
+                            ),
                             case BelongsToUser of
                                 true ->
                                     case mention_logic:mark_as_read(MsgId2, CurrentUid) of
@@ -202,34 +205,42 @@ suggest(Req0, State) ->
 %% @doc 编码@提及记录中的ID
 -spec encode_mention_ids(list(map())) -> list(map).
 encode_mention_ids(Mentions) ->
-    lists:map(fun(Mention) ->
-        MsgId = maps:get(<<"msg_id">>, Mention, <<>>),
-        Gid = maps:get(<<"group_id">>, Mention, 0),
-        IsReadRaw = maps:get(<<"is_read">>, Mention, false),
-        IsRead = case IsReadRaw of
-            true -> 1;
-            1 -> 1;
-            <<"1">> -> 1;
-            _ -> 0
+    lists:map(
+        fun(Mention) ->
+            MsgId = maps:get(<<"msg_id">>, Mention, <<>>),
+            Gid = maps:get(<<"group_id">>, Mention, 0),
+            IsReadRaw = maps:get(<<"is_read">>, Mention, false),
+            IsRead =
+                case IsReadRaw of
+                    true -> 1;
+                    1 -> 1;
+                    <<"1">> -> 1;
+                    _ -> 0
+                end,
+            CreatedAt = normalize_created_at(maps:get(<<"created_at">>, Mention, 0)),
+            MentionId = normalize_positive_int(maps:get(<<"id">>, Mention, 0), 0),
+            Mention#{
+                <<"id">> => MentionId,
+                % msg_id 已经是字符串，不需要编码
+                <<"msg_id">> => MsgId,
+                <<"group_id">> => maybe_encode_id(Gid),
+                <<"from_uid">> => maps:get(<<"from_uid">>, Mention, 0),
+                <<"mentioned_uid">> => maps:get(<<"mentioned_uid">>, Mention, 0),
+                <<"is_read">> => IsRead,
+                <<"created_at">> => CreatedAt
+            }
         end,
-        CreatedAt = normalize_created_at(maps:get(<<"created_at">>, Mention, 0)),
-        MentionId = normalize_positive_int(maps:get(<<"id">>, Mention, 0), 0),
-        Mention#{
-            <<"id">> => MentionId,
-            <<"msg_id">> => MsgId,  % msg_id 已经是字符串，不需要编码
-            <<"group_id">> => maybe_encode_id(Gid),
-            <<"from_uid">> => maps:get(<<"from_uid">>, Mention, 0),
-            <<"mentioned_uid">> => maps:get(<<"mentioned_uid">>, Mention, 0),
-            <<"is_read">> => IsRead,
-            <<"is_read_bool">> => IsReadRaw,
-            <<"created_at">> => CreatedAt
-        }
-    end, Mentions).
+        Mentions
+    ).
 
 %% @private
 -spec mark_read_all(cowboy_req:req(), map(), integer()) -> cowboy_req:req().
 mark_read_all(Req0, PostVals, CurrentUid) ->
-    case decode_optional_gid(maps:get(<<"group_id">>, PostVals, maps:get(<<"gid">>, PostVals, undefined))) of
+    case
+        decode_optional_gid(
+            maps:get(<<"group_id">>, PostVals, maps:get(<<"gid">>, PostVals, undefined))
+        )
+    of
         undefined ->
             case mention_logic:mark_all_as_read(CurrentUid) of
                 ok ->

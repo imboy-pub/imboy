@@ -57,8 +57,7 @@ add(Conn, Data) ->
 -spec find(integer(), integer()) -> map() | #{}.
 find(ChannelId, Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND user_id = $2 LIMIT 1">>,
+    Sql = <<"SELECT * FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2 LIMIT 1">>,
     case elib_pg:one(Sql, [ChannelId, Uid]) of
         {ok, Row} -> Row;
         _ -> #{}
@@ -68,8 +67,16 @@ find(ChannelId, Uid) ->
 -spec list_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_by_channel(ChannelId) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
-            " WHERE channel_id = $1 ORDER BY role DESC">>,
+    UTb = user_repo:tablename(),
+    Sql = <<
+        "SELECT ca.*, u.nickname, u.avatar "
+        "FROM ",
+        Tb/binary,
+        " ca LEFT JOIN ",
+        UTb/binary,
+        " u ON u.id = ca.user_id "
+        "WHERE ca.channel_id = $1 ORDER BY ca.role DESC"
+    >>,
     elib_pg:query(Sql, [ChannelId]).
 
 %% @doc 查询用户管理的频道
