@@ -162,3 +162,4 @@ make new t=imboy.ds n=demo_ds
 - 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
 - TSID 规范：[docs/api/tsid-field-convention.md](./docs/api/tsid-field-convention.md)
 - API 格式：[docs/standards/api-format.md](./docs/standards/api-format.md)
+- /v1/* 端点总目录：[docs/api/rest-api-v1-catalog.md](./docs/api/rest-api-v1-catalog.md)

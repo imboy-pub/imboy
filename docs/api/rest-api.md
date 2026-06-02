@@ -4,7 +4,7 @@
 > Status: 长期协议契约文档  
 > Scope: 通用 REST 入口、兼容性接口与基础 envelope 约定  
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
-> Related docs: `docs/api/channel_api_contract_v1.md`, `docs/api/moment_api_contract_v1.md`, `docs/api/e2ee_server_persisted_shard_contract_v1.md`, `docs/api/websocket-api-2.md`
+> Related docs: `docs/api/rest-api-v1-catalog.md`（全量 /v1/* 端点总目录）, `docs/api/channel_api_contract_v1.md`, `docs/api/moment_api_contract_v1.md`, `docs/api/e2ee_server_persisted_shard_contract_v1.md`, `docs/api/websocket-api-2.md`
 
 ## 0. TSID 字段约定
 
@@ -275,6 +275,7 @@ Query：
 
 ## 9. Related Docs
 
+- `docs/api/rest-api-v1-catalog.md` —— 全量 `/v1/*` 端点总目录（方法/鉴权/请求/响应一览）
 - `docs/api/channel_api_contract_v1.md`
 - `docs/api/moment_api_contract_v1.md`
 - `docs/api/e2ee_server_persisted_shard_contract_v1.md`
