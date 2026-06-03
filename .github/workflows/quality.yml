@@ -273,3 +273,18 @@ jobs:
             grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -v "%%"
             exit 1
           fi
+
+  api-ds-ratchet:
+    name: API→DS 层违规不得增长
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查 API→DS 违规数(上限 131)
+        run: |
+          COUNT=$(grep -rn "_ds:" src/api/ --include="*.erl" \
+            | grep -v "%%\|auth_ds:\|config_ds:" | wc -l | tr -d ' ')
+          echo "当前 API→DS 违规: $COUNT (上限 131)"
+          if [ "$COUNT" -gt "131" ]; then
+            echo "FAIL: 违规增加 $COUNT > 131"
+            exit 1
+          fi
