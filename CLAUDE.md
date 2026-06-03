@@ -70,6 +70,7 @@ All user/contributor/ops-facing Markdown docs MUST provide **Simplified Chinese 
 | 消息处理 | `msg_handler` | `msg_c2c_logic` | `message_ds` | `msg_c2c_repo` |
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
 | E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
+| 免打扰(DND) | -（待建） | -（待建） | `user_dnd_rule_ds` | `user_dnd_rule_repo` |
 
 ---
 

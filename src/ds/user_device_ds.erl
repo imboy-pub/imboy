@@ -18,6 +18,7 @@
 -export([count_by_uid/1, page/3]).
 -export([list_public_keys/1]).
 -export([list_public_keys_by_uids/1]).
+-export([count_other_device_keys/2]).
 -export([get_default_device/1]).
 -export([update_public_key/5]).
 %% G3 thin wrappers: e2ee handlers 不应直调 user_device_repo
@@ -64,6 +65,14 @@ list_public_keys(Uid) ->
 -spec list_public_keys_by_uids([integer()]) -> {ok, list(map())} | {error, any()}.
 list_public_keys_by_uids(Uids) ->
     user_device_repo:list_public_keys_by_uids(Uids).
+
+%% @doc 统计当前用户除指定设备外、已上报有效公钥的活跃设备数量
+%% @param Uid 用户ID
+%% @param DeviceId 当前设备ID（排除自身）
+%% @return non_neg_integer()
+-spec count_other_device_keys(integer(), binary()) -> non_neg_integer().
+count_other_device_keys(Uid, DeviceId) ->
+    user_device_repo:count_other_device_keys(Uid, DeviceId).
 
 %% @doc 统计用户设备数量
 %% @param Uid 用户ID
@@ -138,11 +147,13 @@ get_default_device(Uid) ->
 %% @param KeyId 密钥ID
 %% @param Now 当前时间戳
 %% @return {ok, UpdatedCount} | {error, Reason}
--spec update_public_key(integer(), binary(), binary(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec update_public_key(integer(), binary(), binary(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 update_public_key(Uid, DeviceId, PublicKey, KeyId, Now) ->
     Tb = user_device_repo:tablename(),
     % 同时更新 public_key, key_id, last_active_at
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET public_key = $1, key_id = $2, last_active_at = $3"
             " WHERE status = 1 AND user_id = $4 AND device_id = $5">>,
     elib_pg:execute(Sql, [PublicKey, KeyId, Now, Uid, DeviceId]).
@@ -165,6 +176,7 @@ get_public_by_uid(Uid) -> user_device_repo:get_public_by_uid(Uid).
 -spec get_private_key(integer(), binary()) -> {ok, binary()} | {error, term()}.
 get_private_key(Uid, DeviceId) -> user_device_repo:get_private_key(Uid, DeviceId).
 
--spec update_private_key(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec update_private_key(integer(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 update_private_key(Uid, DeviceId, PrivateKeyPem) ->
     user_device_repo:update_private_key(Uid, DeviceId, PrivateKeyPem).

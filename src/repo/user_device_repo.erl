@@ -10,10 +10,13 @@
 -export([device_name/2]).
 -export([delete/2]).
 -export([update_by_did/4]).
--export([count_by_uid/1,
-         page/3]).
+-export([
+    count_by_uid/1,
+    page/3
+]).
 -export([list_public_keys/1]).
 -export([list_public_keys_by_uids/1]).
+-export([count_other_device_keys/2]).
 -export([get_public_by_uid/1, get_private_key/2, update_private_key/3]).
 
 %% 设备会话管理使用 imboy_syn，无需数据库扩展
@@ -30,7 +33,6 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"user_device">>).
 
-
 % user_device_repo:page(1, 10, 0).
 -spec page(integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
 page(Uid, Limit, Offset) ->
@@ -38,7 +40,8 @@ page(Uid, Limit, Offset) ->
     Column = <<"device_id, device_name, device_type, last_active_at,device_vsn">>,
     Where = <<" WHERE status = $1 and user_id = $2">>,
 
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary,
             " ORDER BY last_active_at desc LIMIT $3 OFFSET $4">>,
     % ?DEBUG_LOG([Sql, Uid, Limit, Offset]),
     elib_pg:query(Sql, [1, Uid, Limit, Offset]).
@@ -47,11 +50,32 @@ page(Uid, Limit, Offset) ->
 list_public_keys(Uid) ->
     Tb = tablename(),
     Column = <<"device_id, device_type, public_key, last_active_at">>,
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 AND public_key IS NOT NULL AND public_key <> ''",
             " ORDER BY last_active_at desc">>,
     elib_pg:query(Sql, [Uid]).
+
+%% @doc 统计当前用户除指定设备外、已上报有效公钥的活跃设备数量
+%% 用于区分"换设备/重装"与"全新注册首次登录"两种场景：
+%% 仅当存在其他活跃设备（说明历史消息可能由其他设备加密）时，
+%% 客户端才需要显示 E2EE 恢复横幅。
+%% @param Uid 用户ID
+%% @param DeviceId 当前上报的设备ID（排除自身）
+%% @return non_neg_integer()
+-spec count_other_device_keys(integer(), binary()) -> non_neg_integer().
+count_other_device_keys(Uid, DeviceId) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT count(*) AS count FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 AND device_id <> $2",
+            " AND public_key IS NOT NULL AND public_key <> ''">>,
+    case elib_pg:query(Sql, [Uid, DeviceId]) of
+        {ok, _, [#{<<"count">> := Count}]} when is_integer(Count) ->
+            Count;
+        _ ->
+            0
+    end.
 
 -spec list_public_keys_by_uids([integer()]) -> {ok, list(map())} | {error, any()}.
 list_public_keys_by_uids([]) ->
@@ -59,9 +83,8 @@ list_public_keys_by_uids([]) ->
 list_public_keys_by_uids(Uids) when is_list(Uids) ->
     Tb = tablename(),
     Column = <<"user_id, device_id, device_type, public_key, last_active_at">>,
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", Tb/binary,
-            " WHERE status = 1 AND user_id = ANY($1)",
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE status = 1 AND user_id = ANY($1)",
             " AND public_key IS NOT NULL AND public_key <> ''",
             " ORDER BY user_id asc, last_active_at desc">>,
     elib_pg:query(Sql, [Uids]).
@@ -75,27 +98,32 @@ count_by_uid(Uid) ->
         _ -> 0
     end.
 
-
 % user_device_repo:device_name(1, <<"3f039a2b4724a5b7">>).
 % user_device_repo:device_name(1, <<"HUAWEIMRD-AL00">>).
 -spec device_name(integer(), binary()) -> binary().
 device_name(Uid, DID) ->
     % 使用安全的参数化查询，避免SQL注入
-    case elib_pg:pluck(tablename(), <<"device_name">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
+    case
+        elib_pg:pluck(
+            tablename(), <<"device_name">>, #{status => 1, user_id => Uid, device_id => DID}, #{}
+        )
+    of
         {ok, DeviceName} when is_binary(DeviceName) -> DeviceName;
         _ -> <<>>
     end.
-
 
 % user_device_repo:login_count(1, <<"872619BD-8FCD-45AF-B255-406D70C4D9C9">>).
 -spec login_count(Uid :: integer(), DID :: binary()) -> integer().
 login_count(Uid, DID) ->
     % 使用安全的参数化查询，避免SQL注入
-    case elib_pg:pluck(tablename(), <<"login_count">>, #{status => 1, user_id => Uid, device_id => DID}, #{}) of
+    case
+        elib_pg:pluck(
+            tablename(), <<"login_count">>, #{status => 1, user_id => Uid, device_id => DID}, #{}
+        )
+    of
         {ok, LoginCount} when is_integer(LoginCount) -> LoginCount;
         _ -> 0
     end.
-
 
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
@@ -103,7 +131,6 @@ delete(Uid, DID) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
     _ = elib_pg:execute(Sql, [Uid, DID]),
     ok.
-
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
 -spec save(binary(), integer(), binary(), map()) -> {ok, term()} | {error, term()}.
@@ -116,7 +143,6 @@ save(_Now, _Uid, _DID, _PostVals) ->
     % 无设备ID登录，无需记录设备信息
     {ok, 0}.
 
-
 % user_device_repo:update_by_did(1, <<"3f039a2b4724a5b7">>, <<"device_name = $1">>, [<<"CLT-AL00 1">>]).
 -spec update_by_did(integer(), binary(), binary(), list()) -> {ok, integer()} | {error, any()}.
 update_by_did(Uid, DID, Set, SetArgs) ->
@@ -125,16 +151,15 @@ update_by_did(Uid, DID, Set, SetArgs) ->
     SetArgsLen2 = integer_to_binary(SetArgsLen + 1),
     SetArgsLen3 = integer_to_binary(SetArgsLen + 2),
     % 更新登录次数，最近登录时间、IP
-    Sql = <<"UPDATE ", Tb/binary, " SET ", Set/binary, " WHERE status = 1 AND user_id = $", SetArgsLen2/binary,
-            " AND device_id = $", SetArgsLen3/binary>>,
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET ", Set/binary, " WHERE status = 1 AND user_id = $",
+            SetArgsLen2/binary, " AND device_id = $", SetArgsLen3/binary>>,
     SetArgs2 = SetArgs ++ [Uid, DID],
     elib_pg:execute(Sql, SetArgs2).
-
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 %% @doc 获取用户的所有设备（包含公钥和私钥）
 %% @param Uid 用户ID
@@ -143,8 +168,8 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 get_public_by_uid(Uid) ->
     Tb = tablename(),
     Column = <<"device_id, device_type, public_key, private_key, last_active_at">>,
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 "
             " ORDER BY last_active_at desc">>,
     elib_pg:query(Sql, [Uid]).
@@ -156,7 +181,8 @@ get_public_by_uid(Uid) ->
 -spec get_private_key(integer(), binary()) -> {ok, binary()} | {error, term()}.
 get_private_key(Uid, DeviceId) ->
     Tb = tablename(),
-    Sql = <<"SELECT private_key FROM ", Tb/binary,
+    Sql =
+        <<"SELECT private_key FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
     case elib_pg:query(Sql, [Uid, DeviceId]) of
         {ok, _, [{PrivateKey}]} when PrivateKey =/= undefined, PrivateKey =/= <<>> ->
@@ -174,14 +200,15 @@ get_private_key(Uid, DeviceId) ->
 %% @param DeviceId 设备ID
 %% @param PrivateKeyPem PEM 格式的私钥
 %% @return {ok, Count} | {error, Reason}
--spec update_private_key(integer(), binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec update_private_key(integer(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 update_private_key(Uid, DeviceId, PrivateKeyPem) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET private_key = $1 "
             " WHERE status = 1 AND user_id = $2 AND device_id = $3">>,
     elib_pg:execute(Sql, [PrivateKeyPem, Uid, DeviceId]).
-
 
 -spec save(binary(), integer(), map(), binary(), integer()) -> {ok, term()} | {error, term()}.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->
@@ -189,19 +216,25 @@ save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0
     Ip = maps:get(<<"ip">>, PostVals, <<>>),
     PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
     Tb = tablename(),
-    Ip2 = case Ip of
-        undefined ->
-            <<>>;
-        _ ->
-            Ip
-    end,
+    Ip2 =
+        case Ip of
+            undefined ->
+                <<>>;
+            _ ->
+                Ip
+        end,
     % 使用安全的参数化查询，避免SQL注入
-    elib_pg:update(Tb, #{
-        login_count => LoginCount + 1,
-        last_login_ip => Ip2,
-        last_login_at => Now,
-        public_key => PublicKey
-    }, <<"status = 1 AND user_id = $1 AND device_id = $2">>, [Uid, DID]);
+    elib_pg:update(
+        Tb,
+        #{
+            login_count => LoginCount + 1,
+            last_login_ip => Ip2,
+            last_login_at => Now,
+            public_key => PublicKey
+        },
+        <<"status = 1 AND user_id = $1 AND device_id = $2">>,
+        [Uid, DID]
+    );
 save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     % 第一次登陆记录设备信息
     DeviceType = maps:get(<<"cos">>, PostVals, <<>>),

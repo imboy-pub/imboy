@@ -33,12 +33,13 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 
 ## Repo 模块清单
 
-### 用户相关（8 个）
+### 用户相关（9 个）
 
 | Repo | 说明 |
 |------|------|
 | `user_repo` | 用户信息 |
 | `user_setting_repo` | 用户设置 |
+| `user_dnd_rule_repo` | 用户免打扰(DND)规则 |
 | `user_device_repo` | 用户设备（E2EE 公钥） |
 | `user_collect_repo` | 用户收藏 |
 | `user_denylist_repo` | 黑名单 |

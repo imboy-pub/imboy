@@ -12,6 +12,7 @@
 |------|------|
 | `user_ds` | 用户数据服务 |
 | `user_setting_ds` | 用户设置 |
+| `user_dnd_rule_ds` | 用户免打扰(DND)规则（缓存键 `{user_dnd_rule, Uid}`） |
 | `user_device_ds` | 设备管理 |
 | `user_log_ds` | 操作日志 |
 | `user_presence_ds` | 在线状态 |

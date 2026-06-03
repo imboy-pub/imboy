@@ -1,7 +1,9 @@
 -module(e2ee_handler).
 
 %% Thin HTTP adapter for the security_privacy e2ee boundary.
--dialyzer({nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2, compliance_key/2]}).
+-dialyzer(
+    {nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2, compliance_key/2]}
+).
 
 -behavior(cowboy_rest).
 
@@ -51,11 +53,12 @@ ensure_e2ee_enabled(Req0) ->
         true ->
             ok;
         false ->
-            {error, elib_response:error(
-                Req0,
-                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
-                ?ERR_FEATURE_DISABLED
-            )}
+            {error,
+                elib_response:error(
+                    Req0,
+                    imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                    ?ERR_FEATURE_DISABLED
+                )}
     end.
 
 %% ===================================================================
@@ -137,9 +140,17 @@ do_report_device_key(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, Reason, 400);
                 ok ->
-                    case e2ee_logic:report_device_key(CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) of
-                        ok ->
-                            elib_response:success(Req0, #{<<"success">> => true});
+                    case
+                        e2ee_logic:report_device_key(
+                            CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
+                        )
+                    of
+                        {ok, OtherDeviceCount} ->
+                            elib_response:success(Req0, #{
+                                <<"success">> => true,
+                                <<"other_device_count">> => OtherDeviceCount,
+                                <<"has_other_device">> => OtherDeviceCount > 0
+                            });
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, 500)
                     end
@@ -147,7 +158,8 @@ do_report_device_key(Req0, State) ->
     end.
 
 %% @doc 读取上报参数
--spec read_report_params(cowboy_req:req()) -> {error, binary()} | {ok, binary(), binary(), binary() | undefined, binary(), binary()}.
+-spec read_report_params(cowboy_req:req()) ->
+    {error, binary()} | {ok, binary(), binary(), binary() | undefined, binary(), binary()}.
 read_report_params(Req) ->
     PostVals = elib_param:post(Req),
     DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
@@ -163,7 +175,9 @@ read_report_params(Req) ->
 %% @doc 验证参数
 -spec validate_params(binary(), binary(), binary(), binary()) -> ok | {error, binary()}.
 validate_params(DeviceId, DeviceType, PublicKey, KeyId) ->
-    ValidDeviceTypes = [<<"ios">>, <<"android">>, <<"macos">>, <<"windows">>, <<"linux">>, <<"web">>],
+    ValidDeviceTypes = [
+        <<"ios">>, <<"android">>, <<"macos">>, <<"windows">>, <<"linux">>, <<"web">>
+    ],
     Condition1 = byte_size(DeviceId) > 0,
     Condition2 = lists:member(DeviceType, ValidDeviceTypes),
     Condition3 = byte_size(PublicKey) > 0,
