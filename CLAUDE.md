@@ -158,6 +158,7 @@ make new t=imboy.ds n=demo_ds
 
 - 架构：[docs/architecture/overview.md](./docs/architecture/overview.md)
 - 数据库访问：[docs/architecture/database-access.md](./docs/architecture/database-access.md)
+- DDD 充血模型落地现状：[docs/architecture/ddd-rich-model-status.md](./docs/architecture/ddd-rich-model-status.md)
 - WebSocket API：[docs/api/websocket-api-2.md](./docs/api/websocket-api-2.md)
 - UTF-8 规范：[docs/standards/utf8-encoding.md](./docs/standards/utf8-encoding.md)
 - 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
