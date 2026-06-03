@@ -576,7 +576,10 @@ c2c_read(MsgId, CurrentUid, Data) ->
             case {IsFriend, InDenylist} of
                 {true, false} ->
                     handle_read_receipt(MsgId, To, ToId, From, FromId, CurrentUid, Data);
-                {_, InDenylist2} when InDenylist2 > 0 ->
+                {_, InDenylist2} when
+                    InDenylist2 =:= true orelse
+                        (is_integer(InDenylist2) andalso InDenylist2 > 0)
+                ->
                     ErrorMsg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
                     {reply, ErrorMsg};
                 {false, _} ->
