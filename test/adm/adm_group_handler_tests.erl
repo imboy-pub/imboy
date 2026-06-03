@@ -373,6 +373,9 @@ init_vote_close_success_writes_audit_test_() ->
     ?WITH_MECKS(
         group_vote_feature_enabled_mocks() ++
             [
+                {adm_acl, [
+                    {'ensure_permission', 3, fun(_State, _Perm, _Req) -> ok end}
+                ]},
                 {adm_user_logic, [
                     {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
                         #{<<"id">> => 9001, <<"role_id">> => 2}
@@ -424,6 +427,11 @@ init_vote_close_permission_denied_test_() ->
     ?WITH_MECKS(
         group_vote_feature_enabled_mocks() ++
             [
+                {adm_acl, [
+                    {'ensure_permission', 3, fun(_State, _Perm, Req) ->
+                        {error, Req#{response_status => 403, msg => "权限不足"}}
+                    end}
+                ]},
                 {adm_user_logic, [
                     {'find', 3, fun(9003, <<"id,role_id">>, _Key) ->
                         #{<<"id">> => 9003, <<"role_id">> => 3}
