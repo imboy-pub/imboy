@@ -8,6 +8,35 @@
 
 -export([init/2]).
 
+-import(adm_group_helper, [
+    audit_group_governance/5,
+    build_governance_log_where_sql/1,
+    calc_total_pages/2,
+    extract_governance_log_filters/1,
+    list_group_files_with_total/5,
+    list_tasks_with_total/5,
+    list_user_categories_with_total/4,
+    normalize_album_pk/1,
+    normalize_assignment_pk/1,
+    normalize_category_pk/1,
+    normalize_file_pk/1,
+    normalize_governance_log_row/1,
+    normalize_notice_pk/1,
+    normalize_notice_row/1,
+    normalize_page_payload/3,
+    normalize_positive_int/1,
+    normalize_restore_task_pk/1,
+    normalize_schedule_id/1,
+    normalize_task_pk/1,
+    normalize_user_pk/1,
+    parse_gid_param/1,
+    resolve_category_uid/2,
+    resolve_task_audit_meta/1,
+    resolve_vote_group_id/1,
+    task_group_id_by_uid/1,
+    task_is_deleted/1
+]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -1068,5 +1097,3 @@ task_close(<<"POST">>, Req0, State) ->
                     end
             end
     end.
-
--spec extract_governance_log_filters(cowboy_req:req()) -> map().
