@@ -36,7 +36,7 @@ DEPS += telemetry lager observer_cli recon redbug
 DEPS += simple_captcha erlydtl sync
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
-BUILD_DEPS = relx gpb
+BUILD_DEPS = relx gpb bbmustache
 DEP_PLUGINS = cowboy
 TEST_DEPS += meck
 

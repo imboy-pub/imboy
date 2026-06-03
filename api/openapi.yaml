@@ -15,13 +15,14 @@
 openapi: 3.1.0
 info:
   title: IMBoy REST API
-  version: 1.0.0-rc.1
+  version: 1.0.0-rc.3
   x-stability: stable
   summary: IMBoy 后端 HTTP / REST 接口冻结版
   description: |
-    本文件是 IMBoy 1.0.0-rc.1 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
-    管理后台首启向导）。完整路径清单以 `imboy/src/imboy_router.erl` 为权威；本文件只
-    冻结**对外稳定**的端点。
+    本文件是 IMBoy 1.0.0-rc.3 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
+    群组、好友、频道、朋友圈、管理后台首启向导等）。完整路径清单以
+    `imboy/src/imboy_router.erl`（278 条 /v1/* 路由）为权威；本文件当前覆盖约 130 条，
+    其余 148 条待逐步补全。
 
     **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
     [envelope.schema.json](./envelope.schema.json)。

@@ -38,7 +38,6 @@
 -type version() :: {non_neg_integer(), non_neg_integer(), non_neg_integer(), [string()]}.
 -type constraint() :: {caret | exact, version()}.
 
-
 %% ===================================================================
 %% Public API — semver / constraint
 %% ===================================================================
@@ -80,8 +79,10 @@ parse_constraint(_) ->
 -spec check_constraint(version(), constraint()) -> boolean().
 check_constraint({Vmaj, Vmin, Vpat, _}, {caret, {Cmaj, Cmin, Cpat, _}}) ->
     Vmaj =:= Cmaj andalso {Vmin, Vpat} >= {Cmin, Cpat};
-check_constraint(V, {exact, V}) -> true;
-check_constraint(_, {exact, _}) -> false.
+check_constraint(V, {exact, V}) ->
+    true;
+check_constraint(_, {exact, _}) ->
+    false.
 
 %% ===================================================================
 %% Public API — manifest-level
@@ -104,9 +105,11 @@ validate_constraints(Manifests) when is_list(Manifests) ->
     ),
     do_validate(Manifests, NameToVersion).
 
-do_validate([], _) -> ok;
-do_validate([#{name := Name, depends_on := Deps} | Rest], Versions)
-        when is_map(Deps) ->
+do_validate([], _) ->
+    ok;
+do_validate([#{name := Name, depends_on := Deps} | Rest], Versions) when
+    is_map(Deps)
+->
     case check_each_dep(Name, maps:to_list(Deps), Versions) of
         ok -> do_validate(Rest, Versions);
         {error, _} = E -> E
@@ -115,9 +118,11 @@ do_validate([_ | Rest], Versions) ->
     %% manifest 无 depends_on 字段（已过 P0 schema 校验默认 #{}）
     do_validate(Rest, Versions).
 
-check_each_dep(_From, [], _) -> ok;
-check_each_dep(From, [{DepName, ConstraintBin} | Rest], Versions)
-        when is_atom(DepName), is_binary(ConstraintBin) ->
+check_each_dep(_From, [], _) ->
+    ok;
+check_each_dep(From, [{DepName, ConstraintBin} | Rest], Versions) when
+    is_atom(DepName), is_binary(ConstraintBin)
+->
     case maps:find(DepName, Versions) of
         error ->
             {error, {From, missing_dep, DepName}};
@@ -163,7 +168,8 @@ parse_strict_core(Core, Pre) ->
 parse_lenient(Bin) ->
     case binary:split(Bin, <<"-">>, [global]) of
         [Core] -> parse_lenient_core(Core, []);
-        [Core | _] -> parse_lenient_core(Core, [])  %% prerelease 在约束中忽略
+        %% prerelease 在约束中忽略
+        [Core | _] -> parse_lenient_core(Core, [])
     end.
 
 parse_lenient_core(Core, Pre) ->
@@ -248,10 +254,11 @@ kahn_loop([Node | Rest], AdjOut, InDegree, Acc, Total) ->
         fun(D, {IDAcc, QAcc}) ->
             NewD = maps:get(D, IDAcc) - 1,
             IDAcc2 = IDAcc#{D => NewD},
-            QAcc2 = case NewD of
-                0 -> QAcc ++ [D];
-                _ -> QAcc
-            end,
+            QAcc2 =
+                case NewD of
+                    0 -> QAcc ++ [D];
+                    _ -> QAcc
+                end,
             {IDAcc2, QAcc2}
         end,
         {InDegree, Rest},
@@ -268,12 +275,15 @@ kahn_loop([Node | Rest], AdjOut, InDegree, Acc, Total) ->
 -spec check_enable_deps(map()) -> ok | {error, {deps_not_enabled, [atom()]}}.
 check_enable_deps(Manifest) ->
     Deps = maps:get(depends_on, Manifest, #{}),
-    NotEnabled = lists:filter(fun(DepName) ->
-        case get_plugin_state(DepName) of
-            enabled -> false;
-            _ -> true
-        end
-    end, maps:keys(Deps)),
+    NotEnabled = lists:filter(
+        fun(DepName) ->
+            case get_plugin_state(DepName) of
+                enabled -> false;
+                _ -> true
+            end
+        end,
+        maps:keys(Deps)
+    ),
     case NotEnabled of
         [] -> ok;
         _ -> {error, {deps_not_enabled, NotEnabled}}
@@ -284,17 +294,21 @@ check_enable_deps(Manifest) ->
 -spec find_dependents(atom()) -> ok | {error, {has_dependents, [atom()]}}.
 find_dependents(PluginName) ->
     AllManifests = get_all_manifests(),
-    Dependents = lists:filtermap(fun({Name, Manifest}) ->
-        Deps = maps:get(depends_on, Manifest, #{}),
-        case maps:is_key(PluginName, Deps) of
-            true ->
-                case get_plugin_state(Name) of
-                    enabled -> {true, Name};
-                    _ -> false
-                end;
-            false -> false
-        end
-    end, AllManifests),
+    Dependents = lists:filtermap(
+        fun({Name, Manifest}) ->
+            Deps = maps:get(depends_on, Manifest, #{}),
+            case maps:is_key(PluginName, Deps) of
+                true ->
+                    case get_plugin_state(Name) of
+                        enabled -> {true, Name};
+                        _ -> false
+                    end;
+                false ->
+                    false
+            end
+        end,
+        AllManifests
+    ),
     case Dependents of
         [] -> ok;
         _ -> {error, {has_dependents, Dependents}}
@@ -303,12 +317,15 @@ find_dependents(PluginName) ->
 %% @doc 从 persistent_term 获取所有已注册的插件 manifest。
 get_all_manifests() ->
     PT = persistent_term:get(),
-    lists:filtermap(fun({Key, Val}) ->
-        case Key of
-            {imboy_plugin_manifest, Name} -> {true, {Name, Val}};
-            _ -> false
-        end
-    end, PT).
+    lists:filtermap(
+        fun({Key, Val}) ->
+            case Key of
+                {imboy_plugin_manifest, Name} -> {true, {Name, Val}};
+                _ -> false
+            end
+        end,
+        PT
+    ).
 
 %% @doc 获取插件 lifecycle 进程的当前状态（如果存在）。
 get_plugin_state(Name) ->
@@ -327,8 +344,16 @@ get_plugin_state(Name) ->
                         _ -> installed
                     end;
                 true ->
-                    try gen_statem:call(Pid, get_state, 1000)
-                    catch _:_ -> unknown
+                    try
+                        gen_statem:call(Pid, get_state, 1000)
+                    catch
+                        _:Err ->
+                            logger:warning(#{
+                                event => plugin_state_call_failed,
+                                module => imboy_plugin_dependency,
+                                error => Err
+                            }),
+                            unknown
                     end
             end
     end.

@@ -50,18 +50,21 @@
 %% @returns 编码后的二进制数据
 -spec encode(protocol(), map()) -> binary().
 encode(json, Msg) when is_map(Msg) ->
-    try jsone:encode(Msg, [native_utf8])
-    catch Class:Reason ->
-        ok = ?WARN_LOG({codec_json_encode_error, Class, Reason}),
-        <<"{}">>
+    try
+        jsone:encode(Msg, [native_utf8])
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({codec_json_encode_error, Class, Reason}),
+            <<"{}">>
     end;
 encode(protobuf, Msg) when is_map(Msg) ->
     try
         PbMsg = to_pb_map(Msg),
         imboy_pb:encode_msg(PbMsg, 'IMBoyMessage')
-    catch Class:Reason ->
-        ok = ?WARN_LOG({codec_pb_encode_error, Class, Reason}),
-        <<>>
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({codec_pb_encode_error, Class, Reason}),
+            <<>>
     end.
 
 %% @doc 解码传输数据为 Erlang map
@@ -73,18 +76,21 @@ encode(protobuf, Msg) when is_map(Msg) ->
 %% @returns 解码后的 Erlang map（binary keys）
 -spec decode(protocol(), binary()) -> map().
 decode(json, Data) when is_binary(Data) ->
-    try jsone:decode(Data, [{object_format, map}])
-    catch Class:Reason ->
-        ok = ?WARN_LOG({codec_json_decode_error, Class, Reason}),
-        #{}
+    try
+        jsone:decode(Data, [{object_format, map}])
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({codec_json_decode_error, Class, Reason}),
+            #{}
     end;
 decode(protobuf, Data) when is_binary(Data) ->
     try
         PbMsg = imboy_pb:decode_msg(Data, 'IMBoyMessage'),
         from_pb_map(PbMsg)
-    catch Class:Reason ->
-        ok = ?WARN_LOG({codec_pb_decode_error, Class, Reason}),
-        #{}
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({codec_pb_decode_error, Class, Reason}),
+            #{}
     end.
 
 %% @doc 编码 payload 子消息
@@ -118,18 +124,27 @@ encode_payload(_Protocol, _MsgType, Payload) ->
 decode_payload(json, _MsgType, Payload) when is_map(Payload) ->
     Payload;
 decode_payload(json, _MsgType, Payload) when is_binary(Payload) ->
-    try jsone:decode(Payload, [{object_format, map}])
-    catch _:_ -> #{<<"raw">> => Payload}
+    try
+        jsone:decode(Payload, [{object_format, map}])
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({codec_json_decode_fallback, Err}),
+            #{<<"raw">> => Payload}
     end;
-decode_payload(protobuf, MsgType, PayloadBin) when is_binary(PayloadBin), byte_size(PayloadBin) > 0 ->
+decode_payload(protobuf, MsgType, PayloadBin) when
+    is_binary(PayloadBin), byte_size(PayloadBin) > 0
+->
     PbType = payload_pb_type(MsgType),
     case PbType of
-        undefined -> #{<<"raw">> => PayloadBin};
+        undefined ->
+            #{<<"raw">> => PayloadBin};
         _ ->
-            try imboy_pb:decode_msg(PayloadBin, PbType)
-            catch Class:Reason ->
-                ok = ?WARN_LOG({codec_pb_decode_payload_error, Class, Reason, MsgType}),
-                #{<<"raw">> => PayloadBin}
+            try
+                imboy_pb:decode_msg(PayloadBin, PbType)
+            catch
+                Class:Reason ->
+                    ok = ?WARN_LOG({codec_pb_decode_payload_error, Class, Reason, MsgType}),
+                    #{<<"raw">> => PayloadBin}
             end
     end;
 decode_payload(_Protocol, _MsgType, _Payload) ->
@@ -168,8 +183,9 @@ framing_atom(_) -> none.
 
 %% @doc v2 framing 封包：调用 imboy_frame:encode/3 包裹 payload
 -spec wrap_v2_frame(0..255, 0..255, binary()) -> binary().
-wrap_v2_frame(Type, Flags, Payload)
-  when is_integer(Type), is_integer(Flags), is_binary(Payload) ->
+wrap_v2_frame(Type, Flags, Payload) when
+    is_integer(Type), is_integer(Flags), is_binary(Payload)
+->
     imboy_frame:encode(Type, Flags, Payload).
 
 %% @doc v2 framing 解包：调用 imboy_frame:decode/1，丢弃 Rest 字节
@@ -183,7 +199,6 @@ unwrap_v2_frame(Bin) when is_binary(Bin) ->
         {more, _} -> {error, incomplete_frame};
         {error, Reason} -> {error, Reason}
     end.
-
 
 %%%===================================================================
 %%% Internal functions
@@ -222,7 +237,9 @@ from_pb_map(PbMsg) ->
         <<"type">> => msg_direction_from_enum(maps:get(type, PbMsg, 'MSG_DIRECTION_UNSPECIFIED')),
         <<"from">> => maps:get(from, PbMsg, 0),
         <<"to">> => maps:get(to, PbMsg, 0),
-        <<"msg_type">> => content_type_from_enum(maps:get(msg_type, PbMsg, 'CONTENT_TYPE_UNSPECIFIED')),
+        <<"msg_type">> => content_type_from_enum(
+            maps:get(msg_type, PbMsg, 'CONTENT_TYPE_UNSPECIFIED')
+        ),
         <<"action">> => maps:get(action, PbMsg, <<>>),
         <<"e2ee">> => E2EE,
         <<"payload">> => maps:get(payload, PbMsg, <<>>),
@@ -231,7 +248,6 @@ from_pb_map(PbMsg) ->
         <<"expire_secs">> => maps:get(expire_secs, PbMsg, 0),
         <<"conv_seq">> => maps:get(conv_seq, PbMsg, 0)
     }.
-
 
 %% --- MsgDirection enum conversion ---
 
@@ -264,7 +280,6 @@ msg_direction_from_enum('WEBRTC_CANDIDATE') -> <<"webrtc_candidate">>;
 msg_direction_from_enum('WEBRTC_BYE') -> <<"webrtc_bye">>;
 msg_direction_from_enum(_) -> <<>>.
 
-
 %% --- ContentType enum conversion ---
 
 content_type_to_enum(<<"text">>) -> 'TEXT';
@@ -288,7 +303,6 @@ content_type_from_enum('CUSTOM') -> <<"custom">>;
 content_type_from_enum('E2EE') -> <<"e2ee">>;
 content_type_from_enum(_) -> <<>>.
 
-
 %% --- Payload type mapping ---
 
 payload_pb_type(<<"text">>) -> 'PayloadText';
@@ -301,36 +315,45 @@ payload_pb_type(<<"client_ack">>) -> 'PayloadClientAck';
 payload_pb_type(<<"client_ack_confirm">>) -> 'PayloadClientAckConfirm';
 payload_pb_type(_) -> undefined.
 
-
 %% --- E2EE conversion ---
 
-e2ee_to_pb(null) -> undefined;
-e2ee_to_pb(undefined) -> undefined;
+e2ee_to_pb(null) ->
+    undefined;
+e2ee_to_pb(undefined) ->
+    undefined;
 e2ee_to_pb(E2EE) when is_map(E2EE) ->
-    Keys = [begin
-        #{
-            did => maps:get(<<"did">>, K, <<>>),
-            kid => maps:get(<<"kid">>, K, <<>>),
-            wrap_alg => maps:get(<<"wrap_alg">>, K, <<>>),
-            ek => maps:get(<<"ek">>, K, <<>>)
-        }
-    end || K <- maps:get(<<"keys">>, E2EE, [])],
+    Keys = [
+        begin
+            #{
+                did => maps:get(<<"did">>, K, <<>>),
+                kid => maps:get(<<"kid">>, K, <<>>),
+                wrap_alg => maps:get(<<"wrap_alg">>, K, <<>>),
+                ek => maps:get(<<"ek">>, K, <<>>)
+            }
+        end
+     || K <- maps:get(<<"keys">>, E2EE, [])
+    ],
     #{
         ver => maps:get(<<"e2ee_ver">>, E2EE, 1),
         suite => maps:get(<<"e2ee_suite">>, E2EE, <<>>),
         nonce => maps:get(<<"nonce">>, E2EE, <<>>),
         keys => Keys
     };
-e2ee_to_pb(_) -> undefined.
+e2ee_to_pb(_) ->
+    undefined.
 
-e2ee_from_pb(undefined) -> null;
+e2ee_from_pb(undefined) ->
+    null;
 e2ee_from_pb(#{ver := Ver, suite := Suite, nonce := Nonce, keys := Keys}) ->
-    KeysList = [#{
-        <<"did">> => maps:get(did, K, <<>>),
-        <<"kid">> => maps:get(kid, K, <<>>),
-        <<"wrap_alg">> => maps:get(wrap_alg, K, <<>>),
-        <<"ek">> => maps:get(ek, K, <<>>)
-    } || K <- Keys],
+    KeysList = [
+        #{
+            <<"did">> => maps:get(did, K, <<>>),
+            <<"kid">> => maps:get(kid, K, <<>>),
+            <<"wrap_alg">> => maps:get(wrap_alg, K, <<>>),
+            <<"ek">> => maps:get(ek, K, <<>>)
+        }
+     || K <- Keys
+    ],
     #{
         <<"e2ee">> => true,
         <<"e2ee_ver">> => Ver,
@@ -338,32 +361,48 @@ e2ee_from_pb(#{ver := Ver, suite := Suite, nonce := Nonce, keys := Keys}) ->
         <<"nonce">> => Nonce,
         <<"keys">> => KeysList
     };
-e2ee_from_pb(_) -> null.
-
+e2ee_from_pb(_) ->
+    null.
 
 %% --- Type conversion helpers ---
 
 to_sint64(V) when is_integer(V) -> V;
 to_sint64(V) when is_binary(V) ->
-    try binary_to_integer(V)
-    catch _:_ -> 0
+    try
+        binary_to_integer(V)
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({to_sint64_fallback, V, Err}),
+            0
     end;
-to_sint64(_) -> 0.
+to_sint64(_) ->
+    0.
 
 to_int64(V) when is_integer(V) -> V;
 to_int64(V) when is_binary(V) ->
-    try binary_to_integer(V)
-    catch _:_ -> 0
+    try
+        binary_to_integer(V)
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({to_int64_fallback, V, Err}),
+            0
     end;
-to_int64(_) -> 0.
+to_int64(_) ->
+    0.
 
 to_int32(V) when is_integer(V) -> V;
 to_int32(V) when is_binary(V) ->
-    try binary_to_integer(V)
-    catch _:_ -> 0
+    try
+        binary_to_integer(V)
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({to_int32_fallback, V, Err}),
+            0
     end;
-to_int32(undefined) -> 0;
-to_int32(_) -> 0.
+to_int32(undefined) ->
+    0;
+to_int32(_) ->
+    0.
 
 to_binary(V) when is_binary(V) -> V;
 to_binary(V) when is_atom(V) -> atom_to_binary(V, utf8);
@@ -372,11 +411,20 @@ to_binary(_) -> <<>>.
 
 ensure_binary(V) when is_binary(V) -> V;
 ensure_binary(V) when is_map(V) ->
-    try jsone:encode(V, [native_utf8])
-    catch _:_ -> <<>>
+    try
+        jsone:encode(V, [native_utf8])
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({ensure_binary_map_fallback, Err}),
+            <<>>
     end;
 ensure_binary(V) when is_list(V) ->
-    try jsone:encode(V, [native_utf8])
-    catch _:_ -> <<>>
+    try
+        jsone:encode(V, [native_utf8])
+    catch
+        _:Err ->
+            ok = ?WARN_LOG({ensure_binary_list_fallback, Err}),
+            <<>>
     end;
-ensure_binary(_) -> <<>>.
+ensure_binary(_) ->
+    <<>>.

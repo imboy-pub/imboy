@@ -112,14 +112,25 @@ reload_dispatch() ->
         Routes = imboy_router:get_routes(),
         Dispatch = cowboy_router:compile(Routes),
         %% 对所有已知的 listener 执行热更
-        lists:foreach(fun(Listener) ->
-            try cowboy:set_env(Listener, dispatch, Dispatch)
-            catch _:_ -> ok
-            end
-        end, [imboy_listener, imboy_listener_tls]),
+        lists:foreach(
+            fun(Listener) ->
+                try
+                    cowboy:set_env(Listener, dispatch, Dispatch)
+                catch
+                    _:Err ->
+                        logger:warning(#{
+                            event => router_hot_reload_failed, listener => Listener, error => Err
+                        }),
+                        ok
+                end
+            end,
+            [imboy_listener, imboy_listener_tls]
+        ),
         ok
     catch
-        _:_ -> ok
+        _:Err ->
+            logger:warning(#{event => router_reload_failed, error => Err}),
+            ok
     end.
 
 %% ===================================================================

@@ -2,7 +2,7 @@
 
 # Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-04-15 CST | **版本**: 1.0.0-rc.2
+> **最后更新 / Last updated**: 2026-06-03 CST | **版本**: 1.0.0-rc.3
 > **架构**: 单应用 4 层架构 Handler -> Logic -> DS -> Repo | **语言**: Erlang/OTP 28+ + PostgreSQL 18+
 
 ---

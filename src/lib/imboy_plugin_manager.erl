@@ -29,45 +29,83 @@
 -spec list_plugins() -> {ok, [map()]}.
 list_plugins() ->
     PT = persistent_term:get(),
-    Plugins = lists:filtermap(fun({Key, Val}) ->
-        case Key of
-            {imboy_plugin_manifest, Name} when is_atom(Name) ->
-                {true, #{name => Name, manifest => Val}};
-            _ -> false
-        end
-    end, PT),
-    Items = lists:map(fun(#{name := Name, manifest := MF} = M) ->
-        Version = maps:get(version, MF, <<"0.0.0">>),
-        Strategy = get_rollback_strategy(MF),
-        State = case find_lifecycle(Name) of
-            undefined -> installed;
-            Pid ->
-                try gen_statem:call(Pid, get_state, 1000)
-                catch _:_ -> installed
-                end
+    Plugins = lists:filtermap(
+        fun({Key, Val}) ->
+            case Key of
+                {imboy_plugin_manifest, Name} when is_atom(Name) ->
+                    {true, #{name => Name, manifest => Val}};
+                _ ->
+                    false
+            end
         end,
-        maps:without([manifest], M#{state => State, version => Version,
-                                     rollback_strategy => Strategy})
-    end, Plugins),
+        PT
+    ),
+    Items = lists:map(
+        fun(#{name := Name, manifest := MF} = M) ->
+            Version = maps:get(version, MF, <<"0.0.0">>),
+            Strategy = get_rollback_strategy(MF),
+            State =
+                case find_lifecycle(Name) of
+                    undefined ->
+                        installed;
+                    Pid ->
+                        try
+                            gen_statem:call(Pid, get_state, 1000)
+                        catch
+                            _:Err ->
+                                logger:warning(#{
+                                    event => plugin_state_call_failed,
+                                    name => Name,
+                                    function => list_plugins,
+                                    error => Err
+                                }),
+                                installed
+                        end
+                end,
+            maps:without([manifest], M#{
+                state => State,
+                version => Version,
+                rollback_strategy => Strategy
+            })
+        end,
+        Plugins
+    ),
     {ok, Items}.
 
 %% @doc 获取单个插件详情。
 -spec get_plugin(atom()) -> {ok, map()} | {error, not_found}.
 get_plugin(Name) when is_atom(Name) ->
     case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
-        undefined -> {error, not_found};
+        undefined ->
+            {error, not_found};
         MF ->
             Version = maps:get(version, MF, <<"0.0.0">>),
             Strategy = get_rollback_strategy(MF),
-            State = case find_lifecycle(Name) of
-                undefined -> installed;
-                Pid ->
-                    try gen_statem:call(Pid, get_state, 1000)
-                    catch _:_ -> installed
-                    end
-            end,
-            {ok, #{name => Name, state => State, version => Version,
-                   rollback_strategy => Strategy, manifest => MF}}
+            State =
+                case find_lifecycle(Name) of
+                    undefined ->
+                        installed;
+                    Pid ->
+                        try
+                            gen_statem:call(Pid, get_state, 1000)
+                        catch
+                            _:Err ->
+                                logger:warning(#{
+                                    event => plugin_state_call_failed,
+                                    name => Name,
+                                    function => get_plugin,
+                                    error => Err
+                                }),
+                                installed
+                        end
+                end,
+            {ok, #{
+                name => Name,
+                state => State,
+                version => Version,
+                rollback_strategy => Strategy,
+                manifest => MF
+            }}
     end.
 
 %% @doc 获取插件 lifecycle 状态（轻量级）。
@@ -76,10 +114,14 @@ get_state(Name) when is_atom(Name) ->
     case find_lifecycle(Name) of
         undefined ->
             case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
-                undefined -> {error, not_found};
+                undefined ->
+                    {error, not_found};
                 MF ->
-                    {ok, #{name => Name, state => installed,
-                           version => maps:get(version, MF, <<"0.0.0">>)}}
+                    {ok, #{
+                        name => Name,
+                        state => installed,
+                        version => maps:get(version, MF, <<"0.0.0">>)
+                    }}
             end;
         Pid ->
             try
@@ -88,7 +130,15 @@ get_state(Name) when is_atom(Name) ->
                     {ok, Info} -> {ok, Info#{state => State}};
                     _ -> {ok, #{name => Name, state => State}}
                 end
-            catch _:_ -> {error, process_error}
+            catch
+                _:Err ->
+                    logger:warning(#{
+                        event => plugin_health_call_failed,
+                        name => Name,
+                        function => get_state,
+                        error => Err
+                    }),
+                    {error, process_error}
             end
     end.
 
@@ -96,10 +146,20 @@ get_state(Name) when is_atom(Name) ->
 -spec health_check(atom()) -> {ok, map()} | {error, term()}.
 health_check(Name) when is_atom(Name) ->
     case find_lifecycle(Name) of
-        undefined -> {error, not_found};
+        undefined ->
+            {error, not_found};
         Pid ->
-            try gen_statem:call(Pid, health_check, 5000)
-            catch _:_ -> {error, process_error}
+            try
+                gen_statem:call(Pid, health_check, 5000)
+            catch
+                _:Err ->
+                    logger:warning(#{
+                        event => plugin_health_call_failed,
+                        name => Name,
+                        function => health_check,
+                        error => Err
+                    }),
+                    {error, process_error}
             end
     end.
 
@@ -153,10 +213,12 @@ force_uninstall(Name, Mode) when is_atom(Name) ->
 -spec find_lifecycle(atom()) -> pid() | undefined.
 find_lifecycle(Name) when is_atom(Name) ->
     case persistent_term:get({imboy_plugin_lifecycle, Name}, undefined) of
-        undefined -> undefined;
+        undefined ->
+            undefined;
         Pid when is_pid(Pid) ->
             case erlang:is_process_alive(Pid) of
-                true -> Pid;
+                true ->
+                    Pid;
                 false ->
                     catch persistent_term:erase({imboy_plugin_lifecycle, Name}),
                     undefined
@@ -169,9 +231,11 @@ find_lifecycle(Name) when is_atom(Name) ->
 
 call_lifecycle(Name, Event) ->
     case find_lifecycle(Name) of
-        undefined -> {error, not_found};
+        undefined ->
+            {error, not_found};
         Pid ->
-            try gen_statem:call(Pid, Event, 5000)
+            try
+                gen_statem:call(Pid, Event, 5000)
             catch
                 exit:{noproc, _} -> {error, not_found};
                 exit:{timeout, _} -> {error, timeout};
@@ -180,8 +244,14 @@ call_lifecycle(Name, Event) ->
     end.
 
 safe_get_state(Pid) ->
-    try gen_statem:call(Pid, get_state, 1000)
-    catch _:_ -> unknown
+    try
+        gen_statem:call(Pid, get_state, 1000)
+    catch
+        _:Err ->
+            logger:warning(#{
+                event => plugin_state_call_failed, function => safe_get_state, error => Err
+            }),
+            unknown
     end.
 
 call_and_maybe_stop(Pid, Event, Name) ->
@@ -199,7 +269,10 @@ call_and_maybe_stop(Pid, Event, Name) ->
 
 get_rollback_strategy(Manifest) ->
     case Manifest of
-        #{lifecycle := #{rollback_strategy := S}}
-            when S =:= atomic; S =:= best_effort; S =:= manual -> S;
-        _ -> atomic
+        #{lifecycle := #{rollback_strategy := S}} when
+            S =:= atomic; S =:= best_effort; S =:= manual
+        ->
+            S;
+        _ ->
+            atomic
     end.

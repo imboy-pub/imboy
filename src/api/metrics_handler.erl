@@ -12,27 +12,33 @@
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     Accept = cowboy_req:header(<<"accept">>, Req0, <<>>),
-    Req1 = case binary:match(Accept, <<"text/plain">>) of
-        nomatch ->
-            %% JSON 格式
-            case fetch_metrics() of
-                {ok, Metrics} ->
-                    elib_response:success(Req0, Metrics, "success.");
-                {error, Reason} ->
-                    elib_response:error(Req0, format_error(Reason))
-            end;
-        _ ->
-            %% Prometheus text 格式
-            case fetch_metrics() of
-                {ok, Metrics} ->
-                    Body = format_prometheus(Metrics),
-                    cowboy_req:reply(200, #{
-                        <<"content-type">> => <<"text/plain; version=0.0.4; charset=utf-8">>
-                    }, Body, Req0);
-                {error, Reason} ->
-                    cowboy_req:reply(500, #{}, format_error(Reason), Req0)
-            end
-    end,
+    Req1 =
+        case binary:match(Accept, <<"text/plain">>) of
+            nomatch ->
+                %% JSON 格式
+                case fetch_metrics() of
+                    {ok, Metrics} ->
+                        elib_response:success(Req0, Metrics, "success.");
+                    {error, Reason} ->
+                        elib_response:error(Req0, format_error(Reason))
+                end;
+            _ ->
+                %% Prometheus text 格式
+                case fetch_metrics() of
+                    {ok, Metrics} ->
+                        Body = format_prometheus(Metrics),
+                        cowboy_req:reply(
+                            200,
+                            #{
+                                <<"content-type">> => <<"text/plain; version=0.0.4; charset=utf-8">>
+                            },
+                            Body,
+                            Req0
+                        );
+                    {error, Reason} ->
+                        cowboy_req:reply(500, #{}, format_error(Reason), Req0)
+                end
+        end,
     {ok, Req1, State0}.
 
 -spec fetch_metrics() -> {ok, map()} | {error, term()}.
@@ -57,39 +63,56 @@ collect_system_metrics() ->
     [{total, MemTotal}, {processes, MemProc}, {ets, MemEts}] =
         [lists:keyfind(K, 1, erlang:memory()) || K <- [total, processes, ets]],
     %% 连接池状态
-    PoolStatus = try pooler:pool_stats(pgsql) of
-        Stats when is_list(Stats) ->
-            #{
-                db_pool_free => proplists:get_value(free_count, Stats, 0),
-                db_pool_in_use => proplists:get_value(in_use_count, Stats, 0)
-            };
-        _ -> #{}
-    catch _:_ -> #{}
-    end,
+    PoolStatus =
+        try pooler:pool_stats(pgsql) of
+            Stats when is_list(Stats) ->
+                #{
+                    db_pool_free => proplists:get_value(free_count, Stats, 0),
+                    db_pool_in_use => proplists:get_value(in_use_count, Stats, 0)
+                };
+            _ ->
+                #{}
+        catch
+            _:_:Err1 ->
+                logger:warning(#{event => metrics_pool_stats_failed, error => Err1}),
+                #{}
+        end,
     %% WebSocket 在线用户数（syn 注册的唯一用户）
-    OnlineCount = try syn:count(imboy) of
-        Count when is_integer(Count) -> Count;
-        _ -> 0
-    catch _:_ -> 0
-    end,
+    OnlineCount =
+        try syn:count(imboy) of
+            Count when is_integer(Count) -> Count;
+            _ -> 0
+        catch
+            _:_:Err2 ->
+                logger:warning(#{event => metrics_syn_count_failed, error => Err2}),
+                0
+        end,
     %% 活跃 TCP/WebSocket 连接数（ranch listener 统计）
-    WsConnections = try ranch:info(imboy_listener) of
-        Info when is_map(Info) ->
-            maps:get(active_connections, Info, 0);
-        _Info when is_list(_Info) ->
-            proplists:get_value(active_connections, _Info, 0);
-        _ -> 0
-    catch _:_ -> 0
-    end,
+    WsConnections =
+        try ranch:info(imboy_listener) of
+            Info when is_map(Info) ->
+                maps:get(active_connections, Info, 0);
+            _Info when is_list(_Info) ->
+                proplists:get_value(active_connections, _Info, 0);
+            _ ->
+                0
+        catch
+            _:_:Err3 ->
+                logger:warning(#{event => metrics_ranch_info_failed, error => Err3}),
+                0
+        end,
 
-    maps:merge(#{
-        erlang_process_count => ProcessCount,
-        erlang_memory_total_bytes => MemTotal,
-        erlang_memory_processes_bytes => MemProc,
-        erlang_memory_ets_bytes => MemEts,
-        imboy_online_users => OnlineCount,
-        ws_connections_current => WsConnections
-    }, PoolStatus).
+    maps:merge(
+        #{
+            erlang_process_count => ProcessCount,
+            erlang_memory_total_bytes => MemTotal,
+            erlang_memory_processes_bytes => MemProc,
+            erlang_memory_ets_bytes => MemEts,
+            imboy_online_users => OnlineCount,
+            ws_connections_current => WsConnections
+        },
+        PoolStatus
+    ).
 
 %% @doc 将指标格式化为 Prometheus text exposition format
 %% 支持带标签的计数器：metric_name{plugin="channel"} 42
@@ -99,28 +122,68 @@ format_prometheus(Metrics) ->
     Histograms = maps:get(histograms, Metrics, #{}),
 
     %% 按 metric name 分组带标签的计数器，用于合并 TYPE 声明
-    CounterLines = maps:fold(fun
-        ({Name, Labels}, Value, Acc) when is_map(Labels) ->
-            %% 带标签的计数器: {Name, #{plugin => channel}} => metric_name{plugin="channel"}
-            NameBin = metric_name(Name),
-            LabelsBin = format_labels_map(Labels),
-            [Acc, NameBin, <<"{">>, LabelsBin, <<"} ">>,
-             integer_to_binary(Value), <<"\n">>];
-        (Name, Value, Acc) ->
-            NameBin = metric_name(Name),
-            [Acc, <<"# TYPE ">>, NameBin, <<" gauge\n">>,
-             NameBin, <<" ">>, integer_to_binary(Value), <<"\n">>]
-    end, [], Counters),
+    CounterLines = maps:fold(
+        fun
+            ({Name, Labels}, Value, Acc) when is_map(Labels) ->
+                %% 带标签的计数器: {Name, #{plugin => channel}} => metric_name{plugin="channel"}
+                NameBin = metric_name(Name),
+                LabelsBin = format_labels_map(Labels),
+                [
+                    Acc,
+                    NameBin,
+                    <<"{">>,
+                    LabelsBin,
+                    <<"} ">>,
+                    integer_to_binary(Value),
+                    <<"\n">>
+                ];
+            (Name, Value, Acc) ->
+                NameBin = metric_name(Name),
+                [
+                    Acc,
+                    <<"# TYPE ">>,
+                    NameBin,
+                    <<" gauge\n">>,
+                    NameBin,
+                    <<" ">>,
+                    integer_to_binary(Value),
+                    <<"\n">>
+                ]
+        end,
+        [],
+        Counters
+    ),
 
-    HistLines = maps:fold(fun(Name, Buckets, Acc) ->
-        NameBin = metric_name(Name),
-        Count = length(Buckets),
-        Sum = lists:foldl(fun(#{value := V}, S) -> S + V; (_, S) -> S end, 0, Buckets),
-        [Acc,
-         <<"# TYPE ">>, NameBin, <<" summary\n">>,
-         NameBin, <<"_count ">>, integer_to_binary(Count), <<"\n">>,
-         NameBin, <<"_sum ">>, number_to_binary(Sum), <<"\n">>]
-    end, [], Histograms),
+    HistLines = maps:fold(
+        fun(Name, Buckets, Acc) ->
+            NameBin = metric_name(Name),
+            Count = length(Buckets),
+            Sum = lists:foldl(
+                fun
+                    (#{value := V}, S) -> S + V;
+                    (_, S) -> S
+                end,
+                0,
+                Buckets
+            ),
+            [
+                Acc,
+                <<"# TYPE ">>,
+                NameBin,
+                <<" summary\n">>,
+                NameBin,
+                <<"_count ">>,
+                integer_to_binary(Count),
+                <<"\n">>,
+                NameBin,
+                <<"_sum ">>,
+                number_to_binary(Sum),
+                <<"\n">>
+            ]
+        end,
+        [],
+        Histograms
+    ),
 
     iolist_to_binary([CounterLines, HistLines]).
 
@@ -128,9 +191,15 @@ format_prometheus(Metrics) ->
 -spec format_labels_map(map()) -> iodata().
 format_labels_map(Labels) ->
     SortedPairs = lists:sort(maps:to_list(Labels)),
-    Parts = [[atom_to_binary(K, utf8), <<"=\"">>,
-              format_label_value(V), <<"\"">>]
-             || {K, V} <- SortedPairs],
+    Parts = [
+        [
+            atom_to_binary(K, utf8),
+            <<"=\"">>,
+            format_label_value(V),
+            <<"\"">>
+        ]
+     || {K, V} <- SortedPairs
+    ],
     lists:join(<<",">>, Parts).
 
 -spec format_label_value(term()) -> binary().

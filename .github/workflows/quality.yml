@@ -214,3 +214,62 @@ jobs:
             echo "::error::Gitleaks found $count leaks, exceeds baseline 8 (ratchet)"
             exit 1
           fi
+
+  # ----------------------------------------------------------------
+  # 5) Architecture gates — 层边界 + 文件大小 + 静默吞错检查
+  #    2026-06-03: 源自 verified-audit-final.md P1-5
+  # ----------------------------------------------------------------
+  architecture-gates:
+    name: Architecture gates (layer / size / silent-catch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check layer boundaries
+        run: |
+          set -euo pipefail
+          echo "=== API → Repo (must be 0) ==="
+          api_repo=$(grep -rn "_repo:" src/api/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          echo "API→Repo violations: $api_repo"
+          if [ "$api_repo" -gt 0 ]; then
+            echo "::error::API layer must not call Repo directly ($api_repo violations)"
+            exit 1
+          fi
+
+          echo "=== Repo → Logic (must be 0) ==="
+          repo_logic=$(grep -rn "_logic:" src/repo/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          echo "Repo→Logic violations: $repo_logic"
+          if [ "$repo_logic" -gt 0 ]; then
+            echo "::error::Repo layer must not call Logic directly ($repo_logic violations)"
+            exit 1
+          fi
+
+      - name: Check file size (hand-written .erl must be ≤ 800 lines)
+        run: |
+          set -euo pipefail
+          # Baseline: current oversized files (2026-06-03)
+          # adm_group_handler 2218, imboy_policy 2185, channel_handler 999,
+          # imboy_router 908, websocket_handler 847, adm_channel_handler 817
+          oversized=$(find src -name "*.erl" ! -name "imboy_pb.erl" -exec wc -l {} + \
+            | awk '$1 > 800 && !/total/ {print}' || true)
+          if [ -n "$oversized" ]; then
+            count=$(echo "$oversized" | wc -l | tr -d ' ')
+            echo "::warning::$count files exceed 800 lines (baseline 6 files, ratchet)"
+            echo "$oversized"
+            # Fail only if NEW oversized files appear (baseline = 6)
+            if [ "$count" -gt 6 ]; then
+              echo "::error::New oversized files detected (baseline 6, found $count)"
+              exit 1
+            fi
+          fi
+
+      - name: Check silent error swallowing (catch _:_ must not appear)
+        run: |
+          set -euo pipefail
+          silent=$(grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          echo "Silent catch _:_ count: $silent"
+          if [ "$silent" -gt 0 ]; then
+            echo "::error::Found $silent silent catch _:_ — use catch _:Err + logger:warning instead"
+            grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -v "%%"
+            exit 1
+          fi
