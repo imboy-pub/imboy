@@ -26,19 +26,22 @@
 
 %% @doc 【可发】基于好友关系与黑名单状态裁决能否发送。
 %%
-%% 精确镜像 msg_c2c_logic:c2c/3 现有 case 语义（行为不变是回归契约）。
-%% ⚠️ 语义留痕：原实现用 `InDenylist > 0` 比较，而 friend_ds:check_relationship/2
-%% 的 spec 为 {boolean(), boolean()}；Erlang term 序中 atom > number，故
-%% `false > 0` =:= true。即「非好友且未拉黑」({false,false}) 会落入
-%% in_denylist 分支（第三子句对纯布尔输入实为 dead code）。此处**原样保留**，
-%% 不在 T1.1 修正——任何语义修复须单独评审 + 回归（见迭代报告标记）。
+%% 镜像 msg_c2c_logic:c2c/3 的发送裁决语义。拉黑优先于好友判定：
+%% InDenylist 为真（boolean true 或正整数）→ in_denylist；好友且未拉黑 → allow；
+%% 其余（非好友且未拉黑）→ not_a_friend。
+%% 修正历史（原 T1.1 留痕 bug）：原 guard `InDenylist > 0` 对 boolean 输入有缺陷——
+%% friend_ds:check_relationship/2 返回 {boolean(), boolean()}，而 Erlang term 序中
+%% atom > number，故 `false > 0` =:= true，使「非好友且未拉黑」({false,false}) 误落
+%% in_denylist 分支（应为 not_a_friend）。现 guard 显式区分 boolean/integer 修正之。
 -spec send_decision(
     IsFriend :: boolean(),
     InDenylist :: boolean() | integer()
 ) -> send_decision().
 send_decision(true, false) ->
     allow;
-send_decision(_, InDenylist) when InDenylist > 0 ->
+send_decision(_, InDenylist) when
+    InDenylist =:= true orelse (is_integer(InDenylist) andalso InDenylist > 0)
+->
     {reject, in_denylist};
 send_decision(false, _) ->
     {reject, not_a_friend}.

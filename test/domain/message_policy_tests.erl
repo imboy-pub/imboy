@@ -22,11 +22,18 @@ send_denylist_bool_true_test() ->
         message_policy:send_decision(false, true)
     ).
 
-%% 语义留痕：{false,false} 因 `false > 0`=:=true 落入 in_denylist（镜像现状）。
-send_false_false_mirrors_quirk_test() ->
+%% 修正：{false,false}（非好友且未拉黑）→ not_a_friend（原 `false > 0` quirk 已修）。
+send_false_false_not_a_friend_test() ->
+    ?assertEqual(
+        {reject, not_a_friend},
+        message_policy:send_decision(false, false)
+    ).
+
+%% 拉黑优先：好友但已拉黑（布尔 true）→ in_denylist。
+send_friend_but_blocked_test() ->
     ?assertEqual(
         {reject, in_denylist},
-        message_policy:send_decision(false, false)
+        message_policy:send_decision(true, true)
     ).
 
 %% ---- encode_payload（构建）----
