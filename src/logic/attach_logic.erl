@@ -68,9 +68,25 @@ confirm(Uid, ObjectKey, Meta) ->
             {error, R}
     end.
 
-%% @doc 签发短时下载 URL（替代公开读）
-%% 起步策略：已登录即可签发（ObjectKey 不可枚举 + 短时有效）。
-%% 进阶可在此校验 ObjectKey 是否出现在请求者可见的会话消息中。
--spec view_url(integer(), binary()) -> {ok, binary()}.
-view_url(_Uid, ObjectKey) ->
-    {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)}.
+%% @doc 签发短时下载 URL（替代公开读），附带归属验证
+%% 验证 ObjectKey 是否由 Uid 上传（creator_user_id = Uid）。
+%% 未来可扩展：验证 ObjectKey 是否出现在 Uid 可见的会话消息中。
+-spec view_url(integer(), binary()) -> {ok, binary()} | {error, forbidden}.
+view_url(Uid, ObjectKey) ->
+    case attachment_ds:find_by_path_and_uid(ObjectKey, Uid) of
+        {ok, _} ->
+            {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)};
+        {error, not_found} ->
+            {error, forbidden};
+        {error, _Reason} ->
+            % 查询失败时降级允许（避免存储故障影响正常业务），记录日志
+            ?WARN_LOG([
+                "attach_logic:view_url ownership check failed for uid=",
+                Uid,
+                " key=",
+                ObjectKey,
+                " reason=",
+                _Reason
+            ]),
+            {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)}
+    end.

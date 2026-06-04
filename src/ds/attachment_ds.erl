@@ -15,6 +15,7 @@
 -export([page/3]).
 -export([disable/1, enable/1, soft_delete/1]).
 -export([orphan_stats/1, orphan_cleanup/1]).
+-export([find_by_path_and_uid/2]).
 
 %% ===================================================================
 %% API Functions
@@ -85,6 +86,11 @@ orphan_cleanup(Opts) ->
         {error, R} ->
             {error, R}
     end.
+
+%% @doc 根据 object_key(path) 和上传者 uid 查找附件（归属校验）
+-spec find_by_path_and_uid(binary(), integer()) -> {ok, map()} | {error, not_found | term()}.
+find_by_path_and_uid(ObjectKey, Uid) ->
+    attachment_repo:find_by_path_and_uid(ObjectKey, Uid).
 
 %% ===================================================================
 %% Internal Functions

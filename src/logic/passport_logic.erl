@@ -203,7 +203,13 @@ do_login_by_code(Type, Account, Code, DType, Did) ->
     {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
 do_login_by_code_verify(User, _DType, _Did) when map_size(User) =:= 0 ->
     {error, <<"账号不存在"/utf8>>};
-do_login_by_code_verify(User, DType, _Did) ->
+do_login_by_code_verify(User, DType, Did) ->
+    Account = maps:get(
+        <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
+    ),
+    Ip = Did,
+    % 验证码登录：验证通过后即视为成功，重置失败计数
+    _ = login_security_logic:record_login_success(Account, Ip),
     Status = maps:get(<<"status">>, User, -2),
     case Status of
         -2 ->
@@ -230,32 +236,54 @@ do_login_by_code_verify(User, DType, _Did) ->
 -spec do_login_verify(binary(), map(), binary(), binary()) ->
     {ok, map()} | {{error, conflict}, map()} | {error, term()}.
 do_login_verify(Pwd, User, DType, _Did) ->
-    case verify_user(Pwd, User) of
-        {ok, Data} ->
-            % 从 uid (字符串格式) 转换为整数 ID
-            UidHashed = maps:get(<<"uid">>, Data),
-            Uid = ec_cnv:to_integer(UidHashed),
-            % 检查设备类型是否有效
-            case user_device_logic:validate_device_type(DType) of
-                false when DType =/= <<>> ->
-                    % 无效的设备类型，但允许登录（兼容旧客户端）
-                    {ok, Data};
-                _ ->
-                    % 检查登录冲突
-                    case user_device_logic:check_login_conflict(Uid, DType) of
-                        {ok, no_conflict} ->
-                            % 无冲突，正常登录
+    % 提取账户标识符用于暴力破解保护
+    Account = maps:get(
+        <<"account">>,
+        User,
+        maps:get(
+            <<"mobile">>,
+            User,
+            maps:get(<<"email">>, User, <<>>)
+        )
+    ),
+    % IP 在此层不可用，使用空字符串（账户维度保护仍有效）
+    Ip = <<>>,
+    % 登录前检查是否被锁定
+    case login_security_logic:check_login_allowed(Account, Ip) of
+        {error, locked, LockInfo} ->
+            {error, LockInfo};
+        {ok, true} ->
+            case verify_user(Pwd, User) of
+                {ok, Data} ->
+                    % 登录成功，重置失败计数
+                    _ = login_security_logic:record_login_success(Account, Ip),
+                    % 从 uid (字符串格式) 转换为整数 ID
+                    UidHashed = maps:get(<<"uid">>, Data),
+                    Uid = ec_cnv:to_integer(UidHashed),
+                    % 检查设备类型是否有效
+                    case user_device_logic:validate_device_type(DType) of
+                        false when DType =/= <<>> ->
+                            % 无效的设备类型，但允许登录（兼容旧客户端）
                             {ok, Data};
-                        {ok, conflict, ConflictInfo} ->
-                            % 有冲突，返回冲突信息
-                            {{error, conflict}, ConflictInfo};
-                        {error, _Reason} ->
-                            % 检查失败，允许登录
-                            {ok, Data}
-                    end
-            end;
-        {error, Reason} ->
-            {error, Reason}
+                        _ ->
+                            % 检查登录冲突
+                            case user_device_logic:check_login_conflict(Uid, DType) of
+                                {ok, no_conflict} ->
+                                    % 无冲突，正常登录
+                                    {ok, Data};
+                                {ok, conflict, ConflictInfo} ->
+                                    % 有冲突，返回冲突信息
+                                    {{error, conflict}, ConflictInfo};
+                                {error, _Reason} ->
+                                    % 检查失败，允许登录
+                                    {ok, Data}
+                            end
+                    end;
+                {error, Reason} ->
+                    % 登录失败，记录失败次数
+                    _ = login_security_logic:record_login_failure(Account, Ip),
+                    {error, Reason}
+            end
     end.
 
 -spec do_signup(
@@ -528,15 +556,6 @@ verify_user(_Pwd, User) when map_size(User) =:= 0 ->
     {error, <<"账号不存在"/utf8>>};
 verify_user(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
-    % DEBUG: 临时调试密码校验
-    ?DEBUG_LOG(#{
-        verify_debug => #{
-            input_pwd_len => byte_size(Pwd),
-            input_pwd_preview => binary:part(Pwd, 0, min(byte_size(Pwd), 32)),
-            stored_hash_len => byte_size(Pwd2),
-            stored_hash_preview => binary:part(Pwd2, 0, min(byte_size(Pwd2), 40))
-        }
-    }),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
     case elib_password:verify(Pwd, Pwd2) of
@@ -554,6 +573,9 @@ verify_user(Pwd, User) ->
 
 login_resp(User, Resp) ->
     Id = maps:get(<<"id">>, User),
+    % 从 User 数据中读取 role 字段；user 表暂未设置 role 列，默认为 1（普通用户）
+    % 待 user 表添加 role 列后，LOGIN_COLUMN 中需加入 role，届时可自动生效
+    Role = maps:get(<<"role">>, User, 1),
     maps:merge(
         #{
             <<"uid">> => Id,
@@ -567,7 +589,7 @@ login_resp(User, Resp) ->
             <<"region">> => maps:get(<<"region">>, User),
             <<"sign">> => maps:get(<<"sign">>, User),
             <<"status">> => maps:get(<<"status">>, User),
-            <<"role">> => 1
+            <<"role">> => Role
         },
         Resp
     ).

@@ -39,6 +39,9 @@
 %% @doc 物理删除数据库行（S3 删除成功后调用）
 -export([hard_delete_by_ids/1]).
 
+%% @doc 根据 object_key(path) 和上传者 uid 查找附件（用于归属校验）
+-export([find_by_path_and_uid/2]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -303,6 +306,27 @@ hard_delete_by_ids(Ids) ->
     Sql = [<<"DELETE FROM ">>, Tb, <<" WHERE id = ANY(ARRAY[">>, Placeholders, <<"]::bigint[])">>],
     case elib_pg:execute(Sql, Ids) of
         {ok, _} -> ok;
+        {error, R} -> {error, R}
+    end.
+
+%% ===================================================================
+%% Ownership Verification
+%% ===================================================================
+
+%% @doc 根据 object_key(path) 和上传者 uid 查找附件
+%% 用于归属校验：确认 ObjectKey 是否由 Uid 上传
+%% @param ObjectKey 对象存储路径（对应 path 列）
+%% @param Uid 用户 ID
+%% @returns {ok, map()} | {error, not_found} | {error, term()}
+-spec find_by_path_and_uid(binary(), integer()) -> {ok, map()} | {error, not_found | term()}.
+find_by_path_and_uid(ObjectKey, Uid) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT id, path, creator_user_id FROM ", Tb/binary,
+            " WHERE path = $1 AND creator_user_id = $2 AND status >= 0 LIMIT 1">>,
+    case elib_pg:query(Sql, [ObjectKey, Uid]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
         {error, R} -> {error, R}
     end.
 

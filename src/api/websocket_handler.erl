@@ -48,10 +48,19 @@ init(Req0, State0) ->
         % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
         idle_timeout => 180000
     },
+    % DID 缺失时使用对端 IP 作为限流 fallback key，防止所有无 DID 客户端聚合限流
+    {PeerIp, _PeerPort} = cowboy_req:peer(Req0),
+    PeerIpBin = list_to_binary(inet:ntoa(PeerIp)),
+    ThrottleKey =
+        case DID of
+            undefined -> {ip, PeerIpBin};
+            <<>> -> {ip, PeerIpBin};
+            _ -> DID
+        end,
     State1 = State0#{dtype => DType, did => DID, vsn => AppVsn},
-    case throttle:check(throttle_ws, DID) of
+    case throttle:check(throttle_ws, ThrottleKey) of
         {limit_exceeded, _, _} ->
-            ok = elib_log:warning("DeviceID ~p exceeded api limit", [DID]),
+            ok = elib_log:warning("DeviceID ~p exceeded api limit", [ThrottleKey]),
             % 429 Too Many Requests
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};

@@ -8,7 +8,6 @@
 -export([remove_last_forward_slash/1]).
 -export([sign_admin_cookie/1]).
 
-
 %% 这个是回调函数
 %% @doc 执行认证中间件
 -spec execute(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
@@ -33,21 +32,23 @@ execute(Req, Env) ->
             condition(Method, Uid, UidSig, Req, Env)
     end.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
 %% @doc 条件判断处理
--spec condition(binary(), binary() | undefined, cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+-spec condition(binary(), binary() | undefined, cowboy_req:req(), map()) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 condition(Method, Uid, Req, Env) when is_binary(Uid) ->
     % 向下兼容 condition/4 的调用场景（测试和旧代码），自动补签名
     condition(Method, Uid, sign_admin_cookie(Uid), Req, Env);
 condition(Method, Uid, Req, Env) ->
     condition(Method, Uid, false, Req, Env).
 
--spec condition(binary(), binary() | false | undefined, binary() | false | undefined, cowboy_req:req(), map()) ->
-          {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+-spec condition(
+    binary(), binary() | false | undefined, binary() | false | undefined, cowboy_req:req(), map()
+) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 condition(Method, Uid, UidSig, Req, Env) ->
     case authorize_admin_cookie(Uid, UidSig) of
         {ok, DecodedUid} ->
@@ -82,9 +83,11 @@ handle_unauthorized(<<"GET">>, Req) ->
                 }
             ),
             Location = "/adm/passport/login",
-            Req2 = cowboy_req:reply(302
-                , #{<<"Location">> => Location}
-                , Req1),
+            Req2 = cowboy_req:reply(
+                302,
+                #{<<"Location">> => Location},
+                Req1
+            ),
             {stop, Req2};
         false ->
             unauthorized_api_response(Req)
@@ -116,7 +119,7 @@ clear_cookie(Name, Req) ->
 
 %% @doc 管理后台 Cookie 授权校验
 -spec authorize_admin_cookie(binary() | false | undefined, binary() | false | undefined) ->
-          {ok, integer()} | error.
+    {ok, integer()} | error.
 authorize_admin_cookie(Uid, UidSig) when is_binary(Uid), is_binary(UidSig) ->
     case verify_admin_cookie(Uid, UidSig) of
         true ->
@@ -129,15 +132,27 @@ authorize_admin_cookie(Uid, _) when is_binary(Uid) ->
 authorize_admin_cookie(_, _) ->
     error.
 
-%% @doc 可选的旧 Cookie 兼容逻辑（默认关闭）
+%% @doc 可选的旧 Cookie 兼容逻辑（仅限 dev/local 环境，生产环境强制禁用）
 -spec maybe_authorize_with_legacy_cookie(binary()) -> {ok, integer()} | error.
 maybe_authorize_with_legacy_cookie(Uid) ->
-    case config_ds:env(adm_auth_legacy_cookie_enabled, false) of
+    case is_prod_env() of
         true ->
-            decode_uid(Uid);
-        _ ->
-            error
+            % 生产环境强制禁用 legacy cookie，防止绕过签名验证
+            error;
+        false ->
+            case config_ds:env(adm_auth_legacy_cookie_enabled, false) of
+                true ->
+                    decode_uid(Uid);
+                _ ->
+                    error
+            end
     end.
+
+%% @doc 判断当前是否为生产环境
+-spec is_prod_env() -> boolean().
+is_prod_env() ->
+    Env = ec_cnv:to_binary(config_ds:env(env, <<"local">>)),
+    Env =:= <<"pro">> orelse Env =:= <<"prod">> orelse Env =:= <<"production">>.
 
 -spec decode_uid(binary()) -> {ok, integer()} | error.
 decode_uid(Uid) ->
@@ -188,15 +203,10 @@ cookie_secure() ->
     StartMode =:= tls orelse StartMode =:= http_tls.
 
 %% @doc 管理后台 Cookie 签名密钥
+%% 始终使用独立的 adm_cookie_secret，不复用 jwt_key，确保密钥隔离
 -spec signing_key() -> binary().
 signing_key() ->
-    JwtKey = normalize_binary(config_ds:env(jwt_key, <<>>)),
-    case JwtKey of
-        <<>> ->
-            normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>));
-        _ ->
-            JwtKey
-    end.
+    normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>)).
 
 -spec normalize_binary(term()) -> binary().
 normalize_binary(undefined) ->
@@ -223,12 +233,15 @@ should_redirect_to_login(_) ->
 -spec unauthorized_api_response(cowboy_req:req()) -> {stop, cowboy_req:req()}.
 unauthorized_api_response(Req) ->
     Req0 = clear_auth_cookies(Req),
-    Body = jsone:encode(#{
-        <<"code">> => 706,
-        <<"msg">> => <<"Need to log in again">>,
-        <<"sv_ts">> => elib_dt:millisecond(),
-        <<"payload">> => #{}
-    }, [native_utf8]),
+    Body = jsone:encode(
+        #{
+            <<"code">> => 706,
+            <<"msg">> => <<"Need to log in again">>,
+            <<"sv_ts">> => elib_dt:millisecond(),
+            <<"payload">> => #{}
+        },
+        [native_utf8]
+    ),
     Req1 = cowboy_req:reply(
         401,
         #{

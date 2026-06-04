@@ -196,11 +196,8 @@ stage_and_send_c2c(
                                     NowTs
                                 );
                             {error, not_found} ->
-                                % 被引用的消息不存在，返回错误
-                                self() !
-                                    {reply,
-                                        message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)},
-                                error;
+                                % 被引用的消息不存在，直接返回错误 reply（不使用 self() ! 副作用）
+                                {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)};
                             {error, Reason} ->
                                 % 兼容旧库结构：回复校验查询失败时降级为“跳过严格校验”，避免消息发送流程崩溃
                                 ok = ?ERROR_LOG(
@@ -241,6 +238,9 @@ stage_and_send_c2c(
 
             elib_log:info(["stage_and_send_c2c", StageResult]),
             case StageResult of
+                {reply, ErrMsg} ->
+                    % 被引用消息不存在等业务错误，直接返回错误响应
+                    {reply, ErrMsg};
                 ok ->
                     % 立即响应和投递
                     % T1.2：ACK 构建退化为外壳调用 message_policy:build_server_ack/2
@@ -310,10 +310,8 @@ stage_and_send_c2c(
                         3,
                         1000
                     ),
-                    ok;
-                error ->
-                    % 已经在上面处理了错误响应
                     ok
+                % end case StageResult
             end;
         {error, Reason} ->
             policy_violation_reply(MsgId, Reason)

@@ -15,6 +15,24 @@
 -include("log.hrl").
 -include("imboy_const.hrl").
 
+%% @doc 获取可信任的真实客户端 IP
+%% 只有来自受信任代理的请求才信任 x-forwarded-for；否则使用直连 IP
+-spec get_real_ip(cowboy_req:req()) -> binary().
+get_real_ip(Req) ->
+    {PeerIp, _Port} = cowboy_req:peer(Req),
+    PeerIpBin = list_to_binary(inet:ntoa(PeerIp)),
+    TrustedProxies = config_ds:env(trusted_proxy_ips, [<<"127.0.0.1">>, <<"::1">>]),
+    case lists:member(PeerIpBin, TrustedProxies) of
+        true ->
+            % 来自受信任代理，可以信任 x-forwarded-for 头
+            ForwardedFor = cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
+            % 取第一个 IP（最接近真实客户端）
+            hd(binary:split(ForwardedFor, [<<",">>, <<" ">>], [trim_all]));
+        false ->
+            % 不信任代理，直接使用连接 IP
+            PeerIpBin
+    end.
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -156,7 +174,7 @@ login(Req0) ->
     Password = maps:get(<<"pwd">>, PostVals, <<>>),
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
+    Ip = get_real_ip(Req0),
 
     % 提取设备信息
     DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
@@ -205,7 +223,7 @@ quick_login(Req0) ->
     %
     Token = maps:get(<<"token">>, PostVals, <<>>),
     Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
+    Ip = get_real_ip(Req0),
     % ?DEBUG_LOG(["Ip", Ip]),
     Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},
     % ?DEBUG_LOG(["PostVals", PostVals, Post2]),
@@ -316,7 +334,7 @@ signup(Req0) ->
     Code = maps:get(<<"code">>, PostVals, <<>>),
     RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, <<"1">>),
     Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
+    Ip = get_real_ip(Req0),
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},
@@ -341,7 +359,7 @@ find_password(Req0) ->
     Code = maps:get(<<"code">>, PostVals, <<>>),
     RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, <<"1">>),
     Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
-    Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, <<"{}">>),
+    Ip = get_real_ip(Req0),
     % 使用安全解密函数
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},

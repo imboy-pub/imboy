@@ -5,6 +5,11 @@
 -export([get_my_orders/1]).
 -export([get_order/2]).
 
+%% 生产环境允许的支付方式白名单（不含 mock）
+-define(ALLOWED_PAYMENT_METHODS, [<<"wallet">>, <<"alipay">>, <<"wechat">>, <<"stripe">>]).
+%% 非生产环境额外允许 mock 支付（用于测试/开发）
+-define(DEV_ALLOWED_PAYMENT_METHODS, [<<"mock">> | ?ALLOWED_PAYMENT_METHODS]).
+
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 create_order(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
@@ -60,10 +65,12 @@ pay_order(Uid, OrderNo) ->
         {ok, Order} when is_map(Order) ->
             OrderUserId = maps:get(<<"user_id">>, Order, 0),
             ChannelId = maps:get(<<"channel_id">>, Order, 0),
-            case is_integer(OrderUserId)
-                andalso OrderUserId > 0
-                andalso is_integer(ChannelId)
-                andalso ChannelId > 0 of
+            case
+                is_integer(OrderUserId) andalso
+                    OrderUserId > 0 andalso
+                    is_integer(ChannelId) andalso
+                    ChannelId > 0
+            of
                 false ->
                     {error, <<"订单不存在"/utf8>>};
                 true ->
@@ -71,32 +78,42 @@ pay_order(Uid, OrderNo) ->
                         OrderUserId =/= Uid ->
                             {error, <<"无权操作此订单"/utf8>>};
                         true ->
-                            % 从订单中获取支付方式（默认 mock，可传 wallet）
-                            Method = maps:get(<<"payment_method">>, Order, <<"mock">>),
-                            Amount = maps:get(<<"amount">>, Order, 0),
-                            PayOpts = #{uid => Uid, amount => Amount},
-                            case payment_gateway:pay(Method, OrderNo, PayOpts) of
-                                {ok, PayNo} ->
-                                    PaymentData = #{
-                                        payment_no => PayNo,
-                                        payment_method => Method
-                                    },
-                                    case channel_subscribe_ds:pay_order(OrderNo, PaymentData) of
-                                        ok ->
-                                            channel_logic_notify:notify_order_paid(ChannelId, Uid);
-                                        {error, already_paid} ->
-                                            {error, <<"订单已支付"/utf8>>};
-                                        {error, not_found_or_expired} ->
-                                            {error, <<"订单不存在或已过期"/utf8>>};
-                                        {error, Reason} when is_binary(Reason) ->
-                                            {error, Reason};
-                                        {error, Reason} ->
-                                            {error, elib_cnv:safe_to_binary(Reason)};
-                                        Other ->
-                                            {error, elib_cnv:safe_to_binary(Other)}
-                                    end;
-                                {error, PayReason} ->
-                                    {error, PayReason}
+                            % 从订单中获取支付方式，生产环境禁止 mock
+                            Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
+                            case is_payment_method_allowed(Method) of
+                                false ->
+                                    {error, <<"不支持的支付方式"/utf8>>};
+                                true ->
+                                    Amount = maps:get(<<"amount">>, Order, 0),
+                                    PayOpts = #{uid => Uid, amount => Amount},
+                                    case payment_gateway:pay(Method, OrderNo, PayOpts) of
+                                        {ok, PayNo} ->
+                                            PaymentData = #{
+                                                payment_no => PayNo,
+                                                payment_method => Method
+                                            },
+                                            case
+                                                channel_subscribe_ds:pay_order(OrderNo, PaymentData)
+                                            of
+                                                ok ->
+                                                    channel_logic_notify:notify_order_paid(
+                                                        ChannelId, Uid
+                                                    );
+                                                {error, already_paid} ->
+                                                    {error, <<"订单已支付"/utf8>>};
+                                                {error, not_found_or_expired} ->
+                                                    {error, <<"订单不存在或已过期"/utf8>>};
+                                                {error, Reason} when is_binary(Reason) ->
+                                                    {error, Reason};
+                                                {error, Reason} ->
+                                                    {error, elib_cnv:safe_to_binary(Reason)};
+                                                Other ->
+                                                    {error, elib_cnv:safe_to_binary(Other)}
+                                            end;
+                                        {error, PayReason} ->
+                                            {error, PayReason}
+                                    end
+                                % is_payment_method_allowed
                             end
                     end
             end;
@@ -156,6 +173,20 @@ get_order(Uid, OrderNo) ->
             {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
+%% @doc 检查支付方式是否被允许（生产环境禁止 mock）
+-spec is_payment_method_allowed(binary()) -> boolean().
+is_payment_method_allowed(Method) ->
+    Env = config_ds:env(env, <<"local">>),
+    EnvBin = ec_cnv:to_binary(Env),
+    Allowed =
+        case EnvBin of
+            <<"pro">> -> ?ALLOWED_PAYMENT_METHODS;
+            <<"prod">> -> ?ALLOWED_PAYMENT_METHODS;
+            <<"production">> -> ?ALLOWED_PAYMENT_METHODS;
+            _ -> ?DEV_ALLOWED_PAYMENT_METHODS
+        end,
+    lists:member(Method, Allowed).
+
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
     case catch ec_cnv:to_integer(Value) of
@@ -168,4 +199,3 @@ decode_positive_id(Value) ->
 -spec order_transfer(map()) -> map().
 order_transfer(Order) ->
     Order.
-
