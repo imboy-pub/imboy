@@ -55,12 +55,18 @@ verify_code(Id, Code) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% 检查是否为万能验证码；空配置视为禁用，防止空码绕过验证
+%% 检查是否为万能验证码；仅限非生产环境且配置非空时生效
 -spec is_master_code(binary()) -> boolean().
 is_master_code(Code) ->
-    case application:get_env(imboy, verification_master_code, undefined) of
-        MasterCode when is_binary(MasterCode), byte_size(MasterCode) > 0 ->
-            MasterCode =:= Code;
-        _ ->
-            false
+    IsNonProd = lists:member(imboy_env:current(), [<<"local">>, <<"dev">>, <<"test">>]),
+    case IsNonProd of
+        false ->
+            false;
+        true ->
+            case application:get_env(imboy, verification_master_code, undefined) of
+                MasterCode when is_binary(MasterCode), byte_size(MasterCode) > 0 ->
+                    MasterCode =:= Code;
+                _ ->
+                    false
+            end
     end.

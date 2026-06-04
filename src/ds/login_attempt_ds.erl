@@ -84,9 +84,12 @@ start_link() ->
 %% @param Ip 客户端IP地址
 %% @returns {ok, Count} | {error, invalid_input}
 -spec record_failure(binary(), binary()) -> login_result().
-record_failure(Identifier, Ip)
-  when is_binary(Identifier), is_binary(Ip),
-       byte_size(Identifier) > 0, byte_size(Ip) > 0 ->
+record_failure(Identifier, Ip) when
+    is_binary(Identifier),
+    is_binary(Ip),
+    byte_size(Identifier) > 0,
+    byte_size(Ip) > 0
+->
     Key = cache_key(Identifier, Ip),
     gen_server:call(?MODULE, {record_failure, Key, Identifier, Ip});
 record_failure(Identifier, Ip) ->
@@ -99,13 +102,16 @@ record_failure(Identifier, Ip) ->
 %% @param Ip 客户端IP地址
 %% @returns true | false
 -spec is_locked(binary(), binary()) -> boolean().
+is_locked(<<>>, _Ip) ->
+    false;
 is_locked(Identifier, Ip) ->
     Key = cache_key(Identifier, Ip),
     MaxAttempts = get_max_attempts(),
     LockDurationMins = get_lock_duration_minutes(),
     case ets:lookup(?LOGIN_ATTEMPT_ETS, Key) of
-        [{Key, #{<<"count">> := Count, <<"first_fail_at">> := FirstFailAt}}]
-          when Count >= MaxAttempts ->
+        [{Key, #{<<"count">> := Count, <<"first_fail_at">> := FirstFailAt}}] when
+            Count >= MaxAttempts
+        ->
             % 检查是否在锁定时间内
             Now = elib_dt:now(),
             LockExpiryTime = elib_dt:add(FirstFailAt, {LockDurationMins, minute}),
@@ -165,8 +171,9 @@ cache_key(Identifier, Ip) ->
 %% @param Ip 客户端IP地址
 %% @returns {ok, Count} | {error, rate_limited}
 -spec check_ip_rate_limit(binary()) -> ip_rate_limit_result().
-check_ip_rate_limit(Ip)
-  when is_binary(Ip), byte_size(Ip) > 0 ->
+check_ip_rate_limit(Ip) when
+    is_binary(Ip), byte_size(Ip) > 0
+->
     Key = ?IP_RATE_LIMIT_CACHE_KEY(Ip),
     MaxIpAttempts = get_max_ip_attempts_per_hour(),
     case imboy_cache:get(Key) of
@@ -207,13 +214,16 @@ extract_real_ip(Headers) when is_map(Headers) ->
     XForwardedFor = maps:get(<<"x-forwarded-for">>, Headers, <<>>),
 
     % 选择最可信的 IP
-    RawIp = case CfConnectingIp of
-        <<>> -> case XRealIp of
-            <<>> -> XForwardedFor;
-            _ -> XRealIp
-        end;
-        _ -> CfConnectingIp
-    end,
+    RawIp =
+        case CfConnectingIp of
+            <<>> ->
+                case XRealIp of
+                    <<>> -> XForwardedFor;
+                    _ -> XRealIp
+                end;
+            _ ->
+                CfConnectingIp
+        end,
 
     % 提取第一个 IP（X-Forwarded-For 可能是 "client, proxy1, proxy2"）
     FirstIp = parse_first_ip(RawIp),
@@ -221,7 +231,8 @@ extract_real_ip(Headers) when is_map(Headers) ->
     % 验证 IP 格式
     case validate_ip(FirstIp) of
         {ok, ValidIp} -> {ok, ValidIp};
-        {error, _} -> {ok, <<"0.0.0.0">>}  % 返回默认值
+        % 返回默认值
+        {error, _} -> {ok, <<"0.0.0.0">>}
     end;
 extract_real_ip(_) ->
     {ok, <<"0.0.0.0">>}.
@@ -233,7 +244,8 @@ extract_real_ip(_) ->
 validate_ip(Ip) when is_binary(Ip), byte_size(Ip) > 0 ->
     TrimmedIp = string:trim(Ip),
     case inet:parse_ipv4strict_address(binary_to_list(TrimmedIp)) of
-        {ok, _} -> {ok, TrimmedIp};
+        {ok, _} ->
+            {ok, TrimmedIp};
         {error, _} ->
             case inet:parse_ipv6strict_address(binary_to_list(TrimmedIp)) of
                 {ok, _} -> {ok, TrimmedIp};
@@ -264,7 +276,9 @@ admin_unlock(AdminUid, Identifier) when is_integer(AdminUid), AdminUid > 0 ->
             clear_all_lockouts_for_identifier(Identifier),
 
             % 3. 记录审计日志
-            ok = ?INFO_LOG([login_attempt, admin_unlock_success, AdminUid, sanitize_identifier(Identifier)]),
+            ok = ?INFO_LOG([
+                login_attempt, admin_unlock_success, AdminUid, sanitize_identifier(Identifier)
+            ]),
             {ok, unlocked}
     end;
 admin_unlock(AdminUid, Identifier) ->
@@ -308,7 +322,8 @@ sanitize_identifier(Identifier) ->
 
 %% @doc 解析 X-Forwarded-For 中的第一个 IP
 %% @private
-parse_first_ip(<<>>) -> <<"0.0.0.0">>;
+parse_first_ip(<<>>) ->
+    <<"0.0.0.0">>;
 parse_first_ip(XForwardedFor) ->
     % X-Forwarded-For 格式: "client, proxy1, proxy2"
     case binary:split(XForwardedFor, <<",">>) of
@@ -323,15 +338,16 @@ clear_all_lockouts_for_identifier(Identifier) ->
     % 注意：这里使用默认值，因为 guard 中不能调用函数
     MaxAttempts = get_max_attempts(),
     ets:foldl(
-        fun({Key, #{<<"count">> := Count}}, Acc) when Count >= MaxAttempts ->
-            case Key of
-                {login_attempt, Id, _Ip} when Id =:= Identifier ->
-                    ets:delete(?LOGIN_ATTEMPT_ETS, Key);
-                _ ->
-                    Acc
-            end;
-           (_, Acc) ->
-            Acc
+        fun
+            ({Key, #{<<"count">> := Count}}, Acc) when Count >= MaxAttempts ->
+                case Key of
+                    {login_attempt, Id, _Ip} when Id =:= Identifier ->
+                        ets:delete(?LOGIN_ATTEMPT_ETS, Key);
+                    _ ->
+                        Acc
+                end;
+            (_, Acc) ->
+                Acc
         end,
         ok,
         ?LOGIN_ATTEMPT_ETS
@@ -362,52 +378,68 @@ handle_call({record_failure, Key, Identifier, Ip}, _From, State) ->
     LockDurationMins = get_lock_duration_minutes(),
 
     % 使用 ETS 操作来原子性地更新计数
-    Result = case ets:lookup(?LOGIN_ATTEMPT_ETS, Key) of
-        [] ->
-            % 第一次失败，创建新记录
-            Data = #{
-                <<"count">> => 1,
-                <<"first_fail_at">> => Now
-            },
-            ets:insert(?LOGIN_ATTEMPT_ETS, {Key, Data}),
-            % 记录审计日志
-            ok = ?INFO_LOG([login_attempt, record_failure, sanitize_identifier(Identifier), Ip, 1]),
-            {ok, 1};
-        [{Key, #{<<"count">> := Count, <<"first_fail_at">> := FirstFailAt}}] ->
-            % 检查是否已过期
-            LockExpiryTime = elib_dt:add(FirstFailAt, {LockDurationMins, minute}),
+    Result =
+        case ets:lookup(?LOGIN_ATTEMPT_ETS, Key) of
+            [] ->
+                % 第一次失败，创建新记录
+                Data = #{
+                    <<"count">> => 1,
+                    <<"first_fail_at">> => Now
+                },
+                ets:insert(?LOGIN_ATTEMPT_ETS, {Key, Data}),
+                % 记录审计日志
+                ok = ?INFO_LOG([
+                    login_attempt, record_failure, sanitize_identifier(Identifier), Ip, 1
+                ]),
+                {ok, 1};
+            [{Key, #{<<"count">> := Count, <<"first_fail_at">> := FirstFailAt}}] ->
+                % 检查是否已过期
+                LockExpiryTime = elib_dt:add(FirstFailAt, {LockDurationMins, minute}),
 
-            case Now >= LockExpiryTime of
-                true ->
-                    % 已过期，重新计数
-                    NewData = #{
-                        <<"count">> => 1,
-                        <<"first_fail_at">> => Now
-                    },
-                    ets:insert(?LOGIN_ATTEMPT_ETS, {Key, NewData}),
-                    ok = ?INFO_LOG([login_attempt, reset_and_record, sanitize_identifier(Identifier), Ip, 1]),
-                    {ok, 1};
-                false ->
-                    % 未过期，增加计数（gen_server 保证原子性）
-                    NewCount = Count + 1,
-                    NewData = #{
-                        <<"count">> => NewCount,
-                        <<"first_fail_at">> => FirstFailAt
-                    },
-                    ets:insert(?LOGIN_ATTEMPT_ETS, {Key, NewData}),
+                case Now >= LockExpiryTime of
+                    true ->
+                        % 已过期，重新计数
+                        NewData = #{
+                            <<"count">> => 1,
+                            <<"first_fail_at">> => Now
+                        },
+                        ets:insert(?LOGIN_ATTEMPT_ETS, {Key, NewData}),
+                        ok = ?INFO_LOG([
+                            login_attempt, reset_and_record, sanitize_identifier(Identifier), Ip, 1
+                        ]),
+                        {ok, 1};
+                    false ->
+                        % 未过期，增加计数（gen_server 保证原子性）
+                        NewCount = Count + 1,
+                        NewData = #{
+                            <<"count">> => NewCount,
+                            <<"first_fail_at">> => FirstFailAt
+                        },
+                        ets:insert(?LOGIN_ATTEMPT_ETS, {Key, NewData}),
 
-                    % 记录审计日志
-                    case NewCount >= MaxAttempts of
-                        true ->
-                            ok = ?WARN_LOG([login_attempt, account_locked, sanitize_identifier(Identifier), Ip, NewCount]);
-                        false ->
-                            ok = ?INFO_LOG([login_attempt, record_failure, sanitize_identifier(Identifier), Ip, NewCount])
-                    end,
-                    {ok, NewCount}
-            end
-    end,
+                        % 记录审计日志
+                        case NewCount >= MaxAttempts of
+                            true ->
+                                ok = ?WARN_LOG([
+                                    login_attempt,
+                                    account_locked,
+                                    sanitize_identifier(Identifier),
+                                    Ip,
+                                    NewCount
+                                ]);
+                            false ->
+                                ok = ?INFO_LOG([
+                                    login_attempt,
+                                    record_failure,
+                                    sanitize_identifier(Identifier),
+                                    Ip,
+                                    NewCount
+                                ])
+                        end,
+                        {ok, NewCount}
+                end
+        end,
     {reply, Result, State};
-
 handle_call(_Request, _From, State) ->
     {reply, {error, unknown_request}, State}.
 
@@ -436,7 +468,6 @@ handle_info(cleanup_expired, State) ->
         ?LOGIN_ATTEMPT_ETS
     ),
     {noreply, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 

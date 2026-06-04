@@ -127,11 +127,15 @@ save(_, Req0, _State) ->
 -spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete(<<"DELETE">>, Req0, _State) ->
     PostVals = elib_param:post(Req0),
-    Id = maps:get(<<"id">>, PostVals, ""),
-
-    Where = <<"status = 0 AND id = ", (ec_cnv:to_binary(Id))/binary>>,
-    adm_app_version_logic:delete(Where),
-    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
+    Id = ec_cnv:to_integer(maps:get(<<"id">>, PostVals, 0)),
+    case adm_app_version_logic:delete_by_id(Id) of
+        {ok, _} ->
+            elib_response:success(Req0, PostVals, <<"success."/utf8>>);
+        {error, invalid_id} ->
+            elib_response:error(Req0, PostVals, <<"无效的版本ID"/utf8>>);
+        {error, _Reason} ->
+            elib_response:error(Req0, PostVals, <<"删除失败"/utf8>>)
+    end;
 delete(_, Req0, _State) ->
     Req0.
 

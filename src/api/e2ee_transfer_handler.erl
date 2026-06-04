@@ -1,8 +1,10 @@
 -module(e2ee_transfer_handler).
--dialyzer({nowarn_function, [
-    get_sender_private_key/1,
-    get_receiver_public_key/1
-]}).
+-dialyzer(
+    {nowarn_function, [
+        get_sender_private_key/1,
+        get_receiver_public_key/1
+    ]}
+).
 
 -behavior(cowboy_rest).
 
@@ -42,11 +44,12 @@ ensure_e2ee_enabled(Req0) ->
         true ->
             ok;
         false ->
-            {error, elib_response:error(
-                Req0,
-                imboy_error:error_msg(?ERR_FEATURE_DISABLED),
-                ?ERR_FEATURE_DISABLED
-            )}
+            {error,
+                elib_response:error(
+                    Req0,
+                    imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                    ?ERR_FEATURE_DISABLED
+                )}
     end.
 
 %% @doc Action 分发处理
@@ -79,7 +82,12 @@ create_transfer(Req0, State) ->
 do_create_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data =
+        try jsx:decode(Body, [return_maps]) of
+            D when is_map(D) -> D
+        catch
+            _:_ -> #{}
+        end,
 
     case normalize_to_uid(maps:get(<<"to_uid">>, Data, undefined)) of
         {error, missing} ->
@@ -102,21 +110,33 @@ do_create_transfer(Req0, State) ->
                             % 获取接收方公钥
                             case get_receiver_public_key(ToUid) of
                                 {error, _Reason} ->
-                                    elib_response:error(Req0, <<"接收方公钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
+                                    elib_response:error(
+                                        Req0, <<"接收方公钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                    );
                                 {ok, PublicKeyPem} ->
                                     % 创建传输会话
-                                    case e2ee_transfer_logic:create_transfer(
-                                        CurrentUid, DeviceId, ToUid, PrivateKeyPem, PublicKeyPem
-                                    ) of
+                                    case
+                                        e2ee_transfer_logic:create_transfer(
+                                            CurrentUid, DeviceId, ToUid, PrivateKeyPem, PublicKeyPem
+                                        )
+                                    of
                                         {ok, Session} ->
                                             elib_response:success(Req0, #{
-                                                <<"session_id">> => maps:get(<<"session_id">>, Session),
-                                                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
+                                                <<"session_id">> => maps:get(
+                                                    <<"session_id">>, Session
+                                                ),
+                                                <<"expires_at">> => maps:get(
+                                                    <<"expires_at">>, Session
+                                                )
                                             });
                                         {error, {Msg, Code}} ->
                                             elib_response:error(Req0, Msg, Code);
                                         {error, _Reason} ->
-                                            elib_response:error(Req0, <<"创建传输会话失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                                            elib_response:error(
+                                                Req0,
+                                                <<"创建传输会话失败"/utf8>>,
+                                                ?ERR_INTERNAL_SERVER_ERROR
+                                            )
                                     end
                             end
                     end
@@ -138,32 +158,33 @@ accept_transfer(Req0, State) ->
 -spec do_accept_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_accept_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
-
-    % 验证参数
-    SessionId = case maps:get(<<"session_id">>, Data, <<>>) of
-        <<>> -> elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        Id -> Id
-    end,
-
-    ToDeviceId = maps:get(<<"device_id">>, Data, <<>>),
-
-    % 接受传输
-    case e2ee_transfer_logic:accept_transfer(SessionId, CurrentUid, ToDeviceId) of
-        {ok, Session} ->
-            elib_response:success(Req0, #{
-                <<"session_id">> => maps:get(<<"session_id">>, Session),
-                <<"from_uid">> => maps:get(<<"from_uid">>, Session),
-                <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
-                <<"encrypted_key_bundle">> => maps:get(<<"encrypted_key_bundle">>, Session),
-                <<"status">> => maps:get(<<"status">>, Session),
-                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
-            });
-        {error, {Msg, Code}} ->
-            elib_response:error(Req0, Msg, Code);
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"接受传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+    case decode_json_body(Req0) of
+        {error, _} ->
+            elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, Data} ->
+            case maps:get(<<"session_id">>, Data, <<>>) of
+                <<>> ->
+                    elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+                SessionId ->
+                    ToDeviceId = maps:get(<<"device_id">>, Data, <<>>),
+                    case e2ee_transfer_logic:accept_transfer(SessionId, CurrentUid, ToDeviceId) of
+                        {ok, Session} ->
+                            elib_response:success(Req0, #{
+                                <<"session_id">> => maps:get(<<"session_id">>, Session),
+                                <<"from_uid">> => maps:get(<<"from_uid">>, Session),
+                                <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
+                                <<"encrypted_key_bundle">> => maps:get(
+                                    <<"encrypted_key_bundle">>, Session
+                                ),
+                                <<"status">> => maps:get(<<"status">>, Session),
+                                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
+                            });
+                        {error, {Msg, Code}} ->
+                            elib_response:error(Req0, Msg, Code);
+                        {error, _Reason} ->
+                            elib_response:error(Req0, <<"接受传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
     end.
 
 %% @doc 确认传输完成
@@ -181,23 +202,23 @@ confirm_transfer(Req0, State) ->
 -spec do_confirm_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_confirm_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
-
-    % 验证参数
-    SessionId = case maps:get(<<"session_id">>, Data, <<>>) of
-        <<>> -> elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        Id -> Id
-    end,
-
-    % 确认传输
-    case e2ee_transfer_logic:confirm_transfer(SessionId, CurrentUid) of
-        ok ->
-            elib_response:success(Req0, #{<<"message">> => <<"传输成功"/utf8>>});
-        {error, {Msg, Code}} ->
-            elib_response:error(Req0, Msg, Code);
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"确认传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+    case decode_json_body(Req0) of
+        {error, _} ->
+            elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, Data} ->
+            case maps:get(<<"session_id">>, Data, <<>>) of
+                <<>> ->
+                    elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+                SessionId ->
+                    case e2ee_transfer_logic:confirm_transfer(SessionId, CurrentUid) of
+                        ok ->
+                            elib_response:success(Req0, #{<<"message">> => <<"传输成功"/utf8>>});
+                        {error, {Msg, Code}} ->
+                            elib_response:error(Req0, Msg, Code);
+                        {error, _Reason} ->
+                            elib_response:error(Req0, <<"确认传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
     end.
 
 %% @doc 取消传输会话
@@ -215,38 +236,39 @@ cancel_transfer(Req0, State) ->
 -spec do_cancel_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_cancel_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
-
-    % 验证参数
-    SessionId = case maps:get(<<"session_id">>, Data, <<>>) of
-        <<>> -> elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        Id -> Id
-    end,
-
-    % 取消传输
-    case e2ee_transfer_logic:cancel_transfer(SessionId, CurrentUid) of
-        ok ->
-            elib_response:success(Req0, #{<<"message">> => <<"已取消传输"/utf8>>});
-        {error, {Msg, Code}} ->
-            elib_response:error(Req0, Msg, Code);
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"取消传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+    case decode_json_body(Req0) of
+        {error, _} ->
+            elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, Data} ->
+            case maps:get(<<"session_id">>, Data, <<>>) of
+                <<>> ->
+                    elib_response:error(Req0, <<"缺少 session_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+                SessionId ->
+                    case e2ee_transfer_logic:cancel_transfer(SessionId, CurrentUid) of
+                        ok ->
+                            elib_response:success(Req0, #{<<"message">> => <<"已取消传输"/utf8>>});
+                        {error, {Msg, Code}} ->
+                            elib_response:error(Req0, Msg, Code);
+                        {error, _Reason} ->
+                            elib_response:error(Req0, <<"取消传输失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                    end
+            end
     end.
 
 %% @doc 查询传输会话信息
 %% GET /v1/e2ee/transfer/info?session_id=xxx
 -spec get_transfer_info(cowboy_req:req(), map()) -> cowboy_req:req().
-get_transfer_info(Req0, _State) ->
+get_transfer_info(Req0, State) ->
     case ensure_e2ee_enabled(Req0) of
         ok ->
-            do_get_transfer_info(Req0);
+            do_get_transfer_info(Req0, State);
         {error, Req1} ->
             Req1
     end.
 
--spec do_get_transfer_info(cowboy_req:req()) -> cowboy_req:req().
-do_get_transfer_info(Req0) ->
+-spec do_get_transfer_info(cowboy_req:req(), map()) -> cowboy_req:req().
+do_get_transfer_info(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State, 0),
     Qs = cowboy_req:parse_qs(Req0),
     SessionId = proplists:get_value(<<"session_id">>, Qs, <<>>),
 
@@ -256,13 +278,20 @@ do_get_transfer_info(Req0) ->
         _ ->
             case e2ee_transfer_logic:get_transfer_info(SessionId) of
                 {ok, Session} ->
-                    elib_response:success(Req0, #{
-                        <<"session_id">> => maps:get(<<"session_id">>, Session),
-                        <<"from_uid">> => maps:get(<<"from_uid">>, Session),
-                        <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
-                        <<"status">> => maps:get(<<"status">>, Session),
-                        <<"expires_at">> => maps:get(<<"expires_at">>, Session)
-                    });
+                    FromUid = maps:get(<<"from_uid">>, Session),
+                    ToUid = maps:get(<<"to_uid">>, Session, 0),
+                    case CurrentUid =:= FromUid orelse CurrentUid =:= ToUid of
+                        false ->
+                            elib_response:error(Req0, <<"无权查看该会话"/utf8>>, ?ERR_FORBIDDEN);
+                        true ->
+                            elib_response:success(Req0, #{
+                                <<"session_id">> => maps:get(<<"session_id">>, Session),
+                                <<"from_uid">> => FromUid,
+                                <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
+                                <<"status">> => maps:get(<<"status">>, Session),
+                                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
+                            })
+                    end;
                 {error, not_found} ->
                     elib_response:error(Req0, <<"会话不存在或已过期"/utf8>>, ?ERR_NOT_FOUND);
                 {error, _Reason} ->
@@ -288,15 +317,18 @@ do_get_pending_transfers(Req0, State) ->
     case e2ee_transfer_logic:get_pending_transfers(CurrentUid) of
         {ok, Sessions} ->
             % 格式化返回数据
-            FormattedSessions = lists:map(fun(Session) ->
-                #{
-                    <<"session_id">> => maps:get(<<"session_id">>, Session),
-                    <<"from_uid">> => maps:get(<<"from_uid">>, Session),
-                    <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
-                    <<"expires_at">> => maps:get(<<"expires_at">>, Session),
-                    <<"created_at">> => maps:get(<<"created_at">>, Session)
-                }
-            end, Sessions),
+            FormattedSessions = lists:map(
+                fun(Session) ->
+                    #{
+                        <<"session_id">> => maps:get(<<"session_id">>, Session),
+                        <<"from_uid">> => maps:get(<<"from_uid">>, Session),
+                        <<"from_device_id">> => maps:get(<<"from_device_id">>, Session),
+                        <<"expires_at">> => maps:get(<<"expires_at">>, Session),
+                        <<"created_at">> => maps:get(<<"created_at">>, Session)
+                    }
+                end,
+                Sessions
+            ),
             elib_response:success(Req0, #{<<"transfers">> => FormattedSessions});
         {error, _Reason} ->
             elib_response:error(Req0, <<"获取传输列表失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
@@ -307,20 +339,10 @@ do_get_pending_transfers(Req0, State) ->
 %% ===================================================================
 
 %% @doc 获取发送方的私钥和设备 ID
+%% @doc 委托 e2ee_social_handler，消除重复实现 (H3)
 -spec get_sender_private_key(integer()) -> {ok, {binary(), binary()}} | {error, term()}.
 get_sender_private_key(Uid) ->
-    case user_device_ds:get_public_by_uid(Uid) of
-        {ok, [Device | _]} ->
-            DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_ds:get_private_key(Uid, DeviceId) of
-                {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
-                    {ok, {PrivateKeyPem, DeviceId}};
-                _ ->
-                    {error, private_key_not_found}
-            end;
-        _ ->
-            {error, device_not_found}
-    end.
+    e2ee_social_handler:get_sender_private_key(Uid).
 
 %% @doc 获取接收方的公钥
 -spec get_receiver_public_key(integer()) -> {ok, binary()} | {error, term()}.
@@ -367,4 +389,15 @@ safe_positive_integer(Value) when is_binary(Value) ->
         end
     catch
         _:_ -> error
+    end.
+
+%% @doc 统一 JSON 解析：防止畸形 JSON 使 handler 进程崩溃
+-spec decode_json_body(cowboy_req:req()) -> {ok, map()} | {error, invalid_json}.
+decode_json_body(Req0) ->
+    {ok, Body, _} = cowboy_req:read_body(Req0),
+    try jsx:decode(Body, [return_maps]) of
+        Data when is_map(Data) -> {ok, Data};
+        _ -> {error, invalid_json}
+    catch
+        _:_ -> {error, invalid_json}
     end.

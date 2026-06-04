@@ -122,6 +122,16 @@ init([]) ->
         modules => [user_deletion_logic]
     },
 
+    % 登录失败次数限制（ETS 表 login_attempt_ets 由此 gen_server 创建）
+    LoginAttemptServer = #{
+        id => login_attempt_ds,
+        start => {login_attempt_ds, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [login_attempt_ds]
+    },
+
     % Prometheus 风格指标收集器（metrics_handler / message_ds / msg_ack_logic 依赖）
     MetricWorker = #{
         id => elib_metric,
@@ -170,6 +180,7 @@ init([]) ->
             MetricWorker,
             PluginLoader,
             PluginSup,
+            LoginAttemptServer,
             UserServer,
             MsgWriteQueueSup,
             E2eeCleanupWorker,

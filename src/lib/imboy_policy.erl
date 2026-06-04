@@ -1,3 +1,21 @@
+%% @doc 产品策略管理模块
+%%
+%% 当前 2185 行，计划分拆为：
+%%   - imboy_policy_codec.erl  : parse_*/normalize_* 纯函数（~600 行）
+%%   - imboy_policy_catalog.erl: 静态 catalog/metadata 数据（~400 行）
+%%   - imboy_policy.erl        : 公开 API + 业务逻辑（剩余 ~1200 行）
+%%
+%% 拆分阻力：72 处内部互相调用；需配套完整 EUnit 回归后再操刀。
+%%
+%% 章节：
+%%   §1 Public API                  line ~31
+%%   §2 Effective policy (read)     line ~270
+%%   §3 Feature / capability names  line ~971
+%%   §4 Save / persist              line ~1200
+%%   §5 Static catalog & metadata   line ~1211
+%%   §6 Normalize & validate        line ~1420
+%%   §7 Pure codec / parsers        line ~1981
+
 -module(imboy_policy).
 
 -export([
@@ -43,7 +61,9 @@ effective() ->
 
 -spec effective_view() -> map().
 effective_view() ->
-    effective_view_from_configs(load_profile_config(), load_capability_config(), load_feature_config()).
+    effective_view_from_configs(
+        load_profile_config(), load_capability_config(), load_feature_config()
+    ).
 
 -spec saved_view() -> map().
 saved_view() ->
@@ -124,15 +144,16 @@ message_encryption_required() ->
     StorageMode = maps:get(storage_mode, Capabilities, archived),
     E2eeMode = maps:get(e2ee_mode, Capabilities, disabled),
     StorageMode =:= secure_e2ee orelse
-    StorageMode =:= compliance_e2ee orelse
-    E2eeMode =:= required orelse
-    E2eeMode =:= compliance.
+        StorageMode =:= compliance_e2ee orelse
+        E2eeMode =:= required orelse
+        E2eeMode =:= compliance.
 
 -spec e2ee_enabled() -> boolean().
 e2ee_enabled() ->
     maps:get(e2ee_mode, effective_capabilities(), disabled) =/= disabled.
 
--spec validate_message_write(binary(), binary(), binary(), term(), term()) -> ok | {error, binary()}.
+-spec validate_message_write(binary(), binary(), binary(), term(), term()) ->
+    ok | {error, binary()}.
 validate_message_write(Type, MsgType, Action, E2EE, Payload) ->
     case policy_managed_content_write(Type, Action) andalso message_encryption_required() of
         false ->
@@ -185,12 +206,18 @@ save_config(Payload) when is_map(Payload) ->
             {ok, save_result_view()};
         {ok, _SaveSections} ->
             policy_error_result(
-                undefined, undefined, missing_editable_fields, <<"policy payload missing editable fields">>);
+                undefined,
+                undefined,
+                missing_editable_fields,
+                <<"policy payload missing editable fields">>
+            );
         {error, Reason, Details} ->
             {error, Reason, Details}
     end;
 save_config(_) ->
-    policy_error_result(undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>).
+    policy_error_result(
+        undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>
+    ).
 
 -spec save_result_view() -> map().
 save_result_view() ->
@@ -210,12 +237,18 @@ preview_config(Payload) when is_map(Payload) ->
             {ok, preview_view(SaveSections)};
         {ok, _SaveSections} ->
             policy_error_result(
-                undefined, undefined, missing_editable_fields, <<"policy payload missing editable fields">>);
+                undefined,
+                undefined,
+                missing_editable_fields,
+                <<"policy payload missing editable fields">>
+            );
         {error, Reason, Details} ->
             {error, Reason, Details}
     end;
 preview_config(_) ->
-    policy_error_result(undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>).
+    policy_error_result(
+        undefined, undefined, invalid_payload_type, <<"policy payload must be an object">>
+    ).
 
 -spec effective_features() -> map().
 effective_features() ->
@@ -297,41 +330,51 @@ preview_view(SaveSections) ->
 
 -spec preview_saved_view(map()) -> map().
 preview_saved_view(SaveSections) ->
-    Profile = case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
-        {ok, ProfileValue} -> ProfileValue;
-        error -> saved_profile_override()
-    end,
-    Capabilities = case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
-        {ok, CapabilityValue} ->
-            normalize_preview_capability_overrides(
-                merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue)
-            );
-        error -> saved_capability_overrides()
-    end,
-    Features = case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
-        {ok, FeatureValue} ->
-            normalize_preview_feature_overrides(
-                merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue)
-            );
-        error -> saved_feature_overrides()
-    end,
+    Profile =
+        case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
+            {ok, ProfileValue} -> ProfileValue;
+            error -> saved_profile_override()
+        end,
+    Capabilities =
+        case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
+            {ok, CapabilityValue} ->
+                normalize_preview_capability_overrides(
+                    merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue)
+                );
+            error ->
+                saved_capability_overrides()
+        end,
+    Features =
+        case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
+            {ok, FeatureValue} ->
+                normalize_preview_feature_overrides(
+                    merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue)
+                );
+            error ->
+                saved_feature_overrides()
+        end,
     saved_view_from_values(Profile, Capabilities, Features).
 
 -spec preview_effective_view(map()) -> map().
 preview_effective_view(SaveSections) ->
-    ProfileConfig = case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
-        {ok, ?DELETE_VALUE} -> config_ds:env(product_profile, community);
-        {ok, ProfileValue} -> ProfileValue;
-        error -> load_profile_config()
-    end,
-    CapabilityConfig = case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
-        {ok, CapabilityValue} -> merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue);
-        error -> load_capability_config()
-    end,
-    FeatureConfig = case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
-        {ok, FeatureValue} -> merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue);
-        error -> load_feature_config()
-    end,
+    ProfileConfig =
+        case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
+            {ok, ?DELETE_VALUE} -> config_ds:env(product_profile, community);
+            {ok, ProfileValue} -> ProfileValue;
+            error -> load_profile_config()
+        end,
+    CapabilityConfig =
+        case maps:find(?CAPABILITIES_CONFIG_KEY, SaveSections) of
+            {ok, CapabilityValue} ->
+                merge_persisted_section(?CAPABILITIES_CONFIG_KEY, CapabilityValue);
+            error ->
+                load_capability_config()
+        end,
+    FeatureConfig =
+        case maps:find(?FEATURES_CONFIG_KEY, SaveSections) of
+            {ok, FeatureValue} -> merge_persisted_section(?FEATURES_CONFIG_KEY, FeatureValue);
+            error -> load_feature_config()
+        end,
     effective_view_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig).
 
 -spec preview_adjustments_view(map(), map()) -> map().
@@ -341,7 +384,8 @@ preview_adjustments_view(Saved, Effective) ->
         capabilities,
         capability_adjustments(
             maps:get(<<"capabilities">>, Saved, #{}),
-            maps:get(<<"capabilities">>, Effective, #{}))
+            maps:get(<<"capabilities">>, Effective, #{})
+        )
     ),
     Sections1 = maybe_put_saved_section(
         Sections0,
@@ -349,7 +393,8 @@ preview_adjustments_view(Saved, Effective) ->
         plugin_adjustments(
             maps:get(<<"plugins">>, Saved, #{}),
             maps:get(<<"plugins">>, Effective, #{}),
-            maps:get(<<"capabilities">>, Effective, #{}))
+            maps:get(<<"capabilities">>, Effective, #{})
+        )
     ),
     public_term(
         maybe_put_saved_section(
@@ -359,7 +404,8 @@ preview_adjustments_view(Saved, Effective) ->
                 maps:get(<<"features">>, Saved, #{}),
                 maps:get(<<"features">>, Effective, #{}),
                 maps:get(<<"plugins">>, Effective, #{}),
-                maps:get(<<"capabilities">>, Effective, #{}))
+                maps:get(<<"capabilities">>, Effective, #{})
+            )
         )
     ).
 
@@ -385,15 +431,18 @@ origin_from_presence(false, _PresentOrigin, MissingOrigin) ->
 -spec capability_origins(map()) -> map().
 capability_origins(SavedCapabilities) ->
     maps:from_list([
-        {public_key(Key), origin_from_presence(maps:is_key(public_key(Key), SavedCapabilities), override, default)}
-        || Key <- capability_names()
+        {
+            public_key(Key),
+            origin_from_presence(maps:is_key(public_key(Key), SavedCapabilities), override, default)
+        }
+     || Key <- capability_names()
     ]).
 
 -spec feature_origins(map(), map()) -> map().
 feature_origins(SavedFeatures, SavedPlugins) ->
     maps:from_list([
         {public_key(Key), feature_origin(Key, SavedFeatures, SavedPlugins)}
-        || Key <- feature_names()
+     || Key <- feature_names()
     ]).
 
 -spec feature_origin(atom(), map(), map()) -> binary().
@@ -420,7 +469,7 @@ feature_origin(FeatureName, SavedFeatures, SavedPlugins) ->
 plugin_origins(SavedFeatures, SavedPlugins) ->
     maps:from_list([
         {public_key(PluginName), plugin_origin(PluginName, SavedFeatures, SavedPlugins)}
-        || PluginName <- imboy_plugin_registry:plugin_names()
+     || PluginName <- imboy_plugin_registry:plugin_names()
     ]).
 
 -spec plugin_origin(atom(), map(), map()) -> binary().
@@ -431,7 +480,12 @@ plugin_origin(PluginName, SavedFeatures, SavedPlugins) ->
             <<"override">>;
         false ->
             FeatureKeys = maps:get(feature_keys, imboy_plugin_registry:manifest(PluginName), []),
-            case lists:any(fun(FeatureKey) -> maps:is_key(public_key(FeatureKey), SavedFeatures) end, FeatureKeys) of
+            case
+                lists:any(
+                    fun(FeatureKey) -> maps:is_key(public_key(FeatureKey), SavedFeatures) end,
+                    FeatureKeys
+                )
+            of
                 true ->
                     <<"feature_overrides">>;
                 false ->
@@ -463,13 +517,12 @@ capability_adjustment(Key, SavedCapabilities, EffectiveCapabilities) ->
                 true ->
                     error;
                 false ->
-                    {ok,
-                        #{
-                            saved => SavedValue,
-                            effective => EffectiveValue,
-                            reason => constraint,
-                            caused_by => capability_adjustment_caused_by(Key, EffectiveCapabilities)
-                        }}
+                    {ok, #{
+                        saved => SavedValue,
+                        effective => EffectiveValue,
+                        reason => constraint,
+                        caused_by => capability_adjustment_caused_by(Key, EffectiveCapabilities)
+                    }}
             end;
         error ->
             error
@@ -495,8 +548,8 @@ capability_adjustment_caused_by(_, _EffectiveCapabilities) ->
 constraint_cause_map(Candidates, EffectiveCapabilities) ->
     maps:from_list([
         {Key, ExpectedValue}
-        || {Key, ExpectedValue} <- Candidates,
-           maps:get(Key, EffectiveCapabilities, undefined) =:= ExpectedValue
+     || {Key, ExpectedValue} <- Candidates,
+        maps:get(Key, EffectiveCapabilities, undefined) =:= ExpectedValue
     ]).
 
 -spec plugin_adjustments(map(), map(), map()) -> map().
@@ -536,13 +589,15 @@ plugin_adjustment(Key, SavedValue, EffectivePlugins, EffectiveCapabilities) ->
 feature_adjustments(SavedFeatures, EffectiveFeatures, EffectivePlugins, EffectiveCapabilities) ->
     maps:fold(
         fun(Key, SavedValue, Acc) ->
-            case feature_adjustment(
-                Key,
-                SavedValue,
-                EffectiveFeatures,
-                EffectivePlugins,
-                EffectiveCapabilities
-            ) of
+            case
+                feature_adjustment(
+                    Key,
+                    SavedValue,
+                    EffectiveFeatures,
+                    EffectivePlugins,
+                    EffectiveCapabilities
+                )
+            of
                 {ok, Adjustment} ->
                     Acc#{Key => Adjustment};
                 error ->
@@ -557,17 +612,20 @@ feature_adjustments(SavedFeatures, EffectiveFeatures, EffectivePlugins, Effectiv
 feature_adjustment(Key, SavedValue, EffectiveFeatures, EffectivePlugins, EffectiveCapabilities) ->
     Dependencies = feature_dependencies_for_key(Key),
     EffectiveValue = maps:get(Key, EffectiveFeatures, SavedValue),
-    case SavedValue =/= EffectiveValue andalso SavedValue =:= true andalso EffectiveValue =:= false of
+    case
+        SavedValue =/= EffectiveValue andalso SavedValue =:= true andalso EffectiveValue =:= false
+    of
         true when Dependencies =/= [] ->
-            {ok,
-                #{
-                    saved => SavedValue,
-                    effective => EffectiveValue,
-                    reason => dependency,
-                    depends_on => Dependencies
-                }};
+            {ok, #{
+                saved => SavedValue,
+                effective => EffectiveValue,
+                reason => dependency,
+                depends_on => Dependencies
+            }};
         true ->
-            case feature_plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilities) of
+            case
+                feature_plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilities)
+            of
                 {ok, Constraint} ->
                     {ok, Constraint#{
                         saved => SavedValue,
@@ -590,7 +648,9 @@ feature_plugin_constraint_adjustment(Key, EffectivePlugins, EffectiveCapabilitie
                 undefined ->
                     error;
                 PluginName ->
-                    plugin_constraint_adjustment(PluginName, EffectivePlugins, EffectiveCapabilities)
+                    plugin_constraint_adjustment(
+                        PluginName, EffectivePlugins, EffectiveCapabilities
+                    )
             end
     end.
 
@@ -663,7 +723,7 @@ effective_features_for_profile(Profile, FeatureConfig) ->
 effective_features_from_switches(Features) ->
     maps:from_list([
         {Name, feature_enabled(Name, Features)}
-        || Name <- feature_names()
+     || Name <- feature_names()
     ]).
 
 -spec normalize_feature_switches(term()) -> map().
@@ -695,12 +755,14 @@ resolve_plugin_constraints(Features, Capabilities) ->
 
 -spec plugin_constrained_feature_keys(map(), map()) -> [atom()].
 plugin_constrained_feature_keys(Plugins, Capabilities) ->
-    lists:usort(lists:append([
-        maps:get(feature_keys, Manifest, [])
-        || {_PluginName, Manifest} <- maps:to_list(Plugins),
-           maps:get(enabled, Manifest, false),
-           plugin_constraint_violation_native(Manifest, Plugins, Capabilities) =/= none
-    ])).
+    lists:usort(
+        lists:append([
+            maps:get(feature_keys, Manifest, [])
+         || {_PluginName, Manifest} <- maps:to_list(Plugins),
+            maps:get(enabled, Manifest, false),
+            plugin_constraint_violation_native(Manifest, Plugins, Capabilities) =/= none
+        ])
+    ).
 
 -spec disable_feature_keys(map(), [atom()]) -> map().
 disable_feature_keys(Features, FeatureKeys) ->
@@ -715,15 +777,19 @@ disable_feature_keys(Features, FeatureKeys) ->
 -spec plugin_constraint_violation_native(map(), map(), map()) ->
     none | {dependency, [term()]} | {capability_constraint, map()}.
 plugin_constraint_violation_native(Manifest, Plugins, Capabilities) ->
-    case unsatisfied_plugin_dependencies_native(
-        maps:get(depends_on_plugins, Manifest, []),
-        Plugins
-    ) of
+    case
+        unsatisfied_plugin_dependencies_native(
+            maps:get(depends_on_plugins, Manifest, []),
+            Plugins
+        )
+    of
         [] ->
-            case unmet_capability_requirements_native(
-                maps:get(requires_capabilities, Manifest, []),
-                Capabilities
-            ) of
+            case
+                unmet_capability_requirements_native(
+                    maps:get(requires_capabilities, Manifest, []),
+                    Capabilities
+                )
+            of
                 Requirements when map_size(Requirements) =:= 0 ->
                     none;
                 Requirements ->
@@ -737,16 +803,16 @@ plugin_constraint_violation_native(Manifest, Plugins, Capabilities) ->
 unsatisfied_plugin_dependencies_native(Dependencies, Plugins) ->
     [
         Dependency
-        || Dependency <- normalize_dependency_list(Dependencies),
-           not plugin_enabled_in_native_map(Dependency, Plugins)
+     || Dependency <- normalize_dependency_list(Dependencies),
+        not plugin_enabled_in_native_map(Dependency, Plugins)
     ].
 
 -spec unmet_capability_requirements_native(term(), map()) -> map().
 unmet_capability_requirements_native(Requirements, Capabilities) ->
     maps:from_list([
         {Key, Expected}
-        || {Key, Expected} <- normalize_required_capabilities(Requirements),
-           not capability_requirement_met(Expected, native_capability_value(Key, Capabilities))
+     || {Key, Expected} <- normalize_required_capabilities(Requirements),
+        not capability_requirement_met(Expected, native_capability_value(Key, Capabilities))
     ]).
 
 -spec normalize_dependency_list(term()) -> [term()].
@@ -865,15 +931,19 @@ plugin_constraint_adjustment(PluginRef, EffectivePlugins, EffectiveCapabilities)
         undefined ->
             error;
         Manifest ->
-            case unsatisfied_plugin_dependencies_public(
-                maps:get(depends_on_plugins, Manifest, []),
-                EffectivePlugins
-            ) of
+            case
+                unsatisfied_plugin_dependencies_public(
+                    maps:get(depends_on_plugins, Manifest, []),
+                    EffectivePlugins
+                )
+            of
                 [] ->
-                    case unmet_capability_requirements_public(
-                        maps:get(requires_capabilities, Manifest, []),
-                        EffectiveCapabilities
-                    ) of
+                    case
+                        unmet_capability_requirements_public(
+                            maps:get(requires_capabilities, Manifest, []),
+                            EffectiveCapabilities
+                        )
+                    of
                         Requirements when map_size(Requirements) =:= 0 ->
                             error;
                         Requirements ->
@@ -894,16 +964,18 @@ plugin_constraint_adjustment(PluginRef, EffectivePlugins, EffectiveCapabilities)
 unsatisfied_plugin_dependencies_public(Dependencies, EffectivePlugins) ->
     [
         Dependency
-        || Dependency <- normalize_dependency_list(Dependencies),
-           not plugin_enabled_in_public_map(Dependency, EffectivePlugins)
+     || Dependency <- normalize_dependency_list(Dependencies),
+        not plugin_enabled_in_public_map(Dependency, EffectivePlugins)
     ].
 
 -spec unmet_capability_requirements_public(term(), map()) -> map().
 unmet_capability_requirements_public(Requirements, EffectiveCapabilities) ->
     maps:from_list([
         {Key, Expected}
-        || {Key, Expected} <- normalize_required_capabilities(Requirements),
-           not capability_requirement_met(Expected, maps:get(public_key(Key), EffectiveCapabilities, undefined))
+     || {Key, Expected} <- normalize_required_capabilities(Requirements),
+        not capability_requirement_met(
+            Expected, maps:get(public_key(Key), EffectiveCapabilities, undefined)
+        )
     ]).
 
 -spec plugin_enabled_in_public_map(term(), map()) -> boolean().
@@ -1158,7 +1230,7 @@ saved_feature_overrides() ->
 flatten_saved_feature_config(FeatureConfig) ->
     maps:from_list([
         {Key, maps:get(enabled, Toggle, false)}
-        || {Key, Toggle} <- maps:to_list(FeatureConfig)
+     || {Key, Toggle} <- maps:to_list(FeatureConfig)
     ]).
 
 -spec compact_saved_plugin_overrides(map()) -> {map(), map()}.
@@ -1212,7 +1284,7 @@ maybe_put_saved_section(Sections, Key, Value) ->
 profile_defaults_catalog() ->
     maps:from_list([
         {Profile, imboy_profile_preset:defaults(Profile)}
-        || Profile <- imboy_profile_preset:supported_profiles()
+     || Profile <- imboy_profile_preset:supported_profiles()
     ]).
 
 -spec origin_meta_catalog() -> map().
@@ -1301,7 +1373,7 @@ plugin_managed_feature_names() ->
     lists:usort(
         lists:append([
             maps:get(feature_keys, Manifest, [])
-            || Manifest <- maps:values(imboy_plugin_registry:manifests())
+         || Manifest <- maps:values(imboy_plugin_registry:manifests())
         ])
     ).
 
@@ -1309,15 +1381,15 @@ plugin_managed_feature_names() ->
 feature_dependency_catalog() ->
     maps:from_list([
         {FeatureName, dependencies(FeatureName)}
-        || FeatureName <- feature_names(),
-           length(dependencies(FeatureName)) > 0
+     || FeatureName <- feature_names(),
+        length(dependencies(FeatureName)) > 0
     ]).
 
 -spec feature_field_catalog() -> map().
 feature_field_catalog() ->
     maps:from_list([
         {FeatureName, feature_field_meta(FeatureName)}
-        || FeatureName <- feature_names()
+     || FeatureName <- feature_names()
     ]).
 
 -spec feature_field_meta(atom()) -> map().
@@ -1457,7 +1529,9 @@ normalize_capabilities(Capabilities0, Defaults) ->
         maps:get(audit_mode, Defaults, none)
     ),
     RetentionPolicy = normalize_retention_policy(
-        capability_value(Capabilities0, retention_policy, maps:get(retention_policy, Defaults, #{})),
+        capability_value(
+            Capabilities0, retention_policy, maps:get(retention_policy, Defaults, #{})
+        ),
         maps:get(retention_policy, Defaults, #{})
     ),
     Normalized0 = Capabilities0#{
@@ -1519,9 +1593,11 @@ body_visibility_allowed(secure_e2ee, _E2eeMode) ->
 body_visibility_allowed(_StorageMode, required) ->
     false;
 body_visibility_allowed(compliance_e2ee, _E2eeMode) ->
-    true;  % compliance 模式下合规密钥持有者可查看
+    % compliance 模式下合规密钥持有者可查看
+    true;
 body_visibility_allowed(_StorageMode, compliance) ->
-    true;  % compliance 模式下合规密钥持有者可查看
+    % compliance 模式下合规密钥持有者可查看
+    true;
 body_visibility_allowed(_, _) ->
     true.
 
@@ -1626,7 +1702,8 @@ maybe_put_profile_section(Sections, Payload) ->
                 error ->
                     Sections#{
                         profile_error => policy_error_detail(
-                            profile, profile, invalid_profile, <<"invalid profile value">>)
+                            profile, profile, invalid_profile, <<"invalid profile value">>
+                        )
                     }
             end;
         error ->
@@ -1679,7 +1756,7 @@ maybe_put_features_section(Sections, Payload) ->
             end
     end.
 
- -spec validate_save_sections(map()) -> {ok, map()} | {error, binary(), map()}.
+-spec validate_save_sections(map()) -> {ok, map()} | {error, binary(), map()}.
 validate_save_sections(Sections) ->
     ErrorKeys = [profile_error, capabilities_error, features_error],
     case [maps:get(Key, Sections) || Key <- ErrorKeys, maps:is_key(Key, Sections)] of
@@ -1720,21 +1797,22 @@ normalize_profile_input(_) ->
 normalize_capability_payload(Value) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
-        fun(Key, {ok, Acc}) ->
-            case find_in_map(Map0, candidate_keys(Key)) of
-                undefined ->
-                    {ok, Acc};
-                null ->
-                    {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
-                Item ->
-                    case normalize_capability_payload_value(Key, Item) of
-                        {ok, NormalizedValue} ->
-                            {ok, maps:put(Key, NormalizedValue, Acc)};
-                        {error, _} = Error ->
-                            Error
-                    end
-            end;
-           (_Key, {error, _} = Error) ->
+        fun
+            (Key, {ok, Acc}) ->
+                case find_in_map(Map0, candidate_keys(Key)) of
+                    undefined ->
+                        {ok, Acc};
+                    null ->
+                        {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
+                    Item ->
+                        case normalize_capability_payload_value(Key, Item) of
+                            {ok, NormalizedValue} ->
+                                {ok, maps:put(Key, NormalizedValue, Acc)};
+                            {error, _} = Error ->
+                                Error
+                        end
+                end;
+            (_Key, {error, _} = Error) ->
                 Error
         end,
         {ok, #{}},
@@ -1750,7 +1828,11 @@ normalize_capability_payload(Value) ->
                 {_, 0} ->
                     {error,
                         policy_error_detail(
-                            capabilities, undefined, invalid_payload, <<"invalid capabilities payload">>)};
+                            capabilities,
+                            undefined,
+                            invalid_payload,
+                            <<"invalid capabilities payload">>
+                        )};
                 _ ->
                     {ok, Capabilities}
             end
@@ -1764,7 +1846,8 @@ normalize_capability_payload_value(storage_mode, Value) ->
         error ->
             {error,
                 policy_error_detail(
-                    capabilities, storage_mode, invalid_enum, <<"invalid storage_mode value">>)}
+                    capabilities, storage_mode, invalid_enum, <<"invalid storage_mode value">>
+                )}
     end;
 normalize_capability_payload_value(e2ee_mode, Value) ->
     case parse_e2ee_mode(Value) of
@@ -1772,7 +1855,9 @@ normalize_capability_payload_value(e2ee_mode, Value) ->
             {ok, E2eeMode};
         error ->
             {error,
-                policy_error_detail(capabilities, e2ee_mode, invalid_enum, <<"invalid e2ee_mode value">>)}
+                policy_error_detail(
+                    capabilities, e2ee_mode, invalid_enum, <<"invalid e2ee_mode value">>
+                )}
     end;
 normalize_capability_payload_value(message_search, Value) ->
     case parse_toggle_payload(Value) of
@@ -1781,7 +1866,11 @@ normalize_capability_payload_value(message_search, Value) ->
         error ->
             {error,
                 policy_error_detail(
-                    capabilities, message_search, invalid_boolean, <<"invalid message_search value">>)}
+                    capabilities,
+                    message_search,
+                    invalid_boolean,
+                    <<"invalid message_search value">>
+                )}
     end;
 normalize_capability_payload_value(message_export, Value) ->
     case parse_toggle_payload(Value) of
@@ -1790,7 +1879,11 @@ normalize_capability_payload_value(message_export, Value) ->
         error ->
             {error,
                 policy_error_detail(
-                    capabilities, message_export, invalid_boolean, <<"invalid message_export value">>)}
+                    capabilities,
+                    message_export,
+                    invalid_boolean,
+                    <<"invalid message_export value">>
+                )}
     end;
 normalize_capability_payload_value(audit_mode, Value) ->
     case parse_audit_mode(Value) of
@@ -1798,7 +1891,9 @@ normalize_capability_payload_value(audit_mode, Value) ->
             {ok, AuditMode};
         error ->
             {error,
-                policy_error_detail(capabilities, audit_mode, invalid_enum, <<"invalid audit_mode value">>)}
+                policy_error_detail(
+                    capabilities, audit_mode, invalid_enum, <<"invalid audit_mode value">>
+                )}
     end;
 normalize_capability_payload_value(retention_policy, Value) ->
     case normalize_retention_policy_payload(Value) of
@@ -1814,23 +1909,28 @@ normalize_capability_payload_value(_Key, Value) ->
 normalize_feature_payload(Value) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
-        fun(Key, {ok, Acc}) ->
-            case find_in_map(Map0, candidate_keys(Key)) of
-                undefined ->
-                    {ok, Acc};
-                null ->
-                    {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
-                Item ->
-                    case parse_toggle_payload(Item) of
-                        {ok, Enabled} ->
-                            {ok, maps:put(Key, #{enabled => Enabled}, Acc)};
-                        error ->
-                            {error,
-                                policy_error_detail(
-                                    features, Key, invalid_boolean, <<"invalid features payload">>)}
-                    end
-            end;
-           (_Key, {error, _} = Error) ->
+        fun
+            (Key, {ok, Acc}) ->
+                case find_in_map(Map0, candidate_keys(Key)) of
+                    undefined ->
+                        {ok, Acc};
+                    null ->
+                        {ok, maps:put(Key, ?DELETE_VALUE, Acc)};
+                    Item ->
+                        case parse_toggle_payload(Item) of
+                            {ok, Enabled} ->
+                                {ok, maps:put(Key, #{enabled => Enabled}, Acc)};
+                            error ->
+                                {error,
+                                    policy_error_detail(
+                                        features,
+                                        Key,
+                                        invalid_boolean,
+                                        <<"invalid features payload">>
+                                    )}
+                        end
+                end;
+            (_Key, {error, _} = Error) ->
                 Error
         end,
         {ok, #{}},
@@ -1846,7 +1946,8 @@ normalize_feature_payload(Value) ->
                 {_, 0} ->
                     {error,
                         policy_error_detail(
-                            features, undefined, invalid_payload, <<"invalid features payload">>)};
+                            features, undefined, invalid_payload, <<"invalid features payload">>
+                        )};
                 _ ->
                     {ok, Features}
             end
@@ -1856,36 +1957,41 @@ normalize_feature_payload(Value) ->
 normalize_plugin_payload(Value, ExistingFeatureOverrides) ->
     Map0 = normalize_map(Value),
     Result = lists:foldl(
-        fun(PluginName, {ok, Acc}) ->
-            case find_in_map(Map0, candidate_keys(PluginName)) of
-                undefined ->
-                    {ok, Acc};
-                null ->
-                    {ok,
-                        maps:merge(
-                            Acc,
-                            plugin_clear_payload(PluginName, ExistingFeatureOverrides)
-                        )};
-                Item ->
-                    case parse_toggle_payload(Item) of
-                        {ok, Enabled} ->
-                            Manifest = imboy_plugin_registry:manifest(PluginName),
-                            FeatureKeys = maps:get(feature_keys, Manifest, []),
+        fun
+            (PluginName, {ok, Acc}) ->
+                case find_in_map(Map0, candidate_keys(PluginName)) of
+                    undefined ->
+                        {ok, Acc};
+                    null ->
                         {ok,
-                                lists:foldl(
-                                    fun(FeatureKey, FeatureAcc) ->
-                                        maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
-                                    end,
-                                    Acc,
-                                    FeatureKeys
-                                )};
-                        error ->
-                            {error,
-                                policy_error_detail(
-                                    plugins, PluginName, invalid_boolean, <<"invalid plugins payload">>)}
-                    end
-            end;
-           (_PluginName, {error, _} = Error) ->
+                            maps:merge(
+                                Acc,
+                                plugin_clear_payload(PluginName, ExistingFeatureOverrides)
+                            )};
+                    Item ->
+                        case parse_toggle_payload(Item) of
+                            {ok, Enabled} ->
+                                Manifest = imboy_plugin_registry:manifest(PluginName),
+                                FeatureKeys = maps:get(feature_keys, Manifest, []),
+                                {ok,
+                                    lists:foldl(
+                                        fun(FeatureKey, FeatureAcc) ->
+                                            maps:put(FeatureKey, #{enabled => Enabled}, FeatureAcc)
+                                        end,
+                                        Acc,
+                                        FeatureKeys
+                                    )};
+                            error ->
+                                {error,
+                                    policy_error_detail(
+                                        plugins,
+                                        PluginName,
+                                        invalid_boolean,
+                                        <<"invalid plugins payload">>
+                                    )}
+                        end
+                end;
+            (_PluginName, {error, _} = Error) ->
                 Error
         end,
         {ok, #{}},
@@ -1901,7 +2007,8 @@ normalize_plugin_payload(Value, ExistingFeatureOverrides) ->
                 {_, 0} ->
                     {error,
                         policy_error_detail(
-                            plugins, undefined, invalid_payload, <<"invalid plugins payload">>)};
+                            plugins, undefined, invalid_payload, <<"invalid plugins payload">>
+                        )};
                 _ ->
                     {ok, FeatureConfig}
             end
@@ -1943,7 +2050,7 @@ preserve_plugin_feature_overrides(PluginName, ExistingFeatureOverrides) ->
 persist_config_sections(Sections) ->
     _ = [
         config_ds:set(Key, merge_persisted_section(Key, Value))
-        || {Key, Value} <- maps:to_list(Sections)
+     || {Key, Value} <- maps:to_list(Sections)
     ],
     ok.
 
@@ -1959,14 +2066,14 @@ merge_persisted_section(Key, Value) ->
 merge_saved_map_updates(Existing, Updates) ->
     DeleteKeys = [
         Key
-        || {Key, DeleteValue} <- maps:to_list(Updates),
-           is_delete_marker(DeleteValue)
+     || {Key, DeleteValue} <- maps:to_list(Updates),
+        is_delete_marker(DeleteValue)
     ],
     Existing1 = maps:without(DeleteKeys, Existing),
     PutMap = maps:from_list([
         {Key, UpdateValue}
-        || {Key, UpdateValue} <- maps:to_list(Updates),
-           not is_delete_marker(UpdateValue)
+     || {Key, UpdateValue} <- maps:to_list(Updates),
+        not is_delete_marker(UpdateValue)
     ]),
     maps:merge(Existing1, PutMap).
 
@@ -2110,7 +2217,11 @@ normalize_retention_policy_payload(Value) ->
         0 ->
             {error,
                 policy_error_detail(
-                    capabilities, retention_policy, invalid_object, <<"invalid retention_policy value">>)};
+                    capabilities,
+                    retention_policy,
+                    invalid_object,
+                    <<"invalid retention_policy value">>
+                )};
         _ ->
             {ok, Policy}
     end.
@@ -2142,7 +2253,7 @@ public_policy_error_detail(Detail) ->
 public_term(Map) when is_map(Map) ->
     maps:from_list([
         {public_key(Key), public_term(Value)}
-        || {Key, Value} <- maps:to_list(Map)
+     || {Key, Value} <- maps:to_list(Map)
     ]);
 public_term(List) when is_list(List) ->
     [public_term(Value) || Value <- List];

@@ -14,7 +14,7 @@
 %% @param Env 环境变量映射
 %% @return 中间件执行结果
 -spec execute(cowboy_req:req(), map()) ->
-                 {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
     Path = auth_ds:remove_last_forward_slash(cowboy_req:path(Req)),
 
@@ -22,7 +22,7 @@ execute(Req, Env) ->
     OptionLi = imboy_router:option(),
     InOpenLi = lists:member(Path, OpenLi),
     InOptionLi = lists:member(Path, OptionLi),
-    Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"off">>)),
+    Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),
     Passport = string:sub_string(binary_to_list(Path), 1, 10),
     Res1 =
         if

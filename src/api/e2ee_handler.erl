@@ -132,27 +132,32 @@ report_device_key(Req0, State) ->
 -spec do_report_device_key(cowboy_req:req(), map()) -> cowboy_req:req().
 do_report_device_key(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    case read_report_params(Req0) of
-        {error, Reason} ->
-            elib_response:error(Req0, Reason, 400);
-        {ok, DeviceId, DeviceType, DeviceName, PublicKey, KeyId} ->
-            case validate_params(DeviceId, DeviceType, PublicKey, KeyId) of
+    case throttle:check(e2ee_report_key, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"操作过于频繁，请稍后再试"/utf8>>, 429);
+        _ ->
+            case read_report_params(Req0) of
                 {error, Reason} ->
                     elib_response:error(Req0, Reason, 400);
-                ok ->
-                    case
-                        e2ee_logic:report_device_key(
-                            CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
-                        )
-                    of
-                        {ok, OtherDeviceCount} ->
-                            elib_response:success(Req0, #{
-                                <<"success">> => true,
-                                <<"other_device_count">> => OtherDeviceCount,
-                                <<"has_other_device">> => OtherDeviceCount > 0
-                            });
+                {ok, DeviceId, DeviceType, DeviceName, PublicKey, KeyId} ->
+                    case validate_params(DeviceId, DeviceType, PublicKey, KeyId) of
                         {error, Reason} ->
-                            elib_response:error(Req0, Reason, 500)
+                            elib_response:error(Req0, Reason, 400);
+                        ok ->
+                            case
+                                e2ee_logic:report_device_key(
+                                    CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
+                                )
+                            of
+                                {ok, OtherDeviceCount} ->
+                                    elib_response:success(Req0, #{
+                                        <<"success">> => true,
+                                        <<"other_device_count">> => OtherDeviceCount,
+                                        <<"has_other_device">> => OtherDeviceCount > 0
+                                    });
+                                {error, Reason} ->
+                                    elib_response:error(Req0, Reason, 500)
+                            end
                     end
             end
     end.
@@ -268,7 +273,12 @@ start_recovery(Req0, State) ->
 do_start_recovery_entry(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data =
+        try jsx:decode(Body, [return_maps]) of
+            D when is_map(D) -> D
+        catch
+            _:_ -> #{}
+        end,
 
     DeviceId = maps:get(<<"device_id">>, Data, <<>>),
     Method = maps:get(<<"method">>, Data, <<>>),
@@ -338,7 +348,12 @@ backup_delete(Req0, State) ->
 do_backup_delete(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data =
+        try jsx:decode(Body, [return_maps]) of
+            D when is_map(D) -> D
+        catch
+            _:_ -> #{}
+        end,
     BackupId = maps:get(<<"backup_id">>, Data, 0),
 
     case is_integer(BackupId) andalso BackupId > 0 of

@@ -15,7 +15,7 @@
 %% @return 中间件执行结果
 %% @end
 -spec execute(cowboy_req:req(), map()) ->
-                 {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
     Path = auth_ds:remove_last_forward_slash(cowboy_req:path(Req)),
     case Path of
@@ -39,12 +39,14 @@ execute(Req, Env) ->
             InOptionLi = lists:member(Path, OptionLi),
             Switch =
                 ec_cnv:to_binary(
-                    config_ds:env(api_auth_switch, <<"off">>)),
+                    config_ds:env(api_auth_switch, <<"on">>)
+                ),
             Res1 =
-                if InOpenLi == false, Switch == <<"on">> ->
-                       auth_ds:verify_sign(Req, Env);
-                   true ->
-                       {ok, Req, Env}
+                if
+                    InOpenLi == false, Switch == <<"on">> ->
+                        auth_ds:verify_sign(Req, Env);
+                    true ->
+                        {ok, Req, Env}
                 end,
             case Res1 of
                 {ok, Req, Env} ->

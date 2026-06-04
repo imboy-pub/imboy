@@ -15,7 +15,7 @@ get_routes() ->
             {"/", index_handler, #{action => help}},
             {"/help", index_handler, #{action => help}},
 
-            % begin v0 为了兼容版本，在下一个版本下面的路由可以删除 2026-01-12
+            % v0 兼容路由 — 计划在 1.1.0 移除，届时通过 410 Gone 响应引导客户端升级
             {"/init", index_handler, #{action => init}},
             {"/refreshtoken", passport_handler, #{action => refreshtoken}},
 
@@ -46,8 +46,6 @@ get_routes() ->
                 {"/msg/offline", msg_handler, #{action => offline}},
                 {"/msg/offline_ack", msg_handler, #{action => offline_ack}},
 
-                % 2024-05-10 过两个版本可以清除该路由
-                {"/uqrcode", user_handler, #{action => qrcode}},
                 {"/user/qrcode", user_handler, #{action => qrcode}},
                 {"/user/update", user_handler, #{action => update}},
                 {"/user/show", user_handler, #{action => show}},
@@ -162,7 +160,7 @@ get_routes() ->
                 {"/group_album/photo/comment", group_album_handler, #{action => add_comment}},
                 {"/group_album/photo/comments", group_album_handler, #{action => list_comments}},
                 {"/group_album/cover/update", group_album_handler, #{action => update_cover}},
-                % end v0 为了兼容版本，在下一个版本下面的路由可以删除 2026-01-12
+                % end v0 兼容路由 — 计划在 1.1.0 移除
 
                 %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 
@@ -230,8 +228,6 @@ get_routes() ->
                 {"/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
                 {"/v1/msg/history", msg_handler, #{action => history}},
 
-                % 2024-05-10 过两个版本可以清除该路由
-                {"/v1/uqrcode", user_handler, #{action => qrcode}},
                 {"/v1/user/qrcode", user_handler, #{action => qrcode}},
                 {"/v1/user/update", user_handler, #{action => update}},
                 {"/v1/user/show", user_handler, #{action => show}},
@@ -449,53 +445,53 @@ get_routes() ->
                 {"/v1/channels/search", channel_handler, #{action => search}},
                 {"/v1/channels/discover", channel_handler, #{action => discover}},
                 {"/v1/channel/:channel_id/admin", channel_handler, #{action => add_admin}},
-                {"/v1/channel/:channel_id/admins", channel_handler, #{action => admins}},
-                {"/v1/channel/:channel_id/admin/:user_id/role", channel_handler, #{
+                {"/v1/channel/:channel_id/admins", channel_handler_admin, #{action => admins}},
+                {"/v1/channel/:channel_id/admin/:user_id/role", channel_handler_admin, #{
                     action => update_admin_role
                 }},
-                {"/v1/channel/:channel_id/admin/:user_id", channel_handler, #{
+                {"/v1/channel/:channel_id/admin/:user_id", channel_handler_admin, #{
                     action => remove_admin
                 }},
                 % 频道统计 API
                 {"/v1/channel/:channel_id/stats", channel_handler, #{action => stats}},
                 {"/v1/channel/:channel_id/stats/daily", channel_handler, #{action => stats_daily}},
-                {"/v1/channel/:channel_id/message/:message_id/view", channel_handler, #{
+                {"/v1/channel/:channel_id/message/:message_id/view", channel_handler_message, #{
                     action => record_view
                 }},
-                {"/v1/channel/:channel_id/message/:message_id/reaction", channel_handler, #{
+                {"/v1/channel/:channel_id/message/:message_id/reaction", channel_handler_message, #{
                     action => add_reaction
                 }},
                 {"/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type",
-                    channel_handler, #{action => remove_reaction}},
+                    channel_handler_message, #{action => remove_reaction}},
                 % 消息管理 API
-                {"/v1/channel/:channel_id/message/:message_id/pin", channel_handler, #{
+                {"/v1/channel/:channel_id/message/:message_id/pin", channel_handler_message, #{
                     action => pin_message
                 }},
-                {"/v1/channel/:channel_id/message/:message_id/delete", channel_handler, #{
+                {"/v1/channel/:channel_id/message/:message_id/delete", channel_handler_message, #{
                     action => delete_message
                 }},
-                {"/v1/channel/:channel_id/message/:message_id/revoke", channel_handler, #{
+                {"/v1/channel/:channel_id/message/:message_id/revoke", channel_handler_message, #{
                     action => revoke_message
                 }},
                 % 订阅者管理 API
-                {"/v1/channel/:channel_id/subscribers", channel_handler, #{action => subscribers}},
-                {"/v1/channel/:channel_id/subscriber/:user_id", channel_handler, #{
+                {"/v1/channel/:channel_id/subscribers", channel_handler_message, #{action => subscribers}},
+                {"/v1/channel/:channel_id/subscriber/:user_id", channel_handler_admin, #{
                     action => remove_subscriber
                 }},
                 % 邀请相关 API（私有频道）
-                {"/v1/channel/:channel_id/invitation", channel_handler, #{
+                {"/v1/channel/:channel_id/invitation", channel_handler_admin, #{
                     action => create_invitation
                 }},
-                {"/v1/channel/invitation/accept", channel_handler, #{action => accept_invitation}},
-                {"/v1/channel/invitation/reject", channel_handler, #{action => reject_invitation}},
-                {"/v1/channel/invitations/my", channel_handler, #{action => my_invitations}},
-                {"/v1/channel/invitations/sent", channel_handler, #{action => sent_invitations}},
+                {"/v1/channel/invitation/accept", channel_handler_admin, #{action => accept_invitation}},
+                {"/v1/channel/invitation/reject", channel_handler_admin, #{action => reject_invitation}},
+                {"/v1/channel/invitations/my", channel_handler_admin, #{action => my_invitations}},
+                {"/v1/channel/invitations/sent", channel_handler_admin, #{action => sent_invitations}},
                 % 订单相关 API（付费频道）
-                {"/v1/channel/:channel_id/order", channel_handler, #{action => create_order}},
-                {"/v1/channel/order/pay", channel_handler, #{action => pay_order}},
-                {"/v1/channel/orders/my", channel_handler, #{action => my_orders}},
-                {"/v1/channel/order/:order_no", channel_handler, #{action => get_order}},
-                {"/v1/channels/sync", channel_handler, #{action => sync}},
+                {"/v1/channel/:channel_id/order", channel_handler_order, #{action => create_order}},
+                {"/v1/channel/order/pay", channel_handler_order, #{action => pay_order}},
+                {"/v1/channel/orders/my", channel_handler_order, #{action => my_orders}},
+                {"/v1/channel/order/:order_no", channel_handler_order, #{action => get_order}},
+                {"/v1/channels/sync", channel_handler_admin, #{action => sync}},
 
                 % 群文件管理 API
                 {"/v1/group/file/upload", group_file_handler, #{action => upload}},
@@ -783,12 +779,10 @@ route_spec_to_cowboy(#{path := Path, handler := Handler, action := Action} = Spe
 -spec option() -> [binary()].
 option() ->
     [
-        <<"/uqrcode">>,
         % 没有登录也可以提交反馈建议
         <<"/feedback/add">>,
         <<"/app_version/check">>,
 
-        <<"/v1/uqrcode">>,
         % 没有登录也可以提交反馈建议
         <<"/v1/feedback/add">>,
         <<"/v1/app_version/check">>,

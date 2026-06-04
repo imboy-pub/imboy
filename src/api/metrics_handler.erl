@@ -4,13 +4,26 @@
 
 -export([init/2]).
 -export([format_prometheus/1]).
+-export([is_internal_ip/1]).
 
 %% @doc Metrics endpoint for runtime observability.
 %% 支持两种格式：
 %% - Accept: text/plain → Prometheus text exposition format
 %% - 默认 → JSON 格式
+%% 安全：仅允许内网 IP 访问（loopback / RFC-1918 私有网段）
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
+    {PeerIp, _Port} = cowboy_req:peer(Req0),
+    case is_internal_ip(PeerIp) of
+        false ->
+            Req1 = cowboy_req:reply(403, #{}, <<>>, Req0),
+            {ok, Req1, State0};
+        true ->
+            serve_metrics(Req0, State0)
+    end.
+
+-spec serve_metrics(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
+serve_metrics(Req0, State0) ->
     Accept = cowboy_req:header(<<"accept">>, Req0, <<>>),
     Req1 =
         case binary:match(Accept, <<"text/plain">>) of
@@ -40,6 +53,16 @@ init(Req0, State0) ->
                 end
         end,
     {ok, Req1, State0}.
+
+%% @doc 判断是否为内网 IP（loopback + RFC-1918 私有网段）
+-spec is_internal_ip(inet:ip_address()) -> boolean().
+is_internal_ip({127, _, _, _}) -> true;
+is_internal_ip({10, _, _, _}) -> true;
+is_internal_ip({172, N, _, _}) when N >= 16, N =< 31 -> true;
+is_internal_ip({192, 168, _, _}) -> true;
+% IPv6 loopback ::1
+is_internal_ip({0, 0, 0, 0, 0, 0, 0, 1}) -> true;
+is_internal_ip(_) -> false.
 
 -spec fetch_metrics() -> {ok, map()} | {error, term()}.
 fetch_metrics() ->

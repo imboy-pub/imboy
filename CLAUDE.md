@@ -7,18 +7,9 @@
 
 ---
 
-## 双语文档规则 / Bilingual Documentation Rule (MANDATORY)
+## 双语文档规则 / Bilingual Documentation Rule
 
-所有面向用户/贡献者/运维的 Markdown 文档必须同时提供**简体中文 + English**。
-All user/contributor/ops-facing Markdown docs MUST provide **Simplified Chinese + English**.
-
-- **方式 A**（短文档）：同节并排。**方式 B**（长文档）：`README.md`（中文权威）+ `README.en.md`
-- **Pattern A** (short): side-by-side sections. **Pattern B** (long): `README.md` (CN authoritative) + `README.en.md`
-- 简体中文为权威版本，中文先改，英文同 PR 内同步。/ Simplified Chinese is source of truth; sync English in same PR.
-- 代码、命令、模块名不翻译。/ Code, commands, module names are NOT translated.
-- 例外（仅中文）：`.claude/plan/*`、`.claude/memory/*`、内部会议纪要
-- AI Agent 契约：收到"写/改/新建 .md"任务时默认双语输出，commit message 加 `docs(bilingual):` 前缀。
-- AI Agent contract: default bilingual output; prefix commits with `docs(bilingual):`.
+> 见根级 [CLAUDE.md](../CLAUDE.md#双语文档规则--bilingual-documentation-rule-mandatory)
 
 ---
 
@@ -28,7 +19,6 @@ All user/contributor/ops-facing Markdown docs MUST provide **Simplified Chinese 
 - **Do NOT modify `erlang.mk`**. All custom build logic goes in `Makefile` only.
 - `IMBOYENV=local make run` 自动加载 `config/sys.local.config` → 复制为 `config/sys.runtime.config`
 - 非 local 环境使用 `config/sys.config`；`IMBOY_*` 环境变量运行时优先级最高。
-- Admin 前端分页：统一用 `DataTablePagination`，默认 `size:10`，分页/筛选变化时重置 `page=1`。
 
 ---
 
@@ -113,8 +103,6 @@ make new t=imboy.ds n=demo_ds
 | **UTF-8** | 中文字符串加 `/utf8` 后缀：`<<"操作成功"/utf8>>` |
 | **错误码** | `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏，include `error_code.hrl` |
 | **数据库** | 所有 SQL 必须通过 `elib_pg` 模块，参数化查询防注入 |
-| **TSID** | 分布式 ID，JSON 以 integer 传输；前端用 `safeParseBigIntJson` 转 string |
-| **安全** | 所有 SQL 参数化；API 必须 JWT 认证（除 open 路由）；WebSocket 必须验证 token |
 
 关键文件：`include/error_code.hrl`（错误码），`include/imboy_const.hrl`（常量），`src/imboy_router.erl`（路由），`priv/migrations/*.sql`（迁移）
 
@@ -124,7 +112,7 @@ make new t=imboy.ds n=demo_ds
 
 - 框架：EUnit；Mock：meck；超时：30s；环境标记：`application:set_env(imboy, env, test)`
 - 目录：`test/api/`(50+)、`test/repo/`(40+)、`test/lib/`(30+)、`test/logic/`(20+)、`test/ds/`(10+)
-- 覆盖率目标：Repo 80%、Logic 70%、Handler 60%、整体 65%
+- 覆盖率目标：见根级 [CLAUDE.md](../CLAUDE.md#测试策略--testing-strategy)
 
 ---
 
