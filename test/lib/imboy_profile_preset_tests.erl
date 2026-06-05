@@ -12,8 +12,8 @@ community_profile_defaults_test_() ->
         ?assertEqual(archived, maps:get(storage_mode, Capabilities)),
         ?assertEqual(optional, maps:get(e2ee_mode, Capabilities)),
         ?assertEqual(false, maps:get(message_search, Capabilities)),
-        ?assertEqual(false, maps:get(channel, Features)),
-        ?assertEqual(false, maps:get(moment, Features))
+        ?assertEqual(true, maps:get(channel, Features)),
+        ?assertEqual(true, maps:get(moment, Features))
     end).
 
 enterprise_profile_defaults_test_() ->

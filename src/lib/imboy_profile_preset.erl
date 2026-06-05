@@ -6,7 +6,9 @@
 
 -spec current() -> community | enterprise.
 current() ->
-    normalize_profile(config_ds:get(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community))).
+    normalize_profile(
+        config_ds:get(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community))
+    ).
 
 -spec defaults() -> map().
 defaults() ->
@@ -36,16 +38,16 @@ profile_defaults(community) ->
         },
         features => #{
             core => true,
-            e2ee => false,
-            channel => false,
-            location => false,
-            moment => false,
-            channel_discover => false,
-            channel_invitation => false,
-            channel_order => false,
-            group_vote => false,
-            group_schedule => false,
-            group_task => false
+            e2ee => true,
+            channel => true,
+            location => true,
+            moment => true,
+            channel_discover => true,
+            channel_invitation => true,
+            channel_order => true,
+            group_vote => true,
+            group_schedule => true,
+            group_task => true
         }
     };
 profile_defaults(enterprise) ->
@@ -63,16 +65,16 @@ profile_defaults(enterprise) ->
         },
         features => #{
             core => true,
-            e2ee => false,
+            e2ee => true,
             channel => true,
-            location => false,
-            moment => false,
-            channel_discover => false,
+            location => true,
+            moment => true,
+            channel_discover => true,
             channel_invitation => true,
-            channel_order => false,
-            group_vote => false,
-            group_schedule => false,
-            group_task => false
+            channel_order => true,
+            group_vote => true,
+            group_schedule => true,
+            group_task => true
         }
     }.
 
