@@ -10,6 +10,7 @@
 -export([add/6]).
 -export([remove/2]).
 -export([change/4]).
+-export([page/5]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -20,7 +21,6 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 添加收藏
 %% 添加用户收藏内容，支持多种资源类型
 %% @param Uid 用户ID
@@ -30,13 +30,13 @@
 %% @param Source 来源
 %% @param Remark 备注
 %% @return {ok, binary()} | {error, binary()}
--spec add(integer(), binary(), binary(), map(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+-spec add(integer(), binary(), binary(), map(), binary(), binary()) ->
+    {ok, binary()} | {error, binary()}.
 
 % Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
 % 检查 Kind 类型
 add(Uid, Kind, KindId, Info, Source, Remark) when is_integer(Kind) ->
     add(Uid, integer_to_binary(Kind), KindId, Info, Source, Remark);
-
 add(_Uid, _Kind, _KindId, _Info, <<"">>, _Remark) ->
     {error, <<"source is empty">>};
 add(_Uid, _Kind, <<"">>, _Info, _Source, _Remark) ->
@@ -80,21 +80,21 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_map(Info) ->
             VideoPath = maps:get(path, VideoMap),
 
             Attach1 = #{
-                        <<"md5">> => maps:get(<<"md5">>, Thumb),
-                        <<"mime_type">> => <<"image/jpeg">>,
-                        <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
-                        <<"path">> => ThumbPath,
-                        <<"url">> => ThumbUri,
-                        <<"size">> => maps:get(<<"size">>, Thumb, 0)
-                       },
+                <<"md5">> => maps:get(<<"md5">>, Thumb),
+                <<"mime_type">> => <<"image/jpeg">>,
+                <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
+                <<"path">> => ThumbPath,
+                <<"url">> => ThumbUri,
+                <<"size">> => maps:get(<<"size">>, Thumb, 0)
+            },
             Attach2 = #{
-                        <<"md5">> => maps:get(<<"md5">>, Video),
-                        <<"mime_type">> => <<"octet-stream">>,
-                        <<"name">> => maps:get(<<"name">>, Video, <<>>),
-                        <<"path">> => VideoPath,
-                        <<"url">> => VideoUri,
-                        <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
-                       },
+                <<"md5">> => maps:get(<<"md5">>, Video),
+                <<"mime_type">> => <<"octet-stream">>,
+                <<"name">> => maps:get(<<"name">>, Video, <<>>),
+                <<"path">> => VideoPath,
+                <<"url">> => VideoUri,
+                <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
+            },
 
             Info2 = jsone:encode(Info, [native_forward_slash]),
             % ?DEBUG_LOG(['k4', Count, Info2]),
@@ -113,12 +113,17 @@ add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/jpeg">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    ok = elib_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [[Count, Uid, KindId, Source, Remark]])),
-    ok = elib_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])),
+    ok = elib_log:info(
+        io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [
+            [Count, Uid, KindId, Source, Remark]
+        ])
+    ),
+    ok = elib_log:info(
+        io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])
+    ),
     % elib_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, Info2 ~p ~n", [Count, Info2])),
     add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
-
 add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     Info2 = jsone:encode(Info, [native_forward_slash]),
@@ -126,7 +131,6 @@ add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_map(Info) ->
     {ok, <<"success">>};
 add(_Uid, _Kind, _KindId, _Info, _Source, _Remark) ->
     {error, <<"Unsupported collection kind">>}.
-
 
 %% @doc 删除收藏
 %% 删除指定的收藏内容
@@ -136,7 +140,6 @@ add(_Uid, _Kind, _KindId, _Info, _Source, _Remark) ->
 -spec remove(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 remove(Uid, KindId) ->
     user_collect_ds:delete(Uid, KindId).
-
 
 %% @doc 修改收藏属性
 %% 修改收藏的备注等属性
@@ -168,6 +171,18 @@ change(_Uid, _Action, _KindId, _PostVals) ->
     % user_collect_ds:update(Uid, KindId);
     ok.
 
+%% @doc 分页查询用户收藏列表
+%% 委托 DS 层执行带条件、排序和分页的收藏查询
+%% @param Column 查询列
+%% @param WhereMap 过滤条件
+%% @param Order 排序字符串
+%% @param Page 页码
+%% @param Size 每页大小
+%% @return {ok, map()} | {error, term()}
+-spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(Column, WhereMap, Order, Page, Size) ->
+    user_collect_ds:page(Column, WhereMap, Order, Page, Size).
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -186,10 +201,11 @@ ensure_map(_) ->
 -spec get_info(non_neg_integer(), binary(), binary(), map()) -> {map(), binary()} | {map(), ok}.
 get_info(0, MimeType, Key, Info) ->
     PayloadIn = maps:get(<<"payload">>, Info, #{}),
-    Payload0 = if
-        is_map(PayloadIn) -> PayloadIn;
-        true -> PayloadIn
-    end,
+    Payload0 =
+        if
+            is_map(PayloadIn) -> PayloadIn;
+            true -> PayloadIn
+        end,
     Payload =
         if
             is_binary(Payload0) ->
@@ -201,30 +217,31 @@ get_info(0, MimeType, Key, Info) ->
     Md5 = maps:get(<<"md5">>, Payload),
     Size = maps:get(<<"size">>, Payload, 0),
 
-    UriList = case Uri of
-        B when is_binary(B) -> binary_to_list(B);
-        L when is_list(L) -> L;
-        _ -> ""
-    end,
+    UriList =
+        case Uri of
+            B when is_binary(B) -> binary_to_list(B);
+            L when is_list(L) -> L;
+            _ -> ""
+        end,
     {UrlMap, _UpData} = elib_uri:get_params(UriList),
     Path = maps:get(path, UrlMap),
 
     % Uri = proplists:get_value(<<"uri">>, Info),
     Attach = #{
-               <<"md5">> => Md5,
-               <<"mime_type">> => MimeType,
-               <<"name">> => maps:get(<<"name">>, Payload, <<>>),
-               <<"path">> => Path,
-               <<"url">> => Uri,
-               <<"size">> => Size
-              },
+        <<"md5">> => Md5,
+        <<"mime_type">> => MimeType,
+        <<"name">> => maps:get(<<"name">>, Payload, <<>>),
+        <<"path">> => Path,
+        <<"url">> => Uri,
+        <<"size">> => Size
+    },
     {Attach, jsone:encode(Info, [native_forward_slash])};
 get_info(_Count, _MimeType, _Key, _Info) ->
     % 已经收藏，不需要再上传附件了
     {#{}, ok}.
 
-
--spec add_kind(integer(), integer(), binary(), binary(), binary(), binary(), binary(), list()) -> ok.
+-spec add_kind(integer(), integer(), binary(), binary(), binary(), binary(), binary(), list()) ->
+    ok.
 % add_kind(_, _, _, _KindId, ok, _Source, _Remark, _Attach)
 %     ok;
 add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
@@ -235,7 +252,8 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
         attachment_ds:save(Conn, NowTs, Uid, Attach),
         AttachMd5 =
             case [maps:get(<<"md5">>, Item) || Item <- Attach] of
-                [] -> <<>>;
+                [] ->
+                    <<>>;
                 Md5List ->
                     % 使用elib_cnv工具函数替代手工处理
                     elib_cnv:implode(<<",">>, Md5List)
@@ -269,7 +287,6 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
 add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
     % 已收藏
     ok.
-
 
 %% ===================================================================
 %% EUnit tests.

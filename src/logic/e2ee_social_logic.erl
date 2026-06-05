@@ -28,6 +28,11 @@
 -export([recover_key/2]).
 -export([validate_shards/2]).
 -export([can_recover/2]).
+-export([get_proxy_shard/2]).
+-export([list_trusted_contacts/1]).
+-export([add_trusted_contact/3]).
+-export([remove_trusted_contact/2]).
+-export([get_proxy_private_key/1]).
 
 %% @doc 创建恢复分片（C1 FIX：客户端已完成 Shamir 分割和代理公钥加密，服务端只存储）
 %% @param Uid 用户 ID
@@ -196,6 +201,43 @@ validate_shards(_Uid, DecryptedShards) ->
 -spec can_recover(integer(), binary()) -> {ok, boolean()} | {error, term()}.
 can_recover(Uid, KeyVersion) ->
     e2ee_social_ds:can_recover(Uid, KeyVersion).
+
+%% @doc 根据分片 ID 和代理 UID 获取单条代理分片记录，用于后续解密
+-spec get_proxy_shard(binary(), integer()) -> {ok, map()} | {error, term()}.
+get_proxy_shard(ShardId, ProxyUid) ->
+    e2ee_social_ds:get_proxy_shard(ShardId, ProxyUid).
+
+%% @doc 列出当前用户的所有可信联系人
+-spec list_trusted_contacts(integer()) -> {ok, [map()]} | {error, term()}.
+list_trusted_contacts(Uid) ->
+    e2ee_social_ds:list_trusted_contacts(Uid).
+
+%% @doc 添加可信联系人（含好友校验和自我添加校验）
+-spec add_trusted_contact(integer(), integer(), binary()) -> ok | {error, term()}.
+add_trusted_contact(Uid, ContactUid, Nickname) ->
+    e2ee_social_ds:add_trusted_contact(Uid, ContactUid, Nickname).
+
+%% @doc 移除当前用户的一个可信联系人
+-spec remove_trusted_contact(integer(), integer()) -> ok | {error, term()}.
+remove_trusted_contact(Uid, ContactUid) ->
+    e2ee_social_ds:remove_trusted_contact(Uid, ContactUid).
+
+%% @doc 获取代理用户的私钥（先取设备列表，再取第一个设备的私钥）
+%% 用于 RSA-OAEP 解密分片
+-spec get_proxy_private_key(integer()) -> {ok, binary()} | {error, term()}.
+get_proxy_private_key(Uid) ->
+    case user_device_ds:get_public_by_uid(Uid) of
+        {ok, [Device | _]} ->
+            DeviceId = maps:get(<<"device_id">>, Device),
+            case user_device_ds:get_private_key(Uid, DeviceId) of
+                {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
+                    {ok, PrivateKeyPem};
+                _ ->
+                    {error, private_key_not_found}
+            end;
+        _ ->
+            {error, device_not_found}
+    end.
 
 %%===================================================================
 %%% Internal Functions

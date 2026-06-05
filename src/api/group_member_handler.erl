@@ -65,22 +65,26 @@ same_group(Req0, State) ->
     B1 = elib_cnv:safe_to_integer(B),
 
     {Count, Li4} =
-        if CurrentUid == A1; CurrentUid == B1 ->
-               Li = group_member_ds:list_same_group(A1, B1),
-               Column =
-                   <<"id as gid, type, join_limit, content_limit, owner_uid, creator_uid, "
-                     "member_max, member_count, introduction, avatar, title, updated_at, "
-                     "created_at">>,
-               Li2 = case group_ds:list_by_ids(Li, Column) of
-                         {ok, Rows} ->
-                             Rows;
-                         _ ->
-                             []
-                     end,
-               Li3 = [group_logic:group_transfer(M) || M <- Li2],
-               {length(Li), Li3};
-           true ->
-               {0, []}
+        if
+            CurrentUid == A1; CurrentUid == B1 ->
+                Li = group_member_logic:list_same_group(A1, B1),
+                Column =
+                    <<
+                        "id as gid, type, join_limit, content_limit, owner_uid, creator_uid, "
+                        "member_max, member_count, introduction, avatar, title, updated_at, "
+                        "created_at"
+                    >>,
+                Li2 =
+                    case group_member_logic:list_same_group_detail(Li, Column) of
+                        {ok, Rows} ->
+                            Rows;
+                        _ ->
+                            []
+                    end,
+                Li3 = [group_logic:group_transfer(M) || M <- Li2],
+                {length(Li), Li3};
+            true ->
+                {0, []}
         end,
     elib_response:success(Req0, #{<<"count">> => Count, <<"list">> => Li4}, "success.").
 
@@ -102,8 +106,7 @@ join(Req0, State) ->
     JoinMode2 =
         case JoinMode of
             <<>> ->
-                UserTitle = user_ds:title(CurrentUid),
-                <<"invite_", (ec_cnv:to_binary(CurrentUid))/binary, "_", UserTitle/binary>>;
+                group_member_logic:build_invite_join_mode(CurrentUid);
             _ ->
                 JoinMode
         end,
@@ -117,7 +120,7 @@ join(Req0, State) ->
         _ when MemberUids == [] ->
             elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
         _ ->
-            case group_ds:find_by_id(Gid2, <<"member_max,member_count">>) of
+            case group_member_logic:get_group_capacity(Gid2) of
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"群组不存在"/utf8>>);
                 G ->
@@ -125,47 +128,66 @@ join(Req0, State) ->
                     Count = maps:get(<<"member_count">>, G, 0),
                     Len = length(MemberUids),
                     Diff = Max - Count,
-                    if Diff == 0 ->
-                           elib_response:error(Req0, <<"群成员已满。"/utf8>>);
-                       Len > Diff ->
-                           elib_response:error(Req0,
-                                                elib_cnv:implode(<<>>,
-                                                                  [<<"还可以加入"/utf8>>,
-                                                                   ec_cnv:to_binary(Diff),
-                                                                   <<"名群成员"/utf8>>]));
-                       true ->
-                           MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
-                           MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
-                           % ?DEBUG_LOG([MemberListRes]),
-                           case MemberListRes of
-                               {ok, []} ->
-                                   elib_pg:with_tx(fun(Conn) ->
-                                                       [group_member_logic:join_group(Conn,
-                                                                                      JoinMode2,
-                                                                                      Uid2,
-                                                                                      Gid2,
-                                                                                      #{})
-                                                        || Uid2 <- MemberUids2]
-                                                    end),
-                                   {ok, MemberListRes2} =
-                                       group_member_logic:list_member(Gid2, MemberUids2),
-                                   Sum = group_ds:get_user_id_sum(Gid2),
-                                   elib_response:success(Req0,
-                                                            #{<<"gid">> => Gid,
-                                                            <<"user_id_sum">> => Sum,
-                                                            <<"member_list">> =>
-                                                                group_member_transfer:member_list(MemberListRes2)},
-                                                          "success.");
-                               {ok, MemberList} ->
-                                   % 已经是成员，直接使用查询结果
-                                   Sum = group_ds:get_user_id_sum(Gid2),
-                                   elib_response:success(Req0,
-                                                          #{<<"gid">> => Gid,
-                                                            <<"user_id_sum">> => Sum,
-                                                            <<"member_list">> =>
-                                                                group_member_transfer:member_list(MemberList)},
-                                                          "success.")
-                           end
+                    if
+                        Diff == 0 ->
+                            elib_response:error(Req0, <<"群成员已满。"/utf8>>);
+                        Len > Diff ->
+                            elib_response:error(
+                                Req0,
+                                elib_cnv:implode(
+                                    <<>>,
+                                    [
+                                        <<"还可以加入"/utf8>>,
+                                        ec_cnv:to_binary(Diff),
+                                        <<"名群成员"/utf8>>
+                                    ]
+                                )
+                            );
+                        true ->
+                            MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
+                            MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
+                            % ?DEBUG_LOG([MemberListRes]),
+                            case MemberListRes of
+                                {ok, []} ->
+                                    elib_pg:with_tx(fun(Conn) ->
+                                        [
+                                            group_member_logic:join_group(
+                                                Conn,
+                                                JoinMode2,
+                                                Uid2,
+                                                Gid2,
+                                                #{}
+                                            )
+                                         || Uid2 <- MemberUids2
+                                        ]
+                                    end),
+                                    {ok, MemberListRes2} =
+                                        group_member_logic:list_member(Gid2, MemberUids2),
+                                    Sum = group_member_logic:get_user_id_sum(Gid2),
+                                    elib_response:success(
+                                        Req0,
+                                        #{
+                                            <<"gid">> => Gid,
+                                            <<"user_id_sum">> => Sum,
+                                            <<"member_list">> =>
+                                                group_member_transfer:member_list(MemberListRes2)
+                                        },
+                                        "success."
+                                    );
+                                {ok, MemberList} ->
+                                    % 已经是成员，直接使用查询结果
+                                    Sum = group_member_logic:get_user_id_sum(Gid2),
+                                    elib_response:success(
+                                        Req0,
+                                        #{
+                                            <<"gid">> => Gid,
+                                            <<"user_id_sum">> => Sum,
+                                            <<"member_list">> =>
+                                                group_member_transfer:member_list(MemberList)
+                                        },
+                                        "success."
+                                    )
+                            end
                     end
             end
     end.
@@ -190,9 +212,12 @@ leave(Req0, State) ->
         _ when Gid2 == 0 ->
             elib_response:error(Req0, <<"group id 格式有误"/utf8>>);
         _ ->
-            [group_member_logic:leave(
-                 elib_cnv:safe_to_integer(Uid), Gid2, CurrentUid)
-             || Uid <- MemberUids],
+            [
+                group_member_logic:leave(
+                    elib_cnv:safe_to_integer(Uid), Gid2, CurrentUid
+                )
+             || Uid <- MemberUids
+            ],
             elib_response:success(Req0, #{<<"gid">> => Gid}, "success.")
     end.
 
@@ -236,7 +261,7 @@ page(Req0, State) ->
     Qs1 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs1, undefined),
     Gid2 = elib_cnv:safe_to_integer(Gid),
-    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
+    GM = group_member_logic:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
     GMSize = maps:size(GM),
     case Gid2 of
         0 ->
@@ -246,18 +271,22 @@ page(Req0, State) ->
         _ ->
             {Page, Size} = elib_param:page(Req0),
             Payload =
-                case group_member_ds:page_with_user_info(Gid2, Page, Size) of
+                case group_member_logic:page_with_user_info(Gid2, Page, Size) of
                     {ok, #{total := Total, list := Rows}} ->
                         Rows2 = group_member_transfer:member_list(Rows),
-                        #{total => Total,
-                          page => Page,
-                          size => Size,
-                          list => Rows2};
+                        #{
+                            total => Total,
+                            page => Page,
+                            size => Size,
+                            list => Rows2
+                        };
                     _ ->
-                        #{total => 0,
-                          page => Page,
-                          size => Size,
-                          list => []}
+                        #{
+                            total => 0,
+                            page => Page,
+                            size => Size,
+                            list => []
+                        }
                 end,
             elib_response:success(Req0, page_transfer(Payload))
     end.
@@ -292,7 +321,9 @@ mute(Req0, State) ->
         _ ->
             case group_member_logic:mute(CurrentUid, Gid2, UserId2, Duration) of
                 ok ->
-                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                    elib_response:success(
+                        Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
             end
@@ -326,7 +357,9 @@ unmute(Req0, State) ->
         _ ->
             case group_member_logic:unmute(CurrentUid, Gid2, UserId2) of
                 ok ->
-                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                    elib_response:success(
+                        Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
             end
@@ -362,7 +395,9 @@ role(Req0, State) ->
         _ ->
             case group_member_logic:update_role(CurrentUid, Gid2, UserId2, Role) of
                 ok ->
-                    elib_response:success(Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success.");
+                    elib_response:success(
+                        Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
             end

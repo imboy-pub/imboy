@@ -34,7 +34,7 @@ handle_action(false, Req, _State) -> Req.
 -spec list(cowboy_req:req(), map()) -> cowboy_req:req().
 list(Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
-    case live_room_ds:page_active(Page, Size) of
+    case live_room_logic:page_active(Page, Size) of
         {ok, Data} ->
             Rows = maps:get(<<"list">>, Data, []),
             Rows2 = [encode_room(R) || R <- Rows],
@@ -48,7 +48,7 @@ list(Req0, _State) ->
 my_list(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-    case live_room_ds:page_by_uid(CurrentUid, Page, Size) of
+    case live_room_logic:page_by_uid(CurrentUid, Page, Size) of
         {ok, Data} ->
             Rows = maps:get(<<"list">>, Data, []),
             Rows2 = [encode_room(R) || R <- Rows],
@@ -89,7 +89,7 @@ create(Req0, State) ->
                         created_at => Now,
                         updated_at => Now
                     },
-                    case live_room_ds:create(Data) of
+                    case live_room_logic:create(Data) of
                         {ok, RoomId, _Row} ->
                             Room = Data#{
                                 <<"id">> => RoomId,
@@ -117,10 +117,10 @@ start(Req0, State) ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
             RoomId = ec_cnv:to_integer(RoomIdEnc),
-            case live_room_ds:find_by_id(RoomId) of
+            case live_room_logic:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = _Room when OwnerId =:= CurrentUid ->
                     Now = elib_dt:now(),
-                    live_room_ds:update(RoomId, #{status => 1, updated_at => Now}),
+                    live_room_logic:update(RoomId, #{status => 1, updated_at => Now}),
                     elib_response:success(Req0, #{}, "success.");
                 #{<<"user_id">> := _OtherUid} ->
                     elib_response:error(Req0, <<"无权操作此直播间"/utf8>>);
@@ -143,10 +143,10 @@ stop(Req0, State) ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
             RoomId = ec_cnv:to_integer(RoomIdEnc),
-            case live_room_ds:find_by_id(RoomId) of
+            case live_room_logic:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = _Room when OwnerId =:= CurrentUid ->
                     Now = elib_dt:now(),
-                    live_room_ds:update(RoomId, #{status => 2, updated_at => Now}),
+                    live_room_logic:update(RoomId, #{status => 2, updated_at => Now}),
                     elib_response:success(Req0, #{}, "success.");
                 #{<<"user_id">> := _OtherUid} ->
                     elib_response:error(Req0, <<"无权操作此直播间"/utf8>>);
@@ -169,14 +169,15 @@ detail(Req0, State) ->
             elib_response:error(Req0, <<"直播间ID不能为空"/utf8>>);
         _ ->
             RoomId = ec_cnv:to_integer(RoomIdEnc),
-            case live_room_ds:find_by_id(RoomId) of
+            case live_room_logic:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = Room when map_size(Room) > 0 ->
                     Room2 = encode_room(Room),
                     %% 仅房间所有者可看到 stream_key
-                    Room3 = case OwnerId =:= CurrentUid of
-                        true -> Room2;
-                        false -> maps:remove(<<"stream_key">>, Room2)
-                    end,
+                    Room3 =
+                        case OwnerId =:= CurrentUid of
+                            true -> Room2;
+                            false -> maps:remove(<<"stream_key">>, Room2)
+                        end,
                     elib_response:success(Req0, Room3, "success.");
                 _ ->
                     elib_response:error(Req0, <<"直播间不存在"/utf8>>)
@@ -197,4 +198,3 @@ generate_stream_key() ->
 -spec encode_room(map()) -> map().
 encode_room(Room) ->
     Room.
-

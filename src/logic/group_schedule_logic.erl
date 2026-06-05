@@ -25,6 +25,9 @@
 %% 提醒管理
 -export([process_reminders/0]).
 
+%% 查询辅助
+-export([get_schedule_id_by_pk/1]).
+
 %% 数据转换
 
 -define(MAX_PARTICIPANTS, 100).
@@ -35,23 +38,59 @@
 %% ===================================================================
 
 %% @doc 创建群组日程
--spec create_schedule(integer(), integer(), binary(), binary(), binary(),
-                     binary(), binary(), integer(), [integer()]) ->
+-spec create_schedule(
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()]
+) ->
     {ok, map()} | {error, term()}.
-create_schedule(GroupId, CreatorId, Title, Description, Location,
-               StartAt, EndAt, RemindBefore, ParticipantIds) ->
+create_schedule(
+    GroupId,
+    CreatorId,
+    Title,
+    Description,
+    Location,
+    StartAt,
+    EndAt,
+    RemindBefore,
+    ParticipantIds
+) ->
     % 验证参与人数量
     case length(ParticipantIds) > ?MAX_PARTICIPANTS of
         true ->
             {error, too_many_participants};
         false ->
-            do_create_schedule(GroupId, CreatorId, Title, Description, Location,
-                             StartAt, EndAt, RemindBefore, ParticipantIds)
+            do_create_schedule(
+                GroupId,
+                CreatorId,
+                Title,
+                Description,
+                Location,
+                StartAt,
+                EndAt,
+                RemindBefore,
+                ParticipantIds
+            )
     end.
 
 %% @doc 内部创建日程实现
-do_create_schedule(GroupId, CreatorId, Title, Description, Location,
-                  StartAt, EndAt, RemindBefore, ParticipantIds) ->
+do_create_schedule(
+    GroupId,
+    CreatorId,
+    Title,
+    Description,
+    Location,
+    StartAt,
+    EndAt,
+    RemindBefore,
+    ParticipantIds
+) ->
     % 生成 schedule_id
     ScheduleId = generate_schedule_id(),
     Now = elib_dt:now(),
@@ -79,7 +118,8 @@ do_create_schedule(GroupId, CreatorId, Title, Description, Location,
             CreatorParticipantData = #{
                 schedule_id => ScheduleId,
                 user_id => CreatorId,
-                status => 1,  % 创建者默认参加
+                % 创建者默认参加
+                status => 1,
                 created_at => Now,
                 updated_at => Now
             },
@@ -101,10 +141,24 @@ do_create_schedule(GroupId, CreatorId, Title, Description, Location,
     end.
 
 %% @doc 更新群组日程
--spec update_schedule(binary(), integer(), binary(), binary(), binary(),
-                     binary(), binary()) -> ok | {error, term()}.
-update_schedule(ScheduleId, CreatorId, Title, Description, Location,
-               StartAt, EndAt) ->
+-spec update_schedule(
+    binary(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary()
+) -> ok | {error, term()}.
+update_schedule(
+    ScheduleId,
+    CreatorId,
+    Title,
+    Description,
+    Location,
+    StartAt,
+    EndAt
+) ->
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, not_found};
@@ -120,7 +174,9 @@ update_schedule(ScheduleId, CreatorId, Title, Description, Location,
                         4 ->
                             {error, already_cancelled};
                         _ ->
-                            do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt)
+                            do_update_schedule(
+                                ScheduleId, Title, Description, Location, StartAt, EndAt
+                            )
                     end
             end
     end.
@@ -148,7 +204,11 @@ cancel_schedule(ScheduleId, CreatorId) ->
         {error, not_found} ->
             {error, not_found};
         Schedule ->
-            #{<<"creator_id">> := ScheduleCreatorId, <<"status">> := Status, <<"id">> := ScheduleDbId} = Schedule,
+            #{
+                <<"creator_id">> := ScheduleCreatorId,
+                <<"status">> := Status,
+                <<"id">> := ScheduleDbId
+            } = Schedule,
             % 验证权限
             case ScheduleCreatorId =:= CreatorId of
                 false ->
@@ -194,7 +254,9 @@ list_group_schedules(GroupId, Page, Size) ->
     list_group_schedules(GroupId, undefined, undefined, Page, Size).
 
 %% @doc 查询群组日程列表（支持时间窗口）
--spec list_group_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+-spec list_group_schedules(
+    integer(), binary() | undefined, binary() | undefined, integer(), integer()
+) ->
     {ok, map()} | {error, term()}.
 list_group_schedules(GroupId, StartAt, EndAt, Page, Size) ->
     case group_schedule_ds:list_by_group_id(GroupId, StartAt, EndAt, Page, Size) of
@@ -217,7 +279,9 @@ list_my_schedules(UserId, Page, Size) ->
     list_my_schedules(UserId, undefined, undefined, Page, Size).
 
 %% @doc 查询我的日程列表（支持时间窗口）
--spec list_my_schedules(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+-spec list_my_schedules(
+    integer(), binary() | undefined, binary() | undefined, integer(), integer()
+) ->
     {ok, list(map())} | {error, term()}.
 list_my_schedules(UserId, StartAt, EndAt, Page, Size) ->
     case group_schedule_ds:list_by_user_id(UserId, StartAt, EndAt, Page, Size) of
@@ -238,10 +302,13 @@ confirm_participation(ScheduleId, UserId, Accept) ->
         {error, not_found} ->
             {error, schedule_not_found};
         _Schedule ->
-            Status = case Accept of
-                true -> 1;  % 参加
-                false -> 2  % 不参加
-            end,
+            Status =
+                case Accept of
+                    % 参加
+                    true -> 1;
+                    % 不参加
+                    false -> 2
+                end,
             case group_schedule_ds:update_participant_status(ScheduleId, UserId, Status) of
                 {ok, 1} -> ok;
                 {ok, 0} -> {error, participant_not_found};
@@ -284,9 +351,11 @@ process_reminders() ->
 process_remind_list([], Acc) ->
     Acc;
 process_remind_list([Remind | Rest], Acc) ->
-    #{<<"id">> := RemindId,
-      <<"schedule_id">> := ScheduleId,
-      <<"user_id">> := UserId} = Remind,
+    #{
+        <<"id">> := RemindId,
+        <<"schedule_id">> := ScheduleId,
+        <<"user_id">> := UserId
+    } = Remind,
 
     % 发送提醒通知
     send_remind_notification(ScheduleId, UserId),
@@ -348,6 +417,12 @@ send_remind_notification(ScheduleId, UserId) ->
             msg_s2c_ds:send(0, [UserId], <<"schedule_remind">>, <<>>, null, Payload, save)
     end.
 
+%% @doc 根据数据库主键 ID 查询日程的对外 schedule_id 字段
+%% 用于将数字主键（客户端可能传入）转换为标准 schedule_id（sched_xxx 格式）
+-spec get_schedule_id_by_pk(integer()) -> #{binary() => binary()} | undefined | {error, term()}.
+get_schedule_id_by_pk(Id) ->
+    group_schedule_ds:find_by_id(Id, <<"schedule_id">>).
+
 %% ===================================================================
 %% 内部辅助函数
 %% ===================================================================
@@ -359,7 +434,8 @@ insert_participants(ScheduleId, [UserId | Rest], Now) ->
     ParticipantData = #{
         schedule_id => ScheduleId,
         user_id => UserId,
-        status => 0,  % 待确认
+        % 待确认
+        status => 0,
         created_at => Now,
         updated_at => Now
     },

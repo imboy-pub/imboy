@@ -37,11 +37,19 @@
 %% @private
 -export([delete_object_tag/4]).
 
+%% @doc 检查两个用户是否为好友关系（friend scene 标签操作前置校验）
+-export([check_friend/2]).
+
+%% @doc 按标签分页查询好友列表
+-export([friend_page_by_tag/5]).
+
+%% @doc 按标签分页查询收藏列表（含标签名查找）
+-export([collect_page/5]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
-
 
 %% ===================================================================
 %% API
@@ -54,29 +62,33 @@ remove(Uid, Scene, ObjectId, TagId) ->
     % 使用 elib_pg:one 替代 pluck
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
     Sql = <<"SELECT name FROM ", Tb/binary, " WHERE id = $1">>,
-    TagName = case elib_pg:one(Sql, [TagId]) of
-        {ok, #{<<"name">> := Name}} -> Name;
-        _ -> <<>>
-    end,
+    TagName =
+        case elib_pg:one(Sql, [TagId]) of
+            {ok, #{<<"name">> := Name}} -> Name;
+            _ -> <<>>
+        end,
     _ = elib_pg:with_tx(fun(Conn) ->
-              % 移除 public.user_tag_relation
-              user_tag_relation_ds:remove_user_tag_relation(Conn,
-                                                              Scene,
-                                                              Uid2,
-                                                              TagId,
-                                                              ObjectId),
-              user_tag_relation_ds:replace_object_tag(Conn,
-                                                        Scene,
-                                                        Uid2,
-                                                        ObjectId,
-                                                        binary_to_list(TagName),
-                                                        []),
-              ok
-      end),
+        % 移除 public.user_tag_relation
+        user_tag_relation_ds:remove_user_tag_relation(
+            Conn,
+            Scene,
+            Uid2,
+            TagId,
+            ObjectId
+        ),
+        user_tag_relation_ds:replace_object_tag(
+            Conn,
+            Scene,
+            Uid2,
+            ObjectId,
+            binary_to_list(TagName),
+            []
+        ),
+        ok
+    end),
     % 清理缓存
     user_tag_relation_ds:flush_subtitle(TagId),
     ok.
-
 
 %% 用户标签_联系人标签设置标签
 -spec set(integer(), integer(), list(), integer(), binary()) -> ok | binary().
@@ -88,78 +100,110 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 
     % 使用安全的参数化查询，避免SQL注入
     Tb2 = elib_pg_sql:public_tablename(<<"user_tag">>),
-    CheckSql = <<"SELECT count(*) FROM ", Tb2/binary, " WHERE scene = $1 AND creator_user_id = $2 AND name = $3 AND id != $4">>,
-    Check = case elib_pg:query(CheckSql, [Scene, Uid, TagName, TagId]) of
-        {ok, [#{<<"count">> := Count}]} -> Count;
-        _ -> 0
-    end,
+    CheckSql =
+        <<"SELECT count(*) FROM ", Tb2/binary,
+            " WHERE scene = $1 AND creator_user_id = $2 AND name = $3 AND id != $4">>,
+    Check =
+        case elib_pg:query(CheckSql, [Scene, Uid, TagName, TagId]) of
+            {ok, [#{<<"count">> := Count}]} -> Count;
+            _ -> 0
+        end,
     if
         Check > 0 ->
             <<TagName/binary, " 已存在"/utf8>>;
         true ->
-            ObjectIds2 = [ integer_to_binary(ec_cnv:to_integer(I))
-                           || I <- ObjectIds, ec_cnv:to_integer(I) > 0 ],
+            ObjectIds2 = [
+                integer_to_binary(ec_cnv:to_integer(I))
+             || I <- ObjectIds, ec_cnv:to_integer(I) > 0
+            ],
             Tb = elib_pg_sql:public_tablename(<<"user_friend">>),
             % 使用安全的参数化查询，避免SQL注入
             OldSql = <<"SELECT to_user_id::text FROM ", Tb/binary, " WHERE tag LIKE $1">>,
             {ok, OldObjectIds} = elib_pg:query(OldSql, [<<TagName/binary, ",%">>]),
-            OldObjectIds2 = [ maps:get(<<"to_user_id">>, Row) || Row <- OldObjectIds ],
+            OldObjectIds2 = [maps:get(<<"to_user_id">>, Row) || Row <- OldObjectIds],
 
             DelObjectId = OldObjectIds2 -- ObjectIds2,
 
             _ = elib_pg:with_tx(fun(Conn) ->
-                  %
-                  [ user_tag_relation_ds:remove_user_tag_relation(Conn,
-                                                                    Scene,
-                                                                    Uid,
-                                                                    TagId,
-                                                                    I) || I <- DelObjectId ],
-                  % elib_log:info(io_lib:format("user_tag_relation_ds:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid, CreatedAt]])),
-                  % 保存 public.user_tag
-                  _ = user_tag_relation_ds:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                %
+                [
+                    user_tag_relation_ds:remove_user_tag_relation(
+                        Conn,
+                        Scene,
+                        Uid,
+                        TagId,
+                        I
+                    )
+                 || I <- DelObjectId
+                ],
+                % elib_log:info(io_lib:format("user_tag_relation_ds:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid, CreatedAt]])),
+                % 保存 public.user_tag
+                _ = user_tag_relation_ds:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 
-                  % 插入 public.user_tag_relation
-                  [ user_tag_relation_ds:save_user_tag_relation(Conn,
-                                                                  Scene,
-                                                                  Uid,
-                                                                  TagId,
-                                                                  I,
-                                                                  CreatedAt)
-                    || I <- ObjectIds2, I > 0 ],
+                % 插入 public.user_tag_relation
+                [
+                    user_tag_relation_ds:save_user_tag_relation(
+                        Conn,
+                        Scene,
+                        Uid,
+                        TagId,
+                        I,
+                        CreatedAt
+                    )
+                 || I <- ObjectIds2, I > 0
+                ],
 
-                  [ user_tag_ds:change_scene_tag(Conn,
-                                                    Scene,
-                                                    Uid,
-                                                    I,
-                                                    [{TagId, TagName}]) || I <- ObjectIds2 ],
-                  % Conn, Scene, Uid, ObjectId, FromName, ToName
-                  %
-                  [ user_tag_relation_ds:replace_object_tag(Conn,
-                                                              Scene,
-                                                              Uid,
-                                                              I,
-                                                              binary_to_list(TagName),
-                                                              []) || I <- DelObjectId ],
-                  ok
-          end),
+                [
+                    user_tag_ds:change_scene_tag(
+                        Conn,
+                        Scene,
+                        Uid,
+                        I,
+                        [{TagId, TagName}]
+                    )
+                 || I <- ObjectIds2
+                ],
+                % Conn, Scene, Uid, ObjectId, FromName, ToName
+                %
+                [
+                    user_tag_relation_ds:replace_object_tag(
+                        Conn,
+                        Scene,
+                        Uid,
+                        I,
+                        binary_to_list(TagName),
+                        []
+                    )
+                 || I <- DelObjectId
+                ],
+                ok
+            end),
             % 清理缓存
             user_tag_relation_ds:flush_subtitle(TagId),
             ok
     end.
 
-
 %%% 添加标签
 -spec add(integer(), integer(), binary() | integer(), list()) -> ok | binary().
 add(Uid, Scene, <<>>, [Tag]) ->
-    ok = elib_log:info(io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [Uid, Scene, Tag])),
+    ok = elib_log:info(
+        io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [
+            Uid, Scene, Tag
+        ])
+    ),
     % 使用安全的参数化查询，避免SQL注入
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
-    Count = case elib_pg:one(<<"SELECT id FROM ", Tb/binary, " WHERE scene = $1 AND name = $2">>, [Scene, Tag]) of
-        {ok, #{<<"id">> := _}} ->
-            1;
-        _ ->
-            0
-    end,
+    Count =
+        case
+            elib_pg:one(<<"SELECT id FROM ", Tb/binary, " WHERE scene = $1 AND name = $2">>, [
+                Scene, Tag
+            ])
+        of
+            {ok, #{<<"id">> := _}} ->
+                1;
+            _ ->
+                0
+        end,
     case Count of
         0 ->
             _ = elib_pg:insert(Tb, #{
@@ -173,7 +217,6 @@ add(Uid, Scene, <<>>, [Tag]) ->
         _ ->
             <<"标签名已存在."/utf8>>
     end;
-
 add(Uid, 1, ObjectId, Tag) ->
     do_add(1, Uid, ObjectId, Tag),
     ok;
@@ -197,10 +240,65 @@ list(Uid, ObjectId) ->
         Column
     ).
 
+%% @doc 检查两个用户是否为好友关系
+%% 用于 friend scene 下标签添加的前置验证
+-spec check_friend(integer(), integer()) -> boolean().
+check_friend(FromUid, ToUid) ->
+    friend_ds:is_friend(FromUid, ToUid).
+
+%% @doc 按标签分页查询好友列表
+%% 直接返回分页 Payload map
+-spec friend_page_by_tag(integer(), integer(), integer(), integer(), binary()) -> map().
+friend_page_by_tag(Uid, Page, Size, TagId, Kwd) ->
+    friend_ds:page_by_tag(Uid, Page, Size, TagId, Kwd).
+
+%% @doc 按标签分页查询收藏列表
+%% 先根据 TagId 和 Uid 查出 collect scene 下的标签名，再按标签名 LIKE 分页查询收藏
+-spec collect_page(integer(), integer(), integer(), integer(), binary()) -> map().
+collect_page(Uid, Page, Size, TagId, Kwd) ->
+    TagName = user_tag_ds:find_name_by_id(TagId, Uid, 1),
+    case TagName of
+        <<>> ->
+            #{total => 0, page => Page, size => Size, list => []};
+        _ ->
+            collect_page_by_tagname(Uid, Page, Size, TagName, Kwd)
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
+
+-spec collect_page_by_tagname(integer(), integer(), integer(), binary(), binary()) -> map().
+collect_page_by_tagname(Uid, Page, Size, TagName, Kwd) ->
+    TagPattern = <<"%", TagName/binary, ",%">>,
+    BaseWhere = #{
+        user_id => Uid,
+        status => 1,
+        tag => {op, <<"LIKE">>, TagPattern}
+    },
+    WhereMap =
+        case byte_size(Kwd) > 0 of
+            true ->
+                Like = <<"%", Kwd/binary, "%">>,
+                BaseWhere#{
+                    <<"__or">> => [
+                        #{source => {op, <<"LIKE">>, Like}},
+                        #{remark => {op, <<"LIKE">>, Like}},
+                        #{info => {op, <<"LIKE">>, Like}}
+                    ]
+                };
+            false ->
+                BaseWhere
+        end,
+    Info = elib_hasher:decoded_field(<<"info">>),
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+    case user_collect_ds:page(Column, WhereMap, <<"id desc">>, Page, Size) of
+        {ok, Payload} ->
+            List = maps:get(list, Payload, []),
+            Payload#{list => elib_response:json_decode_list_field(List, <<"info">>)};
+        {error, _Reason} ->
+            #{total => 0, page => Page, size => Size, list => []}
+    end.
 
 -spec normalize_friend_tags(integer(), list()) -> list().
 normalize_friend_tags(Uid, TagList) when is_list(TagList) ->
@@ -231,31 +329,33 @@ maybe_tag_id(Tag) ->
             error
     end.
 
-
 -spec do_add(integer(), integer(), any(), any()) -> ok.
 do_add(Scene, Uid, ObjectId, Tag) when is_integer(ObjectId) ->
     do_add(Scene, Uid, integer_to_binary(ObjectId), Tag);
-
 do_add(Scene, Uid, ObjectId, []) ->
     _ = elib_pg:with_tx(fun(Conn) ->
         {Table, WhereSql, WhereParams} =
             case Scene of
                 1 ->
-                    {elib_pg_sql:public_tablename(<<"user_collect">>),
-                    <<"user_id = $1 AND kind_id = $2">>,
-                   [Uid, ObjectId]};
+                    {
+                        elib_pg_sql:public_tablename(<<"user_collect">>),
+                        <<"user_id = $1 AND kind_id = $2">>,
+                        [Uid, ObjectId]
+                    };
                 2 ->
-                    {elib_pg_sql:public_tablename(<<"user_friend">>),
-                    <<"from_user_id = $1 AND to_user_id = $2">>,
-                    [Uid, ObjectId]}
+                    {
+                        elib_pg_sql:public_tablename(<<"user_friend">>),
+                        <<"from_user_id = $1 AND to_user_id = $2">>,
+                        [Uid, ObjectId]
+                    }
             end,
-            Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", WhereSql/binary>>,
-            % elib_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
-            {ok, _} = elib_pg:execute(Sql, WhereParams),
-            % 删除 public.user_tag_relation
-            delete_object_tag(Conn, Scene, Uid, ObjectId),
-            ok
-        end),
+        Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", WhereSql/binary>>,
+        % elib_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
+        {ok, _} = elib_pg:execute(Sql, WhereParams),
+        % 删除 public.user_tag_relation
+        delete_object_tag(Conn, Scene, Uid, ObjectId),
+        ok
+    end),
     ok;
 do_add(Scene, Uid, ObjectId, Tag) ->
     % check public.user_tag
@@ -274,37 +374,49 @@ do_add(Scene, Uid, ObjectId, Tag) ->
         delete_object_tag(Conn, Scene, Uid, ObjectId),
 
         % 插入 public.user_tag
-        TagIdNewLi = [ user_tag_relation_ds:save_tag(Conn,
-                                                     Uid,
-                                                     Scene,
-                                                     CreatedAt,
-                                                     Name) || Name <- Tag ],
+        TagIdNewLi = [
+            user_tag_relation_ds:save_tag(
+                Conn,
+                Uid,
+                Scene,
+                CreatedAt,
+                Name
+            )
+         || Name <- Tag
+        ],
 
         % elib_log:info(io_lib:format("user_tag_relation_logic:add/4 TagIdNewLi:~p;~n", [TagIdNewLi])),
 
         % 插入 public.user_tag_relation
-        [ user_tag_relation_ds:save_user_tag_relation(Conn,
-                                                      Scene,
-                                                      Uid,
-                                                      TagId,
-                                                      ObjectId,
-                                                      CreatedAt)
-        || {TagId, _Name} <- TagIdNewLi ],
+        [
+            user_tag_relation_ds:save_user_tag_relation(
+                Conn,
+                Scene,
+                Uid,
+                TagId,
+                ObjectId,
+                CreatedAt
+            )
+         || {TagId, _Name} <- TagIdNewLi
+        ],
         % change_scene_tag(Conn, Scene, Uid, ObjectId, Tag),
-        [ user_tag_ds:change_scene_tag(Conn,
-                                        Scene,
-                                        Uid,
-                                        ObjectId,
-                                        [{TagId, N}])
-        || {TagId, N} <- TagIdNewLi ],
+        [
+            user_tag_ds:change_scene_tag(
+                Conn,
+                Scene,
+                Uid,
+                ObjectId,
+                [{TagId, N}]
+            )
+         || {TagId, N} <- TagIdNewLi
+        ],
 
         % 清理缓存
-        [ user_tag_relation_ds:flush_subtitle(TagId) || {TagId, _} <- TagIdNewLi ],
+        [user_tag_relation_ds:flush_subtitle(TagId) || {TagId, _} <- TagIdNewLi],
 
         ok
-        end),
+    end),
     ok.
-
 
 % 删除 public.user_tag_relation
 -spec delete_object_tag(any(), integer(), integer(), binary()) -> ok.
@@ -321,12 +433,11 @@ delete_object_tag(Conn, Scene, Uid, ObjectId) ->
     DelSql = <<"DELETE FROM ", DelTb/binary, " WHERE ", DelWhereSql/binary>>,
     % elib_log:info(io_lib:format("user_tag_relation_logic:delete_object_tag/4 DelSql ~p; ~n", [DelSql])),
     {ok, _} = elib_pg:execute(Conn, DelSql, DelWhereParams),
-     % elib_log:error(io_lib:format("user_tag_relation_ds:delete_object_tag/4 Res:~p ~n", [Res])),
+    % elib_log:error(io_lib:format("user_tag_relation_ds:delete_object_tag/4 Res:~p ~n", [Res])),
 
     % 清理缓存
-    [ user_tag_relation_ds:flush_subtitle(maps:get(<<"tag_id">>, Row)) || Row <- DelItems ],
+    [user_tag_relation_ds:flush_subtitle(maps:get(<<"tag_id">>, Row)) || Row <- DelItems],
     ok.
-
 
 %% ===================================================================
 %% EUnit tests.

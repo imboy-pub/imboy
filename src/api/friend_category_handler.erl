@@ -40,7 +40,7 @@ add(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Name = maps:get(<<"name">>, PostVals, <<"Unnamed">>),
-    case friend_category_ds:add(CurrentUid, Name) of
+    case friend_category_logic:add(CurrentUid, Name) of
         {error, ErrorMsg} ->
             elib_response:error(Req0, ErrorMsg);
         {ok, LastInsertId} ->
@@ -81,7 +81,7 @@ rename(Req0, State) ->
     % ?DEBUG_LOG([CurrentUid, PostVals]),
     Id = maps:get(<<"id">>, PostVals, undefined),
     Name = maps:get(<<"name">>, PostVals, undefined),
-    case friend_category_ds:rename(CurrentUid, Id, Name) of
+    case friend_category_logic:rename(CurrentUid, Id, Name) of
         {error, ErrorMsg} ->
             elib_response:error(Req0, ErrorMsg);
         {ok, 1} ->

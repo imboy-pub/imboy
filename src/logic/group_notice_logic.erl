@@ -12,6 +12,10 @@
 -export([delete/2]).
 -export([mark_as_read/2]).
 -export([publish_notice/3]).
+-export([insert/1]).
+-export([update/2]).
+-export([page/4]).
+-export([latest_published/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -200,6 +204,64 @@ publish_notice(Uid, Gid, NoticeId) ->
     _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
     ok.
 
+%% @doc 插入新群公告，委托 DS 层持久化
+%% @param Data 公告数据 Map
+%% @return {ok, NoticeId} | {error, Reason}
+-spec insert(map()) -> {ok, integer()} | {error, term()}.
+insert(Data) ->
+    group_notice_ds:insert(Data).
+
+%% @doc 更新群公告字段，委托 DS 层持久化
+%% @param NoticeId 公告ID
+%% @param Data 待更新字段 Map
+%% @return {ok, integer()} | {error, term()}
+-spec update(integer(), map()) -> {ok, integer()} | {error, term()}.
+update(NoticeId, Data) ->
+    group_notice_ds:update(NoticeId, Data).
+
+%% @doc 分页查询群公告列表，同时校验当前用户是否为群成员
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @param Column 查询字段
+%% @param Order 排序表达式
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, Payload} | {error, Reason}
+-spec page(integer(), integer(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+page(CurrentUid, Gid, Page, Size) ->
+    GM = group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>),
+    case maps:size(GM) of
+        0 ->
+            {error, ?ERR_NOT_GROUP_MEMBER};
+        _ ->
+            Column =
+                <<
+                    "id as notice_id, user_id, edit_user_id, body, status, expired_at, "
+                    "updated_at, created_at"
+                >>,
+            group_notice_ds:page(Gid, Column, <<"expired_at desc">>, Page, Size)
+    end.
+
+%% @doc 查询群最新已发布公告，同时校验当前用户是否为群成员
+%% @param CurrentUid 当前用户ID
+%% @param Gid 群组ID
+%% @return {ok, [map()]} | {error, Reason}
+-spec latest_published(integer(), integer()) -> {ok, [map()]} | {error, term()}.
+latest_published(CurrentUid, Gid) ->
+    GM = group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>),
+    case maps:size(GM) of
+        0 ->
+            {error, ?ERR_NOT_GROUP_MEMBER};
+        _ ->
+            Column =
+                <<
+                    "id as notice_id, user_id, edit_user_id, body, status, expired_at, "
+                    "updated_at, created_at"
+                >>,
+            group_notice_ds:latest_published(Gid, Column)
+    end.
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -214,8 +276,10 @@ check_admin_permission(CurrentUid, Gid) ->
         {ok, MemberInfo} ->
             Role = maps:get(<<"role">>, MemberInfo, null),
             case Role of
-                ?GROUP_ROLE_OWNER_INT -> ok;      % 群主
-                ?GROUP_ROLE_ADMIN_INT -> ok;       % 管理员
+                % 群主
+                ?GROUP_ROLE_OWNER_INT -> ok;
+                % 管理员
+                ?GROUP_ROLE_ADMIN_INT -> ok;
                 _ -> {error, ?ERR_GROUP_PERMISSION_DENIED}
             end;
         {error, _} ->

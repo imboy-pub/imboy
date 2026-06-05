@@ -64,13 +64,15 @@ page(Req0, State) ->
     {Page, Size} = elib_param:page(Req0),
     Where = #{user_id => CurrentUid, status => {op, <<">">>, 0}},
     Column =
-        <<"id as feedback_id, device_id, type, rating, contact_detail, "
-          "body, ",
-          "(select array_agg(replace(item, '\\\/', '/') ) from jsonb_array_elem"
-          "ents_text(coalesce(attach::jsonb, '[]'::jsonb)) as item) as "
-          "attach, ",
-          "reply_count, status, updated_at, created_at, app_vsn">>,
-    {ok, Payload} = feedback_ds:page(Column, Where, <<"id desc">>, Page, Size),
+        <<
+            "id as feedback_id, device_id, type, rating, contact_detail, "
+            "body, ",
+            "(select array_agg(replace(item, '\\\/', '/') ) from jsonb_array_elem"
+            "ents_text(coalesce(attach::jsonb, '[]'::jsonb)) as item) as "
+            "attach, ",
+            "reply_count, status, updated_at, created_at, app_vsn"
+        >>,
+    {ok, Payload} = feedback_logic:page(Column, Where, <<"id desc">>, Page, Size),
     elib_response:success(Req0, Payload).
 
 %% @doc 用户反馈回复分页列表
@@ -92,9 +94,11 @@ page_reply(Req0, _State) ->
             Where = #{feedback_id => FeedbackId},
 
             Column =
-                <<"id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_us"
-                  "er_id, replier_name, body, status, updated_at, created_at">>,
-            {ok, Payload} = feedback_ds:page_reply(Column, Where, <<"id desc">>, Page, Size),
+                <<
+                    "id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_us"
+                    "er_id, replier_name, body, status, updated_at, created_at"
+                >>,
+            {ok, Payload} = feedback_logic:page_reply(Column, Where, <<"id desc">>, Page, Size),
             Payload2 = normalize_reply_payload(Payload),
             elib_response:success(Req0, Payload2)
     end.
@@ -118,10 +122,11 @@ add(Req0, State) ->
     Rating = maps:get(<<"rating">>, PostVals, <<"0">>),
     ContactDetail = maps:get(<<"contact_detail">>, PostVals, <<>>),
     % 支持两种字段名：content 和 description
-    Description = case maps:get(<<"content">>, PostVals, undefined) of
-        undefined -> maps:get(<<"description">>, PostVals, <<>>);
-        Content -> Content
-    end,
+    Description =
+        case maps:get(<<"content">>, PostVals, undefined) of
+            undefined -> maps:get(<<"description">>, PostVals, <<>>);
+            Content -> Content
+        end,
     Dcreenshot = maps:get(<<"screenshot">>, PostVals, []),
     Attach = jsone:encode(Dcreenshot, [native_utf8]),
 
@@ -131,16 +136,18 @@ add(Req0, State) ->
             elib_response:error(Req0, <<"反馈内容不能为空"/utf8>>);
         _ ->
             COSV = maps:get(<<"sys_version">>, PostVals, <<>>),
-            feedback_ds:add(CurrentUid,
-                            Did,
-                            COS,
-                            COSV,
-                            AppVsn,
-                            ec_cnv:to_binary(Type),
-                            ec_cnv:to_binary(Rating),
-                            ec_cnv:to_binary(ContactDetail),
-                            ec_cnv:to_binary(Description),
-                            Attach),
+            feedback_logic:add(
+                CurrentUid,
+                Did,
+                COS,
+                COSV,
+                AppVsn,
+                ec_cnv:to_binary(Type),
+                ec_cnv:to_binary(Rating),
+                ec_cnv:to_binary(ContactDetail),
+                ec_cnv:to_binary(Description),
+                Attach
+            ),
             elib_response:success(Req0)
     end.
 
@@ -159,7 +166,7 @@ remove(Req0, State) ->
             elib_response:error(Req0, <<"反馈ID必须是整数"/utf8>>);
         {ok, FeedbackId} ->
             CurrentUid = auth_ds:current_uid(State),
-            feedback_ds:remove(CurrentUid, FeedbackId),
+            feedback_logic:remove(CurrentUid, FeedbackId),
             elib_response:success(Req0)
     end.
 

@@ -7,26 +7,30 @@
 %%%
 
 %% 创建作业
--export ([create/4]).
+-export([create/4]).
 %% 更新作业
--export ([update/3]).
+-export([update/3]).
 %% 分配作业
--export ([assign/2]).
+-export([assign/2]).
 %% 提交作业
--export ([submit/3]).
+-export([submit/3]).
 %% 批改作业
--export ([review/3]).
+-export([review/3]).
 %% 查询作业详情
--export ([detail/1]).
+-export([detail/1]).
 %% 查询群作业列表
--export ([list/3]).
+-export([list/3]).
 %% 查询群作业列表（带筛选）
--export ([list/5]).
+-export([list/5]).
 %% 查询我的作业
--export ([my_tasks/3]).
--export ([my_tasks/4]).
+-export([my_tasks/3]).
+-export([my_tasks/4]).
 %% 查询待批改作业
--export ([pending_review/3]).
+-export([pending_review/3]).
+%% 按对外 task_uid（binary）验证并返回 task_uid
+-export([task_uid_by_task_id/1]).
+%% 按内部主键查询并返回 task_uid
+-export([task_uid_by_id/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -45,9 +49,14 @@
 %% @param Data 作业数据（description, deadline, attachment等）
 %% @return {ok, TaskId} | {error, Reason}
 -spec create(integer(), integer(), binary(), map()) -> {ok, integer()} | {error, binary()}.
-create(GroupId, CreatorId, Title, Data) when is_integer(GroupId), GroupId > 0,
-                                             is_integer(CreatorId), CreatorId > 0,
-                                             is_binary(Title), byte_size(Title) > 0 ->
+create(GroupId, CreatorId, Title, Data) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(CreatorId),
+    CreatorId > 0,
+    is_binary(Title),
+    byte_size(Title) > 0
+->
     % 生成唯一的作业ID（使用TSID）
     TaskId = GroupId + CreatorId + erlang:unique_integer([positive]),
     TaskData = #{
@@ -76,8 +85,12 @@ create(_GroupId, _CreatorId, _Title, _Data) ->
 %% @param Data 要更新的数据
 %% @return ok | {error, Reason}
 -spec update(integer(), integer(), map()) -> ok | {error, binary()}.
-update(TaskId, CreatorId, Data) when is_integer(TaskId), TaskId > 0,
-                                     is_integer(CreatorId), CreatorId > 0 ->
+update(TaskId, CreatorId, Data) when
+    is_integer(TaskId),
+    TaskId > 0,
+    is_integer(CreatorId),
+    CreatorId > 0
+->
     case group_task_ds:find_by_id(TaskId) of
         {ok, Task} ->
             CreatorId2 = maps:get(<<"creator_id">>, Task, 0),
@@ -98,7 +111,8 @@ update(TaskId, CreatorId, Data) when is_integer(TaskId), TaskId > 0,
                             end
                     end;
                 _ ->
-                    {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED), ?ERR_TASK_PERMISSION_DENIED}
+                    {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                        ?ERR_TASK_PERMISSION_DENIED}
             end;
         {error, not_found} ->
             {error, imboy_error:error_msg(?ERR_TASK_NOT_FOUND), ?ERR_TASK_NOT_FOUND}
@@ -120,18 +134,23 @@ assign(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(UserIds) ->
                 {ok, Task} ->
                     TaskIdStr = maps:get(<<"task_id">>, Task, <<>>),
                     % 批量插入作业分配
-                    lists:foreach(fun(UserId) ->
-                        case group_task_ds:assignment_find_by_task_and_user(TaskIdStr, UserId) of
-                            {error, not_found} ->
-                                group_task_ds:assignment_insert(#{
-                                    task_id => TaskIdStr,
-                                    user_id => UserId,
-                                    status => 0
-                                });
-                            _ ->
-                                ok
-                        end
-                    end, UserIds),
+                    lists:foreach(
+                        fun(UserId) ->
+                            case
+                                group_task_ds:assignment_find_by_task_and_user(TaskIdStr, UserId)
+                            of
+                                {error, not_found} ->
+                                    group_task_ds:assignment_insert(#{
+                                        task_id => TaskIdStr,
+                                        user_id => UserId,
+                                        status => 0
+                                    });
+                                _ ->
+                                    ok
+                            end
+                        end,
+                        UserIds
+                    ),
                     ok;
                 {error, not_found} ->
                     {error, imboy_error:error_msg(?ERR_TASK_NOT_FOUND), ?ERR_TASK_NOT_FOUND}
@@ -146,15 +165,20 @@ assign(_TaskId, _UserIds) ->
 %% @param Data 提交数据（content, attachment）
 %% @return ok | {error, Reason}
 -spec submit(binary(), integer(), map()) -> ok | {error, binary()}.
-submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
-                                  is_integer(UserId), UserId > 0 ->
+submit(TaskId, UserId, Data) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(UserId),
+    UserId > 0
+->
     % 检查作业是否存在且未过期
     case group_task_ds:find_by_task_id(TaskId) of
         {ok, Task} ->
             Deadline = maps:get(<<"deadline">>, Task, undefined),
             case check_deadline(Deadline) of
                 true ->
-                    {error, imboy_error:error_msg(?ERR_TASK_DEADLINE_PASSED), ?ERR_TASK_DEADLINE_PASSED};
+                    {error, imboy_error:error_msg(?ERR_TASK_DEADLINE_PASSED),
+                        ?ERR_TASK_DEADLINE_PASSED};
                 false ->
                     % 检查作业分配是否存在
                     case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
@@ -162,9 +186,11 @@ submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
                             Status = maps:get(<<"status">>, Assignment, 0),
                             case Status of
                                 2 ->
-                                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_SUBMITTED), ?ERR_TASK_ALREADY_SUBMITTED};
+                                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_SUBMITTED),
+                                        ?ERR_TASK_ALREADY_SUBMITTED};
                                 3 ->
-                                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED), ?ERR_TASK_ALREADY_REVIEWED};
+                                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
+                                        ?ERR_TASK_ALREADY_REVIEWED};
                                 _ ->
                                     AssignmentId = maps:get(<<"id">>, Assignment),
                                     Now = elib_dt:now(),
@@ -177,7 +203,8 @@ submit(TaskId, UserId, Data) when is_binary(TaskId), byte_size(TaskId) > 0,
                                     ok
                             end;
                         {error, not_found} ->
-                            {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND), ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
+                            {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
+                                ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
                     end
             end;
         {error, not_found} ->
@@ -192,8 +219,12 @@ submit(_TaskId, _UserId, _Data) ->
 %% @param Data 批改数据（score, comment）
 %% @return ok | {error, Reason}
 -spec review(integer(), integer(), map()) -> ok | {error, binary()}.
-review(AssignmentId, ReviewerId, Data) when is_integer(AssignmentId), AssignmentId > 0,
-                                            is_integer(ReviewerId), ReviewerId > 0 ->
+review(AssignmentId, ReviewerId, Data) when
+    is_integer(AssignmentId),
+    AssignmentId > 0,
+    is_integer(ReviewerId),
+    ReviewerId > 0
+->
     case group_task_ds:assignment_find_by_id(AssignmentId) of
         {ok, Assignment} ->
             Status = maps:get(<<"status">>, Assignment, 0),
@@ -209,12 +240,14 @@ review(AssignmentId, ReviewerId, Data) when is_integer(AssignmentId), Assignment
                     group_task_ds:assignment_update(AssignmentId, ReviewData2),
                     ok;
                 3 ->
-                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED), ?ERR_TASK_ALREADY_REVIEWED};
+                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
+                        ?ERR_TASK_ALREADY_REVIEWED};
                 _ ->
                     {error, <<"作业未提交，无法批改"/utf8>>, ?ERR_BAD_REQUEST}
             end;
         {error, not_found} ->
-            {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND), ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
+            {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
+                ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
     end;
 review(_AssignmentId, _ReviewerId, _Data) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
@@ -239,9 +272,15 @@ detail(_TaskId) ->
 %% @param Size 每页数量
 %% @return {ok, List} | {error, Reason}
 -spec list(integer(), integer(), integer()) -> {ok, [map()]} | {error, binary()}.
-list(GroupId, Page, Size) when is_integer(GroupId), GroupId > 0,
-                                is_integer(Page), Page > 0,
-                                is_integer(Size), Size > 0, Size =< 100 ->
+list(GroupId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     list(GroupId, undefined, undefined, Page, Size);
 list(_GroupId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
@@ -253,11 +292,17 @@ list(_GroupId, _Page, _Size) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, List} | {error, Reason}
--spec list(integer(), integer() | undefined, integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, binary()}.
-list(GroupId, Status, AssigneeId, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+-spec list(integer(), integer() | undefined, integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, binary()}.
+list(GroupId, Status, AssigneeId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     case AssigneeId of
         undefined ->
             case Status of
@@ -289,19 +334,32 @@ list(_GroupId, _Status, _AssigneeId, _Page, _Size) ->
 %% @param Size 每页数量
 %% @return {ok, List} | {error, Reason}
 -spec my_tasks(integer(), integer(), integer()) -> {ok, [map()]} | {error, binary()}.
-my_tasks(UserId, Page, Size) when is_integer(UserId), UserId > 0,
-                                   is_integer(Page), Page > 0,
-                                   is_integer(Size), Size > 0, Size =< 100 ->
+my_tasks(UserId, Page, Size) when
+    is_integer(UserId),
+    UserId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     my_tasks(UserId, undefined, Page, Size);
 my_tasks(_UserId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 查询我的作业（支持状态筛选）
 %% @param Status 状态（undefined/0/1/2/3）
--spec my_tasks(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, binary()}.
-my_tasks(UserId, Status, Page, Size) when is_integer(UserId), UserId > 0,
-                                          is_integer(Page), Page > 0,
-                                          is_integer(Size), Size > 0, Size =< 100 ->
+-spec my_tasks(integer(), integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, binary()}.
+my_tasks(UserId, Status, Page, Size) when
+    is_integer(UserId),
+    UserId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     case Status of
         undefined ->
             group_task_ds:assignment_list_by_user_id(UserId, undefined, Page, Size);
@@ -319,22 +377,43 @@ my_tasks(_UserId, _Status, _Page, _Size) ->
 %% @param Size 每页数量
 %% @return {ok, List} | {error, Reason}
 -spec pending_review(binary(), integer(), integer()) -> {ok, [map()]} | {error, binary()}.
-pending_review(TaskId, Page, Size) when is_binary(TaskId), byte_size(TaskId) > 0,
-                                        is_integer(Page), Page > 0,
-                                        is_integer(Size), Size > 0, Size =< 100 ->
+pending_review(TaskId, Page, Size) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     % 查询已提交但未批改的作业
     case group_task_ds:assignment_list_by_task_id(TaskId, Page, Size) of
         {ok, Assignments} ->
             % 过滤出状态为2（已提交）的作业
-            Filtered = lists:filter(fun(A) ->
-                maps:get(<<"status">>, A, 0) =:= 2
-            end, Assignments),
+            Filtered = lists:filter(
+                fun(A) ->
+                    maps:get(<<"status">>, A, 0) =:= 2
+                end,
+                Assignments
+            ),
             {ok, Filtered};
         {error, Reason} ->
             {error, Reason}
     end;
 pending_review(_TaskId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 按对外 task_uid（binary 字符串）验证作业是否存在，存在则返回该 uid
+%% Handler 用于 normalize_task_uid/1 中的存在性校验
+-spec task_uid_by_task_id(binary()) -> {ok, map()} | {error, not_found}.
+task_uid_by_task_id(TaskId) ->
+    group_task_ds:find_by_task_id(TaskId).
+
+%% @doc 按内部整型主键查询作业，返回完整记录（含 task_id/task_uid 字段）
+%% Handler 用于 task_uid_by_pk/1 中提取 task_uid
+-spec task_uid_by_id(integer()) -> {ok, map()} | {error, not_found}.
+task_uid_by_id(Id) ->
+    group_task_ds:find_by_id(Id).
 
 %% ===================================================================
 %% Internal Functions
@@ -365,14 +444,18 @@ normalize_update_data(Data) ->
         {attachment, <<"attachment">>},
         {status, <<"status">>}
     ],
-    lists:foldl(fun({AtomKey, BinaryKey}, Acc) ->
-        case update_field(Data, AtomKey, BinaryKey) of
-            undefined ->
-                Acc;
-            Value ->
-                Acc#{AtomKey => Value}
-        end
-    end, #{}, Fields).
+    lists:foldl(
+        fun({AtomKey, BinaryKey}, Acc) ->
+            case update_field(Data, AtomKey, BinaryKey) of
+                undefined ->
+                    Acc;
+                Value ->
+                    Acc#{AtomKey => Value}
+            end
+        end,
+        #{},
+        Fields
+    ).
 
 -spec update_field(map(), atom(), binary()) -> term().
 update_field(Data, AtomKey, BinaryKey) ->

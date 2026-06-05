@@ -16,6 +16,8 @@
 -export([cancel_transfer/2]).
 -export([get_transfer_info/1]).
 -export([get_pending_transfers/1]).
+-export([validate_receiver/1]).
+-export([get_receiver_public_key/1]).
 
 %%===================================================================
 %%% API Functions
@@ -100,9 +102,11 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
                     case Status of
                         <<"pending">> ->
                             % 4. 更新状态为 accepted
-                            case e2ee_transfer_ds:update_status_and_device(
-                                SessionId, <<"accepted">>, ToDeviceId
-                            ) of
+                            case
+                                e2ee_transfer_ds:update_status_and_device(
+                                    SessionId, <<"accepted">>, ToDeviceId
+                                )
+                            of
                                 ok ->
                                     {ok, Session#{
                                         <<"status">> => <<"accepted">>,
@@ -175,10 +179,13 @@ cancel_transfer(SessionId, FromUid) ->
                         <<"pending">> ->
                             % 4. 执行取消
                             case e2ee_transfer_ds:cancel_session_raw(SessionId, FromUid) of
-                                ok -> ok;
+                                ok ->
+                                    ok;
                                 {error, not_found_or_not_pending} ->
-                                    {error, {<<"会话已不可取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
-                                {error, Reason} -> {error, Reason}
+                                    {error,
+                                        {<<"会话已不可取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
+                                {error, Reason} ->
+                                    {error, Reason}
                             end;
                         <<"cancelled">> ->
                             {error, {<<"会话已取消"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_CANCELLED}};
@@ -205,6 +212,16 @@ get_transfer_info(SessionId) ->
 -spec get_pending_transfers(integer()) -> {ok, list(map())} | {error, term()}.
 get_pending_transfers(Uid) ->
     e2ee_transfer_ds:get_pending_sessions(Uid).
+
+%% @doc 验证接收方用户是否存在于系统中
+-spec validate_receiver(integer()) -> boolean().
+validate_receiver(ToUid) ->
+    user_ds:may_exist(ToUid).
+
+%% @doc 获取接收方用户的设备公钥列表
+-spec get_receiver_public_key(integer()) -> {ok, [map()]} | {error, term()}.
+get_receiver_public_key(ToUid) ->
+    user_device_ds:get_public_by_uid(ToUid).
 
 %%===================================================================
 %%% Internal Functions

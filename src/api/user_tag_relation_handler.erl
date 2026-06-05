@@ -71,33 +71,38 @@ add(Req0, State) ->
             <<"collect">> ->
                 {1, false};
             <<"friend">> ->
-                {2, friend_ds:is_friend(CurrentUid, elib_cnv:safe_to_integer(ObjectId))};
+                {2,
+                    user_tag_relation_logic:check_friend(
+                        CurrentUid, elib_cnv:safe_to_integer(ObjectId)
+                    )};
             _ ->
                 {0, false}
         end,
     Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
     ObjectId2 =
-        if Scene2 == 2, IsFriend == false ->
-               <<>>;
-           true ->
-               ObjectId
+        if
+            Scene2 == 2, IsFriend == false ->
+                <<>>;
+            true ->
+                ObjectId
         end,
-    if Scene2 == 0 ->
-           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-       length(Tag2) > 0 ->
-           elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-       length(Tag) == 0, bit_size(ObjectId) == 0 ->
-           elib_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
-       length(Tag) > 1, bit_size(ObjectId) == 0 ->
-           elib_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
-       true ->
-           % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
-           case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
-               ok ->
-                   elib_response:success(Req0, #{}, "success.");
-               Err ->
-                   elib_response:error(Req0, Err)
-           end
+    if
+        Scene2 == 0 ->
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        length(Tag2) > 0 ->
+            elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+        length(Tag) == 0, bit_size(ObjectId) == 0 ->
+            elib_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
+        length(Tag) > 1, bit_size(ObjectId) == 0 ->
+            elib_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
+        true ->
+            % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
+            case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
+                ok ->
+                    elib_response:success(Req0, #{}, "success.");
+                Err ->
+                    elib_response:error(Req0, Err)
+            end
     end.
 
 %% @doc 设置标签关联
@@ -185,11 +190,12 @@ remove(Req0, State) ->
             elib_response:success(Req0, #{}, "success.");
         {2, Obj, Id} ->
             ToUid = elib_cnv:safe_to_integer(Obj),
-            if ToUid > 0 ->
-                   user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
-                   elib_response:success(Req0, #{}, "success.");
-               true ->
-                   elib_response:error(Req0, <<"ObjectId 格式有误"/utf8>>)
+            if
+                ToUid > 0 ->
+                    user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
+                    elib_response:success(Req0, #{}, "success.");
+                true ->
+                    elib_response:error(Req0, <<"ObjectId 格式有误"/utf8>>)
             end
     end.
 
@@ -210,61 +216,26 @@ page(Scene, Req0, State) ->
     Kwd = proplists:get_value(<<"kwd">>, Qs, <<>>),
     {ok, TagId} = elib_param:int(tag_id, Req0, 0),
     % elib_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
-    if CurrentUid == 0 ->
-           elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
-       TagId == 0 ->
-           elib_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
-       Scene == <<"collect">> ->
-           Payload = collect_page(CurrentUid, Page, Size, TagId, Kwd),
-           elib_response:success(Req0, Payload);
-       Scene == <<"friend">> ->
-           Payload = friend_ds:page_by_tag(CurrentUid, Page, Size, TagId, Kwd),
-           elib_response:success(Req0, Payload);
-       true ->
-           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>)
+    if
+        CurrentUid == 0 ->
+            elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
+        TagId == 0 ->
+            elib_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
+        Scene == <<"collect">> ->
+            Payload = collect_page(CurrentUid, Page, Size, TagId, Kwd),
+            elib_response:success(Req0, Payload);
+        Scene == <<"friend">> ->
+            Payload = user_tag_relation_logic:friend_page_by_tag(
+                CurrentUid, Page, Size, TagId, Kwd
+            ),
+            elib_response:success(Req0, Payload);
+        true ->
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
 
 -spec collect_page(integer(), integer(), integer(), integer(), binary()) -> map().
 collect_page(CurrentUid, Page, Size, TagId, Kwd) ->
-    TagName = user_tag_ds:find_name_by_id(TagId, CurrentUid, 1),
-    case TagName of
-        <<>> ->
-            #{total => 0, page => Page, size => Size, list => []};
-        _ ->
-            collect_page_by_tag(CurrentUid, Page, Size, TagName, Kwd)
-    end.
-
--spec collect_page_by_tag(integer(), integer(), integer(), binary(), binary()) -> map().
-collect_page_by_tag(CurrentUid, Page, Size, TagName, Kwd) ->
-    TagPattern = <<"%", TagName/binary, ",%">>,
-    BaseWhere = #{
-        user_id => CurrentUid,
-        status => 1,
-        tag => {op, <<"LIKE">>, TagPattern}
-    },
-    WhereMap =
-        case byte_size(Kwd) > 0 of
-            true ->
-                Like = <<"%", Kwd/binary, "%">>,
-                BaseWhere#{
-                    <<"__or">> => [
-                        #{source => {op, <<"LIKE">>, Like}},
-                        #{remark => {op, <<"LIKE">>, Like}},
-                        #{info => {op, <<"LIKE">>, Like}}
-                    ]
-                };
-            false ->
-                BaseWhere
-        end,
-    Info = elib_hasher:decoded_field(<<"info">>),
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
-    case user_collect_ds:page(Column, WhereMap, <<"id desc">>, Page, Size) of
-        {ok, Payload} ->
-            List = maps:get(list, Payload, []),
-            Payload#{list => elib_response:json_decode_list_field(List, <<"info">>)};
-        {error, _Reason} ->
-            #{total => 0, page => Page, size => Size, list => []}
-    end.
+    user_tag_relation_logic:collect_page(CurrentUid, Page, Size, TagId, Kwd).
 
 %% ===================================================================
 %% EUnit tests.

@@ -97,23 +97,29 @@ add(<<"POST">>, Req0, State) ->
         _ when Status < 0; Status > 2 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ when is_integer(ExpiredAt2) == false ->
-            elib_response:error(Req0,
-                                 error_msg(?ERR_INVALID_FORMAT),
-                                 ?ERR_INVALID_FORMAT);
+            elib_response:error(
+                Req0,
+                error_msg(?ERR_INVALID_FORMAT),
+                ?ERR_INVALID_FORMAT
+            );
         _ ->
             Data =
-                #{group_id => Gid2,
-                  user_id => Uid,
-                  title => Title,
-                  body => Body,
-                  status => Status,
-                  expired_at => ExpiredAt,
-                  created_at => Now},
-            case group_notice_ds:insert(Data) of
+                #{
+                    group_id => Gid2,
+                    user_id => Uid,
+                    title => Title,
+                    body => Body,
+                    status => Status,
+                    expired_at => ExpiredAt,
+                    created_at => Now
+                },
+            case group_notice_logic:insert(Data) of
                 {ok, NoticeId} ->
                     elib_response:success(Req0, #{<<"notice_id">> => NoticeId});
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -150,19 +156,23 @@ edit(<<"POST">>, Req0, State) ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
             Data =
-                #{edit_user_id => Uid,
-                  title => Title,
-                  body => Body,
-                  status => Status,
-                  expired_at => elib_dt:rfc3339_to(ExpiredAt),
-                  updated_at => Now},
-            case group_notice_ds:update(Id2, Data) of
+                #{
+                    edit_user_id => Uid,
+                    title => Title,
+                    body => Body,
+                    status => Status,
+                    expired_at => elib_dt:rfc3339_to(ExpiredAt),
+                    updated_at => Now
+                },
+            case group_notice_logic:update(Id2, Data) of
                 {ok, _} ->
                     elib_response:success(Req0, #{<<"notice_id">> => Id});
                 {error, not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -191,10 +201,12 @@ publish(<<"POST">>, Req0, State) ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
             Data =
-                #{edit_user_id => Uid,
-                  status => 1,
-                  updated_at => Now},
-            case group_notice_ds:update(Id2, Data) of
+                #{
+                    edit_user_id => Uid,
+                    status => 1,
+                    updated_at => Now
+                },
+            case group_notice_logic:update(Id2, Data) of
                 {ok, _} ->
                     %% W1.1：持久化成功后向群内所有成员广播 S2C
                     %% `group_notice_published`，客户端据此刷新公告列表或展示
@@ -204,7 +216,9 @@ publish(<<"POST">>, Req0, State) ->
                 {error, not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -235,7 +249,9 @@ delete(<<"POST">>, Req0, State) ->
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限删除公告"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -253,25 +269,27 @@ page(<<"GET">>, Req0, State) ->
     Qs2 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs2, undefined),
     Gid2 = elib_cnv:safe_to_integer(Gid),
-    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
-    GMSize = maps:size(GM),
     case Gid2 of
         0 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
-        _ when GMSize == 0 ->
-            elib_response:error(Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER);
         _ ->
             {Page, Size} = elib_param:page(Req0),
-            Column =
-                <<"id as notice_id, user_id, edit_user_id, body, status, expired_at, "
-                  "updated_at, created_at">>,
-            {ok, Payload} =
-                group_notice_ds:page(Gid2, Column, <<"expired_at desc">>, Page, Size),
-            List = maps:get(list, Payload, []),
-            List2 =
-                List,
-            Payload2 = Payload#{list => List2},
-            elib_response:success(Req0, Payload2)
+            case group_notice_logic:page(CurrentUid, Gid2, Page, Size) of
+                {ok, Payload} ->
+                    List = maps:get(list, Payload, []),
+                    List2 =
+                        List,
+                    Payload2 = Payload#{list => List2},
+                    elib_response:success(Req0, Payload2);
+                {error, ?ERR_NOT_GROUP_MEMBER} ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
+                {error, _} ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
+            end
     end.
 
 %% @doc 获取最新群公告
@@ -288,26 +306,29 @@ latest(<<"GET">>, Req0, State) ->
     Qs6 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs6, undefined),
     Gid2 = elib_cnv:safe_to_integer(Gid),
-    GM = group_member_ds:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>),
-    GMSize = maps:size(GM),
     case Gid2 of
         0 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
-        _ when GMSize == 0 ->
-            elib_response:error(Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER);
         _ ->
-            Column =
-                <<"id as notice_id, user_id, edit_user_id, body, status, expired_at, "
-                  "updated_at, created_at">>,
-            {ok, Payload} = group_notice_ds:latest_published(Gid2, Column),
-            Payload2 =
-                case Payload of
-                    [Item] ->
-                        [Item];
-                    _ ->
-                        Payload
-                end,
-            elib_response:success(Req0, Payload2)
+            case group_notice_logic:latest_published(CurrentUid, Gid2) of
+                {ok, Payload} ->
+                    Payload2 =
+                        case Payload of
+                            [Item] ->
+                                [Item];
+                            _ ->
+                                Payload
+                        end,
+                    elib_response:success(Req0, Payload2);
+                {error, ?ERR_NOT_GROUP_MEMBER} ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
+                {error, _} ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
+            end
     end.
 
 %% @doc 查询群公告列表（新接口，支持置顶排序）
@@ -340,9 +361,13 @@ list(<<"GET">>, Req0, State) ->
                     },
                     elib_response:success(Req0, Payload);
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
-                    elib_response:error(Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER);
+                    elib_response:error(
+                        Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -369,11 +394,15 @@ detail(<<"GET">>, Req0, State) ->
                 {ok, Notice} ->
                     elib_response:success(Req0, Notice);
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
-                    elib_response:error(Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER);
+                    elib_response:error(
+                        Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
                 {error, ?ERR_NOT_FOUND} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -404,7 +433,9 @@ pin(<<"POST">>, Req0, State) ->
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限置顶公告"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -435,7 +466,9 @@ unpin(<<"POST">>, Req0, State) ->
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限取消置顶"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 
@@ -463,9 +496,13 @@ mark_read(<<"POST">>, Req0, State) ->
                     Notice2 = Notice,
                     elib_response:success(Req0, Notice2);
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
-                    elib_response:error(Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER);
+                    elib_response:error(
+                        Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
                 {error, _} ->
-                    elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
             end
     end.
 

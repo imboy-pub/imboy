@@ -72,22 +72,7 @@ search(Req0, State) ->
     Qs0 = cowboy_req:parse_qs(Req0),
     Kwd = proplists:get_value(<<"keyword">>, Qs0, <<>>),
     KwdBin = elib_cnv:safe_to_binary(Kwd),
-    IsEmail = elib_type:is_email(KwdBin),
-    IsMobile = elib_type:is_mobile(KwdBin),
-    User =
-        if
-            IsEmail ->
-                user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
-            IsMobile ->
-                user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
-            true ->
-                user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
-        end,
-    % 消除未使用变量警告
-    _ = User,
-    % ?DEBUG_LOG(['User ', User]),
-    Uid2 = maps:get(<<"id">>, User, 0),
-    AllowSearch = fts_user_ds:allow_search(Uid2),
+    {User, Uid2, AllowSearch} = user_logic:find_by_keyword(KwdBin),
     Payload =
         if
             Uid2 == 0 ->
@@ -105,7 +90,7 @@ search(Req0, State) ->
                     list => []
                 };
             true ->
-                {IsF, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
+                {IsF, Remark} = friend_logic:is_friend(CurrentUid, Uid2, <<"remark">>),
                 User2 = User#{<<"is_friend">> => IsF, <<"remark">> => Remark},
                 User3 = convert_user_id(User2),
                 #{
@@ -192,7 +177,7 @@ cancel_logout(Req0, State) ->
 -spec credential(cowboy_req:req(), map()) -> cowboy_req:req().
 credential(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    Payload = user_ds:webrtc_credential(CurrentUid),
+    Payload = user_logic:webrtc_credential(CurrentUid),
     elib_response:success(Req0, Payload).
 
 %% @doc 扫描用户二维码
@@ -236,7 +221,7 @@ qrcode_transfer(_, -2, #{}) ->
 qrcode_transfer(CurrentUid, 1, User) ->
     Uid2 = maps:get(<<"id">>, User),
     User2 = maps:remove(<<"status">>, User),
-    {Isfriend, Remark} = friend_ds:is_friend(CurrentUid, Uid2, <<"remark">>),
+    {Isfriend, Remark} = friend_logic:is_friend(CurrentUid, Uid2, <<"remark">>),
     User2#{
         <<"type">> => <<"user">>,
         <<"id">> => Uid2,
@@ -259,7 +244,7 @@ change_state(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     ChatState = maps:get(<<"state">>, PostVals, <<"hide">>),
-    user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
+    user_logic:change_chat_state(CurrentUid, ChatState),
     % 切换在线状态 异步通知好友
     user_server:cast_notice_friend(CurrentUid, ChatState),
     elib_response:success(Req0, #{}, "success.").
@@ -277,7 +262,7 @@ setting(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Li = maps:get(<<"setting">>, PostVals, []),
     % ?DEBUG_LOG({CurrentUid, Li}),
-    try [user_setting_ds:save(CurrentUid, Key, Val) || [{Key, Val} | _] <- Li] of
+    try user_logic:save_settings(CurrentUid, Li) of
         _ ->
             elib_response:success(Req0, #{}, "success.")
     catch

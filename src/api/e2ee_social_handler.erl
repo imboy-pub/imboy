@@ -244,7 +244,7 @@ do_decrypt_shard(Req0, State) ->
                         <<>> ->
                             elib_response:error(Req0, <<"缺少 shard_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
                         _ ->
-                            case e2ee_social_ds:get_proxy_shard(ShardId, CurrentUid) of
+                            case e2ee_social_logic:get_proxy_shard(ShardId, CurrentUid) of
                                 {ok, Shard} ->
                                     case extract_encrypted_shard(Shard) of
                                         {ok, EncryptedShard} ->
@@ -308,7 +308,7 @@ contacts(Req0, State) ->
 do_contacts(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
 
-    case e2ee_social_ds:list_trusted_contacts(CurrentUid) of
+    case e2ee_social_logic:list_trusted_contacts(CurrentUid) of
         {ok, Contacts} ->
             elib_response:success(Req0, #{<<"contacts">> => Contacts});
         {error, Reason} ->
@@ -347,7 +347,7 @@ do_add_contact(Req0, State) ->
         _ ->
             Nickname = maps:get(<<"nickname">>, Data, <<>>),
 
-            case e2ee_social_ds:add_trusted_contact(CurrentUid, ContactUid, Nickname) of
+            case e2ee_social_logic:add_trusted_contact(CurrentUid, ContactUid, Nickname) of
                 ok ->
                     elib_response:success(Req0, #{<<"message">> => <<"添加可信联系人成功"/utf8>>});
                 {error, cannot_add_self} ->
@@ -395,7 +395,7 @@ do_remove_contact(Req0, State) ->
         0 ->
             elib_response:error(Req0, <<"无效的用户 ID"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case e2ee_social_ds:remove_trusted_contact(CurrentUid, ContactUid) of
+            case e2ee_social_logic:remove_trusted_contact(CurrentUid, ContactUid) of
                 ok ->
                     elib_response:success(Req0, #{<<"message">> => <<"移除可信联系人成功"/utf8>>});
                 {error, Reason} ->
@@ -420,18 +420,7 @@ format_error(_Reason) ->
 %% 用于解密为用户存储的分片
 -spec get_proxy_private_key(integer()) -> {ok, binary()} | {error, term()}.
 get_proxy_private_key(Uid) ->
-    case user_device_ds:get_public_by_uid(Uid) of
-        {ok, [Device | _]} ->
-            DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_ds:get_private_key(Uid, DeviceId) of
-                {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
-                    {ok, PrivateKeyPem};
-                _ ->
-                    {error, private_key_not_found}
-            end;
-        _ ->
-            {error, device_not_found}
-    end.
+    e2ee_social_logic:get_proxy_private_key(Uid).
 
 %% @doc 提取可解密分片数据
 %% 优先读取 encrypted_shard，兼容旧字段 encrypted_data

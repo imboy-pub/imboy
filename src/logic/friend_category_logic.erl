@@ -6,6 +6,7 @@
 -export([save/1]).
 -export([list/1]).
 -export([delete/2]).
+-export([rename/3]).
 
 -include("log.hrl").
 
@@ -53,5 +54,15 @@ delete(Uid, Id) ->
         {ok, _} ->
             friend_category_ds:delete(Uid, Id)
     end.
+
+%% @doc 重命名好友分组
+%% 修改指定好友分组的名称，Id 或 Name 为空时返回错误
+%% @param Uid 用户ID
+%% @param Id 分组ID
+%% @param Name 新的分组名称
+%% @return {ok, 1} | {error, Reason}
+-spec rename(integer(), integer() | binary(), binary()) -> {ok, 1} | {error, any()}.
+rename(Uid, Id, Name) ->
+    friend_category_ds:rename(Uid, Id, Name).
 
 %% Internal.

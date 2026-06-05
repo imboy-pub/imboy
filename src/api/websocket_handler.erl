@@ -441,10 +441,10 @@ handle_json_message(Msg, State) ->
         CurrentUid = auth_ds:current_uid(State),
 
         %% 统一消息处理流程：decode -> convert -> validate -> route
-        Data0 = message_ds:decode_websocket_message(Msg),
-        Data = message_ds:convert_v1_to_v2(Data0),
+        Data0 = websocket_logic:decode_message(Msg),
+        Data = websocket_logic:convert_v1_to_v2(Data0),
 
-        case message_ds:validate_message(Data) of
+        case websocket_logic:validate_message(Data) of
             {error, Reason} ->
                 MsgId0 = maps:get(<<"id">>, Data, <<>>),
                 ok = ?WARN_LOG({json_message_invalid, Reason, MsgId0}),
@@ -458,7 +458,7 @@ handle_json_message(Msg, State) ->
                 Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
 
                 % 将发送者的设备信息（sender_did 和 sender_dtype）注入到消息的 payload 中。
-                Payload = message_ds:inject_sender_device(Payload0, State),
+                Payload = websocket_logic:inject_sender_device(Payload0, State),
                 Data2 = maps:put(<<"payload">>, Payload, ValidatedData),
 
                 %% 统一消息路由：根据 action 和 type 分发到对应的 logic 模块
@@ -509,11 +509,11 @@ websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
             {ok, State, hibernate};
         {ok, _} ->
             ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
-            message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
+            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
             {reply, encode_delivery_frame(Msg, State), State, hibernate};
         undefined ->
             ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
-            message_ds:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
+            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
             {reply, encode_delivery_frame(Msg, State), State, hibernate}
     end;
 %% 处理其他超时消息
@@ -692,9 +692,9 @@ handle_protobuf_message_decoded(Data0, State) ->
 
         %% 将 integer ID 转为 binary 以兼容现有消息管道
         Data1 = normalize_protobuf_ids(Data0#{<<"payload">> => PayloadMap}),
-        Data = message_ds:convert_v1_to_v2(Data1),
+        Data = websocket_logic:convert_v1_to_v2(Data1),
 
-        case message_ds:validate_message(Data) of
+        case websocket_logic:validate_message(Data) of
             {error, Reason} ->
                 MsgId0 = maps:get(<<"id">>, Data, <<>>),
                 ok = ?WARN_LOG({protobuf_message_invalid, Reason, MsgId0}),
@@ -705,7 +705,7 @@ handle_protobuf_message_decoded(Data0, State) ->
                 Type = maps:get(<<"type">>, ValidatedData, <<>>),
 
                 Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
-                Payload = message_ds:inject_sender_device(Payload0, State),
+                Payload = websocket_logic:inject_sender_device(Payload0, State),
                 Data2 = maps:put(<<"payload">>, Payload, ValidatedData),
 
                 %% 路由（当前投递管道使用 JSON，迭代4 将适配 protobuf）

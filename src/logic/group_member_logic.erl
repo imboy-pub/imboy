@@ -21,6 +21,20 @@
     check_mute/2,
     list_member/1,
     list_member/2,
+    % 查询两用户共同群组 ID 列表
+    list_same_group/2,
+    % 批量获取共同群组详情
+    list_same_group_detail/2,
+    % 构造邀请 join_mode 字符串
+    build_invite_join_mode/1,
+    % 获取群组容量信息
+    get_group_capacity/1,
+    % 获取群成员 user_id 总和
+    get_user_id_sum/1,
+    % 查询指定群成员记录
+    find_by_gid_and_uid/3,
+    % 分页获取群成员列表（含用户信息）
+    page_with_user_info/3,
     % 新增权限验证函数
 
     % 检查是否有管理权限
@@ -348,6 +362,42 @@ format_duration(Seconds) when Seconds > 60 ->
     <<(ec_cnv:to_binary(Minutes))/binary, "分钟"/utf8>>;
 format_duration(Seconds) ->
     <<(ec_cnv:to_binary(Seconds))/binary, "秒"/utf8>>.
+
+%% @doc 查询两个用户共同加入的群组 ID 列表
+-spec list_same_group(integer(), integer()) -> [integer()].
+list_same_group(UidA, UidB) ->
+    group_member_ds:list_same_group(UidA, UidB).
+
+%% @doc 根据群组 ID 列表批量获取群组详情字段
+-spec list_same_group_detail(list(integer()), binary()) -> {ok, list(map())} | {error, any()}.
+list_same_group_detail(Ids, Column) ->
+    group_ds:list_by_ids(Ids, Column).
+
+%% @doc 获取当前用户昵称并构造邀请加入模式字符串（invite_{uid}_{title}）
+-spec build_invite_join_mode(integer()) -> binary().
+build_invite_join_mode(Uid) ->
+    UserTitle = user_ds:title(Uid),
+    <<"invite_", (ec_cnv:to_binary(Uid))/binary, "_", UserTitle/binary>>.
+
+%% @doc 查询群组的 member_max 和 member_count 以验证容量限制
+-spec get_group_capacity(integer()) -> map() | {error, any()}.
+get_group_capacity(Gid) ->
+    group_ds:find_by_id(Gid, <<"member_max,member_count">>).
+
+%% @doc 获取群成员 user_id 总和（用于群成员变更后同步客户端）
+-spec get_user_id_sum(integer()) -> integer().
+get_user_id_sum(Gid) ->
+    group_ds:get_user_id_sum(Gid).
+
+%% @doc 查询指定群中指定用户的成员记录（用于鉴权检查）
+-spec find_by_gid_and_uid(integer(), integer(), binary()) -> map().
+find_by_gid_and_uid(Gid, Uid, Column) ->
+    group_member_ds:find_by_gid_and_uid(Gid, Uid, Column).
+
+%% @doc 分页获取群成员列表（含用户信息）
+-spec page_with_user_info(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_with_user_info(Gid, Page, Size) ->
+    group_member_ds:page_with_user_info(Gid, Page, Size).
 
 %% ===================================================================
 %% Internal

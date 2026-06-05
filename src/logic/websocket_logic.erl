@@ -13,13 +13,12 @@
 %% @param MsgId 消息ID
 %% @returns ok
 -export([cancel_timer/3]).
-
-%% @doc 实际执行 timer 撤销（本地节点）
-%% @param ToUid 目标用户ID
-%% @param DID 设备ID
-%% @param MsgId 消息ID
-%% @returns ok
 -export([handle_ack_cancel/3]).
+-export([decode_message/1]).
+-export([convert_v1_to_v2/1]).
+-export([validate_message/1]).
+-export([inject_sender_device/2]).
+-export([send_next/6]).
 
 %% ===================================================================
 %% API
@@ -53,7 +52,8 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
     %% 【关键修复】先设置 ACK 标志，再取消定时器
     %% 这样即使定时器消息已在队列中，投递前也会检查到 ACK
     AckReceivedKey = {ack_received, ToUid, DID, MsgId},
-    imboy_cache:set(AckReceivedKey, true, 40000),  % 40秒 TTL（最大重试时间）
+    % 40秒 TTL（最大重试时间）
+    imboy_cache:set(AckReceivedKey, true, 40000),
 
     _ = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
 
@@ -86,6 +86,31 @@ broadcast_ack_cancel_safe(Uid, DID, MsgId) ->
             _ = ?WARN_LOG({ack_cancel_broadcast_failed, Uid, DID, MsgId, Class, Reason}),
             ok
     end.
+
+%% @doc 解码 WebSocket 原始消息为 map
+-spec decode_message(binary()) -> map().
+decode_message(Msg) ->
+    message_ds:decode_websocket_message(Msg).
+
+%% @doc 将 v1 消息格式转换为 v2
+-spec convert_v1_to_v2(map()) -> map().
+convert_v1_to_v2(Data) ->
+    message_ds:convert_v1_to_v2(Data).
+
+%% @doc 校验消息合法性
+-spec validate_message(map()) -> {ok, map()} | {error, binary()}.
+validate_message(Data) ->
+    message_ds:validate_message(Data).
+
+%% @doc 将发送者设备信息注入 payload
+-spec inject_sender_device(map(), map()) -> map().
+inject_sender_device(Payload, State) ->
+    message_ds:inject_sender_device(Payload, State).
+
+%% @doc 发送消息（含设备过滤重试）
+-spec send_next(pos_integer() | binary(), binary(), binary(), list(), [binary()], boolean()) -> ok.
+send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
+    message_ds:send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi).
 
 %% ===================================================================
 %% Internal Function Definitions

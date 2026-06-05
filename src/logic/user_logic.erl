@@ -26,6 +26,11 @@
 -export([set_password/2]).
 -export([apply_logout/2]).
 -export([cancel_logout/2]).
+-export([webrtc_credential/1]).
+-export([get_status/1]).
+-export([change_chat_state/2]).
+-export([save_settings/2]).
+-export([find_by_keyword/1]).
 
 %% ===================================================================
 %% API
@@ -300,6 +305,54 @@ update(Uid, Field, Val) ->
         {error, unsupported_field} ->
             {error, {1, <<"">>, <<"Unsupported field">>}}
     end.
+
+%% @doc 生成 WebRTC 连接凭证
+%% Handler 层通过此接口获取凭证，不直接访问 user_ds
+%% @param Uid 用户ID
+%% @return map() WebRTC 凭证
+-spec webrtc_credential(pos_integer()) -> map().
+webrtc_credential(Uid) ->
+    user_ds:webrtc_credential(Uid).
+
+%% @doc 获取用户状态
+%% @param Uid 用户ID
+%% @return integer() 用户状态：-1 删除 0 禁用 1 启用
+-spec get_status(integer()) -> integer().
+get_status(Uid) ->
+    user_ds:get_status(Uid).
+
+%% @doc 切换用户聊天在线状态
+%% @param Uid 用户ID
+%% @param ChatState 状态值（<<"online">> 或 <<"hide">>）
+%% @return ok
+-spec change_chat_state(integer(), binary()) -> ok.
+change_chat_state(Uid, ChatState) ->
+    user_setting_ds:save(Uid, <<"chat_state">>, ChatState).
+
+%% @doc 批量保存用户设置
+%% @param Uid 用户ID
+%% @param Settings 设置列表，每个元素为 [{Key, Val} | _]
+%% @return list()
+-spec save_settings(integer(), list()) -> list().
+save_settings(Uid, Settings) ->
+    [user_setting_ds:save(Uid, Key, Val) || [{Key, Val} | _] <- Settings].
+
+%% @doc 按关键字查找用户（email / mobile / account）并检查搜索权限
+%% @param KwdBin 关键字
+%% @return {User, Uid2, AllowSearch}
+-spec find_by_keyword(binary()) -> {map(), integer(), boolean()}.
+find_by_keyword(KwdBin) ->
+    IsEmail = elib_type:is_email(KwdBin),
+    IsMobile = elib_type:is_mobile(KwdBin),
+    User =
+        if
+            IsEmail -> user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
+            IsMobile -> user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
+            true -> user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
+        end,
+    Uid2 = maps:get(<<"id">>, User, 0),
+    AllowSearch = fts_user_ds:allow_search(Uid2),
+    {User, Uid2, AllowSearch}.
 
 %% @doc email 占用查询 + 绑定（I/O 外壳）。格式已由 user_agg 裁定为合法，
 %% 此处仅查占用：无占用则发绑定邮件，已占用返回错误。

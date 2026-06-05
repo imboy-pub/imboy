@@ -17,6 +17,7 @@
 -export([get_photo_detail/2]).
 -export([update_album_cover/2]).
 -export([rename_album/2]).
+-export([list_comments/2]).
 
 -include("log.hrl").
 
@@ -30,7 +31,8 @@
 %% @param AlbumName 相册名称
 %% @param CoverPhotoId 封面图片ID（可选）
 %% @return {ok, AlbumData} | {error, Reason}
--spec create_album(binary(), integer(), binary(), binary() | undefined) -> {ok, map()} | {error, term()}.
+-spec create_album(binary(), integer(), binary(), binary() | undefined) ->
+    {ok, map()} | {error, term()}.
 create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
     % 1. 解码群组ID
     Gid2 = ec_cnv:to_integer(Gid),
@@ -57,7 +59,8 @@ create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
 %% @param PhotoBinary 图片二进制数据
 %% @param PhotoName 图片名称
 %% @return {ok, PhotoData} | {error, Reason}
--spec upload_photo(binary(), integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
+-spec upload_photo(binary(), integer(), binary(), binary(), binary()) ->
+    {ok, map()} | {error, term()}.
 upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
     % 1. 解码群组ID
     Gid2 = ec_cnv:to_integer(Gid),
@@ -90,25 +93,31 @@ batch_upload_photos(Gid, CurrentUid, Photos) ->
     Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 构建完整的图片数据列表
-    Photos2 = [{Gid2, AlbumId, PhotoBinary, PhotoName} || {AlbumId, PhotoBinary, PhotoName} <- Photos],
+    Photos2 = [
+        {Gid2, AlbumId, PhotoBinary, PhotoName}
+     || {AlbumId, PhotoBinary, PhotoName} <- Photos
+    ],
 
     % 3. 调用DS层批量上传
     case group_album_ds:batch_upload_photos(Photos2, CurrentUid) of
         {ok, Results} ->
             % 4. 编码结果中的ID
-            Results2 = lists:map(fun(Result) ->
-                case Result of
-                    {ok, PhotoData} ->
-                        PhotoId2 = maps:get(<<"id">>, PhotoData),
-                        PhotoData2 = PhotoData#{
-                            <<"id">> => PhotoId2,
-                            <<"gid">> => Gid
-                        },
-                        {ok, PhotoData2};
-                    {error, Reason} ->
-                        {error, Reason}
-                end
-            end, Results),
+            Results2 = lists:map(
+                fun(Result) ->
+                    case Result of
+                        {ok, PhotoData} ->
+                            PhotoId2 = maps:get(<<"id">>, PhotoData),
+                            PhotoData2 = PhotoData#{
+                                <<"id">> => PhotoId2,
+                                <<"gid">> => Gid
+                            },
+                            {ok, PhotoData2};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+                end,
+                Results
+            ),
             {ok, Results2};
         {error, Reason} ->
             {error, Reason}
@@ -226,6 +235,14 @@ rename_album(AlbumId, NewName) ->
         _ ->
             {error, <<"相册不存在"/utf8>>}
     end.
+
+%% @doc 查询图片评论列表
+%% @param PhotoId 图片ID
+%% @param Limit 返回条数上限
+%% @return {ok, CommentList} | {error, Reason}
+-spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
+list_comments(PhotoId, Limit) ->
+    group_album_ds:list_comments(PhotoId, Limit).
 
 %% @doc 检查相册删除权限
 -spec check_album_delete_permission(integer(), integer(), integer()) -> ok | {error, binary()}.

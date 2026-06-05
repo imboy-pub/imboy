@@ -119,9 +119,19 @@ create(Req0, State) ->
         {_, _, _, _} when RemindBefore < 0 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
-            case group_schedule_logic:create_schedule(
-                GroupId2, Uid, Title, Description, Location,
-                StartAt, EndAt, RemindBefore, ParticipantIds) of
+            case
+                group_schedule_logic:create_schedule(
+                    GroupId2,
+                    Uid,
+                    Title,
+                    Description,
+                    Location,
+                    StartAt,
+                    EndAt,
+                    RemindBefore,
+                    ParticipantIds
+                )
+            of
                 {ok, Result} ->
                     elib_response:success(Req0, Result, <<"日程创建成功"/utf8>>);
                 {error, too_many_participants} ->
@@ -155,8 +165,11 @@ update(Req0, State) ->
         undefined ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
-            case group_schedule_logic:update_schedule(
-                ScheduleId, Uid, Title, Description, Location, StartAt, EndAt) of
+            case
+                group_schedule_logic:update_schedule(
+                    ScheduleId, Uid, Title, Description, Location, StartAt, EndAt
+                )
+            of
                 ok ->
                     elib_response:success(Req0, #{schedule_id => ScheduleId}, <<"日程修改成功"/utf8>>);
                 {error, not_found} ->
@@ -269,10 +282,11 @@ confirm(Req0, State) ->
     PostVals = elib_param:post(Req0),
 
     ScheduleId = normalize_schedule_id(maps_get(<<"schedule_id">>, PostVals)),
-    Accept = case maps_get(<<"accept">>, PostVals) of
-        undefined -> true;
-        Value -> to_boolean(Value, true)
-    end,
+    Accept =
+        case maps_get(<<"accept">>, PostVals) of
+            undefined -> true;
+            Value -> to_boolean(Value, true)
+        end,
 
     case ScheduleId of
         undefined ->
@@ -280,10 +294,11 @@ confirm(Req0, State) ->
         _ ->
             case group_schedule_logic:confirm_participation(ScheduleId, Uid, Accept) of
                 ok ->
-                    Msg = case Accept of
-                        true -> <<"已确认参加"/utf8>>;
-                        false -> <<"已确认不参加"/utf8>>
-                    end,
+                    Msg =
+                        case Accept of
+                            true -> <<"已确认参加"/utf8>>;
+                            false -> <<"已确认不参加"/utf8>>
+                        end,
                     elib_response:success(Req0, #{schedule_id => ScheduleId}, Msg);
                 {error, schedule_not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
@@ -366,7 +381,7 @@ normalize_schedule_id(_Value) ->
 
 -spec schedule_id_by_pk(integer()) -> binary() | undefined.
 schedule_id_by_pk(Id) when is_integer(Id), Id > 0 ->
-    case group_schedule_ds:find_by_id(Id, <<"schedule_id">>) of
+    case group_schedule_logic:get_schedule_id_by_pk(Id) of
         #{<<"schedule_id">> := ScheduleId} when is_binary(ScheduleId), ScheduleId =/= <<>> ->
             ScheduleId;
         _ ->

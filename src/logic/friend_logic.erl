@@ -10,6 +10,10 @@
 -export([delete_friend/2]).
 -export([move_to_category/3]).
 -export([information/2]).
+-export([is_friend/3]).
+-export([list_by_uid/1]).
+-export([get_friend_information/2]).
+-export([change_remark/3]).
 
 -include("log.hrl").
 
@@ -302,6 +306,32 @@ information(CurrentUid, Uid) ->
             % 不是好友关系
             #{}
     end.
+
+%% @doc 查询好友关系及指定字段
+%% Handler 层通过此接口查询好友状态，不直接访问 friend_ds
+%% @param FromUid 发起方用户ID
+%% @param ToUid 目标用户ID
+%% @param Field 需要查询的字段（如 <<"remark">>）
+%% @return {boolean(), binary()}
+-spec is_friend(integer(), integer(), binary()) -> {boolean(), binary()}.
+is_friend(FromUid, ToUid, Field) ->
+    friend_ds:is_friend(FromUid, ToUid, Field).
+
+%% @doc 查询当前用户的好友列表（分页）
+-spec list_by_uid(integer()) -> [map()].
+list_by_uid(Uid) ->
+    friend_ds:page_by_uid(Uid).
+
+%% @doc 获取目标用户的设置信息，用于好友详情页展示
+%% CurrentUid 为当前用户ID（保留供后续权限校验扩展），Uid 为目标好友ID
+-spec get_friend_information(integer(), binary() | integer()) -> map().
+get_friend_information(_CurrentUid, Uid) ->
+    user_setting_ds:find_by_uid(Uid).
+
+%% @doc 修改当前用户对指定好友的备注名
+-spec change_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
+change_remark(FromUid, ToUid, Remark) ->
+    friend_ds:change_remark(FromUid, ToUid, Remark).
 
 %% ===================================================================
 %% Internal Function Definitions

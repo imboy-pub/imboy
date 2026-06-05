@@ -127,7 +127,7 @@ mark_read(Req0, State) ->
                     elib_response:error(Req0, "消息ID必须提供");
                 {MsgId2, _} when MsgId2 =/= <<>> ->
                     %% 验证该 mention 记录确实属于当前用户（mentioned_uid = CurrentUid）
-                    case mention_ds:find_by_msg_id(MsgId2) of
+                    case mention_logic:find_by_msg_id(MsgId2) of
                         {ok, Mentions} ->
                             BelongsToUser = lists:any(
                                 fun(M) ->

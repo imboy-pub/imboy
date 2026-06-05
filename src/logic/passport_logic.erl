@@ -16,6 +16,10 @@
 -export([find_password/5]).
 -export([verify_user/2]).
 -export([quick_login/4]).
+-export([find_user_setting/1]).
+-export([email_in_use/1]).
+-export([bind_email/2]).
+-export([mobile_registered/1]).
 
 -include("log.hrl").
 -include("common.hrl").
@@ -708,6 +712,36 @@ record_compat_login_success(Data, PostVals) ->
     _ = user_ds:update_friends_last_seen_at(Uid, Now),
     _ = message_ds:check_and_notify_offline_msgs(Uid),
     ok.
+
+%% @doc 获取用户登录后的设置信息
+%% Handler 层通过此接口获取设置，不直接访问 user_setting_ds
+%% @param Uid 用户ID
+%% @return map() 用户设置
+-spec find_user_setting(integer()) -> map().
+find_user_setting(Uid) ->
+    user_setting_ds:find_by_uid(Uid).
+
+%% @doc 检查邮箱是否已被注册
+%% @param Email 邮箱地址
+%% @return boolean()
+-spec email_in_use(binary()) -> boolean().
+email_in_use(Email) ->
+    user_ds:find_id_by_email(Email) > 0.
+
+%% @doc 绑定邮箱到指定用户
+%% @param Uid 用户ID
+%% @param Email 邮箱地址
+%% @return {ok, integer()} | {error, any()}
+-spec bind_email(integer(), binary()) -> {ok, integer()} | {error, any()}.
+bind_email(Uid, Email) ->
+    user_ds:bind_email(Uid, Email).
+
+%% @doc 检查手机号是否已注册
+%% @param Mobile 手机号
+%% @return boolean()
+-spec mobile_registered(binary()) -> boolean().
+mobile_registered(Mobile) ->
+    user_ds:find_id_by_mobile(Mobile) > 0.
 
 compat_error_message(#{<<"reason">> := Reason}) when is_binary(Reason) ->
     Reason;

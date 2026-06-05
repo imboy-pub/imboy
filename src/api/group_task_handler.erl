@@ -2,7 +2,19 @@
 %% Thin HTTP adapter for the group_collab task boundary.
 %% Keep transport concerns here and delegate task rules to group_task_logic.
 
--dialyzer({nowarn_function, [create/2, update/2, assign/2, submit/2, review/2, list/2, detail/2, my_tasks/2, pending_review/2]}).
+-dialyzer(
+    {nowarn_function, [
+        create/2,
+        update/2,
+        assign/2,
+        submit/2,
+        review/2,
+        list/2,
+        detail/2,
+        my_tasks/2,
+        pending_review/2
+    ]}
+).
 
 -behavior(cowboy_rest).
 
@@ -144,12 +156,13 @@ submit(Req0, State) ->
     TaskId = maps:get(<<"task_id">>, PostVals, <<>>),
     TaskUid = normalize_task_uid(TaskId),
     Content = maps:get(<<"content">>, PostVals, <<>>),
-    Attachment0 = case maps:get(<<"attachment">>, PostVals, undefined) of
-        undefined ->
-            maps:get(<<"attachments">>, PostVals, <<>>);
-        Value ->
-            Value
-    end,
+    Attachment0 =
+        case maps:get(<<"attachment">>, PostVals, undefined) of
+            undefined ->
+                maps:get(<<"attachments">>, PostVals, <<>>);
+            Value ->
+                Value
+        end,
     Attachment = normalize_attachment(Attachment0),
 
     case TaskUid of
@@ -188,7 +201,9 @@ review(Req0, State) ->
             },
             case group_task_logic:review(AssignmentId2, CurrentUid, Data) of
                 ok ->
-                    elib_response:success(Req0, #{<<"assignment_id">> => AssignmentId}, <<"作业批改成功"/utf8>>);
+                    elib_response:success(
+                        Req0, #{<<"assignment_id">> => AssignmentId}, <<"作业批改成功"/utf8>>
+                    );
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
             end
@@ -202,7 +217,9 @@ list(Req0, State) ->
     Gid = proplists:get_value(<<"group_id">>, Qs, <<>>),
     Gid2 = elib_cnv:safe_to_integer(Gid),
     Status = normalize_optional_status(proplists:get_value(<<"status">>, Qs, undefined)),
-    AssigneeId = normalize_assignee_id(proplists:get_value(<<"assignee_id">>, Qs, undefined), CurrentUid),
+    AssigneeId = normalize_assignee_id(
+        proplists:get_value(<<"assignee_id">>, Qs, undefined), CurrentUid
+    ),
     {Page, Size} = elib_param:page(Req0),
 
     case {Gid2, Status, AssigneeId} of
@@ -217,7 +234,9 @@ list(Req0, State) ->
                 {ok, Tasks} ->
                     % 转换数据格式
                     Tasks2 = [task_transfer(Task) || Task <- Tasks],
-                    elib_response:success(Req0, #{<<"list">> => Tasks2, <<"page">> => Page, <<"size">> => Size});
+                    elib_response:success(Req0, #{
+                        <<"list">> => Tasks2, <<"page">> => Page, <<"size">> => Size
+                    });
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
             end
@@ -260,7 +279,9 @@ my_tasks(Req0, State) ->
                 {ok, Assignments} ->
                     % 转换数据格式
                     Assignments2 = [assignment_transfer(Assignment) || Assignment <- Assignments],
-                    elib_response:success(Req0, #{<<"list">> => Assignments2, <<"page">> => Page, <<"size">> => Size});
+                    elib_response:success(Req0, #{
+                        <<"list">> => Assignments2, <<"page">> => Page, <<"size">> => Size
+                    });
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
             end
@@ -283,7 +304,9 @@ pending_review(Req0, State) ->
                 {ok, Assignments} ->
                     % 转换数据格式
                     Assignments2 = [assignment_transfer(Assignment) || Assignment <- Assignments],
-                    elib_response:success(Req0, #{<<"list">> => Assignments2, <<"page">> => Page, <<"size">> => Size});
+                    elib_response:success(Req0, #{
+                        <<"list">> => Assignments2, <<"page">> => Page, <<"size">> => Size
+                    });
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
             end
@@ -324,7 +347,7 @@ normalize_task_uid(TaskId) when is_binary(TaskId) ->
                 true ->
                     task_uid_by_pk(elib_cnv:safe_to_integer(TaskId));
                 false ->
-                    case group_task_ds:find_by_task_id(TaskId) of
+                    case group_task_logic:task_uid_by_task_id(TaskId) of
                         {ok, _Task} ->
                             TaskId;
                         _ ->
@@ -342,7 +365,7 @@ normalize_task_uid(_TaskId) ->
 
 -spec task_uid_by_pk(integer()) -> binary() | undefined.
 task_uid_by_pk(Id) when is_integer(Id), Id > 0 ->
-    case group_task_ds:find_by_id(Id) of
+    case group_task_logic:task_uid_by_id(Id) of
         {ok, #{<<"task_id">> := TaskUid}} when is_binary(TaskUid), TaskUid =/= <<>> ->
             TaskUid;
         _ ->

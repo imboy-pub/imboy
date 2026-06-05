@@ -13,9 +13,26 @@
 -export([face2face_save/3]).
 -export([add/4]).
 -export([dissolve/4]).
+-export([dissolve/2]).
 -export([transfer/3]).
--export([transfer/4]).           % 增强的转让函数，支持保留管理员身份
+% 增强的转让函数，支持保留管理员身份
+-export([transfer/4]).
 -export([nearby_gid/6]).
+-export([find_by_id/2]).
+-export([member_uids/1]).
+-export([face2face_notify_payload/2]).
+-export([notify_member_join/4]).
+-export([member_list_by_uids/1]).
+-export([count_by_owner/1]).
+-export([edit/3]).
+-export([page_by_owner/3]).
+-export([page_joined/3]).
+-export([page_managed/3]).
+-export([is_member/2]).
+-export([msg_page/3]).
+-export([find_member/2]).
+-export([get_remark/2]).
+-export([update_remark/3]).
 
 -include("log.hrl").
 -include("group_role.hrl").
@@ -31,7 +48,8 @@ group_transfer(G) -> G.
 %% @param Lng 经度
 %% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
--spec face2face(integer(), binary(), binary(), binary()) -> {ok, integer()} | {error, binary() | string()}.
+-spec face2face(integer(), binary(), binary(), binary()) ->
+    {ok, integer()} | {error, binary() | string()}.
 face2face(_, <<>>, _, _) ->
     {error, <<"Code 必须"/utf8>>};
 face2face(_, _, undefined, _) ->
@@ -78,14 +96,15 @@ face2face_save(Code, Gid, Uid) ->
 %% @param MemberUids 初始成员ID列表（整数）
 %% @return {ok, Gid} | {error, Reason}
 -spec add(non_neg_integer(), integer(), integer(), [binary()]) ->
-             {ok, integer()} | {error, binary()}.
+    {ok, integer()} | {error, binary()}.
 add(Count, _, _, _) when Count > 100 ->
     {error, <<"每人最多创建100个群"/utf8>>};
 add(_, Uid, Type, MemberUids) ->
-    MemberUids2 = case MemberUids of
-        List when is_list(List) -> List;
-        _ -> []
-    end,
+    MemberUids2 =
+        case MemberUids of
+            List when is_list(List) -> List;
+            _ -> []
+        end,
     Now = elib_dt:now(),
     MemberUids3 = [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
     % 【防御性编程】确保创建者不会被重复添加
@@ -101,8 +120,10 @@ add(_, Uid, Type, MemberUids) ->
             elib_pg:with_tx(fun(Conn) ->
                 Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
                 %% 【原子性修复】批量添加成员并检查结果
-                Results = [group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
-                     || Uid2 <- MemberUids4],
+                Results = [
+                    group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
+                 || Uid2 <- MemberUids4
+                ],
                 %% 【原子性修复】检查是否所有成员都添加成功
                 % join_group 返回 {ok, UidSum} | {error, Reason}
                 ErrorResults = [R || R <- Results, element(1, R) =:= error],
@@ -167,29 +188,41 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                     elib_pg:with_tx(fun(Conn) ->
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
-                                case group_member_ds:update_role(Conn, Gid, OwnerUid, <<"normal">>) of
+                                case
+                                    group_member_ds:update_role(Conn, Gid, OwnerUid, <<"normal">>)
+                                of
                                     ok ->
-                                        case group_member_ds:update_role(Conn, Gid, NewOwnerUid, <<"owner">>) of
+                                        case
+                                            group_member_ds:update_role(
+                                                Conn, Gid, NewOwnerUid, <<"owner">>
+                                            )
+                                        of
                                             ok ->
                                                 % 记录群转让日志
                                                 Now = elib_dt:now(),
                                                 LogData = #{
-                                                    <<"type">> => 9,  % 群转让操作类型
+                                                    % 群转让操作类型
+                                                    <<"type">> => 9,
                                                     <<"option_uid">> => CurrentUid,
                                                     <<"group_id">> => Gid,
-                                                    <<"body">> => jsone:encode(#{<<"from_owner_uid">> => OwnerUid,
-                                                                                <<"to_owner_uid">> => NewOwnerUid,
-                                                                                <<"changed_by">> => CurrentUid,
-                                                                                <<"remark">> => <<"群转让"/utf8>>}),
+                                                    <<"body">> => jsone:encode(#{
+                                                        <<"from_owner_uid">> => OwnerUid,
+                                                        <<"to_owner_uid">> => NewOwnerUid,
+                                                        <<"changed_by">> => CurrentUid,
+                                                        <<"remark">> => <<"群转让"/utf8>>
+                                                    }),
                                                     <<"created_at">> => Now
                                                 },
                                                 _ = group_log_ds:add(Conn, LogData),
                                                 ok;
-                                            {error, Reason} -> {error, Reason}
+                                            {error, Reason} ->
+                                                {error, Reason}
                                         end;
-                                    {error, Reason} -> {error, Reason}
+                                    {error, Reason} ->
+                                        {error, Reason}
                                 end;
-                            {error, Reason} -> {error, Reason}
+                            {error, Reason} ->
+                                {error, Reason}
                         end
                     end);
                 _ ->
@@ -208,13 +241,15 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
 %% @param Limit 返回数量限制
 %% @param Code 随机码
 %% @return {ok, [map()]} | {error, Reason} 附近群组列表
--spec nearby_gid(binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number(),
-                 binary() | string() | number()) ->
-                    {ok, [map()]} | {error, term()}.
+-spec nearby_gid(
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number(),
+    binary() | string() | number()
+) ->
+    {ok, [map()]} | {error, term()}.
 nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
     % 使用 DS 层接口
     group_ds:nearby_gid(Lng, Lat, Radius, Unit, Limit, Code).
@@ -250,7 +285,8 @@ transfer(CurrentUid, Gid, NewOwnerUid, KeepAsAdmin) when is_boolean(KeepAsAdmin)
 %% @param KeepAsAdmin 是否保留原群主为管理员
 %% @param G 群组信息
 %% @return ok | {error, Reason}
--spec do_transfer(integer(), integer(), integer(), integer(), boolean(), map()) -> ok | {error, binary()}.
+-spec do_transfer(integer(), integer(), integer(), integer(), boolean(), map()) ->
+    ok | {error, binary()}.
 do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
     % 验证当前用户是群主
     case CurrentUid of
@@ -263,35 +299,50 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
                                 % 更新原群主角色
-                                OldOwnerRole = case KeepAsAdmin of
-                                    true  -> ?ROLE_VICE_OWNER;  % 保留为副群主
-                                    false -> ?ROLE_MEMBER       % 变为普通成员
-                                end,
-                                case group_member_ds:update_role(Conn, Gid, OwnerUid, OldOwnerRole) of
+                                OldOwnerRole =
+                                    case KeepAsAdmin of
+                                        % 保留为副群主
+                                        true -> ?ROLE_VICE_OWNER;
+                                        % 变为普通成员
+                                        false -> ?ROLE_MEMBER
+                                    end,
+                                case
+                                    group_member_ds:update_role(Conn, Gid, OwnerUid, OldOwnerRole)
+                                of
                                     ok ->
                                         % 更新新群主角色
-                                        case group_member_ds:update_role(Conn, Gid, NewOwnerUid, ?ROLE_OWNER) of
+                                        case
+                                            group_member_ds:update_role(
+                                                Conn, Gid, NewOwnerUid, ?ROLE_OWNER
+                                            )
+                                        of
                                             ok ->
                                                 % 记录群转让日志
                                                 Now = elib_dt:now(),
                                                 LogData = #{
-                                                    <<"type">> => 9,  % 群转让操作类型
+                                                    % 群转让操作类型
+                                                    <<"type">> => 9,
                                                     <<"option_uid">> => CurrentUid,
                                                     <<"group_id">> => Gid,
-                                                    <<"body">> => jsone:encode(#{<<"from_owner_uid">> => OwnerUid,
-                                                                                        <<"to_owner_uid">> => NewOwnerUid,
-                                                                                        <<"changed_by">> => CurrentUid,
-                                                                                        <<"keep_as_admin">> => KeepAsAdmin,
-                                                                                        <<"remark">> => <<"群转让"/utf8>>}),
+                                                    <<"body">> => jsone:encode(#{
+                                                        <<"from_owner_uid">> => OwnerUid,
+                                                        <<"to_owner_uid">> => NewOwnerUid,
+                                                        <<"changed_by">> => CurrentUid,
+                                                        <<"keep_as_admin">> => KeepAsAdmin,
+                                                        <<"remark">> => <<"群转让"/utf8>>
+                                                    }),
                                                     <<"created_at">> => Now
                                                 },
                                                 _ = group_log_ds:add(Conn, LogData),
                                                 ok;
-                                            {error, Reason} -> {error, Reason}
+                                            {error, Reason} ->
+                                                {error, Reason}
                                         end;
-                                    {error, Reason} -> {error, Reason}
+                                    {error, Reason} ->
+                                        {error, Reason}
                                 end;
-                            {error, Reason} -> {error, Reason}
+                            {error, Reason} ->
+                                {error, Reason}
                         end
                     end);
                 _ ->
@@ -299,6 +350,199 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
             end;
         _ ->
             {error, "只有群主可以转让群组"}
+    end.
+
+%% @doc 查询群组详情
+%% 通过群组ID查询指定字段的群组信息
+%% @param Gid 群组ID
+%% @param Column 查询字段
+%% @return map() | {error, any()}
+-spec find_by_id(integer() | binary(), binary()) -> map() | {error, any()}.
+find_by_id(Gid, Column) ->
+    group_ds:find_by_id(Gid, Column).
+
+%% @doc 获取群组所有成员 UID 列表
+%% @param Gid 群组ID
+%% @return [integer()]
+-spec member_uids(integer()) -> [integer()].
+member_uids(Gid) ->
+    group_ds:member_uids(Gid).
+
+%% @doc 构造 face2face 加入通知的 payload
+%% 查询用户信息，返回用于广播 group_member_join 通知的 map
+%% @param Uid 加入者用户ID
+%% @param Gid 群组ID
+%% @return map()
+-spec face2face_notify_payload(integer(), integer()) -> map().
+face2face_notify_payload(Uid, Gid) ->
+    ToUidLi = group_ds:member_uids(Gid),
+    ToUidLi2 =
+        case ToUidLi of
+            [] -> [Uid];
+            _ -> ToUidLi
+        end,
+    User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
+    Payload = #{
+        <<"gid">> => Gid,
+        <<"user_id_sum">> => lists:sum(ToUidLi2),
+        <<"nickname">> => maps:get(<<"nickname">>, User),
+        <<"avatar">> => maps:get(<<"avatar">>, User),
+        <<"account">> => maps:get(<<"account">>, User)
+    },
+    #{to_uid_list => ToUidLi2, payload => Payload}.
+
+%% @doc 向群成员广播 group_member_join 系统消息
+%% @param FromUid 发送者ID
+%% @param ToUidLi 目标 UID 列表
+%% @param Action 消息动作
+%% @param Payload 消息体
+%% @return ok
+-spec notify_member_join(integer(), [integer()], binary(), map()) -> ok.
+notify_member_join(FromUid, ToUidLi, Action, Payload) ->
+    msg_s2c_ds:send(FromUid, ToUidLi, Action, <<>>, null, Payload, save).
+
+%% @doc 批量查询成员用户信息
+%% @param Uids 用户ID列表
+%% @return {ok, [map()]} | {error, any()}
+-spec member_list_by_uids([integer()]) -> {ok, [map()]} | {error, any()}.
+member_list_by_uids(Uids) ->
+    user_ds:list_by_ids(Uids, <<"id as user_id,account,avatar,nickname">>).
+
+%% @doc 查询用户已创建群组数量
+%% @param OwnerUid 群主用户ID
+%% @return integer()
+-spec count_by_owner(integer()) -> integer().
+count_by_owner(OwnerUid) ->
+    group_ds:count_by_owner(OwnerUid).
+
+%% @doc 编辑群组（更新已有群 或 插入新群）
+%% 若群已存在则更新字段并广播 group_edit 事件；否则从随机码表读取创建信息后插入新群。
+%% @param Uid 操作用户ID
+%% @param Gid 群组ID（integer）
+%% @param Data 要更新的字段 map
+%% @return ok | {error, any()}
+-spec edit(integer(), integer(), map()) -> ok | {error, any()}.
+edit(Uid, Gid, Data) ->
+    Now = elib_dt:now(),
+    case group_ds:exists(Gid) of
+        true ->
+            case group_ds:update_by_id(Gid, Data#{updated_at => Now}) of
+                {ok, _} ->
+                    ToUidLi = group_ds:member_uids(Gid),
+                    Action = <<"group_edit">>,
+                    msg_s2c_ds:send(
+                        Uid,
+                        ToUidLi,
+                        Action,
+                        <<>>,
+                        null,
+                        Data#{<<"gid">> => Gid},
+                        save
+                    ),
+                    ok;
+                {error, _} = Err ->
+                    Err
+            end;
+        false ->
+            M3 = group_random_code_ds:find_by_gid(Gid, <<"user_id, created_at">>),
+            Data4 = Data#{
+                owner_uid => maps:get(<<"user_id">>, M3, Uid),
+                creator_uid => maps:get(<<"user_id">>, M3, Uid),
+                created_at => maps:get(<<"created_at">>, M3, Now),
+                id => Gid
+            },
+            case group_ds:insert(Data4) of
+                {ok, _} -> ok;
+                {error, _} = Err -> Err
+            end
+    end.
+
+%% @doc 解散群组（仅需 Uid 和 Gid，自动查询 owner_uid 和群信息）
+%% @param Uid 操作者用户ID
+%% @param Gid 群组ID
+%% @return ok | {error, binary()}
+-spec dissolve(integer(), integer()) -> ok | {error, binary()}.
+dissolve(Uid, Gid) ->
+    case group_ds:find_by_id(Gid, <<"*">>) of
+        {error, _} ->
+            {error, <<"群组不存在"/utf8>>};
+        G ->
+            OwnerUid = maps:get(<<"owner_uid">>, G, 0),
+            group_ds:dissolve_group(Uid, Gid, OwnerUid, G)
+    end.
+
+%% @doc 分页查询当前用户作为群主的群组列表
+%% @param OwnerUid 群主用户ID
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, map()} | {error, any()}
+-spec page_by_owner(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_by_owner(OwnerUid, Page, Size) ->
+    group_ds:page_by_owner(OwnerUid, Page, Size).
+
+%% @doc 分页查询当前用户已加入的群组列表
+%% @param Uid 用户ID
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, map()} | {error, any()}
+-spec page_joined(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_joined(Uid, Page, Size) ->
+    group_ds:page_joined(Uid, Page, Size).
+
+%% @doc 分页查询当前用户管理的群组列表（群主/副群主/管理员）
+%% @param Uid 用户ID
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, map()} | {error, any()}
+-spec page_managed(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
+page_managed(Uid, Page, Size) ->
+    group_ds:page_managed(Uid, Page, Size).
+
+%% @doc 判断用户是否为群成员
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return map()（空 map 表示非成员）
+-spec is_member(integer(), integer()) -> map().
+is_member(Gid, Uid) ->
+    group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"id">>).
+
+%% @doc 分页查询群组消息历史记录
+%% @param Where 查询条件 map
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, map()} | {error, term()}
+-spec msg_page(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+msg_page(Where, Page, Size) ->
+    msg_c2g_ds:page(Where, Page, Size).
+
+%% @doc 查询用户的群成员记录
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return map()
+-spec find_member(integer(), integer()) -> map().
+find_member(Gid, Uid) ->
+    group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"*">>).
+
+%% @doc 获取当前用户对指定群的备注
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @return map()（含 remark 字段）
+-spec get_remark(integer(), integer()) -> map().
+get_remark(Gid, Uid) ->
+    group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"remark">>).
+
+%% @doc 更新当前用户对指定群的备注
+%% 先校验是否为群成员，再执行更新
+%% @param Gid 群组ID
+%% @param Uid 用户ID
+%% @param Remark 新备注内容
+%% @return {ok, integer()} | {error, any()}
+-spec update_remark(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
+update_remark(Gid, Uid, Remark) ->
+    Member = group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"id">>),
+    case maps:size(Member) of
+        0 -> {error, <<"你不是该群成员"/utf8>>};
+        _ -> group_member_ds:update_remark(Gid, Uid, Remark)
     end.
 
 %% ===================================================================

@@ -138,8 +138,7 @@ parse_ts(Ts) ->
 %% @doc 验证绑定邮箱缓存状态
 -spec validate_bind_mail_cache(term(), binary()) -> ok | {error, binary()}.
 validate_bind_mail_cache(undefined, Mail) ->
-    Id = user_ds:find_id_by_email(Mail),
-    case Id > 0 of
+    case passport_logic:email_in_use(Mail) of
         true -> {error, "抱歉，该邮箱地址验证已失效\n造成此情况可能是您更改了邮箱，也可能是您已确认过该邮箱不是您的。"};
         false -> ok
     end;
@@ -150,7 +149,7 @@ validate_bind_mail_cache(_CacheVal, _Mail) ->
 -spec process_bind_mail(cowboy_req:req(), map()) -> cowboy_req:req().
 process_bind_mail(Req0, #{uid := Uid, mail := Mail, cache_key := CacheKey}) ->
     Uid2 = ec_cnv:to_integer(Uid),
-    case user_ds:bind_email(Uid2, Mail) of
+    case passport_logic:bind_email(Uid2, Mail) of
         {ok, _} ->
             imboy_cache:set(CacheKey, 1, 86400),
             elib_response:success(Req0, #{});
@@ -196,7 +195,7 @@ login(Req0) ->
         {ok, Data} ->
             Uid = maps:get(<<"uid">>, Data),
             gen_server:cast(user_server, {login_success, Uid, Post2}),
-            Setting = user_setting_ds:find_by_uid(Uid),
+            Setting = passport_logic:find_user_setting(Uid),
             Data2 = Data#{<<"setting">> => Setting},
             elib_response:success(Req0, Data2, "success.");
         {{error, conflict}, ConflictInfo} ->
@@ -234,7 +233,7 @@ quick_login(Req0) ->
             Uid = maps:get(<<"uid">>, Data),
             % gen_server:call是同步的，gen_server:cast是异步的
             gen_server:cast(user_server, {login_success, Uid, Post2}),
-            Setting = user_setting_ds:find_by_uid(Uid),
+            Setting = passport_logic:find_user_setting(Uid),
             Data2 = Data#{<<"setting">> => Setting},
             % ?DEBUG_LOG(["Data2", Data2]),
             elib_response:success(Req0, Data2, "success.");
@@ -261,7 +260,7 @@ refreshtoken(Req0) ->
             case token_ds:decrypt_token(Refreshtoken) of
                 {ok, Id, _ExpireDAt, <<"rtk">>} ->
                     % 状态: -1 删除  0 禁用  1 启用
-                    Status = user_ds:get_status(Id),
+                    Status = user_logic:get_status(Id),
                     case Status of
                         _Other when Status > -1 ->
                             elib_response:success(
@@ -296,18 +295,16 @@ getcode(Req0) ->
     Scene = maps:get(<<"scene">>, PostVals, <<>>),
     Account = maps:get(<<"account">>, PostVals, <<>>),
     % ?DEBUG_LOG([Type, Account]),
-    Id =
+    MobileExists =
         if
             Type == <<"sms">>, Scene == <<"signup">> ->
-                user_ds:find_id_by_mobile(Account);
-            % elib_response:error(Req0, "Msg1");
+                passport_logic:mobile_registered(Account);
             true ->
-                0
+                false
         end,
-    % elib_response:error(Req0, "Msg2")
-    % ?DEBUG_LOG([Type, Account, "id ", Id, Type == <<"sms">>, Scene == <<"signup">>]),
+    % ?DEBUG_LOG([Type, Account, "MobileExists ", MobileExists, Type == <<"sms">>, Scene == <<"signup">>]),
     if
-        Id > 0 ->
+        MobileExists ->
             elib_response:error(Req0, "paramAlreadyExist");
         true ->
             % elib_response:success(Req0, #{}, "success.")

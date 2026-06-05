@@ -43,7 +43,7 @@ api_init(Req0) ->
 
     SolKey = config_ds:env(solidified_key),
     SignKey =
-        case app_version_ds:sign_key(DType, SignKeyVsn, Pkg) of
+        case app_version_logic:sign_key(DType, SignKeyVsn, Pkg) of
             <<>> ->
                 SolKey;
             SK when is_binary(SK) ->

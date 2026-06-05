@@ -56,14 +56,15 @@ handle_request(Req0, State) ->
     Action = maps:get(action, State, undefined),
     Method = cowboy_req:method(Req0),
 
-    Req1 = case {Method, Action} of
-        {<<"POST">>, create} -> handle_create(Req0);
-        {<<"GET">>, status} -> handle_status(Req0);
-        {<<"POST">>, scan} -> handle_scan(Req0, State);
-        {<<"POST">>, confirm} -> handle_confirm(Req0, State);
-        {<<"POST">>, cancel} -> handle_cancel(Req0, State);
-        _ -> elib_response:error(Req0, <<"Bad Request"/utf8>>, ?ERR_BAD_REQUEST)
-    end,
+    Req1 =
+        case {Method, Action} of
+            {<<"POST">>, create} -> handle_create(Req0);
+            {<<"GET">>, status} -> handle_status(Req0);
+            {<<"POST">>, scan} -> handle_scan(Req0, State);
+            {<<"POST">>, confirm} -> handle_confirm(Req0, State);
+            {<<"POST">>, cancel} -> handle_cancel(Req0, State);
+            _ -> elib_response:error(Req0, <<"Bad Request"/utf8>>, ?ERR_BAD_REQUEST)
+        end,
     {stop, Req1, State}.
 
 %% ===================================================================
@@ -175,12 +176,14 @@ handle_scan(Req, State) ->
                                     elib_response:error(
                                         Req,
                                         <<"二维码已确认，请刷新"/utf8>>,
-                                        ?ERR_QR_LOGIN_ALREADY_USED);
+                                        ?ERR_QR_LOGIN_ALREADY_USED
+                                    );
                                 <<"cancelled">> ->
                                     elib_response:error(
                                         Req,
                                         <<"登录已取消，请刷新"/utf8>>,
-                                        ?ERR_QR_LOGIN_CANCELLED);
+                                        ?ERR_QR_LOGIN_CANCELLED
+                                    );
                                 _ ->
                                     ExpiresAt = maps:get(<<"expires_at">>, Session, 0),
                                     case erlang:system_time(millisecond) > ExpiresAt of
@@ -189,22 +192,28 @@ handle_scan(Req, State) ->
                                             elib_response:error(
                                                 Req,
                                                 <<"二维码已过期，请刷新"/utf8>>,
-                                                ?ERR_QR_LOGIN_EXPIRED);
+                                                ?ERR_QR_LOGIN_EXPIRED
+                                            );
                                         false ->
                                             ScannedBy = maps:get(<<"scanned_by">>, Session, 0),
-                                            case Status =:= <<"scanned">> andalso
-                                                ScannedBy =/= 0 andalso
-                                                ScannedBy =/= Uid of
+                                            case
+                                                Status =:= <<"scanned">> andalso
+                                                    ScannedBy =/= 0 andalso
+                                                    ScannedBy =/= Uid
+                                            of
                                                 true ->
                                                     elib_response:error(
                                                         Req,
                                                         <<"无权限操作"/utf8>>,
-                                                        ?ERR_FORBIDDEN);
+                                                        ?ERR_FORBIDDEN
+                                                    );
                                                 false ->
                                                     UpdatedSession = Session#{
                                                         <<"status">> => <<"scanned">>,
                                                         <<"scanned_by">> => Uid,
-                                                        <<"scanned_at">> => erlang:system_time(millisecond)
+                                                        <<"scanned_at">> => erlang:system_time(
+                                                            millisecond
+                                                        )
                                                     },
                                                     cache_session(SessionToken, UpdatedSession),
                                                     %% PR-2β: 广播 scanned 事件给该会话的 SSE 订阅者
@@ -212,16 +221,24 @@ handle_scan(Req, State) ->
                                                     %% notify/2 内部已 try/catch 兜底，不影响主流程。
                                                     qr_login_event_ds:notify(
                                                         SessionToken,
-                                                        qr_login_event_ds:event(scanned, undefined)),
+                                                        qr_login_event_ds:event(scanned, undefined)
+                                                    ),
                                                     %% 回带设备信息便于手机端 UI 展示"哪台设备要登录"。
                                                     %% 字段对齐 create/2 时存储的 device_name / platform。
-                                                    DeviceName = maps:get(<<"device_name">>, Session, <<>>),
-                                                    Platform = maps:get(<<"platform">>, Session, <<>>),
+                                                    DeviceName = maps:get(
+                                                        <<"device_name">>, Session, <<>>
+                                                    ),
+                                                    Platform = maps:get(
+                                                        <<"platform">>, Session, <<>>
+                                                    ),
                                                     elib_response:success(
                                                         Req,
-                                                        #{<<"status">> => <<"scanned">>,
-                                                          <<"device_name">> => DeviceName,
-                                                          <<"platform">> => Platform})
+                                                        #{
+                                                            <<"status">> => <<"scanned">>,
+                                                            <<"device_name">> => DeviceName,
+                                                            <<"platform">> => Platform
+                                                        }
+                                                    )
                                             end
                                     end
                             end
@@ -258,7 +275,8 @@ handle_confirm(Req, State) ->
                                     elib_response:error(
                                         Req,
                                         <<"二维码已过期，请刷新"/utf8>>,
-                                        ?ERR_QR_LOGIN_EXPIRED);
+                                        ?ERR_QR_LOGIN_EXPIRED
+                                    );
                                 false ->
                                     Status = maps:get(<<"status">>, Session, <<"waiting">>),
                                     case Status of
@@ -266,17 +284,20 @@ handle_confirm(Req, State) ->
                                             elib_response:error(
                                                 Req,
                                                 <<"二维码尚未扫码"/utf8>>,
-                                                ?ERR_QR_LOGIN_NOT_SCANNED);
+                                                ?ERR_QR_LOGIN_NOT_SCANNED
+                                            );
                                         <<"cancelled">> ->
                                             elib_response:error(
                                                 Req,
                                                 <<"登录已取消，请刷新"/utf8>>,
-                                                ?ERR_QR_LOGIN_CANCELLED);
+                                                ?ERR_QR_LOGIN_CANCELLED
+                                            );
                                         <<"confirmed">> ->
                                             elib_response:error(
                                                 Req,
                                                 <<"二维码已确认，请刷新"/utf8>>,
-                                                ?ERR_QR_LOGIN_ALREADY_USED);
+                                                ?ERR_QR_LOGIN_ALREADY_USED
+                                            );
                                         <<"scanned">> ->
                                             ScannedBy = maps:get(<<"scanned_by">>, Session, 0),
                                             case ScannedBy of
@@ -284,39 +305,52 @@ handle_confirm(Req, State) ->
                                                     elib_response:error(
                                                         Req,
                                                         <<"二维码尚未扫码"/utf8>>,
-                                                        ?ERR_QR_LOGIN_NOT_SCANNED);
+                                                        ?ERR_QR_LOGIN_NOT_SCANNED
+                                                    );
                                                 Uid ->
                                                     LoginToken = generate_login_token(Uid),
                                                     UpdatedSession = Session#{
                                                         <<"status">> => <<"confirmed">>,
                                                         <<"login_token">> => LoginToken,
-                                                        <<"confirmed_at">> => erlang:system_time(millisecond)
+                                                        <<"confirmed_at">> => erlang:system_time(
+                                                            millisecond
+                                                        )
                                                     },
                                                     cache_session(SessionToken, UpdatedSession),
                                                     %% PR-2β: 广播 confirmed + login_token 给 SSE 订阅者
                                                     %% Web 端收到后调 _completeLogin 落地 token，无需轮询。
                                                     qr_login_event_ds:notify(
                                                         SessionToken,
-                                                        qr_login_event_ds:event(confirmed, LoginToken)),
+                                                        qr_login_event_ds:event(
+                                                            confirmed, LoginToken
+                                                        )
+                                                    ),
 
                                                     DeviceId = maps:get(<<"device_id">>, Session),
-                                                    DeviceName = maps:get(<<"device_name">>, Session),
+                                                    DeviceName = maps:get(
+                                                        <<"device_name">>, Session
+                                                    ),
                                                     Platform = maps:get(<<"platform">>, Session),
-                                                    log_device_login(Uid, DeviceId, DeviceName, Platform),
+                                                    log_device_login(
+                                                        Uid, DeviceId, DeviceName, Platform
+                                                    ),
                                                     elib_response:success(
                                                         Req,
-                                                        #{<<"status">> => <<"confirmed">>});
+                                                        #{<<"status">> => <<"confirmed">>}
+                                                    );
                                                 _ ->
                                                     elib_response:error(
                                                         Req,
                                                         <<"无权限操作"/utf8>>,
-                                                        ?ERR_FORBIDDEN)
+                                                        ?ERR_FORBIDDEN
+                                                    )
                                             end;
                                         _ ->
                                             elib_response:error(
                                                 Req,
                                                 <<"参数错误"/utf8>>,
-                                                ?ERR_BAD_REQUEST)
+                                                ?ERR_BAD_REQUEST
+                                            )
                                     end
                             end
                     end
@@ -391,7 +425,8 @@ generate_login_token(Uid) ->
 -spec cache_session(binary(), map()) -> ok.
 cache_session(SessionToken, SessionData) ->
     Key = {qr_login, SessionToken},
-    imboy_cache:set(Key, SessionData, 60), % 60 秒过期
+    % 60 秒过期
+    imboy_cache:set(Key, SessionData, 60),
     ok.
 
 %% @doc 获取会话
@@ -413,13 +448,4 @@ delete_session(SessionToken) ->
 %% @doc 记录设备登录
 -spec log_device_login(integer(), binary(), binary(), binary()) -> ok.
 log_device_login(Uid, DeviceId, DeviceName, Platform) ->
-    Now = erlang:system_time(millisecond),
-    PostVals = #{
-        <<"device_name">> => DeviceName,
-        <<"platform">> => Platform,
-        <<"login_type">> => <<"qr_scan">>
-    },
-    % 记录到数据库
-    user_device_ds:save(Now, Uid, DeviceId, PostVals),
-    ?INFO_LOG([qr_login_device, Uid, DeviceId, DeviceName]),
-    ok.
+    qr_login_logic:log_device_login(Uid, DeviceId, DeviceName, Platform).

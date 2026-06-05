@@ -16,6 +16,7 @@
 -export([count_unread/1]).
 -export([count_group_unread/2]).
 -export([get_member_suggestions/3]).
+-export([find_by_msg_id/1]).
 
 %% ===================================================================
 %% API functions
@@ -27,7 +28,8 @@
 %% @param Mentions 被@的用户ID列表，可以是 <<"all">> 表示@所有人
 %% @param FromUid 发送者ID
 %% @return ok | {error, Reason}
--spec create_mentions(binary(), integer(), list(binary) | binary(), integer()) -> ok | {error, term()}.
+-spec create_mentions(binary(), integer(), list(binary) | binary(), integer()) ->
+    ok | {error, term()}.
 create_mentions(_MsgId, _Gid, Mentions, _FromUid) when not is_list(Mentions) ->
     {error, invalid_mentions_format};
 create_mentions(_MsgId, _Gid, [], _FromUid) ->
@@ -64,7 +66,8 @@ list_mentions(Uid, IsRead, Options) ->
 %% @param IsRead 已读状态（true/false/undefined 表示全部）
 %% @param Options 选项，可包含 #{page => integer(), size => integer()}
 %% @return {ok, list(map())} | {error, Reason}
--spec list_group_mentions(integer(), integer(), boolean() | undefined, map()) -> {ok, list(map())} | {error, term()}.
+-spec list_group_mentions(integer(), integer(), boolean() | undefined, map()) ->
+    {ok, list(map())} | {error, term()}.
 list_group_mentions(Gid, Uid, IsRead, Options) ->
     mention_ds:list_by_group_and_uid(Gid, Uid, IsRead, Options).
 
@@ -141,6 +144,13 @@ get_member_suggestions(Gid, Uid, Keyword) ->
             end
     end.
 
+%% @doc 根据消息ID查询@提及记录列表
+%% @param MsgId 消息ID
+%% @return {ok, list(map())} | {error, Reason}
+-spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, term()}.
+find_by_msg_id(MsgId) ->
+    mention_ds:find_by_msg_id(MsgId).
+
 %% ===================================================================
 %% Internal functions
 %% ===================================================================
@@ -152,15 +162,18 @@ filter_users_by_keyword(Users, <<>>) ->
     Users;
 filter_users_by_keyword(Users, Keyword) ->
     KeywordLower = cowboy_bstr:to_lower(Keyword),
-    lists:filter(fun(User) ->
-        Nickname = maps:get(<<"nickname">>, User, <<>>),
-        Account = maps:get(<<"account">>, User, <<>>),
-        NicknameLower = cowboy_bstr:to_lower(Nickname),
-        AccountLower = cowboy_bstr:to_lower(Account),
-        % 检查昵称或账号是否包含关键字
-        binary:match(NicknameLower, KeywordLower) =/= nomatch orelse
-        binary:match(AccountLower, KeywordLower) =/= nomatch
-    end, Users).
+    lists:filter(
+        fun(User) ->
+            Nickname = maps:get(<<"nickname">>, User, <<>>),
+            Account = maps:get(<<"account">>, User, <<>>),
+            NicknameLower = cowboy_bstr:to_lower(Nickname),
+            AccountLower = cowboy_bstr:to_lower(Account),
+            % 检查昵称或账号是否包含关键字
+            binary:match(NicknameLower, KeywordLower) =/= nomatch orelse
+                binary:match(AccountLower, KeywordLower) =/= nomatch
+        end,
+        Users
+    ).
 
 %% @private
 %% @doc 编码用户ID

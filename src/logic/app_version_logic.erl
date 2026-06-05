@@ -5,6 +5,7 @@
 %%%
 
 -export([check/3]).
+-export([sign_key/3]).
 
 -include("common.hrl").
 -include("log.hrl").
@@ -13,6 +14,16 @@
 %% ===================================================================
 %% API functions
 %% ===================================================================
+
+%% @doc 获取应用签名密钥
+%% 委托至 app_version_ds:sign_key/3
+%% @param DType 客户端操作系统类型（android/ios/macos）
+%% @param Vsn 版本号
+%% @param Pkg 包名
+%% @return 签名密钥（binary），不存在时返回 <<>>
+-spec sign_key(binary(), binary(), binary()) -> binary().
+sign_key(DType, Vsn, Pkg) ->
+    app_version_ds:sign_key(DType, Vsn, Pkg).
 
 %% @doc 检查客户端版本，返回升级策略
 %% @param ClientVsn 客户端当前版本号

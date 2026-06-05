@@ -44,16 +44,15 @@ init(Req0, State0) ->
 -spec balance(cowboy_req:req(), map()) -> cowboy_req:req().
 balance(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    Wallet = wallet_ds:find_by_uid(CurrentUid),
+    Wallet = wallet_logic:find_by_uid(CurrentUid),
     {Balance, Frozen} =
         case map_size(Wallet) =:= 0 of
             true ->
                 % 钱包不存在，自动创建
-                _ = wallet_ds:create(#{user_id => CurrentUid}),
+                _ = wallet_logic:ensure_wallet(CurrentUid),
                 {0, 0};
             false ->
-                {maps:get(<<"balance">>, Wallet, 0),
-                 maps:get(<<"frozen">>, Wallet, 0)}
+                {maps:get(<<"balance">>, Wallet, 0), maps:get(<<"frozen">>, Wallet, 0)}
         end,
     Payload = #{
         <<"balance">> => Balance,
@@ -68,7 +67,7 @@ balance(Req0, State) ->
 transactions(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
-    {ok, Payload} = wallet_ds:page_transactions(Page, Size, CurrentUid),
+    {ok, Payload} = wallet_logic:page_transactions(Page, Size, CurrentUid),
     elib_response:success(Req0, Payload, "success.").
 
 %% @doc 模拟充值
@@ -90,19 +89,8 @@ topup(Req0, State) ->
 %% @doc 执行充值逻辑（原子事务：余额更新+流水写入）
 -spec do_topup(cowboy_req:req(), integer(), integer()) -> cowboy_req:req().
 do_topup(Req0, Uid, Amount) ->
-    % 确保钱包存在
-    Wallet = ensure_wallet(Uid),
-    WalletId = maps:get(<<"id">>, Wallet),
     RefNo = gen_reference_no(),
-    TxData = #{
-        <<"wallet_id">> => WalletId,
-        <<"user_id">> => Uid,
-        <<"amount">> => Amount,
-        <<"tx_type">> => 1,
-        <<"remark">> => <<"充值"/utf8>>,
-        <<"status">> => 1
-    },
-    case wallet_ds:atomic_balance_change(Amount, Uid, TxData, RefNo) of
+    case wallet_logic:topup(Uid, Amount, RefNo) of
         {ok, NewBalance} ->
             Payload = #{
                 <<"balance">> => NewBalance,
@@ -119,14 +107,7 @@ do_topup(Req0, Uid, Amount) ->
 %% @doc 确保钱包存在，不存在则创建后返回
 -spec ensure_wallet(integer()) -> map().
 ensure_wallet(Uid) ->
-    Wallet = wallet_ds:find_by_uid(Uid),
-    case map_size(Wallet) =:= 0 of
-        true ->
-            _ = wallet_ds:create(#{user_id => Uid}),
-            wallet_ds:find_by_uid(Uid);
-        false ->
-            Wallet
-    end.
+    wallet_logic:ensure_wallet(Uid).
 
 %% @doc 生成唯一充值单号（使用 crypto 强随机数避免碰撞）
 -spec gen_reference_no() -> binary().

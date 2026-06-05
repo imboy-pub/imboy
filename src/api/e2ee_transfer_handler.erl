@@ -98,7 +98,7 @@ do_create_transfer(Req0, State) ->
             elib_response:error(Req0, <<"不能给自己创建传输会话"/utf8>>, ?ERR_BAD_REQUEST);
         {ok, ToUid} ->
             % 验证接收方用户是否存在
-            case user_ds:may_exist(ToUid) of
+            case e2ee_transfer_logic:validate_receiver(ToUid) of
                 false ->
                     elib_response:error(Req0, <<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND);
                 true ->
@@ -347,7 +347,7 @@ get_sender_private_key(Uid) ->
 %% @doc 获取接收方的公钥
 -spec get_receiver_public_key(integer()) -> {ok, binary()} | {error, term()}.
 get_receiver_public_key(ToUid) ->
-    case user_device_ds:get_public_by_uid(ToUid) of
+    case e2ee_transfer_logic:get_receiver_public_key(ToUid) of
         {ok, [Device | _]} ->
             PublicKeyPem = maps:get(<<"public_key">>, Device, <<>>),
             case PublicKeyPem of

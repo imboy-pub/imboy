@@ -74,7 +74,7 @@ report(<<"POST">>, Req0, _State) ->
                     [native_utf8, {float_format, [{decimals, 4}, compact]}]
                 )
             },
-            elib_async:async(fun() -> app_upgrade_log_ds:insert(Data) end),
+            elib_async:async(fun() -> app_upgrade_log_logic:insert(Data) end),
             elib_response:success(Req0, #{<<"ok">> => true})
     end;
 report(_, Req0, _State) ->

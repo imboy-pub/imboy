@@ -137,7 +137,7 @@ list(Req0, State) ->
     {K, V} = user_logic:mine_state(CurrentUid),
     % ?DEBUG_LOG(["CurrentUid", CurrentUid, "; State ", K, V, Mine#{K => V}]),
     Mine2 = convert_user_id(Mine#{K => V}),
-    Friend = friend_ds:page_by_uid(CurrentUid),
+    Friend = friend_logic:list_by_uid(CurrentUid),
     Friend2 = [convert_friend_ids(F) || F <- Friend],
     % ?DEBUG_LOG(["friend_handler/list", CurrentUid, "; Friend ", Friend]),
     Payload = list_transfer(Mine2, Friend2),
@@ -190,7 +190,7 @@ information(Req0, State) ->
             Column = <<"id, nickname, account,gender, experience, avatar, sign">>,
             User = user_logic:find_by_id(Uid, Column),
             % ?DEBUG_LOG(User),
-            UserSetting = user_setting_ds:find_by_uid(Uid),
+            UserSetting = friend_logic:get_friend_information(CurrentUid, Uid),
             % ?DEBUG_LOG([UserSetting, Uid]),
             User2 = convert_user_id(User),
             Payload = information_transfer(CurrentUid, <<"friend">>, User2, UserSetting),
@@ -236,7 +236,7 @@ change_remark(Req0, State) ->
         {error, Req} ->
             Req;
         {ok, Uid2} ->
-            case friend_ds:change_remark(CurrentUid, Uid2, Remark) of
+            case friend_logic:change_remark(CurrentUid, Uid2, Remark) of
                 {error, ErrorMsg} ->
                     elib_response:error(Req0, ErrorMsg);
                 {ok, _Num} ->

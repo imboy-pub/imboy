@@ -207,13 +207,19 @@ upload_photo_multipart(Req0, CurrentUid) ->
                 {_, _, <<>>} ->
                     elib_response:error(Req1, <<"请上传图片文件"/utf8>>, ?ERR_BAD_REQUEST);
                 _ ->
-                    case group_album_logic:upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) of
+                    case
+                        group_album_logic:upload_photo(
+                            Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName
+                        )
+                    of
                         {ok, PhotoData} ->
                             elib_response:success(Req1, PhotoData, <<"上传成功"/utf8>>);
                         {error, <<"相册不存在"/utf8>>} ->
                             elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
                         {error, <<"相册权限不足"/utf8>>} ->
-                            elib_response:error(Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED);
+                            elib_response:error(
+                                Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
+                            );
                         {error, Reason} when is_binary(Reason) ->
                             elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
                         {error, _Reason} ->
@@ -246,13 +252,19 @@ upload_photo_json(Req0, CurrentUid) ->
             % 解码 base64
             try base64:decode(PhotoBase64) of
                 PhotoBinary ->
-                    case group_album_logic:upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) of
+                    case
+                        group_album_logic:upload_photo(
+                            Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName
+                        )
+                    of
                         {ok, PhotoData} ->
                             elib_response:success(Req1, PhotoData, <<"上传成功"/utf8>>);
                         {error, <<"相册不存在"/utf8>>} ->
                             elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
                         {error, <<"相册权限不足"/utf8>>} ->
-                            elib_response:error(Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED);
+                            elib_response:error(
+                                Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
+                            );
                         {error, Reason} when is_binary(Reason) ->
                             elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
                         {error, _Reason} ->
@@ -518,13 +530,16 @@ list_comments(Req0, _State) ->
         <<>> ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_album_ds:list_comments(PhotoId, Limit) of
+            case group_album_logic:list_comments(PhotoId, Limit) of
                 {ok, Comments} ->
                     % 编码用户ID
-                    Comments2 = lists:map(fun(Comment) ->
-                        UserId = maps:get(<<"user_id">>, Comment, 0),
-                        Comment#{<<"user_id">> => UserId}
-                    end, Comments),
+                    Comments2 = lists:map(
+                        fun(Comment) ->
+                            UserId = maps:get(<<"user_id">>, Comment, 0),
+                            Comment#{<<"user_id">> => UserId}
+                        end,
+                        Comments
+                    ),
                     elib_response:success(Req0, #{comments => Comments2}, <<"查询成功"/utf8>>);
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)

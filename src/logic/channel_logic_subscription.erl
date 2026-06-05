@@ -8,6 +8,7 @@
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
+-export([is_subscribed/2]).
 
 -define(CHANNEL_CACHE_KEY(ChannelId), {channel, ChannelId}).
 -define(CHANNEL_SUBS_KEY(ChannelId), {channel_subs, ChannelId}).
@@ -132,7 +133,7 @@ get_unread_summary(Uid) ->
                     <<"channel_id">> => ChannelId,
                     <<"unread_count">> => UnreadCount
                 }
-                || #{
+             || #{
                     <<"channel_id">> := ChannelId,
                     <<"unread_count">> := UnreadCount
                 } <- Rows,
@@ -243,6 +244,11 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
             ),
             {error, <<"无权限操作，需要管理员及以上权限"/utf8>>}
     end.
+
+%% @doc 检查用户是否已订阅指定频道
+-spec is_subscribed(integer(), integer()) -> boolean().
+is_subscribed(ChannelId, Uid) ->
+    channel_ds:is_subscribed(ChannelId, Uid).
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->

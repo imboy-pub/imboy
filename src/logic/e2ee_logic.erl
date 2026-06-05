@@ -8,6 +8,9 @@
 -export([report_device_key/6]).
 -export([pull_key_notifications/3]).
 -export([group_by_uid/1]).
+-export([list_backups/1]).
+-export([delete_backup/2]).
+-export([get_active_compliance_key/0]).
 
 -include("log.hrl").
 
@@ -154,6 +157,21 @@ group_by_uid(Rows) ->
         end,
         lists:sort(maps:to_list(Map0))
     ).
+
+%% @doc 查询当前用户的所有 E2EE 本地备份记录列表
+-spec list_backups(integer()) -> {ok, [map()]} | {error, term()}.
+list_backups(Uid) ->
+    e2ee_local_backup_ds:list_by_uid(Uid).
+
+%% @doc 按 backup_id 和 uid 删除指定备份记录，防止越权删除他人数据
+-spec delete_backup(integer() | binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_backup(BackupId, Uid) ->
+    e2ee_local_backup_ds:delete_by_id_and_uid(BackupId, Uid).
+
+%% @doc 查询当前活跃的合规公钥（key_id 和 public_key），供客户端双密钥加密使用
+-spec get_active_compliance_key() -> {ok, map()} | {error, term()}.
+get_active_compliance_key() ->
+    compliance_key_ds:find_active().
 
 %% ===================================================================
 %% 通知拉取 API
