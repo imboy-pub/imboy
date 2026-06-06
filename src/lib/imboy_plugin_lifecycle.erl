@@ -1,5 +1,11 @@
 -module(imboy_plugin_lifecycle).
 
+%% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
+%% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
+%% 修改前请确认是否真要重启动态平台方向。冻结≠移除。
+%% FROZEN: v2 dynamic plugin loading subsystem is suspended (roadmap-only).
+%% Current production route: config-driven monolith. See §3.1 before resuming.
+
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% imboy_plugin_lifecycle — 插件生命周期状态机（gen_statem）
@@ -47,16 +53,16 @@
 
 %% State types
 -type state() ::
-    unknown |
-    installing |
-    installed |
-    enabling |
-    enabled |
-    disabling |
-    disabled |
-    upgrading |
-    uninstalling |
-    failed.
+    unknown
+    | installing
+    | installed
+    | enabling
+    | enabled
+    | disabling
+    | disabled
+    | upgrading
+    | uninstalling
+    | failed.
 
 -type rollback_strategy() :: atomic | best_effort | manual.
 -type plugin_name() :: atom().
@@ -92,8 +98,14 @@ broadcast_manifest_change() ->
         try
             Manifest = app_manifest_handler:build_manifest(),
             Msg = message_ds:assemble_msg(
-                <<"S2C">>, <<>>, <<>>, Manifest,
-                elib_id:gen("s2c"), <<>>, <<"manifest_updated">>, null
+                <<"S2C">>,
+                <<>>,
+                <<>>,
+                Manifest,
+                elib_id:gen("s2c"),
+                <<>>,
+                <<"manifest_updated">>,
+                null
             ),
             Encoded = jsone:encode(Msg, [native_utf8]),
             GroupNames = syn:group_names(imboy_chat),
@@ -114,8 +126,10 @@ callback_mode() -> handle_event_function.
 
 init(Opts) ->
     Name = maps:get(name, Opts, undefined),
-    _ = if Name =:= undefined -> ok;
-           true -> persistent_term:put({imboy_plugin_lifecycle, Name}, self())
+    _ =
+        if
+            Name =:= undefined -> ok;
+            true -> persistent_term:put({imboy_plugin_lifecycle, Name}, self())
         end,
     {ok, unknown, #data{name = Name, rollback_strategy = atomic}}.
 
@@ -123,11 +137,9 @@ init(Opts) ->
 
 handle_event({call, From}, get_state, State, _Data) ->
     {keep_state_and_data, [{reply, From, State}]};
-
 handle_event({call, From}, health_check, State, Data) ->
     Reply = {ok, #{state => State, name => Data#data.name}},
     {keep_state_and_data, [{reply, From, Reply}]};
-
 %% ── unknown ──
 
 handle_event({call, From}, {install, Path}, unknown, Data) ->
@@ -138,10 +150,8 @@ handle_event({call, From}, {install, Path}, unknown, Data) ->
         {error, Reason, UndoLog} ->
             rollback_on_failure(Reason, UndoLog, unknown, Data, From)
     end;
-
 handle_event({call, From}, _Event, unknown, _Data) ->
     {keep_state_and_data, [{reply, From, {error, invalid_state_transition}}]};
-
 %% ── installed ──
 
 handle_event({call, From}, enable, installed, Data) ->
@@ -153,39 +163,44 @@ handle_event({call, From}, enable, installed, Data) ->
         {error, Reason, UndoLog} ->
             rollback_on_failure(Reason, UndoLog, installed, Data, From)
     end;
-
 handle_event({call, From}, {upgrade, Version}, installed, Data) ->
     case run_upgrade_steps(Version, Data) of
         {ok, NewData} ->
-            audit_transition(Data#data.name, installed, installed, ok,
-                             #{action => upgrade, version => Version}),
+            audit_transition(
+                Data#data.name,
+                installed,
+                installed,
+                ok,
+                #{action => upgrade, version => Version}
+            ),
             broadcast_manifest_change(),
             {next_state, installed, NewData, [{reply, From, ok}]};
         {error, Reason, UndoLog} ->
             rollback_on_failure(Reason, UndoLog, installed, Data, From)
     end;
-
 handle_event({call, From}, {uninstall, Mode}, installed, Data) ->
     case run_uninstall_steps(Mode, Data) of
         ok ->
-            audit_transition(Data#data.name, installed, uninstalled, ok,
-                             #{action => uninstall, mode => Mode}),
+            audit_transition(
+                Data#data.name,
+                installed,
+                uninstalled,
+                ok,
+                #{action => uninstall, mode => Mode}
+            ),
             {stop_and_reply, normal, [{reply, From, ok}]};
         {error, Reason} ->
             audit_transition(Data#data.name, installed, failed, {error, Reason}, #{}),
-            {next_state, failed,
-             Data#data{error = Reason, prev_state = installed},
-             [{reply, From, {error, Reason}}]}
+            {next_state, failed, Data#data{error = Reason, prev_state = installed}, [
+                {reply, From, {error, Reason}}
+            ]}
     end;
-
 handle_event({call, From}, _Event, installed, _Data) ->
     {keep_state_and_data, [{reply, From, {error, invalid_state_transition}}]};
-
 %% ── enabled ──
 
 handle_event({call, From}, enable, enabled, _Data) ->
     {keep_state_and_data, [{reply, From, ok}]};
-
 handle_event({call, From}, disable, enabled, Data) ->
     %% §8.2: Check if any enabled plugin depends on this one
     case imboy_plugin_dependency:find_dependents(Data#data.name) of
@@ -199,21 +214,23 @@ handle_event({call, From}, disable, enabled, Data) ->
                     rollback_on_failure(Reason, UndoLog, enabled, Data, From)
             end;
         {error, {has_dependents, Names}} ->
-            {keep_state_and_data,
-             [{reply, From, {error, {has_dependents, Names}}}]}
+            {keep_state_and_data, [{reply, From, {error, {has_dependents, Names}}}]}
     end;
-
 handle_event({call, From}, {upgrade, Version}, enabled, Data) ->
     case run_upgrade_steps(Version, Data) of
         {ok, NewData} ->
-            audit_transition(Data#data.name, enabled, enabled, ok,
-                             #{action => upgrade, version => Version}),
+            audit_transition(
+                Data#data.name,
+                enabled,
+                enabled,
+                ok,
+                #{action => upgrade, version => Version}
+            ),
             broadcast_manifest_change(),
             {next_state, enabled, NewData, [{reply, From, ok}]};
         {error, Reason, UndoLog} ->
             rollback_on_failure(Reason, UndoLog, enabled, Data, From)
     end;
-
 handle_event({call, From}, {uninstall, Mode}, enabled, Data) ->
     case run_disable_steps(Data) of
         {ok, _} ->
@@ -221,19 +238,17 @@ handle_event({call, From}, {uninstall, Mode}, enabled, Data) ->
                 ok ->
                     {stop_and_reply, normal, [{reply, From, ok}]};
                 {error, Reason} ->
-                    {next_state, failed,
-                     Data#data{error = Reason, prev_state = enabled},
-                     [{reply, From, {error, Reason}}]}
+                    {next_state, failed, Data#data{error = Reason, prev_state = enabled}, [
+                        {reply, From, {error, Reason}}
+                    ]}
             end;
         {error, Reason, _UndoLog} ->
-            {next_state, failed,
-             Data#data{error = Reason, prev_state = enabled},
-             [{reply, From, {error, Reason}}]}
+            {next_state, failed, Data#data{error = Reason, prev_state = enabled}, [
+                {reply, From, {error, Reason}}
+            ]}
     end;
-
 handle_event({call, From}, _Event, enabled, _Data) ->
     {keep_state_and_data, [{reply, From, {error, invalid_state_transition}}]};
-
 %% ── disabled ──
 
 handle_event({call, From}, enable, disabled, Data) ->
@@ -244,49 +259,48 @@ handle_event({call, From}, enable, disabled, Data) ->
         {error, Reason, UndoLog} ->
             rollback_on_failure(Reason, UndoLog, disabled, Data, From)
     end;
-
 handle_event({call, From}, {uninstall, Mode}, disabled, Data) ->
     case run_uninstall_steps(Mode, Data) of
         ok ->
             {stop_and_reply, normal, [{reply, From, ok}]};
         {error, Reason} ->
-            {next_state, failed,
-             Data#data{error = Reason, prev_state = disabled},
-             [{reply, From, {error, Reason}}]}
+            {next_state, failed, Data#data{error = Reason, prev_state = disabled}, [
+                {reply, From, {error, Reason}}
+            ]}
     end;
-
 handle_event({call, From}, _Event, disabled, _Data) ->
     {keep_state_and_data, [{reply, From, {error, invalid_state_transition}}]};
-
 %% ── failed ──
 
 handle_event({call, From}, reset, failed, Data) ->
     {next_state, unknown,
-     Data#data{error = undefined, prev_state = undefined,
-               manifest = undefined, version = undefined, path = undefined,
-               rollback_strategy = atomic},
-     [{reply, From, ok}]};
-
+        Data#data{
+            error = undefined,
+            prev_state = undefined,
+            manifest = undefined,
+            version = undefined,
+            path = undefined,
+            rollback_strategy = atomic
+        },
+        [{reply, From, ok}]};
 handle_event({call, From}, {force_uninstall, Mode}, failed, Data) ->
     _ = catch run_uninstall_steps(Mode, Data),
     {stop_and_reply, normal, [{reply, From, ok}]};
-
 handle_event(cast, {inject_failure, Reason}, State, Data) ->
     {next_state, failed, Data#data{error = Reason, prev_state = State}};
-
 handle_event({call, From}, _Event, failed, _Data) ->
     {keep_state_and_data, [{reply, From, {error, invalid_state_transition}}]};
-
 %% ── catch-all ──
 
 handle_event(_EventType, _Event, _State, _Data) ->
     {keep_state_and_data, []}.
 
 terminate(_Reason, _State, Data) ->
-    _ = case Data#data.name of
-        undefined -> ok;
-        Name -> persistent_term:erase({imboy_plugin_lifecycle, Name})
-    end,
+    _ =
+        case Data#data.name of
+            undefined -> ok;
+            Name -> persistent_term:erase({imboy_plugin_lifecycle, Name})
+        end,
     ok.
 
 code_change(_OldVsn, State, Data, _Extra) ->
@@ -301,14 +315,15 @@ format_status(StatusData) ->
 
 %% @doc 写入审计日志（fire-and-forget）。
 audit_transition(Name, FromState, ToState, Result, Meta) ->
-    _ = catch imboy_plugin_audit_ds:write(#{
-        plugin_name => atom_to_binary(Name),
-        event => <<"state_transition">>,
-        from_state => state_to_bin(FromState),
-        to_state => state_to_bin(ToState),
-        result => result_to_bin(Result),
-        metadata => Meta
-    }).
+    _ =
+        catch imboy_plugin_audit_ds:write(#{
+            plugin_name => atom_to_binary(Name),
+            event => <<"state_transition">>,
+            from_state => state_to_bin(FromState),
+            to_state => state_to_bin(ToState),
+            result => result_to_bin(Result),
+            metadata => Meta
+        }).
 
 state_to_bin(S) -> atom_to_binary(S).
 
@@ -327,25 +342,44 @@ rollback_on_failure(Reason, UndoLog, EntryState, Data, From) ->
     Strategy = Data#data.rollback_strategy,
     case execute_rollback(Strategy, UndoLog) of
         rollback_ok ->
-            audit_transition(Data#data.name, EntryState, EntryState,
-                             {error, Reason}, #{rollback => atomic, outcome => rolled_back}),
-            {next_state, EntryState,
-             Data#data{error = undefined, prev_state = undefined},
-             [{reply, From, {error, Reason}}]};
+            audit_transition(
+                Data#data.name,
+                EntryState,
+                EntryState,
+                {error, Reason},
+                #{rollback => atomic, outcome => rolled_back}
+            ),
+            {next_state, EntryState, Data#data{error = undefined, prev_state = undefined}, [
+                {reply, From, {error, Reason}}
+            ]};
         {rollback_partial, PartialErrors} ->
-            audit_transition(Data#data.name, EntryState, failed,
-                             {error, Reason}, #{rollback => best_effort,
-                                                partial_errors => length(PartialErrors)}),
+            audit_transition(
+                Data#data.name,
+                EntryState,
+                failed,
+                {error, Reason},
+                #{
+                    rollback => best_effort,
+                    partial_errors => length(PartialErrors)
+                }
+            ),
             {next_state, failed,
-             Data#data{error = {Reason, {partial_rollback, PartialErrors}},
-                       prev_state = EntryState},
-             [{reply, From, {error, Reason}}]};
+                Data#data{
+                    error = {Reason, {partial_rollback, PartialErrors}},
+                    prev_state = EntryState
+                },
+                [{reply, From, {error, Reason}}]};
         rollback_skipped ->
-            audit_transition(Data#data.name, EntryState, failed,
-                             {error, Reason}, #{rollback => manual}),
-            {next_state, failed,
-             Data#data{error = Reason, prev_state = EntryState},
-             [{reply, From, {error, Reason}}]}
+            audit_transition(
+                Data#data.name,
+                EntryState,
+                failed,
+                {error, Reason},
+                #{rollback => manual}
+            ),
+            {next_state, failed, Data#data{error = Reason, prev_state = EntryState}, [
+                {reply, From, {error, Reason}}
+            ]}
     end.
 
 %% @doc 根据回滚策略执行撤销操作。
@@ -372,11 +406,17 @@ execute_undo_atomic([{Step, UndoFun} | Rest], Errors) ->
 
 %% @doc Best effort: execute all undos, collect errors.
 execute_undo_best_effort(UndoLog) ->
-    lists:foldl(fun({Step, UndoFun}, Errors) ->
-        try UndoFun() of _ -> Errors
-        catch _:Err -> [{Step, Err} | Errors]
-        end
-    end, [], UndoLog).
+    lists:foldl(
+        fun({Step, UndoFun}, Errors) ->
+            try UndoFun() of
+                _ -> Errors
+            catch
+                _:Err -> [{Step, Err} | Errors]
+            end
+        end,
+        [],
+        UndoLog
+    ).
 
 %% ===================================================================
 %% Step runners — 组件接线 / Component wiring
@@ -389,12 +429,18 @@ run_install_steps(Path, Data) ->
     SigPath = <<Path/binary, "/SIGNATURE">>,
     erase(undo_log),
     with_steps(fun() ->
-        step_ok(imboy_plugin_signature:verify_file(ConfigPath, SigPath),
-                verify_signature),
-        Manifest = step_result(imboy_plugin_toml:load(ConfigPath),
-                               parse_manifest),
-        step_ok(imboy_plugin_dependency:validate_constraints([Manifest]),
-                validate_dependencies),
+        step_ok(
+            imboy_plugin_signature:verify_file(ConfigPath, SigPath),
+            verify_signature
+        ),
+        Manifest = step_result(
+            imboy_plugin_toml:load(ConfigPath),
+            parse_manifest
+        ),
+        step_ok(
+            imboy_plugin_dependency:validate_constraints([Manifest]),
+            validate_dependencies
+        ),
         %% Side effect: register manifest → record undo
         persistent_term:put({imboy_plugin_manifest, Data#data.name}, Manifest),
         add_undo(register_manifest, fun() ->
@@ -403,9 +449,12 @@ run_install_steps(Path, Data) ->
         _ = catch imboy_plugin_loader:scan(),
         %% Extract rollback strategy from manifest
         Strategy = get_rollback_strategy(Manifest),
-        {ok, Data#data{path = Path, manifest = Manifest,
-                        version = maps:get(version, Manifest, <<"1.0.0">>),
-                        rollback_strategy = Strategy}}
+        {ok, Data#data{
+            path = Path,
+            manifest = Manifest,
+            version = maps:get(version, Manifest, <<"1.0.0">>),
+            rollback_strategy = Strategy
+        }}
     end).
 
 %% @doc 启用步骤 (lifecycle.md §5.2 + §8.1)。
@@ -414,13 +463,18 @@ run_enable_steps(Data) ->
     Routes = maps:get(routes, Manifest, []),
     erase(undo_log),
     with_steps(fun() ->
-        step_ok(imboy_plugin_dependency:check_enable_deps(Manifest),
-                check_enable_deps),
+        step_ok(
+            imboy_plugin_dependency:check_enable_deps(Manifest),
+            check_enable_deps
+        ),
         case Routes of
-            [] -> ok;
+            [] ->
+                ok;
             _ ->
-                step_ok(imboy_router_registry:register(Name, Routes),
-                        register_routes),
+                step_ok(
+                    imboy_router_registry:register(Name, Routes),
+                    register_routes
+                ),
                 add_undo(register_routes, fun() ->
                     catch imboy_router_registry:unregister(Name)
                 end)
@@ -441,8 +495,10 @@ run_upgrade_steps(_Version, Data) ->
     #data{manifest = Manifest} = Data,
     erase(undo_log),
     with_steps(fun() ->
-        step_ok(imboy_plugin_dependency:validate_constraints([Manifest]),
-                validate_dependencies),
+        step_ok(
+            imboy_plugin_dependency:validate_constraints([Manifest]),
+            validate_dependencies
+        ),
         {ok, Data}
     end).
 
@@ -473,17 +529,24 @@ add_undo(Step, UndoFun) ->
 
 %% @doc 运行步骤序列（支持 undo_log）。
 with_steps(Fun) ->
-    try Fun()
-    catch throw:{step_failed, Step, R} ->
-        UndoLog = case get(undo_log) of undefined -> []; L -> L end,
-        {error, {Step, R}, lists:reverse(UndoLog)}
+    try
+        Fun()
+    catch
+        throw:{step_failed, Step, R} ->
+            UndoLog =
+                case get(undo_log) of
+                    undefined -> [];
+                    L -> L
+                end,
+            {error, {Step, R}, lists:reverse(UndoLog)}
     end.
 
 %% @doc 从 manifest 中提取回滚策略。
 get_rollback_strategy(Manifest) ->
     case maps:get(lifecycle, Manifest, undefined) of
-        #{rollback_strategy := S}
-            when S =:= atomic; S =:= best_effort; S =:= manual ->
+        #{rollback_strategy := S} when
+            S =:= atomic; S =:= best_effort; S =:= manual
+        ->
             S;
         _ ->
             atomic

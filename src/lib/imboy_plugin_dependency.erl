@@ -1,5 +1,11 @@
 -module(imboy_plugin_dependency).
 
+%% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
+%% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
+%% 修改前请确认是否真要重启动态平台方向。冻结≠移除。
+%% FROZEN: v2 dynamic plugin loading subsystem is suspended (roadmap-only).
+%% Current production route: config-driven monolith. See §3.1 before resuming.
+
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% imboy_plugin_dependency - 插件依赖解析（纯函数）

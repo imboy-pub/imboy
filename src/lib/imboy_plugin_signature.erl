@@ -1,5 +1,11 @@
 -module(imboy_plugin_signature).
 
+%% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
+%% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
+%% 修改前请确认是否真要重启动态平台方向。冻结≠移除。
+%% FROZEN: v2 dynamic plugin loading subsystem is suspended (roadmap-only).
+%% Current production route: config-driven monolith. See §3.1 before resuming.
+
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% imboy_plugin_signature - 插件 Ed25519 签名工具（P6-T4）
@@ -35,10 +41,12 @@
     verify_file/3
 ]).
 
--type public_key()  :: binary().    %% 32 bytes
--type private_key() :: binary().    %% 32 bytes
--type signature()   :: binary().    %% 64 bytes
-
+%% 32 bytes
+-type public_key() :: binary().
+%% 32 bytes
+-type private_key() :: binary().
+%% 64 bytes
+-type signature() :: binary().
 
 %% ===================================================================
 %% Public API
@@ -63,8 +71,9 @@ sign_data(Data, PrivateKey) when is_binary(PrivateKey) ->
 %% Verify signature with Ed25519 public key.
 -spec verify_data(iodata(), public_key(), signature()) ->
     ok | {error, signature_invalid}.
-verify_data(Data, PublicKey, Signature)
-        when is_binary(PublicKey), is_binary(Signature) ->
+verify_data(Data, PublicKey, Signature) when
+    is_binary(PublicKey), is_binary(Signature)
+->
     case crypto:verify(eddsa, none, Data, Signature, [PublicKey, ed25519]) of
         true -> ok;
         false -> {error, signature_invalid}

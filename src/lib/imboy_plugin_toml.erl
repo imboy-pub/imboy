@@ -1,5 +1,11 @@
 -module(imboy_plugin_toml).
 
+%% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
+%% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
+%% 修改前请确认是否真要重启动态平台方向。冻结≠移除。
+%% FROZEN: v2 dynamic plugin loading subsystem is suspended (roadmap-only).
+%% Current production route: config-driven monolith. See §3.1 before resuming.
+
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% 插件清单 TOML 解析与 schema 校验
@@ -140,13 +146,29 @@ run_validators([V | Rest], M) ->
 %% Source of truth: include/imboy_plugin.hrl 的 manifest() type
 validate_required_keys(M) ->
     Required = [
-        name, version, contract_version, kind, description,
-        depends_on, requires_capabilities, min_core_version, children,
-        routes, migrations, features,
-        limits, budget, degrade, circuit_breaker,
-        entries, i18n,
-        subscribes, publishes, publishes_meta,
-        audit, meta
+        name,
+        version,
+        contract_version,
+        kind,
+        description,
+        depends_on,
+        requires_capabilities,
+        min_core_version,
+        children,
+        routes,
+        migrations,
+        features,
+        limits,
+        budget,
+        degrade,
+        circuit_breaker,
+        entries,
+        i18n,
+        subscribes,
+        publishes,
+        publishes_meta,
+        audit,
+        meta
     ],
     case [K || K <- Required, not maps:is_key(K, M)] of
         [] -> ok;
@@ -182,8 +204,9 @@ validate_version(_) ->
 
 %% --- contract_version --------------------------------------------
 %% {Major :: pos_integer(), Minor :: non_neg_integer()}
-validate_contract_version(#{contract_version := {Major, Minor}})
-        when is_integer(Major), Major > 0, is_integer(Minor), Minor >= 0 ->
+validate_contract_version(#{contract_version := {Major, Minor}}) when
+    is_integer(Major), Major > 0, is_integer(Minor), Minor >= 0
+->
     ok;
 validate_contract_version(_) ->
     {error, {contract_version, invalid_format}}.
@@ -194,8 +217,9 @@ validate_kind(#{kind := aggregate_plugin}) -> ok;
 validate_kind(_) -> {error, {kind, invalid_value}}.
 
 %% --- migrations.table_prefix == <name>_ --------------------------
-validate_migrations(#{name := Name, migrations := #{table_prefix := P}})
-        when is_atom(Name), is_binary(P) ->
+validate_migrations(#{name := Name, migrations := #{table_prefix := P}}) when
+    is_atom(Name), is_binary(P)
+->
     Expected = <<(atom_to_binary(Name, utf8))/binary, "_">>,
     case P of
         Expected -> ok;
@@ -227,8 +251,9 @@ validate_routes(_) ->
     ok.
 
 %% --- degrade.on_unhealthy ∈ enum --------------------------------
-validate_degrade(#{degrade := #{on_unhealthy := V}})
-        when V =:= isolate; V =:= route_404; V =:= pass_through ->
+validate_degrade(#{degrade := #{on_unhealthy := V}}) when
+    V =:= isolate; V =:= route_404; V =:= pass_through
+->
     ok;
 validate_degrade(#{degrade := _}) ->
     {error, {degrade_on_unhealthy, invalid_enum}};
@@ -252,8 +277,9 @@ validate_features_audience(#{features := Features}) when is_map(Features) ->
 validate_features_audience(_) ->
     ok.
 
-validate_audience(#{audience := #{kind := uid_hash, buckets := Buckets}})
-        when is_list(Buckets) ->
+validate_audience(#{audience := #{kind := uid_hash, buckets := Buckets}}) when
+    is_list(Buckets)
+->
     Len = length(Buckets),
     Unique = lists:usort(Buckets),
     InRange = lists:all(

@@ -19,7 +19,7 @@ enabled(Feature) ->
 all() ->
     maps:from_list([
         {atom_to_binary(Name, utf8), enabled(Name)}
-        || Name <- feature_names()
+     || Name <- feature_names()
     ]).
 
 -spec ensure_enabled(cowboy_req:req(), feature()) -> ok | {error, cowboy_req:req()}.
@@ -29,27 +29,37 @@ ensure_enabled(Req, Feature) ->
             ok;
         false ->
             {error,
-             elib_response:error(
-                 Req,
-                 imboy_error:error_msg(?ERR_FEATURE_DISABLED),
-                 ?ERR_FEATURE_DISABLED)}
+                elib_response:error(
+                    Req,
+                    imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                    ?ERR_FEATURE_DISABLED
+                )}
     end.
 
+%% @doc 全量特性键列表，以 registry 插件 feature_keys 为单一数据源，
+%% 追加 core/e2ee（非插件内置特性）。顺序固定以保证 manifest etag 稳定。
 -spec feature_names() -> [atom()].
 feature_names() ->
-    [
-        core,
-        e2ee,
-        channel,
-        location,
-        moment,
-        channel_discover,
-        channel_invitation,
-        channel_order,
-        group_vote,
-        group_schedule,
-        group_task
-    ].
+    CoreFixed = [core, e2ee],
+    PluginKeys = imboy_plugin_registry:all_feature_keys(),
+    %% 保持历史顺序：channel/location/moment/channel_*/group_*
+    Ordered = [
+        K
+     || K <- [
+            channel,
+            location,
+            moment,
+            channel_discover,
+            channel_invitation,
+            channel_order,
+            group_vote,
+            group_schedule,
+            group_task
+        ],
+        lists:member(K, PluginKeys)
+    ],
+    Extra = [K || K <- PluginKeys, not lists:member(K, Ordered)],
+    CoreFixed ++ Ordered ++ Extra.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.
 normalize_feature_key(Feature) when is_atom(Feature) ->

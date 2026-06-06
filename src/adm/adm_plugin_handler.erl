@@ -35,6 +35,7 @@ init(Req0, State0) ->
             uninstall -> do_uninstall(Method, Req0, State);
             reset -> do_reset(Method, Req0, State);
             force_uninstall -> do_force_uninstall(Method, Req0, State);
+            logs -> do_logs(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -350,6 +351,31 @@ do_force_uninstall(<<"POST">>, Req0, State) ->
             Req1
     end;
 do_force_uninstall(_, Req0, _State) ->
+    Req0.
+
+%% @doc 查询插件审计日志（分页）
+-spec do_logs(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+do_logs(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"plugins:view">>, Req0) of
+        ok ->
+            QS = cowboy_req:parse_qs(Req0),
+            PluginName = proplists:get_value(<<"plugin_name">>, QS, <<"">>),
+            Limit = binary_to_integer(proplists:get_value(<<"limit">>, QS, <<"20">>)),
+            Offset = binary_to_integer(proplists:get_value(<<"offset">>, QS, <<"0">>)),
+            case imboy_plugin_audit_ds:list(PluginName, Limit, Offset) of
+                {ok, Rows} ->
+                    elib_response:success(Req0, #{
+                        <<"list">> => Rows,
+                        <<"limit">> => Limit,
+                        <<"offset">> => Offset
+                    });
+                {error, Reason} ->
+                    elib_response:error(Req0, iolist_to_binary(io_lib:format("~p", [Reason])), 500)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+do_logs(_, Req0, _State) ->
     Req0.
 
 %% ===================================================================

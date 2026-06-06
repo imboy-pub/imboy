@@ -10,10 +10,11 @@ init(Req0, State0) ->
     Action = maps:get(action, State0, false),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        manifest -> manifest(Method, Req0);
-        _ -> Req0
-    end,
+    Req1 =
+        case Action of
+            manifest -> manifest(Method, Req0);
+            _ -> Req0
+        end,
     {ok, Req1, State}.
 
 -spec manifest(binary(), cowboy_req:req()) -> cowboy_req:req().
@@ -25,11 +26,16 @@ manifest(<<"GET">>, Req0) ->
             cowboy_req:reply(304, #{<<"etag">> => Etag}, <<>>, Req0);
         _ ->
             JsonBody = jsone:encode(Manifest, [native_utf8]),
-            cowboy_req:reply(200, #{
-                <<"content-type">> => <<"application/json; charset=utf-8">>,
-                <<"etag">> => Etag,
-                <<"cache-control">> => <<"max-age=30">>
-            }, JsonBody, Req0)
+            cowboy_req:reply(
+                200,
+                #{
+                    <<"content-type">> => <<"application/json; charset=utf-8">>,
+                    <<"etag">> => Etag,
+                    <<"cache-control">> => <<"max-age=30">>
+                },
+                JsonBody,
+                Req0
+            )
     end;
 manifest(_, Req0) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
@@ -53,24 +59,31 @@ build_manifest() ->
 -spec build_plugin_list(map()) -> [map()].
 build_plugin_list(EnabledFeatures) ->
     Names = imboy_plugin_registry:plugin_names(),
-    lists:filtermap(fun(Name) ->
-        MF = imboy_plugin_registry:manifest(Name),
-        FeatureKeys = maps:get(feature_keys, MF, []),
-        HasEnabled = lists:any(fun(K) ->
-            maps:get(K, EnabledFeatures, false) =:= true
-        end, FeatureKeys),
-        case HasEnabled of
-            false -> false;
-            true ->
-                AppE = [atom_to_binary(E, utf8) || E <- maps:get(app_entries, MF, [])],
-                AdminE = [atom_to_binary(E, utf8) || E <- maps:get(admin_entries, MF, [])],
-                {true, #{
-                    <<"name">> => atom_to_binary(Name, utf8),
-                    <<"app_entries">> => AppE,
-                    <<"admin_entries">> => AdminE
-                }}
-        end
-    end, Names).
+    lists:filtermap(
+        fun(Name) ->
+            MF = imboy_plugin_registry:manifest(Name),
+            FeatureKeys = maps:get(feature_keys, MF, []),
+            HasEnabled = lists:any(
+                fun(K) ->
+                    imboy_plugin_registry:feature_enabled(K, EnabledFeatures)
+                end,
+                FeatureKeys
+            ),
+            case HasEnabled of
+                false ->
+                    false;
+                true ->
+                    AppE = [atom_to_binary(E, utf8) || E <- maps:get(app_entries, MF, [])],
+                    AdminE = [atom_to_binary(E, utf8) || E <- maps:get(admin_entries, MF, [])],
+                    {true, #{
+                        <<"name">> => atom_to_binary(Name, utf8),
+                        <<"app_entries">> => AppE,
+                        <<"admin_entries">> => AdminE
+                    }}
+            end
+        end,
+        Names
+    ).
 
 -spec compute_etag(map()) -> binary().
 compute_etag(Manifest) ->

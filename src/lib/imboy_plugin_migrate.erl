@@ -1,5 +1,11 @@
 -module(imboy_plugin_migrate).
 
+%% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
+%% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
+%% 修改前请确认是否真要重启动态平台方向。冻结≠移除。
+%% FROZEN: v2 dynamic plugin loading subsystem is suspended (roadmap-only).
+%% Current production route: config-driven monolith. See §3.1 before resuming.
+
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% imboy_plugin_migrate - 插件 DB 迁移（纯函数层，切片 1）
@@ -52,10 +58,12 @@
 %% @doc 计算插件 migrations 目录的相对路径（基于 priv/plugins/<name>/<dir>）。
 %% Compute migrations dir path under priv/plugins/<name>/<dir>.
 -spec plugin_dir(Manifest :: map()) -> file:filename().
-plugin_dir(#{name := Name, migrations := #{dir := DirBin}})
-        when is_atom(Name), is_binary(DirBin) ->
+plugin_dir(#{name := Name, migrations := #{dir := DirBin}}) when
+    is_atom(Name), is_binary(DirBin)
+->
     filename:join([
-        "priv", "plugins",
+        "priv",
+        "plugins",
         atom_to_list(Name),
         binary_to_list(DirBin)
     ]).
@@ -72,8 +80,11 @@ list_migration_files(Manifest) when is_map(Manifest) ->
         {ok, Entries} ->
             PluginPrefix = atom_to_list(Name),
             Pattern = "^" ++ PluginPrefix ++ "_[0-9]+_.+\\.sql$",
-            SqlFiles = [F || F <- Entries,
-                        re:run(F, Pattern) =/= nomatch],
+            SqlFiles = [
+                F
+             || F <- Entries,
+                re:run(F, Pattern) =/= nomatch
+            ],
             {ok, lists:sort(SqlFiles)};
         {error, _} = E ->
             E
@@ -89,11 +100,13 @@ list_migration_files(Manifest) when is_map(Manifest) ->
     {ok, string(), pos_integer(), string()} | {error, invalid_filename}.
 parse_migration_filename(Filename) when is_list(Filename) ->
     %% 非贪婪匹配 plugin 部分，确保 NNNN 是第一段数字
-    case re:run(
-        Filename,
-        "^([a-z][a-z0-9_]*?)_([0-9]+)_(.+)\\.sql$",
-        [{capture, all_but_first, list}]
-    ) of
+    case
+        re:run(
+            Filename,
+            "^([a-z][a-z0-9_]*?)_([0-9]+)_(.+)\\.sql$",
+            [{capture, all_but_first, list}]
+        )
+    of
         {match, [PluginStr, SeqStr, Descr]} ->
             try
                 Seq = list_to_integer(SeqStr),
@@ -112,8 +125,9 @@ parse_migration_filename(_) ->
 %% 跳过非法文件名（即不会因 disk 中混入非约定文件而失败）。
 %% Skips invalid filenames (so disk pollution doesn't fail the diff).
 -spec diff_pending([string()], [pos_integer()]) -> [string()].
-diff_pending(DiskFiles, AppliedSeqs)
-        when is_list(DiskFiles), is_list(AppliedSeqs) ->
+diff_pending(DiskFiles, AppliedSeqs) when
+    is_list(DiskFiles), is_list(AppliedSeqs)
+->
     AppliedSet = sets:from_list(AppliedSeqs),
     Pending = lists:filter(
         fun(F) ->
@@ -148,17 +162,19 @@ migration_table_name(PluginName) when is_atom(PluginName) ->
 ensure_table_sql(PluginName) when is_atom(PluginName) ->
     Tab = migration_table_name(PluginName),
     <<"CREATE TABLE IF NOT EXISTS ", Tab/binary,
-      " (version INTEGER PRIMARY KEY, "
-      "description TEXT, "
-      "applied_at TIMESTAMPTZ DEFAULT now())">>.
+        " (version INTEGER PRIMARY KEY, "
+        "description TEXT, "
+        "applied_at TIMESTAMPTZ DEFAULT now())">>.
 
 %% @doc 生成 INSERT 已执行 migration 记录的 SQL。
 -spec record_applied_sql(atom(), pos_integer(), binary()) -> binary().
-record_applied_sql(PluginName, Seq, Descr) when is_atom(PluginName), is_integer(Seq), is_binary(Descr) ->
+record_applied_sql(PluginName, Seq, Descr) when
+    is_atom(PluginName), is_integer(Seq), is_binary(Descr)
+->
     Tab = migration_table_name(PluginName),
     SeqBin = integer_to_binary(Seq),
-    <<"INSERT INTO ", Tab/binary, " (version, description) VALUES (",
-      SeqBin/binary, ", '", Descr/binary, "')">>.
+    <<"INSERT INTO ", Tab/binary, " (version, description) VALUES (", SeqBin/binary, ", '",
+        Descr/binary, "')">>.
 
 %% @doc 生成查询已执行 seq 列表的 SQL。
 -spec applied_seqs_sql(atom()) -> binary().
@@ -181,10 +197,11 @@ run_pending(PluginName, Manifest) when is_atom(PluginName), is_map(Manifest) ->
 
         %% 2. get applied seqs
         SelectSQL = applied_seqs_sql(PluginName),
-        Applied = case elib_pg:query(SelectSQL, []) of
-            {ok, Rows} -> [V || #{version := V} <- Rows];
-            {error, {undefined_table, _}} -> []
-        end,
+        Applied =
+            case elib_pg:query(SelectSQL, []) of
+                {ok, Rows} -> [V || #{version := V} <- Rows];
+                {error, {undefined_table, _}} -> []
+            end,
 
         %% 3. list disk files & diff
         {ok, DiskFiles} = list_migration_files(Manifest),
@@ -210,12 +227,14 @@ execute_pending_files(PluginName, Dir, [File | Rest]) ->
     FilePath = filename:join(Dir, File),
     case file:read_file(FilePath) of
         {ok, SQLBin} ->
-            case elib_pg:with_tx(fun(_Conn) ->
-                case elib_pg:query(SQLBin, []) of
-                    {ok, _} -> ok;
-                    {error, Reason} -> throw({migration_failed, File, Reason})
-                end
-            end) of
+            case
+                elib_pg:with_tx(fun(_Conn) ->
+                    case elib_pg:query(SQLBin, []) of
+                        {ok, _} -> ok;
+                        {error, Reason} -> throw({migration_failed, File, Reason})
+                    end
+                end)
+            of
                 {atomic, ok} ->
                     {ok, _, Seq, Descr} = parse_migration_filename(File),
                     DescrBin = list_to_binary(Descr),
@@ -241,10 +260,12 @@ drop_schema_migrations_table_sql(PluginName) when is_atom(PluginName) ->
 
 %% @doc 计算 uninstall.sql 文件路径。
 -spec uninstall_sql_file_path(map()) -> string().
-uninstall_sql_file_path(#{name := Name, migrations := #{dir := DirBin}})
-        when is_binary(DirBin) ->
+uninstall_sql_file_path(#{name := Name, migrations := #{dir := DirBin}}) when
+    is_binary(DirBin)
+->
     filename:join([
-        "priv", "plugins",
+        "priv",
+        "plugins",
         atom_to_list(Name),
         binary_to_list(DirBin),
         "uninstall.sql"
@@ -269,12 +290,14 @@ run_uninstall(PluginName, Manifest) when is_atom(PluginName), is_map(Manifest) -
         case list_uninstall_file(Manifest) of
             {ok, Path} ->
                 {ok, SQLBin} = file:read_file(Path),
-                case elib_pg:with_tx(fun(_Conn) ->
-                    case elib_pg:query(SQLBin, []) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> throw({uninstall_sql_failed, Reason})
-                    end
-                end) of
+                case
+                    elib_pg:with_tx(fun(_Conn) ->
+                        case elib_pg:query(SQLBin, []) of
+                            {ok, _} -> ok;
+                            {error, Reason} -> throw({uninstall_sql_failed, Reason})
+                        end
+                    end)
+                of
                     {atomic, ok} -> ok;
                     {aborted, Reason} -> throw({uninstall_sql_failed, Reason})
                 end;

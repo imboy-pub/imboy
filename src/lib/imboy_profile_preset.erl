@@ -22,6 +22,12 @@ defaults(Profile) ->
 supported_profiles() ->
     [community, enterprise].
 
+%% @doc 从 imboy_feature:feature_names/0 生成全量 features 默认值（全 true），
+%% 两档套餐当前默认值相同，保留两函数以备未来差异化。
+-spec default_features() -> map().
+default_features() ->
+    maps:from_list([{K, true} || K <- imboy_feature:feature_names()]).
+
 -spec profile_defaults(community | enterprise) -> map().
 profile_defaults(community) ->
     #{
@@ -36,19 +42,7 @@ profile_defaults(community) ->
                 days => 30
             }
         },
-        features => #{
-            core => true,
-            e2ee => true,
-            channel => true,
-            location => true,
-            moment => true,
-            channel_discover => true,
-            channel_invitation => true,
-            channel_order => true,
-            group_vote => true,
-            group_schedule => true,
-            group_task => true
-        }
+        features => default_features()
     };
 profile_defaults(enterprise) ->
     #{
@@ -63,19 +57,7 @@ profile_defaults(enterprise) ->
                 days => 365
             }
         },
-        features => #{
-            core => true,
-            e2ee => true,
-            channel => true,
-            location => true,
-            moment => true,
-            channel_discover => true,
-            channel_invitation => true,
-            channel_order => true,
-            group_vote => true,
-            group_schedule => true,
-            group_task => true
-        }
+        features => default_features()
     }.
 
 -spec normalize_profile(term()) -> community | enterprise.

@@ -8,6 +8,8 @@
     manifests/0,
     enabled_app_entries/1,
     enabled_admin_entries/1,
+    feature_enabled/2,
+    all_feature_keys/0,
     required_feature/3,
     required_feature_for_target/3,
     %% P0-T3.3 双轨过渡：v2 manifest 接口（从 persistent_term 读取，
@@ -308,13 +310,26 @@ feature_enabled(FeatureKey, EnabledFeatures) ->
             false
     end.
 
+%% @doc 从所有插件 manifest 的 feature_keys 派生全量特性键列表（去重，原子类型）。
+%% 供 imboy_feature:feature_names/0 作为单一数据源使用（Task B1）。
+-spec all_feature_keys() -> [atom()].
+all_feature_keys() ->
+    AllKeys = lists:flatmap(
+        fun(Name) ->
+            maps:get(feature_keys, manifest(Name), [])
+        end,
+        plugin_names()
+    ),
+    lists:usort(AllKeys).
+
 -spec surface_rules_key(api | admin) -> api_feature_rules | admin_feature_rules.
 surface_rules_key(api) ->
     api_feature_rules;
 surface_rules_key(admin) ->
     admin_feature_rules.
 
--spec surface_target_rules_key(api | admin) -> api_target_feature_rules | admin_target_feature_rules.
+-spec surface_target_rules_key(api | admin) ->
+    api_target_feature_rules | admin_target_feature_rules.
 surface_target_rules_key(api) ->
     api_target_feature_rules;
 surface_target_rules_key(admin) ->

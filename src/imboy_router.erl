@@ -734,6 +734,7 @@ get_routes() ->
         {"/adm/plugin/uninstall", adm_plugin_handler, #{action => uninstall}},
         {"/adm/plugin/reset", adm_plugin_handler, #{action => reset}},
         {"/adm/plugin/force_uninstall", adm_plugin_handler, #{action => force_uninstall}},
+        {"/adm/plugin/logs", adm_plugin_handler, #{action => logs}},
         {"/adm/stats/overview", adm_stats_handler, #{action => overview}},
         {"/adm/stats/user", adm_stats_handler, #{action => user}},
         {"/adm/stats/message", adm_stats_handler, #{action => message}},

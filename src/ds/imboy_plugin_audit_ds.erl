@@ -10,7 +10,7 @@
 %%% @copyright 2026 Imboy Project
 %%%-------------------------------------------------------------------
 
--export([write/1]).
+-export([write/1, list/3]).
 
 -include("log.hrl").
 
@@ -21,8 +21,7 @@ write(Event) when is_map(Event) ->
     _ = elib_async:async(fun() ->
         case write_sync(Event) of
             {ok, _} -> ok;
-            {error, Reason} ->
-                ?WARN_LOG([audit_write_failed, Reason])
+            {error, Reason} -> ?WARN_LOG([audit_write_failed, Reason])
         end
     end),
     ok.
