@@ -1,6 +1,0 @@
-ALTER TABLE public."user" DROP COLUMN IF EXISTS "birthday";
-
-DROP TABLE IF EXISTS public."user" CASCADE;
-DROP INDEX IF EXISTS uk_account;
-DROP INDEX IF EXISTS uk_email;
-DROP INDEX IF EXISTS uk_mobile;

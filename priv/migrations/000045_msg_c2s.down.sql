@@ -1,5 +1,6 @@
+-- ============================================================
+-- 合并迁移回滚 000045: msg_c2s
+-- ============================================================
+
+
 DROP TABLE IF EXISTS public."msg_c2s" CASCADE;
-DROP INDEX IF EXISTS i_c2s_ToId;
-DROP INDEX IF EXISTS i_c2s_FromId;
-DROP INDEX IF EXISTS i_c2s_MsgType;
-DROP INDEX IF EXISTS i_c2s_e2ee;
