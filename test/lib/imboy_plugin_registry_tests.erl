@@ -136,14 +136,85 @@ shared_report_handlers_resolve_target_features_across_manifests_test_() ->
         ),
         ?assertEqual(
             moment,
-            imboy_plugin_registry:required_feature_for_target(admin, adm_report_handler, <<"moment">>)
+            imboy_plugin_registry:required_feature_for_target(
+                admin, adm_report_handler, <<"moment">>
+            )
         ),
         ?assertEqual(
             channel,
-            imboy_plugin_registry:required_feature_for_target(admin, adm_report_handler, <<"channel">>)
+            imboy_plugin_registry:required_feature_for_target(
+                admin, adm_report_handler, <<"channel">>
+            )
         ),
         ?assertEqual(
             undefined,
             imboy_plugin_registry:required_feature_for_target(api, report_handler, <<"group">>)
+        )
+    end).
+
+%% --- A1: feature_enabled/2 atom/binary key bug fix ---
+
+feature_enabled_atom_key_converts_to_binary_for_lookup_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"channel">> => true},
+        ?assertEqual(true, imboy_plugin_registry:feature_enabled(channel, EnabledFeatures))
+    end).
+
+feature_enabled_binary_key_matches_directly_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"moment">> => true},
+        ?assertEqual(true, imboy_plugin_registry:feature_enabled(<<"moment">>, EnabledFeatures))
+    end).
+
+feature_enabled_returns_false_for_disabled_feature_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"channel">> => false},
+        ?assertEqual(false, imboy_plugin_registry:feature_enabled(channel, EnabledFeatures))
+    end).
+
+feature_enabled_returns_false_for_missing_feature_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(false, imboy_plugin_registry:feature_enabled(channel, #{}))
+    end).
+
+feature_enabled_accepts_nested_atom_enabled_map_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"location">> => #{enabled => true}},
+        ?assertEqual(true, imboy_plugin_registry:feature_enabled(location, EnabledFeatures))
+    end).
+
+feature_enabled_accepts_nested_binary_enabled_map_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"e2ee">> => #{<<"enabled">> => true}},
+        ?assertEqual(true, imboy_plugin_registry:feature_enabled(e2ee, EnabledFeatures))
+    end).
+
+feature_enabled_returns_false_for_nested_disabled_map_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        EnabledFeatures = #{<<"moment">> => #{enabled => false}},
+        ?assertEqual(false, imboy_plugin_registry:feature_enabled(moment, EnabledFeatures))
+    end).
+
+%% --- A1/B1: all_feature_keys/0 ---
+
+all_feature_keys_returns_list_of_atoms_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Keys = imboy_plugin_registry:all_feature_keys(),
+        ?assert(is_list(Keys)),
+        lists:foreach(fun(K) -> ?assert(is_atom(K)) end, Keys)
+    end).
+
+all_feature_keys_contains_no_duplicates_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Keys = imboy_plugin_registry:all_feature_keys(),
+        ?assertEqual(length(Keys), length(lists:usort(Keys)))
+    end).
+
+all_feature_keys_contains_expected_channel_features_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Keys = imboy_plugin_registry:all_feature_keys(),
+        lists:foreach(
+            fun(K) -> ?assert(lists:member(K, Keys)) end,
+            [channel, channel_discover, channel_invitation, channel_order]
         )
     end).
