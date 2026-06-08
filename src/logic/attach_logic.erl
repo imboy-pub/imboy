@@ -34,38 +34,80 @@ presign(Uid, FileName, MimeType) ->
     end.
 
 %% @doc 客户端 PUT 成功后回调，落库附件元数据
-%% Meta: #{<<"md5">>, <<"mime_type">>, <<"size">>}
-%% 仅允许上报自己命名空间（u<Uid>/...）下的 ObjectKey，防止越权写入他人记录
+%% Meta: #{<<"md5">>, <<"mime_type">>, <<"size">>}（仅 md5 取自客户端，size/mime 以服务端核实为准）
+%%
+%% 两道防线：
+%%   1) 越权守卫：仅允许上报自己命名空间（u<Uid>/...）下的 ObjectKey
+%%   2) 真实性校验：向 Garage 发 HEAD 核实对象真实存在、真实大小≤上限、真实类型在白名单，
+%%      用真实值落库；不一致则删除对象并拒绝。杜绝客户端伪造 size/mime 或 confirm 不存在的 key。
 -spec confirm(integer(), binary(), map()) ->
-    {ok, map()} | {error, forbidden_key | invalid_key | term()}.
+    {ok, map()}
+    | {error,
+        forbidden_key
+        | invalid_key
+        | object_not_found
+        | file_too_large
+        | invalid_file_type
+        | term()}.
 confirm(Uid, ObjectKey, Meta) ->
     case elib_oss:owner_of_key(ObjectKey) of
         {ok, Uid} ->
-            Attach = #{
-                <<"md5">> => maps:get(<<"md5">>, Meta, <<>>),
-                <<"mime_type">> => maps:get(<<"mime_type">>, Meta, <<"application/octet-stream">>),
-                <<"name">> => filename:basename(ObjectKey),
-                %% path 存 ObjectKey，供孤儿清理 delete_object 使用
-                <<"path">> => ObjectKey,
-                %% url 同存 ObjectKey（不再落公开直链），读取时经 view_url 签发
-                <<"url">> => ObjectKey,
-                <<"size">> => maps:get(<<"size">>, Meta, 0)
-            },
-            Now = elib_dt:now(),
-            try
-                ok = elib_pg:with_tx(fun(Conn) ->
-                    attachment_ds:save(Conn, Now, Uid, [Attach])
-                end),
-                {ok, #{<<"object_key">> => ObjectKey}}
-            catch
-                Class:Reason ->
-                    ?ERROR_LOG(["attach_logic confirm save failed: ", Class, Reason]),
-                    {error, Reason}
-            end;
+            verify_and_save(Uid, ObjectKey, Meta);
         {ok, _Other} ->
             {error, forbidden_key};
         {error, R} ->
             {error, R}
+    end.
+
+%% @doc 服务端 HEAD 核实真实性后落库（真实值覆盖客户端自报值）
+-spec verify_and_save(integer(), binary(), map()) -> {ok, map()} | {error, term()}.
+verify_and_save(Uid, ObjectKey, Meta) ->
+    case elib_oss:head_object(ObjectKey) of
+        {error, not_found} ->
+            {error, object_not_found};
+        {error, R} ->
+            {error, R};
+        {ok, #{size := RealSize, content_type := RealType}} ->
+            case RealSize > elib_oss:max_file_size() of
+                true ->
+                    _ = (catch elib_oss:delete_object(ObjectKey)),
+                    {error, file_too_large};
+                false ->
+                    case elib_oss:validate_file_type(RealType) of
+                        false ->
+                            _ = (catch elib_oss:delete_object(ObjectKey)),
+                            {error, invalid_file_type};
+                        true ->
+                            do_save(Uid, ObjectKey, Meta, RealSize, RealType)
+                    end
+            end
+    end.
+
+-spec do_save(integer(), binary(), map(), non_neg_integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+do_save(Uid, ObjectKey, Meta, RealSize, RealType) ->
+    Attach = #{
+        %% md5 仅作完整性参考，不作安全边界
+        <<"md5">> => maps:get(<<"md5">>, Meta, <<>>),
+        %% mime_type/size 一律采用服务端 HEAD 核实的真实值
+        <<"mime_type">> => RealType,
+        <<"name">> => filename:basename(ObjectKey),
+        %% path 存 ObjectKey，供孤儿清理 delete_object 使用
+        <<"path">> => ObjectKey,
+        %% url 同存 ObjectKey（不再落公开直链），读取时经 view_url 签发
+        <<"url">> => ObjectKey,
+        <<"size">> => RealSize
+    },
+    Now = elib_dt:now(),
+    try
+        ok = elib_pg:with_tx(fun(Conn) ->
+            attachment_ds:save(Conn, Now, Uid, [Attach])
+        end),
+        {ok, #{<<"object_key">> => ObjectKey}}
+    catch
+        Class:Reason ->
+            ?ERROR_LOG(["attach_logic confirm save failed: ", Class, Reason]),
+            {error, Reason}
     end.
 
 %% @doc 签发短时下载 URL（替代公开读），附带归属验证
@@ -78,15 +120,16 @@ view_url(Uid, ObjectKey) ->
             {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)};
         {error, not_found} ->
             {error, forbidden};
-        {error, _Reason} ->
-            % 查询失败时降级允许（避免存储故障影响正常业务），记录日志
-            ?WARN_LOG([
-                "attach_logic:view_url ownership check failed for uid=",
+        {error, Reason} ->
+            %% fail-closed：归属查询失败时拒绝签发（不再降级放行），
+            %% 避免存储/DB 故障成为越权下载他人附件的入口。
+            ?ERROR_LOG([
+                "attach_logic:view_url ownership check failed (deny), uid=",
                 Uid,
                 " key=",
                 ObjectKey,
                 " reason=",
-                _Reason
+                Reason
             ]),
-            {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)}
+            {error, forbidden}
     end.

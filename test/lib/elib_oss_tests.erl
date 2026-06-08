@@ -340,6 +340,74 @@ delete_object_network_error_test_() ->
     ).
 
 %% ===================================================================
+%% head_object/1 响应解析（纯函数 parse_head_response/1）
+%% ===================================================================
+
+parse_head_response_200_extracts_size_and_type_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Resp =
+            {ok, {
+                {<<"HTTP/1.1">>, 200, <<"OK">>},
+                [
+                    {"content-length", "2048"},
+                    {"content-type", "image/png"}
+                ],
+                <<>>
+            }},
+        ?assertEqual(
+            {ok, #{size => 2048, content_type => <<"image/png">>}},
+            elib_oss:parse_head_response(Resp)
+        )
+    end).
+
+parse_head_response_header_case_insensitive_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Resp =
+            {ok, {
+                {<<"HTTP/1.1">>, 200, <<"OK">>},
+                [
+                    {"Content-Length", "100"},
+                    {"Content-Type", "image/jpeg"}
+                ],
+                <<>>
+            }},
+        ?assertEqual(
+            {ok, #{size => 100, content_type => <<"image/jpeg">>}},
+            elib_oss:parse_head_response(Resp)
+        )
+    end).
+
+parse_head_response_404_returns_not_found_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Resp = {ok, {{<<"HTTP/1.1">>, 404, <<"Not Found">>}, [], <<>>}},
+        ?assertEqual({error, not_found}, elib_oss:parse_head_response(Resp))
+    end).
+
+parse_head_response_other_code_returns_http_error_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Resp = {ok, {{<<"HTTP/1.1">>, 403, <<"Forbidden">>}, [], <<>>}},
+        ?assertEqual({error, {http_error, 403}}, elib_oss:parse_head_response(Resp))
+    end).
+
+parse_head_response_network_error_passthrough_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, econnrefused},
+            elib_oss:parse_head_response({error, econnrefused})
+        )
+    end).
+
+parse_head_response_missing_headers_defaults_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 缺失 content-length 默认 0；缺失 content-type 默认 octet-stream
+        Resp = {ok, {{<<"HTTP/1.1">>, 200, <<"OK">>}, [], <<>>}},
+        ?assertEqual(
+            {ok, #{size => 0, content_type => <<"application/octet-stream">>}},
+            elib_oss:parse_head_response(Resp)
+        )
+    end).
+
+%% ===================================================================
 %% presign_put_for_key/3 测试
 %% ===================================================================
 

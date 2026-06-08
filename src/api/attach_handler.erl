@@ -61,6 +61,12 @@ confirm(<<"POST">>, Req0, State) ->
             elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
         {error, invalid_key} ->
             elib_response:error(Req0, <<"非法对象键"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, object_not_found} ->
+            elib_response:error(Req0, <<"对象不存在或未完成上传"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, file_too_large} ->
+            elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, invalid_file_type} ->
+            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
         {error, _Reason} ->
             elib_response:error(Req0, <<"附件落库失败"/utf8>>, ?ERR_BAD_REQUEST)
     end;
@@ -77,8 +83,13 @@ view_url(<<"GET">>, Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"缺少 object_key"/utf8>>, ?ERR_BAD_REQUEST);
         ObjectKey ->
-            {ok, Url} = attach_logic:view_url(Uid, ObjectKey),
-            elib_response:success(Req0, #{<<"url">> => Url}, "success.")
+            case attach_logic:view_url(Uid, ObjectKey) of
+                {ok, Url} ->
+                    elib_response:success(Req0, #{<<"url">> => Url}, "success.");
+                {error, forbidden} ->
+                    %% fail-closed：非归属或归属校验失败，拒绝签发下载 URL
+                    elib_response:error(Req0, <<"无权访问该附件"/utf8>>, ?ERR_BAD_REQUEST)
+            end
     end;
 view_url(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).

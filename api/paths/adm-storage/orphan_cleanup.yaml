@@ -1,0 +1,22 @@
+# POST /adm/storage/orphan/cleanup — admin
+post:
+  tags: [admin]
+  summary: 管理后台清理孤儿文件
+  operationId: adm_storage_orphan_cleanup
+  requestBody:
+    required: false
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            age_days: { type: integer, default: 30, description: '清理超过此天数的孤儿文件' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

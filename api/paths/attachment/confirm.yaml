@@ -1,0 +1,29 @@
+# POST /v1/attachment/confirm — 确认附件上传 / Confirm attachment upload
+# Handler: src/api/attach_handler.erl#confirm/2
+post:
+  tags: [user]
+  summary: 确认附件上传完成
+  description: |
+    客户端直传 S3 成功后回调，服务端落库记录附件信息。
+  operationId: attachmentConfirm
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [object_key]
+          properties:
+            object_key: { type: string, description: 'S3 object key' }
+            md5: { type: string, description: '文件 MD5 校验' }
+            mime_type: { type: string, description: 'MIME 类型' }
+            size: { type: integer, description: '文件大小（字节）' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 未鉴权 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -17,7 +17,8 @@
 -export([presign_put/3, presign_put_for_key/3]).
 -export([presign_get_for_key/2]).
 -export([build_object_key/2, owner_of_key/1]).
--export([delete_object/1]).
+-export([delete_object/1, head_object/1, parse_head_response/1]).
+-export([max_file_size/0]).
 -export([generate_file_id/0]).
 -export([validate_file_id/1]).
 -export([get_file_category/1]).
@@ -139,6 +140,82 @@ presign_get_for_key(ObjectKey, ExpiresSeconds) ->
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, ExpiresSeconds).
+
+%% @doc 单文件最大尺寸（字节），供 confirm 阶段服务端核实真实大小复用
+-spec max_file_size() -> pos_integer().
+max_file_size() ->
+    ?MAX_FILE_SIZE.
+
+%% @doc 向 Garage 发 HEAD 请求核实对象真实存在性、大小与类型。
+%% 用于 confirm 阶段不信任客户端自报 size/mime_type 的服务端校验。
+-spec head_object(binary()) -> {ok, map()} | {error, not_found | term()}.
+head_object(ObjectKey) ->
+    ok = assert_garage_configured(),
+    Cfg = garage_config(),
+    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
+    AccessKey = maps:get(access_key, Cfg, <<>>),
+    SecretKey = maps:get(secret_key, Cfg, <<>>),
+
+    Url =
+        <<Endpoint/binary, "/", Bucket/binary, "/",
+            (elib_s3_sign:uri_encode_path(ObjectKey))/binary>>,
+    Now = calendar:universal_time(),
+    AmzDate = elib_s3_sign:format_amz_date(Now),
+    AuthHeader = elib_s3_sign:authorization_header(
+        <<"HEAD">>, Bucket, ObjectKey, <<>>, AmzDate, AccessKey, SecretKey
+    ),
+    Headers = [
+        {"x-amz-date", binary_to_list(AmzDate)},
+        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"},
+        {"authorization", binary_to_list(AuthHeader)}
+    ],
+    parse_head_response(
+        httpc:request(head, {binary_to_list(Url), Headers}, [{timeout, 10000}], [])
+    ).
+
+%% @doc 解析 HEAD 响应为 {ok, #{size, content_type}}（纯函数，便于单测）
+-spec parse_head_response(term()) -> {ok, map()} | {error, not_found | term()}.
+parse_head_response({ok, {{_, 200, _}, Headers, _}}) ->
+    {ok, #{
+        size => head_int(Headers, "content-length", 0),
+        content_type => head_bin(Headers, "content-type", <<"application/octet-stream">>)
+    }};
+parse_head_response({ok, {{_, 404, _}, _, _}}) ->
+    {error, not_found};
+parse_head_response({ok, {{_, Code, _}, _, _}}) ->
+    {error, {http_error, Code}};
+parse_head_response({error, Reason}) ->
+    {error, Reason}.
+
+%% HTTP 响应头大小写不敏感查找（httpc 通常返回小写键，但兼容混合大小写）
+-spec head_lookup([{string(), string()}], string()) -> string() | undefined.
+head_lookup(Headers, Key) ->
+    LKey = string:lowercase(Key),
+    case lists:dropwhile(fun({K, _}) -> string:lowercase(K) =/= LKey end, Headers) of
+        [{_, V} | _] -> V;
+        [] -> undefined
+    end.
+
+-spec head_int([{string(), string()}], string(), integer()) -> integer().
+head_int(Headers, Key, Default) ->
+    case head_lookup(Headers, Key) of
+        undefined ->
+            Default;
+        V ->
+            try
+                list_to_integer(string:trim(V))
+            catch
+                _:_ -> Default
+            end
+    end.
+
+-spec head_bin([{string(), string()}], string(), binary()) -> binary().
+head_bin(Headers, Key, Default) ->
+    case head_lookup(Headers, Key) of
+        undefined -> Default;
+        V -> iolist_to_binary(V)
+    end.
 
 %% @doc 物理删除存储桶中的对象
 -spec delete_object(binary()) -> ok | {error, term()}.

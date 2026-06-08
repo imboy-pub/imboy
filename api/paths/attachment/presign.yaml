@@ -1,0 +1,28 @@
+# GET /v1/attachment/presign — 获取 S3 预签名上传 URL / Get presigned upload URL
+# Handler: src/api/attach_handler.erl#presign/2
+get:
+  tags: [user]
+  summary: 获取附件预签名上传 URL
+  description: |
+    获取 Garage S3 预签名 URL 用于客户端直传。
+  operationId: attachmentPresign
+  parameters:
+    - in: query
+      name: filename
+      required: true
+      schema: { type: string }
+      description: 文件名
+    - in: query
+      name: mime_type
+      required: false
+      schema: { type: string, default: application/octet-stream }
+      description: MIME 类型
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 未鉴权 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

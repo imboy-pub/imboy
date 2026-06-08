@@ -1,0 +1,23 @@
+# GET /v1/attachment/view_url — 获取附件查看 URL / Get attachment view URL
+# Handler: src/api/attach_handler.erl#view_url/2
+get:
+  tags: [user]
+  summary: 获取附件查看签名 URL
+  description: |
+    获取带签名的短时查看 URL，替代 bucket 公开读。需 JWT 认证。
+  operationId: attachmentViewUrl
+  parameters:
+    - in: query
+      name: object_key
+      required: true
+      schema: { type: string }
+      description: S3 object key
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 未鉴权 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,23 @@
+# POST /adm/storage/enable — admin
+post:
+  tags: [admin]
+  summary: 管理后台启用存储
+  operationId: adm_storage_enable
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id]
+          properties:
+            id: { type: integer, description: '目标 ID' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
