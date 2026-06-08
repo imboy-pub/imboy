@@ -1,0 +1,20 @@
+# GET /adm/group/file/detail — admin
+get:
+  tags: [admin]
+  summary: 管理后台群文件详情
+  operationId: adm_group_file_detail
+  parameters:
+    - in: query
+      name: file_id
+      required: true
+      schema: { type: string }
+      description: 文件 ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

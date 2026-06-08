@@ -1,0 +1,30 @@
+# GET /adm/plugin/logs — admin
+get:
+  tags: [admin]
+  summary: 管理后台插件日志列表
+  operationId: adm_plugin_logs
+  parameters:
+    - in: query
+      name: plugin_name
+      required: false
+      schema: { type: string }
+      description: 插件名称筛选
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, default: 20 }
+      description: 每页条数
+    - in: query
+      name: offset
+      required: false
+      schema: { type: integer, default: 0 }
+      description: 偏移量
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

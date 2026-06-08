@@ -13,7 +13,13 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [title]
+          properties:
+            title: { type: string, description: '公告标题 / Announcement title' }
+            body: { type: string, description: '公告正文 / Announcement body' }
+            type: { type: string, enum: [info, warning, critical], default: info, description: '公告类型 / Type' }
+            pinned: { type: integer, enum: [0, 1], default: 0, description: '是否置顶 / Pinned' }
+            expired_at: { type: string, description: '过期时间 ISO8601（可选）/ Expiry time' }
   responses:
     '200':
       description: 成功

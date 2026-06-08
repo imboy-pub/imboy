@@ -1,0 +1,20 @@
+# GET /adm/group/schedule/detail — admin
+get:
+  tags: [admin]
+  summary: 管理后台群日程详情
+  operationId: adm_group_schedule_detail
+  parameters:
+    - in: query
+      name: schedule_id
+      required: true
+      schema: { type: string }
+      description: 日程 ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

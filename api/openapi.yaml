@@ -102,10 +102,6 @@ paths:
     $ref: './paths/auth/refreshtoken.yaml'
   /v1/passport/qr_login/subscribe:
     $ref: './paths/auth/qr-subscribe.yaml'
-  /uqrcode:
-    $ref: './paths/user/uqrcode.yaml'
-  /v1/uqrcode:
-    $ref: './paths/user/uqrcode.yaml'
   /v1/user/export_data:
     $ref: './paths/user/export-data.yaml'
 
@@ -115,15 +111,27 @@ paths:
     $ref: './paths/adm/setup-init.yaml'
   /passport/login:
     $ref: './paths/auth/login.yaml'
+  /v1/passport/login:
+    $ref: './paths/auth/login.yaml'
   /passport/quick_login:
+    $ref: './paths/auth/quick-login.yaml'
+  /v1/passport/quick_login:
     $ref: './paths/auth/quick-login.yaml'
   /passport/signup:
     $ref: './paths/auth/signup.yaml'
+  /v1/passport/signup:
+    $ref: './paths/auth/signup.yaml'
   /passport/getcode:
+    $ref: './paths/auth/getcode.yaml'
+  /v1/passport/getcode:
     $ref: './paths/auth/getcode.yaml'
   /passport/findpassword:
     $ref: './paths/auth/findpassword.yaml'
+  /v1/passport/findpassword:
+    $ref: './paths/auth/findpassword.yaml'
   /passport/bind_mail:
+    $ref: './paths/auth/bind-mail.yaml'
+  /v1/passport/bind_mail:
     $ref: './paths/auth/bind-mail.yaml'
   /v1/passport/qr_login/create:
     $ref: './paths/auth/qr-create.yaml'
@@ -137,57 +145,111 @@ paths:
     $ref: './paths/auth/qr-cancel.yaml'
   /user/update:
     $ref: './paths/user/update.yaml'
+  /v1/user/update:
+    $ref: './paths/user/update.yaml'
   /user/show:
+    $ref: './paths/user/show.yaml'
+  /v1/user/show:
     $ref: './paths/user/show.yaml'
   /user/qrcode:
     $ref: './paths/user/qrcode.yaml'
+  /v1/user/qrcode:
+    $ref: './paths/user/qrcode.yaml'
   /user/credential:
+    $ref: './paths/user/credential.yaml'
+  /v1/user/credential:
     $ref: './paths/user/credential.yaml'
   /user/change_state:
     $ref: './paths/user/change-state.yaml'
+  /v1/user/change_state:
+    $ref: './paths/user/change-state.yaml'
   /user/setting:
+    $ref: './paths/user/setting.yaml'
+  /v1/user/setting:
     $ref: './paths/user/setting.yaml'
   /user/change_password:
     $ref: './paths/user/change-password.yaml'
+  /v1/user/change_password:
+    $ref: './paths/user/change-password.yaml'
   /user/set_password:
+    $ref: './paths/user/set-password.yaml'
+  /v1/user/set_password:
     $ref: './paths/user/set-password.yaml'
   /user/apply_logout:
     $ref: './paths/user/apply-logout.yaml'
+  /v1/user/apply_logout:
+    $ref: './paths/user/apply-logout.yaml'
   /user/cancel_logout:
+    $ref: './paths/user/cancel-logout.yaml'
+  /v1/user/cancel_logout:
     $ref: './paths/user/cancel-logout.yaml'
   /user/search:
     $ref: './paths/user/search.yaml'
+  /v1/user/search:
+    $ref: './paths/user/search.yaml'
   /user_tag/page:
+    $ref: './paths/user-tag/page.yaml'
+  /v1/user_tag/page:
     $ref: './paths/user-tag/page.yaml'
   /user_tag/add:
     $ref: './paths/user-tag/add.yaml'
+  /v1/user_tag/add:
+    $ref: './paths/user-tag/add.yaml'
   /user_tag/change_name:
+    $ref: './paths/user-tag/change-name.yaml'
+  /v1/user_tag/change_name:
     $ref: './paths/user-tag/change-name.yaml'
   /user_tag/delete:
     $ref: './paths/user-tag/delete.yaml'
+  /v1/user_tag/delete:
+    $ref: './paths/user-tag/delete.yaml'
   /user_tag_relation/collect_page:
+    $ref: './paths/user-tag-relation/collect-page.yaml'
+  /v1/user_tag_relation/collect_page:
     $ref: './paths/user-tag-relation/collect-page.yaml'
   /user_tag_relation/friend_page:
     $ref: './paths/user-tag-relation/friend-page.yaml'
+  /v1/user_tag_relation/friend_page:
+    $ref: './paths/user-tag-relation/friend-page.yaml'
   /user_tag_relation/add:
+    $ref: './paths/user-tag-relation/add.yaml'
+  /v1/user_tag_relation/add:
     $ref: './paths/user-tag-relation/add.yaml'
   /user_tag_relation/set:
     $ref: './paths/user-tag-relation/set.yaml'
+  /v1/user_tag_relation/set:
+    $ref: './paths/user-tag-relation/set.yaml'
   /user_tag_relation/remove:
+    $ref: './paths/user-tag-relation/remove.yaml'
+  /v1/user_tag_relation/remove:
     $ref: './paths/user-tag-relation/remove.yaml'
   /user_collect/page:
     $ref: './paths/user-collect/page.yaml'
+  /v1/user_collect/page:
+    $ref: './paths/user-collect/page.yaml'
   /user_collect/add:
+    $ref: './paths/user-collect/add.yaml'
+  /v1/user_collect/add:
     $ref: './paths/user-collect/add.yaml'
   /user_collect/remove:
     $ref: './paths/user-collect/remove.yaml'
+  /v1/user_collect/remove:
+    $ref: './paths/user-collect/remove.yaml'
   /user_collect/change:
+    $ref: './paths/user-collect/change.yaml'
+  /v1/user_collect/change:
     $ref: './paths/user-collect/change.yaml'
   /user_device/page:
     $ref: './paths/user-device/page.yaml'
+  /v1/user_device/page:
+    $ref: './paths/user-device/page.yaml'
   /user_device/change_name:
     $ref: './paths/user-device/change-name.yaml'
+  /v1/user_device/change_name:
+    $ref: './paths/user-device/change-name.yaml'
   /user_device/delete:
+    $ref: './paths/user-device/delete.yaml'
+  /v1/user_device/delete:
     $ref: './paths/user-device/delete.yaml'
   /v1/user_device/sessions:
     $ref: './paths/user-device/sessions.yaml'
@@ -203,35 +265,65 @@ paths:
     $ref: './paths/push/unregister.yaml'
   /friend/denylist/page:
     $ref: './paths/friend-denylist/page.yaml'
+  /v1/friend/denylist/page:
+    $ref: './paths/friend-denylist/page.yaml'
   /friend/denylist/add:
+    $ref: './paths/friend-denylist/add.yaml'
+  /v1/friend/denylist/add:
     $ref: './paths/friend-denylist/add.yaml'
   /friend/denylist/remove:
     $ref: './paths/friend-denylist/remove.yaml'
+  /v1/friend/denylist/remove:
+    $ref: './paths/friend-denylist/remove.yaml'
   /friend/list:
+    $ref: './paths/friend/list.yaml'
+  /v1/friend/list:
     $ref: './paths/friend/list.yaml'
   /friend/add:
     $ref: './paths/friend/add.yaml'
+  /v1/friend/add:
+    $ref: './paths/friend/add.yaml'
   /friend/confirm:
+    $ref: './paths/friend/confirm.yaml'
+  /v1/friend/confirm:
     $ref: './paths/friend/confirm.yaml'
   /friend/delete:
     $ref: './paths/friend/delete.yaml'
+  /v1/friend/delete:
+    $ref: './paths/friend/delete.yaml'
   /friend/move:
+    $ref: './paths/friend/move.yaml'
+  /v1/friend/move:
     $ref: './paths/friend/move.yaml'
   /friend/information:
     $ref: './paths/friend/information.yaml'
+  /v1/friend/information:
+    $ref: './paths/friend/information.yaml'
   /friend/change_remark:
+    $ref: './paths/friend/change-remark.yaml'
+  /v1/friend/change_remark:
     $ref: './paths/friend/change-remark.yaml'
   /friend/category/add:
     $ref: './paths/friend-category/add.yaml'
+  /v1/friend/category/add:
+    $ref: './paths/friend-category/add.yaml'
   /friend/category/delete:
+    $ref: './paths/friend-category/delete.yaml'
+  /v1/friend/category/delete:
     $ref: './paths/friend-category/delete.yaml'
   /friend/category/rename:
     $ref: './paths/friend-category/rename.yaml'
-  /msg/history:
+  /v1/friend/category/rename:
+    $ref: './paths/friend-category/rename.yaml'
+  /v1/msg/history:
     $ref: './paths/msg/history.yaml'
   /msg/offline:
     $ref: './paths/msg/offline.yaml'
+  /v1/msg/offline:
+    $ref: './paths/msg/offline.yaml'
   /msg/offline_ack:
+    $ref: './paths/msg/offline-ack.yaml'
+  /v1/msg/offline_ack:
     $ref: './paths/msg/offline-ack.yaml'
   /v1/msg/read_stats:
     $ref: './paths/msg/read-stats.yaml'
@@ -247,25 +339,47 @@ paths:
     $ref: './paths/msg/reaction-list.yaml'
   /conversation/online:
     $ref: './paths/conversation/online.yaml'
+  /v1/conversation/online:
+    $ref: './paths/conversation/online.yaml'
   /conversation/mine:
+    $ref: './paths/conversation/mine.yaml'
+  /v1/conversation/mine:
     $ref: './paths/conversation/mine.yaml'
   /conversation/pin:
     $ref: './paths/conversation/pin.yaml'
+  /v1/conversation/pin:
+    $ref: './paths/conversation/pin.yaml'
   /conversation/unpin:
+    $ref: './paths/conversation/unpin.yaml'
+  /v1/conversation/unpin:
     $ref: './paths/conversation/unpin.yaml'
   /conversation/pinned:
     $ref: './paths/conversation/pinned.yaml'
+  /v1/conversation/pinned:
+    $ref: './paths/conversation/pinned.yaml'
   /conversation/delete:
+    $ref: './paths/conversation/delete.yaml'
+  /v1/conversation/delete:
     $ref: './paths/conversation/delete.yaml'
   /conversation/restore:
     $ref: './paths/conversation/restore.yaml'
+  /v1/conversation/restore:
+    $ref: './paths/conversation/restore.yaml'
   /mention/list:
+    $ref: './paths/mention/list.yaml'
+  /v1/mention/list:
     $ref: './paths/mention/list.yaml'
   /mention/unread:
     $ref: './paths/mention/unread.yaml'
+  /v1/mention/unread:
+    $ref: './paths/mention/unread.yaml'
   /mention/mark_read:
     $ref: './paths/mention/mark-read.yaml'
+  /v1/mention/mark_read:
+    $ref: './paths/mention/mark-read.yaml'
   /mention/suggest:
+    $ref: './paths/mention/suggest.yaml'
+  /v1/mention/suggest:
     $ref: './paths/mention/suggest.yaml'
   /v1/moment/create:
     $ref: './paths/moment/create.yaml'
@@ -291,35 +405,65 @@ paths:
     $ref: './paths/moment/report.yaml'
   /group/add:
     $ref: './paths/group/add.yaml'
+  /v1/group/add:
+    $ref: './paths/group/add.yaml'
   /group/edit:
+    $ref: './paths/group/edit.yaml'
+  /v1/group/edit:
     $ref: './paths/group/edit.yaml'
   /group/dissolve:
     $ref: './paths/group/dissolve.yaml'
+  /v1/group/dissolve:
+    $ref: './paths/group/dissolve.yaml'
   /group/detail:
+    $ref: './paths/group/detail.yaml'
+  /v1/group/detail:
     $ref: './paths/group/detail.yaml'
   /group/page:
     $ref: './paths/group/page.yaml'
+  /v1/group/page:
+    $ref: './paths/group/page.yaml'
   /group/msg_page:
+    $ref: './paths/group/msg-page.yaml'
+  /v1/group/msg_page:
     $ref: './paths/group/msg-page.yaml'
   /group/qrcode:
     $ref: './paths/group/qrcode.yaml'
+  /v1/group/qrcode:
+    $ref: './paths/group/qrcode.yaml'
   /group/face2face:
+    $ref: './paths/group/face2face.yaml'
+  /v1/group/face2face:
     $ref: './paths/group/face2face.yaml'
   /group/face2face_save:
     $ref: './paths/group/face2face-save.yaml'
+  /v1/group/face2face_save:
+    $ref: './paths/group/face2face-save.yaml'
   /group/remark:
+    $ref: './paths/group/remark.yaml'
+  /v1/group/remark:
     $ref: './paths/group/remark.yaml'
   /v1/group/transfer:
     $ref: './paths/group/transfer.yaml'
   /group_member/join:
     $ref: './paths/group-member/join.yaml'
+  /v1/group_member/join:
+    $ref: './paths/group-member/join.yaml'
   /group_member/leave:
+    $ref: './paths/group-member/leave.yaml'
+  /v1/group_member/leave:
     $ref: './paths/group-member/leave.yaml'
   /group_member/page:
     $ref: './paths/group-member/page.yaml'
+  /v1/group_member/page:
+    $ref: './paths/group-member/page.yaml'
   /group_member/alias:
     $ref: './paths/group-member/alias.yaml'
+  /v1/group_member/alias:
+    $ref: './paths/group-member/alias.yaml'
   /group_member/same_group:
+    $ref: './paths/group-member/same-group.yaml'
+  /v1/group_member/same_group:
     $ref: './paths/group-member/same-group.yaml'
   /v1/group_member/mute:
     $ref: './paths/group-member/mute.yaml'
@@ -329,15 +473,27 @@ paths:
     $ref: './paths/group-member/role.yaml'
   /group_notice/add:
     $ref: './paths/group-notice/add.yaml'
+  /v1/group_notice/add:
+    $ref: './paths/group-notice/add.yaml'
   /group_notice/edit:
+    $ref: './paths/group-notice/edit.yaml'
+  /v1/group_notice/edit:
     $ref: './paths/group-notice/edit.yaml'
   /group_notice/delete:
     $ref: './paths/group-notice/delete.yaml'
+  /v1/group_notice/delete:
+    $ref: './paths/group-notice/delete.yaml'
   /group_notice/page:
+    $ref: './paths/group-notice/page.yaml'
+  /v1/group_notice/page:
     $ref: './paths/group-notice/page.yaml'
   /group_notice/publish:
     $ref: './paths/group-notice/publish.yaml'
+  /v1/group_notice/publish:
+    $ref: './paths/group-notice/publish.yaml'
   /group_notice/latest:
+    $ref: './paths/group-notice/latest.yaml'
+  /v1/group_notice/latest:
     $ref: './paths/group-notice/latest.yaml'
   /v1/group/notice/list:
     $ref: './paths/group-notice/list.yaml'
@@ -351,31 +507,59 @@ paths:
     $ref: './paths/group-notice/mark-read.yaml'
   /group_album/create:
     $ref: './paths/group-album/create.yaml'
+  /v1/group_album/create:
+    $ref: './paths/group-album/create.yaml'
   /group_album/list:
+    $ref: './paths/group-album/list.yaml'
+  /v1/group_album/list:
     $ref: './paths/group-album/list.yaml'
   /group_album/rename:
     $ref: './paths/group-album/rename.yaml'
+  /v1/group_album/rename:
+    $ref: './paths/group-album/rename.yaml'
   /group_album/delete:
+    $ref: './paths/group-album/delete.yaml'
+  /v1/group_album/delete:
     $ref: './paths/group-album/delete.yaml'
   /group_album/photo/upload:
     $ref: './paths/group-album/photo/upload.yaml'
+  /v1/group_album/photo/upload:
+    $ref: './paths/group-album/photo/upload.yaml'
   /group_album/photo/batch:
+    $ref: './paths/group-album/photo/batch.yaml'
+  /v1/group_album/photo/batch:
     $ref: './paths/group-album/photo/batch.yaml'
   /group_album/photo/list:
     $ref: './paths/group-album/photo/list.yaml'
+  /v1/group_album/photo/list:
+    $ref: './paths/group-album/photo/list.yaml'
   /group_album/photo/detail:
+    $ref: './paths/group-album/photo/detail.yaml'
+  /v1/group_album/photo/detail:
     $ref: './paths/group-album/photo/detail.yaml'
   /group_album/photo/delete:
     $ref: './paths/group-album/photo/delete.yaml'
+  /v1/group_album/photo/delete:
+    $ref: './paths/group-album/photo/delete.yaml'
   /group_album/photo/like:
+    $ref: './paths/group-album/photo/like.yaml'
+  /v1/group_album/photo/like:
     $ref: './paths/group-album/photo/like.yaml'
   /group_album/photo/unlike:
     $ref: './paths/group-album/photo/unlike.yaml'
+  /v1/group_album/photo/unlike:
+    $ref: './paths/group-album/photo/unlike.yaml'
   /group_album/photo/comment:
+    $ref: './paths/group-album/photo/comment.yaml'
+  /v1/group_album/photo/comment:
     $ref: './paths/group-album/photo/comment.yaml'
   /group_album/photo/comments:
     $ref: './paths/group-album/photo/comments.yaml'
+  /v1/group_album/photo/comments:
+    $ref: './paths/group-album/photo/comments.yaml'
   /group_album/cover/update:
+    $ref: './paths/group-album/cover/update.yaml'
+  /v1/group_album/cover/update:
     $ref: './paths/group-album/cover/update.yaml'
   /v1/group/category/create:
     $ref: './paths/group-category/create.yaml'
@@ -585,6 +769,8 @@ paths:
     $ref: './paths/e2ee-social/decrypt-shard.yaml'
   /app_version/check:
     $ref: './paths/app/version-check.yaml'
+  /v1/app_version/check:
+    $ref: './paths/app/version-check.yaml'
   /v1/app/features:
     $ref: './paths/app/features.yaml'
   /v1/app/manifest:
@@ -597,27 +783,49 @@ paths:
     $ref: './paths/app/upgrade-report.yaml'
   /feedback/page:
     $ref: './paths/feedback/page.yaml'
+  /v1/feedback/page:
+    $ref: './paths/feedback/page.yaml'
   /feedback/add:
+    $ref: './paths/feedback/add.yaml'
+  /v1/feedback/add:
     $ref: './paths/feedback/add.yaml'
   /feedback/change:
     $ref: './paths/feedback/change.yaml'
+  /v1/feedback/change:
+    $ref: './paths/feedback/change.yaml'
   /feedback/remove:
+    $ref: './paths/feedback/remove.yaml'
+  /v1/feedback/remove:
     $ref: './paths/feedback/remove.yaml'
   /feedback/reply:
     $ref: './paths/feedback/reply.yaml'
+  /v1/feedback/reply:
+    $ref: './paths/feedback/reply.yaml'
   /feedback/page_reply:
+    $ref: './paths/feedback/page-reply.yaml'
+  /v1/feedback/page_reply:
     $ref: './paths/feedback/page-reply.yaml'
   /fts/user_search:
     $ref: './paths/fts/user-search.yaml'
+  /v1/fts/user_search:
+    $ref: './paths/fts/user-search.yaml'
   /fts/recently_user:
+    $ref: './paths/fts/recently-user.yaml'
+  /v1/fts/recently_user:
     $ref: './paths/fts/recently-user.yaml'
   /v1/fts/msg:
     $ref: './paths/fts/msg.yaml'
   /location/makeMyselfVisible:
     $ref: './paths/location/make-visible.yaml'
+  /v1/location/makeMyselfVisible:
+    $ref: './paths/location/make-visible.yaml'
   /location/makeMyselfUnvisible:
     $ref: './paths/location/make-unvisible.yaml'
+  /v1/location/makeMyselfUnvisible:
+    $ref: './paths/location/make-unvisible.yaml'
   /location/peopleNearby:
+    $ref: './paths/location/people-nearby.yaml'
+  /v1/location/peopleNearby:
     $ref: './paths/location/people-nearby.yaml'
   /v1/report/create:
     $ref: './paths/report/create.yaml'
@@ -641,8 +849,6 @@ paths:
     $ref: './paths/wallet/transactions.yaml'
   /v1/wallet/topup:
     $ref: './paths/wallet/topup.yaml'
-  /adm/users:
-    $ref: './paths/adm/users.yaml'
   /adm:
     $ref: './paths/adm-index/index.yaml'
   /adm/index:
@@ -877,6 +1083,105 @@ paths:
     $ref: './paths/adm-stats/group.yaml'
   /adm/stats/ranking:
     $ref: './paths/adm-stats/ranking.yaml'
+
+
+  # ---- 新增 48 条路由覆盖（2026-06-07 审计补全）----
+  /friend/reject:
+    $ref: './paths/friend-reject/reject.yaml'
+  /v1/friend/reject:
+    $ref: './paths/friend-reject/reject.yaml'
+  /adm/group/vote/list:
+    $ref: './paths/adm-group-vote/list.yaml'
+  /adm/group/vote/detail:
+    $ref: './paths/adm-group-vote/detail.yaml'
+  /adm/group/vote/close:
+    $ref: './paths/adm-group-vote/close.yaml'
+  /adm/group/notice/list:
+    $ref: './paths/adm-group-notice/list.yaml'
+  /adm/group/notice/detail:
+    $ref: './paths/adm-group-notice/detail.yaml'
+  /adm/group/notice/delete:
+    $ref: './paths/adm-group-notice/delete.yaml'
+  /adm/group/album/list:
+    $ref: './paths/adm-group-album/list.yaml'
+  /adm/group/album/detail:
+    $ref: './paths/adm-group-album/detail.yaml'
+  /adm/group/album/delete:
+    $ref: './paths/adm-group-album/delete.yaml'
+  /adm/group/category/list:
+    $ref: './paths/adm-group-category/list.yaml'
+  /adm/group/category/delete:
+    $ref: './paths/adm-group-category/delete.yaml'
+  /adm/group/file/list:
+    $ref: './paths/adm-group-file/list.yaml'
+  /adm/group/file/detail:
+    $ref: './paths/adm-group-file/detail.yaml'
+  /adm/group/file/delete:
+    $ref: './paths/adm-group-file/delete.yaml'
+  /adm/group/tag/list:
+    $ref: './paths/adm-group-tag/list.yaml'
+  /adm/group/tag/delete:
+    $ref: './paths/adm-group-tag/delete.yaml'
+  /adm/group/schedule/list:
+    $ref: './paths/adm-group-schedule/list.yaml'
+  /adm/group/schedule/detail:
+    $ref: './paths/adm-group-schedule/detail.yaml'
+  /adm/group/schedule/cancel:
+    $ref: './paths/adm-group-schedule/cancel.yaml'
+  /adm/group/schedule/restore:
+    $ref: './paths/adm-group-schedule/restore.yaml'
+  /adm/group/task/list:
+    $ref: './paths/adm-group-task/list.yaml'
+  /adm/group/task/detail:
+    $ref: './paths/adm-group-task/detail.yaml'
+  /adm/group/task/pending_review:
+    $ref: './paths/adm-group-task/pending_review.yaml'
+  /adm/group/task/review:
+    $ref: './paths/adm-group-task/review.yaml'
+  /adm/group/task/restore:
+    $ref: './paths/adm-group-task/restore.yaml'
+  /adm/group/task/close:
+    $ref: './paths/adm-group-task/close.yaml'
+  /adm/group/task/delete:
+    $ref: './paths/adm-group-task/delete.yaml'
+  /adm/group/update:
+    $ref: './paths/adm-group/update.yaml'
+  /adm/group/member/kick:
+    $ref: './paths/adm-group/member_kick.yaml'
+  /adm/group/governance_log/list:
+    $ref: './paths/adm-group-governance/list.yaml'
+  /adm/storage/delete:
+    $ref: './paths/adm-storage/delete.yaml'
+  /adm/storage/disable:
+    $ref: './paths/adm-storage/disable.yaml'
+  /adm/storage/enable:
+    $ref: './paths/adm-storage/enable.yaml'
+  /adm/storage/orphan:
+    $ref: './paths/adm-storage/orphan.yaml'
+  /adm/storage/orphan/cleanup:
+    $ref: './paths/adm-storage/orphan_cleanup.yaml'
+  /adm/user/tag/list:
+    $ref: './paths/adm-user/tag_list.yaml'
+  /adm/user/tag/delete:
+    $ref: './paths/adm-user/tag_delete.yaml'
+  /adm/user/collect/list:
+    $ref: './paths/adm-user/collect_list.yaml'
+  /adm/user/collect/remove:
+    $ref: './paths/adm-user/collect_remove.yaml'
+  /adm/user/logout_apply/approve:
+    $ref: './paths/adm-user/logout_approve.yaml'
+  /adm/admin/disable:
+    $ref: './paths/adm-admin/disable.yaml'
+  /adm/feedback/delete:
+    $ref: './paths/adm-feedback/delete.yaml'
+  /adm/plugin/logs:
+    $ref: './paths/adm-plugin/logs.yaml'
+  /v1/attachment/presign:
+    $ref: './paths/attachment/presign.yaml'
+  /v1/attachment/confirm:
+    $ref: './paths/attachment/confirm.yaml'
+  /v1/attachment/view_url:
+    $ref: './paths/attachment/view_url.yaml'
 
 components:
   securitySchemes:

@@ -1,0 +1,27 @@
+# POST /adm/group/update — admin
+post:
+  tags: [admin]
+  summary: 管理后台更新群组信息
+  operationId: adm_group_update
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid: { type: integer, description: '群 ID' }
+            title: { type: string, description: '群名称' }
+            introduction: { type: string, description: '群简介' }
+            join_limit: { type: integer, description: '加入限制' }
+            member_max: { type: integer, description: '最大成员数' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

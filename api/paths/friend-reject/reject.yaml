@@ -1,27 +1,26 @@
-# POST /adm/user/ban — admin
+# POST /friend/reject — 拒绝好友申请 / Reject friend request
+# Handler: src/api/friend_handler.erl#reject/2
 post:
-  tags: [admin]
-  summary: admin adm-user - ban
+  tags: [user]
+  summary: 拒绝好友申请
   description: |
-    ## 中文 / English
-    管理后台 adm-user handler 的 `ban` 动作；路径 `/adm/user/ban`。
-    Admin handler `adm-user`, action `ban`. Path `/adm/user/ban`.
-  operationId: adm_user_ban
+    拒绝收到的好友申请。需提供申请人 ID。
+  operationId: rejectFriend
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [uid]
+          required: [from]
           properties:
-            uid: { type: integer, description: '要封禁的用户 TSID' }
+            from: { type: integer, description: '申请人 uid / Requester UID' }
   responses:
     '200':
       description: 成功
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
     '4XX':
-      description: 无权限 / 参数非法
+      description: 参数非法 / 未鉴权
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,21 +1,17 @@
-# POST /adm/user/ban — admin
+# POST /adm/feedback/delete — admin
 post:
   tags: [admin]
-  summary: admin adm-user - ban
-  description: |
-    ## 中文 / English
-    管理后台 adm-user handler 的 `ban` 动作；路径 `/adm/user/ban`。
-    Admin handler `adm-user`, action `ban`. Path `/adm/user/ban`.
-  operationId: adm_user_ban
+  summary: 管理后台删除反馈
+  operationId: adm_feedback_delete
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [uid]
+          required: [feedback_id]
           properties:
-            uid: { type: integer, description: '要封禁的用户 TSID' }
+            feedback_id: { type: integer, description: '目标 ID' }
   responses:
     '200':
       description: 成功

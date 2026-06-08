@@ -21,10 +21,10 @@ post:
       application/json:
         schema:
           type: object
-          required: [account, password]
+          required: [account, pwd]
           properties:
             account: { type: string }
-            password: { type: string }
+            pwd: { type: string, description: 登录密码 / Login password }
   responses:
     '200':
       description: 登录结果

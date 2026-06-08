@@ -5,6 +5,7 @@
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1msg~1history
 # Handler：src/api/msg_handler.erl#history/1
+# 修订：参数与代码对齐（chat_type/peer_id/after_seq/limit）
 # ----------------------------------------------------------------------------
 get:
   tags: [msg]
@@ -14,9 +15,26 @@ get:
     客户端持久化 `last_conv_seq`，每次请求传入以拉取增量。
   operationId: getMsgHistory
   parameters:
-    - $ref: '../../components/parameters/ConvKey.yaml'
-    - $ref: '../../components/parameters/SinceSeq.yaml'
-    - $ref: '../../components/parameters/HistoryLimit.yaml'
+    - in: query
+      name: chat_type
+      required: true
+      schema: { type: string, enum: [c2c, c2g] }
+      description: 会话类型 / Conversation type
+    - in: query
+      name: peer_id
+      required: true
+      schema: { type: string }
+      description: 对端 ID（C2C 为对方 uid，C2G 为 group_id）/ Peer ID
+    - in: query
+      name: after_seq
+      required: false
+      schema: { type: integer, minimum: 0 }
+      description: "游标：从该 conv_seq 之后拉取 / Cursor: fetch after this seq"
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: 单次拉取条数 / Batch size
   responses:
     '200':
       description: 增量消息数组
@@ -32,7 +50,7 @@ get:
                     items:
                       $ref: '../../components/schemas/Message.yaml'
     '4XX':
-      description: 未鉴权（401）、conv_key 格式非法或调用方无权访问该会话（403）
+      description: 未鉴权（401）、参数非法或调用方无权访问该会话（403）
       content:
         application/json:
           schema:

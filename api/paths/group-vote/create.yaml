@@ -13,15 +13,15 @@ post:
       application/json:
         schema:
           type: object
-          required: [gid, title, options]
+          required: [gid, title, options, vote_type]
           properties:
             gid: { type: integer, minimum: 1 }
             title: { type: string, maxLength: 200 }
             description: { type: string }
             options: { type: array, items: { type: string }, minItems: 2, maxItems: 20 }
-            multi_choice: { type: boolean, default: false }
-            anonymous: { type: boolean, default: false }
-            expired_at: { type: string }
+            vote_type: { type: integer, enum: [1, 2], description: "1=单选, 2=多选 / 1=single, 2=multi" }
+            is_anonymous: { type: boolean, default: false }
+            end_at: { type: string, description: "截止时间 ISO8601 / Deadline" }
   responses:
     '200':
       description: 成功

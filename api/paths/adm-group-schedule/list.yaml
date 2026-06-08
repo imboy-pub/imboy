@@ -1,0 +1,22 @@
+# GET /adm/group/schedule/list — admin
+get:
+  tags: [admin]
+  summary: 管理后台群日程列表
+  operationId: adm_group_schedule_list
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      schema: { type: integer }
+      description: 群 ID
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

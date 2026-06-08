@@ -13,12 +13,14 @@ post:
       application/json:
         schema:
           type: object
+          required: [name, type]
           properties:
             name: { type: string, maxLength: 80 }
+            type: { type: integer, enum: [1, 2], description: "1=公开, 2=私有 / 1=public, 2=private" }
             custom_id: { type: string, description: '可选自定义 ID' }
             description: { type: string }
             avatar: { type: string }
-            type: { type: string, enum: [public, private] }
+            tags: { type: array, items: { type: string }, description: '频道标签列表 / Channel tags' }
   responses:
     '200':
       description: 成功

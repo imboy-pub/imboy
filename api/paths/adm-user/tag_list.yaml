@@ -1,0 +1,32 @@
+# GET /adm/user/tag/list — admin
+get:
+  tags: [admin]
+  summary: 管理后台用户标签列表
+  operationId: adm_user_tag_list
+  parameters:
+    - in: query
+      name: uid
+      required: true
+      schema: { type: integer }
+      description: 用户 ID
+    - in: query
+      name: scene
+      required: false
+      schema: { type: string, default: friend }
+      description: 场景
+    - in: query
+      name: keyword
+      required: false
+      schema: { type: string }
+      description: 搜索关键词
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

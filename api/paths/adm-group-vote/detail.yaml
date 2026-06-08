@@ -1,0 +1,20 @@
+# GET /adm/group/vote/detail — admin
+get:
+  tags: [admin]
+  summary: 管理后台群投票详情
+  operationId: adm_group_vote_detail
+  parameters:
+    - in: query
+      name: vote_id
+      required: true
+      schema: { type: string }
+      description: 投票 ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

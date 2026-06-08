@@ -10,10 +10,15 @@ post:
   requestBody:
     required: true
     content:
-      application/json:
+      application/x-www-form-urlencoded:
         schema:
           type: object
-          additionalProperties: true
+          required: [account, pwd, captcha, csrf_token]
+          properties:
+            account: { type: string, description: '管理员账号' }
+            pwd: { type: string, description: '密码' }
+            captcha: { type: string, description: '验证码' }
+            csrf_token: { type: string, description: 'CSRF 令牌' }
   responses:
     '200':
       description: 成功

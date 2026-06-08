@@ -1,0 +1,18 @@
+# GET /adm/group/governance_log/list — admin
+get:
+  tags: [admin]
+  summary: 管理后台群治理日志列表
+  operationId: adm_group_governance_log_list
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+    - $ref: '../../components/parameters/PaginationKeyword.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,12 +1,8 @@
-# POST /adm/user/ban — admin
+# POST /adm/user/logout_apply/approve — admin
 post:
   tags: [admin]
-  summary: admin adm-user - ban
-  description: |
-    ## 中文 / English
-    管理后台 adm-user handler 的 `ban` 动作；路径 `/adm/user/ban`。
-    Admin handler `adm-user`, action `ban`. Path `/adm/user/ban`.
-  operationId: adm_user_ban
+  summary: 管理后台批准用户注销申请
+  operationId: adm_user_logout_approve
   requestBody:
     required: true
     content:
@@ -15,7 +11,7 @@ post:
           type: object
           required: [uid]
           properties:
-            uid: { type: integer, description: '要封禁的用户 TSID' }
+            uid: { type: integer, description: '申请注销的用户 ID' }
   responses:
     '200':
       description: 成功

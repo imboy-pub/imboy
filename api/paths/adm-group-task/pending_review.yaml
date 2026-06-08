@@ -1,0 +1,22 @@
+# GET /adm/group/task/pending_review — admin
+get:
+  tags: [admin]
+  summary: 管理后台待审核群任务列表
+  operationId: adm_group_task_pending_review
+  parameters:
+    - in: query
+      name: task_id
+      required: true
+      schema: { type: string }
+      description: 任务 ID
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

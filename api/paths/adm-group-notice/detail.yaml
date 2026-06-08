@@ -1,0 +1,20 @@
+# GET /adm/group/notice/detail — admin
+get:
+  tags: [admin]
+  summary: 管理后台群公告详情
+  operationId: adm_group_notice_detail
+  parameters:
+    - in: query
+      name: notice_id
+      required: true
+      schema: { type: string }
+      description: 公告 ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

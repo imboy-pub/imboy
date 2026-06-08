@@ -1,21 +1,19 @@
-# POST /adm/user/ban — admin
+# POST /adm/group/task/review — admin
 post:
   tags: [admin]
-  summary: admin adm-user - ban
-  description: |
-    ## 中文 / English
-    管理后台 adm-user handler 的 `ban` 动作；路径 `/adm/user/ban`。
-    Admin handler `adm-user`, action `ban`. Path `/adm/user/ban`.
-  operationId: adm_user_ban
+  summary: 管理后台批改群任务
+  operationId: adm_group_task_review
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [uid]
+          required: [assignment_id]
           properties:
-            uid: { type: integer, description: '要封禁的用户 TSID' }
+            assignment_id: { type: string, description: '任务分配 ID' }
+            score: { type: integer, description: '评分' }
+            comment: { type: string, description: '评语' }
   responses:
     '200':
       description: 成功

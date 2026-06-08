@@ -13,7 +13,10 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [name]
+          properties:
+            name: { type: string, description: '插件名称 / Plugin name' }
+            path: { type: string, description: '插件路径（可选，用于本地安装）/ Plugin path (optional, for local install)' }
   responses:
     '200':
       description: 成功

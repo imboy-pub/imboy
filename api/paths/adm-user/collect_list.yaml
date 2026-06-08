@@ -1,0 +1,42 @@
+# GET /adm/user/collect/list — admin
+get:
+  tags: [admin]
+  summary: 管理后台用户收藏列表
+  operationId: adm_user_collect_list
+  parameters:
+    - in: query
+      name: uid
+      required: true
+      schema: { type: integer }
+      description: 用户 ID
+    - in: query
+      name: kind
+      required: false
+      schema: { type: integer }
+      description: 收藏类型
+    - in: query
+      name: keyword
+      required: false
+      schema: { type: string }
+      description: 搜索关键词
+    - in: query
+      name: tag
+      required: false
+      schema: { type: string }
+      description: 标签筛选
+    - in: query
+      name: order
+      required: false
+      schema: { type: string }
+      description: 排序方式
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

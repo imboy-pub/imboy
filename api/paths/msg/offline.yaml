@@ -5,6 +5,7 @@
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1msg~1offline
 # Handler: src/api/msg_handler.erl#offline/2 → messaging_logic:offline/2
+# 修订：补充 query 参数声明（与代码 imboy_req:params 对齐）
 # ----------------------------------------------------------------------------
 post:
   tags: [msg]
@@ -23,6 +24,27 @@ post:
     client MUST follow up with `/msg/offline_ack` or the messages will
     be re-delivered (2s/5s/7s/11s back-off).
   operationId: getOfflineMessages
+  parameters:
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      description: 每类离线消息拉取上限 / Per-bucket limit
+    - in: query
+      name: c2c_last_msg_at
+      required: false
+      schema: { type: integer }
+      description: C2C 离线消息起始时间戳（毫秒）/ C2C cursor
+    - in: query
+      name: c2g_last_msg_at
+      required: false
+      schema: { type: integer }
+      description: C2G 离线消息起始时间戳（毫秒）/ C2G cursor
+    - in: query
+      name: s2c_last_msg_at
+      required: false
+      schema: { type: integer }
+      description: S2C 离线消息起始时间戳（毫秒）/ S2C cursor
   responses:
     '200':
       description: "离线消息桶 { c2c: [...], c2g: [...], s2c: [...] }"
