@@ -73,7 +73,8 @@ migrate_to_msg_v2() ->
 %% @returns ok | {error, Reason}
 %% @example
 %% imboy_migrate:migrate().
-%% @note 升级相关的 SQL 文件必须是按顺序命名的
+%% @note 迁移文件用 14 位 UTC 时间戳版本号命名（erlang_migrate:create/2 生成），
+%%       strict 模式按 schema_migrations_history 检测乱序，见 docs/standards/migration_naming.md
 -spec migrate() -> ok | {error, term()}.
 migrate() ->
     Conf = config_ds:env(super_account),
