@@ -347,8 +347,8 @@ handle_user_create(Args) ->
     Account = maps:get(account, Args, <<>>),
     Nickname = maps:get(nickname, Args, <<>>),
     Password = maps:get(password, Args, <<>>),
-    case do_rpc(Node, Args, user_repo, detail, [Uid]) of
-        {ok, _} ->
+    case do_rpc(Node, Args, user_repo, may_exist, [Uid]) of
+        true ->
             io:format(standard_error, "用户 uid=~p 已存在~n", [Uid]),
             halt(1);
         _ -> ok

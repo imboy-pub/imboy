@@ -112,19 +112,19 @@ BASE_URL="${BASE_URL%/}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+# bash 3.2 兼容（macOS 系统 bash 无 nameref）：结果写入全局 CURL_ARGS
+# bash 3.2 compatible (macOS system bash lacks namerefs): writes global CURL_ARGS
 build_curl_args() {
-  local -n target_ref="$1"
-  shift
-  target_ref=(
+  CURL_ARGS=(
     -sS
     --connect-timeout "$TIMEOUT"
     --max-time "$TIMEOUT"
   )
   if [[ "$INSECURE" -eq 1 ]]; then
-    target_ref+=(-k)
+    CURL_ARGS+=(-k)
   fi
   for header in "$@"; do
-    target_ref+=(-H "$header")
+    CURL_ARGS+=(-H "$header")
   done
 }
 
@@ -134,14 +134,15 @@ request_endpoint() {
   local header_name="$3"
   local body_file="$TMP_DIR/${label}.json"
   local status_file="$TMP_DIR/${label}.status"
-  local -n headers_ref="$header_name"
-  local curl_args=()
+  # eval 间接展开数组名；${arr[@]+...} 防 set -u 空数组报错（bash 3.2）
+  local headers_copy=()
+  eval "headers_copy=(\${${header_name}[@]+\"\${${header_name}[@]}\"})"
 
-  build_curl_args curl_args "${headers_ref[@]}"
+  build_curl_args ${headers_copy[@]+"${headers_copy[@]}"}
   log "[$label] GET $url"
 
   local http_code
-  http_code="$(curl "${curl_args[@]}" -o "$body_file" -w '%{http_code}' "$url")" || {
+  http_code="$(curl "${CURL_ARGS[@]}" -o "$body_file" -w '%{http_code}' "$url")" || {
     fail "[$label] 请求失败: $url"
   }
   echo "$http_code" > "$status_file"
