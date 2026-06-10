@@ -1,0 +1,201 @@
+# IMBoy Helm Chart 默认值
+# 覆盖方式：helm install imboy . -f values.prod.yaml
+# 或：helm install imboy . --set backend.image.tag=1.2.0
+
+# ---------- 全局 ----------
+global:
+  # 时区，注入所有容器
+  timezone: Asia/Shanghai
+  # 镜像拉取密钥（私有 registry 时填写）
+  imagePullSecrets: []
+  # 镜像仓库前缀，为空时直接使用各服务的 image.repository
+  imageRegistry: ""
+
+# ---------- 后端：Erlang/OTP + Cowboy ----------
+backend:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: imboy/imboy-backend
+    tag: "1.0.0-rc.1"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 9800
+
+  env:
+    IMBOYENV: pro
+    IMBOY_HTTP_PORT: "9800"
+    ERL_MAX_PORTS: "1048576"
+
+  # 通过 Secret 注入的敏感变量（见 secret.yaml）
+  # IMBOY_PG_HOST / IMBOY_PG_PORT / IMBOY_PG_USER / IMBOY_PG_PASSWORD
+  # IMBOY_PG_DB / IMBOY_JWT_KEY / IMBOY_POSTGRE_AES_KEY
+  # IMBOY_ADM_COOKIE_SECRET / SENTRY_DSN
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+
+  # ulimit nofile
+  ulimits:
+    nofile: 1048576
+
+  # 持久化日志卷（后端写到 /opt/imboy/log）
+  persistence:
+    log:
+      enabled: true
+      size: 10Gi
+      storageClass: ""          # 空 = 使用集群默认 SC
+      accessMode: ReadWriteOnce
+    priv:
+      enabled: true
+      size: 5Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 9800
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 9800
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    failureThreshold: 3
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9800"
+    prometheus.io/path: "/metrics"
+
+# ---------- 管理前端：React + Vite 静态 ----------
+admin:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: imboy/imboy-admin
+    tag: "1.0.0-rc.1"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  env: {}
+  # VITE_API_BASE 通过 ingress 域名自动推导，或在此显式指定：
+  # VITE_API_BASE: https://api.example.com
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 30
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# ---------- Ingress（对应 Caddyfile 的路由规则）----------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # WebSocket 升级
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    # TLS 证书（cert-manager）
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+  # 后端 API + WebSocket
+  api:
+    host: api.example.com
+    tls: true
+    secretName: imboy-api-tls
+
+  # 管理后台
+  admin:
+    host: admin.example.com
+    tls: true
+    secretName: imboy-admin-tls
+
+# ---------- 外部 PostgreSQL ----------
+# PostgreSQL 不在本 chart 内部署；通过 Secret 注入连接信息
+externalDatabase:
+  host: "postgres.example.com"
+  port: 5432
+  database: imboy_pro
+  # 用户名和密码来自 secret.yaml（不在此硬编码）
+
+# ---------- Secrets（值填入 values.prod.yaml 或通过 --set 传入）----------
+secrets:
+  # 数据库
+  postgresUser: ""
+  postgresPassword: ""
+  postgresDb: ""
+  # 业务密钥
+  jwtKey: ""
+  postgreAesKey: ""
+  admCookieSecret: ""
+  # 可选
+  sentryDsn: ""
+  # Grafana 管理员密码
+  grafanaAdminPassword: ""
+
+# ---------- HPA 自动扩缩容 ----------
+hpa:
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  admin:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+# ---------- ServiceAccount ----------
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ---------- Pod 调度 ----------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ---------- 网络策略 ----------
+networkPolicy:
+  enabled: false

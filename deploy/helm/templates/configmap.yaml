@@ -1,0 +1,26 @@
+{{- /*
+ConfigMap：非敏感的后端运行时配置。
+敏感值（密钥、密码）位于 secret.yaml。
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "imboy.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+data:
+  # ---------- 后端运行时 ----------
+  TZ: {{ .Values.global.timezone | quote }}
+  IMBOYENV: {{ .Values.backend.env.IMBOYENV | default "pro" | quote }}
+  IMBOY_HTTP_PORT: {{ .Values.backend.service.port | toString | quote }}
+  ERL_MAX_PORTS: {{ .Values.backend.env.ERL_MAX_PORTS | default "1048576" | quote }}
+
+  # ---------- 外部 PostgreSQL 连接（非敏感部分）----------
+  IMBOY_PG_HOST: {{ .Values.externalDatabase.host | quote }}
+  IMBOY_PG_PORT: {{ .Values.externalDatabase.port | toString | quote }}
+  IMBOY_PG_DB: {{ .Values.externalDatabase.database | quote }}
+
+  # ---------- 域名（URL 相关，注入 BASE_URL / WS_URL）----------
+  IMBOY_BASE_URL: {{ printf "https://%s" .Values.ingress.api.host | quote }}
+  IMBOY_WS_URL: {{ printf "wss://%s/ws" .Values.ingress.api.host | quote }}

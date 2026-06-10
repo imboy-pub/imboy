@@ -1,0 +1,66 @@
+# IMBoy 生产环境覆盖值
+# 使用方式：
+#   helm upgrade --install imboy ./deploy/helm \
+#     -f ./deploy/helm/values.prod.yaml \
+#     --set secrets.postgresPassword="$(cat /run/secrets/pg_pass)" \
+#     --set secrets.jwtKey="$(cat /run/secrets/jwt_key)" \
+#     -n imboy --create-namespace
+#
+# 安全提示：本文件不得含有实际密钥。
+# 所有 secrets.* 字段通过 CI/CD 的 --set 或 external-secrets operator 注入。
+
+global:
+  timezone: Asia/Shanghai
+
+backend:
+  replicaCount: 3
+  image:
+    tag: "1.0.0-rc.1"    # CI/CD 自动替换此值
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+  env:
+    IMBOYENV: pro
+    ERL_MAX_PORTS: "1048576"
+
+admin:
+  replicaCount: 2
+  image:
+    tag: "1.0.0-rc.1"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+ingress:
+  api:
+    host: api.imboy.pub          # ← 改为真实域名
+  admin:
+    host: admin.imboy.pub        # ← 改为真实域名
+
+externalDatabase:
+  host: "pg.internal.imboy.pub"  # ← 改为真实 PG 主机
+  port: 5432
+  database: imboy_pro
+
+hpa:
+  backend:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+  admin:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+
+# secrets.* 字段由 CI/CD 注入，不在此文件中填写

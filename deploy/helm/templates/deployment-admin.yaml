@@ -1,0 +1,77 @@
+{{- if .Values.admin.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imboy.fullname" . }}-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  replicas: {{ .Values.admin.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "imboy.admin.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "imboy.admin.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "imboy.serviceAccountName" . }}
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101          # nginx 默认用户
+        fsGroup: 101
+
+      containers:
+        - name: admin
+          image: {{ include "imboy.image" (dict "global" .Values.global "image" .Values.admin.image) }}
+          imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.admin.service.port }}
+              protocol: TCP
+
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+            {{- if .Values.ingress.api.host }}
+            - name: VITE_API_BASE
+              value: {{ printf "https://%s" .Values.ingress.api.host | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.admin.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+
+          resources:
+            {{- toYaml .Values.admin.resources | nindent 12 }}
+
+          livenessProbe:
+            {{- toYaml .Values.admin.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.admin.readinessProbe | nindent 12 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

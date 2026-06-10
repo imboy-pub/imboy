@@ -1,0 +1,24 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "imboy.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  annotations:
+    # Prometheus 服务发现（供 ServiceMonitor 或 annotations 方式抓取）
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.backend.service.port | toString | quote }}
+    prometheus.io/path: "/metrics"
+spec:
+  type: {{ .Values.backend.service.type }}
+  selector:
+    {{- include "imboy.backend.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.backend.service.port }}
+      targetPort: http
+{{- end }}

@@ -1,0 +1,179 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imboy.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "imboy.backend.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0        # 零停机滚动更新
+  template:
+    metadata:
+      labels:
+        {{- include "imboy.backend.selectorLabels" . | nindent 8 }}
+      {{- with .Values.backend.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "imboy.serviceAccountName" . }}
+
+      # 优雅停机：等待 Erlang 节点排空连接
+      terminationGracePeriodSeconds: 60
+
+      # 以非 root 用户运行
+      securityContext:
+        runAsNonRoot: false     # Erlang 镜像可能需要 root，视实际镜像调整
+        fsGroup: 1000
+
+      containers:
+        - name: backend
+          image: {{ include "imboy.image" (dict "global" .Values.global "image" .Values.backend.image) }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+              protocol: TCP
+
+          # ulimit nofile
+          securityContext:
+            capabilities:
+              add: ["SYS_RESOURCE"]
+
+          # ---------- 环境变量：非敏感（ConfigMap）----------
+          envFrom:
+            - configMapRef:
+                name: {{ include "imboy.configMapName" . }}
+
+          # ---------- 环境变量：敏感（Secret）----------
+          env:
+            - name: IMBOY_PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: POSTGRES_USER
+            - name: IMBOY_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            - name: IMBOY_JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_JWT_KEY
+            - name: IMBOY_POSTGRE_AES_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_POSTGRE_AES_KEY
+            - name: IMBOY_ADM_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ADM_COOKIE_SECRET
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: SENTRY_DSN
+
+          # ---------- 资源 ----------
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+
+          # ---------- 健康检查 ----------
+          livenessProbe:
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+
+          # ---------- 持久化卷挂载 ----------
+          volumeMounts:
+            {{- if .Values.backend.persistence.log.enabled }}
+            - name: backend-log
+              mountPath: /opt/imboy/log
+            {{- end }}
+            {{- if .Values.backend.persistence.priv.enabled }}
+            - name: backend-priv
+              mountPath: /opt/imboy/priv_runtime
+            {{- end }}
+
+      volumes:
+        {{- if .Values.backend.persistence.log.enabled }}
+        - name: backend-log
+          persistentVolumeClaim:
+            claimName: {{ include "imboy.fullname" . }}-backend-log
+        {{- end }}
+        {{- if .Values.backend.persistence.priv.enabled }}
+        - name: backend-priv
+          persistentVolumeClaim:
+            claimName: {{ include "imboy.fullname" . }}-backend-priv
+        {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+{{- if .Values.backend.persistence.log.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "imboy.fullname" . }}-backend-log
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.log.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.log.size }}
+  {{- if .Values.backend.persistence.log.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.log.storageClass }}
+  {{- end }}
+{{- end }}
+---
+{{- if .Values.backend.persistence.priv.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "imboy.fullname" . }}-backend-priv
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.priv.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.priv.size }}
+  {{- if .Values.backend.persistence.priv.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.priv.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

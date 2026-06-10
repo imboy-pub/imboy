@@ -1,0 +1,110 @@
+{{- if .Values.ingress.enabled -}}
+# Ingress 对应原 Caddyfile 的路由规则：
+#   {$API_DOMAIN}   → imboy_backend:9800   （REST + WebSocket /ws）
+#   {$ADMIN_DOMAIN} → imboy_admin:80       （React 静态前端）
+#
+# 前提：集群已安装 nginx ingress controller + cert-manager（letsencrypt-prod ClusterIssuer）
+
+# ===== 后端 API + WebSocket =====
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "imboy.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-api
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
+    # WebSocket 长连接超时
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    # WebSocket 协议升级
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    # gzip 压缩（对应 Caddyfile 的 encode gzip zstd）
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+    # 安全响应头（对应 Caddyfile header 块）
+    nginx.ingress.kubernetes.io/custom-headers: |
+      Strict-Transport-Security: max-age=31536000; includeSubDomains
+      X-Content-Type-Options: nosniff
+      X-Frame-Options: DENY
+      Referrer-Policy: strict-origin-when-cross-origin
+    {{- if .Values.ingress.api.tls }}
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.api.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.api.host | quote }}
+      secretName: {{ .Values.ingress.api.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.api.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "imboy.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+---
+# ===== 管理后台 =====
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "imboy.fullname" . }}-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-admin
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+    nginx.ingress.kubernetes.io/custom-headers: |
+      Strict-Transport-Security: max-age=31536000; includeSubDomains
+      X-Content-Type-Options: nosniff
+      X-Frame-Options: SAMEORIGIN
+      Referrer-Policy: strict-origin-when-cross-origin
+      Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://{{ .Values.ingress.api.host }} wss://{{ .Values.ingress.api.host }}"
+    {{- if .Values.ingress.admin.tls }}
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.admin.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.admin.host | quote }}
+      secretName: {{ .Values.ingress.admin.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.admin.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "imboy.fullname" . }}-admin
+                port:
+                  number: {{ .Values.admin.service.port }}
+{{- end }}

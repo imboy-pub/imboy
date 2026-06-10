@@ -1,0 +1,30 @@
+IMBoy {{ .Chart.AppVersion }} 已部署到命名空间 {{ .Release.Namespace }}。
+
+===== 访问地址 =====
+{{- if .Values.ingress.enabled }}
+后端 API:   https://{{ .Values.ingress.api.host }}
+管理后台:   https://{{ .Values.ingress.admin.host }}
+{{- else }}
+Ingress 未启用。使用 port-forward 访问：
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "imboy.fullname" . }}-backend 9800:9800
+{{- end }}
+
+===== 服务状态 =====
+查看 Pod：
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+查看日志：
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=backend -f --tail=100
+
+===== 首次部署检查清单 =====
+1. 确认 Secret 已创建（kubectl get secret -n {{ .Release.Namespace }}）
+2. 确认外部 PostgreSQL 可访问（host: {{ .Values.externalDatabase.host }}）
+3. 确认 Ingress DNS 已解析（{{ .Values.ingress.api.host }}，{{ .Values.ingress.admin.host }}）
+4. 确认 cert-manager 已安装（TLS 证书自动签发）
+
+===== HPA 状态 =====
+{{- if .Values.hpa.backend.enabled }}
+后端 HPA：最小 {{ .Values.hpa.backend.minReplicas }} / 最大 {{ .Values.hpa.backend.maxReplicas }} 副本
+{{- end }}
+
+文档：https://github.com/imboy-pub/imboy

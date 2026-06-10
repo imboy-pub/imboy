@@ -1,0 +1,295 @@
+# IMBoy SLO 告警规则 / SLO Alerting Rules
+#
+# 覆盖 / Coverage:
+#   1. 服务可用性 / Service availability
+#   2. 消息投递延迟 SLO / Message delivery latency SLO
+#   3. HTTP 错误率 / HTTP error rate
+#   4. Erlang VM 内存告警 / Erlang VM memory alert
+#   5. Erlang 进程数上限 / Erlang process count ceiling
+#   6. PostgreSQL 连接/事务异常 / PostgreSQL connectivity & transaction anomaly
+#   7. 消息积压 / Message backlog
+#   8. WebSocket 连接陡降 / WebSocket connection drop
+#
+# 接入告警渠道 / Alert routing:
+#   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
+#   Configure receiver in Prometheus alertmanager.yml (DingTalk / Slack / PagerDuty, etc.)
+
+groups:
+
+  # ============================================================
+  # 1. 服务可用性 / Service Availability
+  # ============================================================
+  - name: imboy.availability
+    interval: 15s
+    rules:
+
+      # 后端服务停止响应 > 1min → CRITICAL
+      # Backend unreachable for > 1 min → CRITICAL
+      - alert: ImBoyBackendDown
+        expr: up{job="imboy_backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "IMBoy 后端不可用 / Backend is down"
+          description: >
+            imboy_backend 在 {{ $labels.instance }} 上已停止响应超过 1 分钟。
+            imboy_backend on {{ $labels.instance }} has been unreachable for over 1 minute.
+          runbook: "运行 docker compose logs imboy_backend 查看原因 / Run: docker compose logs imboy_backend"
+
+      # 后端服务重启 (uptime 突降) → WARNING
+      # Backend process restarted (uptime reset) → WARNING
+      - alert: ImBoyBackendRestarted
+        expr: process_uptime_seconds{job="imboy_backend"} < 120
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "IMBoy 后端刚刚重启 / Backend recently restarted"
+          description: >
+            进程运行时间 {{ $value | humanizeDuration }}，可能发生了意外重启。
+            Process uptime is {{ $value | humanizeDuration }}; an unexpected restart may have occurred.
+
+  # ============================================================
+  # 2. 消息投递延迟 SLO / Message Delivery Latency SLO
+  # SLO 目标：p99 < 500ms (5m 窗口)
+  # SLO target: p99 < 500ms over a 5-minute window
+  # ============================================================
+  - name: imboy.latency
+    interval: 30s
+    rules:
+
+      # p99 投递延迟 > 500ms 持续 5min → WARNING
+      - alert: ImBoyMsgDeliveryLatencyHigh
+        expr: >
+          histogram_quantile(0.99,
+            sum(rate(imboy_msg_deliver_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          slo: msg_delivery_p99
+        annotations:
+          summary: "消息投递 p99 延迟过高 / Message delivery p99 latency too high"
+          description: >
+            消息投递 p99 延迟为 {{ $value | humanizeDuration }}，超过 SLO 目标 500ms（已持续 5 分钟）。
+            Message delivery p99 latency is {{ $value | humanizeDuration }}, exceeding the 500ms SLO (for 5 minutes).
+
+      # p99 投递延迟 > 2s 持续 2min → CRITICAL（SLO 严重违反）
+      - alert: ImBoyMsgDeliveryLatencyCritical
+        expr: >
+          histogram_quantile(0.99,
+            sum(rate(imboy_msg_deliver_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          slo: msg_delivery_p99
+        annotations:
+          summary: "消息投递 p99 延迟严重超标 / Message delivery p99 latency critically high"
+          description: >
+            消息投递 p99 延迟为 {{ $value | humanizeDuration }}，已超过 2s SLO 临界值（持续 2 分钟）。
+            Message delivery p99 latency is {{ $value | humanizeDuration }}, exceeding the 2s critical threshold (for 2 minutes).
+
+  # ============================================================
+  # 3. HTTP 错误率 / HTTP Error Rate
+  # SLO 目标：5xx 错误率 < 1%（5m 窗口）
+  # SLO target: 5xx error rate < 1% over 5-minute window
+  # ============================================================
+  - name: imboy.http
+    interval: 30s
+    rules:
+
+      # 5xx 错误率 > 1% 持续 5min → WARNING
+      - alert: ImBoyHTTPErrorRateHigh
+        expr: >
+          sum(rate(imboy_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(imboy_http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          slo: http_error_rate
+        annotations:
+          summary: "HTTP 5xx 错误率过高 / High HTTP 5xx error rate"
+          description: >
+            HTTP 5xx 错误率为 {{ $value | humanizePercentage }}，超过 SLO 目标 1%（已持续 5 分钟）。
+            HTTP 5xx error rate is {{ $value | humanizePercentage }}, exceeding the 1% SLO (for 5 minutes).
+
+      # 5xx 错误率 > 5% 持续 2min → CRITICAL
+      - alert: ImBoyHTTPErrorRateCritical
+        expr: >
+          sum(rate(imboy_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(imboy_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          slo: http_error_rate
+        annotations:
+          summary: "HTTP 5xx 错误率严重超标 / HTTP 5xx error rate critically high"
+          description: >
+            HTTP 5xx 错误率为 {{ $value | humanizePercentage }}，已超过 5% 临界值（持续 2 分钟）。
+            HTTP 5xx error rate is {{ $value | humanizePercentage }}, exceeding the 5% critical threshold (for 2 minutes).
+
+  # ============================================================
+  # 4. Erlang VM 内存 / Erlang VM Memory
+  # 参考：docker-compose.prod.yml 中 BACKEND_MEM_LIMIT=8192M
+  # Reference: BACKEND_MEM_LIMIT=8192M in docker-compose.prod.yml
+  # ============================================================
+  - name: imboy.erlang_vm
+    interval: 30s
+    rules:
+
+      # 总内存 > 6GB 持续 5min → WARNING（容器上限 8GB 的 75%）
+      # Total memory > 6GB for 5min → WARNING (75% of 8GB container limit)
+      - alert: ImBoyErlangMemoryHigh
+        expr: >
+          erlang_vm_memory_bytes_total{job="imboy_backend", kind="total"}
+          > 6 * 1024 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Erlang VM 内存使用率高 / High Erlang VM memory usage"
+          description: >
+            Erlang VM 总内存为 {{ $value | humanize1024 }}B，超过容器上限 8GB 的 75%（已持续 5 分钟）。
+            Erlang VM total memory is {{ $value | humanize1024 }}B, exceeding 75% of the 8GB container limit (for 5 minutes).
+
+      # 总内存 > 7.5GB 持续 2min → CRITICAL（接近 OOM kill）
+      - alert: ImBoyErlangMemoryCritical
+        expr: >
+          erlang_vm_memory_bytes_total{job="imboy_backend", kind="total"}
+          > 7.5 * 1024 * 1024 * 1024
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Erlang VM 内存接近 OOM / Erlang VM memory near OOM"
+          description: >
+            Erlang VM 总内存为 {{ $value | humanize1024 }}B，容器即将被 OOM Kill（持续 2 分钟）。
+            Erlang VM total memory is {{ $value | humanize1024 }}B; container is near OOM Kill (for 2 minutes).
+          runbook: "检查是否有消息积压或内存泄漏 / Check for message backlog or memory leak"
+
+  # ============================================================
+  # 5. Erlang 进程数 / Erlang Process Count
+  # OTP 默认上限 262144；超过 200000 需告警
+  # OTP default max 262144; alert above 200000
+  # ============================================================
+  - name: imboy.erlang_processes
+    interval: 30s
+    rules:
+
+      - alert: ImBoyErlangProcessCountHigh
+        expr: erlang_vm_process_count{job="imboy_backend"} > 200000
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Erlang 进程数过多 / Too many Erlang processes"
+          description: >
+            Erlang 进程数为 {{ $value }}，接近 OTP 默认上限 262144（已持续 5 分钟）。
+            Erlang process count is {{ $value }}, approaching the OTP default limit of 262144 (for 5 minutes).
+          runbook: "检查是否有进程泄漏（gen_server 未正常退出等）/ Check for process leaks (gen_server not terminating, etc.)"
+
+  # ============================================================
+  # 6. PostgreSQL 健康 / PostgreSQL Health
+  # ============================================================
+  - name: imboy.postgres
+    interval: 30s
+    rules:
+
+      # postgres_exporter 离线 > 2min → CRITICAL
+      - alert: ImBoyPostgresExporterDown
+        expr: up{job="postgres_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: data
+        annotations:
+          summary: "PostgreSQL exporter 离线 / PostgreSQL exporter is down"
+          description: >
+            postgres_exporter 已离线超过 2 分钟，数据库健康状态未知。
+            postgres_exporter has been offline for over 2 minutes; database health is unknown.
+          runbook: "检查 imboy_pg18 容器状态 / Check imboy_pg18 container: docker compose logs imboy_pg18"
+
+      # 事务回滚率 > 5%（5m 窗口）→ WARNING
+      # Transaction rollback rate > 5% over 5m → WARNING
+      - alert: ImBoyPostgresHighRollbackRate
+        expr: >
+          rate(pg_stat_database_xact_rollback{datname="imboy_pro"}[5m])
+          /
+          (
+            rate(pg_stat_database_xact_commit{datname="imboy_pro"}[5m])
+            + rate(pg_stat_database_xact_rollback{datname="imboy_pro"}[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: data
+        annotations:
+          summary: "PostgreSQL 事务回滚率过高 / High PostgreSQL rollback rate"
+          description: >
+            imboy_pro 数据库事务回滚率为 {{ $value | humanizePercentage }}，超过 5%（已持续 5 分钟）。
+            Transaction rollback rate for imboy_pro is {{ $value | humanizePercentage }}, exceeding 5% (for 5 minutes).
+
+  # ============================================================
+  # 7. 消息发送速率陡降（疑似故障）/ Message Send Rate Drop
+  # 仅在平均速率 > 1msg/s 的情况下触发，避免低峰期误报
+  # Only triggers when avg rate > 1 msg/s to avoid off-peak false positives
+  # ============================================================
+  - name: imboy.message
+    interval: 30s
+    rules:
+
+      - alert: ImBoyMsgRateDrop
+        expr: >
+          sum(rate(imboy_msg_sent_total[5m])) < 0.1
+          and
+          sum(rate(imboy_msg_sent_total[30m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "消息发送速率陡降 / Message send rate dropped sharply"
+          description: >
+            过去 5 分钟消息发送速率降至 {{ $value | humanize }} msg/s，但过去 30 分钟均值 > 1 msg/s，疑似故障。
+            Message send rate dropped to {{ $value | humanize }} msg/s over the last 5 minutes, while the 30-minute average was > 1 msg/s — possible incident.
+
+  # ============================================================
+  # 8. WebSocket 连接陡降 / WebSocket Connection Drop
+  # ============================================================
+  - name: imboy.websocket
+    interval: 30s
+    rules:
+
+      # WS 连接数较 10min 前下降超过 50% → WARNING（可能发生断线风暴）
+      # WS connections dropped > 50% vs 10 min ago → WARNING (possible mass disconnect)
+      - alert: ImBoyWSConnectionsDrop
+        expr: >
+          imboy_ws_connections_total > 10
+          and
+          (
+            imboy_ws_connections_total
+            / imboy_ws_connections_total offset 10m
+          ) < 0.5
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "WebSocket 连接数陡降 / WebSocket connections dropped sharply"
+          description: >
+            WebSocket 在线连接数为 {{ $value }}，较 10 分钟前下降超过 50%，可能发生批量断线。
+            WebSocket connections are at {{ $value }}, a drop of more than 50% from 10 minutes ago — possible mass disconnect.
+          runbook: "检查 Caddy WS 代理和后端日志 / Check Caddy WS proxy and backend logs"

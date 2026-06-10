@@ -1,0 +1,64 @@
+# Loki 配置 —— IMBoy 生产部署
+# 挂载路径：/etc/loki/loki.yml
+# 对应服务：imboy_loki（docker-compose.prod.yml）
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+    cache_ttl: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+# 保留 30 天日志（与 Prometheus 保留期一致）
+limits_config:
+  retention_period: 720h      # 30d
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  # 防止单个查询拖垮服务
+  max_query_parallelism: 4
+  max_entries_limit_per_query: 50000
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150

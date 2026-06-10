@@ -1,0 +1,19 @@
+{{- if .Values.admin.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "imboy.fullname" . }}-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  type: {{ .Values.admin.service.type }}
+  selector:
+    {{- include "imboy.admin.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.admin.service.port }}
+      targetPort: http
+{{- end }}
