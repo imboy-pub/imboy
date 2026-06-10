@@ -39,13 +39,15 @@
 
 调用链：`Handler → Logic → DS → Repo → PostgreSQL`，横向 `Lib` 层提供基础设施。
 
+> 数量随开发漂移，以 `find src/<dir> -maxdepth 1 -name '*.erl' | wc -l` 为准（下表截至 2026-06）。
+
 | 层级 | 目录 | 数量 | 职责 | 文档 |
 |------|------|------|------|------|
-| Handler (API+ADM) | `src/api/` + `src/adm/` | 27+7=34 个 | HTTP/WS 入口、参数验证 | [api](./src/api/CLAUDE.md) / [adm](./src/adm/CLAUDE.md) |
-| Logic | `src/logic/` | 26 个 | 业务逻辑 | [logic](./src/logic/CLAUDE.md) |
+| Handler (API+ADM) | `src/api/` + `src/adm/` | 54+27=81 个 | HTTP/WS 入口、参数验证 | [api](./src/api/CLAUDE.md) / [adm](./src/adm/CLAUDE.md) |
+| Logic | `src/logic/` | 76 个 | 业务逻辑 | [logic](./src/logic/CLAUDE.md) |
 | DS | `src/ds/` | 77 个 | 数据服务、缓存封装 | [ds](./src/ds/CLAUDE.md) |
-| Repo | `src/repo/` | 32 个 | SQL/PostgreSQL 访问 | [repo](./src/repo/CLAUDE.md) |
-| Lib | `src/lib/` | 29 个 | 基础库 (elib_pg, elib_async, elib_retry…) | [lib](./src/lib/CLAUDE.md) |
+| Repo | `src/repo/` | 72 个 | SQL/PostgreSQL 访问 | [repo](./src/repo/CLAUDE.md) |
+| Lib | `src/lib/` | 61 个 | 基础库 (elib_pg, elib_async, elib_retry…) | [lib](./src/lib/CLAUDE.md) |
 
 ---
 
