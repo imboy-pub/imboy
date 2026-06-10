@@ -53,6 +53,19 @@ dropdb imboy_test_restore
 
 ### 全量恢复
 
+> ⚠️ **timescaledb 关键警告**：imboy 核心消息表（`msg_c2c`/`msg_c2g`/`msg_store` 等）是 timescaledb hypertable。
+> 直接 `pg_restore -j 4` 会丢失**全部 hypertable 数据**（报 `chunk ... has no dimension slices`，消息全丢）。
+> **请用 `scripts/restore_pg.sh`**——它已内置 timescaledb `pre_restore()`/`post_restore()` 包裹、危险二次确认与恢复后行数校验。详见同目录 [RESTORE-DRILL-2026-06.md](./RESTORE-DRILL-2026-06.md)（含真实演练与 2 个已修复缺陷）。
+>
+> ```bash
+> # 先恢复到测试库验证（不影响生产）
+> POSTGRES_DB=imboy_v1 bash scripts/restore_pg.sh /path/to/backup.dump --target imboy_restore_test
+> # 行数校验无误后，恢复目标库（需输入 yes 二次确认）
+> POSTGRES_DB=imboy_v1 bash scripts/restore_pg.sh /path/to/backup.dump --target imboy_v1
+> ```
+
+如需手动恢复（仅限非 timescaledb 库，或已用 `timescaledb_pre_restore()` 进入恢复模式）：
+
 ```bash
 # 1. 停止应用
 _rel/imboy/bin/imboy stop
@@ -61,7 +74,7 @@ _rel/imboy/bin/imboy stop
 sudo -u postgres dropdb imboy
 sudo -u postgres createdb imboy
 
-# 3. 恢复备份
+# 3. 恢复备份（⚠️ timescaledb 库直接这样做会丢数据，见上方警告）
 pg_restore -d imboy -j 4 /path/to/backup.dump
 
 # 4. 验证
