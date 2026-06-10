@@ -1,0 +1,14 @@
+# gitleaks 历史泄露豁免清单 / Historical-leak exemptions
+# 9 条均为历史 commit 遗留（py_admin 模板私钥/文档示例 JWT），HEAD 零泄露。
+# 逐条定性与复核命令见 docs/operations/security-leak-assessment-2026-06.md
+# 格式: <commit>:<file>:<rule>:<line>（git 模式指纹）。新增泄露不在此清单内，CI 即红。
+
+766c54f379ead743920385039df7a30ea22edb7b:.claude/plan/e2ee_plus_plan/phase-04-local-backup.md:private-key:68
+35342fbdc1ea8dae0bb96567fbeefffe0149a00f:doc/message_ack.md:jwt:32
+35342fbdc1ea8dae0bb96567fbeefffe0149a00f:doc/message_ack.md:jwt:45
+35342fbdc1ea8dae0bb96567fbeefffe0149a00f:doc/message_ack.md:jwt:52
+35342fbdc1ea8dae0bb96567fbeefffe0149a00f:doc/message_ack.md:jwt:56
+df9b479b7c501353c621a90fccd00a04f5c47c66:doc/postgressql/vsn0.1/public.config.csv:private-key:4
+52940757d03dcf0522c8fe2dd28b01f6e621748a:doc/postgressql/vsn0.1/dml.sql:private-key:5
+8598a0fccbbca04fca7acc6f7351209901dc1c7f:priv/sql/v1_dml.sql:private-key:5
+d54bc5b92f0f4e787d44084cf14d488f6e4ebbe8:priv/doc/CentOS优化.md:generic-api-key:94
