@@ -57,10 +57,10 @@ migrate_to_msg_v2() ->
         %% 步骤 2: 读取并执行 4 个 SQL 文件
         MigrationsPath = get_scripts_path(),
         SqlFiles = [
-            filename:join(MigrationsPath, "000042_msg_c2c.up.sql"),
-            filename:join(MigrationsPath, "000043_msg_c2g.up.sql"),
-            filename:join(MigrationsPath, "000045_msg_c2s.up.sql"),
-            filename:join(MigrationsPath, "000046_msg_s2c.up.sql")
+            filename:join(MigrationsPath, "20230211000000_msg_c2c.up.sql"),
+            filename:join(MigrationsPath, "20230212000000_msg_c2g.up.sql"),
+            filename:join(MigrationsPath, "20230214000000_msg_c2s.up.sql"),
+            filename:join(MigrationsPath, "20230215000000_msg_s2c.up.sql")
         ],
 
         ?LOG_INFO("正在执行 SQL 迁移文件..."),
