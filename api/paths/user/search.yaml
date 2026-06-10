@@ -35,7 +35,29 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_handler#search → user_logic:find_by_keyword
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64, description: 用户 TSID }
+                            nickname: { type: string }
+                            avatar: { type: string }
+                            account: { type: string }
+                            sign: { type: string }
+                            is_friend: { type: boolean, description: 是否已是好友 }
+                            remark: { type: string, description: 好友备注名，非好友时为 null }
     '4XX':
       description: keyword 缺失
       content:

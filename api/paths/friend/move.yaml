@@ -37,11 +37,17 @@ post:
                 Target category id; 0 = default bucket.
   responses:
     '200':
-      description: 移动成功（幂等）
+      description: 移动成功（幂等）；无 payload
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: uid / category_id 缺失或非法 / 非好友 / 分组不属于当前用户
       content:

@@ -29,7 +29,27 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_device_logic:page → user_device_repo，device_id/device_name/device_type + online 标志
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            device_id: { type: string }
+                            device_name: { type: string }
+                            device_type: { type: string, description: 'android / ios / web / pc 等' }
+                            online: { type: boolean, description: 当前是否在线（内存 session 比对） }
+                            created_at: { type: integer, description: 首次登录时间戳（毫秒） }
     '4XX':
       description: token 无效
       content:

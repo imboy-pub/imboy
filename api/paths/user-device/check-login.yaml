@@ -42,7 +42,23 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_device_handler#check_login → user_device_logic:check_login_conflict
+                    properties:
+                      conflict: { type: boolean }
+                      message: { type: string }
+                      conflict_device:
+                        type: object
+                        description: 仅 conflict=true 时存在
+                        properties:
+                          device_type: { type: string }
+                          device_id: { type: string }
+                          pid: { type: string }
     '4XX':
       description: device_type 非法
       content:

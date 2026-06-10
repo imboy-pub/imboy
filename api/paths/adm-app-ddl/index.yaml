@@ -11,7 +11,48 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: DDL 配置列表
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                            ddl:
+                              type: string
+                              description: 升级 DDL SQL
+                            down_ddl:
+                              type: string
+                              description: 回滚 DDL SQL
+                            old_vsn:
+                              type: string
+                              description: 旧版本号
+                            new_vsn:
+                              type: string
+                              description: 新版本号
+                            status:
+                              type: integer
+                            updated_at:
+                              type: string
+                            created_at:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

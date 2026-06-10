@@ -14,7 +14,48 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: handler 返回 #{list, page, size}（无 total，logic 仅返回 list）
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            schedule_id:
+                              type: string
+                            group_id:
+                              type: integer
+                              format: int64
+                            creator_id:
+                              type: integer
+                              format: int64
+                            title:
+                              type: string
+                            location:
+                              type: string
+                            start_at:
+                              type: string
+                              format: date-time
+                            end_at:
+                              type: string
+                              format: date-time
+                            status:
+                              type: integer
+                            created_at:
+                              type: string
+                              format: date-time
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

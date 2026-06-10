@@ -25,7 +25,19 @@ post:
     '200':
       description: 解散成功；payload.gid 回显
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                        description: 被解散的群 TSID 回显.
     '4XX':
       description: 限流 / gid 必须 / 群不存在 / 非群主
       content:

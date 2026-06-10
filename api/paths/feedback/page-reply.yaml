@@ -8,8 +8,9 @@ get:
   operationId: feedbackPageReply
   parameters:
     - in: query
-      name: id
+      name: feedback_id
       required: true
+      description: '反馈 ID / Feedback ID'
       schema: { type: integer }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -17,7 +18,33 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 feedback_handler#page_reply → feedback_logic:page_reply，列 feedback_reply_id/feedback_id/feedback_reply_pid/replier_user_id/replier_name/body/status/updated_at/created_at
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            feedback_reply_id: { type: integer }
+                            feedback_id: { type: integer }
+                            feedback_reply_pid: { type: integer, description: 父回复 ID }
+                            replier_user_id: { type: integer }
+                            replier_name: { type: string }
+                            body: { type: string }
+                            status: { type: integer }
+                            created_at: { type: string, format: date-time }
+                            updated_at: { type: string, format: date-time }
     '4XX':
       description: 参数非法
       content:

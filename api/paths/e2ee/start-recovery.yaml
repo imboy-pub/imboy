@@ -13,13 +13,34 @@ post:
       application/json:
         schema:
           type: object
+          required: [device_id]
           properties:
+            device_id:
+              type: string
+              description: '发起恢复的新设备 ID / New device ID initiating recovery'
             method: { type: string, enum: [social, backup] }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: |
+                      由 e2ee_recovery_logic:start_auto_recovery/3 返回的结果，
+                      结构因 method 而异 / Result from start_auto_recovery, shape varies by method
+                    properties:
+                      method:
+                        type: string
+                        description: 实际使用的恢复方式 / Recovery method actually used
+                      status:
+                        type: string
+                        description: 恢复流程状态 / Recovery flow status
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

@@ -1,11 +1,11 @@
 # POST /v1/group/task/review
 post:
   tags: [user]
-  summary: 审核任务
+  summary: 批改作业（按分配评分）
   description: |
     ## 中文 / English
-    审核任务
-    Review submission
+    批改作业（按分配评分）——对某次任务分配进行评分与评语。
+    Grade an assignment by assignment_id with a numeric score and optional comment.
   operationId: reviewGroupTask
   requestBody:
     required: true
@@ -13,11 +13,11 @@ post:
       application/json:
         schema:
           type: object
-          required: [task_id, decision]
+          required: [assignment_id]
           properties:
-            task_id: { type: integer, minimum: 1 }
-            decision: { type: string, enum: [approve, reject] }
-            comment: { type: string }
+            assignment_id: { type: string, description: '任务分配 ID（TSID string）' }
+            score: { type: integer, description: '评分（整数，范围由业务定义）' }
+            comment: { type: string, description: '评语' }
   responses:
     '200':
       description: 成功

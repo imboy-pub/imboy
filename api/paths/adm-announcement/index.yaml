@@ -7,11 +7,38 @@ get:
     管理后台 adm-announcement handler 的 `index` 动作；路径 `/adm/announcement/index`。
     Admin handler `adm-announcement`, action `index`. Path `/adm/announcement/index`.
   operationId: adm_announcement_index
+  parameters:
+    - in: query
+      name: status
+      schema: { type: integer }
+      description: 公告状态筛选 / Filter by announcement status
+    - in: query
+      name: type
+      schema: { type: integer }
+      description: 公告类型筛选 / Filter by announcement type
+    - in: query
+      name: keyword
+      schema: { type: string }
+      description: 关键词检索 / Keyword search
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

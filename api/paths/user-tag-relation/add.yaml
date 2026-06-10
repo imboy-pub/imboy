@@ -43,7 +43,7 @@ post:
               description: 多个 tag 名 / Multiple tag names.
   responses:
     '200':
-      description: 打标签成功
+      description: 打标签成功（payload 为空对象）
       content:
         application/json:
           schema:

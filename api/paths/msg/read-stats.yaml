@@ -29,7 +29,20 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [read_count, total_count]
+                    properties:
+                      read_count:
+                        type: integer
+                        description: 已读人数 / Number of members who have read the message
+                      total_count:
+                        type: integer
+                        description: 群总人数 / Total group member count
     '4XX':
       description: msg_id 缺失或非法 / 调用方非发送者 / 消息不存在
       content:

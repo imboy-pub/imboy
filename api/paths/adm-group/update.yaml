@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台更新群组信息
+  description: 管理员更新群组的基本信息（名称、简介、加入限制、最大成员数等）。Update group basic info by admin (title, introduction, join limit, member max, etc.).
   operationId: adm_group_update
   requestBody:
     required: true

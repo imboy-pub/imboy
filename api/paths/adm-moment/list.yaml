@@ -14,7 +14,62 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 动态分页列表 / Paginated moment list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 动态对象（经 admin_post_transfer 处理）/ Moment object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 动态 TSID / Moment TSID
+                            author_uid:
+                              type: integer
+                              format: int64
+                              description: 作者 TSID / Author TSID
+                            content:
+                              type: string
+                              description: 文字内容 / Text content
+                            media:
+                              type: array
+                              description: 媒体列表（JSON 解码后）/ Media list (decoded)
+                              items:
+                                type: object
+                            visibility:
+                              type: integer
+                              description: 可见性 0-4 / Visibility
+                            allow_comment:
+                              type: boolean
+                              description: 是否允许评论 / Allow comment
+                            stats:
+                              type: object
+                              properties:
+                                like_count: { type: integer }
+                                comment_count: { type: integer }
+                            status:
+                              type: integer
+                              description: 状态 / Status
+                            created_at:
+                              type: string
+                            updated_at:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

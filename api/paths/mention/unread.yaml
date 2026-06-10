@@ -30,7 +30,16 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        description: 未读 @ 消息数量.
     '4XX':
       description: gid 格式有误
       content:

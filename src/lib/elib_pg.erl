@@ -19,7 +19,6 @@
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 
-
 -export([
     with_conn/1,
     with_conn/2,
@@ -73,11 +72,15 @@
 %% ===================================================================
 %% @doc 简化版本的with_conn，使用默认重试参数
 -spec with_conn(fun((epgsql:connection()) -> R)) ->
-          R | {error, term()} when R :: term().
+    R | {error, term()}
+when
+    R :: term().
 with_conn(Fun) ->
     with_conn(Fun, ?DEFAULT_TIMEOUT).
 -spec with_conn(fun((epgsql:connection()) -> R), pos_integer()) ->
-          R | {error, term()} when R :: term().
+    R | {error, term()}
+when
+    R :: term().
 with_conn(Fun, Timeout) ->
     % Driver = config_ds:env(sql_driver),
     with_conn(pgsql, Fun, 3, Timeout).
@@ -93,7 +96,10 @@ with_conn(Driver, Fun, Retries, Delay) ->
         error_no_members ->
             {error, no_connection};
         Conn when is_pid(Conn) ->
-            Result = try Fun(Conn) catch
+            Result =
+                try
+                    Fun(Conn)
+                catch
                     %% 接受 throw({abort_tx, Reason})
                     %% 业务主动失败：不重试
                     throw:{abort_tx, Reason} ->
@@ -125,32 +131,36 @@ with_conn(Driver, Fun, Retries, Delay) ->
 %% 禁止业务层自行 BEGIN / COMMIT
 %%--------------------------------------------------------------------
 
-
 %% @doc 事务封装
 %% @deprecated 请使用 elib_pg:with_tx/1,2 替代
 -spec with_tx(fun((epgsql:connection() | pid()) -> R)) -> R | {rollback, term()} when R :: term().
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
-
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
-          R | {rollback, term()} | no_return() when R :: term().
+    R | {rollback, term()} | no_return()
+when
+    R :: term().
 with_tx(F, Opts0) ->
-    with_tx(F, Opts0, 3, 200). % 最大重试3次，初始延迟100毫秒
-
+    % 最大重试3次，初始延迟100毫秒
+    with_tx(F, Opts0, 3, 200).
 
 %% ===================================================================
 %% 事务封装
 %% ===================================================================
--spec with_tx(fun((epgsql:connection() | pid()) -> R), list(), non_neg_integer(), non_neg_integer()) -> R when R :: term().
+-spec with_tx(
+    fun((epgsql:connection() | pid()) -> R), list(), non_neg_integer(), non_neg_integer()
+) -> R when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
-    with_conn(Driver,
+    with_conn(
+        Driver,
         fun(Conn) ->
             epgsql:with_transaction(Conn, F, Opts0)
         end,
         RetriesLeft,
-        Delay).
+        Delay
+    ).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -159,18 +169,17 @@ with_tx(F, Opts0, RetriesLeft, Delay) ->
 -spec execute(iodata(), [term()]) ->
     {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
 execute(Sql, Params) ->
-    with_conn(fun(C) ->
-        execute(C, Sql, Params)
-    end, ?DEFAULT_TIMEOUT).
+    with_conn(
+        fun(C) ->
+            execute(C, Sql, Params)
+        end,
+        ?DEFAULT_TIMEOUT
+    ).
 
 -spec execute(epgsql:connection(), iodata(), [term()]) ->
     {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
 execute(Conn, Sql, Params) ->
-    _ = ?DEBUG_LOG(io:format("sql: ~s\n", [Sql])),
-    % ?DEBUG_LOG(io:format("Params: ~p\n", [Params])),
-    % Res = epgsql:parse(Conn, Sql),
-    % ?DEBUG_LOG(io:format("epgsql:parse Res: ~p\n", [Res])),
-    % {ok, Stmt} = Res,
+    ?DEBUG_LOG("sql: ~s", [Sql]),
     %% 关键改动：消除 badmatch 异常传播。任何驱动异常/异常形态都收敛为 {error, Reason}。
     try
         case epgsql:parse(Conn, Sql) of
@@ -191,11 +200,9 @@ execute(Conn, Sql, Params) ->
             _ = ?ERROR_LOG("DB execute failed: ~p:~p stack=~p~n", [Class, CatchReason, Stacktrace]),
             {error, {Class, CatchReason, Stacktrace}}
     end.
-    % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
-    % 没有 RETURNING 子句：返回 {ok, 1} （二元组）
-    % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
-
-
+% {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
+% 没有 RETURNING 子句：返回 {ok, 1} （二元组）
+% 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -204,9 +211,12 @@ execute(Conn, Sql, Params) ->
 -spec query(iodata(), [term()]) ->
     {ok, [map()]} | {error, term()}.
 query(Sql, Params) ->
-    with_conn(fun(C) ->
-        query(C, Sql, Params)
-    end, ?DEFAULT_TIMEOUT).
+    with_conn(
+        fun(C) ->
+            query(C, Sql, Params)
+        end,
+        ?DEFAULT_TIMEOUT
+    ).
 
 -spec query(epgsql:connection(), iodata(), [term()]) ->
     {ok, [map()]} | {error, term()}.
@@ -233,30 +243,33 @@ one(Sql, Params) ->
     one(Sql, Params, #{}).
 
 -spec one(iodata(), [term()], D) ->
-    {ok, map() | D} | {error, term()} when D :: term().
+    {ok, map() | D} | {error, term()}
+when
+    D :: term().
 one(Sql, Params, Default) ->
     case query(Sql, Params) of
         {ok, [Row | _Rest]} -> {ok, Row};
-        {ok, []}           -> {ok, Default};
-        Error              -> Error
+        {ok, []} -> {ok, Default};
+        Error -> Error
     end.
 
 -spec pluck(
-    Table  :: binary(),
-    Field  :: binary(),
-    Where  :: map(),
+    Table :: binary(),
+    Field :: binary(),
+    Where :: map(),
     Default :: term()
 ) -> {ok, term()} | {ok, undefined} | {error, term()}.
 pluck(Table, Field, Where, Default) ->
-    pluck(Table, Field, Where,  #{limit => 1}, Default).
+    pluck(Table, Field, Where, #{limit => 1}, Default).
 
 %% @doc
 %% 从表中取一个字段值，返回 undefined 或 Value
 -spec pluck(
-    Table  :: binary(),
-    Field  :: binary(),
-    Where  :: map(),
-    Opts   :: map(), %% #{order_by => [{Field, asc|desc}], limit => pos_integer()},
+    Table :: binary(),
+    Field :: binary(),
+    Where :: map(),
+    %% #{order_by => [{Field, asc|desc}], limit => pos_integer()},
+    Opts :: map(),
     Default :: term()
 ) -> {ok, term()} | {error, term()}.
 pluck(Table, Field, Where, Opts, Default) ->
@@ -267,23 +280,24 @@ pluck(Table, Field, Where, Opts, Default) ->
         {ok, Row} when is_map(Row) ->
             % ?INFO_LOG(["pluck ", Row]),
             % 提取字段别名或函数名
-            FieldKey = case binary:split(Field, <<" ">>, [global]) of
-                Parts when length(Parts) > 1 ->
-                    % 有空格，取最后一个部分作为别名
-                    % 支持 "count(*) as count", "count(*) AS count", "sum(price) total" 等
-                    lists:last(Parts);
-                _ ->
-                    % 没有空格，检查是否是聚合函数
-                    case Field of
-                        <<"count(", _/binary>> -> <<"count">>;
-                        <<"sum(", _/binary>> -> <<"sum">>;
-                        <<"avg(", _/binary>> -> <<"avg">>;
-                        <<"max(", _/binary>> -> <<"max">>;
-                        <<"min(", _/binary>> -> <<"min">>;
-                        % 普通字段名直接使用
-                        _ -> Field
-                    end
-            end,
+            FieldKey =
+                case binary:split(Field, <<" ">>, [global]) of
+                    Parts when length(Parts) > 1 ->
+                        % 有空格，取最后一个部分作为别名
+                        % 支持 "count(*) as count", "count(*) AS count", "sum(price) total" 等
+                        lists:last(Parts);
+                    _ ->
+                        % 没有空格，检查是否是聚合函数
+                        case Field of
+                            <<"count(", _/binary>> -> <<"count">>;
+                            <<"sum(", _/binary>> -> <<"sum">>;
+                            <<"avg(", _/binary>> -> <<"avg">>;
+                            <<"max(", _/binary>> -> <<"max">>;
+                            <<"min(", _/binary>> -> <<"min">>;
+                            % 普通字段名直接使用
+                            _ -> Field
+                        end
+                end,
             {ok, maps:get(FieldKey, Row, Default)};
         {ok, undefined} ->
             {ok, Default};
@@ -310,9 +324,7 @@ pluck_value(Table, Field, Where, Opts, Default) ->
         {error, _} -> Default
     end.
 
-
 %% ================== CRUD helpers ==================
-
 
 -spec insert(binary(), map()) ->
     {ok, term()} | {error, term()}.
@@ -330,7 +342,6 @@ insert(Table, Map, RETURNING) ->
 insert(Conn, Table, Map, RETURNING) ->
     {Sql, Params} = elib_pg_sql:insert(Table, Map, RETURNING),
     execute(Conn, Sql, Params).
-
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -404,7 +415,6 @@ select(Table, WhereSql, Params) ->
     Sql = elib_pg_sql:select(Table, WhereSql),
     query(Sql, Params).
 
-
 -spec page(binary(), map(), pos_integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.
 page(Table, WhereMap, Page, Size) ->
@@ -418,14 +428,26 @@ page(Table, Column, WhereMap, OrderBy, Page, Size) when Page > 0, Size > 0 ->
     {Sql, Params} = elib_pg_sql:page(Table, Column, WhereMap, OrderBy, Limit, Offset),
     query(Sql, Params).
 
--spec page_safe(binary(), binary(), map(), [{atom() | binary(), asc | desc}], [binary()], pos_integer(), pos_integer()) ->
+-spec page_safe(
+    binary(),
+    binary(),
+    map(),
+    [{atom() | binary(), asc | desc}],
+    [binary()],
+    pos_integer(),
+    pos_integer()
+) ->
     {ok, [map()]} | {error, term()}.
 page_safe(Table, Column, WhereMap, OrderSpec, ValidFields, Page, Size) when Page > 0, Size > 0 ->
     Limit = Size,
     Offset = (Page - 1) * Size,
     {Sql, Params} =
         elib_pg_sql:build_select_safe(
-            Table, Column, WhereMap, OrderSpec, ValidFields,
+            Table,
+            Column,
+            WhereMap,
+            OrderSpec,
+            ValidFields,
             #{limit => Limit, offset => Offset}
         ),
     query(Sql, Params).
@@ -472,9 +494,19 @@ page_with_total(Table, Column, WhereMap, OrderBy, Page, Size) when Page > 0, Siz
             {error, Reason}
     end.
 
--spec page_with_total_safe(binary(), binary(), map(), [{atom() | binary(), asc | desc}], [binary()], pos_integer(), pos_integer()) ->
+-spec page_with_total_safe(
+    binary(),
+    binary(),
+    map(),
+    [{atom() | binary(), asc | desc}],
+    [binary()],
+    pos_integer(),
+    pos_integer()
+) ->
     {ok, map()} | {error, term()}.
-page_with_total_safe(Table, Column, WhereMap, OrderSpec, ValidFields, Page, Size) when Page > 0, Size > 0 ->
+page_with_total_safe(Table, Column, WhereMap, OrderSpec, ValidFields, Page, Size) when
+    Page > 0, Size > 0
+->
     case pluck(Table, <<"count(*)">>, WhereMap, 0) of
         {ok, 0} ->
             {ok, #{total => 0, page => Page, size => Size, list => []}};
@@ -511,5 +543,7 @@ escape_like(<<C, Rest/binary>>, Acc) ->
 -spec rows_to_maps([#column{}], [tuple()]) -> [map()].
 rows_to_maps(Cols, Rows) ->
     Keys = [C#column.name || C <- Cols],
-    [ maps:from_list(lists:zip(Keys, tuple_to_list(Row)))
-      || Row <- Rows ].
+    [
+        maps:from_list(lists:zip(Keys, tuple_to_list(Row)))
+     || Row <- Rows
+    ].

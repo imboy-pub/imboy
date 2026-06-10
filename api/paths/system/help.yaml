@@ -21,3 +21,7 @@ get:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
         text/html:
           schema: { type: string }
+    '4XX':
+      description: 参数错误（一般不触发，占位用）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

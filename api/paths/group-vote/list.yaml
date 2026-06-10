@@ -11,6 +11,7 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -18,7 +19,47 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: group_vote_logic:list_votes 返回的分页对象
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            vote_id:
+                              type: string
+                            gid:
+                              type: integer
+                              format: int64
+                            creator_id:
+                              type: integer
+                              format: int64
+                            title:
+                              type: string
+                            vote_type:
+                              type: integer
+                            status:
+                              type: integer
+                            end_at:
+                              type: string
+                              format: date-time
+                            created_at:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

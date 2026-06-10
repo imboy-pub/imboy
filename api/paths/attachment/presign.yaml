@@ -21,7 +21,25 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [put_url, object_key, expires_at]
+                    properties:
+                      put_url:
+                        type: string
+                        description: Garage S3 预签名 PUT URL，客户端直接 PUT 上传 / Presigned S3 PUT URL for direct upload
+                      object_key:
+                        type: string
+                        description: 对象键（含 uid 前缀），confirm 时回传 / Object key with uid prefix, returned to confirm
+                      expires_at:
+                        type: integer
+                        description: URL 过期时间（Unix 秒）/ URL expiry as Unix timestamp in seconds
     '4XX':
       description: 未鉴权 / 参数非法
       content:

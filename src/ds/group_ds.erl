@@ -51,7 +51,6 @@
 -spec is_member(integer(), integer()) -> boolean().
 is_member(Uid, Gid) ->
     Res = group_member_repo:find(Gid, Uid, <<"id">>),
-    % ?DEBUG_LOG(io:format("is_member/2  Uid ~p, Gid ~p, Res ~p, Size ~p\n", [Uid, Gid, Res, map_size(Res)])),
     case map_size(Res) of
         0 ->
             false;

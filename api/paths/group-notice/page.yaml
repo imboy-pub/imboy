@@ -12,6 +12,7 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -19,7 +20,50 @@ get:
     '200':
       description: 分页结果
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: group_notice_ds:page 返回的分页对象（字段随 DS 查询列决定）
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            notice_id:
+                              type: integer
+                              format: int64
+                            user_id:
+                              type: integer
+                              format: int64
+                            edit_user_id:
+                              type: integer
+                              format: int64
+                            body:
+                              type: string
+                            status:
+                              type: integer
+                              description: '0=待发布 1=已发布 2=取消发布'
+                            expired_at:
+                              type: string
+                              format: date-time
+                            updated_at:
+                              type: string
+                              format: date-time
+                            created_at:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: gid 必须 / 非群成员
       content:

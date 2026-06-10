@@ -13,13 +13,35 @@ post:
       application/json:
         schema:
           type: object
+          required: [decrypted_shards]
           properties:
-            shards: { type: array, items: { type: string } }
+            decrypted_shards:
+              type: array
+              items: { type: string }
+              description: 已由联系人解密的 shard 列表，用于重建主密钥
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [shards, message]
+                    properties:
+                      shards:
+                        type: array
+                        description: 已验证的分片列表，客户端在本地完成 Shamir 重组 / Validated shards; client reassembles locally
+                        items:
+                          type: string
+                      message:
+                        type: string
+                        example: 分片验证成功，请在客户端完成密钥重组
+                        description: 操作提示 / Operation hint
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

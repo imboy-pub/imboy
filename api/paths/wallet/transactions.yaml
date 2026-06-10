@@ -13,7 +13,24 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 交易流水记录（字段以 wallet_transaction 表为准）
+                          additionalProperties: true
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 参数非法
       content:

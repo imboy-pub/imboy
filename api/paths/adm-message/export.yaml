@@ -1,5 +1,5 @@
-# POST /adm/message/export — admin
-post:
+# GET /adm/message/export — admin
+get:
   tags: [admin]
   summary: admin adm-message - export
   description: |
@@ -7,18 +7,43 @@ post:
     管理后台 adm-message handler 的 `export` 动作；路径 `/adm/message/export`。
     Admin handler `adm-message`, action `export`. Path `/adm/message/export`.
   operationId: adm_message_export
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - in: query
+      name: msg_scope
+      schema: { type: string }
+      description: 消息范围（c2c / c2g / channel）/ Message scope
+    - in: query
+      name: uid
+      schema: { type: string }
+      description: 用户 ID / User ID
+    - in: query
+      name: conversation
+      schema: { type: string }
+      description: 会话标识 / Conversation key
+    - in: query
+      name: from_ts
+      schema: { type: integer }
+      description: 起始时间戳（毫秒）/ Start timestamp (ms)
+    - in: query
+      name: to_ts
+      schema: { type: integer }
+      description: 结束时间戳（毫秒）/ End timestamp (ms)
+    - in: query
+      name: keyword
+      schema: { type: string }
+      description: 关键词检索 / Keyword search
   responses:
     '200':
-      description: 成功
+      description: CSV 文件流（非 JSON Envelope）/ CSV file stream (not JSON Envelope)
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        text/csv:
+          schema:
+            type: string
+            format: binary
+            description: |
+              UTF-8 BOM CSV 流式响应，列顺序：scope,msg_id,from_id,to_id,msg_type,action,payload,created_at,server_ts。
+              需 message_export 功能启用；audit_mode=none/metadata 时 payload 列为空。
+              UTF-8 BOM CSV streaming response. Columns: scope,msg_id,from_id,to_id,msg_type,action,payload,created_at,server_ts.
     '4XX':
       description: 无权限 / 参数非法
       content:

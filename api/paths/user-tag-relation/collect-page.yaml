@@ -38,7 +38,22 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_tag_relation_handler#page → user_tag_relation_logic
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: collect_page 含收藏字段；friend_page 含用户字段
     '4XX':
       description: token 无效 / tag_id 缺失或非法
       content:

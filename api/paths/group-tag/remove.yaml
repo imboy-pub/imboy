@@ -13,10 +13,10 @@ post:
       application/json:
         schema:
           type: object
-          required: [gid, tag]
+          required: [gid, tag_name]
           properties:
             gid: { type: integer, minimum: 1 }
-            tag: { type: string }
+            tag_name: { type: string }
   responses:
     '200':
       description: 成功

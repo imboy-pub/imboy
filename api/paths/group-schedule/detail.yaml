@@ -11,12 +11,63 @@ get:
     - in: query
       name: schedule_id
       required: true
+      description: 日程 ID / Schedule ID
       schema: { type: integer, minimum: 1 }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: schedule_transfer 后的日程对象
+                    properties:
+                      schedule_id:
+                        type: string
+                        description: 业务 ID（sched_xxx 格式）
+                      group_id:
+                        type: integer
+                        format: int64
+                      creator_id:
+                        type: integer
+                        format: int64
+                      title:
+                        type: string
+                      description:
+                        type: string
+                      location:
+                        type: string
+                      start_at:
+                        type: string
+                        format: date-time
+                      end_at:
+                        type: string
+                        format: date-time
+                      remind_before:
+                        type: integer
+                        description: 提前提醒分钟数
+                      status:
+                        type: integer
+                        description: '0=待确认 1=进行中 2=已取消'
+                      participants:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id:
+                              type: integer
+                              format: int64
+                            status:
+                              type: integer
+                              description: '0=待确认 1=参加 2=不参加'
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

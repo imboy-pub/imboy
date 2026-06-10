@@ -10,11 +10,52 @@ get:
   parameters:
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
+    - name: status
+      in: query
+      required: false
+      description: 用户状态筛选 / User status filter
+      schema:
+        type: integer
+    - name: keyword
+      in: query
+      required: false
+      description: 关键词搜索（用户名/昵称）/ Keyword search (username/nickname)
+      schema:
+        type: string
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 用户分页列表
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, description: '用户 TSID（字符串）' }
+                            account: { type: string }
+                            nickname: { type: string }
+                            mobile: { type: string }
+                            email: { type: string }
+                            avatar: { type: string }
+                            gender: { type: integer }
+                            region: { type: string }
+                            sign: { type: string }
+                            status: { type: integer, description: '0=封禁 1=正常' }
+                            experience: { type: integer }
+                            created_at: { type: integer }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

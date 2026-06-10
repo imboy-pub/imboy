@@ -17,6 +17,7 @@ post:
     - in: path
       name: moment_id
       required: true
+      description: 朋友圈动态 ID / Moment ID
       schema: { type: string }
   requestBody:
     required: true
@@ -36,7 +37,23 @@ post:
     '200':
       description: 举报已记录
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 举报记录对象 / Report record
+                    properties:
+                      id: { type: integer, format: int64, description: 举报记录 TSID }
+                      target_type: { type: string, description: "moment" }
+                      target_id: { type: integer, format: int64 }
+                      reporter_uid: { type: integer, format: int64 }
+                      reason: { type: string }
+                      description: { type: string }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: moment_id 缺失 / reason 缺失 / 重复举报
       content:

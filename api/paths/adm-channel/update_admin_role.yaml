@@ -1,5 +1,5 @@
-# POST /adm/channel/{channel_id}/admin/{user_id}/role — admin
-post:
+# PUT /adm/channel/{channel_id}/admin/{user_id}/role — admin
+put:
   tags: [admin]
   summary: admin adm-channel - update_admin_role
   description: |
@@ -11,10 +11,12 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
     - in: path
       name: user_id
       required: true
+      description: 用户 ID / User ID
       schema: { type: string }
   requestBody:
     required: true
@@ -22,12 +24,26 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [role]
+          properties:
+            role:
+              type: integer
+              minimum: 1
+              maximum: 3
+              description: 管理员角色等级，1-3 / Admin role level, 1-3
   responses:
     '200':
-      description: 成功
+      description: 成功（payload 为空对象）/ Success (empty payload)
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功，payload 为空对象 / Empty object on success
     '4XX':
       description: 无权限 / 参数非法
       content:

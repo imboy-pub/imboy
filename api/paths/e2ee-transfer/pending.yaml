@@ -11,7 +11,39 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [transfers]
+                    properties:
+                      transfers:
+                        type: array
+                        description: 待处理的迁移会话列表 / List of pending transfer sessions
+                        items:
+                          type: object
+                          required: [session_id, from_uid, from_device_id, expires_at, created_at]
+                          properties:
+                            session_id:
+                              type: string
+                              description: 迁移会话 UUID / Transfer session UUID
+                            from_uid:
+                              type: integer
+                              format: int64
+                              description: 发起迁移的用户 TSID / Sender user TSID
+                            from_device_id:
+                              type: string
+                              description: 发起迁移的设备 ID / Sender device ID
+                            expires_at:
+                              type: integer
+                              description: 会话过期时间（Unix 秒）/ Session expiry as Unix timestamp
+                            created_at:
+                              type: integer
+                              description: 会话创建时间（Unix 秒）/ Session creation time as Unix timestamp
     '4XX':
       description: 参数非法 / 无权限
       content:

@@ -21,7 +21,7 @@ post:
   operationId: applyLogout
   responses:
     '200':
-      description: 申请提交成功
+      description: 申请提交成功（无 payload）
       content:
         application/json:
           schema:

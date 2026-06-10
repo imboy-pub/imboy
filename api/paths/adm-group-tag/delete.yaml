@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除群标签
+  description: 管理员删除指定群的标签。Delete a group tag by admin.
   operationId: adm_group_tag_delete
   requestBody:
     required: true

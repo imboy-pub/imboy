@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台批准用户注销申请
+  description: 审批通过用户提交的账号注销申请，执行账号注销流程。Approve a user's account deletion request and execute the account deactivation process.
   operationId: adm_user_logout_approve
   requestBody:
     required: true

@@ -10,14 +10,52 @@ get:
     - in: query
       name: keyword
       required: true
+      description: '搜索关键词 / Search keyword'
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
-      description: 成功
+      description: 成功；分页用户搜索结果
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: integer
+                              format: int64
+                              description: 用户 TSID.
+                            nickname:
+                              type: string
+                            avatar:
+                              type: string
+                            gender:
+                              type: integer
+                            signature:
+                              type: string
+                            created_at:
+                              type: string
+                            is_friend:
+                              type: boolean
+                            remark:
+                              type: string
     '4XX':
       description: 参数非法
       content:

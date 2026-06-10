@@ -37,11 +37,17 @@ post:
               description: 会话类型 / Conversation type.
   responses:
     '200':
-      description: 置顶成功
+      description: 置顶成功；无 payload
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: conversation_id 缺失或非法 / 类型不支持
       content:

@@ -36,7 +36,15 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_tag_handler#add → user_tag_logic:add
+                    properties:
+                      tagId: { type: integer, format: int64, description: 新建标签的 TSID }
     '4XX':
       description: 不支持的 Scene / 标签名超长 / 同名标签已存在
       content:

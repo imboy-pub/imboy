@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 重命名相册
+  description: 重命名群相册；仅相册创建者或群管理员可操作。Rename a group album; only the creator or group admin can rename.
   operationId: renameGroupAlbum
   requestBody:
     required: true

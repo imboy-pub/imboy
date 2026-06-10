@@ -1,5 +1,5 @@
-# POST /adm/announcement/update — admin
-post:
+# PUT /adm/announcement/update — admin
+put:
   tags: [admin]
   summary: admin adm-announcement - update
   description: |
@@ -13,7 +13,26 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [id]
+          properties:
+            id:
+              type: string
+              description: 公告 ID（TSID）/ Announcement ID (TSID)
+            title:
+              type: string
+              description: 公告标题 / Announcement title
+            content:
+              type: string
+              description: 公告内容 / Announcement content
+            type:
+              type: integer
+              description: 公告类型 / Announcement type
+            status:
+              type: integer
+              description: 公告状态 / Announcement status
+            expired_at:
+              type: integer
+              description: 过期时间戳（毫秒）/ Expiry timestamp (ms)
   responses:
     '200':
       description: 成功

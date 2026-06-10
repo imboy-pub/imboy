@@ -1,4 +1,5 @@
 # GET /adm/channel/detail/{channel_id} — admin
+# PUT /adm/channel/detail/{channel_id} — admin（更新频道信息）
 get:
   tags: [admin]
   summary: admin adm-channel - detail
@@ -11,12 +12,117 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 频道详情 / Channel detail
+                    properties:
+                      id:
+                        type: string
+                        format: int64
+                        description: 频道 TSID / Channel TSID
+                      name:
+                        type: string
+                        description: 频道名称 / Channel name
+                      type:
+                        type: integer
+                        description: 频道类型 / Channel type
+                      owner_id:
+                        type: string
+                        format: int64
+                        description: 创建者 TSID / Creator TSID
+                      custom_id:
+                        type: string
+                        description: 自定义频道 ID / Custom identifier
+                      description:
+                        type: string
+                        description: 频道描述 / Description
+                      avatar:
+                        type: string
+                        description: 头像 URL / Avatar URL
+                      tags:
+                        type: string
+                        description: 标签（JSON 字符串）/ Tags JSON
+                      subscriber_count:
+                        type: integer
+                        description: 订阅人数 / Subscriber count
+                      status:
+                        type: integer
+                        description: 状态 / Status
+                      created_at:
+                        type: string
+                        description: 创建时间 / Created at
+                      updated_at:
+                        type: string
+                        description: 更新时间 / Updated at
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+put:
+  tags: [admin]
+  summary: admin adm-channel - update detail
+  description: |
+    ## 中文 / English
+    更新频道基本信息；路径 `/adm/channel/detail/{channel_id}`。所有 body 字段均为可选，仅传入需修改的字段。
+    Update channel basic info. Path `/adm/channel/detail/{channel_id}`. All body fields are optional; only pass fields to update.
+  operationId: adm_channel_detail_update
+  parameters:
+    - in: path
+      name: channel_id
+      required: true
+      description: 频道 ID / Channel ID
+      schema: { type: string }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: 频道名称 / Channel name
+            type:
+              type: integer
+              description: 频道类型 / Channel type
+            status:
+              type: integer
+              description: 频道状态 / Channel status
+            custom_id:
+              type: string
+              description: 自定义 ID / Custom identifier
+            description:
+              type: string
+              description: 频道描述 / Channel description
+            avatar:
+              type: string
+              description: 频道头像 URL / Channel avatar URL
+  responses:
+    '200':
+      description: 成功（payload 为空对象）/ Success (empty payload)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 更新成功，payload 为空对象 / Empty object on success
     '4XX':
       description: 无权限 / 参数非法
       content:

@@ -32,11 +32,17 @@ post:
               description: 分组 ID / Category id.
   responses:
     '200':
-      description: 删除成功
+      description: 删除成功；无 payload
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: id 非法 / 分组不存在 / 分组不属于当前用户 / 系统保留分组
       content:

@@ -18,7 +18,23 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 创建举报结果 / Create report result
+                    properties:
+                      report_id:
+                        type: integer
+                        format: int64
+                        description: 举报记录 TSID / Report TSID
+                      target_type:
+                        type: string
+                        description: 举报目标类型 moment/group/channel/user / Target type
     '4XX':
       description: 无权限 / 参数非法
       content:

@@ -26,8 +26,6 @@ encrypt_refreshtoken(ID) ->
 %% 生成用于用户认证的访问令牌，有效期由?TOKEN_VALID定义。
 %% 使用HS256算法和配置的JWT密钥进行签名。
 %%
-%% 使用示例：
-%% io:format("~s~n", [token_ds:encrypt_token(1)]).
 %% @param ID 用户ID或标识符
 %% @returns 编码后的JWT access token
 -spec encrypt_token(integer() | binary()) -> binary().
@@ -41,10 +39,11 @@ encrypt_token(ID) ->
 % token_ds:decrypt_token(token_ds:encrypt_token(1)).
 %% @returns 解析结果：成功时返回用户ID、过期时间和主题；失败时返回错误信息
 -spec decrypt_token(binary()) ->
-                       {ok, integer(), integer(), binary()} |
-                       {error, integer(), binary() | string(), map()}.
+    {ok, integer(), integer(), binary()}
+    | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
-    Opts = #{exp_leeway => 300},  % 容忍 5 分钟时钟偏差
+    % 容忍 5 分钟时钟偏差
+    Opts = #{exp_leeway => 300},
     JwtKey = config_ds:env(jwt_key, <<>>),
     try jwerl:verify(Token, hs256, JwtKey, #{}, Opts) of
         {ok, Payload} ->
@@ -53,10 +52,11 @@ decrypt_token(Token) ->
             ExpireDAt = maps:get(exp, Payload, <<>>),
             Sub = maps:get(sub, Payload, <<"tk">>),
             Now = elib_dt:utc(second),
-            if ExpireDAt > Now ->
-                   {ok, ID, ExpireDAt, Sub};
-               true ->
-                   {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
+            if
+                ExpireDAt > Now ->
+                    {ok, ID, ExpireDAt, Sub};
+                true ->
+                    {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
         %% jwerl 在启用 exp_leeway 后仍会自验 exp，过期时返回 {error, [exp]}。
         %% 语义上属于"可刷新的过期 token"，应返回 705 与上面手动分支一致，
@@ -76,8 +76,10 @@ decrypt_token(Token) ->
     catch
         Class:Reason:Stacktrace ->
             % 记录 token 解析异常
-            ok = ?ERROR_LOG("Token decrypt failed: ~p:~p~nStacktrace: ~p",
-                          [Class, Reason, Stacktrace]),
+            ok = ?ERROR_LOG(
+                "Token decrypt failed: ~p:~p~nStacktrace: ~p",
+                [Class, Reason, Stacktrace]
+            ),
             {error, 706, "Invalid token.", #{}}
     end.
 
@@ -96,11 +98,16 @@ decrypt_token(Token) ->
 encrypt_token(ID, Second, Sub) ->
     ExpireDAt = erlang:system_time(second) + Second,
     Data =
-        #{% iss => imboy  % iss (issuer)：签发人
-          % , nbf => Now + 1 % nbf (Not Before)：生效时间
-          % , iat => Now % iat (Issued At)：签发时间
-          sub => Sub,  % sub (subject)：主题
-          exp => ExpireDAt,  % exp (expiration time)：过期时间
-          uid => ID},
+        % iss => imboy  % iss (issuer)：签发人
+        #{
+            % , nbf => Now + 1 % nbf (Not Before)：生效时间
+            % , iat => Now % iat (Issued At)：签发时间
+
+            % sub (subject)：主题
+            sub => Sub,
+            % exp (expiration time)：过期时间
+            exp => ExpireDAt,
+            uid => ID
+        },
     JwtKey = config_ds:env(jwt_key, <<>>),
     jwerl:sign(Data, hs256, JwtKey).

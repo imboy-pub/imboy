@@ -10,14 +10,14 @@ post:
   requestBody:
     required: true
     content:
-      application/json:
+      multipart/form-data:
         schema:
           type: object
           required: [gid]
           properties:
             gid: { type: string }
             category: { type: string }
-            file: { type: string, format: binary, description: '文件部分（multipart）' }
+            file: { type: string, format: binary, description: '文件二进制部分（multipart）' }
   responses:
     '200':
       description: 成功

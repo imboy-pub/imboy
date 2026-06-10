@@ -13,14 +13,34 @@ post:
       application/json:
         schema:
           type: object
+          required: [to_uid]
           properties:
-            new_device_id: { type: string }
-            challenge: { type: string }
+            to_uid:
+              type: integer
+              description: 目标用户 UID（接收迁移邀请的账户）
+            to_nickname:
+              type: string
+              description: 目标用户昵称（可选，客户端展示用）
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [session_id, expires_at]
+                    properties:
+                      session_id:
+                        type: string
+                        description: 新创建的迁移会话 UUID / Newly created transfer session UUID
+                      expires_at:
+                        type: integer
+                        description: 会话过期时间（Unix 秒）/ Session expiry as Unix timestamp
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

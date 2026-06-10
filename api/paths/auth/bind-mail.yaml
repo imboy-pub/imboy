@@ -45,7 +45,7 @@ get:
       description: HMAC-SHA512 签名（hex） / HMAC-SHA512 signature (hex).
   responses:
     '200':
-      description: 邮箱绑定成功
+      description: 邮箱绑定成功（无 payload）
       content:
         application/json:
           schema:

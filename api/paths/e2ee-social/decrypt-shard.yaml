@@ -13,14 +13,32 @@ post:
       application/json:
         schema:
           type: object
+          required: [shard_id]
           properties:
-            shard_id: { type: string }
-            ciphertext: { type: string }
+            shard_id:
+              type: string
+              description: 需要联系人解密的 shard ID
+            ciphertext:
+              type: string
+              x-not-implemented: true
+              description: 加密密文（x-not-implemented：当前后端未读取此字段）
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [decrypted_shard]
+                    properties:
+                      decrypted_shard:
+                        type: string
+                        description: 代理用自己私钥解密后的分片（base64）/ Decrypted shard bytes in base64
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

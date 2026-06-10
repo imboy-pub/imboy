@@ -11,20 +11,37 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
     - in: query
-      name: from
+      name: days
       required: false
-      schema: { type: string }
-    - in: query
-      name: to
-      required: false
-      schema: { type: string }
+      description: 查询天数 / Number of days to query
+      schema: { type: integer, description: '统计最近 N 天 / Number of recent days to query' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 按日统计列表，按日期升序 / Daily stats list ascending by date
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date, description: "格式 YYYY-MM-DD" }
+                            new_subscribers: { type: integer }
+                            new_messages: { type: integer }
+                            view_count: { type: integer }
+                            reaction_count: { type: integer }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

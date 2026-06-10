@@ -33,11 +33,34 @@ get:
         Last successfully-synced server timestamp (ms); omit for full sync.
   responses:
     '200':
-      description: 会话列表
+      description: 会话列表（payload 直接为数组）
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    description: 会话对象列表，每项含 last_msg / unread_count / pinned 等.
+                    items:
+                      type: object
+                      properties:
+                        conversation_id:
+                          type: string
+                        type:
+                          type: string
+                          enum: [c2c, c2g]
+                        unread_count:
+                          type: integer
+                        pinned:
+                          type: boolean
+                        last_msg:
+                          type: object
+                        updated_at:
+                          type: string
+                          format: date-time
     '4XX':
       description: 未鉴权
       content:

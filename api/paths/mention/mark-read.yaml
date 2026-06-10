@@ -44,11 +44,31 @@ post:
               description: 配合 all=true 用于限定群范围
   responses:
     '200':
-      description: 标记成功；payload 含 msg_id / mention_id 回显
+      description: 标记成功；payload 含 msg_id / mention_id 回显（或 all=true 时 all 回显）
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 三种模式回显不同字段.
+                    properties:
+                      msg_id:
+                        type: string
+                        description: 按 msg_id 标记时回显.
+                      mention_id:
+                        type: integer
+                        description: 按 mention_id 标记时回显.
+                      all:
+                        type: boolean
+                        description: all=true 模式时回显 true.
+                      group_id:
+                        type: integer
+                        format: int64
+                        description: all=true + gid 模式时回显.
     '4XX':
       description: msg_id 与 mention_id 都缺失 / 无权操作 / mention 不存在
       content:

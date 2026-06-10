@@ -1,5 +1,5 @@
-# POST /adm/app_version/delete — admin
-post:
+# DELETE /adm/app_version/delete — admin
+delete:
   tags: [admin]
   summary: admin adm-app-version - delete
   description: |
@@ -13,12 +13,23 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [id]
+          properties:
+            id: { type: integer, description: '要删除的版本记录 ID / App version record ID to delete' }
   responses:
     '200':
-      description: 成功
+      description: 成功（返回提交的 PostVals）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 删除成功时返回原始提交参数
     '4XX':
       description: 无权限 / 参数非法
       content:

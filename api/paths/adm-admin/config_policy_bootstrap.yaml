@@ -11,7 +11,16 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 系统策略配置对象（admin_config_view 视图）
     '4XX':
       description: 无权限 / 参数非法
       content:

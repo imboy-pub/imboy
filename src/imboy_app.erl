@@ -392,33 +392,31 @@ ensure_eturnal_secret_if_turn_configured() ->
     end.
 
 %% @doc 确保 solidified_key / solidified_key_iv 已就绪
-%% 生产环境：validate_runtime_config 已 fail-fast，此处无需处理
-%% 非生产环境：未配置则使用稳定的 dev 默认值（与 Flutter 客户端硬编码一致），
-%% 避免每次启动随机生成导致客户端 init 解密失败。
-%%
-%% Flutter 客户端硬编码值见 imboy/lib/service/encrypter.dart 中的 signKey/iv。
-%% 这两个值不是真正的 secret，仅是 dev/local 环境下客户端与服务端的共享约定。
+%% 生产环境：validate_runtime_config 已 fail-fast，此处无需处理。
+%% 非生产环境：未配置则基于节点名哈希派生稳定 dev key（重启不变，节点间不同）。
 -spec ensure_solidified_keys() -> ok.
 ensure_solidified_keys() ->
-    DevDefaultKey = <<"pLV8yWGUUnd3Y2gaHP5aggZ7wnKT9DqL">>,
-    DevDefaultIV = <<"e6Z8KuBnGCi2t7we">>,
     case normalize_secret(config_ds:env(solidified_key, <<>>)) of
         <<>> ->
-            ok = application:set_env(imboy, solidified_key, DevDefaultKey),
-            ok = application:set_env(imboy, solidified_key_iv, DevDefaultIV),
+            Seed = erlang:phash2(node()),
+            DevKey = base64:encode(crypto:hash(sha256, integer_to_binary(Seed))),
+            DevIV = binary:part(DevKey, 0, 16),
+            ok = application:set_env(imboy, solidified_key, DevKey),
+            ok = application:set_env(imboy, solidified_key_iv, DevIV),
             logger:warning(
-                "[imboy] solidified_key not configured — "
-                "using dev default (matches Flutter client hardcoded value). "
-                "Set IMBOY_SOLIDIFIED_KEY / IMBOY_SOLIDIFIED_KEY_IV "
-                "in production (fail-fast will reject blank values)."
+                "[imboy] solidified_key not set — generated node-local dev key. "
+                "MUST set IMBOY_SOLIDIFIED_KEY in production."
             ),
             ok;
         _ ->
             %% key 已配置；若 iv 单独缺失也补全
             case normalize_secret(config_ds:env(solidified_key_iv, <<>>)) of
                 <<>> ->
-                    ok = application:set_env(imboy, solidified_key_iv, DevDefaultIV),
-                    logger:warning("[imboy] solidified_key_iv not configured — using dev default."),
+                    Seed = erlang:phash2(node()),
+                    DevKey = base64:encode(crypto:hash(sha256, integer_to_binary(Seed))),
+                    DevIV = binary:part(DevKey, 0, 16),
+                    ok = application:set_env(imboy, solidified_key_iv, DevIV),
+                    logger:warning("[imboy] solidified_key_iv not set — using derived dev iv."),
                     ok;
                 _ ->
                     ok

@@ -9,14 +9,40 @@ get:
   operationId: e2eeTransferInfo
   parameters:
     - in: query
-      name: transfer_id
+      name: session_id
       required: true
+      description: '传输会话 ID / Transfer session ID'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [session_id, from_uid, from_device_id, status, expires_at]
+                    properties:
+                      session_id:
+                        type: string
+                        description: 迁移会话 UUID / Transfer session UUID
+                      from_uid:
+                        type: integer
+                        format: int64
+                        description: 发起迁移的用户 TSID / Sender user TSID
+                      from_device_id:
+                        type: string
+                        description: 发起迁移的设备 ID / Sender device ID
+                      status:
+                        type: string
+                        description: 会话状态（pending/accepted/confirmed/cancelled）/ Session status
+                      expires_at:
+                        type: integer
+                        description: 会话过期时间（Unix 秒）/ Session expiry as Unix timestamp
     '4XX':
       description: 参数非法 / 无权限
       content:

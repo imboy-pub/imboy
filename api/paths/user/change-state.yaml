@@ -32,7 +32,7 @@ post:
               description: 在线状态枚举 / Presence state.
   responses:
     '200':
-      description: 状态更新成功
+      description: 状态更新成功（payload 为空对象）
       content:
         application/json:
           schema:

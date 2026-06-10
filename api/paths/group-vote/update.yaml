@@ -1,11 +1,11 @@
 # POST /v1/group/vote/update
 post:
   tags: [user]
-  summary: 更新投票 - 仅作者
+  summary: 修改已投选项（换票）
   description: |
     ## 中文 / English
-    更新投票 - 仅作者
-    Update vote (author only, before any cast)
+    修改已投选项（换票）——用户撤回原有投票并改投新选项。
+    Change the user's previously cast vote to new option(s).
   operationId: updateGroupVote
   requestBody:
     required: true
@@ -13,12 +13,10 @@ post:
       application/json:
         schema:
           type: object
-          required: [vote_id]
+          required: [vote_id, option_ids]
           properties:
-            vote_id: { type: integer, minimum: 1 }
-            title: { type: string }
-            description: { type: string }
-            expired_at: { type: string }
+            vote_id: { type: integer, minimum: 1, description: '投票 ID' }
+            option_ids: { type: array, items: { type: integer }, minItems: 1, description: '新选中的选项 ID 列表' }
   responses:
     '200':
       description: 成功

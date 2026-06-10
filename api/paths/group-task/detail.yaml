@@ -11,12 +11,46 @@ get:
     - in: query
       name: task_id
       required: true
+      description: '任务 ID / Task ID'
       schema: { type: integer, minimum: 1 }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: task_transfer 后的任务对象
+                    properties:
+                      task_id:
+                        type: integer
+                        format: int64
+                      group_id:
+                        type: integer
+                        format: int64
+                      creator_id:
+                        type: integer
+                        format: int64
+                      title:
+                        type: string
+                      description:
+                        type: string
+                      attachment:
+                        type: string
+                      deadline:
+                        type: string
+                        format: date-time
+                      status:
+                        type: integer
+                        description: '0=草稿 1=待完成 2=已提交 3=已审批'
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

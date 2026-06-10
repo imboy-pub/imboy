@@ -9,9 +9,25 @@ get:
   operationId: adm_passport_captcha
   responses:
     '200':
-      description: 成功
+      description: 返回 PNG 验证码图片；同时通过 Set-Cookie 写入 captcha_key（HttpOnly）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        image/png:
+          schema:
+            type: string
+            format: binary
+    '503':
+      description: ImageMagick convert 未安装时返回 JSON 错误
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+              msg:
+                type: string
+              hint:
+                type: string
     '4XX':
       description: 无权限 / 参数非法
       content:

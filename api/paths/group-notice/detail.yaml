@@ -11,12 +11,55 @@ get:
     - in: query
       name: notice_id
       required: true
+      description: 公告 ID / Notice ID
       schema: { type: integer, minimum: 1 }
   responses:
     '200':
       description: 公告详情
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      notice_id:
+                        type: integer
+                        format: int64
+                      group_id:
+                        type: integer
+                        format: int64
+                      user_id:
+                        type: integer
+                        format: int64
+                        description: 创建者 ID
+                      edit_user_id:
+                        type: integer
+                        format: int64
+                        description: 最近编辑者 ID
+                      title:
+                        type: string
+                      body:
+                        type: string
+                      status:
+                        type: integer
+                        description: '0=待发布 1=已发布 2=取消发布'
+                      is_pinned:
+                        type: boolean
+                      read_count:
+                        type: integer
+                      expired_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: notice 不存在 / 无访问权限
       content:

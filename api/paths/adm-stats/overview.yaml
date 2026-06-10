@@ -1,5 +1,5 @@
-# POST /adm/stats/overview — admin
-post:
+# GET /adm/stats/overview — admin
+get:
   tags: [admin]
   summary: admin adm-stats - overview
   description: |
@@ -7,18 +7,46 @@ post:
     管理后台 adm-stats handler 的 `overview` 动作；路径 `/adm/stats/overview`。
     Admin handler `adm-stats`, action `overview`. Path `/adm/stats/overview`.
   operationId: adm_stats_overview
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total_users:
+                        type: integer
+                        description: 用户总数
+                      today_users:
+                        type: integer
+                        description: 今日新增用户数
+                      total_groups:
+                        type: integer
+                        description: 群组总数
+                      today_groups:
+                        type: integer
+                        description: 今日新建群组数
+                      online_users:
+                        type: integer
+                        description: 在线用户数
+                      online_devices:
+                        type: integer
+                        description: 在线设备数
+                      today_messages:
+                        type: integer
+                        description: 今日消息总量
+                      today_c2c:
+                        type: integer
+                        description: 今日 C2C 消息数
+                      today_c2g:
+                        type: integer
+                        description: 今日 C2G 消息数
     '4XX':
       description: 无权限 / 参数非法
       content:

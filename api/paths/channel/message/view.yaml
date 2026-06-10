@@ -11,10 +11,12 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
     - in: path
       name: message_id
       required: true
+      description: '消息 ID / Message ID'
       schema: { type: string }
   requestBody:
     required: true
@@ -26,7 +28,15 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即记录曝光 / No payload on success
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

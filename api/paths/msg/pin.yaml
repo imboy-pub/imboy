@@ -38,7 +38,20 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [msg_id, pinned]
+                    properties:
+                      msg_id:
+                        type: string
+                        description: 操作的消息 TSID / The message TSID that was pinned/unpinned
+                      pinned:
+                        type: boolean
+                        description: 操作后置顶状态 / Resulting pin state
     '4XX':
       description: 未鉴权 / msg_id 缺失 / pinned 缺失 / 消息不存在 / 无置顶权限
       content:

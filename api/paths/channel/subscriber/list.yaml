@@ -11,14 +11,42 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
-    - $ref: '../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../components/parameters/PaginationSize.yaml'
+    - in: query
+      name: cursor
+      required: false
+      description: 分页游标（上次返回的 next_cursor）/ Pagination cursor
+      schema: { type: string, description: '游标（上次返回的 next_cursor）/ Pagination cursor' }
+    - in: query
+      name: limit
+      required: false
+      description: 每页条数 / Page size
+      schema: { type: integer, default: 20, description: '每页条数 / Page size' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 订阅者列表（游标分页）/ Subscribers list (cursor pagination)
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id: { type: integer, format: int64 }
+                            channel_id: { type: integer, format: int64 }
+                            subscribed_at: { type: integer, description: Unix 毫秒时间戳 }
+                      cursor: { type: integer, description: 当前游标 }
+                      limit: { type: integer }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

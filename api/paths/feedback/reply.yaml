@@ -2,9 +2,11 @@
 post:
   tags: [user]
   summary: 反馈追加回复
+  deprecated: true
   description: |
     ## 中文 / English
     反馈追加回复
+    ⚠️ 后端 handler 未实现（action 被注释），暂不可用
   operationId: feedbackReply
   requestBody:
     required: true
@@ -17,7 +19,7 @@ post:
             content: { type: string }
   responses:
     '200':
-      description: 成功
+      description: 成功（action 暂未启用，handler 中已注释；无 payload）
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
     '4XX':

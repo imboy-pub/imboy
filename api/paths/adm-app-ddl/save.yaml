@@ -16,9 +16,18 @@ post:
           additionalProperties: true
   responses:
     '200':
-      description: 成功
+      description: 成功（返回提交的 PostVals）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 保存成功时返回原始提交参数
     '4XX':
       description: 无权限 / 参数非法
       content:

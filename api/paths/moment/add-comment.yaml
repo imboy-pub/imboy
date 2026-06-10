@@ -16,6 +16,7 @@ post:
     - in: path
       name: moment_id
       required: true
+      description: '动态 ID / Moment ID'
       schema: { type: string }
   requestBody:
     required: true
@@ -35,7 +36,22 @@ post:
     '200':
       description: 评论成功；payload 含新 comment_id
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 新发布的评论对象 / Newly created comment
+                    properties:
+                      id: { type: integer, format: int64, description: 评论 TSID }
+                      moment_id: { type: integer, format: int64 }
+                      uid: { type: integer, format: int64, description: 评论者 uid }
+                      content: { type: string }
+                      reply_to_uid: { type: integer, format: int64 }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: content 为空 / 无权评论 / 动态不存在
       content:

@@ -13,7 +13,12 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [gid]
+          properties:
+            gid:
+              type: integer
+              description: 解散目标群组 ID / Target group ID to dissolve
+          additionalProperties: false
   responses:
     '200':
       description: 成功

@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台批改群任务
+  description: 管理员对群任务提交进行评分和评语批改。Review and score a group task submission by admin.
   operationId: adm_group_task_review
   requestBody:
     required: true

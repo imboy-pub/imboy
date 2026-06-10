@@ -28,7 +28,26 @@ get:
     '200':
       description: 分页结果 { total, page, size, list }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 群组资料对象（同 group/detail payload）.
     '4XX':
       description: 未鉴权
       content:

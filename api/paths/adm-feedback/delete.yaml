@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除反馈
+  description: 删除指定用户反馈记录（软删除）。Delete a specified user feedback record (soft delete).
   operationId: adm_feedback_delete
   requestBody:
     required: true
@@ -14,9 +15,17 @@ post:
             feedback_id: { type: integer, description: '目标 ID' }
   responses:
     '200':
-      description: 成功
+      description: 成功（payload 为空对象）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功返回空对象 {}
     '4XX':
       description: 无权限 / 参数非法
       content:

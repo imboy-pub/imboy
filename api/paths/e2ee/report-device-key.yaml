@@ -13,14 +13,42 @@ post:
       application/json:
         schema:
           type: object
+          required: [device_type, key_id]
           properties:
-            device_id: { type: string }
+            device_id: { type: string, description: '设备 ID / Device identifier' }
             public_key: { type: string, description: 'RSA-OAEP-256 公钥 PEM/JWK' }
+            device_type:
+              type: string
+              description: '设备类型（如 ios/android/web）/ Device type'
+            key_id:
+              type: string
+              description: '密钥 ID / Key identifier'
+            device_name:
+              type: string
+              description: '设备名称（可选）/ Device name (optional)'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [success, other_device_count, has_other_device]
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      other_device_count:
+                        type: integer
+                        description: 除本设备外已有公钥的活跃设备数 / Other devices with valid keys
+                      has_other_device:
+                        type: boolean
+                        description: 是否有其他设备（用于客户端决定是否显示 E2EE 恢复横幅）/ Whether other devices exist
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

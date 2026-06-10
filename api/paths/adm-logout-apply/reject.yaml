@@ -18,7 +18,22 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      uid:
+                        type: string
+                        description: 用户 ID（TSID 转字符串）
+                      status:
+                        type: string
+                        enum: [rejected]
+                        description: 驳回状态
     '4XX':
       description: 无权限 / 参数非法
       content:

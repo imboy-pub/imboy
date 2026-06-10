@@ -11,7 +11,27 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      distribution:
+                        type: array
+                        description: 各版本设备数分布
+                        items:
+                          type: object
+                          additionalProperties: true
+                      events:
+                        type: array
+                        description: 近7天升级事件统计
+                        items:
+                          type: object
+                          additionalProperties: true
     '4XX':
       description: 无权限 / 参数非法
       content:

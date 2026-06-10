@@ -49,7 +49,7 @@ post:
               description: 结构化元数据（JSON 对象）/ Structured metadata blob.
   responses:
     '200':
-      description: 添加成功
+      description: 添加成功（无 payload）
       content:
         application/json:
           schema:

@@ -9,8 +9,9 @@ get:
   operationId: listGroupSchedule
   parameters:
     - in: query
-      name: gid
+      name: group_id
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -18,7 +19,49 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            schedule_id:
+                              type: string
+                            group_id:
+                              type: integer
+                              format: int64
+                            creator_id:
+                              type: integer
+                              format: int64
+                            title:
+                              type: string
+                            location:
+                              type: string
+                            start_at:
+                              type: string
+                              format: date-time
+                            end_at:
+                              type: string
+                              format: date-time
+                            status:
+                              type: integer
+                            created_at:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

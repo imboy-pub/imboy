@@ -30,7 +30,7 @@ post:
               description: 要删除的收藏的 kind_id / Target kind_id.
   responses:
     '200':
-      description: 删除成功（幂等）
+      description: 删除成功（幂等，payload 为空对象）
       content:
         application/json:
           schema:

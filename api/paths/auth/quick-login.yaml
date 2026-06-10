@@ -51,7 +51,19 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 passport_handler#quick_login → passport_logic:quick_login，同 login payload + setting
+                    properties:
+                      uid: { type: integer, format: int64 }
+                      token: { type: string }
+                      refresh_token: { type: string }
+                      expires_in: { type: integer }
+                      setting: { type: object, description: 用户偏好设置键值对 }
     '4XX':
       description: token 校验失败、被运营商拒绝或账号被冻结
       content:

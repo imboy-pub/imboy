@@ -1,0 +1,27 @@
+# This file instructs Redocly's linter to ignore the rules contained for specific parts of your API.
+# See https://redocly.com/docs/cli/ for more information.
+openapi.yaml:
+  no-ambiguous-paths:
+    - '#/paths/~1v1~1channel~1{channel_id}~1update'
+    - '#/paths/~1v1~1channel~1{channel_id}~1delete'
+    - '#/paths/~1v1~1channel~1{channel_id}~1subscribe'
+    - '#/paths/~1v1~1channel~1{channel_id}~1unsubscribe'
+    - '#/paths/~1v1~1channel~1{channel_id}~1message'
+    - '#/paths/~1v1~1channel~1{channel_id}~1messages'
+    - '#/paths/~1v1~1channel~1{channel_id}~1read'
+    - '#/paths/~1v1~1channel~1{channel_id}~1admin'
+    - '#/paths/~1v1~1channel~1{channel_id}~1admins'
+    - '#/paths/~1v1~1channel~1{channel_id}~1stats'
+    - '#/paths/~1v1~1channel~1{channel_id}~1subscribers'
+    - '#/paths/~1v1~1channel~1{channel_id}~1invitation'
+    - '#/paths/~1v1~1channel~1{channel_id}~1order'
+    - '#/paths/~1v1~1channel~1order~1{order_no}'
+    - '#/paths/~1adm~1channel~1{channel_id}~1messages'
+    - '#/paths/~1adm~1channel~1{channel_id}~1subscribers'
+    - '#/paths/~1adm~1channel~1{channel_id}~1admins'
+    - '#/paths/~1adm~1channel~1{channel_id}~1invitations'
+    - '#/paths/~1adm~1channel~1{channel_id}~1orders'
+    - '#/paths/~1adm~1channel~1{channel_id}~1stats'
+paths/ws/connect.yaml:
+  operation-2xx-response:
+    - '#/get/responses'

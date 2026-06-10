@@ -20,7 +20,48 @@ get:
     '200':
       description: 群详情
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 群组完整资料.
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                      title:
+                        type: string
+                      avatar:
+                        type: string
+                      introduction:
+                        type: string
+                      type:
+                        type: integer
+                        description: 1=公开 2=私有.
+                      owner_uid:
+                        type: integer
+                        format: int64
+                      creator_uid:
+                        type: integer
+                        format: int64
+                      member_count:
+                        type: integer
+                      member_max:
+                        type: integer
+                      join_limit:
+                        type: integer
+                      content_limit:
+                        type: integer
+                      updated_at:
+                        type: string
+                        format: date-time
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: gid 缺失或非法 / 群不存在
       content:

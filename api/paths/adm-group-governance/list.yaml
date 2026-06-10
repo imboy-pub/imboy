@@ -2,16 +2,67 @@
 get:
   tags: [admin]
   summary: 管理后台群治理日志列表
+  description: 分页查询群治理操作日志，支持操作人、群组、动作类型及时间范围筛选（管理员视角）。List group governance logs with filters for operator, group, action type and time range (admin view).
   operationId: adm_group_governance_log_list
   parameters:
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
     - $ref: '../../components/parameters/PaginationKeyword.yaml'
+    - name: uid
+      in: query
+      required: false
+      description: 操作人用户 ID / Operator user ID
+      schema:
+        type: integer
+    - name: group_id
+      in: query
+      required: false
+      description: 群组 ID / Group ID
+      schema:
+        type: integer
+    - name: action
+      in: query
+      required: false
+      description: 治理动作类型（如 ban/kick/mute）/ Governance action type
+      schema:
+        type: string
+    - name: target_id
+      in: query
+      required: false
+      description: 被操作对象 ID / Target object ID
+      schema:
+        type: string
+    - name: from_ts
+      in: query
+      required: false
+      description: 起始时间戳（ISO 8601 或 Unix ms）/ Start timestamp
+      schema:
+        type: string
+    - name: to_ts
+      in: query
+      required: false
+      description: 结束时间戳（ISO 8601 或 Unix ms）/ End timestamp
+      schema:
+        type: string
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

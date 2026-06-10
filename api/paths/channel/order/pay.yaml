@@ -15,12 +15,23 @@ post:
           type: object
           properties:
             order_no: { type: string }
-            method: { type: string }
+            method:
+              type: string
+              x-not-implemented: true
+              description: '支付方式（x-not-implemented：当前后端未读取此字段）'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即支付完成 / No payload on success
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

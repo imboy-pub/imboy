@@ -18,7 +18,21 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 批量处理结果 / Batch resolve result
+                    properties:
+                      success_count: { type: integer }
+                      failed_count: { type: integer }
+                      failed_ids:
+                        type: array
+                        items: { type: string }
     '4XX':
       description: 无权限 / 参数非法
       content:

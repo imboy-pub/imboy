@@ -33,7 +33,7 @@ post:
               description: 新显示名 / New display name.
   responses:
     '200':
-      description: 修改成功
+      description: 修改成功（无 payload）
       content:
         application/json:
           schema:

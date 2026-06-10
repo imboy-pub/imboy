@@ -34,7 +34,7 @@ post:
               description: 二维码 token / QR token.
   responses:
     '200':
-      description: 确认成功；Web 端会从 SSE 拿到 login token
+      description: 确认成功；Web 端会从 SSE 拿到 login token（无 payload）
       content:
         application/json:
           schema:

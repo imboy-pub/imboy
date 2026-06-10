@@ -10,16 +10,32 @@ get:
     - in: query
       name: cos
       required: false
+      description: '客户端操作系统平台 / Client OS platform (ios/android/web)'
       schema: { type: string, description: 操作系统 ios/android/web }
     - in: query
-      name: ver
+      name: vsn
       required: false
+      description: '版本号 / Version string'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 app_version_handler#check → app_version_logic:check(Vsn,Cos,DID)
+                    properties:
+                      upgrade: { type: boolean, description: 是否需要升级 }
+                      force: { type: boolean, description: 是否强制升级 }
+                      latest_version: { type: string, description: 最新版本号 }
+                      download_url: { type: string, description: 安装包下载地址 }
+                      changelog: { type: string, description: 版本说明 }
     '4XX':
       description: 参数非法
       content:

@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 给照片发表评论
+  description: 给群相册照片发表文字评论，长度上限 500 字符。Post a text comment on a group album photo; max 500 characters.
   operationId: commentGroupAlbumPhoto
   requestBody:
     required: true

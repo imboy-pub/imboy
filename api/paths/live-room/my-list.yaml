@@ -13,7 +13,29 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64, description: 直播间 TSID }
+                            user_id: { type: integer, format: int64, description: 房主 uid }
+                            title: { type: string }
+                            cover: { type: string }
+                            status: { type: integer, description: 直播间状态 }
+                            created_at: { type: integer, format: int64 }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 参数非法
       content:

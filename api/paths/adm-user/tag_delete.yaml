@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除用户标签
+  description: 删除指定用户在特定场景下的标签（管理员操作）。Delete a tag for a specified user under a given scene (admin operation).
   operationId: adm_user_tag_delete
   requestBody:
     required: true

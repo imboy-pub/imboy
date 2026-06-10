@@ -31,7 +31,7 @@ post:
               type: string
   responses:
     '200':
-      description: 删除成功（幂等）
+      description: 删除成功（幂等，无 payload）
       content:
         application/json:
           schema:

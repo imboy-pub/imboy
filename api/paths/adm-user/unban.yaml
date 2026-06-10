@@ -13,7 +13,12 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [uid]
+          properties:
+            uid:
+              type: integer
+              description: 解封目标用户 ID / Target user ID to unban
+          additionalProperties: false
   responses:
     '200':
       description: 成功

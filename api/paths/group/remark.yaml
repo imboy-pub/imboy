@@ -14,12 +14,27 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
   responses:
     '200':
       description: 备注信息 { gid, remark }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                      remark:
+                        type: string
+                        description: 当前用户对该群的备注（空串表示未设置）.
     '4XX':
       description: gid 必须
       content:
@@ -47,9 +62,20 @@ post:
               type: string
   responses:
     '200':
-      description: 更新成功
+      description: 更新成功；payload.gid 回显
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
     '4XX':
       description: gid 必须 / 非群成员
       content:

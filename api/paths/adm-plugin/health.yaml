@@ -1,5 +1,5 @@
-# POST /adm/plugin/health — admin
-post:
+# GET /adm/plugin/health — admin
+get:
   tags: [admin]
   summary: admin adm-plugin - health
   description: |
@@ -7,18 +7,27 @@ post:
     管理后台 adm-plugin handler 的 `health` 动作；路径 `/adm/plugin/health`。
     Admin handler `adm-plugin`, action `health`. Path `/adm/plugin/health`.
   operationId: adm_plugin_health
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - name: name
+      in: query
+      required: true
+      schema:
+        type: string
+      description: '插件名称 / Plugin name'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 插件健康检查结果（imboy_plugin_manager:health_check 返回）
     '4XX':
       description: 无权限 / 参数非法
       content:

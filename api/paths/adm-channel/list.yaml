@@ -10,11 +10,73 @@ get:
   parameters:
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
+    - in: query
+      name: status
+      schema: { type: integer }
+      description: 频道状态筛选 / Filter by channel status
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 分页频道列表 / Paginated channel list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: int64
+                              description: 频道 TSID / Channel TSID
+                            name:
+                              type: string
+                              description: 频道名称 / Channel name
+                            type:
+                              type: integer
+                              description: 频道类型 0=公开 1=私有 2=付费 / Channel type
+                            owner_id:
+                              type: string
+                              format: int64
+                              description: 创建者 TSID（来自 creator_uid）/ Creator TSID
+                            custom_id:
+                              type: string
+                              description: 自定义频道 ID / Custom channel identifier
+                            description:
+                              type: string
+                              description: 频道描述 / Channel description
+                            avatar:
+                              type: string
+                              description: 头像 URL / Avatar URL
+                            subscriber_count:
+                              type: integer
+                              description: 订阅人数 / Subscriber count
+                            status:
+                              type: integer
+                              description: 状态 0=禁用 1=正常 / Status
+                            created_at:
+                              type: string
+                              description: 创建时间 / Created at
+                            updated_at:
+                              type: string
+                              description: 更新时间 / Updated at
+                      total:
+                        type: integer
+                        description: 总记录数 / Total count
+                      page:
+                        type: integer
+                        description: 当前页码 / Current page
+                      size:
+                        type: integer
+                        description: 每页条数 / Page size
     '4XX':
       description: 无权限 / 参数非法
       content:

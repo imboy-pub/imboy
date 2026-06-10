@@ -9,8 +9,9 @@ get:
   operationId: searchChannels
   parameters:
     - in: query
-      name: kwd
+      name: keyword
       required: false
+      description: '搜索关键词 / Search keyword'
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -18,7 +19,27 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            type: { type: integer }
+                            avatar: { type: string }
+                            description: { type: string }
+                            subscriber_count: { type: integer }
+                            is_subscribed: { type: boolean }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

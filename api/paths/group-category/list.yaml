@@ -7,16 +7,30 @@ get:
     群分组列表
     List my group categories
   operationId: listGroupCategory
-  parameters:
-    - in: query
-      name: scope
-      required: false
-      schema: { type: string }
   responses:
     '200':
-      description: 成功
+      description: 成功；payload { categories }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      categories:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            category_name:
+                              type: string
+                            sort_order:
+                              type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

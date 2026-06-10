@@ -11,17 +11,55 @@ get:
       name: longitude
       required: true
       schema: { type: number, format: float }
+      description: 经度
     - in: query
       name: latitude
       required: true
       schema: { type: number, format: float }
-    - $ref: '../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../components/parameters/PaginationSize.yaml'
+      description: 纬度
+    - in: query
+      name: unit
+      required: false
+      schema: { type: string, enum: [m, km], default: m }
+      description: 距离单位，默认 m（米）
+    - in: query
+      name: radius
+      required: false
+      schema: { type: number, default: 500 }
+      description: 搜索半径，默认 500（单位由 unit 决定）
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      description: 返回最大条数，默认 100（代码不分页）
   responses:
     '200':
-      description: 成功
+      description: 成功；附近用户列表
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      radius:
+                        type: number
+                        description: 实际搜索半径（单位由 unit 决定）.
+                      size:
+                        type: integer
+                        description: 返回条数.
+                      unit:
+                        type: string
+                        enum: [m, km]
+                        description: 距离单位.
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 附近用户信息.
     '4XX':
       description: 参数非法
       content:

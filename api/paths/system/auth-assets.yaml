@@ -23,3 +23,37 @@ get:
       description: 未鉴权 / 用户被冻结
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+# M25: 补充 post 块（主鉴权逻辑，读 body s/a/v/__path__）
+post:
+  tags: [auth]
+  summary: 主鉴权逻辑（凭 body 参数下发受保护资产）
+  description: |
+    ## 中文
+    主要鉴权入口：通过 body 传入签名参数（s/a/v/__path__），服务端校验后
+    下发受保护的静态资产凭证（如 HMAC 签名 URL、TURN 凭证等）。
+    ## English
+    Primary auth entry: pass signature parameters (s/a/v/__path__) in body;
+    server validates and issues protected asset credentials (HMAC-signed URLs,
+    TURN credentials, etc.).
+  operationId: postAuthAssets
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            s: { type: string, description: 签名字符串 / Signature string }
+            a: { type: string, description: 鉴权动作 / Auth action }
+            v: { type: string, description: 版本号 / Version }
+            __path__: { type: string, description: 目标资源路径 / Target resource path }
+  responses:
+    '200':
+      description: 鉴权成功，返回资产凭证
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 签名无效 / 未鉴权 / 用户被冻结
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -2,6 +2,7 @@
 get:
   tags: [admin]
   summary: 管理后台用户收藏列表
+  description: 获取指定用户的收藏列表，支持按类型、关键词、标签筛选及分页。List a specified user's collected items with optional filtering by type, keyword, tag, and pagination.
   operationId: adm_user_collect_list
   parameters:
     - in: query
@@ -35,7 +36,21 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

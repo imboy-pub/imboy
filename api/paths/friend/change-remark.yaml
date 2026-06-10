@@ -37,7 +37,16 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      remark:
+                        type: string
+                        description: 修改后的备注名 / Updated remark.
     '4XX':
       description: uid 非法 / 非好友 / remark 校验失败
       content:

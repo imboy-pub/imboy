@@ -14,7 +14,59 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 管理员 ID (TSID)
+                            account:
+                              type: string
+                              description: 账号
+                            nickname:
+                              type: string
+                              description: 昵称
+                            email:
+                              type: string
+                              description: 邮箱
+                            mobile:
+                              type: string
+                              description: 手机号
+                            status:
+                              type: integer
+                              description: '状态：1=正常，0=禁用'
+                            role_id:
+                              type: integer
+                              description: 主角色 ID
+                            role_ids:
+                              type: array
+                              items:
+                                type: integer
+                              description: 全部角色 ID 列表
+                            created_at:
+                              type: string
+                              description: 创建时间
+                      total:
+                        type: integer
+                        description: 总数
+                      page:
+                        type: integer
+                        description: 当前页
+                      size:
+                        type: integer
+                        description: 每页条数
     '4XX':
       description: 无权限 / 参数非法
       content:

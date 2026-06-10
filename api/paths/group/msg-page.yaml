@@ -17,6 +17,7 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
     - in: query
       name: last_time
@@ -29,7 +30,26 @@ get:
     '200':
       description: 群消息分页结果
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 群消息对象.
     '4XX':
       description: gid 必须 / 非群成员
       content:

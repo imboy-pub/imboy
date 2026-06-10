@@ -37,7 +37,24 @@ post:
     '200':
       description: 发布成功；payload 含新 moment_id
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 新发布的动态对象 / Newly created moment
+                    properties:
+                      id: { type: integer, format: int64, description: 动态 TSID }
+                      uid: { type: integer, format: int64, description: 发布者 uid }
+                      text: { type: string }
+                      images: { type: array, items: { type: string } }
+                      visibility: { type: string, description: "public/friend/private" }
+                      like_count: { type: integer }
+                      comment_count: { type: integer }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 字段校验失败 / 限流 / feature 未启用
       content:

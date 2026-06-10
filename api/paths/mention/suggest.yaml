@@ -38,7 +38,23 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      members:
+                        type: array
+                        description: 群成员候选列表（同 items，兼容旧版客户端）.
+                        items:
+                          type: object
+                      items:
+                        type: array
+                        description: 群成员候选列表.
+                        items:
+                          type: object
     '4XX':
       description: gid 缺失或非法 / 调用者非群成员
       content:

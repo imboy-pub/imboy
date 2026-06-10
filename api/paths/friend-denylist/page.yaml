@@ -27,7 +27,26 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_denylist_handler#page → user_denylist_logic:page
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            denied_user_id: { type: integer, format: int64 }
+                            nickname: { type: string }
+                            avatar: { type: string }
+                            created_at: { type: integer }
     '4XX':
       description: 未鉴权
       content:

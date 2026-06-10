@@ -16,9 +16,17 @@ post:
           additionalProperties: true
   responses:
     '200':
-      description: 成功
+      description: 成功（payload 为空对象）/ Success (empty payload)
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 处理成功，payload 为空对象 / Empty object on success
     '4XX':
       description: 无权限 / 参数非法
       content:

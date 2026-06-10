@@ -62,7 +62,30 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_collect_handler#page → user_collect_logic:page，列 kind/kind_id/source/created_at/updated_at/tag/info
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind: { type: integer, description: '1文本 2图片 3语音 4视频 5文件 6位置 7名片' }
+                            kind_id: { type: string }
+                            source: { type: string }
+                            tag: { type: string }
+                            remark: { type: string }
+                            info: { type: object, description: JSON 反序列化的收藏元数据 }
+                            created_at: { type: string, format: date-time }
+                            updated_at: { type: string, format: date-time }
     '4XX':
       description: token 无效 / 参数格式非法
       content:

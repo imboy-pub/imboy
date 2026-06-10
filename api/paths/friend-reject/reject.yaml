@@ -17,9 +17,17 @@ post:
             from: { type: integer, description: '申请人 uid / Requester UID' }
   responses:
     '200':
-      description: 成功
+      description: 拒绝成功；无 payload
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: 参数非法 / 未鉴权
       content:

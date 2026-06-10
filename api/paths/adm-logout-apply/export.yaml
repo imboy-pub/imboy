@@ -1,5 +1,5 @@
-# POST /adm/user/logout_apply/export — admin
-post:
+# GET /adm/user/logout_apply/export — admin
+get:
   tags: [admin]
   summary: admin adm-logout-apply - export
   description: |
@@ -7,18 +7,40 @@ post:
     管理后台 adm-logout-apply handler 的 `export` 动作；路径 `/adm/user/logout_apply/export`。
     Admin handler `adm-logout-apply`, action `export`. Path `/adm/user/logout_apply/export`.
   operationId: adm_logout_apply_export
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - name: uid
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: '用户 ID 过滤 / Filter by user ID'
+    - name: keyword
+      in: query
+      required: false
+      schema:
+        type: string
+      description: '关键词搜索 / Keyword search'
+    - name: from_ts
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: '起始时间戳（秒）/ Start timestamp (seconds)'
+    - name: to_ts
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: '结束时间戳（秒）/ End timestamp (seconds)'
   responses:
     '200':
-      description: 成功
+      description: 流式返回 CSV 文件（UTF-8 BOM），Content-Disposition 为附件下载
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        text/csv:
+          schema:
+            type: string
+            format: binary
+            description: 'CSV 列：uid,account,nickname,app_vsn,did,dtype,ip,created_at,body'
     '4XX':
       description: 无权限 / 参数非法
       content:

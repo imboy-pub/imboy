@@ -11,12 +11,50 @@ get:
     - in: query
       name: gid
       required: true
+      description: '群组 ID / Group ID'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [gid, members]
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                        description: 群组 TSID / Group TSID
+                      members:
+                        type: array
+                        description: 每个成员的设备公钥列表 / Per-member device key lists
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: integer
+                              format: int64
+                              description: 成员 TSID / Member TSID
+                            devices:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  device_id:
+                                    type: string
+                                  device_type:
+                                    type: string
+                                  public_key:
+                                    type: string
+                                    description: PEM 公钥 / PEM public key
+                                  key_id:
+                                    type: string
     '4XX':
       description: 参数非法 / 无权限
       content:

@@ -11,12 +11,29 @@ get:
     - in: path
       name: order_no
       required: true
+      description: '订单号 / Order number'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 订单详情 / Order detail
+                    properties:
+                      order_no: { type: string }
+                      channel_id: { type: integer, format: int64 }
+                      user_id: { type: integer, format: int64 }
+                      amount: { type: integer, description: 金额（分） }
+                      status: { type: integer, description: "0=待支付 1=已支付 2=已退款" }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
+                      paid_at: { type: integer, description: 支付时间，Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

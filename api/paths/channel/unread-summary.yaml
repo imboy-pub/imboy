@@ -11,7 +11,18 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 未读摘要，key 为 channel_id（字符串），value 为未读数 / Unread counts keyed by channel_id
+                    additionalProperties:
+                      type: integer
+                      description: 该频道未读消息数
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

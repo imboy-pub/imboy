@@ -18,7 +18,7 @@ post:
             attachments: { type: array, items: { type: string } }
   responses:
     '200':
-      description: 成功
+      description: 成功（无 payload）
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
     '4XX':

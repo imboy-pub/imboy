@@ -13,12 +13,29 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [name]
+          properties:
+            name: { type: string, description: '插件名称 / Plugin name' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: 插件名称
+                      state:
+                        type: string
+                        enum: [enabled]
+                        description: 插件状态
     '4XX':
       description: 无权限 / 参数非法
       content:

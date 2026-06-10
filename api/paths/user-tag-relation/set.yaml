@@ -41,7 +41,7 @@ post:
               description: 新成员对象 ID 列表 / Final member object IDs.
   responses:
     '200':
-      description: 批量设置成功
+      description: 批量设置成功（payload 为空对象）
       content:
         application/json:
           schema:

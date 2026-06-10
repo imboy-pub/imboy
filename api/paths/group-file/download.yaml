@@ -11,12 +11,17 @@ get:
     - in: query
       name: file_id
       required: true
+      description: 文件 ID / File ID
       schema: { type: integer, minimum: 1 }
   responses:
     '200':
-      description: 成功
-      content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+      description: 302 重定向到文件 URL（handler 直接调用 cowboy_req:reply(302)，无 JSON payload）
+      headers:
+        Location:
+          schema:
+            type: string
+            format: uri
+          description: 文件直链 URL
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

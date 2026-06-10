@@ -11,7 +11,29 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [contacts]
+                    properties:
+                      contacts:
+                        type: array
+                        description: 可信联系人列表 / Trusted contact list
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: integer
+                              format: int64
+                              description: 联系人 TSID / Contact user TSID
+                            nickname:
+                              type: string
+                              description: 联系人昵称 / Contact nickname
     '4XX':
       description: 参数非法 / 无权限
       content:

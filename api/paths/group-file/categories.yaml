@@ -11,12 +11,32 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            category:
+                              type: string
+                              description: '文件分类名，如 document / image / video / audio / other'
+                            count:
+                              type: integer
+                              description: 该分类下文件数量
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

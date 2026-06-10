@@ -15,12 +15,21 @@ post:
     - in: path
       name: moment_id
       required: true
+      description: '动态 ID / Moment ID'
       schema: { type: string }
   responses:
     '200':
       description: 点赞成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即点赞 / No payload on success
     '4XX':
       description: 动态不存在 / 无权访问
       content:

@@ -1,5 +1,5 @@
-# POST /adm/channel/{channel_id}/invitations — admin
-post:
+# GET /adm/channel/{channel_id}/invitations — admin
+get:
   tags: [admin]
   summary: admin adm-channel - invitations
   description: |
@@ -11,19 +11,90 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 邀请分页列表 / Paginated invitation list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 邀请记录 ID / Invitation ID
+                            channel_id:
+                              type: integer
+                              format: int64
+                              description: 频道 ID / Channel ID
+                            inviter_uid:
+                              type: integer
+                              format: int64
+                              description: 邀请人 TSID / Inviter TSID
+                            invitee_uid:
+                              type: integer
+                              format: int64
+                              description: 被邀请人 TSID / Invitee TSID
+                            invitation_code:
+                              type: string
+                              description: 邀请码 / Invitation code
+                            status:
+                              type: integer
+                              description: 状态 / Status
+                            message:
+                              type: string
+                              description: 邀请附言 / Invitation message
+                            expires_at:
+                              type: string
+                              description: 过期时间 / Expires at
+                            accepted_at:
+                              type: string
+                              description: 接受时间 / Accepted at
+                            created_at:
+                              type: string
+                              description: 创建时间 / Created at
+                            updated_at:
+                              type: string
+                              description: 更新时间 / Updated at
+                            inviter_user:
+                              type: object
+                              description: 邀请人基础信息（富化）/ Inviter basic info
+                              properties:
+                                id: { type: integer, format: int64 }
+                                account: { type: string }
+                                nickname: { type: string }
+                                avatar: { type: string }
+                                status: { type: integer }
+                            invitee_user:
+                              type: object
+                              description: 被邀请人基础信息（富化）/ Invitee basic info
+                              properties:
+                                id: { type: integer, format: int64 }
+                                account: { type: string }
+                                nickname: { type: string }
+                                avatar: { type: string }
+                                status: { type: integer }
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

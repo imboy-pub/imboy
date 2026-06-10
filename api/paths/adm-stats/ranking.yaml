@@ -1,5 +1,5 @@
-# POST /adm/stats/ranking — admin
-post:
+# GET /adm/stats/ranking — admin
+get:
   tags: [admin]
   summary: admin adm-stats - ranking
   description: |
@@ -7,18 +7,60 @@ post:
     管理后台 adm-stats handler 的 `ranking` 动作；路径 `/adm/stats/ranking`。
     Admin handler `adm-stats`, action `ranking`. Path `/adm/stats/ranking`.
   operationId: adm_stats_ranking
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - name: type
+      in: query
+      required: false
+      schema:
+        type: string
+        default: user
+      description: '排行类型 / Ranking type (e.g. user, group)'
+    - name: metric
+      in: query
+      required: false
+      schema:
+        type: string
+        default: count
+      description: '排行指标 / Ranking metric (e.g. count, active)'
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 10
+      description: '返回条数 / Number of entries to return'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 排名列表（按 type+metric 不同字段有差异）
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 实体 ID (TSID)
+                            name:
+                              type: string
+                              description: 名称（群/频道）或 nickname（用户）
+                            account:
+                              type: string
+                              description: 账号（用户排名时）
+                            metric:
+                              type: integer
+                              description: 排名指标值（消息数/好友数/成员数/订阅数）
     '4XX':
       description: 无权限 / 参数非法
       content:

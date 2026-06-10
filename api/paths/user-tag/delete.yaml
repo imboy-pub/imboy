@@ -33,7 +33,7 @@ post:
               description: 标签名 / Tag name.
   responses:
     '200':
-      description: 删除成功（幂等）
+      description: 删除成功（幂等，payload 为空对象）
       content:
         application/json:
           schema:

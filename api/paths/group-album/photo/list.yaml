@@ -2,11 +2,13 @@
 get:
   tags: [user]
   summary: 相册的照片列表（分页）
+  description: 分页获取指定相册内的照片列表。Paginated list of photos in a specific group album.
   operationId: listGroupAlbumPhotos
   parameters:
     - in: query
       name: album_id
       required: true
+      description: '相册 ID / Album ID'
       schema: { type: string }
     - $ref: '../../../components/parameters/PaginationPage.yaml'
     - $ref: '../../../components/parameters/PaginationSize.yaml'
@@ -14,7 +16,46 @@ get:
     '200':
       description: 分页结果
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            photo_id:
+                              type: integer
+                              format: int64
+                            album_id:
+                              type: integer
+                              format: int64
+                            uploader_id:
+                              type: integer
+                              format: int64
+                            photo_url:
+                              type: string
+                            photo_name:
+                              type: string
+                            like_count:
+                              type: integer
+                            comment_count:
+                              type: integer
+                            created_at:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: album_id 必须 / 无访问权限
       content:

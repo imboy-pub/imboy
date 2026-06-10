@@ -40,7 +40,7 @@ post:
                 - ["allow_search", "1"]
   responses:
     '200':
-      description: 全部成功
+      description: 全部成功（payload 为空对象）
       content:
         application/json:
           schema:

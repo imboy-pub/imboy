@@ -14,7 +14,32 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 当前被禁言用户列表
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: integer
+                              format: int64
+                              description: 用户 ID (TSID)
+                            mute_until:
+                              type: integer
+                              format: int64
+                              description: 禁言截止时间戳（毫秒）
+                            remaining_seconds:
+                              type: integer
+                              description: 剩余禁言秒数
     '4XX':
       description: 无权限 / 参数非法
       content:

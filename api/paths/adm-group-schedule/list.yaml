@@ -2,6 +2,7 @@
 get:
   tags: [admin]
   summary: 管理后台群日程列表
+  description: 分页获取指定群的日程列表（管理员视角）。List group schedules with pagination (admin view).
   operationId: adm_group_schedule_list
   parameters:
     - in: query
@@ -15,7 +16,21 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

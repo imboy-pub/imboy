@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台恢复群日程
+  description: 管理员恢复已取消或已删除的群日程。Restore a cancelled or deleted group schedule by admin.
   operationId: adm_group_schedule_restore
   requestBody:
     required: true
@@ -11,7 +12,7 @@ post:
           type: object
           required: [schedule_id]
           properties:
-            schedule_id: { type: integer, description: '目标 ID' }
+            schedule_id: { type: string, description: 'TSID 格式日程 ID / Schedule ID in TSID string format' }
   responses:
     '200':
       description: 成功

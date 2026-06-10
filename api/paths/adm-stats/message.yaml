@@ -11,7 +11,35 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      daily_c2c:
+                        type: array
+                        description: 每日 C2C 消息趋势（近 days 天）
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            count:
+                              type: integer
+                      daily_c2g:
+                        type: array
+                        description: 每日 C2G 消息趋势（近 days 天）
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            count:
+                              type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

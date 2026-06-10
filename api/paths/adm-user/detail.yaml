@@ -7,11 +7,42 @@ get:
     管理后台 adm-user handler 的 `detail` 动作；路径 `/adm/user/detail`。
     Admin handler `adm-user`, action `detail`. Path `/adm/user/detail`.
   operationId: adm_user_detail
+  parameters:
+    - name: uid
+      in: query
+      required: true
+      description: 用户 ID / User ID
+      schema:
+        type: integer
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 用户详情（含关联统计）
+                    properties:
+                      id: { type: string, description: '用户 TSID（字符串）' }
+                      account: { type: string }
+                      nickname: { type: string }
+                      mobile: { type: string }
+                      email: { type: string }
+                      avatar: { type: string }
+                      gender: { type: integer }
+                      region: { type: string }
+                      sign: { type: string }
+                      status: { type: integer, description: '0=封禁 1=正常' }
+                      experience: { type: integer }
+                      created_at: { type: integer }
+                      device_count: { type: integer, description: '设备数' }
+                      friend_count: { type: integer, description: '好友数' }
+                      group_count: { type: integer, description: '群组数' }
     '4XX':
       description: 无权限 / 参数非法
       content:

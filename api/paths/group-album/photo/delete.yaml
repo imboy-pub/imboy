@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 删除照片
+  description: 删除群相册中的照片；仅上传者或群管理员可操作。Delete a photo from the group album; only the uploader or group admin can delete.
   operationId: deleteGroupAlbumPhoto
   requestBody:
     required: true

@@ -1,10 +1,10 @@
 # POST /v1/e2ee/backup/delete
 post:
   tags: [user]
-  summary: 删除某个 shard 备份
+  summary: 删除某个备份
   description: |
     ## 中文 / English
-    删除某个 shard 备份
+    删除某个备份
     See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeBackupDelete
   requestBody:
@@ -14,13 +14,26 @@ post:
         schema:
           type: object
           properties:
-            shard_id: { type: string }
+            backup_id: { type: integer, description: '备份 ID / Backup ID' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [deleted]
+                    properties:
+                      deleted:
+                        type: boolean
+                        example: true
+                        description: 是否已删除 / Whether the backup was deleted
     '4XX':
-      description: 参数非法 / 无权限 / shard 校验失败
+      description: 参数非法 / 无权限 / backup 校验失败
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

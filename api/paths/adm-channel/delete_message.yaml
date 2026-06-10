@@ -1,5 +1,5 @@
-# GET /adm/channel/{channel_id}/message/{message_id}/delete — admin
-get:
+# DELETE /adm/channel/{channel_id}/message/{message_id}/delete — admin
+delete:
   tags: [admin]
   summary: admin adm-channel - delete_message
   description: |
@@ -11,16 +11,26 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
     - in: path
       name: message_id
       required: true
+      description: 消息 ID / Message ID
       schema: { type: string }
   responses:
     '200':
-      description: 成功
+      description: 成功（payload 为空对象）/ Success (empty payload)
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功，payload 为空对象 / Empty object on success
     '4XX':
       description: 无权限 / 参数非法
       content:

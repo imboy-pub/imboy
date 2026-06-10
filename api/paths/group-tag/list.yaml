@@ -11,12 +11,40 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            tag_id:
+                              type: integer
+                              format: int64
+                            tag_name:
+                              type: string
+                            gid:
+                              type: integer
+                              format: int64
+                            created_by:
+                              type: integer
+                              format: int64
+                            created_at:
+                              type: string
+                              format: date-time
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

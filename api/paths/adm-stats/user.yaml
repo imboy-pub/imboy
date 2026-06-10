@@ -1,5 +1,5 @@
-# POST /adm/stats/user — admin
-post:
+# GET /adm/stats/user — admin
+get:
   tags: [admin]
   summary: admin adm-stats - user
   description: |
@@ -7,18 +7,46 @@ post:
     管理后台 adm-stats handler 的 `user` 动作；路径 `/adm/stats/user`。
     Admin handler `adm-stats`, action `user`. Path `/adm/stats/user`.
   operationId: adm_stats_user
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - name: days
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 7
+      description: '统计天数 / Number of days to aggregate'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      daily_new:
+                        type: array
+                        description: 每日新增用户趋势（近 days 天）
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            count:
+                              type: integer
+                      active_users:
+                        type: integer
+                        description: 正常状态用户数（status=1）
+                      banned_users:
+                        type: integer
+                        description: 封禁用户数（status=0）
+                      deleted_users:
+                        type: integer
+                        description: 已删除用户数（status=-1）
     '4XX':
       description: 无权限 / 参数非法
       content:

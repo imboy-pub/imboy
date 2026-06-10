@@ -10,7 +10,24 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 app_feature_handler#ice_servers → config_ds:ice_servers()
+                    properties:
+                      ice_servers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            urls: { type: array, items: { type: string }, description: STUN/TURN URL 列表 }
+                            username: { type: string }
+                            credential: { type: string }
     '4XX':
       description: 参数非法
       content:

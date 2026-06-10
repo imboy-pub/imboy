@@ -2,19 +2,51 @@
 get:
   tags: [user]
   summary: 照片的评论列表
+  description: 获取群相册照片的评论列表（非分页，按 limit 截取）。List comments on a group album photo (non-paginated, truncated by limit).
   operationId: listGroupAlbumPhotoComments
   parameters:
     - in: query
       name: photo_id
       required: true
+      description: '照片 ID / Photo ID'
       schema: { type: integer, minimum: 1 }
-    - $ref: '../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../components/parameters/PaginationSize.yaml'
+    - in: query
+      name: limit
+      required: false
+      schema: { type: integer, minimum: 1, default: 20 }
+      description: '返回条数上限（非分页，代码使用 limit 而非 page/size）'
   responses:
     '200':
-      description: 分页结果
+      description: 评论列表（非分页，按 limit 截取）
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      comments:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            comment_id:
+                              type: integer
+                              format: int64
+                            photo_id:
+                              type: integer
+                              format: int64
+                            user_id:
+                              type: integer
+                              format: int64
+                            content:
+                              type: string
+                            created_at:
+                              type: string
+                              format: date-time
     '4XX':
       description: photo_id 必须 / 无权限
       content:

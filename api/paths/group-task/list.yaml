@@ -11,10 +11,12 @@ get:
     - in: query
       name: gid
       required: true
+      description: '群组 ID / Group ID'
       schema: { type: string }
     - in: query
       name: status
       required: false
+      description: '任务状态筛选 / Task status filter'
       schema: { type: string, enum: [pending, in_progress, submitted, approved, rejected] }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -22,7 +24,43 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            task_id:
+                              type: integer
+                              format: int64
+                            group_id:
+                              type: integer
+                              format: int64
+                            creator_id:
+                              type: integer
+                              format: int64
+                            title:
+                              type: string
+                            status:
+                              type: integer
+                            deadline:
+                              type: string
+                              format: date-time
+                            created_at:
+                              type: string
+                              format: date-time
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

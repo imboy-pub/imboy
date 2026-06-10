@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 点赞照片（幂等）
+  description: 给群相册照片点赞，幂等操作（重复点赞不报错）。Like a group album photo; idempotent — repeated calls succeed silently.
   operationId: likeGroupAlbumPhoto
   requestBody:
     required: true

@@ -16,16 +16,34 @@ get:
     - in: query
       name: uid1
       required: true
+      description: 用户 ID（一方）/ User ID (first party)
       schema: { type: string }
     - in: query
       name: uid2
       required: true
+      description: 用户 ID（另一方）/ User ID (second party)
       schema: { type: string }
   responses:
     '200':
       description: 共同群组 { count, list }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        description: 共同群组数量.
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 群组资料对象.
     '4XX':
       description: uid1 / uid2 缺失或非法
       content:

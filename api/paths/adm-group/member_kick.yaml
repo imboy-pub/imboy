@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台踢出群成员
+  description: 管理员将指定用户从群组中移除。Remove a member from a group by admin.
   operationId: adm_group_member_kick
   requestBody:
     required: true

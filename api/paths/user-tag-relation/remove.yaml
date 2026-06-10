@@ -37,7 +37,7 @@ post:
               minimum: 1
   responses:
     '200':
-      description: 移除成功（幂等）
+      description: 移除成功（幂等，payload 为空对象）
       content:
         application/json:
           schema:

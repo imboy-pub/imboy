@@ -1,5 +1,5 @@
-# POST /adm/channel/{channel_id}/admins — admin
-post:
+# GET /adm/channel/{channel_id}/admins — admin
+get:
   tags: [admin]
   summary: admin adm-channel - admins
   description: |
@@ -11,19 +11,62 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 管理员分页列表 / Paginated admin list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 记录 ID / Record ID
+                            channel_id:
+                              type: integer
+                              format: int64
+                              description: 频道 ID / Channel ID
+                            user_id:
+                              type: integer
+                              format: int64
+                              description: 用户 TSID / User TSID
+                            role:
+                              type: integer
+                              description: 角色 1=普通管理员 2=高级管理员 3=创建者 / Role
+                            created_at:
+                              type: string
+                              description: 创建时间 / Created at
+                            user:
+                              type: object
+                              description: 用户基础信息（富化）/ User basic info (enriched)
+                              properties:
+                                id: { type: integer, format: int64 }
+                                account: { type: string }
+                                nickname: { type: string }
+                                avatar: { type: string }
+                                status: { type: integer }
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

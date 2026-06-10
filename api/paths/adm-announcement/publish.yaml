@@ -13,7 +13,11 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [id]
+          properties:
+            id:
+              type: string
+              description: 公告 ID（TSID）/ Announcement ID (TSID)
   responses:
     '200':
       description: 成功

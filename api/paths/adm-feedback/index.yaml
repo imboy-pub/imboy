@@ -11,7 +11,59 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 反馈列表
+                        items:
+                          type: object
+                          properties:
+                            feedback_id:
+                              type: string
+                              description: 反馈 ID（TSID 转字符串）
+                            user_id:
+                              type: string
+                              description: 用户 ID（TSID 转字符串）
+                            device_id:
+                              type: string
+                            client_operating_system:
+                              type: string
+                            client_operating_system_vsn:
+                              type: string
+                            type:
+                              type: integer
+                            rating:
+                              type: integer
+                            contact_detail:
+                              type: string
+                            body:
+                              type: string
+                            attach:
+                              type: string
+                            reply_count:
+                              type: integer
+                            status:
+                              type: integer
+                            updated_at:
+                              type: string
+                            created_at:
+                              type: string
+                            app_vsn:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

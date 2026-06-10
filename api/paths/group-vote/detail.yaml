@@ -11,12 +11,63 @@ get:
     - in: query
       name: vote_id
       required: true
+      description: 投票 ID / Vote ID
       schema: { type: integer, minimum: 1 }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: group_vote_logic:get_vote_detail 返回的投票详情
+                    properties:
+                      vote_id:
+                        type: string
+                        description: 投票业务 ID
+                      gid:
+                        type: integer
+                        format: int64
+                      creator_id:
+                        type: integer
+                        format: int64
+                      title:
+                        type: string
+                      description:
+                        type: string
+                      vote_type:
+                        type: integer
+                        description: '1=单选 2=多选'
+                      is_anonymous:
+                        type: boolean
+                      status:
+                        type: integer
+                        description: '1=进行中 2=已结束'
+                      end_at:
+                        type: string
+                        format: date-time
+                      options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            option_id:
+                              type: integer
+                              format: int64
+                            option_text:
+                              type: string
+                            vote_count:
+                              type: integer
+                      total_votes:
+                        type: integer
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

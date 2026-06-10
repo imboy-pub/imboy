@@ -32,7 +32,17 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 qr_login_handler#status → qr_login_logic:get_status
+                    properties:
+                      status: { type: string, enum: [pending, scanned, confirmed, cancelled, expired] }
+                      token: { type: string, description: 仅 status=confirmed 时存在，JWT access token }
+                      refresh_token: { type: string, description: 仅 status=confirmed 时存在 }
     '4XX':
       description: session_token 缺失或会话已过期 / 不存在
       content:

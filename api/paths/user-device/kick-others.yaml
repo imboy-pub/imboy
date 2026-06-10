@@ -39,7 +39,15 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_device_handler#kick_others → user_device_logic:kick_all_other_devices
+                    properties:
+                      message: { type: string, example: '其他设备已踢出' }
     '4XX':
       description: device_type / device_id 非法
       content:

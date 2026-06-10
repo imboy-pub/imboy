@@ -35,7 +35,33 @@ get:
     '200':
       description: 加群成功；payload 含群资料 + 自己作为新成员的资料
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 群资料（含 group_member 字段为当前用户的成员卡片）.
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                      title:
+                        type: string
+                      avatar:
+                        type: string
+                      member_count:
+                        type: integer
+                      member_max:
+                        type: integer
+                      type:
+                        type: string
+                        description: 固定为 "group".
+                      group_member:
+                        type: object
+                        description: 当前用户在群内的成员卡片.
     '302':
       description: 未登录 / 签名校验失败时重定向到官网
     '4XX':

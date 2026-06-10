@@ -16,7 +16,19 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [url]
+                    properties:
+                      url:
+                        type: string
+                        description: 短时有效的 Garage S3 预签名 GET URL / Short-lived presigned GET URL
     '4XX':
       description: 未鉴权 / 参数非法
       content:

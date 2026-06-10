@@ -11,6 +11,7 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
   requestBody:
     required: true
@@ -19,13 +20,31 @@ post:
         schema:
           type: object
           properties:
-            user_id: { type: string }
-            expires_in: { type: integer }
+            invitee_uid: { type: string }
+            expires_in:
+              type: integer
+              x-not-implemented: true
+              description: '邀请有效期（秒）（x-not-implemented：当前后端未读取此字段）'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 邀请对象 / Invitation object
+                    properties:
+                      id: { type: integer, format: int64, description: 邀请 TSID }
+                      channel_id: { type: integer, format: int64 }
+                      inviter_uid: { type: integer, format: int64 }
+                      invitee_uid: { type: integer, format: int64 }
+                      status: { type: integer, description: "0=待处理 1=已接受 2=已拒绝" }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

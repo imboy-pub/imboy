@@ -13,15 +13,24 @@ post:
       application/json:
         schema:
           type: object
-          required: [name]
+          required: [name, path]
           properties:
             name: { type: string, description: '插件名称 / Plugin name' }
-            path: { type: string, description: '插件路径（可选，用于本地安装）/ Plugin path (optional, for local install)' }
+            path: { type: string, description: '插件路径（本地安装必填）/ Plugin path (required for local install)' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 安装后的插件信息对象（imboy_plugin_manager:install 返回）
     '4XX':
       description: 无权限 / 参数非法
       content:

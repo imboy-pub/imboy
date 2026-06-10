@@ -14,7 +14,66 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 动态举报分页列表 / Paginated moment report list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 举报记录 TSID / Report TSID
+                            post_id:
+                              type: integer
+                              format: int64
+                              description: 被举报动态 TSID / Reported moment TSID
+                            reporter_uid:
+                              type: integer
+                              format: int64
+                              description: 举报人 TSID / Reporter TSID
+                            reason:
+                              type: string
+                              description: 举报原因 / Reason
+                            description:
+                              type: string
+                              description: 举报详情 / Description
+                            status:
+                              type: integer
+                              description: 状态 0=待处理 1=无违规 2=违规删除 / Status
+                            handled_by:
+                              type: integer
+                              format: int64
+                              description: 处理管理员 TSID / Handler admin TSID
+                            handled_at:
+                              type: string
+                              description: 处理时间 / Handled at
+                            created_at:
+                              type: string
+                            updated_at:
+                              type: string
+                            target_type:
+                              type: string
+                              description: 固定为 moment / Always "moment"
+                            target_id:
+                              type: integer
+                              format: int64
+                              description: 等同 post_id / Same as post_id
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

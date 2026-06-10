@@ -2,6 +2,7 @@
 get:
   tags: [admin]
   summary: 管理后台插件日志列表
+  description: 获取插件审计日志列表，支持按插件名称筛选及分页。List plugin audit logs with optional filtering by plugin name and pagination.
   operationId: adm_plugin_logs
   parameters:
     - in: query
@@ -23,7 +24,27 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 插件审计日志列表
+                        items:
+                          type: object
+                          additionalProperties: true
+                      limit:
+                        type: integer
+                        description: 每页条数
+                      offset:
+                        type: integer
+                        description: 偏移量
     '4XX':
       description: 无权限 / 参数非法
       content:

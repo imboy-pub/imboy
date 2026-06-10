@@ -7,11 +7,34 @@ get:
     管理后台 adm-user handler 的 `search` 动作；路径 `/adm/user/search`。
     Admin handler `adm-user`, action `search`. Path `/adm/user/search`.
   operationId: adm_user_search
+  parameters:
+    - name: keyword
+      in: query
+      required: true
+      description: 搜索关键词 / Search keyword
+      schema:
+        type: string
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

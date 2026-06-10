@@ -11,12 +11,44 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
   responses:
     '200':
       description: 最新公告（无则 payload 为空对象）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 最新公告对象；无公告时为空对象 {}
+                    properties:
+                      notice_id:
+                        type: integer
+                        format: int64
+                      user_id:
+                        type: integer
+                        format: int64
+                      edit_user_id:
+                        type: integer
+                        format: int64
+                      body:
+                        type: string
+                      status:
+                        type: integer
+                      expired_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                      created_at:
+                        type: string
+                        format: date-time
     '4XX':
       description: gid 必须 / 非群成员
       content:

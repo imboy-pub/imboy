@@ -35,7 +35,19 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: 新分组 ID / New category id.
+                      name:
+                        type: string
+                        description: 分组名称 / Category name.
     '4XX':
       description: 名称非法 / 同名分组已存在 / 超出每用户分组上限
       content:

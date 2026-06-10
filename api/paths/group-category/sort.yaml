@@ -13,14 +13,31 @@ post:
       application/json:
         schema:
           type: object
-          required: [ids]
+          required: [sort_orders]
           properties:
-            ids: { type: array, items: { type: integer }, minItems: 1 }
+            sort_orders:
+              type: array
+              minItems: 1
+              description: 分组排序列表，每项包含分组 id 与新的排序值
+              items:
+                type: object
+                required: [id, sort_order]
+                properties:
+                  id: { type: integer, minimum: 1, description: 分组 ID }
+                  sort_order: { type: integer, description: 排序值，值越小越靠前 }
   responses:
     '200':
-      description: 成功
+      description: 排序更新成功；无 payload
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

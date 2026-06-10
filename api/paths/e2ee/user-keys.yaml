@@ -9,14 +9,46 @@ get:
   operationId: e2eeUserKeys
   parameters:
     - in: query
-      name: uids
+      name: uid
       required: true
-      schema: { type: string, description: '逗号分隔 TSID 列表' }
+      description: '目标用户 ID 列表 / Target user ID list'
+      schema: { type: string, description: '逗号分隔 TSID 列表 / Comma-separated TSID list' }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [uid, devices]
+                    properties:
+                      uid:
+                        type: integer
+                        format: int64
+                        description: 目标用户 TSID / Target user TSID
+                      devices:
+                        type: array
+                        description: 该用户各设备的公钥条目 / Public key entries per device
+                        items:
+                          type: object
+                          properties:
+                            device_id:
+                              type: string
+                              description: 设备 ID / Device ID
+                            device_type:
+                              type: string
+                              description: 设备类型 / Device type (ios/android/web…)
+                            public_key:
+                              type: string
+                              description: PEM 格式 RSA 公钥 / RSA public key in PEM format
+                            key_id:
+                              type: string
+                              description: 密钥版本 ID / Key version ID
     '4XX':
       description: 参数非法 / 无权限
       content:

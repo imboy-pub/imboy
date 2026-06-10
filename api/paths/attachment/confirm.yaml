@@ -22,7 +22,19 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [object_key]
+                    properties:
+                      object_key:
+                        type: string
+                        description: 已落库的 S3 object key / Persisted S3 object key
     '4XX':
       description: 未鉴权 / 参数非法
       content:

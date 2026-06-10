@@ -45,7 +45,27 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [msg, forward_msg_ids, forward_count]
+                    properties:
+                      msg:
+                        type: string
+                        example: messages_forwarded
+                        description: 固定标识 / Fixed status token
+                      forward_msg_ids:
+                        type: array
+                        items:
+                          type: integer
+                          format: int64
+                        description: 新生成的转发消息 TSID 列表 / TSIDs of newly created forwarded messages
+                      forward_count:
+                        type: integer
+                        description: 实际转发条数 / Number of messages actually forwarded
     '4XX':
       description: |
         参数非法 (invalid_param) / 非好友 (not_friends) / 非群成员

@@ -39,7 +39,25 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_tag_handler#page → user_tag_logic:page，列 id/name/scene/creator_user_id
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64, description: tag TSID }
+                            name: { type: string }
+                            scene: { type: integer, description: '1=collect 2=friend' }
     '4XX':
       description: token 无效 / 不支持的 Scene
       content:

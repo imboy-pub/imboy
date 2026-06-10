@@ -18,7 +18,28 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                        description: 管理员 ID (TSID)
+                      account:
+                        type: string
+                        description: 账号
+                      nickname:
+                        type: string
+                        description: 昵称
+                      next:
+                        type: string
+                        description: 登录后跳转路径
     '4XX':
       description: 无权限 / 参数非法
       content:

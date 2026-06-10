@@ -11,7 +11,31 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [list]
+                    properties:
+                      list:
+                        type: array
+                        description: 备份记录列表 / Backup records
+                        items:
+                          type: object
+                          properties:
+                            backup_id:
+                              type: integer
+                              description: 备份 ID / Backup ID
+                            key_version:
+                              type: string
+                              description: 密钥版本 / Key version
+                            created_at:
+                              type: integer
+                              description: 创建时间戳（毫秒）/ Created at in ms
     '4XX':
       description: 参数非法 / 无权限
       content:

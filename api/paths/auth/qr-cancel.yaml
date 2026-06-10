@@ -31,7 +31,7 @@ post:
               type: string
   responses:
     '200':
-      description: 取消成功
+      description: 取消成功（无 payload）
       content:
         application/json:
           schema:

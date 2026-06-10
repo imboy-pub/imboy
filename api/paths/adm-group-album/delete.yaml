@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除群相册
+  description: 管理员删除指定群相册（软删除）。Delete a group album by admin (soft delete).
   operationId: adm_group_album_delete
   requestBody:
     required: true
@@ -11,7 +12,7 @@ post:
           type: object
           required: [album_id]
           properties:
-            album_id: { type: integer, description: '目标 ID' }
+            album_id: { type: string, description: 'TSID 格式相册 ID / Album ID in TSID string format' }
   responses:
     '200':
       description: 成功

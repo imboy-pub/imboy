@@ -13,10 +13,10 @@ post:
       application/json:
         schema:
           type: object
-          required: [task_id, assignees]
+          required: [task_id, user_ids]
           properties:
             task_id: { type: integer, minimum: 1 }
-            assignees: { type: array, items: { type: string }, minItems: 1 }
+            user_ids: { type: array, items: { type: string }, minItems: 1 }
   responses:
     '200':
       description: 成功

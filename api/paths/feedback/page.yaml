@@ -13,7 +13,36 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 feedback_handler#page → feedback_logic:page，列 feedback_id/device_id/type/rating/contact_detail/body/attach/reply_count/status/updated_at/created_at/app_vsn
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            feedback_id: { type: integer }
+                            device_id: { type: string }
+                            type: { type: string }
+                            rating: { type: string }
+                            contact_detail: { type: string }
+                            body: { type: string }
+                            attach: { type: array, items: { type: string }, description: 截图 URL 列表 }
+                            reply_count: { type: integer }
+                            status: { type: integer }
+                            app_vsn: { type: string }
+                            created_at: { type: string, format: date-time }
+                            updated_at: { type: string, format: date-time }
     '4XX':
       description: 参数非法
       content:

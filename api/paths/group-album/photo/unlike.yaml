@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 取消点赞照片（幂等）
+  description: 取消群相册照片的点赞，幂等操作。Unlike a group album photo; idempotent.
   operationId: unlikeGroupAlbumPhoto
   requestBody:
     required: true

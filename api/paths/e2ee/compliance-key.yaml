@@ -1,25 +1,33 @@
-# POST /v1/e2ee/compliance_key
-post:
+# GET /v1/e2ee/compliance_key
+# 修订(M23)：代码实现为 GET（只读查询，不写入 body），原 post: 改为 get:，删除 requestBody
+get:
   tags: [user]
-  summary: 合规密钥上报（监管侧）
+  summary: 合规密钥查询（监管侧）
   description: |
     ## 中文 / English
-    合规密钥上报（监管侧）
+    合规密钥查询（监管侧）
     See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeComplianceKey
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          properties:
-            encrypted_key: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [key_id, public_key]
+                    properties:
+                      key_id:
+                        type: string
+                        description: 当前活跃合规密钥 ID / Active compliance key ID
+                      public_key:
+                        type: string
+                        description: RSA 公钥（PEM）/ RSA public key in PEM format
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

@@ -7,11 +7,75 @@ get:
     管理后台 adm-group handler 的 `detail` 动作；路径 `/adm/group/detail`。
     Admin handler `adm-group`, action `detail`. Path `/adm/group/detail`.
   operationId: adm_group_detail
+  parameters:
+    - name: gid
+      in: query
+      required: true
+      description: 群组 ID / Group ID
+      schema:
+        type: integer
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: '群组 TSID (string) / Group TSID'
+                      title:
+                        type: string
+                        description: '群名称 / Group name'
+                      avatar:
+                        type: string
+                        description: '群头像 URL / Group avatar URL'
+                      introduction:
+                        type: string
+                        description: '群介绍 / Group introduction'
+                      owner_uid:
+                        type: string
+                        description: '群主 UID (string) / Owner UID'
+                      creator_uid:
+                        type: string
+                        description: '创建者 UID (string) / Creator UID'
+                      member_count:
+                        type: integer
+                        description: '当前成员数 / Current member count'
+                      member_max:
+                        type: integer
+                        description: '最大成员数 / Max member count'
+                      type:
+                        type: integer
+                        description: '群类型 / Group type'
+                      join_limit:
+                        type: integer
+                        description: '加群限制 / Join restriction'
+                      status:
+                        type: integer
+                        description: '群状态 / Group status'
+                      created_at:
+                        type: string
+                        description: '创建时间 / Created at'
+                      owner:
+                        type: object
+                        description: '群主信息 / Owner info'
+                        properties:
+                          id:
+                            type: string
+                            description: '群主 UID (string) / Owner UID'
+                          nickname:
+                            type: string
+                            description: '群主昵称 / Owner nickname'
+                          avatar:
+                            type: string
+                            description: '群主头像 URL / Owner avatar URL'
     '4XX':
       description: 无权限 / 参数非法
       content:

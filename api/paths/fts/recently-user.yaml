@@ -6,11 +6,63 @@ get:
     ## 中文 / English
     最近联系人
   operationId: ftsRecentlyUser
+  parameters:
+    - in: query
+      name: keyword
+      required: false
+      schema: { type: string }
+      description: 搜索关键词
+    - in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 页码
+    - in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: 每页数量
   responses:
     '200':
-      description: 成功
+      description: 成功；最近注册用户分页列表
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: integer
+                              format: int64
+                            nickname:
+                              type: string
+                            avatar:
+                              type: string
+                            gender:
+                              type: integer
+                            signature:
+                              type: string
+                            created_at:
+                              type: string
+                            is_friend:
+                              type: boolean
+                            remark:
+                              type: string
     '4XX':
       description: 参数非法
       content:

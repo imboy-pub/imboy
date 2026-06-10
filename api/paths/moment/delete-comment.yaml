@@ -15,16 +15,26 @@ post:
     - in: path
       name: moment_id
       required: true
+      description: 朋友圈动态 ID / Moment ID
       schema: { type: string }
     - in: path
       name: comment_id
       required: true
+      description: 评论 ID / Comment ID
       schema: { type: string }
   responses:
     '200':
       description: 删除成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即删除评论 / No payload on success
     '4XX':
       description: 评论或动态不存在 / 无权删除
       content:

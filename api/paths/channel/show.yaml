@@ -11,12 +11,37 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 频道详情 / Channel detail
+                    properties:
+                      id: { type: integer, format: int64, description: 频道 TSID }
+                      name: { type: string }
+                      type: { type: integer, description: "1=公开 2=私有" }
+                      status: { type: integer, description: "0=正常 1=禁用" }
+                      description: { type: string }
+                      avatar: { type: string }
+                      custom_id: { type: string }
+                      tags: { type: array, items: { type: string } }
+                      owner_uid: { type: integer, format: int64 }
+                      subscriber_count: { type: integer }
+                      message_count: { type: integer }
+                      is_subscribed: { type: boolean }
+                      price: { type: integer, description: 订阅价格（分） }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
+                      updated_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

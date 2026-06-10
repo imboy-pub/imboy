@@ -30,7 +30,21 @@ post:
     '200':
       description: 解除成功；payload { gid, user_id }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                      user_id:
+                        type: integer
+                        format: int64
     '4XX':
       description: 限流 / gid / user_id 格式有误 / 无权限
       content:

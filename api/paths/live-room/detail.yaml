@@ -10,12 +10,29 @@ get:
     - in: query
       name: room_id
       required: true
+      description: '直播间 ID / Live room ID'
       schema: { type: integer }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 直播间详情（stream_key 仅房主可见）
+                    properties:
+                      id: { type: integer, format: int64, description: 直播间 TSID }
+                      user_id: { type: integer, format: int64, description: 房主 uid }
+                      title: { type: string }
+                      cover: { type: string }
+                      status: { type: integer, description: 直播间状态 }
+                      stream_key: { type: string, description: 推流密钥（仅房主返回） }
+                      created_at: { type: integer, format: int64 }
     '4XX':
       description: 参数非法
       content:

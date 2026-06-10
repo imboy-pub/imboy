@@ -2,6 +2,7 @@
 get:
   tags: [admin]
   summary: 管理后台群文件详情
+  description: 获取指定群文件的详细信息（管理员视角）。Get group file details (admin view).
   operationId: adm_group_file_detail
   parameters:
     - in: query
@@ -13,7 +14,16 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: '详情对象（字段以对应表/handler 为准）'
     '4XX':
       description: 无权限 / 参数非法
       content:

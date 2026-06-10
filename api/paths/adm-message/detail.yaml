@@ -7,11 +7,75 @@ get:
     管理后台 adm-message handler 的 `detail` 动作；路径 `/adm/message/detail`。
     Admin handler `adm-message`, action `detail`. Path `/adm/message/detail`.
   operationId: adm_message_detail
+  parameters:
+    - in: query
+      name: msg_id
+      required: true
+      schema: { type: string }
+      description: 消息 ID（TSID）/ Message ID (TSID)
+    - in: query
+      name: msg_scope
+      schema: { type: string }
+      description: 消息范围（c2c / c2g / channel）/ Message scope
+    - in: query
+      name: uid
+      schema: { type: string }
+      description: 用户 ID / User ID
+    - in: query
+      name: conversation
+      schema: { type: string }
+      description: 会话标识 / Conversation key
+    - in: query
+      name: from_ts
+      schema: { type: integer }
+      description: 起始时间戳（毫秒）/ Start timestamp (ms)
+    - in: query
+      name: to_ts
+      schema: { type: integer }
+      description: 结束时间戳（毫秒）/ End timestamp (ms)
+    - in: query
+      name: keyword
+      schema: { type: string }
+      description: 关键词检索 / Keyword search
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 单条消息详情 / Single message detail
+                    properties:
+                      scope:
+                        type: string
+                        description: 消息范围 c2c/c2g/c2s/s2c / Message scope
+                      msg_id:
+                        type: string
+                        description: 消息 ID（字符串）/ Message ID
+                      from_id:
+                        type: string
+                        format: int64
+                        description: 发送方 TSID（字符串）/ Sender TSID
+                      to_id:
+                        type: string
+                        format: int64
+                        description: 接收方 TSID（字符串）/ Receiver TSID
+                      msg_type:
+                        type: string
+                      action:
+                        type: string
+                      payload:
+                        type: string
+                        description: 消息体（audit_mode=full 时有值）/ Message body
+                      created_at:
+                        type: string
+                      server_ts:
+                        type: string
     '4XX':
       description: 无权限 / 参数非法
       content:

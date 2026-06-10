@@ -11,17 +11,71 @@ get:
       name: keyword
       required: true
       schema: { type: string }
+      description: 搜索关键词
     - in: query
-      name: conv_key
+      name: conversation_id
       required: false
       schema: { type: string }
+      description: 会话 ID（原 conv_key，格式 c2c:{min_uid}:{max_uid} 或 c2g:{group_id}）
+    - in: query
+      name: type
+      required: false
+      schema: { type: string, enum: [C2C, C2G], default: C2C }
+      description: 会话类型，默认 C2C
+    - in: query
+      name: start_date
+      required: false
+      schema: { type: string, format: date }
+      description: 搜索起始日期（YYYY-MM-DD）
+    - in: query
+      name: end_date
+      required: false
+      schema: { type: string, format: date }
+      description: 搜索截止日期（YYYY-MM-DD）
+    - in: query
+      name: msg_type
+      required: false
+      schema: { type: string }
+      description: 消息类型过滤
+    - in: query
+      name: from_uid
+      required: false
+      schema: { type: integer }
+      description: 按发送者 UID 过滤
+    - in: query
+      name: sort_by
+      required: false
+      schema: { type: string, enum: [relevance, created_at], default: relevance }
+      description: 排序方式
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
-      description: 成功
+      description: 成功；消息全文搜索分页结果
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 消息命中条目（C2C 或 C2G）.
+                      filters:
+                        type: object
+                        description: 回显的高级过滤参数（仅传入 Options 时存在）.
     '4XX':
       description: 参数非法
       content:

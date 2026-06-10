@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除群分类
+  description: 管理员删除指定群分类。Delete a group category by admin.
   operationId: adm_group_category_delete
   requestBody:
     required: true

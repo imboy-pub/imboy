@@ -46,7 +46,16 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 qr_login_handler → qr_login_logic:create_session
+                    properties:
+                      qr_token: { type: string, description: 二维码会话 token（嵌入二维码 URL） }
+                      expires_in: { type: integer, description: 会话有效期（秒） }
     '4XX':
       description: 参数缺失（device_id 为空）
       content:

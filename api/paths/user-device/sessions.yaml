@@ -25,7 +25,23 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_device_handler#sessions → user_device_logic:get_active_devices
+                    properties:
+                      count: { type: integer }
+                      devices:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            device_type: { type: string }
+                            device_id: { type: string }
+                            pid: { type: string, description: Erlang 进程标识 }
     '4XX':
       description: 未鉴权
       content:

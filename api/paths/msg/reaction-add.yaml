@@ -33,13 +33,38 @@ post:
             emoji:
               type: string
               description: emoji 字符（Unicode）/ Emoji character(s).
+            msg_type:
+              type: string
+              enum: [c2c, c2g, s2c]
+              default: c2c
+              description: 消息类型 / Message type (default c2c).
   responses:
     '200':
       description: 添加成功
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [msg_id, emoji, user_id, created_at]
+                    properties:
+                      msg_id:
+                        type: string
+                        description: 消息 TSID / Message TSID
+                      emoji:
+                        type: string
+                        description: 已添加的 emoji / The emoji that was added
+                      user_id:
+                        type: integer
+                        format: int64
+                        description: 操作用户 TSID / User who added the reaction
+                      created_at:
+                        type: integer
+                        description: 创建时间戳（毫秒）/ Creation timestamp in ms
     '4XX':
       description: msg_id / emoji 缺失或非法 / 无访问该消息权限
       content:

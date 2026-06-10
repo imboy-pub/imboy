@@ -33,11 +33,17 @@ post:
               description: 新名称 / New name.
   responses:
     '200':
-      description: 重命名成功
+      description: 重命名成功；无 payload
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: id / name 缺失或非法 / 分组不属于当前用户 / 同名分组已存在
       content:

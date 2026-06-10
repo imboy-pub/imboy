@@ -11,14 +11,30 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
-    - $ref: '../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id: { type: integer, format: int64 }
+                            channel_id: { type: integer, format: int64 }
+                            role: { type: integer, description: "1=普通管理员 2=超级管理员 3=所有者" }
+                            created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

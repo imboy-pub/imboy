@@ -41,7 +41,7 @@ post:
               description: 目标收藏的 kind_id / Target kind_id.
   responses:
     '200':
-      description: 修改成功（实际由 logic 层决定）
+      description: 修改成功（payload 为空对象）
       content:
         application/json:
           schema:

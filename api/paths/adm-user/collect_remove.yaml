@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台移除用户收藏
+  description: 移除指定用户的某条收藏记录（管理员操作）。Remove a specified user's collection record (admin operation).
   operationId: adm_user_collect_remove
   requestBody:
     required: true

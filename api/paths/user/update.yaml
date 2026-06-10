@@ -36,7 +36,7 @@ post:
               description: 新值 / New value.
   responses:
     '200':
-      description: 更新成功
+      description: 更新成功（payload 为空对象）
       content:
         application/json:
           schema:

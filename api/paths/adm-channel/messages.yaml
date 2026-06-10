@@ -11,12 +11,69 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 频道消息分页列表 / Paginated channel message list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: int64
+                              description: 消息 TSID / Message TSID
+                            channel_id:
+                              type: integer
+                              format: int64
+                              description: 频道 ID / Channel ID
+                            author_id:
+                              type: string
+                              format: int64
+                              description: 作者 TSID / Author TSID
+                            author_name:
+                              type: string
+                              description: 作者名称 / Author name
+                            content:
+                              type: string
+                              description: 消息内容 / Message content
+                            msg_type:
+                              type: string
+                              description: 消息类型 / Message type
+                            is_pinned:
+                              type: boolean
+                              description: 是否置顶 / Is pinned
+                            view_count:
+                              type: integer
+                              description: 阅读数 / View count
+                            created_at:
+                              type: string
+                              description: 创建时间 / Created at
+                            updated_at:
+                              type: string
+                              description: 更新时间 / Updated at
+                      total:
+                        type: integer
+                        description: 总记录数 / Total count
+                      page:
+                        type: integer
+                        description: 当前页码 / Current page
+                      size:
+                        type: integer
+                        description: 每页条数 / Page size
     '4XX':
       description: 无权限 / 参数非法
       content:

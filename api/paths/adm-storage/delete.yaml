@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台删除存储记录
+  description: 删除指定存储记录及其关联文件（软删除）。Delete a specified storage record and its associated file (soft delete).
   operationId: adm_storage_delete
   requestBody:
     required: true

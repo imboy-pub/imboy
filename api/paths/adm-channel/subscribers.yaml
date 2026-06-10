@@ -1,5 +1,5 @@
-# POST /adm/channel/{channel_id}/subscribers — admin
-post:
+# GET /adm/channel/{channel_id}/subscribers — admin
+get:
   tags: [admin]
   summary: admin adm-channel - subscribers
   description: |
@@ -11,19 +11,68 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 订阅者分页列表 / Paginated subscriber list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 订阅记录 ID / Subscription record ID
+                            channel_id:
+                              type: integer
+                              format: int64
+                              description: 频道 ID / Channel ID
+                            user_id:
+                              type: integer
+                              format: int64
+                              description: 用户 TSID / User TSID
+                            is_pinned:
+                              type: boolean
+                              description: 是否置顶 / Is pinned
+                            unread_count:
+                              type: integer
+                              description: 未读数 / Unread count
+                            last_read_at:
+                              type: string
+                              description: 最后阅读时间 / Last read at
+                            subscribed_at:
+                              type: string
+                              description: 订阅时间 / Subscribed at
+                            user:
+                              type: object
+                              description: 用户基础信息（富化）/ User basic info (enriched)
+                              properties:
+                                id: { type: integer, format: int64 }
+                                account: { type: string }
+                                nickname: { type: string }
+                                avatar: { type: string }
+                                status: { type: integer }
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

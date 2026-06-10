@@ -7,11 +7,34 @@ get:
     管理后台 adm-group handler 的 `members` 动作；路径 `/adm/group/members`。
     Admin handler `adm-group`, action `members`. Path `/adm/group/members`.
   operationId: adm_group_members
+  parameters:
+    - name: gid
+      in: query
+      required: true
+      description: 群组 ID / Group ID
+      schema:
+        type: integer
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items: { type: object, additionalProperties: true, description: '记录对象（字段以对应表/handler 为准）' }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
     '4XX':
       description: 无权限 / 参数非法
       content:

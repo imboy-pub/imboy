@@ -11,6 +11,7 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
   requestBody:
     required: true
@@ -20,13 +21,32 @@ post:
           type: object
           properties:
             content: { type: string }
-            type: { type: string }
+            msg_type: { type: string }
             payload: { type: object }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 已发布的频道消息 / Published channel message
+                    properties:
+                      id: { type: integer, format: int64, description: 消息 TSID }
+                      channel_id: { type: integer, format: int64 }
+                      author_uid: { type: integer, format: int64 }
+                      author_name: { type: string }
+                      author_avatar: { type: string }
+                      msg_type: { type: string }
+                      content: { type: string }
+                      payload: { type: object }
+                      pinned: { type: boolean }
+                      created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

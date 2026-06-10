@@ -13,13 +13,29 @@ post:
       application/json:
         schema:
           type: object
+          required: [session_id]
           properties:
-            transfer_id: { type: string }
+            session_id:
+              type: string
+              description: 迁移会话 ID
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [message]
+                    properties:
+                      message:
+                        type: string
+                        example: 传输成功
+                        description: 操作结果描述 / Operation result message
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

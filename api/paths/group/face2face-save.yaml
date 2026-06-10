@@ -28,7 +28,22 @@ post:
     '200':
       description: 保存成功；payload { group, member_list }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      group:
+                        type: object
+                        description: 群组完整资料.
+                      member_list:
+                        type: array
+                        items:
+                          type: object
     '4XX':
       description: code 或 gid 不匹配 / 群不存在
       content:

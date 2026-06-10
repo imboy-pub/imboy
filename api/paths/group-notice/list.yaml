@@ -11,12 +11,46 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 公告列表
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: 公告总数
+                      page:
+                        type: integer
+                        description: 当前页码
+                      size:
+                        type: integer
+                        description: 每页条数
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          description: 群公告对象（字段以 group_notice 表为准）
+                          properties:
+                            notice_id: { type: integer, format: int64, description: 公告 TSID }
+                            user_id: { type: integer, format: int64, description: 发布者 uid }
+                            edit_user_id: { type: integer, format: int64, description: 最后编辑者 uid }
+                            body: { type: string, description: 公告内容 }
+                            status: { type: integer, description: 状态 }
+                            expired_at: { type: integer, format: int64, description: 过期时间戳（毫秒） }
+                            updated_at: { type: integer, format: int64 }
+                            created_at: { type: integer, format: int64 }
     '4XX':
       description: gid 必须 / 非群成员
       content:

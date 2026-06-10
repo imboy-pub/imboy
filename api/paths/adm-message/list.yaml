@@ -10,11 +10,85 @@ get:
   parameters:
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
+    - in: query
+      name: msg_scope
+      schema: { type: string }
+      description: 消息范围（c2c / c2g / channel）/ Message scope
+    - in: query
+      name: uid
+      schema: { type: string }
+      description: 用户 ID / User ID
+    - in: query
+      name: conversation
+      schema: { type: string }
+      description: 会话标识 / Conversation key
+    - in: query
+      name: from_ts
+      schema: { type: integer }
+      description: 起始时间戳（毫秒）/ Start timestamp (ms)
+    - in: query
+      name: to_ts
+      schema: { type: integer }
+      description: 结束时间戳（毫秒）/ End timestamp (ms)
+    - in: query
+      name: keyword
+      schema: { type: string }
+      description: 关键词检索 / Keyword search
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 消息分页列表（需 message_audit 功能启用）/ Paginated message list (requires message_audit feature)
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: 消息行（audit_mode=none/metadata 时 payload 字段置空）/ Message row
+                          properties:
+                            scope:
+                              type: string
+                              description: 消息范围 c2c/c2g/c2s/s2c / Message scope
+                            msg_id:
+                              type: string
+                              description: 消息 ID（字符串）/ Message ID (string)
+                            from_id:
+                              type: string
+                              format: int64
+                              description: 发送方 TSID（字符串）/ Sender TSID (string)
+                            to_id:
+                              type: string
+                              format: int64
+                              description: 接收方 TSID（字符串）/ Receiver TSID (string)
+                            msg_type:
+                              type: string
+                              description: 消息类型 / Message type
+                            action:
+                              type: string
+                              description: 消息动作 / Message action
+                            payload:
+                              type: string
+                              description: 消息体（audit_mode=full 时有值，否则为空）/ Message body
+                            created_at:
+                              type: string
+                              description: 客户端创建时间 / Client created time
+                            server_ts:
+                              type: string
+                              description: 服务端时间戳 / Server timestamp
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

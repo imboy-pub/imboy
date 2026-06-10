@@ -29,9 +29,21 @@ post:
               type: string
   responses:
     '200':
-      description: 修改成功
+      description: 修改成功；payload.gid 回显
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                        description: 被编辑的群 TSID 回显.
     '4XX':
       description: gid 必须 / gid 格式有误 / 无管理权限
       content:

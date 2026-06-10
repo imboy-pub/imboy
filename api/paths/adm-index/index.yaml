@@ -11,7 +11,21 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      coversation_online_user:
+                        type: integer
+                        description: 当前在线用户数
+                      coversation_online_device:
+                        type: integer
+                        description: 当前在线设备数
     '4XX':
       description: 无权限 / 参数非法
       content:

@@ -11,7 +11,24 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      system_name:
+                        type: string
+                        description: 系统名称
+                      csrf_token:
+                        type: string
+                        description: CSRF 令牌
+                      public_key:
+                        type: string
+                        description: RSA 公钥（登录密码加密用）
     '4XX':
       description: 无权限 / 参数非法
       content:

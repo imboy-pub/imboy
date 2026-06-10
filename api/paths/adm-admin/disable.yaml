@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台禁用管理员
+  description: 禁用指定管理员账号，使其无法登录管理后台。Disable a specified admin account to prevent login to the admin panel.
   operationId: adm_admin_disable
   requestBody:
     required: true
@@ -9,10 +10,14 @@ post:
       application/json:
         schema:
           type: object
-          required: [admin_id, uid]
           properties:
-            admin_id: { type: integer, description: '操作者管理员 ID' }
-            uid: { type: integer, description: '被禁用的管理员 ID' }
+            admin_id:
+              type: integer
+              description: '操作者管理员 ID（admin_id 与 uid 至少提供其一）/ Operator admin ID (provide at least one of admin_id or uid)'
+            uid:
+              type: integer
+              description: '被禁用的管理员 ID（admin_id 与 uid 至少提供其一）/ Target admin ID to disable (provide at least one of admin_id or uid)'
+          description: '至少提供 admin_id 或 uid 之一 / At least one of admin_id or uid must be provided'
   responses:
     '200':
       description: 成功

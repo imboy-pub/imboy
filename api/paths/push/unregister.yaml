@@ -31,7 +31,7 @@ post:
               type: string
   responses:
     '200':
-      description: 注销成功（幂等）
+      description: 注销成功（幂等，无 payload，elib_response:success(Req) 无数据体）
       content:
         application/json:
           schema:

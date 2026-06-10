@@ -37,7 +37,7 @@ post:
               description: 新名称 / New name (max 14 chars).
   responses:
     '200':
-      description: 重命名成功
+      description: 重命名成功（payload 为空对象）
       content:
         application/json:
           schema:

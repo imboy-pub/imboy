@@ -42,7 +42,7 @@ post:
               description: 邮箱或手机号 / Email or mobile.
   responses:
     '200':
-      description: 验证码已发送
+      description: 验证码已发送（无 payload）
       content:
         application/json:
           schema:

@@ -7,11 +7,57 @@ get:
     管理后台 adm-channel handler 的 `search` 动作；路径 `/adm/channel/search`。
     Admin handler `adm-channel`, action `search`. Path `/adm/channel/search`.
   operationId: adm_channel_search
+  parameters:
+    - in: query
+      name: keyword
+      schema: { type: string }
+      description: 搜索关键词 / Search keyword
+    - in: query
+      name: limit
+      schema: { type: integer, default: 20 }
+      description: 返回条数上限 / Max results to return
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 搜索结果（total=实际结果数，page 固定为 1）/ Search result
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: int64
+                              description: 频道 TSID / Channel TSID
+                            name: { type: string }
+                            type: { type: integer }
+                            owner_id:
+                              type: string
+                              format: int64
+                            custom_id: { type: string }
+                            description: { type: string }
+                            subscriber_count: { type: integer }
+                            status: { type: integer }
+                            created_at: { type: string }
+                      page:
+                        type: integer
+                        description: 固定为 1 / Always 1
+                      size:
+                        type: integer
+                        description: 等于请求 limit 值 / Equals requested limit
+                      total:
+                        type: integer
+                        description: 实际返回结果数 / Actual result count
     '4XX':
       description: 无权限 / 参数非法
       content:

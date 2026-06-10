@@ -32,7 +32,18 @@ post:
     '200':
       description: 退群/踢人成功；payload.gid 回显
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
     '4XX':
       description: 限流 / gid 格式有误 / 无踢人权限
       content:

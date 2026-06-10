@@ -22,16 +22,34 @@ get:
     - in: query
       name: longitude
       required: true
+      description: 经度 / Longitude
       schema: { type: number, format: float }
     - in: query
       name: latitude
       required: true
+      description: 纬度 / Latitude
       schema: { type: number, format: float }
   responses:
     '200':
       description: 匹配成功；payload 含 gid + member_list
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                        description: 群组 TSID.
+                      member_list:
+                        type: array
+                        items:
+                          type: object
     '4XX':
       description: 限流 / code 非法 / 经纬度缺失
       content:

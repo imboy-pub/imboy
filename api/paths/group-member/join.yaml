@@ -35,7 +35,26 @@ post:
     '200':
       description: "加入成功；payload { gid, user_id_sum, member_list }"
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid:
+                        type: integer
+                        format: int64
+                      user_id_sum:
+                        type: integer
+                        format: int64
+                        description: 群成员 uid 之和（用于客户端校验一致性）.
+                      member_list:
+                        type: array
+                        items:
+                          type: object
     '4XX':
       description: 限流 / gid 格式有误 / member_uids 非法 / 群成员已满 / 超出剩余席位
       content:

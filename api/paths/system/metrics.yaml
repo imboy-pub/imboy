@@ -24,3 +24,7 @@ get:
           schema:
             type: string
             description: 'Prometheus text exposition format (v0.0.4)'
+    '4XX':
+      description: 无权限访问监控端点
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

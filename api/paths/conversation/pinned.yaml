@@ -25,7 +25,26 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            conversation_id:
+                              type: string
+                            type:
+                              type: string
+                              enum: [c2c, c2g]
+                            pinned_at:
+                              type: string
+                              format: date-time
     '4XX':
       description: 未鉴权
       content:

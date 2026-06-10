@@ -13,14 +13,47 @@ post:
       application/json:
         schema:
           type: object
+          required: [session_id]
           properties:
-            transfer_id: { type: string }
-            encrypted_payload: { type: string }
+            session_id:
+              type: string
+              description: 迁移会话 ID
+            device_id:
+              type: string
+              description: 接受迁移的设备 ID（可选）
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [session_id, from_uid, from_device_id, encrypted_key_bundle, status, expires_at]
+                    properties:
+                      session_id:
+                        type: string
+                        description: 迁移会话 UUID / Transfer session UUID
+                      from_uid:
+                        type: integer
+                        format: int64
+                        description: 发起迁移的用户 TSID / Sender user TSID
+                      from_device_id:
+                        type: string
+                        description: 发起迁移的设备 ID / Sender device ID
+                      encrypted_key_bundle:
+                        type: string
+                        description: 加密后的密钥包（接收方用自己私钥解密）/ Encrypted key bundle for receiver
+                      status:
+                        type: string
+                        description: 会话状态 / Session status
+                      expires_at:
+                        type: integer
+                        description: 会话过期时间（Unix 秒）/ Session expiry as Unix timestamp
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

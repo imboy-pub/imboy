@@ -13,13 +13,28 @@ post:
         schema:
           type: object
           properties:
-            amount: { type: integer, minimum: 1 }
-            method: { type: string }
+            amount: { type: integer, minimum: 100, maximum: 1000000 }
+            method:
+              type: string
+              x-not-implemented: true
+              description: '支付方式（x-not-implemented：当前后端未读取此字段）'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 充值后钱包状态
+                    properties:
+                      balance: { type: integer, description: 余额（分） }
+                      balance_yuan: { type: number, description: 余额（元） }
+                      frozen: { type: integer, description: 冻结金额（分） }
     '4XX':
       description: 参数非法 / 无权限
       content:

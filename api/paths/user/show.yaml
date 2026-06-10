@@ -27,7 +27,19 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_handler#show → user_logic:find_by_id，SELECT id,nickname,avatar,account,sign
+                    properties:
+                      id: { type: integer, format: int64, description: 用户 TSID }
+                      nickname: { type: string }
+                      avatar: { type: string, description: 头像 URL }
+                      account: { type: string, description: 账号（唯一） }
+                      sign: { type: string, description: 个性签名 }
     '4XX':
       description: 缺少 id 参数 / id 格式非法 / 用户不存在
       content:

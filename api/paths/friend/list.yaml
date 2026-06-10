@@ -26,7 +26,52 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      mine:
+                        type: object
+                        description: 当前用户自身资料（含在线状态）.
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+                          nickname:
+                            type: string
+                          avatar:
+                            type: string
+                          sign:
+                            type: string
+                          status:
+                            type: string
+                            description: 在线状态.
+                      friend:
+                        type: array
+                        description: 好友列表.
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                            from_user_id:
+                              type: integer
+                              format: int64
+                            to_user_id:
+                              type: integer
+                              format: int64
+                            nickname:
+                              type: string
+                            avatar:
+                              type: string
+                            remark:
+                              type: string
+                            category_id:
+                              type: integer
     '4XX':
       description: 未鉴权
       content:

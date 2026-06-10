@@ -36,7 +36,17 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 qr_login_handler#scan → qr_login_logic:scan
+                    properties:
+                      status: { type: string, example: scanned }
+                      device_name: { type: string, description: Web 端设备名 }
+                      platform: { type: string, description: Web 端平台 }
     '4XX':
       description: qr_token 无效 / 二维码已过期 / 已被确认 / 已取消 / 无权限
       content:

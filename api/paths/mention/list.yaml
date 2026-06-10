@@ -36,11 +36,49 @@ get:
     - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
-      description: "分页 @ 消息列表 { total, page, size, list, items }"
+      description: "分页 @ 消息列表 { total, page, size, items }"
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              description: mention 表主键.
+                            msg_id:
+                              type: string
+                              description: 消息 TSID.
+                            group_id:
+                              type: integer
+                              format: int64
+                            from_uid:
+                              type: integer
+                              format: int64
+                            mentioned_uid:
+                              type: integer
+                              format: int64
+                            is_read:
+                              type: integer
+                              enum: [0, 1]
+                            created_at:
+                              type: integer
+                              description: Unix 秒时间戳.
     '4XX':
       description: gid 格式有误
       content:

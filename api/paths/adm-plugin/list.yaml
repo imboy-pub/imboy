@@ -14,7 +14,22 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        description: 插件信息列表
+                        items:
+                          type: object
+                          additionalProperties: true
+                          description: 插件信息对象（imboy_plugin_manager:list_plugins 返回）
     '4XX':
       description: 无权限 / 参数非法
       content:

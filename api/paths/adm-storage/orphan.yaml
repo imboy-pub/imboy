@@ -2,6 +2,7 @@
 get:
   tags: [admin]
   summary: 管理后台孤儿文件列表
+  description: 列出孤儿文件统计信息（无群组引用的存储对象）。List orphan file statistics (storage objects with no group reference).
   operationId: adm_storage_orphan
   parameters:
     - in: query
@@ -13,7 +14,16 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 孤立附件统计信息（attachment_ds:orphan_stats 返回）
     '4XX':
       description: 无权限 / 参数非法
       content:

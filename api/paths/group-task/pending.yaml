@@ -8,13 +8,54 @@ get:
     Tasks pending my review
   operationId: pendingReviewGroupTask
   parameters:
+    - in: query
+      name: task_id
+      required: true
+      schema: { type: string }
+      description: 任务 ID（TSID string）
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 待审核分配记录列表（assignment_transfer 后）
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            assignment_id:
+                              type: integer
+                              format: int64
+                            task_id:
+                              type: integer
+                              format: int64
+                            user_id:
+                              type: integer
+                              format: int64
+                            status:
+                              type: integer
+                            content:
+                              type: string
+                            attachment:
+                              type: string
+                            submitted_at:
+                              type: string
+                              format: date-time
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

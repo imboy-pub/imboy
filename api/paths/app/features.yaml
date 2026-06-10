@@ -10,7 +10,19 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 app_feature_handler#features → imboy_feature:all()，键值对 feature_flag => boolean
+                    additionalProperties: { type: boolean }
+                    example:
+                      e2ee: true
+                      live_room: false
     '4XX':
       description: 参数非法
       content:

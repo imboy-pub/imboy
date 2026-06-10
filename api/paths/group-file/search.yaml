@@ -11,10 +11,12 @@ get:
     - in: query
       name: gid
       required: true
+      description: 群组 ID / Group ID
       schema: { type: string }
     - in: query
       name: keyword
       required: true
+      description: 搜索关键词 / Search keyword
       schema: { type: string }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
@@ -22,7 +24,42 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            file_id:
+                              type: integer
+                              format: int64
+                            gid:
+                              type: integer
+                              format: int64
+                            uploader_id:
+                              type: integer
+                              format: int64
+                            file_name:
+                              type: string
+                            file_size:
+                              type: integer
+                            file_type:
+                              type: string
+                            category:
+                              type: string
+                            file_url:
+                              type: string
+                            created_at:
+                              type: string
+                              format: date-time
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

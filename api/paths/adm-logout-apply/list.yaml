@@ -14,7 +14,51 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 注销申请列表
+                        items:
+                          type: object
+                          properties:
+                            uid:
+                              type: string
+                              description: 用户 ID（TSID 转字符串）
+                            account:
+                              type: string
+                            nickname:
+                              type: string
+                            user_status:
+                              type: integer
+                            app_vsn:
+                              type: string
+                            did:
+                              type: string
+                              description: 设备 ID
+                            dtype:
+                              type: string
+                              description: 设备类型
+                            ip:
+                              type: string
+                            created_at:
+                              type: string
+                            body:
+                              type: string
+                              description: 原始日志 JSON
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

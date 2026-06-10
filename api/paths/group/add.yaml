@@ -27,7 +27,40 @@ post:
     '200':
       description: 创建成功；payload { group, member_list }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      group:
+                        type: object
+                        description: 新建群组资料（同 group/detail payload）.
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+                          title:
+                            type: string
+                          avatar:
+                            type: string
+                          type:
+                            type: integer
+                          owner_uid:
+                            type: integer
+                            format: int64
+                          member_count:
+                            type: integer
+                          member_max:
+                            type: integer
+                      member_list:
+                        type: array
+                        description: 初始成员列表.
+                        items:
+                          type: object
     '4XX':
       description: 限流 / 超过用户创建群上限 / 字段非法
       content:

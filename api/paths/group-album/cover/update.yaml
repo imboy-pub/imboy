@@ -2,6 +2,7 @@
 post:
   tags: [user]
   summary: 更新相册封面
+  description: 将指定照片设为群相册封面；照片必须属于该相册。Set a photo as the group album cover; the photo must belong to the album.
   operationId: updateGroupAlbumCover
   requestBody:
     required: true

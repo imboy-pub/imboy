@@ -9,14 +9,34 @@ get:
   operationId: e2eeKeyStatus
   parameters:
     - in: query
-      name: uid
-      required: false
+      name: device_id
+      required: true
       schema: { type: string }
+      description: 设备 ID / Device identifier
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: |
+                      密钥状态对象，由 e2ee_recovery_logic:check_key_status/2 返回 /
+                      Key status map from e2ee_recovery_logic:check_key_status/2
+                    properties:
+                      has_key:
+                        type: boolean
+                        description: 本设备是否已上报公钥 / Whether this device has a registered key
+                      recovery_options:
+                        type: array
+                        items:
+                          type: string
+                        description: 可用的恢复方式列表 / Available recovery methods (social / backup / device_transfer)
     '4XX':
       description: 参数非法 / 无权限
       content:

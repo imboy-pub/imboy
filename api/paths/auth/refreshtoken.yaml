@@ -33,7 +33,17 @@ post:
     '200':
       description: 新 access token（payload.token）
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 passport_handler#refreshtoken → token_ds:encrypt_token
+                    properties:
+                      token: { type: string, description: 新 JWT access token }
     '4XX':
       description: refresh token 无效 / 已过期 / 用户被禁用或删除
       content:

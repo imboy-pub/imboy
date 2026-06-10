@@ -1,5 +1,5 @@
-# POST /adm/plugin/state — admin
-post:
+# GET /adm/plugin/state — admin
+get:
   tags: [admin]
   summary: admin adm-plugin - state_query
   description: |
@@ -7,18 +7,27 @@ post:
     管理后台 adm-plugin handler 的 `state_query` 动作；路径 `/adm/plugin/state`。
     Admin handler `adm-plugin`, action `state_query`. Path `/adm/plugin/state`.
   operationId: adm_plugin_state_query
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+  parameters:
+    - name: name
+      in: query
+      required: true
+      schema:
+        type: string
+      description: '插件名称 / Plugin name'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 插件当前状态对象（imboy_plugin_manager:get_state 返回）
     '4XX':
       description: 无权限 / 参数非法
       content:

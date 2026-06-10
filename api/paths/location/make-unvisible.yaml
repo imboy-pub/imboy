@@ -14,9 +14,17 @@ post:
           type: object
   responses:
     '200':
-      description: 成功
+      description: 设置隐身成功；无 payload
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: 参数非法 / 无权限
       content:

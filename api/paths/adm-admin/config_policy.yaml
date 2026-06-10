@@ -1,17 +1,96 @@
-# GET /adm/admin/config/policy — admin
+# GET|PUT|POST /adm/admin/config/policy — admin
 get:
   tags: [admin]
-  summary: admin adm-admin - config_policy
+  summary: admin adm-admin - config_policy（读取策略）
   description: |
     ## 中文 / English
     管理后台 adm-admin handler 的 `config_policy` 动作；路径 `/adm/admin/config/policy`。
     Admin handler `adm-admin`, action `config_policy`. Path `/adm/admin/config/policy`.
-  operationId: adm_admin_config_policy
+  operationId: adm_admin_config_policy_get
   responses:
     '200':
       description: 成功
       content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 当前有效策略对象（effective_view / saved_view）
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+put:
+  tags: [admin]
+  summary: admin adm-admin - config_policy（更新策略）
+  description: |
+    ## 中文 / English
+    保存/更新系统配置策略；路径 `/adm/admin/config/policy`。
+    Save/update system config policy. Path `/adm/admin/config/policy`.
+  operationId: adm_admin_config_policy_put
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+          description: '策略字段（键值对）/ Policy fields (key-value map)'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 当前有效策略对象（effective_view / saved_view）
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+post:
+  tags: [admin]
+  summary: admin adm-admin - config_policy（新建策略）
+  description: |
+    ## 中文 / English
+    新建系统配置策略；路径 `/adm/admin/config/policy`。
+    Create system config policy. Path `/adm/admin/config/policy`.
+  operationId: adm_admin_config_policy_post
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+          description: '策略字段（键值对）/ Policy fields (key-value map)'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 当前有效策略对象（effective_view / saved_view）
     '4XX':
       description: 无权限 / 参数非法
       content:

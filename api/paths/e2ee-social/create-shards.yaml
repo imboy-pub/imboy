@@ -13,14 +13,41 @@ post:
       application/json:
         schema:
           type: object
+          required: [shards]
           properties:
-            shards: { type: array, items: { type: object } }
-            threshold: { type: integer }
+            key_version:
+              type: integer
+              description: 密钥版本号（可选，后端用于关联 shard 与密钥版本）
+            shards:
+              type: array
+              items: { type: object }
+              description: Shamir 分片列表，每个元素为待下发给对应联系人的加密 shard 对象
+            threshold:
+              type: integer
+              x-not-implemented: true
+              description: 重建所需最少 shard 数（x-not-implemented：当前后端未读取此字段）
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [key_version, shards]
+                    properties:
+                      key_version:
+                        type: string
+                        description: 密钥版本号 / Key version identifier
+                      shards:
+                        type: array
+                        description: 已存储的分片列表 / Stored shard records
+                        items:
+                          type: object
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

@@ -11,7 +11,41 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      role_id:
+                        type: integer
+                        description: 主角色 ID
+                      role_ids:
+                        type: array
+                        items:
+                          type: integer
+                        description: 全部角色 ID 列表
+                      role_name:
+                        type: string
+                        description: 角色名称
+                      role_names:
+                        type: array
+                        items:
+                          type: string
+                        description: 全部角色名称列表
+                      permissions:
+                        type: array
+                        items:
+                          type: string
+                        description: 合并后的权限列表
+                      menu_paths:
+                        type: array
+                        items:
+                          type: string
+                        description: 可访问菜单路径列表
     '4XX':
       description: 无权限 / 参数非法
       content:

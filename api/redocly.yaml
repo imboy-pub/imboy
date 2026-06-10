@@ -39,7 +39,7 @@ rules:
   # Schema 安全
   no-unresolved-refs: error              # $ref 必须解析
   no-identical-paths: error
-  no-ambiguous-paths: error
+  no-ambiguous-paths: warn               # cowboy 按注册顺序精确路由（具体段先于 :param），OpenAPI 歧义检测对参数路由过严，降为 warn
   path-declaration-must-exist: error
   path-not-include-query: error
   path-parameters-defined: error
@@ -48,7 +48,7 @@ rules:
   security-defined: error                # 端点必须声明 security 或显式 security: []
 
   # 命名约定（CONVENTIONS §6）
-  paths-kebab-case: error                # 路径段用 kebab-case
+  paths-kebab-case: off                  # 关闭：后端 path 用下划线命名（group_schedule/my_list 等），契约必须匹配代码，kebab-case 不适用
   no-server-example.com: warn
 
 # ------------------------------------------------------------------

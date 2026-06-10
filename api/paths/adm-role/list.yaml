@@ -14,7 +14,52 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              description: 角色 ID
+                            role_id:
+                              type: integer
+                              description: 角色 ID（同 id）
+                            name:
+                              type: string
+                              description: 角色名称
+                            role_name:
+                              type: string
+                              description: 角色名称（同 name）
+                            description:
+                              type: string
+                              description: 角色描述
+                            permissions:
+                              type: array
+                              items:
+                                type: string
+                              description: 权限列表
+                            status:
+                              type: integer
+                              description: '状态：1=启用，0=禁用'
+                            created_at:
+                              type: string
+                              description: 创建时间
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

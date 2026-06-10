@@ -13,14 +13,27 @@ post:
       application/json:
         schema:
           type: object
-          required: [name]
+          required: [category_name]
           properties:
-            name: { type: string, maxLength: 60 }
+            category_name: { type: string, maxLength: 60 }
   responses:
     '200':
-      description: 成功
+      description: 创建成功；payload { id, category_name }
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: 新分类 ID.
+                      category_name:
+                        type: string
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

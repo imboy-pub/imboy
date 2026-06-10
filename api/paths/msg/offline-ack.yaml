@@ -42,7 +42,27 @@ post:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      msg:
+                        type: string
+                        example: offline_messages_acknowledged
+                        description: 固定标识 / Fixed status token
+                      type:
+                        type: string
+                        enum: [c2c, c2g, s2c]
+                        description: 已确认的消息类型 / Acknowledged bucket type
+                      processed_count:
+                        type: integer
+                        description: 实际处理条数 / Messages actually processed
+                      msg_ids_count:
+                        type: integer
+                        description: 请求中 msg_ids 数量 / Count of msg_ids in request
     '4XX':
       description: type 非法 / msg_ids 为空
       content:

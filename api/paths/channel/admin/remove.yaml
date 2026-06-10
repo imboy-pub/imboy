@@ -1,5 +1,5 @@
-# POST (channel) removeChannelAdmin
-post:
+# DELETE (channel) removeChannelAdmin
+delete:
   tags: [user]
   summary: 移除管理员
   description: |
@@ -11,22 +11,26 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
     - in: path
       name: user_id
       required: true
+      description: '用户 ID / User ID'
       schema: { type: string }
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即移除管理员 / No payload on success
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

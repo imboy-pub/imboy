@@ -42,7 +42,16 @@ get:
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    description: type=list 时返回在线设备详情；否则为空数组.
+                    items:
+                      type: object
+                      description: 在线设备条目（uid/pid/dtype/did/time/ref/node）.
     '4XX':
       description: 未鉴权
       content:

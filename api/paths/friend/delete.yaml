@@ -32,11 +32,17 @@ post:
               description: 要删除的好友 TSID / Target friend TSID.
   responses:
     '200':
-      description: 删除成功（幂等：非好友也返回 200）
+      description: 删除成功（幂等：非好友也返回 200）；无 payload
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
     '4XX':
       description: uid 缺失或非法
       content:

@@ -18,7 +18,21 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      uri:
+                        type: array
+                        description: 各 URI 授权检查结果列表
+                        items:
+                          type: object
+                          additionalProperties: true
     '4XX':
       description: 无权限 / 参数非法
       content:

@@ -11,12 +11,28 @@ get:
     - in: path
       name: channel_id
       required: true
+      description: '频道 ID / Channel ID'
       schema: { type: string }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 频道整体统计 / Channel overview stats
+                    properties:
+                      subscriber_count: { type: integer, description: 订阅者总数 }
+                      message_count: { type: integer, description: 消息总数 }
+                      view_count: { type: integer, description: 消息浏览总数 }
+                      reaction_count: { type: integer, description: 反应总数 }
+                      new_subscribers_today: { type: integer, description: 今日新增订阅数 }
+                      new_messages_today: { type: integer, description: 今日新增消息数 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

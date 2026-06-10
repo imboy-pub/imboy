@@ -25,11 +25,28 @@ get:
     - $ref: '../../components/parameters/UserIdQuery.yaml'
   responses:
     '200':
-      description: 已登录态下返回用户资料 + 好友关系
+      description: 已登录态下返回用户资料 + 好友关系（用户被删/禁时返回 result 字段说明原因）
       content:
         application/json:
           schema:
-            $ref: '../../components/schemas/Envelope.yaml'
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_handler#qrcode → qrcode_transfer/3，SELECT id,nickname,gender,avatar,sign,region,status
+                    properties:
+                      type: { type: string, example: user, description: 固定值 "user"（正常用户时） }
+                      id: { type: integer, format: int64, description: 用户 TSID }
+                      nickname: { type: string }
+                      gender: { type: integer, description: '0 未知 1 男 2 女' }
+                      avatar: { type: string }
+                      sign: { type: string }
+                      region: { type: string }
+                      isfriend: { type: boolean }
+                      remark: { type: string, description: 好友备注，非好友时为 null }
+                      result: { type: string, description: 异常时固定字符串，如 user_not_exist / user_is_disabled_or_deleted }
     '302':
       description: 未登录态重定向到官网/落地页
       headers:

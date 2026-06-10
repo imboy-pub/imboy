@@ -2,6 +2,7 @@
 post:
   tags: [admin]
   summary: 管理后台清理孤儿文件
+  description: 清理超过指定天数的孤儿文件（无群组引用的存储对象）。Clean up orphan files (storage objects with no group reference) older than the specified number of days.
   operationId: adm_storage_orphan_cleanup
   requestBody:
     required: false

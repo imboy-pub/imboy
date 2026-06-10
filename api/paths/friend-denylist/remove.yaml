@@ -33,7 +33,7 @@ post:
               description: 目标用户 TSID / Target user TSID.
   responses:
     '200':
-      description: 移除成功（幂等）
+      description: 移除成功（幂等，无 payload）
       content:
         application/json:
           schema:

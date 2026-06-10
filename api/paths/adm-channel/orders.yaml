@@ -1,5 +1,5 @@
-# POST /adm/channel/{channel_id}/orders — admin
-post:
+# GET /adm/channel/{channel_id}/orders — admin
+get:
   tags: [admin]
   summary: admin adm-channel - orders
   description: |
@@ -11,19 +11,98 @@ post:
     - in: path
       name: channel_id
       required: true
+      description: 频道 ID / Channel ID
       schema: { type: string }
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 订单分页列表 / Paginated order list
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: 订单 ID / Order ID
+                            channel_id:
+                              type: integer
+                              format: int64
+                              description: 频道 ID / Channel ID
+                            user_id:
+                              type: integer
+                              format: int64
+                              description: 用户 TSID / User TSID
+                            order_no:
+                              type: string
+                              description: 订单编号 / Order number
+                            amount:
+                              type: number
+                              description: 订单金额 / Amount
+                            currency:
+                              type: string
+                              description: 货币代码 / Currency code
+                            status:
+                              type: integer
+                              description: 订单状态 / Order status
+                            payment_method:
+                              type: string
+                              description: 支付方式 / Payment method
+                            payment_no:
+                              type: string
+                              description: 支付流水号 / Payment number
+                            payment_at:
+                              type: string
+                              description: 支付时间 / Payment time
+                            subscription_start_at:
+                              type: string
+                              description: 订阅开始时间 / Subscription start
+                            subscription_end_at:
+                              type: string
+                              description: 订阅结束时间 / Subscription end
+                            expires_at:
+                              type: string
+                              description: 过期时间 / Expires at
+                            refund_reason:
+                              type: string
+                              description: 退款原因 / Refund reason
+                            refund_at:
+                              type: string
+                              description: 退款时间 / Refund time
+                            created_at:
+                              type: string
+                              description: 创建时间 / Created at
+                            updated_at:
+                              type: string
+                              description: 更新时间 / Updated at
+                            user:
+                              type: object
+                              description: 用户基础信息（富化）/ User basic info (enriched)
+                              properties:
+                                id: { type: integer, format: int64 }
+                                account: { type: string }
+                                nickname: { type: string }
+                                avatar: { type: string }
+                                status: { type: integer }
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 无权限 / 参数非法
       content:

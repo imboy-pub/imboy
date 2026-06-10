@@ -11,7 +11,38 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                        description: 管理员 ID (TSID)
+                      account:
+                        type: string
+                      nickname:
+                        type: string
+                      avatar:
+                        type: string
+                      role_id:
+                        type: integer
+                        description: 主角色 ID
+                      login_count:
+                        type: integer
+                      last_login_ip:
+                        type: string
+                      last_login_at:
+                        type: string
+                      status:
+                        type: integer
+                      created_at:
+                        type: string
     '4XX':
       description: 无权限 / 参数非法
       content:

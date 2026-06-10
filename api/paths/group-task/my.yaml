@@ -14,7 +14,51 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: assignment_transfer 后的分配记录列表
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            assignment_id:
+                              type: integer
+                              format: int64
+                            task_id:
+                              type: integer
+                              format: int64
+                            user_id:
+                              type: integer
+                              format: int64
+                            status:
+                              type: integer
+                              description: '0=待完成 1=已提交 2=已通过 3=已驳回'
+                            content:
+                              type: string
+                            attachment:
+                              type: string
+                            score:
+                              type: integer
+                            comment:
+                              type: string
+                            submitted_at:
+                              type: string
+                              format: date-time
+                            reviewed_at:
+                              type: string
+                              format: date-time
+                      page:
+                        type: integer
+                      size:
+                        type: integer
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

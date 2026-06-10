@@ -11,7 +11,16 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 策略元数据（meta_view 视图，描述各策略字段类型与默认值）
     '4XX':
       description: 无权限 / 参数非法
       content:

@@ -9,14 +9,40 @@ get:
   operationId: channelsSync
   parameters:
     - in: query
-      name: last_ts
+      name: since
       required: false
+      description: '增量同步起始时间戳 / Incremental sync start timestamp'
       schema: { type: integer, format: int64 }
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 增量同步数据 / Incremental sync result
+                    properties:
+                      updated:
+                        type: array
+                        description: 有更新的频道列表
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            avatar: { type: string }
+                            status: { type: integer }
+                            updated_at: { type: integer }
+                      deleted:
+                        type: array
+                        description: 已删除的频道 ID 列表
+                        items: { type: integer, format: int64 }
+                      server_time: { type: integer, description: 服务器当前时间戳（毫秒） }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:

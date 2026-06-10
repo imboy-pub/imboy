@@ -10,7 +10,29 @@ get:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 app_manifest_handler#build_manifest，聚合 features/policy/entries/plugins
+                    properties:
+                      features: { type: object, additionalProperties: { type: boolean } }
+                      policy: { type: object, additionalProperties: { type: string } }
+                      app_entries: { type: array, items: { type: string } }
+                      admin_entries: { type: array, items: { type: string } }
+                      plugins:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            app_entries: { type: array, items: { type: string } }
+                            admin_entries: { type: array, items: { type: string } }
+                      generated_at: { type: integer, description: 生成时间戳（毫秒） }
     '4XX':
       description: 参数非法
       content:

@@ -7,11 +7,31 @@ get:
     拉取自己保管的 shards
     See docs/api/e2ee_*.md for crypto invariants.
   operationId: e2eeSocialGetShards
+  parameters:
+    - in: query
+      name: key_version
+      required: false
+      schema: { type: integer }
+      description: 密钥版本号，不传则返回最新版本的 shards
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [shards]
+                    properties:
+                      shards:
+                        type: array
+                        description: 当前用户保管的分片列表 / Shards held by the current user
+                        items:
+                          type: object
     '4XX':
       description: 参数非法 / 无权限
       content:

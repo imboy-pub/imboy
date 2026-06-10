@@ -7,14 +7,30 @@ get:
     我的订单
     My orders
   operationId: myChannelOrders
-  parameters:
-    - $ref: '../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: 我的订单列表 / My orders
+                        items:
+                          type: object
+                          properties:
+                            order_no: { type: string }
+                            channel_id: { type: integer, format: int64 }
+                            amount: { type: integer, description: 金额（分） }
+                            status: { type: integer, description: "0=待支付 1=已支付 2=已退款" }
+                            created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
       description: 参数非法 / 无权限 / 不存在
       content:
