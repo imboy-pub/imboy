@@ -80,7 +80,9 @@ migrate() ->
     Path = get_scripts_path(),
     ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     {ok, Conn} = epgsql:connect(Conf),
-    Config = #{conn => Conn, dir => Path},
+    %% strict: 时间戳版本号下检测乱序迁移（后合并的低版本文件会报
+    %% {out_of_order, Versions} 而非被静默跳过），需 erlang_migrate >= 0.3.0
+    Config = #{conn => Conn, dir => Path, strict => true},
     try
         case erlang_migrate:up(Config) of
             ok ->
