@@ -1,5 +1,11 @@
 name: Backend CI
 
+# A2（商业化就绪）：CI 从门面变真门禁。
+# 策略：阻塞门禁保持稳定（compile + 快速 eunit + dco）；
+#       全量 eunit 与 dialyze 先以 continue-on-error 建立"失败基线"，
+#       CI 干净环境实跑一次得到可信基线后，下一轮再按项目 ratchet 范式
+#       （见 quality.yml）收紧为硬门禁。OTP 与 README 宣称的 28 对齐。
+
 on:
   push:
     branches: [main, dev]
@@ -9,9 +15,19 @@ on:
 
 jobs:
   compile:
-    name: Compile Gate
+    name: Compile Gate (OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # OTP 28 为权威版本（与 README 一致、本地开发环境一致）；
+    # 27.3 作为向后兼容观察项，不阻塞（experimental）。
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ["28"]
+        include:
+          - otp: "27.3"
+            experimental: true
+    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout
@@ -20,7 +36,7 @@ jobs:
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
         with:
-          otp-version: "27.3"
+          otp-version: ${{ matrix.otp }}
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
@@ -32,7 +48,7 @@ jobs:
             .erlang.mk
             .dialyzer_plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ${{ runner.os }}-otp${{ matrix.otp }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Compile
         run: IMBOYENV=local make test-build
@@ -50,7 +66,7 @@ jobs:
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
         with:
-          otp-version: "27.3"
+          otp-version: "28"
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
@@ -62,11 +78,117 @@ jobs:
             .erlang.mk
             .dialyzer_plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Run Moment Targeted EUnit
         run: |
           IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests'
+
+  # ----------------------------------------------------------------
+  # 全量 EUnit — 基线收集（continue-on-error，暂不阻塞）
+  # 目的：在 CI 干净环境实跑全部 test/*_tests，产出真实通过/失败基线。
+  # 收紧计划：基线明确后改为 ratchet（失败数只准减不准增），移除 continue-on-error。
+  # ----------------------------------------------------------------
+  full-eunit:
+    name: Full EUnit (baseline, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [compile]
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Run full EUnit suite
+        run: |
+          set -o pipefail
+          IMBOYENV=local make eunit 2>&1 | tee eunit-full.log
+
+      - name: Summarize EUnit result
+        if: always()
+        run: |
+          echo "## Full EUnit baseline" >> "$GITHUB_STEP_SUMMARY"
+          # erlang.mk/eunit 汇总行形如 "Failed: N. ... Passed: M."
+          grep -iE 'failed|passed|aborted|cancelled' eunit-full.log | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload EUnit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eunit-full-log
+          path: eunit-full.log
+          retention-days: 14
+
+  # ----------------------------------------------------------------
+  # Dialyzer — 基线收集（continue-on-error，暂不阻塞）
+  # Makefile 已设 DIALYZER_WARNINGS ?= 50 阈值；先观察 CI 实际告警数，
+  # 再据此把阈值收敛为 ratchet。
+  # ----------------------------------------------------------------
+  dialyze:
+    name: Dialyzer (baseline, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [compile]
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies, build artifacts and PLT
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Run Dialyzer
+        run: |
+          set -o pipefail
+          IMBOYENV=local make dialyze 2>&1 | tee dialyze.log
+
+      - name: Summarize Dialyzer result
+        if: always()
+        run: |
+          echo "## Dialyzer baseline" >> "$GITHUB_STEP_SUMMARY"
+          warn_count="$(grep -ciE 'warning|Warning' dialyze.log || true)"
+          echo "Dialyzer warning lines: ${warn_count} (Makefile threshold DIALYZER_WARNINGS=50)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Dialyzer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialyze-log
+          path: dialyze.log
+          retention-days: 14
 
   # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by
