@@ -56,25 +56,28 @@ create_channel(Uid, Name, Type, Opts) ->
     },
     Data2 = add_optional_fields(Data, Opts),
 
-    case elib_pg:with_tx(fun(Conn) ->
-        % 创建频道
-        case channel_repo:add(Conn, Data2) of
-            {ok, ChannelId} ->
-                % 添加创建者为管理员（角色3）
-                AdminData = #{
-                    channel_id => ChannelId,
-                    user_id => Uid,
-                    role => 3,  % 创建者
-                    created_at => Now
-                },
-                case channel_admin_repo:add(Conn, AdminData) of
-                    {ok, _} -> {ok, ChannelId};
-                    {error, Reason} -> throw({abort_tx, Reason})
-                end;
-            {error, Reason} ->
-                throw({abort_tx, Reason})
-        end
-    end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            % 创建频道
+            case channel_repo:add(Conn, Data2) of
+                {ok, ChannelId} ->
+                    % 添加创建者为管理员（角色3）
+                    AdminData = #{
+                        channel_id => ChannelId,
+                        user_id => Uid,
+                        % 创建者
+                        role => 3,
+                        created_at => Now
+                    },
+                    case channel_admin_repo:add(Conn, AdminData) of
+                        {ok, _} -> {ok, ChannelId};
+                        {error, Reason} -> throw({abort_tx, Reason})
+                    end;
+                {error, Reason} ->
+                    throw({abort_tx, Reason})
+            end
+        end)
+    of
         {error, Reason} ->
             {error, normalize_error(Reason)};
         Result ->
@@ -84,18 +87,21 @@ create_channel(Uid, Name, Type, Opts) ->
 %% @doc 添加可选字段
 add_optional_fields(Data, Opts) ->
     Fields = [description, avatar, custom_id, tags],
-    lists:foldl(fun(Field, Acc) ->
-        case maps:get(Field, Opts, undefined) of
-            undefined -> Acc;
-            Val -> Acc#{Field => Val}
-        end
-    end, Data, Fields).
+    lists:foldl(
+        fun(Field, Acc) ->
+            case maps:get(Field, Opts, undefined) of
+                undefined -> Acc;
+                Val -> Acc#{Field => Val}
+            end
+        end,
+        Data,
+        Fields
+    ).
 
-%% @doc 检查用户是否已订阅频道
+%% @doc 检查用户是否已订阅频道（委托到 channel_subscription_ds 统一路径）
 -spec is_subscribed(integer(), integer()) -> boolean().
 is_subscribed(ChannelId, Uid) ->
-    Sub = channel_subscription_repo:find(ChannelId, Uid),
-    map_size(Sub) > 0.
+    channel_subscription_ds:is_subscribed(ChannelId, Uid).
 
 %% @doc 获取频道订阅者用户ID列表（带缓存）
 -spec subscriber_uids(integer()) -> [integer()].
@@ -190,7 +196,8 @@ unsubscribe(ChannelId, Uid) ->
     end.
 
 %% @doc 发布频道消息
--spec publish_message(integer(), integer(), binary(), binary(), map()) -> {ok, integer()} | {error, any()}.
+-spec publish_message(integer(), integer(), binary(), binary(), map()) ->
+    {ok, integer()} | {error, any()}.
 publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
     % 获取作者信息
     User = user_repo:find_by_id(AuthorId, <<"nickname,avatar">>),
@@ -198,10 +205,11 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
     AuthorAvatar = maps:get(<<"avatar">>, User, <<>>),
 
     % 消息JSON编码
-    PayloadJson = case jsone_encode:encode(Payload, [native_utf8]) of
-        {ok, Json} -> Json;
-        _ -> <<"{}">>
-    end,
+    PayloadJson =
+        case jsone_encode:encode(Payload, [native_utf8]) of
+            {ok, Json} -> Json;
+            _ -> <<"{}">>
+        end,
 
     Now = elib_dt:now(),
     Data = #{
@@ -229,7 +237,8 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
 increment_all_unread(ChannelId, AuthorId) ->
     % 使用批量更新SQL提高性能
     Tb = channel_subscription_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET unread_count = unread_count + 1 "
             "WHERE channel_id = $1 AND status = 1 AND user_id <> $2">>,
     _ = elib_pg:execute(Sql, [ChannelId, AuthorId]),
@@ -259,7 +268,8 @@ normalize_error(Reason) ->
     elib_cnv:safe_to_binary(Reason).
 
 %% G3: channel_logic_sync 不应直调 channel_repo
--spec list_by_ids_since(list(integer()), integer() | binary()) -> {ok, list(map())} | {error, any()}.
+-spec list_by_ids_since(list(integer()), integer() | binary()) ->
+    {ok, list(map())} | {error, any()}.
 list_by_ids_since(ChannelIds, Since) -> channel_repo:list_by_ids_since(ChannelIds, Since).
 
 %% G3 thin wrappers: channel_logic_* 不应直调 channel_repo
@@ -287,7 +297,8 @@ list_discover(Limit, Column) -> channel_repo:list_discover(Limit, Column).
 -spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_subscribed(Uid, Column) -> channel_repo:list_subscribed(Uid, Column).
 
--spec increment_subscribers(epgsql:connection(), integer(), integer()) -> {ok, integer()} | {error, any()}.
+-spec increment_subscribers(epgsql:connection(), integer(), integer()) ->
+    {ok, integer()} | {error, any()}.
 increment_subscribers(Conn, ChannelId, Delta) ->
     channel_repo:increment_subscribers(Conn, ChannelId, Delta).
 

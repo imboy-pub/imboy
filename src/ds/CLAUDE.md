@@ -91,11 +91,10 @@
 |------|------|
 | `channel_ds` | 频道基础服务 |
 | `channel_admin_ds` | 频道管理员 |
-| `channel_subscription_ds` | 频道订阅 |
-| `channel_subscribe_ds` | 订阅状态 |
+| `channel_subscription_ds` | 频道订阅（is_subscribed 唯一路径）|
 | `channel_message_ds` | 频道消息 |
-| `channel_order_ds` | 付费频道订单 |
-| `channel_invitation_ds` | 频道邀请 |
+| `channel_order_ds` | 付费频道订单（含 has_purchased/create_order/pay/get_price）|
+| `channel_invitation_ds` | 频道邀请（含 create/accept/reject/is_invited）|
 
 ### 应用 & 系统
 
