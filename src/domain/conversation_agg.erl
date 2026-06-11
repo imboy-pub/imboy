@@ -1,5 +1,7 @@
 %%% @doc 会话聚合根 / Conversation Aggregate Root
 %%%
+%%% DDD 试点示例，未投产（真机回归 P3 未执行）
+%%%
 %%% DDD 充血改造 Phase 1 / T1.3：把「未读数 / 已读游标 / 置顶」三类
 %%% 业务不变量内聚到聚合根内部，由纯函数守护，杜绝散落在
 %%% conversation_logic / conversation_pin_logic 的 guard 与外部直接赋值。

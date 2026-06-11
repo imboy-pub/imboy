@@ -3,6 +3,8 @@
 % user_dnd_rule_ds 是 user_dnd_rule domain service 缩写
 % 用户免打扰(DND)规则领域服务，封装缓存与时段判断逻辑
 % 调用链：Logic -> user_dnd_rule_ds -> user_dnd_rule_repo -> PostgreSQL
+%
+%% NOTE: 未接线——等待 DND handler/logic 落地（见根 CLAUDE.md 功能表）
 %%%
 
 -include("log.hrl").

@@ -1,5 +1,7 @@
 %%% @doc 消息 ID 值对象 / Message ID Value Object（T0.2）
 %%%
+%%% DDD 试点示例，未投产（真机回归 P3 未执行）
+%%%
 %%% 封装消息标识（Xid/TSID binary），提供构造期校验与按值相等，
 %%% 替换全层裸 binary 穿透。opaque type 由 dialyze 守护封装性：
 %%% 模块外不得解构，只能经 new/1 构造、value/1 取值。
