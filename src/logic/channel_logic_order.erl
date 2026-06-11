@@ -33,29 +33,52 @@ create_order(Uid, ChannelIdBin) ->
                         Type =/= 2 ->
                             {error, <<"只有付费频道支持购买"/utf8>>};
                         true ->
-                            case channel_subscribe_ds:create_order(ChannelId, Uid, #{}) of
-                                {ok, OrderNo} ->
-                                    case channel_order_ds:find_by_order_no(OrderNo) of
-                                        {ok, Order} when is_map(Order) ->
-                                            Order2 = order_transfer(Order),
-                                            {ok, Order2};
-                                        {ok, _} ->
-                                            {error, <<"订单不存在"/utf8>>};
-                                        {error, Reason} ->
-                                            {error, elib_cnv:safe_to_binary(Reason)};
-                                        Other ->
-                                            {error, elib_cnv:safe_to_binary(Other)}
-                                    end;
-                                {error, Reason} when is_binary(Reason) ->
-                                    {error, Reason};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                _Other ->
-                                    {error, elib_cnv:safe_to_binary(_Other)}
-                            end
+                            do_create_order(ChannelId, Uid)
                     end;
                 _ ->
                     {error, <<"频道不存在"/utf8>>}
+            end
+    end.
+
+-spec do_create_order(integer(), integer()) -> {ok, map()} | {error, binary()}.
+do_create_order(ChannelId, Uid) ->
+    case channel_order_ds:has_purchased(ChannelId, Uid) of
+        true ->
+            {error, <<"您已购买此频道"/utf8>>};
+        false ->
+            case channel_order_ds:get_price(ChannelId) of
+                {ok, Price} ->
+                    Amount = maps:get(<<"price">>, Price, 0),
+                    Currency = maps:get(<<"currency">>, Price, <<"CNY">>),
+                    Data = #{
+                        channel_id => ChannelId,
+                        user_id => Uid,
+                        amount => Amount,
+                        currency => Currency
+                    },
+                    case channel_order_ds:create_order(Data) of
+                        {ok, OrderNo} ->
+                            case channel_order_ds:find_by_order_no(OrderNo) of
+                                {ok, Order} when is_map(Order) ->
+                                    {ok, order_transfer(Order)};
+                                {ok, _} ->
+                                    {error, <<"订单不存在"/utf8>>};
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)};
+                                Other ->
+                                    {error, elib_cnv:safe_to_binary(Other)}
+                            end;
+                        {error, Reason} when is_binary(Reason) ->
+                            {error, Reason};
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        _Other ->
+                            {error, elib_cnv:safe_to_binary(_Other)}
+                    end;
+                {error, not_found} ->
+                    {error, <<"频道价格未配置"/utf8>>};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
@@ -78,7 +101,6 @@ pay_order(Uid, OrderNo) ->
                         OrderUserId =/= Uid ->
                             {error, <<"无权操作此订单"/utf8>>};
                         true ->
-                            % 从订单中获取支付方式，生产环境禁止 mock
                             Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
                             case is_payment_method_allowed(Method) of
                                 false ->
@@ -92,28 +114,12 @@ pay_order(Uid, OrderNo) ->
                                                 payment_no => PayNo,
                                                 payment_method => Method
                                             },
-                                            case
-                                                channel_subscribe_ds:pay_order(OrderNo, PaymentData)
-                                            of
-                                                ok ->
-                                                    channel_logic_notify:notify_order_paid(
-                                                        ChannelId, Uid
-                                                    );
-                                                {error, already_paid} ->
-                                                    {error, <<"订单已支付"/utf8>>};
-                                                {error, not_found_or_expired} ->
-                                                    {error, <<"订单不存在或已过期"/utf8>>};
-                                                {error, Reason} when is_binary(Reason) ->
-                                                    {error, Reason};
-                                                {error, Reason} ->
-                                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                                Other ->
-                                                    {error, elib_cnv:safe_to_binary(Other)}
-                                            end;
+                                            do_pay_order(
+                                                ChannelId, Uid, OrderNo, PaymentData, Order
+                                            );
                                         {error, PayReason} ->
                                             {error, PayReason}
                                     end
-                                % is_payment_method_allowed
                             end
                     end
             end;
@@ -127,6 +133,55 @@ pay_order(Uid, OrderNo) ->
             {error, elib_cnv:safe_to_binary(Reason)};
         _Other ->
             {error, elib_cnv:safe_to_binary(_Other)}
+    end.
+
+-spec do_pay_order(integer(), integer(), binary(), map(), map()) -> ok | {error, binary()}.
+do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
+    case maps:get(<<"status">>, Order, 0) of
+        1 ->
+            %% already paid — ensure subscription active
+            case channel_ds:subscribe(ChannelId, Uid) of
+                ok ->
+                    channel_logic_notify:notify_order_paid(ChannelId, Uid);
+                {error, _} ->
+                    {error, <<"订单已支付"/utf8>>}
+            end;
+        _ ->
+            case channel_order_ds:pay(OrderNo, PaymentData) of
+                ok ->
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok ->
+                            channel_logic_notify:notify_order_paid(ChannelId, Uid);
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end;
+                {error, not_found_or_expired} ->
+                    %% payment race: check final state, compensate if already paid
+                    maybe_compensate_subscription(OrderNo);
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
+            end
+    end.
+
+-spec maybe_compensate_subscription(binary()) -> ok | {error, binary()}.
+maybe_compensate_subscription(OrderNo) ->
+    case channel_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} ->
+            case maps:get(<<"status">>, Order, 0) of
+                1 ->
+                    ChannelId = maps:get(<<"channel_id">>, Order),
+                    Uid = maps:get(<<"user_id">>, Order),
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok ->
+                            channel_logic_notify:notify_order_paid(ChannelId, Uid);
+                        {error, _} ->
+                            {error, <<"订单已支付"/utf8>>}
+                    end;
+                _ ->
+                    {error, <<"订单不存在或已过期"/utf8>>}
+            end;
+        {error, _} ->
+            {error, <<"订单不存在或已过期"/utf8>>}
     end.
 
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -173,7 +228,6 @@ get_order(Uid, OrderNo) ->
             {error, elib_cnv:safe_to_binary(_Other)}
     end.
 
-%% @doc 检查支付方式是否被允许（生产环境禁止 mock）
 -spec is_payment_method_allowed(binary()) -> boolean().
 is_payment_method_allowed(Method) ->
     Env = config_ds:env(env, <<"local">>),

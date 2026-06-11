@@ -48,16 +48,34 @@ subscribe(Uid, ChannelIdBin) ->
 
 -spec subscribe_private_channel(integer(), integer()) -> ok | {error, binary()}.
 subscribe_private_channel(Uid, ChannelId) ->
-    case channel_subscribe_ds:is_invited(ChannelId, Uid) of
+    case channel_invitation_ds:is_invited(ChannelId, Uid) of
         true ->
-            case channel_subscribe_ds:subscribe_private(ChannelId, Uid, undefined) of
-                ok ->
-                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
-                    ok;
-                {error, Reason} when is_binary(Reason) ->
-                    {error, Reason};
-                {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+            case channel_invitation_ds:find_pending_by_channel_and_invitee(ChannelId, Uid) of
+                {ok, Invitation} when is_map(Invitation) ->
+                    InvId = maps:get(<<"id">>, Invitation),
+                    case channel_invitation_ds:accept(InvId, Uid) of
+                        ok ->
+                            case channel_ds:subscribe(ChannelId, Uid) of
+                                ok ->
+                                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
+                                    ok;
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)}
+                            end;
+                        {error, not_found_or_expired} ->
+                            %% race: invitation already accepted, ensure subscribed
+                            case channel_ds:subscribe(ChannelId, Uid) of
+                                ok ->
+                                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
+                                    ok;
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)}
+                            end;
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end;
+                _ ->
+                    {error, <<"邀请不存在或已过期"/utf8>>}
             end;
         _ ->
             {error, <<"私有频道需要邀请才能订阅"/utf8>>}
@@ -65,7 +83,7 @@ subscribe_private_channel(Uid, ChannelId) ->
 
 -spec subscribe_paid_channel(integer(), integer()) -> ok | {error, binary()}.
 subscribe_paid_channel(Uid, ChannelId) ->
-    case channel_subscribe_ds:has_purchased(ChannelId, Uid) of
+    case channel_order_ds:has_purchased(ChannelId, Uid) of
         true ->
             case channel_ds:subscribe(ChannelId, Uid) of
                 ok ->

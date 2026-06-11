@@ -25,64 +25,102 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                         Type =/= 1 ->
                             {error, <<"只有私有频道支持邀请功能"/utf8>>};
                         true ->
-                            case channel_subscribe_ds:create_invitation(ChannelId, Uid, InviteeUid) of
-                                {ok, InvitationId} ->
-                                    case channel_invitation_ds:find_by_id(InvitationId) of
-                                        {ok, Invitation} when is_map(Invitation) ->
-                                            Invitation2 = invitation_transfer(Invitation),
-                                            channel_logic_notify:notify_invitation_created(ChannelId, InviteeUid),
-                                            {ok, Invitation2};
-                                        {ok, Other} ->
-                                            {error, elib_cnv:safe_to_binary(Other)};
-                                        {error, Reason} ->
-                                            {error, elib_cnv:safe_to_binary(Reason)}
-                                    end;
-                                {error, Reason} when is_binary(Reason) ->
-                                    {error, Reason};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                _Other ->
-                                    {error, elib_cnv:safe_to_binary(_Other)}
-                            end
+                            do_create_invitation(ChannelId, Uid, InviteeUid)
                     end;
                 _ ->
                     {error, <<"频道不存在"/utf8>>}
             end
     end.
 
+-spec do_create_invitation(integer(), integer(), integer()) ->
+    {ok, map()} | {error, binary()}.
+do_create_invitation(ChannelId, InviterUid, InviteeUid) ->
+    case channel_subscription_ds:is_subscribed(ChannelId, InviterUid) of
+        true ->
+            Data = #{
+                channel_id => ChannelId,
+                inviter_uid => InviterUid,
+                invitee_uid => InviteeUid
+            },
+            case channel_invitation_ds:create(Data) of
+                {ok, InvitationId} ->
+                    case channel_invitation_ds:find_by_id(InvitationId) of
+                        {ok, Invitation} when is_map(Invitation) ->
+                            Invitation2 = invitation_transfer(Invitation),
+                            channel_logic_notify:notify_invitation_created(ChannelId, InviteeUid),
+                            {ok, Invitation2};
+                        {ok, Other} ->
+                            {error, elib_cnv:safe_to_binary(Other)};
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end;
+                {error, Reason} when is_binary(Reason) ->
+                    {error, Reason};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                _Other ->
+                    {error, elib_cnv:safe_to_binary(_Other)}
+            end;
+        false ->
+            {error, <<"您不是频道订阅者，无法邀请他人"/utf8>>}
+    end.
+
 -spec accept_invitation(integer(), integer()) -> ok | {error, binary()}.
 accept_invitation(Uid, InvitationId) ->
-    case channel_subscribe_ds:accept_invitation(InvitationId, Uid) of
+    case channel_invitation_ds:find_by_id(InvitationId) of
+        {ok, Invitation} when is_map(Invitation) ->
+            InviteeUid = maps:get(<<"invitee_uid">>, Invitation, 0),
+            ChannelId = maps:get(<<"channel_id">>, Invitation, 0),
+            if
+                InviteeUid =/= Uid ->
+                    {error, <<"无权接受此邀请"/utf8>>};
+                true ->
+                    do_accept_invitation(ChannelId, Uid, InvitationId, Invitation)
+            end;
+        {ok, _} ->
+            {error, <<"邀请不存在"/utf8>>};
+        {error, not_found} ->
+            {error, <<"邀请不存在"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+-spec do_accept_invitation(integer(), integer(), integer(), map()) ->
+    ok | {error, binary()}.
+do_accept_invitation(ChannelId, Uid, InvitationId, Invitation) ->
+    case channel_invitation_ds:accept(InvitationId, Uid) of
         ok ->
-            case channel_invitation_ds:find_by_id(InvitationId) of
-                {ok, Invitation} when is_map(Invitation) ->
-                    ChannelId = maps:get(<<"channel_id">>, Invitation, 0),
+            case channel_ds:subscribe(ChannelId, Uid) of
+                ok ->
                     InviterUid = maps:get(<<"inviter_uid">>, Invitation, 0),
-                    case is_integer(ChannelId)
-                        andalso ChannelId > 0
-                        andalso is_integer(InviterUid)
-                        andalso InviterUid > 0 of
+                    case is_integer(InviterUid) andalso InviterUid > 0 of
                         true ->
-                            channel_logic_notify:notify_invitation_accepted(ChannelId, InviterUid, Uid);
+                            channel_logic_notify:notify_invitation_accepted(
+                                ChannelId, InviterUid, Uid
+                            );
                         false ->
                             ok
                     end;
-                _ ->
-                    ok
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
+            end;
+        {error, not_found_or_expired} ->
+            %% race: already accepted; ensure subscription is active
+            case channel_ds:subscribe(ChannelId, Uid) of
+                ok -> ok;
+                {error, _} -> ok
             end;
         {error, already_accepted} ->
             ok;
-        {error, Reason} when is_binary(Reason) ->
-            {error, Reason};
+        {error, not_found} ->
+            {error, <<"邀请不存在"/utf8>>};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec reject_invitation(integer(), integer()) -> ok | {error, binary()}.
 reject_invitation(Uid, InvitationId) ->
-    case channel_subscribe_ds:reject_invitation(InvitationId, Uid) of
+    case channel_invitation_ds:reject(InvitationId, Uid) of
         ok ->
             ok;
         {error, Reason} when is_binary(Reason) ->
@@ -97,7 +135,9 @@ reject_invitation(Uid, InvitationId) ->
 get_my_invitations(Uid) ->
     case channel_invitation_ds:list_pending_by_invitee(Uid) of
         {ok, Invitations} when is_list(Invitations) ->
-            Invitations2 = lists:map(fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]),
+            Invitations2 = lists:map(
+                fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
+            ),
             {ok, Invitations2};
         {ok, Other} ->
             {error, elib_cnv:safe_to_binary(Other)};
@@ -111,7 +151,9 @@ get_my_invitations(Uid) ->
 get_sent_invitations(Uid) ->
     case channel_invitation_ds:list_by_inviter(Uid, 50) of
         {ok, Invitations} when is_list(Invitations) ->
-            Invitations2 = lists:map(fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]),
+            Invitations2 = lists:map(
+                fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
+            ),
             {ok, Invitations2};
         {ok, Other} ->
             {error, elib_cnv:safe_to_binary(Other)};

@@ -79,14 +79,17 @@ ensure_channel_content_access(Uid, ChannelId) ->
                         true ->
                             ok;
                         false ->
-                            ensure_channel_content_access_by_type(Uid, ChannelId, maps:get(<<"type">>, Channel, 0))
+                            ensure_channel_content_access_by_type(
+                                Uid, ChannelId, maps:get(<<"type">>, Channel, 0)
+                            )
                     end
             end;
         _ ->
             {error, <<"频道不存在"/utf8>>}
     end.
 
--spec ensure_channel_content_access_by_type(integer(), integer(), integer()) -> ok | {error, binary()}.
+-spec ensure_channel_content_access_by_type(integer(), integer(), integer()) ->
+    ok | {error, binary()}.
 ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
     case Type of
         0 ->
@@ -98,7 +101,7 @@ ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
             end;
         2 ->
             IsSubscribed = channel_subscription_ds:is_subscribed(ChannelId, Uid),
-            HasPurchased = channel_subscribe_ds:has_purchased(ChannelId, Uid),
+            HasPurchased = channel_order_ds:has_purchased(ChannelId, Uid),
             case IsSubscribed =:= true orelse HasPurchased =:= true of
                 true -> ok;
                 false -> {error, <<"付费频道需要先购买"/utf8>>}
@@ -116,7 +119,8 @@ channel_revoke_window_seconds() ->
             120
     end.
 
--spec log_channel_action(integer(), integer(), integer() | undefined, binary(), term(), integer()) -> ok.
+-spec log_channel_action(integer(), integer(), integer() | undefined, binary(), term(), integer()) ->
+    ok.
 log_channel_action(Uid, ChannelId, MessageId, Action, Result, StartMs) ->
     CostMs = erlang:max(0, elib_dt:millisecond() - StartMs),
     ?INFO_LOG([
