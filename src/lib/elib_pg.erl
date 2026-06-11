@@ -132,7 +132,6 @@ with_conn(Driver, Fun, Retries, Delay) ->
 %%--------------------------------------------------------------------
 
 %% @doc 事务封装
-%% @deprecated 请使用 elib_pg:with_tx/1,2 替代
 -spec with_tx(fun((epgsql:connection() | pid()) -> R)) -> R | {rollback, term()} when R :: term().
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).

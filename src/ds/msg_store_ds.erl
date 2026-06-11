@@ -6,7 +6,7 @@
 %%% == 模块职责 ==
 %%% 此模块是消息写入系统的"队列管理器"，负责：
 %%% 1. 接收消息写入请求并备份到 staging 表（同步操作）
-%%% 2. 触发 msg_store_worker_ds 进行批量处理（异步操作）
+%%% 2. 触发 msg_store_worker 进行批量处理（异步操作）
 %%% 3. 管理备份表的生命周期（标记已处理、清理过期数据）
 %%%
 %%% == 工作流程 ==
@@ -20,13 +20,13 @@
 %%% 2. **入队阶段（异步）**：
 %%%    ```erlang
 %%%    msg_store_ds:enqueue(<<"c2c">>, MsgId, Data)
-%%%    → 发送 kick 消息给 msg_store_worker_ds
+%%%    → 发送 kick 消息给 msg_store_worker
 %%%    → 立即返回，不阻塞
 %%%    ```
 %%%
 %%% 3. **处理阶段（Worker）**：
 %%%    ```erlang
-%%%    msg_store_worker_ds 收到 kick
+%%%    msg_store_worker 收到 kick
 %%%    → 从 staging 表抢占 100 条未处理记录（FOR UPDATE SKIP LOCKED）
 %%%    → 批量写入正式表（msg_c2c、msg_c2g 等）
 %%%    → 成功后调用 msg_store_ds:unstage(MsgId)
@@ -84,7 +84,8 @@
 %% ==================== Macros & Records ====================
 
 -define(SERVER, ?MODULE).
--define(CLEANUP_INTERVAL, 3600000).     % 清理间隔：1 小时
+% 清理间隔：1 小时
+-define(CLEANUP_INTERVAL, 3600000).
 
 -record(state, {
     last_flush_time
@@ -129,9 +130,24 @@ start_link() ->
 %% @see unstage/1 标记消息已处理
 %% @end
 %%-------------------------------------------------------------------
--spec stage(binary(), binary(), binary(), binary(), map(), binary(), integer(), integer() | [integer()], binary(), binary()) -> ok | error.
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer() | [integer()],
+    binary(),
+    binary()
+) -> ok | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
-    case msg_store_repo:stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) of
+    case
+        msg_store_repo:stage(
+            Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs
+        )
+    of
         {ok, _} ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             ok;
@@ -148,7 +164,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
 %% @doc  入队并触发 Worker 处理（异步操作）
 %%
 %% 此函数是消息写入流程的第二步，触发批量处理。
-%% 发送 kick 消息给 msg_store_worker_ds，立即返回，不阻塞调用者。
+%% 发送 kick 消息给 msg_store_worker，立即返回，不阻塞调用者。
 %%
 %% - 这是异步操作，立即返回 ok
 %%
@@ -176,11 +192,11 @@ enqueue(Type, MsgId, Data) ->
 %%-------------------------------------------------------------------
 %% @doc  标记消息已处理，删除备份表记录（异步操作）
 %%
-%% 此函数由 msg_store_worker_ds 在成功写入正式表后调用。
+%% 此函数由 msg_store_worker 在成功写入正式表后调用。
 %% 标记 staging 表中的记录为已处理，但不立即删除，保留一段时间用于故障恢复。
 %%
 %% <b>调用时机：</b>
-%% - msg_store_worker_ds 成功将消息写入正式表（msg_c2c、msg_c2g 等）后
+%% - msg_store_worker 成功将消息写入正式表（msg_c2c、msg_c2g 等）后
 %% - 通常不需要手动调用，由 Worker 自动调用
 %%
 %% <b>异步特性：</b>
@@ -208,7 +224,7 @@ enqueue(Type, MsgId, Data) ->
 %% - 已标记为 processed_at 的记录不会被重复处理
 %%
 %% @see stage/7 备份消息到 staging 表
-%% @see msg_store_worker_ds:process_row/1 Worker 处理流程
+%% @see msg_store_worker:process_row/1 Worker 处理流程
 %% @end
 %%-------------------------------------------------------------------
 -spec unstage(binary()) -> ok.
@@ -269,8 +285,10 @@ status() ->
 %% @private
 init([]) ->
     case msg_store_repo:ensure_table_exists() of
-        ok -> ok;
-        {ok, _} -> ok;
+        ok ->
+            ok;
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?ERROR_LOG([msg_store_init_failed, ensure_table_exists, Reason]),
             error({msg_store_init_failed, Reason})
@@ -282,7 +300,6 @@ init([]) ->
 %% @private
 handle_call(status, _From, State) ->
     {reply, status_from_stats(msg_store_repo:get_staging_stats()), State};
-
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 
@@ -292,7 +309,6 @@ handle_cast({enqueue, MsgType, MsgId, Data}, State) ->
     _ = gen_statem:cast(msg_store_worker, kick),
     _ = ?DEBUG_LOG([msg_store_ds, enqueue, MsgType, MsgId, ok]),
     {noreply, State};
-
 handle_cast({unstage, MsgId}, State) ->
     % 从备份表标记为已处理（异步，不阻塞，带重试）
     % 优化：使用 mark_processed/1 移除 type 条件，一条 SQL 更新所有类型
@@ -300,7 +316,6 @@ handle_cast({unstage, MsgId}, State) ->
         msg_store_repo:mark_processed(MsgId)
     end),
     {noreply, State};
-
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -318,7 +333,6 @@ handle_info(cleanup_staging, State) ->
     % 重新启动定时器
     erlang:send_after(?CLEANUP_INTERVAL, self(), cleanup_staging),
     {noreply, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 

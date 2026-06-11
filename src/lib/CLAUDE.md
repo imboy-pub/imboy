@@ -66,12 +66,11 @@
 | `elib_uri` | URL 解析 |
 | `elib_dt` | 日期时间 |
 | `elib_type` | 类型检查 |
-| `elib_email` | 邮箱验证 |
+| `elib_email` | SMTP 邮件发送（gen_smtp）+ 邮箱格式校验 |
 | `elib_id` | ID 处理工具 |
 | `elib_metric` | 指标统计 |
 | `elib_oss` | 对象存储 |
 | `elib_param` | 参数处理 |
-| `imboy_kv` | 键值对处理 |
 
 ### 配置 & 功能管理
 
