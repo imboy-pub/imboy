@@ -140,14 +140,16 @@ get_routes() ->
 
 ## 依赖关系
 
-| API Handler | 依赖 Logic |
+> 下表为各 handler 的**直接依赖模块**（Logic 层 + 跨层基础设施 DS：`auth_ds`/`config_ds`/`token_ds`），由 `scripts/check_module_boundaries.sh` 实测校验，截至 2026-06。Handler 不得直接依赖 `*_repo`（分层违规）。
+
+| API Handler | 直接依赖模块 |
 |-------------|-----------|
-| `passport_handler` | `passport_logic`, `auth_logic` |
-| `user_handler` | `user_logic` |
-| `friend_handler` | `friend_logic` |
-| `group_handler` | `group_logic` |
-| `msg_handler` | `msg_c2c_logic`, `msg_c2g_logic` |
-| `websocket_handler` | `websocket_logic`, `msg_xxx_logic` |
+| `passport_handler` | `passport_logic`, `user_logic`, `config_ds`, `token_ds` |
+| `user_handler` | `user_logic`, `friend_logic`, `auth_ds`, `config_ds` |
+| `friend_handler` | `friend_logic`, `user_logic`, `auth_ds` |
+| `group_handler` | `group_logic`, `group_member_logic`, `auth_ds`, `config_ds` |
+| `msg_handler` | `messaging_logic`, `msg_forward_logic`, `msg_pinned_logic` |
+| `websocket_handler` | `websocket_logic`, `message_router_logic`, `msg_c2c_logic`, `msg_c2g_logic`, `msg_s2c_logic`, `app_version_logic`, `user_logic`, `websocket_ds`, `auth_ds` |
 
 基础库依赖：`elib_req`（参数解析）、`elib_response`（响应格式化）、`elib_cnv`（ID 转换）
 

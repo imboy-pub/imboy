@@ -29,25 +29,30 @@ group_task_handler.erl
 group_vote_handler.erl
 "
 
+# Allowlist policy: each entry must match a module the handler ACTUALLY
+# references (verified via extract_modules). Handlers may only reach the Logic
+# layer plus the cross-cutting infrastructure DS modules (auth_ds/config_ds/
+# token_ds). No *_repo entries are permitted here — a handler calling a repo
+# directly is a layering violation and must surface, not be whitelisted.
 allowed_modules_for_handler() {
   case "$1" in
     auth_handler.erl)
       echo "auth_logic"
       ;;
     passport_handler.erl)
-      echo "config_ds passport_logic token_ds user_repo user_setting_ds"
+      echo "config_ds passport_logic token_ds user_logic"
       ;;
     user_handler.erl)
-      echo "auth_ds friend_ds fts_user_repo user_ds user_logic user_repo user_setting_ds"
+      echo "auth_ds config_ds friend_logic user_logic"
       ;;
     user_collect_handler.erl)
-      echo "auth_ds user_collect_logic user_collect_repo"
+      echo "auth_ds user_collect_logic"
       ;;
     user_tag_handler.erl)
       echo "auth_ds user_tag_logic"
       ;;
     user_tag_relation_handler.erl)
-      echo "auth_ds friend_ds user_collect_repo user_tag_relation_logic"
+      echo "auth_ds user_tag_relation_logic"
       ;;
     e2ee_handler.erl)
       echo "auth_ds e2ee_logic e2ee_recovery_logic"
@@ -56,7 +61,7 @@ allowed_modules_for_handler() {
       echo "report_logic"
       ;;
     feedback_handler.erl)
-      echo "auth_ds feedback_ds feedback_reply_repo feedback_repo"
+      echo "auth_ds feedback_logic"
       ;;
     channel_handler.erl)
       echo "channel_logic"
@@ -65,13 +70,13 @@ allowed_modules_for_handler() {
       echo "moment_logic"
       ;;
     group_handler.erl)
-      echo "auth_ds config_ds group_ds group_logic group_member_logic group_member_repo group_random_code_repo group_repo msg_c2g_repo msg_s2c_ds user_repo"
+      echo "auth_ds config_ds group_logic group_member_logic"
       ;;
     group_schedule_handler.erl)
-      echo "group_schedule_logic group_schedule_repo"
+      echo "group_schedule_logic"
       ;;
     group_task_handler.erl)
-      echo "group_task_logic group_task_repo"
+      echo "group_task_logic"
       ;;
     group_vote_handler.erl)
       echo "group_vote_logic"
