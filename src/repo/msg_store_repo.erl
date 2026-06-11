@@ -21,7 +21,6 @@
 -export([unstage/2]).
 -export([claim_pending/2]).
 -export([mark_processed/1]).
--export([mark_processed/2]).
 -export([mark_failed/4]).
 -export([delete_processed/1]).
 -export([truncate_processed/0]).
@@ -190,16 +189,6 @@ mark_processed(MsgId) ->
         <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
             " WHERE msg_id = $1">>,
     elib_pg:execute(Sql, [MsgId]).
-
-%% @doc 标记消息已处理（不会删除记录，留给定时清理）
-%% @deprecated 使用 mark_processed/1 代替，避免重复执行
--spec mark_processed(binary(), binary()) -> {ok, integer()} | {error, any()}.
-mark_processed(Type, MsgId) ->
-    Tb = tablename(),
-    Sql =
-        <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
-            " WHERE type = $1 AND msg_id = $2">>,
-    elib_pg:execute(Sql, [Type, MsgId]).
 
 %% @doc 标记失败并设置下次重试时间
 -spec mark_failed(binary(), binary(), binary(), pos_integer()) -> {ok, integer()} | {error, any()}.

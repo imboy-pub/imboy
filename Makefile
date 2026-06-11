@@ -26,10 +26,10 @@ include include/deps.mk
 # Web / HTTP
 DEPS = ranch cowlib cowboy gun
 # Utility
-DEPS += erlware_commons jwerl gen_smtp throttle qdate qdate_localtime
-DEPS += goldrush datum jsone
+DEPS += erlware_commons jwerl gen_smtp throttle
+DEPS += goldrush jsone  # goldrush: lager transitive dep, pin version explicitly
 # Database / Cache / ID
-DEPS += epgsql pooler erlang_migrate depcache syn fuse ecron aho_corasick uid
+DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 # Ops / Observability
 DEPS += telemetry lager observer_cli recon redbug
 # Template / Captcha

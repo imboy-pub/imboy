@@ -137,45 +137,6 @@ dissolve(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
     imboy_cache:flush(CacheKey).
 
-% group_ds:member_uids(1).
-% -spec member_uids(integer()) -> list().
-% member_uids(Gid) ->
-%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
-%     case khepri:get(Key) of
-%         {error,{khepri,node_not_found, _}} ->
-%             [];
-%         {ok, Val} ->
-%             Val
-%     end.
-
-% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
-% join(Uid, Gid) ->
-%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
-%     case khepri:exists(Key) of
-%         false ->
-%             khepri:put(Key, [Uid]);
-%         true ->
-%             leave(Uid, Gid),
-%             {ok, Li} = khepri:get(Key),
-%             khepri:put(Key, [Uid | Li])
-%     end.
-
-% group_ds:leave(1,1).
-% leave(Uid, Gid) ->
-%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
-%     case khepri:exists(Key) of
-%         false ->
-%             ok;
-%         true ->
-%             {ok, Li} = khepri:get(Key),
-%             khepri:put(Key, lists:delete(Uid, Li))
-%     end.
-
-% group_ds:dissolve(Gid).
-% dissolve(Gid) ->
-%     Key = "/:gorup_member/" ++ integer_to_list(Gid),
-%     khepri:delete(Key).
-
 %% @doc 生成新的群组ID
 %%
 %% 获取一个新的群组ID，显式使用 public schema 的序列，避免受 search_path 影响
