@@ -202,45 +202,7 @@ online_state(User) when is_map(User) ->
 %% [#{<<"id">> => 1, <<"name">> => <<"Alice">>, <<"status">> => online}, ...]
 -spec batch_online_state([map()]) -> [map()].
 batch_online_state(Users) when is_list(Users) ->
-    % 提取所有 Uid 并查询在线状态
-    UidStatusMap = lists:foldl(
-        fun(User, Acc) ->
-            Uid = maps:get(<<"id">>, User),
-            Status = check_online_status(Uid),
-            maps:put(Uid, Status, Acc)
-        end,
-        #{},
-        Users
-    ),
-
-    % 合并在线状态到用户信息
-    lists:map(
-        fun(User) ->
-            Uid = maps:get(<<"id">>, User),
-            LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
-            Status = maps:get(Uid, UidStatusMap, offline),
-            User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
-        end,
-        Users
-    ).
-
-%% @private
-%% @doc 检查单个用户的在线状态
-%% @param Uid 用户ID
-%% @returns online | offline
--spec check_online_status(integer()) -> online | offline.
-check_online_status(Uid) ->
-    case imboy_syn:count_user(Uid) of
-        0 ->
-            offline;
-        _Count ->
-            case user_setting_ds:chat_state_hide(Uid) of
-                true ->
-                    offline;
-                false ->
-                    online
-            end
-    end.
+    user_ds:batch_online_state(Users).
 
 %% @doc 根据用户ID查找用户信息
 %% 返回默认列的用户信息。

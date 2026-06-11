@@ -34,6 +34,7 @@
 -export([may_exist/1]).
 -export([reject_logout_apply/1]).
 -export([approve_logout_apply/1]).
+-export([batch_online_state/1]).
 -export([page/4]).
 -export([export_data/1]).
 -export([find_expired_logout_users/2]).
@@ -498,6 +499,40 @@ approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
     elib_pg:query(Sql, [Uid]).
+
+%% @doc 批量获取用户在线状态，避免 N+1 查询
+-spec batch_online_state([map()]) -> [map()].
+batch_online_state(Users) when is_list(Users) ->
+    UidStatusMap = lists:foldl(
+        fun(User, Acc) ->
+            Uid = maps:get(<<"id">>, User),
+            Status = check_online_status(Uid),
+            maps:put(Uid, Status, Acc)
+        end,
+        #{},
+        Users
+    ),
+    lists:map(
+        fun(User) ->
+            Uid = maps:get(<<"id">>, User),
+            LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
+            Status = maps:get(Uid, UidStatusMap, offline),
+            User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
+        end,
+        Users
+    ).
+
+-spec check_online_status(integer()) -> online | offline.
+check_online_status(Uid) ->
+    case imboy_syn:count_user(Uid) of
+        0 ->
+            offline;
+        _Count ->
+            case user_setting_ds:chat_state_hide(Uid) of
+                true -> offline;
+                false -> online
+            end
+    end.
 
 %% ===================================================================
 %% EUnit tests.

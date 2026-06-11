@@ -212,7 +212,7 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                     % TSID 大整数超过 JS 安全范围，ID 字段转为 binary 字符串
                     Rows2 = [convert_friend_ids(R) || R <- Rows],
                     % 【优化】使用批量在线状态查询，避免 N+1 查询问题
-                    Items = user_logic:batch_online_state(Rows2),
+                    Items = user_ds:batch_online_state(Rows2),
                     #{total => Total, page => Page, size => Size, list => Items};
                 {error, Reason} ->
                     _ = elib_log:error(Reason),
@@ -247,7 +247,7 @@ page(Where, WhereArgs, Fields) ->
         {ok, Rows} when is_list(Rows) ->
             % 【优化】使用批量在线状态查询，避免 N+1 查询问题
             Rows2 = [convert_friend_ids(R) || R <- Rows],
-            user_logic:batch_online_state(Rows2);
+            user_ds:batch_online_state(Rows2);
         {error, _Reason} ->
             []
     end.
