@@ -7,8 +7,6 @@
 
 -include("error_code.hrl").
 
--export([get_token/3]).
-
 -export([current_uid/1]).
 
 %% 认证相关导出函数
@@ -28,33 +26,12 @@
 
 -include("common.hrl").
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
 
 %% @doc 获取资源服务访问token
 %% 生成用于访问资源服务的认证令牌。
-%% 将上传密钥和资源标识符拼接后进行MD5哈希，取中间16位作为token。
-%%
-%% 使用示例：
-%% {elib_dt:utc(second), auth_ds:get_token(assets, <<"dev">>, integer_to_list(elib_dt:utc(second)))}.
-%% auth_ds:get_token(assets, <<"open">>, "/img/20225/25_21/ca73910gph0gio9q2pg0.png?1687988290").
-%%
-%% @param ResourceType 资源类型，通常为 'assets'
-%% @param Scene 场景标识（当前未使用）
-%% @param Num 资源标识符，可以是字符串或数字
-%% @returns 16字节的二进制token
--spec get_token(atom(), binary() | string(), binary() | string() | integer()) -> binary().
-get_token(assets, _Scene, Num) ->
-    % 使用配置的上传密钥生成 token
-    % 当前使用 MD5 哈希，生产环境建议使用 HMAC-SHA256 等更安全的算法
-    % 如需升级为公钥签名，可使用 crypto:sign/4 或 public_key:sign/2
-    Key = config_ds:env(upload_key, <<>>),
-    Num2 = ec_cnv:to_binary(Num),
-    binary:part(elib_hasher:md5(<<Key/binary, Num2/binary>>), {8, 16}).
-
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -69,7 +46,8 @@ get_token(assets, _Scene, Num) ->
 %% @param Req Cowboy请求对象
 %% @param Env 环境变量映射
 %% @return {ok, Req, Env} | {stop, Req}
--spec verify_sign(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+-spec verify_sign(cowboy_req:req(), map()) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 verify_sign(Req, Env) ->
     % app version 1.0.0
     Vsn = cowboy_req:header(<<"vsn">>, Req, <<"0.1.1">>),
@@ -91,9 +69,9 @@ verify_sign(Req, Env) ->
             {stop, Req1}
     end.
 
-
 %% @doc 执行签名验证的底层实现
--spec do_verify_sign(binary() | undefined, binary(), binary() | undefined, binary() | undefined) -> boolean().
+-spec do_verify_sign(binary() | undefined, binary(), binary() | undefined, binary() | undefined) ->
+    boolean().
 do_verify_sign(undefined, _, _, _Method) ->
     false;
 do_verify_sign(_Sign, _, undefined, _Method) ->
@@ -104,7 +82,6 @@ do_verify_sign(Sign, PlainText, Key, <<"sha512">>) ->
     elib_hasher:hmac_sha512(PlainText, Key) == Sign;
 do_verify_sign(_, _, _, _) ->
     false.
-
 
 %% @doc 验证 Token
 %% 验证并解析 Authorization 头中的 Token
@@ -123,7 +100,6 @@ verify_token(Authorization) ->
             {error, Code, Msg}
     end.
 
-
 %% @doc 解析 Authorization 头
 %% 支持 Bearer 开头的 token，自动截断前缀
 %% auth_ds:parse_authorization_header(Auth).
@@ -139,7 +115,6 @@ parse_authorization_header(Authorization) when is_binary(Authorization) ->
     end;
 parse_authorization_header(_) ->
     <<>>.
-
 
 %% @doc 移除路径末尾的正斜杠
 %% 删除最后一个正斜杠
@@ -160,7 +135,6 @@ remove_last_forward_slash(Path) ->
             Path
     end.
 
-
 %% @doc 移除路径中的版本前缀
 %% 从路径中移除指定的版本前缀
 %%
@@ -178,7 +152,6 @@ strip_version_prefix(Path, Prefix) ->
             Path
     end.
 
-
 %% @doc 条件判断逻辑
 %% 根据路由类型和 Authorization 头决定是否需要验证 Token
 %%
@@ -189,7 +162,7 @@ strip_version_prefix(Path, Prefix) ->
 %% @param Env 环境变量映射
 %% @return {ok, Req, Env} | {stop, Req}
 -spec condition(boolean(), boolean(), binary() | undefined, cowboy_req:req(), map()) ->
-          {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 condition(true, _, undefined, Req, Env) ->
     {ok, Req, Env};
 condition(true, _, <<>>, Req, Env) ->
@@ -201,7 +174,6 @@ condition(_, true, _, Req, Env) ->
 condition(_, _, Authorization, Req, Env) ->
     do_authorization(Authorization, Req, Env).
 
-
 %% @doc 执行 Token 授权验证
 %%
 %% @param Authorization Authorization 头的值
@@ -209,7 +181,7 @@ condition(_, _, Authorization, Req, Env) ->
 %% @param Env 环境变量映射
 %% @return {ok, Req, Env} | {stop, Req}
 -spec do_authorization(binary() | undefined, cowboy_req:req(), map()) ->
-          {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 do_authorization(undefined, Req, _Env) ->
     {stop, Req};
 do_authorization(Authorization, Req, Env) ->
@@ -223,7 +195,6 @@ do_authorization(Authorization, Req, Env) ->
             {stop, Req1}
     end.
 
-
 % auth_ds:current_uid(State)
 -spec current_uid(map()) -> integer().
 current_uid(State) ->
@@ -232,4 +203,3 @@ current_uid(State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

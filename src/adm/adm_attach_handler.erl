@@ -28,7 +28,6 @@ init(Req0, State0) ->
     Method = cowboy_req:method(Req0),
     Req1 =
         case Action of
-            auth -> auth(Method, Req0, State);
             stats -> stats(Method, Req0, State);
             index -> index(Method, Req0, State);
             disable -> disable(Method, Req0, State);
@@ -43,15 +42,6 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
--spec auth(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-auth(<<"POST">>, Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    Uri = maps:get(<<"uri">>, PostVals, ""),
-    Result = [elib_uri:check_auth(I) || I <- binary:split(Uri, <<",">>)],
-    elib_response:success(Req0, #{<<"uri">> => Result}, "success.");
-auth(_, Req0, _State) ->
-    Req0.
 
 -spec stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 stats(<<"GET">>, Req0, _State) ->

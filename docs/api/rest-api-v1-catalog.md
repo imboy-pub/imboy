@@ -43,7 +43,6 @@
 | `/v1/init` | `payload.res` 为 AES-256-CBC 加密的初始化数据（裸 payload 含 `test`/`res`） |
 | `/v1/app/manifest` | 直返裸 JSON（`features`/`policy`/`plugins`/`generated_at`），带 ETag/304 |
 | `/v1/metrics` | `accept: text/plain` 时返回 Prometheus 文本，否则 JSON |
-| `/v1/auth/assets` | go-fastdfs 鉴权回调，返回纯文本 `ok`/`fail`（scene=open 返回 HTML） |
 | `/v1/passport/qr_login/subscribe` | SSE `text/event-stream` 长连接 |
 | `/v1/group/file/download` | HTTP 302 重定向到文件 URL |
 | `/v1/uqrcode`、`/v1/group/qrcode` | 无 token / 校验失败时 302 重定向 |
@@ -56,7 +55,7 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| GET | /v1/init | 公开 Open | index_handler#init | 客户端初始化配置（加密下发）/ Encrypted client init config | Header: `vsn`,`cos`,`pkg`,`sk` | `test`、`res`（AES 加密 JSON：`ws_url`/`upload_url`/`upload_key`/`upload_scene`/`attach_presign_endpoint`/`login_rsa_pub_key` 等） |
+| GET | /v1/init | 公开 Open | index_handler#init | 客户端初始化配置（加密下发）/ Encrypted client init config | Header: `vsn`,`cos`,`pkg`,`sk` | `test`、`res`（AES 加密 JSON：`ws_url`/`upload_url`/`attach_presign_endpoint`/`login_rsa_pub_key` 等） |
 | GET | /v1/app/features | 公开 Open | app_feature_handler#features | 功能特性开关表 / Feature flags | 无 | feature map（键→bool） |
 | GET | /v1/app/manifest | 公开 Open | app_manifest_handler#manifest | 应用清单（带 ETag/304）/ App manifest | Header: `if-none-match`（可选） | `features`、`policy`、`app_entries`、`admin_entries`、`plugins`、`generated_at`（裸 JSON） |
 | GET | /v1/app/policy | 公开 Open | app_feature_handler#policy | 生效策略视图 / Effective policy | 无 | policy map |
@@ -82,8 +81,6 @@
 | POST | /v1/passport/qr_login/confirm | 公开*（实需登录）| qr_login_handler#confirm | 手机端确认登录 / Phone confirms | Body: `qr_token`；State: `current_uid` | `status`=confirmed |
 | POST | /v1/passport/qr_login/cancel | 公开 Open | qr_login_handler#cancel | 取消扫码会话 / Cancel QR | Body: `session_token` | `status`=cancelled |
 | GET | /v1/passport/qr_login/subscribe | 公开 Open | qr_login_sse_handler | SSE 推送扫码状态 / SSE status push | Query: `session_token`* | SSE 帧 `data:{status[,token]}`（30s 心跳） |
-| POST/GET | /v1/auth/assets | 公开 Open | auth_handler#assets | go-fastdfs 附件鉴权回调 / Asset auth callback | POST: `s`,`a`,`v`,`__path__` | 纯文本 `ok`/`fail` |
-
 > 注：`qr_login/scan`、`qr_login/confirm` 路由列为公开，但 handler 依赖 `State.current_uid`，手机端须携带 JWT 才能取到非 0 uid。
 
 ---

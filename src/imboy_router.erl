@@ -31,8 +31,7 @@ get_routes() ->
             {"/passport/findpassword", passport_handler, #{action => find_password}},
             {"/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
-            {"/ws", websocket_handler, #{}},
-            {"/auth/assets", auth_handler, #{action => assets}}
+            {"/ws", websocket_handler, #{}}
         ] ++
             test_routes() ++
             [
@@ -204,8 +203,7 @@ get_routes() ->
             %% Web 端 EventSource 长连接，scan/confirm 后实时推送状态
             {"/v1/passport/qr_login/subscribe", qr_login_sse_handler, #{}},
 
-            {"/v1/ws", websocket_handler, #{}},
-            {"/v1/auth/assets", auth_handler, #{action => assets}}
+            {"/v1/ws", websocket_handler, #{}}
         ] ++
             test_routes_v1() ++
             [
@@ -459,8 +457,8 @@ get_routes() ->
                     action => record_view
                 }},
                 {"/v1/channel/:channel_id/message/:message_id/reaction", channel_handler_message, #{
-                    action => add_reaction
-                }},
+                        action => add_reaction
+                    }},
                 {"/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type",
                     channel_handler_message, #{action => remove_reaction}},
                 % 消息管理 API
@@ -474,7 +472,9 @@ get_routes() ->
                     action => revoke_message
                 }},
                 % 订阅者管理 API
-                {"/v1/channel/:channel_id/subscribers", channel_handler_message, #{action => subscribers}},
+                {"/v1/channel/:channel_id/subscribers", channel_handler_message, #{
+                    action => subscribers
+                }},
                 {"/v1/channel/:channel_id/subscriber/:user_id", channel_handler_admin, #{
                     action => remove_subscriber
                 }},
@@ -482,10 +482,16 @@ get_routes() ->
                 {"/v1/channel/:channel_id/invitation", channel_handler_admin, #{
                     action => create_invitation
                 }},
-                {"/v1/channel/invitation/accept", channel_handler_admin, #{action => accept_invitation}},
-                {"/v1/channel/invitation/reject", channel_handler_admin, #{action => reject_invitation}},
+                {"/v1/channel/invitation/accept", channel_handler_admin, #{
+                    action => accept_invitation
+                }},
+                {"/v1/channel/invitation/reject", channel_handler_admin, #{
+                    action => reject_invitation
+                }},
                 {"/v1/channel/invitations/my", channel_handler_admin, #{action => my_invitations}},
-                {"/v1/channel/invitations/sent", channel_handler_admin, #{action => sent_invitations}},
+                {"/v1/channel/invitations/sent", channel_handler_admin, #{
+                    action => sent_invitations
+                }},
                 % 订单相关 API（付费频道）
                 {"/v1/channel/:channel_id/order", channel_handler_order, #{action => create_order}},
                 {"/v1/channel/order/pay", channel_handler_order, #{action => pay_order}},
@@ -600,7 +606,6 @@ get_routes() ->
         {"/adm/app_version/save", adm_app_version_handler, #{action => save}},
         {"/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
         {"/adm/app_version/version_stats", adm_app_version_handler, #{action => version_stats}},
-        {"/adm/attach/auth", adm_attach_handler, #{action => auth}},
         % 存储管理 API
         {"/adm/storage/stats", adm_attach_handler, #{action => stats}},
         {"/adm/storage/index", adm_attach_handler, #{action => index}},
@@ -657,7 +662,9 @@ get_routes() ->
         {"/adm/group/schedule/detail", adm_group_schedule_handler, #{action => schedule_detail}},
         {"/adm/group/schedule/cancel", adm_group_schedule_handler, #{action => schedule_cancel}},
         {"/adm/group/schedule/restore", adm_group_schedule_handler, #{action => schedule_restore}},
-        {"/adm/group/governance_log/list", adm_group_schedule_handler, #{action => governance_log_list}},
+        {"/adm/group/governance_log/list", adm_group_schedule_handler, #{
+            action => governance_log_list
+        }},
         {"/adm/group/task/list", adm_group_task_handler, #{action => task_list}},
         {"/adm/group/task/detail", adm_group_task_handler, #{action => task_detail}},
         {"/adm/group/task/pending_review", adm_group_task_handler, #{action => task_pending_review}},
@@ -811,7 +818,6 @@ open() ->
         <<"/passport/getcode">>,
         <<"/passport/findpassword">>,
         <<"/passport/bind_mail">>,
-        <<"/auth/assets">>,
 
         <<"/v1/ws">>,
         <<"/v1/conversation/online">>,
@@ -834,7 +840,6 @@ open() ->
         <<"/v1/passport/qr_login/cancel">>,
         %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
         <<"/v1/passport/qr_login/subscribe">>,
-        <<"/v1/auth/assets">>,
 
         <<"/metrics">>,
         <<"/v1/metrics">>,
