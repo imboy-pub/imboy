@@ -73,7 +73,7 @@ migrate_to_msg_v2() ->
 %% @returns ok | {error, Reason}
 %% @example
 %% imboy_migrate:migrate().
-%% @note 迁移文件用 14 位 UTC 时间戳版本号命名（erlang_migrate:create/2 生成），
+%% @note 迁移文件用 8 位零填充顺序编号命名（00000001–99999999，取当前最大值 +1），
 %%       strict 模式按 schema_migrations_history 检测乱序，见 docs/standards/migration_naming.md
 -spec migrate() -> ok | {error, term()}.
 migrate() ->
@@ -81,7 +81,7 @@ migrate() ->
     Path = get_scripts_path(),
     ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     {ok, Conn} = epgsql:connect(Conf),
-    %% strict: 时间戳版本号下检测乱序迁移（后合并的低版本文件会报
+    %% strict: 顺序编号下检测乱序迁移（后合并的低编号文件会报
     %% {out_of_order, Versions} 而非被静默跳过），需 erlang_migrate >= 0.3.0
     Config = #{conn => Conn, dir => Path, strict => true},
     try
