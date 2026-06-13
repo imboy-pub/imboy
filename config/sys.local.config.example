@@ -46,6 +46,9 @@
 
         , {adm_cookie_secret, "CHANGE_ME_ADM_COOKIE_SECRET"}
 
+        %% jwt_key binary 32 — IMBOY_JWT_KEY
+        , {jwt_key, <<"CHANGE_ME_32_BYTES_JWT_SECRET_KEY">>}
+
         %% 万能验证码（仅 local/test 环境）
         , {verification_master_code, <<"CHANGE_ME_MASTER_CODE">>}
 
