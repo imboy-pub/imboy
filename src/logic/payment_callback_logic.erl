@@ -35,6 +35,10 @@
 
 -export([handle/3]).
 
+-ifdef(TEST).
+-export([biz_type_of/2, yuan_to_fen/1, pick/2]).
+-endif.
+
 -include("log.hrl").
 
 %% biz_type

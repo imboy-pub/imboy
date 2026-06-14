@@ -4,6 +4,10 @@
 -export([pay_order/2]).
 -export([get_my_orders/1]).
 -export([get_order/2]).
+
+-ifdef(TEST).
+-export([to_gateway_amount/2, yuan_to_fen/1]).
+-endif.
 -export([refund_order/2]).
 
 %% 生产环境允许的支付方式白名单（不含 mock）
