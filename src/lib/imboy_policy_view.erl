@@ -2,6 +2,7 @@
 %% @doc 策略预览视图层（从 imboy_policy.erl §preview 提取）
 
 -export([preview_view/1, preview_saved_view/1, preview_effective_view/1]).
+-export([origins_view/1, preview_adjustments_view/2]).
 
 %% Preview functions delegate to persistence layer for data access
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).

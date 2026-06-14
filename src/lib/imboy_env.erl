@@ -42,6 +42,7 @@
 
 -export([override_from_env/0]).
 -export([current/0]).
+-export([edition/0]).
 
 -include_lib("kernel/include/logger.hrl").
 
@@ -119,6 +120,9 @@ override_from_env() ->
 
     %% Garage S3 对象存储凭证
     ok = override_garage(),
+
+    %% 版次标记（community|professional|enterprise）：仅标识 + 启动日志
+    ok = override_edition(),
 
     ok.
 
@@ -327,4 +331,35 @@ maybe_override_map_fallback(Map, Key, EnvVar1, EnvVar2, Transform) ->
             Map#{Key => Transform(Val)};
         _ ->
             maybe_override_map(Map, Key, EnvVar2, Transform)
+    end.
+
+%% @doc 读取 IMBOY_EDITION 版次标记，缺省 community；非法值回退 community 并告警。
+%% 仅写入 application env 作版次标识 + 打印启动日志；不在此做任何按版次的功能
+%% 开关——专业版/企业版功能属独立闭源模块，社区版不得被植入残缺收费逻辑。
+-spec override_edition() -> ok.
+override_edition() ->
+    Edition =
+        case os:getenv("IMBOY_EDITION") of
+            E when is_list(E), length(E) > 0 ->
+                Bin = unicode:characters_to_binary(string:lowercase(E)),
+                case lists:member(Bin, [<<"community">>, <<"professional">>, <<"enterprise">>]) of
+                    true ->
+                        Bin;
+                    false ->
+                        ?LOG_WARNING("invalid IMBOY_EDITION '~ts', fallback to community", [Bin]),
+                        <<"community">>
+                end;
+            _ ->
+                <<"community">>
+        end,
+    application:set_env(imboy, edition, Edition),
+    ?LOG_NOTICE("IMBoy edition: ~ts", [Edition]),
+    ok.
+
+%% @doc 返回当前版次（binary），缺省 community。
+-spec edition() -> binary().
+edition() ->
+    case application:get_env(imboy, edition) of
+        {ok, E} when is_binary(E) -> E;
+        _ -> <<"community">>
     end.

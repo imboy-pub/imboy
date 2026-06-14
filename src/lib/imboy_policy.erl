@@ -37,7 +37,14 @@
     message_encryption_required/0,
     e2ee_enabled/0,
     validate_message_write/5,
-    maybe_put_saved_section/3
+    maybe_put_saved_section/3,
+    capability_adjustments/2,
+    effective_view_from_configs/3,
+    feature_adjustments/4,
+    normalize_preview_capability_overrides/1,
+    normalize_preview_feature_overrides/1,
+    plugin_adjustments/3,
+    saved_view_from_values/3
 ]).
 
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).

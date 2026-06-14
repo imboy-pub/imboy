@@ -298,8 +298,8 @@ merge_persisted_section(Key, Value) ->
 %% 委托至 imboy_policy_normalize
 merge_saved_map_updates(E, U) -> imboy_policy_normalize:merge_saved_map_updates(E, U).
 
-effective_view() -> imboy_policy_view:effective_view().
-saved_view() -> imboy_policy_view:saved_view().
+effective_view() -> imboy_policy:effective_view().
+saved_view() -> imboy_policy:saved_view().
 preview_adjustments_view(S, E) -> imboy_policy_view:preview_adjustments_view(S, E).
 origins_view(S) -> imboy_policy_view:origins_view(S).
 preview_view(S) -> imboy_policy_view:preview_view(S).
