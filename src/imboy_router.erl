@@ -495,6 +495,8 @@ get_routes() ->
                 % 订单相关 API（付费频道）
                 {"/v1/channel/:channel_id/order", channel_handler_order, #{action => create_order}},
                 {"/v1/channel/order/pay", channel_handler_order, #{action => pay_order}},
+                % 退款必须置于 :order_no 通配之前，否则 "refund" 会被当作 order_no
+                {"/v1/channel/order/refund", channel_handler_order, #{action => refund_order}},
                 {"/v1/channel/orders/my", channel_handler_order, #{action => my_orders}},
                 {"/v1/channel/order/:order_no", channel_handler_order, #{action => get_order}},
                 {"/v1/channels/sync", channel_handler_admin, #{action => sync}},
@@ -545,7 +547,33 @@ get_routes() ->
                 % 钱包 API
                 {"/v1/wallet/balance", wallet_handler, #{action => balance}},
                 {"/v1/wallet/transactions", wallet_handler, #{action => transactions}},
+                % topup 为 mock 充值（仅非生产）；真实充值走下方 recharge/* 链路
                 {"/v1/wallet/topup", wallet_handler, #{action => topup}},
+                % 充值（真实网关）：创建充值订单 -> 拉起第三方支付 -> 查询
+                {"/v1/wallet/recharge/order", wallet_handler, #{action => recharge_order}},
+                {"/v1/wallet/recharge/pay", wallet_handler, #{action => recharge_pay}},
+                {"/v1/wallet/recharge/:order_no", wallet_handler, #{action => recharge_query}},
+
+                % 统一支付回调 webhook（第三方支付服务器回调，无 JWT，见 open/0）
+                {"/v1/payment/callback/:gateway", payment_callback_handler, #{action => notify}},
+
+                % SaaS 计费 API（支付线E：套餐订阅 + 用量配额 + 账单）
+                % 管理端：套餐管理
+                {"/v1/billing/plan", billing_handler, #{action => plan_create}},
+                {"/v1/billing/plan/update", billing_handler, #{action => plan_update}},
+                {"/v1/billing/plan/list", billing_handler, #{action => plan_list}},
+                % 租户端：订阅
+                {"/v1/billing/subscribe", billing_handler, #{action => subscribe}},
+                {"/v1/billing/renew", billing_handler, #{action => renew}},
+                {"/v1/billing/cancel", billing_handler, #{action => cancel}},
+                {"/v1/billing/subscription", billing_handler, #{action => subscription}},
+                % 用量与配额
+                {"/v1/billing/usage", billing_handler, #{action => report_usage}},
+                {"/v1/billing/quota", billing_handler, #{action => check_quota}},
+                % 账单
+                {"/v1/billing/invoice/generate", billing_handler, #{action => invoice_generate}},
+                {"/v1/billing/invoice/pay", billing_handler, #{action => invoice_pay}},
+                {"/v1/billing/invoice/list", billing_handler, #{action => invoice_list}},
 
                 % 附件 presign API（需 JWT 认证）
                 {"/v1/attachment/presign", attach_handler, #{action => presign}},

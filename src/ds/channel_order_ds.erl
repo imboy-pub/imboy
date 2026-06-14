@@ -10,6 +10,8 @@
 -export([create_order/1]).
 -export([find_by_order_no/1]).
 -export([pay/2]).
+-export([refund/3]).
+-export([cancel/1]).
 -export([has_purchased/2]).
 -export([get_price/1]).
 -export([list_by_user/2]).
@@ -23,6 +25,15 @@ find_by_order_no(OrderNo) -> channel_order_repo:find_by_order_no(OrderNo).
 
 -spec pay(binary(), map()) -> ok | {error, term()}.
 pay(OrderNo, PaymentData) -> channel_order_repo:pay(OrderNo, PaymentData).
+
+%% @doc 退款：将已支付(1)订单更新为已退款(2)，并记录退款原因/时间
+-spec refund(binary(), integer(), binary()) -> ok | {error, term()}.
+refund(OrderNo, OperatorUid, Reason) ->
+    channel_order_repo:refund(OrderNo, OperatorUid, Reason).
+
+%% @doc 取消：将待支付(0)订单更新为已取消(3)
+-spec cancel(binary()) -> ok | {error, term()}.
+cancel(OrderNo) -> channel_order_repo:cancel(OrderNo).
 
 -spec has_purchased(integer(), integer()) -> boolean().
 has_purchased(ChannelId, Uid) -> channel_order_repo:has_purchased(ChannelId, Uid).

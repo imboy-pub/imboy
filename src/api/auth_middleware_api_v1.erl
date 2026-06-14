@@ -20,7 +20,13 @@ execute(Req, Env) ->
 
     OpenLi = imboy_router:open(),
     OptionLi = imboy_router:option(),
-    InOpenLi = lists:member(Path, OpenLi),
+    %% 支付回调来自第三方服务器无 JWT，/v1/payment/callback/:gateway 整族免认证。
+    %% :gateway 为变量段无法在 open/0 精确枚举，沿用 /v1/passport/ 的前缀放行范式，
+    %% 并把前缀命中折叠进 InOpenLi —— 这样既跳过 verify_sign，又能让下游
+    %% auth_ds:condition/5 以「开放路由」放行（否则 condition 仍会因无 token 而 stop）。
+    IsPaymentCallback =
+        string:sub_string(binary_to_list(Path), 1, 21) == "/v1/payment/callback/",
+    InOpenLi = IsPaymentCallback orelse lists:member(Path, OpenLi),
     InOptionLi = lists:member(Path, OptionLi),
     Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),
     Passport = string:sub_string(binary_to_list(Path), 1, 10),

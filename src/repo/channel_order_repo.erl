@@ -16,6 +16,8 @@
 -export([create_order/1]).
 -export([find_by_order_no/1]).
 -export([pay/2]).
+-export([refund/3]).
+-export([cancel/1]).
 -export([list_by_user/2]).
 -export([has_purchased/2]).
 -export([get_active_subscription/2]).
@@ -58,15 +60,27 @@ create_order(Data) ->
     OrderNo = generate_order_no(),
     GenId = elib_tsid:generate(channel_order),
 
-    Sql = <<"INSERT INTO channel_order ",
+    Sql =
+        <<"INSERT INTO channel_order ",
             "(id, channel_id, user_id, order_no, amount, currency, status, payment_method, ",
             "expires_at, extra_data, created_at) ",
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9/1000), $10, to_timestamp($11/1000)) ",
             "RETURNING order_no">>,
-    case elib_pg:execute(Sql, [
-        GenId, ChannelId, UserId, OrderNo, Amount, Currency, ?STATUS_PENDING,
-        PaymentMethod, ExpiresAt, ExtraData, CreatedAt
-    ]) of
+    case
+        elib_pg:execute(Sql, [
+            GenId,
+            ChannelId,
+            UserId,
+            OrderNo,
+            Amount,
+            Currency,
+            ?STATUS_PENDING,
+            PaymentMethod,
+            ExpiresAt,
+            ExtraData,
+            CreatedAt
+        ])
+    of
         {ok, 1, [{OrderNo}]} ->
             {ok, OrderNo};
         {error, {pgsql_error, #{code := <<"23505">>}}} ->
@@ -80,7 +94,8 @@ create_order(Data) ->
 %% @doc 根据ID查找订单
 -spec find_by_id(integer()) -> {ok, map()} | {error, not_found}.
 find_by_id(Id) ->
-    Sql = <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
+    Sql =
+        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
             "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
             "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
             "FROM channel_order WHERE id = $1">>,
@@ -93,7 +108,8 @@ find_by_id(Id) ->
 %% @doc 根据订单号查找订单
 -spec find_by_order_no(binary()) -> {ok, map()} | {error, not_found}.
 find_by_order_no(OrderNo) ->
-    Sql = <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
+    Sql =
+        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
             "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
             "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
             "FROM channel_order WHERE order_no = $1">>,
@@ -106,11 +122,11 @@ find_by_order_no(OrderNo) ->
 %% @doc 根据频道和用户查找最近的订单
 -spec find_by_channel_and_user(integer(), integer()) -> {ok, map()} | {error, not_found}.
 find_by_channel_and_user(ChannelId, UserId) ->
-    Sql = <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
+    Sql =
+        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
             "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
             "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
-            "FROM channel_order ",
-            "WHERE channel_id = $1 AND user_id = $2 ",
+            "FROM channel_order ", "WHERE channel_id = $1 AND user_id = $2 ",
             "ORDER BY created_at DESC LIMIT 1">>,
     case elib_pg:query(Sql, [ChannelId, UserId]) of
         {ok, []} -> {error, not_found};
@@ -129,15 +145,17 @@ pay(OrderNo, PaymentData) ->
     SubscriptionEnd = maps:get(subscription_end_at, PaymentData, null),
 
     % 构建SQL
-    Sql = <<"UPDATE channel_order ",
+    Sql =
+        <<"UPDATE channel_order ",
             "SET status = $1, payment_no = $2, payment_method = $3, payment_at = NOW(), ",
             "subscription_start_at = to_timestamp($4/1000), ",
             "subscription_end_at = CASE WHEN $5 IS NULL THEN NULL ELSE to_timestamp($5/1000) END, ",
-            "updated_at = NOW() ",
-            "WHERE order_no = $6 AND status = 0 AND expires_at > NOW()">>,
-    case elib_pg:execute(Sql, [
-        ?STATUS_PAID, PaymentNo, PaymentMethod, SubscriptionStart, SubscriptionEnd, OrderNo
-    ]) of
+            "updated_at = NOW() ", "WHERE order_no = $6 AND status = 0 AND expires_at > NOW()">>,
+    case
+        elib_pg:execute(Sql, [
+            ?STATUS_PAID, PaymentNo, PaymentMethod, SubscriptionStart, SubscriptionEnd, OrderNo
+        ])
+    of
         {ok, 0} -> {error, not_found_or_expired};
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -146,8 +164,8 @@ pay(OrderNo, PaymentData) ->
 %% @doc 取消订单
 -spec cancel(binary()) -> ok | {error, term()}.
 cancel(OrderNo) ->
-    Sql = <<"UPDATE channel_order ",
-            "SET status = $1, updated_at = NOW() ",
+    Sql =
+        <<"UPDATE channel_order ", "SET status = $1, updated_at = NOW() ",
             "WHERE order_no = $2 AND status = 0">>,
     case elib_pg:execute(Sql, [?STATUS_CANCELLED, OrderNo]) of
         {ok, 0} -> {error, not_found_or_not_pending};
@@ -158,7 +176,8 @@ cancel(OrderNo) ->
 %% @doc 退款
 -spec refund(binary(), integer(), binary()) -> ok | {error, term()}.
 refund(OrderNo, _AdminUid, Reason) ->
-    Sql = <<"UPDATE channel_order ",
+    Sql =
+        <<"UPDATE channel_order ",
             "SET status = $1, refund_reason = $2, refund_at = NOW(), updated_at = NOW() ",
             "WHERE order_no = $3 AND status = 1">>,
     case elib_pg:execute(Sql, [?STATUS_REFUNDED, Reason, OrderNo]) of
@@ -170,12 +189,11 @@ refund(OrderNo, _AdminUid, Reason) ->
 %% @doc 获取用户的订单列表
 -spec list_by_user(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_by_user(UserId, Limit) ->
-    Sql = <<"SELECT o.id, o.channel_id, o.order_no, o.amount, o.currency, o.status, ",
+    Sql =
+        <<"SELECT o.id, o.channel_id, o.order_no, o.amount, o.currency, o.status, ",
             "o.payment_method, o.payment_at, o.expires_at, o.created_at, ",
-            "c.name as channel_name ",
-            "FROM channel_order o ",
-            "JOIN channel c ON o.channel_id = c.id ",
-            "WHERE o.user_id = $1 ",
+            "c.name as channel_name ", "FROM channel_order o ",
+            "JOIN channel c ON o.channel_id = c.id ", "WHERE o.user_id = $1 ",
             "ORDER BY o.created_at DESC LIMIT $2">>,
     case elib_pg:query(Sql, [UserId, Limit]) of
         {ok, Rows} -> {ok, Rows};
@@ -185,11 +203,10 @@ list_by_user(UserId, Limit) ->
 %% @doc 获取频道的订单列表
 -spec list_by_channel(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_by_channel(ChannelId, Limit) ->
-    Sql = <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
-            "payment_method, payment_at, created_at ",
-            "FROM channel_order ",
-            "WHERE channel_id = $1 ",
-            "ORDER BY created_at DESC LIMIT $2">>,
+    Sql =
+        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
+            "payment_method, payment_at, created_at ", "FROM channel_order ",
+            "WHERE channel_id = $1 ", "ORDER BY created_at DESC LIMIT $2">>,
     case elib_pg:query(Sql, [ChannelId, Limit]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -198,7 +215,8 @@ list_by_channel(ChannelId, Limit) ->
 %% @doc 检查用户是否已购买频道
 -spec has_purchased(integer(), integer()) -> boolean().
 has_purchased(ChannelId, UserId) ->
-    Sql = <<"SELECT COUNT(*) as cnt FROM channel_order ",
+    Sql =
+        <<"SELECT COUNT(*) as cnt FROM channel_order ",
             "WHERE channel_id = $1 AND user_id = $2 AND status = 1">>,
     case elib_pg:query(Sql, [ChannelId, UserId]) of
         {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
@@ -208,9 +226,9 @@ has_purchased(ChannelId, UserId) ->
 %% @doc 获取用户的有效订阅
 -spec get_active_subscription(integer(), integer()) -> {ok, map()} | {error, not_found}.
 get_active_subscription(ChannelId, UserId) ->
-    Sql = <<"SELECT id, channel_id, user_id, order_no, amount, currency, ",
-            "subscription_start_at, subscription_end_at, created_at ",
-            "FROM channel_order ",
+    Sql =
+        <<"SELECT id, channel_id, user_id, order_no, amount, currency, ",
+            "subscription_start_at, subscription_end_at, created_at ", "FROM channel_order ",
             "WHERE channel_id = $1 AND user_id = $2 AND status = 1 ",
             "AND (subscription_end_at IS NULL OR subscription_end_at > NOW()) ",
             "ORDER BY created_at DESC LIMIT 1">>,

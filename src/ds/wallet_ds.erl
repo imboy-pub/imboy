@@ -18,8 +18,11 @@
 
 -export([find_by_uid/1, ensure_wallet/1, page_transactions/3]).
 -export([create/1]).
+-export([topup/3]).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation
 -export([atomic_balance_change/4]).
+%% 幂等查询：payment_wallet_gateway 用 reference_no 防止重复入账
+-export([find_transaction_by_ref/1]).
 
 -include("log.hrl").
 
@@ -39,8 +42,10 @@ ensure_wallet(Uid) ->
                 {ok, _} ->
                     wallet_repo:find_by_uid(Uid);
                 {error, Reason} ->
-                    ?WARN_LOG("wallet_ds:ensure_wallet create error uid=~p reason=~p",
-                              [Uid, Reason]),
+                    ?WARN_LOG(
+                        "wallet_ds:ensure_wallet create error uid=~p reason=~p",
+                        [Uid, Reason]
+                    ),
                     %% 极端情况下创建失败仍返回空 map，由调用方判断
                     %% On rare creation failure, return empty map; caller decides
                     #{}
@@ -51,7 +56,7 @@ ensure_wallet(Uid) ->
 
 %% @doc 分页查询流水
 -spec page_transactions(pos_integer(), pos_integer(), integer()) ->
-        {ok, map()} | {error, term()}.
+    {ok, map()} | {error, term()}.
 page_transactions(Page, Size, Uid) ->
     wallet_repo:page_transactions(Page, Size, Uid).
 
@@ -61,7 +66,7 @@ page_transactions(Page, Size, Uid) ->
 %%
 %% @returns {ok, NewBalance} | {rollback, Reason} | {error, Reason}
 -spec topup(integer(), integer(), binary()) ->
-        {ok, integer()} | {rollback, term()} | {error, term()}.
+    {ok, integer()} | {rollback, term()} | {error, term()}.
 topup(Uid, Amount, RefNo) ->
     Wallet = ensure_wallet(Uid),
     case map_size(Wallet) =:= 0 of
@@ -83,7 +88,7 @@ topup(Uid, Amount, RefNo) ->
 %% @doc 原子余额变更（薄封装）/ Atomic balance change (thin pass-through).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation.
 -spec atomic_balance_change(integer(), integer(), map(), binary()) ->
-        {ok, integer()} | {rollback, term()} | {error, term()}.
+    {ok, integer()} | {rollback, term()} | {error, term()}.
 atomic_balance_change(Amount, Uid, TxData, RefNo) ->
     wallet_repo:atomic_balance_change(Amount, Uid, TxData, RefNo).
 

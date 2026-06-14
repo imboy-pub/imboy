@@ -4,6 +4,7 @@
 -export([pay_order/2]).
 -export([get_my_orders/1]).
 -export([get_order/2]).
+-export([refund_order/2]).
 
 %% 生产环境允许的支付方式白名单（不含 mock）
 -define(ALLOWED_PAYMENT_METHODS, [<<"wallet">>, <<"alipay">>, <<"wechat">>, <<"stripe">>]).
@@ -227,6 +228,86 @@ get_order(Uid, OrderNo) ->
         _Other ->
             {error, elib_cnv:safe_to_binary(_Other)}
     end.
+
+-spec refund_order(integer(), binary()) -> ok | {error, binary()}.
+refund_order(Uid, OrderNo) ->
+    refund_order(Uid, OrderNo, <<"用户申请退款"/utf8>>).
+
+-spec refund_order(integer(), binary(), binary()) -> ok | {error, binary()}.
+refund_order(Uid, OrderNo, Reason0) ->
+    Reason = normalize_refund_reason(Reason0),
+    case channel_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} when is_map(Order) ->
+            OrderUserId = maps:get(<<"user_id">>, Order, 0),
+            ChannelId = maps:get(<<"channel_id">>, Order, 0),
+            Status = maps:get(<<"status">>, Order, 0),
+            case
+                is_integer(OrderUserId) andalso
+                    OrderUserId > 0 andalso
+                    is_integer(ChannelId) andalso
+                    ChannelId > 0
+            of
+                false ->
+                    {error, <<"订单不存在"/utf8>>};
+                true when OrderUserId =/= Uid ->
+                    {error, <<"无权操作此订单"/utf8>>};
+                true ->
+                    %% 幂等：已退款订单直接返回提示，不重复退
+                    case Status of
+                        2 ->
+                            {error, <<"订单已退款"/utf8>>};
+                        1 ->
+                            do_refund_order(ChannelId, Uid, OrderNo, Order, Reason);
+                        _ ->
+                            {error, <<"订单状态不允许退款"/utf8>>}
+                    end
+            end;
+        {ok, _} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, not_found} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, Reason1} when is_binary(Reason1) ->
+            {error, Reason1};
+        {error, Reason1} ->
+            {error, elib_cnv:safe_to_binary(Reason1)};
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
+    end.
+
+%% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅
+%% 金额单位说明：channel_order.amount 为元(numeric)，透传给 payment_gateway:refund，
+%% 具体网关（如钱包）内部负责 yuan_to_fen 换算。
+-spec do_refund_order(integer(), integer(), binary(), map(), binary()) ->
+    ok | {error, binary()}.
+do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
+    Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
+    PaymentNo = maps:get(<<"payment_no">>, Order, <<>>),
+    Amount = maps:get(<<"amount">>, Order, 0),
+    case payment_gateway:refund(Method, PaymentNo, Amount) of
+        ok ->
+            %% 网关退款成功后再更新订单状态（带 status=1 守卫，并发安全）
+            case channel_order_ds:refund(OrderNo, Uid, Reason) of
+                ok ->
+                    %% 退款成功后取消该用户对频道的订阅（失败不回退退款，仅记录）
+                    _ = channel_ds:unsubscribe(ChannelId, Uid),
+                    ok;
+                {error, not_found_or_not_paid} ->
+                    %% 并发场景：状态已被其他流程改变，按已退款处理
+                    {error, <<"订单已退款"/utf8>>};
+                {error, RefReason} ->
+                    {error, elib_cnv:safe_to_binary(RefReason)}
+            end;
+        {error, PayReason} when is_binary(PayReason) ->
+            {error, PayReason};
+        {error, PayReason} ->
+            {error, elib_cnv:safe_to_binary(PayReason)}
+    end.
+
+-spec normalize_refund_reason(term()) -> binary().
+normalize_refund_reason(Reason) when is_binary(Reason), Reason =/= <<>> ->
+    Reason;
+normalize_refund_reason(_) ->
+    <<"用户申请退款"/utf8>>.
 
 -spec is_payment_method_allowed(binary()) -> boolean().
 is_payment_method_allowed(Method) ->

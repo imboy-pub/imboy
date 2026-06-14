@@ -101,12 +101,16 @@ order_status(Req0, State) ->
 -spec refund_order(cowboy_req:req(), map()) -> cowboy_req:req().
 refund_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    OrderNo = normalize_non_empty_binary(cowboy_req:binding(order_no, Req0)),
+    PostVals = elib_param:post(Req0),
+    OrderNo = resolve_order_no(Req0, PostVals),
+    RefundReason = normalize_non_empty_binary(
+        maps:get(<<"refund_reason">>, PostVals, <<>>)
+    ),
     case OrderNo of
         <<>> ->
             elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
         _ ->
-            case channel_logic:refund_order(Uid, OrderNo) of
+            case channel_logic:refund_order(Uid, OrderNo, RefundReason) of
                 ok ->
                     elib_response:success(Req0, #{});
                 {error, Msg} ->
@@ -123,6 +127,13 @@ resolve_channel_id(Req0, PostVals) ->
     case binding_or_empty(channel_id, Req0) of
         <<>> -> maps:get(<<"channel_id">>, PostVals, <<>>);
         ChannelId -> ChannelId
+    end.
+
+-spec resolve_order_no(cowboy_req:req(), map()) -> binary().
+resolve_order_no(Req0, PostVals) ->
+    case normalize_non_empty_binary(binding_or_empty(order_no, Req0)) of
+        <<>> -> normalize_non_empty_binary(maps:get(<<"order_no">>, PostVals, <<>>));
+        OrderNo -> OrderNo
     end.
 
 -spec binding_or_empty(atom(), cowboy_req:req()) -> binary().

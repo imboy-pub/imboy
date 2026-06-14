@@ -29,6 +29,12 @@ init(Req0, State0) ->
                 transactions(Req0, State);
             topup ->
                 topup(Req0, State);
+            recharge_order ->
+                recharge_order(Req0, State);
+            recharge_pay ->
+                recharge_pay(Req0, State);
+            recharge_query ->
+                recharge_query(Req0, State);
             false ->
                 Req0
         end,
@@ -115,6 +121,60 @@ gen_reference_no() ->
     Ts = integer_to_binary(erlang:system_time(millisecond)),
     Rand = binary:encode_hex(crypto:strong_rand_bytes(8)),
     <<"TOP", Ts/binary, "_", Rand/binary>>.
+
+%% @doc 创建充值订单
+%% POST /v1/wallet/recharge/order
+%% 参数: amount（分）、payment_method（alipay/wechat/stripe/mock）
+-spec recharge_order(cowboy_req:req(), map()) -> cowboy_req:req().
+recharge_order(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Amount = maps:get(<<"amount">>, PostVals, 0),
+    Method = maps:get(<<"payment_method">>, PostVals, <<>>),
+    case recharge_logic:create_order(CurrentUid, Amount, Method) of
+        {ok, Order} ->
+            elib_response:success(Req0, Order, "success.");
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% @doc 拉起第三方支付
+%% POST /v1/wallet/recharge/pay
+%% 参数: order_no
+-spec recharge_pay(cowboy_req:req(), map()) -> cowboy_req:req().
+recharge_pay(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    OrderNo = maps:get(<<"order_no">>, PostVals, <<>>),
+    case is_binary(OrderNo) andalso byte_size(OrderNo) > 0 of
+        false ->
+            elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
+        true ->
+            case recharge_logic:pay(CurrentUid, OrderNo) of
+                {ok, PayResult} ->
+                    elib_response:success(Req0, PayResult, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 查询充值订单状态
+%% GET /v1/wallet/recharge/:order_no
+-spec recharge_query(cowboy_req:req(), map()) -> cowboy_req:req().
+recharge_query(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    OrderNo = cowboy_req:binding(order_no, Req0, <<>>),
+    case is_binary(OrderNo) andalso byte_size(OrderNo) > 0 of
+        false ->
+            elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
+        true ->
+            case recharge_logic:query(CurrentUid, OrderNo) of
+                {ok, Order} ->
+                    elib_response:success(Req0, Order, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
 
 %% ===================================================================
 %% EUnit tests.

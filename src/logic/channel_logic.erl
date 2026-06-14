@@ -101,6 +101,10 @@
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
 -export([get_daily_stats/2]).
+-export([get_pinned_messages/1]).
+-export([get_message_reactions/2]).
+-export([refund_order/2]).
+-export([refund_order/3]).
 
 -export([create_invitation/3]).
 -export([accept_invitation/2]).
@@ -237,3 +241,19 @@ get_order(Uid, OrderNo) ->
 
 sync_channels(Uid, Since) ->
     channel_logic_sync:sync_channels(Uid, Since).
+
+-spec get_pinned_messages(integer()) -> {ok, list(map())} | {error, binary()}.
+get_pinned_messages(ChannelId) ->
+    channel_message_ds:list_pinned(ChannelId).
+
+-spec get_message_reactions(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
+get_message_reactions(_ChannelId, MessageId) ->
+    msg_reaction_ds:get_reactions(MessageId, <<"channel">>).
+
+-spec refund_order(integer(), binary()) -> ok | {error, binary()}.
+refund_order(Uid, OrderNo) ->
+    channel_logic_order:refund_order(Uid, OrderNo).
+
+-spec refund_order(integer(), binary(), binary()) -> ok | {error, binary()}.
+refund_order(Uid, OrderNo, Reason) ->
+    channel_logic_order:refund_order(Uid, OrderNo, Reason).
