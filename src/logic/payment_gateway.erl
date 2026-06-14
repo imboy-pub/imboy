@@ -16,8 +16,10 @@
 %%%===================================================================
 
 -callback pay(OrderNo :: binary(), Amount :: term(), Opts :: map()) ->
-    {ok, binary()} | {error, binary()}.
-%% 返回 {ok, PaymentNo} 或 {error, Reason}
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
+%% 返回 {ok, PaymentNo} 或 {ok, PaymentNo, Extra} 或 {error, Reason}。
+%% Extra 携带网关向客户端透传的支付参数（如 Stripe client_secret、
+%% 微信 prepay_id/paySign、支付宝 orderStr），由上层并入下单响应。
 
 -callback refund(PaymentNo :: binary(), Amount :: term()) ->
     ok | {error, binary()}.
@@ -25,7 +27,8 @@
 -export([pay/3, refund/3, method_module/1, registry/0]).
 
 %% @doc 发起支付
--spec pay(binary(), binary(), map()) -> {ok, binary()} | {error, binary()}.
+-spec pay(binary(), binary(), map()) ->
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
 pay(Method, OrderNo, Opts) ->
     case method_module(Method) of
         {ok, Module} ->

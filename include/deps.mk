@@ -154,6 +154,9 @@ dep_pgo = git https://gitee.com/imboy-tripartite-deps/pgo main
 dep_pg_types = ln ../../pg_types
 # dep_pgo = ln ../../pgo
 
+# erlang_pay：同工作区独立纯 Erlang 第三方支付库（本地路径 dep，无需 remote）
+dep_erlang_pay = ln ../../erlang_pay
+
 dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
 dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.8.0
 # https://github.com/epgsql/epgsql.git

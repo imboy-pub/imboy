@@ -82,13 +82,16 @@ live_verify(<<"stripe">>, RawBody, Headers) ->
         true ->
             {error, no_credential};
         false ->
-            %% TODO[live]: Stripe Webhook 验签 ——
-            %%   1) 取头 Stripe-Signature（形如 t=...,v1=...）；
-            %%   2) signed_payload = t ++ "." ++ RawBody；
-            %%   3) HMAC-SHA256(Secret, signed_payload) 与 v1 常量时间比较；
-            %%   4) 校验 t 与当前时间差在容忍窗口内（防重放）。
-            _ = {Secret, RawBody, Headers},
-            ok
+            %% 经 erlang_pay 库验签（HMAC-SHA256 + 时间戳容差防重放）。
+            %% Headers 已是 cowboy 小写键 map；body 用原始字节。
+            Cfg = #{webhook_secret => Secret},
+            Ctx = #{headers => Headers, body => RawBody},
+            case erlang_pay:verify_notify(stripe, Cfg, Ctx) of
+                {ok, _Event} -> ok;
+                {error, {Code, _Msg}} -> {error, Code};
+                {error, Code} when is_atom(Code) -> {error, Code};
+                {error, _} -> {error, bad_signature}
+            end
     end;
 live_verify(_Gateway, _RawBody, _Headers) ->
     %% 未知网关 live 下一律拒绝

@@ -149,16 +149,17 @@ query(Uid, OrderNo) ->
 %% @doc 执行支付：调网关 → 回填 payment_no → 沙箱即时入账
 -spec do_pay(integer(), binary(), binary(), integer()) -> {ok, map()} | {error, binary()}.
 do_pay(Uid, OrderNo, Method, Amount) ->
-    PayOpts = #{uid => Uid, amount => Amount},
-    case payment_gateway:pay(Method, OrderNo, PayOpts) of
-        {ok, PaymentNo} ->
+    PayOpts = #{uid => Uid, amount => Amount, currency => order_currency(OrderNo)},
+    case normalize_pay_result(payment_gateway:pay(Method, OrderNo, PayOpts)) of
+        {ok, PaymentNo, Extra} ->
             %% payment_no 由回调/入账(credit_in_tx)回填；下单阶段不改订单状态
-            Result0 = #{
+            %% Extra：网关向客户端透传的支付参数（Stripe client_secret 等），并入响应
+            Result0 = maps:merge(Extra, #{
                 <<"order_no">> => OrderNo,
                 <<"payment_no">> => PaymentNo,
                 <<"payment_method">> => Method,
                 <<"amount">> => Amount
-            },
+            }),
             %% 沙箱(mock)网关即时入账，便于本地联调
             case Method of
                 <<"mock">> ->
@@ -181,6 +182,27 @@ do_pay(Uid, OrderNo, Method, Amount) ->
             {error, PayReason};
         {error, PayReason} ->
             {error, elib_cnv:safe_to_binary(PayReason)}
+    end.
+
+%% @doc 归一网关返回：兼容 {ok, PaymentNo} 与 {ok, PaymentNo, Extra}，
+%% 统一成 {ok, PaymentNo, Extra::map()}，错误原样透传。
+-spec normalize_pay_result(term()) ->
+    {ok, binary(), map()} | {error, term()}.
+normalize_pay_result({ok, PaymentNo, Extra}) when is_map(Extra) ->
+    {ok, PaymentNo, Extra};
+normalize_pay_result({ok, PaymentNo}) ->
+    {ok, PaymentNo, #{}};
+normalize_pay_result({error, _} = Err) ->
+    Err;
+normalize_pay_result(Other) ->
+    {error, elib_cnv:safe_to_binary(Other)}.
+
+%% @doc 取订单币种（透传给网关用于换算与下单），缺省 CNY。
+-spec order_currency(binary()) -> binary().
+order_currency(OrderNo) ->
+    case load_order_raw(OrderNo) of
+        {ok, Order} -> maps:get(<<"currency">>, Order, <<"CNY">>);
+        _ -> <<"CNY">>
     end.
 
 %% @doc 入账：单事务(订单状态翻转+钱包加余额+流水)原子完成，幂等。

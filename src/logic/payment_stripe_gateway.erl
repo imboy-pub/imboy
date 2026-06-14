@@ -65,23 +65,28 @@ sandbox_refund(PaymentNo, Amount) ->
 %%% live 模式 —— 真实接入骨架（沙箱阶段不实际发起请求）
 %%%===================================================================
 
--spec live_pay(binary(), term(), map()) -> {ok, binary()} | {error, binary()}.
-live_pay(OrderNo, Amount, _Opts) ->
+%% live 模式经 erlang_pay 库真实创建 PaymentIntent。
+%% 金额：Amount 已是最小货币单位（分/cents，由 recharge_order 存储），
+%% 直接作 amount_fen 传入，不再 *100（旧 yuan_to_cents 基于「Amount=元」的
+%% 错误假设，已弃用）。currency 取订单币种（默认 cny），Stripe 要求小写。
+-spec live_pay(binary(), term(), map()) ->
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
+live_pay(OrderNo, Amount, Opts) ->
     case credentials() of
-        {ok, #{secret_key := SecretKey}} ->
-            %% 金额换算：Stripe amount 单位为最小货币单位（cents）
-            AmountCents = yuan_to_cents(Amount),
-            %% TODO[live]: 创建 PaymentIntent
-            %%   POST https://api.stripe.com/v1/payment_intents
-            %%   body(x-www-form-urlencoded): amount=AmountCents&currency=usd
-            %%     &metadata[out_trade_no]=OrderNo&automatic_payment_methods[enabled]=true
-            %% TODO[live]: Authorization: Bearer SecretKey（HTTP Basic 亦可）
-            %% TODO[live]: 解析响应 id(pi_xxx) 与 client_secret，
-            %%   PaymentNo 用 PaymentIntent id，client_secret 返回客户端确认。
-            %% TODO[live]: Webhook 用 stripe_webhook_secret 校验签名（Stripe-Signature 头）。
-            _ = {SecretKey, OrderNo, AmountCents},
-            PaymentNo = <<"STRIPE_", OrderNo/binary>>,
-            {ok, PaymentNo};
+        {ok, Cred} ->
+            Order = #{
+                out_trade_no => OrderNo,
+                amount_fen => to_minor_int(Amount),
+                currency => order_currency(Opts)
+            },
+            case erlang_pay:create_payment(stripe, epay_cfg(Cred), Order) of
+                {ok, #{payment_no := PaymentNo, client_secret := Secret}} ->
+                    {ok, PaymentNo, #{<<"client_secret">> => Secret}};
+                {ok, #{payment_no := PaymentNo}} ->
+                    {ok, PaymentNo};
+                {error, Err} ->
+                    {error, epay_err_msg(Err)}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -89,17 +94,47 @@ live_pay(OrderNo, Amount, _Opts) ->
 -spec live_refund(binary(), term()) -> ok | {error, binary()}.
 live_refund(PaymentNo, Amount) ->
     case credentials() of
-        {ok, #{secret_key := SecretKey}} ->
-            AmountCents = yuan_to_cents(Amount),
-            %% TODO[live]: 创建 Refund
-            %%   POST https://api.stripe.com/v1/refunds
-            %%   body: payment_intent=PaymentNo&amount=AmountCents
-            %% TODO[live]: 校验响应 status=succeeded，否则返回 {error, Message}
-            _ = {SecretKey, PaymentNo, AmountCents},
-            ok;
+        {ok, Cred} ->
+            RefundReq = #{
+                payment_intent => PaymentNo,
+                amount_fen => to_minor_int(Amount)
+            },
+            case erlang_pay:refund(stripe, epay_cfg(Cred), RefundReq) of
+                {ok, _Resp} -> ok;
+                {error, Err} -> {error, epay_err_msg(Err)}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% imboy 凭据 map → erlang_pay Stripe Cfg。base_url 留空走库默认
+%% （api.stripe.com）；sandbox 联调可经 IMBOY 配置覆盖（此处不读）。
+-spec epay_cfg(map()) -> map().
+epay_cfg(#{secret_key := SecretKey} = Cred) ->
+    #{
+        secret_key => SecretKey,
+        webhook_secret => maps:get(webhook_secret, Cred, <<>>)
+    }.
+
+%% erlang_pay 统一错误 {Code::atom(), Msg::binary()} → 展示用 binary。
+-spec epay_err_msg(term()) -> binary().
+epay_err_msg({_Code, Msg}) when is_binary(Msg) -> Msg;
+epay_err_msg(Msg) when is_binary(Msg) -> Msg;
+epay_err_msg(Other) -> elib_cnv:safe_to_binary(Other).
+
+%% 订单币种（Opts 透传），Stripe 要求小写 ISO 4217。
+-spec order_currency(map()) -> binary().
+order_currency(Opts) ->
+    Cur = maps:get(currency, Opts, <<"cny">>),
+    list_to_binary(string:lowercase(binary_to_list(elib_cnv:safe_to_binary(Cur)))).
+
+%% Amount 已是最小货币单位（分）→ integer。兼容历史的 binary/float 入参。
+-spec to_minor_int(term()) -> integer().
+to_minor_int(V) when is_integer(V) -> V;
+to_minor_int(V) when is_float(V) -> round(V);
+to_minor_int(V) when is_binary(V) -> safe_int(V);
+to_minor_int(V) when is_list(V) -> safe_int(list_to_binary(V));
+to_minor_int(_) -> 0.
 
 %%%===================================================================
 %%% 配置读取
@@ -129,34 +164,8 @@ is_blank(undefined) -> true;
 is_blank(_) -> false.
 
 %%%===================================================================
-%%% 主币种单位 → 最小货币单位（cents）安全换算（避免浮点精度误差）
+%%% 金额工具
 %%%===================================================================
-
--spec yuan_to_cents(term()) -> integer().
-yuan_to_cents(V) when is_integer(V) -> V * 100;
-yuan_to_cents(V) when is_float(V) -> round(V * 100);
-yuan_to_cents(V) when is_binary(V) -> yuan_to_cents_bin(V);
-yuan_to_cents(V) when is_list(V) -> yuan_to_cents_bin(list_to_binary(V));
-yuan_to_cents(_) -> 0.
-
--spec yuan_to_cents_bin(binary()) -> integer().
-yuan_to_cents_bin(Bin) ->
-    case binary:split(Bin, <<".">>) of
-        [IntPart] ->
-            safe_int(IntPart) * 100;
-        [IntPart, FracPart] ->
-            safe_int(IntPart) * 100 + safe_int(normalize_frac(FracPart));
-        _ ->
-            0
-    end.
-
--spec normalize_frac(binary()) -> binary().
-normalize_frac(F) ->
-    case byte_size(F) of
-        0 -> <<"00">>;
-        1 -> <<F/binary, "0">>;
-        _ -> binary:part(F, 0, 2)
-    end.
 
 -spec safe_int(binary()) -> integer().
 safe_int(B) ->

@@ -1,6 +1,6 @@
 PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
-PROJECT_VERSION = 1.0.0-rc.1
+PROJECT_VERSION = $(shell cat VERSION)
 export PROJECT_VERSION
 
 # --- 环境配置选择（IMBOYENV 驱动） ---
@@ -34,6 +34,8 @@ DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 DEPS += telemetry lager observer_cli recon redbug
 # Template / Captcha
 DEPS += simple_captcha erlydtl sync
+# Payment（同工作区本地纯 Erlang 第三方支付库，ln 本地路径 dep）
+DEPS += erlang_pay
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 BUILD_DEPS = relx gpb bbmustache
