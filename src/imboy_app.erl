@@ -204,6 +204,14 @@ tsid_generator_names() ->
         %% ── 钱包 ──
         wallet,
         wallet_transaction,
+        %% ── 支付 / 充值 ──
+        recharge_order,
+        payment_transaction,
+        %% ── SaaS 计费 ──
+        billing_plan,
+        billing_subscription,
+        billing_invoice,
+        billing_usage,
         %% ── 直播 ──
         live_room,
         %% ── 推送 ──
