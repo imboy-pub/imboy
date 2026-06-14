@@ -38,6 +38,11 @@
 %   IMBOY_GARAGE_BUCKET    -> garage.bucket
 %   IMBOY_GARAGE_ACCESS_KEY -> garage.access_key
 %   IMBOY_GARAGE_SECRET_KEY -> garage.secret_key
+%   IMBOY_WECHAT_MCH_ID / IMBOY_WECHAT_APP_ID / IMBOY_WECHAT_API_V3_KEY
+%   IMBOY_WECHAT_CERT_SERIAL / IMBOY_WECHAT_PRIVATE_KEY / IMBOY_WECHAT_PLATFORM_PUBLIC_KEY
+%   IMBOY_ALIPAY_APP_ID / IMBOY_ALIPAY_PRIVATE_KEY / IMBOY_ALIPAY_PUBLIC_KEY
+%   IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
+%   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
 %%%
 
 -export([override_from_env/0]).
@@ -120,6 +125,9 @@ override_from_env() ->
 
     %% Garage S3 对象存储凭证
     ok = override_garage(),
+
+    %% 支付网关凭据（微信/支付宝/Stripe）+ 运行模式
+    ok = override_payment(),
 
     %% 版次标记（community|professional|enterprise）：仅标识 + 启动日志
     ok = override_edition(),
@@ -246,6 +254,46 @@ override_garage() ->
                 unicode:characters_to_binary(V)
             end),
             application:set_env(imboy, garage, Cfg4),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖支付网关凭据（binary 类型）+ 运行模式
+%% 凭据严禁写 sys.config，一律走 IMBOY_* 环境变量注入。
+%% 私钥(PEM)可含多行，shell 用引号传入即可。
+-spec override_payment() -> ok.
+override_payment() ->
+    %% 微信支付 APIv3
+    ok = override_binary_key("IMBOY_WECHAT_MCH_ID", wechat_mch_id),
+    ok = override_binary_key("IMBOY_WECHAT_APP_ID", wechat_app_id),
+    ok = override_binary_key("IMBOY_WECHAT_API_V3_KEY", wechat_api_v3_key),
+    ok = override_binary_key("IMBOY_WECHAT_CERT_SERIAL", wechat_cert_serial),
+    ok = override_binary_key("IMBOY_WECHAT_PRIVATE_KEY", wechat_private_key),
+    ok = override_binary_key("IMBOY_WECHAT_PLATFORM_PUBLIC_KEY", wechat_platform_public_key),
+    %% 支付宝
+    ok = override_binary_key("IMBOY_ALIPAY_APP_ID", alipay_app_id),
+    ok = override_binary_key("IMBOY_ALIPAY_PRIVATE_KEY", alipay_private_key),
+    ok = override_binary_key("IMBOY_ALIPAY_PUBLIC_KEY", alipay_public_key),
+    %% Stripe
+    ok = override_binary_key("IMBOY_STRIPE_SECRET_KEY", stripe_secret_key),
+    ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),
+    %% 网关运行模式：sandbox（默认）| live
+    ok = override_payment_mode(),
+    ok.
+
+%% @doc 覆盖支付网关运行模式（atom：sandbox | live）
+%% 非法值回退 sandbox（安全默认，避免误走真实扣款）。
+-spec override_payment_mode() -> ok.
+override_payment_mode() ->
+    case os:getenv("IMBOY_PAYMENT_MODE") of
+        Value when is_list(Value), length(Value) > 0 ->
+            Mode =
+                case string:lowercase(Value) of
+                    "live" -> live;
+                    _ -> sandbox
+                end,
+            application:set_env(imboy, payment_mode, Mode),
             ok;
         _ ->
             ok
