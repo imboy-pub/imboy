@@ -152,8 +152,7 @@ do_pay(Uid, OrderNo, Method, Amount) ->
     PayOpts = #{uid => Uid, amount => Amount},
     case payment_gateway:pay(Method, OrderNo, PayOpts) of
         {ok, PaymentNo} ->
-            %% 回填 payment_no（不改 status，status 由回调/入账翻转）
-            _ = recharge_order_ds:update_status(OrderNo, ?STATUS_PENDING),
+            %% payment_no 由回调/入账(credit_in_tx)回填；下单阶段不改订单状态
             Result0 = #{
                 <<"order_no">> => OrderNo,
                 <<"payment_no">> => PaymentNo,
@@ -184,58 +183,27 @@ do_pay(Uid, OrderNo, Method, Amount) ->
             {error, elib_cnv:safe_to_binary(PayReason)}
     end.
 
-%% @doc 入账：标记已支付 + 钱包加余额（幂等）
+%% @doc 入账：单事务(订单状态翻转+钱包加余额+流水)原子完成，幂等。
+%% 取代此前 mark_paid + do_credit 两步非原子写法（曾有"订单已支付但钱没进"风险）。
 -spec credit_order(map(), binary(), binary()) ->
     {ok, integer()} | {ok, already_credited} | {error, binary()}.
 credit_order(Order, OrderNo, GatewayPaymentNo) ->
     Uid = maps:get(<<"user_id">>, Order, 0),
     Amount = maps:get(<<"amount">>, Order, 0),
-    %% 先条件标记已支付（status=0 且未过期才成功）
-    case recharge_order_ds:mark_paid(OrderNo, GatewayPaymentNo) of
-        ok ->
-            do_credit(Uid, Amount, OrderNo);
-        {error, not_found_or_paid} ->
-            %% 并发竞态：已被其它回调标记，回查最终态
+    %% 确保钱包存在（事务内只加余额，不建钱包）
+    _ = wallet_ds:ensure_wallet(Uid),
+    case recharge_order_ds:credit_in_tx(OrderNo, GatewayPaymentNo, Uid, Amount) of
+        {ok, NewBalance} ->
+            {ok, NewBalance};
+        {rollback, already_credited} ->
+            {ok, already_credited};
+        {rollback, order_not_payable} ->
+            %% 并发竞态/已过期：回查最终态
             recheck_after_race(OrderNo);
+        {rollback, wallet_not_found} ->
+            {error, <<"钱包不可用"/utf8>>};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
-    end.
-
-%% @doc 实际加余额（reference_no UNIQUE 兜底幂等）
--spec do_credit(integer(), integer(), binary()) ->
-    {ok, integer()} | {ok, already_credited} | {error, binary()}.
-do_credit(Uid, Amount, OrderNo) ->
-    RefNo = <<"RCH_", OrderNo/binary>>,
-    %% 双保险②：若该 RefNo 流水已存在，说明已入账，幂等返回
-    case wallet_ds:find_transaction_by_ref(RefNo) of
-        Tx when is_map(Tx), map_size(Tx) > 0 ->
-            {ok, already_credited};
-        _ ->
-            Wallet = wallet_ds:ensure_wallet(Uid),
-            case map_size(Wallet) =:= 0 of
-                true ->
-                    {error, <<"钱包不可用"/utf8>>};
-                false ->
-                    WalletId = maps:get(<<"id">>, Wallet),
-                    TxData = #{
-                        <<"wallet_id">> => WalletId,
-                        <<"user_id">> => Uid,
-                        <<"amount">> => Amount,
-                        <<"tx_type">> => 1,
-                        <<"remark">> => <<"充值"/utf8>>,
-                        <<"status">> => 1
-                    },
-                    case wallet_ds:atomic_balance_change(Amount, Uid, TxData, RefNo) of
-                        {ok, NewBalance} ->
-                            {ok, NewBalance};
-                        {rollback, _} ->
-                            %% RefNo 冲突 = 已入账（reference_no UNIQUE 触发）
-                            {ok, already_credited};
-                        {error, _} ->
-                            %% 入账写入失败（可能是 reference_no 唯一冲突），视为已入账幂等
-                            {ok, already_credited}
-                    end
-            end
     end.
 
 %% @doc 并发竞态后回查最终态

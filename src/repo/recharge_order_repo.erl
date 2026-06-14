@@ -22,6 +22,7 @@
 -export([mark_paid/2]).
 -export([update_status/2]).
 -export([page_by_user/3]).
+-export([credit_in_tx/4]).
 
 %%===================================================================
 %%% Constants
@@ -149,9 +150,101 @@ page_by_user(Uid, Page, Size) ->
     Order = <<"id desc">>,
     elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size).
 
+%% @doc 单事务充值入账：订单状态翻转 + 钱包加余额 + 写流水，三表原子。
+%% 解决"订单已标记已支付但钱没进账"的非原子风险（此前 mark_paid 与加余额分两步，
+%% 中间 DB 故障会导致订单已支付却未入账，且重试被 status=1 拦截 → 丢钱）。
+%%
+%% 跨表事务说明：本函数在单个 with_tx 内同时操作 recharge_order / wallet /
+%% wallet_transaction 三表。虽跨域，但充值入账的原子性要求高于严格分层，
+%% 故集中在充值订单 Repo 内以单事务保证一致性。
+%%
+%% 幂等双保险：
+%%   ① 订单 WHERE status=0 条件更新，已支付返回 already_credited（不重复加钱）；
+%%   ② wallet_transaction.reference_no(RCH_<OrderNo>) UNIQUE 兜底，
+%%      线B 真实回调与线D 沙箱即时入账用同一 reference_no，互相幂等。
+%%
+%% @returns {ok, NewBalance}
+%%        | {rollback, already_credited | order_not_payable | wallet_not_found}
+%%        | {error, term()}
+-spec credit_in_tx(binary(), binary(), integer(), integer()) ->
+    {ok, integer()}
+    | {rollback, already_credited | order_not_payable | wallet_not_found}
+    | {error, term()}.
+credit_in_tx(OrderNo, GwPayNo, Uid, Amount) ->
+    Tb = tablename(),
+    WalletTb = elib_pg_sql:public_tablename(<<"wallet">>),
+    TxTb = elib_pg_sql:public_tablename(<<"wallet_transaction">>),
+    RefNo = <<"RCH_", OrderNo/binary>>,
+    elib_pg:with_tx(fun(Conn) ->
+        OrderSql =
+            <<"UPDATE ", Tb/binary,
+                " SET status = $1, payment_no = $2, paid_at = NOW(), updated_at = NOW()"
+                " WHERE order_no = $3 AND status = ", (integer_to_binary(?STATUS_PENDING))/binary,
+                " AND expires_at > NOW()">>,
+        case elib_pg:execute(Conn, OrderSql, [?STATUS_PAID, GwPayNo, OrderNo]) of
+            {ok, 1} ->
+                credit_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo);
+            {ok, 0} ->
+                throw({rollback, order_not_payable_state(Conn, Tb, OrderNo)});
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end).
+
 %%===================================================================
 %%% Internal Functions
 %%===================================================================
+
+%% @doc 订单条件更新影响 0 行时，区分"已支付(幂等)"与"不可支付(过期/取消/不存在)"
+-spec order_not_payable_state(term(), binary(), binary()) ->
+    already_credited | order_not_payable.
+order_not_payable_state(Conn, Tb, OrderNo) ->
+    Sql = <<"SELECT status FROM ", Tb/binary, " WHERE order_no = $1">>,
+    case elib_pg:execute(Conn, Sql, [OrderNo]) of
+        {ok, _, [{?STATUS_PAID}]} -> already_credited;
+        _ -> order_not_payable
+    end.
+
+%% @doc 事务内钱包加余额 + 写流水（reference_no UNIQUE 冲突 = 已入账，幂等回滚）
+-spec credit_wallet_in_tx(term(), binary(), binary(), integer(), integer(), binary()) ->
+    {ok, integer()} | no_return().
+credit_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo) ->
+    WSql =
+        <<"UPDATE ", WalletTb/binary,
+            " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 RETURNING balance, id">>,
+    case elib_pg:execute(Conn, WSql, [Amount, Uid]) of
+        {ok, 1, [{NewBalance, WalletId}]} ->
+            TxId = elib_tsid:generate(wallet_transaction),
+            TxSql =
+                <<"INSERT INTO ", TxTb/binary,
+                    " (id, wallet_id, user_id, amount, balance_after, tx_type,"
+                    " reference_no, remark, status)"
+                    " VALUES ($1, $2, $3, $4, $5, 1, $6, $7, 1)">>,
+            case
+                elib_pg:execute(Conn, TxSql, [
+                    TxId, WalletId, Uid, Amount, NewBalance, RefNo, <<"在线充值"/utf8>>
+                ])
+            of
+                {ok, 1} ->
+                    {ok, NewBalance};
+                {error, Reason} ->
+                    case is_unique_violation(Reason) of
+                        true -> throw({rollback, already_credited});
+                        false -> throw({rollback, Reason})
+                    end
+            end;
+        {ok, 0} ->
+            throw({rollback, wallet_not_found});
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+%% @doc 判断是否 PG 唯一约束冲突(23505)
+-spec is_unique_violation(term()) -> boolean().
+is_unique_violation({pgsql_error, #{code := <<"23505">>}}) -> true;
+is_unique_violation({error, {pgsql_error, #{code := <<"23505">>}}}) -> true;
+is_unique_violation(_) -> false.
 
 %% @doc 生成充值订单号
 %% 格式: RCH + 时间戳(13位) + 随机数(6位)

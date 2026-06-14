@@ -13,6 +13,7 @@
 -export([mark_paid/2]).
 -export([update_status/2]).
 -export([page_by_user/3]).
+-export([credit_in_tx/4]).
 
 %% @doc 创建充值订单（status=0）
 -spec create(map()) -> {ok, binary()} | {error, term()}.
@@ -37,3 +38,11 @@ update_status(OrderNo, Status) ->
     {ok, map()} | {error, term()}.
 page_by_user(Uid, Page, Size) ->
     recharge_order_repo:page_by_user(Uid, Page, Size).
+
+%% @doc 单事务充值入账（订单状态+钱包余额+流水三表原子，幂等）
+-spec credit_in_tx(binary(), binary(), integer(), integer()) ->
+    {ok, integer()}
+    | {rollback, already_credited | order_not_payable | wallet_not_found}
+    | {error, term()}.
+credit_in_tx(OrderNo, GwPayNo, Uid, Amount) ->
+    recharge_order_repo:credit_in_tx(OrderNo, GwPayNo, Uid, Amount).

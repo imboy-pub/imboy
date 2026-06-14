@@ -169,7 +169,10 @@ credit(#{biz_type := ?BIZ_CHANNEL_ORDER} = Fields) ->
 credit(_) ->
     {error, <<"不支持的业务类型"/utf8>>}.
 
-%% @doc 充值入账：更新 recharge_order 已支付 + 钱包加余额（reference_no=trade_no 幂等）
+%% @doc 充值入账：单事务(订单状态+钱包余额+流水)原子完成，幂等。
+%% 取代此前 mark_recharge_order_paid + do_wallet_credit 两步非原子写法
+%% （曾有"订单已支付但钱没进"风险）。reference_no 统一为 RCH_<OrderNo>，
+%% 与线D沙箱即时入账一致，两条入账路径互相幂等。
 -spec credit_recharge(map()) -> ok | {error, binary()}.
 credit_recharge(Fields) ->
     Uid = maps:get(user_id, Fields),
@@ -178,39 +181,15 @@ credit_recharge(Fields) ->
         false ->
             {error, <<"充值入账参数无效"/utf8>>};
         true ->
-            RefNo = maps:get(trade_no, Fields),
             OrderNo = maps:get(biz_order_no, Fields),
             GwPayNo = maps:get(gateway_payment_no, Fields),
-            %% 先更新充值订单状态（不存在则记日志但不阻断入账幂等性）
-            _ = mark_recharge_order_paid(OrderNo, GwPayNo),
-            do_wallet_credit(Uid, Amount, RefNo)
-    end.
-
-%% @doc 钱包入账：确保钱包存在后原子加余额；reference_no 唯一约束保证幂等
--spec do_wallet_credit(integer(), integer(), binary()) -> ok | {error, binary()}.
-do_wallet_credit(Uid, Amount, RefNo) ->
-    Wallet = wallet_ds:ensure_wallet(Uid),
-    case map_size(Wallet) =:= 0 of
-        true ->
-            {error, <<"钱包不可用"/utf8>>};
-        false ->
-            WalletId = maps:get(<<"id">>, Wallet),
-            TxData = #{
-                <<"wallet_id">> => WalletId,
-                <<"user_id">> => Uid,
-                <<"amount">> => Amount,
-                <<"tx_type">> => 1,
-                <<"remark">> => <<"在线充值"/utf8>>,
-                <<"status">> => 1
-            },
-            case wallet_ds:atomic_balance_change(Amount, Uid, TxData, RefNo) of
-                {ok, _NewBalance} ->
-                    ok;
-                {rollback, Reason} ->
-                    %% reference_no 唯一冲突会以 DB 错误形态返回；其余 rollback 视为失败
-                    classify_credit_error(Reason);
-                {error, Reason} ->
-                    classify_credit_error(Reason)
+            _ = wallet_ds:ensure_wallet(Uid),
+            case recharge_order_ds:credit_in_tx(OrderNo, GwPayNo, Uid, Amount) of
+                {ok, _NewBalance} -> ok;
+                {rollback, already_credited} -> ok;
+                {rollback, order_not_payable} -> {error, <<"充值订单状态异常"/utf8>>};
+                {rollback, wallet_not_found} -> {error, <<"钱包不可用"/utf8>>};
+                {error, Reason} -> classify_credit_error(Reason)
             end
     end.
 
@@ -286,22 +265,6 @@ recheck_channel_order(OrderNo) ->
             end;
         _ ->
             {error, <<"频道订单不存在或已过期"/utf8>>}
-    end.
-
-%% @doc 更新充值订单为已支付（幂等：只更新 status=0 的待支付订单）
--spec mark_recharge_order_paid(binary(), binary()) -> ok | {error, term()}.
-mark_recharge_order_paid(OrderNo, GwPayNo) ->
-    Tb = elib_pg_sql:public_tablename(<<"recharge_order">>),
-    Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET status = 1, payment_no = $1, paid_at = NOW(), updated_at = NOW()",
-            " WHERE order_no = $2 AND status = 0">>,
-    case elib_pg:execute(Sql, [GwPayNo, OrderNo]) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            ?WARN_LOG([payment_callback, recharge_order_update, OrderNo, Reason]),
-            {error, Reason}
     end.
 
 %% @doc 入账成功后把支付流水标记为成功，落 notify_data/paid_at
