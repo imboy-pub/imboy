@@ -33,6 +33,7 @@ init(Req0, State0) ->
             disable -> disable(Method, Req0, State);
             enable -> enable(Method, Req0, State);
             delete -> delete(Method, Req0, State);
+            auth -> auth(Method, Req0, State);
             orphan -> orphan(Method, Req0, State);
             orphan_cleanup -> orphan_cleanup(Method, Req0, State);
             false -> Req0
@@ -83,6 +84,17 @@ delete(<<"POST">>, Req0, State) ->
     handle_id_action(State, <<"storage:delete">>, fun attachment_ds:soft_delete/1, Req0);
 delete(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 批量鉴权 URI（POST，逗号分隔），返回各 URI 的鉴权结果列表
+-spec auth(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+auth(<<"POST">>, Req0, _State) ->
+    PostVals = elib_param:post(Req0),
+    UriBin = maps:get(<<"uri">>, PostVals, <<>>),
+    Uris = binary:split(UriBin, <<",">>, [global]),
+    Results = [elib_uri:check_auth(U) || U <- Uris],
+    elib_response:success(Req0, #{<<"uri">> => Results}, "success.");
+auth(_, Req0, _State) ->
+    Req0.
 
 %% @doc disable/enable/delete 的公共流程：鉴权 → 解析 id → 执行 DS 操作 → 标准响应
 -spec handle_id_action(map(), binary(), fun((integer()) -> ok | {error, term()}), cowboy_req:req()) ->
