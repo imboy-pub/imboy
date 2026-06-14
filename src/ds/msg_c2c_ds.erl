@@ -331,7 +331,15 @@ read_msg_filter(Where, Limit, Params) ->
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            [elib_response:json_decode_field(Row, <<"payload">>) || Row <- Rows];
+            %% 同时反序列化 payload 与 e2ee 列：二者写入时均为 JSON 字符串，
+            %% 离线/历史消息读取时若不 decode，e2ee 元数据会以转义字符串下发，
+            %% 导致客户端无法解析密钥信封。json_decode_field 对 null/非 binary 安全。
+            [
+                elib_response:json_decode_field(
+                    elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                )
+             || Row <- Rows
+            ];
         _ ->
             []
     end.

@@ -16,7 +16,6 @@
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([count_since/2]).
 
-
 %% @doc 发送服务端到客户端的消息（v2.0 格式，完整参数）
 %%
 %% 向指定用户列表发送消息，支持实时发送和先存储再发送两种模式
@@ -30,7 +29,8 @@
 %% @param Payload 消息负载内容
 %% @param Save 发送模式，save表示先存储再发送，其他表示直接发送
 %% @returns ok 表示操作成功
--spec send(integer() | binary() | list(), list(), binary(), binary(), map() | null, map(), atom()) -> ok.
+-spec send(integer() | binary() | list(), list(), binary(), binary(), map() | null, map(), atom()) ->
+    ok.
 send(_, [], _, _, _, _, _) ->
     ok;
 send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
@@ -41,9 +41,12 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
         ToUid,
         Payload,
         MsgId,
-        MsgType,   % S2C 消息通常为空
-        Action,    % S2C 消息的 action 字段
-        E2EE       % S2C 消息通常为空
+        % S2C 消息通常为空
+        MsgType,
+        % S2C 消息的 action 字段
+        Action,
+        % S2C 消息通常为空
+        E2EE
     ),
     EncodedMsg = jsone:encode(Msg, [native_utf8]),
     case Save of
@@ -52,7 +55,9 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
             % 只存储实际的 payload 数据，而不是整个消息对象
             % 避免 API 返回时出现 payload 嵌套问题
             PayloadJson = jsone:encode(Payload, [native_utf8]),
-            _ = write_msg(CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null),
+            _ = write_msg(
+                CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null
+            ),
             MsLi = [0, 1_000_000, 1_000_000],
             _ = message_ds:send_next(ToUid, MsgId, EncodedMsg, MsLi),
             ok;
@@ -60,7 +65,6 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
             imboy_syn:publish(ToUid, EncodedMsg)
     end,
     send(FromId, Tail, Action, MsgType, E2EE, Payload, Save).
-
 
 %% @doc 存储服务端到客户端的消息
 %%
@@ -73,15 +77,14 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
 %% @param To 接收方用户ID
 %% @param ServerTS 服务器时间戳
 %% @returns any() 数据库操作结果
--spec write_msg(binary(), binary(), binary() | map() | list(), integer(), integer(), binary()) -> any().
+-spec write_msg(binary(), binary(), binary() | map() | list(), integer(), integer(), binary()) ->
+    any().
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) when is_map(Payload); is_list(Payload) ->
     write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS);
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     %% 从 Payload 中提取 action 和 msg_type 字段
     PayloadMap =
-        try
-            jsone:decode(Payload)
-        of
+        try jsone:decode(Payload) of
             Map when is_map(Map) ->
                 Map;
             _ ->
@@ -102,7 +105,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
             elib_async:async_retry(fun() ->
                 case msg_s2c_repo:delete_overflow_msg(To, Limit) of
-                    {ok, _} -> ok;
+                    {ok, _} ->
+                        ok;
                     {error, Reason} ->
                         ?ERROR_LOG([msg_s2c_delete_overflow_failed, To, Limit, Reason]),
                         {error, Reason}
@@ -112,7 +116,6 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
             ok
     end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, null).
-
 
 %% @doc 存储服务端到客户端的消息（8 参数版本，E2EE 默认为 null）
 %%
@@ -125,11 +128,19 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 %% @param Action S2C消息指令
 %% @param MsgType 消息类型
 %% @returns any() 数据库操作结果
--spec write_msg(binary(), binary(), binary() | map() | list(), integer(), integer(), binary(), binary(), binary()) ->
-          any().
+-spec write_msg(
+    binary(),
+    binary(),
+    binary() | map() | list(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary()
+) ->
+    any().
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType) ->
     write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, null).
-
 
 %% @doc 存储服务端到客户端的消息（v2.0 格式，支持 action 和 msg_type）
 %%
@@ -145,10 +156,32 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType) ->
 %% @param MsgType 消息类型（可选）
 %% @param E2EE 端到端加密信息（S2C 消息通常为 null）
 %% @returns any() 数据库操作结果
--spec write_msg(binary(), binary(), binary() | map() | list(), integer(), integer(), binary(), binary(), binary(), binary() | null) ->
-          any().
-write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) when is_map(Payload); is_list(Payload) ->
-    write_msg(CreatedAt, Id, jsone:encode(Payload, [native_utf8]), From, To, ServerTS, Action, MsgType, E2EE);
+-spec write_msg(
+    binary(),
+    binary(),
+    binary() | map() | list(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary() | null
+) ->
+    any().
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) when
+    is_map(Payload); is_list(Payload)
+->
+    write_msg(
+        CreatedAt,
+        Id,
+        jsone:encode(Payload, [native_utf8]),
+        From,
+        To,
+        ServerTS,
+        Action,
+        MsgType,
+        E2EE
+    );
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     Count = msg_s2c_repo:count_by_to_id(To),
@@ -157,7 +190,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
             Limit = Count - ?SAVE_MSG_LIMIT + 1,
             elib_async:async_retry(fun() ->
                 case msg_s2c_repo:delete_overflow_msg(To, Limit) of
-                    {ok, _} -> ok;
+                    {ok, _} ->
+                        ok;
                     {error, Reason} ->
                         ?ERROR_LOG([msg_s2c_delete_overflow_failed, To, Limit, Reason]),
                         {error, Reason}
@@ -167,7 +201,6 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
             ok
     end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE).
-
 
 %% @doc 读取服务端到客户端的消息
 %%
@@ -180,7 +213,6 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
 read_msg(ToUid, Limit) ->
     read_msg(ToUid, Limit, undefined).
 
-
 %% @doc 读取服务端到客户端的消息（带时间戳参数）
 %%
 %% 从数据库中读取指定用户的未读消息，支持按时间戳过滤
@@ -191,20 +223,23 @@ read_msg(ToUid, Limit) ->
 %% @returns list() 消息列表，每条消息包含完整信息
 -spec read_msg(any(), integer(), undefined | integer() | binary()) -> [map()].
 read_msg(ToUid, Limit, undefined) ->
-    Column = <<"id, payload, from_id, to_id,
-        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
+    Column = <<
+        "id, payload, from_id, to_id,\n"
+        "        created_at, server_ts, msg_id, msg_type, action, e2ee"
+    >>,
     Where = <<"WHERE to_id = $1">>,
     Vals = [ToUid],
     read_msg(Where, Vals, Column, Limit);
 read_msg(ToUid, Limit, Ts) ->
     % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
     FixedTs = elib_dt:to_rfc3339(Ts),
-    Column = <<"id, payload, from_id, to_id,
-        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
+    Column = <<
+        "id, payload, from_id, to_id,\n"
+        "        created_at, server_ts, msg_id, msg_type, action, e2ee"
+    >>,
     Where = <<"WHERE to_id = $1 AND created_at >= $2">>,
     Vals = [ToUid, FixedTs],
     read_msg(Where, Vals, Column, Limit).
-
 
 %% @doc 删除指定的服务端到客户端的消息
 %%
@@ -215,7 +250,6 @@ read_msg(ToUid, Limit, Ts) ->
 -spec delete_msg(any()) -> any().
 delete_msg(Id) ->
     msg_s2c_repo:delete_msg(Id).
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -251,8 +285,10 @@ read_msg(Where, Vals, Column, Limit) ->
 %% @returns map() 处理后的消息数据
 -spec process_s2c_row(map()) -> map().
 process_s2c_row(Row) ->
-    % 解码 payload 字段
-    Row1 = elib_response:json_decode_field(Row, <<"payload">>),
+    % 解码 payload 字段，同时反序列化 e2ee 列（写入时为 JSON 字符串）
+    Row1 = elib_response:json_decode_field(
+        elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+    ),
     Payload = maps:get(<<"payload">>, Row1, #{}),
 
     % 用 msg_id 替换 id 字段
@@ -263,14 +299,16 @@ process_s2c_row(Row) ->
     Row3 = maps:remove(<<"msg_id">>, Row2),
 
     % TSID 大整数超过 JS 安全范围，ID 字段转为 binary 字符串
-    Row3b = case maps:find(<<"from_id">>, Row3) of
-        {ok, FId} -> Row3#{<<"from_id">> => FId};
-        error -> Row3
-    end,
-    Row3c = case maps:find(<<"to_id">>, Row3b) of
-        {ok, TId} -> Row3b#{<<"to_id">> => TId};
-        error -> Row3b
-    end,
+    Row3b =
+        case maps:find(<<"from_id">>, Row3) of
+            {ok, FId} -> Row3#{<<"from_id">> => FId};
+            error -> Row3
+        end,
+    Row3c =
+        case maps:find(<<"to_id">>, Row3b) of
+            {ok, TId} -> Row3b#{<<"to_id">> => TId};
+            error -> Row3b
+        end,
 
     % 处理旧数据的嵌套 payload 格式
     % 旧数据: payload 是完整消息对象，包含嵌套的 payload 子字段
@@ -301,8 +339,7 @@ count_since(ToId, undefined) ->
     end;
 count_since(ToId, Since) ->
     Tb = msg_s2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ", Tb/binary,
-            " WHERE to_id = $1 AND created_at >= $2">>,
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2">>,
     case elib_pg:query(Sql, [ToId, Since]) of
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0

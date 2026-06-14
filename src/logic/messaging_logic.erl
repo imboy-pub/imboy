@@ -1,14 +1,16 @@
 -module(messaging_logic).
 
--export([handle_rest_action/3,
-         offline/2,
-         offline_ack/2,
-         read_stats/2,
-         history/2,
-         reaction_add/2,
-         reaction_remove/2,
-         reaction_list/2,
-         route_ws/5]).
+-export([
+    handle_rest_action/3,
+    offline/2,
+    offline_ack/2,
+    read_stats/2,
+    history/2,
+    reaction_add/2,
+    reaction_remove/2,
+    reaction_list/2,
+    route_ws/5
+]).
 
 %% 供 msg_c2s_logic:handle_sync 等模块复用的工具函数
 -export([encode_history_msg/2, next_seq_from_rows/2]).
@@ -67,30 +69,38 @@ offline(Req0, State) ->
             ProcessedS2CMsgs = [process_message(Msg) || Msg <- S2CMsgs],
 
             Payload =
-                #{<<"c2c">> =>
-                      #{<<"has_more">> => length(ProcessedC2CMsgs) < CountC2CMsg,
-                        <<"next_last_msg_at">> =>
-                            calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAt),
-                        <<"total">> => CountC2CMsg,
-                        <<"list">> => ProcessedC2CMsgs},
-                  <<"c2g">> =>
-                      #{<<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
-                        <<"next_last_msg_at">> =>
-                            calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAt),
-                        <<"total">> => CountC2GMsg,
-                        <<"list">> => ProcessedC2GMsgs},
-                  <<"s2c">> =>
-                      #{<<"has_more">> => length(ProcessedS2CMsgs) < CountS2CMsg,
-                        <<"next_last_msg_at">> =>
-                            calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
-                        <<"total">> => CountS2CMsg,
-                        <<"list">> => ProcessedS2CMsgs}},
+                #{
+                    <<"c2c">> =>
+                        #{
+                            <<"has_more">> => length(ProcessedC2CMsgs) < CountC2CMsg,
+                            <<"next_last_msg_at">> =>
+                                calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAt),
+                            <<"total">> => CountC2CMsg,
+                            <<"list">> => ProcessedC2CMsgs
+                        },
+                    <<"c2g">> =>
+                        #{
+                            <<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
+                            <<"next_last_msg_at">> =>
+                                calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAt),
+                            <<"total">> => CountC2GMsg,
+                            <<"list">> => ProcessedC2GMsgs
+                        },
+                    <<"s2c">> =>
+                        #{
+                            <<"has_more">> => length(ProcessedS2CMsgs) < CountS2CMsg,
+                            <<"next_last_msg_at">> =>
+                                calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
+                            <<"total">> => CountS2CMsg,
+                            <<"list">> => ProcessedS2CMsgs
+                        }
+                },
             elib_response:success(Req0, Payload)
     end.
 
 -spec read_stats(cowboy_req:req(), map()) -> cowboy_req:req().
 read_stats(Req0, State) ->
-    MsgId = cowboy_req:qs_val(<<"msg_id">>, Req0, undefined),
+    MsgId = proplists:get_value(<<"msg_id">>, cowboy_req:parse_qs(Req0), undefined),
 
     case MsgId of
         undefined ->
@@ -138,11 +148,13 @@ history(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
-            ChatType = cowboy_req:qs_val(<<"chat_type">>, Req0, <<>>),
-            PeerIdEnc = cowboy_req:qs_val(<<"peer_id">>, Req0, <<>>),
+            Qs = cowboy_req:parse_qs(Req0),
+            ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
+            PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
             {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
-            {ok, Limit0}   = elib_param:int(limit, Req0, 50),
-            Limit = erlang:min(Limit0, 100),   %% 最大 100 条
+            {ok, Limit0} = elib_param:int(limit, Req0, 50),
+            %% 最大 100 条
+            Limit = erlang:min(Limit0, 100),
 
             case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
                 {error, Reason} ->
@@ -151,18 +163,20 @@ history(Req0, State) ->
                     case msg_archive_ds:history(ConvKey, AfterSeq, Limit) of
                         {ok, Rows} ->
                             Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
-                            NextSeq  = next_seq_from_rows(Rows, AfterSeq),
-                            Payload  = #{
-                                <<"messages">>  => Messages,
-                                <<"next_seq">>  => NextSeq,
-                                <<"has_more">>  => length(Rows) >= Limit,
-                                <<"conv_key">>  => ConvKey
+                            NextSeq = next_seq_from_rows(Rows, AfterSeq),
+                            Payload = #{
+                                <<"messages">> => Messages,
+                                <<"next_seq">> => NextSeq,
+                                <<"has_more">> => length(Rows) >= Limit,
+                                <<"conv_key">> => ConvKey
                             },
                             elib_response:success(Req0, Payload);
                         {error, _Reason} ->
-                            elib_response:error(Req0,
+                            elib_response:error(
+                                Req0,
                                 <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
-                                ?ERR_INTERNAL_SERVER_ERROR)
+                                ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end
     end.
@@ -183,25 +197,27 @@ validate_history_params(ChatType, _, _) ->
 
 %% @private 编码历史消息（from_id/to_id → TSID）
 encode_history_msg(_CurrentUid, Row) ->
-    FromId  = maps:get(<<"from_id">>, Row, undefined),
-    ToId    = maps:get(<<"to_id">>,   Row, undefined),
+    FromId = maps:get(<<"from_id">>, Row, undefined),
+    ToId = maps:get(<<"to_id">>, Row, undefined),
     GroupId = maps:get(<<"group_id">>, Row, undefined),
     Row2 = maps:remove(<<"from_id">>, Row),
-    Row3 = maps:remove(<<"to_id">>,   Row2),
+    Row3 = maps:remove(<<"to_id">>, Row2),
     Row4 = maps:remove(<<"group_id">>, Row3),
-    Row5 = case FromId of
-        undefined -> Row4;
-        _         -> Row4#{<<"from">> => FromId}
-    end,
-    Row6 = case ToId of
-        null      -> Row5;
-        undefined -> Row5;
-        _         -> Row5#{<<"to">> => ToId}
-    end,
+    Row5 =
+        case FromId of
+            undefined -> Row4;
+            _ -> Row4#{<<"from">> => FromId}
+        end,
+    Row6 =
+        case ToId of
+            null -> Row5;
+            undefined -> Row5;
+            _ -> Row5#{<<"to">> => ToId}
+        end,
     case GroupId of
-        null      -> Row6;
+        null -> Row6;
         undefined -> Row6;
-        _         -> Row6#{<<"group_id">> => GroupId}
+        _ -> Row6#{<<"group_id">> => GroupId}
     end.
 
 %% @private 从返回行中提取最大 conv_seq 作为 next_seq
@@ -219,24 +235,32 @@ offline_ack(Req0, State) ->
     MsgIds = maps:get(<<"msg_ids">>, PostVals, []),
 
     ok =
-        ?INFO_LOG("Processing offline_ack for user: ~p, type: ~p, msg_count: ~p",
-                  [CurrentUid, Type, length(MsgIds)]),
+        ?INFO_LOG(
+            "Processing offline_ack for user: ~p, type: ~p, msg_count: ~p",
+            [CurrentUid, Type, length(MsgIds)]
+        ),
 
     case process_offline_ack(CurrentUid, Type, MsgIds) of
         {ok, ProcessedCount} ->
             Payload =
-                #{<<"msg">> => <<"offline_messages_acknowledged">>,
-                  <<"type">> => Type,
-                  <<"processed_count">> => ProcessedCount,
-                  <<"msg_ids_count">> => length(MsgIds)},
+                #{
+                    <<"msg">> => <<"offline_messages_acknowledged">>,
+                    <<"type">> => Type,
+                    <<"processed_count">> => ProcessedCount,
+                    <<"msg_ids_count">> => length(MsgIds)
+                },
             ok =
-                ?INFO_LOG("Offline ack processed successfully: ~p messages for user: ~p",
-                          [ProcessedCount, CurrentUid]),
+                ?INFO_LOG(
+                    "Offline ack processed successfully: ~p messages for user: ~p",
+                    [ProcessedCount, CurrentUid]
+                ),
             elib_response:success(Req0, Payload);
         {error, Reason} ->
             ok =
-                ?ERROR_LOG("Failed to process offline_ack for user: ~p, reason: ~p",
-                           [CurrentUid, Reason]),
+                ?ERROR_LOG(
+                    "Failed to process offline_ack for user: ~p, reason: ~p",
+                    [CurrentUid, Reason]
+                ),
             elib_response:error(Req0, Reason)
     end.
 
@@ -322,8 +346,9 @@ reaction_remove(Req0, State) ->
 
 -spec reaction_list(cowboy_req:req(), map()) -> cowboy_req:req().
 reaction_list(Req0, _State) ->
-    MsgId = cowboy_req:qs_val(<<"msg_id">>, Req0, undefined),
-    MsgType = cowboy_req:qs_val(<<"msg_type">>, Req0, <<"c2c">>),
+    Qs = cowboy_req:parse_qs(Req0),
+    MsgId = proplists:get_value(<<"msg_id">>, Qs, undefined),
+    MsgType = proplists:get_value(<<"msg_type">>, Qs, <<"c2c">>),
 
     case MsgId of
         undefined ->
