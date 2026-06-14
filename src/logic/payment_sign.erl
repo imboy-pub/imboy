@@ -3,10 +3,10 @@
 %%% @doc 支付回调验签 / Payment webhook signature verification
 %%%
 %%% 两种运行模式（由 sys.config {payment_mode, _} 决定）：
-%%%   - sandbox（当前默认）：直通放行（可选做最朴素的非空/字段存在性校验），
-%%%     用于上层联调跑通整条回调入账链路，不引入加密依赖。
-%%%   - live：按 gateway 真实验签。真实凭据为空时返回 {error, no_credential}，
-%%%     真实签名校验点以 TODO[live] 注明，留待运维注入商户凭据后补全。
+%%%   - sandbox（当前默认）：直通放行，用于 mock 网关联调跑通回调入账链路。
+%%%   - live：全部复用 erlang_pay:verify_notify 做真实验签/解密
+%%%     （支付宝 RSA2 / 微信平台公钥+AES-GCM / Stripe HMAC，全在 erlang_pay）；
+%%%     凭据为空时返回 {error, no_credential}。
 %%%
 %%% 凭据读取（IMBOY_* 注入，application:get_env/3）：
 %%%   stripe_webhook_secret / wechat_api_v3_key / alipay_public_key

@@ -7,7 +7,7 @@
 %%%
 %%% 处理流程：
 %%%   1) 验签 payment_sign:verify(Gateway, RawBody, Headers)
-%%%        - sandbox 直通；live 按网关真实验签（真实点为 TODO[live]）。
+%%%        - sandbox 直通；live 全复用 erlang_pay:verify_notify。
 %%%   2) 幂等 —— 按 (gateway, gateway_payment_no) 查 payment_transaction：
 %%%        - 已成功 -> 直接返回 {ok, already}（不重复入账）。
 %%%        - 已存在但未成功 -> 复用其 trade_no 继续入账。
