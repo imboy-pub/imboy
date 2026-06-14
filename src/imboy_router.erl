@@ -556,6 +556,13 @@ get_routes() ->
                 {"/v1/wallet/recharge/order", wallet_handler, #{action => recharge_order}},
                 {"/v1/wallet/recharge/pay", wallet_handler, #{action => recharge_pay}},
                 {"/v1/wallet/recharge/:order_no", wallet_handler, #{action => recharge_query}},
+                % 红包与转账/提现 API
+                {"/v1/wallet/red_packet/send", wallet_handler, #{action => red_packet_send}},
+                {"/v1/wallet/red_packet/open", wallet_handler, #{action => red_packet_open}},
+                {"/v1/wallet/red_packet/:id/detail", wallet_handler, #{action => red_packet_detail}},
+                {"/v1/wallet/transfer/send", wallet_handler, #{action => transfer_send}},
+                {"/v1/wallet/transfer/accept", wallet_handler, #{action => transfer_accept}},
+                {"/v1/wallet/withdraw", wallet_handler, #{action => withdraw}},
 
                 % 统一支付回调 webhook（第三方支付服务器回调，无 JWT，见 open/0）
                 {"/v1/payment/callback/:gateway", payment_callback_handler, #{action => notify}},

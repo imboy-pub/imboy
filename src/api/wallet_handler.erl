@@ -35,6 +35,18 @@ init(Req0, State0) ->
                 recharge_pay(Req0, State);
             recharge_query ->
                 recharge_query(Req0, State);
+            red_packet_send ->
+                red_packet_send(Req0, State);
+            red_packet_open ->
+                red_packet_open(Req0, State);
+            red_packet_detail ->
+                red_packet_detail(Req0, State);
+            transfer_send ->
+                transfer_send(Req0, State);
+            transfer_accept ->
+                transfer_accept(Req0, State);
+            withdraw ->
+                withdraw(Req0, State);
             false ->
                 Req0
         end,
@@ -175,6 +187,133 @@ recharge_query(Req0, State) ->
                     elib_response:error(Req0, Msg)
             end
     end.
+
+%% @doc 发送红包
+%% POST /v1/wallet/red_packet/send
+-spec red_packet_send(cowboy_req:req(), map()) -> cowboy_req:req().
+red_packet_send(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Type = maps:get(<<"type">>, PostVals, <<"fixed">>),
+    Amount = maps:get(<<"amount">>, PostVals, 0),
+    Count = maps:get(<<"count">>, PostVals, 1),
+    Greeting = maps:get(<<"greeting">>, PostVals, <<"恭喜发财，大吉大利"/utf8>>),
+    case red_packet_logic:send(CurrentUid, Type, Amount, Count, Greeting) of
+        {ok, PacketId} ->
+            elib_response:success(
+                Req0, #{<<"red_packet_id">> => integer_to_binary(PacketId)}, "success."
+            );
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% @doc 抢红包
+%% POST /v1/wallet/red_packet/open
+-spec red_packet_open(cowboy_req:req(), map()) -> cowboy_req:req().
+red_packet_open(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    PacketIdStr = maps:get(<<"red_packet_id">>, PostVals, <<>>),
+    case is_binary(PacketIdStr) andalso byte_size(PacketIdStr) > 0 of
+        false ->
+            elib_response:error(Req0, <<"红包ID不能为空"/utf8>>);
+        true ->
+            PacketId = binary_to_integer(PacketIdStr),
+            case red_packet_logic:open(PacketId, CurrentUid) of
+                {ok, GrabAmount} ->
+                    elib_response:success(Req0, #{<<"grab_amount">> => GrabAmount}, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 获取红包详情
+%% GET /v1/wallet/red_packet/:id/detail
+-spec red_packet_detail(cowboy_req:req(), map()) -> cowboy_req:req().
+red_packet_detail(Req0, State) ->
+    _CurrentUid = auth_ds:current_uid(State),
+    IdStr = cowboy_req:binding(id, Req0, <<>>),
+    case is_binary(IdStr) andalso byte_size(IdStr) > 0 of
+        false ->
+            elib_response:error(Req0, <<"红包ID不能为空"/utf8>>);
+        true ->
+            Id = binary_to_integer(IdStr),
+            case red_packet_logic:detail(Id) of
+                {ok, Detail} ->
+                    elib_response:success(Req0, Detail, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 发起转账
+%% POST /v1/wallet/transfer/send
+-spec transfer_send(cowboy_req:req(), map()) -> cowboy_req:req().
+transfer_send(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    ReceiverUidStr = maps:get(<<"receiver_uid">>, PostVals, <<>>),
+    Amount = maps:get(<<"amount">>, PostVals, 0),
+    Remark = maps:get(<<"remark">>, PostVals, <<"转账给好友"/utf8>>),
+    case is_binary(ReceiverUidStr) andalso byte_size(ReceiverUidStr) > 0 of
+        false ->
+            elib_response:error(Req0, <<"接收者ID不能为空"/utf8>>);
+        true ->
+            ReceiverUid = binary_to_integer(ReceiverUidStr),
+            case transfer_logic:send(CurrentUid, ReceiverUid, Amount, Remark) of
+                {ok, TransferId} ->
+                    elib_response:success(
+                        Req0, #{<<"transfer_id">> => integer_to_binary(TransferId)}, "success."
+                    );
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 收取转账
+%% POST /v1/wallet/transfer/accept
+-spec transfer_accept(cowboy_req:req(), map()) -> cowboy_req:req().
+transfer_accept(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    TransferIdStr = maps:get(<<"transfer_id">>, PostVals, <<>>),
+    case is_binary(TransferIdStr) andalso byte_size(TransferIdStr) > 0 of
+        false ->
+            elib_response:error(Req0, <<"转账单ID不能为空"/utf8>>);
+        true ->
+            TransferId = binary_to_integer(TransferIdStr),
+            case transfer_logic:accept(TransferId, CurrentUid) of
+                {ok, Amount} ->
+                    elib_response:success(Req0, #{<<"amount">> => Amount}, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 发起提现
+%% POST /v1/wallet/withdraw
+-spec withdraw(cowboy_req:req(), map()) -> cowboy_req:req().
+withdraw(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Amount = maps:get(<<"amount">>, PostVals, 0),
+    Method = maps:get(<<"payment_method">>, PostVals, <<>>),
+    Account = maps:get(<<"account">>, PostVals, <<>>),
+    case withdraw_logic_is_valid(Method, Account) of
+        false ->
+            elib_response:error(Req0, <<"提现渠道或账号不合法"/utf8>>);
+        true ->
+            case withdrawal_logic:withdraw(CurrentUid, Amount, Method, Account) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+withdraw_logic_is_valid(<<"alipay">>, Account) when byte_size(Account) > 0 -> true;
+withdraw_logic_is_valid(<<"wechat">>, Account) when byte_size(Account) > 0 -> true;
+withdraw_logic_is_valid(_, _) -> false.
 
 %% ===================================================================
 %% EUnit tests.
