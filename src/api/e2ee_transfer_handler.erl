@@ -1,11 +1,4 @@
 -module(e2ee_transfer_handler).
--dialyzer(
-    {nowarn_function, [
-        get_sender_private_key/1,
-        get_receiver_public_key/1
-    ]}
-).
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -89,6 +82,10 @@ do_create_transfer(Req0, State) ->
             _:_ -> #{}
         end,
 
+    %% 零信任契约：客户端先取接收方公钥、本地用其加密自身私钥，
+    %% 仅上传 encrypted_key_bundle（密文）+ from_device_id；服务端不接触明文私钥。
+    FromDeviceId = maps:get(<<"from_device_id">>, Data, <<>>),
+    EncryptedBundle = maps:get(<<"encrypted_key_bundle">>, Data, <<>>),
     case normalize_to_uid(maps:get(<<"to_uid">>, Data, undefined)) of
         {error, missing} ->
             elib_response:error(Req0, <<"缺少 to_uid 参数"/utf8>>, ?ERR_BAD_REQUEST);
@@ -96,49 +93,33 @@ do_create_transfer(Req0, State) ->
             elib_response:error(Req0, <<"to_uid 参数无效"/utf8>>, ?ERR_BAD_REQUEST);
         {ok, ToUid} when ToUid =:= CurrentUid ->
             elib_response:error(Req0, <<"不能给自己创建传输会话"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, _ToUid} when FromDeviceId =:= <<>> ->
+            elib_response:error(Req0, <<"缺少 from_device_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+        {ok, _ToUid} when EncryptedBundle =:= <<>> ->
+            elib_response:error(Req0, <<"缺少 encrypted_key_bundle 参数"/utf8>>, ?ERR_BAD_REQUEST);
         {ok, ToUid} ->
             % 验证接收方用户是否存在
             case e2ee_transfer_logic:validate_receiver(ToUid) of
                 false ->
                     elib_response:error(Req0, <<"接收方用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND);
                 true ->
-                    % 获取发送方设备 ID 和私钥
-                    case get_sender_private_key(CurrentUid) of
+                    % 直接存储客户端预加密的密钥包，服务端不接触明文私钥
+                    case
+                        e2ee_transfer_logic:create_transfer(
+                            CurrentUid, FromDeviceId, ToUid, EncryptedBundle
+                        )
+                    of
+                        {ok, Session} ->
+                            elib_response:success(Req0, #{
+                                <<"session_id">> => maps:get(<<"session_id">>, Session),
+                                <<"expires_at">> => maps:get(<<"expires_at">>, Session)
+                            });
+                        {error, {Msg, Code}} ->
+                            elib_response:error(Req0, Msg, Code);
                         {error, _Reason} ->
-                            elib_response:error(Req0, <<"私钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
-                        {ok, {PrivateKeyPem, DeviceId}} ->
-                            % 获取接收方公钥
-                            case get_receiver_public_key(ToUid) of
-                                {error, _Reason} ->
-                                    elib_response:error(
-                                        Req0, <<"接收方公钥不存在"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-                                    );
-                                {ok, PublicKeyPem} ->
-                                    % 创建传输会话
-                                    case
-                                        e2ee_transfer_logic:create_transfer(
-                                            CurrentUid, DeviceId, ToUid, PrivateKeyPem, PublicKeyPem
-                                        )
-                                    of
-                                        {ok, Session} ->
-                                            elib_response:success(Req0, #{
-                                                <<"session_id">> => maps:get(
-                                                    <<"session_id">>, Session
-                                                ),
-                                                <<"expires_at">> => maps:get(
-                                                    <<"expires_at">>, Session
-                                                )
-                                            });
-                                        {error, {Msg, Code}} ->
-                                            elib_response:error(Req0, Msg, Code);
-                                        {error, _Reason} ->
-                                            elib_response:error(
-                                                Req0,
-                                                <<"创建传输会话失败"/utf8>>,
-                                                ?ERR_INTERNAL_SERVER_ERROR
-                                            )
-                                    end
-                            end
+                            elib_response:error(
+                                Req0, <<"创建传输会话失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end
     end.
@@ -337,26 +318,6 @@ do_get_pending_transfers(Req0, State) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
-
-%% @doc 获取发送方的私钥和设备 ID
-%% @doc 委托 e2ee_social_handler，消除重复实现 (H3)
--spec get_sender_private_key(integer()) -> {ok, {binary(), binary()}} | {error, term()}.
-get_sender_private_key(Uid) ->
-    e2ee_social_handler:get_sender_private_key(Uid).
-
-%% @doc 获取接收方的公钥
--spec get_receiver_public_key(integer()) -> {ok, binary()} | {error, term()}.
-get_receiver_public_key(ToUid) ->
-    case e2ee_transfer_logic:get_receiver_public_key(ToUid) of
-        {ok, [Device | _]} ->
-            PublicKeyPem = maps:get(<<"public_key">>, Device, <<>>),
-            case PublicKeyPem of
-                <<>> -> {error, public_key_not_found};
-                _ -> {ok, PublicKeyPem}
-            end;
-        _ ->
-            {error, device_not_found}
-    end.
 
 -spec normalize_to_uid(term()) -> {ok, integer()} | {error, missing | invalid}.
 normalize_to_uid(undefined) ->

@@ -13,14 +13,19 @@ post:
       application/json:
         schema:
           type: object
-          required: [to_uid]
+          required: [to_uid, from_device_id, encrypted_key_bundle]
           properties:
             to_uid:
               type: integer
               description: 目标用户 UID（接收迁移邀请的账户）
-            to_nickname:
+            from_device_id:
               type: string
-              description: 目标用户昵称（可选，客户端展示用）
+              description: 发送方设备 ID / Sender device id
+            encrypted_key_bundle:
+              type: string
+              description: |
+                零信任：发送方客户端用接收方公钥加密自身私钥后的密文，服务端仅存储/中转，不接触明文私钥。
+                Sender's private key encrypted with the receiver's public key on the client; server only stores/relays ciphertext.
   responses:
     '200':
       description: 成功

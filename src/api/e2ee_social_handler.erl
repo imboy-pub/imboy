@@ -2,7 +2,6 @@
 -dialyzer(
     {nowarn_function, [
         generate_key_version/0,
-        get_proxy_private_key/1,
         create_shards/2,
         get_shards/2,
         decrypt_shard/2,
@@ -248,28 +247,11 @@ do_decrypt_shard(Req0, State) ->
                                 {ok, Shard} ->
                                     case extract_encrypted_shard(Shard) of
                                         {ok, EncryptedShard} ->
-                                            case get_proxy_private_key(CurrentUid) of
-                                                {ok, PrivateKeyPem} ->
-                                                    case
-                                                        elib_cipher:decrypt_rsa_oaep(
-                                                            EncryptedShard, PrivateKeyPem
-                                                        )
-                                                    of
-                                                        {ok, DecryptedShard} ->
-                                                            elib_response:success(Req0, #{
-                                                                <<"decrypted_shard">> =>
-                                                                    DecryptedShard
-                                                            });
-                                                        {error, Reason} ->
-                                                            {Msg, Code} = map_decrypt_shard_error(
-                                                                Reason
-                                                            ),
-                                                            elib_response:error(Req0, Msg, Code)
-                                                    end;
-                                                {error, Reason} ->
-                                                    {Msg, Code} = map_decrypt_shard_error(Reason),
-                                                    elib_response:error(Req0, Msg, Code)
-                                            end;
+                                            %% 零信任：服务端只返回加密分片，
+                                            %% 由代理客户端用本地私钥解密后回传明文分片。
+                                            elib_response:success(Req0, #{
+                                                <<"encrypted_shard">> => EncryptedShard
+                                            });
                                         {error, Reason} ->
                                             {Msg, Code} = map_decrypt_shard_error(Reason),
                                             elib_response:error(Req0, Msg, Code)
@@ -415,12 +397,6 @@ format_error(Reason) when is_list(Reason) ->
 format_error(_Reason) ->
     % 安全：不暴露内部错误细节
     <<"操作失败，请稍后重试"/utf8>>.
-
-%% @doc 获取代理用户的私钥
-%% 用于解密为用户存储的分片
--spec get_proxy_private_key(integer()) -> {ok, binary()} | {error, term()}.
-get_proxy_private_key(Uid) ->
-    e2ee_social_logic:get_proxy_private_key(Uid).
 
 %% @doc 提取可解密分片数据
 %% 优先读取 encrypted_shard，兼容旧字段 encrypted_data

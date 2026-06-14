@@ -10,7 +10,7 @@
 %%===================================================================
 %%% API Functions Export
 %%===================================================================
--export([create_transfer/5]).
+-export([create_transfer/4]).
 -export([accept_transfer/3]).
 -export([confirm_transfer/2]).
 -export([cancel_transfer/2]).
@@ -30,9 +30,11 @@
 %% @param PrivateKeyPem 私钥 PEM 格式
 %% @param ToPublicKeyPem 接收方公钥 PEM 格式（用于加密）
 %% @returns {ok, SessionMap} | {error, Reason}
--spec create_transfer(integer(), binary(), integer(), binary(), binary()) ->
+-spec create_transfer(integer(), binary(), integer(), binary()) ->
     {ok, map()} | {error, term()}.
-create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
+%% 零信任：EncryptedBundle 为发送方客户端用接收方公钥加密自身私钥后的密文，
+%% 服务端只存储/中转，永不接触明文私钥。
+create_transfer(FromUid, FromDeviceId, ToUid, EncryptedBundle) ->
     % 1. 验证接收方用户是否存在
     case user_ds:may_exist(ToUid) of
         false ->
@@ -43,8 +45,7 @@ create_transfer(FromUid, FromDeviceId, ToUid, PrivateKeyPem, ToPublicKeyPem) ->
                 % 3. 生成会话 ID
                 SessionId = e2ee_transfer_ds:generate_session_id(),
 
-                % 4. 使用接收方公钥加密私钥
-                EncryptedBundle = encrypt_private_key(PrivateKeyPem, ToPublicKeyPem),
+                % 4. 直接使用客户端预加密的密钥包（服务端不加密）
 
                 % 5. 设置过期时间（5 分钟后）
                 ExpiresAt = calendar:universal_time() + 300,
@@ -222,31 +223,3 @@ validate_receiver(ToUid) ->
 -spec get_receiver_public_key(integer()) -> {ok, [map()]} | {error, term()}.
 get_receiver_public_key(ToUid) ->
     user_device_ds:get_public_by_uid(ToUid).
-
-%%===================================================================
-%%% Internal Functions
-%%===================================================================
-
-%% @doc 使用接收方公钥加密私钥
-%% @param PrivateKeyPem 私钥 PEM 格式
-%% @param PublicKeyPem 公钥 PEM 格式
-%% @returns Base64 编码的加密数据
-encrypt_private_key(PrivateKeyPem, PublicKeyPem) ->
-    % 使用 elib_cipher 中的 RSA-OAEP 加密
-    PrivateKeyBytes = unicode:characters_to_binary(PrivateKeyPem),
-    case elib_cipher:encrypt_rsa_oaep(PrivateKeyBytes, PublicKeyPem) of
-        {ok, Encrypted} -> Encrypted;
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 解析公钥
-%% @param PublicKeyPem 公钥 PEM 格式
-%% @returns RSA 公钥对象
-parse_public_key(PublicKeyPem) ->
-    try
-        [Entry] = public_key:pem_decode(PublicKeyPem),
-        public_key:pem_entry_decode(Entry)
-    catch
-        _:_:_ ->
-            {error, invalid_public_key}
-    end.

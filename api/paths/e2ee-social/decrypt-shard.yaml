@@ -1,10 +1,11 @@
 # POST /v1/e2ee/social/decrypt_shard
 post:
   tags: [user]
-  summary: 请求联系人解密 shard
+  summary: 获取待解密的加密 shard（客户端本地解密）
   description: |
     ## 中文 / English
-    请求联系人解密 shard
+    零信任：服务端按 shard_id 返回加密分片，代理客户端用本地私钥解密后回传明文分片；服务端不接触私钥。
+    Zero-trust: server returns the encrypted shard by shard_id; the proxy client decrypts locally.
     See docs/api/e2ee_*.md for crypto invariants and shard policy.
   operationId: e2eeSocialDecryptShard
   requestBody:
@@ -34,11 +35,13 @@ post:
                 properties:
                   payload:
                     type: object
-                    required: [decrypted_shard]
+                    required: [encrypted_shard]
                     properties:
-                      decrypted_shard:
+                      encrypted_shard:
                         type: string
-                        description: 代理用自己私钥解密后的分片（base64）/ Decrypted shard bytes in base64
+                        description: |
+                          零信任：服务端仅返回加密分片，由代理客户端用本地私钥解密后回传明文分片。
+                          Zero-trust: server returns the encrypted shard only; the proxy client decrypts it locally with its own private key.
     '4XX':
       description: 参数非法 / 无权限 / shard 校验失败
       content:

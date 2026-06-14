@@ -131,6 +131,7 @@ user_keys_payload(TargetUid) ->
         {ok, Devices} ->
             {ok, #{
                 <<"uid">> => TargetUid,
+                <<"user_id">> => TargetUid,
                 <<"devices">> => Devices
             }};
         {error, Reason} ->
@@ -153,7 +154,7 @@ group_by_uid(Rows) ->
         ),
     lists:map(
         fun({Uid, DevsRev}) ->
-            #{<<"uid">> => Uid, <<"devices">> => lists:reverse(DevsRev)}
+            #{<<"uid">> => Uid, <<"user_id">> => Uid, <<"devices">> => lists:reverse(DevsRev)}
         end,
         lists:sort(maps:to_list(Map0))
     ).
@@ -211,14 +212,19 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
     SinceRfc = elib_dt:to_rfc3339(SinceTs),
 
     % 使用 user_device 表查询密钥变更
+    %% user_device 表无 updated_at 列，密钥变更时间记录在 last_active_at
+    %% （update_public_key 同步更新该列）。此前查询 ud.updated_at 会导致
+    %% SQL 报错、pull_key_notifications 端点永久返回 {error}。
     Sql =
-        <<"SELECT ud.user_id, ud.device_id, ud.device_type, ud.key_id, ud.updated_at ",
+        <<"SELECT ud.user_id, ud.device_id, ud.device_type, ud.key_id, ud.last_active_at ",
             "FROM user_device ud ", "WHERE ud.user_id = ANY($1) ",
-            "AND ud.key_id IS NOT NULL AND ud.key_id != '' ", "AND ud.updated_at > $2 ",
-            "ORDER BY ud.updated_at DESC ", "LIMIT $3">>,
+            "AND ud.key_id IS NOT NULL AND ud.key_id != '' ", "AND ud.last_active_at > $2 ",
+            "ORDER BY ud.last_active_at DESC ", "LIMIT $3">>,
 
+    %% query/2 返回二元组 {ok, [map()]}；输出字段名保留 updated_at（客户端契约），
+    %% 取值来源为 last_active_at 列。
     case elib_pg:query(Sql, [FriendUids, SinceRfc, Limit]) of
-        {ok, _, Rows} ->
+        {ok, Rows} ->
             Notifications = lists:map(
                 fun(Row) ->
                     #{
@@ -226,7 +232,7 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
                         <<"device_id">> => maps:get(<<"device_id">>, Row),
                         <<"device_type">> => maps:get(<<"device_type">>, Row),
                         <<"key_id">> => maps:get(<<"key_id">>, Row),
-                        <<"updated_at">> => maps:get(<<"updated_at">>, Row)
+                        <<"updated_at">> => maps:get(<<"last_active_at">>, Row)
                     }
                 end,
                 Rows

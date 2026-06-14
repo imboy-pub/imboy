@@ -375,8 +375,20 @@ do_backup_delete(Req0, State) ->
 %% 返回合规密钥的 key_id 和 public_key，客户端用于 compliance_e2ee 模式的双密钥加密
 -spec compliance_key(cowboy_req:req(), map()) -> cowboy_req:req().
 compliance_key(Req0, _State) ->
+    %% 与其余 E2EE 端点一致，先过能力闸门
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_compliance_key(Req0);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_compliance_key(cowboy_req:req()) -> cowboy_req:req().
+do_compliance_key(Req0) ->
+    %% get_active_compliance_key/0 返回二元组 {ok, Map}（compliance_key_repo:find_active），
+    %% 此前用三元组 {ok, KeyId, PublicKey} 匹配会触发 case_clause 崩溃（500）。
     case e2ee_logic:get_active_compliance_key() of
-        {ok, KeyId, PublicKey} ->
+        {ok, #{<<"key_id">> := KeyId, <<"public_key">> := PublicKey}} ->
             elib_response:success(Req0, #{
                 <<"key_id">> => KeyId,
                 <<"public_key">> => PublicKey

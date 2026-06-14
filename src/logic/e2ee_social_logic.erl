@@ -32,7 +32,6 @@
 -export([list_trusted_contacts/1]).
 -export([add_trusted_contact/3]).
 -export([remove_trusted_contact/2]).
--export([get_proxy_private_key/1]).
 
 %% @doc 创建恢复分片（C1 FIX：客户端已完成 Shamir 分割和代理公钥加密，服务端只存储）
 %% @param Uid 用户 ID
@@ -72,8 +71,17 @@ create_shards(Uid, KeyVersion, Shards) ->
                         throw({error, {<<"分片缺少 proxy_uid 字段"/utf8>>, ?ERR_BAD_REQUEST}});
                     {_, undefined} ->
                         throw({error, {<<"分片缺少 encrypted_shard 字段"/utf8>>, ?ERR_BAD_REQUEST}});
-                    _ ->
-                        ok
+                    {ProxyUid, _} ->
+                        %% 校验 proxy_uid 归属：必须是当前用户的可信联系人，
+                        %% 防止向任意 uid 注入恢复分片（越权写入）。
+                        case e2ee_social_ds:is_trusted_contact(Uid, ProxyUid) of
+                            true ->
+                                ok;
+                            false ->
+                                throw(
+                                    {error, {<<"proxy_uid 非当前用户的可信联系人"/utf8>>, ?ERR_FORBIDDEN}}
+                                )
+                        end
                 end
             end,
             Shards
@@ -221,23 +229,6 @@ add_trusted_contact(Uid, ContactUid, Nickname) ->
 -spec remove_trusted_contact(integer(), integer()) -> ok | {error, term()}.
 remove_trusted_contact(Uid, ContactUid) ->
     e2ee_social_ds:remove_trusted_contact(Uid, ContactUid).
-
-%% @doc 获取代理用户的私钥（先取设备列表，再取第一个设备的私钥）
-%% 用于 RSA-OAEP 解密分片
--spec get_proxy_private_key(integer()) -> {ok, binary()} | {error, term()}.
-get_proxy_private_key(Uid) ->
-    case user_device_ds:get_public_by_uid(Uid) of
-        {ok, [Device | _]} ->
-            DeviceId = maps:get(<<"device_id">>, Device),
-            case user_device_ds:get_private_key(Uid, DeviceId) of
-                {ok, PrivateKeyPem} when PrivateKeyPem /= <<>> ->
-                    {ok, PrivateKeyPem};
-                _ ->
-                    {error, private_key_not_found}
-            end;
-        _ ->
-            {error, device_not_found}
-    end.
 
 %%===================================================================
 %%% Internal Functions
