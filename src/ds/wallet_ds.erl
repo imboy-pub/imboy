@@ -17,6 +17,7 @@
 %%%
 
 -export([find_by_uid/1, ensure_wallet/1, page_transactions/3]).
+-export([page/3]).
 -export([create/1]).
 -export([topup/3]).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation
@@ -59,6 +60,11 @@ ensure_wallet(Uid) ->
     {ok, map()} | {error, term()}.
 page_transactions(Page, Size, Uid) ->
     wallet_repo:page_transactions(Page, Size, Uid).
+
+%% @doc 跨用户钱包分页查询（运营后台用，薄封装）
+-spec page(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page(WhereMap, Page, Size) ->
+    wallet_repo:page(WhereMap, Page, Size).
 
 %% @doc 充值：原子事务（余额更新 + 流水写入）
 %% 调用方需自行做参数校验（金额范围等 HTTP 输入校验）

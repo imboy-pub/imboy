@@ -13,6 +13,7 @@
 -export([mark_paid/2]).
 -export([update_status/2]).
 -export([page_by_user/3]).
+-export([page/3]).
 -export([credit_in_tx/4]).
 
 %% @doc 创建充值订单（status=0）
@@ -38,6 +39,11 @@ update_status(OrderNo, Status) ->
     {ok, map()} | {error, term()}.
 page_by_user(Uid, Page, Size) ->
     recharge_order_repo:page_by_user(Uid, Page, Size).
+
+%% @doc 跨用户充值订单分页查询（运营后台用，薄封装）
+-spec page(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page(WhereMap, Page, Size) ->
+    recharge_order_repo:page(WhereMap, Page, Size).
 
 %% @doc 单事务充值入账（订单状态+钱包余额+流水三表原子，幂等）
 -spec credit_in_tx(binary(), binary(), integer(), integer()) ->

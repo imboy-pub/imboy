@@ -22,6 +22,7 @@
 -export([mark_paid/2]).
 -export([update_status/2]).
 -export([page_by_user/3]).
+-export([page/3]).
 -export([credit_in_tx/4]).
 
 %%===================================================================
@@ -149,6 +150,20 @@ page_by_user(Uid, Page, Size) ->
     WhereMap = #{user_id => Uid},
     Order = <<"id desc">>,
     elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size).
+
+%% @doc 跨用户充值订单分页查询（运营后台用）
+%% @param WhereMap 等值筛选条件（status/payment_method/user_id/order_no），由调用方组装
+%% @param Page 页码（从1开始）
+%% @param Size 每页条数
+%% @return {ok, Payload} Payload 含 list/total/page/size | {error, Reason}
+-spec page(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page(WhereMap, Page, Size) ->
+    Tb = tablename(),
+    Column = <<
+        "id, order_no, user_id, amount, currency, payment_method,"
+        " payment_no, status, paid_at, expires_at, created_at, updated_at"
+    >>,
+    elib_pg:page_with_total(Tb, Column, WhereMap, <<"id desc">>, Page, Size).
 
 %% @doc 单事务充值入账：订单状态翻转 + 钱包加余额 + 写流水，三表原子。
 %% 解决"订单已标记已支付但钱没进账"的非原子风险（此前 mark_paid 与加余额分两步，

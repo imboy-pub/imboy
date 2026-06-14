@@ -25,12 +25,14 @@
 -export([update_plan/2]).
 -export([get_plan/1]).
 -export([list_plans/0]).
+-export([list_plans_page/3]).
 %% 订阅
 -export([subscribe/3]).
 -export([renew/1]).
 -export([cancel/1]).
 -export([get_subscription/1]).
 -export([current_subscription/1]).
+-export([list_subscriptions_page/3]).
 %% 用量与配额
 -export([report_usage/4]).
 -export([check_quota/3]).
@@ -38,6 +40,7 @@
 -export([generate_invoice/1]).
 -export([pay_invoice/2]).
 -export([list_invoices/1]).
+-export([list_invoices_page/3]).
 
 -include("log.hrl").
 
@@ -117,6 +120,19 @@ get_plan(PlanId) ->
 -spec list_plans() -> [map()].
 list_plans() ->
     [plan_transfer(P) || P <- billing_plan_ds:list_active()].
+
+%% @doc 套餐分页查询（运营后台用）。WhereMap 由调用方组装（如 #{status => 1}）。
+%%      list 中各条 quota_config 解码为 map 输出。
+-spec list_plans_page(map(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+list_plans_page(WhereMap, Page, Size) ->
+    case billing_plan_ds:page(WhereMap, <<"id desc">>, Page, Size) of
+        {ok, Payload} ->
+            List = maps:get(list, Payload, []),
+            {ok, Payload#{list => [plan_transfer(P) || P <- List]}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%===================================================================
 %%% 订阅
@@ -209,6 +225,12 @@ get_subscription(SubId) ->
 -spec current_subscription(integer()) -> map().
 current_subscription(TenantId) ->
     billing_subscription_ds:find_active_by_tenant(TenantId).
+
+%% @doc 订阅分页查询（运营后台用）。WhereMap 由调用方组装（如 #{status => 1, plan_id => Id}）。
+-spec list_subscriptions_page(map(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+list_subscriptions_page(WhereMap, Page, Size) ->
+    billing_subscription_ds:page(WhereMap, <<"id desc">>, Page, Size).
 
 %%===================================================================
 %%% 用量与配额
@@ -318,6 +340,12 @@ pay_invoice(InvoiceNo, Method) ->
 -spec list_invoices(integer()) -> [map()].
 list_invoices(SubId) ->
     billing_invoice_ds:list_by_subscription(SubId).
+
+%% @doc 账单分页查询（运营后台用）。WhereMap 由调用方组装（如 #{status => 0, subscription_id => Id}）。
+-spec list_invoices_page(map(), pos_integer(), pos_integer()) ->
+    {ok, map()} | {error, term()}.
+list_invoices_page(WhereMap, Page, Size) ->
+    billing_invoice_ds:page(WhereMap, <<"id desc">>, Page, Size).
 
 %%===================================================================
 %%% Internal

@@ -8,6 +8,7 @@
 -export([atomic_balance_change/4]).
 -export([find_transaction_by_ref/1]).
 -export([page_transactions/3]).
+-export([page/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -34,8 +35,9 @@ tx_tablename() ->
 -spec find_by_uid(integer()) -> map().
 find_by_uid(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT id, user_id, balance, frozen, version, status FROM ",
-            Tb/binary, " WHERE user_id = $1 AND status = 1 LIMIT 1">>,
+    Sql =
+        <<"SELECT id, user_id, balance, frozen, version, status FROM ", Tb/binary,
+            " WHERE user_id = $1 AND status = 1 LIMIT 1">>,
     case elib_pg:query(Sql, [Uid]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}
@@ -63,7 +65,8 @@ create(Data) ->
 -spec update_balance(integer(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 update_balance(NewBalance, Uid, Version) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET balance = $1, version = version + 1, updated_at = NOW()"
             " WHERE user_id = $2 AND version = $3">>,
     case elib_pg:execute(Sql, [NewBalance, Uid, Version]) of
@@ -91,7 +94,8 @@ add_transaction(Data) ->
 -spec find_transaction_by_ref(binary()) -> map().
 find_transaction_by_ref(RefNo) ->
     Tb = tx_tablename(),
-    Sql = <<"SELECT id, wallet_id, user_id, amount, balance_after, tx_type, reference_no FROM ",
+    Sql =
+        <<"SELECT id, wallet_id, user_id, amount, balance_after, tx_type, reference_no FROM ",
             Tb/binary, " WHERE reference_no = $1 AND status = 1 LIMIT 1">>,
     case elib_pg:query(Sql, [RefNo]) of
         {ok, [Row | _]} -> Row;
@@ -106,10 +110,22 @@ find_transaction_by_ref(RefNo) ->
 -spec page_transactions(integer(), integer(), integer()) -> {ok, map()}.
 page_transactions(Page, Size, Uid) ->
     Tb = tx_tablename(),
-    Column = <<"id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status, created_at">>,
+    Column =
+        <<"id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status, created_at">>,
     WhereMap = #{user_id => Uid, status => 1},
     Order = <<"id desc">>,
     elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size).
+
+%% @doc 跨用户钱包分页查询（运营后台用）
+%% @param WhereMap 等值筛选条件（如 #{user_id => Uid, status => Status}），由调用方组装
+%% @param Page 页码（从1开始）
+%% @param Size 每页条数
+%% @return {ok, Payload} Payload 含 list/total/page/size | {error, Reason}
+-spec page(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page(WhereMap, Page, Size) ->
+    Tb = tablename(),
+    Column = <<"id, user_id, balance, frozen, version, status, created_at, updated_at">>,
+    elib_pg:page_with_total(Tb, Column, WhereMap, <<"id desc">>, Page, Size).
 
 %% @doc 原子性余额变动（事务内完成余额更新+流水写入）
 %% @param Amount 变动金额（正=增加，负=扣减）
@@ -123,10 +139,11 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
     TxTb = tx_tablename(),
     elib_pg:with_tx(fun(Conn) ->
         %% 1. 行锁 + 原子更新余额
-        UpdateSql = <<"UPDATE ", Tb/binary,
-                      " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
-                      " WHERE user_id = $2 AND balance + $1 >= 0"
-                      " RETURNING balance">>,
+        UpdateSql =
+            <<"UPDATE ", Tb/binary,
+                " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+                " WHERE user_id = $2 AND balance + $1 >= 0"
+                " RETURNING balance">>,
         case elib_pg:execute(Conn, UpdateSql, [Amount, Uid]) of
             {ok, 1, [{NewBalance}]} ->
                 %% 2. 在同一事务内写入流水
