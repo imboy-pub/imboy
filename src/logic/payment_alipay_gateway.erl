@@ -22,7 +22,8 @@
 -export([pay/3, refund/2]).
 
 %% @doc 发起支付
--spec pay(binary(), term(), map()) -> {ok, binary()} | {error, binary()}.
+-spec pay(binary(), term(), map()) ->
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
 pay(OrderNo, Amount, Opts) ->
     case payment_mode() of
         sandbox -> sandbox_pay(OrderNo, Amount, Opts);
@@ -78,20 +79,26 @@ sandbox_refund(PaymentNo, Amount) ->
 %%% live 模式 —— 真实接入骨架（沙箱阶段不实际发起请求）
 %%%===================================================================
 
--spec live_pay(binary(), term(), map()) -> {ok, binary()} | {error, binary()}.
+%% live 模式经 erlang_pay 库真实下单（alipay.trade.app.pay）。
+%% 金额：Amount 已是最小货币单位(分，recharge_order 存储)，直接作 amount_fen
+%% 传入，不再 *100（与 Stripe 网关口径一致；旧 yuan_to_fen 基于 Amount=元的
+%% 错误假设会收 100 倍钱，已弃用）。返回 order_str 供客户端 SDK 唤起。
+-spec live_pay(binary(), term(), map()) ->
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
 live_pay(OrderNo, Amount, _Opts) ->
     case credentials() of
-        {ok, #{app_id := AppId, private_key := PriKey}} ->
-            %% TODO[live]: 组装 alipay.trade.app.pay 业务参数 biz_content
-            %%   #{out_trade_no => OrderNo, total_amount => Amount,
-            %%     subject => ..., product_code => <<"QUICK_MSECURITY_PAY">>}
-            %% TODO[live]: RSA2 签名 —— 用 PriKey 对待签名串做 SHA256withRSA
-            %%   公钥参数 AppId 用于拼装请求公共参数。
-            %% TODO[live]: 生成客户端唤起用 orderStr（已签名 query 串），
-            %%   App 支付通常无需服务端 HTTP 请求，直接返回 orderStr 给客户端。
-            _ = {AppId, PriKey, OrderNo, Amount},
-            PaymentNo = <<"ALIPAY_", OrderNo/binary>>,
-            {ok, PaymentNo};
+        {ok, Cred} ->
+            Order = #{
+                out_trade_no => OrderNo,
+                amount_fen => to_minor_int(Amount),
+                subject => <<"充值"/utf8>>
+            },
+            case erlang_pay:create_payment(alipay, epay_cfg(Cred), Order) of
+                {ok, #{order_str := OrderStr}} ->
+                    {ok, <<"ALIPAY_", OrderNo/binary>>, #{<<"order_str">> => OrderStr}};
+                {error, Err} ->
+                    {error, epay_err_msg(Err)}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -99,13 +106,16 @@ live_pay(OrderNo, Amount, _Opts) ->
 -spec live_refund(binary(), term()) -> ok | {error, binary()}.
 live_refund(PaymentNo, Amount) ->
     case credentials() of
-        {ok, #{app_id := AppId, private_key := PriKey}} ->
-            %% TODO[live]: 调用 alipay.trade.refund
-            %%   biz_content = #{out_trade_no/trade_no => ..., refund_amount => Amount}
-            %% TODO[live]: RSA2 签名后 HTTP POST 到 https://openapi.alipay.com/gateway.do
-            %% TODO[live]: 验证响应 code=10000，否则返回 {error, SubMsg}
-            _ = {AppId, PriKey, PaymentNo, Amount},
-            ok;
+        {ok, Cred} ->
+            RefundReq = #{
+                out_trade_no => strip_alipay_prefix(PaymentNo),
+                refund_amount_fen => to_minor_int(Amount),
+                out_request_no => <<"R_", PaymentNo/binary>>
+            },
+            case erlang_pay:refund(alipay, epay_cfg(Cred), RefundReq) of
+                {ok, _Resp} -> ok;
+                {error, Err} -> {error, epay_err_msg(Err)}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -136,3 +146,38 @@ is_blank(<<>>) -> true;
 is_blank("") -> true;
 is_blank(undefined) -> true;
 is_blank(_) -> false.
+
+%%%===================================================================
+%%% erlang_pay 适配
+%%%===================================================================
+
+%% imboy 凭据 map → erlang_pay 支付宝 Cfg
+-spec epay_cfg(map()) -> map().
+epay_cfg(#{app_id := AppId, private_key := PriKey, public_key := PubKey}) ->
+    #{app_id => AppId, private_key => PriKey, public_key => PubKey}.
+
+%% erlang_pay 统一错误 {Code::atom(), Msg::binary()} → 展示用 binary
+-spec epay_err_msg(term()) -> binary().
+epay_err_msg({_Code, Msg}) when is_binary(Msg) -> Msg;
+epay_err_msg(Msg) when is_binary(Msg) -> Msg;
+epay_err_msg(Other) -> elib_cnv:safe_to_binary(Other).
+
+%% 去 ALIPAY_ 前缀还原原订单号（退款 out_trade_no 用）
+-spec strip_alipay_prefix(binary()) -> binary().
+strip_alipay_prefix(<<"ALIPAY_", Rest/binary>>) -> Rest;
+strip_alipay_prefix(Other) -> Other.
+
+%% Amount 已是最小货币单位(分)；兼容历史 binary/float/list 入参
+-spec to_minor_int(term()) -> integer().
+to_minor_int(V) when is_integer(V) -> V;
+to_minor_int(V) when is_float(V) -> round(V);
+to_minor_int(V) when is_binary(V) -> safe_int(V);
+to_minor_int(V) when is_list(V) -> safe_int(list_to_binary(V));
+to_minor_int(_) -> 0.
+
+-spec safe_int(binary()) -> integer().
+safe_int(B) ->
+    case catch binary_to_integer(B) of
+        I when is_integer(I) -> I;
+        _ -> 0
+    end.
