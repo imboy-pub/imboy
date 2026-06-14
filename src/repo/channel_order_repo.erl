@@ -55,7 +55,7 @@ create_order(Data) ->
     PaymentMethod = maps:get(payment_method, Data, <<"mock">>),
     ExpiresAt = maps:get(expires_at, Data, default_expire_time()),
     ExtraData = maps:get(extra_data, Data, null),
-    CreatedAt = maps:get(created_at, Data, elib_dt:now()),
+    CreatedAt = maps:get(created_at, Data, elib_dt:millisecond()),
 
     OrderNo = generate_order_no(),
     GenId = elib_tsid:generate(channel_order),
@@ -64,7 +64,7 @@ create_order(Data) ->
         <<"INSERT INTO channel_order ",
             "(id, channel_id, user_id, order_no, amount, currency, status, payment_method, ",
             "expires_at, extra_data, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9/1000), $10, to_timestamp($11/1000)) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9::bigint / 1000), $10, to_timestamp($11::bigint / 1000)) ",
             "RETURNING order_no">>,
     case
         elib_pg:execute(Sql, [
@@ -141,15 +141,15 @@ find_by_channel_and_user(ChannelId, UserId) ->
 pay(OrderNo, PaymentData) ->
     PaymentNo = maps:get(payment_no, PaymentData, <<>>),
     PaymentMethod = maps:get(payment_method, PaymentData, <<"mock">>),
-    SubscriptionStart = maps:get(subscription_start_at, PaymentData, elib_dt:now()),
+    SubscriptionStart = maps:get(subscription_start_at, PaymentData, elib_dt:millisecond()),
     SubscriptionEnd = maps:get(subscription_end_at, PaymentData, null),
 
     % 构建SQL
     Sql =
         <<"UPDATE channel_order ",
             "SET status = $1, payment_no = $2, payment_method = $3, payment_at = NOW(), ",
-            "subscription_start_at = to_timestamp($4/1000), ",
-            "subscription_end_at = CASE WHEN $5 IS NULL THEN NULL ELSE to_timestamp($5/1000) END, ",
+            "subscription_start_at = to_timestamp($4::bigint / 1000), ",
+            "subscription_end_at = CASE WHEN $5 IS NULL THEN NULL ELSE to_timestamp($5::bigint / 1000) END, ",
             "updated_at = NOW() ", "WHERE order_no = $6 AND status = 0 AND expires_at > NOW()">>,
     case
         elib_pg:execute(Sql, [
@@ -267,4 +267,4 @@ generate_order_no() ->
 %% @doc 默认过期时间（30分钟后）
 -spec default_expire_time() -> integer().
 default_expire_time() ->
-    elib_dt:now() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).
+    elib_dt:millisecond() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).

@@ -57,7 +57,7 @@ create(Data) ->
     Currency = maps:get(currency, Data, <<"CNY">>),
     PaymentMethod = maps:get(payment_method, Data),
     ExpiresAt = maps:get(expires_at, Data, default_expire_time()),
-    CreatedAt = maps:get(created_at, Data, elib_dt:now()),
+    CreatedAt = maps:get(created_at, Data, elib_dt:millisecond()),
 
     OrderNo = generate_order_no(),
     GenId = elib_tsid:generate(recharge_order),
@@ -67,7 +67,7 @@ create(Data) ->
             " (id, order_no, user_id, amount, currency, payment_method, status,"
             " expires_at, created_at)"
             " VALUES ($1, $2, $3, $4, $5, $6, $7,"
-            " to_timestamp($8/1000), to_timestamp($9/1000))"
+            " to_timestamp($8::bigint / 1000), to_timestamp($9::bigint / 1000))"
             " RETURNING order_no">>,
     case
         elib_pg:execute(Sql, [
@@ -273,4 +273,4 @@ generate_order_no() ->
 %% @doc 默认过期时间（30 分钟后，毫秒时间戳）
 -spec default_expire_time() -> integer().
 default_expire_time() ->
-    elib_dt:now() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).
+    elib_dt:millisecond() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).
