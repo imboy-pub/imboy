@@ -86,7 +86,7 @@ accept(TransferId, ReceiverUid) ->
             <<"SELECT sender_uid, receiver_uid, amount, status FROM ", Tb/binary,
                 " WHERE id = $1 FOR UPDATE">>,
         case elib_pg:execute(Conn, LockSql, [TransferId]) of
-            {ok, 1, [[SenderUid, TargetReceiverUid, Amount, Status]]} ->
+            {ok, 1, [[_SenderUid, TargetReceiverUid, Amount, Status]]} ->
                 %% 2. 验证合法性
                 case Status =:= <<"pending">> andalso TargetReceiverUid =:= ReceiverUid of
                     true ->

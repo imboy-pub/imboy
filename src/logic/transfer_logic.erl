@@ -55,7 +55,7 @@ refund(TransferId) ->
 
 %% @doc 查询转账单详情
 -spec detail(integer()) -> {ok, map()} | {error, term()}.
-detail(TransferId) ->
+detail(TransferId) when is_integer(TransferId) ->
     Order = transfer_repo:find_by_id(TransferId),
     case map_size(Order) =:= 0 of
         true ->

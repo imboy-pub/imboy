@@ -96,7 +96,7 @@ grab(PacketId, ReceiverUid) ->
             <<"SELECT type, amount, count, remain_amount, remain_count, status FROM ", Tb/binary,
                 " WHERE id = $1 FOR UPDATE">>,
         case elib_pg:execute(Conn, LockSql, [PacketId]) of
-            {ok, 1, [[Type, TotalAmount, TotalCount, RemainAmount, RemainCount, Status]]} ->
+            {ok, 1, [[Type, _TotalAmount, _TotalCount, RemainAmount, RemainCount, Status]]} ->
                 %% 2. 检查状态 / Check status
                 case Status =:= <<"active">> andalso RemainCount > 0 of
                     true ->
