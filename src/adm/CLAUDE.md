@@ -46,7 +46,14 @@ AdmRoutes = [
 | `adm_app_version_handler` | `/adm/app_version/index` | 版本列表 |
 | `adm_app_version_handler` | `/adm/app_version/save` | 保存版本 |
 | `adm_app_version_handler` | `/adm/app_version/delete` | 删除版本 |
-| `adm_attach_handler` | `/adm/attach/auth` | 附件授权 |
+| `adm_attach_handler` | `/adm/storage/stats` | 存储统计（总数/各类/今日） |
+| `adm_attach_handler` | `/adm/storage/index` | 附件分页列表（mime_type/keyword 筛选） |
+| `adm_attach_handler` | `/adm/storage/download` | 签发下载 presigned GET URL |
+| `adm_attach_handler` | `/adm/storage/disable` | 禁用附件（status→0） |
+| `adm_attach_handler` | `/adm/storage/enable` | 启用附件（status→1） |
+| `adm_attach_handler` | `/adm/storage/delete` | 软删除附件（status→-1） |
+| `adm_attach_handler` | `/adm/storage/orphan` | 孤儿附件统计 |
+| `adm_attach_handler` | `/adm/storage/orphan/cleanup` | 物理清理孤儿（先删 S3 再删 DB） |
 
 ---
 
@@ -84,7 +91,7 @@ AdmRoutes = [
 | 模块 | 说明 |
 |------|------|
 | `adm_announcement_handler` | 全局公告管理 |
-| `adm_attach_handler` | 附件授权与管理 |
+| `adm_attach_handler` | 存储/附件管理（统计/列表/下载/禁用/启用/软删/孤儿清理） |
 | `adm_channel_handler` | 频道管理接口 |
 | `adm_feedback_handler` | 用户反馈处理与回复 |
 | `adm_message_handler` | 消息管理接口 |

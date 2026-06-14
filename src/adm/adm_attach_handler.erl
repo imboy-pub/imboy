@@ -30,10 +30,10 @@ init(Req0, State0) ->
         case Action of
             stats -> stats(Method, Req0, State);
             index -> index(Method, Req0, State);
+            download -> download(Method, Req0, State);
             disable -> disable(Method, Req0, State);
             enable -> enable(Method, Req0, State);
             delete -> delete(Method, Req0, State);
-            auth -> auth(Method, Req0, State);
             orphan -> orphan(Method, Req0, State);
             orphan_cleanup -> orphan_cleanup(Method, Req0, State);
             false -> Req0
@@ -85,16 +85,30 @@ delete(<<"POST">>, Req0, State) ->
 delete(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc 批量鉴权 URI（POST，逗号分隔），返回各 URI 的鉴权结果列表
--spec auth(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-auth(<<"POST">>, Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    UriBin = maps:get(<<"uri">>, PostVals, <<>>),
-    Uris = binary:split(UriBin, <<",">>, [global]),
-    Results = [elib_uri:check_auth(U) || U <- Uris],
-    elib_response:success(Req0, #{<<"uri">> => Results}, "success.");
-auth(_, Req0, _State) ->
-    Req0.
+%% @doc 签发短时下载 presigned GET URL（GET，id 取自 query）
+%% admin 下载：按 id 查 path(ObjectKey) → presign GET(10min) → 返回 {url}。
+%% 前端拿到 url 后 window.open 触发浏览器直连 Garage 下载；
+%% presign 实时签发，避免列表预签导致的批量过期与性能开销。
+-spec download(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+download(<<"GET">>, Req0, _State) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    IdRaw = proplists:get_value(<<"id">>, Qs, <<"0">>),
+    case safe_int(IdRaw, 0) of
+        Id when Id > 0 ->
+            case attachment_ds:find_path_by_id(Id) of
+                {ok, Path} ->
+                    Url = elib_oss:presign_get_for_key(Path, 600),
+                    elib_response:success(Req0, #{<<"url">> => Url}, "success.");
+                {error, not_found} ->
+                    elib_response:error(Req0, <<"附件不存在"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, R} ->
+                    elib_response:error(Req0, ec_cnv:to_binary(R), ?ERR_INTERNAL_SERVER_ERROR)
+            end;
+        _ ->
+            elib_response:error(Req0, <<"id 无效"/utf8>>, ?ERR_BAD_REQUEST)
+    end;
+download(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc disable/enable/delete 的公共流程：鉴权 → 解析 id → 执行 DS 操作 → 标准响应
 -spec handle_id_action(map(), binary(), fun((integer()) -> ok | {error, term()}), cowboy_req:req()) ->

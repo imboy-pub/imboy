@@ -42,6 +42,8 @@
 %% @doc 根据 object_key(path) 和上传者 uid 查找附件（用于归属校验）
 -export([find_by_path_and_uid/2]).
 
+-export([find_path_by_id/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -326,6 +328,18 @@ find_by_path_and_uid(ObjectKey, Uid) ->
             " WHERE path = $1 AND creator_user_id = $2 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [ObjectKey, Uid]) of
         {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% @doc 按 id 查询附件 path（ObjectKey），供 admin 下载端点签发 presign GET
+%% 仅返回未软删除（status >= 0）的记录
+-spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.
+find_path_by_id(Id) ->
+    Tb = tablename(),
+    Sql = <<"SELECT path FROM ", Tb/binary, " WHERE id = $1 AND status >= 0 LIMIT 1">>,
+    case elib_pg:query(Sql, [Id]) of
+        {ok, [#{<<"path">> := Path}]} -> {ok, Path};
         {ok, []} -> {error, not_found};
         {error, R} -> {error, R}
     end.

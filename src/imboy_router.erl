@@ -650,6 +650,7 @@ get_routes() ->
         {"/adm/storage/disable", adm_attach_handler, #{action => disable}},
         {"/adm/storage/enable", adm_attach_handler, #{action => enable}},
         {"/adm/storage/delete", adm_attach_handler, #{action => delete}},
+        {"/adm/storage/download", adm_attach_handler, #{action => download}},
         {"/adm/storage/orphan", adm_attach_handler, #{action => orphan}},
         {"/adm/storage/orphan/cleanup", adm_attach_handler, #{action => orphan_cleanup}},
         {"/adm/passport/meta", adm_passport_handler, #{action => meta}},
