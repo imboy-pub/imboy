@@ -14,6 +14,7 @@
 -export([delete/1]).
 -export([revoke/3]).
 -export([increment_view_count/1]).
+-export([list_pinned/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -72,13 +73,15 @@ find_by_id(MessageId) ->
 list_by_channel(ChannelId, 0, Limit) ->
     % 获取最新消息
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE channel_id = $1 AND status = 1 "
             "ORDER BY created_at DESC LIMIT $2">>,
     elib_pg:query(Sql, [ChannelId, Limit]);
 list_by_channel(ChannelId, Cursor, Limit) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE channel_id = $1 AND status = 1 AND created_at < $2 "
             "ORDER BY created_at DESC LIMIT $3">>,
     CursorTs = elib_dt:to_rfc3339(Cursor),
@@ -88,7 +91,8 @@ list_by_channel(ChannelId, Cursor, Limit) ->
 -spec list_pinned(integer()) -> {ok, list(map())} | {error, any()}.
 list_pinned(ChannelId) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE channel_id = $1 AND status = 1 AND is_pinned = true "
             "ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [ChannelId]).
@@ -113,7 +117,8 @@ delete(MessageId) ->
 -spec revoke(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
 revoke(MessageId, RevokedBy, RevokedAt) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET revoked = true, revoked_by = $2, revoked_at = $3, updated_at = $3 "
             "WHERE id = $1 AND status = 1 AND revoked = false">>,
     elib_pg:execute(Sql, [MessageId, RevokedBy, RevokedAt]).
@@ -122,8 +127,7 @@ revoke(MessageId, RevokedBy, RevokedAt) ->
 -spec increment_view_count(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_view_count(MessageId) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-            " SET view_count = view_count + 1 WHERE id = $1">>,
+    Sql = <<"UPDATE ", Tb/binary, " SET view_count = view_count + 1 WHERE id = $1">>,
     elib_pg:execute(Sql, [MessageId]).
 
 %% @doc 删除频道的所有消息

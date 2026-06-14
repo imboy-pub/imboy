@@ -246,7 +246,7 @@ subscribers(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
-            ChannelIdInt = elib_cnv:to_integer(ChannelId),
+            ChannelIdInt = elib_cnv:safe_to_integer(ChannelId),
             case channel_logic_subscription:is_subscribed(ChannelIdInt, Uid) of
                 false ->
                     elib_response:error(Req0, <<"只有订阅者才能查看订阅者列表"/utf8>>, 403);

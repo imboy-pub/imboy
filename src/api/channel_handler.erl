@@ -379,7 +379,7 @@ stats(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
-            ChannelIdInt = elib_cnv:to_integer(ChannelId),
+            ChannelIdInt = elib_cnv:safe_to_integer(ChannelId),
             case channel_logic_subscription:is_subscribed(ChannelIdInt, Uid) of
                 false ->
                     elib_response:error(Req0, <<"无权限查看该频道统计"/utf8>>, 403);

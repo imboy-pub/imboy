@@ -14,6 +14,7 @@
 -export([revoke/3]).
 -export([get_stats/1]).
 -export([page/5]).
+-export([list_pinned/1]).
 
 -spec find_by_id(integer()) -> map() | {error, any()}.
 find_by_id(MessageId) -> channel_message_repo:find_by_id(MessageId).
@@ -36,8 +37,12 @@ revoke(MessageId, RevokedBy, RevokedAt) ->
 -spec get_stats(integer()) -> {ok, non_neg_integer(), non_neg_integer()} | {error, term()}.
 get_stats(ChannelId) ->
     Tb = channel_message_repo:tablename(),
-    Sql = <<"SELECT COUNT(*) as total_messages, COALESCE(SUM(view_count), 0) as total_views "
-            "FROM ", Tb/binary, " WHERE channel_id = $1 AND status = 1">>,
+    Sql = <<
+        "SELECT COUNT(*) as total_messages, COALESCE(SUM(view_count), 0) as total_views "
+        "FROM ",
+        Tb/binary,
+        " WHERE channel_id = $1 AND status = 1"
+    >>,
     case elib_pg:one(Sql, [ChannelId]) of
         {ok, Row} when is_map(Row) ->
             TotalMsgs = maps:get(<<"total_messages">>, Row, 0),
@@ -52,3 +57,6 @@ get_stats(ChannelId) ->
 page(Column, Where, Order, Page, Size) ->
     Tb = channel_message_repo:tablename(),
     elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
+-spec list_pinned(integer()) -> {ok, list(map())} | {error, any()}.
+list_pinned(ChannelId) -> channel_message_repo:list_pinned(ChannelId).

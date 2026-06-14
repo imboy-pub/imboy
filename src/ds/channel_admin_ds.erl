@@ -7,6 +7,7 @@
 -include("log.hrl").
 
 %% ==================== API ====================
+-export([add/1]).
 -export([add/2]).
 -export([delete/2]).
 -export([list_by_channel/1]).
@@ -14,6 +15,9 @@
 -export([get_role/2]).
 -export([find/2]).
 -export([page/5]).
+
+-spec add(map()) -> {ok, integer(), map()} | {error, any()}.
+add(Data) -> channel_admin_repo:add(Data).
 
 -spec add(epgsql:connection(), map()) -> {ok, integer(), map()} | {error, any()}.
 add(Conn, Data) -> channel_admin_repo:add(Conn, Data).
