@@ -21,18 +21,19 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        list -> list(Method, Req0, State);
-        detail -> detail(Method, Req0, State);
-        ban -> ban(Method, Req0, State);
-        unban -> unban(Method, Req0, State);
-        search -> search(Method, Req0, State);
-        tag_list -> tag_list(Method, Req0, State);
-        tag_delete -> tag_delete(Method, Req0, State);
-        collect_list -> collect_list(Method, Req0, State);
-        collect_remove -> collect_remove(Method, Req0, State);
-        _ -> Req0
-    end,
+    Req1 =
+        case Action of
+            list -> list(Method, Req0, State);
+            detail -> detail(Method, Req0, State);
+            ban -> ban(Method, Req0, State);
+            unban -> unban(Method, Req0, State);
+            search -> search(Method, Req0, State);
+            tag_list -> tag_list(Method, Req0, State);
+            tag_delete -> tag_delete(Method, Req0, State);
+            collect_list -> collect_list(Method, Req0, State);
+            collect_remove -> collect_remove(Method, Req0, State);
+            _ -> Req0
+        end,
     {ok, Req1, State}.
 
 %% ===================================================================
@@ -57,7 +58,8 @@ detail(<<"GET">>, Req0, _State) ->
     Uid = parse_uid_param(Req0),
     case Uid > 0 of
         true ->
-            Column = <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
+            Column =
+                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
             User = user_ds:find_by_id(Uid, Column),
             case map_size(User) > 0 of
                 true ->
@@ -120,7 +122,7 @@ unban(<<"POST">>, Req0, _State) ->
 search(<<"GET">>, Req0, _State) ->
     {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
     {Page, Size} = elib_param:page(Req0),
-    
+
     case byte_size(Keyword) > 0 of
         true ->
             Where = #{
@@ -239,7 +241,9 @@ collect_list(<<"GET">>, Req0, _State) ->
             case user_collect_ds:page(Column, Where, Order, Page, Size) of
                 {ok, Payload0} ->
                     List = maps:get(list, Payload0, []),
-                    Payload = maps:put(list, elib_response:json_decode_list_field(List, <<"info">>), Payload0),
+                    Payload = maps:put(
+                        list, elib_response:json_decode_list_field(List, <<"info">>), Payload0
+                    ),
                     elib_response:success(Req0, maps:remove(items, Payload));
                 {error, Reason} ->
                     ?ERROR_LOG(["adm collect list error: ", Reason]),
@@ -286,23 +290,37 @@ build_where(Status, _Keyword) ->
 
 -spec parse_uid_param(cowboy_req:req()) -> integer().
 parse_uid_param(Req0) ->
-    Uid0 =
-        case catch elib_param:int(uid, Req0, 0) of
-            {ok, Uid} when is_integer(Uid), Uid > 0 ->
-                Uid;
-            _ ->
-                0
+    % T22/BE-17: prefer user_id, fall back to uid
+    Uid0 = lists:foldl(
+        fun
+            (_, Acc) when Acc > 0 ->
+                Acc;
+            (Key, _) ->
+                case catch elib_param:int(Key, Req0, 0) of
+                    {ok, Uid} when is_integer(Uid), Uid > 0 -> Uid;
+                    _ -> 0
+                end
         end,
+        0,
+        [user_id, uid]
+    ),
     case Uid0 > 0 of
         true ->
             Uid0;
         false ->
-            case catch elib_param:binary(uid, Req0, <<>>) of
-                {ok, UidBin} ->
-                    parse_id(UidBin);
-                _ ->
-                    0
-            end
+            lists:foldl(
+                fun
+                    (_, Acc) when Acc > 0 ->
+                        Acc;
+                    (Key, _) ->
+                        case catch elib_param:binary(Key, Req0, <<>>) of
+                            {ok, UidBin} -> parse_id(UidBin);
+                            _ -> 0
+                        end
+                end,
+                0,
+                [user_id, uid]
+            )
     end.
 
 -spec parse_id(term()) -> integer().

@@ -150,13 +150,7 @@ version_stats(<<"GET">>, Req0, _State) ->
     Distribution = app_upgrade_log_ds:version_distribution(),
     %% 近7天事件统计
     Now = elib_dt:now(),
-    SevenDaysAgo = elib_dt:to_binary(
-        calendar:gregorian_seconds_to_datetime(
-            calendar:datetime_to_gregorian_seconds(
-                elib_dt:to_datetime(Now)
-            ) - 7 * 86400
-        )
-    ),
+    SevenDaysAgo = elib_dt:minus(Now, {7 * 86400, second}),
     Events = app_upgrade_log_ds:event_stats(SevenDaysAgo, Now),
     elib_response:success(Req0, #{
         <<"distribution">> => Distribution,

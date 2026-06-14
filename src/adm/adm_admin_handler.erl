@@ -530,6 +530,7 @@ muted_users_list_action(<<"GET">>, Req0, State) ->
                                         [
                                             #{
                                                 <<"uid">> => Uid,
+                                                <<"user_id">> => Uid,
                                                 <<"mute_until">> => MuteUntil,
                                                 <<"remaining_seconds">> => RemainingMs div 1000
                                             }
@@ -555,7 +556,7 @@ muted_users_unmute_action(<<"POST">>, Req0, State) ->
     case ensure_permission(State, <<"settings:update">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
+            UidRaw = maps:get(<<"user_id">>, PostVals, maps:get(<<"uid">>, PostVals, <<>>)),
             Uid = parse_id(UidRaw),
             case Uid > 0 of
                 true ->
