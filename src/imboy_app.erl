@@ -17,6 +17,8 @@ start(_Type, _Args) ->
     ok = validate_runtime_config(),
     ok = ensure_solidified_keys(),
     ok = ensure_rsa_keys(),
+    %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
+    ok = imboy_license:load_and_validate(),
     ok = imboy_migrate:migrate(),
     _ = imboy_syn:init(),
     % 初始化 TSID 分布式ID生成器
