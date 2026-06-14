@@ -80,25 +80,12 @@ read_raw_body(Req0, Acc) ->
             read_raw_body(Req1, <<Acc/binary, Data/binary>>)
     end.
 
-%% @doc 按网关把回调报文归一化为统一 Notify map。
-%%   sandbox/联调阶段：约定回调体为 JSON，字段已对齐统一格式，直接解析即可。
-%%   live 阶段：在各网关分支内把网关私有字段映射到统一字段（TODO[live] 注明）。
+%% @doc 解析回调报文为 map（仅 sandbox/明文回调时被采用）。
+%%   live 时验签由 payment_sign 经 erlang_pay:verify_notify 完成并透出解密明文，
+%%   payment_callback_logic:handle/3 优先采用该明文；本函数解析结果仅在 sandbox
+%%   (mock 回调，约定统一字段 JSON) 时使用。各网关字段名差异由
+%%   payment_callback_logic:extract 的 pick/2 兼容，无需在此做网关私有字段映射。
 -spec normalize(binary(), binary(), cowboy_req:req()) -> map().
-normalize(<<"alipay">>, RawBody, Req) ->
-    %% TODO[live]: 支付宝异步通知为 application/x-www-form-urlencoded，
-    %%   字段 out_trade_no/trade_no/trade_status/total_amount 等需映射：
-    %%     gateway_payment_no <- trade_no
-    %%     biz_order_no       <- out_trade_no
-    %%   并按 passback_params 还原 biz_type/user_id。
-    decode_notify(RawBody, Req);
-normalize(<<"wechat">>, RawBody, Req) ->
-    %% TODO[live]: 微信 v3 回调体经 AES-256-GCM 解密后才得明文 JSON，
-    %%   字段 transaction_id/out_trade_no/amount.total 映射到统一字段。
-    decode_notify(RawBody, Req);
-normalize(<<"stripe">>, RawBody, Req) ->
-    %% TODO[live]: Stripe event.data.object（checkout.session/payment_intent）
-    %%   的 id/metadata 映射到统一字段。
-    decode_notify(RawBody, Req);
 normalize(_Gateway, RawBody, Req) ->
     decode_notify(RawBody, Req).
 
