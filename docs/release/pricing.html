@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>imboy 定价 — 自托管即时通讯平台</title>
+<style>
+  :root {
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --ink: #1d1d22;
+    --muted: #6b6b76;
+    --line: #e7e7ee;
+    --accent: #07c160;
+    --accent-deep: #059b4d;
+    --gold: #b8893a;
+    --radius: 18px;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 12px 32px rgba(20,20,30,.06);
+    --shadow-lift: 0 2px 6px rgba(20,20,30,.06), 0 24px 60px rgba(7,193,96,.12);
+    --space: clamp(4rem, 3rem + 5vw, 8rem);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.hero { text-align: center; padding: var(--space) 1.5rem 3rem; }
+  .eyebrow {
+    display: inline-block; font-size: .82rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent-deep); font-weight: 600; margin-bottom: 1.1rem;
+  }
+  h1 {
+    font-size: clamp(2.2rem, 1.2rem + 4vw, 3.8rem); line-height: 1.08; margin: 0 0 1rem;
+    letter-spacing: -.02em; font-weight: 700;
+  }
+  .sub { font-size: clamp(1rem, .95rem + .4vw, 1.2rem); color: var(--muted); max-width: 40rem; margin: 0 auto; }
+
+  .grid {
+    display: grid; gap: 1.4rem; align-items: stretch;
+    grid-template-columns: repeat(3, 1fr); padding-bottom: 1rem;
+  }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; max-width: 26rem; margin: 0 auto; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 2rem 1.7rem; display: flex; flex-direction: column; box-shadow: var(--shadow);
+    transition: transform .4s var(--ease), box-shadow .4s var(--ease), border-color .4s var(--ease);
+  }
+  .card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lift); }
+  .card.featured {
+    border-color: var(--accent); box-shadow: var(--shadow-lift);
+    position: relative; transform: translateY(-8px);
+  }
+  .card.featured::before {
+    content: "推荐 · 最快现金流"; position: absolute; top: -.8rem; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #fff; font-size: .74rem; font-weight: 600; letter-spacing: .05em;
+    padding: .35rem .9rem; border-radius: 999px; white-space: nowrap;
+  }
+  .tier { font-size: 1.3rem; font-weight: 700; margin: 0 0 .2rem; }
+  .tier-note { font-size: .9rem; color: var(--muted); min-height: 2.6rem; margin-bottom: 1rem; }
+  .price { font-size: 2.4rem; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .price small { font-size: .95rem; font-weight: 500; color: var(--muted); }
+  .price-sub { font-size: .85rem; color: var(--muted); margin: .4rem 0 1.4rem; }
+  ul.feats { list-style: none; padding: 0; margin: 0 0 1.6rem; flex: 1; }
+  ul.feats li {
+    padding: .5rem 0 .5rem 1.6rem; position: relative; font-size: .94rem; border-top: 1px solid var(--line);
+  }
+  ul.feats li:first-child { border-top: none; }
+  ul.feats li::before {
+    content: "✓"; position: absolute; left: 0; color: var(--accent-deep); font-weight: 700;
+  }
+  ul.feats li.off { color: #aaa; }
+  ul.feats li.off::before { content: "—"; color: #ccc; }
+  .cta {
+    display: block; text-align: center; text-decoration: none; padding: .85rem 1rem;
+    border-radius: 12px; font-weight: 600; font-size: .98rem;
+    transition: transform .25s var(--ease), background .25s var(--ease);
+  }
+  .cta.solid { background: var(--accent); color: #fff; }
+  .cta.solid:hover { background: var(--accent-deep); transform: translateY(-2px); }
+  .cta.ghost { border: 1px solid var(--line); color: var(--ink); }
+  .cta.ghost:hover { border-color: var(--accent); color: var(--accent-deep); }
+
+  section.compare { padding: var(--space) 0; }
+  section.compare h2 { font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem); text-align: center; margin: 0 0 2.5rem; letter-spacing: -.01em; }
+  table { width: 100%; border-collapse: collapse; font-size: .94rem; background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  th, td { padding: .95rem 1.1rem; text-align: center; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; font-weight: 500; }
+  thead th { background: #f4f4f8; font-weight: 700; }
+  thead th.hl { color: var(--accent-deep); }
+  td .y { color: var(--accent-deep); font-weight: 700; }
+  td .n { color: #c4c4cc; }
+  tbody tr:hover td { background: #fafafd; }
+  .group td { background: #f7f7fb; font-weight: 600; text-align: left; color: var(--muted); font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; }
+
+  .note { max-width: 50rem; margin: 2rem auto 0; font-size: .86rem; color: var(--muted); text-align: center; }
+  footer { text-align: center; padding: 3rem 1.5rem var(--space); color: var(--muted); font-size: .86rem; border-top: 1px solid var(--line); }
+  footer strong { color: var(--ink); }
+</style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow">自托管 · 数据主权 · 端到端加密</span>
+      <h1>为掌控而生的<br />即时通讯平台</h1>
+      <p class="sub">开箱即用的 IM 内核：C2C/C2G 消息、E2EE 端对端加密、付费频道、钱包支付、可观测部署栈。开源即用，按规模升级。</p>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <!-- 社区版 -->
+      <div class="card">
+        <h3 class="tier">社区版</h3>
+        <p class="tier-note">开源自托管，功能完整，适合个人/团队评估与小规模自建。</p>
+        <div class="price">¥0 <small>/ 永久</small></div>
+        <p class="price-sub">木兰宽松许可 · 限规模上限</p>
+        <ul class="feats">
+          <li>单聊 / 群聊 / 朋友圈</li>
+          <li>E2EE 端到端加密</li>
+          <li>钱包 / 付费频道 / 支付</li>
+          <li>单机部署 + 可观测性栈</li>
+          <li class="off">集群水平扩展</li>
+          <li class="off">白标 / 品牌定制</li>
+          <li class="off">信创国产化适配</li>
+        </ul>
+        <a class="cta ghost" href="#">下载开源版</a>
+      </div>
+
+      <!-- 专业版 -->
+      <div class="card featured">
+        <h3 class="tier">专业版</h3>
+        <p class="tier-note">私有化授权买断，含集群与白标，适合企业自主可控部署。</p>
+        <div class="price">¥3.9<small> 万 / 套</small></div>
+        <p class="price-sub">终身授权 · 绑定域名 · 含 1 年升级</p>
+        <ul class="feats">
+          <li>社区版全部功能</li>
+          <li><strong>集群部署</strong>（水平扩展）</li>
+          <li><strong>运行时白标</strong> / 换肤</li>
+          <li>付费频道运营后台</li>
+          <li>加密对象存储增强</li>
+          <li>优先技术支持 SLA</li>
+          <li class="off">信创国产化 / SSO 审计</li>
+        </ul>
+        <a class="cta solid" href="#">联系销售</a>
+      </div>
+
+      <!-- 企业版 -->
+      <div class="card">
+        <h3 class="tier">企业版</h3>
+        <p class="tier-note">面向政企/金融/信创：国产化、合规审计、专属支持。</p>
+        <div class="price">¥12<small> 万 / 年起</small></div>
+        <p class="price-sub">按规模与模块定制报价</p>
+        <ul class="feats">
+          <li>专业版全部功能</li>
+          <li><strong>信创国产化</strong>（达梦/鲲鹏/国密）</li>
+          <li><strong>SSO / 审计合规</strong></li>
+          <li>气隙(air-gap)部署</li>
+          <li>更强 SLA + 专属支持</li>
+          <li>定制开发与集成</li>
+          <li>数据不出境保障</li>
+        </ul>
+        <a class="cta ghost" href="#">商务洽谈</a>
+      </div>
+    </div>
+  </div>
+
+  <section class="compare">
+    <div class="wrap">
+      <h2>功能对比</h2>
+      <table>
+        <thead>
+          <tr><th>能力</th><th>社区版</th><th class="hl">专业版</th><th>企业版</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><td colspan="4">核心 IM</td></tr>
+          <tr><td>单聊 / 群聊 / 朋友圈</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>E2EE 端到端加密</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>钱包 / 付费频道 / 支付</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr class="group"><td colspan="4">部署与运营</td></tr>
+          <tr><td>单机部署 + 可观测性</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>集群部署（水平扩展）</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>运行时白标 / 换肤</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>付费频道运营后台</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr class="group"><td colspan="4">合规与信创</td></tr>
+          <tr><td>信创国产化（达梦/鲲鹏/国密）</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>SSO / 审计合规</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>气隙部署 / 数据不出境</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td></tr>
+          <tr class="group"><td colspan="4">服务</td></tr>
+          <tr><td>技术支持</td><td>社区</td><td><span class="y">优先 SLA</span></td><td><span class="y">专属</span></td></tr>
+          <tr><td>授权方式</td><td>开源</td><td>终身买断</td><td>年费订阅</td></tr>
+        </tbody>
+      </table>
+      <p class="note">价格为建议参考价（专业版对标主流私有化 IM 终身授权区间）。最终授权方式、规模上限与信创适配范围以商务报价为准。社区版规模上限由 License 授权层控制，购买专业版/企业版解锁更高上限。</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <p><strong>imboy</strong> — 自托管即时通讯平台 · 私有部署 · 数据主权</p>
+      <p>本页为定价物料草案，价格以正式商务报价为准。</p>
+    </div>
+  </footer>
+</body>
+</html>
