@@ -21,6 +21,9 @@ get_routes() ->
 
             {"/app_version/check", app_version_handler, #{action => check}},
 
+            % 品牌配置（运行时白标，公开，客户端启动拉取，见 open/0）
+            {"/brand", brand_handler, #{action => info}},
+
             % 【新增】Prometheus 指标端点
             {"/metrics", metrics_handler, #{}},
 
@@ -728,6 +731,22 @@ get_routes() ->
         }},
         {"/adm/channel/search", adm_channel_handler, #{action => search}},
         {"/adm/channel/delete", adm_channel_handler, #{action => delete}},
+        % 运营财务 API（跨用户钱包/充值/支付/SaaS 计费查询）
+        {"/adm/finance/wallets", adm_finance_handler, #{action => wallets}},
+        {"/adm/finance/wallet/:user_id/transactions", adm_finance_handler, #{
+            action => wallet_transactions
+        }},
+        {"/adm/finance/recharge-orders", adm_finance_handler, #{action => recharge_orders}},
+        {"/adm/finance/payment-transactions", adm_finance_handler, #{
+            action => payment_transactions
+        }},
+        {"/adm/finance/billing/plans", adm_finance_handler, #{action => billing_plans}},
+        {"/adm/finance/billing/plan", adm_finance_handler, #{action => billing_plan_create}},
+        {"/adm/finance/billing/plan/update", adm_finance_handler, #{action => billing_plan_update}},
+        {"/adm/finance/billing/subscriptions", adm_finance_handler, #{
+            action => billing_subscriptions
+        }},
+        {"/adm/finance/billing/invoices", adm_finance_handler, #{action => billing_invoices}},
         % Moment 与举报治理 API
         {"/adm/moment/list", adm_moment_handler, #{action => list}},
         {"/adm/moment/detail/:moment_id", adm_moment_handler, #{action => detail}},
@@ -833,6 +852,7 @@ option() ->
 open() ->
     [
         <<"/help">>,
+        <<"/brand">>,
         <<"/privacy-policy">>,
         <<"/account-deletion">>,
         % /ws 有自己的auth
