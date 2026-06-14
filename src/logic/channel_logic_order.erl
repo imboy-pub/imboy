@@ -108,7 +108,12 @@ pay_order(Uid, OrderNo) ->
                                     {error, <<"不支持的支付方式"/utf8>>};
                                 true ->
                                     Amount = maps:get(<<"amount">>, Order, 0),
-                                    PayOpts = #{uid => Uid, amount => Amount},
+                                    %% channel_order.amount 单位为「元」；按目标网关期望单位适配：
+                                    %% wallet 网关期望元(内部换分)，第三方网关期望分(分=元×100)。
+                                    PayOpts = #{
+                                        uid => Uid,
+                                        amount => to_gateway_amount(Method, Amount)
+                                    },
                                     case payment_gateway:pay(Method, OrderNo, PayOpts) of
                                         {ok, PayNo} ->
                                             PaymentData = #{
@@ -275,15 +280,14 @@ refund_order(Uid, OrderNo, Reason0) ->
     end.
 
 %% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅
-%% 金额单位说明：channel_order.amount 为元(numeric)，透传给 payment_gateway:refund，
-%% 具体网关（如钱包）内部负责 yuan_to_fen 换算。
+%% 金额单位：channel_order.amount 为元；按目标网关期望单位适配(wallet 元 / 第三方 分)。
 -spec do_refund_order(integer(), integer(), binary(), map(), binary()) ->
     ok | {error, binary()}.
 do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
     Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
     PaymentNo = maps:get(<<"payment_no">>, Order, <<>>),
     Amount = maps:get(<<"amount">>, Order, 0),
-    case payment_gateway:refund(Method, PaymentNo, Amount) of
+    case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
         ok ->
             %% 网关退款成功后再更新订单状态（带 status=1 守卫，并发安全）
             case channel_order_ds:refund(OrderNo, Uid, Reason) of
@@ -301,6 +305,44 @@ do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
             {error, PayReason};
         {error, PayReason} ->
             {error, elib_cnv:safe_to_binary(PayReason)}
+    end.
+
+%% @doc 按目标网关期望单位适配金额（修复 channel 第三方支付收款/退款 100 倍偏差）：
+%%   - wallet 网关期望「元」(payment_wallet_gateway 内部 yuan_to_fen 换分)
+%%   - 第三方网关(alipay/wechat/stripe)期望「分」
+-spec to_gateway_amount(binary(), term()) -> term().
+to_gateway_amount(<<"wallet">>, Amount) -> Amount;
+to_gateway_amount(_Method, Amount) -> yuan_to_fen(Amount).
+
+%% 元 → 分 安全换算（整数运算避浮点；Amount 为 numeric: binary/float/integer）
+-spec yuan_to_fen(term()) -> integer().
+yuan_to_fen(V) when is_integer(V) -> V * 100;
+yuan_to_fen(V) when is_float(V) -> round(V * 100);
+yuan_to_fen(V) when is_binary(V) -> yuan_to_fen_bin(V);
+yuan_to_fen(V) when is_list(V) -> yuan_to_fen_bin(list_to_binary(V));
+yuan_to_fen(_) -> 0.
+
+-spec yuan_to_fen_bin(binary()) -> integer().
+yuan_to_fen_bin(Bin) ->
+    case binary:split(Bin, <<".">>) of
+        [I] -> safe_int(I) * 100;
+        [I, F] -> safe_int(I) * 100 + safe_int(norm_frac(F));
+        _ -> 0
+    end.
+
+-spec norm_frac(binary()) -> binary().
+norm_frac(F) ->
+    case byte_size(F) of
+        0 -> <<"00">>;
+        1 -> <<F/binary, "0">>;
+        _ -> binary:part(F, 0, 2)
+    end.
+
+-spec safe_int(binary()) -> integer().
+safe_int(B) ->
+    case catch binary_to_integer(B) of
+        I when is_integer(I) -> I;
+        _ -> 0
     end.
 
 -spec normalize_refund_reason(term()) -> binary().
