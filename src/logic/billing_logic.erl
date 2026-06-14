@@ -42,6 +42,18 @@
 -export([list_invoices/1]).
 -export([list_invoices_page/3]).
 
+-ifdef(TEST).
+-export([
+    validate_plan/4,
+    period_ms/1,
+    resolve_period/1,
+    pad2/1,
+    encode_jsonb/1,
+    decode_jsonb/1,
+    ts_ms_to_sql/1
+]).
+-endif.
+
 -include("log.hrl").
 
 %% 订阅状态
