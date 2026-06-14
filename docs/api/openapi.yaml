@@ -50,6 +50,8 @@ tags:
     description: SaaS 计费——套餐管理、租户订阅、用量配额、账单
   - name: channel-order
     description: 频道付费订单（创建、支付、退款、查询）
+  - name: brand
+    description: 品牌配置（运行时白标，公开端点）
 
 paths:
   /adm/setup/status:
@@ -289,6 +291,55 @@ paths:
 # ─────────────────────────────────────────────────────────────────────────────
 # 支付子系统 paths（追加于现有 paths 节点内，与现有路径平级）
 # ─────────────────────────────────────────────────────────────────────────────
+
+  /brand:
+    get:
+      tags: [brand]
+      summary: 品牌配置（运行时白标，公开）
+      description: 公开端点（无需 JWT，见 imboy_router:open/0），客户端启动时拉取品牌配置实现运行时白标。品牌字段存 config_ds（brand_* 键），管理端设置；缺省返回开源 imboy 品牌。
+      operationId: getBrand
+      responses:
+        '200':
+          description: 品牌配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          site_name:
+                            type: string
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          theme:
+                            type: string
+                          slogan:
+                            type: string
+                          copyright:
+                            type: string
+                          company:
+                            type: string
+                          edition:
+                            type: string
+                            description: 当前授权版次 community/professional/enterprise
+              example:
+                code: 0
+                msg: success.
+                sv_ts: 1771481621000
+                payload:
+                  site_name: imboy
+                  logo_url: ''
+                  primary_color: '#07C160'
+                  theme: light
+                  edition: community
 
   /v1/wallet/balance:
     get:
