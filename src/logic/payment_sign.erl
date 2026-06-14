@@ -47,6 +47,8 @@ sandbox_verify(_Gateway, _RawBody, _Headers) ->
 %%% live 模式 —— 真实验签骨架（凭据为空即拒绝）
 %%%===================================================================
 
+%% live 验签全部复用 erlang_pay:verify_notify（真实密码学验签/解密在 erlang_pay）。
+%% imboy 侧只读凭据、组 Cfg/Ctx、归一返回，不再自实现验签（剔除重复）。
 -spec live_verify(binary(), binary(), map()) -> ok | {error, atom()}.
 live_verify(<<"alipay">>, RawBody, _Headers) ->
     PubKey = cfg(alipay_public_key),
@@ -54,27 +56,24 @@ live_verify(<<"alipay">>, RawBody, _Headers) ->
         true ->
             {error, no_credential};
         false ->
-            %% TODO[live]: 支付宝异步通知验签 —— 用支付宝公钥 PubKey 对 RawBody
-            %%   解析出的 sign/sign_type，按「除 sign/sign_type 外参数按 key 字典序
-            %%   拼接 & 待签名串」做 RSA2(SHA256withRSA) 验签。
-            %%   通过返回 ok，失败返回 {error, bad_signature}。
-            _ = {PubKey, RawBody},
-            ok
+            %% 支付宝异步通知为 form 串（明文），解析为 map 交 erlang_pay 验签。
+            Ctx = #{form => parse_form(RawBody)},
+            normalize_verify(erlang_pay:verify_notify(alipay, #{public_key => PubKey}, Ctx))
     end;
 live_verify(<<"wechat">>, RawBody, Headers) ->
     ApiV3Key = cfg(wechat_api_v3_key),
-    case is_blank(ApiV3Key) of
+    PlatPub = cfg(wechat_platform_public_key),
+    case is_blank(ApiV3Key) orelse is_blank(PlatPub) of
         true ->
             {error, no_credential};
         false ->
-            %% TODO[live]: 微信支付 v3 回调验签 ——
-            %%   1) 取头 Wechatpay-Timestamp / Wechatpay-Nonce / Wechatpay-Signature
-            %%      / Wechatpay-Serial；
-            %%   2) 构造验签串 timestamp\nnonce\nRawBody\n，用微信平台证书公钥
-            %%      做 SHA256withRSA 验签；
-            %%   3) 回调体 resource 用 ApiV3Key 走 AES-256-GCM 解密得明文。
-            _ = {ApiV3Key, RawBody, Headers},
-            ok
+            %% 经 erlang_pay 平台公钥验签 + AES-256-GCM 解密。
+            %% ⚠️ 微信回调体加密，入账所需明文字段在 verify_notify 返回值中；
+            %%   当前 verify/3 仅返回 ok/error，明文未透出 —— 微信回调入账完整
+            %%   需把 verify_notify 解密结果传给 payment_callback（callback 流程待重构）。
+            Cfg = #{api_v3 => ApiV3Key, platform_public_key => PlatPub},
+            Ctx = #{headers => Headers, body => RawBody},
+            normalize_verify(erlang_pay:verify_notify(wechat, Cfg, Ctx))
     end;
 live_verify(<<"stripe">>, RawBody, Headers) ->
     Secret = cfg(stripe_webhook_secret),
@@ -82,20 +81,27 @@ live_verify(<<"stripe">>, RawBody, Headers) ->
         true ->
             {error, no_credential};
         false ->
-            %% 经 erlang_pay 库验签（HMAC-SHA256 + 时间戳容差防重放）。
-            %% Headers 已是 cowboy 小写键 map；body 用原始字节。
-            Cfg = #{webhook_secret => Secret},
+            %% HMAC-SHA256 + 时间戳容差防重放，全在 erlang_pay。
             Ctx = #{headers => Headers, body => RawBody},
-            case erlang_pay:verify_notify(stripe, Cfg, Ctx) of
-                {ok, _Event} -> ok;
-                {error, {Code, _Msg}} -> {error, Code};
-                {error, Code} when is_atom(Code) -> {error, Code};
-                {error, _} -> {error, bad_signature}
-            end
+            normalize_verify(erlang_pay:verify_notify(stripe, #{webhook_secret => Secret}, Ctx))
     end;
 live_verify(_Gateway, _RawBody, _Headers) ->
     %% 未知网关 live 下一律拒绝
     {error, unsupported_gateway}.
+
+%% erlang_pay:verify_notify 返回归一：成功=ok，失败提取错误码
+-spec normalize_verify(term()) -> ok | {error, atom()}.
+normalize_verify({ok, _}) -> ok;
+normalize_verify({error, {Code, _Msg}}) when is_atom(Code) -> {error, Code};
+normalize_verify({error, Code}) when is_atom(Code) -> {error, Code};
+normalize_verify({error, _}) -> {error, bad_signature}.
+
+%% 支付宝 form 串(a=1&b=2&sign=...) → map，交 erlang_pay 按字典序验签
+-spec parse_form(binary()) -> map().
+parse_form(RawBody) when is_binary(RawBody) ->
+    maps:from_list(cow_qs:parse_qs(RawBody));
+parse_form(_) ->
+    #{}.
 
 %%%===================================================================
 %%% 配置读取
