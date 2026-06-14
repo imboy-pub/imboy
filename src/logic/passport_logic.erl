@@ -23,6 +23,7 @@
 
 -include("log.hrl").
 -include("common.hrl").
+-include("error_code.hrl").
 
 %% @doc 快速登录（支持第三方服务）
 %% @param Service 登录服务类型（如 jverify）
@@ -440,33 +441,40 @@ do_signup_by_email(Email, Pwd, PostVals) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            Id = user_ds:find_id_by_email(Email),
-            case Id of
-                0 ->
-                    Data = pick_data_for_insert(
-                        #{
-                            <<"password">> => elib_password:generate(Pwd),
-                            <<"email">> => Email
-                        },
-                        PostVals
-                    ),
-                    case user_ds:insert_and_get_id(Data) of
-                        {ok, _} ->
-                            % 注册成功
-                            {ok, #{}};
-                        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                            % 唯一约束冲突，返回友好的错误信息
-                            {error, <<"账号已被占用"/utf8>>};
-                        {error, Reason} ->
-                            {error, Reason}
-                    end;
-                _ ->
-                    {error, <<"Email已经被占用了"/utf8>>}
+            %% License 规模 gate：用户数达授权上限时拒绝新注册（402）
+            case quota_guard() of
+                {error, _, _} = QErr ->
+                    QErr;
+                ok ->
+                    Id = user_ds:find_id_by_email(Email),
+                    case Id of
+                        0 ->
+                            Data = pick_data_for_insert(
+                                #{
+                                    <<"password">> => elib_password:generate(Pwd),
+                                    <<"email">> => Email
+                                },
+                                PostVals
+                            ),
+                            case user_ds:insert_and_get_id(Data) of
+                                {ok, _} ->
+                                    % 注册成功
+                                    {ok, #{}};
+                                {error,
+                                    {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                                    % 唯一约束冲突，返回友好的错误信息
+                                    {error, <<"账号已被占用"/utf8>>};
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end;
+                        _ ->
+                            {error, <<"Email已经被占用了"/utf8>>}
+                    end
             end
     end.
 
 -spec do_signup_by_mobile(binary(), binary(), map()) ->
-    {ok, map()} | {error, binary() | any()}.
+    {ok, map()} | {error, binary() | any()} | {error, binary(), integer()}.
 do_signup_by_mobile(Mobile, Pwd, PostVals) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
@@ -474,26 +482,51 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            Id = user_ds:find_id_by_mobile(Mobile),
-            case Id of
-                0 ->
-                    Data = pick_data_for_insert(
-                        #{
-                            <<"password">> => elib_password:generate(Pwd),
-                            <<"mobile">> => Mobile
-                        },
-                        PostVals
-                    ),
-                    case user_ds:insert_and_get_id(Data) of
-                        {ok, _} ->
-                            % 注册成功
-                            {ok, #{}};
-                        {error, Reason} ->
-                            {error, Reason}
-                    end;
-                _ ->
-                    {error, <<"手机号已经被占用了"/utf8>>}
+            %% License 规模 gate：用户数达授权上限时拒绝新注册（402）
+            case quota_guard() of
+                {error, _, _} = QErr ->
+                    QErr;
+                ok ->
+                    Id = user_ds:find_id_by_mobile(Mobile),
+                    case Id of
+                        0 ->
+                            Data = pick_data_for_insert(
+                                #{
+                                    <<"password">> => elib_password:generate(Pwd),
+                                    <<"mobile">> => Mobile
+                                },
+                                PostVals
+                            ),
+                            case user_ds:insert_and_get_id(Data) of
+                                {ok, _} ->
+                                    % 注册成功
+                                    {ok, #{}};
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end;
+                        _ ->
+                            {error, <<"手机号已经被占用了"/utf8>>}
+                    end
             end
+    end.
+
+%% @doc License 规模 gate：当前用户数达到授权 max_users 时拒绝新注册。
+%% 容错：计数异常一律放行（fail-open），避免 License 计数 bug 阻断全站注册，
+%% 与 imboy_license 的"无效降级不阻断"理念一致。
+-spec quota_guard() -> ok | {error, binary(), integer()}.
+quota_guard() ->
+    try user_ds:count() of
+        Count when is_integer(Count) ->
+            case imboy_license:check_user_quota(Count) of
+                ok ->
+                    ok;
+                {error, quota_exceeded} ->
+                    {error, <<"用户数已达授权上限，请联系管理员升级 License 后再注册"/utf8>>, ?ERR_PAYMENT_REQUIRED}
+            end;
+        _ ->
+            ok
+    catch
+        _:_ -> ok
     end.
 
 pick_data_for_insert(Data, PostVals) ->
@@ -583,6 +616,7 @@ login_resp(User, Resp) ->
     maps:merge(
         #{
             <<"uid">> => Id,
+            <<"user_id">> => Id,
             <<"token">> => token_ds:encrypt_token(Id),
             <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
             <<"email">> => maps:get(<<"email">>, User),

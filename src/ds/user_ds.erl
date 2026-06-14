@@ -16,6 +16,7 @@
 -export([find_by_email/2]).
 -export([find_by_account/2]).
 -export([list_by_ids/2]).
+-export([count/0]).
 -export([insert/2]).
 -export([update/2]).
 -export([update_field/3]).
@@ -365,6 +366,11 @@ find_id_by_email(Email) ->
 find_id_by_mobile(Mobile) ->
     Tb = user_repo:tablename(),
     elib_pg:pluck_value(Tb, <<"id">>, #{mobile => Mobile}, #{}, 0).
+
+%% @doc 用户总数（License 规模 gate 用）。
+-spec count() -> integer().
+count() ->
+    user_repo:count().
 
 %% @doc 更新用户密码
 %% @param Uid 用户ID

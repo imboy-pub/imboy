@@ -775,6 +775,7 @@ get_routes() ->
         {"/adm/stats/message", adm_stats_handler, #{action => message}},
         {"/adm/stats/group", adm_stats_handler, #{action => group}},
         {"/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
+        {"/adm/stats/license", adm_stats_handler, #{action => license}},
         {"/static/admin/[...]", cowboy_static,
             {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],

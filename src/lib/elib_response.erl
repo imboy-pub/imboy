@@ -107,8 +107,10 @@ json_decode_field(Row, Field) when is_map(Row) ->
                     catch
                         Class:Reason:_ ->
                             % 【改进】降级日志级别，添加更少冗余信息
-                            logger:warning("Failed to decode JSON field ~p: ~p:~p~nPreview: ~p",
-                                       [Field, Class, Reason, preview_binary(Payload, 100)]),
+                            logger:warning(
+                                "Failed to decode JSON field ~p: ~p:~p~nPreview: ~p",
+                                [Field, Class, Reason, preview_binary(Payload, 100)]
+                            ),
                             % 如果解析失败，保持原样
                             Row
                     end;
@@ -125,7 +127,9 @@ json_decode_field(Row, Field) when is_map(Row) ->
 %% @param Rows 数据行列表（map 或 proplists:proplist() 格式）
 %% @param Field 要解析的字段名
 %% @returns 解析后的数据行列表
--spec json_decode_list_field(list(), any()) -> list(); (any(), any()) -> any().
+-spec json_decode_list_field
+    (list(), any()) -> list();
+    (any(), any()) -> any().
 json_decode_list_field(Rows, Field) when is_list(Rows) ->
     [json_decode_field(Row, Field) || Row <- Rows];
 json_decode_list_field(Rows, _Field) ->
@@ -141,7 +145,8 @@ json_decode_list_field(Rows, _Field) ->
 %% @param Payload 响应数据
 %% @param Req cowboy请求对象
 %% @returns cowboy_req:req() 更新后的请求对象
--spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req()) -> cowboy_req:req().
+-spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req()) ->
+    cowboy_req:req().
 reply_json(Code, Msg, Payload, Req) ->
     reply_json(Code, Msg, Payload, Req, #{}).
 
@@ -152,14 +157,16 @@ reply_json(Code, Msg, Payload, Req) ->
 %% @param Req cowboy请求对象
 %% @param Options 额外选项
 %% @returns cowboy_req:req() 更新后的请求对象
--spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req(), map()) -> cowboy_req:req().
+-spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req(), map()) ->
+    cowboy_req:req().
 reply_json(Code, Msg, Payload, Req, Options) ->
-    Msg2 = if
-         is_list(Msg) ->
-            unicode:characters_to_binary(Msg);
-         true ->
-            elib_cnv:safe_to_binary(Msg)
-    end,
+    Msg2 =
+        if
+            is_list(Msg) ->
+                unicode:characters_to_binary(Msg);
+            true ->
+                elib_cnv:safe_to_binary(Msg)
+        end,
     BasePayload = #{
         <<"code">> => Code,
         <<"msg">> => Msg2,
@@ -167,12 +174,13 @@ reply_json(Code, Msg, Payload, Req, Options) ->
         <<"payload">> => Payload
     },
 
-    OptionsMap = case Options of
-        Map when is_map(Map) ->
-            Map;
-        _ ->
-            #{}
-    end,
+    OptionsMap =
+        case Options of
+            Map when is_map(Map) ->
+                Map;
+            _ ->
+                #{}
+        end,
     %% 固化 envelope 核心字段，避免外部 options 覆盖协议字段
     ExtraOptions = maps:without(
         [<<"code">>, <<"msg">>, <<"sv_ts">>, <<"payload">>],
@@ -181,13 +189,15 @@ reply_json(Code, Msg, Payload, Req, Options) ->
     JsonBody = jsone:encode(maps:merge(BasePayload, ExtraOptions), [native_utf8]),
 
     %% 发送响应
-    cowboy_req:reply(200,
+    cowboy_req:reply(
+        200,
         #{
             <<"content-type">> => <<"application/json; charset=utf-8">>,
             <<"Referrer-Policy">> => <<"strict-origin-when-cross-origin">>
         },
         JsonBody,
-        Req).
+        Req
+    ).
 
 %% ===================================================================
 %% Internal functions
@@ -199,15 +209,19 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 -spec is_potential_json(binary()) -> boolean().
 is_potential_json(<<>>) ->
     false;
-is_potential_json(Bin) when byte_size(Bin) > 1024 * 100 ->  % 超过 100KB，不太可能是 JSON
+% 超过 100KB，不太可能是 JSON
+is_potential_json(Bin) when byte_size(Bin) > 1024 * 100 ->
     false;
 is_potential_json(<<First:8, _Rest/binary>>) when First =:= ${; First =:= $[ ->
     true;
-is_potential_json(<<"  ", Rest/binary>>) ->  % 允许前导空格
+% 允许前导空格
+is_potential_json(<<"  ", Rest/binary>>) ->
     is_potential_json(Rest);
-is_potential_json(<<"\n", Rest/binary>>) ->  % 允许前导换行
+% 允许前导换行
+is_potential_json(<<"\n", Rest/binary>>) ->
     is_potential_json(Rest);
-is_potential_json(<<"\r\n", Rest/binary>>) ->  % 允许前导 CRLF
+% 允许前导 CRLF
+is_potential_json(<<"\r\n", Rest/binary>>) ->
     is_potential_json(Rest);
 is_potential_json(_) ->
     false.
@@ -223,7 +237,6 @@ preview_binary(Bin, MaxLen) ->
     <<Prefix:MaxLen/binary, _Rest/binary>> = Bin,
     <<Prefix/binary, "...">>.
 
-
 %% ===================================================================
 %% Logic 层结果处理辅助函数
 %% ===================================================================
@@ -233,9 +246,14 @@ preview_binary(Bin, MaxLen) ->
 %% @param Req cowboy请求对象
 %% @param Result Logic层返回结果 {ok, map()} | {error, binary()}
 %% @returns cowboy_req:req() 更新后的请求对象
--spec handle_logic_result(cowboy_req:req(), {ok, map()} | {error, binary() | list()}) -> cowboy_req:req().
+-spec handle_logic_result(
+    cowboy_req:req(),
+    {ok, map()} | {error, binary() | list()} | {error, binary() | list(), integer()}
+) -> cowboy_req:req().
 handle_logic_result(Req, {ok, Data}) ->
     ?MODULE:success(Req, Data);
+handle_logic_result(Req, {error, Msg, Code}) when is_integer(Code) ->
+    elib_response:error(Req, Msg, Code);
 handle_logic_result(Req, {error, Msg}) ->
     elib_response:error(Req, Msg).
 
@@ -246,8 +264,12 @@ handle_logic_result(Req, {error, Msg}) ->
 %% @param EnrichFun 数据增强函数，用于在成功时额外处理数据
 %% @param Options 额外选项
 %% @returns cowboy_req:req() 更新后的请求对象
--spec handle_logic_result_with(cowboy_req:req(), {ok, map()} | {error, binary() | list()},
-                               function(), map()) -> cowboy_req:req().
+-spec handle_logic_result_with(
+    cowboy_req:req(),
+    {ok, map()} | {error, binary() | list()},
+    function(),
+    map()
+) -> cowboy_req:req().
 handle_logic_result_with(Req, {ok, Data}, EnrichFun, Options) ->
     EnrichedData = EnrichFun(Data),
     ?MODULE:success(Req, EnrichedData, <<"success.">>, Options);

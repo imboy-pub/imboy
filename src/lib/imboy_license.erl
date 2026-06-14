@@ -31,6 +31,7 @@
 -export([max_users/0]).
 -export([max_nodes/0]).
 -export([check_user_quota/1]).
+-export([check_node_quota/0]).
 -export([licensee/0, expires_at/0, info/0]).
 
 -include("log.hrl").
@@ -226,6 +227,18 @@ check_user_quota(CurrentCount) when is_integer(CurrentCount) ->
     case Max =< 0 orelse CurrentCount < Max of
         true -> ok;
         false -> {error, quota_exceeded}
+    end.
+
+%% @doc 节点规模 gate：当前集群节点数是否在 license 上限内。
+%% max_nodes=0 表示不限量；当前节点数 = 已连接节点数 + 本节点。
+%% 供 imboy_cluster 在节点加入时调用（超限可拒绝加入或仅告警）。
+-spec check_node_quota() -> ok | {error, node_quota_exceeded, integer(), integer()}.
+check_node_quota() ->
+    Max = max_nodes(),
+    Current = length(nodes()) + 1,
+    case Max =< 0 orelse Current =< Max of
+        true -> ok;
+        false -> {error, node_quota_exceeded, Current, Max}
     end.
 
 %%===================================================================

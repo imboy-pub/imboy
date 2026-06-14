@@ -73,7 +73,7 @@ join_cluster(ClusterNodes) ->
         end,
         ClusterNodes
     ),
-    
+
     % 检查是否至少成功连接到一个节点
     ConnectedNodes = [Node || {Node, connected} <- Results],
     case ConnectedNodes of
@@ -83,7 +83,21 @@ join_cluster(ClusterNodes) ->
             ok = elib_log:info(<<"成功连接到 ~p 个集群节点"/utf8>>, [length(ConnectedNodes)]),
             % 向集群广播当前节点信息
             broadcast_node_info(ConnectedNodes),
+            ok = warn_if_node_quota_exceeded(),
             ok
+    end.
+
+%% @doc License 节点规模 gate：超授权 max_nodes 仅告警（不强制断开，避免误伤生产集群）。
+-spec warn_if_node_quota_exceeded() -> ok.
+warn_if_node_quota_exceeded() ->
+    case imboy_license:check_node_quota() of
+        ok ->
+            ok;
+        {error, node_quota_exceeded, Current, Max} ->
+            elib_log:warning(
+                <<"集群节点数 ~p 超过 License 授权上限 ~p，请升级 License 后扩容"/utf8>>,
+                [Current, Max]
+            )
     end.
 
 %% @doc 获取当前集群中的所有节点
@@ -151,7 +165,7 @@ broadcast_node_info(Nodes) ->
         status => online,
         capabilities => [cache, cluster, messaging]
     },
-    
+
     % 使用rpc向集群中的每个节点发送节点信息
     lists:foreach(
         fun(TargetNode) ->
@@ -178,13 +192,13 @@ handle_node_info(NodeInfo) ->
         {ok, ValidInfo} ->
             SourceNode = maps:get(node, ValidInfo),
             ok = elib_log:info(<<"接收到节点 ~p 的信息: ~p"/utf8>>, [SourceNode, ValidInfo]),
-            
+
             % 更新本地节点信息缓存
             update_node_info_cache(ValidInfo),
-            
+
             % 如果需要，可以向其他节点转发此信息
             % forward_node_info(ValidInfo),
-            
+
             ok;
         {error, Reason} ->
             ok = elib_log:warning(<<"接收到无效的节点信息: ~p, 错误: ~p"/utf8>>, [NodeInfo, Reason]),
@@ -216,7 +230,9 @@ update_node_info_cache(NodeInfo) ->
     CacheKey = {cluster_node_info, SourceNode},
 
     % 设置缓存，过期时间为5分钟
-    CacheTTL = 300, % 5分钟
+
+    % 5分钟
+    CacheTTL = 300,
     imboy_cache:set(CacheKey, NodeInfo, CacheTTL),
 
     ok = elib_log:debug(<<"已更新节点 ~p 的信息缓存"/utf8>>, [SourceNode]),

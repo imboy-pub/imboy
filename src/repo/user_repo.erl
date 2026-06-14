@@ -8,13 +8,16 @@
 -include("common.hrl").
 
 -export([tablename/0]).
--export ([save/1, update/2, delete/1]).
+-export([count/0]).
+-export([save/1, update/2, delete/1]).
 -export([create/1, find_by_uid/1]).
 -export([page/2, page/4]).
 
--export([find_by_email/2,
-         find_by_mobile/2,
-         find_by_account/2]).
+-export([
+    find_by_email/2,
+    find_by_mobile/2,
+    find_by_account/2
+]).
 -export([find_by_id/1, find_by_id/2]).
 -export([list_by_ids/2]).
 
@@ -31,6 +34,15 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"user">>).
 
+%% @doc 统计用户总数（License 规模 gate 用）。查询失败返回 0（由上层 fail-open）。
+-spec count() -> integer().
+count() ->
+    Tb = tablename(),
+    case elib_pg:query(<<"SELECT COUNT(*) FROM ", Tb/binary>>, []) of
+        {ok, _, [{N}]} when is_integer(N) -> N;
+        _ -> 0
+    end.
+
 %% @doc 分页查询用户
 -spec page(integer(), integer()) -> {ok, map()} | {error, any()}.
 page(Page, Size) ->
@@ -40,8 +52,10 @@ page(Page, Size) ->
 -spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
 page(Page, Size, Where, OrderBy) ->
     Tb = tablename(),
-    Column = <<"id,account,nickname,COALESCE(NULLIF(mobile, ''), account) AS mobile,"
-               "email,avatar,gender,region,sign,status,created_at">>,
+    Column = <<
+        "id,account,nickname,COALESCE(NULLIF(mobile, ''), account) AS mobile,"
+        "email,avatar,gender,region,sign,status,created_at"
+    >>,
     elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
 
 %% @doc 兼容旧接口：创建用户
@@ -65,9 +79,6 @@ find_by_uid(Uid) ->
             {error, Reason}
     end.
 
-
-
-
 %% @doc 根据邮箱查找用户
 %% @param Email 用户邮箱地址
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
@@ -78,7 +89,6 @@ find_by_email(Email, Column) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{email => Email}, #{limit => 1}),
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
-
 
 %% @doc 根据手机号查找用户
 %% @param Mobile 用户手机号码，支持binary或string类型
@@ -92,7 +102,6 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{mobile => Mobile}, #{limit => 1}),
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
 
-
 %% @doc 根据用户账号查找用户
 %% @param Account 用户账号（字符串或binary类型）
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
@@ -104,7 +113,6 @@ find_by_account(Account, Column) ->
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{account => Account}, #{limit => 1}),
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
 
-
 %% @doc 根据用户ID查找用户基本信息（使用默认列）
 %% @param Uid 用户ID
 %% @return map() 用户信息，未找到时返回空map
@@ -112,7 +120,6 @@ find_by_account(Account, Column) ->
 find_by_id(Uid) ->
     Column = <<"id,account,avatar,sign">>,
     find_by_id(Uid, Column).
-
 
 %% @doc 根据用户ID查找用户（指定列）
 %% @param Uid 用户ID
@@ -124,7 +131,6 @@ find_by_id(Uid, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Uid])).
 
-
 %% @doc 根据用户ID列表批量查询用户信息
 %% @param Uids 用户ID列表，元素类型为integer或binary，不能为空列表
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
@@ -135,7 +141,6 @@ list_by_ids(Uids, Column) when length(Uids) > 0 ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => {in, Uids}}, #{}),
     elib_pg:query(Sql, Params).
-
 
 %% @doc 更新指定用户的所有好友关系中的最后在线时间
 %% @param Uid 用户ID
@@ -164,8 +169,6 @@ may_exist(Uid) when is_integer(Uid), Uid > 0 ->
     end;
 may_exist(_) ->
     false.
-
-
 
 %% @doc 保存新用户记录
 %% @param Data 包含用户信息的map，必须包含mobile、password、account等必要字段
@@ -202,7 +205,6 @@ delete(Id) ->
     Tb = tablename(),
     elib_pg:update(Tb, #{status => -1}, <<"id = $1">>, [Id]).
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -212,11 +214,14 @@ delete(Id) ->
 %% @param Uid 用户ID
 %% @param Timestamp 要更新的时间戳
 %% @return {ok, Count} | {error, Reason}
--spec update_last_seen_at(binary(), pos_integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec update_last_seen_at(binary(), pos_integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 update_last_seen_at(Field, Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ",
-            "WHERE ", Field/binary, " = $3 AND status = 1">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ", "WHERE ",
+            Field/binary, " = $3 AND status = 1">>,
     elib_pg:execute(Sql, [Timestamp, elib_dt:now(), Uid]).
 
 %% @doc 兼容旧测试数据结构（uid/name 等）并补齐非空字段默认值

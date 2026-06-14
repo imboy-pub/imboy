@@ -29,6 +29,7 @@ init(Req0, State0) ->
             message -> message(Method, Req0, State);
             group -> group(Method, Req0, State);
             ranking -> ranking(Method, Req0, State);
+            license -> license(Method, Req0, State);
             ux_events -> ux_events(Method, Req0, State);
             _ -> Req0
         end,
@@ -37,6 +38,25 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc License 授权状态（规模/配额）查询
+-spec license(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+license(<<"GET">>, Req0, _State) ->
+    Info = imboy_license:info(),
+    Result = #{
+        edition => maps:get(edition, Info, <<"community">>),
+        valid => maps:get(valid, Info, false),
+        status => atom_to_binary(maps:get(status, Info, community), utf8),
+        max_users => maps:get(max_users, Info, 0),
+        max_nodes => maps:get(max_nodes, Info, 1),
+        current_users => user_ds:count(),
+        current_nodes => length(nodes()) + 1,
+        licensee => maps:get(licensee, Info, <<>>),
+        expires_at => maps:get(expires_at, Info, 0)
+    },
+    elib_response:success(Req0, Result);
+license(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 总览统计
 -spec overview(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
