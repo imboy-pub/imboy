@@ -97,6 +97,7 @@
 | `imboy_error` | 错误处理 |
 | `imboy_sms` | 短信发送 |
 | `imboy_message_helper` | 消息辅助 |
+| `group_member_transfer` | 群成员列表 ID 字段转换工具（从 src/api/ 迁入，保留原名） |
 | `imboy_migrate` | 数据库迁移（fail-fast 模式） |
 | `imboy_dtl` | 模板引擎 |
 | `epgsql_codec_rfc3339_bin` | RFC3339 编解码 |

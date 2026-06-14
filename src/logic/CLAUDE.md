@@ -62,6 +62,7 @@
 | `e2ee_social_logic` | E2EE 社交恢复 |
 | `location_logic` | 位置服务 |
 | `fts_logic` | 全文搜索 |
+| `billing_logic` | SaaS 计费：套餐 CRUD、订阅创建/续费/取消、用量上报+配额校验、账单生成（周期幂等）、账单支付（payment_gateway biz_type=3） |
 
 ### 管理后台
 

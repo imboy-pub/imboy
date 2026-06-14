@@ -168,6 +168,11 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 | `push_token_repo` | 推送令牌 |
 | `live_room_repo` | 直播间 |
 | `wallet_repo` | 钱包及流水 |
+| `payment_transaction_repo` | 统一支付流水（对账+回调幂等，UNIQUE(gateway,gateway_payment_no)/UNIQUE(trade_no)） |
+| `billing_plan_repo` | SaaS 套餐定义（code UNIQUE，price/quota_config，CRUD+分页） |
+| `billing_subscription_repo` | SaaS 租户订阅（tenant_id 逻辑字段，uniq_active 单活订阅，续费/到期扫描） |
+| `billing_usage_repo` | SaaS 用量记录（按 sub/metric/period upsert 累加） |
+| `billing_invoice_repo` | SaaS 账单（invoice_no UNIQUE，(sub,period) 幂等，mark_paid/mark_overdue） |
 | `imboy_plugin_audit_repo` | 插件审计日志 |
 
 ---

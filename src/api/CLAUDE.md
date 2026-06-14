@@ -101,6 +101,7 @@ get_routes() ->
 | `feedback_handler` | `/feedback/*` | 用户反馈与问题报告 |
 | `report_handler` | `/report/*` | 用户举报与内容审核 |
 | `wallet_handler` | `/wallet/*` | 钱包与余额管理 |
+| `billing_handler` | `/v1/billing/*` | SaaS 计费：套餐管理 + 租户订阅/用量/配额/账单 |
 
 ### 频道（Channel）
 
@@ -174,7 +175,7 @@ elib_response:error(Req, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST)
 
 ---
 
-## 文件清单（54 个）
+## 文件清单（53 个）
 
 | # | Handler 模块 | 说明 |
 |---|---|---|
@@ -204,7 +205,6 @@ elib_response:error(Req, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST)
 | 24 | `group_file_handler` | 群文件管理 |
 | 25 | `group_handler` | 群组核心操作（创建、查询、退群等） |
 | 26 | `group_member_handler` | 群成员管理与身份操作 |
-| 27 | `group_member_transfer` | 群成员数据 TSID 转换工具 |
 | 28 | `group_notice_handler` | 群公告发布与查看 |
 | 29 | `group_schedule_handler` | 群日程与时间管理 |
 | 30 | `group_tag_handler` | 群内标签管理 |
@@ -231,6 +231,7 @@ elib_response:error(Req, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST)
 | 51 | `user_tag_handler` | 用户标签管理 |
 | 52 | `user_tag_relation_handler` | 用户标签关系处理 |
 | 53 | `wallet_handler` | 钱包与余额管理 |
+| 55 | `billing_handler` | SaaS 计费：套餐 CRUD + 订阅/续费/取消 + 用量上报/配额查询 + 账单生成/支付 |
 | 54 | `websocket_handler` | WebSocket 长连接与实时消息投递 |
 
 ---

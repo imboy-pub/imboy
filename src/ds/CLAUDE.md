@@ -126,6 +126,11 @@
 | `report_action_log_ds` | 举报处理日志 |
 | `live_room_ds` | 直播间 |
 | `wallet_ds` | 钱包服务 |
+| `payment_transaction_ds` | 统一支付流水数据服务（薄封装 payment_transaction_repo + 回调幂等记录） |
+| `billing_plan_ds` | SaaS 套餐数据服务（薄封装 billing_plan_repo） |
+| `billing_subscription_ds` | SaaS 订阅数据服务（薄封装 billing_subscription_repo） |
+| `billing_usage_ds` | SaaS 用量数据服务（薄封装 billing_usage_repo） |
+| `billing_invoice_ds` | SaaS 账单数据服务（薄封装 billing_invoice_repo） |
 | `websocket_ds` | WebSocket 状态管理 |
 
 ---
