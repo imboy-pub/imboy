@@ -49,12 +49,18 @@
 %% @param Ctx     #{raw => RawBody, headers => Headers}
 %% @return {ok, paid} | {ok, already} | {error, binary()}
 -spec handle(binary(), map(), map()) -> {ok, paid | already} | {error, binary()}.
-handle(Gateway, Notify, Ctx) ->
+handle(Gateway, Notify0, Ctx) ->
     RawBody = maps:get(raw, Ctx, <<>>),
     Headers = maps:get(headers, Ctx, #{}),
-    %% 1) 验签
+    %% 1) 验签；live 透出 erlang_pay 解密明文(微信加密回调必需)，非空则取代
+    %%    handler 解析的 Notify0(微信 RawBody 加密，handler 解析不出明文)。
     case payment_sign:verify(Gateway, RawBody, Headers) of
-        ok ->
+        {ok, Verified} ->
+            Notify =
+                case map_size(Verified) > 0 of
+                    true -> Verified;
+                    false -> Notify0
+                end,
             handle_verified(Gateway, Notify, RawBody);
         {error, Reason} ->
             ?WARN_LOG([payment_callback, sign_failed, Gateway, Reason]),
@@ -69,19 +75,32 @@ handle(Gateway, Notify, Ctx) ->
     {ok, paid | already} | {error, binary()}.
 handle_verified(Gateway, Notify, RawBody) ->
     case extract(Gateway, Notify) of
-        {ok, Fields} ->
-            dispatch_idempotent(Gateway, Fields, RawBody);
+        {ok, Fields0} ->
+            %% 从业务订单反查 user_id/amount/currency —— 金额以订单为准，不信回调金额
+            case enrich_from_order(Fields0) of
+                {ok, Fields} ->
+                    dispatch_idempotent(Gateway, Fields, RawBody);
+                {error, Msg} ->
+                    ?WARN_LOG([payment_callback, order_not_found, Gateway, Msg]),
+                    {error, Msg}
+            end;
         {error, Msg} ->
             ?WARN_LOG([payment_callback, bad_params, Gateway, Msg]),
             {error, Msg}
     end.
 
-%% @doc 从回调 map 提取并校验必填字段
+%% @doc 从回调 map 提取 gateway_payment_no/biz_order_no/biz_type。
+%% 字段兼容：sandbox 用统一字段；live 各网关私有字段(支付宝 trade_no /
+%% 微信 transaction_id / Stripe payment_intent；订单号统一 out_trade_no)。
+%% user_id/amount/currency 不从回调取，由 enrich_from_order 从订单反查(更安全)。
 -spec extract(binary(), map()) -> {ok, map()} | {error, binary()}.
 extract(Gateway, Notify) ->
-    GwPayNo = to_bin(maps:get(<<"gateway_payment_no">>, Notify, <<>>)),
-    BizType = to_int(maps:get(<<"biz_type">>, Notify, 0)),
-    BizOrderNo = to_bin(maps:get(<<"biz_order_no">>, Notify, <<>>)),
+    GwPayNo = pick(Notify, [
+        <<"gateway_payment_no">>, <<"transaction_id">>, <<"trade_no">>, <<"payment_intent">>
+    ]),
+    BizOrderNo = pick(Notify, [<<"biz_order_no">>, <<"out_trade_no">>]),
+    %% biz_type 由订单号前缀推导(RCH=充值 / CH=频道)，回调不带也能判定
+    BizType = biz_type_of(BizOrderNo, to_int(maps:get(<<"biz_type">>, Notify, 0))),
     case {GwPayNo, BizType, BizOrderNo} of
         {<<>>, _, _} ->
             {error, <<"缺少支付单号"/utf8>>};
@@ -90,18 +109,42 @@ extract(Gateway, Notify) ->
         {_, _, <<>>} ->
             {error, <<"缺少业务订单号"/utf8>>};
         _ ->
-            TradeNo = resolve_trade_no(Gateway, GwPayNo, Notify),
             {ok, #{
                 gateway => Gateway,
                 gateway_payment_no => GwPayNo,
                 biz_type => BizType,
                 biz_order_no => BizOrderNo,
-                user_id => to_int(maps:get(<<"user_id">>, Notify, 0)),
-                amount => to_int(maps:get(<<"amount">>, Notify, 0)),
-                currency => to_bin(maps:get(<<"currency">>, Notify, <<"CNY">>)),
-                trade_no => TradeNo
+                trade_no => resolve_trade_no(Gateway, GwPayNo, Notify)
             }}
     end.
+
+%% @doc 从业务订单反查 user_id/amount/currency 补全 Fields。
+%% 金额以订单为准：充值订单 amount 为分；频道订单 amount 为元→换分。
+-spec enrich_from_order(map()) -> {ok, map()} | {error, binary()}.
+enrich_from_order(#{biz_type := ?BIZ_RECHARGE, biz_order_no := OrderNo} = Fields) ->
+    case recharge_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} when is_map(Order) ->
+            {ok, Fields#{
+                user_id => to_int(maps:get(<<"user_id">>, Order, 0)),
+                amount => to_int(maps:get(<<"amount">>, Order, 0)),
+                currency => to_bin(maps:get(<<"currency">>, Order, <<"CNY">>))
+            }};
+        _ ->
+            {error, <<"充值订单不存在"/utf8>>}
+    end;
+enrich_from_order(#{biz_type := ?BIZ_CHANNEL_ORDER, biz_order_no := OrderNo} = Fields) ->
+    case channel_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} when is_map(Order) ->
+            {ok, Fields#{
+                user_id => to_int(maps:get(<<"user_id">>, Order, 0)),
+                amount => yuan_to_fen(maps:get(<<"amount">>, Order, 0)),
+                currency => to_bin(maps:get(<<"currency">>, Order, <<"CNY">>))
+            }};
+        _ ->
+            {error, <<"频道订单不存在"/utf8>>}
+    end;
+enrich_from_order(Fields) ->
+    {ok, Fields}.
 
 %% @doc 幂等分派：先按 (gateway, gateway_payment_no) 探测既有流水
 -spec dispatch_idempotent(binary(), map(), binary()) ->
@@ -304,6 +347,45 @@ resolve_trade_no(Gateway, GwPayNo, Notify) ->
         <<>> -> <<"PT_", Gateway/binary, "_", GwPayNo/binary>>;
         Tn -> Tn
     end.
+
+%% @doc 按候选键列表取第一个非空值（适配各网关回调字段名差异）
+-spec pick(map(), [binary()]) -> binary().
+pick(_Notify, []) ->
+    <<>>;
+pick(Notify, [K | Rest]) ->
+    case to_bin(maps:get(K, Notify, <<>>)) of
+        <<>> -> pick(Notify, Rest);
+        V -> V
+    end.
+
+%% @doc biz_type 由订单号前缀推导：RCH=充值 / CH=频道；回调显式 biz_type 作兜底
+-spec biz_type_of(binary(), integer()) -> integer().
+biz_type_of(<<"RCH", _/binary>>, _) -> ?BIZ_RECHARGE;
+biz_type_of(<<"CH", _/binary>>, _) -> ?BIZ_CHANNEL_ORDER;
+biz_type_of(_, Explicit) -> Explicit.
+
+%% @doc 频道订单金额 元→分（整数运算避浮点）
+-spec yuan_to_fen(term()) -> integer().
+yuan_to_fen(V) when is_integer(V) -> V * 100;
+yuan_to_fen(V) when is_float(V) -> round(V * 100);
+yuan_to_fen(V) when is_binary(V) ->
+    case binary:split(V, <<".">>) of
+        [I] -> to_int(I) * 100;
+        [I, F] -> to_int(I) * 100 + frac2(F);
+        _ -> 0
+    end;
+yuan_to_fen(_) ->
+    0.
+
+-spec frac2(binary()) -> integer().
+frac2(F) ->
+    F2 =
+        case byte_size(F) of
+            0 -> <<"00">>;
+            1 -> <<F/binary, "0">>;
+            _ -> binary:part(F, 0, 2)
+        end,
+    to_int(F2).
 
 -spec is_unique_violation(term()) -> boolean().
 is_unique_violation({pgsql_error, #{code := <<"23505">>}}) -> true;

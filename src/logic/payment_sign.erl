@@ -23,7 +23,9 @@
 -include("log.hrl").
 
 %% @doc 验签入口。sandbox 直通；live 按网关校验。
--spec verify(binary(), binary(), map()) -> ok | {error, atom()}.
+%% 返回 {ok, Notify}：live 透出 erlang_pay 解密/验签后的明文 map（微信回调
+%% 入账依赖此明文）；sandbox 返回 {ok, #{}}（调用方继续用 handler 解析的 Notify）。
+-spec verify(binary(), binary(), map()) -> {ok, map()} | {error, atom()}.
 verify(Gateway, RawBody, Headers) ->
     case payment_mode() of
         sandbox ->
@@ -36,12 +38,10 @@ verify(Gateway, RawBody, Headers) ->
 %%% sandbox 模式 —— 直通（最朴素的存在性校验，不做密码学验签）
 %%%===================================================================
 
--spec sandbox_verify(binary(), binary(), map()) -> ok | {error, atom()}.
-sandbox_verify(_Gateway, RawBody, _Headers) when is_binary(RawBody), byte_size(RawBody) > 0 ->
-    ok;
+-spec sandbox_verify(binary(), binary(), map()) -> {ok, map()}.
 sandbox_verify(_Gateway, _RawBody, _Headers) ->
-    %% 空报文也放行（部分网关回调允许空体 + 头签名），sandbox 阶段不拦截
-    ok.
+    %% sandbox 直通，返回空 map：调用方继续用 handler 解析的 Notify
+    {ok, #{}}.
 
 %%%===================================================================
 %%% live 模式 —— 真实验签骨架（凭据为空即拒绝）
@@ -89,9 +89,10 @@ live_verify(_Gateway, _RawBody, _Headers) ->
     %% 未知网关 live 下一律拒绝
     {error, unsupported_gateway}.
 
-%% erlang_pay:verify_notify 返回归一：成功=ok，失败提取错误码
--spec normalize_verify(term()) -> ok | {error, atom()}.
-normalize_verify({ok, _}) -> ok;
+%% erlang_pay:verify_notify 返回归一：透出解密/验签后的明文 map；失败提取错误码
+-spec normalize_verify(term()) -> {ok, map()} | {error, atom()}.
+normalize_verify({ok, Data}) when is_map(Data) -> {ok, Data};
+normalize_verify({ok, _}) -> {ok, #{}};
 normalize_verify({error, {Code, _Msg}}) when is_atom(Code) -> {error, Code};
 normalize_verify({error, Code}) when is_atom(Code) -> {error, Code};
 normalize_verify({error, _}) -> {error, bad_signature}.
