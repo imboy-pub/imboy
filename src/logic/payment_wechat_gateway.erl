@@ -2,178 +2,99 @@
 -behaviour(payment_gateway).
 
 %%%===================================================================
-%%% @doc 微信支付网关 —— APIv3（JSAPI / Native 下单）
+%%% @doc 微信支付网关 —— erlang_pay 适配器（APIv3 Native 下单）
 %%%
-%%% 两种运行模式（由 sys.config {payment_mode, _} 决定）：
-%%%   - sandbox（当前默认）：不发起真实请求，本地生成沙箱支付单与
-%%%     模拟 prepay_id，供上层联调跑通整条链路。
-%%%   - live：真实接入骨架（APIv3 证书 + JSAPI/Native 下单）。
-%%%     真实凭据为空时返回 {error, 未配置真实凭据}。真实 HTTP/验签
-%%%     调用点以 TODO 注明，沙箱阶段不引入额外 HTTP/加密依赖。
+%%% 纯适配层：读 imboy 凭据 → 组 Cfg/Order → 调 erlang_pay → 翻译返回。
+%%% 真实签名(SHA256withRSA)/HTTP/回调 AES-GCM 解密全在 erlang_pay(epay_wechat)；
+%%% 本地联调统一用 payment_mock_gateway，本模块不含沙箱模拟。
 %%%
-%%% 凭据（IMBOY_* 注入，application:get_env/3 读取）：
+%%% 凭据(IMBOY_* 注入)：
 %%%   wechat_mch_id / wechat_app_id / wechat_api_v3_key / wechat_cert_serial
+%%%   wechat_private_key(商户 API 证书私钥) / wechat_platform_public_key(平台公钥)
+%%%   ⚠️ private_key 与 platform_public_key 为新增凭据项，上线需人工配置。
 %%%
-%%% Amount: 订单金额（元；integer/float/binary/list）。本网关不扣钱包，
-%%%         仅负责生成支付单/下单参数（钱包支付走 payment_wallet_gateway）。
+%%% Amount：最小货币单位（分），直接作 amount_fen 传入。
 %%% @end
 %%%===================================================================
 
 -export([pay/3, refund/2]).
 
-%% @doc 发起支付
--spec pay(binary(), term(), map()) -> {ok, binary()} | {error, binary()}.
-pay(OrderNo, Amount, Opts) ->
-    case payment_mode() of
-        sandbox -> sandbox_pay(OrderNo, Amount, Opts);
-        _ -> live_pay(OrderNo, Amount, Opts)
+-spec pay(binary(), term(), map()) ->
+    {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
+pay(OrderNo, Amount, _Opts) ->
+    case cfg() of
+        {ok, Cfg} ->
+            Order = #{
+                pay_type => native,
+                out_trade_no => OrderNo,
+                amount_fen => to_fen(Amount),
+                description => <<"充值"/utf8>>
+            },
+            case erlang_pay:create_payment(wechat, Cfg, Order) of
+                {ok, #{code_url := CodeUrl}} ->
+                    {ok, <<"WECHAT_", OrderNo/binary>>, #{<<"code_url">> => CodeUrl}};
+                {ok, #{prepay_id := PrepayId}} ->
+                    {ok, <<"WECHAT_", OrderNo/binary>>, #{<<"prepay_id">> => PrepayId}};
+                {error, Err} ->
+                    {error, err_msg(Err)}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
-%% @doc 发起退款
 -spec refund(binary(), term()) -> ok | {error, binary()}.
 refund(PaymentNo, Amount) ->
-    case payment_mode() of
-        sandbox -> sandbox_refund(PaymentNo, Amount);
-        _ -> live_refund(PaymentNo, Amount)
-    end.
-
-%%%===================================================================
-%%% sandbox 模式 —— 本地受理，不发起真实请求
-%%%===================================================================
-
--spec sandbox_pay(binary(), term(), map()) -> {ok, binary()}.
-sandbox_pay(OrderNo, Amount, _Opts) ->
-    PaymentNo = <<"SANDBOX_WECHAT_", OrderNo/binary>>,
-    %% 模拟下单返回：JSAPI 返回 prepay_id；此处给出 prepay_id 占位
-    _PrepayId = <<"SANDBOX_PREPAY_", OrderNo/binary>>,
-    lager:info(
-        "[payment][wechat][sandbox] 沙箱已受理 order=~ts amount=~ts payment_no=~ts prepay_id=~ts",
-        [OrderNo, elib_cnv:safe_to_binary(Amount), PaymentNo, _PrepayId]
-    ),
-    {ok, PaymentNo}.
-
--spec sandbox_refund(binary(), term()) -> ok.
-sandbox_refund(PaymentNo, Amount) ->
-    lager:info(
-        "[payment][wechat][sandbox] 沙箱退款受理 payment_no=~ts amount=~ts",
-        [PaymentNo, elib_cnv:safe_to_binary(Amount)]
-    ),
-    ok.
-
-%%%===================================================================
-%%% live 模式 —— 真实接入骨架（沙箱阶段不实际发起请求）
-%%%===================================================================
-
--spec live_pay(binary(), term(), map()) -> {ok, binary()} | {error, binary()}.
-live_pay(OrderNo, Amount, _Opts) ->
-    case credentials() of
-        {ok, #{
-            mch_id := MchId,
-            app_id := AppId,
-            api_v3_key := ApiKey,
-            cert_serial := Serial
-        }} ->
-            %% 金额换算：微信下单 total 单位为「分」(integer)
-            TotalFen = yuan_to_fen(Amount),
-            %% TODO[live]: 组装 JSAPI/Native 下单请求体
-            %%   #{appid => AppId, mchid => MchId, out_trade_no => OrderNo,
-            %%     amount => #{total => TotalFen, currency => <<"CNY">>},
-            %%     description => ..., notify_url => ...}
-            %% TODO[live]: APIv3 请求签名 —— 用商户私钥对
-            %%   "METHOD\nURL\nTIMESTAMP\nNONCE\nBODY\n" 做 SHA256withRSA，
-            %%   Authorization 头携带 mchid/serial_no(Serial)/nonce/timestamp/signature。
-            %% TODO[live]: HTTP POST https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi
-            %% TODO[live]: 解析响应 prepay_id；再对客户端调起参数二次签名后返回。
-            %% TODO[live]: 回调通知用 ApiKey 做 AES-256-GCM 解密并验签。
-            _ = {MchId, AppId, ApiKey, Serial, OrderNo, TotalFen},
-            PaymentNo = <<"WECHAT_", OrderNo/binary>>,
-            {ok, PaymentNo};
+    case cfg() of
+        {ok, Cfg} ->
+            Fen = to_fen(Amount),
+            Req = #{
+                out_trade_no => strip_prefix(PaymentNo),
+                out_refund_no => <<"R_", PaymentNo/binary>>,
+                refund_fen => Fen,
+                total_fen => Fen
+            },
+            case erlang_pay:refund(wechat, Cfg, Req) of
+                {ok, _} -> ok;
+                {error, Err} -> {error, err_msg(Err)}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
 
--spec live_refund(binary(), term()) -> ok | {error, binary()}.
-live_refund(PaymentNo, Amount) ->
-    case credentials() of
-        {ok, #{mch_id := MchId, api_v3_key := ApiKey}} ->
-            RefundFen = yuan_to_fen(Amount),
-            %% TODO[live]: 组装退款请求体
-            %%   #{out_trade_no => ..., out_refund_no => ...,
-            %%     amount => #{refund => RefundFen, total => ..., currency => <<"CNY">>}}
-            %% TODO[live]: APIv3 签名后 HTTP POST
-            %%   https://api.mch.weixin.qq.com/v3/refund/domestic/refunds
-            %% TODO[live]: 校验响应 status，异常返回 {error, Message}
-            _ = {MchId, ApiKey, PaymentNo, RefundFen},
-            ok;
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%%%===================================================================
-%%% 配置读取
-%%%===================================================================
-
--spec payment_mode() -> sandbox | live | term().
-payment_mode() ->
-    application:get_env(imboy, payment_mode, sandbox).
-
-%% @doc 读取并校验真实凭据；任一为空则视为未配置
--spec credentials() -> {ok, map()} | {error, binary()}.
-credentials() ->
+%% imboy 凭据 → erlang_pay 微信 Cfg；任一必填项为空视为未配置
+-spec cfg() -> {ok, map()} | {error, binary()}.
+cfg() ->
     MchId = application:get_env(imboy, wechat_mch_id, <<>>),
     AppId = application:get_env(imboy, wechat_app_id, <<>>),
-    ApiKey = application:get_env(imboy, wechat_api_v3_key, <<>>),
+    ApiV3 = application:get_env(imboy, wechat_api_v3_key, <<>>),
     Serial = application:get_env(imboy, wechat_cert_serial, <<>>),
-    case
-        is_blank(MchId) orelse is_blank(AppId) orelse
-            is_blank(ApiKey) orelse is_blank(Serial)
-    of
+    PriKey = application:get_env(imboy, wechat_private_key, <<>>),
+    PlatPub = application:get_env(imboy, wechat_platform_public_key, <<>>),
+    case lists:member(<<>>, [MchId, AppId, ApiV3, Serial, PriKey]) of
         true ->
             {error, <<"支付网关未配置真实凭据"/utf8>>};
         false ->
             {ok, #{
                 mch_id => MchId,
                 app_id => AppId,
-                api_v3_key => ApiKey,
-                cert_serial => Serial
+                api_v3 => ApiV3,
+                mch_serial_no => Serial,
+                private_key => PriKey,
+                platform_public_key => PlatPub
             }}
     end.
 
--spec is_blank(term()) -> boolean().
-is_blank(<<>>) -> true;
-is_blank("") -> true;
-is_blank(undefined) -> true;
-is_blank(_) -> false.
+-spec strip_prefix(binary()) -> binary().
+strip_prefix(<<"WECHAT_", Rest/binary>>) -> Rest;
+strip_prefix(Other) -> Other.
 
-%%%===================================================================
-%%% 元 → 分 安全换算（微信金额单位为分；避免浮点精度误差）
-%%%===================================================================
-
--spec yuan_to_fen(term()) -> integer().
-yuan_to_fen(V) when is_integer(V) -> V * 100;
-yuan_to_fen(V) when is_float(V) -> round(V * 100);
-yuan_to_fen(V) when is_binary(V) -> yuan_to_fen_bin(V);
-yuan_to_fen(V) when is_list(V) -> yuan_to_fen_bin(list_to_binary(V));
-yuan_to_fen(_) -> 0.
-
--spec yuan_to_fen_bin(binary()) -> integer().
-yuan_to_fen_bin(Bin) ->
-    case binary:split(Bin, <<".">>) of
-        [IntPart] ->
-            safe_int(IntPart) * 100;
-        [IntPart, FracPart] ->
-            safe_int(IntPart) * 100 + safe_int(normalize_frac(FracPart));
-        _ ->
-            0
-    end.
-
--spec normalize_frac(binary()) -> binary().
-normalize_frac(F) ->
-    case byte_size(F) of
-        0 -> <<"00">>;
-        1 -> <<F/binary, "0">>;
-        _ -> binary:part(F, 0, 2)
-    end.
+%% Amount 已是分；确保 integer，不做 *100 换算
+-spec to_fen(term()) -> integer().
+to_fen(V) when is_integer(V) -> V;
+to_fen(V) when is_float(V) -> round(V);
+to_fen(V) when is_binary(V) -> safe_int(V);
+to_fen(V) when is_list(V) -> safe_int(list_to_binary(V));
+to_fen(_) -> 0.
 
 -spec safe_int(binary()) -> integer().
 safe_int(B) ->
@@ -181,3 +102,8 @@ safe_int(B) ->
         I when is_integer(I) -> I;
         _ -> 0
     end.
+
+-spec err_msg(term()) -> binary().
+err_msg({_Code, M}) when is_binary(M) -> M;
+err_msg(M) when is_binary(M) -> M;
+err_msg(O) -> elib_cnv:safe_to_binary(O).
