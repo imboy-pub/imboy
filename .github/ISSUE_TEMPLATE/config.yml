@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 安全漏洞 / Security Vulnerability
+    url: https://github.com/imboy-pub/imboy/security/policy
+    about: 请勿公开提交安全漏洞，按 SECURITY.md 流程私下报告 / Do not file security issues publicly; follow SECURITY.md.
+  - name: 💬 讨论与提问 / Questions & Discussion
+    url: https://github.com/imboy-pub/imboy/discussions
+    about: 使用问题、部署疑问与一般讨论请走 Discussions / Use Discussions for usage questions.

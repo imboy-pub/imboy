@@ -37,8 +37,8 @@ deploy/
 ### 1. 前置检查
 
 ```bash
-cd /path/to/imboy.pub
-bash script/preflight.sh --docker
+cd /path/to/imboy/deploy
+bash preflight.sh --docker
 ```
 
 任何 `ERROR` 都必须修复后再继续。
@@ -116,7 +116,7 @@ docker compose -f docker-compose.prod.yml logs -f imboy_backend
 
 ### 备份
 
-参见 `imboy/doc/operations/deployment/BACKUP-RESTORE.md`。简化版：
+参见 `imboy/docs/operations/deployment/BACKUP-RESTORE.md`。简化版：
 
 ```bash
 # PG 逻辑备份
@@ -221,8 +221,8 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 
 ## 下一步 / Next Steps
 
-- ✅ G3 `script/sanity_check.sh` — 部署后 8 项自动验证 / Post-deploy 8-item sanity check _(done)_
-- ✅ G1 `.github/workflows/` — CI/CD 三端自动化（ci + release + codeql）/ Three-component CI automation _(done)_
-- ✅ G5 `prometheus/rules/imboy-alerts.yml` — SLO 告警规则（13 条）/ SLO alerting rules (13 rules) _(done)_
-- G4 `.github/dependabot.yml` + Trivy SBOM 扫描 / Dependabot + Trivy SBOM scan
-- P0-8 Sentry DSN 生产注入文档化 / Sentry DSN production injection docs
+- ✅ G3 `scripts/sanity_check.sh` — 部署后 8 项自动验证 / Post-deploy 8-item sanity check _(done)_
+- ✅ G5 `prometheus/rules/imboy-alerts.yml` — SLO 告警规则 / SLO alerting rules _(done)_
+- ⏳ G1 `.github/workflows/release.yml` — 镜像构建发布自动化（依赖 commercialization-readiness C1）/ Image build-push automation _(pending — backend Dockerfile 已就绪，见 docs/release/RELEASE.md)_
+- ⏳ G4 `.github/dependabot.yml` + Trivy SBOM 扫描 / Dependabot + Trivy SBOM scan _(pending)_
+- ⏳ P0-8 Sentry DSN 生产注入文档化 / Sentry DSN production injection docs _(pending)_

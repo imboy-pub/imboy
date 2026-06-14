@@ -1,0 +1,26 @@
+# CODEOWNERS — imboy (Erlang/OTP 后端主仓)
+# 语法参考: https://docs.github.com/articles/about-code-owners
+# 规则按从上到下匹配，最后一条匹配的规则生效（越具体应越靠后）。
+# 所有 owner 必须是 imboy-pub 组织下真实存在的用户或团队。
+
+# 默认所有者：未被下方更具体规则覆盖的任何改动
+*                       @imboy-pub/core
+
+# —— 后端分层架构（Handler→Logic→DS→Repo 单向依赖）——
+/src/api/               @imboy-pub/core
+/src/logic/             @imboy-pub/core
+/src/ds/                @imboy-pub/core
+/src/repo/              @imboy-pub/core
+/src/domain/            @imboy-pub/core
+
+# —— 部署与可观测性 ——
+/deploy/                @imboy-pub/core
+/scripts/               @imboy-pub/core
+
+# —— CI / 治理配置（改动需核心团队评审）——
+/.github/               @imboy-pub/core
+/erlang.mk              @imboy-pub/core
+/Makefile               @imboy-pub/core
+
+# —— 文档（产品/运维/品牌）——
+/docs/                  @imboy-pub/core

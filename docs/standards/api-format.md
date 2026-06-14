@@ -181,6 +181,42 @@ Msg = <<"操作成功"/utf8>>,
 
 **详细规范**: [utf8-encoding.md](./utf8-encoding.md)
 
+## 用户 ID 键名规范（BE-17）
+
+> **Last Updated**: 2026-06-13 | **Status**: 定标（阶段 0，新端点强制；存量迁移按 T22 三阶段推进）
+
+### 规则
+
+| 场景 | 规范键名 | 说明 |
+|------|---------|------|
+| 所有新端点（请求 + 响应） | `user_id` | **强制**，不得使用 `uid` |
+| 存量端点（已发布） | `uid` → 双写过渡 | 按 T22 阶段 1 加双写后再迁移 |
+
+### 背景
+
+历史原因导致 `uid`（11 处端点）与 `user_id`（20 处端点）并存，客户端须逐端点记忆。`channel_handler_admin.erl` 已做双键兼容解析，是存量状态的体现，不是目标模式。
+
+### 迁移计划（T22，不在此文档展开）
+
+| 阶段 | 操作 | 关键点 |
+|------|------|--------|
+| Stage 0（当前） | 本文档定标 | 新端点即日起只用 `user_id` |
+| Stage 1 | 11 个 `uid` 端点双写（响应同时输出 `uid`+`user_id`，请求两键皆收） | OpenAPI 标 `uid: deprecated` |
+| Stage 2 | 三端（imboyapp/imboy-sdk-js/admin）切换读写 `user_id` | 借 OpenAPI 对账 CI 验证 |
+| Stage 3 | 旧版客户端发版覆盖后删 `uid` 键 | 确认线上旧版占比后执行 |
+
+### 违规示例 vs 正确示例
+
+```erlang
+%% ❌ 新端点禁止
+elib_response:success(Req, #{<<"uid">> => Uid, ...})
+
+%% ✅ 新端点必须
+elib_response:success(Req, #{<<"user_id">> => Uid, ...})
+```
+
+---
+
 ## 错误码使用
 
 ### 错误码定义

@@ -1,0 +1,24 @@
+# Docker 构建上下文忽略 / Docker build context ignore
+# 强制 builder 阶段从干净树重新拉依赖、编译、出 release（正常网络/CI 下的标准做法）
+# 注：在无外网的受限环境，可临时移除下面的 deps/ 一行以复用本地已拉取的 deps/ 源码
+_build/
+deps/
+_rel/
+.git/
+.github/
+log/
+logs/
+*.dump
+*.crashdump
+erl_crash.dump
+*.bak
+*~
+.DS_Store
+# 本地运行时产物：由 Makefile 在 make 时从 sys.config 重新生成
+config/sys.runtime.config
+# erlang.mk 构建缓存（非 vendored 的 erlang.mk 文件本身）
+.erlang.mk/
+# 移动端/文档/可观测性配置不参与后端镜像构建
+docs/
+deploy/
+priv/ssl/*.key

@@ -105,6 +105,7 @@ make new t=imboy.ds n=demo_ds
 | **UTF-8** | 中文字符串加 `/utf8` 后缀：`<<"操作成功"/utf8>>` |
 | **错误码** | `?ERR_OK`, `?ERR_USER_NOT_FOUND` 等宏，include `error_code.hrl` |
 | **数据库** | 所有 SQL 必须通过 `elib_pg` 模块，参数化查询防注入 |
+| **模块命名前缀** | `elib_` 仅用于**通用、可独立复用的基础库**（如 `elib_pg`、`elib_dt`、`elib_cnv`）；领域业务模块（如 `group_member_transfer`）**禁止**使用 `elib_` 前缀，放入 `src/lib/` 时保留原有语义命名 |
 
 关键文件：`include/error_code.hrl`（错误码），`include/imboy_const.hrl`（常量），`src/imboy_router.erl`（路由），`priv/migrations/*.sql`（迁移）
 

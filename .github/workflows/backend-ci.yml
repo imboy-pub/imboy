@@ -191,6 +191,70 @@ jobs:
           retention-days: 14
 
   # ----------------------------------------------------------------
+  # Xref — 零容忍 ratchet（阻塞，undefined 数必须为 0）
+  # 完整编译后实跑 make xref，任何"调用了不存在函数"均视为 CI 失败。
+  # 必须在完整 build 之后运行：beam 不全会产生假阳性（mutual undefined）。
+  # 基线历史：2026-06-13 初始=42，同日全部修复，ratchet 目标 = 0。
+  # ----------------------------------------------------------------
+  xref:
+    name: Xref undefined-calls (ratchet: 0 allowed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [compile]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Run Xref (erlang.mk 会先完整编译再 xref)
+        run: |
+          set -o pipefail
+          IMBOYENV=local make xref 2>&1 | tee xref.log || true
+
+      - name: Enforce zero undefined calls
+        run: |
+          undef_count="$(grep -c 'Undefined function' xref.log || true)"
+          echo "Undefined function calls: ${undef_count}"
+          if [ "${undef_count}" -gt 0 ]; then
+            echo "ERROR: xref ratchet failed — ${undef_count} undefined call(s) detected:" >&2
+            grep 'Undefined function' xref.log | sort -u >&2
+            exit 1
+          fi
+
+      - name: Summarize Xref result
+        if: always()
+        run: |
+          echo "## Xref undefined-calls (ratchet: 0 allowed)" >> "$GITHUB_STEP_SUMMARY"
+          undef_count="$(grep -c 'Undefined function' xref.log || true)"
+          echo "Undefined function calls: ${undef_count} (ratchet 目标 = 0；2026-06-13 从 42 全修)" >> "$GITHUB_STEP_SUMMARY"
+          grep 'Undefined function' xref.log | sort -u >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload Xref log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xref-log
+          path: xref.log
+          retention-days: 14
+
+  # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by
   # ----------------------------------------------------------------
   dco-check:

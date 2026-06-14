@@ -42,6 +42,14 @@ tags:
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: admin
     description: 管理后台鉴权端点
+  - name: wallet
+    description: 钱包余额、mock 充值与充值订单
+  - name: payment-callback
+    description: 统一支付回调 webhook（免 JWT，第三方服务器调用）
+  - name: billing
+    description: SaaS 计费——套餐管理、租户订阅、用量配额、账单
+  - name: channel-order
+    description: 频道付费订单（创建、支付、退款、查询）
 
 paths:
   /adm/setup/status:
@@ -278,6 +286,921 @@ paths:
                           page:  { type: integer }
                           size:  { type: integer }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 支付子系统 paths（追加于现有 paths 节点内，与现有路径平级）
+# ─────────────────────────────────────────────────────────────────────────────
+
+  /v1/wallet/balance:
+    get:
+      tags: [wallet]
+      summary: 查询钱包余额
+      description: 返回当前登录用户余额与冻结金额。钱包不存在时自动创建（余额 0）。金额单位分；额外字段 balance_yuan 为元，仅供显示。
+      operationId: getWalletBalance
+      responses:
+        '200':
+          description: 余额查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/WalletBalance'
+              example:
+                code: 0
+                msg: success.
+                sv_ts: 1771481621000
+                payload:
+                  balance: 5999
+                  balance_yuan: 59.99
+                  frozen: 0
+
+  /v1/wallet/transactions:
+    get:
+      tags: [wallet]
+      summary: 分页查询钱包流水
+      operationId: listWalletTransactions
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: 流水列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          list:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/WalletTransaction'
+                          total:
+                            type: integer
+                          page:
+                            type: integer
+                          page_size:
+                            type: integer
+
+  /v1/wallet/topup:
+    post:
+      tags: [wallet]
+      summary: Mock 直接充值（仅非生产环境）
+      description: 沙箱专用，直接向钱包余额加款，不经第三方网关。生产环境不可用，请使用充值订单链路。幂等键 reference_no 格式 TOP<timestamp>_<hex>，DB UNIQUE 防重入账。
+      operationId: walletTopup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+              properties:
+                amount:
+                  type: integer
+                  format: int64
+                  minimum: 100
+                  maximum: 1000000
+                  description: 充值金额，单位分；100=1.00元，5999=59.99元
+            example:
+              amount: 5999
+      responses:
+        '200':
+          description: 充值成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          balance:
+                            type: integer
+                            format: int64
+                            description: 充值后余额，单位分
+                          balance_yuan:
+                            type: number
+                            format: double
+                          reference_no:
+                            type: string
+                            description: 本次流水幂等键
+
+  /v1/wallet/recharge/order:
+    post:
+      tags: [wallet]
+      summary: 创建充值订单（真实网关链路第一步）
+      description: 创建充值订单，status=0 待支付。后续调用 /v1/wallet/recharge/pay 拉起支付。沙箱使用 payment_method=mock 可即时入账。金额范围默认 100~1000000 分。
+      operationId: createRechargeOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - payment_method
+              properties:
+                amount:
+                  type: integer
+                  format: int64
+                  minimum: 100
+                  maximum: 1000000
+                  description: 充值金额，单位分
+                payment_method:
+                  type: string
+                  enum: [alipay, wechat, stripe, mock]
+                  description: 支付方式；非生产允许 mock，生产仅 alipay/wechat/stripe
+            example:
+              amount: 9900
+              payment_method: mock
+      responses:
+        '200':
+          description: 订单创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/RechargeOrder'
+
+  /v1/wallet/recharge/pay:
+    post:
+      tags: [wallet]
+      summary: 拉起支付（充值第二步）
+      description: 沙箱 mock 即时入账，status 变为 1，额外返回 balance（充值后余额，分）。真实网关返回支付参数，等待第三方回调入账。三方网关 live 签名尚未实现（TODO[live]）。
+      operationId: payRechargeOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - order_no
+              properties:
+                order_no:
+                  type: string
+            example:
+              order_no: RCH20260614_A1B2C3D4
+      responses:
+        '200':
+          description: 支付发起成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          order_no:
+                            type: string
+                          payment_no:
+                            type: string
+                            description: 网关支付单号
+                          payment_method:
+                            type: string
+                          amount:
+                            type: integer
+                            format: int64
+                            description: 单位分
+                          status:
+                            type: integer
+                            enum: [0, 1]
+                            description: mock 即时入账返回 1，真实网关返回 0 等待回调
+                          balance:
+                            type: [integer, 'null']
+                            format: int64
+                            description: mock 即时入账后新余额，单位分；真实网关无此字段
+
+  /v1/wallet/recharge/{order_no}:
+    get:
+      tags: [wallet]
+      summary: 查询充值订单状态
+      description: 仅订单归属用户可查。轮询至 status=1 已支付，建议间隔 2s，最多 30 次。
+      operationId: getRechargeOrder
+      parameters:
+        - in: path
+          name: order_no
+          required: true
+          schema:
+            type: string
+          description: 充值订单号
+      responses:
+        '200':
+          description: 订单详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/RechargeOrder'
+
+  /v1/payment/callback/{gateway}:
+    post:
+      tags: [payment-callback]
+      summary: 统一支付回调 webhook（免 JWT）
+      description: |
+        由第三方支付服务器主动回调，禁止前端直接调用，无 JWT 认证。
+
+        处理流程：读取 RawBody 原始字节 → 按网关归一化 Notify map
+        → payment_callback_logic:handle/3（验签→幂等→入账→流水）→ 各网关格式应答。
+
+        回调幂等：payment_transaction.(gateway, gateway_payment_no) 联合唯一索引防重放。
+
+        各网关应答格式：
+        alipay 返回文本 success（非此值支付宝重推）；
+        wechat 返回 JSON {"code":"SUCCESS","message":"成功"}；
+        stripe 成功返回 {"received":true}，验签失败返回 HTTP 400 {"received":false}；
+        mock/其他返回标准信封 {code:0,...}。
+
+        验签现状：sandbox 直通不验签；各网关 live 签名标注 TODO[live]，尚未实现。
+      operationId: paymentCallback
+      security: []
+      parameters:
+        - in: path
+          name: gateway
+          required: true
+          schema:
+            type: string
+            enum: [alipay, wechat, stripe, mock]
+          description: 网关标识
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 归一化统一字段（sandbox 约定），live 各网关私有字段在 normalize/3 映射
+              properties:
+                gateway_payment_no:
+                  type: string
+                  description: 第三方支付单号（回调幂等键）
+                biz_type:
+                  type: integer
+                  enum: [1, 2, 3]
+                  description: "1 充值 / 2 频道订单 / 3 SaaS 账单"
+                biz_order_no:
+                  type: string
+                  description: 业务订单号
+                user_id:
+                  type: integer
+                  format: int64
+                  description: 用户 ID（TSID）
+                amount:
+                  type: integer
+                  format: int64
+                  description: 金额，单位分
+                trade_no:
+                  type: string
+                  description: 平台内部交易单号
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              description: 支付宝 live 回调为 form 格式（TODO[live]）
+      responses:
+        '200':
+          description: 回调应答（格式因网关而异，见描述）
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: success
+            application/json:
+              schema:
+                type: object
+
+  /v1/billing/plan:
+    post:
+      tags: [billing]
+      summary: 创建套餐（管理端）
+      operationId: createBillingPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - name
+                - price
+                - billing_period
+              properties:
+                code:
+                  type: string
+                  description: 套餐唯一编码，如 starter/pro/max
+                name:
+                  type: string
+                price:
+                  type: integer
+                  format: int64
+                  description: 价格，单位分；9900=99.00元
+                billing_period:
+                  type: string
+                  enum: [month, year]
+                quota_config:
+                  type: object
+                  description: 配额上限 jsonb
+                description:
+                  type: [string, 'null']
+            example:
+              code: pro
+              name: 专业版
+              price: 9900
+              billing_period: month
+      responses:
+        '200':
+          description: 创建成功，返回 id
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+
+  /v1/billing/plan/update:
+    post:
+      tags: [billing]
+      summary: 更新套餐（管理端）
+      operationId: updateBillingPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                  description: 套餐 ID（必填）
+                name:
+                  type: string
+                price:
+                  type: integer
+                  format: int64
+                  description: 单位分
+                billing_period:
+                  type: string
+                  enum: [month, year]
+                quota_config:
+                  type: object
+                description:
+                  type: string
+                status:
+                  type: integer
+                  enum: [0, 1]
+                  description: "0 下架 / 1 上架"
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+
+  /v1/billing/plan/list:
+    get:
+      tags: [billing]
+      summary: 获取上架套餐列表
+      description: 返回所有 status=1 的套餐。
+      operationId: listBillingPlans
+      responses:
+        '200':
+          description: 套餐列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          list:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/BillingPlan'
+
+  /v1/billing/subscribe:
+    post:
+      tags: [billing]
+      summary: 订阅套餐
+      description: 同一租户同一时刻只允许一条生效/试用订阅（DB uniq_billing_sub_active）。trial=true 时创建试用订阅 status=0。
+      operationId: billingSubscribe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_id
+              properties:
+                plan_id:
+                  type: integer
+                  format: int64
+                tenant_id:
+                  type: integer
+                  format: int64
+                  default: 0
+                  description: 租户 ID（单租户传 0 或省略）
+                trial:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: 订阅成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          subscription_id:
+                            type: integer
+                            format: int64
+
+  /v1/billing/renew:
+    post:
+      tags: [billing]
+      summary: 续费订阅
+      operationId: billingRenew
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subscription_id
+              properties:
+                subscription_id:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: 续费成功，返回新到期时间（毫秒时间戳）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          subscription_id:
+                            type: integer
+                            format: int64
+                          current_period_end_ms:
+                            type: integer
+                            format: int64
+                            description: 到期时间戳（毫秒）
+
+  /v1/billing/cancel:
+    post:
+      tags: [billing]
+      summary: 取消订阅（不立即退款）
+      operationId: billingCancel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subscription_id
+              properties:
+                subscription_id:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          subscription_id:
+                            type: integer
+                            format: int64
+
+  /v1/billing/subscription:
+    get:
+      tags: [billing]
+      summary: 查询当前租户订阅
+      operationId: getBillingSubscription
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: integer
+            default: 0
+          description: 租户 ID（单租户传 0 或省略）
+      responses:
+        '200':
+          description: 当前订阅（无订阅时 payload 为空 map）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/BillingSubscription'
+
+  /v1/billing/usage:
+    post:
+      tags: [billing]
+      summary: 上报用量（增量累加）
+      description: 同一 (subscription_id, metric, period) 行做 upsert 累加（uniq_billing_usage_sub_metric_period）。period 缺省时后端取当前月份，格式 YYYY-MM。
+      operationId: reportBillingUsage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subscription_id
+                - metric
+                - used
+              properties:
+                subscription_id:
+                  type: integer
+                  format: int64
+                metric:
+                  type: string
+                  description: 指标键，如 message/storage/dau
+                used:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: 本次增量（非总量）
+                period:
+                  type: [string, 'null']
+                  description: 周期标识，如 2026-06；缺省当前月份
+            example:
+              subscription_id: 12345
+              metric: message
+              used: 1000
+      responses:
+        '200':
+          description: 上报成功，返回当前周期累计用量
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          metric:
+                            type: string
+                          used:
+                            type: integer
+                            format: int64
+                            description: 当前周期累计总量
+
+  /v1/billing/quota:
+    get:
+      tags: [billing]
+      summary: 查询配额使用情况
+      operationId: checkBillingQuota
+      parameters:
+        - in: query
+          name: subscription_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: metric
+          required: true
+          schema:
+            type: string
+          description: 指标键，如 message/storage/dau
+        - in: query
+          name: period
+          schema:
+            type: string
+          description: 周期标识，缺省当前月份
+      responses:
+        '200':
+          description: 配额查询结果（源码未明确 payload 字段，由 billing_logic:check_quota/3 返回）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+
+  /v1/billing/invoice/generate:
+    post:
+      tags: [billing]
+      summary: 生成账单
+      description: 同一订阅同一计费周期只生成一张账单（uniq_billing_invoice_sub_period 幂等）。已存在时返回 already_generated=true。
+      operationId: generateBillingInvoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subscription_id
+              properties:
+                subscription_id:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: 生成成功或已存在
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          invoice_id:
+                            type: integer
+                            format: int64
+                            description: 新生成的账单 ID（已存在时无此字段）
+                          already_generated:
+                            type: [boolean, 'null']
+
+  /v1/billing/invoice/pay:
+    post:
+      tags: [billing]
+      summary: 支付账单
+      description: 通过指定支付方式支付待支付账单（biz_type=3 走统一支付通道）。
+      operationId: payBillingInvoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - invoice_no
+                - payment_method
+              properties:
+                invoice_no:
+                  type: string
+                payment_method:
+                  type: string
+                  enum: [wallet, alipay, wechat, stripe, mock]
+      responses:
+        '200':
+          description: 支付发起成功（源码未明确 payload 具体字段）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+
+  /v1/billing/invoice/list:
+    get:
+      tags: [billing]
+      summary: 账单列表
+      operationId: listBillingInvoices
+      parameters:
+        - in: query
+          name: subscription_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 账单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          list:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/BillingInvoice'
+
+  /v1/channel/{channel_id}/order:
+    post:
+      tags: [channel-order]
+      summary: 创建频道付费订单
+      description: |
+        仅 type=2 付费频道且 status=1 的频道可购买。
+        同一用户同一频道只允许一笔待支付订单（uniq_channel_order_pending）。
+        已购买用户调用返回错误。
+      operationId: createChannelOrder
+      parameters:
+        - in: path
+          name: channel_id
+          required: true
+          schema:
+            type: string
+          description: 频道 ID（TSID，integer 字符串）
+      responses:
+        '200':
+          description: 订单创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/ChannelOrder'
+
+  /v1/channel/order/pay:
+    post:
+      tags: [channel-order]
+      summary: 支付频道订单
+      description: 默认支付方式 wallet（钱包余额）。非生产允许 mock。支付成功后自动开通频道订阅并推送通知。
+      operationId: payChannelOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - order_no
+              properties:
+                order_no:
+                  type: string
+            example:
+              order_no: CHO20260614_XYZ
+      responses:
+        '200':
+          description: 支付成功，payload 为空 map
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+
+  /v1/channel/order/refund:
+    post:
+      tags: [channel-order]
+      summary: 申请频道订单退款
+      description: |
+        仅已支付 status=1 订单可退款。退款后取消频道订阅。
+        幂等：已退款 status=2 再次调用返回错误，不重复退款。
+        注意：channel_order.amount 为元 numeric(10,2)，与充值订单分单位不同，网关内部换算。
+      operationId: refundChannelOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - order_no
+              properties:
+                order_no:
+                  type: string
+                refund_reason:
+                  type: [string, 'null']
+                  description: 退款原因，缺省"用户申请退款"
+      responses:
+        '200':
+          description: 退款成功，payload 为空 map
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+
+  /v1/channel/orders/{order_no}:
+    get:
+      tags: [channel-order]
+      summary: 查询频道订单详情
+      description: 仅订单归属用户可查。
+      operationId: getChannelOrder
+      parameters:
+        - in: path
+          name: order_no
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 订单详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        $ref: '#/components/schemas/ChannelOrder'
+
+  /v1/channel/orders/my:
+    get:
+      tags: [channel-order]
+      summary: 查询当前用户的频道订单列表
+      description: 返回最近 50 条（源码 list_by_user(Uid, 50)），按创建时间降序。
+      operationId: listMyChannelOrders
+      responses:
+        '200':
+          description: 订单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          list:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/ChannelOrder'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -313,10 +1236,10 @@ components:
       type: object
       properties:
         id:        { type: integer, format: int64, description: TSID（JSON integer，64-bit BIGINT） }
-        mobile:    { type: string, nullable: true }
-        account:   { type: string, nullable: true }
+        mobile:    { type: [string, 'null'] }
+        account:   { type: [string, 'null'] }
         nickname:  { type: string }
-        avatar:    { type: string, nullable: true }
+        avatar:    { type: [string, 'null'] }
         status:    { type: integer }
         created_at:
           type: string
@@ -331,10 +1254,158 @@ components:
         to:         { type: integer, format: int64, description: 接收者 TSID 或群 TSID }
         type:       { type: string, enum: [text, image, voice, video, file, location, contact, revoke, edit] }
         payload:    { type: object, description: 类型相关业务载荷 }
-        ciphertext: { type: string, nullable: true, description: E2EE 场景服务端不解密 }
+        ciphertext: { type: [string, 'null'], description: E2EE 场景服务端不解密 }
         created_at:
           type: string
           format: date-time
+
+    # ── 支付子系统 schemas（追加）────────────────────────────────────
+
+    WalletBalance:
+      type: object
+      description: 钱包余额（金额单位：分）
+      properties:
+        balance:      {type: integer, format: int64, description: 余额，单位分}
+        balance_yuan: {type: number,  format: double, description: 余额元数，balance/100.0，仅供显示}
+        frozen:       {type: integer, format: int64, description: 冻结金额，单位分}
+
+    WalletTransaction:
+      type: object
+      description: 钱包流水记录（金额单位：分）
+      properties:
+        id:            {type: integer, format: int64, description: 流水 ID（TSID）}
+        user_id:       {type: integer, format: int64, description: 用户 ID（TSID）}
+        amount:        {type: integer, format: int64, description: 变动金额，单位分；正数入账，负数支出}
+        balance_after: {type: integer, format: int64, description: 变动后余额，单位分}
+        reference_no:  {type: string, description: 幂等键，格式 TOP<ts>_<hex> 或 RCH_<order_no>}
+        remark:        {type: [string, 'null']}
+        created_at:    {type: string, format: date-time}
+
+    RechargeOrder:
+      type: object
+      description: 充值订单（金额单位：分）
+      properties:
+        id:             {type: integer, format: int64}
+        order_no:       {type: string, description: 订单号，全局唯一 UNIQUE}
+        user_id:        {type: integer, format: int64, description: 用户 ID（TSID）}
+        amount:         {type: integer, format: int64, description: 充值金额，单位分；5999=59.99元}
+        currency:       {type: string, default: CNY}
+        payment_method:
+          type: string
+          enum: [alipay, wechat, stripe, mock]
+          description: 支付方式；非生产允许 mock，生产仅 alipay/wechat/stripe
+        payment_no:     {type: [string, 'null'], description: 第三方支付单号，回调后回填}
+        status:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+          description: "0 待支付 / 1 已支付 / 2 退款中 / 3 已退款 / 4 已过期"
+        paid_at:        {type: [string, 'null'], format: date-time}
+        expires_at:     {type: [string, 'null'], format: date-time}
+        extra_data:     {type: [object, 'null'], description: 网关扩展字段 jsonb}
+        created_at:     {type: string, format: date-time}
+
+    PaymentTransaction:
+      type: object
+      description: 统一支付流水（对账+回调幂等，金额单位：分）
+      properties:
+        id:                 {type: integer, format: int64}
+        trade_no:           {type: string, description: 平台内部交易单号 UNIQUE}
+        biz_type:
+          type: integer
+          enum: [1, 2, 3]
+          description: "1 充值 / 2 频道订单 / 3 SaaS 账单"
+        biz_order_no:       {type: string, description: 业务订单号}
+        user_id:            {type: integer, format: int64, description: 用户 ID（TSID）}
+        gateway:
+          type: string
+          enum: [alipay, wechat, stripe, mock, wallet]
+        gateway_payment_no: {type: [string, 'null'], description: 第三方支付单号，与 gateway 联合唯一}
+        amount:             {type: integer, format: int64, description: 金额，单位分}
+        currency:           {type: string, default: CNY}
+        status:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+          description: "0 待支付 / 1 成功 / 2 失败 / 3 已退款 / 4 部分退款"
+        notify_data:        {type: [object, 'null'], description: 回调原始报文 jsonb}
+        paid_at:            {type: [string, 'null'], format: date-time}
+        created_at:         {type: string, format: date-time}
+
+    BillingPlan:
+      type: object
+      description: SaaS 套餐定义（金额单位：分）
+      properties:
+        id:             {type: integer, format: int64}
+        code:           {type: string, description: 套餐唯一编码，如 starter/pro/max}
+        name:           {type: string}
+        price:          {type: integer, format: int64, description: 价格，单位分；9900=99.00元}
+        billing_period:
+          type: string
+          enum: [month, year]
+        quota_config:   {type: object, description: 配额上限 jsonb}
+        description:    {type: [string, 'null']}
+        status:         {type: integer, enum: [0, 1], description: "0 下架 / 1 上架"}
+        created_at:     {type: string, format: date-time}
+
+    BillingSubscription:
+      type: object
+      description: SaaS 租户订阅
+      properties:
+        id:                   {type: integer, format: int64}
+        tenant_id:            {type: integer, format: int64, description: 租户 ID，逻辑字段，单租户默认 0}
+        plan_id:              {type: integer, format: int64}
+        status:
+          type: integer
+          enum: [0, 1, 2, 3]
+          description: "0 试用 / 1 生效 / 2 过期 / 3 取消"
+        current_period_start: {type: [string, 'null'], format: date-time}
+        current_period_end:   {type: [string, 'null'], format: date-time}
+        auto_renew:           {type: boolean, default: true}
+        created_at:           {type: string, format: date-time}
+
+    BillingUsage:
+      type: object
+      description: SaaS 用量记录（按订阅/指标/周期累计）
+      properties:
+        id:              {type: integer, format: int64}
+        subscription_id: {type: integer, format: int64}
+        metric:          {type: string, description: 指标键，如 message/storage/dau}
+        used:            {type: integer, format: int64, description: 当前周期累计用量}
+        period:          {type: string, description: 周期标识，如 2026-06}
+        recorded_at:     {type: string, format: date-time}
+
+    BillingInvoice:
+      type: object
+      description: SaaS 账单（金额单位：分）
+      properties:
+        id:              {type: integer, format: int64}
+        invoice_no:      {type: string, description: 账单号 UNIQUE}
+        subscription_id: {type: integer, format: int64}
+        amount:          {type: integer, format: int64, description: 账单金额，单位分}
+        currency:        {type: string, default: CNY}
+        status:          {type: integer, enum: [0, 1, 2], description: "0 待支付 / 1 已付 / 2 逾期"}
+        payment_no:      {type: [string, 'null']}
+        period_start:    {type: [string, 'null'], format: date-time}
+        period_end:      {type: [string, 'null'], format: date-time}
+        paid_at:         {type: [string, 'null'], format: date-time}
+        created_at:      {type: string, format: date-time}
+
+    ChannelOrder:
+      type: object
+      description: 频道付费订单
+      properties:
+        id:             {type: integer, format: int64}
+        order_no:       {type: string, description: 订单号 UNIQUE}
+        channel_id:     {type: integer, format: int64, description: 频道 ID（TSID）}
+        user_id:        {type: integer, format: int64, description: 用户 ID（TSID）}
+        amount:         {type: number, format: double, description: "金额，channel_order 为元 numeric(10,2)，与充值分单位不同"}
+        currency:       {type: string, default: CNY}
+        payment_method:
+          type: string
+          enum: [wallet, alipay, wechat, stripe, mock]
+          description: 支付方式，默认 wallet
+        payment_no:     {type: [string, 'null']}
+        status:         {type: integer, enum: [0, 1, 2], description: "0 待支付 / 1 已支付 / 2 已退款"}
+        created_at:     {type: string, format: date-time}
 
 security:
   - bearerAuth: []

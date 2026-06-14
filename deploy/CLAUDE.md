@@ -83,8 +83,8 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml ps
 
 # 5. 查看日志
-docker compose -f docker-compose.prod.yml logs -f backend
-docker compose -f docker-compose.prod.yml logs -f admin
+docker compose -f docker-compose.prod.yml logs -f imboy_backend
+docker compose -f docker-compose.prod.yml logs -f imboy_admin
 
 # 6. 停止服务
 docker compose -f docker-compose.prod.yml down
